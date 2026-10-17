@@ -9,6 +9,7 @@ class ServerStorageSummary {
     required this.categories,
     this.sampledAt,
     this.unavailableReason,
+    this.unavailableCode,
     this.rssBytes,
     this.heapUsedBytes,
     this.heapMaxBytes,
@@ -33,6 +34,7 @@ class ServerStorageSummary {
       available: capabilities['available'] == true,
       canCleanup: capabilities['canCleanup'] == true,
       unavailableReason: _optionalText(capabilities['unavailableReason']),
+      unavailableCode: _optionalText(capabilities['unavailableCode']),
       sampledAt: _date(json['sampledAt']),
       volumes: _rows(
         json['volumes'],
@@ -57,7 +59,9 @@ class ServerStorageSummary {
   final String revision, status;
   final bool available, canCleanup;
   final DateTime? sampledAt;
-  final String? unavailableReason;
+  final String? unavailableReason, unavailableCode;
+  bool get platformUnsupported =>
+      !available && unavailableCode == 'HOST_PLATFORM_UNSUPPORTED';
   final List<ServerStorageVolume> volumes;
   final List<ServerStorageCategory> categories;
   final int? rssBytes, heapUsedBytes, heapMaxBytes, databaseBytes;

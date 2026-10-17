@@ -1,5 +1,7 @@
 package com.uten.imp.features.admin.dto;
 
+import com.uten.imp.features.rbac.PermissionBusinessDescriptions;
+
 import java.util.List;
 import java.util.UUID;
 
@@ -22,6 +24,15 @@ public record PermissionCatalogDto(String module, String category, List<Item> pe
             List<String> grantPolicy,
             boolean baseline,
             boolean baselinePinned,
-            String sensitivity) {
+            String sensitivity,
+            List<String> requiredPermissions) {
+        public Item {
+            description = PermissionBusinessDescriptions.descriptionFor(code, description);
+        }
+
+        public Item(UUID id, String code, String name, String actionType, String description,
+                List<String> grantPolicy, boolean baseline, boolean baselinePinned, String sensitivity) {
+            this(id, code, name, actionType, description, grantPolicy, baseline, baselinePinned, sensitivity, List.of());
+        }
     }
 }

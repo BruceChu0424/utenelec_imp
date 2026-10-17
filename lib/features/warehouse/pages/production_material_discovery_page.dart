@@ -408,12 +408,15 @@ class _DiscoveryPageState extends ConsumerState<ProductionMaterialDiscoveryPage>
       key: 'goods',
       label: '${l10n.materialDiscoveryPick} *',
       width: 220,
-      value: (row) => row.values['goodsName'] as String? ?? '需要填写',
+      value: (row) =>
+          row.values['goodsName'] as String? ?? l10n.warehouseOutboundGoodsName,
       cellBuilderHandlesSemantics: true,
       // 2026-10-06 行高统一口径：编辑表动作不再用 min40 的 TextButton 撑行。
       cellBuilder: (_, row) => UtenTableCellAction(
         key: ValueKey('discovery-goods-${row.id}'),
-        label: row.values['goodsName'] as String? ?? '需要填写',
+        label:
+            row.values['goodsName'] as String? ??
+            l10n.warehouseOutboundGoodsName,
         // 必填未填红字提示（原 TextButton 的 foregroundColor:error 语义）。
         error: row.values['goodsId'] == null,
         onPressed: _editable ? () => _pickGoods(row) : null,
@@ -466,7 +469,8 @@ class _DiscoveryPageState extends ConsumerState<ProductionMaterialDiscoveryPage>
             UtenInputDecoration(
               InputDecoration(
                 isDense: true,
-                hintText: '需要填写',
+                hintText: l10n.materialDiscoveryQuantity,
+                hintMaxLines: 1,
                 suffixText: (row.values['unitName'] as String?)?.trim(),
                 error: _validationShown && row.quantityError != null
                     ? UtenFieldMessage.error(row.quantityError!)
@@ -483,11 +487,15 @@ class _DiscoveryPageState extends ConsumerState<ProductionMaterialDiscoveryPage>
       key: 'warehouse',
       label: '${l10n.materialDiscoveryWarehouse} *',
       width: 200,
-      value: (row) => row.values['warehouseName'] as String? ?? '需要填写',
+      value: (row) =>
+          row.values['warehouseName'] as String? ??
+          l10n.materialDiscoveryWarehouse,
       cellBuilderHandlesSemantics: true,
       cellBuilder: (_, row) => UtenTableCellAction(
         key: ValueKey('discovery-warehouse-${row.id}'),
-        label: row.values['warehouseName'] as String? ?? '需要填写',
+        label:
+            row.values['warehouseName'] as String? ??
+            l10n.materialDiscoveryWarehouse,
         error: row.values['warehouseId'] == null,
         onPressed: _editable ? () => _pickWarehouse(row) : null,
       ),
@@ -635,7 +643,6 @@ class _DiscoveryPageState extends ConsumerState<ProductionMaterialDiscoveryPage>
                           'features.warehouse.pages.production_material_discovery_page.DiscoveryPageState.build.1',
                       key: const Key('discovery-material-table'),
                       primary: true,
-                      enableTextSelection: false,
                       columns: _columns(l10n),
                       items: List.unmodifiable(_grid.rows),
                       rowKeyOf: (row) => row.id,

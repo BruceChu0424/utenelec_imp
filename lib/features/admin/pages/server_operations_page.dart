@@ -9,21 +9,24 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
-import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_responsive_grid.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../../../core/utils/display_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../models/server_operations.dart';
 import '../providers/server_operations_access.dart';
 import '../repositories/server_operations_repository.dart';
+import '../repositories/server_operation_outcome.dart';
 import '../widgets/server_update_source_editor.dart';
 import '../widgets/server_update_schedule_dialog.dart';
+import '../widgets/server_update_dialog_guard.dart';
+import '../widgets/server_update_overview.dart';
 
 class ServerOperationsPage extends ConsumerWidget {
   const ServerOperationsPage({super.key});
@@ -46,12 +49,16 @@ class _ServerOperationsSession extends ConsumerStatefulWidget {
 class _ServerOperationsState extends ConsumerState<_ServerOperationsSession>
     with WidgetsBindingObserver {
   late final Object? _owner;
+  final _sourceEditorKey = GlobalKey();
   ServerOperationsStatus? _status;
   ServerUpdateJob? _job;
+  ServerUpdateJob? _receiptJob;
+  String? _watchJobId;
   Timer? _poll;
   bool _loading = false, _starting = false, _foreground = true, _visible = true;
   int _sequence = 0;
   String? _error,
+      _errorCode,
       _uncertainRequestId,
       _offerAfterRequestId,
       _cancelPendingJobId;
@@ -71,7 +78,12 @@ class _ServerOperationsState extends ConsumerState<_ServerOperationsSession>
       !_starting &&
       _error == null &&
       _job?.recoveryRequired != true &&
+      _receiptJob?.recoveryRequired != true &&
+      _status?.failure?.recoveryRequired != true &&
       _uncertainRequestId == null &&
+      _cancelPendingJobId == null &&
+      _watchJobId == null &&
+      _status?.latestJob?.running != true &&
       (_job == null || _job!.terminal) &&
       ref.read(serverOperationsWritableProvider) &&
       _status?.available == true &&
@@ -79,6 +91,12 @@ class _ServerOperationsState extends ConsumerState<_ServerOperationsSession>
       _status?.sourceConfigured == true &&
       _status?.sourceRevision?.isNotEmpty == true &&
       _status?.currentVersion?.isNotEmpty == true;
+
+  bool get _canReviewUpdate =>
+      _canStart &&
+      _job?.state != 'FAILED' &&
+      _receiptJob?.state != 'FAILED' &&
+      _job?.recoveryRequired != true;
 
   @override
   void initState() {
@@ -108,7 +126,11 @@ class _ServerOperationsState extends ConsumerState<_ServerOperationsSession>
   void _schedule() {
     _poll?.cancel();
     if (!_active) return;
-    if (_job?.running == true || _uncertainRequestId != null) {
+    if (_job?.running == true ||
+        _status?.latestJob?.running == true ||
+        _watchJobId != null ||
+        _uncertainRequestId != null ||
+        _cancelPendingJobId != null) {
       _poll = Timer(
         Duration(seconds: _job?.state == 'SCHEDULED' ? 30 : 5),
         () => _load(),
@@ -117,7 +139,7 @@ class _ServerOperationsState extends ConsumerState<_ServerOperationsSession>
   }
 
   /// Reads host-local durable state only. Never starts an OSS check.
-  Future<void> _load() async {
+  Future<void> _load({bool preserveNotice = false}) async {
     if (!_active || _loading || _starting) return;
     final sequence = ++_sequence;
     final repository = _repository;
@@ -126,38 +148,74 @@ class _ServerOperationsState extends ConsumerState<_ServerOperationsSession>
     try {
       final status = await repository.status();
       if (!_current || sequence != _sequence) return;
-      var job = status.latestJob;
-      // A submitted request with no HTTP receipt must be found, not resubmitted.
-      if (_uncertainRequestId != null &&
-          job?.requestId != _uncertainRequestId) {
-        job = await repository.latestJob();
-        if (!_current || sequence != _sequence) return;
+      var uncertain = _uncertainRequestId;
+      var cancelling = _cancelPendingJobId;
+      var watching = _watchJobId;
+      var receipt = _receiptJob;
+      String? readError, readErrorCode;
+      // The request UUID is the durable update job ID. A newer company job
+      // must never replace resolution of our original submission/cancellation.
+      final targets = {?uncertain, ?cancelling, ?watching};
+      for (final id in targets) {
+        ServerUpdateJob found;
+        try {
+          found = status.latestJob?.id == id
+              ? status.latestJob!
+              : await repository.job(id);
+          if (!_current || sequence != _sequence) return;
+          if (found.id != id ||
+              (id == uncertain && found.requestId != uncertain)) {
+            throw const FormatException('Invalid original job receipt');
+          }
+        } catch (error) {
+          if (!_current || sequence != _sequence) return;
+          readError = '暂未确认原作业结果。正在继续查询原作业，不会重复提交更新或取消请求。';
+          readErrorCode = error is ApiException
+              ? safeServerOperationCode(error.code)
+              : null;
+          continue;
+        }
+        receipt = found;
+        if (id == uncertain) uncertain = null;
+        if (id == cancelling && found.state != 'SCHEDULED') cancelling = null;
+        if (found.running) {
+          watching = id;
+        } else if (watching == id || id == _uncertainRequestId) {
+          watching = null;
+        }
       }
       setState(() {
         _status = status;
-        _job = job;
-        _error = null;
-        if (job?.requestId == _uncertainRequestId) _uncertainRequestId = null;
-        if (job?.id == _cancelPendingJobId && job?.state != 'SCHEDULED') {
-          _cancelPendingJobId = null;
-        }
+        _receiptJob = receipt;
+        _job = status.latestJob ?? receipt;
+        _uncertainRequestId = uncertain;
+        _cancelPendingJobId = cancelling;
+        _watchJobId = watching;
+        _error = readError ?? (preserveNotice ? _error : null);
+        _errorCode = readErrorCode ?? (preserveNotice ? _errorCode : null);
       });
     } catch (error) {
       if (!_current || sequence != _sequence) return;
-      setState(
-        () => _error = error is ApiException
-            ? error.message
-            : '无法读取服务器更新状态，请稍后刷新。',
-      );
+      setState(() {
+        _error = error is ApiException
+            ? safeServerOperationText(error.message) ?? '无法读取服务器更新状态，请稍后刷新。'
+            : '无法读取服务器更新状态，请稍后刷新。';
+        _errorCode = error is ApiException
+            ? safeServerOperationCode(error.code)
+            : null;
+      });
     } finally {
       if (_current && sequence == _sequence) {
         setState(() => _loading = false);
         _schedule();
+        final original = _receiptJob?.requestId == _offerAfterRequestId
+            ? _receiptJob
+            : _job;
         if (_offerAfterRequestId != null &&
-            _job?.requestId == _offerAfterRequestId &&
-            _job?.terminal == true) {
+            original?.requestId == _offerAfterRequestId &&
+            original?.terminal == true) {
           _offerAfterRequestId = null;
-          if (_job?.succeeded == true && _status?.updateAvailable == true) {
+          if (original?.succeeded == true && _status?.updateAvailable == true) {
             unawaited(_offerUpdate());
           }
         }
@@ -171,7 +229,7 @@ class _ServerOperationsState extends ConsumerState<_ServerOperationsSession>
   }
 
   Future<void> _offerUpdate() async {
-    if (!_canStart ||
+    if (!_canReviewUpdate ||
         _offerOpen ||
         _status?.updateAvailable != true ||
         _status?.latestVersion == null) {
@@ -181,31 +239,48 @@ class _ServerOperationsState extends ConsumerState<_ServerOperationsSession>
     _offerOpen = true;
     final choice = await showDialog<String>(
       context: context,
-      builder: (context) => UtenAlertDialog(
-        title: Text('发现新版本 ${expected.latestVersion}'),
-        content: const Text(
-          '可立即更新，或预约服务器当地时间凌晨 02:00 / 03:00 更新。\n\n更新将下载并验签，先备份，再迁移数据库、激活版本并检查健康状态；期间服务可能暂时中断。',
+      builder: (context) => ServerUpdateDialogGuard(
+        child: UtenAlertDialog(
+          alignment: Alignment.center,
+          title: Text('发现新版本 ${expected.latestVersion}'),
+          content: SizedBox(
+            width: 480,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ServerVersionComparison(status: expected),
+                const SizedBox(height: UtenSpacing.s16),
+                const Text('确认后会下载并验签、备份数据，再执行迁移与健康检查。更新期间服务可能短暂中断；也可预约凌晨执行。'),
+              ],
+            ),
+          ),
+          actions: [
+            UtenButton(
+              type: UtenButtonType.ghost,
+              onPressed: () => Navigator.pop(context),
+              child: const Text('暂不更新'),
+            ),
+            UtenButton(
+              type: UtenButtonType.secondary,
+              key: const ValueKey('server-update-schedule'),
+              onPressed:
+                  expected.serverTime == null || expected.serverTimeZone == null
+                  ? null
+                  : () => Navigator.pop(context, 'schedule'),
+              child: const Text('预约更新'),
+            ),
+            UtenButton(
+              key: const ValueKey('server-update-confirm'),
+              onPressed: () => Navigator.pop(context, 'now'),
+              child: const Text('立即更新'),
+            ),
+          ],
         ),
-        actions: [
-          UtenButton(
-            type: UtenButtonType.secondary,
-            key: const ValueKey('server-update-schedule'),
-            onPressed:
-                expected.serverTime == null || expected.serverTimeZone == null
-                ? null
-                : () => Navigator.pop(context, 'schedule'),
-            child: const Text('预约更新'),
-          ),
-          UtenButton(
-            key: const ValueKey('server-update-confirm'),
-            onPressed: () => Navigator.pop(context, 'now'),
-            child: const Text('立即更新'),
-          ),
-        ],
       ),
     );
     _offerOpen = false;
-    if (!_current || !_canStart || choice == null) return;
+    if (!_current || !_canReviewUpdate || choice == null) return;
     if (choice == 'now') {
       await _submit(
         'CHECK_AND_UPDATE',
@@ -216,9 +291,11 @@ class _ServerOperationsState extends ConsumerState<_ServerOperationsSession>
       if (!mounted) return;
       final preview = await showDialog<ServerUpdateSchedulePreview>(
         context: context,
-        builder: (_) => ServerUpdateScheduleDialog(status: expected),
+        builder: (_) => ServerUpdateDialogGuard(
+          child: ServerUpdateScheduleDialog(status: expected),
+        ),
       );
-      if (!_current || !_canStart || preview == null) return;
+      if (!_current || !_canReviewUpdate || preview == null) return;
       await _submit(
         'SCHEDULE_UPDATE',
         expected,
@@ -235,11 +312,20 @@ class _ServerOperationsState extends ConsumerState<_ServerOperationsSession>
     String? scheduledAt,
   }) async {
     if (!_canStart) return;
+    if (mode != 'CHECK_ONLY' && !_canReviewUpdate) return;
+    if (_status?.sourceRevision != expected.sourceRevision ||
+        _status?.currentVersion != expected.currentVersion ||
+        (mode != 'CHECK_ONLY' && _status?.latestVersion != targetVersion)) {
+      setState(() => _error = '版本或发布源状态已变化，请刷新并重新核对后再操作。');
+      return;
+    }
     final requestId = const Uuid().v4();
     if (mode == 'CHECK_ONLY') _offerAfterRequestId = requestId;
     setState(() {
       _starting = true;
       _error = null;
+      _errorCode = null;
+      _receiptJob = null;
     });
     try {
       final job = await _repository.startUpdate(
@@ -251,19 +337,25 @@ class _ServerOperationsState extends ConsumerState<_ServerOperationsSession>
         scheduledAt: scheduledAt,
       );
       if (!_current) return;
-      setState(() => _job = job);
+      setState(() {
+        _job = job;
+        _receiptJob = job;
+        _watchJobId = job.running ? job.id : null;
+      });
     } catch (error) {
       if (!_current) return;
-      final certainRejection =
-          error is ApiException &&
-          error.httpStatus != null &&
-          error.httpStatus! >= 400 &&
-          error.httpStatus! < 500;
+      final certainRejection = serverOperationDefinitelyRejected(error);
       setState(() {
         _uncertainRequestId = certainRejection ? null : requestId;
+        _watchJobId = certainRejection ? null : requestId;
+        if (certainRejection) _offerAfterRequestId = null;
         _error = certainRejection
-            ? error.message
+            ? safeServerOperationText((error as ApiException).message) ??
+                  '服务器拒绝了此次操作，请刷新状态后核对。'
             : '更新请求结果尚未确认。正在核对服务器原作业，请勿重复启动。';
+        _errorCode = error is ApiException
+            ? safeServerOperationCode(error.code)
+            : null;
       });
     } finally {
       if (_current) {
@@ -280,7 +372,11 @@ class _ServerOperationsState extends ConsumerState<_ServerOperationsSession>
       _current &&
       !_loading &&
       !_starting &&
+      _error == null &&
+      _uncertainRequestId == null &&
       _cancelPendingJobId == null &&
+      _job?.id == job.id &&
+      _job?.state == 'SCHEDULED' &&
       job.state == 'SCHEDULED' &&
       _status?.available == true &&
       _status?.canUpdate == true &&
@@ -293,29 +389,34 @@ class _ServerOperationsState extends ConsumerState<_ServerOperationsSession>
     if (!_canCancel(job)) return;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => UtenAlertDialog(
-        title: const Text('取消此次预约更新'),
-        content: const Text('只取消尚未开始的预约。已经开始的备份、迁移或激活不会被强行中断。'),
-        actions: [
-          UtenButton(
-            type: UtenButtonType.secondary,
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('保留预约'),
-          ),
-          UtenButton(
-            type: UtenButtonType.danger,
-            key: const ValueKey('server-update-cancel-confirm'),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('取消预约'),
-          ),
-        ],
+      builder: (context) => ServerUpdateDialogGuard(
+        child: UtenAlertDialog(
+          alignment: Alignment.center,
+          title: const Text('取消此次预约更新'),
+          content: const Text('只取消尚未开始的预约。已经开始的备份、迁移或激活不会被强行中断。'),
+          actions: [
+            UtenButton(
+              type: UtenButtonType.secondary,
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('保留预约'),
+            ),
+            UtenButton(
+              type: UtenButtonType.danger,
+              key: const ValueKey('server-update-cancel-confirm'),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('取消预约'),
+            ),
+          ],
+        ),
       ),
     );
     if (!_current || confirmed != true || !_canCancel(job)) return;
     setState(() {
       _starting = true;
       _error = null;
+      _errorCode = null;
     });
+    var refreshAfterRejection = false;
     try {
       final result = await _repository.cancel(
         job.id,
@@ -325,17 +426,32 @@ class _ServerOperationsState extends ConsumerState<_ServerOperationsSession>
       if (result.id != job.id) {
         throw const FormatException('Invalid cancellation receipt');
       }
-      setState(() => _job = result);
+      setState(() {
+        _job = result;
+        _receiptJob = result;
+        _watchJobId = result.running ? result.id : null;
+      });
     } catch (error) {
       if (!_current) return;
+      final certain = serverOperationDefinitelyRejected(error);
+      refreshAfterRejection = certain;
       setState(() {
-        _cancelPendingJobId = job.id;
-        _error = '取消结果尚未确认，正在核对此预约的原作业状态，不会重复提交。';
+        _cancelPendingJobId = certain ? null : job.id;
+        _error = certain
+            ? safeServerOperationText((error as ApiException).message) ??
+                  '服务器拒绝取消预约，请刷新状态后核对。'
+            : '取消结果尚未确认，正在核对此预约的原作业状态，不会重复提交。';
+        _errorCode = error is ApiException
+            ? safeServerOperationCode(error.code)
+            : null;
       });
     } finally {
       if (_current) {
         setState(() => _starting = false);
         _schedule();
+        if (refreshAfterRejection && _active) {
+          unawaited(_load(preserveNotice: true));
+        }
       }
     }
   }
@@ -352,7 +468,12 @@ class _ServerOperationsState extends ConsumerState<_ServerOperationsSession>
       _poll?.cancel();
       if (_active) unawaited(_load());
     });
+    final l = AppLocalizations.of(context);
     final status = _status;
+    final canConfigureSource =
+        ref.watch(serverSourceVisibleProvider) &&
+        status?.available == true &&
+        status?.canConfigureSource == true;
     return Scaffold(
       appBar: UtenAppBar(
         title: '服务器更新',
@@ -361,7 +482,7 @@ class _ServerOperationsState extends ConsumerState<_ServerOperationsSession>
         actions: [
           IconButton(
             key: const ValueKey('server-operations-refresh'),
-            tooltip: '刷新本机状态',
+            tooltip: l.serverUpdateRefresh,
             onPressed: allowed && !_loading && !_starting ? _load : null,
             icon: const Icon(Icons.refresh_rounded),
           ),
@@ -371,245 +492,88 @@ class _ServerOperationsState extends ConsumerState<_ServerOperationsSession>
           ? const UtenEmpty(icon: Icons.lock_outline, message: '没有服务器运维查看权限')
           : SafeArea(
               child: SingleChildScrollView(
-                child: UtenContentContainer.narrow(
+                child: UtenContentContainer(
+                  selectable: false,
+                  padding: const EdgeInsets.symmetric(
+                    vertical: UtenSpacing.s24,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      if (_loading && status == null)
-                        const LinearProgressIndicator(),
-                      if (_error != null) ...[
-                        UtenInlineNotice(
-                          level: UtenInlineNoticeLevel.error,
-                          message: _error,
-                        ),
-                        const SizedBox(height: UtenSpacing.s16),
-                      ],
-                      UtenCard(
-                        child: Padding(
-                          padding: const EdgeInsets.all(UtenSpacing.s16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '当前公司服务器',
+                      ServerUpdateOverview(
+                        status: status,
+                        job: _job,
+                        loading: _loading,
+                        starting: _starting,
+                        writable: ref.watch(serverOperationsWritableProvider),
+                        error: _error,
+                        errorCode: _errorCode,
+                        receipt: _receiptJob,
+                        uncertainRequestId: _uncertainRequestId,
+                        onCheck: _canStart ? _start : null,
+                        onReview: _canReviewUpdate ? _offerUpdate : null,
+                        onRefresh: !_loading && !_starting ? _load : null,
+                        onCancel: _job != null && _canCancel(_job!)
+                            ? () => _cancel(_job!)
+                            : null,
+                      ),
+                      const SizedBox(height: UtenSpacing.s24),
+                      const Divider(),
+                      const SizedBox(height: UtenSpacing.s12),
+                      Text(
+                        l.serverUpdateManagement,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: UtenSpacing.s12),
+                      UtenResponsiveGrid(
+                        itemCount: canConfigureSource ? 2 : 1,
+                        maxColumns: canConfigureSource ? 2 : 1,
+                        minItemWidth: 280,
+                        columns: const UtenResponsiveColumns(expanded: 2),
+                        itemBuilder: (_, index, _) {
+                          if (index == 0 && canConfigureSource) {
+                            return ServerUpdateSourceEditor(
+                              key: _sourceEditorKey,
+                              busy:
+                                  _job?.running == true ||
+                                  _receiptJob?.running == true ||
+                                  _job?.recoveryRequired == true ||
+                                  _receiptJob?.recoveryRequired == true ||
+                                  _status?.failure?.recoveryRequired == true ||
+                                  _watchJobId != null ||
+                                  _uncertainRequestId != null ||
+                                  _cancelPendingJobId != null ||
+                                  _starting,
+                              onSaved: _load,
+                            );
+                          }
+                          return UtenCard(
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.all(
+                                UtenSpacing.s16,
+                              ),
+                              leading: const Icon(Icons.storage_outlined),
+                              title: Text(
+                                l.serverUpdateStorage,
                                 style: Theme.of(context).textTheme.titleMedium,
                               ),
-                              const SizedBox(height: UtenSpacing.s8),
-                              Text('当前版本：${status?.currentVersion ?? '尚未确认'}'),
-                              if (status?.lastCheckedAt != null)
-                                Text(
-                                  '上次检查时间：${DisplayDateTime.beijing(status!.lastCheckedAt!.toIso8601String())}',
-                                ),
-                              if (status?.serverTimeZone != null)
-                                Text('服务器时区：${status!.serverTimeZone}'),
-                              Text(
-                                status?.manualOnly == true
-                                    ? '检查方式：纯手动；预约仅在指定时间执行'
-                                    : status?.manualOnly == false
-                                    ? '服务器报告存在旧自动检查计划，请联系管理员核对'
-                                    : '检查方式：尚未确认',
+                              subtitle: Text(
+                                status?.platformUnsupported == true
+                                    ? '查看数据库、附件登记与后端内存'
+                                    : '查看空间占用、恢复点与可清理资源',
                               ),
-                              if (status?.timerActive != null)
-                                Text(
-                                  '自动拉取定时器：${status!.timerActive! ? '仍启用（需处理）' : '已停用'}',
-                                ),
-                              if (status?.message != null)
-                                Text(status!.message!),
-                              if (status != null && !status.available)
-                                const Text('当前服务器未提供运维执行能力。'),
-                              const SizedBox(height: UtenSpacing.s16),
-                              UtenButton(
-                                key: const ValueKey('server-update-start'),
-                                icon: Icons.manage_search_rounded,
-                                isLoading: _starting,
-                                onPressed: _canStart ? _start : null,
-                                child: const Text('检查版本更新'),
-                              ),
-                              const SizedBox(height: UtenSpacing.s8),
-                              const Text(
-                                '进入页面、刷新和查看进度只读取此服务器状态。手动检查版本或预约到点执行时才访问发布源。',
-                              ),
-                              if (status?.sourceConfigured == false)
-                                const Text('发布源尚未配置，请由超级管理员完成配置。'),
-                            ],
-                          ),
-                        ),
-                      ),
-                      if (status?.updateAvailable == true &&
-                          status?.canUpdate == true) ...[
-                        const SizedBox(height: UtenSpacing.s16),
-                        UtenInlineNotice(
-                          title: '发现新版本 ${status?.latestVersion ?? ''}',
-                          message: '这是上次检查的结果。版本激活成功后清除提醒，平时不会连接发布源。',
-                          trailing: Badge(
-                            label: const Text('1'),
-                            child: UtenButton(
-                              key: const ValueKey('server-update-available'),
-                              type: UtenButtonType.secondary,
-                              onPressed: _canStart ? _offerUpdate : null,
-                              child: const Text('查看更新'),
+                              trailing: const Icon(Icons.chevron_right_rounded),
+                              onTap: () =>
+                                  context.push(RouteName.adminServerStorage),
                             ),
-                          ),
-                        ),
-                      ],
-                      if (_uncertainRequestId != null) ...[
-                        const SizedBox(height: UtenSpacing.s16),
-                        const UtenInlineNotice(
-                          level: UtenInlineNoticeLevel.warning,
-                          title: '正在核对原作业',
-                          message: '连接恢复后将继续显示服务器保存的作业结果。不会自动重新提交更新。',
-                        ),
-                      ],
-                      if (_job != null) ...[
-                        const SizedBox(height: UtenSpacing.s16),
-                        _jobCard(_job!),
-                      ],
-                      const SizedBox(height: UtenSpacing.s16),
-                      UtenButton(
-                        type: UtenButtonType.secondary,
-                        icon: Icons.storage_rounded,
-                        onPressed: () =>
-                            context.push(RouteName.adminServerStorage),
-                        child: const Text('存储管理'),
+                          );
+                        },
                       ),
-                      if (ref.watch(serverSourceVisibleProvider) &&
-                          status?.canConfigureSource == true) ...[
-                        const SizedBox(height: UtenSpacing.s24),
-                        ServerUpdateSourceEditor(
-                          busy: _job?.running == true || _starting,
-                          onSaved: _load,
-                        ),
-                      ],
-                      const SizedBox(height: UtenSpacing.s24),
                     ],
                   ),
                 ),
               ),
             ),
     );
-  }
-
-  Widget _jobCard(ServerUpdateJob job) {
-    final theme = Theme.of(context);
-    final phases = job.mode == 'CHECK_ONLY'
-        ? const [('CHECKING', '检查版本'), ('DONE', '完成')]
-        : const [
-            ('CHECKING', '检查'),
-            ('DOWNLOADING', '下载并验签'),
-            ('BACKING_UP', '备份'),
-            ('MIGRATING', '数据库迁移'),
-            ('ACTIVATING', '激活'),
-            ('HEALTH_CHECK', '健康检查'),
-            ('DONE', '完成'),
-          ];
-    final index = phases.indexWhere((phase) => phase.$1 == job.phase);
-    final title = switch (job.state) {
-      'QUEUED' => '更新作业已排队',
-      'RUNNING' => '正在更新',
-      'SCHEDULED' => '更新已预约',
-      'CANCELLED' => '预约已取消',
-      'SUCCEEDED' => job.mode == 'CHECK_ONLY' ? '版本检查完成' : '更新检查已完成',
-      'FAILED' => '更新作业失败',
-      'RECOVERY_REQUIRED' => '需要恢复处理',
-      _ => '作业状态尚未确认',
-    };
-    return UtenCard(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              key: const ValueKey('server-update-job-state'),
-              style: theme.textTheme.titleMedium,
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            Text('作业编号：${job.id}'),
-            if (job.scheduledAt != null)
-              Text(
-                job.displayLocalTime != null
-                    ? '预约执行：${job.displayLocalTime}（${_status?.serverTimeZone ?? '服务器当地时间'}）'
-                    : '预约执行：${job.scheduledAt!.toUtc().toIso8601String()}（UTC）；服务器时区 ${_status?.serverTimeZone ?? '待确认'}',
-              ),
-            if (job.state == 'SCHEDULED')
-              const Text('等待预约时间，届时重新检查版本、权限与发布源后执行。'),
-            if (job.targetVersion != null) Text('目标版本：${job.targetVersion}'),
-            if (job.startedAt != null)
-              Text(
-                '开始：${DisplayDateTime.beijing(job.startedAt!.toIso8601String())}',
-              ),
-            if (job.finishedAt != null)
-              Text(
-                '结束：${DisplayDateTime.beijing(job.finishedAt!.toIso8601String())}',
-              ),
-            const SizedBox(height: UtenSpacing.s12),
-            if (job.state == 'RUNNING' || job.state == 'QUEUED')
-              const LinearProgressIndicator(),
-            Wrap(
-              spacing: UtenSpacing.s12,
-              runSpacing: UtenSpacing.s8,
-              children: [
-                for (var i = 0; i < phases.length; i++)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        job.succeeded || i < index
-                            ? Icons.check_circle_outline
-                            : i == index
-                            ? Icons.pending_outlined
-                            : Icons.radio_button_unchecked,
-                        size: 18,
-                        color: job.succeeded || i <= index
-                            ? theme.colorScheme.primary
-                            : theme.colorScheme.outline,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(phases[i].$2),
-                    ],
-                  ),
-              ],
-            ),
-            if (job.message != null) ...[
-              const SizedBox(height: UtenSpacing.s12),
-              Text(job.message!),
-            ],
-            if (job.migrationRequired != null)
-              Text(job.migrationRequired! ? '此版本包含数据库迁移' : '此版本无需数据库迁移'),
-            if (job.health != null) Text('健康验收：${_health(job.health)}'),
-            if (job.recoveryRequired)
-              const UtenInlineNotice(
-                level: UtenInlineNoticeLevel.error,
-                message: '请联系超级管理员核查恢复点与服务健康，完成恢复前不要重新提交更新。',
-              ),
-            if (_canCancel(job)) ...[
-              const SizedBox(height: UtenSpacing.s12),
-              UtenButton(
-                key: const ValueKey('server-update-cancel'),
-                type: UtenButtonType.secondary,
-                onPressed: () => _cancel(job),
-                child: const Text('取消预约'),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _health(Object? value) {
-    if (value == true ||
-        value == 'UP' ||
-        value == 'HEALTHY' ||
-        value == 'PASS') {
-      return '通过';
-    }
-    if (value == false || value == 'DOWN' || value == 'FAILED') return '未通过';
-    if (value is Map) {
-      final status = value['status'];
-      if (status is String) return _health(status);
-    }
-    return '请查看作业说明';
   }
 }

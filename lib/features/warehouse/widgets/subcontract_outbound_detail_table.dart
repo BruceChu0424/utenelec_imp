@@ -598,8 +598,12 @@ class _SubcontractOutboundDetailTableState
           width: 240,
           textOf: (row) => row.draft.remarkController.text,
           listenableOf: (row) => row.draft.remarkController,
-          cellBuilder: (_, row) =>
-              _remarkField(row, row.draft.remarkController, 'remark'),
+          cellBuilder: (_, row) => _remarkField(
+            row,
+            row.draft.remarkController,
+            'remark',
+            l10n.warehouseSubcontractOutboundLineRemark,
+          ),
         ),
         if (widget.rows.any((row) => row.documentRemark != null))
           EditableGridColumn(
@@ -611,7 +615,12 @@ class _SubcontractOutboundDetailTableState
             listenableOf: (row) => row.documentRemark,
             cellBuilder: (_, row) => row.documentRemark == null
                 ? const Text('—')
-                : _remarkField(row, row.documentRemark!, 'document-remark'),
+                : _remarkField(
+                    row,
+                    row.documentRemark!,
+                    'document-remark',
+                    l10n.warehouseSubcontractOutboundDocumentRemark,
+                  ),
           ),
       ],
     );
@@ -629,14 +638,15 @@ class _SubcontractOutboundDetailTableState
     SubcontractOutboundTableRow row,
     TextEditingController controller,
     String suffix,
+    String label,
   ) => TextField(
     key: ValueKey('subcontract-outbound-${row.draft.draftItemId}-$suffix'),
     controller: controller,
     enabled: widget.editable && row.editable && row.draft.selected,
     maxLength: 200,
     // 格内浮动标签与列头（行备注/单据备注）重复，已删（2026-09-27 表格小字清理）。
-    decoration: const UtenInputDecoration(
-      InputDecoration(isDense: true, counterText: ''),
+    decoration: UtenInputDecoration(
+      InputDecoration(isDense: true, counterText: '', hintText: label),
     ),
   );
 
@@ -665,6 +675,7 @@ class _SubcontractOutboundDetailTableState
                 UtenInputDecoration(
                   InputDecoration(
                     isDense: true,
+                    hintText: label,
                     // 2026-10-10 数量+单位口径：可编辑数量输入框的单位放 suffixText。
                     suffixText: () {
                       final unit = row.draft.line.unitName?.trim();

@@ -160,6 +160,12 @@ public class GoodsDetail {
     private boolean canEditNameEn;
     /** 不良品仓里的数量(ADR-146): 不计入 stockQty, 详情另列「另有不良品 N」。 */
     private BigDecimal stockDefectiveQty;
+    /** Existing legacy customer-model field, independent of the goods' own model. */
+    @JsonProperty("cNumber")
+    private String cNumber;
+
+    @JsonProperty("cNumber")
+    public String getCNumber() { return cNumber; }
 
     public BigDecimal getDefaultPurchasePrice() {
         return defaultPurchasePriceInfo == null ? null : defaultPurchasePriceInfo.price();

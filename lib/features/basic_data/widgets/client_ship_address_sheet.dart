@@ -7,6 +7,7 @@
 //  - 空态说明学习规则：保存出货单后会自动记住本次填写的地址。
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_busy_overlay.dart';
@@ -397,9 +398,8 @@ class _ClientShipAddressSheetState
                   controller: _newAddr,
                   autofocus: true,
                   maxLength: 500,
-                  decoration: const InputDecoration(
-                    labelText: '收货地址',
-                    hintText: '省市区 + 详细地址',
+                  decoration: const UtenInputDecoration(
+                    InputDecoration(labelText: '收货地址', hintText: '省市区 + 详细地址'),
                   ),
                 ),
                 const SizedBox(height: UtenSpacing.s8),
@@ -407,8 +407,8 @@ class _ClientShipAddressSheetState
                   key: const ValueKey('client-ship-address-new-phone'),
                   controller: _newPhone,
                   maxLength: 64,
-                  decoration: const InputDecoration(
-                    labelText: '联系电话(随地址一起记住，可空)',
+                  decoration: const UtenInputDecoration(
+                    InputDecoration(labelText: '联系电话', hintText: '随地址一起记住，可空'),
                   ),
                 ),
                 const SizedBox(height: UtenSpacing.s8),

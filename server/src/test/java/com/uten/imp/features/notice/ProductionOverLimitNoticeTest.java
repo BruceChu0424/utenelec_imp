@@ -25,6 +25,7 @@ class ProductionOverLimitNoticeTest {
     private final NoticeService notices=mock(NoticeService.class);
     private final JdbcTemplate jdbc=mock(JdbcTemplate.class);
     private final UserAccountRepository accounts=mock(UserAccountRepository.class);
+    private final java.util.List<UserAccount> candidateAccounts = new java.util.ArrayList<>();
     private final PermissionResolver permissions=mock(PermissionResolver.class);
     private final ChainNoticeService service=new ChainNoticeService(notices,accounts,permissions,jdbc,
             mock(BusinessEventPublisher.class),mock(RdTaskService.class),mock(FinanceReviewerEligibilityPort.class),
@@ -35,7 +36,7 @@ class ProductionOverLimitNoticeTest {
         UUID planner=UUID.randomUUID(),viewer=UUID.randomUUID();row("PENDING",1);
         account(planner,Set.of("notice:read","production_plan:approve","production_plan:view:all"));
         account(viewer,Set.of("notice:read"));
-        when(jdbc.queryForList(contains("candidate_employee"),eq(UUID.class),eq("SUB_PLAN"))).thenReturn(List.of(planner,viewer));
+        when(jdbc.queryForList(contains("active_action_recipients"), eq(UUID.class), anyString())).thenReturn(List.of(planner));
         service.deliverOutboxEvent("PRODUCTION_OVER_LIMIT_PENDING",request,new ObjectMapper().createObjectNode().put("version",1));
         verify(notices).publishForUser(eq(planner),contains("超限产出待处理"),argThat(text->text.contains("100")&&text.contains("正常办理")),
             eq("approval"),eq("系统"),eq("/production/over-limit-dispositions/"+request),eq("PRODUCTION_OVER_LIMIT_PENDING"),eq("normal"),eq(request));
@@ -72,7 +73,8 @@ class ProductionOverLimitNoticeTest {
         when(jdbc.queryForList(contains("FROM production_over_limit_dispositions"),eq(request))).thenReturn(List.of(row));
     }
     private void account(UUID id,Set<String> grants){
-        UserAccount account=mock(UserAccount.class);when(account.isDeleted()).thenReturn(false);when(account.getStatus()).thenReturn("active");
+        UserAccount account=mock(UserAccount.class);when(account.getId()).thenReturn(id); candidateAccounts.add(account); when(accounts.findAll()).thenReturn(candidateAccounts);
+        when(account.isDeleted()).thenReturn(false);when(account.getStatus()).thenReturn("active");
         when(accounts.findById(id)).thenReturn(Optional.of(account));when(permissions.grantedPermsOf(account)).thenReturn(grants);
     }
 }

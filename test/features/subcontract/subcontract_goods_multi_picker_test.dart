@@ -53,14 +53,9 @@ void main() {
     }, terms: terms);
     final grid = _grid(tester).controller;
     grid.rows.single.qty.text = '7';
-    await tester.tap(
-      find
-          .descendant(
-            of: find.byType(UtenEditableGrid<SubcontractGridRow>),
-            matching: find.text('点击选择'),
-          )
-          .first,
-    );
+    final cell = _goodsCell(grid.rows.single);
+    expect(cell, findsOneWidget);
+    await tester.tap(cell);
     await tester.pumpAndSettle();
     expect(requestedScope, UtenGoodsPickerScope.sellable);
     expect(grid.rows.map((row) => row.goods?.id), ['g1', 'g2']);
@@ -96,14 +91,9 @@ void main() {
       final grid = _grid(tester).controller;
       grid.rows.single.qty.text = '5';
       grid.rows.single.price.text = '8';
-      await tester.tap(
-        find
-            .descendant(
-              of: find.byType(UtenEditableGrid<SubcontractGridRow>),
-              matching: find.text('点击选择'),
-            )
-            .first,
-      );
+      final cell = _goodsCell(grid.rows.single);
+      expect(cell, findsOneWidget);
+      await tester.tap(cell);
       await tester.pumpAndSettle();
       expect(
         requestedScope,
@@ -135,14 +125,9 @@ void main() {
     );
     final grid = _grid(tester).controller;
     final row = grid.rows.single..qty.text = '6';
-    await tester.tap(
-      find
-          .descendant(
-            of: find.byType(UtenEditableGrid<SubcontractGridRow>),
-            matching: find.text('点击选择'),
-          )
-          .first,
-    );
+    final cell = _goodsCell(row);
+    expect(cell, findsOneWidget);
+    await tester.tap(cell);
     await tester.pumpAndSettle();
     expect(grid.rows, [row]);
     expect(row.qty.text, '6');
@@ -178,6 +163,15 @@ void main() {
 
 UtenEditableGrid<SubcontractGridRow> _grid(WidgetTester tester) =>
     tester.widget(find.byType(UtenEditableGrid<SubcontractGridRow>));
+
+Finder _goodsCell(SubcontractGridRow row) => find.descendant(
+  of: find.byType(UtenEditableGrid<SubcontractGridRow>),
+  matching: find.byWidgetPredicate(
+    (widget) =>
+        widget is RequiredCellFrame &&
+        identical(widget.listenable, row.goodsNotifier),
+  ),
+);
 
 Future<void> _pump(
   WidgetTester tester,

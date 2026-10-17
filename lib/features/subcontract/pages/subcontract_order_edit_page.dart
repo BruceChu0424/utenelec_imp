@@ -1700,8 +1700,8 @@ class _SubcontractOrderEditPageState
                                     const SizedBox(height: UtenSpacing.s12),
                                     TextField(
                                       controller: _remark,
-                                      decoration: const InputDecoration(
-                                        labelText: '单据备注',
+                                      decoration: const UtenInputDecoration(
+                                        InputDecoration(labelText: '单据备注'),
                                       ),
                                       maxLines: 2,
                                     ),

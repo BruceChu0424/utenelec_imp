@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -225,10 +226,12 @@ class _BlessSectionState extends ConsumerState<_BlessSection> {
             minLines: 2,
             maxLines: 5,
             maxLength: 200,
-            decoration: InputDecoration(
-              hintText: l10n.noticeBlessingPlaceholder,
-              border: const OutlineInputBorder(),
-              alignLabelWithHint: true,
+            decoration: UtenInputDecoration(
+              InputDecoration(
+                labelText: l10n.noticeBlessingPlaceholder,
+                border: const OutlineInputBorder(),
+                alignLabelWithHint: true,
+              ),
             ),
           ),
           const SizedBox(height: UtenSpacing.s12),

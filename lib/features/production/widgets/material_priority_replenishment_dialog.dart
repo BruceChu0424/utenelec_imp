@@ -8,6 +8,7 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_field_placeholder.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -536,12 +537,20 @@ class _MaterialPriorityReplenishmentDialogState
                                 if (preview.createsProductionPlan) ...[
                                   const SizedBox(height: UtenSpacing.s12),
                                   InkWell(
+                                    key: const Key(
+                                      'priority-replenishment-workshop',
+                                    ),
                                     onTap: _locked ? null : _pickWorkshop,
                                     child: InputDecorator(
                                       decoration: const UtenInputDecoration(
                                         InputDecoration(labelText: '生产车间'),
                                       ),
-                                      child: Text(_departmentName ?? '选择生产车间'),
+                                      child: Text(
+                                        _departmentName ??
+                                            utenFieldPlaceholder(
+                                              label: '生产车间',
+                                            )!,
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(height: UtenSpacing.s12),

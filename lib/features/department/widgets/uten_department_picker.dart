@@ -1,6 +1,6 @@
 // UtenDepartmentPicker - 统一抽屉式部门选择器（领域组件）
 //
-// 触发形态：只读输入框样式的 field（显示选中完整路径，placeholder「请选择部门」），
+// 触发形态：只读输入框样式的 field（显示选中完整路径，空框显示「部门」），
 // 点击拉开抽屉：
 // - compact：约 85% 屏高的底部抽屉；
 // - medium/expanded：右侧滑入的 420dp end drawer。
@@ -128,7 +128,7 @@ class UtenDepartmentPicker extends ConsumerStatefulWidget {
     this.initialSelection = const [],
     this.enabled = true,
     this.label,
-    this.hint = '请选择部门',
+    this.hint = '部门',
     this.validator,
     this.badgeCountFor,
     this.treeOverride,

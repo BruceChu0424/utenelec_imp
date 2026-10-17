@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
@@ -144,14 +145,10 @@ void main() {
         '$module $segment retains source terms through draft restore and omits them from a real save',
         (tester) async {
           final api = await _pump(tester, module, segment);
-          final rate = tester.widget<TextField>(
-            find.widgetWithText(TextField, '汇率'),
-          );
+          final rate = tester.widget<TextField>(_field('汇率'));
           expect(rate.controller?.text, '7.123456');
           expect(rate.readOnly, isTrue);
-          final tax = tester.widget<TextField>(
-            find.widgetWithText(TextField, '税率(%)'),
-          );
+          final tax = tester.widget<TextField>(_field('税率(%)'));
           expect(tax.controller?.text, '13.120001');
           expect(tax.readOnly, isTrue);
           final currency = tester.widget<UtenDropdownField>(
@@ -221,9 +218,7 @@ void main() {
       tester,
     ) async {
       await _pump(tester, module, 'receipts', masked: true);
-      final field = tester.widget<TextField>(
-        find.widgetWithText(TextField, '汇率'),
-      );
+      final field = tester.widget<TextField>(_field('汇率'));
       expect(field.controller?.text, isEmpty);
       expect(field.readOnly, isTrue);
       final state = _formState(tester, module);
@@ -244,9 +239,7 @@ void main() {
           masked: true,
           staleMaskedRate: true,
         );
-        final field = tester.widget<TextField>(
-          find.widgetWithText(TextField, '汇率'),
-        );
+        final field = tester.widget<TextField>(_field('汇率'));
         expect(field.controller?.text, isEmpty);
         expect(field.readOnly, isTrue);
       },
@@ -256,9 +249,7 @@ void main() {
       tester,
     ) async {
       await _pump(tester, module, 'receipts', unknownTax: true);
-      final field = tester.widget<TextField>(
-        find.widgetWithText(TextField, '税率(%)'),
-      );
+      final field = tester.widget<TextField>(_field('税率(%)'));
       expect(field.controller?.text, isEmpty);
       final state = _formState(tester, module);
       expect(
@@ -272,9 +263,7 @@ void main() {
       tester,
     ) async {
       await _pump(tester, module, 'receipts', legacyNumericRate: true);
-      final field = tester.widget<TextField>(
-        find.widgetWithText(TextField, '汇率'),
-      );
+      final field = tester.widget<TextField>(_field('汇率'));
       expect(field.controller?.text, '7.1');
       final state = _formState(tester, module);
       expect(
@@ -285,6 +274,15 @@ void main() {
     });
   }
 }
+
+// An empty field now has the same business name in its label and placeholder.
+// Match the field itself once, keeping uniqueness and every business assertion.
+Finder _field(String label) => find.byWidgetPredicate(
+  (widget) =>
+      widget is TextField &&
+      widget.decoration != null &&
+      utenDecorationFieldName(widget.decoration!) == label,
+);
 
 FormDraftMixin<ConsumerStatefulWidget> _formState(
   WidgetTester tester,

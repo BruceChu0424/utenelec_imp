@@ -7,6 +7,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
@@ -400,6 +401,7 @@ void main() {
       expect(item['writeOffAmount'], '0.0000');
       expect(item['remark'], '行备注');
       expect(item.containsKey('amountLocal'), isFalse);
+      _expectSaved(tester, api);
     },
   );
 
@@ -458,6 +460,7 @@ void main() {
     expect(api.lastPutBody!['accountAmount'], '50.0000');
     expect(api.lastPutBody!['bankFeeAccountAmount'], '0.0000');
     expect(api.lastPutBody!['feeBearer'], 'NONE');
+    _expectSaved(tester, api);
   });
 
   testWidgets('direct bank conversion can post to the real CNY account', (
@@ -481,6 +484,7 @@ void main() {
     expect(body['agentStatementNo'], isNull);
     expect(body['accountCurrencyId'], 'currency-cny');
     expect(body['accountAmount'], '324.0000');
+    _expectSaved(tester, api);
   });
 
   for (final actual in [
@@ -554,6 +558,7 @@ void main() {
       expect(api.lastPutBody?['accountAmount'], amount);
       expect(api.lastPutBody?['exchangeRate'], '7.000001');
       expect(api.lastPutBody?.containsKey('amountLocal'), isFalse);
+      _expectSaved(tester, api);
     },
   );
 
@@ -599,6 +604,7 @@ void main() {
     expect(api.lastPutBody!['feeBearer'], 'COMPANY');
     expect(api.lastPutBody!['feePaymentAccountId'], 'fee-account-cny');
     expect(api.lastPutBody!['accountAmount'], '360.0000');
+    _expectSaved(tester, api);
   });
 
   testWidgets('account authority load failure prevents receipt save', (
@@ -994,6 +1000,30 @@ Future<_ReceiptApi> _pumpEditor(
     includeFeeAccount: includeFeeAccount,
     failAccounts: failAccounts,
   );
+  final router = GoRouter(
+    initialLocation: '/finance/receipts/${detail['id']}/edit',
+    routes: [
+      GoRoute(
+        path: '/finance/receipts/:id/edit',
+        builder: (_, state) => RepaintBoundary(
+          key: captureKey,
+          child: FinanceDocEditPage(
+            docType: FinanceDocType.receipt,
+            id: state.pathParameters['id'],
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/finance/receipts/:id',
+        builder: (_, state) => FinanceDocDetailPage(
+          docType: FinanceDocType.receipt,
+          id: state.pathParameters['id']!,
+        ),
+      ),
+    ],
+  );
+  api.editorRouter = router;
+  addTearDown(router.dispose);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -1003,25 +1033,30 @@ Future<_ReceiptApi> _pumpEditor(
         sessionProvider.overrideWith(_TestSessionNotifier.new),
         currentPermissionsProvider.overrideWithValue(permissions),
       ],
-      child: MaterialApp(
+      child: MaterialApp.router(
+        routerConfig: router,
         locale: const Locale('zh'),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         theme: captureKey == null
             ? null
             : auditScreenshotTheme(dark ? buildDarkTheme() : buildLightTheme()),
-        home: RepaintBoundary(
-          key: captureKey,
-          child: FinanceDocEditPage(
-            docType: FinanceDocType.receipt,
-            id: detail['id'] as String,
-          ),
-        ),
       ),
     ),
   );
   await tester.pumpAndSettle();
   return api;
+}
+
+void _expectSaved(WidgetTester tester, _ReceiptApi api) {
+  expect(
+    api.editorRouter.routeInformationProvider.value.uri.path,
+    '/finance/receipts/${api.detail['id']}',
+  );
+  expect(find.byType(FinanceDocDetailPage), findsOneWidget);
+  expect(find.byType(FinanceDocEditPage), findsNothing);
+  expect(find.text('保存失败，请稍后重试'), findsNothing);
+  expect(tester.takeException(), isNull);
 }
 
 Future<_ReceiptApi> _pumpDetail(
@@ -1126,6 +1161,7 @@ class _TestSessionNotifier extends SessionNotifier {
 }
 
 class _ReceiptApi extends ApiClient {
+  late final GoRouter editorRouter;
   _ReceiptApi(
     this.detail, {
     this.accountBaseCurrency = true,

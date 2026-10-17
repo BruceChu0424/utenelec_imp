@@ -184,6 +184,7 @@ class _SecurityScanPageState extends ConsumerState<SecurityScanPage> {
                           final input = UtenInput(
                             controller: _manualCtl,
                             label: l10n.securityPasscodeHint,
+                            info: l10n.securityPasscodeInvalid,
                             keyboardType: TextInputType.number,
                             prefixIcon: compact ? null : Icons.password_rounded,
                           );

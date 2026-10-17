@@ -209,6 +209,7 @@ ThemeData buildDarkTheme({PlatformBranding? branding}) {
     ),
 
     inputDecorationTheme: InputDecorationTheme(
+      floatingLabelBehavior: FloatingLabelBehavior.auto,
       visualDensity: VisualDensity.standard,
       filled: true,
       fillColor: UtenColors.darkSurface,
@@ -241,10 +242,10 @@ ThemeData buildDarkTheme({PlatformBranding? branding}) {
       contentPadding: UtenPageField.contentPadding,
       prefixIconConstraints: UtenPageField.iconConstraints,
       suffixIconConstraints: UtenPageField.iconConstraints,
-      hintStyle: TextStyle(
+      hintStyle: const TextStyle(
         fontFamily: 'NotoSansSC',
-        color: UtenColors.darkTextTertiary.withValues(alpha: 0.7),
-        fontSize: 14,
+        color: UtenColors.darkTextSecondary,
+        fontSize: 16,
       ),
       labelStyle: const TextStyle(
         fontFamily: 'NotoSansSC',

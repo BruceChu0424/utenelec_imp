@@ -116,6 +116,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.lastQuery?['warehouseId'], 'warehouse-1');
     expect(api.lastQuery?['supplierId'], 'supplier-1');
+    final searchable = tableWidget();
+    expect(searchable.serverColumnSearch, isTrue);
+    searchable.onFilterChanged('search.billNo', 'CD2026');
+    await tester.pumpAndSettle();
+    expect(api.lastQuery?['search.billNo'], 'CD2026');
+    expect(api.lastQuery?['supplierId'], 'supplier-1');
+    expect(api.lastQuery?['warehouseId'], 'warehouse-1');
     expect(tester.takeException(), isNull);
   });
 }

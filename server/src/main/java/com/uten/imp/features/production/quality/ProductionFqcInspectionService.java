@@ -607,7 +607,7 @@ public class ProductionFqcInspectionService
             + " and hasAuthority('production_quality_inspection:approve')")
     public DecisionResult decide(UUID inspectionId, DecisionRequest request) {
         tx.bind();
-        taskAccess.requireQualityPool("当前账号不在品质任务组织范围");
+        taskAccess.requireQualityPool("当前账号缺少生产质检审核权限或有效在职资格");
         if (inspectionId == null || request == null) {
             throw validation("生产质检决定请求不能为空");
         }
@@ -630,7 +630,7 @@ public class ProductionFqcInspectionService
             + " and hasAuthority('production_quality_inspection:approve')")
     public LotDecisionResult decideLot(UUID lotId, LotDecisionRequest request) {
         tx.bind();
-        taskAccess.requireQualityPool("当前账号不在品质任务组织范围");
+        taskAccess.requireQualityPool("当前账号缺少生产质检审核权限或有效在职资格");
         NormalizedLotDecision normalized = normalizeLotDecision(lotId, request);
         UUID actorUserId = currentUser.requireId();
         em.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:key, 801))")
@@ -670,7 +670,7 @@ public class ProductionFqcInspectionService
             + " and hasAuthority('production_quality_inspection:approve')")
     public ReportDecisionResult decideReport(ReportDecisionRequest request) {
         tx.bind();
-        taskAccess.requireQualityPool("当前账号不在品质任务组织范围");
+        taskAccess.requireQualityPool("当前账号缺少生产质检审核权限或有效在职资格");
         List<NormalizedReportDecision> commands = normalizeReport(request);
         UUID actor = currentUser.requireId();
         // Same lock namespace as decideLot. Acquire the complete ordered key set before
@@ -890,7 +890,7 @@ public class ProductionFqcInspectionService
             + " and hasAuthority('production_quality_inspection:approve')")
     public PassAllBatchResult passAll(PassAllBatchRequest request) {
         tx.bind();
-        taskAccess.requireQualityPool("当前账号不在品质任务组织范围");
+        taskAccess.requireQualityPool("当前账号缺少生产质检审核权限或有效在职资格");
         NormalizedPassAllBatch normalized = normalizePassAllBatch(request);
         UUID actorUserId = currentUser.requireId();
         // 选中一份 = 选中它所在的整批实物(批内各份同时判定)；批的成员身份不随状态变化。

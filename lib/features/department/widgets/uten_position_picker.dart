@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../models/position.dart';
 import '../repositories/position_repository.dart';
 
@@ -93,21 +94,23 @@ class _UtenPositionPickerState extends ConsumerState<UtenPositionPicker> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final enabled = widget.enabled && _hasDept;
-    final display = _value?.name;
-    final hint = _hasDept ? '请选择岗位' : '请先选择部门';
+    final name = _value?.name;
+    final display = name?.trim().isNotEmpty == true ? name : null;
     return InkWell(
       onTap: enabled ? _open : null,
       borderRadius: BorderRadius.circular(UtenRadius.control),
       child: InputDecorator(
         isEmpty: display == null,
-        decoration: InputDecoration(
-          labelText: widget.label,
-          hintText: hint,
-          enabled: enabled,
-          suffixIcon: Icon(
-            Icons.unfold_more_rounded,
-            color: theme.colorScheme.onSurfaceVariant,
+        decoration: UtenInputDecoration(
+          InputDecoration(
+            labelText: widget.label ?? '岗位',
+            enabled: enabled,
+            suffixIcon: Icon(
+              Icons.unfold_more_rounded,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
+          info: _hasDept ? null : '先选择部门，再选择该部门的岗位。',
         ),
         child: display == null
             ? null

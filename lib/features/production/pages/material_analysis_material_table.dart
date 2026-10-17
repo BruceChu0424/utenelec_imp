@@ -1110,7 +1110,6 @@ abstract class _MaterialAnalysisMaterialTableState
         virtualized: !primary,
         rowKeyOf: (row) => row.key,
         rowWidgetKeyOf: _materialTableRowWidgetKey,
-        enableTextSelection: false,
         // 空态：组件层在有激活表头筛选时补「清除筛选」按钮与生效数提示（F2a-flow）。
         emptyMessage: '当前视图/筛选下没有物料任务，可切换“全部 BOM”、清除查找或清除表头筛选',
         rowColor: (row) {
@@ -2253,9 +2252,8 @@ abstract class _MaterialAnalysisMaterialTableState
       ),
       dense: true,
       value: route?.name,
-      // 混合路线提示保留（多行不同供应方式的行级事实）；未选时不再复述列头
-      // 「供应方式」，空格走组件默认「请选择」（2026-09-27 表格小字清理口径）。
-      hintText: route == null ? null : _l10n.materialMixedRoutes,
+      // 混合路线事实保留；未选时直接显示字段名，与普通及表格输入的空值口径一致。
+      hintText: route == null ? '供应方式' : _l10n.materialMixedRoutes,
       items: [
         for (final option in MaterialSupplyRoute.values)
           UtenDropdownItem(value: option.name, label: option.label),
@@ -5194,7 +5192,7 @@ abstract class _MaterialAnalysisMaterialTableState
       key: 'material-analysis-order-qty-${group.key}',
       controller: _tableOrderQtyController(group),
       enabled: !_busy && (_canNotify || _canGenerate),
-      hintText: _qty(_tableGroupResidual(group)),
+      hintText: _l10n.materialToSupply,
       // 2026-10-10 T9：单位列退役，可编辑数量格的单位放输入框尾注。
       suffixText: group.representative.unitName?.trim(),
       // 带下层的行改量要带动子层：记下用户亲手填的数，去抖后向服务端要重算。
@@ -5202,6 +5200,7 @@ abstract class _MaterialAnalysisMaterialTableState
       invalid: () => _tableOrderQtyInvalid(group),
     );
     final hint = [
+      '本行还需安排 ${_qty(_tableGroupResidual(group))}。',
       if (shortBy != null)
         '本次只下 ${shortBy.typed}，'
             '比这一行的「还需安排」${shortBy.floor} 少 ${shortBy.shortBy}。'
@@ -5276,7 +5275,7 @@ abstract class _MaterialAnalysisMaterialTableState
       key: 'material-analysis-append-qty-${group.key}',
       controller: _tableAppendQtyController(group),
       enabled: !_busy && (_canNotify || _canGenerate),
-      hintText: '0',
+      hintText: _l10n.materialAdditionalOrder,
       suffixText: group.representative.unitName?.trim(),
       // 追加格也要带动子层(用户口径 2026-09-21：「追加对应的子层级也要追加数量」)。
       // 少这一句时，「还需安排为 0 的已下达中间层」只能在这一格填数，填了却既不
@@ -5321,6 +5320,7 @@ abstract class _MaterialAnalysisMaterialTableState
             InputDecoration(
               isDense: true,
               hintText: hintText,
+              hintMaxLines: 1,
               suffixText: suffixText,
             ),
           ),
@@ -5491,7 +5491,7 @@ abstract class _MaterialAnalysisMaterialTableState
     final cell = _materialTableAssignmentCell(
       theme,
       key: 'material-analysis-workshop-${group.key}',
-      text: current.name ?? '点击选择',
+      text: current.name ?? utenFieldPlaceholder(label: '生产车间')!,
       autofilled: current.autofilled && current.id != null,
       empty: current.id == null,
       semanticsLabel: '生产车间 ${current.name ?? "待指派"}',
@@ -5547,7 +5547,7 @@ abstract class _MaterialAnalysisMaterialTableState
     final cell = _materialTableAssignmentCell(
       theme,
       key: 'material-analysis-worker-${group.key}',
-      text: current.name ?? '点击选择',
+      text: current.name ?? utenFieldPlaceholder(label: '负责人')!,
       autofilled: current.autofilled && current.id != null,
       empty: current.id == null,
       semanticsLabel: '负责人 ${current.name ?? "待指派"}',
@@ -7795,7 +7795,9 @@ abstract class _MaterialAnalysisMaterialTableState
                 key: const Key('material-plan-cancel-reason'),
                 controller: reasonController,
                 maxLength: 500,
-                decoration: const InputDecoration(labelText: '撤回原因（必填）'),
+                decoration: const UtenInputDecoration(
+                  InputDecoration(labelText: '撤回原因（必填）'),
+                ),
               ),
             ],
           ),

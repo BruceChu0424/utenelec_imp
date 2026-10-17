@@ -39,14 +39,10 @@ public class AiDocumentWorkflows {
     /** Plain reason why the current account cannot use a workflow; null when it can. */
     public String blockedReason(String workflow) {
         if (available().stream().anyMatch(item -> item.get("workflow").equals(workflow))) return null;
-        var actor = access.requireChat();
         return switch (workflow) {
             case "SALES_ORDER", "SALES_QUOTE" -> {
                 boolean order = workflow.equals("SALES_ORDER");
-                Set<String> needed = order ? Set.of("sales_order:view", "sales_order:create") : Set.of("sales_quote:view", "sales_quote:create");
-                yield actor.getPermissions().containsAll(needed)
-                        ? "只有销售部门的人员可以用助手填写销售单据，请联系管理员确认你的部门。"
-                        : "需要「" + (order ? "销售订货单查看和新建" : "销售报价单查看和新建") + "」权限，请联系管理员开通。";
+                yield "需要「" + (order ? "销售订货单查看和新建" : "销售报价单查看和新建") + "」权限，请联系管理员开通。";
             }
             case "EXPENSE_CLAIM" -> "需要「报销申请」权限，请联系管理员开通。";
             default -> "这项业务不能由助手辅助填写。";

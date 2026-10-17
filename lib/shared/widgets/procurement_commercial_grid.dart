@@ -335,7 +335,7 @@ class ProcurementTermDropdownCell extends StatelessWidget {
     this.onChanged,
     this.requiredEmpty = false,
     this.autofilled = false,
-    this.hint = '点击选择',
+    this.hint = '条款',
   });
 
   final String? value;
@@ -411,6 +411,7 @@ procurementCommercialColumns<R extends CommercialTermsGridRow>({
           builder: (_, v, _) => ProcurementTermDropdownCell(
             value: v,
             entries: currencyEntries,
+            hint: '币种',
             requiredEmpty: v == null,
             autofilled: marks.contains('currency'),
             onChanged: (next) {
@@ -436,7 +437,7 @@ procurementCommercialColumns<R extends CommercialTermsGridRow>({
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: applyAutofillHint(
             const UtenInputDecoration(
-              InputDecoration(isDense: true, hintText: '0'),
+              InputDecoration(isDense: true, hintText: '税率'),
             ),
             Theme.of(context),
             autofilled: marks.contains('tax'),
@@ -464,6 +465,7 @@ procurementCommercialColumns<R extends CommercialTermsGridRow>({
           builder: (_, v, _) => ProcurementTermDropdownCell(
             value: v,
             entries: settlementEntries,
+            hint: settlementLabel,
             requiredEmpty: v == null,
             autofilled: marks.contains('settlement'),
             onChanged: (next) {
@@ -491,7 +493,7 @@ EditableGridColumn<R> procurementRemarkColumn<R extends RemarkGridRow>({
     listenableOf: (r) => r.remark,
     cellBuilder: (context, row) => TextField(
       controller: row.remark,
-      decoration: const InputDecoration(isDense: true, hintText: '选填'),
+      decoration: const InputDecoration(isDense: true, hintText: '备注'),
     ),
   );
 }

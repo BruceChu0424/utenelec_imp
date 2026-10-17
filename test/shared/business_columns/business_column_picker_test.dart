@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/layout/uten_grid_header_filter_cell.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/shared/business_columns/business_column.dart';
@@ -233,7 +234,23 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('加费用或写说明'));
       await tester.pumpAndSettle();
-      expect(find.text('文件型号'), findsOneWidget);
+      final header = find.byWidgetPredicate(
+        (widget) => widget is GridHeaderFilterCell && widget.label == '文件型号',
+      );
+      expect(header, findsOneWidget);
+      expect(
+        find.descendant(of: header, matching: find.text('文件型号')),
+        findsOneWidget,
+      );
+      final input = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            identical(widget.controller, row.clientModel),
+      );
+      expect(input, findsOneWidget);
+      expect(tester.widget<TextField>(input).decoration!.hintText, '文件型号');
+      expect(row.clientModel.text, isEmpty);
+      expect(controller.rows, [same(row)]);
     },
   );
 }

@@ -39,5 +39,23 @@ public record ClientQueryFilter(
         BigDecimal creditFloor,
         String website,
         boolean excludeLegacyFinanceStub,
-        boolean selectableOnly) {
+        boolean selectableOnly,
+        java.util.Map<String, String> columnSearch) {
+    public ClientQueryFilter(UUID categoryId, String keyword, Set<String> nullFields, String code, String name,
+            String fullName, String clientXz, Integer tday, String region, String placeId, String empId,
+            UUID ownerEmployeeId, String legalPerson, String linkman, String mobile, String phone, String phone2,
+            String fax, String postcode, String address, String bank, String bankAccount, String taxId,
+            BigDecimal credit, BigDecimal creditFloor, String website, boolean excludeLegacyFinanceStub,
+            boolean selectableOnly) {
+        this(categoryId, keyword, nullFields, code, name, fullName, clientXz, tday, region, placeId, empId,
+                ownerEmployeeId, legalPerson, linkman, mobile, phone, phone2, fax, postcode, address, bank,
+                bankAccount, taxId, credit, creditFloor, website, excludeLegacyFinanceStub, selectableOnly, java.util.Map.of());
+    }
+
+    public ClientQueryFilter withColumnSearch(java.util.Map<String, String> search) {
+        return new ClientQueryFilter(categoryId, keyword, nullFields, code, name, fullName, clientXz, tday,
+                region, placeId, empId, ownerEmployeeId, legalPerson, linkman, mobile, phone, phone2, fax,
+                postcode, address, bank, bankAccount, taxId, credit, creditFloor, website,
+                excludeLegacyFinanceStub, selectableOnly, search);
+    }
 }

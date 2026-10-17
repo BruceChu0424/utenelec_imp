@@ -98,6 +98,9 @@ class CategoryDrivenCodeServiceContractTest {
     void prefixNormalizationSupportsDigitBearingBusinessPrefix() {
         assertEquals("V6", CategoryDrivenCodeService.normalizePrefix(" v6 "));
         assertEquals("V6000123", CategoryDrivenCodeService.format("V6", 123));
+        assertEquals("1M", CategoryDrivenCodeService.normalizePrefix(" 1m "));
+        assertEquals("28", CategoryDrivenCodeService.normalizePrefix("28"));
+        assertEquals("28000123", CategoryDrivenCodeService.format("28", 123));
     }
 
     @Test
@@ -195,7 +198,7 @@ class CategoryDrivenCodeServiceContractTest {
     @Test
     void invalidPrefixIsRejectedBeforeSql() {
         assertThrows(ApiException.class,
-                () -> CategoryDrivenCodeService.normalizePrefix("6V"));
+                () -> CategoryDrivenCodeService.normalizePrefix("6_V"));
         assertThrows(ApiException.class,
                 () -> CategoryDrivenCodeService.normalizePrefix("ABCDEFGHI"));
         assertThrows(ApiException.class,

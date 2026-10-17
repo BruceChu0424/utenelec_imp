@@ -836,7 +836,8 @@ class _WarehouseWorkshopFieldState
       error: (_, _) => const Text('车间列表加载失败'),
       data: (rows) => UtenDropdownField(
         label: '所属车间',
-        hintText: '请选择生产部直属车间',
+        hintText: '所属车间',
+        info: '只可选择生产部直属车间。',
         value: _value,
         items: [
           for (final row in rows)

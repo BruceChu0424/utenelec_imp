@@ -19,7 +19,9 @@ class GoodsSubcontractSupplierCapabilityTest {
     private final UUID goods=UUID.randomUUID();
 
     @Test void onlySubcontractSourceTypeEnablesTheTabAndTheProbeNeverReadsChildFacts() {
-        when(db.queryForList(anyString(),anyMap())).thenReturn(List.of(Map.of("source_type","委外")),List.of(Map.of("source_type","采购")));
+        when(db.queryForList(anyString(),anyMap()))
+                .thenReturn(List.of(Map.of("source_type","委外")))
+                .thenReturn(List.of(Map.of("source_type","采购")));
         assertThat(service.capability(goods)).isEqualTo(new GoodsSubcontractSupplierContracts.Capability(goods,true));
         assertThat(service.capability(goods).applicable()).isFalse();
         verify(db,times(2)).queryForList(eq("SELECT source_type FROM goods WHERE id=:id AND NOT is_deleted AND NOT auto_created"),eq(Map.of("id",goods)));

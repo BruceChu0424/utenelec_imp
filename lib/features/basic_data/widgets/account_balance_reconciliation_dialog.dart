@@ -979,6 +979,7 @@ class _AccountBalanceReconciliationDialogState
       label: '$name ${_currencyLabel(account)} 目标余额',
       textField: true,
       child: TextField(
+        key: ValueKey('account-target-balance-${account.id}'),
         controller: controller,
         ignorePointers: false,
         enabled: enabled && !_submitting,
@@ -997,6 +998,7 @@ class _AccountBalanceReconciliationDialogState
         decoration: UtenInputDecoration(
           InputDecoration(
             isDense: true,
+            labelText: '目标余额',
             hintText: '重新输入',
             error: error == null ? null : UtenFieldMessage.error(error),
             constraints: const BoxConstraints(minHeight: 48),

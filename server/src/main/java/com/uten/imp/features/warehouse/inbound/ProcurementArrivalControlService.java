@@ -17,7 +17,6 @@ import com.uten.imp.common.web.NativeFacets;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.ArrivalDecisionRequest;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.ArrivalExceptionTask;
-import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.GoodsProfileHintRequest;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.InboundExpectationItem;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.InboundAllocation;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.InboundExpectationTask;
@@ -1841,106 +1840,6 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         return trimmed.length() > 100 ? trimmed.substring(0, 100) : trimmed;
     }
 
-    /**
-     * 货品资料「学习」回写（仓库登记到货保存成功后调用）：把本次填写的库位号/物料系列/
-     * 物料编码写回货品主档，下次登记自动带出；用户改过的值同样回写。
-     * 规则：trim；空值跳过；goodsCode 仅在主档为空且不与他货重复时回填（编码是业务主键，
-     * 仓库误输不得覆盖）；series/stockPlace 与主档不同才更新；已删除货品一律跳过。
-     */
-    @Transactional
-    public Map<String, Integer> applyGoodsProfileHints(List<GoodsProfileHintRequest> hints) {
-        tx.bind();
-        if (hints == null || hints.isEmpty()) {
-            return Map.of("updated", 0, "skipped", 0);
-        }
-        if (hints.size() > 200) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "单次回写不能超过 200 条");
-        }
-        // 同一货品重复出现时以最后一行为准（登记明细理论上不重复，防御去重）。
-        Map<UUID, GoodsProfileHintRequest> byGoods = new LinkedHashMap<>();
-        for (GoodsProfileHintRequest hint : hints) {
-            if (hint == null || hint.goodsId() == null) {
-                continue;
-            }
-            byGoods.put(hint.goodsId(), hint);
-        }
-        if (byGoods.isEmpty()) {
-            return Map.of("updated", 0, "skipped", 0);
-        }
-        List<UUID> ids = byGoods.keySet().stream().sorted(PostgresUuidOrder.INSTANCE).toList();
-        String placeholders = String.join(
-                ", ", java.util.Collections.nCopies(ids.size(), "?"));
-        Map<UUID, GoodsMasterRow> masters = new HashMap<>();
-        jdbc.query("SELECT id, code, series, stock_place FROM goods WHERE id IN ("
-                + placeholders + ") AND is_deleted = FALSE ORDER BY id FOR UPDATE", rs -> {
-            masters.put(rs.getObject("id", UUID.class), new GoodsMasterRow(
-                    rs.getString("code"),
-                    rs.getString("series"),
-                    rs.getString("stock_place")));
-        }, ids.toArray());
-
-        UUID actor = currentUser.requireId();
-        int updated = 0;
-        int skipped = 0;
-        for (Map.Entry<UUID, GoodsProfileHintRequest> entry : byGoods.entrySet().stream()
-                .sorted(Map.Entry.comparingByKey(PostgresUuidOrder.INSTANCE)).toList()) {
-            GoodsMasterRow master = masters.get(entry.getKey());
-            if (master == null) {
-                skipped++;
-                continue;
-            }
-            GoodsProfileHintRequest hint = entry.getValue();
-            String code = normalizeHint(hint.goodsCode());
-            String series = normalizeHint(hint.series());
-            String stockPlace = normalizeHint(hint.stockPlace());
-
-            List<String> assignments = new ArrayList<>(3);
-            List<Object> args = new ArrayList<>(3);
-            if (code != null
-                    && (master.code() == null || master.code().isBlank())
-                    && !codeTakenByOtherGoods(code, entry.getKey())) {
-                assignments.add("code = ?");
-                args.add(code);
-            }
-            if (series != null && !series.equals(master.series())) {
-                assignments.add("series = ?");
-                args.add(series);
-            }
-            if (stockPlace != null && !stockPlace.equals(master.stockPlace())) {
-                assignments.add("stock_place = ?");
-                args.add(stockPlace);
-            }
-            if (assignments.isEmpty()) {
-                skipped++;
-                continue;
-            }
-            args.add(actor);
-            args.add(entry.getKey());
-            jdbc.update("UPDATE goods SET " + String.join(", ", assignments)
-                    + ", version = version + 1, updated_at = now(), updated_by = ?"
-                    + " WHERE id = ? AND is_deleted = FALSE", args.toArray());
-            updated++;
-        }
-        return Map.of("updated", updated, "skipped", skipped);
-    }
-
-    /** 编码是否已被其他未删除货品占用（回填 code 前查重，防止仓库误输污染业务主键）。 */
-    private boolean codeTakenByOtherGoods(String code, UUID goodsId) {
-        Boolean exists = jdbc.queryForObject("""
-                SELECT EXISTS(
-                    SELECT 1 FROM goods
-                    WHERE code = ? AND id <> ? AND is_deleted = FALSE)
-                """, Boolean.class, code, goodsId);
-        return Boolean.TRUE.equals(exists);
-    }
-
-    private static String normalizeHint(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        return value.trim();
-    }
-
     private InboundExpectationTask expectationTask(
             ExpectationHeader header, UUID suggestedWarehouseId, String suggestedWarehouseName,
             List<UUID> draftReceiptIds,
@@ -3210,7 +3109,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         UUID actor = currentUser.requireId();
         reviewerEligibility.findEligible(actor).orElseThrow(() -> new ApiException(
                 ErrorCode.FORBIDDEN,
-                "仅财务审核组内且持有对应批准或驳回权限的人员可处理到货超量审批"));
+                "无法处理到货超量审批：请核对账号是否启用、员工是否在职，以及订货审批查看和对应批准或驳回权限"));
     }
 
     private void bindReceiptAllowance(String orderType, UUID receiptId) {
@@ -3539,8 +3438,6 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     }
 
     /** 货品主档学习回写用到的当前值快照（code/series/stock_place）。 */
-    private record GoodsMasterRow(String code, String series, String stockPlace) {
-    }
 
     private record PostedAllowance(
             UUID id,

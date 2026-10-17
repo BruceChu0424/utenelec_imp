@@ -904,7 +904,7 @@ class _UtenDocLinkPickerSheetState<D, I, N>
           decoration: UtenInputDecoration(
             InputDecoration(
               isDense: true,
-              hintText: '0',
+              hintText: '本次数量',
               // 2026-10-10 数量+单位口径：单位随输入框尾部显示（空 = 不显示）。
               suffixText: _cfg
                   .unitName(names, _cfg.itemFields.unitId(row.item))

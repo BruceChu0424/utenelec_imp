@@ -48,7 +48,7 @@ class ServerOperationsRuntimeBindingTest {
     @Test void unavailableOrMissingRuntimeRootsFailBeforeAnUpdateCanBeSubmittedWithoutLeakingDiagnostics() throws Exception {
         var broken=mock(DataSource.class);when(broken.getConnection()).thenThrow(new java.sql.SQLException("jdbc:postgresql://private?password=secret"));
         var active=mock(StorageService.class);var properties=new StorageProperties();
-        var failure=catchThrowableOfType(()->new ServerOperationsRuntimeBinding(broken,active,properties).capture(),ApiException.class);
+        var failure=catchThrowableOfType(ApiException.class,()->new ServerOperationsRuntimeBinding(broken,active,properties).capture());
         assertThat(failure.getMessage()).doesNotContain("jdbc:","password","secret");assertThat(failure.getCause()).isNull();
         when(active.backend()).thenReturn("internal");properties.getInternal().setRoot(directory.resolve("missing").toString());
         assertThatThrownBy(()->new ServerOperationsRuntimeBinding(source(),active,properties).capture()).isInstanceOf(ApiException.class);

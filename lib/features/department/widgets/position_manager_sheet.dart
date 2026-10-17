@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_toast.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
@@ -173,21 +174,27 @@ class _PositionManagerSheetState extends ConsumerState<PositionManagerSheet> {
                   if (isCreate) ...[
                     TextField(
                       controller: codeCtl,
-                      decoration: const InputDecoration(
-                        labelText: '岗位编码 *',
-                        hintText: '如 BUYER-01',
+                      decoration: const UtenInputDecoration(
+                        InputDecoration(
+                          labelText: '岗位编码 *',
+                          hintText: '如 BUYER-01',
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),
                   ],
                   TextField(
                     controller: nameCtl,
-                    decoration: const InputDecoration(labelText: '岗位名称 *'),
+                    decoration: const UtenInputDecoration(
+                      InputDecoration(labelText: '岗位名称 *'),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: levelCtl,
-                    decoration: const InputDecoration(labelText: '职级'),
+                    decoration: const UtenInputDecoration(
+                      InputDecoration(labelText: '职级'),
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Wrap(
@@ -207,7 +214,9 @@ class _PositionManagerSheetState extends ConsumerState<PositionManagerSheet> {
                     controller: sortCtl,
                     keyboardType: TextInputType.number,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    decoration: const InputDecoration(labelText: '排序号'),
+                    decoration: const UtenInputDecoration(
+                      InputDecoration(labelText: '排序号'),
+                    ),
                   ),
                 ],
               ),

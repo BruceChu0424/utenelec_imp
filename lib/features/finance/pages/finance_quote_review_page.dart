@@ -411,7 +411,10 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
       // 只有能改价/退回/确认时才占用；撤销确认、已办结或无权的都不占认领
       // (已核价的报价服务端拒绝认领，撤销确认本身也不要求认领)。
       if (review.needsClaim) {
-        final claim = financeReviewClaim(container)..addListener(_claimChanged);
+        final claim = financeReviewClaim(
+          container,
+          localizations: AppLocalizations.of(context),
+        )..addListener(_claimChanged);
         _claim = claim;
         await claim.claimAll(kSalesQuoteFinanceClaimType, [widget.id]);
         if (!isCurrent() || !claim.isCurrent) {
@@ -1665,6 +1668,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
             decoration: UtenInputDecoration(
               InputDecoration(
                 isDense: true,
+                labelText: l10n.quoteFinanceColDealPrice,
                 hintText: draft.unpriced ? l10n.quoteFinanceNoListPrice : null,
                 suffixText: '元',
                 error: utenFieldError(
@@ -1740,6 +1744,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
       decoration: UtenInputDecoration(
         InputDecoration(
           isDense: true,
+          hintText: l10n.quoteFinanceColDiscount,
           error: utenFieldError(
             draft.error == QuoteFinanceLineError.discount
                 ? l10n.quoteFinanceErrorDiscount

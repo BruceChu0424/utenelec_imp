@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -251,6 +252,12 @@ void main() {
       expect(find.text('水杯'), findsOneWidget);
       expect(find.text('注塑车间、装配车间'), findsOneWidget);
 
+      final material = tester.widget<UtenDropdownField>(
+        find.byKey(const Key('wm-enable-choice-cup')),
+      );
+      expect(material.value, isNull);
+      expect(material.hintText, '用哪种料');
+      expect(material.required, isTrue);
       await tester.tap(find.byKey(const Key('wm-bin-panel-submit')));
       await tester.pumpAndSettle();
       expect(api.posts, isEmpty);

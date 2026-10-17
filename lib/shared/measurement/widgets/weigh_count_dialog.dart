@@ -902,9 +902,8 @@ class _WeighCountPanelState extends ConsumerState<WeighCountPanel> {
           enabled: !_busy,
           keyboardType: TextInputType.number,
           onChanged: (_) => _piecesEdited = true,
-          decoration: const InputDecoration(
-            labelText: '箱 / 袋数量',
-            suffixText: '个',
+          decoration: const UtenInputDecoration(
+            InputDecoration(labelText: '箱 / 袋数量', suffixText: '个'),
           ),
         ),
       ),
@@ -973,10 +972,12 @@ class _WeighCountPanelState extends ConsumerState<WeighCountPanel> {
                 controller: _sampleQty,
                 enabled: !_busy,
                 keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: '数了多少',
-                  hintText: '建议 $suggested',
-                  suffixText: unitName,
+                decoration: UtenInputDecoration(
+                  InputDecoration(
+                    labelText: '数了多少',
+                    hintText: '建议 $suggested',
+                    suffixText: unitName,
+                  ),
                 ),
               ),
             ),

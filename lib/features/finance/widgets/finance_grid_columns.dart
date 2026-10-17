@@ -247,6 +247,7 @@ List<EditableGridColumn<FinanceGridRow>> financeGridColumns(
         textOf: column.textOf,
         listenableOf: column.listenableOf,
         filterValueOf: column.filterValueOf,
+        columnSearchEnabled: column.columnSearchEnabled,
         frozenTextOf: column.frozenTextOf,
         chromeWidth: column.chromeWidth,
         chromeWidthOf: column.chromeWidthOf,
@@ -468,7 +469,7 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
           controller: row.amount,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: const UtenInputDecoration(
-            InputDecoration(isDense: true, hintText: '0'),
+            InputDecoration(isDense: true, labelText: '本次分配收款(原币)'),
           ),
         ),
       ),
@@ -522,7 +523,12 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
         cellBuilder: (context, _) => TextField(
           key: const ValueKey('finance-receipt-bank-reference'),
           controller: bankReferenceController,
-          decoration: const UtenInputDecoration(InputDecoration(isDense: true)),
+          decoration: UtenInputDecoration(
+            InputDecoration(
+              isDense: true,
+              labelText: financeEntryText(context, 'bankReferenceColumn'),
+            ),
+          ),
         ),
       ),
     EditableGridColumn<FinanceGridRow>(
@@ -533,7 +539,9 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
       listenableOf: (r) => r.remark,
       cellBuilder: (context, row) => TextField(
         controller: row.remark,
-        decoration: const InputDecoration(isDense: true),
+        decoration: const UtenInputDecoration(
+          InputDecoration(isDense: true, labelText: '备注'),
+        ),
       ),
     ),
   ];
@@ -586,7 +594,9 @@ List<EditableGridColumn<FinanceGridRow>> _settleColumns() {
         child: TextField(
           controller: row.amount,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(isDense: true, hintText: '0'),
+          decoration: const UtenInputDecoration(
+            InputDecoration(isDense: true, labelText: '本次付款(原币)'),
+          ),
         ),
       ),
     ),
@@ -624,6 +634,7 @@ List<EditableGridColumn<FinanceGridRow>> _allocateColumns(
         return UtenDropdownField(
           // dense：与同行数量/单价等输入格同高（2026-10-06 表格控件统一口径）。
           dense: true,
+          label: type == FinanceDocType.expense ? '费用项目' : '收入项目',
           value: row.styleId,
           items: [
             for (final s in styles)
@@ -714,7 +725,9 @@ List<EditableGridColumn<FinanceGridRow>> _allocateColumns(
       cellBuilder: (context, row) => TextField(
         controller: row.qty,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(isDense: true, hintText: '0'),
+        decoration: const UtenInputDecoration(
+          InputDecoration(isDense: true, labelText: '数量'),
+        ),
       ),
     ),
     EditableGridColumn<FinanceGridRow>(
@@ -725,7 +738,9 @@ List<EditableGridColumn<FinanceGridRow>> _allocateColumns(
       cellBuilder: (context, row) => TextField(
         controller: row.price,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(isDense: true, hintText: '0'),
+        decoration: const UtenInputDecoration(
+          InputDecoration(isDense: true, labelText: '单价'),
+        ),
       ),
     ),
     EditableGridColumn<FinanceGridRow>(
@@ -740,7 +755,9 @@ List<EditableGridColumn<FinanceGridRow>> _allocateColumns(
         child: TextField(
           controller: row.amount,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(isDense: true, hintText: '0'),
+          decoration: const UtenInputDecoration(
+            InputDecoration(isDense: true, labelText: '金额'),
+          ),
         ),
       ),
     ),
@@ -765,6 +782,7 @@ List<EditableGridColumn<FinanceGridRow>> _transferColumns(
       cellBuilder: (context, row) => UtenDropdownField(
         // dense：与同行金额输入格同高（2026-10-06 表格控件统一口径）。
         dense: true,
+        label: '转入账户',
         value: row.inAccountId,
         items: [
           for (final e in names.accountEntries.entries)
@@ -811,7 +829,7 @@ List<EditableGridColumn<FinanceGridRow>> _transferColumns(
                 ),
               ),
               child: Text(
-                v == null ? '未选择' : v.substring(0, 10),
+                v == null ? '日期' : v.substring(0, 10),
                 style: TextStyle(
                   color: v == null
                       ? Theme.of(context).colorScheme.onSurfaceVariant
@@ -835,7 +853,9 @@ List<EditableGridColumn<FinanceGridRow>> _transferColumns(
         child: TextField(
           controller: row.amount,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(isDense: true, hintText: '0'),
+          decoration: const UtenInputDecoration(
+            InputDecoration(isDense: true, labelText: '金额'),
+          ),
         ),
       ),
     ),

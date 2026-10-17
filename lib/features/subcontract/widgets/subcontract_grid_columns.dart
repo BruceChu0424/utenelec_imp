@@ -11,6 +11,7 @@ import '../../../shared/pricing/procurement_price_check.dart';
 //  - 损耗 4 列（标准用量/结存数/损耗率/损耗原因）仅 itemHasWasteFields（损耗单）。
 // 颜色/单位/上游明细 id 为透传（引入或回填时预填，保存时随行写回，UI 不单独编辑）。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import '../../../shared/business_columns/business_columns_row.dart';
 import '../../../shared/drafts/form_draft_values.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -477,7 +478,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
                     valueListenable: row.goodsNotifier,
                     builder: (context, g, _) => g == null
                         ? Text(
-                            '点击选择',
+                            utenFieldPlaceholder(label: '货品名称')!,
                             style: TextStyle(
                               color: Theme.of(
                                 context,
@@ -605,7 +606,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
           decoration: UtenInputDecoration(
             InputDecoration(
               isDense: true,
-              hintText: '0',
+              labelText: '数量',
               suffixText: unitSuffixOf(row),
             ),
           ),
@@ -634,7 +635,9 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
             controller: row.allowedLossPct,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: applyAutofillHint(
-              const UtenInputDecoration(InputDecoration(isDense: true)),
+              const UtenInputDecoration(
+                InputDecoration(isDense: true, labelText: '允许损耗%'),
+              ),
               Theme.of(context),
               autofilled: marks.contains('allowedLoss'),
             ),
@@ -669,7 +672,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
                 decimal: true,
               ),
               decoration: const UtenInputDecoration(
-                InputDecoration(isDense: true, hintText: '0'),
+                InputDecoration(isDense: true, labelText: '单价'),
               ),
             ),
           ),
@@ -713,7 +716,9 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         cellBuilder: (context, row) => TextField(
           controller: row.girth,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(isDense: true, hintText: '0'),
+          decoration: const UtenInputDecoration(
+            InputDecoration(isDense: true, labelText: '围数'),
+          ),
         ),
       ),
     if (cfg.itemHasBoxQty)
@@ -726,7 +731,9 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         cellBuilder: (context, row) => TextField(
           controller: row.boxQty,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(isDense: true, hintText: '0'),
+          decoration: const UtenInputDecoration(
+            InputDecoration(isDense: true, labelText: '胶箱数'),
+          ),
         ),
       ),
     if (cfg.itemHasWasteFields) ...[
@@ -743,7 +750,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
           decoration: UtenInputDecoration(
             InputDecoration(
               isDense: true,
-              hintText: '0',
+              labelText: '标准用量',
               suffixText: unitSuffixOf(row),
             ),
           ),
@@ -761,7 +768,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
           decoration: UtenInputDecoration(
             InputDecoration(
               isDense: true,
-              hintText: '0',
+              labelText: '结存数',
               suffixText: unitSuffixOf(row),
             ),
           ),
@@ -776,7 +783,9 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         cellBuilder: (context, row) => TextField(
           controller: row.wasteRate,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(isDense: true, hintText: '0'),
+          decoration: const UtenInputDecoration(
+            InputDecoration(isDense: true, labelText: '损耗率%'),
+          ),
         ),
       ),
       EditableGridColumn<SubcontractGridRow>(
@@ -787,7 +796,9 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         cellBuilder: (context, row) => TextField(
           controller: row.cause,
           // 单行（2026-09-09 统一口径）：双行把整行撑高，与数量/单价格不同高。
-          decoration: const InputDecoration(isDense: true, hintText: '选填'),
+          decoration: const UtenInputDecoration(
+            InputDecoration(isDense: true, labelText: '损耗原因'),
+          ),
         ),
       ),
     ],

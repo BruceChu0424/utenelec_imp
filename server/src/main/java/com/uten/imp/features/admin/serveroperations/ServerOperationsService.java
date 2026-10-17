@@ -48,16 +48,20 @@ public class ServerOperationsService {
                     || !data.path("timerActive").isBoolean() || !data.path("timerEnabled").isBoolean()) {
                 throw new HostOperationsException("INVALID_RESPONSE");
             }
+            var failure = data.path("available").booleanValue() ? null : ServerOperationFailures.unavailable(
+                    data.path("failure").path("code").asText());
             return new ServerOperationsDto.Status(data.path("available").booleanValue(),
                     data.path("manualOnly").booleanValue(), data.path("timerActive").booleanValue(),
                     data.path("timerEnabled").booleanValue(), text(data, "currentVersion", 32),
                     text(data, "sourceRevision", 128), bool(data, "sourceConfigured"), job(data.get("latestJob")),
                     text(data, "latestVersion", 32), instant(data, "lastCheckedAt"), bool(data, "updateAvailable"),
-                    text(data, "serverTimeZone", 128), instant(data, "serverTime"), null, update, cleanup, configure);
+                    text(data, "serverTimeZone", 128), instant(data, "serverTime"),
+                    failure == null ? null : ServerOperationFailures.message(failure), update, cleanup, configure, failure);
         } catch (HostOperationsException unavailable) {
+            var failure = unavailable.availabilityFailure();
             return new ServerOperationsDto.Status(false, null, null, null, null, null, null, null,
                     null, null, null, null, null,
-                    "服务器运维助手暂不可用；本机可能尚未安装，请核对服务器部署", update, cleanup, configure);
+                    ServerOperationFailures.message(failure), update, cleanup, configure, failure);
         }
     }
 
@@ -186,14 +190,27 @@ public class ServerOperationsService {
     private ServerOperationsDto.Job job(JsonNode data) {
         if (data == null || data.isNull()) return null;
         try {
-            ServerOperationsDto.Job result = mapper.treeToValue(data, ServerOperationsDto.Job.class);
+            if (!data.isObject()) throw new HostOperationsException("INVALID_RESPONSE");
+            JsonNode rawFailure = data.get("failure");
+            var safe = ((com.fasterxml.jackson.databind.node.ObjectNode) data).deepCopy();
+            safe.remove("failure");
+            // A structured failure replaces legacy free text, even if the helper
+            // sends malformed/oversized text. Only our curated catalog is public.
+            if (rawFailure != null && !rawFailure.isNull()) safe.remove("message");
+            ServerOperationsDto.Job result = mapper.treeToValue(safe, ServerOperationsDto.Job.class);
             if (result.id() == null || result.requestId() == null || result.actorId() == null
                     || !Set.of("CHECK_ONLY", "CHECK_AND_UPDATE", "SCHEDULE_UPDATE").contains(result.mode())
                     || !Set.of("SCHEDULED", "QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "RECOVERY_REQUIRED", "CANCELLED").contains(result.state())
                     || !Set.of("CHECKING", "DOWNLOADING", "BACKING_UP", "MIGRATING", "ACTIVATING", "HEALTH_CHECK", "DONE").contains(result.phase())
                     || ("SCHEDULED".equals(result.state()) && result.scheduledAt() == null)
                     || (result.message() != null && result.message().length() > 1000)) throw new HostOperationsException("INVALID_RESPONSE");
-            return result;
+            var failure = ServerOperationFailures.project(rawFailure, result.state(), result.phase());
+            if (failure == null) return result;
+            return new ServerOperationsDto.Job(result.id(), result.requestId(), result.actorId(), result.mode(),
+                    failure.recoveryRequired() ? "RECOVERY_REQUIRED" : result.state(), result.phase(),
+                    result.startedAt(), result.finishedAt(), result.currentVersion(), result.targetVersion(),
+                    ServerOperationFailures.message(failure), result.backupPath(), result.migrationRequired(), result.health(),
+                    result.scheduledAt(), result.displayLocalTime(), failure);
         } catch (JsonProcessingException | IllegalArgumentException | NullPointerException invalid) {
             throw new HostOperationsException("INVALID_RESPONSE");
         }

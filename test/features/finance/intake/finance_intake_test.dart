@@ -107,6 +107,16 @@ void main() {
         await tester.pumpAndSettle();
         CheckboxListTile field(String key) =>
             tester.widget(find.byKey(ValueKey('finance-intake-field-$key')));
+        Future<void> selectField(String key) async {
+          final target = find.byKey(ValueKey('finance-intake-field-$key'));
+          await tester.ensureVisible(target);
+          await tester.pumpAndSettle();
+          expect(target.hitTestable(), findsOneWidget);
+          await tester.tap(target);
+          await tester.pump();
+          expect(field(key).value, isTrue);
+        }
+
         expect(field('bankFee').onChanged, isNull);
         expect(field('transactionDate').onChanged, isNull);
         expect(field('accountAmount').value, isFalse);
@@ -119,10 +129,7 @@ void main() {
               .onPressed,
           isNull,
         );
-        await tester.tap(
-          find.byKey(const ValueKey('finance-intake-field-currencyCode')),
-        );
-        await tester.pump();
+        await selectField('currencyCode');
         expect(
           tester
               .widget<FilledButton>(
@@ -131,10 +138,7 @@ void main() {
               .onPressed,
           isNull,
         );
-        await tester.tap(
-          find.byKey(const ValueKey('finance-intake-field-accountAmount')),
-        );
-        await tester.pump();
+        await selectField('accountAmount');
         expect(
           tester
               .widget<FilledButton>(

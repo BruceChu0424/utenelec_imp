@@ -510,8 +510,21 @@ void main() {
         find.byKey(const ValueKey('manual-demand-remove-0')),
         findsNothing,
       );
-      // 说明收进标签旁 ⓘ 悬停提示(fieldLabel 约定)。
-      expect(find.byTooltip('同一需求请始终使用同一个编号，后续可凭它找回任务'), findsOneWidget);
+      // 字段名留在框内；原说明和编号示例都能从该字段的 ⓘ 读到。
+      final refField = _manualDemandField('ref');
+      expect(tester.widget<TextField>(refField).decoration!.hintText, '需求编号');
+      const refGuidance = '同一需求请始终使用同一个编号，后续可凭它找回任务\n\n例：RW-20260808-001';
+      final refInfo = find.descendant(
+        of: find.byKey(const ValueKey('manual-demand-ref-0')),
+        matching: find.byTooltip(refGuidance),
+      );
+      expect(refInfo, findsOneWidget);
+      await tester.ensureVisible(refInfo);
+      await tester.tap(refInfo);
+      await tester.pumpAndSettle();
+      expect(find.text(refGuidance), findsOneWidget);
+      Tooltip.dismissAllToolTips();
+      await tester.pumpAndSettle();
       // 货品明细是自家可编辑明细表(与销售订单录入同一个表格组件)。
       expect(
         find.byType(UtenEditableGrid<MaterialManualDemandLine>),
@@ -3032,8 +3045,7 @@ void main() {
       await _tapBucketRowCheckbox(tester, '待自制壳体');
       expect(_bucketRowCheckboxValue(tester, '待自制壳体'), isTrue);
       expect(find.textContaining(RegExp(r'创建生产计划.*\(1\)')), findsOneWidget);
-      // 2026-09-22 起三个桶同一张只读 MasterDataTableView(不再是可编辑计划表),
-      // 表内不开文字框选。
+      // 三个桶统一只读 MasterDataTableView；行勾选与文字框选独立。
       final bucketTable = find.byWidgetPredicate(
         (widget) => widget is MasterDataTableView,
       );
@@ -3045,8 +3057,8 @@ void main() {
       );
       expect(
         SelectionContainer.maybeOf(tester.element(materialCell)),
-        isNull,
-        reason: '稳定挂载的表体选择区不能使业务多选行的文字可框选',
+        isNotNull,
+        reason: '业务行仍保持勾选，表体文字同时可框选复制',
       );
       expect(_bucketRowCheckboxValue(tester, '待自制壳体'), isTrue);
       await _closeBucketDetail(tester);
@@ -4394,8 +4406,7 @@ void main() {
     },
   );
 
-  testWidgets('五列表头只有标签：物料办理 / 编号 / 需要数量 / 还缺数量 / 下单数量 '
-      '不挂说明图标也没有筛选下拉', (tester) async {
+  testWidgets('物料办理和编号支持文本搜索，数量表头保留纯标签且不挂说明图标', (tester) async {
     final json = unconfirmedBuyChildTree()..['allowedActions'] = const ['VIEW'];
     await _pumpPage(
       tester,
@@ -4427,7 +4438,7 @@ void main() {
       findsOneWidget,
     );
 
-    // 2026-09-22 用户口径：这五列的表头就只要那几个字。
+    // 名称/编号按统一文本搜索契约提供入口；数量列保留原业务控件。
     for (final label in const ['物料办理', '编号', '需要数量', '还缺数量', '下单数量']) {
       final header = await _materialHeaderCell(tester, label);
       expect(
@@ -4435,11 +4446,40 @@ void main() {
         findsNothing,
         reason: '「$label」列头不该有 ⓘ',
       );
-      expect(
-        find.descendant(of: header, matching: find.byType(Icon)),
-        findsNothing,
-        reason: '「$label」列头不该有筛选 / 排序图标',
-      );
+      if (label == '物料办理' || label == '编号') {
+        expect(
+          find.descendant(
+            of: header,
+            matching: find.byIcon(Icons.arrow_drop_down_rounded),
+          ),
+          findsOneWidget,
+        );
+        // A frozen copy may cover the ordinary header at the same scroll
+        // position. Tap the label that actually participates in hit testing.
+        final activeLabel = find
+            .descendant(
+              of: find.byKey(
+                const Key('material-analysis-material-table-region'),
+              ),
+              matching: find.text(label),
+            )
+            .hitTestable()
+            .last;
+        expect(activeLabel, findsOneWidget);
+        await tester.tap(activeLabel);
+        await tester.pumpAndSettle();
+        final input = find.byKey(const Key('uten-column-keyword-input'));
+        expect(input, findsOneWidget);
+        expect(tester.widget<TextField>(input).decoration!.hintText, label);
+        await tester.tapAt(const Offset(5, 5));
+        await tester.pumpAndSettle();
+      } else {
+        expect(
+          find.descendant(of: header, matching: find.byType(Icon)),
+          findsNothing,
+          reason: '「$label」数量列头不该有文本搜索 / 排序图标',
+        );
+      }
     }
   });
 
@@ -6718,9 +6758,16 @@ void main() {
         const ValueKey('shared-future-claim-qty-future-action'),
       );
       expect(tester.widget<TextField>(claimQty).controller?.text, '900');
+      final sourcePicker = find.byWidgetPredicate(
+        (widget) => widget is UtenDropdownField && widget.label == '指定来源（可选）',
+      );
+      expect(sourcePicker, findsOneWidget);
       expect(
-        find.text('指定来源（可选）'),
-        findsOneWidget,
+        tester
+            .widget<UtenDropdownField>(sourcePicker)
+            .items
+            .map((item) => item.value),
+        contains('same-analysis-other-product'),
         reason: '同分析其它产品且不同供应路线的来源已被服务端精确授权，不能被前端再次排除',
       );
       await tester.tap(
@@ -8008,7 +8055,14 @@ void main() {
       expect(find.text('可安排产品 101'), findsOneWidget);
       expect(_bucketShortageText(tester, '可安排产品 101'), '1');
 
-      await tester.tap(_bucketHeaderCheckbox());
+      // The sticky header lives in the overlay after scrolling to row 101;
+      // its live checkbox is outside the original bucket body subtree.
+      final visibleSelectAll = find
+          .byKey(const Key('master-data-table-select-all'))
+          .hitTestable()
+          .last;
+      expect(visibleSelectAll, findsOneWidget);
+      await tester.tap(visibleSelectAll);
       await tester.pumpAndSettle();
       expect(find.text('已选 101 项'), findsOneWidget);
       expect(find.text('创建生产计划(101)…'), findsOneWidget);
@@ -11589,11 +11643,12 @@ Future<void> _fillManualDemandHeader(
 
 /// 点这张单第一个空的「货品名称」格(弹多选选货)。
 Future<void> _pickManualDemandGoods(WidgetTester tester, {int card = 0}) async {
+  final emptyName = find.descendant(
+    of: find.byKey(ValueKey('manual-demand-grid-$card')),
+    matching: find.text('货品名称'),
+  );
   final cell = find
-      .descendant(
-        of: find.byKey(ValueKey('manual-demand-grid-$card')),
-        matching: find.text('点击选择'),
-      )
+      .ancestor(of: emptyName, matching: find.byType(InputDecorator))
       .first;
   await tester.ensureVisible(cell);
   await tester.pumpAndSettle();

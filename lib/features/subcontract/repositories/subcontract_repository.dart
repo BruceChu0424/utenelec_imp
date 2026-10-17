@@ -27,6 +27,7 @@ class SubcontractDocFilter {
     this.financeApproval,
     this.billNo,
     this.apPosted,
+    this.columnSearch = const {},
   });
   final String? keyword;
   final String? supplierId;
@@ -48,8 +49,14 @@ class SubcontractDocFilter {
 
   /// Native returns list: true/false are real posted states, null is no filter.
   final bool? apPosted;
+  final Map<String, String?> columnSearch;
 
   Map<String, dynamic> toQuery() => <String, dynamic>{
+    for (final entry in columnSearch.entries)
+      if (entry.key.startsWith('search.') &&
+          entry.value != null &&
+          entry.value!.trim().isNotEmpty)
+        entry.key: entry.value!.trim(),
     if (keyword != null && keyword!.trim().isNotEmpty)
       'keyword': keyword!.trim(),
     if (supplierId != null) 'supplierId': supplierId,
@@ -108,6 +115,7 @@ class SubcontractRepository {
       closed: filter.closed,
       financeApproval: filter.financeApproval,
       apPosted: filter.apPosted,
+      columnSearch: filter.columnSearch,
     ).toQuery();
     final json = await api.get('$_base/facets', query: query);
     return parseFacetBuckets(json, 'billNo');

@@ -9,6 +9,18 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get tableFacetLoadFailed => '候选加载失败，点击重试';
+
+  @override
+  String get tableFacetLoadMore => '加载更多候选';
+
+  @override
+  String get masterSearchUpdating => '正在更新搜索结果';
+
+  @override
+  String get tableCopySelectedText => '复制所选文字';
+
+  @override
   String get release2518ServerUpdates =>
       '有权限人员可手动检查服务器新版本，选择立即更新或按服务器当地时间预约；发现更新后显示提醒和徽章，平时不自动检查更新源。';
 
@@ -884,7 +896,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get securityScanManual => '手动输入凭证';
 
   @override
-  String get securityPasscodeHint => '输入6位通行码';
+  String get securityPasscodeHint => '通行码';
 
   @override
   String get securityPasscodeInvalid => '请输入6位数字通行码';
@@ -1936,7 +1948,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noticeBlessingWallEmpty => '还没有祝福，送上第一份祝福吧';
 
   @override
-  String get noticeBlessingPlaceholder => '写下你的祝福…';
+  String get noticeBlessingPlaceholder => '祝福内容';
 
   @override
   String get noticeBlessingSendButton => '发送祝福';
@@ -6118,7 +6130,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get quoteFinanceReopenedDone => '已撤销确认, 可以继续修改价格';
 
   @override
-  String get quoteFinanceLoadDetailFailed => '报价详情加载失败, 请检查网络或权限后重试';
+  String get quoteFinanceLoadDetailFailed => '报价详情暂时无法加载，请重试。';
 
   @override
   String get quoteFinanceActionFailed => '操作没有成功, 请稍后再试';
@@ -10082,4 +10094,540 @@ class AppLocalizationsZh extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get serverUpdateCurrentVersion => '当前版本';
+
+  @override
+  String get serverUpdateAvailableVersion => '可用新版本';
+
+  @override
+  String get serverUpdateKnownVersion => '上次检查结果';
+
+  @override
+  String get serverUpdateNotChecked => '尚未确认';
+
+  @override
+  String get serverUpdateNoNewVersion => '已是本次检查的最新版本';
+
+  @override
+  String get serverUpdateNoCheckResult => '检查发布源，确认是否有可用新版本。';
+
+  @override
+  String get serverUpdateCheck => '检查版本更新';
+
+  @override
+  String get serverUpdateView => '查看更新';
+
+  @override
+  String get serverUpdateReadOnly => '当前为只读访问，更新操作不可用。';
+
+  @override
+  String get serverUpdateManual => '手动检查';
+
+  @override
+  String get serverUpdateLocalOnly => '进入页面、刷新和查看进度仅读取此服务器状态，不会自动连接发布源。';
+
+  @override
+  String get serverUpdateUnconfigured => '发布源尚未配置';
+
+  @override
+  String get serverUpdateUnconfiguredHint => '请由超级管理员配置发布源后再检查更新。';
+
+  @override
+  String get serverUpdateUnavailable => '服务器更新能力暂不可用';
+
+  @override
+  String get serverUpdateChecking => '正在检查版本';
+
+  @override
+  String get serverUpdateRunning => '正在更新';
+
+  @override
+  String get serverUpdateQueued => '更新作业已排队';
+
+  @override
+  String get serverUpdateScheduled => '更新已预约';
+
+  @override
+  String get serverUpdateCancelled => '预约已取消';
+
+  @override
+  String get serverUpdateCheckDone => '版本检查完成';
+
+  @override
+  String get serverUpdateDone => '服务器更新完成';
+
+  @override
+  String get serverUpdateFailed => '更新作业失败';
+
+  @override
+  String get serverUpdateRecovery => '需要恢复处理';
+
+  @override
+  String get serverUpdateUnknownState => '作业状态尚未确认';
+
+  @override
+  String get serverUpdateRecentJob => '最近作业';
+
+  @override
+  String get serverUpdateProgress => '执行进度';
+
+  @override
+  String get serverUpdateDetails => '作业详情';
+
+  @override
+  String get serverUpdateFailureDetails => '失败详情';
+
+  @override
+  String get serverUpdateCopyDiagnostics => '复制诊断信息';
+
+  @override
+  String get serverUpdateDiagnosticsCopied => '安全诊断信息已复制';
+
+  @override
+  String get serverUpdateLegacyFailure => '旧版本未记录可展示的失败详情。请凭请求编号联系管理员核对。';
+
+  @override
+  String get serverUpdateServicePreserved => '本次任务保留原服务';
+
+  @override
+  String get serverUpdateServiceUnknown => '服务状态需要核对';
+
+  @override
+  String get serverUpdateRecoveryHint => '请联系超级管理员核查恢复点和服务健康，完成恢复前不要再次更新。';
+
+  @override
+  String get serverUpdateNextStep => '下一步';
+
+  @override
+  String get serverUpdateRequestId => '请求编号';
+
+  @override
+  String get serverUpdateJobId => '作业编号';
+
+  @override
+  String get serverUpdateErrorCode => '错误码';
+
+  @override
+  String get serverUpdateFailedStage => '失败阶段';
+
+  @override
+  String get serverUpdateStartedAt => '开始时间';
+
+  @override
+  String get serverUpdateFinishedAt => '完成时间';
+
+  @override
+  String get serverUpdateScheduledAt => '预约时间';
+
+  @override
+  String get serverUpdateLastChecked => '上次检查';
+
+  @override
+  String get serverUpdateTimeZone => '服务器时区';
+
+  @override
+  String get serverUpdateRetryCheckHint => '处理原因后可手动重新检查版本；不会重放此次更新。';
+
+  @override
+  String get serverUpdatePending => '正在核对原作业';
+
+  @override
+  String get serverUpdatePendingHint => '请求结果尚未确认。仅查询原作业状态，请勿重复启动。';
+
+  @override
+  String get serverUpdateManagement => '管理';
+
+  @override
+  String get serverUpdateSource => '发布源与凭据';
+
+  @override
+  String get serverUpdateSourceHint => '仅超级管理员可配置；密钥只写不读';
+
+  @override
+  String get serverUpdateSourcePending => '保存结果待确认，请重新读取配置';
+
+  @override
+  String get serverUpdateStorage => '存储管理';
+
+  @override
+  String get serverUpdateMigrationRequired => '此版本包含数据库迁移';
+
+  @override
+  String get serverUpdateMigrationNotRequired => '此版本无需数据库迁移';
+
+  @override
+  String get serverUpdateHealthPass => '健康验收通过';
+
+  @override
+  String get serverUpdateHealthUnknown => '健康验收结果待确认';
+
+  @override
+  String get serverUpdateHealthFailed => '健康验收未通过';
+
+  @override
+  String get serverUpdatePhaseChecking => '检查版本';
+
+  @override
+  String get serverUpdatePhaseDownload => '下载并验签';
+
+  @override
+  String get serverUpdatePhaseBackup => '备份';
+
+  @override
+  String get serverUpdatePhaseMigrate => '数据库迁移';
+
+  @override
+  String get serverUpdatePhaseActivate => '激活版本';
+
+  @override
+  String get serverUpdatePhaseHealth => '健康检查';
+
+  @override
+  String get serverUpdatePhaseDone => '完成';
+
+  @override
+  String get serverUpdatePhaseUnknown => '待确认';
+
+  @override
+  String get serverUpdateScheduleWait => '到点后服务器会重新核对权限、发布源和目标版本。关闭页面不影响预约。';
+
+  @override
+  String get serverUpdateRefresh => '刷新本机状态';
+
+  @override
+  String get serverUpdateNoJob => '尚无更新作业';
+
+  @override
+  String get serverUpdateNoJobHint => '手动检查后会在这里显示进度和结果。';
+
+  @override
+  String get serverUpdateCheckBeforeRetry => '先重新检查版本，再决定是否更新。';
+
+  @override
+  String get serverUpdateCloseTemporarily => '暂时关闭';
+
+  @override
+  String get serverUpdateReadbackRequired =>
+      '保存结果尚未确认。重新读取服务器配置后才可再次保存；不会重放原请求。';
+
+  @override
+  String get serverUpdateExitCode => '退出码';
+
+  @override
+  String get serverUpdateCompanyVersion => '公司服务器版本';
+
+  @override
+  String get serverUpdateReadyHint => '检查到新版本，可立即更新或安排在空闲时段执行。';
+
+  @override
+  String get serverUpdateReceiptStatus => '原请求的最新状态';
+
+  @override
+  String get taskClaimChecking => '正在确认审核占用，请稍候。';
+
+  @override
+  String get taskClaimIdentityChanged => '登录身份已变化，请重新打开审核。';
+
+  @override
+  String get taskClaimAcquireFailed => '暂时无法取得审核占用，请重试。';
+
+  @override
+  String get taskClaimNetworkUnavailable => '无法连接服务器，请检查网络后重新认领。';
+
+  @override
+  String get taskClaimNetworkTimeout => '服务器响应超时，请稍后重新认领。';
+
+  @override
+  String get taskClaimLoginExpired => '登录已过期，请重新登录后再试。';
+
+  @override
+  String get taskClaimPermissionDenied => '当前没有此任务的审核权限，请刷新权限后重试。';
+
+  @override
+  String get taskClaimConflict => '任务占用或内容已变化，请刷新后重新认领。';
+
+  @override
+  String get taskClaimNotFound => '审核任务不存在或已不再待审核，请刷新列表。';
+
+  @override
+  String get taskClaimRateLimited => '操作过于频繁，请稍后重新认领。';
+
+  @override
+  String get taskClaimServerUnavailable => '服务器暂时无法处理审核占用，请稍后重试。';
+
+  @override
+  String get taskClaimInvalidResponse => '未取得有效审核占用，请重新认领。';
+
+  @override
+  String get taskClaimExpired => '审核占用已失效，请重新认领。';
+
+  @override
+  String taskClaimTakenBy(String name) {
+    return '$name 正在审核，请稍后重试。';
+  }
+
+  @override
+  String get taskClaimDecisionNotReady => '审核占用已失效，请重新认领并核对最新内容。';
+
+  @override
+  String get taskClaimReplaced => '审核占用已失效或被接管，已暂停审核；请重新认领。';
+
+  @override
+  String get taskClaimRenewFailed => '无法确认审核占用，已暂停审核；请重新认领并核对最新内容。';
+
+  @override
+  String get taskClaimReadOnly => '尚未取得有效审核占用，当前仅可查看。';
+
+  @override
+  String get taskClaimRetry => '重新认领并刷新';
+
+  @override
+  String get financeSalesReviewAccessHint => '需要销售订单财务确认的查看权限，请联系权限管理员授权。';
+
+  @override
+  String get financeProcurementReviewAccessHint => '需要订货审批的查看权限，请联系权限管理员授权。';
+
+  @override
+  String get financeArrivalReviewAccessHint =>
+      '具有相应查看和审批权限的员工可处理超量到货，无需额外的部门或个人点名资格。';
+
+  @override
+  String get dashboardAuthorizedScope => '按已授权功能和数据范围展示';
+
+  @override
+  String get dashboardNoAuthorizedMetrics => '当前可见范围内暂无概览指标';
+
+  @override
+  String get dashboardNoAuthorizedTodos => '当前可见范围内没有待办';
+
+  @override
+  String get financeBatchReviewCheckFailed => '无法核对整批审核内容，请刷新后重试。';
+
+  @override
+  String get financeBatchReviewResultUnknown => '批量审批结果尚未确认，请刷新核对单据状态后再操作。';
+
+  @override
+  String get financeReviewLoadFailed => '审核详情暂时无法加载，请重试。';
+
+  @override
+  String get financeReportLoadFailed => '报表暂时无法加载，请刷新后重试。';
+
+  @override
+  String get financeBatchReviewRefreshFailed => '批量审批已完成，但页面刷新未完成，请刷新核对最新单据状态。';
+
+  @override
+  String get financeReviewAuthorityChanged =>
+      '审核内容或版本已变化，原填写内容已保留。请重新加载并核对后再审核。';
+
+  @override
+  String get permissionMissingReads =>
+      '授权配置已保留，但当前未生效，且缺少对应页面所需的查看权限。请核对授权状态；需要进入该页面时再补齐查看权限。';
+
+  @override
+  String get permissionCompleteReads => '补齐所需查看权限';
+
+  @override
+  String get permissionInactiveGrant => '原授权已失效，当前未授权。';
+
+  @override
+  String get permissionRenewGrant => '重新授权';
+
+  @override
+  String get permissionRemoveInactiveGrant => '移除未生效授权';
+
+  @override
+  String get permissionPendingReads =>
+      '保存时只补齐允许自动授予的普通查看权限；需要恢复已收回的权限或授予敏感权限时，请在相应授权项中单独确认。';
+
+  @override
+  String get permissionBatchNormalOnly => '本组授权(不含敏感及锁定项)';
+
+  @override
+  String get permissionSavedRefreshPending => '权限已保存，但当前会话未能刷新。请刷新页面后核对最新权限。';
+
+  @override
+  String get permissionSaved => '页面权限已保存';
+
+  @override
+  String get permissionSavedDetailPending => '权限已保存，但未能读取最新配置。请重新加载当前员工后再操作。';
+
+  @override
+  String get permissionSaveResultUnknown => '权限保存结果尚未确认，请先重新读取当前员工的权限，核对后再操作。';
+
+  @override
+  String get masterEntitySearchHint => '搜索名称或编号';
+
+  @override
+  String get permissionRevokeOnly => '当前只能移除原有授权，不能重新授权。';
+
+  @override
+  String get release2521Permissions =>
+      '财务审核、出厂质检等操作按有效权限开放，取消额外的部门归属和个人点名授权门槛，继续保留业务数据范围与单据状态校验。';
+
+  @override
+  String get release2521Session => '授权变化后，会话和页面操作随最新权限同步；未保存的开关调整单独标为待保存。';
+
+  @override
+  String get release2521PermissionSettings =>
+      '普通授权开关只调整所选项目，保存时按规则补齐可自动授予的普通查看权限；敏感授权和恢复已收回权限仍需单独确认。';
+
+  @override
+  String get release2521ReviewFeedback =>
+      '审核占用失败显示实际原因；批量审核结果未确认时，明确提示刷新核对单据状态。';
+
+  @override
+  String get release2521ServerUpdates =>
+      '服务器更新按任务显示当前阶段与结果，重新打开页面可继续查看；失败时展示已确认原因和处理建议。';
+
+  @override
+  String get release2521TableSearchCopy =>
+      '名称、编号等文本列可在表头输入关键词，回车或点击搜索后在表格中显示结果，多列条件可组合。候选支持搜索和继续加载，表格文字可拖选复制，不影响业务勾选。';
+
+  @override
+  String get release2521FieldHints =>
+      '普通空字段直接显示字段名称，格式示例与填写说明放在说明入口；表单、选择器和日期字段统一空状态，已有有效数值和个人显示设置保留。';
+
+  @override
+  String get release2521ReferencePickers =>
+      '模具与组件选择改为左侧分类、右侧明细表，清楚显示系列、名称、编号、规格和颜色。输入可查看近似候选，按钮打开完整选择窗口并带入关键词，原有选择范围、用量和校验继续保留。';
+
+  @override
+  String get release2521MasterDataImport =>
+      '货品导出补齐模板回导所需字段，修改后按真实分类路径和原校验导入；分类编号前缀支持数字开头，分类名称旁可显示备注，原编号与类别身份保留。';
+
+  @override
+  String get release2521PurchaseDocuments =>
+      '采购订货单可预览打印，审核栏显示实际财务审核员；采购任务历史按真实物料逐行展示并增加供应商，申请待分解和工作台可按当前筛选导出。';
+
+  @override
+  String get release2521GoodsHistory =>
+      '可查看本人最近十次货品资料修改，并按当前条件撤回或取消撤回；后续修改、业务引用和权限会再次核对，过程留有操作记录。';
+
+  @override
+  String get goodsHistoryTitle => '货品操作记录';
+
+  @override
+  String get goodsHistoryHint =>
+      '保留最近 10 次资料修改，可选择其中一次撤回。取消撤回会恢复上次撤回；后续修改或业务引用可能限制恢复。';
+
+  @override
+  String get goodsHistoryUndo => '撤回';
+
+  @override
+  String get goodsHistoryRedo => '取消撤回';
+
+  @override
+  String get goodsHistoryUndoSelected => '撤回所选操作';
+
+  @override
+  String goodsHistoryUndoConfirm(String label, int count) {
+    return '撤回“$label”，影响 $count 条资料。确认撤回？';
+  }
+
+  @override
+  String goodsHistoryRedoConfirm(String label, int count) {
+    return '取消上次对“$label”的撤回，恢复 $count 条资料。确认取消撤回？';
+  }
+
+  @override
+  String get goodsHistoryUndoDone => '所选操作已撤回，已记录本次撤回。';
+
+  @override
+  String get goodsHistoryRedoDone => '已取消上次撤回，已记录本次取消撤回。';
+
+  @override
+  String get goodsHistoryLoadFailed => '操作记录加载失败，请刷新重试。';
+
+  @override
+  String get goodsHistoryActionFailed => '操作结果未确认。';
+
+  @override
+  String get goodsHistoryRefreshBeforeRetry => '记录已保留。请先刷新，核对最新状态后再操作。';
+
+  @override
+  String get goodsHistoryNoPermission => '当前没有可查看的货品操作权限。';
+
+  @override
+  String get goodsHistoryEmpty => '暂无可撤回的操作记录。完成资料修改后，可在这里查看。';
+
+  @override
+  String get goodsHistoryEvents => '撤回与取消撤回记录';
+
+  @override
+  String goodsHistoryEvent(String action, String label) {
+    return '$action：$label';
+  }
+
+  @override
+  String goodsHistoryAffected(int count) {
+    return '影响 $count 条';
+  }
+
+  @override
+  String get goodsHistoryUndone => '已撤回';
+
+  @override
+  String get goodsHistoryApplied => '已生效';
+
+  @override
+  String get goodsHistorySelected => '已选中';
+
+  @override
+  String get goodsHistoryBlocked => '此操作当前无法撤回或取消撤回，请刷新查看最新状态。';
+
+  @override
+  String get goodsHistoryOther => '资料修改';
+
+  @override
+  String get goodsHistoryGoodsCreate => '新建货品';
+
+  @override
+  String get goodsHistoryGoodsEdit => '修改货品';
+
+  @override
+  String get goodsHistoryGoodsNameEn => '修改货品英文名称';
+
+  @override
+  String get goodsHistoryGoodsStatus => '货品启用或停用';
+
+  @override
+  String get goodsHistoryGoodsDelete => '删除货品';
+
+  @override
+  String get goodsHistoryGoodsImport => '文件导入货品';
+
+  @override
+  String get goodsHistoryBomCreate => '新增组装组件';
+
+  @override
+  String get goodsHistoryBomEdit => '修改组装组件';
+
+  @override
+  String get goodsHistoryBomDelete => '删除组装组件';
+
+  @override
+  String get goodsHistoryBomPaste => '粘贴组装组件';
+
+  @override
+  String get goodsHistoryBomAudit => '组件审核变更';
+
+  @override
+  String get goodsHistoryCategoryCreate => '新建货品分类';
+
+  @override
+  String get goodsHistoryCategoryEdit => '修改货品分类';
+
+  @override
+  String get goodsHistoryCategoryDelete => '删除货品分类';
+
+  @override
+  String get goodsHistoryClose => '关闭';
+
+  @override
+  String get goodsHistoryGoodsPurchasePolicy => '修改货品采购收货方式';
+
+  @override
+  String get goodsHistoryGoodsSubcontractPolicy => '修改货品委外方式';
 }

@@ -6,6 +6,8 @@ import com.uten.imp.application.port.ProcurementArrivalBlockedException;
 import com.uten.imp.common.concurrency.ProcurementMutationLocks;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.util.PostgresUuidOrder;
+import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.GoodsProfileLearning;
 import com.uten.imp.features.purchase.receipt.PurchaseReceiptService;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptDetail;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptItemLine;
@@ -128,9 +130,13 @@ public class WarehouseArrivalRegistrationService {
     private SubcontractHeldPreStockReleaseService heldPreStockRelease;
 
     @Transactional(noRollbackFor = ProcurementArrivalBlockedException.class)
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('warehouse_inbound:view') and hasAuthority('warehouse_inbound:stock_in')")
     public WarehouseArrivalRegisterResult register(WarehouseArrivalRegisterRequest request) {
         tx.bind();
-        return registerGroup(request, null, null, false);
+        List<VerifiedGoodsProfile> learning = new ArrayList<>();
+        WarehouseArrivalRegisterResult result = registerGroup(request, null, null, false, learning);
+        applyGoodsProfileLearning(learning);
+        return result;
     }
 
     /**
@@ -139,6 +145,7 @@ public class WarehouseArrivalRegistrationService {
      * 幂等：批量键 + 订货单 + 仓库派生每组子键；同一批量键换了内容 409，原样重放返回原结果。
      */
     @Transactional(noRollbackFor = ProcurementArrivalBlockedException.class)
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('warehouse_inbound:view') and hasAuthority('warehouse_inbound:stock_in')")
     public WarehouseArrivalBatchRegisterResult registerBatch(WarehouseArrivalBatchRegisterRequest request) {
         tx.bind();
         if (request == null || request.lines() == null || request.lines().isEmpty()) {
@@ -230,15 +237,17 @@ public class WarehouseArrivalRegistrationService {
         }
         if (batchGuard != null) batchGuard.verifyUnchanged();
         List<WarehouseArrivalBatchRegisterItem> items = new ArrayList<>(groups.size());
+        List<VerifiedGoodsProfile> learning = new ArrayList<>();
         for (BatchGroup group : groups) {
             ArrivalCommand previous = existing.get(group.request().idempotencyKey());
             WarehouseArrivalRegisterResult result = previous != null
                     ? replayGroup(previous, group.request())
-                    : registerGroup(group.request(), batchKey, batchHash, true);
+                    : registerGroup(group.request(), batchKey, batchHash, true, learning);
             items.add(new WarehouseArrivalBatchRegisterItem(group.order().orderType(), group.order().orderId(),
                     group.warehouseId(), result.outcome(), result.receiptId(), result.receiptBillNo(),
                     result.exceptionId(), previous != null));
         }
+        applyGoodsProfileLearning(learning);
         return new WarehouseArrivalBatchRegisterResult(items.size(), replay, items);
     }
 
@@ -306,7 +315,7 @@ public class WarehouseArrivalRegistrationService {
      */
     private WarehouseArrivalRegisterResult registerGroup(
             WarehouseArrivalRegisterRequest request, String batchKey, String batchHash,
-            boolean shortDeliveryChecked) {
+            boolean shortDeliveryChecked, List<VerifiedGoodsProfile> learning) {
         UUID makerId = currentUser.requireEmployeeId();
         String idempotencyKey = normalizeIdempotencyKey(request.idempotencyKey());
         String orderType = normalizeOrderType(request.orderType());
@@ -391,8 +400,76 @@ public class WarehouseArrivalRegistrationService {
         }
         recordSubcontractShortDelivery(orderType, receiptId, billNo, result, shortAcknowledged);
         finalizeCommand(commandId, makerId, orderType, result);
+        collectGoodsProfileLearning(receiptLines, request.items(), learning);
         return result;
     }
+
+    /** Only newly created, source-validated receipt lines can contribute master-data learning. */
+    private static void collectGoodsProfileLearning(List<ReceiptLine> receiptLines,
+            List<WarehouseArrivalRegisterRequest.ArrivalLine> requested, List<VerifiedGoodsProfile> learning) {
+        for (int index = 0; index < requested.size(); index++) {
+            var input = requested.get(index);
+            GoodsProfileLearning profile = normalizedProfile(input.goodsProfile());
+            if (profile == null) continue;
+            int lineNo = index + 1;
+            List<ReceiptLine> matches = receiptLines.stream().filter(line -> Objects.equals(line.lineNo(), lineNo)).toList();
+            if (matches.size() != 1 || matches.getFirst().id() == null
+                    || !Objects.equals(matches.getFirst().goodsId(), input.goodsId())) {
+                throw new ApiException(ErrorCode.CONFLICT, "到货资料学习与本次收货明细不一致，请刷新来源后重新登记");
+            }
+            learning.add(new VerifiedGoodsProfile(matches.getFirst().goodsId(), profile));
+        }
+    }
+
+    /** Runs once after all groups succeed; original command replay never reapplies old suggestions. */
+    private void applyGoodsProfileLearning(List<VerifiedGoodsProfile> learning) {
+        if (learning.isEmpty()) return;
+        Map<UUID, GoodsProfileLearning> byGoods = new java.util.HashMap<>();
+        learning.forEach(item -> byGoods.put(item.goodsId(), item.profile()));
+        List<UUID> ids = byGoods.keySet().stream().sorted(PostgresUuidOrder.INSTANCE).toList();
+        String placeholders = String.join(",", Collections.nCopies(ids.size(), "?"));
+        var masters = jdbc.query("SELECT id,code,series,stock_place FROM goods WHERE id IN (" + placeholders
+                + ") AND NOT is_deleted ORDER BY id FOR UPDATE", (rs, row) -> new GoodsProfileMaster(
+                        rs.getObject("id", UUID.class), rs.getString("code"), rs.getString("series"), rs.getString("stock_place")), ids.toArray());
+        if (masters.size() != ids.size()) throw new ApiException(ErrorCode.CONFLICT, "本次登记的货品资料已变化，请刷新来源后重新登记");
+        UUID actor = currentUser.requireId();
+        for (GoodsProfileMaster master : masters) {
+            GoodsProfileLearning profile = byGoods.get(master.id());
+            List<String> assignments = new ArrayList<>();
+            List<Object> args = new ArrayList<>();
+            if (profile.goodsCode() != null && (master.code() == null || master.code().isBlank())
+                    && !Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM goods WHERE code=? AND id<>? AND NOT is_deleted)",
+                            Boolean.class, profile.goodsCode(), master.id()))) {
+                assignments.add("code=?"); args.add(profile.goodsCode());
+            }
+            if (profile.series() != null && !profile.series().equals(master.series())) {
+                assignments.add("series=?"); args.add(profile.series());
+            }
+            if (profile.stockPlace() != null && !profile.stockPlace().equals(master.stockPlace())) {
+                assignments.add("stock_place=?"); args.add(profile.stockPlace());
+            }
+            if (assignments.isEmpty()) continue;
+            args.add(actor); args.add(master.id());
+            jdbc.update("UPDATE goods SET " + String.join(",", assignments)
+                    + ",version=version+1,updated_at=now(),updated_by=? WHERE id=? AND NOT is_deleted", args.toArray());
+        }
+    }
+
+    private static GoodsProfileLearning normalizedProfile(GoodsProfileLearning profile) {
+        if (profile == null) return null;
+        String code = profileValue(profile.goodsCode(), 64), series = profileValue(profile.series(), 100), place = profileValue(profile.stockPlace(), 100);
+        return code == null && series == null && place == null ? null : new GoodsProfileLearning(code, series, place);
+    }
+
+    private static String profileValue(String value, int maxLength) {
+        if (value == null || value.isBlank()) return null;
+        String normalized = value.strip();
+        if (normalized.length() > maxLength) throw new ApiException(ErrorCode.VALIDATION_FAILED, "到货资料学习字段过长，请核对货品编码、系列和库位号");
+        return normalized;
+    }
+
+    private record VerifiedGoodsProfile(UUID goodsId, GoodsProfileLearning profile) {}
+    private record GoodsProfileMaster(UUID id, String code, String series, String stockPlace) {}
 
     /**
      * ADR-098：收货单已审核送检(非超量隔离)后, 同事务按库里最新累计回厂开立/刷新短交案件、
@@ -465,7 +542,7 @@ public class WarehouseArrivalRegistrationService {
                         ProcurementIqcStockInPermissions.BEFORE_INSPECTION.equals(authority.getAuthority()));
         if (!granted) {
             throw new ApiException(ErrorCode.FORBIDDEN,
-                    "先入库后质检需要「到货先入库后质检」权限(warehouse_iqc_stock_in:before_inspection)");
+                    "先入库后质检需要「到货先入库后质检(上架待检)」权限，请联系权限管理员开通");
         }
     }
 
@@ -1111,6 +1188,13 @@ public class WarehouseArrivalRegistrationService {
             // ADR-135: 数量是否按称重推算决定这行进不进单重学习, 同键不同选择要 409; 不勾时不写, 老哈希逐字不变。
             if (item != null && item.qtyFromWeightRequested()) {
                 appendHash(canonical, "qtyFromWeight");
+            }
+            GoodsProfileLearning profile = item == null ? null : normalizedProfile(item.goodsProfile());
+            if (profile != null) {
+                appendHash(canonical, "goodsProfile");
+                appendHash(canonical, profile.goodsCode());
+                appendHash(canonical, profile.series());
+                appendHash(canonical, profile.stockPlace());
             }
         }
         // 先入库后质检(V596)：只在勾选时进入指纹，老客户端/老请求的哈希逐字不变。

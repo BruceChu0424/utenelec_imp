@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/shared/widgets/procurement_supplier_cell.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_order_edit_page.dart';
@@ -47,9 +48,14 @@ void main() {
       }
 
       await settleFrames();
-      await tester.ensureVisible(find.text('必选供应商').first);
+      final emptySupplier = find.byType(ProcurementSupplierCell).first;
+      expect(
+        tester.widget<ProcurementSupplierCell>(emptySupplier).value,
+        isNull,
+      );
+      await tester.ensureVisible(emptySupplier);
       await settleFrames();
-      await tester.tap(find.text('必选供应商').first);
+      await tester.tap(emptySupplier);
       await settleFrames();
       await tester.tap(find.text('洪武五金'));
       await tester.pump();
@@ -119,8 +125,12 @@ void main() {
     expect(find.text('统一设置条款 (2)'), findsNothing, reason: '工具条上不该再有它');
 
     // 点击第一个选中行的供应商单元格（必填未选显示红字提示）→ 右侧滑入供应商面板。
-    final cells = find.text('必选供应商');
+    final cells = find.byType(ProcurementSupplierCell);
     expect(cells, findsNWidgets(3));
+    for (final cell in tester.widgetList<ProcurementSupplierCell>(cells)) {
+      expect(cell.value ?? cell.fallback, isNull);
+      expect(cell.requiredEmpty, isTrue);
+    }
     await tester.ensureVisible(cells.first);
     await tester.pumpAndSettle();
     await tester.tap(cells.at(0));
@@ -134,7 +144,22 @@ void main() {
 
     // 两个选中行的单元格显示供应商名（×2），未选中的第三行仍是必填提示。
     expect(find.text('洪武五金'), findsNWidgets(2));
-    expect(find.text('必选供应商'), findsOneWidget);
+    final emptySuppliers = tester
+        .widgetList<ProcurementSupplierCell>(cells)
+        .where((cell) => cell.value == null && cell.fallback == null)
+        .toList();
+    expect(emptySuppliers, hasLength(1));
+    expect(emptySuppliers.single.requiredEmpty, isTrue);
+    final emptyField = find.descendant(
+      of: find.byWidgetPredicate(
+        (widget) => identical(widget, emptySuppliers.single),
+      ),
+      matching: find.byType(InputDecorator),
+    );
+    expect(
+      tester.widget<InputDecorator>(emptyField).decoration.hintText,
+      '供应商',
+    );
 
     // 「统一设置条款」的新家：行右键菜单，作用于当前选择集（仍是那 2 行）。
     // 放在流程末尾验证，免得残留的菜单浮层吃掉后续点击。

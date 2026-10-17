@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import 'package:flutter/services.dart';
 
 import '../../../components/data_display/uten_goods_identity_cell.dart';
@@ -179,6 +180,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
         key: 'verdict',
         label: '判定结果',
         width: 108,
+        columnSearchEnabled: false,
         // 2026-09-11 全站表头快速筛选补齐：合格/不合格混排的长明细里，判定结果
         // 与货品名是最常用的收敛口径（视图级过滤，不动数据与勾选）。
         filterValueOf: (row) => row.line.verdict.label,
@@ -467,7 +469,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  row.warehouseName ?? '请选择',
+                  row.warehouseName ?? utenFieldPlaceholder(label: '目标叶仓')!,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -503,6 +505,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
             InputDecoration(
               isDense: true,
               counterText: '',
+              labelText: '实际库位',
               hintText: draft.placeInputHint,
               error: utenFieldError(draft.selected ? draft.placeError : null),
             ),
@@ -560,6 +563,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
             InputDecoration(
               isDense: true,
               counterText: '',
+              hintText: '本次实收',
               error: utenFieldError(
                 draft.selected ? draft.quantityError : null,
               ),

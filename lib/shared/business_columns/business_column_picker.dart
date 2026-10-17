@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../components/buttons/uten_button.dart';
@@ -250,16 +251,19 @@ class _BusinessColumnPickerState extends ConsumerState<_BusinessColumnPicker> {
     onSubmitted: (_) {
       if (_view == _ColumnView.create) _create();
     },
-    decoration: InputDecoration(
-      labelText: _text.businessColumnName,
-      hintText: _view == _ColumnView.create
-          ? _text.businessColumnNameRequired
-          : _text.businessColumnSearch,
-      prefixIcon: Icon(
-        _view == _ColumnView.create
-            ? Icons.edit_outlined
-            : Icons.search_rounded,
+    decoration: UtenInputDecoration(
+      InputDecoration(
+        labelText: _text.businessColumnName,
+        hintText: _view == _ColumnView.create
+            ? _text.businessColumnNameRequired
+            : _text.businessColumnSearch,
+        prefixIcon: Icon(
+          _view == _ColumnView.create
+              ? Icons.edit_outlined
+              : Icons.search_rounded,
+        ),
       ),
+      useFieldNameHint: _view == _ColumnView.create,
     ),
   );
 
@@ -487,8 +491,8 @@ class _BusinessColumnPickerState extends ConsumerState<_BusinessColumnPicker> {
                     decimal: true,
                     signed: true,
                   ),
-                  decoration: InputDecoration(
-                    labelText: _text.businessColumnExampleBase,
+                  decoration: UtenInputDecoration(
+                    InputDecoration(labelText: _text.businessColumnExampleBase),
                   ),
                 ),
                 TextField(
@@ -500,8 +504,10 @@ class _BusinessColumnPickerState extends ConsumerState<_BusinessColumnPicker> {
                     decimal: true,
                     signed: true,
                   ),
-                  decoration: InputDecoration(
-                    labelText: _text.businessColumnExampleValue,
+                  decoration: UtenInputDecoration(
+                    InputDecoration(
+                      labelText: _text.businessColumnExampleValue,
+                    ),
                   ),
                 ),
               ];

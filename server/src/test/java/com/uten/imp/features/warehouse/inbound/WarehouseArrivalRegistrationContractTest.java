@@ -41,12 +41,20 @@ class WarehouseArrivalRegistrationContractTest {
                 .map(method -> method.getAnnotation(PostMapping.class))
                 .filter(java.util.Objects::nonNull)
                 .flatMap(post -> Arrays.stream(post.value())))
-                .doesNotContain("/arrivals");
+                .doesNotContain("/arrivals", "/goods-profile-hints");
+        assertThat(Arrays.stream(ProcurementArrivalControlService.class.getDeclaredMethods()).map(Method::getName))
+                .doesNotContain("applyGoodsProfileHints");
         // 仓库任务入口先要求页面阅读+入仓动作；下层两个收货单 Service 仍保留
         // create/approve 的精确文档权限，形成双层门禁。
         assertThat(register.getAnnotation(PreAuthorize.class).value())
                 .isEqualTo("hasAuthority('warehouse_inbound:view')"
                         + " and hasAuthority('warehouse_inbound:stock_in')");
+        for (Method command : java.util.List.of(
+                WarehouseArrivalRegistrationService.class.getDeclaredMethod("register", WarehouseArrivalRegisterRequest.class),
+                WarehouseArrivalRegistrationService.class.getDeclaredMethod("registerBatch", ProcurementArrivalContracts.WarehouseArrivalBatchRegisterRequest.class))) {
+            assertThat(command.getAnnotation(PreAuthorize.class).value())
+                    .isEqualTo("hasAuthority('warehouse_inbound:view') and hasAuthority('warehouse_inbound:stock_in')");
+        }
 
         // 断点恢复端点：草稿收货单一键「继续送检」，同样不在端点层自设权限。
         Method complete = WarehouseInboundController.class.getDeclaredMethod(
@@ -127,7 +135,9 @@ class WarehouseArrivalRegistrationContractTest {
         assertThat(lineComponents).containsExactlyInAnyOrder(
                 "goodsId", "qty", "orderItemId", "colorId", "unitId",
                         "unitRate", "weight", "sourceDocNo", "replacementIntent", "preStockPlace",
-                        "qtyFromWeight", "giftQty");
+                        "qtyFromWeight", "giftQty", "goodsProfile");
+        assertThat(Arrays.stream(ProcurementArrivalContracts.GoodsProfileLearning.class.getRecordComponents())
+                .map(RecordComponent::getName)).containsExactly("goodsCode", "series", "stockPlace");
     }
 
     @Test

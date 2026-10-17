@@ -2,6 +2,7 @@
 // （前半只能填数字，后半下拉选单位，不额外新增独立输入框行）。
 // 单位下拉复用货品「单位」主档字典（[unitDictProvider]），支持内联新建新单位。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 
 import '../../../components/inputs/uten_dropdown_field.dart';
 import 'master_edit_dialog.dart' show MasterSelectOption;
@@ -89,7 +90,9 @@ class _NumberUnitFieldState extends State<NumberUnitField> {
           child: TextField(
             controller: _ctl,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(labelText: widget.label),
+            decoration: UtenInputDecoration(
+              InputDecoration(labelText: widget.label),
+            ),
             onChanged: (_) => _emit(),
           ),
         ),

@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import '../inputs/uten_input_decoration.dart';
 import '../layout/uten_app_bar_action_scope.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:collection/collection.dart';
@@ -307,10 +308,12 @@ class _ExportPasswordDialogState extends State<_ExportPasswordDialog> {
             obscureText: true,
             autofocus: true,
             maxLength: 128,
-            decoration: InputDecoration(
-              labelText: l10n.exportPasswordOptionalLabel,
-              border: const OutlineInputBorder(),
-              isDense: true,
+            decoration: UtenInputDecoration(
+              InputDecoration(
+                labelText: l10n.exportPasswordOptionalLabel,
+                border: const OutlineInputBorder(),
+                isDense: true,
+              ),
             ),
             onChanged: (_) => setState(() => _error = null),
             onSubmitted: (_) => _submit(),
@@ -321,10 +324,12 @@ class _ExportPasswordDialogState extends State<_ExportPasswordDialog> {
               controller: _confirm,
               obscureText: true,
               maxLength: 128,
-              decoration: InputDecoration(
-                labelText: l10n.exportPasswordConfirmLabel,
-                border: const OutlineInputBorder(),
-                isDense: true,
+              decoration: UtenInputDecoration(
+                InputDecoration(
+                  labelText: l10n.exportPasswordConfirmLabel,
+                  border: const OutlineInputBorder(),
+                  isDense: true,
+                ),
               ),
               onChanged: (_) => setState(() => _error = null),
               onSubmitted: (_) => _submit(),

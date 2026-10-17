@@ -1,5 +1,7 @@
 package com.uten.imp.features.subcontract.order;
 
+import com.uten.imp.common.web.HeaderColumnFilter;
+
 import com.uten.imp.application.port.WarehouseUse;
 import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.application.port.ProcurementArrivalControlPort;
@@ -276,6 +278,9 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 }
             }
             f.headerFilters().apply(root, cb, ps, "totalLocal", commercialPriceVisibility != null && commercialPriceVisibility.canViewSubcontractOrder(), null, false, null, false);
+            f.headerFilters().applySearch(root, q, cb, ps, java.util.Map.of(
+                    "billNo", HeaderColumnFilter.SearchField.text("billNo"),
+                    "supplier", HeaderColumnFilter.SearchField.reference("supplierId", com.uten.imp.features.master.supplier.Supplier.class)));
             return cb.and(ps.toArray(new Predicate[0]));
         };
     }

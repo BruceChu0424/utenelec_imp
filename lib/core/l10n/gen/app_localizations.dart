@@ -100,6 +100,30 @@ abstract class AppLocalizations {
     Locale('ko'),
   ];
 
+  /// No description provided for @tableFacetLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'候选加载失败，点击重试'**
+  String get tableFacetLoadFailed;
+
+  /// No description provided for @tableFacetLoadMore.
+  ///
+  /// In zh, this message translates to:
+  /// **'加载更多候选'**
+  String get tableFacetLoadMore;
+
+  /// No description provided for @masterSearchUpdating.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在更新搜索结果'**
+  String get masterSearchUpdating;
+
+  /// No description provided for @tableCopySelectedText.
+  ///
+  /// In zh, this message translates to:
+  /// **'复制所选文字'**
+  String get tableCopySelectedText;
+
   /// No description provided for @release2518ServerUpdates.
   ///
   /// In zh, this message translates to:
@@ -1753,7 +1777,7 @@ abstract class AppLocalizations {
   /// No description provided for @securityPasscodeHint.
   ///
   /// In zh, this message translates to:
-  /// **'输入6位通行码'**
+  /// **'通行码'**
   String get securityPasscodeHint;
 
   /// No description provided for @securityPasscodeInvalid.
@@ -3736,7 +3760,7 @@ abstract class AppLocalizations {
   /// No description provided for @noticeBlessingPlaceholder.
   ///
   /// In zh, this message translates to:
-  /// **'写下你的祝福…'**
+  /// **'祝福内容'**
   String get noticeBlessingPlaceholder;
 
   /// No description provided for @noticeBlessingSendButton.
@@ -11288,7 +11312,7 @@ abstract class AppLocalizations {
   /// No description provided for @quoteFinanceLoadDetailFailed.
   ///
   /// In zh, this message translates to:
-  /// **'报价详情加载失败, 请检查网络或权限后重试'**
+  /// **'报价详情暂时无法加载，请重试。'**
   String get quoteFinanceLoadDetailFailed;
 
   /// No description provided for @quoteFinanceActionFailed.
@@ -18477,6 +18501,1026 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'{count, plural, other{本模块进行中合计 {count} 项(尚未结束)}}'**
   String badgeModuleProgressTooltip(int count);
+
+  /// No description provided for @serverUpdateCurrentVersion.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前版本'**
+  String get serverUpdateCurrentVersion;
+
+  /// No description provided for @serverUpdateAvailableVersion.
+  ///
+  /// In zh, this message translates to:
+  /// **'可用新版本'**
+  String get serverUpdateAvailableVersion;
+
+  /// No description provided for @serverUpdateKnownVersion.
+  ///
+  /// In zh, this message translates to:
+  /// **'上次检查结果'**
+  String get serverUpdateKnownVersion;
+
+  /// No description provided for @serverUpdateNotChecked.
+  ///
+  /// In zh, this message translates to:
+  /// **'尚未确认'**
+  String get serverUpdateNotChecked;
+
+  /// No description provided for @serverUpdateNoNewVersion.
+  ///
+  /// In zh, this message translates to:
+  /// **'已是本次检查的最新版本'**
+  String get serverUpdateNoNewVersion;
+
+  /// No description provided for @serverUpdateNoCheckResult.
+  ///
+  /// In zh, this message translates to:
+  /// **'检查发布源，确认是否有可用新版本。'**
+  String get serverUpdateNoCheckResult;
+
+  /// No description provided for @serverUpdateCheck.
+  ///
+  /// In zh, this message translates to:
+  /// **'检查版本更新'**
+  String get serverUpdateCheck;
+
+  /// No description provided for @serverUpdateView.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看更新'**
+  String get serverUpdateView;
+
+  /// No description provided for @serverUpdateReadOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前为只读访问，更新操作不可用。'**
+  String get serverUpdateReadOnly;
+
+  /// No description provided for @serverUpdateManual.
+  ///
+  /// In zh, this message translates to:
+  /// **'手动检查'**
+  String get serverUpdateManual;
+
+  /// No description provided for @serverUpdateLocalOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'进入页面、刷新和查看进度仅读取此服务器状态，不会自动连接发布源。'**
+  String get serverUpdateLocalOnly;
+
+  /// No description provided for @serverUpdateUnconfigured.
+  ///
+  /// In zh, this message translates to:
+  /// **'发布源尚未配置'**
+  String get serverUpdateUnconfigured;
+
+  /// No description provided for @serverUpdateUnconfiguredHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'请由超级管理员配置发布源后再检查更新。'**
+  String get serverUpdateUnconfiguredHint;
+
+  /// No description provided for @serverUpdateUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务器更新能力暂不可用'**
+  String get serverUpdateUnavailable;
+
+  /// No description provided for @serverUpdateChecking.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在检查版本'**
+  String get serverUpdateChecking;
+
+  /// No description provided for @serverUpdateRunning.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在更新'**
+  String get serverUpdateRunning;
+
+  /// No description provided for @serverUpdateQueued.
+  ///
+  /// In zh, this message translates to:
+  /// **'更新作业已排队'**
+  String get serverUpdateQueued;
+
+  /// No description provided for @serverUpdateScheduled.
+  ///
+  /// In zh, this message translates to:
+  /// **'更新已预约'**
+  String get serverUpdateScheduled;
+
+  /// No description provided for @serverUpdateCancelled.
+  ///
+  /// In zh, this message translates to:
+  /// **'预约已取消'**
+  String get serverUpdateCancelled;
+
+  /// No description provided for @serverUpdateCheckDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'版本检查完成'**
+  String get serverUpdateCheckDone;
+
+  /// No description provided for @serverUpdateDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务器更新完成'**
+  String get serverUpdateDone;
+
+  /// No description provided for @serverUpdateFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'更新作业失败'**
+  String get serverUpdateFailed;
+
+  /// No description provided for @serverUpdateRecovery.
+  ///
+  /// In zh, this message translates to:
+  /// **'需要恢复处理'**
+  String get serverUpdateRecovery;
+
+  /// No description provided for @serverUpdateUnknownState.
+  ///
+  /// In zh, this message translates to:
+  /// **'作业状态尚未确认'**
+  String get serverUpdateUnknownState;
+
+  /// No description provided for @serverUpdateRecentJob.
+  ///
+  /// In zh, this message translates to:
+  /// **'最近作业'**
+  String get serverUpdateRecentJob;
+
+  /// No description provided for @serverUpdateProgress.
+  ///
+  /// In zh, this message translates to:
+  /// **'执行进度'**
+  String get serverUpdateProgress;
+
+  /// No description provided for @serverUpdateDetails.
+  ///
+  /// In zh, this message translates to:
+  /// **'作业详情'**
+  String get serverUpdateDetails;
+
+  /// No description provided for @serverUpdateFailureDetails.
+  ///
+  /// In zh, this message translates to:
+  /// **'失败详情'**
+  String get serverUpdateFailureDetails;
+
+  /// No description provided for @serverUpdateCopyDiagnostics.
+  ///
+  /// In zh, this message translates to:
+  /// **'复制诊断信息'**
+  String get serverUpdateCopyDiagnostics;
+
+  /// No description provided for @serverUpdateDiagnosticsCopied.
+  ///
+  /// In zh, this message translates to:
+  /// **'安全诊断信息已复制'**
+  String get serverUpdateDiagnosticsCopied;
+
+  /// No description provided for @serverUpdateLegacyFailure.
+  ///
+  /// In zh, this message translates to:
+  /// **'旧版本未记录可展示的失败详情。请凭请求编号联系管理员核对。'**
+  String get serverUpdateLegacyFailure;
+
+  /// No description provided for @serverUpdateServicePreserved.
+  ///
+  /// In zh, this message translates to:
+  /// **'本次任务保留原服务'**
+  String get serverUpdateServicePreserved;
+
+  /// No description provided for @serverUpdateServiceUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务状态需要核对'**
+  String get serverUpdateServiceUnknown;
+
+  /// No description provided for @serverUpdateRecoveryHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'请联系超级管理员核查恢复点和服务健康，完成恢复前不要再次更新。'**
+  String get serverUpdateRecoveryHint;
+
+  /// No description provided for @serverUpdateNextStep.
+  ///
+  /// In zh, this message translates to:
+  /// **'下一步'**
+  String get serverUpdateNextStep;
+
+  /// No description provided for @serverUpdateRequestId.
+  ///
+  /// In zh, this message translates to:
+  /// **'请求编号'**
+  String get serverUpdateRequestId;
+
+  /// No description provided for @serverUpdateJobId.
+  ///
+  /// In zh, this message translates to:
+  /// **'作业编号'**
+  String get serverUpdateJobId;
+
+  /// No description provided for @serverUpdateErrorCode.
+  ///
+  /// In zh, this message translates to:
+  /// **'错误码'**
+  String get serverUpdateErrorCode;
+
+  /// No description provided for @serverUpdateFailedStage.
+  ///
+  /// In zh, this message translates to:
+  /// **'失败阶段'**
+  String get serverUpdateFailedStage;
+
+  /// No description provided for @serverUpdateStartedAt.
+  ///
+  /// In zh, this message translates to:
+  /// **'开始时间'**
+  String get serverUpdateStartedAt;
+
+  /// No description provided for @serverUpdateFinishedAt.
+  ///
+  /// In zh, this message translates to:
+  /// **'完成时间'**
+  String get serverUpdateFinishedAt;
+
+  /// No description provided for @serverUpdateScheduledAt.
+  ///
+  /// In zh, this message translates to:
+  /// **'预约时间'**
+  String get serverUpdateScheduledAt;
+
+  /// No description provided for @serverUpdateLastChecked.
+  ///
+  /// In zh, this message translates to:
+  /// **'上次检查'**
+  String get serverUpdateLastChecked;
+
+  /// No description provided for @serverUpdateTimeZone.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务器时区'**
+  String get serverUpdateTimeZone;
+
+  /// No description provided for @serverUpdateRetryCheckHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'处理原因后可手动重新检查版本；不会重放此次更新。'**
+  String get serverUpdateRetryCheckHint;
+
+  /// No description provided for @serverUpdatePending.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在核对原作业'**
+  String get serverUpdatePending;
+
+  /// No description provided for @serverUpdatePendingHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'请求结果尚未确认。仅查询原作业状态，请勿重复启动。'**
+  String get serverUpdatePendingHint;
+
+  /// No description provided for @serverUpdateManagement.
+  ///
+  /// In zh, this message translates to:
+  /// **'管理'**
+  String get serverUpdateManagement;
+
+  /// No description provided for @serverUpdateSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'发布源与凭据'**
+  String get serverUpdateSource;
+
+  /// No description provided for @serverUpdateSourceHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅超级管理员可配置；密钥只写不读'**
+  String get serverUpdateSourceHint;
+
+  /// No description provided for @serverUpdateSourcePending.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存结果待确认，请重新读取配置'**
+  String get serverUpdateSourcePending;
+
+  /// No description provided for @serverUpdateStorage.
+  ///
+  /// In zh, this message translates to:
+  /// **'存储管理'**
+  String get serverUpdateStorage;
+
+  /// No description provided for @serverUpdateMigrationRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'此版本包含数据库迁移'**
+  String get serverUpdateMigrationRequired;
+
+  /// No description provided for @serverUpdateMigrationNotRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'此版本无需数据库迁移'**
+  String get serverUpdateMigrationNotRequired;
+
+  /// No description provided for @serverUpdateHealthPass.
+  ///
+  /// In zh, this message translates to:
+  /// **'健康验收通过'**
+  String get serverUpdateHealthPass;
+
+  /// No description provided for @serverUpdateHealthUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'健康验收结果待确认'**
+  String get serverUpdateHealthUnknown;
+
+  /// No description provided for @serverUpdateHealthFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'健康验收未通过'**
+  String get serverUpdateHealthFailed;
+
+  /// No description provided for @serverUpdatePhaseChecking.
+  ///
+  /// In zh, this message translates to:
+  /// **'检查版本'**
+  String get serverUpdatePhaseChecking;
+
+  /// No description provided for @serverUpdatePhaseDownload.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载并验签'**
+  String get serverUpdatePhaseDownload;
+
+  /// No description provided for @serverUpdatePhaseBackup.
+  ///
+  /// In zh, this message translates to:
+  /// **'备份'**
+  String get serverUpdatePhaseBackup;
+
+  /// No description provided for @serverUpdatePhaseMigrate.
+  ///
+  /// In zh, this message translates to:
+  /// **'数据库迁移'**
+  String get serverUpdatePhaseMigrate;
+
+  /// No description provided for @serverUpdatePhaseActivate.
+  ///
+  /// In zh, this message translates to:
+  /// **'激活版本'**
+  String get serverUpdatePhaseActivate;
+
+  /// No description provided for @serverUpdatePhaseHealth.
+  ///
+  /// In zh, this message translates to:
+  /// **'健康检查'**
+  String get serverUpdatePhaseHealth;
+
+  /// No description provided for @serverUpdatePhaseDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'完成'**
+  String get serverUpdatePhaseDone;
+
+  /// No description provided for @serverUpdatePhaseUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'待确认'**
+  String get serverUpdatePhaseUnknown;
+
+  /// No description provided for @serverUpdateScheduleWait.
+  ///
+  /// In zh, this message translates to:
+  /// **'到点后服务器会重新核对权限、发布源和目标版本。关闭页面不影响预约。'**
+  String get serverUpdateScheduleWait;
+
+  /// No description provided for @serverUpdateRefresh.
+  ///
+  /// In zh, this message translates to:
+  /// **'刷新本机状态'**
+  String get serverUpdateRefresh;
+
+  /// No description provided for @serverUpdateNoJob.
+  ///
+  /// In zh, this message translates to:
+  /// **'尚无更新作业'**
+  String get serverUpdateNoJob;
+
+  /// No description provided for @serverUpdateNoJobHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'手动检查后会在这里显示进度和结果。'**
+  String get serverUpdateNoJobHint;
+
+  /// No description provided for @serverUpdateCheckBeforeRetry.
+  ///
+  /// In zh, this message translates to:
+  /// **'先重新检查版本，再决定是否更新。'**
+  String get serverUpdateCheckBeforeRetry;
+
+  /// No description provided for @serverUpdateCloseTemporarily.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂时关闭'**
+  String get serverUpdateCloseTemporarily;
+
+  /// No description provided for @serverUpdateReadbackRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存结果尚未确认。重新读取服务器配置后才可再次保存；不会重放原请求。'**
+  String get serverUpdateReadbackRequired;
+
+  /// No description provided for @serverUpdateExitCode.
+  ///
+  /// In zh, this message translates to:
+  /// **'退出码'**
+  String get serverUpdateExitCode;
+
+  /// No description provided for @serverUpdateCompanyVersion.
+  ///
+  /// In zh, this message translates to:
+  /// **'公司服务器版本'**
+  String get serverUpdateCompanyVersion;
+
+  /// No description provided for @serverUpdateReadyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'检查到新版本，可立即更新或安排在空闲时段执行。'**
+  String get serverUpdateReadyHint;
+
+  /// No description provided for @serverUpdateReceiptStatus.
+  ///
+  /// In zh, this message translates to:
+  /// **'原请求的最新状态'**
+  String get serverUpdateReceiptStatus;
+
+  /// No description provided for @taskClaimChecking.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在确认审核占用，请稍候。'**
+  String get taskClaimChecking;
+
+  /// No description provided for @taskClaimIdentityChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'登录身份已变化，请重新打开审核。'**
+  String get taskClaimIdentityChanged;
+
+  /// No description provided for @taskClaimAcquireFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂时无法取得审核占用，请重试。'**
+  String get taskClaimAcquireFailed;
+
+  /// No description provided for @taskClaimNetworkUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法连接服务器，请检查网络后重新认领。'**
+  String get taskClaimNetworkUnavailable;
+
+  /// No description provided for @taskClaimNetworkTimeout.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务器响应超时，请稍后重新认领。'**
+  String get taskClaimNetworkTimeout;
+
+  /// No description provided for @taskClaimLoginExpired.
+  ///
+  /// In zh, this message translates to:
+  /// **'登录已过期，请重新登录后再试。'**
+  String get taskClaimLoginExpired;
+
+  /// No description provided for @taskClaimPermissionDenied.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前没有此任务的审核权限，请刷新权限后重试。'**
+  String get taskClaimPermissionDenied;
+
+  /// No description provided for @taskClaimConflict.
+  ///
+  /// In zh, this message translates to:
+  /// **'任务占用或内容已变化，请刷新后重新认领。'**
+  String get taskClaimConflict;
+
+  /// No description provided for @taskClaimNotFound.
+  ///
+  /// In zh, this message translates to:
+  /// **'审核任务不存在或已不再待审核，请刷新列表。'**
+  String get taskClaimNotFound;
+
+  /// No description provided for @taskClaimRateLimited.
+  ///
+  /// In zh, this message translates to:
+  /// **'操作过于频繁，请稍后重新认领。'**
+  String get taskClaimRateLimited;
+
+  /// No description provided for @taskClaimServerUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务器暂时无法处理审核占用，请稍后重试。'**
+  String get taskClaimServerUnavailable;
+
+  /// No description provided for @taskClaimInvalidResponse.
+  ///
+  /// In zh, this message translates to:
+  /// **'未取得有效审核占用，请重新认领。'**
+  String get taskClaimInvalidResponse;
+
+  /// No description provided for @taskClaimExpired.
+  ///
+  /// In zh, this message translates to:
+  /// **'审核占用已失效，请重新认领。'**
+  String get taskClaimExpired;
+
+  /// No description provided for @taskClaimTakenBy.
+  ///
+  /// In zh, this message translates to:
+  /// **'{name} 正在审核，请稍后重试。'**
+  String taskClaimTakenBy(String name);
+
+  /// No description provided for @taskClaimDecisionNotReady.
+  ///
+  /// In zh, this message translates to:
+  /// **'审核占用已失效，请重新认领并核对最新内容。'**
+  String get taskClaimDecisionNotReady;
+
+  /// No description provided for @taskClaimReplaced.
+  ///
+  /// In zh, this message translates to:
+  /// **'审核占用已失效或被接管，已暂停审核；请重新认领。'**
+  String get taskClaimReplaced;
+
+  /// No description provided for @taskClaimRenewFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法确认审核占用，已暂停审核；请重新认领并核对最新内容。'**
+  String get taskClaimRenewFailed;
+
+  /// No description provided for @taskClaimReadOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'尚未取得有效审核占用，当前仅可查看。'**
+  String get taskClaimReadOnly;
+
+  /// No description provided for @taskClaimRetry.
+  ///
+  /// In zh, this message translates to:
+  /// **'重新认领并刷新'**
+  String get taskClaimRetry;
+
+  /// No description provided for @financeSalesReviewAccessHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'需要销售订单财务确认的查看权限，请联系权限管理员授权。'**
+  String get financeSalesReviewAccessHint;
+
+  /// No description provided for @financeProcurementReviewAccessHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'需要订货审批的查看权限，请联系权限管理员授权。'**
+  String get financeProcurementReviewAccessHint;
+
+  /// No description provided for @financeArrivalReviewAccessHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'具有相应查看和审批权限的员工可处理超量到货，无需额外的部门或个人点名资格。'**
+  String get financeArrivalReviewAccessHint;
+
+  /// No description provided for @dashboardAuthorizedScope.
+  ///
+  /// In zh, this message translates to:
+  /// **'按已授权功能和数据范围展示'**
+  String get dashboardAuthorizedScope;
+
+  /// No description provided for @dashboardNoAuthorizedMetrics.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前可见范围内暂无概览指标'**
+  String get dashboardNoAuthorizedMetrics;
+
+  /// No description provided for @dashboardNoAuthorizedTodos.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前可见范围内没有待办'**
+  String get dashboardNoAuthorizedTodos;
+
+  /// No description provided for @financeBatchReviewCheckFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法核对整批审核内容，请刷新后重试。'**
+  String get financeBatchReviewCheckFailed;
+
+  /// No description provided for @financeBatchReviewResultUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量审批结果尚未确认，请刷新核对单据状态后再操作。'**
+  String get financeBatchReviewResultUnknown;
+
+  /// No description provided for @financeReviewLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'审核详情暂时无法加载，请重试。'**
+  String get financeReviewLoadFailed;
+
+  /// No description provided for @financeReportLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'报表暂时无法加载，请刷新后重试。'**
+  String get financeReportLoadFailed;
+
+  /// No description provided for @financeBatchReviewRefreshFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量审批已完成，但页面刷新未完成，请刷新核对最新单据状态。'**
+  String get financeBatchReviewRefreshFailed;
+
+  /// No description provided for @financeReviewAuthorityChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'审核内容或版本已变化，原填写内容已保留。请重新加载并核对后再审核。'**
+  String get financeReviewAuthorityChanged;
+
+  /// No description provided for @permissionMissingReads.
+  ///
+  /// In zh, this message translates to:
+  /// **'授权配置已保留，但当前未生效，且缺少对应页面所需的查看权限。请核对授权状态；需要进入该页面时再补齐查看权限。'**
+  String get permissionMissingReads;
+
+  /// No description provided for @permissionCompleteReads.
+  ///
+  /// In zh, this message translates to:
+  /// **'补齐所需查看权限'**
+  String get permissionCompleteReads;
+
+  /// No description provided for @permissionInactiveGrant.
+  ///
+  /// In zh, this message translates to:
+  /// **'原授权已失效，当前未授权。'**
+  String get permissionInactiveGrant;
+
+  /// No description provided for @permissionRenewGrant.
+  ///
+  /// In zh, this message translates to:
+  /// **'重新授权'**
+  String get permissionRenewGrant;
+
+  /// No description provided for @permissionRemoveInactiveGrant.
+  ///
+  /// In zh, this message translates to:
+  /// **'移除未生效授权'**
+  String get permissionRemoveInactiveGrant;
+
+  /// No description provided for @permissionPendingReads.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存时只补齐允许自动授予的普通查看权限；需要恢复已收回的权限或授予敏感权限时，请在相应授权项中单独确认。'**
+  String get permissionPendingReads;
+
+  /// No description provided for @permissionBatchNormalOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'本组授权(不含敏感及锁定项)'**
+  String get permissionBatchNormalOnly;
+
+  /// No description provided for @permissionSavedRefreshPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'权限已保存，但当前会话未能刷新。请刷新页面后核对最新权限。'**
+  String get permissionSavedRefreshPending;
+
+  /// No description provided for @permissionSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'页面权限已保存'**
+  String get permissionSaved;
+
+  /// No description provided for @permissionSavedDetailPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'权限已保存，但未能读取最新配置。请重新加载当前员工后再操作。'**
+  String get permissionSavedDetailPending;
+
+  /// No description provided for @permissionSaveResultUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'权限保存结果尚未确认，请先重新读取当前员工的权限，核对后再操作。'**
+  String get permissionSaveResultUnknown;
+
+  /// No description provided for @masterEntitySearchHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索名称或编号'**
+  String get masterEntitySearchHint;
+
+  /// No description provided for @permissionRevokeOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前只能移除原有授权，不能重新授权。'**
+  String get permissionRevokeOnly;
+
+  /// No description provided for @release2521Permissions.
+  ///
+  /// In zh, this message translates to:
+  /// **'财务审核、出厂质检等操作按有效权限开放，取消额外的部门归属和个人点名授权门槛，继续保留业务数据范围与单据状态校验。'**
+  String get release2521Permissions;
+
+  /// No description provided for @release2521Session.
+  ///
+  /// In zh, this message translates to:
+  /// **'授权变化后，会话和页面操作随最新权限同步；未保存的开关调整单独标为待保存。'**
+  String get release2521Session;
+
+  /// No description provided for @release2521PermissionSettings.
+  ///
+  /// In zh, this message translates to:
+  /// **'普通授权开关只调整所选项目，保存时按规则补齐可自动授予的普通查看权限；敏感授权和恢复已收回权限仍需单独确认。'**
+  String get release2521PermissionSettings;
+
+  /// No description provided for @release2521ReviewFeedback.
+  ///
+  /// In zh, this message translates to:
+  /// **'审核占用失败显示实际原因；批量审核结果未确认时，明确提示刷新核对单据状态。'**
+  String get release2521ReviewFeedback;
+
+  /// No description provided for @release2521ServerUpdates.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务器更新按任务显示当前阶段与结果，重新打开页面可继续查看；失败时展示已确认原因和处理建议。'**
+  String get release2521ServerUpdates;
+
+  /// No description provided for @release2521TableSearchCopy.
+  ///
+  /// In zh, this message translates to:
+  /// **'名称、编号等文本列可在表头输入关键词，回车或点击搜索后在表格中显示结果，多列条件可组合。候选支持搜索和继续加载，表格文字可拖选复制，不影响业务勾选。'**
+  String get release2521TableSearchCopy;
+
+  /// No description provided for @release2521FieldHints.
+  ///
+  /// In zh, this message translates to:
+  /// **'普通空字段直接显示字段名称，格式示例与填写说明放在说明入口；表单、选择器和日期字段统一空状态，已有有效数值和个人显示设置保留。'**
+  String get release2521FieldHints;
+
+  /// No description provided for @release2521ReferencePickers.
+  ///
+  /// In zh, this message translates to:
+  /// **'模具与组件选择改为左侧分类、右侧明细表，清楚显示系列、名称、编号、规格和颜色。输入可查看近似候选，按钮打开完整选择窗口并带入关键词，原有选择范围、用量和校验继续保留。'**
+  String get release2521ReferencePickers;
+
+  /// No description provided for @release2521MasterDataImport.
+  ///
+  /// In zh, this message translates to:
+  /// **'货品导出补齐模板回导所需字段，修改后按真实分类路径和原校验导入；分类编号前缀支持数字开头，分类名称旁可显示备注，原编号与类别身份保留。'**
+  String get release2521MasterDataImport;
+
+  /// No description provided for @release2521PurchaseDocuments.
+  ///
+  /// In zh, this message translates to:
+  /// **'采购订货单可预览打印，审核栏显示实际财务审核员；采购任务历史按真实物料逐行展示并增加供应商，申请待分解和工作台可按当前筛选导出。'**
+  String get release2521PurchaseDocuments;
+
+  /// No description provided for @release2521GoodsHistory.
+  ///
+  /// In zh, this message translates to:
+  /// **'可查看本人最近十次货品资料修改，并按当前条件撤回或取消撤回；后续修改、业务引用和权限会再次核对，过程留有操作记录。'**
+  String get release2521GoodsHistory;
+
+  /// No description provided for @goodsHistoryTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'货品操作记录'**
+  String get goodsHistoryTitle;
+
+  /// No description provided for @goodsHistoryHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'保留最近 10 次资料修改，可选择其中一次撤回。取消撤回会恢复上次撤回；后续修改或业务引用可能限制恢复。'**
+  String get goodsHistoryHint;
+
+  /// No description provided for @goodsHistoryUndo.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤回'**
+  String get goodsHistoryUndo;
+
+  /// No description provided for @goodsHistoryRedo.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消撤回'**
+  String get goodsHistoryRedo;
+
+  /// No description provided for @goodsHistoryUndoSelected.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤回所选操作'**
+  String get goodsHistoryUndoSelected;
+
+  /// No description provided for @goodsHistoryUndoConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤回“{label}”，影响 {count} 条资料。确认撤回？'**
+  String goodsHistoryUndoConfirm(String label, int count);
+
+  /// No description provided for @goodsHistoryRedoConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消上次对“{label}”的撤回，恢复 {count} 条资料。确认取消撤回？'**
+  String goodsHistoryRedoConfirm(String label, int count);
+
+  /// No description provided for @goodsHistoryUndoDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'所选操作已撤回，已记录本次撤回。'**
+  String get goodsHistoryUndoDone;
+
+  /// No description provided for @goodsHistoryRedoDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'已取消上次撤回，已记录本次取消撤回。'**
+  String get goodsHistoryRedoDone;
+
+  /// No description provided for @goodsHistoryLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'操作记录加载失败，请刷新重试。'**
+  String get goodsHistoryLoadFailed;
+
+  /// No description provided for @goodsHistoryActionFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'操作结果未确认。'**
+  String get goodsHistoryActionFailed;
+
+  /// No description provided for @goodsHistoryRefreshBeforeRetry.
+  ///
+  /// In zh, this message translates to:
+  /// **'记录已保留。请先刷新，核对最新状态后再操作。'**
+  String get goodsHistoryRefreshBeforeRetry;
+
+  /// No description provided for @goodsHistoryNoPermission.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前没有可查看的货品操作权限。'**
+  String get goodsHistoryNoPermission;
+
+  /// No description provided for @goodsHistoryEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无可撤回的操作记录。完成资料修改后，可在这里查看。'**
+  String get goodsHistoryEmpty;
+
+  /// No description provided for @goodsHistoryEvents.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤回与取消撤回记录'**
+  String get goodsHistoryEvents;
+
+  /// No description provided for @goodsHistoryEvent.
+  ///
+  /// In zh, this message translates to:
+  /// **'{action}：{label}'**
+  String goodsHistoryEvent(String action, String label);
+
+  /// No description provided for @goodsHistoryAffected.
+  ///
+  /// In zh, this message translates to:
+  /// **'影响 {count} 条'**
+  String goodsHistoryAffected(int count);
+
+  /// No description provided for @goodsHistoryUndone.
+  ///
+  /// In zh, this message translates to:
+  /// **'已撤回'**
+  String get goodsHistoryUndone;
+
+  /// No description provided for @goodsHistoryApplied.
+  ///
+  /// In zh, this message translates to:
+  /// **'已生效'**
+  String get goodsHistoryApplied;
+
+  /// No description provided for @goodsHistorySelected.
+  ///
+  /// In zh, this message translates to:
+  /// **'已选中'**
+  String get goodsHistorySelected;
+
+  /// No description provided for @goodsHistoryBlocked.
+  ///
+  /// In zh, this message translates to:
+  /// **'此操作当前无法撤回或取消撤回，请刷新查看最新状态。'**
+  String get goodsHistoryBlocked;
+
+  /// No description provided for @goodsHistoryOther.
+  ///
+  /// In zh, this message translates to:
+  /// **'资料修改'**
+  String get goodsHistoryOther;
+
+  /// No description provided for @goodsHistoryGoodsCreate.
+  ///
+  /// In zh, this message translates to:
+  /// **'新建货品'**
+  String get goodsHistoryGoodsCreate;
+
+  /// No description provided for @goodsHistoryGoodsEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改货品'**
+  String get goodsHistoryGoodsEdit;
+
+  /// No description provided for @goodsHistoryGoodsNameEn.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改货品英文名称'**
+  String get goodsHistoryGoodsNameEn;
+
+  /// No description provided for @goodsHistoryGoodsStatus.
+  ///
+  /// In zh, this message translates to:
+  /// **'货品启用或停用'**
+  String get goodsHistoryGoodsStatus;
+
+  /// No description provided for @goodsHistoryGoodsDelete.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除货品'**
+  String get goodsHistoryGoodsDelete;
+
+  /// No description provided for @goodsHistoryGoodsImport.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件导入货品'**
+  String get goodsHistoryGoodsImport;
+
+  /// No description provided for @goodsHistoryBomCreate.
+  ///
+  /// In zh, this message translates to:
+  /// **'新增组装组件'**
+  String get goodsHistoryBomCreate;
+
+  /// No description provided for @goodsHistoryBomEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改组装组件'**
+  String get goodsHistoryBomEdit;
+
+  /// No description provided for @goodsHistoryBomDelete.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除组装组件'**
+  String get goodsHistoryBomDelete;
+
+  /// No description provided for @goodsHistoryBomPaste.
+  ///
+  /// In zh, this message translates to:
+  /// **'粘贴组装组件'**
+  String get goodsHistoryBomPaste;
+
+  /// No description provided for @goodsHistoryBomAudit.
+  ///
+  /// In zh, this message translates to:
+  /// **'组件审核变更'**
+  String get goodsHistoryBomAudit;
+
+  /// No description provided for @goodsHistoryCategoryCreate.
+  ///
+  /// In zh, this message translates to:
+  /// **'新建货品分类'**
+  String get goodsHistoryCategoryCreate;
+
+  /// No description provided for @goodsHistoryCategoryEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改货品分类'**
+  String get goodsHistoryCategoryEdit;
+
+  /// No description provided for @goodsHistoryCategoryDelete.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除货品分类'**
+  String get goodsHistoryCategoryDelete;
+
+  /// No description provided for @goodsHistoryClose.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭'**
+  String get goodsHistoryClose;
+
+  /// No description provided for @goodsHistoryGoodsPurchasePolicy.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改货品采购收货方式'**
+  String get goodsHistoryGoodsPurchasePolicy;
+
+  /// No description provided for @goodsHistoryGoodsSubcontractPolicy.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改货品委外方式'**
+  String get goodsHistoryGoodsSubcontractPolicy;
 }
 
 class _AppLocalizationsDelegate

@@ -131,6 +131,8 @@ public class ClientService {
                                       CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            ps.add(com.uten.imp.features.master.search.MasterColumnSearch.predicate(cb, root.get("id"),
+                    com.uten.imp.features.master.search.MasterColumnSearch.Domain.CLIENT, f.columnSearch()));
             if (f.excludeLegacyFinanceStub()) {
                 ps.add(cb.or(
                         cb.isNull(root.get("code")),

@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uten_imp/components/inputs/uten_date_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/core/utils/china_datetime.dart';
@@ -182,9 +183,11 @@ void main() {
     expect(_currentStep(tester), 1);
 
     // 默认：入职日期=今天(选择器以今天封顶)、状态=试用 → 不出现转正日期字段。
-    // 必填字段 label 是 Text.rich(带红 *)，须用 findRichText 才匹配得到。
-    final confirmDateLabel = find.textContaining('转正日期', findRichText: true);
-    expect(confirmDateLabel, findsNothing);
+    // 按真正的日期控件定位，避免把浮动标签和框内字段名算成两个字段。
+    final confirmedDateField = find.byWidgetPredicate(
+      (widget) => widget is UtenDateField && widget.label == '转正日期',
+    );
+    expect(confirmedDateField, findsNothing);
     final today = ChinaDateTime.formatDate(ChinaDateTime.today());
     expect(find.text(today), findsWidgets, reason: '入职日期默认今天并已展示');
 
@@ -194,7 +197,14 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('在职').last);
     await tester.pumpAndSettle();
-    expect(confirmDateLabel, findsOneWidget);
+    expect(confirmedDateField, findsOneWidget);
+    expect(
+      ChinaDateTime.formatDate(
+        tester.widget<UtenDateField>(confirmedDateField).value!,
+      ),
+      today,
+      reason: '切到在职后转正日期的真实值必须等于默认入职日期',
+    );
     await _tapNext(tester);
     expect(_currentStep(tester), 2, reason: '转正日期已自动带入，不被必填拦下');
     expect(repo.created, isNull);

@@ -557,6 +557,27 @@ Future<void> _tapEditor(WidgetTester tester, String key) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _expectKeyGuidance(WidgetTester tester, String message) async {
+  final field = find.byKey(const ValueKey('ai-editor-api-key'));
+  expect(field, findsOneWidget);
+  final input = tester.widget<TextField>(
+    find.descendant(of: field, matching: find.byType(TextField)),
+  );
+  expect(input.controller!.text, isEmpty);
+  expect(input.decoration!.hintText, _zh.aiSettingsApiKey);
+  final guidance = find.descendant(
+    of: field,
+    matching: find.byTooltip(message),
+  );
+  expect(guidance, findsOneWidget);
+  await tester.ensureVisible(guidance);
+  await tester.tap(guidance);
+  await tester.pumpAndSettle();
+  expect(find.text(message), findsOneWidget);
+  Tooltip.dismissAllToolTips();
+  await tester.pumpAndSettle();
+}
+
 void main() {
   setUpAll(() async {
     final loader = FontLoader('NotoSansSC')
@@ -730,7 +751,7 @@ void main() {
     expect(find.textContaining('已配置 已配置'), findsNothing);
     expect(find.byType(AiMaskedKey), findsNothing);
     await _openEditorFor(tester, _deepseekId);
-    expect(find.text(_zh.aiSettingsApiKeyKeepHintPlain), findsOneWidget);
+    await _expectKeyGuidance(tester, _zh.aiSettingsApiKeyKeepHintPlain);
   });
 
   testWidgets('testing a stored provider shows each step with advice', (
@@ -780,7 +801,7 @@ void main() {
       expect(keyField.controller.text, isEmpty);
       expect(keyField.obscureText, isTrue);
       expect(keyField.autofillHints, isNull);
-      expect(find.text(_zh.aiSettingsApiKeyKeepHintPlain), findsOneWidget);
+      await _expectKeyGuidance(tester, _zh.aiSettingsApiKeyKeepHintPlain);
       expect(find.text(_zh.aiSettingsCurrentKey), findsOneWidget);
       expect(
         tester
@@ -838,7 +859,7 @@ void main() {
     );
 
     await _tapEditor(tester, 'ai-editor-clear-key');
-    expect(find.text(_zh.aiSettingsKeyWillClear), findsOneWidget);
+    await _expectKeyGuidance(tester, _zh.aiSettingsKeyWillClear);
     expect(find.text(_zh.aiSettingsUndoClear), findsOneWidget);
     await _tapEditor(tester, 'ai-editor-save');
 
@@ -1046,7 +1067,7 @@ void main() {
     expect(baseUrl.controller.text, 'http://127.0.0.1:11434/v1');
     expect(find.text(_outboundReason), findsOneWidget);
     expect(find.text(_overseasReason), findsOneWidget);
-    expect(find.text(_zh.aiSettingsApiKeyNotNeededHint), findsOneWidget);
+    await _expectKeyGuidance(tester, _zh.aiSettingsApiKeyNotNeededHint);
 
     await _tapEditor(tester, 'ai-editor-preset');
     expect(

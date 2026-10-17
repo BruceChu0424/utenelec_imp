@@ -79,6 +79,10 @@ void main() {
     // 判定结果：合格 2 / 不合格 1。
     await tester.tap(_headerFilter('判定结果'));
     await tester.pumpAndSettle();
+    final verdict = tester.widget<GridHeaderFilterCell>(_headerFilter('判定结果'));
+    expect(verdict.onSearch, isNull);
+    expect(find.byKey(const Key('uten-column-keyword-input')), findsNothing);
+    expect(find.byKey(const Key('uten-column-keyword-search')), findsNothing);
     expect(find.text('合格（2）'), findsOneWidget);
     await tester.tap(find.text('不合格（1）'));
     await tester.pumpAndSettle();

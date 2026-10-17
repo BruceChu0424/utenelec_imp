@@ -9,6 +9,18 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get tableFacetLoadFailed => 'Could not load values. Retry';
+
+  @override
+  String get tableFacetLoadMore => 'Load more values';
+
+  @override
+  String get masterSearchUpdating => 'Updating search results';
+
+  @override
+  String get tableCopySelectedText => 'Copy selected text';
+
+  @override
   String get release2518ServerUpdates =>
       'Authorized staff can check for server updates manually, then update now or schedule an update in the server\'s local time. Available updates show a reminder and badge; there are no periodic update checks.';
 
@@ -948,7 +960,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get securityScanManual => 'Enter code manually';
 
   @override
-  String get securityPasscodeHint => 'Enter the 6-digit pass code';
+  String get securityPasscodeHint => 'Pass code';
 
   @override
   String get securityPasscodeInvalid =>
@@ -2043,7 +2055,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticeBlessingWallEmpty => 'No blessings yet — send the first one';
 
   @override
-  String get noticeBlessingPlaceholder => 'Write your blessing…';
+  String get noticeBlessingPlaceholder => 'Blessing';
 
   @override
   String get noticeBlessingSendButton => 'Send blessing';
@@ -6448,7 +6460,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get quoteFinanceLoadDetailFailed =>
-      'Could not load the quote. Check the network or your access and try again.';
+      'The quote details could not be loaded. Try again.';
 
   @override
   String get quoteFinanceActionFailed =>
@@ -10698,4 +10710,597 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get serverUpdateCurrentVersion => 'Current version';
+
+  @override
+  String get serverUpdateAvailableVersion => 'Available update';
+
+  @override
+  String get serverUpdateKnownVersion => 'Last checked version';
+
+  @override
+  String get serverUpdateNotChecked => 'Not confirmed';
+
+  @override
+  String get serverUpdateNoNewVersion => 'Up to date at last check';
+
+  @override
+  String get serverUpdateNoCheckResult =>
+      'Check the release source for an available update.';
+
+  @override
+  String get serverUpdateCheck => 'Check for updates';
+
+  @override
+  String get serverUpdateView => 'Review update';
+
+  @override
+  String get serverUpdateReadOnly =>
+      'This session is read-only. Update actions are unavailable.';
+
+  @override
+  String get serverUpdateManual => 'Manual checks';
+
+  @override
+  String get serverUpdateLocalOnly =>
+      'Opening this page, refreshing and viewing progress only read this server\'s state; they never check the release source automatically.';
+
+  @override
+  String get serverUpdateUnconfigured => 'Release source not configured';
+
+  @override
+  String get serverUpdateUnconfiguredHint =>
+      'Ask a super administrator to configure the release source before checking.';
+
+  @override
+  String get serverUpdateUnavailable => 'Server update service unavailable';
+
+  @override
+  String get serverUpdateChecking => 'Checking for updates';
+
+  @override
+  String get serverUpdateRunning => 'Updating server';
+
+  @override
+  String get serverUpdateQueued => 'Update queued';
+
+  @override
+  String get serverUpdateScheduled => 'Update scheduled';
+
+  @override
+  String get serverUpdateCancelled => 'Schedule cancelled';
+
+  @override
+  String get serverUpdateCheckDone => 'Version check complete';
+
+  @override
+  String get serverUpdateDone => 'Server update complete';
+
+  @override
+  String get serverUpdateFailed => 'Update failed';
+
+  @override
+  String get serverUpdateRecovery => 'Recovery required';
+
+  @override
+  String get serverUpdateUnknownState => 'Job state not confirmed';
+
+  @override
+  String get serverUpdateRecentJob => 'Latest job';
+
+  @override
+  String get serverUpdateProgress => 'Progress';
+
+  @override
+  String get serverUpdateDetails => 'Job details';
+
+  @override
+  String get serverUpdateFailureDetails => 'Failure details';
+
+  @override
+  String get serverUpdateCopyDiagnostics => 'Copy diagnostics';
+
+  @override
+  String get serverUpdateDiagnosticsCopied => 'Safe diagnostics copied';
+
+  @override
+  String get serverUpdateLegacyFailure =>
+      'This host did not record safe failure details. Ask an administrator to investigate using the request ID.';
+
+  @override
+  String get serverUpdateServicePreserved =>
+      'Original service preserved by this job';
+
+  @override
+  String get serverUpdateServiceUnknown => 'Service status needs verification';
+
+  @override
+  String get serverUpdateRecoveryHint =>
+      'Ask a super administrator to verify the recovery point and service health before any further update.';
+
+  @override
+  String get serverUpdateNextStep => 'Next step';
+
+  @override
+  String get serverUpdateRequestId => 'Request ID';
+
+  @override
+  String get serverUpdateJobId => 'Job ID';
+
+  @override
+  String get serverUpdateErrorCode => 'Error code';
+
+  @override
+  String get serverUpdateFailedStage => 'Failed stage';
+
+  @override
+  String get serverUpdateStartedAt => 'Started';
+
+  @override
+  String get serverUpdateFinishedAt => 'Finished';
+
+  @override
+  String get serverUpdateScheduledAt => 'Scheduled for';
+
+  @override
+  String get serverUpdateLastChecked => 'Last checked';
+
+  @override
+  String get serverUpdateTimeZone => 'Server time zone';
+
+  @override
+  String get serverUpdateRetryCheckHint =>
+      'After addressing the cause, check again explicitly. This update will not be replayed.';
+
+  @override
+  String get serverUpdatePending => 'Verifying the original job';
+
+  @override
+  String get serverUpdatePendingHint =>
+      'The request outcome is unknown. Only the original job is queried; do not submit again.';
+
+  @override
+  String get serverUpdateManagement => 'Management';
+
+  @override
+  String get serverUpdateSource => 'Release source and credentials';
+
+  @override
+  String get serverUpdateSourceHint =>
+      'Super administrators only; secrets are write-only';
+
+  @override
+  String get serverUpdateSourcePending =>
+      'Save outcome pending; read the configuration again';
+
+  @override
+  String get serverUpdateStorage => 'Storage management';
+
+  @override
+  String get serverUpdateMigrationRequired =>
+      'This release includes database migrations';
+
+  @override
+  String get serverUpdateMigrationNotRequired =>
+      'No database migration required';
+
+  @override
+  String get serverUpdateHealthPass => 'Health check passed';
+
+  @override
+  String get serverUpdateHealthUnknown => 'Health result unconfirmed';
+
+  @override
+  String get serverUpdateHealthFailed => 'Health check failed';
+
+  @override
+  String get serverUpdatePhaseChecking => 'Check version';
+
+  @override
+  String get serverUpdatePhaseDownload => 'Download and verify';
+
+  @override
+  String get serverUpdatePhaseBackup => 'Backup';
+
+  @override
+  String get serverUpdatePhaseMigrate => 'Migrate database';
+
+  @override
+  String get serverUpdatePhaseActivate => 'Activate release';
+
+  @override
+  String get serverUpdatePhaseHealth => 'Health check';
+
+  @override
+  String get serverUpdatePhaseDone => 'Complete';
+
+  @override
+  String get serverUpdatePhaseUnknown => 'Unconfirmed';
+
+  @override
+  String get serverUpdateScheduleWait =>
+      'At the scheduled time, the server rechecks permission, source and target version. Closing this page does not cancel it.';
+
+  @override
+  String get serverUpdateRefresh => 'Refresh local state';
+
+  @override
+  String get serverUpdateNoJob => 'No update job yet';
+
+  @override
+  String get serverUpdateNoJobHint =>
+      'Progress and results appear here after an explicit check.';
+
+  @override
+  String get serverUpdateCheckBeforeRetry =>
+      'Check the version again before deciding to update.';
+
+  @override
+  String get serverUpdateCloseTemporarily => 'Close for now';
+
+  @override
+  String get serverUpdateReadbackRequired =>
+      'The save outcome is unknown. Read the server configuration before saving again. The original request will not be replayed.';
+
+  @override
+  String get serverUpdateExitCode => 'Exit code';
+
+  @override
+  String get serverUpdateCompanyVersion => 'Company server version';
+
+  @override
+  String get serverUpdateReadyHint =>
+      'An update is available. Install now or schedule it for a quiet period.';
+
+  @override
+  String get serverUpdateReceiptStatus => 'Original request status';
+
+  @override
+  String get taskClaimChecking => 'Checking the review lease. Please wait.';
+
+  @override
+  String get taskClaimIdentityChanged =>
+      'Your signed-in identity changed. Reopen the review.';
+
+  @override
+  String get taskClaimAcquireFailed =>
+      'The review lease could not be acquired. Try again.';
+
+  @override
+  String get taskClaimNetworkUnavailable =>
+      'Cannot reach the server. Check your connection and claim again.';
+
+  @override
+  String get taskClaimNetworkTimeout =>
+      'The server response timed out. Claim again later.';
+
+  @override
+  String get taskClaimLoginExpired =>
+      'Your session expired. Sign in again and retry.';
+
+  @override
+  String get taskClaimPermissionDenied =>
+      'You do not have permission to review this task. Refresh your permissions and retry.';
+
+  @override
+  String get taskClaimConflict =>
+      'The task lease or content changed. Refresh and claim again.';
+
+  @override
+  String get taskClaimNotFound =>
+      'The review task is unavailable or no longer pending. Refresh the list.';
+
+  @override
+  String get taskClaimRateLimited => 'Too many requests. Claim again later.';
+
+  @override
+  String get taskClaimServerUnavailable =>
+      'The server cannot process the review lease right now. Try again later.';
+
+  @override
+  String get taskClaimInvalidResponse =>
+      'No valid review lease was returned. Claim again.';
+
+  @override
+  String get taskClaimExpired => 'The review lease expired. Claim again.';
+
+  @override
+  String taskClaimTakenBy(String name) {
+    return '$name is reviewing this task. Try again later.';
+  }
+
+  @override
+  String get taskClaimDecisionNotReady =>
+      'The review lease is no longer valid. Claim again and check the latest content.';
+
+  @override
+  String get taskClaimReplaced =>
+      'The review lease expired or was replaced. Review is paused. Claim again.';
+
+  @override
+  String get taskClaimRenewFailed =>
+      'The review lease could not be verified. Review is paused. Claim again and check the latest content.';
+
+  @override
+  String get taskClaimReadOnly =>
+      'No valid review lease is held. This page is view only.';
+
+  @override
+  String get taskClaimRetry => 'Claim again and refresh';
+
+  @override
+  String get financeSalesReviewAccessHint =>
+      'Sales order finance review access is required. Ask a permissions administrator for access.';
+
+  @override
+  String get financeProcurementReviewAccessHint =>
+      'Purchase order approval access is required. Ask a permissions administrator for access.';
+
+  @override
+  String get financeArrivalReviewAccessHint =>
+      'Employees with the relevant view and approval permissions can handle excess arrivals. No additional department membership or named grant is required.';
+
+  @override
+  String get dashboardAuthorizedScope =>
+      'Shown by granted features and data scope';
+
+  @override
+  String get dashboardNoAuthorizedMetrics =>
+      'No overview metrics in your visible scope';
+
+  @override
+  String get dashboardNoAuthorizedTodos =>
+      'No pending tasks in your visible scope';
+
+  @override
+  String get financeBatchReviewCheckFailed =>
+      'The batch review content could not be verified. Refresh and try again.';
+
+  @override
+  String get financeBatchReviewResultUnknown =>
+      'The batch review outcome is unconfirmed. Refresh and check the document states before acting again.';
+
+  @override
+  String get financeReviewLoadFailed =>
+      'The review details could not be loaded. Try again.';
+
+  @override
+  String get financeReportLoadFailed =>
+      'The report could not be loaded. Refresh and try again.';
+
+  @override
+  String get financeBatchReviewRefreshFailed =>
+      'The batch review completed, but the page could not refresh. Refresh to check the latest document states.';
+
+  @override
+  String get financeReviewAuthorityChanged =>
+      'The review content or version changed. Your input is retained. Reload and check the latest content before reviewing.';
+
+  @override
+  String get permissionMissingReads =>
+      'The grant configuration is retained, but it is not currently effective and the corresponding page\'s viewing permissions are missing. Check the grant status; add viewing permissions when access to that page is needed.';
+
+  @override
+  String get permissionCompleteReads => 'Add required viewing permissions';
+
+  @override
+  String get permissionInactiveGrant =>
+      'The previous grant is no longer effective. This action is currently unauthorized.';
+
+  @override
+  String get permissionRenewGrant => 'Grant again';
+
+  @override
+  String get permissionRemoveInactiveGrant => 'Remove inactive grant';
+
+  @override
+  String get permissionPendingReads =>
+      'Saving adds only ordinary viewing permissions that may be granted automatically. To restore revoked permissions or grant sensitive permissions, confirm each in its own permission setting.';
+
+  @override
+  String get permissionBatchNormalOnly =>
+      'Grant group (exclude sensitive and locked items)';
+
+  @override
+  String get permissionSavedRefreshPending =>
+      'Permissions were saved, but the current session could not refresh. Reload the page to check the latest permissions.';
+
+  @override
+  String get permissionSaved => 'Page permissions saved';
+
+  @override
+  String get permissionSavedDetailPending =>
+      'Permissions were saved, but the latest settings could not be read. Reload this employee before making further changes.';
+
+  @override
+  String get permissionSaveResultUnknown =>
+      'The permission save outcome is unconfirmed. Reload this employee\'s permissions and check them before acting again.';
+
+  @override
+  String get masterEntitySearchHint => 'Search by name or code';
+
+  @override
+  String get permissionRevokeOnly =>
+      'You can only remove the existing grant. Granting it again is not allowed.';
+
+  @override
+  String get release2521Permissions =>
+      'Finance reviews, final quality inspections and similar operations follow effective permissions without extra department or named-grant requirements. Business data scopes and document-state checks remain in place.';
+
+  @override
+  String get release2521Session =>
+      'Sessions and page actions follow refreshed permissions after authorization changes. Unsaved switch changes are marked as pending save.';
+
+  @override
+  String get release2521PermissionSettings =>
+      'Ordinary switches change only the selected permission. Saving adds eligible ordinary viewing permissions under the authorization rules; sensitive grants and restoration of revoked permissions still require individual confirmation.';
+
+  @override
+  String get release2521ReviewFeedback =>
+      'Review-claim failures show the actual reason. Unconfirmed batch-review outcomes clearly ask you to refresh and check document states.';
+
+  @override
+  String get release2521ServerUpdates =>
+      'Server update tasks show their current stage and result. Reopen the page to continue checking progress; failures show confirmed reasons and suggested next steps.';
+
+  @override
+  String get release2521TableSearchCopy =>
+      'Search text columns such as names and codes from the header. Press Enter or Search to show matching rows, and combine conditions across columns. Search and load more candidates, or select and copy table text without changing checked rows.';
+
+  @override
+  String get release2521FieldHints =>
+      'Empty form fields now show their field names, with examples and guidance available from the information control. Forms, selectors and dates use consistent empty states while preserving valid values and personal display settings.';
+
+  @override
+  String get release2521ReferencePickers =>
+      'Mould and component pickers show categories on the left and a detail table on the right, including series, names, codes, specifications and colours. Typing shows similar candidates; the button opens the full picker with your keywords. Existing selection scopes, usage quantities and checks remain in place.';
+
+  @override
+  String get release2521MasterDataImport =>
+      'Goods exports include the fields needed to import an edited template, using actual category paths and existing validation. Category code prefixes can start with digits, and remarks can appear beside category names. Existing codes and category identities are preserved.';
+
+  @override
+  String get release2521PurchaseDocuments =>
+      'Purchase orders support print previews, with the actual finance reviewer shown in the review field. Purchase task history shows each material on its own row with the supplier. Pending decomposition and workbench tables can be exported using the current filters.';
+
+  @override
+  String get release2521GoodsHistory =>
+      'View your last ten goods data changes and undo or redo them when current conditions allow. Later changes, business references and permissions are checked again, and each operation is recorded.';
+
+  @override
+  String get goodsHistoryTitle => 'Goods operation history';
+
+  @override
+  String get goodsHistoryHint =>
+      'Select one of the last 10 data changes to undo. Redo restores the last undo. Later changes or business references may prevent restoration.';
+
+  @override
+  String get goodsHistoryUndo => 'Undo';
+
+  @override
+  String get goodsHistoryRedo => 'Redo last undo';
+
+  @override
+  String get goodsHistoryUndoSelected => 'Undo selected operation';
+
+  @override
+  String goodsHistoryUndoConfirm(String label, int count) {
+    return 'Undo \"$label\", affecting $count records?';
+  }
+
+  @override
+  String goodsHistoryRedoConfirm(String label, int count) {
+    return 'Redo the last undo of \"$label\", restoring $count records?';
+  }
+
+  @override
+  String get goodsHistoryUndoDone =>
+      'The selected operation was undone and recorded.';
+
+  @override
+  String get goodsHistoryRedoDone => 'The last undo was redone and recorded.';
+
+  @override
+  String get goodsHistoryLoadFailed =>
+      'Could not load operation history. Refresh to try again.';
+
+  @override
+  String get goodsHistoryActionFailed =>
+      'The operation result could not be confirmed.';
+
+  @override
+  String get goodsHistoryRefreshBeforeRetry =>
+      'History is retained. Refresh and check the latest state before trying again.';
+
+  @override
+  String get goodsHistoryNoPermission =>
+      'You do not have access to goods operation history.';
+
+  @override
+  String get goodsHistoryEmpty =>
+      'No operation history yet. Data changes will appear here.';
+
+  @override
+  String get goodsHistoryEvents => 'Undo and redo activity';
+
+  @override
+  String goodsHistoryEvent(String action, String label) {
+    return '$action: $label';
+  }
+
+  @override
+  String goodsHistoryAffected(int count) {
+    return '$count affected records';
+  }
+
+  @override
+  String get goodsHistoryUndone => 'Undone';
+
+  @override
+  String get goodsHistoryApplied => 'Applied';
+
+  @override
+  String get goodsHistorySelected => 'Selected';
+
+  @override
+  String get goodsHistoryBlocked =>
+      'This operation cannot currently be undone or redone. Refresh for the latest state.';
+
+  @override
+  String get goodsHistoryOther => 'Data change';
+
+  @override
+  String get goodsHistoryGoodsCreate => 'Create goods';
+
+  @override
+  String get goodsHistoryGoodsEdit => 'Edit goods';
+
+  @override
+  String get goodsHistoryGoodsNameEn => 'Edit English goods name';
+
+  @override
+  String get goodsHistoryGoodsStatus => 'Enable or disable goods';
+
+  @override
+  String get goodsHistoryGoodsDelete => 'Delete goods';
+
+  @override
+  String get goodsHistoryGoodsImport => 'Import goods from file';
+
+  @override
+  String get goodsHistoryBomCreate => 'Add assembly components';
+
+  @override
+  String get goodsHistoryBomEdit => 'Edit assembly components';
+
+  @override
+  String get goodsHistoryBomDelete => 'Delete assembly components';
+
+  @override
+  String get goodsHistoryBomPaste => 'Paste assembly components';
+
+  @override
+  String get goodsHistoryBomAudit => 'Change component approval';
+
+  @override
+  String get goodsHistoryCategoryCreate => 'Create goods category';
+
+  @override
+  String get goodsHistoryCategoryEdit => 'Edit goods category';
+
+  @override
+  String get goodsHistoryCategoryDelete => 'Delete goods category';
+
+  @override
+  String get goodsHistoryClose => 'Close';
+
+  @override
+  String get goodsHistoryGoodsPurchasePolicy =>
+      'Edit goods purchase receipt policy';
+
+  @override
+  String get goodsHistoryGoodsSubcontractPolicy =>
+      'Edit goods subcontract policy';
 }

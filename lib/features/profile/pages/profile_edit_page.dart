@@ -569,6 +569,7 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
         const SizedBox(height: UtenSpacing.s8),
         UtenInput(
           controller: ctrl,
+          hint: _mapL10n(l10n, def.labelKey),
           focusNode: _focusNodes[def.code],
           keyboardType:
               def.code == ProfileFieldPolicy.phone ||

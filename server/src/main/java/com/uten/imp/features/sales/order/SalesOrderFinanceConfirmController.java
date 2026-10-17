@@ -34,8 +34,8 @@ import java.util.UUID;
  *       不改订单状态/预留，通知归属销售修正）</li>
  * </ul>
  *
- * <p>确认人资格（财务部门树在职 + sales_order_finance:confirm）在服务层复核；
- * 权限可在权限设置中按部门/角色/个人配置。
+ * <p>员工账号状态及销售订单财务查看、确认的有效权限在服务层复核；
+ * 权限可在权限设置中通过部门配置、个人覆盖或负责人页面委派授予。
  */
 @RestController
 @RequestMapping("/api/sales/orders")

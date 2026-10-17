@@ -43,12 +43,24 @@ public class ServerStorageService {
     public Summary summary() {
         AuthUser user = require(false);
         Summary raw;
-        try { raw = read(STORAGE_SUMMARY, Map.of(), user.getId(), Summary.class, null); }
-        catch (ApiException unavailable) {
-            // Host inventory is optional in Windows development; database/self metrics
-            // stay useful and unknown host numbers are never replaced with zero.
+        Capabilities capability;
+        try {
+            raw = readResponse(STORAGE_SUMMARY, Map.of(), user.getId(), Summary.class, null);
+            var reported = raw.capabilities();
+            // Helper-controlled values cannot claim a locally unsupported platform.
+            var failure = reported.available() ? null
+                    : new HostOperationsException(reported.unavailableCode()).availabilityFailure();
+            capability = new Capabilities(reported.available(),
+                    reported.available() && reported.canCleanup() && canCleanup(user),
+                    failure == null ? reported.unavailableReason() : failure.title() + "：" + failure.reason() + " " + failure.suggestion(),
+                    failure == null ? null : failure.code());
+        } catch (HostOperationsException unavailable) {
+            var failure = unavailable.availabilityFailure();
+            // Keep local process/database metrics while host inventory remains unknown.
+            capability = new Capabilities(false, false,
+                    failure.title() + "：" + failure.reason() + " " + failure.suggestion(), failure.code());
             raw = new Summary(Instant.now(), "UNKNOWN", null,
-                    new Capabilities(false, false, "当前环境未提供受控主机存储助手。"),
+                    capability,
                     List.of(), List.of(), null, null, null);
         }
         var heap = ManagementFactory.getMemoryMXBean().getHeapMemoryUsage();
@@ -57,9 +69,6 @@ public class ServerStorageService {
                 ? "当前环境不提供进程常驻内存；Java 堆内存单独显示。"
                 : "当前后端进程实际常驻内存，包含 Java 堆、线程和本地内存；不包含独立子进程。" );
         BusinessFootprint business = footprint();
-        Capabilities capability = raw.capabilities() == null ? new Capabilities(false, false, "主机助手尚未提供存储能力。")
-                : new Capabilities(raw.capabilities().available(), raw.capabilities().canCleanup() && canCleanup(user),
-                raw.capabilities().unavailableReason());
         return new Summary(raw.sampledAt(), raw.status(), raw.revision(), capability,
                 raw.volumes() == null ? List.of() : raw.volumes(), raw.categories() == null ? List.of() : raw.categories(),
                 process, business.database(), business.uploads());
@@ -120,13 +129,17 @@ public class ServerStorageService {
     }
 
     private <T> T read(HostOperationsClient.Operation operation, Map<String,Object> payload, UUID actor, Class<T> type, UUID requestId) {
+        try { return readResponse(operation, payload, actor, type, requestId); }
+        catch (HostOperationsException safe) { throw safe.toApiException(); }
+    }
+
+    private <T> T readResponse(HostOperationsClient.Operation operation, Map<String,Object> payload, UUID actor, Class<T> type, UUID requestId) {
         try {
             JsonNode response = host.call(operation, payload, actor, requestId == null ? UUID.randomUUID() : requestId);
             validateResponse(response, operation, requestId);
             return mapper.treeToValue(response, type);
-        } catch (HostOperationsException safe) { throw safe.toApiException(); }
-        catch (JsonProcessingException | IllegalArgumentException malformed) {
-            throw new ApiException(ErrorCode.SERVER_OPERATIONS_UNAVAILABLE, "主机存储信息不完整，请联系服务器管理员。");
+        } catch (JsonProcessingException | IllegalArgumentException malformed) {
+            throw new HostOperationsException("INVALID_RESPONSE", operation.outcomeMayChangeState());
         }
     }
 

@@ -641,6 +641,10 @@ void main() {
         ],
       ),
     );
+    expect(_text(tester, _deal('a')), isEmpty);
+    expect(tester.widget<TextField>(_deal('a')).decoration?.hintText, '成交单价');
+    expect(tester.widget<TextField>(_deal('a')).decoration?.suffixText, '元');
+    expect(tester.widget<TextField>(_discount('c')).decoration?.hintText, '折扣');
     await _openRowMenu(tester, '货品b');
     await tester.tap(find.text('设为赠品/0价'));
     await tester.pumpAndSettle();

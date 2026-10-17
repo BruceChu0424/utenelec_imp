@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/features/basic_data/models/account_node.dart';
 import 'package:uten_imp/features/basic_data/models/currency_node.dart';
@@ -8,6 +9,27 @@ import 'package:uten_imp/features/basic_data/repositories/account_repository.dar
 import 'package:uten_imp/features/basic_data/repositories/currency_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/account_balance_reconciliation_dialog.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+
+Finder _targetFields() => find.byWidgetPredicate(
+  (widget) =>
+      widget is TextField &&
+      widget.key is ValueKey<String> &&
+      (widget.key! as ValueKey<String>).value.startsWith(
+        'account-target-balance-',
+      ),
+);
+
+UtenFieldHintIcon _localDeltaHint(WidgetTester tester) =>
+    tester.widget<UtenFieldHintIcon>(
+      find.descendant(
+        of: find.byKey(
+          const ValueKey('account-local-delta-account-usd'),
+          skipOffstage: false,
+        ),
+        matching: find.byType(UtenFieldHintIcon, skipOffstage: false),
+        skipOffstage: false,
+      ),
+    );
 
 void main() {
   testWidgets(
@@ -112,10 +134,7 @@ void main() {
       await tester.tap(find.text('打开余额核对'));
       await tester.pumpAndSettle();
 
-      final target = find.byWidgetPredicate(
-        (widget) =>
-            widget is TextField && widget.decoration?.hintText == '重新输入',
-      );
+      final target = _targetFields();
       final reason = find.byKey(const ValueKey('account-balance-reason'));
       expect(target, findsOneWidget);
       expect((tester.widget<TextField>(target).controller?.text), isEmpty);
@@ -169,10 +188,7 @@ void main() {
       expect(find.textContaining('账户币种：'), findsOneWidget);
       expect(find.textContaining('人民币'), findsWidgets);
 
-      final target = find.byWidgetPredicate(
-        (widget) =>
-            widget is TextField && widget.decoration?.hintText == '重新输入',
-      );
+      final target = _targetFields();
       final reason = find.byKey(const ValueKey('account-balance-reason'));
       await tester.enterText(target, '101.0000');
       await tester.pump();
@@ -182,16 +198,17 @@ void main() {
       );
       expect(localDelta, findsOneWidget);
       // 说明收进标签旁 ⓘ 悬停提示（fieldLabel 约定）。
-      expect(find.byTooltip('只用于总账，不改变账户原币余额'), findsOneWidget);
+      final initialHint = _localDeltaHint(tester);
+      expect(initialHint.info?.split('\n\n'), contains('只用于总账，不改变账户原币余额'));
+      expect(initialHint.errorMessage, isNull);
 
       await tester.enterText(reason, '美元账户上线余额复核');
       await tester.tap(find.text('提交核对（1）'));
       await tester.pump();
       expect(find.text('外币余额变化时必须填写本位币调账额'), findsNothing);
-      expect(
-        find.byTooltip('外币余额变化时必须填写本位币调账额\n\n只用于总账，不改变账户原币余额'),
-        findsOneWidget,
-      );
+      final requiredHint = _localDeltaHint(tester);
+      expect(requiredHint.errorMessage, '外币余额变化时必须填写本位币调账额');
+      expect(requiredHint.info?.split('\n\n'), contains('只用于总账，不改变账户原币余额'));
 
       await tester.enterText(localDelta, '7.2000');
       await tester.tap(find.text('提交核对（1）'));
@@ -272,10 +289,7 @@ void main() {
       await tester.tap(find.text('打开余额核对'));
       await tester.pumpAndSettle();
 
-      final targets = find.byWidgetPredicate(
-        (widget) =>
-            widget is TextField && widget.decoration?.hintText == '重新输入',
-      );
+      final targets = _targetFields();
       expect(targets, findsNWidgets(2));
       expect(find.text('已禁用旧账户'), findsNothing);
 
@@ -315,10 +329,9 @@ void main() {
       await tester.tap(find.text('提交核对（2）'));
       await tester.pump();
       expect(find.text('外币余额变化时必须填写本位币调账额'), findsNothing);
-      expect(
-        find.byTooltip('外币余额变化时必须填写本位币调账额\n\n只用于总账，不改变账户原币余额'),
-        findsOneWidget,
-      );
+      final requiredHint = _localDeltaHint(tester);
+      expect(requiredHint.errorMessage, '外币余额变化时必须填写本位币调账额');
+      expect(requiredHint.info?.split('\n\n'), contains('只用于总账，不改变账户原币余额'));
 
       final localDelta = find.byKey(
         const ValueKey('account-local-delta-account-usd'),

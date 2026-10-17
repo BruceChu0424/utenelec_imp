@@ -81,16 +81,16 @@ class ServerOperationsServiceTest {
     @Test void malformedDurableAckIsUncertainAndRootConflictUsesSafeMessage() {
         UUID request=UUID.randomUUID();
         when(client.call(any(),anyMap(),any(),any())).thenReturn(mapper.createObjectNode());
-        var failure=catchThrowableOfType(()->service.check(new ServerOperationsDto.Check(request,"rev1",null)),ApiException.class);
+        var failure=catchThrowableOfType(ApiException.class,()->service.check(new ServerOperationsDto.Check(request,"rev1",null)));
         assertThat(failure.getCode()).isEqualTo(ErrorCode.SERVER_OPERATION_OUTCOME_UNCERTAIN);
         when(client.call(any(),anyMap(),any(),any())).thenThrow(new HostOperationsException("STALE_CONFIG"));
-        assertThat(catchThrowableOfType(()->service.check(new ServerOperationsDto.Check(request,"rev1",null)),ApiException.class).getCode()).isEqualTo(ErrorCode.CONFLICT);
+        assertThat(catchThrowableOfType(ApiException.class,()->service.check(new ServerOperationsDto.Check(request,"rev1",null))).getCode()).isEqualTo(ErrorCode.CONFLICT);
     }
     @Test void onlyAppointmentOwnerOrSuperAdminCanCancelEvenIfAnotherOperatorHasUpdateGrant() {
         UUID id=UUID.randomUUID();var job=job(id,"SCHEDULE_UPDATE","SCHEDULED")
                 .put("scheduledAt","2026-10-17T02:00:00Z").put("actorId",UUID.randomUUID().toString());
         when(client.call(eq(HostOperationsClient.Operation.UPDATE_JOB),anyMap(),any(),any())).thenReturn(job);
-        var rejected=catchThrowableOfType(()->service.cancel(id,new ServerOperationsDto.Cancel(UUID.randomUUID())),ApiException.class);
+        var rejected=catchThrowableOfType(ApiException.class,()->service.cancel(id,new ServerOperationsDto.Cancel(UUID.randomUUID())));
         assertThat(rejected.getCode()).isEqualTo(ErrorCode.FORBIDDEN);
         verify(client,never()).call(eq(HostOperationsClient.Operation.UPDATE_CANCEL),anyMap(),any(),any());
     }

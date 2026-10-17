@@ -9,6 +9,18 @@ class AppLocalizationsKo extends AppLocalizations {
   AppLocalizationsKo([String locale = 'ko']) : super(locale);
 
   @override
+  String get tableFacetLoadFailed => '값을 불러오지 못했습니다. 다시 시도';
+
+  @override
+  String get tableFacetLoadMore => '값 더 불러오기';
+
+  @override
+  String get masterSearchUpdating => '검색 결과 업데이트 중';
+
+  @override
+  String get tableCopySelectedText => '선택한 텍스트 복사';
+
+  @override
   String get release2518ServerUpdates =>
       '권한이 있는 직원은 서버 새 버전을 직접 확인한 뒤 즉시 업데이트하거나 서버 현지 시간으로 예약할 수 있습니다. 새 버전이 확인되면 알림과 배지가 표시되며, 정기적인 자동 확인은 실행하지 않습니다.';
 
@@ -922,7 +934,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get securityScanManual => '코드 직접 입력';
 
   @override
-  String get securityPasscodeHint => '6자리 출입 코드 입력';
+  String get securityPasscodeHint => '출입 코드';
 
   @override
   String get securityPasscodeInvalid => '6자리 숫자 출입 코드를 입력해 주세요';
@@ -1990,7 +2002,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get noticeBlessingWallEmpty => '아직 축복이 없어요 — 첫 축복을 보내보세요';
 
   @override
-  String get noticeBlessingPlaceholder => '축복 메시지를 입력하세요…';
+  String get noticeBlessingPlaceholder => '축복 메시지';
 
   @override
   String get noticeBlessingSendButton => '축복 보내기';
@@ -6283,8 +6295,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get quoteFinanceReopenedDone => '확정을 취소했습니다. 가격을 다시 수정할 수 있습니다';
 
   @override
-  String get quoteFinanceLoadDetailFailed =>
-      '견적 상세를 불러오지 못했습니다. 네트워크나 권한을 확인한 후 다시 시도하세요.';
+  String get quoteFinanceLoadDetailFailed => '견적 상세를 불러올 수 없습니다. 다시 시도하세요.';
 
   @override
   String get quoteFinanceActionFailed => '처리하지 못했습니다. 잠시 후 다시 시도하세요.';
@@ -10322,4 +10333,562 @@ class AppLocalizationsKo extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get serverUpdateCurrentVersion => '현재 버전';
+
+  @override
+  String get serverUpdateAvailableVersion => '사용 가능한 새 버전';
+
+  @override
+  String get serverUpdateKnownVersion => '마지막 확인 버전';
+
+  @override
+  String get serverUpdateNotChecked => '확인되지 않음';
+
+  @override
+  String get serverUpdateNoNewVersion => '마지막 확인 시 최신 버전';
+
+  @override
+  String get serverUpdateNoCheckResult => '배포 소스를 확인해 새 버전을 찾으세요.';
+
+  @override
+  String get serverUpdateCheck => '업데이트 확인';
+
+  @override
+  String get serverUpdateView => '업데이트 보기';
+
+  @override
+  String get serverUpdateReadOnly => '현재 세션은 읽기 전용입니다. 업데이트할 수 없습니다.';
+
+  @override
+  String get serverUpdateManual => '수동 확인';
+
+  @override
+  String get serverUpdateLocalOnly =>
+      '페이지 열기, 새로고침, 진행 상황 보기는 이 서버 상태만 읽으며 배포 소스를 자동 확인하지 않습니다.';
+
+  @override
+  String get serverUpdateUnconfigured => '배포 소스 미설정';
+
+  @override
+  String get serverUpdateUnconfiguredHint => '최고 관리자에게 배포 소스 설정을 요청한 후 확인하세요.';
+
+  @override
+  String get serverUpdateUnavailable => '서버 업데이트 기능 사용 불가';
+
+  @override
+  String get serverUpdateChecking => '버전 확인 중';
+
+  @override
+  String get serverUpdateRunning => '서버 업데이트 중';
+
+  @override
+  String get serverUpdateQueued => '업데이트 대기 중';
+
+  @override
+  String get serverUpdateScheduled => '업데이트 예약됨';
+
+  @override
+  String get serverUpdateCancelled => '예약 취소됨';
+
+  @override
+  String get serverUpdateCheckDone => '버전 확인 완료';
+
+  @override
+  String get serverUpdateDone => '서버 업데이트 완료';
+
+  @override
+  String get serverUpdateFailed => '업데이트 실패';
+
+  @override
+  String get serverUpdateRecovery => '복구 필요';
+
+  @override
+  String get serverUpdateUnknownState => '작업 상태 미확인';
+
+  @override
+  String get serverUpdateRecentJob => '최근 작업';
+
+  @override
+  String get serverUpdateProgress => '진행 상황';
+
+  @override
+  String get serverUpdateDetails => '작업 상세';
+
+  @override
+  String get serverUpdateFailureDetails => '실패 상세';
+
+  @override
+  String get serverUpdateCopyDiagnostics => '진단 정보 복사';
+
+  @override
+  String get serverUpdateDiagnosticsCopied => '안전한 진단 정보 복사됨';
+
+  @override
+  String get serverUpdateLegacyFailure =>
+      '이 서버는 표시 가능한 실패 상세를 기록하지 않았습니다. 요청 ID로 관리자에게 확인을 요청하세요.';
+
+  @override
+  String get serverUpdateServicePreserved => '이 작업에서 기존 서비스 보존';
+
+  @override
+  String get serverUpdateServiceUnknown => '서비스 상태 확인 필요';
+
+  @override
+  String get serverUpdateRecoveryHint =>
+      '최고 관리자가 복구 지점과 서비스 상태를 확인하기 전에는 다시 업데이트하지 마세요.';
+
+  @override
+  String get serverUpdateNextStep => '다음 단계';
+
+  @override
+  String get serverUpdateRequestId => '요청 ID';
+
+  @override
+  String get serverUpdateJobId => '작업 ID';
+
+  @override
+  String get serverUpdateErrorCode => '오류 코드';
+
+  @override
+  String get serverUpdateFailedStage => '실패 단계';
+
+  @override
+  String get serverUpdateStartedAt => '시작 시간';
+
+  @override
+  String get serverUpdateFinishedAt => '완료 시간';
+
+  @override
+  String get serverUpdateScheduledAt => '예약 시간';
+
+  @override
+  String get serverUpdateLastChecked => '마지막 확인';
+
+  @override
+  String get serverUpdateTimeZone => '서버 시간대';
+
+  @override
+  String get serverUpdateRetryCheckHint =>
+      '원인을 해결한 후 수동으로 다시 확인하세요. 이번 업데이트를 재실행하지 않습니다.';
+
+  @override
+  String get serverUpdatePending => '원래 작업 확인 중';
+
+  @override
+  String get serverUpdatePendingHint =>
+      '요청 결과가 불확실합니다. 원래 작업 상태만 조회하며 중복 시작하지 마세요.';
+
+  @override
+  String get serverUpdateManagement => '관리';
+
+  @override
+  String get serverUpdateSource => '배포 소스 및 자격 증명';
+
+  @override
+  String get serverUpdateSourceHint => '최고 관리자만 설정 가능 · 비밀 키 읽기 불가';
+
+  @override
+  String get serverUpdateSourcePending => '저장 결과 미확인 · 설정 다시 읽기 필요';
+
+  @override
+  String get serverUpdateStorage => '스토리지 관리';
+
+  @override
+  String get serverUpdateMigrationRequired => '데이터베이스 마이그레이션 포함';
+
+  @override
+  String get serverUpdateMigrationNotRequired => '데이터베이스 마이그레이션 불필요';
+
+  @override
+  String get serverUpdateHealthPass => '상태 검사 통과';
+
+  @override
+  String get serverUpdateHealthUnknown => '상태 검사 결과 미확인';
+
+  @override
+  String get serverUpdateHealthFailed => '상태 검사 실패';
+
+  @override
+  String get serverUpdatePhaseChecking => '버전 확인';
+
+  @override
+  String get serverUpdatePhaseDownload => '다운로드 및 서명 검증';
+
+  @override
+  String get serverUpdatePhaseBackup => '백업';
+
+  @override
+  String get serverUpdatePhaseMigrate => '데이터베이스 마이그레이션';
+
+  @override
+  String get serverUpdatePhaseActivate => '버전 활성화';
+
+  @override
+  String get serverUpdatePhaseHealth => '상태 검사';
+
+  @override
+  String get serverUpdatePhaseDone => '완료';
+
+  @override
+  String get serverUpdatePhaseUnknown => '미확인';
+
+  @override
+  String get serverUpdateScheduleWait =>
+      '예약 시각에 서버가 권한, 소스 및 대상 버전을 다시 확인합니다. 페이지를 닫아도 예약은 유지됩니다.';
+
+  @override
+  String get serverUpdateRefresh => '로컬 상태 새로고침';
+
+  @override
+  String get serverUpdateNoJob => '업데이트 작업 없음';
+
+  @override
+  String get serverUpdateNoJobHint => '수동 확인 후 진행 상황과 결과가 여기에 표시됩니다.';
+
+  @override
+  String get serverUpdateCheckBeforeRetry => '다시 버전을 확인한 후 업데이트를 결정하세요.';
+
+  @override
+  String get serverUpdateCloseTemporarily => '잠시 닫기';
+
+  @override
+  String get serverUpdateReadbackRequired =>
+      '저장 결과가 불확실합니다. 다시 저장하기 전에 서버 설정을 읽으세요. 원래 요청은 재실행하지 않습니다.';
+
+  @override
+  String get serverUpdateExitCode => '종료 코드';
+
+  @override
+  String get serverUpdateCompanyVersion => '회사 서버 버전';
+
+  @override
+  String get serverUpdateReadyHint => '새 버전이 있습니다. 지금 업데이트하거나 여유 시간에 예약하세요.';
+
+  @override
+  String get serverUpdateReceiptStatus => '원래 요청의 최신 상태';
+
+  @override
+  String get taskClaimChecking => '검토 점유를 확인하고 있습니다. 잠시 기다려 주세요.';
+
+  @override
+  String get taskClaimIdentityChanged => '로그인 계정이 변경되었습니다. 검토를 다시 여세요.';
+
+  @override
+  String get taskClaimAcquireFailed => '검토 점유를 얻지 못했습니다. 다시 시도하세요.';
+
+  @override
+  String get taskClaimNetworkUnavailable =>
+      '서버에 연결할 수 없습니다. 네트워크를 확인한 후 다시 점유하세요.';
+
+  @override
+  String get taskClaimNetworkTimeout => '서버 응답 시간이 초과되었습니다. 나중에 다시 점유하세요.';
+
+  @override
+  String get taskClaimLoginExpired => '로그인이 만료되었습니다. 다시 로그인한 후 시도하세요.';
+
+  @override
+  String get taskClaimPermissionDenied =>
+      '이 작업을 검토할 권한이 없습니다. 권한을 새로 고친 후 다시 시도하세요.';
+
+  @override
+  String get taskClaimConflict => '작업 점유 또는 내용이 변경되었습니다. 새로 고친 후 다시 점유하세요.';
+
+  @override
+  String get taskClaimNotFound => '검토 작업이 없거나 더 이상 대기 중이 아닙니다. 목록을 새로 고치세요.';
+
+  @override
+  String get taskClaimRateLimited => '요청이 너무 많습니다. 나중에 다시 점유하세요.';
+
+  @override
+  String get taskClaimServerUnavailable =>
+      '서버가 검토 점유를 처리할 수 없습니다. 나중에 다시 시도하세요.';
+
+  @override
+  String get taskClaimInvalidResponse => '유효한 검토 점유를 받지 못했습니다. 다시 점유하세요.';
+
+  @override
+  String get taskClaimExpired => '검토 점유가 만료되었습니다. 다시 점유하세요.';
+
+  @override
+  String taskClaimTakenBy(String name) {
+    return '$name 님이 검토 중입니다. 나중에 다시 시도하세요.';
+  }
+
+  @override
+  String get taskClaimDecisionNotReady =>
+      '검토 점유가 유효하지 않습니다. 다시 점유하고 최신 내용을 확인하세요.';
+
+  @override
+  String get taskClaimReplaced => '검토 점유가 만료되거나 교체되어 검토를 중지했습니다. 다시 점유하세요.';
+
+  @override
+  String get taskClaimRenewFailed =>
+      '검토 점유를 확인할 수 없어 검토를 중지했습니다. 다시 점유하고 최신 내용을 확인하세요.';
+
+  @override
+  String get taskClaimReadOnly => '유효한 검토 점유가 없어 조회만 가능합니다.';
+
+  @override
+  String get taskClaimRetry => '다시 점유 후 새로 고침';
+
+  @override
+  String get financeSalesReviewAccessHint =>
+      '판매 주문 재무 검토 조회 권한이 필요합니다. 권한 관리자에게 요청하세요.';
+
+  @override
+  String get financeProcurementReviewAccessHint =>
+      '발주 승인 조회 권한이 필요합니다. 권한 관리자에게 요청하세요.';
+
+  @override
+  String get financeArrivalReviewAccessHint =>
+      '해당 조회 및 승인 권한이 있는 직원은 초과 입고를 처리할 수 있습니다. 별도의 부서 소속이나 개인 지정 권한은 필요하지 않습니다.';
+
+  @override
+  String get dashboardAuthorizedScope => '허용된 기능 및 데이터 범위에 따라 표시';
+
+  @override
+  String get dashboardNoAuthorizedMetrics => '조회 가능한 범위에 개요 지표가 없습니다';
+
+  @override
+  String get dashboardNoAuthorizedTodos => '조회 가능한 범위에 대기 작업이 없습니다';
+
+  @override
+  String get financeBatchReviewCheckFailed =>
+      '일괄 검토 내용을 확인할 수 없습니다. 새로 고친 후 다시 시도하세요.';
+
+  @override
+  String get financeBatchReviewResultUnknown =>
+      '일괄 승인 결과가 확인되지 않았습니다. 새로 고쳐 문서 상태를 확인한 후 다시 처리하세요.';
+
+  @override
+  String get financeReviewLoadFailed => '검토 상세를 불러올 수 없습니다. 다시 시도하세요.';
+
+  @override
+  String get financeReportLoadFailed => '보고서를 불러올 수 없습니다. 새로 고친 후 다시 시도하세요.';
+
+  @override
+  String get financeBatchReviewRefreshFailed =>
+      '일괄 승인은 완료되었지만 페이지를 새로 고치지 못했습니다. 새로 고쳐 최신 문서 상태를 확인하세요.';
+
+  @override
+  String get financeReviewAuthorityChanged =>
+      '검토 내용이나 버전이 변경되었습니다. 입력 내용은 보존됩니다. 다시 불러와 최신 내용을 확인한 후 검토하세요.';
+
+  @override
+  String get permissionMissingReads =>
+      '권한 설정은 보존되어 있지만 현재 유효하지 않으며 해당 페이지에 필요한 조회 권한도 없습니다. 권한 상태를 확인하고 해당 페이지에 들어가야 할 때 조회 권한을 추가하세요.';
+
+  @override
+  String get permissionCompleteReads => '필요한 조회 권한 추가';
+
+  @override
+  String get permissionInactiveGrant => '이전 권한이 더 이상 유효하지 않아 현재 권한이 없습니다.';
+
+  @override
+  String get permissionRenewGrant => '다시 권한 부여';
+
+  @override
+  String get permissionRemoveInactiveGrant => '유효하지 않은 권한 제거';
+
+  @override
+  String get permissionPendingReads =>
+      '저장 시 자동으로 부여할 수 있는 일반 조회 권한만 추가합니다. 회수된 권한을 복구하거나 민감한 권한을 부여하려면 해당 권한 항목에서 개별적으로 확인하세요.';
+
+  @override
+  String get permissionBatchNormalOnly => '그룹 권한 부여(민감 및 잠긴 항목 제외)';
+
+  @override
+  String get permissionSavedRefreshPending =>
+      '권한은 저장되었지만 현재 세션을 새로 고치지 못했습니다. 페이지를 새로 고쳐 최신 권한을 확인하세요.';
+
+  @override
+  String get permissionSaved => '페이지 권한이 저장되었습니다';
+
+  @override
+  String get permissionSavedDetailPending =>
+      '권한은 저장되었지만 최신 설정을 읽지 못했습니다. 이 직원을 다시 불러온 후 변경하세요.';
+
+  @override
+  String get permissionSaveResultUnknown =>
+      '권한 저장 결과가 확인되지 않았습니다. 직원의 권한을 다시 불러와 확인한 후 작업하세요.';
+
+  @override
+  String get masterEntitySearchHint => '이름 또는 코드 검색';
+
+  @override
+  String get permissionRevokeOnly => '기존 권한만 제거할 수 있으며 다시 부여할 수 없습니다.';
+
+  @override
+  String get release2521Permissions =>
+      '재무 검토, 출하 전 최종 품질 검사 등의 작업은 유효한 권한에 따라 사용할 수 있으며 별도의 부서 소속이나 개인 지정 권한을 요구하지 않습니다. 업무 데이터 범위와 문서 상태 검증은 유지됩니다.';
+
+  @override
+  String get release2521Session =>
+      '권한 변경 후 세션과 페이지 작업이 최신 권한에 맞춰 동기화됩니다. 저장하지 않은 스위치 변경은 저장 대기로 표시됩니다.';
+
+  @override
+  String get release2521PermissionSettings =>
+      '일반 권한 스위치는 선택한 항목만 변경합니다. 저장 시 권한 규칙에 따라 자동 부여할 수 있는 일반 조회 권한을 추가하며, 민감 권한 부여와 회수된 권한 복구는 개별 확인이 필요합니다.';
+
+  @override
+  String get release2521ReviewFeedback =>
+      '검토 점유 실패 시 실제 사유를 표시합니다. 일괄 검토 결과가 확인되지 않았을 때는 새로 고쳐 문서 상태를 확인하도록 명확히 안내합니다.';
+
+  @override
+  String get release2521ServerUpdates =>
+      '서버 업데이트 작업의 현재 단계와 결과를 표시합니다. 페이지를 다시 열어 진행 상황을 계속 확인할 수 있으며, 실패 시 확인된 원인과 권장 조치를 안내합니다.';
+
+  @override
+  String get release2521TableSearchCopy =>
+      '이름과 코드 같은 텍스트 열은 머리글에서 검색할 수 있습니다. Enter 또는 검색 버튼으로 표에 결과를 표시하고 여러 열의 조건을 함께 적용할 수 있습니다. 후보를 검색하거나 더 불러올 수 있으며, 표의 텍스트를 선택하여 복사해도 행 체크는 바뀌지 않습니다.';
+
+  @override
+  String get release2521FieldHints =>
+      '비어 있는 일반 입력칸에는 필드명을 표시하고 형식 예시와 작성 안내는 정보 버튼에서 제공합니다. 양식, 선택 및 날짜 필드의 빈 상태를 통일하며 기존의 유효한 값과 개인 표시 설정은 유지합니다.';
+
+  @override
+  String get release2521ReferencePickers =>
+      '금형과 구성요소 선택창은 왼쪽에 분류, 오른쪽에 상세 표를 표시하여 시리즈, 이름, 코드, 규격과 색상을 함께 확인할 수 있습니다. 입력 시 비슷한 후보를 표시하고 버튼으로 검색어를 유지한 전체 선택창을 엽니다. 기존 선택 범위, 소요량과 검증은 유지합니다.';
+
+  @override
+  String get release2521MasterDataImport =>
+      '품목 내보내기에 수정한 템플릿을 다시 가져오는 데 필요한 필드를 포함하며 실제 분류 경로와 기존 검증을 적용합니다. 분류 코드 접두어는 숫자로 시작할 수 있고 분류명 옆에 비고를 표시할 수 있습니다. 기존 코드와 분류 식별자는 유지합니다.';
+
+  @override
+  String get release2521PurchaseDocuments =>
+      '구매 주문서에서 인쇄 미리보기를 지원하고 검토란에 실제 재무 검토자를 표시합니다. 구매 작업 이력은 자재별 행과 공급업체를 표시하며, 분해 대기 및 작업대 표는 현재 필터에 맞춰 내보낼 수 있습니다.';
+
+  @override
+  String get release2521GoodsHistory =>
+      '본인의 최근 품목 자료 변경 10건을 확인하고 현재 조건에 따라 실행 취소하거나 다시 실행할 수 있습니다. 이후 변경, 업무 참조와 권한을 다시 확인하며 각 작업을 기록합니다.';
+
+  @override
+  String get goodsHistoryTitle => '상품 작업 기록';
+
+  @override
+  String get goodsHistoryHint =>
+      '최근 자료 변경 10건 중 하나를 선택하여 실행 취소할 수 있습니다. 다시 실행은 마지막 실행 취소를 복원합니다. 이후 변경이나 업무 참조로 복원이 제한될 수 있습니다.';
+
+  @override
+  String get goodsHistoryUndo => '실행 취소';
+
+  @override
+  String get goodsHistoryRedo => '마지막 취소 다시 실행';
+
+  @override
+  String get goodsHistoryUndoSelected => '선택한 작업 실행 취소';
+
+  @override
+  String goodsHistoryUndoConfirm(String label, int count) {
+    return '자료 $count건에 영향을 주는 \"$label\" 작업을 실행 취소할까요?';
+  }
+
+  @override
+  String goodsHistoryRedoConfirm(String label, int count) {
+    return '\"$label\"의 마지막 실행 취소를 다시 실행하여 자료 $count건을 복원할까요?';
+  }
+
+  @override
+  String get goodsHistoryUndoDone => '선택한 작업이 실행 취소되었으며 기록되었습니다.';
+
+  @override
+  String get goodsHistoryRedoDone => '마지막 실행 취소가 다시 실행되었으며 기록되었습니다.';
+
+  @override
+  String get goodsHistoryLoadFailed => '작업 기록을 불러오지 못했습니다. 새로 고침 후 다시 시도하세요.';
+
+  @override
+  String get goodsHistoryActionFailed => '작업 결과를 확인하지 못했습니다.';
+
+  @override
+  String get goodsHistoryRefreshBeforeRetry =>
+      '기록은 유지됩니다. 새로 고침하여 최신 상태를 확인한 후 다시 작업하세요.';
+
+  @override
+  String get goodsHistoryNoPermission => '상품 작업 기록을 볼 권한이 없습니다.';
+
+  @override
+  String get goodsHistoryEmpty => '아직 작업 기록이 없습니다. 자료 변경이 여기에 표시됩니다.';
+
+  @override
+  String get goodsHistoryEvents => '실행 취소 및 다시 실행 기록';
+
+  @override
+  String goodsHistoryEvent(String action, String label) {
+    return '$action: $label';
+  }
+
+  @override
+  String goodsHistoryAffected(int count) {
+    return '영향을 받는 자료 $count건';
+  }
+
+  @override
+  String get goodsHistoryUndone => '실행 취소됨';
+
+  @override
+  String get goodsHistoryApplied => '적용됨';
+
+  @override
+  String get goodsHistorySelected => '선택됨';
+
+  @override
+  String get goodsHistoryBlocked =>
+      '현재 이 작업은 실행 취소 또는 다시 실행할 수 없습니다. 새로 고침하여 최신 상태를 확인하세요.';
+
+  @override
+  String get goodsHistoryOther => '자료 변경';
+
+  @override
+  String get goodsHistoryGoodsCreate => '상품 생성';
+
+  @override
+  String get goodsHistoryGoodsEdit => '상품 수정';
+
+  @override
+  String get goodsHistoryGoodsNameEn => '상품 영어 이름 수정';
+
+  @override
+  String get goodsHistoryGoodsStatus => '상품 사용 또는 중지';
+
+  @override
+  String get goodsHistoryGoodsDelete => '상품 삭제';
+
+  @override
+  String get goodsHistoryGoodsImport => '파일에서 상품 가져오기';
+
+  @override
+  String get goodsHistoryBomCreate => '조립 구성품 추가';
+
+  @override
+  String get goodsHistoryBomEdit => '조립 구성품 수정';
+
+  @override
+  String get goodsHistoryBomDelete => '조립 구성품 삭제';
+
+  @override
+  String get goodsHistoryBomPaste => '조립 구성품 붙여넣기';
+
+  @override
+  String get goodsHistoryBomAudit => '구성품 승인 변경';
+
+  @override
+  String get goodsHistoryCategoryCreate => '상품 분류 생성';
+
+  @override
+  String get goodsHistoryCategoryEdit => '상품 분류 수정';
+
+  @override
+  String get goodsHistoryCategoryDelete => '상품 분류 삭제';
+
+  @override
+  String get goodsHistoryClose => '닫기';
+
+  @override
+  String get goodsHistoryGoodsPurchasePolicy => '상품 구매 입고 방식 수정';
+
+  @override
+  String get goodsHistoryGoodsSubcontractPolicy => '상품 외주 방식 수정';
 }

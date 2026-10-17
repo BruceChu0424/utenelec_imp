@@ -457,6 +457,40 @@ class AiProviderServiceTest {
         verify(anthropic).chat(any(), any());
     }
 
+    @Test void legacyProtocolWarningIsActionableDeduplicatedAndRearmedAfterCorrection() {
+        service.create(zhipu("ANTHROPIC_MESSAGES", "/api/anthropic", null), admin);
+        AiProvider row = rows.getFirst();
+        String secret = row.getSecret();
+        long version = row.getVersion();
+        var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(AiProviderService.class);
+        var appender = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            row.setProtocol(AiProtocol.OPENAI_CHAT);
+            service.resolveDefault();
+            service.resolveDefault();
+            assertThat(appender.list).hasSize(1);
+            row.setProtocol(AiProtocol.ANTHROPIC_MESSAGES);
+            service.resolveDefault();
+            assertThat(appender.list).hasSize(1);
+            row.setProtocol(AiProtocol.OPENAI_CHAT);
+            assertThat(service.resolveDefault().runtime().protocol()).isEqualTo(AiProtocol.ANTHROPIC_MESSAGES);
+            assertThat(appender.list).hasSize(2).allSatisfy(event -> {
+                assertThat(event.getLevel()).isEqualTo(ch.qos.logback.classic.Level.WARN);
+                assertThat(event.getFormattedMessage()).contains("持久配置未修改", "AI 服务设置", "核对协议后保存",
+                                "configuredProtocol=OPENAI_CHAT", "effectiveProtocol=ANTHROPIC_MESSAGES")
+                        .doesNotContain(KEY, secret, row.getBaseUrl());
+            });
+            assertThat(row.getProtocol()).isEqualTo(AiProtocol.OPENAI_CHAT);
+            assertThat(row.getSecret()).isEqualTo(secret);
+            assertThat(row.getVersion()).isEqualTo(version);
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+    }
+
     @Test void customAndUnknownProxyPathsAreNeverInferredFromTheirNames() {
         assertThat(AiEndpointProtocolCompatibility.effectiveProtocol(AiProviderPreset.CUSTOM, AiProtocol.OPENAI_CHAT,
                 AiEndpointPolicy.parse("https://open.bigmodel.cn/api/anthropic"))).isEqualTo(AiProtocol.OPENAI_CHAT);

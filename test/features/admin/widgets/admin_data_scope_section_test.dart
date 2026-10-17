@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/inputs/uten_employee_multi_picker.dart';
 import 'package:uten_imp/features/admin/models/admin_models.dart';
 import 'package:uten_imp/features/admin/repositories/admin_repository.dart';
 import 'package:uten_imp/features/admin/widgets/admin_data_scope_section.dart';
@@ -58,7 +59,29 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('仅本人负责的数据'));
+      final picker = find.byWidgetPredicate((widget) {
+        if (widget is! UtenEmployeeMultiPicker) return false;
+        final key = widget.key;
+        return key is ValueKey<String> && key.value.startsWith('scope-client-');
+      });
+      expect(picker, findsOneWidget);
+      final pickerWidget = tester.widget<UtenEmployeeMultiPicker>(picker);
+      expect(pickerWidget.enabled, isTrue);
+      expect(pickerWidget.initialSelection, isEmpty);
+      expect(pickerWidget.label, '额外查看哪些负责人的数据');
+      expect(
+        tester
+            .widget<InputDecorator>(
+              find.descendant(
+                of: picker,
+                matching: find.byType(InputDecorator),
+              ),
+            )
+            .decoration
+            .hintText,
+        pickerWidget.label,
+      );
+      await tester.tap(picker);
       await tester.pumpAndSettle();
       final search = find.descendant(
         of: find.byKey(const Key('uten-employee-picker-search')),

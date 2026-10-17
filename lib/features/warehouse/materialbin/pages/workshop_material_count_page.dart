@@ -9,6 +9,7 @@
 // - 已盘点: 可"更正盘点" (出新版本, 写原因); 盘点中可"撤回盘点"。
 // 按钮只看服务端下发的 allowedActions。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import '../../../../components/layout/uten_segment_row.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -649,9 +650,8 @@ class _WorkshopMaterialCountPageState
                 controller: controller,
                 autofocus: true,
                 maxLength: 500,
-                decoration: const InputDecoration(
-                  labelText: '更正原因',
-                  counterText: '',
+                decoration: const UtenInputDecoration(
+                  InputDecoration(labelText: '更正原因', counterText: ''),
                 ),
               ),
             ],

@@ -18,25 +18,21 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
 /**
- * 工作台「今日概览」聚合服务：通知/生产/销售指标 + 本部门待办。
+ * 工作台「今日概览」聚合服务：通知/生产/销售指标 + 已授权待办。
  *
  * <p>政策与监管动态已于 2026-09-27 随旧 AI 下线 (ADR-133), 响应不再带 {@code intelligence} 字段。
  *
- * <p><b>范围口径（2026-09-12 统一）</b>：每个分区都是「**权限 ∧ 本部门**」——
- * 权限决定「能不能看这类东西」，部门决定「该不该在你的工作台上出现」。
- * 部门取当前用户主部门、**兼职部门**及各自全部祖先（递归 CTE，见
- * {@link #departmentContext}，与通知侧 ReviewNoticeAudience 的 memberships 同口径），
- * 超管与个人加授均不绕过部门展示条件。通知分区例外：它本来就是「发给本人的未读」，
- * 天然按人收敛，不需要也不应该再按部门筛。
+ * <p><b>范围口径</b>：有效功能权限决定入口是否可见，各来源继续应用既有对象、责任和状态范围。
+ * 主部门只作为展示信息；概览不再额外要求本人属于特定部门，也不区分权限授予来源。
+ * 通知仍按接收人收敛，销售指标仍复用销售单据的归属范围。
  *
- * <p><b>本部门待办只有一套口径(permissions-08, ADR-108)</b>：待办卡片的数字 = 对应入口的
- * 红徽章数，经 {@link WorkbenchBadgeReadPort} 按当前主体只算本部门要的几个入口——同一张入口
+ * <p><b>已授权待办只有一套口径(permissions-08, ADR-108)</b>：待办卡片的数字 = 对应入口的
+ * 红徽章数，经 {@link WorkbenchBadgeReadPort} 按当前主体筛选入口——同一张入口
  * 目录、同一批来源、同一资格判定(各来源原计数端点的 {@code @PreAuthorize})。此前概览按
  * 「部门 + 权限码」另写一套计数(报销 SQL 与报销模块逐字重复、履约另跑一次分页查询)，
  * 与红徽章是两套规则、两个数。来源出错由徽章服务按保存点隔离：该入口本次不出卡，其它照常。
@@ -52,11 +48,10 @@ public class DashboardOverviewService {
     private static final String PRODUCTION_SCHEDULE = "productionSchedule";
 
     /**
-     * 本部门待办卡 ← 徽章入口。{@code countFact} 为空 = 取入口红数; 否则取该事实数
+     * 已授权待办卡 ← 徽章入口。{@code countFact} 为空 = 取入口红数; 否则取该事实数
      * (财务报销入口按「待审批 / 待付款」拆成两张卡, 两张之和即该入口红数)。
      */
     private record DepartmentTodo(
-            String scope,
             String entry,
             String countFact,
             String id,
@@ -66,21 +61,21 @@ public class DashboardOverviewService {
     }
 
     private static final List<DepartmentTodo> DEPARTMENT_TODOS = List.of(
-            new DepartmentTodo("WAREHOUSE", "warehouseOutboundCenter", "productionDraw.count",
+            new DepartmentTodo("warehouseOutboundCenter", "productionDraw.count",
                     "fulfillment-warehouse-draw", "生产领料待出库", "/warehouse/tasks/outbound?section=DRAW", "FULFILLMENT"),
-            new DepartmentTodo("WAREHOUSE", "warehouseInboundCenter", "productionReturn.count",
+            new DepartmentTodo("warehouseInboundCenter", "productionReturn.count",
                     "fulfillment-warehouse-return", "生产退料待收仓", "/warehouse/tasks/inbound?section=RETURN", "FULFILLMENT"),
-            new DepartmentTodo("PURCHASE", "purchaseTaskCenter", null,
+            new DepartmentTodo("purchaseTaskCenter", null,
                     "fulfillment-purchase", "采购任务待处理", "/operations/workbench/purchase", "FULFILLMENT"),
-            new DepartmentTodo("SUBCONTRACT", "subcontractTaskCenter", null,
+            new DepartmentTodo("subcontractTaskCenter", null,
                     "fulfillment-subcontract", "委外任务待处理", "/operations/workbench/subcontract", "FULFILLMENT"),
-            new DepartmentTodo("HR", "visitorApproval", null,
+            new DepartmentTodo("visitorApproval", null,
                     "visitor-approval", "访客申请待审批", "/visitor-approval", "PEOPLE"),
-            new DepartmentTodo("HR", "hrProfileReview", null,
+            new DepartmentTodo("hrProfileReview", null,
                     "profile-review", "员工资料变更待审核", "/hr/profile-changes", "PEOPLE"),
-            new DepartmentTodo("FINANCE", "expenseFinance", "expense.pendingApprovalCount",
+            new DepartmentTodo("expenseFinance", "expense.pendingApprovalCount",
                     "expense-approval", "报销申请待审批", "/expense/approval?queue=pending", "FINANCE"),
-            new DepartmentTodo("FINANCE", "expenseFinance", "expense.pendingPaymentCount",
+            new DepartmentTodo("expenseFinance", "expense.pendingPaymentCount",
                     "expense-payment", "已审批报销待付款", "/expense/approval?queue=payable", "FINANCE"));
 
     private final SecurityContextCurrentUser currentUser;
@@ -96,14 +91,14 @@ public class DashboardOverviewService {
                 .filter(candidate -> !candidate.isVisitor())
                 .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
         DepartmentContext department = departmentContext(user.getEmployeeId());
-        WorkbenchBadgeReadPort.Entries departmentBadges = departmentBadges(department);
+        WorkbenchBadgeReadPort.Entries departmentBadges = authorizedBadges();
         List<MetricCard> metrics = new ArrayList<>();
         List<TodoCard> todos = new ArrayList<>();
 
         addNoticeCards(user, metrics, todos);
         addProductionCards(departmentBadges, metrics, todos);
         addDepartmentTodos(departmentBadges, todos);
-        addSalesCards(user, department, metrics);
+        addSalesCards(user, metrics);
 
         return new DashboardOverviewDto(
                 department.code(),
@@ -154,14 +149,14 @@ public class DashboardOverviewService {
         }
     }
 
-    /** 本部门要的徽章入口, 一次只读事务算完(无本部门入口时不查)。 */
-    private WorkbenchBadgeReadPort.Entries departmentBadges(DepartmentContext department) {
+    /** 徽章端口统一按有效权限和对象范围筛选入口，概览不再叠加部门条件。 */
+    private WorkbenchBadgeReadPort.Entries authorizedBadges() {
         Set<String> entries = new LinkedHashSet<>();
-        if (belongsTo(department, "PRODUCTION")) entries.add(PRODUCTION_SCHEDULE);
+        entries.add(PRODUCTION_SCHEDULE);
         for (DepartmentTodo todo : DEPARTMENT_TODOS) {
-            if (belongsTo(department, todo.scope())) entries.add(todo.entry());
+            entries.add(todo.entry());
         }
-        return entries.isEmpty() ? WorkbenchBadgeReadPort.Entries.NONE : badges.entries(entries);
+        return badges.entries(entries);
     }
 
     /** 入口对当前主体可见且本次算出来了(没权 / 来源出错都不出卡, 徽章侧保留上一次的数)。 */
@@ -215,9 +210,8 @@ public class DashboardOverviewService {
     }
 
     private void addSalesCards(
-            AuthUser user, DepartmentContext department, List<MetricCard> metrics) {
-        if (!can(user, "sales_order:view")
-                || !belongsTo(department, "SALES")) return;
+            AuthUser user, List<MetricCard> metrics) {
+        if (!can(user, "sales_order:view")) return;
         var scope = salesAccess.nativeReadScope("o.owner_employee_id", "dashboardOwners");
         String predicate = scope.predicate();
         if (!scope.owners().isEmpty()) {
@@ -242,67 +236,20 @@ public class DashboardOverviewService {
 
     private DepartmentContext departmentContext(UUID employeeId) {
         if (employeeId == null) {
-            return new DepartmentContext("UNKNOWN", "未分配部门", Set.of());
+            return new DepartmentContext("UNKNOWN", "未分配部门");
         }
         List<Map<String, Object>> rows = jdbc.queryForList("""
-                WITH RECURSIVE me(id, department_id) AS (
-                    SELECT e.id, e.department_id
-                    FROM employees e
-                    WHERE e.id = ?
-                ), ancestors(id, parent_id, code, name, depth) AS (
-                    SELECT d.id, d.parent_id, d.code, d.name, 0
-                    FROM departments d
-                    JOIN me ON me.department_id = d.id
-                    WHERE d.is_deleted = FALSE
-                    UNION ALL
-                    -- 兼职部门也是「本人的部门」（depth=1，同通知的 memberships 口径）：
-                    -- 通知侧给兼职财务的人推财务待办，工作台却不给，就是两边口径打架。
-                    SELECT d.id, d.parent_id, d.code, d.name, 1
-                    FROM departments d
-                    JOIN employee_secondary_departments s ON s.department_id = d.id
-                    JOIN me ON me.id = s.employee_id
-                    WHERE d.is_deleted = FALSE
-                    UNION ALL
-                    SELECT parent.id, parent.parent_id, parent.code, parent.name, a.depth + 1
-                    FROM departments parent
-                    JOIN ancestors a ON a.parent_id = parent.id
-                    WHERE parent.is_deleted = FALSE
-                )
-                SELECT code, name, depth FROM ancestors ORDER BY depth
+                SELECT department.code, department.name
+                FROM employees employee
+                JOIN departments department ON department.id = employee.department_id
+                WHERE employee.id = ? AND department.is_deleted = FALSE
                 """, employeeId);
         if (rows.isEmpty()) {
-            return new DepartmentContext("UNKNOWN", "未分配部门", Set.of());
-        }
-        Set<String> tags = new LinkedHashSet<>();
-        for (Map<String, Object> row : rows) {
-            tags.addAll(tagsForCode(String.valueOf(row.get("code"))));
+            return new DepartmentContext("UNKNOWN", "未分配部门");
         }
         return new DepartmentContext(
                 String.valueOf(rows.getFirst().get("code")),
-                String.valueOf(rows.getFirst().get("name")),
-                Set.copyOf(tags));
-    }
-
-    /**
-     * 部门编码 → 工作台分区标签。只产出有人读的标签: SALES(销售指标)、PRODUCTION(排产)与
-     * {@link #DEPARTMENT_TODOS} 各条的 scope; 没有分区用到的标签不生成。
-     */
-    private static Set<String> tagsForCode(String rawCode) {
-        String code = rawCode.toUpperCase(Locale.ROOT);
-        Set<String> tags = new LinkedHashSet<>();
-        if (code.equals("DEPT_FIN")) tags.add("FINANCE");
-        if (code.contains("SALES") || code.equals("DEPT_RAIL")
-                || code.startsWith("SALE_") || code.startsWith("RAIL_")) {
-            tags.add("SALES");
-        }
-        if (code.contains("PROD")) tags.add("PRODUCTION");
-        if (code.equals("SUB_PURCHASE")) tags.add("PURCHASE");
-        if (code.equals("SUB_WH")) tags.add("WAREHOUSE");
-        if (code.equals("QA_OUT") || code.equals("DEPT_SALES")) {
-            tags.add("SUBCONTRACT");
-        }
-        if (code.contains("HR")) tags.add("HR");
-        return tags;
+                String.valueOf(rows.getFirst().get("name")));
     }
 
     private void addCountTodo(
@@ -339,11 +286,7 @@ public class DashboardOverviewService {
         return user.isSuperAdmin() || user.getPermissions().contains(permission);
     }
 
-    private static boolean belongsTo(DepartmentContext department, String audienceTag) {
-        return department.audienceTags().contains(audienceTag);
-    }
-
     private record DepartmentContext(
-            String code, String name, Set<String> audienceTags) {
+            String code, String name) {
     }
 }

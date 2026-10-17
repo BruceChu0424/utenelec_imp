@@ -35,6 +35,7 @@ import 'package:uten_imp/features/basic_data/repositories/client_repository.dart
 import 'package:uten_imp/features/basic_data/repositories/currency_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_cost_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_cost_tab.dart';
+import 'package:uten_imp/features/basic_data/widgets/goods_cost_import_dialog.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/basic_data/widgets/uten_client_picker.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -1089,7 +1090,105 @@ Future<void> _adjust(WidgetTester tester, String path) async {
   await tester.pumpAndSettle();
 }
 
+TextField _costInput(WidgetTester tester, Finder formField) =>
+    tester.widget<TextField>(
+      find.descendant(of: formField, matching: find.byType(TextField)),
+    );
+
 void main() {
+  testWidgets(
+    'import mapping empty fields name their business facts and retain exact reviewed values',
+    (tester) async {
+      await _pump(tester, _Costs());
+      Map<String, dynamic>? result;
+      final context = tester.element(find.byType(GoodsCostTab));
+      final l10n = AppLocalizations.of(context);
+      unawaited(
+        showDialog<Map<String, dynamic>>(
+          context: context,
+          builder: (_) => const GoodsCostImportDialog(
+            preview: {
+              'id': 'import-test',
+              'blocks': [
+                {
+                  'key': 'sheet-1',
+                  'label': '测试来源',
+                  'rows': [
+                    {'key': 'row-1', 'code': 'unmatched', 'name': '待核材料'},
+                  ],
+                },
+              ],
+            },
+            lines: [
+              {'path': 'edge-b', 'goodsCode': 'B001', 'goodsName': '组件 B'},
+            ],
+          ),
+        ).then<void>((value) {
+          result = value;
+        }),
+      );
+      await tester.pumpAndSettle();
+      Finder input(String hint) => find.descendant(
+        of: find.byType(GoodsCostImportDialog),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is TextField && widget.decoration?.hintText == hint,
+        ),
+      );
+      for (final hint in [
+        l10n.costPrice,
+        l10n.costPriceUnitRate,
+        l10n.costNotes,
+      ]) {
+        expect(input(hint), findsOneWidget);
+        expect(tester.widget<TextField>(input(hint)).controller!.text, isEmpty);
+      }
+      final target = find.byKey(const ValueKey('cost-import-target-row-1'));
+      expect(
+        tester.widget<UtenDropdownField>(target).hintText,
+        l10n.costImportTarget,
+      );
+      expect(tester.widget<UtenDropdownField>(target).value, isNull);
+      await tester.tap(find.widgetWithText(UtenButton, l10n.costImportApply));
+      await tester.pumpAndSettle();
+      expect(
+        result,
+        isNull,
+        reason: 'No mapping is applied before review and target selection',
+      );
+      tester.widget<UtenDropdownField>(target).onChanged('edge-b');
+      await tester.pump();
+      await tester.enterText(input(l10n.costPrice), '0.123456789123456');
+      await tester.enterText(input(l10n.costPriceUnitRate), '25');
+      await tester.enterText(input(l10n.costNotes), '来源复核');
+      tester
+          .widget<Checkbox>(
+            find.byKey(const ValueKey('cost-import-reviewed-row-1')),
+          )
+          .onChanged!(true);
+      await tester.pump();
+      await tester.tap(find.widgetWithText(UtenButton, l10n.costImportApply));
+      await tester.pumpAndSettle();
+      expect(result, {
+        'importId': 'import-test',
+        'blockKey': 'sheet-1',
+        'mappings': [
+          {
+            'rowKey': 'row-1',
+            'kind': 'MATERIAL',
+            'targetPath': 'edge-b',
+            'unitPrice': '0.123456789123456',
+            'priceUnitRate': '25',
+            'feeName': '待核材料',
+            'skipReason': '来源复核',
+            'reviewed': true,
+          },
+        ],
+      });
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() async {
     final loader = FontLoader('NotoSansSC')
@@ -1499,6 +1598,13 @@ void main() {
       final repo = _Costs();
       await _pump(tester, repo);
       await _adjust(tester, 'edge-a');
+      expect(
+        _costInput(
+          tester,
+          find.byKey(const ValueKey('cost-adoptedQty-edge-a')),
+        ).decoration?.hintText,
+        '本次采用量',
+      );
       await tester.enterText(
         find.byKey(const ValueKey('cost-adoptedQty-edge-a')),
         '0.000007123456',
@@ -1592,10 +1698,10 @@ void main() {
           .firstWhere((c) => c.key.startsWith('fee:'))
           .key
           .substring(4);
-      await tester.enterText(
-        find.byKey(ValueKey('cost-fee-$key-edge-a')),
-        '0.02',
-      );
+      final fee = find.byKey(ValueKey('cost-fee-$key-edge-a'));
+      expect(tester.widget<TextFormField>(fee).controller!.text, isEmpty);
+      expect(_costInput(tester, fee).decoration?.hintText, '检验费');
+      await tester.enterText(fee, '0.02');
       await tester.pump(const Duration(milliseconds: 650));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.byKey(const Key('cost-save')));
@@ -1655,6 +1761,11 @@ void main() {
       );
       final binding = grid.platformBinding!;
       final row = grid.controller.rows.single;
+      expect(_costInput(tester, input).decoration?.hintText, '单价或费率');
+      expect(
+        tester.widget<TextFormField>(input).controller,
+        same(row.controller('value')),
+      );
       expect(binding.scope, 'view_goods_cost');
       expect(binding.recordIdOf(row), isNull);
       expect(binding.factValuesOf!(row)['value'], '0.02');
@@ -1889,6 +2000,7 @@ void main() {
       await _adjust(tester, 'edge-a');
       final field = find.byKey(const ValueKey('cost-unitPrice-edge-a'));
       expect(tester.widget<TextFormField>(field).controller!.text, '16');
+      expect(_costInput(tester, field).decoration?.hintText, '采用单价');
       await tester.enterText(field, '20');
       await tester.pump(const Duration(milliseconds: 650));
       await tester.pumpAndSettle();

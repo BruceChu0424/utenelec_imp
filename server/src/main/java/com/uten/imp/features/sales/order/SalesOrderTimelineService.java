@@ -146,7 +146,7 @@ public class SalesOrderTimelineService {
                             ? "已被驳回，待销售修订并重新审核"
                             : hasRejectionHistory
                                     ? "销售已修订并重新审核，等待财务确认"
-                                    : "等待财务审核组确认",
+                                    : "等待销售订单财务确认",
                     null, null, null));
         } else if (order.getStatus() == 0) {
             events.add(new OrderProgressTimelineEvent(

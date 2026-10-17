@@ -179,6 +179,15 @@ TextField _fieldLabelled(WidgetTester tester, String label) => tester
     .widgetList<TextField>(find.byType(TextField))
     .firstWhere((f) => f.decoration?.labelText == label);
 
+Finder _goodsCell(SalesGridRow row) => find.descendant(
+  of: find.byType(UtenEditableGrid<SalesGridRow>),
+  matching: find.byWidgetPredicate(
+    (widget) =>
+        widget is RequiredCellFrame &&
+        identical(widget.listenable, row.goodsNotifier),
+  ),
+);
+
 Map<String, dynamic> _item(List<Map<String, dynamic>> items, String goodsId) =>
     items.singleWhere((i) => i['goodsId'] == goodsId);
 
@@ -1410,7 +1419,9 @@ void main() {
     final blank = SalesGridRow(amountUsesDiscount: true);
     grid.addRow(blank);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('点击选择').last);
+    final blankCell = _goodsCell(blank);
+    expect(blankCell, findsOneWidget);
+    await tester.tap(blankCell);
     await tester.pumpAndSettle();
     expect(blank.goods?.id, 'goods-2');
     expect(blank.clientGoodsName.text, isEmpty);
@@ -1450,7 +1461,11 @@ void main() {
           find.byType(UtenEditableGrid<SalesGridRow>),
         )
         .controller;
-    await tester.tap(find.text('点击选择').first);
+    final blank = grid.rows.single;
+    expect(blank.goods, isNull);
+    final blankCell = _goodsCell(blank);
+    expect(blankCell, findsOneWidget);
+    await tester.tap(blankCell);
     await tester.pumpAndSettle();
     final auto = grid.rows.firstWhere((r) => r.goods?.id == 'goods-2');
     final typed = grid.rows.firstWhere((r) => r.goods?.id == 'goods-3');

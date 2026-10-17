@@ -284,6 +284,7 @@ class GoodsDetail {
     this.canEditNameEn = false,
     this.spec,
     this.model,
+    this.cNumber,
     this.price,
     this.discount,
     this.status,
@@ -393,6 +394,7 @@ class GoodsDetail {
       (nameEn?.trim().isNotEmpty ?? false);
   final String? spec;
   final String? model;
+  final String? cNumber;
   final double? price;
   final double? discount; // 折扣倍率 1.0=原价 0.9=9折（复用老库 B_Goods.zk）
   final String? status;
@@ -539,6 +541,7 @@ class GoodsDetail {
     canEditNameEn: json['canEditNameEn'] == true,
     spec: json['spec'] as String?,
     model: json['model'] as String?,
+    cNumber: (json['cNumber'] ?? json['cnumber']) as String?,
     price: (json['price'] as num?)?.toDouble(),
     discount: (json['discount'] as num?)?.toDouble(),
     status: json['status'] as String?,

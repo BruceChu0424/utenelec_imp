@@ -228,7 +228,7 @@ public class AiChatPageGuideCatalog {
         pages.add(p("employee", "员工档案", "HR", "/employee(?:/" + ID + ")?", "employee:view", "员工档案 / 权限体系总设计",
                 f("identity", "人员身份", "核对姓名和工号，避免同名认错人。",
                         "两个张三，用 A001、A002 工号分清。")));
-        pages.add(p("dashboard", "我的工作台", "SELF", "/dashboard", "", "工作台部门分区与动态权限配置",
+        pages.add(p("dashboard", "我的工作台", "SELF", "/dashboard", "", "工作台功能权限与数据范围",
                 f("todos", "待办和数字", "红色数字表示有事情需要处理，点进去查看。",
                         "采购显示 3，表示有 3 项采购待办。")));
         return List.copyOf(pages);

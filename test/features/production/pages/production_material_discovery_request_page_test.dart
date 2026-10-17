@@ -742,6 +742,13 @@ void main() {
       expect(find.text('千克'), findsOneWidget);
       expect(row.values.containsKey('warehouseId'), isFalse);
       expect(row.qty.text, isEmpty);
+      final quantity = tester.widget<TextField>(
+        find.byKey(ValueKey('discovery-request-qty-${row.id}')),
+      );
+      expect(quantity.decoration!.hintText, '领料数量');
+      expect(quantity.decoration!.suffixText, '千克');
+      expect(quantity.controller, same(row.qty));
+      expect(find.byTooltip('可由仓库补充'), findsWidgets);
       expect(tester.takeException(), isNull);
     },
   );

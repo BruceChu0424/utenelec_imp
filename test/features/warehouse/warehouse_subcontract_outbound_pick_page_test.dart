@@ -12,6 +12,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
@@ -87,6 +88,22 @@ void main() {
     expect(table.bottomContentPadding, greaterThan(0));
     expect(table.rows.single.draft.maxEditableQty, 100);
     expect(table.rows.single.draft.qty.text, '100');
+    final quantity = tester.widget<TextField>(
+      find.byKey(const ValueKey('subcontract-outbound-issue-item-1-quantity')),
+    );
+    expect(quantity.controller, same(table.rows.single.draft.qty));
+    expect(quantity.decoration?.hintText, '本次出库');
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(
+              const ValueKey('subcontract-outbound-issue-item-1-remark'),
+            ),
+          )
+          .decoration
+          ?.hintText,
+      '明细备注',
+    );
     final grid = tester.widget<UtenEditableGrid<SubcontractOutboundTableRow>>(
       find.byType(UtenEditableGrid<SubcontractOutboundTableRow>),
     );
@@ -350,7 +367,14 @@ void main() {
       find.byKey(const Key('warehouse-subcontract-outbound-return-confirm')),
     );
     await tester.pumpAndSettle();
-    expect(find.byTooltip('请填写不发的原因'), findsOneWidget);
+    final reasonHint = find.descendant(
+      of: find.byKey(const Key('warehouse-subcontract-outbound-return-reason')),
+      matching: find.byType(UtenFieldHintIcon),
+    );
+    expect(reasonHint, findsOneWidget);
+    final hint = tester.widget<UtenFieldHintIcon>(reasonHint);
+    expect(hint.errorMessage, '请填写不发的原因');
+    expect(hint.info, contains('物料破损，本批不能发'));
     expect(api.returns, isEmpty);
 
     await tester.enterText(

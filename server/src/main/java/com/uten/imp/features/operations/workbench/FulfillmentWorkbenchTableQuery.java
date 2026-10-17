@@ -17,7 +17,15 @@ public record FulfillmentWorkbenchTableQuery(
             "planNo", "NULLIF(plan_no,'')", "docNo", "visible_doc_no",
             "goods", "goods_id::text", "spec", "NULLIF(concat_ws(' / ',NULLIF(spec,''),NULLIF(color_name,'')),'')",
             "status", "display_stage", "needDate", "need_date::text",
-            "issuedAt", "(issued_at AT TIME ZONE 'Asia/Shanghai')::date::text");
+            "issuedAt", "(issued_at AT TIME ZONE 'Asia/Shanghai')::date::text",
+            "supplierName", "NULLIF(supplier_name,'')");
+    /** Text searches are separate from exact facet values (notably the goods UUID). */
+    static final Map<String, String> SEARCH_FIELDS = Map.ofEntries(
+            Map.entry("planNo", "plan_no"), Map.entry("docNo", "visible_doc_no"),
+            Map.entry("goods", "goods_name"),
+            Map.entry("goodsCode", "goods_code"), Map.entry("colorName", "color_name"),
+            Map.entry("spec", "spec"), Map.entry("supplierName", "supplier_name"),
+            Map.entry("warehouseName", "warehouse_name"));
     /**
      * 只能排序、不做列筛选/分面的列(生产领料任务中心 2026-09-24 表头排序: 发料仓、待领数量)。
      * 不进 {@link #FIELDS}: 那张表同时决定分面查询要算哪些列, 加进去会让采购/委外每次多算两组分面。
@@ -34,7 +42,8 @@ public record FulfillmentWorkbenchTableQuery(
         }
         Map<String, String> safe = new LinkedHashMap<>();
         if (filters != null) filters.forEach((key, value) -> {
-            if (!FIELDS.containsKey(key)) throw invalid("工作台列筛选字段无效: " + key);
+            if (!(key.startsWith("search.") ? SEARCH_FIELDS.containsKey(key.substring(7)) : FIELDS.containsKey(key)))
+                throw invalid("工作台列筛选字段无效: " + key);
             if (value != null && !value.isBlank()) {
                 if (value.length() > 500) throw invalid("工作台列筛选值过长");
                 safe.put(key, value.strip());
@@ -51,7 +60,10 @@ public record FulfillmentWorkbenchTableQuery(
             String sort, String order, Map<String, String> params,
             LocalDate issuedFrom, LocalDate issuedTo, LocalDate needFrom, LocalDate needTo) {
         Map<String, String> filters = new LinkedHashMap<>();
-        params.forEach((key, value) -> { if (key.startsWith("f.")) filters.put(key.substring(2), value); });
+        params.forEach((key, value) -> {
+            if (key.startsWith("f.")) filters.put(key.substring(2), value);
+            else if (key.startsWith("search.")) filters.put(key, value);
+        });
         return new FulfillmentWorkbenchTableQuery(sort, order, filters, issuedFrom, issuedTo, needFrom, needTo);
     }
 
@@ -59,6 +71,12 @@ public record FulfillmentWorkbenchTableQuery(
         StringBuilder sql = new StringBuilder();
         filters.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
             if (entry.getKey().equals(excludedField)) return;
+            if (entry.getKey().startsWith("search.")) {
+                String key = entry.getKey().substring(7);
+                sql.append(" AND ").append(com.uten.imp.common.util.TaskKeywordSearch.conditionParameter(
+                        "s_" + key, SEARCH_FIELDS.get(key)));
+                return;
+            }
             String field = FIELDS.get(entry.getKey());
             sql.append(" AND ").append(field);
             sql.append(NULL_VALUE.equals(entry.getValue()) ? " IS NULL" : " = :f_" + entry.getKey());
@@ -76,11 +94,19 @@ public record FulfillmentWorkbenchTableQuery(
     }
 
     void bind(Query query) {
-        filters.forEach((key, value) -> { if (!NULL_VALUE.equals(value)) query.setParameter("f_" + key, value); });
+        bindFilters(query, null);
         if (issuedFrom != null) query.setParameter("issued_from", issuedFrom);
         if (issuedTo != null) query.setParameter("issued_to", issuedTo);
         if (needFrom != null) query.setParameter("need_from", needFrom);
         if (needTo != null) query.setParameter("need_to", needTo);
+    }
+
+    void bindFilters(Query query, String excludedField) {
+        filters.forEach((key, value) -> {
+            if (key.equals(excludedField)) return;
+            if (key.startsWith("search.")) query.setParameter("s_" + key.substring(7), value);
+            else if (!NULL_VALUE.equals(value)) query.setParameter("f_" + key, value);
+        });
     }
 
     String orderSql() {

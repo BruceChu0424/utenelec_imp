@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -81,10 +82,7 @@ void main() {
     expect(find.textContaining('手机 · 主选'), findsOneWidget);
     await tester.tap(find.text('添加联系方式'));
     await tester.pumpAndSettle();
-    await tester.enterText(
-      find.widgetWithText(TextField, '内容(必填)').first,
-      '0760-8888888',
-    );
+    await tester.enterText(_labeledField('内容(必填)'), '0760-8888888');
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
     expect(directory.addedContacts, hasLength(1));
@@ -527,10 +525,11 @@ class _EmptyApi extends ApiClient {
   _EmptyApi() : super(Dio());
 }
 
-/// 必填字段的浮动标签是 Text.rich（「名称 *」），widgetWithText 匹配不上；
-/// 按标签文本（含富文本）回溯所属 TextField。注意 Hero 元信息行可能含同字样
-/// （如「联系人 张三」），但其没有 TextField 祖先，不会污染计数，勿取 .first。
-Finder _labeledField(String labelText) => find.ancestor(
-  of: find.textContaining(labelText, findRichText: true),
-  matching: find.byType(TextField),
+/// Read each field's exact plain/rich label once; identical hint text is not a
+/// second field, and "名称" must not also match "外文名称".
+Finder _labeledField(String labelText) => find.byWidgetPredicate(
+  (widget) =>
+      widget is TextField &&
+      widget.decoration != null &&
+      utenDecorationFieldName(widget.decoration!) == labelText,
 );

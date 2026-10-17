@@ -3,6 +3,8 @@ package com.uten.imp.features.operations.workbench;
 import com.uten.imp.application.port.SubcontractTaskSource;
 import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.common.util.TaskKeywordSearch;
+import com.uten.imp.common.export.ExportColumn;
+import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.finance.SubcontractLossSettlementSql;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
@@ -13,6 +15,7 @@ import jakarta.persistence.Query;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
@@ -51,6 +54,34 @@ public class FulfillmentWorkbenchQueryService {
      */
     static final List<String> IN_PROGRESS_STATUSES =
             List.of("ORDER_PENDING_APPROVAL", "FINANCE_APPROVED", "FINANCE_REJECTED");
+
+    /** Each purchase row keeps the real source item and its own physical quantities. */
+    static final String PURCHASE_ITEM_ROWS = """
+            (SELECT v.department, v.task_id, v.package_id, v.plan_id, v.plan_no,
+                    v.warehouse_id,
+                    COALESCE(NULLIF(concat_ws(' - ',parent_warehouse.name,warehouse.name),''),v.warehouse_name) AS warehouse_name,
+                    v.goods_id, v.goods_code,
+                    v.goods_name, v.spec, v.color_id, v.color_name, v.unit_id, v.unit_name,
+                    v.supply_route, v.required_qty, v.allocated_qty, v.fulfilled_qty,
+                    v.supply_pegged_qty, v.open_qty, v.task_status, v.need_date,
+                    v.expected_date, v.exception_code, v.updated_at,
+                    v.action_doc_type, v.action_doc_id, v.action_doc_no, v.action_item_id,
+                    v.action_doc_status, 1::bigint AS goods_count,
+                    CASE WHEN v.open_qty > 0 THEN 1 ELSE 0 END::bigint AS open_line_count,
+                    ARRAY[v.action_item_id::text] AS action_item_ids,
+                    NULL::text AS workshop_name, NULL::text AS worker_name,
+                    NULL::text AS draw_batch_no, '[]'::jsonb AS lines,
+                    supplier.name AS supplier_name,
+                    ARRAY[v.goods_name::text] AS search_goods_names,
+                    ARRAY[v.goods_code::text] AS search_goods_codes
+             FROM v_procurement_decomposition_tasks v
+             LEFT JOIN purchase_orders purchase_order
+               ON v.action_doc_type='PURCHASE_ORDER' AND purchase_order.id=v.action_doc_id
+             LEFT JOIN suppliers supplier ON supplier.id=purchase_order.supplier_id
+             LEFT JOIN warehouses warehouse ON warehouse.id=v.warehouse_id
+             LEFT JOIN warehouses parent_warehouse ON parent_warehouse.id=warehouse.parent_id
+             WHERE v.department='PURCHASE')
+            """;
     /**
      * 上面三档的 SQL 字面量。列表筛选、分段合计、黄徽章计数三处都从这一个常量展开，
      * 免得有人只在其中一处加档，让黄数与列表行数对不上。
@@ -267,11 +298,20 @@ public class FulfillmentWorkbenchQueryService {
             String department, String status, String keyword, String exception,
             LocalDate dateFrom, LocalDate dateTo, int page, int size,
             FulfillmentWorkbenchTableQuery table, WarehouseTaskScope warehouseScope) {
+        return queryRows(department, status, keyword, exception, dateFrom, dateTo,
+                page, size, table, warehouseScope, false);
+    }
+
+    private FulfillmentWorkbenchPage queryRows(
+            String department, String status, String keyword, String exception,
+            LocalDate dateFrom, LocalDate dateTo, int page, int size,
+            FulfillmentWorkbenchTableQuery table, WarehouseTaskScope warehouseScope,
+            boolean exportAll) {
         if (!DEPARTMENTS.contains(department)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "工作台部门不正确");
         }
         int safePage = Math.max(page, 1);
-        int safeSize = Math.min(Math.max(size, 1), 100);
+        int safeSize = exportAll ? size : Math.min(Math.max(size, 1), 100);
         if ("WAREHOUSE".equals(department)
                 && !accessPolicy.canAccessWarehouseTasks()) {
             return emptyPage(safePage, safeSize);
@@ -279,7 +319,9 @@ public class FulfillmentWorkbenchQueryService {
         String normalizedStatus = status == null ? "" : status.strip();
         String normalizedKeyword = KeywordSearch.phrase(keyword);
         String normalizedException = exception == null ? "" : exception.strip().toUpperCase();
-        // ADR-065 修订（2026-09-03）：采购/委外任务行按「当前执行单据」归组——
+        // 采购保留真实申请/订货明细，一张单可显示多行；数量和来源不能整单复制。
+        // 委外继续 ADR-065 的按当前执行单据归组规则。
+        // ADR-065 修订（2026-09-03）：委外任务行按「当前执行单据」归组——
         // 申请待分解阶段一行=一张采购/委外申请（多货品合并单只见一行，双击进
         // 详情看逐货品明细）；分解订货后一行=一张订货单（供应商已分好）。
         // 单货品单据保留货品身份与数量列；多货品单据数量列置空，改由
@@ -290,6 +332,7 @@ public class FulfillmentWorkbenchQueryService {
         // 尚未挂接领料单的行（action_doc_id 为 NULL）退回行级，不并入同一组。
         String sourceView = "WAREHOUSE".equals(department)
                 ? WAREHOUSE_DOCUMENT_ROWS
+                : "PURCHASE".equals(department) ? PURCHASE_ITEM_ROWS
                 : """
                   (SELECT v.department,
                           v.action_doc_id AS task_id,
@@ -443,13 +486,14 @@ public class FulfillmentWorkbenchQueryService {
         String statusKey = "SUBCONTRACT".equals(department)
                 ? "CASE WHEN display_stage = 'BOM_MISSING' THEN 'BOM_MISSING' ELSE task_status END"
                 : "task_status";
+        String documentCount = "PURCHASE".equals(department) ? "COUNT(DISTINCT action_doc_id)" : "COUNT(*)";
         Query statusQuery = em.createNativeQuery("""
-                SELECT %s AS status_key, COUNT(*)
+                SELECT %s AS status_key, %s
                 FROM %s
                 WHERE %s
                 GROUP BY 1
                 ORDER BY 1
-                """.formatted(statusKey, sourceView, filters));
+                """.formatted(statusKey, documentCount, sourceView, filters));
         // Status cards always describe the whole department/keyword result so
         // selecting one card never makes the other card counts disappear.
         bind(statusQuery, department, "", normalizedKeyword, normalizedException, null, null);
@@ -487,10 +531,10 @@ public class FulfillmentWorkbenchQueryService {
         // 不受当前状态卡筛选影响——否则选中「已完成」时待完成卡会被错误清零）。
         // 采购/委外按单据归组后即「仍有未完成明细的单据数」。
         Query pendingQuery = em.createNativeQuery("""
-                SELECT COUNT(*) FILTER (WHERE open_line_count > 0)
+                SELECT %s FILTER (WHERE open_line_count > 0)
                 FROM %s
                 WHERE %s
-                """.formatted(sourceView, filters));
+                """.formatted(documentCount, sourceView, filters));
         bind(pendingQuery, department, "", normalizedKeyword, normalizedException, null, null);
         bindScope.accept(pendingQuery);
         long pendingTasks = ((Number) pendingQuery.getSingleResult()).longValue();
@@ -543,12 +587,7 @@ public class FulfillmentWorkbenchQueryService {
             if (table != null) {
                 // 只绑定进得了 SQL 的参数：docNo 被排除在桶谓词外，绑了会撞
                 // Hibernate「未出现的命名参数」校验。
-                table.filters().forEach((key, value) -> {
-                    if (!"docNo".equals(key)
-                            && !FulfillmentWorkbenchTableQuery.NULL_VALUE.equals(value)) {
-                        docNoFacetQuery.setParameter("f_" + key, value);
-                    }
-                });
+                table.bindFilters(docNoFacetQuery, "docNo");
             }
             for (Object[] row : NativeQueryResults.objectArrayRows(docNoFacetQuery)) {
                 long count = ((Number) row[1]).longValue();
@@ -580,6 +619,87 @@ public class FulfillmentWorkbenchQueryService {
                                 && accessPolicy.canCreatePurchaseOrder(),
                         "SUBCONTRACT".equals(department)
                                 && accessPolicy.canCreateSubcontractOrder()), facets, nullCounts);
+    }
+
+    /** Same row source, filters, ordering and document fences as the on-screen purchase table. */
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public ExportPayload exportPurchase(
+            String status, String keyword, String exception, LocalDate dateFrom, LocalDate dateTo,
+            FulfillmentWorkbenchTableQuery table, int maxRows) {
+        if (maxRows < 1 || maxRows == Integer.MAX_VALUE) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "系统导出行数上限无效，请检查系统设置");
+        }
+        FulfillmentWorkbenchPage page = queryRows("PURCHASE", status, keyword, exception, dateFrom, dateTo,
+                1, maxRows + 1, table, null, true);
+        if (page.total() > maxRows) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "导出超过系统设置的 " + maxRows + " 行上限，请缩小日期或筛选范围后重试");
+        }
+        List<Map<String, Object>> rows = page.items().stream().map(row -> {
+            Map<String, Object> values = new LinkedHashMap<>();
+            String statusLabel = purchaseStatusLabel(row.displayStage() == null ? row.taskStatus() : row.displayStage());
+            String exceptionLabel = purchaseExceptionLabel(row.exceptionCode());
+            values.put("status", row.exceptionCode() == null || row.exceptionCode().equals(row.taskStatus())
+                    ? statusLabel : statusLabel + " · " + exceptionLabel);
+            values.put("planNo", row.planNo());
+            values.put("actionDocNo", row.actionDocRestricted() ? "无权查看关联单据" : row.actionDocNo());
+            values.put("supplierName", row.supplierName());
+            values.put("goodsName", row.goodsName());
+            values.put("goodsCode", row.goodsCode());
+            values.put("colorName", row.colorName());
+            values.put("spec", row.spec());
+            values.put("unitName", row.unitName());
+            values.put("requiredQty", row.requiredQty());
+            values.put("allocatedQty", row.allocatedQty());
+            values.put("fulfilledQty", row.fulfilledQty());
+            values.put("openQty", row.openQty());
+            values.put("exception", exceptionLabel);
+            values.put("warehouseName", row.warehouseName());
+            values.put("needDate", row.needDate() == null ? null : row.needDate().toString());
+            values.put("expectedDate", row.expectedDate() == null ? null : row.expectedDate().toString());
+            return values;
+        }).toList();
+        List<ExportColumn> columns = List.of(
+                new ExportColumn("status", "状态", ExportColumn.TEXT),
+                new ExportColumn("planNo", "计划号", ExportColumn.TEXT),
+                new ExportColumn("actionDocNo", "单据号", ExportColumn.TEXT),
+                new ExportColumn("supplierName", "供应商", ExportColumn.TEXT),
+                new ExportColumn("goodsName", "货品名称", ExportColumn.TEXT),
+                new ExportColumn("goodsCode", "编号", ExportColumn.TEXT),
+                new ExportColumn("colorName", "颜色", ExportColumn.TEXT),
+                new ExportColumn("spec", "规格", ExportColumn.TEXT),
+                new ExportColumn("requiredQty", "需求数量", ExportColumn.QTY, null, null, "unitName"),
+                new ExportColumn("allocatedQty", "已分配", ExportColumn.QTY, null, null, "unitName"),
+                new ExportColumn("fulfilledQty", "已履约", ExportColumn.QTY, null, null, "unitName"),
+                new ExportColumn("openQty", "未完成", ExportColumn.QTY, null, null, "unitName"),
+                new ExportColumn("exception", "异常", ExportColumn.TEXT),
+                new ExportColumn("warehouseName", "仓库", ExportColumn.TEXT),
+                new ExportColumn("needDate", "需求日期", ExportColumn.DATE),
+                new ExportColumn("expectedDate", "预计日期", ExportColumn.DATE));
+        return new ExportPayload(columns, rows, rows.size());
+    }
+
+    private static String purchaseStatusLabel(String status) {
+        return switch (status) {
+            case "WAITING_ORDER" -> "计划申请已下达，待分解";
+            case "ORDER_PENDING_APPROVAL" -> "等待财务审核";
+            case "FINANCE_APPROVED" -> "财务已通过";
+            case "FINANCE_REJECTED" -> "财务驳回";
+            case "FINANCE_REVIEW_PENDING" -> "改量待财务复核";
+            case "FINANCE_REVIEW_REJECTED" -> "改量财务退回";
+            case "COMPLETED" -> "已完成";
+            default -> status;
+        };
+    }
+
+    private static String purchaseExceptionLabel(String exception) {
+        if (exception == null) return "正常";
+        return switch (exception) {
+            case "OVERDUE" -> "已逾期";
+            case "OVERDUE_SHORTAGE" -> "逾期缺料";
+            case "FINANCE_REJECTED" -> "财务已退回";
+            default -> exception;
+        };
     }
 
     /**
@@ -1007,7 +1127,8 @@ public class FulfillmentWorkbenchQueryService {
                         base.workshop_name, base.worker_name, base.draw_batch_no, base.lines,
                         %s AS rd_task_no, %s AS bom_missing_item_ids,
                         %s AS orderable_qty,
-                        base.supplier_name, base.search_goods_names, base.search_goods_codes
+                        CASE WHEN %s IS NOT NULL THEN base.supplier_name END AS supplier_name,
+                        base.search_goods_names, base.search_goods_codes
                  FROM %s base %s %s %s %s)
                 """.formatted(kitPrefix, exceptionExpression, subcontract ? "issue.issued_at" : "NULL::timestamptz",
                         canCreate ? "TRUE" : "FALSE", requestType,
@@ -1021,6 +1142,7 @@ public class FulfillmentWorkbenchQueryService {
                         subcontract ? "bom_gap.rd_task_no" : "NULL::text",
                         subcontract ? "COALESCE(bom_gap.item_ids, ARRAY[]::text[])" : "ARRAY[]::text[]",
                         subcontract ? "kit.orderable_qty" : "NULL::numeric",
+                        visibleDoc,
                         source, issueJoin, progressJoin, bomGapJoin, productionProductJoin);
     }
 
@@ -1260,7 +1382,7 @@ public class FulfillmentWorkbenchQueryService {
                 row.productionProductCode(), row.productionProductName(), restricted ? null : row.materialRequestNo(),
                 row.workshopName(), row.workerName(), row.drawBatchNo(), row.lines(),
                 row.rdTaskNo(), restricted ? List.of() : row.bomMissingItemIds(),
-                restricted ? null : row.orderableQty(), row.supplierName());
+                restricted ? null : row.orderableQty(), restricted ? null : row.supplierName());
     }
 
     private static BigDecimal decimal(Object value) {

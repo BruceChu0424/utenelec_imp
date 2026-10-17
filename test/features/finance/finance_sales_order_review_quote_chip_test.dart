@@ -1,6 +1,6 @@
 // 销售订单财务审核页的来源报价条带(ADR-134)：报价转入的订单显示「来源报价 · 报价已核价 ·
 // 一致 / 有 N 行和报价不同」，明细多出报价单价/报价折扣/与报价，以及客户文件三列；
-// 非报价转入的老订单不出现这些内容(也不要求本地化实例)。列表状态列在一致时加注。
+// 非报价转入的老订单不出现这些内容。完整审核页沿应用统一挂载本地化，列表状态列在一致时加注。
 import 'package:flutter/material.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -93,7 +93,6 @@ class _Repo implements SalesOrderFinanceConfirmationRepository {
 Future<void> _pump(
   WidgetTester tester,
   Map<String, dynamic> json, {
-  bool localized = true,
   bool canViewQuote = true,
   _Repo? repository,
 }) async {
@@ -119,14 +118,12 @@ Future<void> _pump(
         ),
         taskClaimRepositoryProvider.overrideWithValue(FinanceClaimFixture()),
       ],
-      child: localized
-          ? MaterialApp(
-              localizationsDelegates: AppLocalizations.localizationsDelegates,
-              supportedLocales: AppLocalizations.supportedLocales,
-              locale: const Locale('zh'),
-              home: FinanceSalesOrderReviewPage(id: review.orderId),
-            )
-          : MaterialApp(home: FinanceSalesOrderReviewPage(id: review.orderId)),
+      child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: const Locale('zh'),
+        home: FinanceSalesOrderReviewPage(id: review.orderId),
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -311,15 +308,19 @@ void main() {
     expect(find.text('一致'), findsOneWidget);
   });
 
-  testWidgets('legacy orders keep the original view without localization', (
-    tester,
-  ) async {
-    await _pump(tester, _order(), localized: false);
-    expect(find.byKey(const Key('finance-review-source-quote')), findsNothing);
-    expect(_columnKeys(tester), isNot(contains('quotePrice')));
-    expect(_columnKeys(tester), isNot(contains('clientPrice')));
-    expect(tester.takeException(), isNull);
-  });
+  testWidgets(
+    'legacy orders keep the original columns in the standard localized app',
+    (tester) async {
+      await _pump(tester, _order());
+      expect(
+        find.byKey(const Key('finance-review-source-quote')),
+        findsNothing,
+      );
+      expect(_columnKeys(tester), isNot(contains('quotePrice')));
+      expect(_columnKeys(tester), isNot(contains('clientPrice')));
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   test('list item parses the source quote and its all-lines-match flag', () {
     // 契约：列表行与审核详情同一个 sourceQuote 形状(服务端 SalesOrderFinanceReviewDto.SourceQuote)。

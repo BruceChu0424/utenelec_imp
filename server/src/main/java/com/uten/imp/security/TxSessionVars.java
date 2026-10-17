@@ -3,11 +3,14 @@ package com.uten.imp.security;
 import com.uten.imp.audit.AuditRequestContext;
 import com.uten.imp.audit.AuditDeviceContext;
 import com.uten.imp.common.concurrency.SavepointSnapshots;
+import com.uten.imp.application.port.TransactionWritePreparationPort;
 import com.uten.imp.config.props.CryptoProperties;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -56,14 +59,25 @@ public class TxSessionVars {
     private final CryptoProperties crypto;
     private final SecurityContextCurrentUser currentUser;
     private final AuditDeviceContext auditDeviceContext;
+    private final ObjectProvider<TransactionWritePreparationPort> writePreparations;
 
     public TxSessionVars(
             CryptoProperties crypto,
             SecurityContextCurrentUser currentUser,
             AuditDeviceContext auditDeviceContext) {
+        this(crypto, currentUser, auditDeviceContext, null);
+    }
+
+    @Autowired
+    public TxSessionVars(
+            CryptoProperties crypto,
+            SecurityContextCurrentUser currentUser,
+            AuditDeviceContext auditDeviceContext,
+            ObjectProvider<TransactionWritePreparationPort> writePreparations) {
         this.crypto = crypto;
         this.currentUser = currentUser;
         this.auditDeviceContext = auditDeviceContext;
+        this.writePreparations = writePreparations;
     }
 
     /**
@@ -103,6 +117,10 @@ public class TxSessionVars {
         HttpServletRequest request = AuditRequestContext.currentRequest();
         String requestId = request == null ? null : AuditRequestContext.ensureRequestId(request).toString();
         Binding binding = Binding.current();
+        // afterBegin listeners cannot throw without leaking transaction state.
+        // Keep the first preparation failure so an explicit bind rethrows its
+        // real cause instead of replacing a lock conflict with SQLSTATE 25P02.
+        if (binding != null && binding.failure != null) throw binding.failure;
         if (binding != null && binding.covers(actorId, actorAccount, requestId)) return;
         Map<String, String> values = new LinkedHashMap<>();
         if (actorId != null) {
@@ -110,7 +128,16 @@ public class TxSessionVars {
             values.put("app.actor_account", actorAccount);
         }
         bindRequestMetadata(values);
-        setConfigs(values);
+        try {
+            setConfigs(values);
+            if (request != null && writePreparations != null) {
+                writePreparations.orderedStream().forEach(preparation -> preparation.prepare(
+                        values.get("app.audit_request_path"), values.get("app.audit_request_method")));
+            }
+        } catch (RuntimeException failure) {
+            if (binding != null) binding.failure = failure;
+            throw failure;
+        }
         if (binding != null) binding.record(actorId, actorAccount, requestId);
     }
 
@@ -120,12 +147,14 @@ public class TxSessionVars {
      */
     static final class Binding implements TransactionSynchronization {
         private static final Object RESOURCE = new Object();
-        private record Snapshot(boolean actorBound, String actorId, String actorAccount, String requestId) {}
+        private record Snapshot(boolean actorBound, String actorId, String actorAccount, String requestId,
+                                RuntimeException failure) {}
         private final SavepointSnapshots<Snapshot> savepoints = new SavepointSnapshots<>();
         private boolean actorBound;
         private String actorId;
         private String actorAccount;
         private String requestId;
+        private RuntimeException failure;
 
         static Binding current() {
             if (!TransactionSynchronizationManager.isSynchronizationActive()
@@ -158,7 +187,7 @@ public class TxSessionVars {
 
         @Override public int getOrder() { return Ordered.HIGHEST_PRECEDENCE; }
         @Override public void savepoint(Object savepoint) {
-            savepoints.record(savepoint, new Snapshot(actorBound, actorId, actorAccount, requestId));
+            savepoints.record(savepoint, new Snapshot(actorBound, actorId, actorAccount, requestId, failure));
         }
         @Override public void savepointRollback(Object savepoint) {
             Snapshot retained = savepoints.rollback(savepoint);
@@ -166,6 +195,7 @@ public class TxSessionVars {
             actorId = retained == null ? null : retained.actorId();
             actorAccount = retained == null ? null : retained.actorAccount();
             requestId = retained == null ? null : retained.requestId();
+            failure = retained == null ? null : retained.failure();
         }
         @Override public void suspend() {
             if (TransactionSynchronizationManager.getResource(RESOURCE) == this) {
@@ -207,6 +237,15 @@ public class TxSessionVars {
         }
         values.put("app.audit_request_id",
                 AuditRequestContext.ensureRequestId(request).toString());
+        // Generic request provenance only. Feature-specific history capture uses
+        // a database allowlist; security must not depend on a feature package.
+        String requestPath = request.getRequestURI();
+        String contextPath = request.getContextPath();
+        if (contextPath != null && !contextPath.isEmpty() && requestPath.startsWith(contextPath)) {
+            requestPath = requestPath.substring(contextPath.length());
+        }
+        values.put("app.audit_request_path", truncate(requestPath, 500));
+        values.put("app.audit_request_method", request.getMethod());
         values.put("app.audit_ip", truncate(request.getRemoteAddr(), 64));
         String userAgent = request.getHeader("User-Agent");
         if (userAgent != null && !userAgent.isBlank()) {

@@ -9,6 +9,7 @@
 // 调用方刷新供应商字典（MasterNameService.reloadSuppliers）后把 id 写入选中值，
 // 即「保存后默认选中该供应商」。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -216,7 +217,8 @@ class _SupplierCategoryPickerFieldState
           requiredEmpty: showRed,
         ),
         child: Text(
-          _error ?? (empty ? '请选择分类' : _selectedName!),
+          _error ??
+              (empty ? utenFieldPlaceholder(label: '分类')! : _selectedName!),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: theme.textTheme.bodyLarge?.copyWith(

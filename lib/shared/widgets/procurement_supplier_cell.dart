@@ -35,7 +35,7 @@ class ProcurementSupplierCell extends StatelessWidget {
   /// 点击单元格打开供应商选择面板（页面实现：面板返回 id 后按多选范围落值）。
   final Future<void> Function()? onPick;
 
-  /// 必填且未选：hint「必选供应商」标红（行级必填口径）。
+  /// 必填且未选：空框显示「供应商」，保留行级必填红框。
   final bool requiredEmpty;
 
   /// 学习预填（/last-terms 带出上次供应商）：黄框提醒核对。
@@ -52,10 +52,17 @@ class ProcurementSupplierCell extends StatelessWidget {
       onTap: onPick,
       borderRadius: UtenEditableGridCellSpec.borderRadius,
       child: InputDecorator(
+        isEmpty: !hasValue,
         decoration: applyAutofillHint(
           applyRequiredEmpty(
             InputDecoration(
               isDense: true,
+              hintText: '供应商',
+              hintStyle: theme.textTheme.bodyLarge?.copyWith(
+                color: requiredEmpty
+                    ? theme.colorScheme.error
+                    : theme.colorScheme.onSurfaceVariant,
+              ),
               suffixIcon: Icon(
                 hasValue ? Icons.unfold_more_rounded : Icons.search_rounded,
                 size: 16,
@@ -70,7 +77,11 @@ class ProcurementSupplierCell extends StatelessWidget {
           autofilled: autofilled && hasValue,
         ),
         child: Text(
-          hasName ? entries[displayId]! : (requiredEmpty ? '必选供应商' : '点击选择供应商'),
+          !hasValue
+              ? ''
+              : hasName
+              ? entries[displayId]!
+              : '供应商',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           // 字号对齐同行 TextField 输入文本（bodyLarge）：委外商格与数量/单价

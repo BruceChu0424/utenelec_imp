@@ -6,8 +6,10 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -23,14 +25,26 @@ class PurchaseGoodsHistorySnapshotContractTest {
             "purchase_order_items",
             "purchase_receipt_items",
             "purchase_return_items");
-    private static final List<String> DIRECT_INSERT_FIXTURES = List.of(
-            "features/operations/workbench/FulfillmentWorkbenchProvisionalStockPostgresTest.java",
-            "features/production/analysis/PreplanExternalSupplySourceGuardPostgresTest.java",
-            "features/production/fulfillment/ProductionPurchaseReceiptProvenancePostgresTest.java",
-            "features/production/fulfillment/ProductionPurchaseSupplyTransitionPostgresTest.java",
-            "features/production/mrp/ProductionExecutionSegmentPostgresTest.java",
-            "features/production/mrp/ProductionMaterialFulfillmentPostgresTest.java",
-            "features/warehouse/inbound/ProcurementArrivalGuardPostgresTest.java");
+    private static final Map<String, List<String>> DIRECT_INSERT_FIXTURES = Map.of(
+            "features/operations/workbench/FulfillmentWorkbenchProvisionalStockPostgresTest.java", List.of(
+                    "purchase_request_items:select", "purchase_order_items:values",
+                    "purchase_request_items:select", "purchase_request_items:values"),
+            "features/production/analysis/PreplanExternalSupplySourceGuardPostgresTest.java", List.of(
+                    "purchase_request_items:values", "purchase_order_items:values",
+                    "purchase_receipt_items:values", "purchase_request_items:values"),
+            "features/production/fulfillment/ProductionPurchaseReceiptProvenancePostgresTest.java", List.of(
+                    "purchase_order_items:values", "purchase_receipt_items:values"),
+            "features/production/fulfillment/ProductionPurchaseSupplyTransitionPostgresTest.java", List.of(
+                    "purchase_request_items:values", "purchase_order_items:values", "purchase_receipt_items:values"),
+            "features/production/mrp/ProductionExecutionSegmentPostgresTest.java", List.of(
+                    "purchase_request_items:values", "purchase_order_items:values", "purchase_receipt_items:values"),
+            "features/production/mrp/ProductionMaterialFulfillmentPostgresTest.java", List.of(
+                    "purchase_request_items:values", "purchase_order_items:values"),
+            "features/warehouse/inbound/ProcurementArrivalGuardPostgresTest.java", List.of(
+                    "purchase_receipt_items:values", "purchase_receipt_items:values", "purchase_order_items:values"));
+    private static final Pattern DIRECT_ITEM_INSERT = Pattern.compile(
+            "insert\\s+into\\s+(purchase_(?:request|order|receipt|return)_items)\\s*\\(([^)]*)\\)\\s*(values|select)",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
 
     @Test
     void migrationAddsAndBackfillsExplicitlyProvenancedSnapshots() throws IOException {
@@ -189,24 +203,39 @@ class PurchaseGoodsHistorySnapshotContractTest {
                 "resources/db/migration/V627__legacy_receipt_consideration_provenance.sql"))))
                 .contains("'goods_snapshot_source','legacy_import'");
 
-        Pattern insert = Pattern.compile(
-                "insert\\s+into\\s+purchase_(?:request|order|receipt|return)_items\\s*\\(([^)]*)\\)\\s*(values|select)",
-                Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
-        int inserts = 0;
-        int insertSelects = 0;
-        for (String fixture : DIRECT_INSERT_FIXTURES) {
-            String java = read(Path.of("src/test/java/com/uten/imp").resolve(fixture));
-            Matcher matcher = insert.matcher(java);
+        for (var fixture : DIRECT_INSERT_FIXTURES.entrySet()) {
+            String java = read(Path.of("src/test/java/com/uten/imp").resolve(fixture.getKey()));
+            Matcher matcher = DIRECT_ITEM_INSERT.matcher(java);
+            List<String> writers = new ArrayList<>();
             while (matcher.find()) {
-                inserts++;
-                if (matcher.group(2).equalsIgnoreCase("select")) insertSelects++;
-                assertThat(matcher.group(1)).containsIgnoringCase("goods_snapshot_source");
+                writers.add(matcher.group(1).toLowerCase(Locale.ROOT) + ":"
+                        + matcher.group(3).toLowerCase(Locale.ROOT));
+                assertThat(matcher.group(2)).as(fixture.getKey() + " " + matcher.group(1))
+                        .containsIgnoringCase("goods_snapshot_source");
             }
+            assertThat(writers).as(fixture.getKey() + " direct writer inventory")
+                    .containsExactlyElementsOf(fixture.getValue());
         }
-        // The seven fixture files contain 18 VALUES writers and one INSERT SELECT.
-        // Do not let the column matcher cross ')' into a later statement's VALUES.
-        assertThat(inserts).isEqualTo(19);
-        assertThat(insertSelects).isEqualTo(1);
+    }
+
+    @Test
+    void directInsertMatcherKeepsSelectColumnsSeparateFromLaterValues() {
+        Matcher matcher = DIRECT_ITEM_INSERT.matcher("""
+                INSERT INTO purchase_request_items(id,goods_snapshot_source)
+                SELECT source.id,'MASTER_AT_SAVE' FROM source;
+                INSERT INTO unrelated_table(id) VALUES ('later');
+                INSERT INTO purchase_order_items(id,goods_snapshot_source)
+                VALUES ('order','MASTER_AT_SAVE');
+                """);
+        assertThat(matcher.find()).isTrue();
+        assertThat(matcher.group(1)).isEqualTo("purchase_request_items");
+        assertThat(matcher.group(2)).isEqualTo("id,goods_snapshot_source");
+        assertThat(matcher.group(3)).isEqualToIgnoringCase("SELECT");
+        assertThat(matcher.find()).isTrue();
+        assertThat(matcher.group(1)).isEqualTo("purchase_order_items");
+        assertThat(matcher.group(2)).isEqualTo("id,goods_snapshot_source");
+        assertThat(matcher.group(3)).isEqualToIgnoringCase("VALUES");
+        assertThat(matcher.find()).isFalse();
     }
 
     private static String source(String relative) throws IOException {

@@ -127,12 +127,40 @@ void main() {
                   },
                 ),
               ),
+              const SizedBox(
+                width: 220,
+                child: ProcurementSupplierCell(
+                  key: ValueKey('supplier-empty'),
+                  value: null,
+                  entries: {},
+                  requiredEmpty: true,
+                  autofilled: true,
+                ),
+              ),
+              const SizedBox(
+                width: 220,
+                child: ProcurementSupplierCell(
+                  key: ValueKey('supplier-name-pending'),
+                  value: null,
+                  fallback: 'bound-supplier-id',
+                  entries: {},
+                ),
+              ),
             ],
           ),
         ),
       ),
     );
     expect(find.byType(UtenFieldHintIcon), findsNWidgets(2));
+    InputDecorator supplierField(String key) => tester.widget<InputDecorator>(
+      find.descendant(
+        of: find.byKey(ValueKey(key)),
+        matching: find.byType(InputDecorator),
+      ),
+    );
+    expect(supplierField('supplier-empty').isEmpty, isTrue);
+    expect(supplierField('supplier-empty').decoration.hintText, '供应商');
+    expect(supplierField('supplier-name-pending').isEmpty, isFalse);
     await tester.tap(find.byType(UtenFieldHintIcon).first);
     await tester.pump();
     expect(picks, 0);

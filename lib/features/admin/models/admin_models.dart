@@ -4,6 +4,8 @@
 // · /admin/departments/{id}/permissions · /admin/permission-baseline。
 // 角色体系已删除(ADR-109)：授权只有全员基础包 + 部门 + 个人覆盖 + 负责人委派。
 
+import 'dart:collection';
+
 import '../../../shared/auth/permission_action_type.dart';
 import '../../../shared/auth/permission_grant_policy.dart';
 
@@ -131,6 +133,7 @@ class AdminPermission {
     this.baseline = false,
     this.baselinePinned = false,
     this.sensitivity = 'NORMAL',
+    this.requiredPermissions = const [],
   });
 
   final String id;
@@ -160,6 +163,7 @@ class AdminPermission {
 
   /// 只作展示标签(商业敏感数据)，不参与任何授权判断。
   final String sensitivity;
+  final List<String> requiredPermissions;
 
   factory AdminPermission.fromJson(Map<String, dynamic> json) =>
       AdminPermission(
@@ -174,6 +178,9 @@ class AdminPermission {
         baseline: json['baseline'] as bool? ?? false,
         baselinePinned: json['baselinePinned'] as bool? ?? false,
         sensitivity: json['sensitivity'] as String? ?? 'NORMAL',
+        requiredPermissions:
+            (json['requiredPermissions'] as List<dynamic>? ?? const [])
+                .cast<String>(),
       );
 }
 
@@ -295,6 +302,9 @@ class PermissionCatalogGroup {
           baseline: p['baseline'] as bool? ?? false,
           baselinePinned: p['baselinePinned'] as bool? ?? false,
           sensitivity: p['sensitivity'] as String? ?? 'NORMAL',
+          requiredPermissions:
+              (p['requiredPermissions'] as List<dynamic>? ?? const [])
+                  .cast<String>(),
         );
       }).toList(),
     );
@@ -323,6 +333,8 @@ class EffectivePermissions {
     this.departmentId,
     this.departmentName,
     this.superAdmin = false,
+    this.requiredPermissions = const {},
+    this.missingDependencies = const {},
   });
 
   final String? departmentId;
@@ -355,27 +367,66 @@ class EffectivePermissions {
 
   /// 最终有效权限点 code 列表（后端计算结果，前端以此为准）
   final List<String> effective;
+  final Map<String, List<String>> requiredPermissions;
+  final Map<String, List<String>> missingDependencies;
 
   static List<String> _codes(Map<String, dynamic> json, String key) =>
       (json[key] as List<dynamic>? ?? const [])
           .map((e) => e as String)
           .toList();
 
-  factory EffectivePermissions.fromJson(Map<String, dynamic> json) =>
-      EffectivePermissions(
-        departmentId: json['departmentId'] as String?,
-        departmentName: json['departmentName'] as String?,
-        departmentPermissions: _codes(json, 'departmentPermissions'),
-        baselinePermissions: _codes(json, 'baselinePermissions'),
-        grants: _codes(json, 'grants'),
-        revokes: _codes(json, 'revokes'),
-        managerGrants: _codes(json, 'managerGrants'),
-        confirmedGrants: _codes(json, 'confirmedGrants'),
-        legacyUnknownGrants: _codes(json, 'legacyUnknownGrants'),
-        legacyUnknownRevokes: _codes(json, 'legacyUnknownRevokes'),
-        effective: _codes(json, 'effective'),
-        superAdmin: json['superAdmin'] as bool? ?? false,
-      );
+  factory EffectivePermissions.fromJson(
+    Map<String, dynamic> json,
+  ) => EffectivePermissions(
+    departmentId: json['departmentId'] as String?,
+    departmentName: json['departmentName'] as String?,
+    departmentPermissions: _codes(json, 'departmentPermissions'),
+    baselinePermissions: _codes(json, 'baselinePermissions'),
+    grants: _codes(json, 'grants'),
+    revokes: _codes(json, 'revokes'),
+    managerGrants: _codes(json, 'managerGrants'),
+    confirmedGrants: _codes(json, 'confirmedGrants'),
+    legacyUnknownGrants: _codes(json, 'legacyUnknownGrants'),
+    legacyUnknownRevokes: _codes(json, 'legacyUnknownRevokes'),
+    effective: _codes(json, 'effective'),
+    superAdmin: json['superAdmin'] as bool? ?? false,
+    requiredPermissions: permissionDependencyMap(json['requiredPermissions']),
+    missingDependencies: permissionDependencyMap(json['missingDependencies']),
+  );
+}
+
+Map<String, List<String>> permissionDependencyMap(Object? value) => value is Map
+    ? {
+        for (final entry in value.entries)
+          if (entry.key is String && entry.value is List)
+            entry.key as String: (entry.value as List)
+                .whereType<String>()
+                .toList(growable: false),
+      }
+    : const {};
+
+/// Keeps the existing list repository contract while retaining server dependency diagnostics.
+class DepartmentPermissionCodes extends ListBase<String> {
+  DepartmentPermissionCodes(
+    List<String> values, {
+    this.inheritedPermissions = const [],
+    this.requiredPermissions = const {},
+    this.missingDependencies = const {},
+  }) : _values = List.unmodifiable(values);
+  final List<String> _values;
+  final List<String> inheritedPermissions;
+  final Map<String, List<String>> requiredPermissions;
+  final Map<String, List<String>> missingDependencies;
+  @override
+  int get length => _values.length;
+  @override
+  set length(int value) =>
+      throw UnsupportedError('Read-only permission response');
+  @override
+  String operator [](int index) => _values[index];
+  @override
+  void operator []=(int index, String value) =>
+      throw UnsupportedError('Read-only permission response');
 }
 
 /// 数据范围授权归属人候选（范围内实际有归属数据的员工）。

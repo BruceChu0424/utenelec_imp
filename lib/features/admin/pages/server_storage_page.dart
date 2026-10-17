@@ -150,6 +150,7 @@ class _ServerStorageState extends ConsumerState<_ServerStorageSession>
   Future<void> _loadItems({bool more = false}) async {
     final category = _category;
     if (!_current ||
+        _summary?.available != true ||
         category == null ||
         _itemsLoading ||
         _busy ||
@@ -459,7 +460,10 @@ class _ServerStorageState extends ConsumerState<_ServerStorageSession>
                           ),
                         if (!summary.available)
                           UtenInlineNotice(
-                            level: UtenInlineNoticeLevel.warning,
+                            key: const ValueKey('storage-unavailable'),
+                            level: summary.platformUnsupported
+                                ? UtenInlineNoticeLevel.info
+                                : UtenInlineNoticeLevel.warning,
                             message:
                                 summary.unavailableReason ?? '此服务器暂未提供存储管理能力。',
                           ),
@@ -508,7 +512,8 @@ class _ServerStorageState extends ConsumerState<_ServerStorageSession>
                                           ? const Icon(Icons.chevron_right)
                                           : null,
                                       onTap:
-                                          category.canList &&
+                                          summary.available &&
+                                              category.canList &&
                                               !_busy &&
                                               !_loading &&
                                               _pending == null

@@ -1463,9 +1463,16 @@ void routeConfirmationTests() {
       );
       expect(field.value, isNull);
       expect(field.enabled, isTrue);
-      // 两行都未确认：格子都显示「选择生产路线」空占位（InputDecorator 会把
-      // hint 渲染多份，断存在即可）。
-      expect(find.text('选择生产路线'), findsWidgets);
+      // 两行都未确认，空格显示业务字段名，不预填任何路线。
+      for (final id in ['segment-a', 'segment-c']) {
+        final routeField = find.byKey(ValueKey('workshop-next-step-$id'));
+        expect(routeField, findsOneWidget);
+        expect(tester.widget<UtenDropdownField>(routeField).value, isNull);
+        expect(
+          find.descendant(of: routeField, matching: find.text('生产路线')),
+          findsOneWidget,
+        );
+      }
       // 路线不在菜单里（选中即提交的单元格内动作）；开工侧入口在路线确认前
       // 全部隐藏。
       await _rightClick(tester, find.text('产品 C'));

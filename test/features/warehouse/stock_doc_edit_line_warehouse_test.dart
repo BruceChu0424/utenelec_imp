@@ -108,7 +108,21 @@ void main() {
     expect(labels, contains('库位号'));
 
     // 点货品格：多选两个 → 当前行 + 追加一行。
-    await tester.tap(find.text('点击选择'));
+    final blank = tester
+        .widget<UtenEditableGrid<StockGridRow>>(grid)
+        .controller
+        .rows
+        .single;
+    final goodsCell = find.descendant(
+      of: grid,
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is RequiredCellFrame &&
+            identical(widget.listenable, blank.goodsNotifier),
+      ),
+    );
+    expect(goodsCell, findsOneWidget);
+    await tester.tap(goodsCell);
     await tester.pumpAndSettle();
     expect(find.text('螺丝'), findsOneWidget);
     expect(find.text('螺母'), findsOneWidget);
@@ -125,8 +139,8 @@ void main() {
     expect(api.createdBodies, isEmpty);
 
     // 两行分别选不同仓（同单跨仓）。
-    await _selectRowWarehouse(tester, 0, '主仓库');
-    await _selectRowWarehouse(tester, 1, '二号仓');
+    await _selectRowWarehouse(tester, 0, _whMain);
+    await _selectRowWarehouse(tester, 1, _whSecond);
 
     // 库位建议按仓查（每次改仓都会按行仓分组重查）：最终两仓都查过，只预填空格。
     await tester.pumpAndSettle();
@@ -217,27 +231,55 @@ void main() {
   });
 }
 
-/// 行内仓库下拉：点开第 [index] 行的发出仓格并选 [label] 对应的仓。
+/// 行内仓库下拉：点开第 [index] 行的发出仓格并按 UUID 选仓。
 Future<void> _selectRowWarehouse(
   WidgetTester tester,
   int index,
-  String label,
+  String warehouseId,
 ) async {
   final dropdowns = find.byType(WarehouseHierarchyDropdown);
   expect(dropdowns, findsNWidgets(2));
-  await tester.tap(dropdowns.at(index));
+  final field = find.descendant(
+    of: dropdowns.at(index),
+    matching: find.byType(UtenDropdownField),
+  );
+  expect(field, findsOneWidget);
+  final dropdown = tester.widget<UtenDropdownField>(field);
+  expect(
+    dropdown.items.singleWhere((item) => item.value == warehouseId).enabled,
+    isTrue,
+  );
+  await tester.tap(field);
   await tester.pumpAndSettle();
-  await tester.tap(find.text(label).last);
+  final option = find.byKey(
+    ValueKey<(String, Key?, String?)>((
+      'uten-dropdown-option',
+      dropdown.key,
+      warehouseId,
+    )),
+  );
+  expect(option, findsOneWidget);
+  await tester.tap(option);
   await tester.pumpAndSettle();
 }
 
 TextEditingController _placeControllerOf(WidgetTester tester, int index) {
-  // 库位格的 key 随行对象走，改按列特征（占位文案）取第 N 个库位输入框。
-  final placeFields = find.byWidgetPredicate(
-    (widget) => widget is TextField && widget.decoration?.hintText == '按本次实际填写',
+  final grid = find.byType(UtenEditableGrid<StockGridRow>);
+  final row = tester
+      .widget<UtenEditableGrid<StockGridRow>>(grid)
+      .controller
+      .rows[index];
+  final field = find.descendant(
+    of: grid,
+    matching: find.byWidgetPredicate(
+      (widget) =>
+          widget is TextField && identical(widget.controller, row.place),
+    ),
   );
-  final widget = tester.widgetList<TextField>(placeFields).elementAt(index);
-  return widget.controller!;
+  expect(field, findsOneWidget);
+  final input = tester.widget<TextField>(field);
+  expect(input.decoration!.hintText, '库位号');
+  return input.controller!;
 }
 
 class _Api extends ApiClient {

@@ -450,8 +450,11 @@ class _FinanceSalesOrderConfirmationPageState
 
     final claim = financeReviewClaim(
       ProviderScope.containerOf(context, listen: false),
+      localizations: AppLocalizations.of(context),
     );
     _batchClaim = claim;
+    var decisionAttempted = false;
+    var decisionConfirmed = false;
     setState(() => _batchBusy = true);
     try {
       await claim.claimAll(
@@ -589,49 +592,55 @@ class _FinanceSalesOrderConfirmationPageState
       if (approved != true || !mounted) return;
 
       setState(() => _batchBusy = true);
-      try {
-        if (!await claim.validateForDecision() || !mounted) {
-          if (mounted) {
-            context.appWarning(claim.failureMessage ?? '认领已失效，请重新认领后核对');
-          }
-          return;
-        }
-        await ref
-            .read(salesOrderFinanceConfirmationRepositoryProvider)
-            .confirmBatch(
-              tasks.map((item) => item.orderId),
-              remark: remark,
-              expectedRevisions: {
-                for (final task in tasks)
-                  task.orderId: task.financeReviewRevision,
-              },
-              expectedClaimIds: {
-                for (final task in tasks)
-                  task.orderId: claim.claimIdFor(
-                    'SALES_ORDER_FINANCE_CONFIRM',
-                    task.orderId,
-                  )!,
-              },
-            );
-        if (!mounted) return;
-        context.appSuccess('已批量确认 ${tasks.length} 笔，计划部可接手排产');
-        final page = _result?.page ?? 1;
-        setState(_clearSelectionState);
-        refreshBadges(ref);
-        await _load(page);
-      } on ApiException catch (error) {
+      if (!await claim.validateForDecision() || !mounted) {
         if (mounted) {
-          context.appError('批量确认未提交，所有订单保持原状态：${error.message}');
+          context.appWarning(claim.failureMessage ?? '认领已失效，请重新认领后核对');
         }
-      } catch (_) {
-        if (mounted) {
-          context.appError('批量确认失败，所有订单保持原状态，请稍后重试');
-        }
+        return;
       }
-    } on ApiException catch (error) {
-      if (mounted) context.appError('整批尚未提交：${error.message}');
-    } catch (_) {
-      if (mounted) context.appError('没能核对整批认领和订单内容，请重新选择后重试');
+      decisionAttempted = true;
+      await ref
+          .read(salesOrderFinanceConfirmationRepositoryProvider)
+          .confirmBatch(
+            tasks.map((item) => item.orderId),
+            remark: remark,
+            expectedRevisions: {
+              for (final task in tasks)
+                task.orderId: task.financeReviewRevision,
+            },
+            expectedClaimIds: {
+              for (final task in tasks)
+                task.orderId: claim.claimIdFor(
+                  'SALES_ORDER_FINANCE_CONFIRM',
+                  task.orderId,
+                )!,
+            },
+          );
+      decisionConfirmed = true;
+      if (!mounted) return;
+      context.appSuccess('已批量确认 ${tasks.length} 笔，计划部可接手排产');
+      final page = _result?.page ?? 1;
+      setState(_clearSelectionState);
+      refreshBadges(ref);
+      await _load(page);
+    } on Object catch (error) {
+      if (!mounted) return;
+      final l10n = AppLocalizations.of(context);
+      if (decisionConfirmed) {
+        context.appWarning(l10n.financeBatchReviewRefreshFailed);
+      } else if (decisionAttempted &&
+          (error is! ApiException ||
+              error.code == 'NETWORK' ||
+              error.code == 'NETWORK_TIMEOUT' ||
+              error.code == 'UNKNOWN' ||
+              (error.httpStatus ?? 0) >= 500)) {
+        context.appWarning(l10n.financeBatchReviewResultUnknown);
+      } else {
+        context.appApiError(
+          error,
+          fallback: l10n.financeBatchReviewCheckFailed,
+        );
+      }
     } finally {
       await claim.releaseAll();
       if (identical(_batchClaim, claim)) _batchClaim = null;
@@ -674,7 +683,9 @@ class _FinanceSalesOrderConfirmationPageState
       main = _pinHostHeader(
         UtenEmpty.error(
           message: '无权查看销售订单财务确认任务',
-          description: '只有被授权的财务人员可以进入（权限设置中授予 sales_order_finance:view）。',
+          description: AppLocalizations.of(
+            context,
+          ).financeSalesReviewAccessHint,
         ),
       );
     } else if (_loading && _result == null) {

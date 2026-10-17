@@ -28,6 +28,39 @@ Widget _app(WidgetBuilder builder) => MaterialApp(
 );
 
 void main() {
+  testWidgets(
+    'empty receipt allocation identifies its amount without replacing the exact controller',
+    (tester) async {
+      final row = FinanceGridRow(mode: ItemMode.settle)..amount.clear();
+      addTearDown(row.dispose);
+      await tester.pumpWidget(
+        _app((context) {
+          final amount = financeGridColumns(
+            ItemMode.settle,
+            context: context,
+            names: _Names(),
+            type: FinanceDocType.receipt,
+          ).singleWhere((column) => column.key == 'amount');
+          expect(amount.required, isTrue);
+          return amount.cellBuilder(context, row);
+        }),
+      );
+      final input = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField && identical(widget.controller, row.amount),
+      );
+      expect(
+        tester.widget<TextField>(input).decoration?.hintText,
+        '本次分配收款(原币)',
+      );
+      expect(row.amount.text, isEmpty);
+      await tester.enterText(input, '90071992547409.123456');
+      await tester.pump();
+      expect(row.amount.text, '90071992547409.123456');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('普通制单金额单元格继续保留精确值与必填属性', (tester) async {
     final row = FinanceGridRow(mode: ItemMode.settle)
       ..amount.text = '90071992547409.123456';

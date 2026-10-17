@@ -284,7 +284,7 @@ class _ExpenseClaimPrintDialogState extends State<_ExpenseClaimPrintDialog> {
                     padding: const EdgeInsets.all(UtenSpacing.s16),
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
-                      child: _paper(theme),
+                      child: SelectionArea(child: _paper(theme)),
                     ),
                   ),
                 ),

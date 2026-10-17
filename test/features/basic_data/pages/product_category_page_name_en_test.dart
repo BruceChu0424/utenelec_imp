@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
+import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -186,6 +187,144 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('focusing the category search does no list or category work', (
+    tester,
+  ) async {
+    final goods = _FakeGoodsRepository();
+    await _pumpPage(tester, goods);
+    await tester.tap(find.text('成品类'));
+    await tester.pumpAndSettle();
+    final tableFinder = find.byType(MasterDataTableView<GoodsListItem>);
+    final paneFinder = find.byType(
+      MasterEntityDetailPane<GoodsListItem, GoodsDetail>,
+    );
+    final tableState = tester.state(tableFinder);
+    final paneState = tester.state(paneFinder);
+    final listCalls = goods.listCalls.length;
+    final categoryCalls = goods.categorySearchCalls;
+    final facets = goods.globalFacetCalls;
+    await tester.tap(
+      find.descendant(
+        of: find.byType(UtenCategoryTreeView<ProductCategoryNode>),
+        matching: find.byType(EditableText),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(goods.listCalls.length, listCalls);
+    expect(goods.categorySearchCalls, categoryCalls);
+    expect(goods.globalFacetCalls, facets);
+    expect(tester.state(tableFinder), same(tableState));
+    expect(tester.state(paneFinder), same(paneState));
+    expect(find.byKey(const ValueKey('master-query-pending')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'replacement typing retains the table window and blocks stale commands until new rows arrive',
+    (tester) async {
+      final goods = _FakeGoodsRepository(
+        rankedSearch: true,
+        delayedKeyword: 'PART-002',
+      );
+      await _pumpPage(tester, goods, rankedSearch: true);
+      final search = find.descendant(
+        of: find.byType(UtenCategoryTreeView<ProductCategoryNode>),
+        matching: find.byType(EditableText),
+      );
+      await tester.enterText(search, 'PART-001');
+      await tester.pump(const Duration(milliseconds: 301));
+      await tester.pumpAndSettle();
+      final paneFinder = find.byType(
+        MasterEntityDetailPane<GoodsListItem, GoodsDetail>,
+      );
+      final tableFinder = find.byType(MasterDataTableView<GoodsListItem>);
+      final paneState = tester.state(paneFinder);
+      final tableState = tester.state(tableFinder);
+      final pane =
+          paneState as MasterEntityPaneController<GoodsListItem, GoodsDetail>;
+      final original = tester.widget<MasterDataTableView<GoodsListItem>>(
+        tableFinder,
+      );
+      original.onSelectedIdsChanged!({'exact-item'});
+      await tester.pump();
+      final oldMenu = original.rowMenuBuilder!(original.items.first)
+          .whereType<UtenMenuItem>()
+          .firstWhere((entry) => entry.label == '查看详情');
+      final oldExport = await tester
+          .widget<UtenExportButton>(find.byType(UtenExportButton))
+          .prepareExport!();
+      final previousCalls = goods.listCalls.length;
+      final previousCategoryCalls = goods.categorySearchCalls;
+      for (final text in ['P', 'PA', 'PART-002']) {
+        await tester.enterText(search, text);
+        await tester.pump(const Duration(milliseconds: 40));
+        final table = tester.widget<MasterDataTableView<GoodsListItem>>(
+          tableFinder,
+        );
+        expect(tester.state(paneFinder), same(paneState));
+        expect(tester.state(tableFinder), same(tableState));
+        expect(table.paginationScope, original.paginationScope);
+        expect(
+          table.items.map((row) => row.id),
+          original.items.map((r) => r.id),
+        );
+        expect(table.selectedIds, isEmpty);
+        expect(goods.listCalls.length, previousCalls);
+        expect(goods.categorySearchCalls, previousCategoryCalls);
+        expect(
+          tester
+              .widget<UtenCategoryTreeView<ProductCategoryNode>>(
+                find.byType(UtenCategoryTreeView<ProductCategoryNode>),
+              )
+              .externalSearchQuery,
+          'PART-001',
+          reason: '树投影同样等待防抖提交，不随每字符重排整树',
+        );
+        expect(
+          find.byKey(const ValueKey('master-query-pending')),
+          findsOneWidget,
+        );
+        expect(pane.busy, isTrue);
+        expect(
+          tester
+              .widget<UtenExportButton>(find.byType(UtenExportButton))
+              .enabled,
+          isFalse,
+        );
+      }
+      expect(oldExport!.stillCurrent!(), isFalse);
+      var commands = 0;
+      expect(await pane.runExclusive(() async => commands++), isNull);
+      expect(commands, 0);
+      await oldMenu.onTap();
+      await tester.pump(const Duration(milliseconds: 301));
+      expect(goods.listCalls.last, (null, 'PART-002'));
+      expect(tester.state(tableFinder), same(tableState));
+      expect(
+        find.byKey(const ValueKey('master-query-pending')),
+        findsOneWidget,
+      );
+      goods.delayed.complete(
+        const PagedResult(
+          items: [GoodsListItem(id: 'new-row', name: '新关键词结果')],
+          page: 1,
+          size: 20,
+          total: 1,
+          totalPages: 1,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.state(paneFinder), same(paneState));
+      expect(tester.state(tableFinder), same(tableState));
+      expect(find.byKey(const ValueKey('master-query-pending')), findsNothing);
+      expect(pane.busy, isFalse);
+      expect(find.text('新关键词结果'), findsOneWidget);
+      await oldMenu.onTap();
+      expect(oldExport.stillCurrent!(), isFalse);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 const _exactCategory = 'ffffffff-ffff-ffff-ffff-fffffffffff1';
@@ -206,7 +345,10 @@ Future<void> _pumpPage(
           await SharedPreferences.getInstance(),
         ),
         apiClientProvider.overrideWithValue(ApiClient(Dio())),
-        currentPermissionsProvider.overrideWithValue({Perm.goodsView}),
+        currentPermissionsProvider.overrideWithValue({
+          Perm.goodsView,
+          Perm.materialCategoryView,
+        }),
         isSuperAdminProvider.overrideWithValue(false),
         productCategoryRepositoryProvider.overrideWithValue(
           _FakeCategoryRepository(
@@ -294,6 +436,7 @@ class _FakeGoodsRepository implements GoodsRepository {
   final String? delayedKeyword;
   final delayed = Completer<PagedResult<GoodsListItem>>();
   int globalFacetCalls = 0;
+  int categorySearchCalls = 0;
   final bool rankedSearch;
   final listCalls = <(String?, String?)>[];
 
@@ -305,7 +448,10 @@ class _FakeGoodsRepository implements GoodsRepository {
     bool excludeStub = false,
     String? categoryId,
     bool includeRelated = false,
-  }) async => {_exactCategory, _approximateCategory};
+  }) async {
+    categorySearchCalls++;
+    return {_exactCategory, _approximateCategory};
+  }
 
   @override
   Future<PagedResult<GoodsListItem>> list(

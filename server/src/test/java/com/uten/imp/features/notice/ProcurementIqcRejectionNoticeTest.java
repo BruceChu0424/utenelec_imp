@@ -276,10 +276,38 @@ class ProcurementIqcRejectionNoticeTest {
         verifyNotRecipient(fixture.notice(), actionOnly);
     }
 
+    @Test
+    void financeExceptionAndReversalShowTheCurrentChineseStateWithoutInternalCodes() {
+        Map<String, String> states = Map.of(
+                "PENDING_RETURN", "待实物退回", "RETURN_RECORDED", "退回已登记",
+                "CREDIT_CONFIRMED", "供应商贷项已确认", "CLOSED_NO_CREDIT", "无贷项已结案",
+                "FINANCE_EXCEPTION", "财务处置异常待复核", "REVERSED", "已反向更正",
+                "FUTURE_UNKNOWN", "状态已变化，请打开详情核对");
+        states.forEach((status, label) -> {
+            UUID caseId = UUID.randomUUID(), reviewer = UUID.randomUUID();
+            Fixture fixture = fixture(caseId, reviewer, Map.of(reviewer, Set.of(NOTICE_READ, VIEW, VIEW_ALL)), status);
+            for (String event : List.of(ChainNoticeService.EVENT_PROCUREMENT_IQC_REJECTION_FINANCE_EXCEPTION,
+                    ChainNoticeService.EVENT_PROCUREMENT_IQC_REJECTION_REVERSED)) {
+                fixture.service().deliverOutboxEvent(event, caseId, JSON.createObjectNode());
+                verify(fixture.notice()).publishForUser(eq(reviewer), anyString(),
+                        argThat(content -> content.contains(label) && !content.contains(status)),
+                        anyString(), anyString(), anyString(), eq(event));
+            }
+        });
+    }
+
     private static Fixture fixture(
             UUID caseId,
             UUID owner,
             Map<UUID, Set<String>> permissionsByUser) {
+        return fixture(caseId, owner, permissionsByUser, "RETURN_RECORDED");
+    }
+
+    private static Fixture fixture(
+            UUID caseId,
+            UUID owner,
+            Map<UUID, Set<String>> permissionsByUser,
+            String status) {
         NoticeService notice = mock(NoticeService.class);
         UserAccountRepository users = mock(UserAccountRepository.class);
         PermissionResolver permissions = mock(PermissionResolver.class);
@@ -290,7 +318,7 @@ class ProcurementIqcRejectionNoticeTest {
                         "receipt_type", "PURCHASE",
                         "receipt_bill_no", "CR-IQC-001",
                         "order_bill_no", "CG-IQC-001",
-                        "status", "RETURN_RECORDED",
+                        "status", status,
                         "owner_user_id", owner,
                         "failed_qty", new BigDecimal("2.5000"),
                         "goods_code", "WL-001",
@@ -365,7 +393,9 @@ class ProcurementIqcRejectionNoticeTest {
                 && !content.contains("金额")
                 && !content.contains("单价")
                 && !content.contains("汇率")
-                && !content.contains("1200.00"));
+                && !content.contains("1200.00")
+                && List.of("PENDING_RETURN", "RETURN_RECORDED", "CREDIT_CONFIRMED", "CLOSED_NO_CREDIT",
+                        "FINANCE_EXCEPTION", "REVERSED").stream().noneMatch(content::contains));
     }
 
     private static void verifyNotRecipient(

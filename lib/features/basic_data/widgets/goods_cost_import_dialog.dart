@@ -60,10 +60,12 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
     maxLines: 1,
     overflow: TextOverflow.ellipsis,
   );
-  Widget _input(TextEditingController c) => TextFormField(
+  Widget _input(TextEditingController c, String label) => TextFormField(
     controller: c,
     errorBuilder: utenTextFieldErrorBuilder,
-    decoration: const UtenInputDecoration(InputDecoration(isDense: true)),
+    decoration: UtenInputDecoration(
+      InputDecoration(isDense: true, hintText: label),
+    ),
   );
   void _apply() {
     if (_rows.any(
@@ -143,6 +145,7 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                     child: Checkbox(
+                      key: ValueKey('cost-import-reviewed-${r.source['key']}'),
                       value: r.reviewed,
                       onChanged: (v) => setState(() => r.reviewed = v == true),
                     ),
@@ -178,6 +181,7 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
                   width: 180,
                   value: (r) => r.kind,
                   cellBuilder: (_, r) => UtenDropdownField(
+                    hintText: _l.costImportKind,
                     value: r.kind,
                     dense: true,
                     allowClear: false,
@@ -205,6 +209,10 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
                   value: (r) => r.targetPath,
                   cellBuilder: (_, r) => r.kind == 'MATERIAL'
                       ? UtenDropdownField(
+                          key: ValueKey(
+                            'cost-import-target-${r.source['key']}',
+                          ),
+                          hintText: _l.costImportTarget,
                           value: r.targetPath,
                           dense: true,
                           searchable: true,
@@ -231,8 +239,9 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
                   value: (r) => r.price.text,
                   exactValueOf: (r) => r.kind == 'SKIP' ? null : r.price.text,
                   exactListenableOf: (r) => r.price,
-                  cellBuilder: (_, r) =>
-                      r.kind == 'SKIP' ? _text('—') : _input(r.price),
+                  cellBuilder: (_, r) => r.kind == 'SKIP'
+                      ? _text('—')
+                      : _input(r.price, _l.costPrice),
                 ),
                 MasterColumnDef(
                   key: 'rate',
@@ -243,15 +252,16 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
                   exactValueOf: (r) =>
                       r.kind == 'MATERIAL' ? r.rate.text : null,
                   exactListenableOf: (r) => r.rate,
-                  cellBuilder: (_, r) =>
-                      r.kind == 'MATERIAL' ? _input(r.rate) : _text('—'),
+                  cellBuilder: (_, r) => r.kind == 'MATERIAL'
+                      ? _input(r.rate, _l.costPriceUnitRate)
+                      : _text('—'),
                 ),
                 MasterColumnDef(
                   key: 'reason',
                   label: _l.costNotes,
                   width: 250,
                   value: (r) => r.reason.text,
-                  cellBuilder: (_, r) => _input(r.reason),
+                  cellBuilder: (_, r) => _input(r.reason, _l.costNotes),
                 ),
               ],
               items: _rows,

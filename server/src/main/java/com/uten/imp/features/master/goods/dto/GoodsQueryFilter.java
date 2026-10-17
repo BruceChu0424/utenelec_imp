@@ -37,8 +37,26 @@ public record GoodsQueryFilter(
         // owningWarehouse/owningWorkshop 两个键，与表头筛选键同名）
         UUID owningWarehouse,
         UUID owningWorkshop,
-        Boolean includeRelated // Explicitly include descriptive-only/mixed descriptive matches after primary goods.
+        Boolean includeRelated, // Explicitly include descriptive-only/mixed descriptive matches after primary goods.
+        java.util.Map<String, String> columnSearch
 ) {
+    public GoodsQueryFilter(UUID categoryId, Set<UUID> categoryRootIds, String keyword, Set<String> nullFields,
+                            String series, String model, String material, String code, String name, String spec,
+                            String cNumber, String requireRemark, String mouldCode, String rearInsertCode, String paper,
+                            Integer colorLegacyId, Integer unitLegacyId, String sourceType, Boolean excludeDisabled,
+                            Boolean excludeStub, Boolean disabledOnly, Boolean stubOnly, UUID owningWarehouse,
+                            UUID owningWorkshop, Boolean includeRelated) {
+        this(categoryId, categoryRootIds, keyword, nullFields, series, model, material, code, name, spec, cNumber,
+                requireRemark, mouldCode, rearInsertCode, paper, colorLegacyId, unitLegacyId, sourceType, excludeDisabled,
+                excludeStub, disabledOnly, stubOnly, owningWarehouse, owningWorkshop, includeRelated, java.util.Map.of());
+    }
+
+    public GoodsQueryFilter withColumnSearch(java.util.Map<String, String> search) {
+        return new GoodsQueryFilter(categoryId, categoryRootIds, keyword, nullFields, series, model, material, code,
+                name, spec, cNumber, requireRemark, mouldCode, rearInsertCode, paper, colorLegacyId, unitLegacyId,
+                sourceType, excludeDisabled, excludeStub, disabledOnly, stubOnly, owningWarehouse, owningWorkshop,
+                includeRelated, search);
+    }
     /** Existing callers retain the default identity/category-only candidate set. */
     public GoodsQueryFilter(UUID categoryId, Set<UUID> categoryRootIds, String keyword, Set<String> nullFields,
                             String series, String model, String material, String code, String name, String spec,
@@ -64,6 +82,6 @@ public record GoodsQueryFilter(
                 "unitLegacyId".equals(field) ? null : unitLegacyId, "sourceType".equals(field) ? null : sourceType,
                 excludeDisabled, excludeStub, disabledOnly, stubOnly,
                 "owningWarehouse".equals(field) ? null : owningWarehouse,
-                "owningWorkshop".equals(field) ? null : owningWorkshop, includeRelated);
+                "owningWorkshop".equals(field) ? null : owningWorkshop, includeRelated, columnSearch);
     }
 }

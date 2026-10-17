@@ -153,18 +153,53 @@ class SalesPlanningNoticeCatchUpEndToEndTest {
         assertEquals(1, count(user), "A skipped outbox signal must not consume the permanent delivery identity");
     }
 
-    @Test void missingEachAuthorityOrPlanningMembershipNeverCreatesACard() {
+    @Test void missingEachRequiredAuthorityNeverCreatesACard() {
         drain();
-        UUID outside = fixture.createUserWithPerms(world, "outside-" + suffix(),
-                "notice:read", "production_material_analysis:view", "production_material_analysis:create");
-        recipients.add(outside);
         for (String authority : List.of("notice:read", "production_material_analysis:view", "production_material_analysis:create")) {
             UUID user = planner();
             override(user, authority, "revoke");
             catchUp.runBatch(); drain();
             assertEquals(0, count(user), authority);
         }
-        assertEquals(0, count(outside));
+    }
+
+    @Test void explicitlyAuthorizedAccountOutsidePlanningReceivesOneActionableCardWithoutBusinessWrites() {
+        drain();
+        UUID user = fixture.createUserWithPerms(world, "outside-" + suffix(),
+                "notice:read", "production_material_analysis:view", "production_material_analysis:create");
+        recipients.add(user);
+        assertEquals(0, jdbc.queryForObject("""
+                WITH RECURSIVE ancestry(id,parent_id,code) AS (
+                    SELECT department.id,department.parent_id,department.code
+                    FROM users account JOIN employees employee ON employee.id=account.employee_id
+                    JOIN departments department ON department.id=employee.department_id WHERE account.id=?
+                    UNION ALL
+                    SELECT parent.id,parent.parent_id,parent.code FROM departments parent
+                    JOIN ancestry child ON child.parent_id=parent.id
+                ) SELECT count(*) FROM ancestry WHERE code='SUB_PLAN'
+                """, Integer.class, user));
+        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM employee_secondary_departments membership "
+                + "JOIN users account ON account.employee_id=membership.employee_id WHERE account.id=?", Integer.class, user));
+        String orderBefore = jdbc.queryForObject("SELECT to_jsonb(document)::text FROM sales_orders document WHERE id=?", String.class, order);
+        String itemsBefore = jdbc.queryForObject("SELECT jsonb_agg(to_jsonb(item) ORDER BY id)::text FROM sales_order_items item WHERE order_id=?", String.class, order);
+        long analysesBefore = jdbc.queryForObject("SELECT count(*) FROM production_material_analyses", Long.class);
+        clearInvocations(notices);
+
+        catchUp.runBatch(); drain();
+        assertEquals(1, count(user));
+        assertEquals(1, activeCount(user));
+        fixture.loginAs(user);
+        assertTrue(visible(user), "Current permissions make this card actionable without planning membership");
+        fixture.loginAs(world.superAdminUserId());
+        deliver(); catchUp.runBatch(); drain();
+
+        assertEquals(1, count(user), "Catch-up and normal delivery must share the same permanent delivery identity");
+        verify(notices, times(1)).publishSalesPlanningHandoff(eq(user), eq(order), eq(0L), anyString(), anyString());
+        assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM notice_user_states WHERE notice_id=? AND user_id=?",
+                Integer.class, noticeId(user), user));
+        assertEquals(analysesBefore, jdbc.queryForObject("SELECT count(*) FROM production_material_analyses", Long.class));
+        assertEquals(orderBefore, jdbc.queryForObject("SELECT to_jsonb(document)::text FROM sales_orders document WHERE id=?", String.class, order));
+        assertEquals(itemsBefore, jdbc.queryForObject("SELECT jsonb_agg(to_jsonb(item) ORDER BY id)::text FROM sales_order_items item WHERE order_id=?", String.class, order));
     }
 
     @Test void readAcknowledgedDeletedAndSnoozedReceiptsAreNeverReset() {

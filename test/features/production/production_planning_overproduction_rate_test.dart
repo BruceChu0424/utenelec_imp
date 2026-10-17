@@ -147,6 +147,13 @@ void main() {
           ),
         ),
       );
+      await tester.enterText(find.byType(TextField), '');
+      await tester.pump();
+      expect(controller.text, isEmpty);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).decoration!.hintText,
+        '允许超产比例',
+      );
       await tester.enterText(find.byType(TextField), '-2');
       await tester.pump();
       expect(controller.text, '-2');

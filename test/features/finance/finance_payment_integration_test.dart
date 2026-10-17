@@ -7,8 +7,10 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -187,6 +189,7 @@ void main() {
     expect(item.containsKey('amountLocal'), isFalse);
     expect(item.containsKey('appliedAmountLocal'), isFalse);
     expect(item.containsKey('exchangeDiff'), isFalse);
+    _expectSaved(tester, api);
   });
 
   testWidgets(
@@ -215,6 +218,10 @@ void main() {
         ),
       );
       expect(pickerGrid, findsOneWidget);
+      final pickerHeaders = find.descendant(
+        of: pickerGrid,
+        matching: find.byType(UtenColumnHeaderMenuRegion),
+      );
       for (final label in const [
         '应付单号',
         '关联单号',
@@ -224,10 +231,18 @@ void main() {
         '本次付款金额',
       ]) {
         expect(
-          find.descendant(of: pickerGrid, matching: find.text(label)),
+          find.descendant(of: pickerHeaders, matching: find.text(label)),
           findsOneWidget,
         );
       }
+      TextField amountField(String id) =>
+          tester.widget<TextField>(find.byKey(ValueKey('ar-ap-amount-$id')));
+      for (final id in ['ap-usd', 'ap-eur', 'ap-incomplete']) {
+        expect(amountField(id).decoration!.labelText, '本次付款金额');
+        expect(amountField(id).decoration!.hintText, '本次付款金额');
+      }
+      expect(amountField('ap-usd').decoration!.suffixText, '美金');
+      expect(amountField('ap-eur').decoration!.suffixText, '欧元');
       expect(find.text('搜索应付单号、关联单号或供应商'), findsOneWidget);
 
       Checkbox checkbox(String id) =>
@@ -244,6 +259,10 @@ void main() {
       expect(checkbox('ap-usd').value, isTrue);
       expect(checkbox('ap-eur').onChanged, isNull);
       expect(checkbox('ap-incomplete').onChanged, isNull);
+      expect(amountField('ap-usd').controller!.text, '80');
+      expect(amountField('ap-usd').enabled, isTrue);
+      expect(amountField('ap-eur').enabled, isFalse);
+      expect(amountField('ap-incomplete').enabled, isFalse);
       expect(find.text('本次币种：美金'), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('ar-ap-confirm')));
@@ -287,6 +306,7 @@ void main() {
       );
       expect(item['appliedLedgerId'], 'ap-usd');
       expect(item['amountOriginal'], '80.0000');
+      _expectSaved(tester, api);
     },
   );
 
@@ -372,6 +392,7 @@ void main() {
       expect(api.lastPutBody?['bankFeeAccountAmount'], '3.0000');
       expect(api.lastPutBody?['exchangeRate'], '7.200000');
       expect(api.lastPutBody?['bankBookedAt'], '2026-08-09T02:00:00.000Z');
+      _expectSaved(tester, api);
     },
   );
 
@@ -407,6 +428,7 @@ void main() {
         api.lastPutBody?['bankFeeAccountAmount'],
         '0.000000000000000000000001',
       );
+      _expectSaved(tester, api);
     },
   );
 }
@@ -429,6 +451,27 @@ Future<_PaymentApi> _pumpEditor(
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
   final api = _PaymentApi(detail, ledgerItems: ledgerItems);
+  final router = GoRouter(
+    initialLocation: '/finance/payments/${detail['id']}/edit',
+    routes: [
+      GoRoute(
+        path: '/finance/payments/:id/edit',
+        builder: (_, state) => FinanceDocEditPage(
+          docType: FinanceDocType.payment,
+          id: state.pathParameters['id'],
+        ),
+      ),
+      GoRoute(
+        path: '/finance/payments/:id',
+        builder: (_, state) => FinanceDocDetailPage(
+          docType: FinanceDocType.payment,
+          id: state.pathParameters['id']!,
+        ),
+      ),
+    ],
+  );
+  api.editorRouter = router;
+  addTearDown(router.dispose);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -437,16 +480,22 @@ Future<_PaymentApi> _pumpEditor(
         apiClientProvider.overrideWithValue(api),
         sessionProvider.overrideWith(_TestSessionNotifier.new),
       ],
-      child: MaterialApp(
-        home: FinanceDocEditPage(
-          docType: FinanceDocType.payment,
-          id: detail['id'] as String,
-        ),
-      ),
+      child: MaterialApp.router(routerConfig: router),
     ),
   );
   await tester.pumpAndSettle();
   return api;
+}
+
+void _expectSaved(WidgetTester tester, _PaymentApi api) {
+  expect(
+    api.editorRouter.routeInformationProvider.value.uri.path,
+    '/finance/payments/${api.detail['id']}',
+  );
+  expect(find.byType(FinanceDocDetailPage), findsOneWidget);
+  expect(find.byType(FinanceDocEditPage), findsNothing);
+  expect(find.text('保存失败，请稍后重试'), findsNothing);
+  expect(tester.takeException(), isNull);
 }
 
 Future<_PaymentApi> _pumpDetail(
@@ -584,6 +633,7 @@ class _TestSessionNotifier extends SessionNotifier {
 }
 
 class _PaymentApi extends ApiClient {
+  late final GoRouter editorRouter;
   _PaymentApi(this.detail, {this.ledgerItems = const []}) : super(Dio());
 
   final Map<String, dynamic> detail;

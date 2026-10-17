@@ -127,6 +127,9 @@ void main() {
       expect(addRect.left - searchRect.right, closeTo(8, 0.01));
       expect(addRect.width, greaterThanOrEqualTo(36));
       expect(addRect.height, greaterThanOrEqualTo(36));
+      expect(addRect.top, closeTo(searchRect.top, 0.01));
+      expect(addRect.bottom, closeTo(searchRect.bottom, 0.01));
+      expect(addRect.width, closeTo(searchRect.height, 0.01));
       expect(addRect.right, lessThanOrEqualTo(headerRect.right + 0.01));
       expect(find.byKey(_addKey).hitTestable(), findsOneWidget);
       await tester.tap(find.byTooltip('新增最外层分类'));

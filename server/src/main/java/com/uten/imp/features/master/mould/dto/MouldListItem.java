@@ -8,7 +8,7 @@ import java.util.UUID;
 /**
  * 模具列表项。
  *
- * <p>仅承载表格中"有数据"的列（编号/名称/存放位置/制造日期/制造商/备注/状态）+ legacyId。
+ * <p>承载实际列表字段及所属系列分类（历史模具系列即 mould_categories，未另造 series）。
  * 表格里另有 3 列（模数/套数/模具类型）在表无对应字段，由前端以 null 取值
  * 显示"—"，不参与后端筛选/facet，故不在此 DTO 内。
  *
@@ -27,4 +27,5 @@ public class MouldListItem {
     private Integer legacyId;
     private UUID categoryId;    // 所属分类 id（模具资料页"搜模具定位分类"用）
     private String manufacturer;
+    private String categoryName; // 真正所属的模具系列/分类名称，仅作显示，关系仍用 categoryId
 }

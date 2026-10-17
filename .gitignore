@@ -62,7 +62,9 @@ website/.env
 website/.env.*
 !website/.env.example
 server/*.iml
-server/.mvn/
+server/.mvn/*
+!server/.mvn/maven.config
+!server/.mvn/central-repository-settings.xml
 server/mvnw
 server/mvnw.cmd
 *.p12

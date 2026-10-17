@@ -272,9 +272,11 @@ void main() {
           'production-draw-quantity-warehouse-a|goods|silver|unit',
         ),
       );
-      for (final invalid in ['0', '-1', '8', 'NaN', '1.00001']) {
+      expect(tester.widget<TextField>(quantity).decoration!.hintText, '应领数量');
+      for (final invalid in ['', '0', '-1', '8', 'NaN', '1.00001']) {
         await tester.enterText(quantity, invalid);
         await tester.pumpAndSettle();
+        expect(tester.widget<TextField>(quantity).controller!.text, invalid);
         expect(
           tester.widget<UtenButton>(find.byKey(_submitKey)).onPressed,
           isNull,

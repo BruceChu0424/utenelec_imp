@@ -19,9 +19,11 @@ import '../../../shared/models/procurement_quantity.dart';
 // 实称重量(ADR-135)：数量组之后录净重(可选)，按各行订货单供应商学到的单重核对；称重计数默认
 // 只记重量；重量与「按称重改数量」随明细提交并计入幂等键。
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -147,6 +149,7 @@ class _InboundArrivalRegistrationPageState
     'billDate': _billDate.toIso8601String(),
     'receiverId': _receiverId,
     'registrationId': _registrationId,
+    'profileLearningInCommand': _profileLearningInCommand,
     'removedLineCount': _removedLineCount,
     'route': _route?.name,
     'employees': draftEmployees(_empCache),
@@ -178,6 +181,8 @@ class _InboundArrivalRegistrationPageState
     _billDate = DateTime.parse(draftText(data, 'billDate'));
     _receiverId = data['receiverId'] as String?;
     _registrationId = draftText(data, 'registrationId');
+    // Keep old interrupted drafts on their original command shape and key.
+    _profileLearningInCommand = data['profileLearningInCommand'] == true;
     _removedLineCount = data['removedLineCount'] as int? ?? 0;
     final savedRoute = InboundRoute.values
         .where((route) => route.name == data['route'])
@@ -255,6 +260,7 @@ class _InboundArrivalRegistrationPageState
   }
 
   String _registrationId = const Uuid().v4();
+  bool _profileLearningInCommand = true;
   int _removedLineCount = 0;
   String? _loadError;
 
@@ -972,6 +978,8 @@ class _InboundArrivalRegistrationPageState
             if (line.prefill.orderType == ProcurementInboundOrderType.purchase)
               'purchaserId': line.prefill.purchaserId,
             'goodsId': line.item.goodsId,
+            if (_profileLearningInCommand && _goodsProfile(line).isNotEmpty)
+              'goodsProfile': _goodsProfile(line),
             'qty': line.qty.text.trim(),
             if (line.prefill.orderType == ProcurementInboundOrderType.purchase)
               'giftQty': line.giftQty.text.trim(),
@@ -1015,8 +1023,7 @@ class _InboundArrivalRegistrationPageState
       setBusy: _setSaving,
     );
     if (batch == null) return;
-    // 学习回写只针对实际登记了的行(未勾选行不产生本次事实)。
-    unawaited(_learnGoodsProfiles(submitLines));
+    // 本次登记行的资料学习已随同一服务端事务完成，原命令重放不会再次覆盖资料。
     if (!mounted) return;
     await completeFormDraft();
     if (!mounted) return;
@@ -1089,35 +1096,22 @@ class _InboundArrivalRegistrationPageState
     final canonical = [
       _registrationId,
       if (stockInFirst) 'stock-in-first',
+      if (_profileLearningInCommand) 'goods-profile-v1',
       for (final line in lines)
         '${line.item.orderItemId}:${line.warehouseId}:${line.qty.text.trim()}|gift=${line.giftQty.text.trim()}'
             '${line.source.apiValue == null ? '' : ':${line.source.apiValue}'}'
-            '${_weightKeyPart(line)}',
+            '${_weightKeyPart(line)}'
+            '${_profileLearningInCommand ? '|profile=${jsonEncode(_goodsProfile(line))}' : ''}',
     ].join('|');
     return businessIdempotencyKey('warehouse-arrival-batch', canonical);
   }
 
-  /// 学习回写(best-effort)：仅上报用户实际填了值的字段；失败不阻断主流程。
-  Future<void> _learnGoodsProfiles(List<_BatchArrivalLine> lines) async {
-    final hints = <Map<String, dynamic>>[
-      for (final line in lines)
-        {
-          'goodsId': line.item.goodsId,
-          if (line.item.goodsCode.trim().isNotEmpty)
-            'goodsCode': line.item.goodsCode.trim(),
-          if (line.series.text.trim().isNotEmpty)
-            'series': line.series.text.trim(),
-          if (line.place.text.trim().isNotEmpty)
-            'stockPlace': line.place.text.trim(),
-        },
-    ];
-    if (hints.isEmpty) return;
-    try {
-      await ref
-          .read(procurementInboundRepositoryProvider)
-          .saveGoodsProfileHints(hints);
-    } catch (_) {}
-  }
+  Map<String, String> _goodsProfile(_BatchArrivalLine line) => {
+    if (line.item.goodsCode.trim().isNotEmpty)
+      'goodsCode': line.item.goodsCode.trim(),
+    if (line.series.text.trim().isNotEmpty) 'series': line.series.text.trim(),
+    if (line.place.text.trim().isNotEmpty) 'stockPlace': line.place.text.trim(),
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -1239,7 +1233,9 @@ class _InboundArrivalRegistrationPageState
                     const SizedBox(height: UtenSpacing.s12),
                     TextField(
                       controller: _remark,
-                      decoration: const InputDecoration(labelText: '备注'),
+                      decoration: const UtenInputDecoration(
+                        InputDecoration(labelText: '备注'),
+                      ),
                       maxLines: 2,
                     ),
                   ],
@@ -1472,9 +1468,12 @@ class _InboundArrivalRegistrationPageState
               !editable(line) ||
               line.prefill.orderType != ProcurementInboundOrderType.purchase,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: InputDecoration(
-            isDense: true,
-            suffixText: line.item.unitName,
+          decoration: UtenInputDecoration(
+            InputDecoration(
+              labelText: '赠品数量',
+              isDense: true,
+              suffixText: line.item.unitName,
+            ),
           ),
         ),
       ),
@@ -1571,6 +1570,7 @@ class _InboundArrivalRegistrationPageState
           label: '${line.goodsName} 物料系列',
           child: WarehouseAutofillTextField(
             controller: line.series,
+            hintText: '物料系列',
             source: '系列来自货品资料，请核对本次到货',
             enabled: editable(line),
           ),

@@ -8,6 +8,7 @@ import '../../core/theme/uten_tokens.dart';
 import 'uten_field_hint_icon.dart';
 import 'uten_field_label.dart';
 import 'uten_field_message.dart';
+import 'uten_field_placeholder.dart';
 import 'uten_filter_field_theme.dart';
 import 'uten_table_cell_hints.dart';
 import 'uten_table_cell_spec.dart';
@@ -19,11 +20,36 @@ import 'uten_table_cell_spec.dart';
 /// state nor the text controller is replaced, and no bottom message slot is
 /// allocated by [InputDecorator].
 class UtenInputDecoration extends InputDecoration {
-  const UtenInputDecoration(this.base, {this.info, this.autofilled = false});
+  const UtenInputDecoration(
+    this.base, {
+    this.info,
+    this.autofilled = false,
+    this.useFieldNameHint = true,
+  });
 
   final InputDecoration base;
   final String? info;
   final bool autofilled;
+
+  /// Ordinary inputs use the business field name while empty. Explicitly opt
+  /// out only for meaningful filter states or a structured editor's own prompt.
+  final bool useFieldNameHint;
+
+  String? get _fieldName => utenDecorationFieldName(base);
+
+  bool get _usesFieldName =>
+      useFieldNameHint &&
+      _fieldName != null &&
+      !RegExp(r'搜索|search', caseSensitive: false).hasMatch(_fieldName!) &&
+      (base.hint == null || _messageText(base.hint) != null);
+
+  String? get _placeholderGuidance {
+    if (!_usesFieldName) return null;
+    final original = utenFieldPlaceholder(
+      hint: base.hintText ?? _messageText(base.hint),
+    );
+    return original == _fieldName ? null : original;
+  }
 
   static String? _messageText(Widget? widget) => switch (widget) {
     UtenFieldMessage(:final message) => message,
@@ -47,6 +73,7 @@ class UtenInputDecoration extends InputDecoration {
       if (originalLabel is UtenFieldLabel && originalLabel.info.isNotEmpty)
         originalLabel.info,
       if (base.helperText?.isNotEmpty ?? false) base.helperText!,
+      if (_placeholderGuidance?.isNotEmpty ?? false) _placeholderGuidance!,
       if (_autofillMessage == null &&
           (_messageText(base.helper)?.isNotEmpty ?? false))
         _messageText(base.helper)!,
@@ -194,10 +221,14 @@ class UtenInputDecoration extends InputDecoration {
   int? get helperMaxLines => base.helperMaxLines;
 
   @override
-  String? get hintText => base.hintText;
+  String? get hintText => _usesFieldName
+      ? _fieldName
+      : useFieldNameHint && base.hintText != null
+      ? utenFieldPlaceholder(hint: base.hintText)
+      : base.hintText;
 
   @override
-  Widget? get hint => base.hint;
+  Widget? get hint => _usesFieldName ? null : base.hint;
 
   @override
   TextStyle? get hintStyle => base.hintStyle;
@@ -228,7 +259,11 @@ class UtenInputDecoration extends InputDecoration {
 
   @override
   FloatingLabelBehavior? get floatingLabelBehavior =>
-      base.floatingLabelBehavior;
+      _usesFieldName &&
+          (base.floatingLabelBehavior == null ||
+              base.floatingLabelBehavior == FloatingLabelBehavior.always)
+      ? FloatingLabelBehavior.auto
+      : base.floatingLabelBehavior;
 
   @override
   FloatingLabelAlignment? get floatingLabelAlignment =>
@@ -321,6 +356,7 @@ class UtenInputDecoration extends InputDecoration {
   @override
   UtenInputDecoration copyWith({
     bool? autofilled,
+    bool? useFieldNameHint,
     Widget? icon,
     Color? iconColor,
     Widget? label,
@@ -444,6 +480,7 @@ class UtenInputDecoration extends InputDecoration {
       ),
       info: info,
       autofilled: autofilled ?? this.autofilled,
+      useFieldNameHint: useFieldNameHint ?? this.useFieldNameHint,
     );
   }
 
@@ -473,6 +510,7 @@ class UtenInputDecoration extends InputDecoration {
       ),
       info: info,
       autofilled: autofilled,
+      useFieldNameHint: useFieldNameHint,
     );
   }
 
@@ -482,8 +520,10 @@ class UtenInputDecoration extends InputDecoration {
       other is UtenInputDecoration &&
           other.base == base &&
           other.info == info &&
-          other.autofilled == autofilled;
+          other.autofilled == autofilled &&
+          other.useFieldNameHint == useFieldNameHint;
 
   @override
-  int get hashCode => Object.hash(runtimeType, base, info, autofilled);
+  int get hashCode =>
+      Object.hash(runtimeType, base, info, autofilled, useFieldNameHint);
 }

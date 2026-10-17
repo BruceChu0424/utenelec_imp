@@ -645,6 +645,7 @@ class _ProductionDrawRequestPageState
           decoration: UtenInputDecoration(
             InputDecoration(
               isDense: true,
+              hintText: '应领数量',
               suffixText: row.unitName,
               error: _quantityErrors[row.identity] == null
                   ? null

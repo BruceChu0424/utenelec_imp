@@ -6,6 +6,7 @@
 // 单位回填后作数量输入框后缀（2026-10-10 数量内联口径）；
 // 精确来源子任务链接 + 备注。历史完结事实保留，不再作为新报工入口。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
@@ -944,7 +945,7 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                       valueListenable: row.goodsNotifier,
                       builder: (context, g, _) => g == null
                           ? Text(
-                              '选择货品',
+                              utenFieldPlaceholder(label: '货品名称')!,
                               style: Theme.of(
                                 context,
                               ).inputDecorationTheme.hintStyle,
@@ -1493,7 +1494,9 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                             size: 16,
                           ),
                           label: Text(
-                            label.isEmpty ? '选择来源工单' : label,
+                            label.isEmpty
+                                ? utenFieldPlaceholder(label: '来源子任务')!
+                                : label,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: label.isEmpty
@@ -1532,10 +1535,8 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
           ? const SizedBox.shrink()
           : TextField(
               controller: row.remark,
-              decoration: InputDecoration(
-                isDense: true,
-                hintText: '备注',
-                hintStyle: Theme.of(context).inputDecorationTheme.hintStyle,
+              decoration: const UtenInputDecoration(
+                InputDecoration(isDense: true, labelText: '备注'),
               ),
             ),
     ),

@@ -101,7 +101,16 @@ void main() {
       );
       await _openBatchPage(tester, api: api, rememberedWarehouseId: null);
       expect(api.suggestionRequests, isEmpty);
-      expect(find.text('必选 · 点击选择'), findsNWidgets(2));
+      for (final item in [_itemA, _itemB]) {
+        expect(
+          find.descendant(
+            of: _warehouseCell(item),
+            matching: find.text('入库仓库'),
+          ),
+          findsOneWidget,
+        );
+        expect(_warehouseDecoration(tester, item).autofilled, isFalse);
+      }
       expect(tester.takeException(), isNull);
     },
   );
@@ -447,19 +456,9 @@ void main() {
     await _toggleSelectAll(tester);
 
     // 报工 A 两行分别选不同仓；报工 B 的行也分配好仓与库位(不参与冲突)。
-    // 2026-09-12 表头默认仓下拉已撤：未选行格内文案为「必选 · 点击选择」。
-    await tester.tap(find.text('必选 · 点击选择').first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('成品仓').last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('必选 · 点击选择').first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('备用成品仓').last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('必选 · 点击选择').first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('成品仓').last);
-    await tester.pumpAndSettle();
+    await _selectWarehouse(tester, _itemA, 'warehouse-1');
+    await _selectWarehouse(tester, _itemA2, 'warehouse-2');
+    await _selectWarehouse(tester, _itemB, 'warehouse-1');
 
     await tester.enterText(_placeField(_itemA), 'CP-A-01');
     await tester.enterText(_placeField(_itemA2), 'CP-A-02');
@@ -670,6 +669,22 @@ Finder _qtyField(String reportItemId) =>
 
 Finder _warehouseCell(String reportItemId) =>
     find.byKey(ValueKey('production-finished-arrival-wh-$reportItemId'));
+
+Future<void> _selectWarehouse(
+  WidgetTester tester,
+  String reportItemId,
+  String warehouseId,
+) async {
+  final cell = _warehouseCell(reportItemId);
+  expect(cell, findsOneWidget);
+  await tester.tap(cell);
+  await tester.pumpAndSettle();
+  final option = find.byKey(Key('warehouse-picker-entry-$warehouseId'));
+  expect(option, findsOneWidget);
+  expect(tester.widget<ListTile>(option).enabled, isTrue);
+  await tester.tap(option);
+  await tester.pumpAndSettle();
+}
 
 UtenInputDecoration _warehouseDecoration(
   WidgetTester tester,

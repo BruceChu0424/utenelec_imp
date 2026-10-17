@@ -135,6 +135,31 @@ class WarehouseArrivalRegistrationIdempotencyTest {
                 .isNotEqualTo(WarehouseArrivalRegistrationService.requestHash(fromWeight));
     }
 
+    @Test void profileLearningIsBoundToTheSameCommandAndEmptyProfilesPreserveHistoricalHashes() {
+        var original = request("arrival-profile-hash", "资料学习", BigDecimal.ONE);
+        var empty = withProfile(original, new ProcurementArrivalContracts.GoodsProfileLearning(null, " ", null));
+        var first = withProfile(original, new ProcurementArrivalContracts.GoodsProfileLearning(" CODE ", " 系列 ", " A-01 "));
+        var trimmed = withProfile(original, new ProcurementArrivalContracts.GoodsProfileLearning("CODE", "系列", "A-01"));
+        var changed = withProfile(original, new ProcurementArrivalContracts.GoodsProfileLearning("CODE", "系列", "A-02"));
+        assertThat(WarehouseArrivalRegistrationService.requestHash(empty))
+                .isEqualTo(WarehouseArrivalRegistrationService.requestHash(original));
+        assertThat(WarehouseArrivalRegistrationService.requestHash(first))
+                .isEqualTo(WarehouseArrivalRegistrationService.requestHash(trimmed))
+                .isNotEqualTo(WarehouseArrivalRegistrationService.requestHash(original))
+                .isNotEqualTo(WarehouseArrivalRegistrationService.requestHash(changed));
+    }
+
+    private static WarehouseArrivalRegisterRequest withProfile(WarehouseArrivalRegisterRequest request,
+            ProcurementArrivalContracts.GoodsProfileLearning profile) {
+        var line = request.items().getFirst();
+        return new WarehouseArrivalRegisterRequest(request.idempotencyKey(), request.orderType(), request.billDate(),
+                request.supplierId(), request.warehouseId(), request.purchaserId(), request.receiverEmployeeId(), request.remark(),
+                List.of(new WarehouseArrivalRegisterRequest.ArrivalLine(line.goodsId(), line.qty(), line.orderItemId(),
+                        line.colorId(), line.unitId(), line.unitRate(), line.weight(), line.sourceDocNo(), line.replacementIntent(),
+                        line.preStockPlace(), line.qtyFromWeight(), line.giftQty(), profile)), request.stockInBeforeInspection(),
+                request.shortDeliveryAcknowledged());
+    }
+
     private static WarehouseArrivalRegisterRequest request(
             String key, String remark, BigDecimal qty) {
         return request(key, remark, qty, null);

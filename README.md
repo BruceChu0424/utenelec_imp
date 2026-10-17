@@ -102,7 +102,7 @@
 | 工具 | 版本 |
 |---|---|
 | Flutter / Dart | 3.44.2 / 3.12.2(通过 `PATH` 或 `FLUTTER_HOME` 配置, 不写死个人路径) |
-| JDK / Maven | 21 / 3.9+ |
+| JDK / Maven | 21 / 3.9.7+ |
 | Docker | 本地 PostgreSQL 与数据库测试(Testcontainers)需要 |
 
 ### 1. 启动后端
@@ -207,6 +207,8 @@ CI(`.github/workflows/quality.yml`)在每次推送 main 与每个 PR 上运行, 
 文档以中文 Markdown 为主, 跨文档使用相对链接; 新增内容一律使用 ASCII 半角括号。长期规则写进准则, 交互写进页面说明, 正式决策写成 ADR, 测试结论只写入对应验收记录。
 
 ## 协作规范
+
+前端/UI 相关代码和设计文档默认使用 `frontend-design`；`ui-ux-pro-max` 仅在用户明确指定时使用。技能入口与执行规则见 [AGENTS.md](AGENTS.md)，详细范围见[设计技能选择](docs/00-项目准则/00-准则索引与开发清单.md#设计技能选择)。
 
 - 提交与合并遵守 [Git 提交与合并规范](docs/00-项目准则/11-Git提交与合并规范.md); 并行开发各用独立 worktree, 不在同一工作区交叉提交。
 - 改动完成后同步相关文档(页面说明、ADR、迁移说明、实体字典)。

@@ -51,7 +51,7 @@ public class UnixSocketHostOperationsClient implements HostOperationsClient {
 
     @Override
     public JsonNode call(Operation operation, Map<String, Object> payload, UUID actorId, UUID requestId) {
-        if (!supported) throw new HostOperationsException("UNAVAILABLE");
+        if (!supported) throw HostOperationsException.platformUnsupported();
         boolean sent = false;
         try {
             verifySocket();

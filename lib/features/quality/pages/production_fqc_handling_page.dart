@@ -59,6 +59,7 @@ import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/production_fqc_inspection.dart';
+import '../providers/production_fqc_capability_provider.dart';
 import '../repositories/production_fqc_repository.dart';
 import '../widgets/inspection_report_confirm_dialog.dart';
 import '../widgets/production_fqc_dialogs.dart' show fqcStatusLabel;
@@ -117,21 +118,12 @@ String _dispositionLabel(String code) =>
         .firstOrNull ??
     code;
 
-/// 决定能力 = 审批权限 + 服务端品质组织校验（canDecide），与列表页同一口径。
+/// 决定动作实时复核权限；服务端能力由共享 provider 随授权变化重取。
 bool _hasFqcApprovalPermission(WidgetRef ref) =>
     ref.read(isSuperAdminProvider) ||
     ref
         .read(currentPermissionsProvider)
         .contains(Perm.productionQualityInspectionApprove);
-
-Future<bool> _canDecideFqc(WidgetRef ref) async {
-  if (!_hasFqcApprovalPermission(ref)) return false;
-  try {
-    return await ref.read(productionFqcRepositoryProvider).canDecide();
-  } catch (_) {
-    return false;
-  }
-}
 
 enum FqcSubmissionState { notSent, rejected, unknown, confirmed }
 
@@ -749,7 +741,9 @@ class _ProductionFqcSheetHandlingPageState
   bool _confirming = false;
   bool _submitting = false;
   int _loadGeneration = 0;
-  bool _canDecide = false;
+  bool get _canDecide => productionFqcDecisionAllowed(
+    ref.read(productionFqcDecisionCapabilityProvider),
+  );
   String? _error;
 
   @override
@@ -789,8 +783,9 @@ class _ProductionFqcSheetHandlingPageState
           .read(productionFqcRepositoryProvider)
           .sheetDetail(widget.sheetId);
       if (!accepts()) return;
-      final canDecide = await _canDecideFqc(ref);
-      if (!accepts()) return;
+      if (!ref.read(productionFqcDecisionCapabilityProvider).isLoading) {
+        ref.invalidate(productionFqcDecisionCapabilityProvider);
+      }
       // ADR-148：一批实物一行(批内各份合计)，整批判定。
       final rows = [
         for (final inspection in detail.activeLotInspections)
@@ -825,7 +820,6 @@ class _ProductionFqcSheetHandlingPageState
       }
       setState(() {
         _detail = detail;
-        _canDecide = canDecide;
         _rows = rows;
         _loading = false;
       });
@@ -1016,6 +1010,7 @@ class _ProductionFqcSheetHandlingPageState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(productionFqcDecisionCapabilityProvider);
     final detail = _detail;
     return withFormDraft(
       Scaffold(
@@ -1555,6 +1550,7 @@ class _ProductionFqcSheetHandlingPageState
         decoration: UtenInputDecoration(
           InputDecoration(
             isDense: true,
+            labelText: label,
             // 「数量+单位」内联口径（2026-10-10）：可编辑数量输入框单位放后缀。
             suffixText: row.inspection.unitName,
             error: row.validate() == null
@@ -1654,7 +1650,9 @@ class _ProductionFqcInspectionPageState
   bool _confirming = false;
   bool _saving = false;
   int _loadGeneration = 0;
-  bool _canDecide = false;
+  bool get _canDecide => productionFqcDecisionAllowed(
+    ref.read(productionFqcDecisionCapabilityProvider),
+  );
   String? _error;
 
   // 2026-09-22 全站表格滚动口径：事实表/判定表表头吸顶，任一表置顶后才显示
@@ -1706,8 +1704,9 @@ class _ProductionFqcInspectionPageState
           .read(productionFqcRepositoryProvider)
           .detail(widget.inspectionId);
       if (!accepts()) return;
-      final canDecide = await _canDecideFqc(ref);
-      if (!accepts()) return;
+      if (!ref.read(productionFqcDecisionCapabilityProvider).isLoading) {
+        ref.invalidate(productionFqcDecisionCapabilityProvider);
+      }
       final oldRow = _row;
       // ADR-148：多份实物批只能在检查单里整批判定，单份页只读(待核对的原提交仍可续办)。
       final row =
@@ -1723,7 +1722,6 @@ class _ProductionFqcInspectionPageState
       }
       setState(() {
         _inspection = inspection;
-        _canDecide = canDecide;
         _row?.dispose();
         _row = row;
         _loading = false;
@@ -1866,6 +1864,7 @@ class _ProductionFqcInspectionPageState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(productionFqcDecisionCapabilityProvider);
     final theme = Theme.of(context);
     final inspection = _inspection;
     return withFormDraft(

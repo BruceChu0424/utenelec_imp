@@ -1,5 +1,15 @@
 # ER 草图
 
+## 货品操作历史 (V871)
+
+```mermaid
+erDiagram
+    goods_operation_history ||--o{ goods_operation_history_rows : captured_rows
+    goods_operation_history ||--o{ goods_operation_history_events : undo_redo_events
+```
+
+历史行以白名单表名和原行 UUID 标识目标；即使目标已软删除，也保留原身份和校验快照。操作人与请求来自服务器事务上下文。列表仅返回摘要，不暴露行快照；参见[货品操作历史](../03-页面/货品操作历史.md)。
+
 <a id="workshop-material-v740"></a>
 
 ## 车间内料仓: 整批领料、期间、盘点与结算 (V740 / ADR-131)

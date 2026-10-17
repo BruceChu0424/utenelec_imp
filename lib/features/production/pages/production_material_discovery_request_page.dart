@@ -693,10 +693,11 @@ class _RequestState
         decoration: UtenInputDecoration(
           InputDecoration(
             isDense: true,
-            hintText: '可由仓库补充',
+            hintText: '领料数量',
             // 选材料后 setState 整表重建，后缀随选材回填的单位即时刷新。
             suffixText: (row.values['unitName'] as String?)?.trim(),
           ),
+          info: '可由仓库补充',
         ),
       ),
     ),
@@ -809,7 +810,6 @@ class _RequestState
                         'features.production.pages.production_material_discovery_request_page.RequestState.build.1',
                     key: const Key('discovery-request-table'),
                     primary: true,
-                    enableTextSelection: false,
                     columns: _columns,
                     items: List.unmodifiable(_rows),
                     rowKeyOf: (row) => row.id,

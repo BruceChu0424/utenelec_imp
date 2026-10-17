@@ -13,12 +13,18 @@ permissions:
   actions: read
   contents: read
   packages: read
+  security-events: read
 
 jobs:
   java:
     name: Java security and quality
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      # Full-project queries avoid the compare API's 300-file diff limit.
+      CODEQL_ACTION_DIFF_INFORMED_QUERIES: "false"
+      # Retain baseline file coverage on PRs as well as push/scheduled analyses.
+      CODEQL_ACTION_FILE_COVERAGE_ON_PRS: "true"
 
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -27,6 +33,8 @@ jobs:
 
       - uses: github/codeql-action/init@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4
         with:
+          # Keep the existing pinned Action's CLI/query bundle for comparable findings.
+          tools: linked
           languages: java-kotlin
           build-mode: manual
           queries: security-and-quality

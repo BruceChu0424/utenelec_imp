@@ -18,6 +18,7 @@ import '../../../shared/drafts/form_draft_values.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
@@ -342,16 +343,18 @@ class _DepartmentEditDialogState extends ConsumerState<DepartmentEditDialog>
                   controller: _codeCtl,
                   readOnly: _isEdit,
                   decoration: applyRequiredEmpty(
-                    InputDecoration(
-                      label: requiredLabel(
-                        '编码', // TODO(l10n): 补 arb
-                        theme,
-                        required: !_isEdit,
-                        base: theme.inputDecorationTheme.labelStyle,
+                    UtenInputDecoration(
+                      InputDecoration(
+                        label: requiredLabel(
+                          '编码', // TODO(l10n): 补 arb
+                          theme,
+                          required: !_isEdit,
+                          base: theme.inputDecorationTheme.labelStyle,
+                        ),
+                        hintText: _isEdit
+                            ? null
+                            : '如 HR-01(创建后不可修改)', // TODO(l10n): 补 arb
                       ),
-                      hintText: _isEdit
-                          ? null
-                          : '如 HR-01(创建后不可修改)', // TODO(l10n): 补 arb
                     ),
                     theme,
                     requiredEmpty: requiredEmpty,
@@ -368,12 +371,14 @@ class _DepartmentEditDialogState extends ConsumerState<DepartmentEditDialog>
                   controller: _nameCtl,
                   readOnly: _isEdit && !widget.canEditFields,
                   decoration: applyRequiredEmpty(
-                    InputDecoration(
-                      label: requiredLabel(
-                        '名称', // TODO(l10n): 补 arb
-                        theme,
-                        required: true,
-                        base: theme.inputDecorationTheme.labelStyle,
+                    UtenInputDecoration(
+                      InputDecoration(
+                        label: requiredLabel(
+                          '名称', // TODO(l10n): 补 arb
+                          theme,
+                          required: true,
+                          base: theme.inputDecorationTheme.labelStyle,
+                        ),
                       ),
                     ),
                     theme,

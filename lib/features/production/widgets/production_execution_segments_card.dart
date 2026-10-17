@@ -1,5 +1,7 @@
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
+import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -1360,11 +1362,13 @@ class _ProductionExecutionSegmentsCardState
     return InkWell(
       onTap: onTap,
       child: InputDecorator(
-        decoration: InputDecoration(
-          labelText: label,
-          suffixIcon: const Icon(Icons.date_range_rounded, size: 18),
+        decoration: UtenInputDecoration(
+          InputDecoration(
+            labelText: label,
+            suffixIcon: const Icon(Icons.date_range_rounded, size: 18),
+          ),
         ),
-        child: Text(_dateText(value) ?? '待排定'),
+        child: Text(_dateText(value) ?? utenFieldPlaceholder(label: label)!),
       ),
     );
   }

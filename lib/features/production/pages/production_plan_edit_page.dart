@@ -19,6 +19,7 @@
 //
 // 仅草稿可编辑（后端校验，前端不再重复判断；已审单据走详情页反审）。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -43,9 +44,12 @@ import '../../../shared/platform_tables/platform_table_row.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/human_error_message.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../department/models/department_node.dart';
@@ -260,9 +264,13 @@ class _ProductionPlanEditPageState
       }
     } on ApiException catch (e) {
       if (isCurrent()) _initializationError = e.message;
-    } catch (_) {
-      if (isCurrent()) {
-        _initializationError = '无法读取完整单据数据，请检查网络或权限后重试';
+    } catch (error) {
+      if (mounted && isCurrent()) {
+        final l10n =
+            Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+            AppLocalizationsZh();
+        _initializationError =
+            humanErrorMessage(error) ?? l10n.productionDailyReportLoadFailed;
       }
     } finally {
       if (mounted && isCurrent()) setState(() => _loading = false);
@@ -685,12 +693,15 @@ class _ProductionPlanEditPageState
       onTap: _pickSourceOrder,
       borderRadius: BorderRadius.circular(UtenSpacing.s8),
       child: InputDecorator(
-        decoration: const InputDecoration(
-          labelText: '来源单号',
-          suffixIcon: Icon(Icons.search_rounded, size: 18),
+        decoration: const UtenInputDecoration(
+          InputDecoration(
+            labelText: '来源单号',
+            hintText: '可多选销售订单',
+            suffixIcon: Icon(Icons.search_rounded, size: 18),
+          ),
         ),
         child: Text(
-          empty ? '点击选择销售订单(可多选)' : _sourceDocDisplay,
+          empty ? utenFieldPlaceholder(label: '来源单号')! : _sourceDocDisplay,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: theme.textTheme.bodyLarge?.copyWith(
@@ -923,8 +934,8 @@ class _ProductionPlanEditPageState
                                   const SizedBox(height: UtenSpacing.s12),
                                   TextField(
                                     controller: _remark,
-                                    decoration: const InputDecoration(
-                                      labelText: '备注',
+                                    decoration: const UtenInputDecoration(
+                                      InputDecoration(labelText: '备注'),
                                     ),
                                     maxLines: 2,
                                   ),

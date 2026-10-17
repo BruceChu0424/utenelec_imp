@@ -41,7 +41,10 @@ void main() {
     );
 
     expect(find.byType(UtenEmployeePicker), findsOneWidget);
-    expect(find.text('部门负责人'), findsOneWidget);
+    expect(
+      tester.widget<UtenEmployeePicker>(find.byType(UtenEmployeePicker)).label,
+      '部门负责人',
+    );
     expect(find.textContaining('此节点是组织骨架'), findsNothing);
     expect(loadCalls, 0);
 
@@ -55,7 +58,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('选择上级部门'), findsNothing);
-    await tester.tap(find.text('从本部门直属在册员工中选择'));
+    await tester.tap(find.byType(UtenEmployeePicker));
     await tester.pumpAndSettle();
     expect(loadCalls, 1);
     // 人员滑窗二次操作：点行仅高亮，还需点「确定」才回填负责人。
@@ -143,7 +146,7 @@ void main() {
 
     expect(find.byType(UtenEmployeePicker), findsOneWidget);
 
-    await tester.tap(find.text('从本部门直属在册员工中选择'));
+    await tester.tap(find.byType(UtenEmployeePicker));
     await tester.pumpAndSettle();
 
     expect(loadedKeywords, [null]);
@@ -219,7 +222,7 @@ void main() {
     expect(find.text('制造与研发管理中心'), findsOneWidget);
 
     await tester.enterText(_textFieldWithLabel('名称'), '渠道营销部');
-    await tester.tap(find.text('从本部门直属在册员工中选择'));
+    await tester.tap(find.byType(UtenEmployeePicker));
     await tester.pumpAndSettle();
     // 人员滑窗二次操作：点行仅高亮，还需点「确定」才回填负责人。
     await tester.tap(find.text('张三'));

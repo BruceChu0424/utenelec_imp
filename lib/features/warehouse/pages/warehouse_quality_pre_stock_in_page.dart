@@ -6,6 +6,7 @@
 // 不经过本页。
 
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -624,7 +625,7 @@ class _WarehouseQualityPreStockInPageState
             children: [
               Expanded(
                 child: Text(
-                  row.warehouseName ?? '请选择',
+                  row.warehouseName ?? utenFieldPlaceholder(label: '上架仓库')!,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -664,6 +665,7 @@ class _WarehouseQualityPreStockInPageState
           InputDecoration(
             isDense: true,
             counterText: '',
+            hintText: '上架库位',
             error: utenFieldError(row.selected ? row.placeError : null),
           ),
         ),

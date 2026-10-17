@@ -205,7 +205,11 @@ void main() {
       );
       await tester.tap(find.text('Open'));
       await tester.pumpAndSettle();
-      expect(find.text('A · MODEL'), findsOneWidget);
+      final roleA = find.byKey(const ValueKey('quote-template-role-A'));
+      expect(roleA, findsOneWidget);
+      final field = tester.widget<UtenDropdownField>(roleA);
+      expect(field.label, 'A · MODEL');
+      expect(field.value, 'PART_NO');
       expect(tester.takeException(), isNull);
       await tester.ensureVisible(find.text('Worksheet: Alternative'));
       await tester.tap(find.text('Worksheet: Alternative'));

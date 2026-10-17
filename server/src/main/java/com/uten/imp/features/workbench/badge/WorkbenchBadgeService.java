@@ -53,6 +53,7 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
     private final List<WorkbenchBadgeSources.Source> sources;
     private final TransactionTemplate readOnlyTransaction;
     private final WarehouseTaskScopePort warehouseScopes;
+    private final WorkbenchBadgeSourceDiagnostics sourceDiagnostics;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -81,6 +82,7 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
             }
         }
         this.sources = List.copyOf(all);
+        this.sourceDiagnostics = new WorkbenchBadgeSourceDiagnostics(keys, System::nanoTime, log);
         TransactionTemplate template = new TransactionTemplate(transactionManager);
         template.setReadOnly(true);
         // All source counts must describe the same committed business state,
@@ -188,6 +190,7 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
         try {
             Map<String, Long> values = source.reader().get();
             session.doWork(connection -> connection.releaseSavepoint(savepoint));
+            sourceDiagnostics.recovered(source.key());
             return values == null ? Map.of() : values;
         } catch (AccessDeniedException denied) {
             rollbackTo(session, savepoint);
@@ -198,12 +201,12 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
                 return null;
             }
             failed.add(source.key());
-            log.warn("工作台徽章来源 {} 本次未算出: {}", source.key(), business.getCode());
+            sourceDiagnostics.failed(source.key(), business.getCode());
             return null;
         } catch (RuntimeException failure) {
             rollbackTo(session, savepoint);
             failed.add(source.key());
-            log.warn("工作台徽章来源 {} 本次未算出: {}", source.key(), failure.getClass().getSimpleName());
+            sourceDiagnostics.failed(source.key(), failure.getClass());
             return null;
         }
     }

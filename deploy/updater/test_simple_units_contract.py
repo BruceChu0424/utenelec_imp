@@ -155,6 +155,60 @@ class UpdaterUnitTest(unittest.TestCase):
             self.assertIn("\n" + line + "\n", self.unit, line)
 
 
+class ManualUpdateWorkerUnitTest(unittest.TestCase):
+    unit = read(UNITS / "uten-imp-update-job.service")
+    delegation_caps = {
+        "CAP_CHOWN", "CAP_DAC_READ_SEARCH", "CAP_KILL", "CAP_SETGID", "CAP_SETUID",
+    }
+
+    def test_explicit_root_keeps_only_the_bounded_delegation_capabilities_across_exec(self):
+        # UID 0 is insufficient with NoNewPrivileges: an explicit-root worker
+        # lost CAP_SETUID and runuser failed before even querying PostgreSQL.
+        # Empty, reset, inverted or additional capability directives must fail.
+        self.assertEqual(["root"], directives(self.unit, "User"))
+        self.assertEqual(["root"], directives(self.unit, "Group"))
+        for name in ("CapabilityBoundingSet", "AmbientCapabilities"):
+            values = directives(self.unit, name)
+            self.assertEqual(1, len(values), name)
+            self.assertEqual(self.delegation_caps, set(values[0].split()), name)
+            self.assertEqual(len(self.delegation_caps), len(values[0].split()), name)
+        self.assertEqual(
+            ["/usr/bin/python3 -I /usr/local/lib/uten-imp/host_operations.py worker"],
+            directives(self.unit, "ExecStart"),
+        )
+
+    def test_identity_delegation_does_not_relax_the_worker_sandbox_or_write_scope(self):
+        for name, value in {
+            "NoNewPrivileges": "true", "PrivateTmp": "true", "PrivateDevices": "true",
+            "ProtectHome": "true", "ProtectSystem": "strict", "ProtectKernelTunables": "true",
+            "ProtectKernelModules": "true", "ProtectKernelLogs": "true",
+            "ProtectControlGroups": "true", "ProtectClock": "true", "ProtectHostname": "true",
+            "LockPersonality": "true", "RestrictRealtime": "true", "RestrictSUIDSGID": "true",
+            "RestrictNamespaces": "true", "SystemCallArchitectures": "native",
+            "UMask": "0077", "KillMode": "control-group",
+        }.items():
+            self.assertEqual([value], directives(self.unit, name), name)
+        self.assertEqual(
+            ["AF_UNIX AF_INET AF_INET6 AF_NETLINK"],
+            directives(self.unit, "RestrictAddressFamilies"),
+        )
+        self.assertEqual(
+            ["/opt/uten-imp", "/run/uten-imp-updater", "/var/lib/uten-imp-operations",
+             "/srv/uten-backup/pre-activation", "/data/uten-imp-backups/paired", "/var/log/uten-imp"],
+            write_paths(self.unit),
+        )
+        self.assertEqual(["240min"], directives(self.unit, "TimeoutStartSec"))
+
+    def test_delegation_capabilities_do_not_spread_to_the_bridge_or_application(self):
+        for name in ("uten-imp-operations.service", "uten-imp.service"):
+            unit = read(UNITS / name)
+            self.assertEqual(["true"], directives(unit, "NoNewPrivileges"), name)
+            self.assertTrue(
+                all(not value.strip() for value in directives(unit, "AmbientCapabilities")),
+                name,
+            )
+
+
 class BackupUnitsTest(unittest.TestCase):
     def test_pgbackup_runs_both_repositories_and_is_sandboxed(self):
         unit = read(UNITS / "uten-pgbackup.service")

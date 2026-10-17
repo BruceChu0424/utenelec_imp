@@ -2,6 +2,7 @@ import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -176,9 +177,11 @@ class _ProcurementReturnTasksPageState
                 minLines: 2,
                 maxLines: 4,
                 maxLength: 1000,
-                decoration: const InputDecoration(
-                  labelText: '退回说明(可选，批量共用)',
-                  hintText: '例如：供应商司机已带回',
+                decoration: const UtenInputDecoration(
+                  InputDecoration(
+                    labelText: '退回说明(可选，批量共用)',
+                    hintText: '例如：供应商司机已带回',
+                  ),
                 ),
               ),
             ],
@@ -633,9 +636,11 @@ class _ProcurementReturnTaskDetailPageState
                 minLines: 2,
                 maxLines: 4,
                 maxLength: 1000,
-                decoration: const InputDecoration(
-                  labelText: '退回说明(可选)',
-                  hintText: '例如：供应商司机已带回',
+                decoration: const UtenInputDecoration(
+                  InputDecoration(
+                    labelText: '退回说明(可选)',
+                    hintText: '例如：供应商司机已带回',
+                  ),
                 ),
               ),
             ],

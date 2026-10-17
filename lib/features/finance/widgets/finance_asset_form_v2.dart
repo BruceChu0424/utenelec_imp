@@ -754,7 +754,6 @@ class _FinanceAssetFormSurfaceState
                                     ),
                                     label: '来源类型',
                                     value: _sourceType,
-                                    hintText: '请选择来源类型',
                                     items: [
                                       if (_sourceType != null &&
                                           !const {
@@ -921,7 +920,8 @@ class _FinanceAssetFormSurfaceState
       label: '资产分类',
       searchable: true,
       value: _categoryId,
-      hintText: selectable.isEmpty ? '暂无可用分类，可先保存不完整草稿' : '请选择资产分类',
+      hintText: '资产分类',
+      info: selectable.isEmpty ? '暂无可用分类，可先保存不完整草稿。' : null,
       errorMessage: _categoryError,
       items: [
         for (final item in selectable)

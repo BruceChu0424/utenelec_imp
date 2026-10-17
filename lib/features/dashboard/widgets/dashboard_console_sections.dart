@@ -18,9 +18,9 @@ import 'uten_console_panel.dart';
 
 /// 今日概览合并面板：横向指标带 + 待办任务装进同一块面板。
 ///
-/// 结构：标题栏（今日概览 + 部门范围 + 采样时刻）→ [celebration] 插槽 →
+/// 结构：标题栏(今日概览 + 授权范围 + 采样时刻) → [celebration] 插槽 →
 /// 面板体(宽屏：指标带 │ 竖线 │ 待办区并排；窄屏：上下堆叠)。
-/// 两区空态各自说明「本部门」，不用隐藏组件替代数据授权。
+/// 指标和待办按服务端授权及对象范围展示，不以员工部门推断功能准入。
 class DashboardOverviewPanel extends StatelessWidget {
   const DashboardOverviewPanel({
     super.key,
@@ -46,10 +46,7 @@ class DashboardOverviewPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _PanelHeaderBand(
-            departmentName: departmentName,
-            generatedAt: generatedAt,
-          ),
+          _PanelHeaderBand(generatedAt: generatedAt),
           if (celebration != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(
@@ -60,35 +57,24 @@ class DashboardOverviewPanel extends StatelessWidget {
               ),
               child: celebration,
             ),
-          _PanelBody(
-            metrics: metrics,
-            todos: todos,
-            departmentName: departmentName,
-          ),
+          _PanelBody(metrics: metrics, todos: todos),
         ],
       ),
     );
   }
 }
 
-/// 面板标题栏：浅底色带内的「今日概览」主标题、部门范围副标题与采样时刻。
+/// 面板标题栏：浅底色带内的「今日概览」主标题、授权范围副标题与采样时刻。
 /// 主色竖条延续全站分区标题语言，让这块面板在工作台里仍读作一个「区」。
 class _PanelHeaderBand extends StatelessWidget {
-  const _PanelHeaderBand({
-    required this.departmentName,
-    required this.generatedAt,
-  });
+  const _PanelHeaderBand({required this.generatedAt});
 
-  final String departmentName;
   final DateTime generatedAt;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // 口径：范围是「本部门」。
-    final scopeLabel = departmentName.isEmpty
-        ? '按本部门范围展示'
-        : '$departmentName · 按本部门范围展示';
+    final scopeLabel = AppLocalizations.of(context).dashboardAuthorizedScope;
     return Container(
       width: double.infinity,
       color: theme.colorScheme.surfaceContainerLow,
@@ -151,24 +137,16 @@ class _PanelHeaderBand extends StatelessWidget {
 /// 面板体：宽屏(≥900)指标带与待办并排，指标最多占半幅，避免挤压待办；
 /// 实际宽度随内容收缩。窄屏指标带使用全宽，待办移到下方。
 class _PanelBody extends StatelessWidget {
-  const _PanelBody({
-    required this.metrics,
-    required this.todos,
-    required this.departmentName,
-  });
+  const _PanelBody({required this.metrics, required this.todos});
 
   final List<DashboardMetric> metrics;
   final List<DashboardTodo> todos;
-  final String departmentName;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final strip = _MetricStrip(
-      metrics: metrics,
-      departmentName: departmentName,
-    );
-    final todoSide = _TodoSide(todos: todos, departmentName: departmentName);
+    final strip = _MetricStrip(metrics: metrics);
+    final todoSide = _TodoSide(todos: todos);
     return LayoutBuilder(
       builder: (context, constraints) {
         // 900 起两区并排；各区内部仍按实际可用宽度换行。
@@ -216,10 +194,9 @@ class _PanelBody extends StatelessWidget {
 
 /// 指标按服务端顺序横排，新增指标出现在右侧；空间不足时自然换行。
 class _MetricStrip extends StatelessWidget {
-  const _MetricStrip({required this.metrics, required this.departmentName});
+  const _MetricStrip({required this.metrics});
 
   final List<DashboardMetric> metrics;
-  final String departmentName;
 
   @override
   Widget build(BuildContext context) {
@@ -227,9 +204,9 @@ class _MetricStrip extends StatelessWidget {
         ? IntrinsicWidth(
             child: _ZoneEmpty(
               icon: Icons.insights_outlined,
-              message: departmentName.isEmpty
-                  ? '本部门暂无概览指标'
-                  : '$departmentName暂无概览指标',
+              message: AppLocalizations.of(
+                context,
+              ).dashboardNoAuthorizedMetrics,
             ),
           )
         : Padding(
@@ -330,10 +307,9 @@ class _StripMetric extends StatelessWidget {
 
 /// 待办区：小节头与单行瓦片，剩余待办在独立面板查看。
 class _TodoSide extends StatelessWidget {
-  const _TodoSide({required this.todos, required this.departmentName});
+  const _TodoSide({required this.todos});
 
   final List<DashboardTodo> todos;
-  final String departmentName;
 
   @override
   Widget build(BuildContext context) {
@@ -347,9 +323,7 @@ class _TodoSide extends StatelessWidget {
         if (todos.isEmpty)
           _ZoneEmpty(
             icon: Icons.task_alt_rounded,
-            message: departmentName.isEmpty
-                ? '本部门当前没有待办'
-                : '$departmentName当前没有待办',
+            message: AppLocalizations.of(context).dashboardNoAuthorizedTodos,
           )
         else
           _TodoTileRow(todos: _ordered()),

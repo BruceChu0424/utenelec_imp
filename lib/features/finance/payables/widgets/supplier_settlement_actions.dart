@@ -1,5 +1,6 @@
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../components/buttons/uten_button.dart';
@@ -64,13 +65,17 @@ Future<SupplierSettlementConfirmDraft?> showSupplierSettlementConfirmDialog({
                 TextField(
                   controller: reference,
                   maxLength: 500,
-                  decoration: const InputDecoration(labelText: '供应商确认凭据(必填)'),
+                  decoration: const UtenInputDecoration(
+                    InputDecoration(labelText: '供应商确认凭据(必填)'),
+                  ),
                 ),
               TextField(
                 controller: note,
                 maxLength: 2000,
                 maxLines: 3,
-                decoration: const InputDecoration(labelText: '备注'),
+                decoration: const UtenInputDecoration(
+                  InputDecoration(labelText: '备注'),
+                ),
               ),
             ],
           ),
@@ -118,7 +123,7 @@ Future<String?> showSupplierSettlementReasonDialog({
           autofocus: true,
           maxLength: 2000,
           maxLines: 4,
-          decoration: InputDecoration(labelText: label),
+          decoration: UtenInputDecoration(InputDecoration(labelText: label)),
         ),
         actions: [
           TextButton(

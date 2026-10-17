@@ -4,9 +4,11 @@
 // 失效）。改语义身份（isSameIdentity）后：同身份的状态对象更替不失效认领，
 // 换号/登出仍立即失效。
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/security/secure_storage.dart';
 import 'package:uten_imp/features/auth/repositories/auth_repository.dart';
 import 'package:uten_imp/shared/models/user.dart';
@@ -82,4 +84,27 @@ void main() {
     );
     expect(claim.isCurrent, isFalse);
   });
+
+  for (final language in ['en', 'ko']) {
+    testWidgets(
+      'review claim notice uses $language for its empty state and retry action',
+      (tester) async {
+        final l10n = lookupAppLocalizations(Locale(language));
+        await tester.pumpWidget(
+          MaterialApp(
+            locale: Locale(language),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: FinanceReviewClaimNotice(claim: null, onRetry: () {}),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text(l10n.taskClaimReadOnly), findsOneWidget);
+        expect(find.text(l10n.taskClaimRetry), findsOneWidget);
+        expect(find.textContaining('尚未取得'), findsNothing);
+      },
+    );
+  }
 }

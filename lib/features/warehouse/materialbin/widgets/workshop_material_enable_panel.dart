@@ -653,7 +653,7 @@ class _WorkshopBinOpeningPanelState
           enabled: !_saving,
           autofilled: row.prefilled,
           value: value,
-          hintText: l10n.wmBinChooseMaterialHint,
+          hintText: l10n.wmBinColMaterial,
           items: [
             for (final m in row.options)
               UtenDropdownItem(value: m.key, label: m.displayName),

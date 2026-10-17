@@ -9,7 +9,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-/** Chat additionally requires real department membership; a stray page permission cannot expand it. */
+/** Chat domains follow effective feature permissions; business tools retain their row and field guards. */
 @Component
 public class AiChatAccessPolicy {
     private static final Set<String> ALL = Set.of("SELF", "SALES", "PRODUCTION", "PURCHASE", "WAREHOUSE", "FINANCE", "ADMIN", "QUALITY", "SUBCONTRACT", "HR", "RD");
@@ -43,18 +43,20 @@ public class AiChatAccessPolicy {
     public Set<String> domains() {
         AuthUser actor = requireChat();
         if (actor.isSuperAdmin()) return ALL;
-        Set<String> contextual = departmentDomains(actor);
         Set<String> domains = new LinkedHashSet<>(Set.of("SELF"));
         Set<String> permissions = actor.getPermissions();
-        if (contextual.contains("SALES") && any(permissions, "sales_order:", "sales_quote:")) domains.add("SALES");
-        if (contextual.contains("PRODUCTION") && any(permissions, "production_", "workshop_material:")) domains.add("PRODUCTION");
-        if (contextual.contains("PURCHASE") && any(permissions, "purchase_")) domains.add("PURCHASE");
-        if (contextual.contains("WAREHOUSE") && any(permissions, "stock_", "stock:", "warehouse:", "warehouse_", "inventory:")) domains.add("WAREHOUSE");
-        if (contextual.contains("FINANCE") && any(permissions, "finance", "goods:cost:", "sales_quote_finance:")) domains.add("FINANCE");
-        if (contextual.contains("QUALITY") && any(permissions, "production_quality_inspection:", "procurement_inspection:", "sales_return_quality:")) domains.add("QUALITY");
-        if (contextual.contains("SUBCONTRACT") && any(permissions, "subcontract_")) domains.add("SUBCONTRACT");
-        if (contextual.contains("HR") && any(permissions, "employee:", "department:", "attendance:", "leave:")) domains.add("HR");
-        if (contextual.contains("RD") && permissions.contains("rd_task:view")) domains.add("RD");
+        if (permissions.contains("client:view")
+                || any(permissions, "sales_order:", "sales_quote:", "sales_shipment:", "sales_other_shipment:", "sales_return:")) domains.add("SALES");
+        if (any(permissions, "production_", "workshop_material:")) domains.add("PRODUCTION");
+        if (any(permissions, "purchase_")) domains.add("PURCHASE");
+        if (any(permissions, "stock_", "stock:", "warehouse:", "warehouse_", "inventory:")) domains.add("WAREHOUSE");
+        if (permissions.contains("goods:price_analysis:view")
+                || any(permissions, "finance", "goods:cost:", "sales_quote_finance:", "sales_order_finance:",
+                "sales_shipment_finance:", "procurement_iqc_rejection:", "ar_ap_ledger:")) domains.add("FINANCE");
+        if (any(permissions, "production_quality_inspection:", "procurement_inspection:", "sales_return_quality:")) domains.add("QUALITY");
+        if (any(permissions, "subcontract_")) domains.add("SUBCONTRACT");
+        if (any(permissions, "employee:", "department:", "attendance:", "leave:", "profile:review", "visitor:approve", "hr_task:", "payroll:")) domains.add("HR");
+        if (permissions.contains("rd_task:view")) domains.add("RD");
         return Set.copyOf(domains);
     }
 

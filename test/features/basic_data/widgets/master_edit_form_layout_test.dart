@@ -15,6 +15,35 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import '../../../support/audit_screenshot_support.dart';
 
 void main() {
+  testWidgets('主档空只读文本和选择字段保留框内字段名及格式说明', (tester) async {
+    await _pumpForm(
+      tester,
+      width: 800,
+      fields: const [
+        MasterFieldDef(
+          key: 'lockedCode',
+          label: '系统编号',
+          readOnly: true,
+          hint: '由系统生成',
+        ),
+        MasterFieldDef(
+          key: 'color',
+          label: '颜色',
+          readOnly: true,
+          type: MasterFieldType.select,
+          options: [MasterSelectOption(value: 'white', label: '白色')],
+        ),
+      ],
+    );
+    final fields = tester
+        .widgetList<TextField>(find.byType(TextField))
+        .toList();
+    expect(fields.map((field) => field.enabled), everyElement(isFalse));
+    expect(fields.map((field) => field.decoration!.hintText), ['系统编号', '颜色']);
+    expect(find.byTooltip('由系统生成'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('货品普通文本、选择器及数字单位框使用相同高度和字段列宽', (tester) async {
     await _pumpForm(
       tester,

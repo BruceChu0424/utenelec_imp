@@ -4,6 +4,8 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:dio/dio.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_error.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
@@ -11,6 +13,7 @@ import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_bom_tab.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/sensitive_read_boundary_provider.dart';
 
 /// 伪仓库：记录每次粘贴(追加)调用；第一次按服务端 409 的样子逐行拒绝，之后成功。
 class _RecordingBomRepo implements GoodsBomRepository {
@@ -97,6 +100,14 @@ Future<void> _openAddDialog(WidgetTester tester, _RecordingBomRepo repo) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        sensitiveReadBoundaryProvider.overrideWithValue(
+          SensitiveReadBoundary(
+            identity: null,
+            api: ApiClient(Dio()),
+            permissions: {Perm.goodsView, Perm.goodsBomCreate},
+            superAdmin: false,
+          ),
+        ),
         goodsBomRepositoryProvider.overrideWithValue(repo),
         bomComponentPickerProvider.overrideWithValue(
           (context, ref) async => _picked,
@@ -170,15 +181,16 @@ void main() {
     final repo = _RecordingBomRepo(rejectFirst: false);
     await _openAddDialog(tester, repo);
 
-    // 输入框标签是「设计使用数量 *」(必填)。只数弹窗内的两行输入标签——
-    // 背后的主表格列头也叫「设计使用数量」，不能混进这个断言。
-    expect(
-      find.descendant(
-        of: find.byType(Dialog),
-        matching: find.textContaining('设计使用数量'),
-      ),
-      findsNWidgets(2),
-    );
+    // Required labels and empty-field placeholders share their text; count the
+    // actual quantity controls by component identity instead of counting labels.
+    for (final goodsId in ['goods-x', 'goods-y']) {
+      final quantity = find.descendant(
+        of: find.byKey(ValueKey('goods-bom-add-qty-$goodsId')),
+        matching: find.byType(TextField),
+      );
+      expect(quantity, findsOneWidget);
+      expect(tester.widget<TextField>(quantity).decoration!.hintText, '设计使用数量');
+    }
     await tester.enterText(
       find.descendant(
         of: find.byKey(const Key('goods-bom-add-qty-goods-x')),

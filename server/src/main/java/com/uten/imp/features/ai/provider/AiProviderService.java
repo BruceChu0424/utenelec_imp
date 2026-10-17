@@ -373,6 +373,7 @@ public class AiProviderService {
         row.setUpdatedAt(OffsetDateTime.now(clock));row.setUpdatedBy(actor.getId());
         row.setDeletedReason("USER_LOGICAL_DELETE");row.setEnabled(false);row.setDefault(false);repository.save(row);
         repository.flush();
+        protocolCompatibilityWarnings.remove(row.getId());
         auditChange(actor, "ai_provider.delete", row,
                 "删除 AI 服务「" + row.getName() + "」(" + row.getPreset().label() + ")");
     }
@@ -750,7 +751,8 @@ public class AiProviderService {
         if (effective != row.getProtocol()) {
             String state = row.getProtocol().name() + ":" + effective.name();
             if (!state.equals(protocolCompatibilityWarnings.put(row.getId(), state))) {
-                log.warn("AI canonical endpoint compatibility: providerId={}, configuredProtocol={}, effectiveProtocol={}; persisted configuration unchanged",
+                log.warn("AI 服务商历史配置与官方接口协议不一致: providerId={}, configuredProtocol={}, effectiveProtocol={}; "
+                                + "本次运行配置已按接口协议兼容处理，持久配置未修改；请超级管理员在 AI 服务设置中核对协议后保存",
                         row.getId(), row.getProtocol(), effective);
             }
         } else protocolCompatibilityWarnings.remove(row.getId());

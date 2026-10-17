@@ -165,6 +165,8 @@ public class GoodsService {
         Sort requestedSort = TableSort.resolve(sort, order, defaultSort, ALLOWED_SORT);
         Specification<Goods> spec = (root, q, cb) -> {
             Predicate predicate = goodsPredicate(f, subtreeIds, scope, root, cb, keyword);
+            predicate = cb.and(predicate, com.uten.imp.features.master.search.MasterColumnSearch.predicate(
+                    cb, root.get("id"), com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS, f.columnSearch()));
             if (keyword.active() && q != null && q.getResultType() != Long.class) {
                 CategoryKeywordSearch.order(q, cb, root,
                         keyword.rank(cb, root.get("category").get("id"), root.get("code"), root.get("name"),
@@ -226,6 +228,8 @@ public class GoodsService {
         Path<UUID> categoryId = root.get("category").get("id");
         var keyword = keywordPlan(f);
         Predicate filters = goodsPredicate(f, subtreeIds, scope, root, cb, keyword);
+        filters = cb.and(filters, com.uten.imp.features.master.search.MasterColumnSearch.predicate(
+                cb, root.get("id"), com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS, f.columnSearch()));
         var rank = keyword.rank(cb, categoryId, root.get("code"), root.get("name"),
                 goodsVisibleSearchFields(root, mouldCodeForSearch(root)));
         query.select(categoryId)
@@ -649,6 +653,68 @@ public class GoodsService {
 
     // ===== facets: the same authorized search/filter predicate as the list =====
 
+    /** Search one column over the whole authorized scope before limiting its distinct values. */
+    @Transactional(readOnly = true)
+    public com.uten.imp.features.master.goods.dto.GoodsFacetPage facetValues(
+            GoodsQueryFilter filter, String field, String search, int page, int size) {
+        boolean reference = "owningWarehouse".equals(field) || "owningWorkshop".equals(field);
+        if (!FACET_COLUMNS.containsKey(field) && !reference && !"code".equals(field)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "不支持的货品表头字段");
+        }
+        if (page < 1 || page > 100000 || size < 1 || size > 100 || (search != null && search.length() > 200)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "候选搜索参数无效");
+        }
+        GoodsQueryFilter facetFilter = filter.forFacet(field);
+        var scope = goodsScope();
+        var keyword = keywordPlan(filter);
+        var ids = resolveCategoryScopeIds(filter);
+        Map<Integer, String> colors = "colorLegacyId".equals(field) ? allColorNames() : Map.of();
+        Map<Integer, String> units = "unitLegacyId".equals(field) ? allUnitNames() : Map.of();
+        CriteriaBuilder cb = em.getCriteriaBuilder();
+        CriteriaQuery<Object[]> query = cb.createQuery(Object[].class);
+        Root<Goods> root = query.from(Goods.class);
+        jakarta.persistence.criteria.Expression<?> value = reference ? root.get(field).get("id") : root.get(field);
+        jakarta.persistence.criteria.Expression<String> label = reference ? root.get(field).get("name") : null;
+        var count = cb.count(root);
+        if (reference) query.multiselect(value, count, label).groupBy(value, label);
+        else query.multiselect(value, count).groupBy(value);
+        List<Predicate> predicates = new ArrayList<>();
+        predicates.add(goodsPredicate(facetFilter, ids, scope, root, cb, keyword));
+        predicates.add(com.uten.imp.features.master.search.MasterColumnSearch.predicate(cb, root.get("id"),
+                com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS, facetFilter.columnSearch()));
+        predicates.add(cb.isNotNull(value));
+        if (!KeywordSearch.terms(search).isEmpty()) {
+            if ("colorLegacyId".equals(field) || "unitLegacyId".equals(field)) {
+                var names = "colorLegacyId".equals(field) ? colors : units;
+                var matchedIds = names.keySet().stream()
+                        .filter(id -> KeywordSearch.matches(search, labelFor(field, id.toString(), colors, units))).toList();
+                Predicate knownNames = matchedIds.isEmpty() ? cb.disjunction() : value.in(matchedIds);
+                // Historical unresolved references are displayed as #id; zero
+                // is the legacy '(空)' sentinel, never an unresolved #0 label.
+                Predicate unresolved = cb.and(cb.notEqual(value, 0),
+                        KeywordSearch.allTerms(cb, search, cb.concat("#",
+                                ((org.hibernate.query.criteria.JpaExpression<?>) value).cast(String.class))));
+                if (!names.isEmpty()) unresolved = cb.and(unresolved, cb.not(value.in(names.keySet())));
+                predicates.add(KeywordSearch.matches(search, "(空)")
+                        ? cb.or(knownNames, unresolved, cb.equal(value, 0)) : cb.or(knownNames, unresolved));
+            } else {
+                predicates.add(KeywordSearch.allTerms(cb, search, reference ? label : root.<String>get(field)));
+            }
+        }
+        query.where(cb.and(predicates.toArray(Predicate[]::new)));
+        query.orderBy(reference
+                ? List.of(cb.desc(count), cb.asc(label), cb.asc(value))
+                : List.of(cb.desc(count), cb.asc(value)));
+        List<Object[]> rows = em.createQuery(query).setFirstResult((page - 1) * size).setMaxResults(size + 1).getResultList();
+        boolean hasMore = rows.size() > size;
+        List<FacetBucket> result = rows.stream().limit(size).map(row -> {
+            String raw = String.valueOf(row[0]);
+            return new FacetBucket(raw, ((Number) row[1]).longValue(),
+                    reference ? String.valueOf(row[2]) : labelFor(field, raw, colors, units));
+        }).toList();
+        return new com.uten.imp.features.master.goods.dto.GoodsFacetPage(result, hasMore);
+    }
+
     /** Existing category-only callers retain their unfiltered bucket scope. */
     @Transactional(readOnly = true)
     public GoodsFacets facets(UUID categoryId) {
@@ -683,7 +749,9 @@ public class GoodsService {
             var count = cb.count(root);
             if (reference) query.multiselect(value, count, label).groupBy(value, label);
             else query.multiselect(value, count).groupBy(value);
-            query.where(cb.and(goodsPredicate(facetFilter, ids, scope, root, cb, keyword), cb.isNotNull(value)));
+            query.where(cb.and(goodsPredicate(facetFilter, ids, scope, root, cb, keyword), cb.isNotNull(value),
+                    com.uten.imp.features.master.search.MasterColumnSearch.predicate(cb, root.get("id"),
+                            com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS, filter.columnSearch())));
             query.orderBy(cb.desc(count), cb.asc(reference ? label : value));
             List<Object[]> rows = em.createQuery(query).setMaxResults(FACET_LIMIT).getResultList();
             List<FacetBucket> values = new ArrayList<>(rows.size());
@@ -696,7 +764,9 @@ public class GoodsService {
             CriteriaQuery<Long> nullQuery = cb.createQuery(Long.class);
             Root<Goods> nullRoot = nullQuery.from(Goods.class);
             nullQuery.select(cb.count(nullRoot)).where(cb.and(
-                    goodsPredicate(facetFilter, ids, scope, nullRoot, cb, keyword), cb.isNull(nullRoot.get(field))));
+                    goodsPredicate(facetFilter, ids, scope, nullRoot, cb, keyword), cb.isNull(nullRoot.get(field)),
+                    com.uten.imp.features.master.search.MasterColumnSearch.predicate(cb, nullRoot.get("id"),
+                            com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS, filter.columnSearch())));
             nullCounts.put(field, em.createQuery(nullQuery).getSingleResult());
         }
         return new GoodsFacets(
@@ -888,13 +958,13 @@ public class GoodsService {
         // 不可查看者前端隐藏价格字段、不提交价格（req.price=null 是脱敏产物而非改价意图），
         // 若恒判触碰会把他们改名字等正常编辑一并 403。apply 同步对不可查看者保留原价（见 apply）。
         if (canViewPrice() && bigDecimalChanged(oldPrice, req.getPrice())) {
-            throw new ApiException(ErrorCode.FORBIDDEN, "无编辑货品售价/折扣权限(goods:price:edit)");
+            throw new ApiException(ErrorCode.FORBIDDEN, "修改售价或折扣需要「编辑货品售价/折扣」权限，请联系权限管理员开通");
         }
         // 折扣仅可查看者（goods:discount:view）才参与触碰判定——不可查看者前端隐藏折扣字段、
         // 不提交折扣（req.discount=null 是脱敏产物而非改价意图），若仍判触碰会把他们改名字等
         // 正常编辑一并 403。apply 同步对不可查看者保留原折扣（见 apply）。
         if (canViewDiscount() && bigDecimalChanged(oldDiscount, req.getDiscount())) {
-            throw new ApiException(ErrorCode.FORBIDDEN, "无编辑货品售价/折扣权限(goods:price:edit)");
+            throw new ApiException(ErrorCode.FORBIDDEN, "修改售价或折扣需要「编辑货品售价/折扣」权限，请联系权限管理员开通");
         }
     }
 
@@ -948,7 +1018,7 @@ public class GoodsService {
         if (submitted) {
             throw new ApiException(
                     ErrorCode.FORBIDDEN,
-                    "无编辑货品成本权限(goods:cost:view)");
+                    "维护货品成本字段需要「查看货品成本」权限，请联系权限管理员开通");
         }
     }
 
@@ -1158,6 +1228,10 @@ public class GoodsService {
         g.setName(req.getName());
         g.setShortName(req.getShortName());
         g.setModel(req.getModel());
+        if (req.hasCNumber()) {
+            g.setCNumber(req.getCNumber() == null || req.getCNumber().isBlank()
+                    ? null : req.getCNumber().trim());
+        }
         g.setSpec(req.getSpec());
         applyNameEn(req, g);
         g.setSeries(req.getSeries() == null ? null : req.getSeries().trim());
@@ -1349,7 +1423,7 @@ public class GoodsService {
                 // ADR-134 英文名称 + 当前用户能否单独改英文名称(功能权限 + 对象写范围)。
                 g.getNameEn(), g.getNameEnSource(), canEditNameEn(g),
                 // ADR-146 不良品仓数量另列, 不计入库存合计。
-                stock.getDefectiveQty());
+                stock.getDefectiveQty(), g.getCNumber());
         if (learnedPrices != null && costMasker.canView()) {
             var prices = learnedPrices.find(g.getId());
             d.setDefaultPurchasePriceInfo(prices.purchase());

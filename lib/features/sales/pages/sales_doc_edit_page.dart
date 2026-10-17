@@ -94,6 +94,7 @@ import '../config/sales_doc_config.dart';
 import '../intake/sales_intake_apply.dart';
 import '../intake/sales_intake_attachment.dart';
 import '../intake/sales_intake_l10n.dart';
+import '../../../core/ui/human_error_message.dart';
 import '../intake/sales_intake_launcher.dart';
 import '../intake/sales_intake_models.dart';
 import '../intake/sales_guided_routing.dart';
@@ -1143,9 +1144,11 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     } on FormatException catch (e) {
       if (!mounted || !isCurrent()) return;
       _initializationError = e.message;
-    } catch (_) {
+    } catch (error) {
       if (!mounted || !isCurrent()) return;
-      _initializationError = '无法读取完整单据数据，请检查网络或权限后重试';
+      _initializationError =
+          humanErrorMessage(error) ??
+          salesIntakeL10n(context).productionDailyReportLoadFailed;
     } finally {
       if (isCurrent()) setState(() => _loading = false);
     }

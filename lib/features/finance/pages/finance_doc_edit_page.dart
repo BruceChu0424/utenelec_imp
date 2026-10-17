@@ -37,6 +37,7 @@ import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_field_placeholder.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -84,6 +85,9 @@ import '../widgets/customer_prepayment_apply_panel.dart';
 import '../widgets/customer_prepayment_receipt_fields.dart';
 import '../widgets/finance_grid_columns.dart';
 import '../widgets/finance_entry_l10n.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/l10n/gen/app_localizations_zh.dart';
+import '../../../core/ui/human_error_message.dart';
 import '../widgets/finance_receipt_totals.dart';
 import '../widgets/finance_entry_file_picker.dart';
 import '../../employee/repositories/employee_picker_candidates.dart';
@@ -567,8 +571,13 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
       }
     } on ApiException catch (e) {
       _initializationError = e.message;
-    } catch (_) {
-      _initializationError = '无法读取完整单据数据，请检查网络或权限后重试';
+    } catch (error) {
+      if (!mounted) return;
+      final l10n =
+          Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+          AppLocalizationsZh();
+      _initializationError =
+          humanErrorMessage(error) ?? l10n.productionDailyReportLoadFailed;
     } finally {
       if (mounted) {
         setState(() => _loading = false);
@@ -1723,8 +1732,8 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                           'finance-receipt-agent-statement-no',
                         ),
                         controller: _agentStatementNo,
-                        decoration: const InputDecoration(
-                          labelText: '外贸代理结算单号',
+                        decoration: const UtenInputDecoration(
+                          InputDecoration(labelText: '外贸代理结算单号'),
                         ),
                       ),
                   ],
@@ -1826,6 +1835,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
         ? null
         : names.accountEntries[_accountId];
     return InkWell(
+      key: const Key('finance-receipt-account-picker'),
       borderRadius: UtenRadius.smAll,
       onTap: _saving
           ? null
@@ -1848,7 +1858,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
           info: _accountId == null ? '尚未选择收款账户，保存前必须选择' : null,
         ),
         child: Text(
-          selectedLabel ?? '点击选择收款账户',
+          selectedLabel ?? utenFieldPlaceholder(label: '收款账户')!,
           style: selectedLabel == null
               ? theme.textTheme.bodyLarge?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
@@ -2132,11 +2142,15 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
               if (_cfg.hasInvoiceNo)
                 TextField(
                   controller: _invoiceNo,
-                  decoration: const InputDecoration(labelText: '发票号'),
+                  decoration: const UtenInputDecoration(
+                    InputDecoration(labelText: '发票号'),
+                  ),
                 ),
               TextField(
                 controller: _remark,
-                decoration: const InputDecoration(labelText: '备注(选填)'),
+                decoration: const UtenInputDecoration(
+                  InputDecoration(labelText: '备注(选填)'),
+                ),
                 maxLines: 2,
               ),
             ],
@@ -2219,7 +2233,9 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
-              decoration: const InputDecoration(labelText: '汇率'),
+              decoration: const UtenInputDecoration(
+                InputDecoration(labelText: '汇率'),
+              ),
             ),
   ];
 

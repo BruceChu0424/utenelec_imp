@@ -10,6 +10,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/layout/uten_grid_header_filter_cell.dart';
 
 class _Row extends EditableGridRow {
   _Row(this.name, {this.kind = '默认'});
@@ -201,7 +202,7 @@ void main() {
     expect(find.text('批量货品'), findsNWidgets(3));
   });
 
-  testWidgets('表头筛选组合导致空表时仍可粘贴，筛选保持原范围', (tester) async {
+  testWidgets('表头精确与关键词组合导致空表时仍可粘贴，筛选保持原范围', (tester) async {
     final first = _Row('行1', kind: '类型甲');
     final c = UtenEditableGridController<_Row>(
       initial: [
@@ -218,9 +219,16 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('行1（1）'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byIcon(Icons.arrow_drop_down_rounded).last);
+    // Other-column facets now respect the exact name condition. Create a real
+    // zero intersection with this column's keyword instead of selecting a
+    // type bucket that is correctly unavailable outside the name scope.
+    await tester.tap(find.byIcon(Icons.arrow_drop_down_rounded).first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('类型乙（1）'));
+    await tester.enterText(
+      find.byKey(const Key('uten-column-keyword-input')),
+      '行2',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.search);
     await tester.pumpAndSettle();
 
     final empty = find.text('没有符合表头筛选条件的行');
@@ -231,13 +239,34 @@ void main() {
     await tester.tap(find.text('粘贴'));
     await tester.pumpAndSettle();
     expect(c.length, 3);
+    expect(c.rows.map((row) => (row.name, row.kind)), [
+      ('行1', '类型甲'),
+      ('行2', '类型乙'),
+      ('行1', '类型甲'),
+    ]);
     expect(empty, findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.arrow_drop_down_rounded).last);
+    await tester.tap(find.byIcon(Icons.arrow_drop_down_rounded).first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('所有'));
+    await tester.enterText(
+      find.byKey(const Key('uten-column-keyword-input')),
+      '',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.search);
     await tester.pumpAndSettle();
+    final nameHeader = tester.widget<GridHeaderFilterCell>(
+      find.byWidgetPredicate(
+        (widget) => widget is GridHeaderFilterCell && widget.label == '名称',
+      ),
+    );
+    expect(
+      nameHeader.selected,
+      '行1',
+      reason: 'clearing only the keyword retains the exact original name scope',
+    );
+    expect(nameHeader.search, isEmpty);
     expect(find.text('类型甲'), findsNWidgets(2));
+    expect(find.text('行2'), findsNothing);
     expect(empty, findsNothing);
   });
 

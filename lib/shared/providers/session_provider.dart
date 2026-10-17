@@ -97,6 +97,22 @@ class PasswordChangeCommittedError implements Exception {
   const PasswordChangeCommittedError();
 }
 
+/// An owner-issued fence for one current-user profile read. It carries no tokens.
+class SessionProfileRead {
+  const SessionProfileRead._({
+    required this.owner,
+    required this.identity,
+    required this.intentEpoch,
+    required this.profileRevision,
+    required this.backend,
+  });
+  final SessionNotifier owner;
+  final SessionState identity;
+  final int intentEpoch;
+  final int profileRevision;
+  final String backend;
+}
+
 class SessionNotifier extends Notifier<SessionState> {
   bool _restoreInProgress = false;
   bool _restoreRequested = false;
@@ -109,6 +125,7 @@ class SessionNotifier extends Notifier<SessionState> {
   String? _visibleImpersonationLineage;
   int? _pendingImpersonationOperation;
   bool _requestOwnerDisposed = false;
+  int _profileRevision = 0;
 
   /// Synchronous intent fence, including same-account re-login. Token refresh
   /// and profile refresh preserve it; no credentials are exposed.
@@ -179,6 +196,59 @@ class SessionNotifier extends Notifier<SessionState> {
   bool updateShouldNotify(SessionState previous, SessionState next) =>
       previous != next;
 
+  SessionProfileRead? captureProfileRead() {
+    if (_requestOwnerDisposed || !state.isLoggedIn || state.user == null) {
+      return null;
+    }
+    return SessionProfileRead._(
+      owner: this,
+      identity: state,
+      intentEpoch: requestIntentEpoch,
+      profileRevision: _profileRevision,
+      backend: ref.read(apiBaseUrlProvider),
+    );
+  }
+
+  /// /me refreshes the visible target only. A management response for the real
+  /// administrator must never replace an impersonated target or its actor.
+  /// Incomplete legacy bodies are not evidence that all permissions vanished.
+  bool applyMeProfileIfCurrent(
+    Map<String, dynamic> json, {
+    required SessionProfileRead request,
+  }) {
+    if (!isCurrentProfileRead(request) ||
+        json['id'] != state.user?.id ||
+        json['loginAccount'] is! String ||
+        json['permissions'] is! List ||
+        (json['permissions'] as List).any((value) => value is! String)) {
+      return false;
+    }
+    final refreshed = _toAppUser(UserProfile.fromJson(json));
+    if (state.user == refreshed) return true;
+    _profileRevision++;
+    state = SessionState(
+      status: state.status,
+      user: refreshed,
+      actor: state.actor,
+      impersonationModeExpiresAt: state.impersonationModeExpiresAt,
+      impersonationReadOnly: state.impersonationReadOnly,
+      recentImpersonatedEmployeeIds: state.recentImpersonatedEmployeeIds,
+    );
+    return true;
+  }
+
+  bool isCurrentProfileRead(SessionProfileRead request) {
+    return !(_requestOwnerDisposed ||
+        !identical(request.owner, this) ||
+        request.intentEpoch != requestIntentEpoch ||
+        request.profileRevision != _profileRevision ||
+        request.backend != ref.read(apiBaseUrlProvider) ||
+        !state.isLoggedIn ||
+        !state.isSameIdentity(request.identity) ||
+        state.impersonationReadOnly != request.identity.impersonationReadOnly ||
+        state.user != request.identity.user);
+  }
+
   Future<void> _applyRefreshedProfileIfCurrent(
     Map<String, dynamic> userJson,
   ) async {
@@ -186,10 +256,14 @@ class SessionNotifier extends Notifier<SessionState> {
     final intent = userJson[_profileIntentKey];
     final lineage = userJson[_profileLineageKey];
     if (generation is! num || intent is! num || lineage is! String) return;
+    final observedProfileRevision = _profileRevision;
+    final observedIntentEpoch = requestIntentEpoch;
 
     try {
       final current = await _storage.getAuthTokenSnapshot();
       if (state.status != AuthStatus.authenticated ||
+          observedProfileRevision != _profileRevision ||
+          observedIntentEpoch != requestIntentEpoch ||
           current.generation != generation.toInt() ||
           current.intentGeneration != intent.toInt() ||
           current.sessionLineage != lineage ||
@@ -203,7 +277,9 @@ class SessionNotifier extends Notifier<SessionState> {
       // 模拟中：刷新的是 admin 的 profile（管理端点用 admin 令牌）→ 更新 actor，
       // 保留目标 user 与模拟字段；否则正常更新 user。
       if (state.isImpersonating) {
+        if (refreshed.id != state.actor?.id) return;
         if (state.actor == refreshed) return;
+        _profileRevision++;
         state = SessionState(
           status: AuthStatus.authenticated,
           user: state.user,
@@ -213,7 +289,9 @@ class SessionNotifier extends Notifier<SessionState> {
           recentImpersonatedEmployeeIds: state.recentImpersonatedEmployeeIds,
         );
       } else {
+        if (refreshed.id != state.user?.id) return;
         if (state.user == refreshed) return;
+        _profileRevision++;
         state = SessionState(
           status: AuthStatus.authenticated,
           user: refreshed,

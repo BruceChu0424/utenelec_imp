@@ -8,8 +8,10 @@ import 'package:uten_imp/shared/repositories/task_claim_repository.dart';
 class FinanceClaimFixture extends TaskClaimRepository {
   FinanceClaimFixture() : super(ApiClient(Dio()));
   bool failClaim = false;
+  Object? claimError;
   String? failClaimKey;
   bool failHeartbeat = false;
+  Object? heartbeatError;
   bool loseLease = false;
   Completer<TaskClaimView?>? pendingClaim;
   final Map<String, TaskClaimView> leases = {};
@@ -30,6 +32,7 @@ class FinanceClaimFixture extends TaskClaimRepository {
   @override
   Future<TaskClaimView?> claimRequired(String type, String key) async {
     acquired.add(key);
+    if (claimError case final error?) throw error;
     if (failClaim || failClaimKey == key) {
       throw StateError('claim network failure');
     }
@@ -44,6 +47,7 @@ class FinanceClaimFixture extends TaskClaimRepository {
     required String expectedClaimId,
   }) async {
     renewed.add(key);
+    if (heartbeatError case final error?) throw error;
     if (failHeartbeat) throw StateError('heartbeat network failure');
     if (loseLease) return lease(type, key, id: 'replacement-lease');
     final held = leases[key];

@@ -1,5 +1,7 @@
 package com.uten.imp.features.sales.ret;
 
+import com.uten.imp.common.web.HeaderColumnFilter;
+
 import com.uten.imp.application.port.WarehouseUse;
 import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.util.NameRefKeyword;
@@ -178,6 +180,10 @@ public class SalesReturnService {
             }
             if (f.currencyId() != null) ps.add(cb.equal(root.get("currencyId"), f.currencyId()));
             f.headerFilters().apply(root, cb, ps, "totalLocal", true, null, false, null, false);
+            f.headerFilters().applySearch(root, q, cb, ps, java.util.Map.of(
+                    "billNo", HeaderColumnFilter.SearchField.text("billNo"),
+                    "client", HeaderColumnFilter.SearchField.reference("clientId", com.uten.imp.features.master.client.Client.class),
+                    "warehouse", HeaderColumnFilter.SearchField.reference("warehouseId", com.uten.imp.features.master.warehouse.Warehouse.class).withParent("parentId")));
             return cb.and(ps.toArray(new Predicate[0]));
         };
     }

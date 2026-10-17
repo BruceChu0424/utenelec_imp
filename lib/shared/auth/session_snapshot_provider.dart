@@ -109,6 +109,7 @@ class SessionSnapshotNotifier extends AsyncNotifier<SessionSnapshot?> {
   Future<SessionSnapshot>? _latestRead;
   int _failures = 0;
   Timer? _retry;
+  Set<String>? _publishedProfilePermissions;
 
   @override
   Future<SessionSnapshot?> build() async {
@@ -117,6 +118,7 @@ class SessionSnapshotNotifier extends AsyncNotifier<SessionSnapshot?> {
     final client = ref.watch(apiClientProvider);
     final lifecycle = ++_lifecycle;
     final revision = ++_refreshRevision;
+    _publishedProfilePermissions = null;
     _latestRead = null;
     _retry?.cancel();
     _retry = null;
@@ -143,6 +145,17 @@ class SessionSnapshotNotifier extends AsyncNotifier<SessionSnapshot?> {
     ref.listen<List<String>?>(
       sessionProvider.select((state) => state.user?.permissions),
       (previous, next) {
+        final published = _publishedProfilePermissions;
+        _publishedProfilePermissions = null;
+        if (published != null &&
+            next != null &&
+            setEquals(published, next.toSet())) {
+          return;
+        }
+        if ((previous == null) != (next == null)) {
+          ref.invalidateSelf();
+          return;
+        }
         if (previous != null &&
             next != null &&
             !setEquals(previous.toSet(), next.toSet())) {
@@ -170,7 +183,7 @@ class SessionSnapshotNotifier extends AsyncNotifier<SessionSnapshot?> {
       return _latestForBuild(lifecycle, scope, client);
     }
     if (recent != null) return SessionSnapshot.fromJson(recent);
-    final pending = _fetch(client);
+    final pending = _fetch(client, lifecycle, scope, revision);
     _latestRead = pending;
     try {
       final snapshot = await pending;
@@ -236,8 +249,45 @@ class SessionSnapshotNotifier extends AsyncNotifier<SessionSnapshot?> {
     });
   }
 
-  Future<SessionSnapshot> _fetch(ApiClient client) async {
+  Future<SessionSnapshot> _fetch(
+    ApiClient client,
+    int lifecycle,
+    AuthenticatedScope scope,
+    int revision,
+  ) async {
+    final owner = ref.read(sessionProvider.notifier);
+    final profileRead = owner.captureProfileRead();
     final json = await client.get(ApiEndpoints.authMe);
+    if (_active(lifecycle, scope, client) && revision == _refreshRevision) {
+      if (profileRead != null && !owner.isCurrentProfileRead(profileRead)) {
+        // Same-account replacement intents can settle between provider flushes.
+        // Their old response must not publish scopes even when user IDs match.
+        ref.invalidateSelf();
+        throw StateError('会话身份或权限已变化，正在重新读取当前会话');
+      }
+      // A profile belonging to another user cannot authorize this snapshot.
+      if (json['id'] is String && json['id'] != scope.userId) {
+        throw StateError('会话资料与当前登录身份不一致，请重新核对登录状态');
+      }
+      if (profileRead != null) {
+        final permissions = json['permissions'];
+        final before = ref.read(sessionProvider).user?.permissions;
+        if (permissions is List &&
+            permissions.every((value) => value is String) &&
+            before != null &&
+            !setEquals(before.toSet(), permissions.cast<String>().toSet())) {
+          // Register before the synchronous owner publication: its permission
+          // listener must not issue a duplicate /me for this same response.
+          _publishedProfilePermissions = permissions.cast<String>().toSet();
+        }
+        var applied = false;
+        try {
+          applied = owner.applyMeProfileIfCurrent(json, request: profileRead);
+        } finally {
+          if (!applied) _publishedProfilePermissions = null;
+        }
+      }
+    }
     final session = json['session'];
     // 服务端本次没算出快照(/me 只回了资料): 按失败处理, 走退避重取, 不把「空快照」
     // 当成真实结果让整段会话只读。
@@ -257,7 +307,7 @@ class SessionSnapshotNotifier extends AsyncNotifier<SessionSnapshot?> {
     final revision = ++_refreshRevision;
     _retry?.cancel();
     _retry = null;
-    final pending = _fetch(client);
+    final pending = _fetch(client, lifecycle, scope, revision);
     _latestRead = pending;
     state = const AsyncLoading<SessionSnapshot?>().copyWithPrevious(state);
     final result = await AsyncValue.guard(() => pending);

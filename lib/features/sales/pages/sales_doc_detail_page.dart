@@ -1058,8 +1058,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
             content: TextField(
               controller: reasonCtrl,
               autofocus: true,
-              decoration: const InputDecoration(
-                hintText: '驳回原因(如：预留货物损坏 / 找不到)',
+              decoration: const UtenInputDecoration(
+                InputDecoration(labelText: '驳回原因', hintText: '如：预留货物损坏 / 找不到'),
               ),
             ),
             actionsAlignment: MainAxisAlignment.center,
@@ -3129,7 +3129,9 @@ class _LineActionSheetState extends State<_LineActionSheet> {
                 TextField(
                   controller: _priorityReason,
                   autofocus: true,
-                  decoration: const InputDecoration(hintText: '急单原因(必填)'),
+                  decoration: const UtenInputDecoration(
+                    InputDecoration(labelText: '急单原因(必填)'),
+                  ),
                 ),
               ],
               const SizedBox(height: UtenSpacing.s12),
@@ -3148,14 +3150,19 @@ class _LineActionSheetState extends State<_LineActionSheet> {
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                decoration: InputDecoration(
-                  hintText: '让单数量(要大于 0，不超过可发 $reserved)',
+                decoration: UtenInputDecoration(
+                  InputDecoration(
+                    labelText: '让单数量',
+                    hintText: '要大于 0，不超过可发 $reserved',
+                  ),
                 ),
               ),
               const SizedBox(height: UtenSpacing.s8),
               TextField(
                 controller: _yieldReason,
-                decoration: const InputDecoration(hintText: '让单原因(必填)'),
+                decoration: const UtenInputDecoration(
+                  InputDecoration(labelText: '让单原因(必填)'),
+                ),
               ),
               const SizedBox(height: UtenSpacing.s12),
               OutlinedButton.icon(

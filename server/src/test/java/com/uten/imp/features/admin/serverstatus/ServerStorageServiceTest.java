@@ -39,6 +39,8 @@ class ServerStorageServiceTest {
         var result = service.summary();
         assertThat(result.capabilities().available()).isFalse();
         assertThat(result.capabilities().canCleanup()).isFalse();
+        assertThat(result.capabilities().unavailableCode()).isEqualTo("HOST_HELPER_UNAVAILABLE");
+        assertThat(result.capabilities().unavailableReason()).contains("可信连接").doesNotContain("当前平台不支持");
         assertThat(result.volumes()).isEmpty();
         assertThat(result.database().sizeBytes()).isNull();
         assertThat(result.uploads().count()).isNull();
@@ -57,7 +59,45 @@ class ServerStorageServiceTest {
         var result = service.summary();
         assertThat(result.capabilities().available()).isTrue();
         assertThat(result.capabilities().canCleanup()).isFalse();
+        assertThat(result.capabilities().unavailableCode()).isNull();
         assertThat(mapper.writeValueAsString(result)).doesNotContain("do-not-expose", "not-public");
+        assertThat(mapper.writeValueAsString(new ServerStorageView.Capabilities(false,false,"legacy")))
+                .doesNotContain("unavailableCode");
+    }
+    @Test void invalidHelperProtocolKeepsRealDatabaseAndUploadMeasurements() throws Exception {
+        var connection=mock(java.sql.Connection.class);
+        var statement=mock(java.sql.PreparedStatement.class);
+        var databaseRows=mock(java.sql.ResultSet.class);
+        var uploadRows=mock(java.sql.ResultSet.class);
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(statement);
+        when(statement.executeQuery()).thenReturn(databaseRows,uploadRows);
+        when(databaseRows.next()).thenReturn(true);when(databaseRows.getLong(1)).thenReturn(4096L);
+        when(uploadRows.next()).thenReturn(true);when(uploadRows.getLong(1)).thenReturn(3L);
+        when(uploadRows.getLong(2)).thenReturn(90L);when(uploadRows.getLong(3)).thenReturn(100L);
+        when(host.call(eq(STORAGE_SUMMARY),anyMap(),eq(actor.getId()),any())).thenReturn(mapper.createObjectNode());
+
+        var result=service.summary();
+        assertThat(result.capabilities().unavailableCode()).isEqualTo("HOST_RESPONSE_INVALID");
+        assertThat(result.capabilities().unavailableReason()).contains("安全校验");
+        assertThat(result.capabilities().canCleanup()).isFalse();
+        assertThat(result.volumes()).isEmpty();assertThat(result.categories()).isEmpty();
+        assertThat(result.process().heapUsedBytes()).isPositive();
+        assertThat(result.database().status()).isEqualTo("NORMAL");assertThat(result.database().sizeBytes()).isEqualTo(4096L);
+        assertThat(result.uploads().count()).isEqualTo(3L);assertThat(result.uploads().logicalBytes()).isEqualTo(90L);
+        assertThat(result.uploads().storedBytes()).isEqualTo(100L);
+    }
+    @Test void helperCapabilitiesCannotForgeALocalPlatformLimitationOrLeakUnreviewedReasons() throws Exception {
+        when(host.call(eq(STORAGE_SUMMARY),anyMap(),eq(actor.getId()),any())).thenReturn(mapper.readTree("""
+                {"sampledAt":"2026-10-15T18:00:00Z","status":"UNKNOWN","revision":"abc",
+                 "capabilities":{"available":false,"canCleanup":true,
+                 "unavailableCode":"HOST_PLATFORM_UNSUPPORTED","unavailableReason":"RAW_PRIVATE_PATH"},
+                 "volumes":[],"categories":[]}
+                """));
+        var result=service.summary();
+        assertThat(result.capabilities().unavailableCode()).isEqualTo("HOST_HELPER_UNAVAILABLE");
+        assertThat(result.capabilities().canCleanup()).isFalse();
+        assertThat(mapper.writeValueAsString(result)).doesNotContain("RAW_PRIVATE_PATH","HOST_PLATFORM_UNSUPPORTED");
     }
     @Test void legacyUploadCategoryAndResourcesRemainSeparateTypedReadonlyProjections() throws Exception {
         when(host.call(eq(STORAGE_SUMMARY), anyMap(), eq(actor.getId()), any())).thenReturn(mapper.readTree("""
@@ -124,6 +164,22 @@ class ServerStorageServiceTest {
         when(host.call(eq(STORAGE_LIST), anyMap(), eq(actor.getId()), any())).thenReturn(mapper.readTree("{}"));
         assertThatThrownBy(() -> service.resources(ServerStorageView.Kind.PAIRED_BACKUPS, null, 50))
                 .isInstanceOf(ApiException.class);
+    }
+    @Test void malformedCleanupAcknowledgementRemainsUncertainWhileReceiptReadsNeverClaimAMutation() {
+        actor=user(Set.of("server:cleanup"),false,null);
+        when(current.get()).thenReturn(Optional.of(actor));
+        UUID request=UUID.randomUUID(),preview=UUID.randomUUID();
+        var malformed=mapper.createObjectNode().put("requestId",request.toString()).put("status","SUCCEEDED")
+                .put("deletedCount",1).put("reclaimedBytes",1024);
+        malformed.putObject("detail").put("raw","PRIVATE_HELPER_DETAIL");
+        when(host.call(any(),anyMap(),eq(actor.getId()),eq(request))).thenReturn(malformed);
+        var mutation=catchThrowableOfType(ApiException.class,()->service.delete(new ServerStorageView.DeleteRequest(preview,request)));
+        assertThat(mutation.getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.SERVER_OPERATION_OUTCOME_UNCERTAIN);
+        var read=catchThrowableOfType(ApiException.class,()->service.result(request));
+        assertThat(read.getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.SERVER_OPERATIONS_UNAVAILABLE);
+        assertThat(mutation.getMessage()).doesNotContain("PRIVATE_HELPER_DETAIL");
+        assertThat(read.getMessage()).doesNotContain("PRIVATE_HELPER_DETAIL");
+        verifyNoInteractions(audit);
     }
     @Test void readOnlyReceiptPollingUsesSameOwnerAndNeverCallsDelete() throws Exception {
         actor = user(Set.of("server:cleanup"), false, null);

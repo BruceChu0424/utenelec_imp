@@ -17,9 +17,11 @@ import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/department/repositories/department_repository.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
 import 'package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart';
+import 'package:uten_imp/features/warehouse/widgets/warehouse_autofill_text_field.dart';
 import 'package:uten_imp/features/warehouse/repositories/procurement_inbound_repository.dart';
 import 'package:uten_imp/features/warehouse/repositories/warehouse_place_suggestion_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
 import 'package:uten_imp/shared/measurement/weight_unit.dart';
 import 'package:uten_imp/shared/models/procurement_inbound.dart';
 import 'package:uten_imp/shared/models/user.dart';
@@ -144,6 +146,81 @@ Map<String, dynamic> _item(Map<String, dynamic> body) =>
     (body['lines'] as List).cast<Map<String, dynamic>>().single;
 
 void main() {
+  testWidgets('旧中断草稿保留原请求形状与重试键，不补发独立资料写请求', (tester) async {
+    final (:api, :weights) = await _open(
+      tester,
+      prefill: _prefill(),
+      failFirstArrival: true,
+    );
+    final editor =
+        tester.state(find.byType(InboundArrivalRegistrationPage))
+            as FormDraftMixin<InboundArrivalRegistrationPage>;
+    final oldDraft = editor.captureFormDraft()
+      ..remove('profileLearningInCommand');
+    await editor.restoreFormDraft(oldDraft);
+    await tester.pumpAndSettle();
+    await _submit(tester);
+    expect(api.arrivalBodies, hasLength(1));
+    expect(_item(api.arrivalBodies.first).containsKey('goodsProfile'), isFalse);
+    final originalKey = api.arrivalBodies.first['idempotencyKey'];
+    await _submit(tester);
+    expect(api.arrivalBodies, hasLength(2));
+    expect(api.arrivalBodies.last['idempotencyKey'], originalKey);
+    expect(_item(api.arrivalBodies.last).containsKey('goodsProfile'), isFalse);
+  });
+
+  testWidgets('资料学习随本次实际登记行提交，修改学习值是不同登记内容', (tester) async {
+    final (:api, :weights) = await _open(
+      tester,
+      prefill: _prefill(),
+      failFirstArrival: true,
+    );
+    final series = find.byWidgetPredicate(
+      (widget) =>
+          widget is WarehouseAutofillTextField && widget.hintText == '物料系列',
+    );
+    expect(series, findsOneWidget);
+    final seriesController = tester
+        .widget<WarehouseAutofillTextField>(series)
+        .controller;
+    expect(seriesController.text, isEmpty);
+    final seriesInput = find.descendant(
+      of: series,
+      matching: find.byType(TextField),
+    );
+    expect(
+      tester.widget<TextField>(seriesInput).controller,
+      same(seriesController),
+    );
+    expect(tester.widget<TextField>(seriesInput).decoration?.hintText, '物料系列');
+    final editor =
+        tester.state(find.byType(InboundArrivalRegistrationPage))
+            as FormDraftMixin<InboundArrivalRegistrationPage>;
+    await _submit(tester);
+    final originalKey = api.arrivalBodies.first['idempotencyKey'];
+    expect(_item(api.arrivalBodies.first)['goodsProfile'], {
+      'goodsCode': 'SCR-01',
+    });
+    final changed = editor.captureFormDraft();
+    (changed['rows'] as List).cast<Map<String, dynamic>>().single['series'] =
+        '新系列';
+    await editor.restoreFormDraft(changed);
+    await tester.pumpAndSettle();
+    await _submit(tester);
+    expect(api.arrivalBodies, hasLength(2));
+    expect(api.arrivalBodies.last['idempotencyKey'], isNot(originalKey));
+    expect(_item(api.arrivalBodies.last)['goodsProfile'], {
+      'goodsCode': 'SCR-01',
+      'series': '新系列',
+    });
+    expect(
+      (_item(api.arrivalBodies.last)['goodsProfile'] as Map).containsKey(
+        'goodsId',
+      ),
+      isFalse,
+    );
+  });
+
   testWidgets('历史单重实际预填，但未经实称的建议不提交为重量', (tester) async {
     final (:api, :weights) = await _open(tester, prefill: _prefill());
     expect(tester.widget<TextField>(_weightInput()).controller!.text, '0.01');
@@ -424,9 +501,6 @@ class _Api extends ApiClient {
         throw NetworkException('响应中断，请使用原请求重试');
       }
       return arrivalBatchAnswer(request);
-    }
-    if (path == '/warehouse/inbound/goods-profile-hints') {
-      return const {'updated': 0};
     }
     if (path == '/warehouse/place-suggestions') {
       return const {'items': <Map<String, dynamic>>[]};

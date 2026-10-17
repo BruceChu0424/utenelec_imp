@@ -383,10 +383,12 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
                 decimal: true,
               ),
               style: theme.textTheme.bodySmall,
-              decoration: const InputDecoration(
-                isDense: true,
-                labelText: '本次数量',
-                border: OutlineInputBorder(),
+              decoration: const UtenInputDecoration(
+                InputDecoration(
+                  isDense: true,
+                  labelText: '本次数量',
+                  border: OutlineInputBorder(),
+                ),
               ),
             ),
           ),

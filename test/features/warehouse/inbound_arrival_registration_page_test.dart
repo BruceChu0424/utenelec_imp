@@ -484,7 +484,19 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('成品仓'), findsNothing);
-      expect(find.text('必选 · 点击选择'), findsNWidgets(3));
+      for (final item in ['batch-item-1', 'batch-item-2', 'batch-item-3']) {
+        final warehouse = find.byKey(Key('warehouse-arrival-wh-$item'));
+        expect(
+          find.descendant(of: warehouse, matching: find.text('入库仓库')),
+          findsOneWidget,
+        );
+      }
+      final quantity = tester.widget<TextField>(
+        find.byKey(const Key('warehouse-arrival-qty-batch-item-1')),
+      );
+      expect(quantity.decoration?.hintText, '本次实收');
+      expect(quantity.controller?.text, isNotEmpty);
+      expect(quantity.readOnly, isFalse);
       await tester.ensureVisible(
         find.byKey(const Key('warehouse-arrival-wh-batch-item-1')),
       );
@@ -568,7 +580,15 @@ void main() {
     expect(api.byIdsQueries.single, {'ids': _ids.join(',')});
     // 行级仓库：建议仓订单的行预填「成品仓」，无建议订单的行留空必选。
     expect(find.text('成品仓'), findsOneWidget);
-    expect(find.text('必选 · 点击选择'), findsNWidgets(2));
+    for (final id in ['batch-item-2', 'batch-item-3']) {
+      expect(
+        find.descendant(
+          of: find.byKey(Key('warehouse-arrival-wh-$id')),
+          matching: find.text('入库仓库'),
+        ),
+        findsOneWidget,
+      );
+    }
     expect(
       tester.widget<Checkbox>(find.byType(Checkbox).at(0)).value,
       isTrue,
@@ -641,6 +661,15 @@ void main() {
     expect(body['receiverEmployeeId'], 'emp-me');
     expect(body.containsKey('stockInBeforeInspection'), isFalse);
     final lines = (body['lines'] as List).cast<Map<String, dynamic>>();
+    expect(lines.every((line) => line['goodsProfile'] is Map), isTrue);
+    expect(
+      lines.every(
+        (line) => !(line['goodsProfile'] as Map).containsKey('goodsId'),
+      ),
+      isTrue,
+      reason: '资料学习只随实际登记行提交，不能另外指定货品身份',
+    );
+    expect((lines.first['goodsProfile'] as Map)['goodsCode'], 'G-001');
     expect(lines.map((line) => line['orderItemId']), [
       'batch-item-1',
       'batch-item-2',
@@ -1335,9 +1364,6 @@ class _BatchApi extends ApiClient {
       final error = arrivalError;
       if (error != null) throw error;
       return arrivalBatchAnswer(request);
-    }
-    if (path == '/warehouse/inbound/goods-profile-hints') {
-      return const {'updated': 0};
     }
     throw ApiException('TEST_UNEXPECTED_POST', path);
   }

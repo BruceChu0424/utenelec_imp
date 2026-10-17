@@ -265,16 +265,18 @@ class WorkshopPlanningUrgeEndToEndTest {
                 "production_material_analysis:view", "production_material_analysis:notify");
         db.update("UPDATE employees SET department_id=? WHERE id=(SELECT employee_id FROM users WHERE id=?)",
                 subPlan, planner);
-        // 计划部成员默认就带「下达采购委外」(部门默认授权)；不在计划 / 生产部门的人即使有同样的
-        // 权限也不收——催料卡只发给计划那一边。
+        // 部门外同样持有动作权限且可查看这张分析的人也应收到；具体对象范围仍然生效。
         UUID outsider = fixture.createUserWithPerms(c.world(), "pu-outsider-" + UUID.randomUUID(), "notice:read",
+                "production_material_analysis:view", "production_material_analysis:notify", "production_plan:view:all");
+        UUID outOfScope = fixture.createUserWithPerms(c.world(), "pu-out-of-scope-" + UUID.randomUUID(), "notice:read",
                 "production_material_analysis:view", "production_material_analysis:notify");
 
         fixture.loginAs(c.workerUser());
         var urge = urges.urge(c.segment());
         deliver(urge.urgeId());
         assertEquals(1, openCards(planner, urge.urgeId()), "能下单的计划员收到待办卡");
-        assertEquals(0, openCards(outsider, urge.urgeId()), "不在计划 / 生产部门的人不收");
+        assertEquals(1, openCards(outsider, urge.urgeId()), "部门外有动作权限且可看该单的人收到");
+        assertEquals(0, openCards(outOfScope, urge.urgeId()), "动作权限不扩大具体对象范围");
         String content = db.queryForObject("""
                 SELECT content FROM notices WHERE audience_user_id=? AND aggregate_id=? AND resolved_at IS NULL
                 """, String.class, planner, urge.urgeId());
@@ -297,6 +299,7 @@ class WorkshopPlanningUrgeEndToEndTest {
         orderChild(c, "100");
         assertEquals(1, urges.reconcileAnalysis(c.analysis()));
         assertEquals(0, openCards(planner, urge.urgeId()), "计划下够单: 卡片撤回");
+        assertEquals(0, openCards(outsider, urge.urgeId()), "部门外接收人的卡片同样撤回");
     }
 
     @Test

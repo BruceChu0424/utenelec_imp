@@ -13,8 +13,23 @@
 
 ## 前置
 - JDK 21（`java -version`）
-- Maven 3.9+
+- Maven 3.9.7+（仓库来源配置实测 3.9.16、3.10.0）
 - PostgreSQL 16+（可用下方 Docker 一键起）
+
+### Maven 仓库来源
+
+`server/.mvn/maven.config` 对在 `server/` 内运行 Maven 和在项目根目录运行
+`mvn -f server/pom.xml ...` 同样生效。它忽略依赖描述文件引入的仓库，并把三个旧仓库 ID
+`flyway-community-db-support`、`jvnet-nexus-releases`、`jvnet-nexus-snapshots` 精确映射到官方
+HTTPS Maven Central；该映射也覆盖 CycloneDX 独立构建依赖有效 POM 时的仓库解析。
+依赖、插件版本和 TLS 校验保持原规则，其他仓库 ID 不会被重定向。
+
+这里选择项目的 global settings，替代 Maven 安装目录的 `conf/settings.xml`；保留官方
+`maven-default-http-blocker` 对外部 HTTP 仓库的拒绝规则。默认 `~/.m2/settings.xml` 仍会合并，
+其中的代理、认证及用户镜像继续按 Maven 原生优先级处理；显式 `-s`、`-gs` 参数仍优先。
+需要安装级全局配置的环境须显式选择经过审核、包含上述来源规则的 `-gs` 文件。
+原生性能对比工具将同一份 head 来源策略复制到证据目录，并在两侧执行前后核对 SHA-256，
+同时继续使用独立的空 user settings，避免个人配置影响比较。
 
 ## 快速开始
 ```bash

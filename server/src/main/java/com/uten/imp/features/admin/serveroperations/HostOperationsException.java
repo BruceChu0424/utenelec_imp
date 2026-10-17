@@ -20,44 +20,68 @@ public final class HostOperationsException extends RuntimeException {
     public HostOperationsException(String code) { this(code, false); }
 
     public HostOperationsException(String code, boolean uncertain) {
+        this(code, uncertain, false);
+    }
+
+    private HostOperationsException(String code, boolean uncertain, boolean localPlatformUnsupported) {
         super("Server operations request could not be confirmed");
-        this.code = KNOWN_CODES.contains(code == null ? "" : code) ? code : "UNAVAILABLE";
+        this.code = localPlatformUnsupported ? ServerOperationFailures.HOST_PLATFORM_UNSUPPORTED
+                : KNOWN_CODES.contains(code == null ? "" : code) || ServerOperationFailures.known(code)
+                ? code : "UNAVAILABLE";
         this.uncertain = uncertain || "OUTCOME_UNCERTAIN".equals(this.code);
     }
+
+    /** Reserved local fact: helper frames and stored receipts cannot claim platform support. */
+    static HostOperationsException platformUnsupported() {
+        return new HostOperationsException(null, false, true);
+    }
+
+    boolean isPlatformUnsupported() { return ServerOperationFailures.HOST_PLATFORM_UNSUPPORTED.equals(code); }
 
     public String code() { return code; }
     public boolean uncertain() { return uncertain; }
 
+    /** Safe availability projection shared by update and storage status. */
+    public ServerOperationsDto.Failure availabilityFailure() {
+        return isPlatformUnsupported() ? ServerOperationFailures.platformUnsupported()
+                : ServerOperationFailures.unavailable(code);
+    }
+
     public ApiException toApiException() {
         if (uncertain) {
             return new ApiException(ErrorCode.SERVER_OPERATION_OUTCOME_UNCERTAIN,
-                    "本次服务器操作结果尚未确认，请刷新任务或配置状态，不要再次提交");
+                    ServerOperationFailures.guidance("OUTCOME_UNCERTAIN"));
         }
         return switch (code) {
             case "INVALID_RUNTIME_BINDING" -> new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "无法确认当前数据库与附件存储身份，未启动更新；请联系管理员核对本机部署");
+                    guidance());
             case "BACKUP_BINDING_MISMATCH" -> new ApiException(ErrorCode.CONFLICT,
-                    "当前数据库、附件目录与备份或迁移配置不一致，未启动更新；请联系管理员核对");
+                    guidance());
             case "AMBIGUOUS_SCHEDULE" -> new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "该服务器当地时段受夏令时影响，请更换凌晨 2 点或 3 点时段");
+                    "该服务器当地时段受夏令时影响，请更换凌晨 2 点或 3 点时段。" + guidance());
             case "UNSAFE_HOST_CONFIG", "INVALID_HOST_CONFIG" -> new ApiException(ErrorCode.SERVER_OPERATIONS_UNAVAILABLE,
-                    "服务器运维配置未通过安全校验，请联系管理员核对配置与文件权限");
-            case "BUSY" -> new ApiException(ErrorCode.CONFLICT, "服务器正在执行运维任务，请等待任务完成");
+                    "服务器运维配置未通过安全校验。" + guidance());
+            case "BUSY" -> new ApiException(ErrorCode.CONFLICT, guidance());
             case "STALE_PREVIEW", "PROTECTED" -> new ApiException(ErrorCode.CONFLICT,
                     "清理预览已变化或包含受保护资源，请重新核对预览");
             case "AUTOMATIC_UPDATES_ENABLED" -> new ApiException(ErrorCode.CONFLICT,
-                    "自动更新尚未停用，请联系管理员完成手动更新组件安装");
+                    guidance());
             case "CONFLICT", "REVISION_CONFLICT", "STALE_CONFIG", "REQUEST_CONFLICT", "RUNTIME_MISMATCH", "STALE_RELEASE", "INVALID_JOB_STATE", "NOT_DUE" -> new ApiException(ErrorCode.CONFLICT,
-                    "服务器配置或当前版本已变化，请刷新后重新确认");
+                    guidance());
             case "VALIDATION_FAILED", "INVALID_REQUEST", "SOURCE_NOT_CONFIGURED", "INVALID_ENDPOINT", "INVALID_BUCKET",
                     "INVALID_PREFIX", "INVALID_CREDENTIALS", "INVALID_PUBLIC_KEY", "INVALID_SCHEDULE" -> new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "服务器运维参数或发布源尚未准备好，请核对配置");
-            case "FORBIDDEN" -> new ApiException(ErrorCode.FORBIDDEN);
+                    guidance());
+            case "FORBIDDEN" -> new ApiException(ErrorCode.FORBIDDEN, guidance());
             case "NOT_FOUND" -> new ApiException(ErrorCode.NOT_FOUND);
             case "RECOVERY_REQUIRED" -> new ApiException(ErrorCode.CONFLICT,
-                    "服务器运维需要先完成恢复核对，请联系维护人员");
+                    guidance());
             default -> new ApiException(ErrorCode.SERVER_OPERATIONS_UNAVAILABLE,
-                    "服务器运维助手暂不可用；本机环境可能尚未安装，请稍后核对服务器部署");
+                    guidance());
         };
+    }
+
+    private String guidance() {
+        if (isPlatformUnsupported()) return ServerOperationFailures.message(ServerOperationFailures.platformUnsupported());
+        return ServerOperationFailures.guidance(ServerOperationFailures.rpcCode(code));
     }
 }

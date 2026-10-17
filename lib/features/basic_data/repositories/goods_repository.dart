@@ -148,7 +148,33 @@ abstract interface class GoodsRepository {
   Future<void> delete(String id);
 }
 
-class DioGoodsRepository implements GoodsRepository {
+/// Optional column-aware query contract; dedicated business pickers retain their own APIs.
+abstract interface class GoodsColumnSearchGateway {
+  Future<PagedResult<GoodsListItem>> searchColumns(
+    String keyword, {
+    required Map<String, String?> filters,
+    int page = 1,
+    int size = 20,
+    Set<String> categoryRootIds = const {},
+    String? categoryId,
+    bool includeRelated = false,
+    bool excludeDisabled = false,
+    bool excludeStub = false,
+    String? sort,
+    String? order,
+  });
+  Future<Set<String>> searchColumnCategoryIds(
+    String keyword, {
+    required Map<String, String?> filters,
+    required Set<String> categoryRootIds,
+    String? categoryId,
+    bool includeRelated = false,
+    bool excludeDisabled = false,
+    bool excludeStub = false,
+  });
+}
+
+class DioGoodsRepository implements GoodsRepository, GoodsColumnSearchGateway {
   DioGoodsRepository(this.api);
   final ApiClient api;
 
@@ -265,6 +291,33 @@ class DioGoodsRepository implements GoodsRepository {
     bool excludeStub = false,
     String? sort,
     String? order,
+  }) => searchColumns(
+    keyword,
+    filters: const {},
+    page: page,
+    size: size,
+    categoryRootIds: categoryRootIds,
+    categoryId: categoryId,
+    includeRelated: includeRelated,
+    excludeDisabled: excludeDisabled,
+    excludeStub: excludeStub,
+    sort: sort,
+    order: order,
+  );
+
+  @override
+  Future<PagedResult<GoodsListItem>> searchColumns(
+    String keyword, {
+    required Map<String, String?> filters,
+    int page = 1,
+    int size = 20,
+    Set<String> categoryRootIds = const {},
+    String? categoryId,
+    bool includeRelated = false,
+    bool excludeDisabled = false,
+    bool excludeStub = false,
+    String? sort,
+    String? order,
   }) async {
     final rootBatches = _goodsCategoryRootBatches(categoryRootIds);
     if (rootBatches.length > 1) {
@@ -273,6 +326,7 @@ class DioGoodsRepository implements GoodsRepository {
         page: page,
         size: size,
         rootBatches: rootBatches,
+        filters: filters,
         categoryId: categoryId,
         includeRelated: includeRelated,
         excludeDisabled: excludeDisabled,
@@ -286,6 +340,7 @@ class DioGoodsRepository implements GoodsRepository {
       page: page,
       size: size,
       categoryRootIds: rootBatches.isEmpty ? const [] : rootBatches.single,
+      filters: filters,
       categoryId: categoryId,
       includeRelated: includeRelated,
       excludeDisabled: excludeDisabled,
@@ -297,6 +352,7 @@ class DioGoodsRepository implements GoodsRepository {
 
   Future<PagedResult<GoodsListItem>> _searchPage(
     String keyword, {
+    required Map<String, String?> filters,
     required int page,
     required int size,
     required List<String> categoryRootIds,
@@ -311,6 +367,7 @@ class DioGoodsRepository implements GoodsRepository {
     final json = await api.get(
       ApiEndpoints.goods,
       query: {
+        ...masterFilterQueryParams(filters),
         'page': page,
         'size': size,
         if (categoryRootIds.isNotEmpty) 'categoryRootIds': categoryRootIds,
@@ -342,6 +399,7 @@ class DioGoodsRepository implements GoodsRepository {
   /// 按同一键客户端重排一次，保证与单批路径同序。
   Future<PagedResult<GoodsListItem>> _searchAcrossRootBatches(
     String keyword, {
+    required Map<String, String?> filters,
     required int page,
     required int size,
     required List<List<String>> rootBatches,
@@ -359,6 +417,7 @@ class DioGoodsRepository implements GoodsRepository {
       while (backendPage <= backendTotalPages) {
         final result = await _searchPage(
           keyword,
+          filters: filters,
           page: backendPage,
           size: _goodsSearchMergeFetchSize,
           categoryRootIds: roots,
@@ -419,6 +478,25 @@ class DioGoodsRepository implements GoodsRepository {
     bool includeRelated = false,
     bool excludeDisabled = false,
     bool excludeStub = false,
+  }) => searchColumnCategoryIds(
+    keyword,
+    filters: const {},
+    categoryRootIds: categoryRootIds,
+    categoryId: categoryId,
+    includeRelated: includeRelated,
+    excludeDisabled: excludeDisabled,
+    excludeStub: excludeStub,
+  );
+
+  @override
+  Future<Set<String>> searchColumnCategoryIds(
+    String keyword, {
+    required Map<String, String?> filters,
+    required Set<String> categoryRootIds,
+    String? categoryId,
+    bool includeRelated = false,
+    bool excludeDisabled = false,
+    bool excludeStub = false,
   }) async {
     final rootBatches = _goodsCategoryRootBatches(categoryRootIds);
     if (rootBatches.isEmpty) return <String>{};
@@ -428,6 +506,7 @@ class DioGoodsRepository implements GoodsRepository {
       final ids = await api.getStringList(
         ApiEndpoints.goodsSearchCategoryIds,
         query: {
+          ...masterFilterQueryParams(filters),
           'categoryRootIds': roots,
           'categoryId': ?categoryId,
           if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),

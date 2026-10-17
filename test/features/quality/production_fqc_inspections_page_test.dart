@@ -22,6 +22,7 @@ import 'package:uten_imp/shared/search/keyword_search.dart';
 
 const _inspectionId = '10000000-0000-0000-0000-000000000001';
 const _reportNo = 'RB202608280001';
+final _fqcPermissions = StateProvider<Set<String>>((ref) => {});
 
 Future<void> _pumpPage(
   WidgetTester tester, {
@@ -38,7 +39,10 @@ Future<void> _pumpPage(
     ProviderScope(
       overrides: [
         apiClientProvider.overrideWithValue(api),
-        currentPermissionsProvider.overrideWithValue(permissions),
+        _fqcPermissions.overrideWith((ref) => permissions),
+        currentPermissionsProvider.overrideWith(
+          (ref) => ref.watch(_fqcPermissions),
+        ),
         isSuperAdminProvider.overrideWithValue(false),
         sharedPreferencesProvider.overrideWithValue(preferences),
       ],
@@ -108,6 +112,83 @@ Future<void> _doubleTapRow(WidgetTester tester, String reportNo) async {
 }
 
 void main() {
+  testWidgets('FQC列表实时加授审批即可操作，收回后立即只读且不重读业务行', (tester) async {
+    final api = _FqcApi();
+    await _pumpPage(
+      tester,
+      api: api,
+      permissions: {Perm.productionQualityInspectionView},
+    );
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ProductionFqcInspectionsPage)),
+    );
+    expect(_taskTable(tester).selectable, isFalse);
+    final reads = api.listQueries.length;
+    container.read(_fqcPermissions.notifier).state = {
+      Perm.productionQualityInspectionView,
+      Perm.productionQualityInspectionApprove,
+    };
+    await tester.pumpAndSettle();
+    expect(_taskTable(tester).selectable, isTrue);
+    expect(api.capabilityCalls, 1);
+    container.read(_fqcPermissions.notifier).state = {
+      Perm.productionQualityInspectionView,
+    };
+    await tester.pumpAndSettle();
+    expect(_taskTable(tester).selectable, isFalse);
+    expect(api.listQueries.length, reads);
+    expect(api.decisionBody, isNull);
+    expect(api.batchBody, isNull);
+  });
+
+  testWidgets('FQC单任务权限变化只刷新办理能力，保留已填数量和原幂等键', (tester) async {
+    final api = _FqcApi();
+    await _pumpPage(
+      tester,
+      api: api,
+      permissions: {Perm.productionQualityInspectionView},
+    );
+    await _doubleTapRow(tester, _reportNo);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ProductionFqcInspectionPage)),
+    );
+    expect(find.byKey(const Key('fqc-inspection-submit-report')), findsNothing);
+    container.read(_fqcPermissions.notifier).state = {
+      Perm.productionQualityInspectionView,
+      Perm.productionQualityInspectionApprove,
+    };
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('fqc-inspection-submit-report')),
+      findsOneWidget,
+    );
+    FqcReportRow row() => tester
+        .widget<MasterDataTableView<FqcReportRow>>(
+          find.byKey(const Key('fqc-inspection-decision-table')),
+        )
+        .items
+        .single;
+    row().pass.text = '1.';
+    row().fail.text = '2';
+    final key = row().idempotencyKey;
+    final detailReads = api.detailCalls;
+    container.read(_fqcPermissions.notifier).state = {
+      Perm.productionQualityInspectionView,
+    };
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('fqc-inspection-submit-report')), findsNothing);
+    container.read(_fqcPermissions.notifier).state = {
+      Perm.productionQualityInspectionView,
+      Perm.productionQualityInspectionApprove,
+    };
+    await tester.pumpAndSettle();
+    expect(row().pass.text, '1.');
+    expect(row().fail.text, '2');
+    expect(row().idempotencyKey, key);
+    expect(api.detailCalls, detailReads);
+    expect(api.decisionBody, isNull);
+  });
+
   testWidgets('服务端多词结果处置回写仍保留匹配行，刷新失败不会误删部分任务', (tester) async {
     final api = _FqcApi(failReloadAfterDecision: true);
     final partial = ProductionFqcInspection.fromJson({

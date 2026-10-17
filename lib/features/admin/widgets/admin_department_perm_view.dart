@@ -16,8 +16,10 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_toast.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/auth/permission_action_type.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../models/admin_models.dart';
 import '../providers/admin_providers.dart';
@@ -75,6 +77,18 @@ class _AdminDepartmentPermViewState
   Set<String> get _checked =>
       _localChecked ?? _serverChecked ?? const <String>{};
 
+  DepartmentPermissionCodes? get _dependencyState {
+    final department = _dept;
+    if (department == null) return null;
+    final response = ref
+        .read(adminDepartmentPermissionsProvider(department.id))
+        .valueOrNull;
+    return response is DepartmentPermissionCodes ? response : null;
+  }
+
+  Map<String, List<String>> get _missingDependencies =>
+      _dependencyState?.missingDependencies ?? const {};
+
   bool get _isDirty {
     final local = _localChecked;
     final server = _serverChecked;
@@ -116,12 +130,25 @@ class _AdminDepartmentPermViewState
 
   Future<void> _save() async {
     final department = _dept;
-    if (department == null || _saving || !_isDirty) return;
+    if (department == null ||
+        _saving ||
+        (!_isDirty && _missingDependencies.isEmpty)) {
+      return;
+    }
+    final submitted = <String>{..._checked};
+    if (!_isDirty) {
+      final repair = _repairableReads();
+      if (repair.isEmpty) {
+        context.appInfo('没有可自动补齐的普通查看权限；敏感权限请在允许的授权入口逐项处理。');
+        return;
+      }
+      submitted.addAll(repair);
+    }
     setState(() => _saving = true);
     try {
       final change = await ref
           .read(adminRepositoryProvider)
-          .updateDepartmentPermissions(department.id, _checked.toList());
+          .updateDepartmentPermissions(department.id, submitted.toList());
       ref.invalidate(adminDepartmentPermissionsProvider(department.id));
       if (!mounted) return;
       setState(() => _localChecked = null);
@@ -132,6 +159,9 @@ class _AdminDepartmentPermViewState
             : '已保存「${department.name}」的权限：新增 ${change.added.length} 项，'
                   '收回 ${change.removed.length} 项，即时生效',
       );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      context.appApiError(error, fallback: '保存失败，本地修改已保留，请稍后重试');
     } catch (_) {
       if (!mounted) return;
       UtenToast.error(context, '保存失败，本地修改已保留，请稍后重试');
@@ -146,6 +176,27 @@ class _AdminDepartmentPermViewState
       value ? next.addAll(codes) : next.removeAll(codes);
       _localChecked = next;
     });
+  }
+
+  Set<String> _repairableReads() {
+    final catalog = ref.read(permissionCatalogProvider).valueOrNull;
+    if (catalog == null) return const {};
+    final byCode = {
+      for (final group in catalog)
+        for (final permission in group.permissions) permission.code: permission,
+    };
+    final removed = {...?_serverChecked}..removeAll(_checked);
+    final held = {..._checked, ...?_dependencyState?.inheritedPermissions};
+    return {
+      for (final code in _missingDependencies.values.expand((reads) => reads))
+        if (!held.contains(code) &&
+            !removed.contains(code) &&
+            byCode[code]?.actionType == PermissionActionType.view &&
+            byCode[code]?.sensitivity == 'NORMAL' &&
+            byCode[code]?.grantPolicy.departmentGrantable == true &&
+            byCode[code]?.grantPolicy.bulkEligible == true)
+          code,
+    };
   }
 
   /// 「全部授权 / 本模块 / 本组」：服务端按授权策略补齐并立即生效。
@@ -210,14 +261,15 @@ class _AdminDepartmentPermViewState
       );
       if (!mounted || confirmed != true) return;
     }
-    _setPermissions([permission.code], value);
+    _setPermissions({permission.code}, value);
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final department = _dept;
-    final showSaveBar = department != null && _isDirty;
+    final showSaveBar =
+        department != null && (_isDirty || _missingDependencies.isNotEmpty);
 
     return Column(
       children: [
@@ -291,7 +343,9 @@ class _AdminDepartmentPermViewState
               children: [
                 Expanded(
                   child: Text(
-                    '已修改 $_dirtyCount 项',
+                    _isDirty
+                        ? '已修改 $_dirtyCount 项'
+                        : '有 ${_missingDependencies.length} 项动作缺少所需查看权限',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
@@ -308,7 +362,7 @@ class _AdminDepartmentPermViewState
                   size: UtenButtonSize.small,
                   isLoading: _saving,
                   onPressed: _saving ? null : _save,
-                  child: const Text('保存更改'),
+                  child: Text(_isDirty ? '保存更改' : '补齐所需查看权限'),
                 ),
               ],
             ),

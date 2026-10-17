@@ -14,13 +14,16 @@ permissions:
 
 jobs:
   prepare:
-    name: Generate dependency inputs
+    name: Generate inputs and scan dependencies
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+
+      - name: Verify OSV process and output gate
+        run: python3 -m unittest discover -s .github/scripts -p test_osv_scan_gate.py -v
 
       - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
         with:
@@ -43,24 +46,55 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  scan:
-    needs: prepare
-    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
-    with:
-      download-artifact: osv-inputs
-      upload-sarif: false
-      fail-on-vuln: true
-      # 例外只经 osv-scanner.toml 登记(每条带原因、守护测试与到期日), 随输入制品一起下发。
-      scan-args: |-
-        --config
-        ./osv-scanner.toml
-        --sbom
-        ./server/target/classes/META-INF/sbom/application.cdx.json
-        --lockfile
-        ./pubspec.lock
-    permissions:
-      actions: read
-      contents: read
-      # The pinned reusable workflow declares this permission unconditionally,
-      # even when upload-sarif is disabled.
-      security-events: write
+      - name: Clear previous OSV outputs
+        run: rm -f -- results.json results.sarif
+
+      - name: Run OSV scanner
+        id: osv-scan
+        # Same scanner/image as the former reusable workflow; use its supported
+        # flags directly and keep the inputs in this workspace without a download.
+        uses: google/osv-scanner-action/osv-scanner-action@8dc09193bb540e09b23da07ad7e30bd33bf87018 # v2.3.8
+        continue-on-error: true
+        with:
+          # 例外只经 osv-scanner.toml 登记，原因、守护测试与到期日保持原规则。
+          scan-args: |-
+            --output-file=results.json
+            --format=json
+            --config
+            ./osv-scanner.toml
+            -L
+            ./server/target/classes/META-INF/sbom/application.cdx.json
+            --lockfile
+            ./pubspec.lock
+
+      - name: Generate OSV SARIF
+        id: osv-report
+        if: ${{ !cancelled() && steps.osv-scan.outcome != 'skipped' }}
+        uses: google/osv-scanner-action/osv-reporter-action@8dc09193bb540e09b23da07ad7e30bd33bf87018 # v2.3.8
+        continue-on-error: true
+        with:
+          scan-args: |-
+            --output-files=sarif:results.sarif
+            --new=results.json
+            --fail-on-vuln=true
+
+      - name: Require complete successful scan and report
+        if: ${{ !cancelled() }}
+        env:
+          SCAN_OUTCOME: ${{ steps.osv-scan.outcome }}
+          REPORT_OUTCOME: ${{ steps.osv-report.outcome }}
+        run: >-
+          python3 .github/scripts/osv_scan_gate.py
+          --scan-outcome "$SCAN_OUTCOME" --report-outcome "$REPORT_OUTCOME"
+          --json results.json --sarif results.sarif
+
+      - name: Preserve OSV JSON and SARIF
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: OSV Scanner SARIF file
+          path: |
+            results.json
+            results.sarif
+          if-no-files-found: error
+          retention-days: 5

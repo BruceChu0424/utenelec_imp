@@ -18,6 +18,11 @@ TimeoutStartSec=240min
 TimeoutStopSec=30s
 KillMode=control-group
 NoNewPrivileges=true
+# Explicit root under NoNewPrivileges still needs capabilities across exec.
+# Bound the worker to identity delegation, private reads, release ownership and
+# child cleanup; runuser clears effective/permitted/ambient caps after setuid.
+CapabilityBoundingSet=CAP_CHOWN CAP_DAC_READ_SEARCH CAP_KILL CAP_SETGID CAP_SETUID
+AmbientCapabilities=CAP_CHOWN CAP_DAC_READ_SEARCH CAP_KILL CAP_SETGID CAP_SETUID
 PrivateTmp=true
 PrivateDevices=true
 ProtectHome=true

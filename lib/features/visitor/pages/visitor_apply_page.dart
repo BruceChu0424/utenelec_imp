@@ -12,6 +12,7 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -355,27 +356,31 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
                           InkWell(
                             onTap: _pickTime,
                             child: InputDecorator(
-                              decoration: applyRequiredEmpty(
-                                InputDecoration(
-                                  label: requiredLabel(
-                                    l10n.visitorApplyVisitTime,
-                                    theme,
-                                    required: true,
-                                    base: theme.inputDecorationTheme.labelStyle,
+                              isEmpty: _visitTime == null,
+                              decoration: UtenInputDecoration(
+                                applyRequiredEmpty(
+                                  InputDecoration(
+                                    label: requiredLabel(
+                                      l10n.visitorApplyVisitTime,
+                                      theme,
+                                      required: true,
+                                      base:
+                                          theme.inputDecorationTheme.labelStyle,
+                                    ),
+                                    prefixIcon: Icon(
+                                      Icons.event_rounded,
+                                      size: context.scaled(20),
+                                    ),
                                   ),
-                                  prefixIcon: Icon(
-                                    Icons.event_rounded,
-                                    size: context.scaled(20),
-                                  ),
+                                  theme,
+                                  requiredEmpty: _visitTime == null,
                                 ),
-                                theme,
-                                requiredEmpty: _visitTime == null,
                               ),
-                              child: Text(
-                                _visitTime == null
-                                    ? l10n.visitorApplyVisitTime
-                                    : '${ChinaDateTime.formatDateTime(_visitTime!)}(北京)',
-                              ),
+                              child: _visitTime == null
+                                  ? null
+                                  : Text(
+                                      '${ChinaDateTime.formatDateTime(_visitTime!)}(北京)',
+                                    ),
                             ),
                           ),
                         ],

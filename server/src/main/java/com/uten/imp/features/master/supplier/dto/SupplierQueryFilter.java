@@ -38,7 +38,24 @@ public record SupplierQueryFilter(
         String website,
         String shipVia,
         String shipAddress,
-        boolean selectableOnly) {
+        boolean selectableOnly,
+        java.util.Map<String, String> columnSearch) {
+
+    public SupplierQueryFilter(UUID categoryId, String keyword, Set<String> nullFields, String name,
+            String description, Integer tday, String place, String empId, UUID ownerEmployeeId,
+            String legalPerson, String linkman, String mobile, String phone, String phone2, String fax,
+            String postcode, String address, String bank, String bankAccount, String taxId, String website,
+            String shipVia, String shipAddress, boolean selectableOnly) {
+        this(categoryId, keyword, nullFields, name, description, tday, place, empId, ownerEmployeeId, legalPerson,
+                linkman, mobile, phone, phone2, fax, postcode, address, bank, bankAccount, taxId, website,
+                shipVia, shipAddress, selectableOnly, java.util.Map.of());
+    }
+
+    public SupplierQueryFilter withColumnSearch(java.util.Map<String, String> search) {
+        return new SupplierQueryFilter(categoryId, keyword, nullFields, name, description, tday, place,
+                empId, ownerEmployeeId, legalPerson, linkman, mobile, phone, phone2, fax, postcode, address,
+                bank, bankAccount, taxId, website, shipVia, shipAddress, selectableOnly, search);
+    }
 
     /** 基础资料页全量列表用（不过滤状态）。 */
     public SupplierQueryFilter(

@@ -141,6 +141,32 @@ void main() {
     expect(find.textContaining('请先在货品资料中填写'), findsOneWidget);
     expect(find.text('共 0 项'), findsOneWidget);
   });
+
+  testWidgets('打印纸面单元格可选择，修改抬头后保留同一局部选择区', (tester) async {
+    await _pumpPage(tester, _FakeStockQueryRepository());
+    await tester.tap(find.text('预览打印'));
+    await tester.pumpAndSettle();
+    final code = find.descendant(
+      of: find.byType(Table),
+      matching: find.text('GL-1001'),
+    );
+    expect(code, findsOneWidget);
+    expect(SelectionContainer.maybeOf(tester.element(code)), isNotNull);
+    final area = find.ancestor(of: code, matching: find.byType(SelectionArea));
+    expect(area, findsOneWidget);
+    final selectionState = tester.state(area);
+
+    final title = find.descendant(
+      of: find.byType(Dialog),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(title, '仓库打印清单');
+    await tester.pumpAndSettle();
+    expect(tester.state(area), same(selectionState));
+    expect(SelectionContainer.maybeOf(tester.element(code)), isNotNull);
+    expect(_table(tester).items.length, 4);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 MasterDataTableView<ShelfLabelRow> _table(WidgetTester tester) =>

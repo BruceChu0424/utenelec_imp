@@ -12,7 +12,9 @@
 // - 各页只给 [MasterEntityPaneConfig]：列、仓储闭包、文案、权限，以及特有动作
 //   (客户负责人/可见人、货品复制粘贴与组件信息、模具详情弹层)。
 import 'package:flutter/material.dart';
+import 'basic_data_l10n.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:convert';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
@@ -29,6 +31,7 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/widgets/master_detail_card.dart';
 import '../models/master_batch.dart';
 import '../models/master_facet.dart';
@@ -148,6 +151,7 @@ class MasterEntityPaneConfig<TItem, TDetail> {
     required this.loadFacets,
     this.loadGlobalFacets,
     this.loadQueryFacets,
+    this.loadFacetPage,
     this.showLocalSearch = true,
     required this.batchEntityPath,
     required this.statusResourceOf,
@@ -203,6 +207,13 @@ class MasterEntityPaneConfig<TItem, TDetail> {
   final Future<MasterPaneFacets> Function()? loadGlobalFacets;
   final Future<MasterPaneFacets> Function(MasterPaneQuery query)?
   loadQueryFacets;
+  final Future<MasterFacetPage> Function(
+    MasterPaneQuery query,
+    String field,
+    String search,
+    int page,
+  )?
+  loadFacetPage;
 
   /// 主档集合路径(ApiEndpoints.clients 等)，批量命令拼 /batch-status、/batch-delete。
   final String batchEntityPath;
@@ -327,11 +338,15 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   ProductCategoryDetail? _category;
   bool _loading = true;
   int _queryVersion = 0;
+  // Typing invalidates commands immediately, but the displayed page window
+  // changes only when a replacement query is actually committed.
+  int _tableQueryVersion = 0;
   String? _error;
 
   PagedResult<TItem>? _page;
   int _pageNum = 1;
   bool _listLoading = false;
+  bool _displayedQueryStale = false;
   String? _listError;
   List<MasterDataGroup<TItem>> _groups = const [];
 
@@ -346,6 +361,9 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   int _scrollToEndRequest = 0;
 
   MasterEntityPaneConfig<TItem, TDetail> get _c => widget.config;
+
+  bool get _queryPending =>
+      widget.externalSearchPending || _displayedQueryStale;
 
   @override
   void initState() {
@@ -363,9 +381,10 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       _listRequests.begin();
       _groupRequests.begin();
       _facetRequests.begin();
-      _page = null;
-      _groups = const [];
-      _facets = null;
+      // Keep the last rendered rows mounted while the replacement query
+      // debounces. The pane blocks all interaction with that stale snapshot.
+      _displayedQueryStale = _page != null;
+      _listLoading = false;
       _selectedIds = {};
       _listError = null;
       return;
@@ -380,15 +399,23 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     if (old.externalKeyword != widget.externalKeyword ||
         old.externalSearchPending) {
       _queryVersion++;
+      _tableQueryVersion++;
       setState(() {
         _loading = false;
-        _page = null;
+        _displayedQueryStale = _page != null;
+        _groups = const [];
+        _facets = null;
+        _filters = {};
+        _sortKey = _c.defaultSortKey;
+        _sortAsc = true;
         _selectedIds = {};
         _kwSeed++;
         _keyword = widget.externalKeyword ?? '';
       });
       reload(page: 1);
-      if (old.externalSearchPending) _loadFacets();
+      if (old.externalSearchPending && _c.loadQueryFacets == null) {
+        _loadFacets();
+      }
     }
   }
 
@@ -410,7 +437,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   Set<String> get selectedIds => _selectedIds;
 
   @override
-  bool get busy => _busy;
+  bool get busy => _busy || _queryPending;
 
   @override
   void scrollToEnd() {
@@ -425,7 +452,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
 
   @override
   void selectIds(Iterable<String> ids) {
-    if (!mounted) return;
+    if (!mounted || _queryPending) return;
     setState(() => _selectedIds = Set<String>.of(ids));
   }
 
@@ -452,7 +479,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
 
   @override
   Future<T?> runExclusive<T>(Future<T> Function() action) async {
-    if (_busy) return null;
+    if (_busy || _queryPending) return null;
     setState(() => _busy = true);
     try {
       return await action();
@@ -466,6 +493,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     String id,
     Future<void> Function(TDetail detail) action,
   ) async {
+    final version = _queryVersion;
     final loader = _c.loadDetail;
     if (loader == null) return;
     final detail = await runExclusive(
@@ -474,7 +502,12 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
         errorFallback: '加载${_c.noun}详情失败', // TODO(l10n): 补 arb
       ),
     );
-    if (detail == null || !mounted) return;
+    if (detail == null ||
+        !mounted ||
+        _queryPending ||
+        version != _queryVersion) {
+      return;
+    }
     final hint = _c.detailReadOnlyHint?.call(detail);
     if (hint != null) {
       context.appInfo(hint);
@@ -528,7 +561,8 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
 
   @override
   Future<void> batchDelete(Set<String> ids) async {
-    if (ids.isEmpty || _busy) return;
+    if (ids.isEmpty || _busy || _queryPending) return;
+    final version = _queryVersion;
     final single = ids.length == 1 ? _labelOf(ids.first) : null;
     final ok = await UtenDialog.show(
       context,
@@ -543,7 +577,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       confirmLabel: '删除', // TODO(l10n): 补 arb
       danger: true,
     );
-    if (ok != true || !mounted) return;
+    if (ok != true || !mounted || version != _queryVersion) return;
     final result = await runExclusive(
       () => context.guardAction(
         () => ref
@@ -602,6 +636,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
 
   Future<void> _load() async {
     _queryVersion++;
+    _tableQueryVersion++;
     if (widget.externalSearchPending) return;
     final generation = _categoryRequests.begin();
     // Category-dependent reads from the prior category must stop publishing
@@ -611,6 +646,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     _facetRequests.begin();
     setState(() {
       _loading = true;
+      _displayedQueryStale = false;
       _error = null;
     });
     try {
@@ -675,15 +711,24 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     try {
       final result = await _c.loadPage(_query(page: page));
       if (!mounted || !_listRequests.isCurrent(generation)) return;
-      setState(() => _page = result);
+      setState(() {
+        _page = result;
+        _displayedQueryStale = false;
+      });
     } on ApiException catch (e) {
       if (!mounted || !_listRequests.isCurrent(generation)) return;
-      setState(() => _listError = e.message);
+      setState(() {
+        if (_displayedQueryStale) _page = null;
+        _displayedQueryStale = false;
+        _listError = e.message;
+      });
     } catch (_) {
       if (!mounted || !_listRequests.isCurrent(generation)) return;
-      setState(
-        () => _listError = '加载${_c.noun}列表失败', // TODO(l10n): 补 arb
-      );
+      setState(() {
+        if (_displayedQueryStale) _page = null;
+        _displayedQueryStale = false;
+        _listError = '加载${_c.noun}列表失败'; // TODO(l10n): 补 arb
+      });
     } finally {
       if (mounted && _listRequests.isCurrent(generation)) {
         setState(() => _listLoading = false);
@@ -732,8 +777,13 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   }
 
   void _onFilterChanged(String column, String? value) {
+    if (_queryPending) return;
     _queryVersion++;
-    final param = _c.filterParamOfColumn[column] ?? column;
+    _tableQueryVersion++;
+    final searching = column.startsWith('search.');
+    final field = searching ? column.substring(7) : column;
+    final mapped = _c.filterParamOfColumn[field] ?? field;
+    final param = searching ? 'search.$mapped' : mapped;
     setState(() {
       final next = Map<String, String?>.from(_filters);
       if (value == null) {
@@ -747,13 +797,17 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   }
 
   void _onKeywordChanged(String keyword) {
+    if (_queryPending) return;
     _queryVersion++;
+    _tableQueryVersion++;
     setState(() => _keyword = keyword);
     reload(page: 1);
   }
 
   void _onSortChange(String? column, bool ascending) {
+    if (_queryPending) return;
     _queryVersion++;
+    _tableQueryVersion++;
     setState(() {
       _sortKey = column;
       _sortAsc = ascending;
@@ -777,7 +831,10 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     };
     return {
       for (final e in _filters.entries)
-        (columnOfParam[e.key] ?? e.key): e.value,
+        (e.key.startsWith('search.')
+            ? 'search.${columnOfParam[e.key.substring(7)] ?? e.key.substring(7)}'
+            : (columnOfParam[e.key] ?? e.key)): e
+            .value,
     };
   }
 
@@ -805,9 +862,10 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
 
   /// 打印预览：按当前分类/筛选口径拉全量(上限 2000 行)，列/格式化与表格一致。
   Future<UtenPrintTable> _printLoader() async {
+    if (_queryPending) throw StateError('查询条件已变化，请重新预览');
     final version = _queryVersion;
     final result = await _c.loadPage(_query(size: 2000, forPrint: true));
-    if (!mounted || version != _queryVersion || widget.externalSearchPending) {
+    if (!mounted || version != _queryVersion || _queryPending) {
       throw StateError('查询条件已变化，请重新预览');
     }
     return UtenPrintTable(
@@ -826,7 +884,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     if (export == null) return const [];
     return [
       UtenPrintPreviewButton(
-        enabled: !widget.externalSearchPending && !_loading && !_listLoading,
+        enabled: !_queryPending && !_loading && !_listLoading,
         title: export.title,
         subtitle: '最多前 2000 行', // TODO(l10n): 补 arb
         loader: _printLoader,
@@ -840,14 +898,12 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
         size: large ? UtenButtonSize.large : UtenButtonSize.small,
       ),
       UtenExportButton(
-        enabled: !widget.externalSearchPending && !_loading && !_listLoading,
+        enabled: !_queryPending && !_loading && !_listLoading,
         prepareExport: () async {
           final version = _queryVersion;
           return UtenExportSelection(
             stillCurrent: () =>
-                mounted &&
-                version == _queryVersion &&
-                !widget.externalSearchPending,
+                mounted && version == _queryVersion && !_queryPending,
           );
         },
         endpoint: export.endpoint,
@@ -864,6 +920,31 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   }
 
   // ---- 行菜单 + 批量 ------------------------------------------------------
+
+  List<UtenContextMenuEntry> _currentQueryMenu(
+    List<UtenContextMenuEntry> entries,
+  ) {
+    final version = _queryVersion;
+    return [
+      for (final entry in entries)
+        if (entry is UtenMenuItem)
+          UtenMenuItem(
+            label: entry.label,
+            icon: entry.icon,
+            enabled: entry.enabled,
+            destructive: entry.destructive,
+            preserveSelectionAfterAction: entry.preserveSelectionAfterAction,
+            onTap: () async {
+              if (!mounted || _queryPending || version != _queryVersion) {
+                return;
+              }
+              await entry.onTap();
+            },
+          )
+        else
+          entry,
+    ];
+  }
 
   List<UtenContextMenuEntry> _menuItems(TItem row) {
     final override = _c.rowMenuOverride;
@@ -926,7 +1007,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       ];
     }
     // 没勾选时按钮灰着(悬浮批量区常驻，未选态靠按钮禁用态辨识)。
-    final idle = _busy || ids.isEmpty;
+    final idle = busy || ids.isEmpty;
     return [
       ...extra,
       if (_c.canStatus) ...[
@@ -964,7 +1045,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    if (widget.externalSearchPending || _loading) {
+    if (_loading || (widget.externalSearchPending && _page == null)) {
       return const Center(child: CircularProgressIndicator());
     }
     if (_error != null) {
@@ -996,7 +1077,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     // compact：容器 gutter 已提供水平留白；medium+：明细区自带水平内边距。
     final hPad = context.breakpoint.isCompact ? 0.0 : UtenSpacing.s16;
     final total = _page?.total ?? 0;
-    return Padding(
+    final content = Padding(
       padding: EdgeInsets.symmetric(horizontal: hPad),
       child: UtenCollapsingHeaderScrollView(
         // 滚走区：分类信息卡——上滑即收起、腾出表格空间。
@@ -1098,7 +1179,11 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                 columnEditingEnabled: _c.canEdit,
                 rowsController: _tableRows,
                 paginationRevision: _page,
-                paginationScope: (widget.categoryId, _keyword, _queryVersion),
+                paginationScope: (
+                  widget.categoryId,
+                  _keyword,
+                  _tableQueryVersion,
+                ),
                 tableKey:
                     'features.basic_data.widgets.master_entity_detail_pane.MasterEntityDetailPaneState.build.1',
                 primary: true,
@@ -1109,21 +1194,45 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                 selectable: true,
                 idOf: _c.idOf,
                 selectedIds: _selectedIds,
-                onSelectedIdsChanged: (s) => setState(() => _selectedIds = s),
+                onSelectedIdsChanged: (s) {
+                  if (!_queryPending) setState(() => _selectedIds = s);
+                },
                 batchActionsBuilder: _batchActions,
-                rowMenuBuilder: _menuItems,
+                rowMenuBuilder: (row) => _queryPending
+                    ? const []
+                    : _currentQueryMenu(_menuItems(row)),
                 backgroundMenuBuilder:
                     widget.categoryId == null ||
                         _c.backgroundMenuBuilder == null
                     ? null
-                    : () => _c.backgroundMenuBuilder!(this),
+                    : () => _queryPending
+                          ? const []
+                          : _currentQueryMenu(_c.backgroundMenuBuilder!(this)),
                 toolbarActions: exportInCard || _c.export == null
                     ? null
                     : _exportButtons(large: true),
                 leadingGroups: _groups,
                 facets: _columnFacets,
+                facetSearchScope: (
+                  ref.watch(authenticatedScopeProvider),
+                  widget.categoryId,
+                  _keyword,
+                  widget.externalKeyword,
+                  _queryVersion,
+                  _queryPending,
+                  jsonEncode(_filters),
+                ),
+                loadFacetPage: _queryPending || _c.loadFacetPage == null
+                    ? null
+                    : (column, search, page) => _c.loadFacetPage!(
+                        _query(),
+                        _c.filterParamOfColumn[column] ?? column,
+                        search,
+                        page,
+                      ),
                 nullCounts: _columnNullCounts,
                 filters: _columnFilters,
+                serverColumnSearch: true,
                 onFilterChanged: _onFilterChanged,
                 // 行底色按状态（ADR-169 收编）：使用=蓝档淡底（裸 Colors.lightBlue
                 // 收编进语义档）/ 禁用=灰档淡底（停用归中性终态，原浅红把「停用」
@@ -1135,7 +1244,9 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                 },
                 onRowTap: _c.onOpen == null
                     ? null
-                    : (row) => _c.onOpen!(this, row),
+                    : (row) {
+                        if (!_queryPending) _c.onOpen!(this, row);
+                      },
                 sortColumn: _sortKey,
                 sortAscending: _sortAsc,
                 onSortChange: _onSortChange,
@@ -1154,6 +1265,39 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
           ],
         ),
       ),
+    );
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ExcludeFocus(
+          excluding: _queryPending,
+          child: AbsorbPointer(
+            absorbing: _queryPending,
+            child: ExcludeSemantics(excluding: _queryPending, child: content),
+          ),
+        ),
+        if (_queryPending)
+          Positioned.fill(
+            child: ColoredBox(
+              key: const ValueKey('master-query-pending'),
+              color: theme.colorScheme.surface.withValues(alpha: 0.45),
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: Semantics(
+                  liveRegion: true,
+                  label: basicDataL10n(context).masterSearchUpdating,
+                  child: MediaQuery.disableAnimationsOf(context)
+                      ? SizedBox(
+                          width: double.infinity,
+                          height: 2,
+                          child: ColoredBox(color: theme.colorScheme.primary),
+                        )
+                      : const LinearProgressIndicator(minHeight: 2),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

@@ -264,11 +264,33 @@ void main() {
         const ValueKey('pre-stock-place-inspection-pending'),
       );
       expect(tester.widget<TextFormField>(placeField).controller!.text, 'C-07');
+      expect(
+        tester
+            .widget<TextField>(
+              find.descendant(of: placeField, matching: find.byType(TextField)),
+            )
+            .decoration
+            ?.hintText,
+        '上架库位',
+      );
       expect(find.text('原料仓'), findsWidgets);
 
       // 清空库位后提交：页内报错、不发请求。
       await tester.enterText(placeField, '');
       await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextFormField>(placeField).controller!.text,
+        isEmpty,
+      );
+      expect(
+        tester
+            .widget<TextField>(
+              find.descendant(of: placeField, matching: find.byType(TextField)),
+            )
+            .decoration
+            ?.hintText,
+        '上架库位',
+      );
       await tester.tap(
         find.byKey(const Key('warehouse-quality-pre-stock-confirm')),
       );

@@ -74,7 +74,7 @@ public class AiChatController {
         // ADR-153: the assistant's scope is stated up front (platform use, business rules, permitted data).
         result.put("scopeSummary", (actor.isSuperAdmin()
                 ? "超级管理员；我提出的操作要你在确认卡上确认后才执行，业务校验照旧"
-                : "仅限本人部门、现行功能权限和数据范围；我提出的操作要你确认后才执行")
+                : "按当前功能权限和数据范围提供帮助；我提出的操作要你确认后才执行")
                 + "。我只解答平台怎么用、业务规则和你有权限看的数据，不处理代码、服务器、命令或密码");
         result.put("suggestions", List.of("我能让你帮忙做什么？", "我的工作台有哪些待办？"));
         result.put("tools", catalog);

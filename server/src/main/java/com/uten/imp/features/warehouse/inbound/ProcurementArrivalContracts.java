@@ -26,11 +26,10 @@ public final class ProcurementArrivalContracts {
     }
 
     /**
-     * 货品资料「学习」回写条目：仓库登记到货时填写的库位号/物料系列/物料编码。
+     * 本行实际登记附带的资料学习值。没有独立货品身份，必须绑定服务端创建的同一收货明细。
      * 空值跳过；goodsCode 仅补空且防与他货重复；series/stockPlace 不同才更新。
      */
-    public record GoodsProfileHintRequest(
-            @NotNull UUID goodsId,
+    public record GoodsProfileLearning(
             @Size(max = 64) String goodsCode,
             @Size(max = 100) String series,
             @Size(max = 100) String stockPlace) {
@@ -115,7 +114,11 @@ public final class ProcurementArrivalContracts {
                  */
                 Boolean qtyFromWeight,
                 @DecimalMin(value = "0", inclusive = true)
-                @Digits(integer = 14, fraction = 4) BigDecimal giftQty) {
+                @Digits(integer = 14, fraction = 4) BigDecimal giftQty,
+                @Valid GoodsProfileLearning goodsProfile) {
+            public ArrivalLine(UUID goodsId, BigDecimal qty, UUID orderItemId, UUID colorId, UUID unitId, BigDecimal unitRate, BigDecimal weight, String sourceDocNo, String replacementIntent, String preStockPlace, Boolean qtyFromWeight, BigDecimal giftQty) {
+                this(goodsId, qty, orderItemId, colorId, unitId, unitRate, weight, sourceDocNo, replacementIntent, preStockPlace, qtyFromWeight, giftQty, null);
+            }
             public ArrivalLine(UUID goodsId, BigDecimal qty, UUID orderItemId, UUID colorId, UUID unitId, BigDecimal unitRate, BigDecimal weight, String sourceDocNo, String replacementIntent, String preStockPlace, Boolean qtyFromWeight) {
                 this(goodsId, qty, orderItemId, colorId, unitId, unitRate, weight, sourceDocNo, replacementIntent, preStockPlace, qtyFromWeight, null);
             }
@@ -218,7 +221,11 @@ public final class ProcurementArrivalContracts {
             @Size(max = 100) String preStockPlace,
             Boolean qtyFromWeight,
                 @DecimalMin(value = "0", inclusive = true)
-                @Digits(integer = 14, fraction = 4) BigDecimal giftQty) {
+                @Digits(integer = 14, fraction = 4) BigDecimal giftQty,
+            @Valid GoodsProfileLearning goodsProfile) {
+            public BatchArrivalLine(String orderType, UUID warehouseId, UUID purchaserId, UUID goodsId, BigDecimal qty, UUID orderItemId, UUID colorId, UUID unitId, BigDecimal unitRate, BigDecimal weight, String sourceDocNo, String replacementIntent, String preStockPlace, Boolean qtyFromWeight, BigDecimal giftQty) {
+                this(orderType, warehouseId, purchaserId, goodsId, qty, orderItemId, colorId, unitId, unitRate, weight, sourceDocNo, replacementIntent, preStockPlace, qtyFromWeight, giftQty, null);
+            }
             public BatchArrivalLine(String orderType, UUID warehouseId, UUID purchaserId, UUID goodsId, BigDecimal qty, UUID orderItemId, UUID colorId, UUID unitId, BigDecimal unitRate, BigDecimal weight, String sourceDocNo, String replacementIntent, String preStockPlace, Boolean qtyFromWeight) {
                 this(orderType, warehouseId, purchaserId, goodsId, qty, orderItemId, colorId, unitId, unitRate, weight, sourceDocNo, replacementIntent, preStockPlace, qtyFromWeight, null);
             }
@@ -226,7 +233,7 @@ public final class ProcurementArrivalContracts {
 
         public WarehouseArrivalRegisterRequest.ArrivalLine toArrivalLine() {
             return new WarehouseArrivalRegisterRequest.ArrivalLine(goodsId, qty, orderItemId, colorId, unitId,
-                    unitRate, weight, sourceDocNo, replacementIntent, preStockPlace, qtyFromWeight, giftQty);
+                    unitRate, weight, sourceDocNo, replacementIntent, preStockPlace, qtyFromWeight, giftQty, goodsProfile);
         }
     }
 

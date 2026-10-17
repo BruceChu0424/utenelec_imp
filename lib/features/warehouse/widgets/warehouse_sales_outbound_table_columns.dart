@@ -282,11 +282,12 @@ warehouseSalesOutboundTableColumns({
           return UtenDropdownField(
             key: ValueKey('sales-picking-warehouse-line-${row.line.id}'),
             dense: true,
+            label: l10n.warehouseSubcontractOutboundWarehouse,
             value: selected,
             allowClear: false,
             enabled: editingEnabled,
             autofilled: !draft.confirmedWarehouses.contains(row.line.id),
-            // 无可发仓的行级警示保留；其余空格不再复述列头（默认「请选择」）。
+            // 空格显示实际发出仓字段名；无可发仓的行级说明继续保留在提示中。
             hintText: choices.isEmpty ? '暂无可供货仓库' : null,
             errorMessage: draft.lineErrors[row.line.id],
             items: [
@@ -346,7 +347,7 @@ warehouseSalesOutboundTableColumns({
               InputDecoration(
                 isDense: true,
                 // 浮动标签「实际库位号」与列头重复，已删（2026-09-27 表格小字清理）。
-                hintText: '按本次实际填写',
+                hintText: '实际库位号',
                 counterText: '',
               ),
               info: '已按主档建议库位预填；请按本次实际位置修改，无固定库位可清空。',

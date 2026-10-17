@@ -574,9 +574,9 @@ class MasterEditFormState extends State<MasterEditForm> {
       return TextField(
         controller: ctl,
         enabled: false,
-        decoration: InputDecoration(
-          labelText: f.label,
-          hintText: ctl.text.isEmpty ? (f.hint ?? '') : null,
+        decoration: UtenInputDecoration(
+          InputDecoration(labelText: f.label, hintText: f.hint),
+          info: f.info,
         ),
       );
     }
@@ -598,9 +598,9 @@ class MasterEditFormState extends State<MasterEditForm> {
     return TextField(
       controller: displayController,
       enabled: false,
-      decoration: InputDecoration(
-        labelText: f.label,
-        hintText: display.isEmpty ? (f.hint ?? '') : null,
+      decoration: UtenInputDecoration(
+        InputDecoration(labelText: f.label, hintText: f.hint),
+        info: f.info,
       ),
     );
   }

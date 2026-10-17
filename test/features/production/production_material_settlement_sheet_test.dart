@@ -68,6 +68,33 @@ void main() {
       );
       await tester.tap(find.text('填写损耗 / 在制'));
       await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const ValueKey('material-consume-material')),
+            )
+            .decoration!
+            .hintText,
+        '本次实耗',
+      );
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const ValueKey('material-loss-material')),
+            )
+            .decoration!
+            .hintText,
+        '本次另行报损',
+      );
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const ValueKey('material-wip-material')),
+            )
+            .decoration!
+            .hintText,
+        '本次在制',
+      );
       await tester.enterText(
         find.byKey(const ValueKey('material-consume-material')),
         '8',

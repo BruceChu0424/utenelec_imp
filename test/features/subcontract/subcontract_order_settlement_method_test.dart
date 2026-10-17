@@ -3,6 +3,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/components/data_display/uten_detail_summary_card.dart';
 import 'package:uten_imp/features/basic_data/models/reference_method_option.dart';
@@ -14,6 +16,7 @@ import 'package:uten_imp/features/subcontract/pages/subcontract_order_edit_page.
 import 'package:uten_imp/features/subcontract/repositories/subcontract_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart' as mn;
+import 'package:uten_imp/shared/widgets/procurement_commercial_grid.dart';
 
 import '../../support/document_scope_capability_overrides.dart';
 
@@ -88,6 +91,7 @@ Widget _app({
   required SubcontractRepository repository,
   required Override settlementOverride,
   required Widget home,
+  GoRouter? router,
 }) => ProviderScope(
   overrides: [
     ...nativeDetailReaderOverrides(),
@@ -104,7 +108,9 @@ Widget _app({
     mn.masterNameServiceProvider.overrideWithValue(mn.MasterNameService(api)),
     settlementOverride,
   ],
-  child: MaterialApp(home: home),
+  child: router == null
+      ? MaterialApp(home: home)
+      : MaterialApp.router(routerConfig: router),
 );
 
 void _usePhoneViewport(WidgetTester tester) {
@@ -183,6 +189,25 @@ void main() {
       SubcontractDocDetail.fromJson(_orderDetailJson()),
       api,
     );
+    final editPath = SubcontractRoute.edit('orders', 'order-1');
+    final detailPath = SubcontractRoute.detail('orders', 'order-1');
+    final router = GoRouter(
+      initialLocation: editPath,
+      routes: [
+        GoRoute(
+          path: editPath,
+          builder: (_, _) => const SubcontractOrderEditPage(id: 'order-1'),
+        ),
+        GoRoute(
+          path: detailPath,
+          builder: (_, _) => const SubcontractDocDetailPage(
+            docType: SubcontractDocType.order,
+            id: 'order-1',
+          ),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
 
     await tester.pumpWidget(
       _app(
@@ -192,6 +217,7 @@ void main() {
           (ref) async => const [_settlementMethod],
         ),
         home: const SubcontractOrderEditPage(id: 'order-1'),
+        router: router,
       ),
     );
     await tester.pumpAndSettle();
@@ -207,13 +233,18 @@ void main() {
     );
 
     await tester.tap(find.text('保存订货单草稿'));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     // 单头条款 = 全行一致的条款；行级同值随行提交（批量拆单契约）。
     expect(repository.updatedBody?['settlementMethodId'], _settlementId);
     expect(repository.updatedBody?.containsKey('warehouseId'), isFalse);
     final items = repository.updatedBody?['items'] as List;
     expect((items.first as Map)['settlementMethodId'], _settlementId);
+    expect(router.routeInformationProvider.value.uri.toString(), detailPath);
+    expect(find.byType(SubcontractDocDetailPage), findsOneWidget);
+    expect(find.byType(SubcontractOrderEditPage), findsNothing);
+    expect(find.text('保存失败，请稍后重试'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('结算方式未选择时提示红字并阻断保存', (tester) async {
@@ -237,8 +268,24 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 必填且为空：行内下拉格显示红字提示「点击选择」（requiredEmpty 口径）。
-    expect(find.text('点击选择'), findsAtLeastNWidgets(1));
+    // 必填空格保留校验，并在框内显示实际业务字段名。
+    final settlementCell = find.byWidgetPredicate(
+      (widget) =>
+          widget is ProcurementTermDropdownCell && widget.hint == '结算方式',
+    );
+    expect(settlementCell, findsOneWidget);
+    final dropdownFinder = find.descendant(
+      of: settlementCell,
+      matching: find.byType(UtenDropdownField),
+    );
+    expect(dropdownFinder, findsOneWidget);
+    final dropdown = tester.widget<UtenDropdownField>(dropdownFinder);
+    expect(dropdown.value, isNull);
+    expect(dropdown.required, isTrue);
+    expect(
+      find.descendant(of: settlementCell, matching: find.text('结算方式')),
+      findsOneWidget,
+    );
 
     await tester.tap(find.text('保存订货单草稿'));
     await tester.pump();

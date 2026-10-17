@@ -320,7 +320,12 @@ Future<void> _pumpSalesReview(WidgetTester tester) async {
         ),
         taskClaimRepositoryProvider.overrideWithValue(FinanceClaimFixture()),
       ],
-      child: MaterialApp(home: FinanceSalesOrderReviewPage(id: review.orderId)),
+      child: MaterialApp(
+        home: FinanceSalesOrderReviewPage(id: review.orderId),
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+      ),
     ),
   );
   await tester.pumpAndSettle();

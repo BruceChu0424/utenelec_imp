@@ -270,6 +270,19 @@ class _ReleaseNotesDialog extends StatelessWidget {
           _ => '附件区的“添加文件”等操作统一靠右，窄屏自动换行；保存前选好的附件在单据保存后上传。',
         },
       ],
+      '2.5.21' => [
+        l10n.release2521Permissions,
+        l10n.release2521Session,
+        l10n.release2521PermissionSettings,
+        l10n.release2521ReviewFeedback,
+        l10n.release2521ServerUpdates,
+        l10n.release2521TableSearchCopy,
+        l10n.release2521FieldHints,
+        l10n.release2521ReferencePickers,
+        l10n.release2521MasterDataImport,
+        l10n.release2521PurchaseDocuments,
+        l10n.release2521GoodsHistory,
+      ],
       _ => <String>[],
     };
     final theme = Theme.of(context);

@@ -11,12 +11,11 @@ import org.springframework.stereotype.Component;
 import java.util.UUID;
 
 /**
- * Object scope for the pooled production-quality workbench.
+ * Review-pool capability for the production-quality workbench.
  *
- * <p>There is no employee-to-inspection-lab assignment master.  The honest
- * enforceable pool is therefore the active {@code DEPT_QA} organization tree,
- * plus the super-administrator recovery path.  Action authorities are checked
- * independently by Spring Security.</p>
+ * <p>Effective view and approval permissions authorize an active employee to handle the review
+ * pool, regardless of department or grant source. View-only callers retain the production
+ * document's existing owner scope. Spring Security also checks each endpoint's exact action.</p>
  */
 @Component
 @RequiredArgsConstructor
@@ -30,29 +29,21 @@ public class ProductionFqcTaskAccessPolicy {
         if (actor == null || actor.isVisitor()) return false;
         if (actor.isSuperAdmin()) return true;
         UUID employeeId = actor.getEmployeeId();
-        if (employeeId == null) return false;
+        if (employeeId == null || !actor.getPermissions().containsAll(java.util.Set.of(
+                "production_quality_inspection:view", "production_quality_inspection:approve"))) return false;
         Number count = (Number) em.createNativeQuery("""
-                        WITH RECURSIVE quality_departments(id) AS (
-                            SELECT id
-                            FROM departments
-                            WHERE code = 'DEPT_QA'
-                              AND is_deleted = FALSE
-                            UNION ALL
-                            SELECT child.id
-                            FROM departments child
-                            JOIN quality_departments parent
-                              ON child.parent_id = parent.id
-                            WHERE child.is_deleted = FALSE
-                        )
                         SELECT COUNT(*)
                         FROM employees employee
+                        JOIN users account ON account.employee_id = employee.id
                         WHERE employee.id = :employeeId
-                          AND employee.department_id IN (
-                              SELECT id FROM quality_departments)
+                          AND account.id = :userId
+                          AND account.is_deleted = FALSE
+                          AND account.status = 'active'
                           AND employee.is_deleted = FALSE
-                          AND employee.status <> 'resigned'
+                          AND employee.status IN ('active', 'probation', 'onLeave')
                         """)
                 .setParameter("employeeId", employeeId)
+                .setParameter("userId", actor.getId())
                 .getSingleResult();
         return count != null && count.longValue() == 1;
     }

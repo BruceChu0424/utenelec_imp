@@ -1,5 +1,5 @@
 // 统一任务软认领数据接入（后端 /api/task-claims；ADR-023）。
-// 纯 UX/防碰撞层：失败不抛出影响业务动作（后端守卫 requireNoActiveClaimByOther 是安全网）。
+// 普通任务可用软认领提示；财审的 claimRequired/heartbeatRequired 必须取得有效租约，失败向上传递。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_client.dart';

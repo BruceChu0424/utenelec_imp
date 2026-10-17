@@ -18,6 +18,7 @@ import '../../../shared/providers/shared_providers.dart';
 import '../providers/server_operations_access.dart';
 import '../providers/server_storage_request_store.dart';
 import '../repositories/server_operations_repository.dart';
+import 'server_update_overview.dart';
 
 final serverUpdateReminderEligibleProvider = Provider<bool>(
   (ref) =>
@@ -148,10 +149,26 @@ class _ReminderState extends ConsumerState<_ReminderSession> {
       final open = await UtenNotify.alert(
         context,
         title: '服务器有新版本 ${status.latestVersion}',
-        message:
-            '当前版本：${status.currentVersion ?? '尚未确认'}\n'
-            '上次检查时间：${DisplayDateTime.beijing(status.lastCheckedAt?.toIso8601String(), fallback: '尚未确认')}\n\n'
-            '可到服务器更新页面选择立即更新或预约凌晨执行。平时不会自动连接发布源。',
+        content: SizedBox(
+          width: 480,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ServerVersionComparison(status: status),
+              const SizedBox(height: 16),
+              Text(
+                '上次检查：${DisplayDateTime.beijing(status.lastCheckedAt?.toIso8601String(), fallback: '尚未确认')}',
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '前往更新页面核对详情，再选择立即更新或预约执行。此提醒只读取服务器已保存的结果。',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+        maxWidth: 560,
         confirmLabel: '去更新',
         cancelLabel: '稍后（15 分钟）',
         icon: Icons.system_update_alt_rounded,

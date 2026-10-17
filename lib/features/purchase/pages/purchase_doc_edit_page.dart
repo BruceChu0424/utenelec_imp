@@ -1134,8 +1134,8 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
                                               const TextInputType.numberWithOptions(
                                                 decimal: true,
                                               ),
-                                          decoration: const InputDecoration(
-                                            labelText: '汇率',
+                                          decoration: const UtenInputDecoration(
+                                            InputDecoration(labelText: '汇率'),
                                           ),
                                         ),
                                         TextField(
@@ -1146,8 +1146,8 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
                                               const TextInputType.numberWithOptions(
                                                 decimal: true,
                                               ),
-                                          decoration: const InputDecoration(
-                                            labelText: '税率(%)',
+                                          decoration: const UtenInputDecoration(
+                                            InputDecoration(labelText: '税率(%)'),
                                           ),
                                         ),
                                       ],
@@ -1216,8 +1216,8 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
                                   const SizedBox(height: UtenSpacing.s12),
                                   TextField(
                                     controller: _remark,
-                                    decoration: const InputDecoration(
-                                      labelText: '备注',
+                                    decoration: const UtenInputDecoration(
+                                      InputDecoration(labelText: '备注'),
                                     ),
                                     maxLines: 2,
                                   ),

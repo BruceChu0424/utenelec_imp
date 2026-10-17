@@ -227,7 +227,8 @@ public class TaskClaimService implements TaskClaimMutationGuardPort {
             default -> true;
         };
         if (!eligible) {
-            throw new ApiException(ErrorCode.FORBIDDEN, "当前人员不具备对应财务审核资格，无法认领或续租");
+            throw new ApiException(ErrorCode.FORBIDDEN,
+                    "无法取得或延长审核占用：请核对当前任务的查看和审批权限，以及员工账号的在职启用状态");
         }
     }
 

@@ -37,6 +37,7 @@ import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
+import '../../../core/ui/human_error_message.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/sales_shipment_policy.dart';
 import '../models/client_node.dart';
@@ -181,10 +182,12 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
         _error = e.message;
         _loading = false;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = '详情加载失败，请检查网络或权限后重试';
+        _error =
+            humanErrorMessage(error) ??
+            basicDataL10n(context).productionDailyReportLoadFailed;
         _loading = false;
       });
     }
@@ -1248,12 +1251,16 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
                   TextField(
                     controller: valueCtl,
                     autofocus: true,
-                    decoration: const InputDecoration(labelText: '内容(必填)'),
+                    decoration: const UtenInputDecoration(
+                      InputDecoration(labelText: '内容(必填)'),
+                    ),
                   ),
                   const SizedBox(height: UtenSpacing.s12),
                   TextField(
                     controller: remarkCtl,
-                    decoration: const InputDecoration(labelText: '备注(选填)'),
+                    decoration: const UtenInputDecoration(
+                      InputDecoration(labelText: '备注(选填)'),
+                    ),
                   ),
                   CheckboxListTile(
                     value: primary,
@@ -1453,7 +1460,9 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
                     controller: addressCtl,
                     autofocus: true,
                     maxLines: 2,
-                    decoration: const InputDecoration(labelText: '地址(必填)'),
+                    decoration: const UtenInputDecoration(
+                      InputDecoration(labelText: '地址(必填)'),
+                    ),
                   ),
                   CheckboxListTile(
                     value: defaultAddress,
@@ -1672,7 +1681,9 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
                     autofocus: true,
                     maxLines: 3,
                     maxLength: 2000,
-                    decoration: const InputDecoration(labelText: '内容(必填)'),
+                    decoration: const UtenInputDecoration(
+                      InputDecoration(labelText: '内容(必填)'),
+                    ),
                   ),
                   if (_isClient) ...[
                     const SizedBox(height: UtenSpacing.s4),

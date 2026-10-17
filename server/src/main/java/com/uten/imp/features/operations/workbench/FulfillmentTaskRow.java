@@ -85,6 +85,7 @@ public record FulfillmentTaskRow(
          */
         BigDecimal orderableQty,
         /**
+         * 采购订货供应商从订货单 supplier_id 解析，无单据读取权限时脱敏。
          * 委外商名(2026-10-10 V836 起 SUBCONTRACT 申请行由投影经
          * subcontract_applications→suppliers 下发, 委外任务中心「待处理」列表显示;
          * 未定商为 null, 那是业务事实)。其它段恒 null。

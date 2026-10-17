@@ -3,6 +3,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
 from types import SimpleNamespace
 import tempfile
 import unittest
@@ -127,12 +128,73 @@ class NativePerformanceEvidenceTest(unittest.TestCase):
 
     def test_environment_drops_database_and_jvm_override_inputs(self):
         with patch.dict(os.environ, {"UTEN_DB_URL": "forbidden", "SPRING_DATASOURCE_URL": "forbidden",
-                                     "JAVA_TOOL_OPTIONS": "forbidden", "DOCKER_HOST": "tcp://forbidden"}):
+                                     "JAVA_TOOL_OPTIONS": "forbidden", "DOCKER_HOST": "tcp://forbidden",
+                                     "MAVEN_ARGS": "--settings private.xml", "MAVEN_OPTS": "-Dprivate.override=true"}):
             environment = runner.clean_environment(2)
             self.assertNotIn("UTEN_DB_URL", environment)
             self.assertNotIn("SPRING_DATASOURCE_URL", environment)
             self.assertNotIn("JAVA_TOOL_OPTIONS", environment)
+            self.assertNotIn("MAVEN_ARGS", environment)
+            self.assertEqual("-Xmx2g -XX:ActiveProcessorCount=2", environment["MAVEN_OPTS"])
             self.assertEqual("unix:///var/run/docker.sock", environment["DOCKER_HOST"])
+
+
+class MavenRepositoryPolicyTest(unittest.TestCase):
+    policy = SCRIPT.resolve().parents[2] / runner.REPOSITORY_SETTINGS
+
+    def fixture(self, root):
+        candidate = root / "head"
+        source = candidate / runner.REPOSITORY_SETTINGS
+        source.parent.mkdir(parents=True)
+        shutil.copyfile(self.policy, source)
+        output = root / "evidence"
+        output.mkdir()
+        command, manifest = runner.prepare_maven(output, candidate)
+        return candidate, output, command, manifest
+
+    def test_project_launcher_policy_is_portable_and_does_not_select_user_settings(self):
+        arguments = self.policy.with_name("maven.config").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(["--ignore-transitive-repositories", "--global-settings",
+                          "${maven.multiModuleProjectDirectory}/.mvn/central-repository-settings.xml"], arguments)
+
+    def test_only_three_obsolete_ids_redirect_and_default_external_http_block_remains(self):
+        ns = {"m": "http://maven.apache.org/SETTINGS/1.2.0"}
+        settings = ET.parse(self.policy).getroot()
+        mirrors = {mirror.findtext("m:id", namespaces=ns): mirror
+                   for mirror in settings.findall("m:mirrors/m:mirror", ns)}
+        self.assertEqual({"uten-central-obsolete-transitive-repositories", "maven-default-http-blocker"}, set(mirrors))
+        redirect = mirrors["uten-central-obsolete-transitive-repositories"]
+        self.assertEqual("flyway-community-db-support,jvnet-nexus-releases,jvnet-nexus-snapshots",
+                         redirect.findtext("m:mirrorOf", namespaces=ns))
+        self.assertEqual("https://repo.maven.apache.org/maven2", redirect.findtext("m:url", namespaces=ns))
+        self.assertNotEqual("true", redirect.findtext("m:blocked", namespaces=ns))
+        blocker = mirrors["maven-default-http-blocker"]
+        self.assertEqual("external:http:*", blocker.findtext("m:mirrorOf", namespaces=ns))
+        self.assertEqual("http://0.0.0.0/", blocker.findtext("m:url", namespaces=ns))
+        self.assertEqual("true", blocker.findtext("m:blocked", namespaces=ns))
+        for element in ("servers", "proxies", "profiles", "activeProfiles", "localRepository"):
+            self.assertIsNone(settings.find("m:" + element, ns))
+
+    def test_native_pair_uses_one_head_policy_copy_and_owned_empty_user_settings(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            candidate, output, command, manifest = self.fixture(Path(temporary))
+            self.assertEqual(["mvn", "-B", "-ntp", "--ignore-transitive-repositories",
+                              "-s", str(output / "settings.xml"), "-gs", str(output / "repository-settings.xml")], command)
+            self.assertEqual(self.policy.read_bytes(), (output / "repository-settings.xml").read_bytes())
+            self.assertEqual(runner.digest(self.policy), manifest["repositorySettingsSha256"])
+            self.assertEqual(runner.digest(output / "settings.xml"), manifest["settingsSha256"])
+            self.assertEqual([], list(ET.parse(output / "settings.xml").getroot()))
+            # No baseline policy is needed: the same argv is used for both revisions.
+            runner.verify_repository_policy(output, candidate, manifest["repositorySettingsSha256"])
+
+    def test_modifying_either_the_head_policy_or_execution_copy_is_rejected(self):
+        for location in ("source", "copy"):
+            with self.subTest(location=location), tempfile.TemporaryDirectory() as temporary:
+                candidate, output, _, manifest = self.fixture(Path(temporary))
+                target = candidate / runner.REPOSITORY_SETTINGS if location == "source" else output / "repository-settings.xml"
+                target.write_text('<settings xmlns="http://maven.apache.org/SETTINGS/1.2.0"/>\n', encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "repository source policy changed"):
+                    runner.verify_repository_policy(output, candidate, manifest["repositorySettingsSha256"])
 
 
 if __name__ == "__main__":

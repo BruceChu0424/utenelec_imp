@@ -575,7 +575,7 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
             fieldKey: ValueKey('$keyPrefix-qty-${lineKeyOf(line)}'),
             controller: controller,
             enabled: enabled(line),
-            hintText: '大于 0',
+            hintText: '本次实收',
             suffixText: _unitSuffix(line),
             sourceOf: () => line.weight.qtyEstimateNote ?? '按称重推算的数量，请核对',
           ),
@@ -773,7 +773,7 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
               children: [
                 Expanded(
                   child: Text(
-                    label ?? '必选 · 点击选择',
+                    label ?? '入库仓库',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: label == null && canEdit
@@ -824,7 +824,7 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
           // 建议异步回填时来源随控制器通知一起变：重绘时现取，不用父级上次构建的旧值。
           sourceOf: () => line.placeSource.reviewHint,
           enabled: canEdit,
-          hintText: required ? '必填' : '可修改',
+          hintText: '库位号',
           inputFormatters: [LengthLimitingTextInputFormatter(100)],
           onChanged: canEdit ? (value) => onChanged(line, value) : null,
         ),

@@ -2,11 +2,14 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:dio/dio.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_bom_tab.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/sensitive_read_boundary_provider.dart';
 
 class _FakeGoodsBomRepository implements GoodsBomRepository {
   _FakeGoodsBomRepository({this.empty = false, this.nestedLearned = false});
@@ -170,6 +173,14 @@ void main() {
         ProviderScope(
           overrides: [
             goodsBomRepositoryProvider.overrideWithValue(repo),
+            sensitiveReadBoundaryProvider.overrideWithValue(
+              SensitiveReadBoundary(
+                identity: null,
+                api: ApiClient(Dio()),
+                permissions: {Perm.goodsView, Perm.goodsBomCreate},
+                superAdmin: false,
+              ),
+            ),
             currentPermissionsProvider.overrideWithValue({
               Perm.goodsView,
               Perm.goodsBomCreate,
@@ -279,12 +290,10 @@ void main() {
     await tester.tap(find.text('编辑').first);
     await tester.pumpAndSettle();
     // 字段名「设计使用数量」，打开时按 6 位去尾零回填原值。
+    expect(_editQtyField, findsOneWidget);
     expect(
-      find.descendant(
-        of: find.byType(Dialog),
-        matching: find.textContaining('设计使用数量'),
-      ),
-      findsOneWidget,
+      tester.widget<TextField>(_editQtyField).decoration!.hintText,
+      '设计使用数量',
     );
     expect(tester.widget<TextField>(_editQtyField).controller?.text, '2');
     await tester.enterText(_editQtyField, '3');

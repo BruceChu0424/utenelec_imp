@@ -1,9 +1,13 @@
 // Multi-target claim lifecycle. Financial decisions opt into strict ownership;
 // ordinary collision hints retain their existing non-blocking default.
 import 'dart:async';
+import 'dart:ui' show Locale;
 
 import 'package:flutter/foundation.dart';
 
+import '../../core/l10n/gen/app_localizations.dart';
+import '../../core/network/api_exception.dart';
+import '../../core/ui/human_error_message.dart';
 import '../models/task_claim_view.dart';
 import '../repositories/task_claim_repository.dart';
 
@@ -13,12 +17,15 @@ class TaskClaimSession extends ChangeNotifier {
     Duration? heartbeatInterval,
     this.strict = false,
     bool Function()? isCurrentSession,
+    AppLocalizations? localizations,
   }) : _interval = heartbeatInterval ?? const Duration(seconds: 30),
+       _l10n = localizations ?? lookupAppLocalizations(const Locale('zh')),
        _isCurrentSession = isCurrentSession ?? (() => true);
 
   final TaskClaimRepository _repo;
   final Duration _interval;
   final bool strict;
+  final AppLocalizations _l10n;
   final bool Function() _isCurrentSession;
   final List<_HeldClaim> _held = [];
   Timer? _timer;
@@ -67,11 +74,11 @@ class TaskClaimSession extends ChangeNotifier {
     _timer?.cancel();
     _requested += targets.length;
     _blocked = strict || _blocked;
-    failureMessage = strict ? '正在确认审核占用，请稍候' : null;
+    failureMessage = strict ? _l10n.taskClaimChecking : null;
     notifyListeners();
     for (final key in targets) {
       if (!_current(generation)) {
-        _fail('登录状态已变化，请重新打开审核');
+        _fail(_l10n.taskClaimIdentityChanged);
         return;
       }
       TaskClaimView? view;
@@ -79,8 +86,10 @@ class TaskClaimSession extends ChangeNotifier {
         view = strict
             ? await _repo.claimRequired(targetType, key)
             : await _repo.claim(targetType, key);
-      } on Object {
-        if (_current(generation)) _fail('未能取得审核占用，请检查网络或权限后重试');
+      } on Object catch (error) {
+        if (_current(generation)) {
+          _fail(_failureMessage(error, _l10n.taskClaimAcquireFailed));
+        }
         return;
       }
       if (!_current(generation)) {
@@ -99,7 +108,7 @@ class TaskClaimSession extends ChangeNotifier {
       }
       if (view == null) {
         if (strict) {
-          _fail('未能取得审核占用，请重新认领');
+          _fail(_l10n.taskClaimInvalidResponse);
           return;
         }
         continue;
@@ -109,7 +118,9 @@ class TaskClaimSession extends ChangeNotifier {
       } else {
         blockedByName = view.claimedByMe ? null : view.claimedByName;
         _fail(
-          blockedByName == null ? '审核占用已失效，请重新认领' : '$blockedByName 正在审核，请稍后重试',
+          blockedByName == null
+              ? _l10n.taskClaimExpired
+              : _l10n.taskClaimTakenBy(blockedByName!),
         );
         if (strict) return;
       }
@@ -136,7 +147,11 @@ class TaskClaimSession extends ChangeNotifier {
   Future<bool> validateForDecision() {
     if (!strict) return Future.value(!_blocked && !_closed);
     if (!isReady) {
-      _fail('审核占用已失效或登录状态已变化，请重新认领并核对最新内容');
+      _fail(
+        !isCurrent
+            ? _l10n.taskClaimIdentityChanged
+            : failureMessage ?? _l10n.taskClaimDecisionNotReady,
+      );
       return Future.value(false);
     }
     return _renewal ??= _renewAll().whenComplete(() => _renewal = null);
@@ -156,16 +171,39 @@ class TaskClaimSession extends ChangeNotifier {
             !_valid(view, claim.type, claim.key) ||
             view.claimId != claim.view.claimId ||
             view.claimedBy != claim.view.claimedBy) {
-          _fail('审核占用已失效或被接管，已暂停审核；请重新认领');
+          _fail(_l10n.taskClaimReplaced);
           return false;
         }
         claim.view = view;
-      } on Object {
-        if (_current(generation)) _fail('无法确认审核占用，已暂停审核；请检查网络或权限后重试');
+      } on Object catch (error) {
+        if (_current(generation)) {
+          _fail(_failureMessage(error, _l10n.taskClaimRenewFailed));
+        }
         return false;
       }
     }
     return _current(generation) && isReady;
+  }
+
+  String _failureMessage(Object error, String fallback) {
+    if (error is! ApiException) return humanErrorMessage(error) ?? fallback;
+    // A server rejection explains the actual permission, document or collision
+    // guard. Keep it instead of guessing that every failure is a network issue.
+    if (error.hasResponseCode && error.message.trim().isNotEmpty) {
+      return error.message.trim();
+    }
+    if (error.code == 'NETWORK') return _l10n.taskClaimNetworkUnavailable;
+    if (error.code == 'NETWORK_TIMEOUT') return _l10n.taskClaimNetworkTimeout;
+    if (error.message.trim().isNotEmpty) return error.message.trim();
+    return switch (error.code) {
+      'UNAUTHORIZED' => _l10n.taskClaimLoginExpired,
+      'FORBIDDEN' => _l10n.taskClaimPermissionDenied,
+      'CONFLICT' => _l10n.taskClaimConflict,
+      'NOT_FOUND' => _l10n.taskClaimNotFound,
+      'RATE_LIMITED' => _l10n.taskClaimRateLimited,
+      'INTERNAL' => _l10n.taskClaimServerUnavailable,
+      _ => fallback,
+    };
   }
 
   bool _valid(TaskClaimView view, String type, String key) =>

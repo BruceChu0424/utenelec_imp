@@ -14,7 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * subcontract_order_status 的对象范围与两个详情接口相同(P1-3), 并且答得出 ADR-156 的锁: 直属物料不齐时申请锁住、
  * 缺哪种物料差多少, 草稿订货单提交财务会被拦; 物料到了以后答案随之变化, 旧回答不再展示。委外申请不按归属隔离
- * (与申请详情接口一致), 委外订货单按制单人归属; 其它部门用不了这个工具。查到一次写一条与对应详情页相同的
+ * (与申请详情接口一致), 委外订货单按制单人归属; 跨部门同样按查看权限和对象范围读取。查到一次写一条与对应详情页相同的
  * 查看审计, 查不到不写。
  */
 class SubcontractOrderAiChatToolPostgresTest extends AiDocumentStatusToolPostgresSupport {
@@ -42,6 +42,9 @@ class SubcontractOrderAiChatToolPostgresTest extends AiDocumentStatusToolPostgre
         outsider = newEmployee(adminToken(), "DEPT_HR");
         revoke(owner, "subcontract:view:all");
         revoke(colleague, "subcontract:view:all");
+        revoke(outsider, "subcontract_order:view");
+        revoke(outsider, "subcontract_application:view");
+        revoke(outsider, "subcontract:view:all");
 
         UUID piece = unit("个");
         UUID kilogram = unit("千克");
@@ -134,6 +137,25 @@ class SubcontractOrderAiChatToolPostgresTest extends AiDocumentStatusToolPostgre
         actAs(outsider);
         assertThat(tool.available()).isFalse();
         assertForbidden(() -> tool.execute(Map.of("documentNo", applicationNo)));
+    }
+
+    @Test
+    void anotherDepartmentWithBothViewsKeepsTheApplicationAndOrderScopeRules() {
+        grant(outsider, "subcontract_order:view", "subcontract_application:view");
+        actAs(outsider);
+        assertThat(tool.available()).isTrue();
+        Map<String, Object> hidden = tool.execute(Map.of("documentNo", orderNo));
+        assertThat(hidden.get("reply")).isEqualTo(SubcontractOrderAiChatTool.NOT_FOUND);
+        assertThat(tool.modelFacts(hidden)).isEmpty();
+        assertThat(viewRecords(outsider)).isEmpty();
+        assertThat((String) tool.execute(Map.of("documentNo", applicationNo)).get("reply"))
+                .contains("委外申请单 " + applicationNo, "等物料齐套(锁住)");
+
+        grantOwnerReadScope(outsider, "subcontract", owner);
+        actAs(outsider);
+        assertThat((String) tool.execute(Map.of("documentNo", orderNo)).get("reply"))
+                .contains("委外订货单 " + orderNo, "订 5 个");
+        assertThat(viewRecords(outsider)).hasSize(2);
     }
 
     /**

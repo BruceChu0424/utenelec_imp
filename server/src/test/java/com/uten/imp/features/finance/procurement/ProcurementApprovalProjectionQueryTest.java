@@ -126,8 +126,8 @@ class ProcurementApprovalProjectionQueryTest {
 
     @Test
     void pendingCaseHidesActionsFromNonEligibleSuperAdmin() throws Exception {
-        // ADR-027/V328：审批 gate 是实时审核组资格，而非纯动作权限或超管标记。
-        // 超管不在财务部门且未被个人点名 → 即便聚合出 approve/reject 也不能成为审核员。
+        // 即使持有超管权限，员工账号不处于在职启用状态仍不可处理。
+        // 此处模拟实时账号校验失败，不再把非财务部门当成失败原因。
         UUID orderId = UUID.randomUUID();
         UUID superAdminId = UUID.randomUUID();
         SecurityContextCurrentUser currentUser = currentUser(

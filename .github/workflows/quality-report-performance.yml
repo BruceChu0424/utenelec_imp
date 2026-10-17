@@ -6,6 +6,7 @@ on:
       - '.github/workflows/quality-report-performance.yml'
       - 'server/ops/*quality_report_performance*'
       - 'server/ops/verify_quality_report_snapshot.py'
+      - 'server/.mvn/**'
       - 'server/pom.xml'
       - 'server/src/main/java/com/uten/imp/features/production/**'
       - 'server/src/main/java/com/uten/imp/features/warehouse/inbound/**'

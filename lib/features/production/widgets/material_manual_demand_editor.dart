@@ -10,6 +10,7 @@
 // 分析；一个编号下可以有多个货品；同一货品(货品 + 颜色 + 单位)在一个编号下只出现一次。
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/data_display/uten_goods_identity_cell.dart';
@@ -491,7 +492,7 @@ materialManualDemandGridColumns({
                     valueListenable: line.goodsNotifier,
                     builder: (context, goods, _) => goods == null
                         ? Text(
-                            '点击选择',
+                            utenFieldPlaceholder(label: '货品名称')!,
                             style: TextStyle(
                               color: Theme.of(
                                 context,
@@ -558,7 +559,8 @@ materialManualDemandGridColumns({
             decoration: UtenInputDecoration(
               InputDecoration(
                 isDense: true,
-                hintText: '0',
+                hintText: '数量',
+                hintMaxLines: 1,
                 suffixText: goods == null ? null : unitNameOf(goods),
               ),
             ),

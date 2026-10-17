@@ -33,6 +33,38 @@ Dio _capturing(List<RequestOptions> sink) {
 }
 
 void main() {
+  test('客户和供应商敏感列关键词只进 body，普通列关键词保留在 query', () async {
+    final sent = <RequestOptions>[];
+    final api = ApiClient(_capturing(sent));
+    const filters = {
+      'search.mobile': '13800',
+      'search.bankAccount': '6222',
+      'search.name': '电器 开关',
+      'place': '广东',
+    };
+    await DioClientRepository(api).listGlobal(filters: filters);
+    await DioSupplierRepository(api).listGlobal(filters: filters);
+    for (final request in sent) {
+      expect(request.method, 'POST');
+      expect(request.queryParameters['search.name'], '电器 开关');
+      expect(request.queryParameters['place'], '广东');
+      expect(request.queryParameters.containsKey('search.mobile'), isFalse);
+      expect(
+        request.queryParameters.containsKey('search.bankAccount'),
+        isFalse,
+      );
+      expect(request.data, {
+        'columnSearch': {'mobile': '13800', 'bankAccount': '6222'},
+      });
+      expect(request.uri.toString(), isNot(contains('13800')));
+      expect(request.uri.toString(), isNot(contains('6222')));
+    }
+    expect(masterFilterQueryParams(filters), {
+      'search.name': '电器 开关',
+      'place': '广东',
+    });
+  });
+
   test('全局主档表头选项省略分类，客户默认仍排除旧财务占位', () async {
     final sent = <RequestOptions>[];
     final api = ApiClient(_capturing(sent));

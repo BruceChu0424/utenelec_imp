@@ -122,13 +122,7 @@ void main() {
     expect(selected, isEmpty);
     expect(find.byKey(const Key('goods-picker-sheet')), findsOneWidget);
     expect(find.byKey(const ValueKey('goods-picker-item-r')), findsOneWidget);
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('goods-picker-item-r')),
-        matching: find.textContaining('相关结果'),
-      ),
-      findsOneWidget,
-    );
+    expect(find.text('相关结果'), findsOneWidget);
     await tester.tap(find.text('成品'));
     await tester.pumpAndSettle();
     expect(api.lastList.queryParameters['categoryId'], 'cat-b');

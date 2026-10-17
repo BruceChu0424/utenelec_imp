@@ -54,7 +54,7 @@ class CrossReallocationPermissionOverrideAdminServiceTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"grant", "revoke"})
-    void dedicatedPermissionCanBeGrantedOrRevokedAndInvalidatesRefreshTokens(
+    void dedicatedPermissionCanBeGrantedOrRevokedWithoutEndingTheLoginSession(
             String effect) {
         UUID userId = UUID.randomUUID();
         UUID permissionId = UUID.randomUUID();
@@ -111,7 +111,7 @@ class CrossReallocationPermissionOverrideAdminServiceTest {
         order.verify(accountLifecycle).lock(userId);
         order.verify(overrideRepo).findAllByUserIdForUpdate(userId);
         order.verify(overrideRepo).saveAllAndFlush(saved.getValue());
-        order.verify(refreshTokenRepo).revokeAllByUserId(userId);
+        verify(refreshTokenRepo, never()).revokeAllByUserId(any());
     }
 
     @Test
@@ -154,7 +154,7 @@ class CrossReallocationPermissionOverrideAdminServiceTest {
         assertThat(existing.getRowVersion()).isEqualTo(8L);
         assertThat(existing.getSourceActorUserId()).isEqualTo(actorUserId);
         verify(overrideRepo).saveAllAndFlush(List.of(existing));
-        verify(refreshTokenRepo).revokeAllByUserId(userId);
+        verify(refreshTokenRepo, never()).revokeAllByUserId(any());
         verify(accountLifecycle, never()).requireCurrentEmployee(any());
     }
 

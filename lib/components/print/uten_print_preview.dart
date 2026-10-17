@@ -573,7 +573,7 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
                       padding: const EdgeInsets.all(UtenSpacing.s16),
                       child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
-                        child: _a4Pages(theme, table),
+                        child: SelectionArea(child: _a4Pages(theme, table)),
                       ),
                     ),
             ),

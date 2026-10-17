@@ -133,6 +133,49 @@ class ChainNoticeBatchRecipientsPostgresTest {
         assertThat(resolver.usersGrantedAll(List.of(admin),Set.of("finance_order_approval:view","finance_order_approval:approve"))).isEmpty();
     }
 
+    @Test void actionableAudienceAcceptsNonFinanceDepartmentPersonalAndDelegatedGrantsAndLosesRevokedWork() {
+        UUID read = jdbc.queryForObject("SELECT id FROM permissions WHERE code='notice:read'", UUID.class);
+        jdbc.update("INSERT INTO department_permissions VALUES (?,?)", data.company, read);
+        UUID operationalDepartment = UUID.randomUUID();
+        data.department(operationalDepartment, "OPERATIONS", "一级部门", data.company);
+        data.departmentGrants(operationalDepartment);
+        UUID departmental = data.account(operationalDepartment, false);
+        UUID personal = data.account(data.other, false);
+        UUID delegated = data.account(data.other, false);
+        UUID administrator = data.account(data.company, true);
+        data.grant(personal, data.view);
+        data.grant(personal, data.confirm);
+        data.delegation(delegated, data.other, administrator, data.view, true, null);
+        data.delegation(delegated, data.other, administrator, data.confirm, true, null);
+
+        assertThat(actionRecipients()).containsExactlyInAnyOrder(departmental, personal, delegated);
+        data.override(personal, data.confirm, "revoke", "SUPER_ADMIN_CONFIRMED");
+        jdbc.update("DELETE FROM department_permissions WHERE department_id=? AND permission_id=?", operationalDepartment, data.confirm);
+        jdbc.update("UPDATE manager_permission_delegations SET enabled=false WHERE user_id=? AND permission_id=?", delegated, data.confirm);
+        assertThat(actionRecipients()).isEmpty();
+    }
+
+    private List<UUID> actionRecipients() {
+        return ReflectionTestUtils.invokeMethod(chain, "actionUserIdsWithAuthorities", (Object) new String[]{
+                "notice:read", BatchPermissionFixture.VIEW, BatchPermissionFixture.CONFIRM});
+    }
+
+    @Test void actionableAudienceRetainsCurrentEmploymentAndEnabledAccountChecksWithoutADepartmentGate() {
+        UUID read = jdbc.queryForObject("SELECT id FROM permissions WHERE code='notice:read'", UUID.class);
+        jdbc.update("INSERT INTO department_permissions VALUES (?,?)", data.other, read);
+        data.departmentGrants(data.other);
+        UUID active = data.account(data.other, false), probation = data.account(data.other, false);
+        UUID onLeave = data.account(data.other, false), resigned = data.account(data.other, false);
+        UUID deletedEmployee = data.account(data.other, false), disabledAccount = data.account(data.other, false);
+        jdbc.update("UPDATE employees SET status='probation' WHERE id=?", probation);
+        jdbc.update("UPDATE employees SET status='onLeave' WHERE id=?", onLeave);
+        jdbc.update("UPDATE employees SET status='resigned' WHERE id=?", resigned);
+        jdbc.update("UPDATE employees SET is_deleted=true WHERE id=?", deletedEmployee);
+        jdbc.update("UPDATE users SET status='disabled' WHERE id=?", disabledAccount);
+
+        assertThat(actionRecipients()).containsExactlyInAnyOrder(active, probation, onLeave);
+    }
+
     @SuppressWarnings("unchecked")
     private List<UUID> drawRecipients(UUID owner) {
         return (List<UUID>) ReflectionTestUtils.invokeMethod(chain,"subcontractDrawRecipients",owner);

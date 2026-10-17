@@ -1,6 +1,7 @@
 package com.uten.imp.features.admin.serveroperations;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -16,7 +17,21 @@ public final class ServerOperationsDto {
     public record Job(UUID id, UUID requestId, UUID actorId, String mode, String state, String phase,
             OffsetDateTime startedAt, OffsetDateTime finishedAt, String currentVersion,
             String targetVersion, String message, String backupPath, Boolean migrationRequired, String health,
-            OffsetDateTime scheduledAt, String displayLocalTime) {}
+            OffsetDateTime scheduledAt, String displayLocalTime,
+            @JsonInclude(JsonInclude.Include.NON_NULL) Failure failure) {
+        public Job(UUID id, UUID requestId, UUID actorId, String mode, String state, String phase,
+                OffsetDateTime startedAt, OffsetDateTime finishedAt, String currentVersion,
+                String targetVersion, String message, String backupPath, Boolean migrationRequired, String health,
+                OffsetDateTime scheduledAt, String displayLocalTime) {
+            this(id, requestId, actorId, mode, state, phase, startedAt, finishedAt, currentVersion,
+                    targetVersion, message, backupPath, migrationRequired, health, scheduledAt, displayLocalTime, null);
+        }
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record Failure(String code, String phase, String title, String reason, String suggestion,
+            String nextAction, boolean retrySafe, boolean recoveryRequired,
+            boolean originalServicePreserved, Integer exitCode) {}
 
     public record LatestJob(Job job) {}
 
@@ -24,7 +39,18 @@ public final class ServerOperationsDto {
             String currentVersion, String sourceRevision, Boolean sourceConfigured, Job latestJob,
             String latestVersion, OffsetDateTime lastCheckedAt, Boolean updateAvailable,
             String serverTimeZone, OffsetDateTime serverTime,
-            String message, boolean canUpdate, boolean canCleanup, boolean canConfigureSource) {}
+            String message, boolean canUpdate, boolean canCleanup, boolean canConfigureSource,
+            @JsonInclude(JsonInclude.Include.NON_NULL) Failure failure) {
+        public Status(boolean available, Boolean manualOnly, Boolean timerActive, Boolean timerEnabled,
+                String currentVersion, String sourceRevision, Boolean sourceConfigured, Job latestJob,
+                String latestVersion, OffsetDateTime lastCheckedAt, Boolean updateAvailable,
+                String serverTimeZone, OffsetDateTime serverTime,
+                String message, boolean canUpdate, boolean canCleanup, boolean canConfigureSource) {
+            this(available, manualOnly, timerActive, timerEnabled, currentVersion, sourceRevision, sourceConfigured,
+                    latestJob, latestVersion, lastCheckedAt, updateAvailable, serverTimeZone, serverTime,
+                    message, canUpdate, canCleanup, canConfigureSource, null);
+        }
+    }
 
     public record SourceView(String revision, String endpoint, String bucket, String objectPrefix,
             boolean accessKeyConfigured, String accessKeyIdHint, String signingPublicKey,

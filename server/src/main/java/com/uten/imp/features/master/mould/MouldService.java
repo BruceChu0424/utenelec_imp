@@ -97,7 +97,14 @@ public class MouldService {
         Specification<Mould> spec = (Root<Mould> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                      CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
+            // The new series/category label uses a to-one fetch only on data
+            // queries, avoiding one lazy category request per displayed row.
+            if (q != null && q.getResultType() != Long.class && q.getResultType() != long.class) {
+                root.fetch("category", jakarta.persistence.criteria.JoinType.LEFT);
+            }
             ps.add(cb.isFalse(root.get("deleted")));
+            ps.add(com.uten.imp.features.master.search.MasterColumnSearch.predicate(cb, root.get("id"),
+                    com.uten.imp.features.master.search.MasterColumnSearch.Domain.MOULD, f.columnSearch()));
             if (subtreeIds != null) {
                 ps.add(root.get("category").get("id").in(subtreeIds));
             }
@@ -152,13 +159,14 @@ public class MouldService {
     /**
      * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限防 OOM。
      * 列集与前端模具表格一致——模数/套数/模具类型三列在表格里是老库占位
-     * （无 DB 列、恒空），导出不带；有数据的七列全给。
+     * （无 DB 列、恒空），导出不带；实际字段及真实系列分类名称同源导出。
      */
     @Transactional(readOnly = true)
     public ExportPayload export(MouldQueryFilter f, int maxRows) {
         List<ExportColumn> cols = List.of(
                 new ExportColumn("code", "模具编号", ExportColumn.TEXT),
                 new ExportColumn("name", "模具名称", ExportColumn.TEXT),
+                new ExportColumn("categoryName", "系列 / 分类", ExportColumn.TEXT),
                 new ExportColumn("place", "存放位置", ExportColumn.TEXT),
                 new ExportColumn("mstatus", "制造日期", ExportColumn.TEXT),
                 new ExportColumn("manufacturer", "制造商", ExportColumn.TEXT),
@@ -171,6 +179,7 @@ public class MouldService {
                     row.put("_platformRecordId", m.getId());
                     row.put("code", m.getCode());
                     row.put("name", m.getName());
+                    row.put("categoryName", m.getCategoryName());
                     row.put("place", m.getPlace());
                     row.put("mstatus", m.getMstatus());
                     row.put("manufacturer", m.getManufacturer());
@@ -339,7 +348,8 @@ public class MouldService {
         return new MouldListItem(
                 m.getId(), m.getCode(), m.getName(), m.getPlace(), m.getMstatus(),
                 m.getStatus(), m.getRemark(), m.getLegacyId(),
-                m.getCategory() == null ? null : m.getCategory().getId(), m.getManufacturer());
+                m.getCategory() == null ? null : m.getCategory().getId(), m.getManufacturer(),
+                m.getCategory() == null || m.getCategory().isDeleted() ? null : m.getCategory().getName());
     }
 
     private MouldCategory requireCategory(UUID id) {

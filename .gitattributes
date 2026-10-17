@@ -1,5 +1,8 @@
 * text=auto
 
+/.gitattributes text eol=lf
+server/.mvn/maven.config text eol=lf
+
 *.dart text eol=lf
 *.arb text eol=lf
 *.java text eol=lf

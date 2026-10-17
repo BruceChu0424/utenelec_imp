@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import contextlib
 import datetime as dt
+import errno
 import fcntl
 import grp
 import hashlib
@@ -54,6 +55,183 @@ MIGRATOR_PASSWORD_ENV = 'UTEN_MIGRATOR_DB_PASSWORD'
 VERSION = re.compile(r'v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)')
 PHASES = {'CHECKING', 'DOWNLOADING', 'BACKING_UP', 'MIGRATING', 'ACTIVATING', 'HEALTH_CHECK', 'DONE'}
 TERMINAL = {'SUCCEEDED', 'FAILED', 'RECOVERY_REQUIRED', 'CANCELLED'}
+# Public failure text is selected here; subprocess/config text is never public.
+# retrySafe permits a new explicit check after the stated remedy, never replaying
+# the old update request. Job state and activation boundaries remain authoritative.
+FAILURE_CATALOG = {
+    'UNKNOWN': ('原因尚未确认', '本次操作未完成，现有信息不足以确认具体原因。', '请保留任务标识联系管理员查看本机诊断；确认原因前不要重复更新。', 'CONTACT_ADMIN', False),
+    'HOST_IDENTITY_PERMISSION': ('主机账号切换权限不足', '更新组件无法切换到数据库或应用系统账号，本阶段未通过。', '请管理员核对更新服务的受限身份切换能力；不要关闭安全沙箱或修改业务账号权限。', 'CONTACT_ADMIN', False),
+    'HOST_COMPONENT_MISSING': ('主机更新组件不完整', '必需的本机更新程序未找到，操作无法继续。', '请管理员核对已安装的运维组件及程序版本，再重新检查。', 'CONTACT_ADMIN', False),
+    'HOST_COMPONENT_PERMISSION': ('主机文件访问被拒绝', '更新组件无法访问必需的受保护文件或目录。', '请管理员核对程序、备份与发布目录的属主和权限，不要放宽为公开可写。', 'CONTACT_ADMIN', False),
+    'HOST_CONFIGURATION_INVALID': ('主机配置未通过校验', '更新或迁移配置的格式、权限或可信边界不符合要求。', '请管理员核对本机受保护配置和安装步骤，不要通过关闭校验继续更新。', 'CONTACT_ADMIN', False),
+    'SOURCE_NOT_CONFIGURED': ('发布来源尚未配置完成', '发布来源、只读访问凭据或可信签名公钥尚未准备好。', '请超级管理员完成发布来源配置后，显式重新检查版本。', 'CHECK_SOURCE', False),
+    'SOURCE_CHANGED': ('运行信息已变化', '发布来源、可用版本或当前运行版本已与本次请求不一致。', '请刷新状态并重新检查版本，核对后再提交新的操作。', 'REFRESH_STATUS', True),
+    'BUSY': ('已有运维任务正在执行', '另一个更新或清理任务仍持有执行权，本次没有开始。', '请查看当前任务并等待完成，不要并行或重复提交更新。', 'WAIT_FOR_JOB', False),
+    'FORBIDDEN': ('当前操作未获授权', '当前账号或主机调用身份不允许执行此操作。', '请联系有对应权限的管理员；不要借用账号或绕过授权。', 'CONTACT_ADMIN', False),
+    'SOURCE_DNS_FAILED': ('无法解析发布来源', '服务器未能解析发布来源的域名。', '请管理员核对发布区域配置和服务器 DNS，恢复后重新检查。', 'CHECK_SOURCE', True),
+    'SOURCE_NETWORK_FAILED': ('无法连接发布来源', '服务器与发布来源之间的网络连接未能完成。', '请管理员核对出口网络、代理及区域配置，恢复后重新检查。', 'CHECK_SOURCE', True),
+    'SOURCE_TLS_FAILED': ('发布来源安全连接失败', '发布来源的 TLS 连接或证书校验未通过。', '请管理员核对系统时间、可信 CA 与发布源证书；不要跳过证书校验。', 'CHECK_SOURCE', False),
+    'SOURCE_FORBIDDEN': ('发布来源拒绝访问', '发布来源拒绝了只读请求，访问凭据、请求签名或读取权限可能不匹配。', '请超级管理员核对只读凭据、区域、对象前缀和读取权限，并由管理员核对服务器时间。', 'CHECK_SOURCE', False),
+    'SOURCE_NOT_FOUND': ('发布文件未找到', '发布来源没有返回所需的版本通道或发布文件。', '请管理员核对发布是否完整及对象前缀；修正后重新检查，不要手工跳过缺失文件。', 'CHECK_SOURCE', True),
+    'SOURCE_METADATA_INVALID': ('版本通道内容无效', '版本通道返回的内容不符合支持的版本格式或大小限制。', '请发布管理员核对通道文件与对应版本，修正后重新检查。', 'CHECK_SOURCE', False),
+    'RELEASE_SIGNATURE_INVALID': ('发布签名验证失败', '发布包未通过已配置可信公钥的签名验证，未被接受。', '请发布管理员核对签名公钥与发布文件；不要跳过验签或临时信任未知密钥。', 'CONTACT_ADMIN', False),
+    'RELEASE_CHECKSUM_INVALID': ('发布文件完整性校验失败', '发布文件与签名清单中的校验值不一致。', '请发布管理员核对完整上传与文件内容，确认后重新检查；不要使用未通过校验的暂存文件。', 'CONTACT_ADMIN', False),
+    'RELEASE_CONTENT_INVALID': ('发布包内容不符合要求', '发布清单、文件路径或必要内容未通过安全检查。', '请发布管理员重新核对完整发布包，保留任务标识协助定位。', 'CONTACT_ADMIN', False),
+    'MIGRATIONS_NOT_FORWARD_ONLY': ('发布迁移不满足向前升级要求', '发布包修改、删除或缺少已使用的数据库迁移。', '请发布管理员提供只追加且与当前库兼容的版本，禁止直接跳过迁移检查。', 'CONTACT_ADMIN', False),
+    'INVALID_RUNTIME_BINDING': ('运行环境身份无法确认', '当前数据库与附件存储身份不完整，更新没有获得执行许可。', '请管理员核对当前运行环境及存储信息，再刷新状态重新检查。', 'CONTACT_ADMIN', False),
+    'BACKUP_BINDING_MISMATCH': ('备份目标与运行环境不一致', '数据库、附件目录与可信备份或迁移配置未能对应。', '请管理员先核对备份覆盖的数据库、附件和历史目录；不要跳过配套备份。', 'CONTACT_ADMIN', False),
+    'HOST_DISK_SPACE': ('主机可用空间不足', '当前操作所需的存储空间不足，无法继续。', '请管理员检查对应磁盘容量及挂载状态，通过受控清理释放空间后重新检查。', 'CONTACT_ADMIN', False),
+    'BACKUP_SPACE': ('备份空间不足', '备份磁盘未满足可用空间安全要求。', '请管理员检查备份盘挂载与空间，按保留策略清理；不要删除当前恢复所需的备份。', 'CONTACT_ADMIN', False),
+    'BACKUP_REFERENCE_INVALID': ('配套备份引用未通过校验', '备份的数据库与附件引用或发布位置未能形成可信对应。', '请管理员核对数据库和附件备份覆盖范围及本机诊断，修复前不要继续激活。', 'CONTACT_ADMIN', False),
+    'BACKUP_INTEGRITY_FAILED': ('配套备份完整性校验失败', '备份内容、校验值或数据库备份目录未通过复核。', '请管理员检查备份完整性与数据库备份可读性；必须形成已验证备份后才能更新。', 'CONTACT_ADMIN', False),
+    'BACKUP_FAILED': ('配套备份未能完成', '数据库和附件配套备份没有成功完成，具体原因需要本机诊断确认。', '请管理员保留失败记录并核对备份程序、磁盘及文件权限，不要绕过备份继续更新。', 'CONTACT_ADMIN', False),
+    'OPERATION_TIMEOUT': ('操作超过等待时限', '本阶段未在限定时间内完成，执行结果需要按任务状态核对。', '请先刷新任务状态并联系管理员核对网络、资源与本机诊断，不要重复提交更新。', 'REFRESH_STATUS', True),
+    'MIGRATION_FAILED': ('数据库迁移未能完成', '数据库迁移阶段未能通过，当前数据状态需要管理员核对。', '请管理员结合任务标识、迁移记录和已验证备份完成恢复检查；不要再次激活或回滚数据库。', 'VERIFY_RECOVERY', False),
+    'ACTIVATION_FAILED': ('版本激活未能完成', '版本切换或启动阶段没有完成全部验证。', '请管理员核对当前代码、数据库、备份与进程状态，确认恢复路径后处理。', 'VERIFY_RECOVERY', False),
+    'HEALTH_CHECK_FAILED': ('后端健康检查未通过', '更新后的后端未通过连续健康验证。', '请管理员核对启动日志、数据库连接和当前运行版本，完成恢复检查后再操作。', 'VERIFY_RECOVERY', False),
+    'DATABASE_CATALOG_MISMATCH': ('数据库迁移记录不一致', '运行数据库的迁移记录与发布包要求不一致。', '请管理员核对完整迁移记录与已验证备份，不要补写成功记录或重复执行迁移。', 'VERIFY_RECOVERY', False),
+    'PROCESS_UNSTABLE': ('后端进程未稳定运行', '后端在观察期内退出、重启或未保持同一健康进程。', '请管理员核对服务日志和重启原因，确认恢复状态后处理。', 'VERIFY_RECOVERY', False),
+    'WORKER_INTERRUPTED': ('更新任务已中断', '负责本次操作的主机任务已退出或被中断，没有自动重放。', '请管理员结合当前版本、数据库与备份核对结果；不要直接重放旧更新请求。', 'CONTACT_ADMIN', False),
+    'WORKER_START_FAILED': ('更新任务无法启动', '主机未能启动独立的更新服务，本次任务没有进入执行。', '请管理员核对运维服务安装、系统服务状态及本机执行权限。', 'CONTACT_ADMIN', False),
+    'CURRENT_VERSION_CHANGED': ('当前版本已被其他操作改变', '执行前发现运行版本已变化，本次未停服或迁移。', '请刷新当前状态并重新检查版本，核对后再提交新的操作。', 'REFRESH_STATUS', True),
+    'CUTOVER_BACKUP_FAILED_RECOVERED': ('最终备份失败，原服务已恢复', '切换前的最终数据库备份未成功；没有执行迁移，原服务已恢复健康。', '请管理员核对最终备份失败原因与备份磁盘，修复后重新检查，不要重放旧任务。', 'CONTACT_ADMIN', False),
+    'HOST_HELPER_UNAVAILABLE': ('无法连接主机运维助手', '后端未能与本机运维服务建立可信连接。', '请管理员核对运维助手服务、受保护连接与组件安装状态。', 'CONTACT_ADMIN', False),
+    'HOST_RESPONSE_INVALID': ('主机响应未通过安全校验', '主机运维响应不符合当前支持的协议，不能据此确认操作结果。', '请管理员核对后端与主机组件版本并查看本机诊断；不要再次提交尚未确认的更新。', 'REFRESH_STATUS', False),
+    'OUTCOME_UNCERTAIN': ('操作结果尚未确认', '请求可能已经被主机接收，当前连接没有返回可确认的结果。', '请使用原任务标识刷新任务或配置状态，不要更换标识重复提交。', 'REFRESH_STATUS', False),
+    'RECOVERY_REQUIRED': ('当前更新需要先完成恢复核对', '已有更新在迁移或切换后未完成验证，尚不能确认可安全开始新的操作。', '请管理员结合任务标识和已验证备份完成恢复核对；不要再次更新、激活或回滚数据库。', 'VERIFY_RECOVERY', False),
+    'INVALID_REQUEST': ('操作参数未通过校验', '本次参数或预约时间不符合支持的操作要求。', '请核对页面提示和服务器时区，刷新状态后重新确认操作。', 'REFRESH_STATUS', True),
+    'AUTOMATIC_UPDATES_ENABLED': ('自动更新尚未停用', '主机仍配置了自动更新任务，当前手动执行条件未满足。', '请管理员完成手动更新组件安装并核对自动任务已停用。', 'CONTACT_ADMIN', False),
+}
+PUBLIC_OPERATION_CODES = frozenset(FAILURE_CATALOG) | frozenset({
+    'UNAVAILABLE', 'TIMEOUT', 'INVALID_RESPONSE', 'CONFLICT', 'REVISION_CONFLICT',
+    'VALIDATION_FAILED', 'NOT_FOUND', 'RECOVERY_REQUIRED', 'UNSAFE_HOST_CONFIG',
+    'INVALID_STATE', 'SCAN_LIMIT', 'STALE_PREVIEW', 'PROTECTED', 'STALE_CONFIG',
+    'REQUEST_CONFLICT', 'RUNTIME_MISMATCH', 'INVALID_HOST_CONFIG', 'INVALID_ENDPOINT',
+    'INVALID_BUCKET', 'INVALID_PREFIX', 'INVALID_CREDENTIALS', 'INVALID_PUBLIC_KEY',
+    'INVALID_SCHEDULE', 'AMBIGUOUS_SCHEDULE', 'STALE_RELEASE', 'INVALID_JOB_STATE',
+    'NOT_DUE', 'INVALID_OPERATION', 'HOST_OPERATION_FAILED',
+})
+
+
+def failure_view(code, phase='CHECKING', *, recovery_required=False,
+                 original_service_preserved=True, exit_code=None):
+    code = code if isinstance(code, str) and code in FAILURE_CATALOG else 'UNKNOWN'
+    phase = phase if isinstance(phase, str) and phase in PHASES else 'CHECKING'
+    title, reason, suggestion, action, retry = FAILURE_CATALOG[code]
+    recovery = bool(recovery_required or code == 'RECOVERY_REQUIRED')
+    if recovery:
+        suggestion = '请管理员结合任务标识和已验证备份完成恢复核对；不要再次更新、激活或回滚数据库。'
+        if code in {'CURRENT_VERSION_CHANGED', 'CUTOVER_BACKUP_FAILED_RECOVERED'}:
+            title = '更新需要恢复核对'
+            reason = '本次更新未获得可确认的恢复结果，当前代码、数据库与服务状态需要管理员核对。'
+    # These flags are display guidance, never execution authorization.
+    preserved = bool(original_service_preserved) and not recovery
+    if not preserved and not recovery and code in {'CURRENT_VERSION_CHANGED', 'CUTOVER_BACKUP_FAILED_RECOVERED'}:
+        title = '更新状态需要核对'
+        reason = '尚未获得可确认的原服务保持或恢复结果，当前代码、数据库与服务状态需要管理员核对。'
+    return {'code': code, 'phase': phase, 'title': title, 'reason': reason,
+            'suggestion': suggestion, 'nextAction': 'VERIFY_RECOVERY' if recovery else action,
+            'retrySafe': bool(retry and not recovery), 'recoveryRequired': recovery,
+            'originalServicePreserved': preserved,
+            'exitCode': exit_code if code != 'UNKNOWN' and type(exit_code) is int and -255 <= exit_code <= 255 and exit_code != 0 else None}
+
+
+def classify_failure(error, phase, step=None):
+    """Use private diagnostics only to select a fixed public code, never text."""
+    if isinstance(error, OperationError):
+        if not isinstance(error.code, str):
+            return 'UNKNOWN'
+        if error.code == 'INVALID_RELEASE' and step in {'STAGE', 'MIGRATION_CATALOG', 'ACTIVATE'}:
+            return 'RELEASE_CONTENT_INVALID'
+        aliases = {
+            'STALE_CONFIG': 'SOURCE_CHANGED', 'STALE_RELEASE': 'SOURCE_CHANGED',
+            'RUNTIME_MISMATCH': 'SOURCE_CHANGED', 'REQUEST_CONFLICT': 'SOURCE_CHANGED',
+            'INVALID_HOST_CONFIG': 'HOST_CONFIGURATION_INVALID', 'UNSAFE_HOST_CONFIG': 'HOST_CONFIGURATION_INVALID',
+            'INVALID_RELEASE': 'SOURCE_METADATA_INVALID', 'BACKUP_FAILED': 'BACKUP_REFERENCE_INVALID',
+            'ACTIVATION_TIMEOUT': 'OPERATION_TIMEOUT', 'UNHEALTHY': 'HEALTH_CHECK_FAILED',
+            'UNSTABLE_PROCESS': 'PROCESS_UNSTABLE', 'MIGRATION_STATE_MISMATCH': 'DATABASE_CATALOG_MISMATCH',
+            'INVALID_ENDPOINT': 'SOURCE_NOT_CONFIGURED', 'INVALID_BUCKET': 'SOURCE_NOT_CONFIGURED',
+            'INVALID_PREFIX': 'SOURCE_NOT_CONFIGURED', 'INVALID_CREDENTIALS': 'SOURCE_NOT_CONFIGURED',
+            'INVALID_PUBLIC_KEY': 'SOURCE_NOT_CONFIGURED', 'INVALID_SCHEDULE': 'INVALID_REQUEST',
+            'AMBIGUOUS_SCHEDULE': 'INVALID_REQUEST', 'INVALID_JOB_STATE': 'SOURCE_CHANGED', 'NOT_DUE': 'INVALID_REQUEST',
+            'INVALID_OPERATION': 'INVALID_REQUEST',
+        }
+        return aliases.get(error.code, error.code if error.code in FAILURE_CATALOG else 'UNKNOWN')
+    if isinstance(error, subprocess.TimeoutExpired):
+        return 'OPERATION_TIMEOUT'
+    if step == 'BACKUP_REFERENCE' and isinstance(error, (OSError, ValueError, KeyError, TypeError)):
+        return 'BACKUP_REFERENCE_INVALID'
+    if isinstance(error, OSError):
+        number = error.errno if type(error.errno) is int else None
+        if number == errno.ENOSPC:
+            return 'BACKUP_SPACE' if phase == 'BACKING_UP' else 'HOST_DISK_SPACE'
+        if number == errno.ENOENT:
+            return 'HOST_COMPONENT_MISSING'
+        if number in {errno.EACCES, errno.EPERM}:
+            return 'HOST_COMPONENT_PERMISSION'
+    if isinstance(error, subprocess.CalledProcessError):
+        def private_text(value):
+            return value.decode('utf-8', errors='replace')[:16384] if isinstance(value, bytes) else value[:16384] if isinstance(value, str) else ''
+        private = (private_text(error.stderr) + '\n' + private_text(error.output)).lower()
+        if ('runuser: cannot set user id' in private or 'runuser: cannot set groups' in private) and any(
+                marker in private for marker in ('operation not permitted', 'permission denied')):
+            return 'HOST_IDENTITY_PERMISSION'
+        if any(word in private for word in ('no space left on device', 'insufficient free space', 'insufficient reserved free space', 'free-space gate')):
+            return 'BACKUP_SPACE' if phase == 'BACKING_UP' else 'HOST_DISK_SPACE'
+        if step in {'LATEST', 'STAGE'}:
+            if step == 'LATEST' and any(word in private for word in ('版本号非法', 'latest.txt 内容非法', 'release metadata is too large')):
+                return 'SOURCE_METADATA_INVALID'
+            curl = re.search(r'curl:\s*\((\d{1,3})\)', private)
+            status = int(curl.group(1)) if curl else error.returncode if type(error.returncode) is int else None
+            if status == 6:
+                return 'SOURCE_DNS_FAILED'
+            if status in {5, 7, 52, 55, 56}:
+                return 'SOURCE_NETWORK_FAILED'
+            if status in {35, 51, 58, 60, 77, 83, 90, 91}:
+                return 'SOURCE_TLS_FAILED'
+            if status == 28:
+                return 'OPERATION_TIMEOUT'
+            if re.search(r'(?:returned error:\s*|http[^\n]{0,24}\s)403\b', private) or any(
+                    word in private for word in ('<code>accessdenied', '<code>signaturedoesnotmatch', '<code>invalidaccesskeyid', '<code>requesttimetoolskewed')):
+                return 'SOURCE_FORBIDDEN'
+            if re.search(r'(?:returned error:\s*|http[^\n]{0,24}\s)404\b', private) or '<code>nosuchkey' in private:
+                return 'SOURCE_NOT_FOUND'
+            if '签名验证失败' in private:
+                return 'RELEASE_SIGNATURE_INVALID'
+            if 'sha256sums 校验失败' in private or 'sha256sum:' in private and 'did not match' in private:
+                return 'RELEASE_CHECKSUM_INVALID'
+            if 'sha256sums' in private and any(word in private for word in ('格式', '路径', '越界', '绝对')):
+                return 'RELEASE_CONTENT_INVALID'
+            if error.returncode == 127:
+                return 'HOST_COMPONENT_MISSING'
+            if error.returncode == 126 or 'permission denied' in private or 'read-only file system' in private:
+                return 'HOST_COMPONENT_PERMISSION'
+        if phase == 'BACKING_UP':
+            if step in {'BACKUP_VERIFY', 'BACKUP_TOC'}:
+                return 'BACKUP_INTEGRITY_FAILED'
+            if any(word in private for word in ('reference', '引用', 'pending physical-delete', 'media provider')):
+                return 'BACKUP_REFERENCE_INVALID'
+            return 'BACKUP_FAILED'
+    if step == 'MIGRATION_CATALOG':
+        return 'RELEASE_CONTENT_INVALID'
+    if step == 'HEALTH':
+        return 'HEALTH_CHECK_FAILED'
+    return 'UNKNOWN'
+
+
+def job_failure(job, error, *, step=None, recovery_required=None, preserved=None):
+    recovery = job.get('state') == 'RECOVERY_REQUIRED' if recovery_required is None else recovery_required
+    code = classify_failure(error, job.get('phase', 'CHECKING'), step)
+    if preserved is None:
+        preserved = not recovery
+    return failure_view(code, job.get('phase', 'CHECKING'), recovery_required=recovery,
+                        original_service_preserved=preserved,
+                        exit_code=error.returncode if isinstance(error, subprocess.CalledProcessError) else getattr(error, 'exit_code', None))
+
+
+def attach_failure(job, error, *, step=None, preserved=None):
+    job['failure'] = job_failure(job, error, step=step, preserved=preserved)
+    job['message'] = job['failure']['title'] + '：' + job['failure']['reason']
 MESSAGES = {
     'CHECKING': '正在检查发布通道。', 'DOWNLOADING': '正在下载并验证发布签名和文件。',
     'BACKING_UP': '正在创建和核验数据库及上传文件配套备份。',
@@ -64,9 +242,10 @@ MESSAGES = {
 
 
 class OperationError(Exception):
-    def __init__(self, code: str, message: str):
+    def __init__(self, code: str, message: str, *, exit_code=None):
         super().__init__(message)
         self.code = code
+        self.exit_code = exit_code
 
 
 def now() -> str:
@@ -398,6 +577,7 @@ class Operations:
         existing = self.observe_job(lock_held=True)
         if existing and existing['state'] not in TERMINAL:
             raise OperationError('BUSY', '已有更新作业正在执行，请查看进度。')
+        return existing
 
     def observe_job(self, lock_held=False):
         job = self.job()
@@ -417,6 +597,7 @@ class Operations:
                 if latest and latest['id'] == job['id'] and latest['state'] not in TERMINAL:
                     latest.update(state=interrupted_state(latest) if latest['state'] == 'RUNNING' else 'FAILED',
                                   finishedAt=now(), message='更新服务已中断；未自动重试。请管理员检查当前版本、数据库和备份。')
+                    attach_failure(latest, OperationError('WORKER_INTERRUPTED', ''))
                     self.store_job(latest)
                     job = latest
         except OperationError as error:
@@ -493,7 +674,9 @@ class Operations:
             old = existing_request()
             if old is not None:
                 return old
-            self.no_running_job()
+            existing = self.no_running_job()
+            if existing and existing['state'] == 'RECOVERY_REQUIRED':
+                raise OperationError('RECOVERY_REQUIRED', '上次更新需要先完成恢复核对，未启动新的检查或更新。')
             status = self.status()
             if not status['manualOnly']:
                 raise OperationError('AUTOMATIC_UPDATES_ENABLED', '自动更新定时器尚未停用，请先完成手动更新组件安装。')
@@ -532,8 +715,10 @@ class Operations:
                 return job
             try:
                 self.runner(['/usr/bin/systemctl', 'start', '--no-block', SERVICE])
-            except (OSError, subprocess.SubprocessError):
+            except (OSError, subprocess.SubprocessError) as error:
                 job.update(state='FAILED', finishedAt=now(), message='无法启动更新服务；请联系管理员检查主机组件。')
+                attach_failure(job, OperationError('WORKER_START_FAILED', '',
+                               exit_code=error.returncode if isinstance(error, subprocess.CalledProcessError) else None))
                 self.store_job(job)
             return job
 
@@ -615,8 +800,10 @@ class Operations:
                 if operation == 'UPDATE_DISPATCH':
                     try:
                         self.runner(['/usr/bin/systemctl', 'start', '--no-block', SERVICE])
-                    except (OSError, subprocess.SubprocessError):
+                    except (OSError, subprocess.SubprocessError) as error:
                         job.update(state='FAILED', finishedAt=now(), message='无法启动预约更新服务，请联系管理员。')
+                        attach_failure(job, OperationError('WORKER_START_FAILED', '',
+                                       exit_code=error.returncode if isinstance(error, subprocess.CalledProcessError) else None))
                         self.store_job(job)
                 return job
         if operation == 'UPDATE_JOB':
@@ -660,11 +847,13 @@ class Operations:
             if job['state'] != 'QUEUED':
                 job.update(state=interrupted_state(job), finishedAt=now(),
                            message='上次更新中断，禁止自动重试；请管理员检查数据库和当前版本。')
+                attach_failure(job, OperationError('WORKER_INTERRUPTED', ''))
                 self.store_job(job)
                 return 1
             job.update(state='RUNNING', executionStartedAt=now())
             self.phase(job, 'CHECKING')
             activation_started = False
+            step = 'CHECK_PRECONDITIONS'
             try:
                 if self.source.view()['revision'] != job['request']['expectedSourceRevision']:
                     raise OperationError('STALE_CONFIG', '发布来源已变化，请重新发起更新。')
@@ -672,7 +861,9 @@ class Operations:
                 if current != job['currentVersion']:
                     raise OperationError('RUNTIME_MISMATCH', '运行版本已变化，请刷新后重新检查。')
                 if job['request']['mode'] != 'CHECK_ONLY':
+                    step = 'BINDING'
                     self.backup_binding(job['request']['runtimeBinding'])
+                step = 'LATEST'
                 latest = self.runner([UPDATER, 'latest'], timeout=360).stdout.strip()
                 if not VERSION.fullmatch(latest):
                     raise OperationError('INVALID_RELEASE', '发布通道返回了无效版本。')
@@ -692,13 +883,17 @@ class Operations:
                     self.store_job(job)
                     return 0
                 self.phase(job, 'DOWNLOADING')
+                step = 'STAGE'
                 self.runner([UPDATER, 'stage', target], timeout=3600)
                 base = Path(self.source.load()[1].get('UTEN_BASE', '/opt/uten-imp'))
                 candidate_jar = base / 'releases' / target / 'server/uten-imp-server.jar'
                 if current:
+                    step = 'MIGRATION_CATALOG'
                     assert_forward_migrations(base / 'current/server/uten-imp-server.jar', candidate_jar)
                 self.phase(job, 'BACKING_UP')
+                step = 'BACKUP'
                 result = self.runner(['/usr/bin/python3', '-I', BACKUP, '--config', BACKUP_CONFIG], timeout=2400)
+                step = 'BACKUP_REFERENCE'
                 published = Path(json.loads(result.stdout)['published'])
                 # Backup program is root-owned, and must return a published child
                 # of its configured root. Verification rereads every stored object.
@@ -706,32 +901,45 @@ class Operations:
                 backup_root = Path(backup_config['backup_root']).resolve(strict=True)
                 if published.parent.resolve(strict=True) != backup_root or published.is_symlink():
                     raise OperationError('BACKUP_FAILED', '备份目录与配置不一致，已中止更新。')
+                step = 'BACKUP_VERIFY'
                 self.runner(['/usr/bin/python3', '-I', BACKUP, '--verify', str(published)], timeout=2400)
+                step = 'BACKUP_TOC'
                 self.runner(['/usr/bin/pg_restore', '--list', str(published / 'database.dump')], timeout=60)
                 job['backupPath'] = str(published)
                 env = self.source.load()[1]
                 job['migrationRequired'] = migration_digest(candidate_jar) != migration_digest(base / 'current/server/uten-imp-server.jar') if current else True
                 self.phase(job, 'ACTIVATING')
                 activation_started = True
+                step = 'ACTIVATE'
                 self.activate(job, target)
                 if current_version(env) != target:
                     raise OperationError('ACTIVATION_FAILED', '激活后的运行版本核对失败。')
                 self.phase(job, 'HEALTH_CHECK')
+                step = 'DATABASE_CATALOG'
                 self.validate_database(env, base / 'releases' / target / 'server/uten-imp-server.jar')
+                step = 'HEALTH'
                 self.stable_health(env)
                 job.update(state='SUCCEEDED', phase='DONE', finishedAt=now(), health='UP', message='更新完成，数据库迁移和后端健康检查通过。')
+                job.pop('failure', None)
                 self.store_job(job)
                 return 0
             except Exception as error:
                 # Details stay private. Never return subprocess output, config,
                 # provider XML or exception strings which might contain a secret.
-                precondition = isinstance(error, OperationError) and error.code in {'CURRENT_VERSION_CHANGED', 'CUTOVER_BACKUP_FAILED_RECOVERED'}
-                job.update(state='RECOVERY_REQUIRED' if activation_started and not precondition else 'FAILED', finishedAt=now(),
-                           message=str(error) if isinstance(error, OperationError) else
-                           ('更新未能完成，请管理员检查本机更新日志；切勿重复激活。' if activation_started else
-                            '检查、下载或备份未通过，已中止更新，原服务保持运行。'))
+                precondition = isinstance(error, OperationError) and isinstance(error.code, str) and error.code in {
+                    'CURRENT_VERSION_CHANGED', 'CUTOVER_BACKUP_FAILED_RECOVERED'}
+                job.update(state='RECOVERY_REQUIRED' if activation_started and not precondition else 'FAILED', finishedAt=now())
+                attach_failure(job, error, step=step, preserved=not activation_started or precondition)
                 self.store_job(job)
-                print('Server update failed: ' + type(error).__name__, file=sys.stderr)
+                # A copied task ID can be matched to private host diagnostics.
+                # Do not log the exception string, argv, stdout or stderr.
+                safe_id = job.get('id')
+                safe_id = safe_id if isinstance(safe_id, str) and re.fullmatch(r'[0-9a-f-]{36}', safe_id) else 'invalid-id'
+                status = getattr(error, 'returncode', getattr(error, 'exit_code', None))
+                status = status if type(status) is int and -255 <= status <= 255 else 'unknown'
+                print('Server update failed: ' + type(error).__name__ + ' jobId=' + safe_id
+                      + ' code=' + job['failure']['code'] + ' phase=' + job['failure']['phase']
+                      + ' step=' + step + ' exitCode=' + str(status), file=sys.stderr)
                 return 1
 
     def activate(self, job: dict, target: str):
@@ -739,6 +947,7 @@ class Operations:
                               stderr=subprocess.STDOUT, start_new_session=True,
                               env={'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C.UTF-8'}) as process:
             deadline, pending = time.monotonic() + ACTIVATION_TIMEOUT_SECONDS, b''
+            private_tail = b''
             try:
                 with selectors.DefaultSelector() as poller:
                     poller.register(process.stdout, selectors.EVENT_READ)
@@ -754,6 +963,9 @@ class Operations:
                         pending += chunk
                         while b'\n' in pending:
                             line, pending = pending.split(b'\n', 1)
+                            # Private, bounded classifier input only. Never store
+                            # or return child output, including provider XML.
+                            private_tail = (private_tail + line[-4096:] + b'\n')[-16384:]
                             if line.startswith(b'UTEN_PHASE:'):
                                 phase = line.strip().split(b':', 1)[1].decode('ascii', errors='ignore')
                                 if phase in PHASES:
@@ -770,7 +982,12 @@ class Operations:
             if code == 43:
                 raise OperationError('CUTOVER_BACKUP_FAILED_RECOVERED', '最终备份未通过，数据库未迁移，原服务已恢复。')
             if code != 0:
-                raise OperationError('ACTIVATION_FAILED', '激活或健康检查失败，请管理员核查备份、数据库迁移和服务恢复状态。')
+                classified = classify_failure(subprocess.CalledProcessError(code, [UPDATER, 'activate'],
+                                                stderr=private_tail), job.get('phase'), 'ACTIVATE')
+                if classified == 'UNKNOWN':
+                    classified = {'MIGRATING': 'MIGRATION_FAILED', 'HEALTH_CHECK': 'HEALTH_CHECK_FAILED'}.get(
+                        job.get('phase'), 'ACTIVATION_FAILED')
+                raise OperationError(classified, '激活或健康检查失败，请管理员核查备份、数据库迁移和服务恢复状态。', exit_code=code)
 
     def validate_database(self, env: dict, jar: Path):
         database = env.get('UTEN_PG_DATABASE', 'uten_imp')
@@ -949,12 +1166,18 @@ class Handler(socketserver.StreamRequestHandler):
                 raise OperationError('INVALID_REQUEST', '请求格式无效。')
             result = {'ok': True, 'data': self.server.operations.dispatch(request)}
         except OperationError as error:
-            result = {'ok': False, 'code': error.code, 'message': str(error)}
+            failure = failure_view(classify_failure(error, 'CHECKING'),
+                                   original_service_preserved=error.code != 'OUTCOME_UNCERTAIN')
+            result = {'ok': False, 'code': error.code if isinstance(error.code, str) and error.code in PUBLIC_OPERATION_CODES else 'HOST_OPERATION_FAILED',
+                      'message': failure['title'] + '：' + failure['reason'] + failure['suggestion'],
+                      'failure': failure}
         except Exception:
             mutation = isinstance(request, dict) and request.get('operation') in {
                 'CONFIG_SAVE', 'UPDATE_START', 'UPDATE_DISPATCH', 'UPDATE_CANCEL', 'STORAGE_DELETE'}
             result = {'ok': False, 'code': 'OUTCOME_UNCERTAIN' if mutation else 'HOST_OPERATION_FAILED',
                       'message': '操作结果尚未确认，请读取本机作业或配置状态。' if mutation else '服务器操作失败，请联系管理员检查主机组件。'}
+            result['failure'] = failure_view('OUTCOME_UNCERTAIN' if mutation else 'UNKNOWN',
+                                             original_service_preserved=not mutation)
         encoded = (json.dumps(result, ensure_ascii=False) + '\n').encode()
         if len(encoded) > 65536:
             encoded = b'{"ok":false,"code":"RESPONSE_TOO_LARGE","message":"Please narrow the result."}\n'

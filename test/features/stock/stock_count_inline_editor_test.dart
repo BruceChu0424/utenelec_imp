@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -192,6 +193,58 @@ Future<void> _mountInstant(
 }
 
 void main() {
+  testWidgets(
+    'blank count inputs name their fields while book values stay guidance and snapshot facts',
+    (tester) async {
+      final editor = StockCountInlineController(_CountRepo())..begin(_normal);
+      addTearDown(editor.dispose);
+      editor.add(_row(_screw, qty: '30.1256', weight: '0.2501'));
+      final draft = editor.rows['$_screw|']!;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Column(
+              children: [
+                StockCountInlineCell(controller: editor, rowKey: '$_screw|'),
+                StockCountInlineCell(
+                  controller: editor,
+                  rowKey: '$_screw|',
+                  weight: true,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      final qty = find.byKey(const ValueKey('stock-count-qty-$_screw|'));
+      final weight = find.byKey(const ValueKey('stock-count-weight-$_screw|'));
+      expect(tester.widget<TextField>(qty).controller, same(draft.qty));
+      expect(tester.widget<TextField>(weight).controller, same(draft.weight));
+      expect(draft.qty.text, isEmpty);
+      expect(draft.weight.text, isEmpty);
+      expect(tester.widget<TextField>(qty).decoration?.hintText, '实盘数量');
+      expect(tester.widget<TextField>(qty).decoration?.suffixText, '个');
+      expect(tester.widget<TextField>(weight).decoration?.hintText, '实盘重量');
+      expect(tester.widget<TextField>(weight).decoration?.suffixText, 'kg');
+      UtenFieldHintIcon hint(Finder field) => tester.widget<UtenFieldHintIcon>(
+        find.descendant(of: field, matching: find.byType(UtenFieldHintIcon)),
+      );
+      expect(hint(qty).info, '账面数量：30.1256 个');
+      expect(hint(weight).info, '账面重量：0.2501 kg');
+      expect(draft.targetQty, '30.1256');
+      expect(draft.targetWeightKg, isNull);
+      expect(draft.changed, isFalse);
+      await tester.enterText(qty, '30.1257');
+      await tester.enterText(weight, '0.2502');
+      expect(draft.payload(false), containsPair('expectedQty', '30.1256'));
+      expect(draft.payload(false), containsPair('targetQty', '30.1257'));
+      expect(draft.payload(false), containsPair('expectedWeightKg', '0.2501'));
+      expect(draft.payload(false), containsPair('targetWeightKg', '0.2502'));
+      expect(draft.snapshot.qty, '30.1256');
+      expect(draft.snapshot.weightKg, '0.2501');
+    },
+  );
+
   test(
     'exact quantity text and unknown weight survive submit; failed retry is idempotent',
     () async {

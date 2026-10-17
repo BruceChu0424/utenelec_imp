@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_split_view.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/core/theme/uten_colors.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
@@ -132,15 +133,33 @@ void main() {
     expect(find.text('连接器甲'), findsOneWidget);
     expect(find.textContaining('G-001'), findsOneWidget);
     expect(find.text('连接器乙'), findsOneWidget);
-    expect(find.text('G-002 · 黑色'), findsOneWidget);
-    // 货品行一行显示（名字(编号) · 颜色），无单位/规格/库位副标题行。
-    final goodsRow = tester.widget<ListTile>(
-      find
-          .ancestor(of: find.text('连接器乙'), matching: find.byType(ListTile))
-          .first,
+    final goodsTable = tester.widget<MasterDataTableView<GoodsListItem>>(
+      find.byKey(const Key('goods-picker-paged-list')),
     );
-    // 2026-09-29 名称主行化：副行=编号·颜色（单位/规格/库位仍不出现）。
-    expect((goodsRow.subtitle as Text?)?.data, 'G-002 · 黑色');
+    expect(goodsTable.columns.map((column) => column.key), [
+      'name',
+      'code',
+      'series',
+      'model',
+      'spec',
+      'colorLegacyId',
+      'unitLegacyId',
+    ]);
+    final second = goodsTable.items.firstWhere(
+      (goods) => goods.id == 'goods-b',
+    );
+    expect(
+      goodsTable.columns
+          .firstWhere((column) => column.key == 'code')
+          .value(second),
+      'G-002',
+    );
+    expect(
+      goodsTable.columns
+          .firstWhere((column) => column.key == 'colorLegacyId')
+          .value(second),
+      '黑色',
+    );
 
     final tree = tester.widget<UtenCategoryTreeView<ProductCategoryNode>>(
       find.byType(UtenCategoryTreeView<ProductCategoryNode>),
@@ -385,14 +404,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('连接器甲'));
     await tester.pumpAndSettle();
-    // 选中行 = 全站统一淡绿背景（utenTableSelectedRowColor）。
-    final pickedTile = tester.widget<ListTile>(
-      find
-          .ancestor(of: find.text('连接器甲'), matching: find.byType(ListTile))
-          .first,
+    final selectedTable = tester.widget<MasterDataTableView<GoodsListItem>>(
+      find.byKey(const Key('goods-picker-paged-list')),
     );
-    expect(pickedTile.selected, isTrue);
-    expect(pickedTile.selectedTileColor, UtenColors.tableSelectedRow);
+    expect(selectedTable.selectedIds, {'goods-a'});
     // 切到分区乙再勾一条。
     await tester.tap(find.text('分区乙'));
     await tester.pumpAndSettle();

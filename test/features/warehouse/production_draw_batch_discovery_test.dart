@@ -1360,6 +1360,18 @@ void main() {
         ),
       );
       expect(qty.decoration!.enabledBorder, isA<OutlineInputBorder>());
+      expect(qty.decoration!.hintText, '应领数量');
+      expect(
+        find.descendant(
+          of: find.byKey(
+            ValueKey(
+              'draw-discovery-warehouse-${shared.discoveryRows.single.id}',
+            ),
+          ),
+          matching: find.text('实际发料仓'),
+        ),
+        findsOneWidget,
+      );
       expect(shared.discoveryRows.single.values['warehouseId'], isNull);
       expect(tasks.submissions, isEmpty);
       expect(tasks.ordinaryCalls, 0);
@@ -1386,6 +1398,13 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('原料仓二'));
       await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byKey(ValueKey('draw-discovery-warehouse-${row.id}')),
+          matching: find.text('原料仓二'),
+        ),
+        findsOneWidget,
+      );
       await tester.enterText(
         find.byKey(const Key('warehouse-draw-batch-remark')),
         '夜班发料',

@@ -2,7 +2,7 @@
 //  1. 带单位后缀输入 (850g) 换成千克, 失焦后规范成列单位;
 //  2. 勾选多行后改一行重量只改这一行 (重量是一次物理称重, 永不批量);
 //  3. 货品按重量计时只读「=25 kg」;
-//  4. 占位「约 / 应称 / 可选」与 WARN 琥珀 / ALERT 红 状态, 未学准不核对;
+//  4. 空框显示「重量」，约/应称参考与原说明同在悬停提示，偏差提醒不阻断，未学准不核对;
 //  5. 数量空着时按称重推算数量 (黄框), 改数量不恢复学习资格, 改重量才清标记;
 //  6. 工具条「称重单位」切换后表头与已填文本跟着换单位, 千克值不变。
 import 'package:flutter/material.dart';
@@ -495,14 +495,42 @@ void main() {
     await _pump(tester, [
       _Row(params: _learned, qty: '10000'),
     ], mode: WeightCaptureMode.outbound);
-    expect(_input(tester).decoration!.hintText, '应称 19.993');
+    expect(_input(tester).decoration!.hintText, '重量');
 
     await _pump(tester, [_Row(params: _red, qty: '10000')]);
-    expect(_input(tester).decoration!.hintText, '可选');
+    expect(_input(tester).decoration!.hintText, '重量');
     expect(_input(tester).controller!.text, isEmpty);
 
     await _pump(tester, [_Row(qty: '10000')]);
-    expect(_input(tester).decoration!.hintText, '可选');
+    expect(_input(tester).decoration!.hintText, '重量');
+  });
+
+  testWidgets('预计重量与预填、错误及偏差说明共存，不改实称或数量', (tester) async {
+    final row = _Row(params: _learned, qty: '10');
+    await _pump(tester, [row], mode: WeightCaptureMode.outbound);
+    expect(_input(tester).decoration!.hintText, '重量');
+    expect(_tooltip(tester), contains('应称 0.02'));
+    expect(_tooltip(tester), contains('尚未实称'));
+    expect(row.weight.kg, isNull);
+    expect(row.qty.text, '10');
+    final fieldElement = tester.element(_inputs);
+
+    await tester.enterText(_inputs, 'not-a-weight');
+    await tester.pump();
+    expect(_tooltip(tester), contains(weightInputErrorText));
+    expect(_tooltip(tester), contains('应称 0.02'));
+    expect(row.weight.kg, isNull);
+    expect(row.qty.text, '10');
+    expect(identical(tester.element(_inputs), fieldElement), isTrue);
+
+    await tester.enterText(_inputs, '30g');
+    await tester.pump();
+    expect(_tooltip(tester), contains('应称 0.02'));
+    expect(_tooltip(tester), contains('数值可能有问题'));
+    expect(row.weight.kg, 0.03);
+    expect(row.qty.text, '10');
+    expect(identical(tester.element(_inputs), fieldElement), isTrue);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('所有统计偏差均黄框文字提醒，正常只有悬停说明，无单元格提示图标', (tester) async {

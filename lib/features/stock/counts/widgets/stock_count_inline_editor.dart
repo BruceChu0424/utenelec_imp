@@ -332,8 +332,8 @@ class StockCountInlineController extends ChangeNotifier {
 
 /// 实盘格 = 常驻输入框（2026-10-08 用户口径：默认就能直接输入，不再点按切换）。
 /// 本格即全站表格输入格统一规格的出处（UtenEditableGridCellSpec，ADR-161 修订）；
-/// 「（自动）」= 质量单位按换算自动得重量，不收输入。空值以占位提示展示账面数，
-/// 校验失败红框。
+/// 「（自动）」= 质量单位按换算自动得重量，不收输入。空值显示实盘字段名，
+/// 账面数留在说明中；校验失败红框。
 class StockCountInlineCell extends StatelessWidget {
   const StockCountInlineCell({
     super.key,
@@ -382,18 +382,20 @@ class StockCountInlineCell extends StatelessWidget {
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         // 紧凑格：共享规格单一事实源（2026-10-08 起全站表格输入格同源，
         // 见 UtenEditableGridCellSpec），无额外叠层。
-        // 2026-10-10「数量+单位」内联口径：实盘数量输入框单位放后缀（重量列
-        // 单位已在列头 kg）。
+        // 2026-10-10「数量+单位」内联口径：实盘数量和重量的单位保留在输入框后缀。
         decoration: UtenInputDecoration(
           InputDecoration(
             isDense: true,
             contentPadding: UtenEditableGridCellSpec.contentPaddingOf(context),
-            suffixText: weight ? null : row.snapshot.unitName,
-            hintText: weight ? row.snapshot.weightKg ?? '未称' : row.snapshot.qty,
+            suffixText: weight ? 'kg' : row.snapshot.unitName,
+            hintText: weight ? '实盘重量' : '实盘数量',
             error: row.validation == null
                 ? null
                 : const UtenFieldMessage.error('请核对'),
           ),
+          info: weight
+              ? '账面重量：${row.snapshot.weightKg == null ? '未称' : '${row.snapshot.weightKg} kg'}'
+              : '账面数量：${row.snapshot.qty} ${row.snapshot.unitName}',
         ),
       );
     },

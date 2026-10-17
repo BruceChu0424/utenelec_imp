@@ -53,6 +53,7 @@ import '../models/sales_order_finance_confirmation.dart';
 import '../repositories/sales_order_finance_confirmation_repository.dart';
 import '../widgets/finance_document_unapproval_action.dart';
 import '../../../shared/drafts/review_task_draft.dart';
+import '../../../shared/drafts/review_authority_refresh_mixin.dart';
 import '../../../shared/widgets/sales_order_money_summary_card.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/formatters/exact_decimal.dart';
@@ -79,10 +80,26 @@ class _FinanceSalesOrderReviewPageState
     extends ConsumerState<FinanceSalesOrderReviewPage>
     with
         FormDraftMixin<FinanceSalesOrderReviewPage>,
-        ReviewTaskDraftMixin<FinanceSalesOrderReviewPage> {
+        ReviewTaskDraftMixin<FinanceSalesOrderReviewPage>,
+        ReviewAuthorityRefreshMixin<FinanceSalesOrderReviewPage> {
   SalesOrderFinanceReview? _review;
   bool _loading = true;
   bool _busy = false;
+  bool _authorityStale = false;
+  @override
+  Set<String> get reviewAuthorityPermissionCodes => const {
+    Perm.salesOrderFinanceView,
+    Perm.salesOrderFinanceConfirm,
+    Perm.salesOrderReverse,
+  };
+  @override
+  bool get reviewAuthorityRefreshBlocked =>
+      _loading ||
+      _busy ||
+      formDraftHasUnknownSubmission ||
+      formDraftRestorationBlocked;
+  @override
+  Future<void> refreshReviewAuthority() => _load(authorityOnly: true);
   bool _summaryExpanded = false;
   String? _error;
 
@@ -176,15 +193,18 @@ class _FinanceSalesOrderReviewPageState
   @override
   void closeRecoveredReview() => _closeAfterDecision();
   bool get _canConfirm =>
+      !_authorityStale &&
       _review?.requotedToId == null &&
       (ref.read(isSuperAdminProvider) ||
-          ref
-              .read(currentPermissionsProvider)
-              .contains(Perm.salesOrderFinanceConfirm));
+          ref.read(currentPermissionsProvider).containsAll({
+            Perm.salesOrderFinanceView,
+            Perm.salesOrderFinanceConfirm,
+          }));
 
   @override
   void initState() {
     super.initState();
+    initializeReviewAuthorityRefresh();
     startFormDraftIdentityGuard();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
@@ -209,8 +229,11 @@ class _FinanceSalesOrderReviewPageState
     if (mounted) setState(() {});
   }
 
-  Future<void> _load() async {
-    await prepareReviewReload();
+  Future<void> _load({bool authorityOnly = false}) async {
+    final previousReview = _review;
+    final preserveInputs = authorityOnly && previousReview != null;
+    if (preserveInputs && reviewAuthorityRefreshBlocked) return;
+    if (!preserveInputs) await prepareReviewReload();
     if (!mounted || !formDraftIdentityIsCurrent) return;
     final generation = ++_loadGeneration;
     final container = ProviderScope.containerOf(context, listen: false);
@@ -218,7 +241,10 @@ class _FinanceSalesOrderReviewPageState
     setState(() {
       _loading = true;
       _error = null;
-      _review = null;
+      if (!preserveInputs) {
+        _review = null;
+        _authorityStale = false;
+      }
     });
     try {
       _reviewClaim?.removeListener(_claimChanged);
@@ -230,7 +256,10 @@ class _FinanceSalesOrderReviewPageState
       }
       _reviewClaim = null;
       if (_canConfirm) {
-        final claim = financeReviewClaim(container)..addListener(_claimChanged);
+        final claim = financeReviewClaim(
+          container,
+          localizations: AppLocalizations.of(context),
+        )..addListener(_claimChanged);
         _reviewClaim = claim;
         // Claim before reading the commercial facts protected by the lease.
         await claim.claimAll('SALES_ORDER_FINANCE_CONFIRM', [widget.id]);
@@ -247,11 +276,29 @@ class _FinanceSalesOrderReviewPageState
           !container.read(sessionProvider).isSameIdentity(identity)) {
         return;
       }
+      if (preserveInputs &&
+          (review.financeReviewRevision !=
+                  previousReview.financeReviewRevision ||
+              review.financeConfirmed != previousReview.financeConfirmed ||
+              review.financeRejected != previousReview.financeRejected ||
+              review.requotedToId != previousReview.requotedToId)) {
+        await _reviewClaim?.releaseAll();
+        if (!mounted || generation != _loadGeneration) return;
+        setState(() {
+          _authorityStale = true;
+          _loading = false;
+          _error = AppLocalizations.of(context).financeReviewAuthorityChanged;
+        });
+        return;
+      }
       setState(() {
         _review = review;
+        _authorityStale = false;
         _loading = false;
-        _confirmRemark.clear();
-        _rejectReason.clear();
+        if (!preserveInputs) {
+          _confirmRemark.clear();
+          _rejectReason.clear();
+        }
       });
       await bindReviewDraft();
       if (review.financeConfirmed ||
@@ -263,12 +310,14 @@ class _FinanceSalesOrderReviewPageState
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _error = e.message;
+        if (preserveInputs) _authorityStale = true;
         _loading = false;
       });
     } catch (_) {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
-        _error = '审核详情加载失败，请检查网络或权限后重试';
+        _error = AppLocalizations.of(context).financeReviewLoadFailed;
+        if (preserveInputs) _authorityStale = true;
         _loading = false;
       });
     }
@@ -538,10 +587,11 @@ class _FinanceSalesOrderReviewPageState
 
   @override
   Widget build(BuildContext context) {
+    scheduleReviewAuthorityRefresh();
     ref.watch(sessionProvider);
     ref.listen(sessionProvider, (previous, next) {
       // 只有真实换身份才清空（换号/登出/模拟切换/业务重置）；token 静默刷新、
-      // 权限滑动更新保持页面与认领（服务端在决策时点重校验权限）。
+      // 同身份授权变化由独立监听刷新动作与认领，保留原审核输入。
       if (previous?.isSameIdentity(next) ?? false) return;
       ++_loadGeneration;
       _reviewClaim?.removeListener(_claimChanged);

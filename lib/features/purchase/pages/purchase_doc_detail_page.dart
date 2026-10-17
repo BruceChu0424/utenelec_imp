@@ -22,6 +22,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
@@ -66,6 +67,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../widgets/purchase_status_badge.dart';
+import '../widgets/purchase_order_print_preview.dart';
 import '../../../shared/auth/session_snapshot_provider.dart';
 
 class PurchaseDocDetailPage extends ConsumerStatefulWidget {
@@ -93,6 +95,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
   // 处理中遮罩标题（跟随动作，如「正在审核…」「正在删除…」）。
   String _busyTitle = '正在处理，请稍候';
   bool _openingOrder = false;
+  bool _openingPrint = false;
   final Set<String> _selectedRequestItemIds = {};
   String? _myLocation;
 
@@ -504,6 +507,37 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
 
   String? _error;
 
+  Future<void> _printOrder() async {
+    if (_openingPrint ||
+        _busy ||
+        _loading ||
+        !nativeReadAccessConfirmed ||
+        _detail == null) {
+      return;
+    }
+    final ownsNative = captureNativeOwnership();
+    setState(() => _openingPrint = true);
+    try {
+      final document = await ref
+          .read(purchaseRepositoryProvider(PurchaseDocType.order))
+          .orderPrintDocument(widget.id);
+      if (!mounted || !ownsNative()) return;
+      await showPurchaseOrderPrintPreview(
+        context,
+        document,
+        loader: () => ref
+            .read(purchaseRepositoryProvider(PurchaseDocType.order))
+            .orderPrintDocument(widget.id),
+      );
+    } on ApiException catch (error) {
+      if (mounted && ownsNative()) context.appError(error.message);
+    } catch (_) {
+      if (mounted && ownsNative()) context.appError('采购单暂时读取不出来，请稍后重试');
+    } finally {
+      if (mounted && ownsNative()) setState(() => _openingPrint = false);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -774,9 +808,11 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                                   const TextInputType.numberWithOptions(
                                     decimal: true,
                                   ),
-                              decoration: InputDecoration(
-                                isDense: true,
-                                labelText: l10n.orderChangeQtyNewQty,
+                              decoration: UtenInputDecoration(
+                                InputDecoration(
+                                  isDense: true,
+                                  labelText: l10n.orderChangeQtyNewQty,
+                                ),
                               ),
                             ),
                           ),
@@ -1012,6 +1048,22 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
     return Scaffold(
       appBar: UtenAppBar(
         title: '${_cfg.label}详情',
+        actions: [
+          if (widget.docType == PurchaseDocType.order)
+            UtenButton(
+              key: const Key('purchase-order-print'),
+              icon: Icons.print_outlined,
+              isLoading: _openingPrint,
+              onPressed:
+                  !_loading &&
+                      !_busy &&
+                      nativeReadAccessConfirmed &&
+                      _detail != null
+                  ? _printOrder
+                  : null,
+              child: const Text('打印单据'),
+            ),
+        ],
         leading: UtenBackButton(
           onPressed: () => popOrBackTo(context, defaultPath: _defaultBackPath),
         ),
@@ -1559,9 +1611,12 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                             keyboardType: const TextInputType.numberWithOptions(
                               decimal: true,
                             ),
-                            decoration: InputDecoration(
-                              isDense: true,
-                              suffixText: unitOf(it),
+                            decoration: UtenInputDecoration(
+                              InputDecoration(
+                                isDense: true,
+                                labelText: '数量',
+                                suffixText: unitOf(it),
+                              ),
                             ),
                           ),
                         )

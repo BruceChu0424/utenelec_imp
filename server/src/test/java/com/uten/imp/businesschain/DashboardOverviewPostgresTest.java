@@ -36,8 +36,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
  * 已被迁移删掉」这类漂移; 本类让概览自己的 SQL (本人部门递归 CTE、执行中订单计数) 与它经
  * 端口调用的通知/徽章 SQL 全部在真实 schema 上执行一次, 并锁住响应恰好是 5 个字段。
  *
- * <p>部门口径同时在真库上验一次: 主部门挂在财务部下面的科室(祖先链带出财务部), 兼职综合营销
- * 事业部才出「执行中订单」指标; 同样持有 sales_order:view 但没有销售部门的人不出。
+ * <p>权限口径同时在真库上验一次: 同样持有 sales_order:view 的财务员工，无论是否兼职销售，
+ * 都能看到按销售单据既有对象范围计算的指标；部门只展示本人主部门。
  *
  * <p><b>CI 必须显式设置 {@code UTEN_RUN_DB_TESTS=true}</b>, 否则本类 SKIP。
  */
@@ -82,7 +82,7 @@ class DashboardOverviewPostgresTest {
     }
 
     @Test
-    void overviewRunsOnTheMigratedSchemaAndFollowsPrimaryAncestorsPlusSecondaryDepartments()
+    void overviewRunsOnTheMigratedSchemaAndUsesPermissionsRegardlessOfDepartmentMembership()
             throws Exception {
         String tag = tag();
         UUID finance = departmentId("DEPT_FIN");
@@ -106,24 +106,22 @@ class DashboardOverviewPostgresTest {
         assertThat(names(crossDepartment)).as("概览响应恰好 5 个字段, 不再有 intelligence")
                 .isEqualTo(new TreeSet<>(OVERVIEW_FIELDS));
         assertThat(crossDepartment.path("departmentCode").asText())
-                .as("部门取主部门(depth=0), 祖先与兼职部门只决定分区").isEqualTo(sectionCode);
+                .as("部门只展示主部门，不参与指标授权").isEqualTo(sectionCode);
         assertThat(metricIds(crossDepartment)).contains("notice-unread", "sales-active");
 
         JsonNode financeSection = overview(auth(financeOnly));
         assertThat(names(financeSection)).isEqualTo(new TreeSet<>(OVERVIEW_FIELDS));
         assertThat(financeSection.path("departmentCode").asText()).isEqualTo(sectionCode);
         assertThat(metricIds(financeSection))
-                .as("有 sales_order:view 但本人部门链里没有销售部门: 不出执行中订单")
-                .contains("notice-unread")
-                .doesNotContain("sales-active");
+                .as("已授 sales_order:view 即显示对象范围内的执行中订单指标")
+                .contains("notice-unread", "sales-active");
     }
 
     /**
-     * 超管 + 兼职生产/采购/仓储/人事/销售部门: 每个分区(通知、排产、各部门待办的徽章入口、
-     * 执行中订单)都要求算一次。不用迁移种子的 admin: 它必须先改密码, 任何接口都是 403。
+     * 超管无需兼职业务部门也可请求所有已授权入口。各入口继续应用原对象与状态限制。
      */
     @Test
-    void superAdminInEveryDepartmentRunsEveryPartitionOnTheMigratedSchema() throws Exception {
+    void superAdminRunsAuthorizedPartitionsWithoutSecondaryDepartmentMemberships() throws Exception {
         String tag = tag();
         UUID section = UUID.randomUUID();
         db.update("""
@@ -131,14 +129,6 @@ class DashboardOverviewPostgresTest {
                 VALUES (?, ?, ?, '二级班组', ?)
                 """, section, "FIN-OVERVIEW-SU-" + tag, "概览超管科室-" + tag, departmentId("DEPT_FIN"));
         UUID admin = user(section, "SU" + tag, true);
-        UUID adminEmployee = employeeOf(admin);
-        for (String code : List.of("DEPT_SALES", "DEPT_PROD", "SUB_PURCHASE", "SUB_WH", "DEPT_HR")) {
-            db.update("""
-                    INSERT INTO employee_secondary_departments(employee_id, department_id)
-                    VALUES (?, ?)
-                    """, adminEmployee, departmentId(code));
-        }
-
         JsonNode overview = overview(auth(admin));
 
         assertThat(names(overview)).isEqualTo(new TreeSet<>(OVERVIEW_FIELDS));

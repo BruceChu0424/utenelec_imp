@@ -10,6 +10,7 @@
 // （report.finance.statement，ReportFilterPrefs：docType=side、extra={view,partyId,year}）；
 // 关键字不持久化。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
@@ -384,9 +385,8 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
               DropdownButtonFormField<String?>(
                 initialValue: _partyId,
                 isExpanded: true,
-                decoration: const InputDecoration(
-                  isDense: true,
-                  hintText: '选择往来单位',
+                decoration: const UtenInputDecoration(
+                  InputDecoration(isDense: true, labelText: '往来单位'),
                 ),
                 items: [
                   for (final p in _partyList)

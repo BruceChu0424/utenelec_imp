@@ -960,7 +960,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get securityScanManual => 'Enter code manually';
 
   @override
-  String get securityPasscodeHint => 'Enter the 6-digit pass code';
+  String get securityPasscodeHint => 'Pass code';
 
   @override
   String get securityPasscodeInvalid =>
@@ -2055,7 +2055,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticeBlessingWallEmpty => 'No blessings yet — send the first one';
 
   @override
-  String get noticeBlessingPlaceholder => 'Write your blessing…';
+  String get noticeBlessingPlaceholder => 'Blessing';
 
   @override
   String get noticeBlessingSendButton => 'Send blessing';
@@ -11144,6 +11144,30 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get release2521ServerUpdates =>
       'Server update tasks show their current stage and result. Reopen the page to continue checking progress; failures show confirmed reasons and suggested next steps.';
+
+  @override
+  String get release2521TableSearchCopy =>
+      'Search text columns such as names and codes from the header. Press Enter or Search to show matching rows, and combine conditions across columns. Search and load more candidates, or select and copy table text without changing checked rows.';
+
+  @override
+  String get release2521FieldHints =>
+      'Empty form fields now show their field names, with examples and guidance available from the information control. Forms, selectors and dates use consistent empty states while preserving valid values and personal display settings.';
+
+  @override
+  String get release2521ReferencePickers =>
+      'Mould and component pickers show categories on the left and a detail table on the right, including series, names, codes, specifications and colours. Typing shows similar candidates; the button opens the full picker with your keywords. Existing selection scopes, usage quantities and checks remain in place.';
+
+  @override
+  String get release2521MasterDataImport =>
+      'Goods exports include the fields needed to import an edited template, using actual category paths and existing validation. Category code prefixes can start with digits, and remarks can appear beside category names. Existing codes and category identities are preserved.';
+
+  @override
+  String get release2521PurchaseDocuments =>
+      'Purchase orders support print previews, with the actual finance reviewer shown in the review field. Purchase task history shows each material on its own row with the supplier. Pending decomposition and workbench tables can be exported using the current filters.';
+
+  @override
+  String get release2521GoodsHistory =>
+      'View your last ten goods data changes and undo or redo them when current conditions allow. Later changes, business references and permissions are checked again, and each operation is recorded.';
 
   @override
   String get goodsHistoryTitle => 'Goods operation history';

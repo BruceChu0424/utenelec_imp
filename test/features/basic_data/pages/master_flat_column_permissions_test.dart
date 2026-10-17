@@ -94,13 +94,23 @@ void main() {
       );
 
       void expectColumnEditing(bool enabled) {
-        final table = tester.widget<MasterDataTableView<dynamic>>(
-          find.byWidgetPredicate((widget) => widget is MasterDataTableView),
+        final tableFinder = find.byWidgetPredicate(
+          (widget) => widget is MasterDataTableView,
         );
+        final table = tester.widget<MasterDataTableView<dynamic>>(tableFinder);
         expect(table.items, hasLength(1));
         expect(table.columnEditingEnabled, enabled);
-        expect(find.byTooltip('添加列'), enabled ? findsOneWidget : findsNothing);
-        expect(find.byTooltip('显示列'), enabled ? findsNothing : findsOneWidget);
+        final columnAction = find
+            .descendant(
+              of: tableFinder,
+              matching: find.byKey(const Key('platform-table-add-column')),
+            )
+            .hitTestable();
+        expect(columnAction, findsOneWidget);
+        expect(
+          tester.widget<IconButton>(columnAction).tooltip,
+          enabled ? '添加列' : '显示列',
+        );
       }
 
       expectColumnEditing(false);

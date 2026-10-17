@@ -466,6 +466,30 @@ class FulfillmentWorkbenchQueryServiceTest {
     }
 
     @Test
+    void columnTextSearchesRemainBoundAndIndependentFromExactFacetValues() {
+        var table = FulfillmentWorkbenchTableQuery.from("supplierName", "asc", java.util.Map.of(
+                "f.goods", "goods-uuid", "search.goods", "开关 面板", "search.goodsCode", "M3_20%",
+                "search.supplierName", "华东"), null, null, null, null);
+        String sql = table.filterSql(null);
+        assertTrue(sql.contains("goods_id::text = :f_goods"));
+        assertTrue(sql.contains(":s_goods"));
+        assertTrue(sql.contains(":s_goodsCode"));
+        assertTrue(sql.contains("lower(COALESCE(goods_name,''))"), "the goods-name header only searches names");
+        assertTrue(sql.contains("lower(COALESCE(goods_code,''))"), "the independent code header still searches codes");
+        assertFalse(sql.contains("concat_ws(' ',goods_code,goods_name)"), "a code match must not satisfy a name-column word");
+        assertFalse(sql.contains("M3_20%"));
+        assertFalse(sql.contains("华东"));
+        Query query = mock(Query.class);
+        table.bind(query);
+        verify(query).setParameter("f_goods", "goods-uuid");
+        verify(query).setParameter("s_goods", "开关 面板");
+        verify(query).setParameter("s_goodsCode", "M3_20%");
+        org.junit.jupiter.api.Assertions.assertThrows(com.uten.imp.common.web.ApiException.class,
+                () -> FulfillmentWorkbenchTableQuery.from("needDate", "asc",
+                        java.util.Map.of("search.goods);DROP TABLE goods;--", "x"), null, null, null, null));
+    }
+
+    @Test
     void warehouseCountIsZeroOutsideTheWarehouseOrganizationScope() {
         EntityManager em = mock(EntityManager.class);
         FulfillmentWorkbenchAccessPolicy accessPolicy =

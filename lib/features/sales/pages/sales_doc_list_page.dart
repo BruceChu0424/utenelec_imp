@@ -524,6 +524,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
       dateFrom: range == null ? null : ChinaDateTime.formatDate(range.start),
       dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
       billNo: withBillNo ? _columnFilters['billNo'] : null,
+      columnSearch: _columnFilters.values,
     );
   }
 
@@ -1179,6 +1180,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                           : null,
                       // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
                       primary: true,
+                      serverColumnSearch: true,
                       columns: _columns(names, l10n),
                       items: _list.page?.items ?? const [],
                       facets: _statusFacets(names, l10n),
@@ -1326,7 +1328,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
       }
       return;
     }
-    if (key == 'billNo') {
+    if (key == 'billNo' || key.startsWith('search.')) {
       _columnFilters.handleFilterChanged(
         key,
         value,
@@ -1361,6 +1363,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
   /// 草稿段固定回显「草稿」，与该段强制的 status=0 口径一致。
   Map<String, String?> get _statusFilterMap {
     final extra = <String, String?>{
+      ..._columnFilters.values,
       // 2026-09-25 单号列统一：单据号表头值筛选。
       'billNo': _columnFilters['billNo'],
       if (_isShipment) ...{

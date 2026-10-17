@@ -21,6 +21,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.util.UUID;
+import java.util.List;
 
 import static com.uten.imp.common.mastercode.CategoryDrivenCodeService.MasterType.GOODS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -72,6 +73,115 @@ class CategoryDrivenCodeServicePostgresTest {
 
     @Autowired
     private PlatformTransactionManager transactionManager;
+
+    @Autowired
+    private jakarta.persistence.EntityManager entityManager;
+
+    @Autowired
+    private com.uten.imp.features.master.mould.MouldRepository mouldRepository;
+
+    @Autowired
+    private com.uten.imp.features.master.mouldcategory.MouldCategoryRepository mouldCategoryRepository;
+
+    @Test
+    void mouldCategorySeriesSearchKeepsSubtreePaginationGlobalSearchAndExportInAgreement() {
+        UUID root = UUID.randomUUID();
+        UUID child = UUID.randomUUID();
+        UUID outside = UUID.randomUUID();
+        jdbc.update("INSERT INTO mould_categories (id, code, name, remark, is_deleted) VALUES (?, 'SERIES-ROOT', 'Q7系列', '旧分类备注', false)", root);
+        jdbc.update("INSERT INTO mould_categories (id, code, name, parent_id, is_deleted) VALUES (?, 'SERIES-CHILD', 'Q7开关子系列', ?, false)", child, root);
+        jdbc.update("INSERT INTO mould_categories (id, code, name, is_deleted) VALUES (?, 'SERIES-OUTSIDE', 'Q7外部系列', false)", outside);
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        UUID outsideMould = UUID.randomUUID();
+        UUID unrelated = UUID.randomUUID();
+        jdbc.update("INSERT INTO moulds (id, category_id, code, name, code_sequence, status, is_deleted) VALUES (?, ?, 'SERIES-M001', '双联开关模具', 1, '使用', false)", first, root);
+        jdbc.update("INSERT INTO moulds (id, category_id, code, name, code_sequence, status, is_deleted) VALUES (?, ?, 'SERIES-M002', '双联开关模具', 2, '使用', false)", second, child);
+        jdbc.update("INSERT INTO moulds (id, category_id, code, name, code_sequence, status, is_deleted) VALUES (?, ?, 'SERIES-M003', '双联开关模具', 3, '使用', false)", outsideMould, outside);
+        jdbc.update("INSERT INTO moulds (id, category_id, code, name, code_sequence, status, is_deleted) VALUES (?, ?, 'SERIES-M004', '双联插座模具', 4, '使用', false)", unrelated, child);
+        var mouldService = new com.uten.imp.features.master.mould.MouldService(mouldRepository, mouldCategoryRepository,
+                org.mockito.Mockito.mock(com.uten.imp.security.TxSessionVars.class), entityManager, service,
+                org.mockito.Mockito.mock(com.uten.imp.common.util.DepartmentNameResolver.class),
+                org.mockito.Mockito.mock(com.uten.imp.common.util.EmployeeNameResolver.class));
+        var filter = new com.uten.imp.features.master.mould.dto.MouldQueryFilter(root, null, java.util.Set.of(),
+                null, "双联开关模具", null, null, null, "使用", null)
+                .withColumnSearch(java.util.Map.of("categoryName", "Q7", "name", "开关"));
+        var pageOne = mouldService.list(filter, 1, 1);
+        var pageTwo = mouldService.list(filter, 2, 1);
+        assertEquals(2, pageOne.getTotal());
+        assertEquals(2, pageTwo.getTotal());
+        assertEquals(first, pageOne.getItems().getFirst().getId());
+        assertEquals("Q7系列", pageOne.getItems().getFirst().getCategoryName());
+        assertEquals(second, pageTwo.getItems().getFirst().getId());
+        assertEquals("Q7开关子系列", pageTwo.getItems().getFirst().getCategoryName());
+        var exported = mouldService.export(filter, 100);
+        assertEquals(2, exported.rows().size());
+        assertEquals(java.util.Set.of("Q7系列", "Q7开关子系列"), exported.rows().stream()
+                .map(row -> row.get("categoryName")).collect(java.util.stream.Collectors.toSet()));
+        var global = mouldService.list(new com.uten.imp.features.master.mould.dto.MouldQueryFilter(null, "Q7", null,
+                null, null, null, null, null, null, null), 1, 20);
+        assertEquals(java.util.Set.of(first, second, outsideMould, unrelated), global.getItems().stream()
+                .map(item -> item.getId()).collect(java.util.stream.Collectors.toSet()));
+    }
+
+    @Test
+    void masterColumnSearchUsesDisplayedTextAndCombinesColumnsBeforePagination() {
+        UUID category = UUID.randomUUID();
+        UUID hit = UUID.randomUUID();
+        UUID other = UUID.randomUUID();
+        UUID color = UUID.randomUUID();
+        UUID unit = UUID.randomUUID();
+        insertCategory(category, "COLSEARCH-CAT", "搜索分类", null, "9S");
+        insertGoods(hit, category, "COLSEARCH-HIT", 1, null, false, false);
+        insertGoods(other, category, "COLSEARCH-OTHER", 2, null, false, false);
+        jdbc.update("INSERT INTO colors (id, legacy_id, code, name, is_deleted) VALUES (?, 919191, 'COLSEARCH-COLOR', '银灰色', false)", color);
+        jdbc.update("INSERT INTO units (id, legacy_id, code, name, is_deleted) VALUES (?, 919192, 'COLSEARCH-UNIT', '套件', false)", unit);
+        jdbc.update("UPDATE goods SET name = '双联 开关', spec = '10A 250V', color_id = ?, unit_id = ? WHERE id = ?", color, unit, hit);
+        jdbc.update("UPDATE goods SET name = '双联 插座', spec = '10A 250V', color_id = ?, unit_id = ? WHERE id = ?", color, unit, other);
+        var searches = java.util.Map.of("name", "双联 开关", "spec", "250V", "colorLegacyId", "灰色", "unitLegacyId", "套");
+        assertEquals(List.of(hit), masterMatches(
+                com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS, searches));
+        // The same displayed names still match old UUID-missing rows, without creating relations.
+        jdbc.update("UPDATE goods SET color_id = NULL, unit_id = NULL, color_legacy_id = 919191, unit_legacy_id = 919192 WHERE id = ?", hit);
+        assertEquals(List.of(hit), masterMatches(
+                com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS, searches));
+
+        UUID client = UUID.randomUUID();
+        UUID supplier = UUID.randomUUID();
+        UUID mould = UUID.randomUUID();
+        jdbc.update("INSERT INTO clients (id, code, name, mobile, code_sequence, is_deleted) VALUES (?, 'COLSEARCH-CLIENT', '电器客户', '13800123456', 1, false)", client);
+        jdbc.update("INSERT INTO suppliers (id, code, name, phone, code_sequence, is_deleted) VALUES (?, 'COLSEARCH-SUPPLIER', '电器供应商', '0760-123456', 1, false)", supplier);
+        jdbc.update("INSERT INTO moulds (id, code, name, manufacturer, code_sequence, is_deleted) VALUES (?, 'COLSEARCH-MOULD', '双联开关', '优腾制造', 1, false)", mould);
+        assertEquals(List.of(client), masterMatches(
+                com.uten.imp.features.master.search.MasterColumnSearch.Domain.CLIENT, java.util.Map.of("mobile", "13800", "name", "客户")));
+        assertEquals(List.of(supplier), masterMatches(
+                com.uten.imp.features.master.search.MasterColumnSearch.Domain.SUPPLIER, java.util.Map.of("phone", "123456", "name", "电器")));
+        assertEquals(List.of(mould), masterMatches(
+                com.uten.imp.features.master.search.MasterColumnSearch.Domain.MOULD, java.util.Map.of("name", "开关", "manufacturer", "优腾")));
+    }
+
+    private List<UUID> masterMatches(com.uten.imp.features.master.search.MasterColumnSearch.Domain domain,
+                                    java.util.Map<String, String> searches) {
+        var cb = entityManager.getCriteriaBuilder();
+        var query = cb.createQuery(UUID.class);
+        Class<?> entity = switch (domain) {
+            case GOODS -> com.uten.imp.features.master.goods.Goods.class;
+            case CLIENT -> com.uten.imp.features.master.client.Client.class;
+            case SUPPLIER -> com.uten.imp.features.master.supplier.Supplier.class;
+            case MOULD -> com.uten.imp.features.master.mould.Mould.class;
+        };
+        var root = query.from(entity);
+        query.select(root.get("id")).where(com.uten.imp.features.master.search.MasterColumnSearch.predicate(
+                cb, root.get("id"), domain, searches));
+        // The count uses the exact same expression, and page boundaries apply in SQL.
+        var countQuery = cb.createQuery(Long.class);
+        var countRoot = countQuery.from(entity);
+        countQuery.select(cb.count(countRoot)).where(com.uten.imp.features.master.search.MasterColumnSearch.predicate(
+                cb, countRoot.get("id"), domain, searches));
+        assertEquals(entityManager.createQuery(countQuery).getSingleResult().intValue(),
+                entityManager.createQuery(query).getResultList().size());
+        return entityManager.createQuery(query).setFirstResult(0).setMaxResults(20).getResultList();
+    }
 
     @Test
     void livePrefixCheckUsesLifetimeCrossDomainReservationsWithoutClaiming() {
@@ -146,6 +256,29 @@ class CategoryDrivenCodeServicePostgresTest {
                 SELECT fn_claim_global_business_prefix(
                     ?, 'NAMESPACE', ?, NULL, NULL, ?, 'HISTORICAL', NULL, TRUE)
                 """, prefix, namespace, prefix);
+    }
+
+    @Test
+    void digitStartingPrefixesAreValidatedReservedAndAllocatedWithoutRewritingExistingCodes() {
+        UUID category = UUID.randomUUID();
+        UUID existingGoods = UUID.randomUUID();
+        insertCategory(category, "DIGIT-PREFIX", "数字编号分类", null, "28");
+        insertGoods(existingGoods, category, "LEGACY-DIGIT", 1, null, false, false);
+        jdbc.update("UPDATE category_master_code_sequences SET last_seq = 1 WHERE master_type = 'GOODS'");
+
+        var allocation = service.allocate(GOODS, category, null);
+        assertEquals("28000002", allocation.code());
+        assertEquals(category, allocation.prefixCategoryId());
+        assertTrue(allocation.managed());
+        assertCode(existingGoods, "LEGACY-DIGIT", false, null);
+        assertFalse(service.prefixAvailability(CategoryDrivenCodeService.MasterType.MOULD, "28", null).available());
+
+        String[] tables = {"mould_categories", "client_categories", "supplier_categories"};
+        for (int i = 0; i < tables.length; i++) {
+            jdbc.update("INSERT INTO " + tables[i]
+                    + " (id, code, name, code_prefix, is_deleted) VALUES (?, ?, ?, ?, false)",
+                    UUID.randomUUID(), "DIGIT-CAT-" + i, "数字分类", (i + 3) + "A");
+        }
     }
 
     @Test

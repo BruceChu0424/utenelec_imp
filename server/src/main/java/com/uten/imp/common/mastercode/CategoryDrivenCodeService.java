@@ -29,7 +29,7 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class CategoryDrivenCodeService {
 
-    private static final Pattern PREFIX = Pattern.compile("^[A-Z][A-Z0-9]{0,7}$");
+    private static final Pattern PREFIX = Pattern.compile("^[A-Z0-9]{1,8}$");
     private static final Pattern NUMERIC_SUFFIX = Pattern.compile("^[0-9]{6,18}$");
     private static final int MAX_GLOBAL_COLLISION_RETRIES = 1024;
 
@@ -969,7 +969,7 @@ public class CategoryDrivenCodeService {
         if (!PREFIX.matcher(prefix).matches()) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "编号前缀须以字母开头，只可包含 1-8 位大写字母或数字");
+                    "编号前缀只可包含 1-8 位字母或数字，可用数字开头");
         }
         return prefix;
     }

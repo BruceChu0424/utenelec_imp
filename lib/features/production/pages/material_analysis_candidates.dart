@@ -1265,7 +1265,11 @@ abstract class _MaterialAnalysisCandidatesState
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             style: Theme.of(context).textTheme.bodyMedium,
             decoration: const UtenInputDecoration(
-              InputDecoration(isDense: true, hintText: '0'),
+              InputDecoration(
+                isDense: true,
+                hintText: '本次分析数量',
+                hintMaxLines: 1,
+              ),
             ),
           ),
         );

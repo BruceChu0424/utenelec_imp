@@ -561,7 +561,11 @@ void main() {
     snapshot = _snapshot(controller);
     expect(_list(snapshot['fields']).single['label'], '顶层字段');
     expect(_list(snapshot['badges']), isEmpty);
-    Navigator.of(tester.element(find.text('顶层字段'))).pop();
+    Navigator.of(
+      tester.element(
+        find.byWidgetPredicate((w) => w is UtenInput && w.label == '顶层字段'),
+      ),
+    ).pop();
     await tester.pumpAndSettle();
     expect(_list(_snapshot(controller)['fields']).single['label'], '底层字段');
   });
@@ -611,7 +615,11 @@ void main() {
       await tester.tap(find.text('dialog'));
       await tester.pumpAndSettle();
       expect(labels(), ['弹窗字段']);
-      Navigator.of(tester.element(find.text('弹窗字段'))).pop();
+      Navigator.of(
+        tester.element(
+          find.byWidgetPredicate((w) => w is UtenInput && w.label == '弹窗字段'),
+        ),
+      ).pop();
       await tester.pumpAndSettle();
       expect(labels(), ['底层字段']);
       // After several captures, covering and uncovering the page does not

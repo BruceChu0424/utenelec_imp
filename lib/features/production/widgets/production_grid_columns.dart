@@ -7,6 +7,8 @@
 // 订货量输入框的后缀（suffixText）随行回填的 unitId 即时刷新。
 // productionGridColumns：与 salesGridColumns 同形（货品点选 / 颜色只读 / 数量 numeric）。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
+import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import 'production_overproduction_rate_field.dart';
 
 import '../../../components/data_display/uten_goods_identity_cell.dart';
@@ -134,7 +136,13 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
       listenableOf: (r) => r.productNo,
       cellBuilder: (context, row) => TextField(
         controller: row.productNo,
-        decoration: const InputDecoration(isDense: true, hintText: '留空由系统生成'),
+        decoration: const UtenInputDecoration(
+          InputDecoration(
+            isDense: true,
+            labelText: '产品编号',
+            hintText: '留空由系统生成',
+          ),
+        ),
       ),
     ),
     EditableGridColumn<ProductionGridRow>(
@@ -170,7 +178,7 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
                     valueListenable: row.goodsNotifier,
                     builder: (context, g, _) => g == null
                         ? Text(
-                            '点击选择',
+                            utenFieldPlaceholder(label: '货品名称')!,
                             style: TextStyle(
                               color: Theme.of(
                                 context,
@@ -222,6 +230,7 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
         listenable: row.qty,
         isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
         child: _unitSuffixField(
+          label: '排产量',
           unitIdNotifier: row.unitIdNotifier,
           unitEntries: unitEntries,
           controller: row.qty,
@@ -248,6 +257,7 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
       width: 130,
       numeric: true,
       cellBuilder: (context, row) => _unitSuffixField(
+        label: '订货量',
         unitIdNotifier: row.unitIdNotifier,
         unitEntries: unitEntries,
         controller: row.oqty,
@@ -274,7 +284,9 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
                 child: ValueListenableBuilder<TextEditingValue>(
                   valueListenable: row.salesOrderNo,
                   builder: (context, v, _) => Text(
-                    v.text.isEmpty ? '点击选择' : v.text,
+                    v.text.isEmpty
+                        ? utenFieldPlaceholder(label: '关联销售订单号')!
+                        : v.text,
                     style: TextStyle(
                       color: v.text.isEmpty
                           ? Theme.of(context).colorScheme.onSurfaceVariant
@@ -297,7 +309,9 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
       listenableOf: (r) => r.remark,
       cellBuilder: (context, row) => TextField(
         controller: row.remark,
-        decoration: const InputDecoration(isDense: true),
+        decoration: const UtenInputDecoration(
+          InputDecoration(isDense: true, labelText: '备注'),
+        ),
       ),
     ),
   ];
@@ -328,6 +342,7 @@ Widget _readOnlyMasterCell(
 /// 数量输入格 + 单位后缀（2026-10-10 数量内联口径）：单位名跟在输入框
 /// suffixText，随 [unitIdNotifier] 换货品回填即时刷新；未选单位时无后缀。
 Widget _unitSuffixField({
+  required String label,
   required ValueNotifier<String?> unitIdNotifier,
   required Map<String, String> unitEntries,
   required TextEditingController controller,
@@ -341,10 +356,12 @@ Widget _unitSuffixField({
       return TextField(
         controller: controller,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: InputDecoration(
-          isDense: true,
-          hintText: '0',
-          suffixText: (unit == null || unit.isEmpty) ? null : unit,
+        decoration: UtenInputDecoration(
+          InputDecoration(
+            isDense: true,
+            labelText: label,
+            suffixText: (unit == null || unit.isEmpty) ? null : unit,
+          ),
         ),
       );
     },

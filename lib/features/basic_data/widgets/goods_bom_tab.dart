@@ -61,6 +61,7 @@ import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/inputs/uten_reference_picker_field.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_error.dart';
@@ -70,6 +71,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/formatters/quantity_display.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/widgets/uten_tree_table_cell.dart';
 import '../models/goods_bom_item.dart';
 import '../models/goods_node.dart';
@@ -153,8 +155,19 @@ final bomComponentPickerProvider =
       Future<List<GoodsListItem>> Function(BuildContext context, WidgetRef ref)
     >(
       (ref) =>
-          (context, ref) =>
-              showUtenGoodsPickerMulti(context, ref, allowScopeExpansion: true),
+          (context, ref) => showUtenGoodsPickerMulti(
+            context,
+            ref,
+            allowScopeExpansion: true,
+            readBoundary: ref.read(sensitiveReadBoundaryProvider),
+          ),
+    );
+
+final bomComponentSuggestionsProvider =
+    Provider<Future<List<GoodsListItem>> Function(WidgetRef, String)>(
+      (ref) =>
+          (widgetRef, query) =>
+              loadUtenGoodsPickerSuggestions(widgetRef, query),
     );
 
 class GoodsBomTab extends ConsumerStatefulWidget {
@@ -1534,8 +1547,11 @@ class _PickedComponent {
 class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
   late String _parentGoodsId;
   final List<_PickedComponent> _picked = [];
+  final _componentSearchCtl = TextEditingController();
   bool _saving = false;
   String? _error;
+  int _lookupGeneration = 0;
+  ProviderSubscription<SensitiveReadBoundary>? _lookupSubscription;
 
   /// 服务端逐行给出的不合格原因(「第几行 哪个组件：为什么」)。
   List<String> _problems = const [];
@@ -1547,19 +1563,55 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
   void initState() {
     super.initState();
     _parentGoodsId = widget.defaultParentGoodsId;
+    _lookupSubscription = ref.listenManual(sensitiveReadBoundaryProvider, (
+      previous,
+      next,
+    ) {
+      if (mounted && previous != next) setState(() => _lookupGeneration++);
+    });
   }
 
   @override
   void dispose() {
+    _lookupSubscription?.close();
+    _componentSearchCtl.dispose();
     for (final p in _picked) {
       p.qtyCtl.dispose();
     }
     super.dispose();
   }
 
-  Future<void> _pickComponents() async {
-    final list = await ref.read(bomComponentPickerProvider)(context, ref);
-    if (list.isEmpty) return;
+  Future<void> _pickComponents({String initialKeyword = ''}) async {
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final generation = _lookupGeneration;
+    final parent = _parentGoodsId;
+    if (!_lookupIsCurrent(boundary, generation, parent)) return;
+    final list = initialKeyword.trim().isEmpty
+        ? await ref.read(bomComponentPickerProvider)(context, ref)
+        : await showUtenGoodsPickerMulti(
+            context,
+            ref,
+            allowScopeExpansion: true,
+            initialKeyword: initialKeyword,
+            readBoundary: boundary,
+          );
+    if (list.isEmpty || !_lookupIsCurrent(boundary, generation, parent)) return;
+    _addComponents(list);
+  }
+
+  bool _lookupIsCurrent(
+    SensitiveReadBoundary boundary,
+    int generation,
+    String parent,
+  ) =>
+      mounted &&
+      !_saving &&
+      generation == _lookupGeneration &&
+      parent == _parentGoodsId &&
+      boundary == ref.read(sensitiveReadBoundaryProvider);
+
+  void _addComponents(List<GoodsListItem> list) {
+    if (!mounted || _saving) return;
     setState(() {
       for (final g in list) {
         if (_picked.any((p) => p.goods.id == g.id)) continue; // 去重
@@ -1572,6 +1624,7 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
         );
       }
       _error = null;
+      _componentSearchCtl.clear();
     });
   }
 
@@ -1712,6 +1765,11 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final lookupBoundary = ref.watch(sensitiveReadBoundaryProvider);
+    final lookupGeneration = _lookupGeneration;
+    final lookupParent = _parentGoodsId;
+    bool lookupCurrent() =>
+        _lookupIsCurrent(lookupBoundary, lookupGeneration, lookupParent);
     return UtenDialogFrame(
       shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
       child: ConstrainedBox(
@@ -1750,25 +1808,79 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
                             UtenDropdownItem(value: p.goodsId, label: p.label),
                         ],
                         onChanged: (v) {
-                          if (v != null) setState(() => _parentGoodsId = v);
+                          if (v != null && v != _parentGoodsId) {
+                            setState(() {
+                              _parentGoodsId = v;
+                              _lookupGeneration++;
+                            });
+                          }
                         },
                       ),
                       const SizedBox(height: UtenSpacing.s12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            '已选组件 ${_picked.length}', // TODO(l10n)
-                            style: theme.textTheme.labelMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
+                      Text(
+                        '已选组件 ${_picked.length}', // TODO(l10n)
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: UtenSpacing.s8),
+                      UtenReferencePickerField<GoodsListItem>(
+                        key: const Key('bom-component-lookup'),
+                        controller: _componentSearchCtl,
+                        label: '组件',
+                        hint: '名称 / 编号 / 系列',
+                        pickerLabel: '选择组件',
+                        enabled: !_saving,
+                        suggestionScope: (
+                          lookupBoundary,
+                          lookupGeneration,
+                          lookupParent,
+                        ),
+                        isCurrent: lookupCurrent,
+                        loadSuggestions: (query) async {
+                          if (!lookupCurrent()) return const [];
+                          final result = await ref.read(
+                            bomComponentSuggestionsProvider,
+                          )(ref, query);
+                          return lookupCurrent() ? result : const [];
+                        },
+                        labelOf: (goods) => goods.name ?? goods.code ?? '货品',
+                        onInputChanged: (_) {},
+                        onSelected: (goods) {
+                          if (lookupCurrent()) _addComponents([goods]);
+                        },
+                        onOpenPicker: (query) async {
+                          if (lookupCurrent()) {
+                            await _pickComponents(initialKeyword: query);
+                          }
+                        },
+                        optionBuilder: (_, goods) => Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: UtenSpacing.s12,
+                            vertical: UtenSpacing.s8,
                           ),
-                          TextButton.icon(
-                            onPressed: _pickComponents,
-                            icon: const Icon(Icons.add_rounded, size: 18),
-                            label: const Text('选择组件'), // TODO(l10n)
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(goods.name ?? goods.code ?? '货品'),
+                              Text(
+                                [
+                                      goods.code,
+                                      goods.series,
+                                      goods.model,
+                                      goods.spec,
+                                      goods.colorName,
+                                    ]
+                                    .whereType<String>()
+                                    .where((value) => value.isNotEmpty)
+                                    .join(' / '),
+                                style: theme.textTheme.bodySmall,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
                       if (_picked.isEmpty)
                         Padding(

@@ -1341,7 +1341,9 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
                   TextField(
                     controller: _rate,
                     readOnly: true,
-                    decoration: const InputDecoration(labelText: '汇率'),
+                    decoration: const UtenInputDecoration(
+                      InputDecoration(labelText: '汇率'),
+                    ),
                   ),
                 // 人员字段（按 config 显隐）
                 if (_cfg.hasPurchaser)
@@ -1381,8 +1383,8 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
                   TextField(
                     controller: _bStyle,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'bStyle(业务类型)',
+                    decoration: const UtenInputDecoration(
+                      InputDecoration(labelText: '业务类型'),
                     ),
                   ),
                 if (_cfg.hasTotalWeight)
@@ -1391,7 +1393,9 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
-                    decoration: const InputDecoration(labelText: '总重'),
+                    decoration: const UtenInputDecoration(
+                      InputDecoration(labelText: '总重'),
+                    ),
                   ),
                 if (_cfg.hasDeductAmount)
                   TextField(
@@ -1414,7 +1418,9 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
             const SizedBox(height: UtenSpacing.s12),
             TextField(
               controller: _remark,
-              decoration: const InputDecoration(labelText: '备注'),
+              decoration: const UtenInputDecoration(
+                InputDecoration(labelText: '备注'),
+              ),
               maxLines: 2,
             ),
           ],

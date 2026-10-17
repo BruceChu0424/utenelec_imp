@@ -43,6 +43,7 @@ import '../../shared/widgets/column_editor_dialog.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../inputs/uten_input_decoration.dart';
 import 'dart:convert';
 import '../data_display/uten_status_cell_color.dart';
 
@@ -3265,9 +3266,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
             controller: ctrl,
             keyboardType: TextInputType.number,
             autofocus: true,
-            decoration: const InputDecoration(
-              labelText: '粘贴份数',
-              hintText: '1 - 50',
+            decoration: const UtenInputDecoration(
+              InputDecoration(labelText: '粘贴份数', hintText: '1 - 50'),
             ),
           ),
           actionsAlignment: MainAxisAlignment.center,
@@ -3553,10 +3553,12 @@ class _UtenEditableGridState<T extends EditableGridRow>
               controller: ctrl,
               keyboardType: TextInputType.number,
               autofocus: true,
-              decoration: const InputDecoration(
-                labelText: '行数',
-                hintText: '1 - 50',
-                suffixText: '行',
+              decoration: const UtenInputDecoration(
+                InputDecoration(
+                  labelText: '行数',
+                  hintText: '1 - 50',
+                  suffixText: '行',
+                ),
               ),
             ),
             actionsAlignment: MainAxisAlignment.center,

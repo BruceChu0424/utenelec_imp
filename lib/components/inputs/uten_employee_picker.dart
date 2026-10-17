@@ -59,7 +59,7 @@ class UtenEmployeePicker extends StatefulWidget {
     this.initial,
     this.enabled = true,
     this.label,
-    this.hint = '请选择员工',
+    this.hint = '员工',
     this.validator,
     this.departmentName,
     this.candidateScopeKey,

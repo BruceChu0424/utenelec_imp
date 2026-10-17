@@ -39,6 +39,21 @@ public class GoodsSaveRequest {
     private String stockPlace;   // StockPlace 库位号（仓库摆放位置）
     private String shortName;    // Short_Name 简称
     private String model;        // Number 型号
+    private String cNumber;      // 已有 goods.c_number 客户型号；未传键时保留旧值
+    @JsonIgnore
+    private boolean cNumberPresent;
+
+    @JsonSetter("cNumber")
+    public void setCNumber(String value) {
+        cNumber = value;
+        cNumberPresent = true;
+    }
+
+    @JsonProperty("cNumber")
+    public String getCNumber() { return cNumber; }
+
+    public boolean hasCNumber() { return cNumberPresent; }
+
     private String spec;         // Standard 规格
     @Digits(integer = 14, fraction = 4)
     private BigDecimal price;    // Price（NUMERIC(18,4)）

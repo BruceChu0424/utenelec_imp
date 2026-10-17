@@ -91,6 +91,7 @@ class MasterColumnDef<T> {
     this.type = 'text',
     this.sortable = false,
     this.filterFromRows = false,
+    this.columnSearchEnabled,
     this.cellColor,
     this.cellColorListenableOf,
     this.cellBuilder,
@@ -182,6 +183,25 @@ class MasterColumnDef<T> {
   /// 表用；服务端分页表格筛了也只是当页，应走服务端 facets 而不是这个开关。
   /// 宿主已为该 key 提供服务端 facets 时以服务端为准（本开关不再生效）。
   final bool filterFromRows;
+
+  /// Override only where business meaning differs from the ordinary text-column
+  /// convention. Dates, measures, enums and action columns retain their existing
+  /// range, choice and sort controls instead of a keyword field.
+  final bool? columnSearchEnabled;
+
+  bool get supportsKeywordSearch {
+    if (columnSearchEnabled != null) return columnSearchEnabled!;
+    if (type != 'text') return false;
+    if (RegExp(
+      r'日期|时间|交期|交货期|到期|有效期|数量|金额|余额|单价|价格|税率|汇率|折扣|重量|单重|密度|件数|人数|天数|合计|比率|比例|损耗率|完成率|进度|状态|异常|是否|操作|序号|排序|币种|货币|单位|类型|阶段|性别|版本|次数|优先级',
+    ).hasMatch(label)) {
+      return false;
+    }
+    return !RegExp(
+      r'(?:date|time|timestamp|qty|quantity|amount|price|weight|rate|percent|status|state|stage|type|origin|gender|approval|action|sequence|sortorder|currency|unitid|unitlegacyid|boolean|count|enabled|closed)$',
+      caseSensitive: false,
+    ).hasMatch(key);
+  }
 
   /// 单元格语义底色（如待处理步骤用浅警示色）；null = 跟随所在行底色。
   /// 选中行仍由表格统一使用深绿高亮，避免颜色叠加后文字对比不足。
@@ -297,6 +317,7 @@ class MasterDataTableView<T> extends StatefulWidget {
     required this.filters,
     this.externalFilterKeys = const <String>{},
     required this.onFilterChanged,
+    this.serverColumnSearch = false,
     this.onRowTap,
     this.canOpenRow,
     this.onSelectionChanged,
@@ -446,6 +467,10 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 筛选生效数描述见 _buildProjectedTable 的行区提示。）
   final Set<String> externalFilterKeys;
   final void Function(String key, String? value) onFilterChanged;
+
+  /// Server lists forward `search.<column key>` through their normal query and
+  /// export path. Complete in-memory tables search the displayed column values.
+  final bool serverColumnSearch;
 
   /// 行的「打开」操作。列表页（非 embedded）统一为「双击打开」——单击只选中；
   /// embedded（picker/滑窗内明细表）保留单击直达：picker 行的单击语义本来就是
@@ -1832,6 +1857,38 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   // One selected remote caption per logical column, shared by its ordinary
   // header and the frozen header copy.
   final Map<String, MasterFacetBucket> _selectedFacetBuckets = {};
+  final Map<String, String> _columnSearches = {};
+
+  bool _serverSearchFor(String key) =>
+      widget.serverColumnSearch &&
+      widget.columns.any((column) => column.key == key);
+
+  String? _columnSearch(String key) => _serverSearchFor(key)
+      ? widget.filters['search.$key']
+      : _columnSearches[key];
+
+  void _searchColumn(String key, String? text) {
+    final keyword = text?.trim();
+    final value = keyword == null || keyword.isEmpty ? null : keyword;
+    if (_serverSearchFor(key)) {
+      _persistQuery(filterChanges: {key: null, 'search.$key': value});
+      if (widget.filters[key] != null) widget.onFilterChanged(key, null);
+      widget.onFilterChanged('search.$key', value);
+    } else {
+      setState(() {
+        _rowFilters.remove(key);
+        if (value == null) {
+          _columnSearches.remove(key);
+        } else {
+          _columnSearches[key] = value;
+        }
+        _syncRows();
+        _persistQuery(filterChanges: {key: null, 'search.$key': value});
+      });
+      if (widget.filters[key] != null) widget.onFilterChanged(key, null);
+    }
+  }
+
   String? _localSortColumn;
   bool _localSortAscending = true;
   String _queryPreferenceSignature = '';
@@ -1843,7 +1900,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   bool _ownsHeaderFilter(MasterColumnDef<T> column) =>
       !widget.externalFilterKeys.contains(column.key) &&
       ((!_serverPaged && column.filterFromRows) ||
-          widget.facets.containsKey(column.key));
+          widget.facets.containsKey(column.key) ||
+          widget.serverColumnSearch ||
+          column.supportsKeywordSearch ||
+          !_serverPaged);
   String _querySignature(
     Map<String, String?> filters,
     String? sort,
@@ -1874,8 +1934,18 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     if (!present && !previouslyPresent) return;
     final local = <String, String?>{};
     final server = <String, String?>{};
+    _columnSearches.clear();
     for (final column in _columns) {
       if (!_ownsHeaderFilter(column)) continue;
+      final searchKey = 'search.${column.key}';
+      final search = present && column.supportsKeywordSearch
+          ? filters[searchKey]
+          : null;
+      if (_serverSearchFor(column.key)) {
+        if (widget.filters[searchKey] != search) server[searchKey] = search;
+      } else if (search != null && search.isNotEmpty) {
+        _columnSearches[column.key] = search;
+      }
       final value = present ? filters[column.key] : null;
       if (!_serverPaged &&
           column.filterFromRows &&
@@ -1919,6 +1989,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   void _persistQuery({
     String? filterKey,
     String? filterValue,
+    Map<String, String?> filterChanges = const {},
     String? sort,
     bool? ascending,
     bool sortChanged = false,
@@ -1926,7 +1997,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final filters = <String, String?>{};
     for (final column in _columns) {
       if (!_ownsHeaderFilter(column)) continue;
-      final value = column.key == filterKey
+      final value = filterChanges.containsKey(column.key)
+          ? filterChanges[column.key]
+          : column.key == filterKey
           ? filterValue
           : (!_serverPaged &&
                     column.filterFromRows &&
@@ -1934,6 +2007,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                 ? _rowFilters[column.key]
                 : widget.filters[column.key]);
       if (value != null) filters[column.key] = value;
+      final searchKey = 'search.${column.key}';
+      final search = filterChanges.containsKey(searchKey)
+          ? filterChanges[searchKey]
+          : filterKey == searchKey
+          ? filterValue
+          : _columnSearch(column.key);
+      if (column.supportsKeywordSearch && search != null && search.isNotEmpty) {
+        filters['search.${column.key}'] = search;
+      }
     }
     final chosenSort = sortChanged
         ? sort
@@ -2460,13 +2542,18 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     return math.max(math.max(_minColWidth, minimum), headerControls);
   }
 
-  String? _headerInfo(MasterColumnDef<T> column) =>
-      _serverPaged && widget.onSortChange == null && column.sortable
-      ? [
-          if (column.info != null) column.info!,
-          '排序仅影响当前已加载的数据；继续加载或更改查询会改变此范围。',
-        ].join('\n')
-      : column.info;
+  String? _headerInfo(MasterColumnDef<T> column) {
+    final messages = [
+      if (column.info != null) column.info!,
+      if (_serverPaged &&
+          !_serverSearchFor(column.key) &&
+          column.supportsKeywordSearch)
+        '关键词搜索在当前已加载的数据中匹配；继续加载会加入新的匹配行。',
+      if (_serverPaged && widget.onSortChange == null && column.sortable)
+        '排序仅影响当前已加载的数据；继续加载或更改查询会改变此范围。',
+    ];
+    return messages.isEmpty ? null : messages.join('\n');
+  }
 
   double _headerInfoWidth(BuildContext context) =>
       UtenControlMetrics.minimumHitExtent(context, desktop: 32) +
@@ -3434,6 +3521,19 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   List<T> _applyRowView(List<T> source) {
     var rows = source;
+    if (_columnSearches.isNotEmpty) {
+      final defs = _columnByKey;
+      rows = rows
+          .where(
+            (item) => _columnSearches.entries.every((entry) {
+              final def = defs[entry.key];
+              return def == null ||
+                  !def.supportsKeywordSearch ||
+                  matchesKeywordSearch([def.value(item)], entry.value);
+            }),
+          )
+          .toList();
+    }
     if (_rowFilters.isNotEmpty) {
       final defs = _columnByKey;
       rows = rows.where((it) {
@@ -4024,6 +4124,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       if (entry.value != null && entry.value!.isNotEmpty) entry.key,
     for (final entry in _rowFilters.entries)
       if (entry.value != null && entry.value!.isNotEmpty) entry.key,
+    for (final key in _columnSearches.keys) 'search.$key',
   ];
 
   /// 空态「当前有 N 个表头筛选生效」描述真正计入的列 = 有值 − 宿主自管的列。
@@ -5061,6 +5162,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                 : (search, page) => widget.loadFacetPage!(sortKey, search, page)
           : null,
       searchScope: widget.facetSearchScope ?? widget.paginationScope,
+      search: _columns[i].supportsKeywordSearch
+          ? _columnSearch(_columns[i].key)
+          : null,
+      onSearch: _columns[i].supportsKeywordSearch
+          ? (value) => _searchColumn(_columns[i].key, value)
+          : null,
       sortKey: sortKey,
       type: _columns[i].type,
       sortable: _columns[i].sortable,
@@ -5100,15 +5207,18 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       selected: rowFacets != null
           ? _rowFilters[_columns[i].key]
           : widget.filters[_columns[i].key],
-      onChanged: rowFacets != null
-          ? (v) => setState(() {
-              _rowFilters[_columns[i].key] = v;
-              _persistQuery();
-            })
-          : (v) {
-              _persistQuery(filterKey: _columns[i].key, filterValue: v);
-              widget.onFilterChanged(_columns[i].key, v);
-            },
+      onChanged: (value) {
+        final key = _columns[i].key;
+        setState(() {
+          _columnSearches.remove(key);
+          if (rowFacets != null) _rowFilters[key] = value;
+          _persistQuery(filterChanges: {key: value, 'search.$key': null});
+        });
+        if (widget.filters['search.$key'] != null) {
+          widget.onFilterChanged('search.$key', null);
+        }
+        if (rowFacets == null) widget.onFilterChanged(key, value);
+      },
     );
     // 右键菜单挂在内容外层：桌面右击弹「固定/移动/隐藏」菜单（表头专用 region：
     // 不挂长按——触屏长按/按下即拖已让给列换位/移除手势；并压制系统右键
@@ -5882,6 +5992,8 @@ class _FilterCell extends StatefulWidget {
     this.searchScope,
     this.selectedBucket,
     this.onBucketSelected,
+    required this.onSearch,
+    this.search,
     this.sortKey,
     this.type = 'text',
     this.sortable = false,
@@ -5902,6 +6014,8 @@ class _FilterCell extends StatefulWidget {
   final Object? searchScope;
   final MasterFacetBucket? selectedBucket;
   final ValueChanged<MasterFacetBucket?>? onBucketSelected;
+  final ValueChanged<String?>? onSearch;
+  final String? search;
 
   /// 列头说明（MasterColumnDef.info 透传）：非空渲染 ⓘ，悬停 Tooltip、
   /// 点击（含手机）弹说明小窗。
@@ -5927,7 +6041,7 @@ class _FilterCellState extends State<_FilterCell> {
   final LayerLink _link = LayerLink();
   OverlayEntry? _overlay;
 
-  /// 菜单内搜索框（选项多时启用，输入实时过滤 bucket 列表）。
+  /// 文本列输入同时查询候选；回车或按钮另行提交表格关键词。
   TextEditingController? _searchCtl;
   Timer? _searchDebounce;
   int _searchRevision = 0;
@@ -5955,7 +6069,7 @@ class _FilterCellState extends State<_FilterCell> {
 
   void _open() {
     if (_overlay != null) return;
-    _searchCtl = TextEditingController();
+    _searchCtl = TextEditingController(text: widget.search ?? '');
     _remoteComposing = false;
     _lastSearchValue = _searchCtl!.value;
     if (widget.loadFacetPage != null) {
@@ -5963,7 +6077,9 @@ class _FilterCellState extends State<_FilterCell> {
     }
     _overlay = OverlayEntry(builder: _buildOverlay);
     Overlay.of(context, rootOverlay: true).insert(_overlay!);
-    if (widget.loadFacetPage != null) _searchRemote('', immediate: true);
+    if (widget.loadFacetPage != null) {
+      _searchRemote(_searchCtl!.text, immediate: true);
+    }
   }
 
   void _close() {
@@ -5980,6 +6096,8 @@ class _FilterCellState extends State<_FilterCell> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.sortKey != widget.sortKey ||
         oldWidget.searchScope != widget.searchScope ||
+        oldWidget.search != widget.search ||
+        (oldWidget.onSearch == null) != (widget.onSearch == null) ||
         (oldWidget.loadFacetPage == null) != (widget.loadFacetPage == null)) {
       _close();
     }
@@ -6057,9 +6175,26 @@ class _FilterCellState extends State<_FilterCell> {
   }
 
   void _select(String? value, {MasterFacetBucket? bucket}) {
+    if (!mounted || _overlay == null) return;
     widget.onBucketSelected?.call(widget.loadFacetPage == null ? null : bucket);
     widget.onChanged(value);
     _close();
+  }
+
+  void _submitSearch() {
+    final value = _searchCtl?.value;
+    final submit = widget.onSearch;
+    if (!mounted ||
+        _overlay == null ||
+        submit == null ||
+        value == null ||
+        (value.composing.isValid && !value.composing.isCollapsed)) {
+      return;
+    }
+    final text = value.text.trim();
+    widget.onBucketSelected?.call(null);
+    _close();
+    submit(text.isEmpty ? null : text);
   }
 
   @override
@@ -6078,7 +6213,8 @@ class _FilterCellState extends State<_FilterCell> {
         widget.nullCount > 0;
     // 无 facets 且不可排序的列（如部分单据列表的纯标签列头）→ 纯标签，不渲染下拉/排序。
     // 这样文档页可直接复用 MasterDataTableView，与基础资料布局完全一致。
-    final interactive = hasFacets || s != null || widget.sortable;
+    final interactive =
+        hasFacets || s != null || widget.sortable || widget.onSearch != null;
     if (!interactive) {
       return Container(
         // minHeight（非固定 height）：字号放大后表头标签能撑高，不被裁切。
@@ -6112,11 +6248,13 @@ class _FilterCellState extends State<_FilterCell> {
         ),
       );
     }
-    final filtered = s != null;
+    final filtered = s != null || widget.search != null;
     final highlighted = filtered || widget.sortActive;
     // 选中值用对应桶的展示名（颜色/单位 legacy id → 名称）；找不到回落原值。
     String display;
-    if (s == null) {
+    if (widget.search != null) {
+      display = '${widget.label}：${widget.search}';
+    } else if (s == null) {
       display = widget.label;
     } else if (s == kMasterFilterNullValue) {
       display = '${widget.label}：空';
@@ -6139,7 +6277,7 @@ class _FilterCellState extends State<_FilterCell> {
     return CompositedTransformTarget(
       link: _link,
       child: InkWell(
-        onTap: _open,
+        onTap: interactive ? _open : null,
         child: Container(
           // minHeight（非固定 height）：字号放大后表头标签能撑高，不被裁切。
           constraints: const BoxConstraints(minHeight: 44),
@@ -6152,13 +6290,16 @@ class _FilterCellState extends State<_FilterCell> {
                 const SizedBox(width: UtenSpacing.s4),
               ],
               Expanded(
-                child: Text(
-                  display,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: UtenTableHeader.textStyle(
-                    theme,
-                    highlighted: highlighted,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    display,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: UtenTableHeader.textStyle(
+                      theme,
+                      highlighted: highlighted,
+                    ),
                   ),
                 ),
               ),
@@ -6169,17 +6310,18 @@ class _FilterCellState extends State<_FilterCell> {
                 UtenColumnHintIcon(message: widget.info!),
               ],
               // 排序与筛选共用一个菜单入口；当前排序方向直接替换下拉箭头。
-              Icon(
-                widget.sortActive
-                    ? (widget.sortAscending
-                          ? Icons.arrow_upward_rounded
-                          : Icons.arrow_downward_rounded)
-                    : Icons.arrow_drop_down_rounded,
-                size: 18,
-                color: highlighted
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.onSurfaceVariant,
-              ),
+              if (interactive)
+                Icon(
+                  widget.sortActive
+                      ? (widget.sortAscending
+                            ? Icons.arrow_upward_rounded
+                            : Icons.arrow_downward_rounded)
+                      : Icons.arrow_drop_down_rounded,
+                  size: 18,
+                  color: highlighted
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
             ],
           ),
         ),
@@ -6205,9 +6347,27 @@ class _FilterCellState extends State<_FilterCell> {
         widget.loadFacetPage != null ||
         widget.buckets.isNotEmpty ||
         widget.nullCount > 0;
-    // 选项较多时菜单顶部出搜索框（客户等长列表快速定位）。
-    final searchable =
-        widget.loadFacetPage != null || widget.buckets.length >= 6;
+    final viewport = MediaQuery.sizeOf(ctx);
+    final target = context.findRenderObject()! as RenderBox;
+    final position = target.localToGlobal(Offset.zero);
+    final menuWidth = math.min(320.0, math.max(160.0, viewport.width - 16));
+    final menuLeft = position.dx.clamp(
+      8.0,
+      math.max(8.0, viewport.width - menuWidth - 8),
+    );
+    final below =
+        viewport.height -
+        MediaQuery.viewInsetsOf(ctx).bottom -
+        position.dy -
+        target.size.height -
+        8;
+    final above = position.dy - 8;
+    final openAbove = below < 200 && above > below;
+    final menuHeight = math.min(
+      400.0,
+      math.max(96.0, openAbove ? above : below),
+    );
+
     return Stack(
       children: [
         // 点菜单外空白关闭（兜底；TapRegion 是主机制）。
@@ -6219,8 +6379,9 @@ class _FilterCellState extends State<_FilterCell> {
         ),
         CompositedTransformFollower(
           link: _link,
-          targetAnchor: Alignment.bottomLeft,
-          offset: const Offset(0, 2),
+          targetAnchor: openAbove ? Alignment.topLeft : Alignment.bottomLeft,
+          followerAnchor: openAbove ? Alignment.bottomLeft : Alignment.topLeft,
+          offset: Offset(menuLeft - position.dx, openAbove ? -2 : 2),
           child: TapRegion(
             onTapOutside: (_) => _close(),
             child: Material(
@@ -6229,9 +6390,10 @@ class _FilterCellState extends State<_FilterCell> {
               borderRadius: BorderRadius.circular(UtenRadius.md),
               clipBehavior: Clip.antiAlias,
               child: Container(
-                constraints: const BoxConstraints(
-                  maxHeight: 360,
-                  maxWidth: 300,
+                constraints: BoxConstraints(
+                  maxHeight: menuHeight,
+                  minWidth: menuWidth,
+                  maxWidth: menuWidth,
                 ),
                 child: StatefulBuilder(
                   builder: (ctx, setOverlayState) {
@@ -6246,54 +6408,59 @@ class _FilterCellState extends State<_FilterCell> {
                     return Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (searchable && hasFacets)
+                        if (widget.onSearch != null)
                           Padding(
-                            padding: const EdgeInsets.fromLTRB(
-                              UtenSpacing.s8,
-                              UtenSpacing.s8,
-                              UtenSpacing.s8,
-                              UtenSpacing.s4,
-                            ),
-                            child: TextField(
-                              controller: _searchCtl,
-                              autofocus: true,
-                              style: theme.textTheme.bodyMedium,
-                              decoration: InputDecoration(
-                                isDense: true,
-                                hintText: '输入关键字搜索',
-                                prefixIcon: const Icon(
-                                  Icons.search_rounded,
-                                  size: 18,
-                                ),
-                                prefixIconConstraints: const BoxConstraints(
-                                  minWidth: 32,
-                                  minHeight: 32,
-                                ),
-                                suffixIcon: q.isEmpty
-                                    ? null
-                                    : IconButton(
-                                        icon: const Icon(
-                                          Icons.close_rounded,
-                                          size: 16,
-                                        ),
-                                        onPressed: () {
-                                          _searchCtl!.clear();
-                                          setOverlayState(() {});
-                                        },
+                            padding: const EdgeInsets.all(UtenSpacing.s8),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    key: const Key('uten-column-keyword-input'),
+                                    controller: _searchCtl,
+                                    autofocus: true,
+                                    textInputAction: TextInputAction.search,
+                                    style: theme.textTheme.bodyMedium,
+                                    decoration: InputDecoration(
+                                      isDense: true,
+                                      hintText: widget.label,
+                                      prefixIcon: const Icon(
+                                        Icons.search_rounded,
+                                        size: 18,
                                       ),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(
-                                    UtenRadius.control,
+                                      prefixIconConstraints:
+                                          const BoxConstraints(
+                                            minWidth: 32,
+                                            minHeight: 32,
+                                          ),
+                                      suffixIcon: q.isEmpty
+                                          ? null
+                                          : IconButton(
+                                              tooltip: '清空关键词',
+                                              icon: const Icon(
+                                                Icons.close_rounded,
+                                                size: 16,
+                                              ),
+                                              onPressed: () {
+                                                _searchCtl!.clear();
+                                                setOverlayState(() {});
+                                              },
+                                            ),
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: UtenSpacing.s8,
+                                            vertical: UtenSpacing.s8,
+                                          ),
+                                    ),
+                                    onChanged: (_) => setOverlayState(() {}),
+                                    onSubmitted: (_) => _submitSearch(),
                                   ),
                                 ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: UtenSpacing.s8,
-                                  vertical: UtenSpacing.s8,
+                                const SizedBox(width: UtenSpacing.s4),
+                                TextButton(
+                                  onPressed: _submitSearch,
+                                  child: const Text('搜索'),
                                 ),
-                              ),
-                              onChanged: (value) {
-                                setOverlayState(() {});
-                              },
+                              ],
                             ),
                           ),
                         Flexible(
@@ -6333,11 +6500,13 @@ class _FilterCellState extends State<_FilterCell> {
                                 if (hasFacets)
                                   const Divider(height: 1, thickness: 1),
                               ],
-                              if (hasFacets) ...[
+                              if (hasFacets || widget.onSearch != null) ...[
                                 _menuItem(
                                   ctx,
                                   label: '所有', // TODO(l10n): 补 arb
-                                  isSelected: sanitized == null,
+                                  isSelected:
+                                      sanitized == null &&
+                                      widget.search == null,
                                   onTap: () => _select(null),
                                   theme: theme,
                                 ),

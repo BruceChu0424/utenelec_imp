@@ -1766,7 +1766,9 @@ class _PaymentStyleEditDialogState
                 autofocus: !protectedName && (!_isEdit || widget.canEditFields),
                 enabled: !protectedName && (!_isEdit || widget.canEditFields),
                 maxLength: 120,
-                decoration: const InputDecoration(labelText: '类别名称 *'),
+                decoration: const UtenInputDecoration(
+                  InputDecoration(labelText: '类别名称 *'),
+                ),
               ),
               if (protectedName) ...[
                 const SizedBox(height: UtenSpacing.s8),

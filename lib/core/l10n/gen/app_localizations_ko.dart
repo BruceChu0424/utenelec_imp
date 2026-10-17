@@ -934,7 +934,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get securityScanManual => '코드 직접 입력';
 
   @override
-  String get securityPasscodeHint => '6자리 출입 코드 입력';
+  String get securityPasscodeHint => '출입 코드';
 
   @override
   String get securityPasscodeInvalid => '6자리 숫자 출입 코드를 입력해 주세요';
@@ -2002,7 +2002,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get noticeBlessingWallEmpty => '아직 축복이 없어요 — 첫 축복을 보내보세요';
 
   @override
-  String get noticeBlessingPlaceholder => '축복 메시지를 입력하세요…';
+  String get noticeBlessingPlaceholder => '축복 메시지';
 
   @override
   String get noticeBlessingSendButton => '축복 보내기';
@@ -10739,6 +10739,30 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get release2521ServerUpdates =>
       '서버 업데이트 작업의 현재 단계와 결과를 표시합니다. 페이지를 다시 열어 진행 상황을 계속 확인할 수 있으며, 실패 시 확인된 원인과 권장 조치를 안내합니다.';
+
+  @override
+  String get release2521TableSearchCopy =>
+      '이름과 코드 같은 텍스트 열은 머리글에서 검색할 수 있습니다. Enter 또는 검색 버튼으로 표에 결과를 표시하고 여러 열의 조건을 함께 적용할 수 있습니다. 후보를 검색하거나 더 불러올 수 있으며, 표의 텍스트를 선택하여 복사해도 행 체크는 바뀌지 않습니다.';
+
+  @override
+  String get release2521FieldHints =>
+      '비어 있는 일반 입력칸에는 필드명을 표시하고 형식 예시와 작성 안내는 정보 버튼에서 제공합니다. 양식, 선택 및 날짜 필드의 빈 상태를 통일하며 기존의 유효한 값과 개인 표시 설정은 유지합니다.';
+
+  @override
+  String get release2521ReferencePickers =>
+      '금형과 구성요소 선택창은 왼쪽에 분류, 오른쪽에 상세 표를 표시하여 시리즈, 이름, 코드, 규격과 색상을 함께 확인할 수 있습니다. 입력 시 비슷한 후보를 표시하고 버튼으로 검색어를 유지한 전체 선택창을 엽니다. 기존 선택 범위, 소요량과 검증은 유지합니다.';
+
+  @override
+  String get release2521MasterDataImport =>
+      '품목 내보내기에 수정한 템플릿을 다시 가져오는 데 필요한 필드를 포함하며 실제 분류 경로와 기존 검증을 적용합니다. 분류 코드 접두어는 숫자로 시작할 수 있고 분류명 옆에 비고를 표시할 수 있습니다. 기존 코드와 분류 식별자는 유지합니다.';
+
+  @override
+  String get release2521PurchaseDocuments =>
+      '구매 주문서에서 인쇄 미리보기를 지원하고 검토란에 실제 재무 검토자를 표시합니다. 구매 작업 이력은 자재별 행과 공급업체를 표시하며, 분해 대기 및 작업대 표는 현재 필터에 맞춰 내보낼 수 있습니다.';
+
+  @override
+  String get release2521GoodsHistory =>
+      '본인의 최근 품목 자료 변경 10건을 확인하고 현재 조건에 따라 실행 취소하거나 다시 실행할 수 있습니다. 이후 변경, 업무 참조와 권한을 다시 확인하며 각 작업을 기록합니다.';
 
   @override
   String get goodsHistoryTitle => '상품 작업 기록';

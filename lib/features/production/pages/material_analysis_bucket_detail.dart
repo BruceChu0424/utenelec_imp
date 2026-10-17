@@ -469,7 +469,8 @@ class _MaterialAnalysisBucketPageState
       key: ValueKey('material-bucket-route-${row.id}'),
       flat: true,
       value: current?.name,
-      hintText: '请选择供应方式',
+      label: '供应方式',
+      hintText: '供应方式',
       items: [
         for (final option in MaterialSupplyRoute.values)
           UtenDropdownItem(value: option.name, label: option.label),

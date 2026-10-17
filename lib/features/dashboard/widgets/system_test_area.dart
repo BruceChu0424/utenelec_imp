@@ -20,6 +20,7 @@
 
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -736,10 +737,13 @@ class _ClearConfirmDialogState extends ConsumerState<_ClearConfirmDialog> {
                 controller: _controller,
                 enabled: !_running,
                 autofocus: true,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  hintText: '清空业务数据',
-                  isDense: true,
+                decoration: const UtenInputDecoration(
+                  InputDecoration(
+                    border: OutlineInputBorder(),
+                    hintText: '清空业务数据',
+                    isDense: true,
+                  ),
+                  useFieldNameHint: false,
                 ),
                 onChanged: (_) => setState(() {}),
                 onSubmitted: (_) => _submit(),

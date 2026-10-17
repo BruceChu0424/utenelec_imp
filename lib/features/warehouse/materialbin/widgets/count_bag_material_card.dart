@@ -4,6 +4,7 @@
 // 搅好未上机的、散料也按过秤公斤记。过秤行按"开口袋过秤 / 搅好未上机 / 散料"分组显示。
 // 输完点对勾或离开输入框即保存 (由页面逐行落库)。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 
 import '../../../../core/l10n/gen/app_localizations.dart';
 import '../../../../core/theme/uten_tokens.dart';
@@ -129,6 +130,7 @@ class _WmBagMaterialCardState extends State<WmBagMaterialCard> {
     required Key key,
     required TextEditingController controller,
     required VoidCallback onSave,
+    required String label,
     String? hint,
     double width = 96,
   }) => SizedBox(
@@ -143,7 +145,9 @@ class _WmBagMaterialCardState extends State<WmBagMaterialCard> {
         enabled: widget.enabled,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         textInputAction: TextInputAction.done,
-        decoration: InputDecoration(isDense: true, hintText: hint ?? '0'),
+        decoration: UtenInputDecoration(
+          InputDecoration(isDense: true, labelText: label, hintText: hint),
+        ),
         onSubmitted: (_) => onSave(),
       ),
     ),
@@ -209,6 +213,7 @@ class _WmBagMaterialCardState extends State<WmBagMaterialCard> {
                 const Text('整袋'),
                 _numberField(
                   key: Key('wm-bag-count-$keyBase'),
+                  label: '袋数',
                   controller: _bags,
                   onSave: _saveBags,
                   width: 80,
@@ -216,6 +221,7 @@ class _WmBagMaterialCardState extends State<WmBagMaterialCard> {
                 const Text('袋 × 每袋'),
                 _numberField(
                   key: Key('wm-bag-net-$keyBase'),
+                  label: '每袋净重',
                   controller: _net,
                   onSave: _saveBags,
                   width: 88,
@@ -296,6 +302,7 @@ class _WmBagMaterialCardState extends State<WmBagMaterialCard> {
                   alignment: Alignment.centerLeft,
                   child: _numberField(
                     key: Key('wm-weighed-$key'),
+                    label: '称得重量',
                     controller: _controllerFor(line),
                     onSave: () => _saveWeighed(line),
                     hint: '称得公斤',

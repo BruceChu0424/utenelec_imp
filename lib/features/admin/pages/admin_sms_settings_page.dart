@@ -283,9 +283,11 @@ class _SmsEditorState extends ConsumerState<_SmsEditor> {
                               key: const ValueKey('sms-provider'),
                               initialValue: _provider,
                               isExpanded: true,
-                              decoration: const InputDecoration(
-                                labelText: '短信网关',
-                                border: OutlineInputBorder(),
+                              decoration: const UtenInputDecoration(
+                                InputDecoration(
+                                  labelText: '短信网关',
+                                  border: OutlineInputBorder(),
+                                ),
                               ),
                               selectedItemBuilder: (context) => [
                                 for (final provider in [
@@ -358,7 +360,12 @@ class _SmsEditorState extends ConsumerState<_SmsEditor> {
                                   ? '访问凭据：已配置${settings.accessKeyIdHint == null ? '' : '（${settings.accessKeyIdHint}）'}'
                                   : '访问凭据：尚未配置',
                             ),
-                            _field('key-id', '新访问密钥 ID（留空保留）', _keyId),
+                            _field(
+                              'key-id',
+                              '新访问密钥 ID',
+                              _keyId,
+                              helper: '留空保留已保存的访问密钥 ID。',
+                            ),
                             TextFormField(
                               key: const ValueKey('sms-secret'),
                               errorBuilder: utenTextFieldErrorBuilder,
@@ -370,9 +377,10 @@ class _SmsEditorState extends ConsumerState<_SmsEditor> {
                               autofillHints: const [],
                               decoration: const UtenInputDecoration(
                                 InputDecoration(
-                                  labelText: '新访问密钥（留空保留）',
+                                  labelText: '新访问密钥',
                                   border: OutlineInputBorder(),
                                 ),
+                                info: '留空保留已保存的访问密钥。',
                               ),
                             ),
                             const SizedBox(height: UtenSpacing.s8),
@@ -449,6 +457,7 @@ class _SmsEditorState extends ConsumerState<_SmsEditor> {
     TextEditingController controller, {
     bool required = false,
     String? hint,
+    String? helper,
   }) => Padding(
     padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
     child: TextFormField(
@@ -477,7 +486,9 @@ class _SmsEditorState extends ConsumerState<_SmsEditor> {
               : null,
           border: const OutlineInputBorder(),
         ),
-        info: key == 'endpoint' ? '从服务器允许的官方短信接口中选择；不含协议、端口或路径。停用时可留空。' : null,
+        info: key == 'endpoint'
+            ? '从服务器允许的官方短信接口中选择；不含协议、端口或路径。停用时可留空。'
+            : helper,
       ),
       validator: (value) {
         if (required && (value == null || value.trim().isEmpty)) {

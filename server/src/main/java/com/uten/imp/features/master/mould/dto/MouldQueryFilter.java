@@ -22,5 +22,15 @@ public record MouldQueryFilter(
         String mstatus,
         String remark,
         String status,
-        String manufacturer) {
+        String manufacturer,
+        java.util.Map<String, String> columnSearch) {
+    public MouldQueryFilter(UUID categoryId, String keyword, Set<String> nullFields, String code, String name,
+            String place, String mstatus, String remark, String status, String manufacturer) {
+        this(categoryId, keyword, nullFields, code, name, place, mstatus, remark, status, manufacturer, java.util.Map.of());
+    }
+
+    public MouldQueryFilter withColumnSearch(java.util.Map<String, String> search) {
+        return new MouldQueryFilter(categoryId, keyword, nullFields, code, name, place, mstatus, remark,
+                status, manufacturer, search);
+    }
 }

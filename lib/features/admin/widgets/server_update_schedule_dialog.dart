@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/server_operations.dart';
@@ -110,9 +111,11 @@ class _ScheduleState extends ConsumerState<ServerUpdateScheduleDialog> {
               key: const ValueKey('server-schedule-hour'),
               initialValue: _hour,
               isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: '服务器凌晨',
-                border: OutlineInputBorder(),
+              decoration: const UtenInputDecoration(
+                InputDecoration(
+                  labelText: '服务器凌晨',
+                  border: OutlineInputBorder(),
+                ),
               ),
               selectedItemBuilder: (context) => const [
                 Align(alignment: Alignment.centerLeft, child: Text('02:00')),

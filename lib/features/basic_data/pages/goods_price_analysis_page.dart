@@ -12,6 +12,7 @@ import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../widgets/goods_price_history_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
@@ -917,8 +918,8 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                decoration: InputDecoration(
-                  labelText: priceText(context, 'analysisQty'),
+                decoration: UtenInputDecoration(
+                  InputDecoration(labelText: priceText(context, 'analysisQty')),
                 ),
                 onChanged: (_) => _edited(),
                 onSubmitted: (_) => _load(),
@@ -961,8 +962,8 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
               child: TextField(
                 key: const ValueKey('price-analysis-margin'),
                 controller: _margin,
-                decoration: InputDecoration(
-                  labelText: priceText(context, 'margin'),
+                decoration: UtenInputDecoration(
+                  InputDecoration(labelText: priceText(context, 'margin')),
                 ),
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,

@@ -14,6 +14,7 @@ import '../../../shared/models/procurement_source_terms.dart';
 // linkToRequestItem→申请。
 
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/layout/uten_doc_link_picker_sheet.dart';
@@ -360,7 +361,9 @@ _middleItemColumns(PurchaseDocType upstream) => [
     cellBuilder: (_, row) => TextField(
       controller: row.giftQty,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      decoration: const InputDecoration(isDense: true, hintText: '0'),
+      decoration: const UtenInputDecoration(
+        InputDecoration(isDense: true, labelText: '本次赠品'),
+      ),
     ),
   ),
   EditableGridColumn<UtenDocLinkItemRow<PurchaseDocItem>>(

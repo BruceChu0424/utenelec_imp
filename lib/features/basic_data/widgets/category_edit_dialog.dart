@@ -121,8 +121,8 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
       widget.onCheckPrefix != null && (!_isEdit || widget.canEditFields);
 
   String? _prefixFormatError(String prefix) =>
-      prefix.isNotEmpty && !RegExp(r'^[A-Z][A-Z0-9]{0,7}$').hasMatch(prefix)
-      ? '编号前缀须以字母开头，只能包含 1–8 位字母或数字'
+      prefix.isNotEmpty && !RegExp(r'^[A-Z0-9]{1,8}$').hasMatch(prefix)
+      ? '编号前缀只能包含 1–8 位字母或数字，可用数字开头'
       : null;
 
   void _onPrefixChanged() {
@@ -577,8 +577,8 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
                     _saving ||
                     _serverCreated ||
                     (_isEdit && !widget.canEditFields),
-                decoration: const InputDecoration(
-                  labelText: '名称', // TODO(l10n): 补 arb
+                decoration: const UtenInputDecoration(
+                  InputDecoration(labelText: '名称'), // TODO(l10n): 补 arb
                 ),
               ),
               const SizedBox(height: UtenSpacing.s12),

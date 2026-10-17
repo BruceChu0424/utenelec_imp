@@ -218,8 +218,9 @@ Widget _vehicleEditor(
   VoidCallback onRemove,
   VoidCallback onChanged,
 ) {
-  InputDecoration deco(String label) => InputDecoration(
+  InputDecoration deco(String label, {String? hint}) => InputDecoration(
     labelText: label,
+    hintText: hint,
     isDense: true,
     border: const OutlineInputBorder(),
   );
@@ -235,7 +236,9 @@ Widget _vehicleEditor(
                 child: TextFormField(
                   errorBuilder: utenTextFieldErrorBuilder,
                   initialValue: v.plateNo,
-                  decoration: UtenInputDecoration(deco('车牌号 *(如 粤T12345)')),
+                  decoration: UtenInputDecoration(
+                    deco('车牌号 *', hint: '如 粤T12345'),
+                  ),
                   onChanged: (x) => v.plateNo = x,
                 ),
               ),
@@ -253,7 +256,7 @@ Widget _vehicleEditor(
                 child: TextFormField(
                   errorBuilder: utenTextFieldErrorBuilder,
                   initialValue: v.vehicleType,
-                  decoration: UtenInputDecoration(deco('车型(非必填)')),
+                  decoration: UtenInputDecoration(deco('车型')),
                   onChanged: (x) => v.vehicleType = x,
                 ),
               ),
@@ -262,7 +265,7 @@ Widget _vehicleEditor(
                 child: TextFormField(
                   errorBuilder: utenTextFieldErrorBuilder,
                   initialValue: v.brandModel,
-                  decoration: UtenInputDecoration(deco('品牌型号(非必填)')),
+                  decoration: UtenInputDecoration(deco('品牌型号')),
                   onChanged: (x) => v.brandModel = x,
                 ),
               ),
@@ -275,7 +278,7 @@ Widget _vehicleEditor(
                 child: TextFormField(
                   errorBuilder: utenTextFieldErrorBuilder,
                   initialValue: v.color,
-                  decoration: UtenInputDecoration(deco('颜色(非必填)')),
+                  decoration: UtenInputDecoration(deco('颜色')),
                   onChanged: (x) => v.color = x,
                 ),
               ),
@@ -284,7 +287,7 @@ Widget _vehicleEditor(
                 child: TextFormField(
                   errorBuilder: utenTextFieldErrorBuilder,
                   initialValue: v.remark,
-                  decoration: UtenInputDecoration(deco('备注(非必填)')),
+                  decoration: UtenInputDecoration(deco('备注')),
                   onChanged: (x) => v.remark = x,
                 ),
               ),

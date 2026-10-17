@@ -330,8 +330,7 @@ class OperationsWorkbenchTask {
   final String? actionDocItemId;
   final bool actionDocumentRestricted;
 
-  /// ADR-065 修订（2026-09-03）：采购/委外行按「当前执行单据」归组——
-  /// 一行=一张采购/委外申请（申请待分解阶段）或一张订货单（后续阶段）。
+  /// 委外/仓库保留单据归组元数据；采购任务始终一行对应一条真实申请/订货明细。
   final int goodsCount;
   final int openLineCount;
   final List<String> actionItemIds;
@@ -367,6 +366,7 @@ class OperationsWorkbenchTask {
   /// （服务端下发的叶仓名）。
   final String? warehouseId;
 
+  /// 采购订货供应商由订货单 supplier_id 解析；无关联单据读取权限时为空。
   /// 委外商名（2026-10-10 V836 起 SUBCONTRACT 申请行由投影经
   /// subcontract_applications→suppliers 下发，委外任务中心「待处理」列表直接显示；
   /// 未定商为 null——那是业务事实，不是缺数据）。其他段恒 null。

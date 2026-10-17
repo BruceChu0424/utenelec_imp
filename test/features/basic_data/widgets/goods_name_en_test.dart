@@ -9,6 +9,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
@@ -256,11 +257,11 @@ void main() {
 
     await tester.tap(find.text('编辑'));
     await tester.pumpAndSettle();
-    // The form label is a rich widget (required marker support), so find the
-    // text first and walk up to its TextField.
-    final field = find.ancestor(
-      of: find.text('英文名称', findRichText: true),
-      matching: find.byType(TextField),
+    final field = find.byWidgetPredicate(
+      (widget) =>
+          widget is TextField &&
+          widget.decoration != null &&
+          utenDecorationFieldName(widget.decoration!) == '英文名称',
     );
     expect(field, findsOneWidget);
     expect(tester.widget<TextField>(field).controller?.text, 'SOCKET');

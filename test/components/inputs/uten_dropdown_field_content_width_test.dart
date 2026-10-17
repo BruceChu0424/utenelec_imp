@@ -247,10 +247,16 @@ void main() {
       final before = tester.getSize(_option('a')).width;
       expect(tester.widget<Tooltip>(_option('a')).message, 'HP001 · 可接收 10 个');
       expect(tester.widget<Tooltip>(_option('b')).message, 'HP002 · 可接收 20 个');
-      await tester.enterText(find.widgetWithText(TextField, '输入关键字搜索'), '短名');
+      await tester.enterText(
+        find.byKey(const Key('uten-dropdown-search-input')),
+        '短名',
+      );
       await tester.pumpAndSettle();
       expect(tester.getSize(_option('c')).width, before);
-      await tester.enterText(find.widgetWithText(TextField, '输入关键字搜索'), _name);
+      await tester.enterText(
+        find.byKey(const Key('uten-dropdown-search-input')),
+        _name,
+      );
       await tester.pumpAndSettle();
       await tester.tap(_option('b'));
       await tester.pumpAndSettle();

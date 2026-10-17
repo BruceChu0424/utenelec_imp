@@ -177,9 +177,9 @@ void main() {
       },
     );
     await tester.enterText(_textFieldWithLabel('名称'), '继承分类');
-    await tester.enterText(_prefixField(), '1UG');
+    await tester.enterText(_prefixField(), '1-UG');
     await tester.pumpAndSettle();
-    expect(find.text('编号前缀须以字母开头，只能包含 1–8 位字母或数字'), findsOneWidget);
+    expect(find.text('编号前缀只能包含 1–8 位字母或数字，可用数字开头'), findsOneWidget);
     expect(_submitButton(tester, '创建').onPressed, isNull);
     expect(checks, 0);
     await tester.enterText(_prefixField(), '');
@@ -188,6 +188,36 @@ void main() {
     await tester.pumpAndSettle();
     expect(submitted!.codePrefix, '');
     expect(checks, 0);
+  });
+
+  testWidgets('数字开头及纯数字前缀经过占用检查后可创建', (tester) async {
+    final checked = <String>[];
+    CategoryEditResult? submitted;
+    await _pumpCategoryDialog(
+      tester,
+      tree: _categoryTree(),
+      onCheckPrefix: (prefix) async {
+        checked.add(prefix);
+        return _availability(prefix);
+      },
+      onSubmit: (result) async {
+        submitted = result;
+        return true;
+      },
+    );
+    await tester.enterText(_textFieldWithLabel('名称'), '数字前缀分类');
+    await tester.enterText(_prefixField(), '1m');
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pumpAndSettle();
+    expect(checked, contains('1M'));
+    expect(_submitButton(tester, '创建').onPressed, isNotNull);
+    await tester.enterText(_prefixField(), '28');
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pumpAndSettle();
+    expect(checked, contains('28'));
+    await tester.tap(find.text('创建'));
+    await tester.pumpAndSettle();
+    expect(submitted!.codePrefix, '28');
   });
 
   testWidgets('仅移动排序权限不触发前缀查询，保留原前缀保存', (tester) async {

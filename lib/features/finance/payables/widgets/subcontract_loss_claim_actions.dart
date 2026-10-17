@@ -1,5 +1,6 @@
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../components/buttons/uten_button.dart';
@@ -98,7 +99,7 @@ Future<String?> showSubcontractLossReasonDialog({
           autofocus: true,
           maxLength: 2000,
           maxLines: 4,
-          decoration: InputDecoration(labelText: label),
+          decoration: UtenInputDecoration(InputDecoration(labelText: label)),
         ),
         actions: [
           TextButton(
@@ -344,8 +345,10 @@ class _LossDecisionEditorState extends ConsumerState<_LossDecisionEditor> {
               controller: _reason,
               maxLength: 2000,
               maxLines: 3,
-              decoration: InputDecoration(
-                labelText: _disputed ? '争议原因(必填)' : '责任决定说明(必填)',
+              decoration: UtenInputDecoration(
+                InputDecoration(
+                  labelText: _disputed ? '争议原因(必填)' : '责任决定说明(必填)',
+                ),
               ),
             ),
             if (!_disputed) ...[
@@ -474,7 +477,9 @@ class _LossDecisionEditorState extends ConsumerState<_LossDecisionEditor> {
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
-                  decoration: const InputDecoration(labelText: '处理数量'),
+                  decoration: const UtenInputDecoration(
+                    InputDecoration(labelText: '处理数量'),
+                  ),
                 ),
               ),
               if (_drafts[lineId]!.length > 1)
@@ -492,7 +497,9 @@ class _LossDecisionEditorState extends ConsumerState<_LossDecisionEditor> {
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
-              decoration: const InputDecoration(labelText: '处理金额(本币)'),
+              decoration: const UtenInputDecoration(
+                InputDecoration(labelText: '处理金额(本币)'),
+              ),
             ),
           ],
           const SizedBox(height: UtenSpacing.s8),
@@ -524,7 +531,9 @@ class _LossDecisionEditorState extends ConsumerState<_LossDecisionEditor> {
           TextField(
             controller: draft.note,
             maxLines: 2,
-            decoration: const InputDecoration(labelText: '方案说明'),
+            decoration: const UtenInputDecoration(
+              InputDecoration(labelText: '方案说明'),
+            ),
           ),
         ],
       ),
@@ -677,9 +686,8 @@ class _OffsetTargetPickerState extends ConsumerState<_OffsetTargetPicker> {
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        labelText: '抵销原币金额',
+                      decoration: const UtenInputDecoration(
+                        InputDecoration(isDense: true, labelText: '抵销原币金额'),
                       ),
                     ),
                   ),
@@ -895,7 +903,9 @@ class _LossFulfillmentEditorState
             TextField(
               controller: _quantity,
               readOnly: true,
-              decoration: const InputDecoration(labelText: '整笔履约数量'),
+              decoration: const UtenInputDecoration(
+                InputDecoration(labelText: '整笔履约数量'),
+              ),
             ),
             if (widget.canViewFinancialAmounts) ...[
               const SizedBox(height: UtenSpacing.s8),
@@ -905,10 +915,12 @@ class _LossFulfillmentEditorState
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                decoration: InputDecoration(
-                  labelText: widget.resolution.isCashCompensation
-                      ? '到账金额(本币，必须等于确认额)'
-                      : '方案金额(本币)',
+                decoration: UtenInputDecoration(
+                  InputDecoration(
+                    labelText: widget.resolution.isCashCompensation
+                        ? '到账金额(本币，必须等于确认额)'
+                        : '方案金额(本币)',
+                  ),
                 ),
               ),
             ],
@@ -947,7 +959,9 @@ class _LossFulfillmentEditorState
               controller: _evidence,
               maxLength: 1000,
               maxLines: 3,
-              decoration: const InputDecoration(labelText: '履约证据(必填)'),
+              decoration: const UtenInputDecoration(
+                InputDecoration(labelText: '履约证据(必填)'),
+              ),
             ),
             if (widget.resolution.requiresPhysicalDocument) ...[
               const SizedBox(height: UtenSpacing.s8),
@@ -958,26 +972,32 @@ class _LossFulfillmentEditorState
               const SizedBox(height: UtenSpacing.s8),
               TextField(
                 controller: _docId,
-                decoration: const InputDecoration(labelText: '已审核实物单 UUID(必填)'),
+                decoration: const UtenInputDecoration(
+                  InputDecoration(labelText: '已审核实物单 UUID(必填)'),
+                ),
               ),
               const SizedBox(height: UtenSpacing.s8),
               TextField(
                 controller: _docItemId,
-                decoration: const InputDecoration(
-                  labelText: '已审核实物单明细 UUID(必填)',
+                decoration: const UtenInputDecoration(
+                  InputDecoration(labelText: '已审核实物单明细 UUID(必填)'),
                 ),
               ),
               const SizedBox(height: UtenSpacing.s8),
               TextField(
                 controller: _docNo,
-                decoration: const InputDecoration(labelText: '实物单号'),
+                decoration: const UtenInputDecoration(
+                  InputDecoration(labelText: '实物单号'),
+                ),
               ),
             ],
             const SizedBox(height: UtenSpacing.s8),
             TextField(
               controller: _note,
               maxLines: 3,
-              decoration: const InputDecoration(labelText: '履约说明'),
+              decoration: const UtenInputDecoration(
+                InputDecoration(labelText: '履约说明'),
+              ),
             ),
           ],
         ),

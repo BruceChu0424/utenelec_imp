@@ -1251,12 +1251,16 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
                   TextField(
                     controller: valueCtl,
                     autofocus: true,
-                    decoration: const InputDecoration(labelText: '内容(必填)'),
+                    decoration: const UtenInputDecoration(
+                      InputDecoration(labelText: '内容(必填)'),
+                    ),
                   ),
                   const SizedBox(height: UtenSpacing.s12),
                   TextField(
                     controller: remarkCtl,
-                    decoration: const InputDecoration(labelText: '备注(选填)'),
+                    decoration: const UtenInputDecoration(
+                      InputDecoration(labelText: '备注(选填)'),
+                    ),
                   ),
                   CheckboxListTile(
                     value: primary,
@@ -1456,7 +1460,9 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
                     controller: addressCtl,
                     autofocus: true,
                     maxLines: 2,
-                    decoration: const InputDecoration(labelText: '地址(必填)'),
+                    decoration: const UtenInputDecoration(
+                      InputDecoration(labelText: '地址(必填)'),
+                    ),
                   ),
                   CheckboxListTile(
                     value: defaultAddress,
@@ -1675,7 +1681,9 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
                     autofocus: true,
                     maxLines: 3,
                     maxLength: 2000,
-                    decoration: const InputDecoration(labelText: '内容(必填)'),
+                    decoration: const UtenInputDecoration(
+                      InputDecoration(labelText: '内容(必填)'),
+                    ),
                   ),
                   if (_isClient) ...[
                     const SizedBox(height: UtenSpacing.s4),

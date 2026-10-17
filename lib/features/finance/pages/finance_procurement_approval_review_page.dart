@@ -554,9 +554,12 @@ class _FinanceProcurementApprovalReviewPageState
                 controller: controller,
                 maxLength: 500,
                 maxLines: 2,
-                decoration: const InputDecoration(
-                  hintText: '审批备注(选填，≤500 字，如：已核对供应商账期)',
-                  border: OutlineInputBorder(),
+                decoration: const UtenInputDecoration(
+                  InputDecoration(
+                    labelText: '审批备注',
+                    hintText: '选填，最多500字，如：已核对供应商账期',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
               ),
             ],
@@ -1398,12 +1401,14 @@ class _FinanceProcurementApprovalReviewPageState
                       decoration: UtenInputDecoration(
                         InputDecoration(
                           isDense: true,
-                          hintText: '大于 0',
+                          labelText: '财务核定汇率',
                           error: utenFieldError(_rateInputError()),
                         ),
-                        info: r.referenceFinanceExchangeRate == null
-                            ? null
-                            : '已带入前次财务核定汇率作为本次参考，请核对后通过。',
+                        info: [
+                          '汇率必须大于 0。',
+                          if (r.referenceFinanceExchangeRate != null)
+                            '已带入前次财务核定汇率作为本次参考，请核对后通过。',
+                        ].join('\n\n'),
                       ),
                     );
                   },

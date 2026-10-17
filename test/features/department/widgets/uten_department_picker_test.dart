@@ -117,7 +117,17 @@ void main() {
 
     expect(changedCalls, 2);
     expect(selectedId, isNull);
-    expect(find.text('请选择部门'), findsOneWidget);
+    expect(
+      tester
+          .widget<InputDecorator>(find.byType(InputDecorator))
+          .decoration
+          .hintText,
+      '部门',
+    );
+    expect(
+      tester.widget<InputDecorator>(find.byType(InputDecorator)).isEmpty,
+      isTrue,
+    );
   });
 }
 

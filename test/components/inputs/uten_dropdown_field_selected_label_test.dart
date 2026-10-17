@@ -203,7 +203,7 @@ void main() {
     'override never supplies a missing value or exposes hidden choices',
     (tester) async {
       await _pumpField(tester, value: () => null, selectedLabel: _name);
-      expect(find.text('选择工单'), findsWidgets);
+      expect(find.text('工单'), findsWidgets);
       expect(find.text(_name), findsNothing);
 
       await _pumpField(

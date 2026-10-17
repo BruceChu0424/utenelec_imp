@@ -71,7 +71,9 @@ class OperationsWorkbenchRepository
         'sort': ?sort,
         if (sort != null) 'order': order ?? 'asc',
         for (final entry in columnFilters.entries)
-          if (entry.value != null) 'f.${entry.key}': entry.value,
+          if (entry.value != null)
+            (entry.key.startsWith('search.') ? entry.key : 'f.${entry.key}'):
+                entry.value,
         'issuedFrom': ?issuedFrom,
         'issuedTo': ?issuedTo,
         'needFrom': ?needFrom,

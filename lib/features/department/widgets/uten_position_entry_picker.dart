@@ -166,12 +166,14 @@ class _UtenPositionEntryPickerState
     final hint = _hasDepartment
         ? l10n.positionPickerHint
         : l10n.positionPickerDepartmentFirst;
+    final label = widget.label ?? l10n.employeeFieldPosition;
 
     return Semantics(
       button: true,
       enabled: enabled,
-      label: widget.label ?? l10n.employeeFieldPosition,
-      value: display ?? hint,
+      label: label,
+      value: display ?? label,
+      hint: _hasDepartment ? null : l10n.positionPickerDepartmentFirst,
       child: InkWell(
         key: const Key('uten-position-entry-field'),
         onTap: enabled ? _open : null,
@@ -180,7 +182,7 @@ class _UtenPositionEntryPickerState
           isEmpty: display == null,
           decoration: utenPickerFieldDecoration(
             context,
-            labelText: widget.label,
+            labelText: label,
             hintText: hint,
             enabled: enabled,
             suffixIcon: Icon(

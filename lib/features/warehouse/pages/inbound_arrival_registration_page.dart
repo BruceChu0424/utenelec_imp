@@ -23,6 +23,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1232,7 +1233,9 @@ class _InboundArrivalRegistrationPageState
                     const SizedBox(height: UtenSpacing.s12),
                     TextField(
                       controller: _remark,
-                      decoration: const InputDecoration(labelText: '备注'),
+                      decoration: const UtenInputDecoration(
+                        InputDecoration(labelText: '备注'),
+                      ),
                       maxLines: 2,
                     ),
                   ],
@@ -1465,9 +1468,12 @@ class _InboundArrivalRegistrationPageState
               !editable(line) ||
               line.prefill.orderType != ProcurementInboundOrderType.purchase,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: InputDecoration(
-            isDense: true,
-            suffixText: line.item.unitName,
+          decoration: UtenInputDecoration(
+            InputDecoration(
+              labelText: '赠品数量',
+              isDense: true,
+              suffixText: line.item.unitName,
+            ),
           ),
         ),
       ),

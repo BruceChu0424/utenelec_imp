@@ -145,7 +145,7 @@ void main() {
             'table-text-copy-${scenario.width.toInt()}-${scenario.locale}',
           );
         }
-      debugDisableShadows = oldShadows;
+        debugDisableShadows = oldShadows;
       },
       variant: const TargetPlatformVariant({TargetPlatform.windows}),
     );

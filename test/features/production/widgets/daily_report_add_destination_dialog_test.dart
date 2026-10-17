@@ -121,7 +121,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text(_first), findsOneWidget);
     expect(find.text(_second), findsOneWidget);
-    await tester.enterText(find.widgetWithText(TextField, '输入关键字搜索'), 'HP002');
+    await tester.enterText(
+      find.byKey(const Key('uten-dropdown-search-input')),
+      'HP002',
+    );
     await tester.pump();
     expect(find.text(_first), findsNothing);
     await tester.tap(

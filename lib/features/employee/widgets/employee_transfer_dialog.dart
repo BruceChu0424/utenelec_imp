@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -141,8 +142,8 @@ class _EmployeeTransferDialogState
               onTap: _pickDate,
               borderRadius: BorderRadius.circular(UtenRadius.control),
               child: InputDecorator(
-                decoration: InputDecoration(
-                  labelText: l10n.employeeTransferFieldDate,
+                decoration: UtenInputDecoration(
+                  InputDecoration(labelText: l10n.employeeTransferFieldDate),
                 ),
                 child: Text(
                   DateFormat('yyyy-MM-dd').format(_date),
@@ -154,8 +155,8 @@ class _EmployeeTransferDialogState
             TextField(
               controller: _remark,
               maxLines: 2,
-              decoration: InputDecoration(
-                labelText: l10n.employeeTransferFieldRemark,
+              decoration: UtenInputDecoration(
+                InputDecoration(labelText: l10n.employeeTransferFieldRemark),
               ),
             ),
           ],

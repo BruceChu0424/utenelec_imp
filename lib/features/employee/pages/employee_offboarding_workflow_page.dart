@@ -581,6 +581,7 @@ class _EmployeeOffboardingWorkflowPageState
             },
             borderRadius: UtenRadius.mdAll,
             child: InputDecorator(
+              isEmpty: _effectiveDate == null,
               decoration: UtenInputDecoration(
                 InputDecoration(
                   labelText: '离职日期 *',
@@ -591,12 +592,12 @@ class _EmployeeOffboardingWorkflowPageState
                   ),
                 ),
               ),
-              child: Text(
-                _effectiveDate == null
-                    ? '请选择日期'
-                    : DateFormat('yyyy-MM-dd').format(_effectiveDate!),
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
+              child: _effectiveDate == null
+                  ? null
+                  : Text(
+                      DateFormat('yyyy-MM-dd').format(_effectiveDate!),
+                      style: Theme.of(context).textTheme.bodyLarge,
+                    ),
             ),
           ),
         ),

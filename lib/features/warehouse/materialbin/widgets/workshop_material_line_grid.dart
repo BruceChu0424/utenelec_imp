@@ -5,6 +5,7 @@
 //   没勾选的行只改自己。
 // - 每行提示"仓库还有 X 公斤 / 内料仓估计还剩 Y 公斤" (数字全部来自服务端)。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 
 import '../../../../components/inputs/uten_dropdown_field.dart';
 import '../../../../components/inputs/uten_table_cell_action.dart';
@@ -285,10 +286,8 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
         controller: row.bags,
         enabled: enabled,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(
-          isDense: true,
-          hintText: '0',
-          suffixText: '袋',
+        decoration: const UtenInputDecoration(
+          InputDecoration(isDense: true, labelText: '数量', suffixText: '袋'),
         ),
         onChanged: (text) {
           for (final target in targets(row)) {
@@ -318,10 +317,12 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
             controller: row.qty,
             enabled: enabled,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(
-              isDense: true,
-              hintText: '0',
-              suffixText: material?.unitName ?? row.requisitionLine?.unitName,
+            decoration: UtenInputDecoration(
+              InputDecoration(
+                isDense: true,
+                labelText: qtyLabel ?? '重量',
+                suffixText: material?.unitName ?? row.requisitionLine?.unitName,
+              ),
             ),
             onChanged: (text) {
               for (final target in targets(row)) {

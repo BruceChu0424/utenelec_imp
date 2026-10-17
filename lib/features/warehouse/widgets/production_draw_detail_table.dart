@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_autofill_text_controller.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_field_placeholder.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_table_cell_action.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
@@ -628,10 +629,12 @@ class ProductionDrawDetailTable extends StatelessWidget {
                               BigInt.zero) >
                           BigInt.zero,
                   maxLength: 60,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    hintText: '选填',
-                    counterText: '',
+                  decoration: const UtenInputDecoration(
+                    InputDecoration(
+                      isDense: true,
+                      labelText: '行备注',
+                      counterText: '',
+                    ),
                   ),
                 ),
               );
@@ -825,6 +828,7 @@ class ProductionDrawDetailTable extends StatelessWidget {
               InputDecoration(
                 isDense: true,
                 hintText: hintText,
+                hintMaxLines: 1,
                 error: error,
                 suffixText: unitName,
               ),
@@ -852,7 +856,7 @@ class ProductionDrawDetailTable extends StatelessWidget {
     weight: row.weight,
     enabled: true,
     readOnly: issueSaving,
-    hintText: '需要填写',
+    hintText: '应领数量',
     unitName: (row.values['unitName'] as String?)?.trim(),
     error: showDiscoveryValidation && row.quantityError != null
         ? UtenFieldMessage.error(row.quantityError!)
@@ -896,7 +900,9 @@ class ProductionDrawDetailTable extends StatelessWidget {
         requiredEmpty: row.warehouseError != null,
       ),
       child: Text(
-        row.warehouseError == null ? row.label('warehouseName') : '需要选择实际仓',
+        row.warehouseError == null
+            ? row.label('warehouseName')
+            : utenFieldPlaceholder(label: '实际发料仓')!,
       ),
     ),
   );

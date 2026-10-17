@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/inputs/uten_employee_picker.dart'
     show UtenEmployeePickerItem;
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../components/layout/uten_split_view.dart';
@@ -763,20 +764,22 @@ class _DepartmentEmployeePickerFieldState
     return TextField(
       controller: _ctl,
       readOnly: true,
-      decoration: InputDecoration(
-        labelText: widget.label,
-        hintText: widget.hint,
-        prefixIcon: const Icon(Icons.person_search_rounded),
-        suffixIcon: _id != null && widget.allowClear
-            ? IconButton(
-                tooltip: '清除选择',
-                icon: const Icon(Icons.clear_rounded),
-                onPressed: () => _set(null),
-              )
-            : Icon(
-                Icons.unfold_more_rounded,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+      decoration: UtenInputDecoration(
+        InputDecoration(
+          labelText: widget.label,
+          hintText: widget.hint,
+          prefixIcon: const Icon(Icons.person_search_rounded),
+          suffixIcon: _id != null && widget.allowClear
+              ? IconButton(
+                  tooltip: '清除选择',
+                  icon: const Icon(Icons.clear_rounded),
+                  onPressed: () => _set(null),
+                )
+              : Icon(
+                  Icons.unfold_more_rounded,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+        ),
       ),
       onTap: () async {
         final revision = _selectionRevision;

@@ -8,6 +8,7 @@
 // 车间成员只看本车间 (服务端按对象范围过滤); 多个车间时顶部切换。
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
@@ -580,7 +581,9 @@ class _WorkshopMaterialBinPageState
             controller: controller,
             autofocus: true,
             maxLength: 500,
-            decoration: InputDecoration(labelText: label, counterText: ''),
+            decoration: UtenInputDecoration(
+              InputDecoration(labelText: label, counterText: ''),
+            ),
           ),
           actionsAlignment: MainAxisAlignment.center,
           actions: [

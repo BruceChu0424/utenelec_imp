@@ -165,6 +165,8 @@ public class GoodsService {
         Sort requestedSort = TableSort.resolve(sort, order, defaultSort, ALLOWED_SORT);
         Specification<Goods> spec = (root, q, cb) -> {
             Predicate predicate = goodsPredicate(f, subtreeIds, scope, root, cb, keyword);
+            predicate = cb.and(predicate, com.uten.imp.features.master.search.MasterColumnSearch.predicate(
+                    cb, root.get("id"), com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS, f.columnSearch()));
             if (keyword.active() && q != null && q.getResultType() != Long.class) {
                 CategoryKeywordSearch.order(q, cb, root,
                         keyword.rank(cb, root.get("category").get("id"), root.get("code"), root.get("name"),
@@ -226,6 +228,8 @@ public class GoodsService {
         Path<UUID> categoryId = root.get("category").get("id");
         var keyword = keywordPlan(f);
         Predicate filters = goodsPredicate(f, subtreeIds, scope, root, cb, keyword);
+        filters = cb.and(filters, com.uten.imp.features.master.search.MasterColumnSearch.predicate(
+                cb, root.get("id"), com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS, f.columnSearch()));
         var rank = keyword.rank(cb, categoryId, root.get("code"), root.get("name"),
                 goodsVisibleSearchFields(root, mouldCodeForSearch(root)));
         query.select(categoryId)
@@ -676,6 +680,8 @@ public class GoodsService {
         else query.multiselect(value, count).groupBy(value);
         List<Predicate> predicates = new ArrayList<>();
         predicates.add(goodsPredicate(facetFilter, ids, scope, root, cb, keyword));
+        predicates.add(com.uten.imp.features.master.search.MasterColumnSearch.predicate(cb, root.get("id"),
+                com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS, facetFilter.columnSearch()));
         predicates.add(cb.isNotNull(value));
         if (!KeywordSearch.terms(search).isEmpty()) {
             if ("colorLegacyId".equals(field) || "unitLegacyId".equals(field)) {
@@ -743,7 +749,9 @@ public class GoodsService {
             var count = cb.count(root);
             if (reference) query.multiselect(value, count, label).groupBy(value, label);
             else query.multiselect(value, count).groupBy(value);
-            query.where(cb.and(goodsPredicate(facetFilter, ids, scope, root, cb, keyword), cb.isNotNull(value)));
+            query.where(cb.and(goodsPredicate(facetFilter, ids, scope, root, cb, keyword), cb.isNotNull(value),
+                    com.uten.imp.features.master.search.MasterColumnSearch.predicate(cb, root.get("id"),
+                            com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS, filter.columnSearch())));
             query.orderBy(cb.desc(count), cb.asc(reference ? label : value));
             List<Object[]> rows = em.createQuery(query).setMaxResults(FACET_LIMIT).getResultList();
             List<FacetBucket> values = new ArrayList<>(rows.size());
@@ -756,7 +764,9 @@ public class GoodsService {
             CriteriaQuery<Long> nullQuery = cb.createQuery(Long.class);
             Root<Goods> nullRoot = nullQuery.from(Goods.class);
             nullQuery.select(cb.count(nullRoot)).where(cb.and(
-                    goodsPredicate(facetFilter, ids, scope, nullRoot, cb, keyword), cb.isNull(nullRoot.get(field))));
+                    goodsPredicate(facetFilter, ids, scope, nullRoot, cb, keyword), cb.isNull(nullRoot.get(field)),
+                    com.uten.imp.features.master.search.MasterColumnSearch.predicate(cb, nullRoot.get("id"),
+                            com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS, filter.columnSearch())));
             nullCounts.put(field, em.createQuery(nullQuery).getSingleResult());
         }
         return new GoodsFacets(
@@ -1218,6 +1228,10 @@ public class GoodsService {
         g.setName(req.getName());
         g.setShortName(req.getShortName());
         g.setModel(req.getModel());
+        if (req.hasCNumber()) {
+            g.setCNumber(req.getCNumber() == null || req.getCNumber().isBlank()
+                    ? null : req.getCNumber().trim());
+        }
         g.setSpec(req.getSpec());
         applyNameEn(req, g);
         g.setSeries(req.getSeries() == null ? null : req.getSeries().trim());
@@ -1409,7 +1423,7 @@ public class GoodsService {
                 // ADR-134 英文名称 + 当前用户能否单独改英文名称(功能权限 + 对象写范围)。
                 g.getNameEn(), g.getNameEnSource(), canEditNameEn(g),
                 // ADR-146 不良品仓数量另列, 不计入库存合计。
-                stock.getDefectiveQty());
+                stock.getDefectiveQty(), g.getCNumber());
         if (learnedPrices != null && costMasker.canView()) {
             var prices = learnedPrices.find(g.getId());
             d.setDefaultPurchasePriceInfo(prices.purchase());

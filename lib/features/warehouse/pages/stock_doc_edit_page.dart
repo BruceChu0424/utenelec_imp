@@ -1251,9 +1251,12 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
                                             ),
                                             TextField(
                                               controller: _assTeam,
-                                              decoration: const InputDecoration(
-                                                labelText: '装配班组',
-                                              ),
+                                              decoration:
+                                                  const UtenInputDecoration(
+                                                    InputDecoration(
+                                                      labelText: '装配班组',
+                                                    ),
+                                                  ),
                                             ),
                                           ],
                                         ],
@@ -1262,8 +1265,8 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
                                     const SizedBox(height: UtenSpacing.s12),
                                     TextField(
                                       controller: _remark,
-                                      decoration: const InputDecoration(
-                                        labelText: '备注',
+                                      decoration: const UtenInputDecoration(
+                                        InputDecoration(labelText: '备注'),
                                       ),
                                       maxLines: 2,
                                     ),

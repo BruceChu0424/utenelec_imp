@@ -4,6 +4,7 @@
 // 用量很小的料可以改"直接填公斤"; "本机停机、全空"一键。
 // 每点一下即落库 (由页面逐行保存), 卡片只负责显示与回调; 保存中 / 保存失败逐容器显示。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import '../../../../components/layout/uten_segment_row.dart';
 
 import '../../../../components/inputs/uten_dropdown_field.dart';
@@ -283,9 +284,11 @@ class _MachineCountCardState extends State<MachineCountCard> {
                     decimal: true,
                   ),
                   textInputAction: TextInputAction.done,
-                  decoration: InputDecoration(
-                    isDense: true,
-                    labelText: '称得 (${l10n.wmKg})',
+                  decoration: UtenInputDecoration(
+                    InputDecoration(
+                      isDense: true,
+                      labelText: '称得 (${l10n.wmKg})',
+                    ),
                   ),
                   onSubmitted: (_) => _submitWeighed(container),
                 ),

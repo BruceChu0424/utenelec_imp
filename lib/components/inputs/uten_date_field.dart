@@ -23,7 +23,7 @@ import 'uten_input_decoration.dart';
 import 'uten_table_cell_spec.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
 
-/// outlined 日期选择字段。点按弹 showDatePicker；值/占位"未选择"显示在框内。
+/// outlined 日期选择字段。点按弹 showDatePicker；空值显示框内字段名。
 class UtenDateField extends StatefulWidget {
   const UtenDateField({
     super.key,
@@ -198,11 +198,13 @@ class _UtenDateFieldState extends State<UtenDateField> {
             ? UtenEditableGridCellSpec.borderRadius
             : UtenPageField.borderRadius,
         child: InputDecorator(
+          isEmpty: !hasValue,
           decoration: applyRequiredEmpty(
             applyAutofillHint(
               UtenInputDecoration(
                 InputDecoration(
                   enabled: widget.enabled,
+                  hintText: widget.label,
                   floatingLabelBehavior: inTable
                       ? FloatingLabelBehavior.never
                       : null,
@@ -230,20 +232,22 @@ class _UtenDateFieldState extends State<UtenDateField> {
             theme,
             requiredEmpty: requiredEmpty,
           ),
-          child: Text(
-            hasValue ? ChinaDateTime.formatDate(widget.value!) : '未选择',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style:
-                (inTable
-                        ? theme.textTheme.bodyMedium
-                        : theme.textTheme.bodyLarge)
-                    ?.copyWith(
-                      color: hasValue
-                          ? theme.colorScheme.onSurface
-                          : theme.colorScheme.onSurfaceVariant,
-                    ),
-          ),
+          child: hasValue
+              ? Text(
+                  ChinaDateTime.formatDate(widget.value!),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style:
+                      (inTable
+                              ? theme.textTheme.bodyMedium
+                              : theme.textTheme.bodyLarge)
+                          ?.copyWith(
+                            color: hasValue
+                                ? theme.colorScheme.onSurface
+                                : theme.colorScheme.onSurfaceVariant,
+                          ),
+                )
+              : null,
         ),
       ),
     );

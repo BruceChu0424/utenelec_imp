@@ -147,6 +147,41 @@ class CommercialHeaderFilterPostgresTest {
         JsonNode facet=read("/api/subcontract/returns/facets",setup.actor(),positive,200);assertTrue(facet.path("billNo").toString().contains(yes));assertFalse(facet.path("billNo").toString().contains(no));
     }
 
+    @Test void textColumnWordsApplyBeforePaginationAndCannotMatchAnotherColumn()throws Exception {
+        var setup=setup();String clientName="客户 M3_20% "+UUID.randomUUID();
+        db.update("UPDATE clients SET name=? WHERE id=?",clientName,setup.world().clientId());
+        String first=quote(setup,"10","10",2,30),second=quote(setup,"20","20",2,30);
+        var search=Map.of("clientId",setup.world().clientId().toString(),"search.client",clientName,"size","1","page","2");
+        JsonNode page=read("/api/sales/quotes",setup.actor(),search,200);
+        assertEquals(2,page.path("total").asInt());assertEquals(1,page.path("items").size());
+        var specific=Map.of("search.client",clientName,"search.billNo",first);
+        assertEquals(first,read("/api/sales/quotes",setup.actor(),specific,200).path("items").get(0).path("billNo").asText());
+        JsonNode facet=read("/api/sales/quotes/facets",setup.actor(),specific,200);
+        assertEquals(1,facet.path("billNo").size());assertEquals(first,facet.path("billNo").get(0).path("value").asText());
+        assertEquals(0,read("/api/sales/quotes",setup.actor(),Map.of("search.billNo",first,"search.client",first),200).path("total").asInt());
+        assertEquals(0,read("/api/sales/quotes",setup.actor(),Map.of("search.client",clientName.replace("M3_20%","M3X20A")),200).path("total").asInt());
+        for (String invalid:List.of("total","status","billDate"))
+            read("/api/sales/quotes",setup.actor(),Map.of("search."+invalid,"1"),422);
+        assertNotEquals(first,second);
+    }
+
+    @Test void allSeventeenDocumentTextContractsShareListAndFacetPredicates()throws Exception {
+        var setup=setup();String nowhere="COLUMN-NO-MATCH-"+UUID.randomUUID();
+        for(String path:List.of("sales/quotes","sales/orders","sales/shipments","sales/other-shipments","sales/returns",
+                "purchase/requests","purchase/orders","purchase/receipts","purchase/returns",
+                "subcontract/applications","subcontract/inquiries","subcontract/orders","subcontract/material-issues",
+                "subcontract/material-returns","subcontract/receipts","subcontract/returns","subcontract/wastes")) {
+            Map<String,String> controls=new java.util.LinkedHashMap<>();controls.put("search.billNo",nowhere);
+            if(path.startsWith("sales/"))controls.put("search.client",nowhere);
+            else if(!path.equals("purchase/requests"))controls.put("search.supplier",nowhere);
+            if(!Set.of("sales/quotes","sales/orders","sales/shipments","purchase/orders",
+                    "subcontract/applications","subcontract/inquiries","subcontract/orders","subcontract/receipts").contains(path))
+                controls.put("search.warehouse",nowhere);
+            assertEquals(0,read("/api/"+path,setup.actor(),controls,200).path("total").asInt(),path);
+            assertEquals(0,read("/api/"+path+"/facets",setup.actor(),controls,200).path("billNo").size(),path);
+        }
+    }
+
     private Setup setup(){var fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);var world=fixture.seedWorld("hf-"+UUID.randomUUID());fixture.loginAs(world.superAdminUserId());return new Setup(fixture,world,SecurityContextHolder.getContext().getAuthentication());}
     private String quote(Setup s,String original,String local,int deliveryDays,int validityDays){String bill=numbers.nextNumber(DocNumberPrefix.SALES_QUOTE);db.update("INSERT INTO sales_quotes(id,bill_no,bill_date,client_id,currency_id,maker_id,status,total_original,total_local,deliver_date,valid_until) VALUES(?,?,CURRENT_DATE,?,?,?,0,?,?,CURRENT_DATE+?,CURRENT_DATE+?)",UUID.randomUUID(),bill,s.world().clientId(),s.world().currencyId(),s.world().employeeId(),new BigDecimal(original),new BigDecimal(local),deliveryDays,validityDays);return bill;}
     private String expense(Setup s,String amount,Integer legacy)throws Exception {

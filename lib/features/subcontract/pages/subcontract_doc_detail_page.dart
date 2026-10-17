@@ -16,6 +16,7 @@ import '../../../shared/business_columns/business_columns_table.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../shared/models/historical_receipt_facts.dart';
 import '../../../shared/widgets/historical_receipt_totals.dart';
@@ -369,9 +370,11 @@ class _SubcontractDocDetailPageState
                                   const TextInputType.numberWithOptions(
                                     decimal: true,
                                   ),
-                              decoration: InputDecoration(
-                                isDense: true,
-                                labelText: l10n.orderChangeQtyNewQty,
+                              decoration: UtenInputDecoration(
+                                InputDecoration(
+                                  isDense: true,
+                                  labelText: l10n.orderChangeQtyNewQty,
+                                ),
                               ),
                             ),
                           ),

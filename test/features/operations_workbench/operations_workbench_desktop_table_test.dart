@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/data_display/uten_status_badge.dart'
     show UtenStatusBadgeType;
+import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/data_display/uten_status_cell_color.dart'
     show utenStatusBadgeCellColor;
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
@@ -269,6 +270,34 @@ void main() {
     final refreshed = tester
         .widget<MasterDataTableView<OperationsWorkbenchTask>>(tableFinder);
     expect(refreshed.filters['goodsName'], 'goods-1');
+    expect(refreshed.serverColumnSearch, isTrue);
+    expect(
+      refreshed.columns.any((column) => column.key == 'supplierName'),
+      isTrue,
+    );
+    refreshed.onFilterChanged('search.goodsName', '开关 面板');
+    await tester.pumpAndSettle();
+    final searched = tester
+        .widget<MasterDataTableView<OperationsWorkbenchTask>>(tableFinder);
+    expect(gateway.columnFilters.last, {
+      'goods': 'goods-1',
+      'search.goods': '开关 面板',
+    });
+    expect(searched.filters['search.goodsName'], '开关 面板');
+    searched.onFilterChanged('search.goodsCode', 'M3_20%');
+    await tester.pumpAndSettle();
+    final export = tester.widget<UtenExportButton>(
+      find.byKey(const Key('purchase-workbench-export')),
+    );
+    expect(export.endpoint, '/operations/workbench/purchase/export');
+    expect(export.queryParams, {
+      'status': 'WAITING_ORDER',
+      'f.goods': 'goods-1',
+      'search.goods': '开关 面板',
+      'search.goodsCode': 'M3_20%',
+    });
+    expect(export.queryParams.containsKey('page'), isFalse);
+    expect(export.queryParams.containsKey('size'), isFalse);
     expect(tester.takeException(), isNull);
   });
 

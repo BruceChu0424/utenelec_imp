@@ -10,6 +10,7 @@
 // 输入：direction（AR=客户应收 / AP=供应商应付）+ partyId（客户/供应商）。
 // 拉该往来方未清台账（settled=false）。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/inputs/uten_search_bar.dart';
@@ -957,12 +958,14 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
         enabled: _canSelect(row.item),
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         // 输入格同样带币种后缀（与「数量 单位」输入格对称）；行缺币种不显示。
-        decoration: InputDecoration(
-          isDense: true,
-          hintText: '0',
-          suffixText: financeCurrencyDisplayLabel(
-            name: row.item.currencyName,
-            code: row.item.currencyCode,
+        decoration: UtenInputDecoration(
+          InputDecoration(
+            isDense: true,
+            labelText: '本次$_actionNoun金额',
+            suffixText: financeCurrencyDisplayLabel(
+              name: row.item.currencyName,
+              code: row.item.currencyCode,
+            ),
           ),
         ),
       ),

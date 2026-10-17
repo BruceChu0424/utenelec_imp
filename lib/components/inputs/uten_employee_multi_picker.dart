@@ -24,7 +24,7 @@ class UtenEmployeeMultiPicker extends StatefulWidget {
     this.initialSelection = const [],
     this.enabled = true,
     this.label,
-    this.hint = '请选择人员',
+    this.hint = '人员',
     this.sheetTitle = '选择人员',
     this.searchHint = '搜索部门 / 姓名 / 工号',
     this.showDepartmentFilter = true,

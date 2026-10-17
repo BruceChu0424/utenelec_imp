@@ -582,7 +582,9 @@ extension _MaterialAggregateActions on _MaterialAggregateTableController {
                 key: const Key('material-aggregate-cancel-reason'),
                 onChanged: (value) => reason = value,
                 maxLength: 1000,
-                decoration: const InputDecoration(labelText: '撤回原因（选填）'),
+                decoration: const UtenInputDecoration(
+                  InputDecoration(labelText: '撤回原因（选填）'),
+                ),
               ),
             ],
           ),

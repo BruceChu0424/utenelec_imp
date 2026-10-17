@@ -11,6 +11,7 @@ import '../../../shared/models/procurement_quantity.dart';
 // 2026-10-10 T9 口径：独立「单位」列撤除，单位内联在数量输入框 suffix。
 // purchaseGridColumns：货品/数量(含单位)/单价/金额 四列。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import '../../../shared/business_columns/business_columns_row.dart';
 import '../../../shared/drafts/form_draft_values.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -590,7 +591,7 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
                     valueListenable: row.goodsNotifier,
                     builder: (context, g, _) => g == null
                         ? Text(
-                            '点击选择',
+                            utenFieldPlaceholder(label: '货品名称')!,
                             style: TextStyle(
                               color: Theme.of(
                                 context,
@@ -766,7 +767,7 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
           decoration: UtenInputDecoration(
             InputDecoration(
               isDense: true,
-              hintText: '0',
+              labelText: '收费数量',
               suffixText: unitSuffixOf(row),
             ),
           ),
@@ -789,7 +790,7 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
           decoration: UtenInputDecoration(
             InputDecoration(
               isDense: true,
-              hintText: '0',
+              labelText: '赠品数量',
               suffixText: unitSuffixOf(row),
             ),
           ),
@@ -835,7 +836,7 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: applyAutofillHint(
               const UtenInputDecoration(
-                InputDecoration(isDense: true, hintText: '0'),
+                InputDecoration(isDense: true, labelText: '允许超收%'),
               ),
               Theme.of(context),
               autofilled: marks.contains('allowedOverReceipt'),
@@ -868,7 +869,7 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
             onSubmitted: (_) => row.clearTermsAutofilled('price'),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: const UtenInputDecoration(
-              InputDecoration(isDense: true, hintText: '0'),
+              InputDecoration(isDense: true, labelText: '单价'),
             ),
           ),
         ),

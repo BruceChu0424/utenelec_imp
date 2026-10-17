@@ -38,7 +38,12 @@ void main() {
       ),
     );
 
-    await tester.tap(find.text('请选择员工'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(UtenEmployeePicker),
+        matching: find.byType(InputDecorator),
+      ),
+    );
     await tester.pumpAndSettle();
     final search = find.byType(TextField).last;
 
@@ -165,7 +170,14 @@ void main() {
               ),
             ),
           );
-          await tester.tap(find.text(multiple ? '请选择人员' : '请选择员工'));
+          await tester.tap(
+            find.descendant(
+              of: multiple
+                  ? find.byType(UtenEmployeeMultiPicker)
+                  : find.byType(UtenEmployeePicker),
+              matching: find.byType(InputDecorator),
+            ),
+          );
           await tester.pumpAndSettle();
           await tester.tap(
             find.byKey(const ValueKey('employee-picker-item-first')),

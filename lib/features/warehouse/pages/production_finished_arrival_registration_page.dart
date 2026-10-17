@@ -957,10 +957,12 @@ class _ProductionFinishedArrivalRegistrationPageState
                 enabled: canRegister && !_busy && !_submitted,
                 maxLength: 500,
                 maxLines: 2,
-                decoration: const InputDecoration(
-                  labelText: '备注',
-                  hintText: '选填；随本次登记留痕',
-                  counterText: '',
+                decoration: const UtenInputDecoration(
+                  InputDecoration(
+                    labelText: '备注',
+                    hintText: '选填；随本次登记留痕',
+                    counterText: '',
+                  ),
                 ),
               ),
             ],

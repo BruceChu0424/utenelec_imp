@@ -53,7 +53,7 @@ void main() {
     expect(find.byType(CategoryEditDialog), findsOneWidget);
 
     final prefixField = find.byWidgetPredicate(
-      (widget) => widget is TextField && widget.decoration?.hintText == '例如 V6',
+      (widget) => widget is TextField && widget.decoration?.hintText == '编号前缀',
     );
     final saveButton = find.widgetWithText(UtenButton, '保存');
     await tester.enterText(prefixField, 'ug');

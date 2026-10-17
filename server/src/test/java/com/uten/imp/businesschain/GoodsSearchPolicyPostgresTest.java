@@ -51,6 +51,7 @@ class GoodsSearchPolicyPostgresTest extends AuthSessionPostgresTestSupport {
                 .param("categoryId", root.toString()).param("model", "80-B"));
         assertEquals(50, preview.path("name").size());
         assertFalse(facetValues(preview, "name").contains("V4一开"), "The old 50-bucket preview cannot find this real value");
+        assertFalse(facetValues(preview, "name").contains("V4%_开关"));
         Set<String> found = new java.util.HashSet<>();
         for (int page = 1; page <= 3; page++) {
             JsonNode candidates = request(token, get("/api/master/goods/facet-values")
@@ -62,6 +63,14 @@ class GoodsSearchPolicyPostgresTest extends AuthSessionPostgresTestSupport {
             assertEquals(page < 3, candidates.path("hasMore").asBoolean());
         }
         assertEquals(Set.of("V4一开", "v4二开", "V4%_开关"), found);
+        JsonNode columnFiltered = request(token, get("/api/master/goods/facet-values")
+                .param("categoryId", root.toString()).param("field", "name").param("search", "v4")
+                .param("search.model", "80-b").param("name", "V4一开"));
+        Set<String> columnFilteredNames = new java.util.HashSet<>();
+        columnFiltered.path("items").forEach(row -> columnFilteredNames.add(row.path("value").asText()));
+        assertEquals(Set.of("V4一开", "v4二开", "V4%_开关"), columnFilteredNames,
+                "Full candidates must retain other column keywords and category scope while releasing their own exact value");
+        assertFalse(columnFiltered.path("hasMore").asBoolean());
         JsonNode escaped = request(token, get("/api/master/goods/facet-values")
                 .param("categoryId", root.toString()).param("field", "name").param("search", "%_"));
         assertEquals(1, escaped.path("items").size());
@@ -70,6 +79,24 @@ class GoodsSearchPolicyPostgresTest extends AuthSessionPostgresTestSupport {
                 .param("name", "V4一开").param("size", "1"));
         assertEquals(List.of(first.toString()), ids(exact));
         assertEquals(1, exact.path("total").asInt(), "Choosing a candidate must keep exact filtering");
+
+        UUID nextSwitch = goods(root, "KW-" + UUID.randomUUID(), "远端候选开关", "80-B", null);
+        UUID wrongSeries = goods(root, "KW-" + UUID.randomUUID(), "异系列开关", "80-B", null);
+        UUID wrongName = goods(root, "KW-" + UUID.randomUUID(), "5M插座", "80-B", null);
+        jdbc.update("UPDATE goods SET series='5M' WHERE id IN (?,?,?)", literal, nextSwitch, wrongName);
+        jdbc.update("UPDATE goods SET series='7M' WHERE id=?", wrongSeries);
+        Set<String> keywordCandidates = new java.util.HashSet<>();
+        for (int page = 1; page <= 2; page++) {
+            JsonNode candidates = request(token, get("/api/master/goods/facet-values")
+                    .param("categoryId", root.toString()).param("field", "name")
+                    .param("name", "V4%_开关").param("search.name", "开关").param("search.series", "5M")
+                    .param("page", Integer.toString(page)).param("size", "1"));
+            assertEquals(1, candidates.path("items").size());
+            keywordCandidates.add(candidates.path("items").get(0).path("value").asText());
+            assertEquals(page == 1, candidates.path("hasMore").asBoolean());
+        }
+        assertEquals(Set.of("V4%_开关", "远端候选开关"), keywordCandidates,
+                "Candidates beyond the preview must intersect name and series keywords without retaining their own exact value");
 
         jdbc.update("UPDATE goods SET color_legacy_id=? WHERE id=?", 2147000991, first);
         jdbc.update("UPDATE goods SET unit_legacy_id=? WHERE id=?", 2147000992, second);

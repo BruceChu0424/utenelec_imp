@@ -896,7 +896,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get securityScanManual => '手动输入凭证';
 
   @override
-  String get securityPasscodeHint => '输入6位通行码';
+  String get securityPasscodeHint => '通行码';
 
   @override
   String get securityPasscodeInvalid => '请输入6位数字通行码';
@@ -1948,7 +1948,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noticeBlessingWallEmpty => '还没有祝福，送上第一份祝福吧';
 
   @override
-  String get noticeBlessingPlaceholder => '写下你的祝福…';
+  String get noticeBlessingPlaceholder => '祝福内容';
 
   @override
   String get noticeBlessingSendButton => '发送祝福';
@@ -10480,6 +10480,30 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get release2521ServerUpdates =>
       '服务器更新按任务显示当前阶段与结果，重新打开页面可继续查看；失败时展示已确认原因和处理建议。';
+
+  @override
+  String get release2521TableSearchCopy =>
+      '名称、编号等文本列可在表头输入关键词，回车或点击搜索后在表格中显示结果，多列条件可组合。候选支持搜索和继续加载，表格文字可拖选复制，不影响业务勾选。';
+
+  @override
+  String get release2521FieldHints =>
+      '普通空字段直接显示字段名称，格式示例与填写说明放在说明入口；表单、选择器和日期字段统一空状态，已有有效数值和个人显示设置保留。';
+
+  @override
+  String get release2521ReferencePickers =>
+      '模具与组件选择改为左侧分类、右侧明细表，清楚显示系列、名称、编号、规格和颜色。输入可查看近似候选，按钮打开完整选择窗口并带入关键词，原有选择范围、用量和校验继续保留。';
+
+  @override
+  String get release2521MasterDataImport =>
+      '货品导出补齐模板回导所需字段，修改后按真实分类路径和原校验导入；分类编号前缀支持数字开头，分类名称旁可显示备注，原编号与类别身份保留。';
+
+  @override
+  String get release2521PurchaseDocuments =>
+      '采购订货单可预览打印，审核栏显示实际财务审核员；采购任务历史按真实物料逐行展示并增加供应商，申请待分解和工作台可按当前筛选导出。';
+
+  @override
+  String get release2521GoodsHistory =>
+      '可查看本人最近十次货品资料修改，并按当前条件撤回或取消撤回；后续修改、业务引用和权限会再次核对，过程留有操作记录。';
 
   @override
   String get goodsHistoryTitle => '货品操作记录';

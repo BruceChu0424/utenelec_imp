@@ -555,6 +555,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
     MasterColumnDef(
       key: 'clientXz',
       label: '客户性质',
+      columnSearchEnabled: false,
       width: 90,
       value: (m) => m.clientXz,
     ),

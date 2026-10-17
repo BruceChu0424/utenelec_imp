@@ -40,6 +40,8 @@ public class PurchaseOrderController {
     private final PurchaseOrderService service;
     private final ProcurementFinanceApprovalService financeApproval;
     private final AuditDetailViewRecorder auditViews;
+    @org.springframework.beans.factory.annotation.Autowired
+    private PurchaseOrderPrintService printService;
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.uten.imp.common.pricing.ProcurementPriceAssessmentSupport priceAssessment;
 
@@ -92,6 +94,15 @@ public class PurchaseOrderController {
                 result.getBillNo(),
                 result.getLegacyId(),
                 "采购订货单");
+        return result;
+    }
+
+    @GetMapping("/{id}/print-data")
+    @PreAuthorize("hasAnyAuthority('purchase_order:view','finance_order_approval:view')")
+    public PurchaseOrderPrintService.PrintDocument printData(@PathVariable UUID id) {
+        var result = printService.read(id);
+        auditViews.record("view_purchase_order_detail", "purchase_orders", id,
+                result.billNo(), null, "采购单打印预览");
         return result;
     }
 

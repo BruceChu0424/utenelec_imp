@@ -255,7 +255,8 @@ class DailyReportMaterialReviewSection extends StatelessWidget {
                             dense: true,
                             allowClear: false,
                             value: action?.wire,
-                            hintText: '请选择处理方式',
+                            label: '处理方式',
+                            hintText: '处理方式',
                             errorMessage: attempted && action == null
                                 ? '请选择处理方式'
                                 : null,

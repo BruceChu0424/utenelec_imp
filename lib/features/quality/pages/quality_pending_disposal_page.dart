@@ -1946,7 +1946,11 @@ class _ProcurementInspectionDetailPageState
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             // 「数量+单位」内联口径（2026-10-10）：输入框单位放后缀。
             decoration: UtenInputDecoration(
-              InputDecoration(isDense: true, suffixText: item.baseUnitName),
+              InputDecoration(
+                isDense: true,
+                labelText: '合格数量',
+                suffixText: item.baseUnitName,
+              ),
             ),
           ),
         );
@@ -1975,6 +1979,7 @@ class _ProcurementInspectionDetailPageState
             decoration: UtenInputDecoration(
               InputDecoration(
                 isDense: true,
+                labelText: '不合格数量',
                 suffixText: item.baseUnitName,
                 error: row.validate() == null
                     ? null

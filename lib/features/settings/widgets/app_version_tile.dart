@@ -276,6 +276,12 @@ class _ReleaseNotesDialog extends StatelessWidget {
         l10n.release2521PermissionSettings,
         l10n.release2521ReviewFeedback,
         l10n.release2521ServerUpdates,
+        l10n.release2521TableSearchCopy,
+        l10n.release2521FieldHints,
+        l10n.release2521ReferencePickers,
+        l10n.release2521MasterDataImport,
+        l10n.release2521PurchaseDocuments,
+        l10n.release2521GoodsHistory,
       ],
       _ => <String>[],
     };

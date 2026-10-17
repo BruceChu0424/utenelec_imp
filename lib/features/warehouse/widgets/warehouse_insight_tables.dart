@@ -590,7 +590,7 @@ List<MasterColumnDef<InsightLearningRow>> insightLearningColumns({
     type: 'number',
     exactValueOf: (r) => draftOf(r.goodsId).qty.text,
     exactListenableOf: (r) => draftOf(r.goodsId).qty,
-    info: '数出这么多件放上秤 (建议数量见占位)',
+    info: '数出这么多件放上秤，建议数量见格内说明。',
     value: (r) => draftOf(r.goodsId).qty.text,
     cellBuilderHandlesSemantics: true,
     cellBuilder: (context, r) {
@@ -604,11 +604,14 @@ List<MasterColumnDef<InsightLearningRow>> insightLearningColumns({
           enabled: canSample && !draft.saving && r.learningEnabled,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           onChanged: (_) => onEdited?.call(r),
-          decoration: InputDecoration(
-            isDense: true,
-            hintText: r.suggestedSampleSize == null
-                ? '件数'
-                : '建议 ${r.suggestedSampleSize}',
+          decoration: UtenInputDecoration(
+            InputDecoration(
+              isDense: true,
+              labelText: '抽样数量',
+              hintText: r.suggestedSampleSize == null
+                  ? '件数'
+                  : '建议 ${r.suggestedSampleSize}',
+            ),
           ),
         ),
       );

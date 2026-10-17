@@ -41,10 +41,22 @@ import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/pricing/price_analysis_models.dart';
 import 'package:uten_imp/shared/pricing/price_analysis_l10n.dart';
 import 'package:uten_imp/shared/pricing/price_summary_value.dart';
+
 import 'package:uten_imp/shared/pricing/price_analysis_repository.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+
+// Match the component's nullable value contract. ValueKey compares runtimeType,
+// so an inferred record with a literal String/Null is a different key type.
+ValueKey<(String, Key?, String?)> _dropdownOptionKey(
+  Key? fieldKey,
+  String? value,
+) => ValueKey<(String, Key?, String?)>((
+  'uten-dropdown-option',
+  fieldKey,
+  value,
+));
 
 final _grants = StateProvider<Set<String>>(
   (_) => {Perm.goodsView, Perm.goodsPriceAnalysisView},
@@ -1108,9 +1120,25 @@ void main() {
       final unit = find.byWidgetPredicate(
         (w) => w is UtenDropdownField && w.label == '单位',
       );
-      await tester.tap(unit);
+      await Scrollable.ensureVisible(tester.element(unit), alignment: 0.5);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('箱 ×24').last);
+      final unitField = tester.widget<UtenDropdownField>(unit);
+      final boxOption = unitField.items.singleWhere(
+        (option) => option.value == 'box-id|24',
+      );
+      expect(boxOption.label, '箱 ×24');
+      final unitArrow = find.descendant(
+        of: unit,
+        matching: find.byIcon(Icons.arrow_drop_down_rounded),
+      );
+      expect(unitArrow, findsOneWidget);
+      await tester.tap(unitArrow);
+      await tester.pumpAndSettle();
+      final box = find.byKey(
+        _dropdownOptionKey(unitField.key, boxOption.value),
+      );
+      expect(box, findsOneWidget);
+      await tester.tap(box);
       await tester.pumpAndSettle();
       expect(repository.queries.last['unitId'], 'box-id');
       expect(repository.queries.last['unitRate'], '24');
@@ -1119,9 +1147,34 @@ void main() {
       final colour = find.byWidgetPredicate(
         (w) => w is UtenDropdownField && w.label == '颜色',
       );
-      await tester.tap(colour);
+      // Selecting a frozen unit reloads analysis and can reflow the collapsing
+      // controls. Read the current colour field after revealing its whole anchor.
+      await Scrollable.ensureVisible(tester.element(colour), alignment: 0.5);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('红色').last);
+      final colorField = tester.widget<UtenDropdownField>(colour);
+      final redOption = colorField.items.singleWhere(
+        (option) => option.value == 'red-id',
+      );
+      expect(redOption.label, '红色');
+      expect(redOption.enabled && redOption.visible, isTrue);
+      final colorArrow = find.descendant(
+        of: colour,
+        matching: find.byIcon(Icons.arrow_drop_down_rounded),
+      );
+      expect(colorArrow, findsOneWidget);
+      await tester.tap(colorArrow);
+      await tester.pumpAndSettle();
+      final red = find.byKey(
+        _dropdownOptionKey(colorField.key, redOption.value),
+      );
+      final automatic = find.byKey(_dropdownOptionKey(colorField.key, null));
+      expect(
+        automatic,
+        findsOneWidget,
+        reason: 'the current colour field must open its own choices',
+      );
+      expect(red.hitTestable(), findsOneWidget);
+      await tester.tap(red);
       await tester.pumpAndSettle();
       expect(repository.queries.last['colorId'], 'red-id');
     },
@@ -1973,10 +2026,17 @@ void main() {
         await Scrollable.ensureVisible(tester.element(field), alignment: 0.5);
         await tester.pumpAndSettle();
         expectVisiblePriceTarget(tester, field, size);
-        await tester.tap(field);
+        final openOptions = find.descendant(
+          of: field,
+          matching: find.byIcon(Icons.arrow_drop_down_rounded),
+        );
+        expect(openOptions, findsOneWidget);
+        await tester.tap(openOptions);
         await tester.pumpAndSettle();
         final menuSearch = find.byWidgetPredicate(
-          (w) => w is TextField && w.decoration?.hintText == '输入关键字搜索',
+          (w) =>
+              w is TextField &&
+              w.key == const Key('uten-dropdown-search-input'),
         );
         expect(menuSearch, findsOneWidget);
         await tester.enterText(menuSearch, '往来单位');

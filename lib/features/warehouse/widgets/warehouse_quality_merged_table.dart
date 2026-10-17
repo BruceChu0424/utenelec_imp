@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import 'package:flutter/services.dart';
 
 import '../../../components/data_display/uten_goods_identity_cell.dart';
@@ -467,7 +468,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  row.warehouseName ?? '请选择',
+                  row.warehouseName ?? utenFieldPlaceholder(label: '目标叶仓')!,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),

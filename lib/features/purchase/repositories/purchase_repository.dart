@@ -13,6 +13,7 @@ import '../../../shared/models/procurement_commercial_terms.dart';
 import '../../../shared/measurement/document_quantity.dart';
 import '../../../shared/repositories/procurement_terms_loader.dart';
 import '../models/purchase_doc.dart';
+import '../models/purchase_order_print_document.dart';
 
 class PurchaseDocFilter {
   const PurchaseDocFilter({
@@ -25,6 +26,7 @@ class PurchaseDocFilter {
     this.dateTo,
     this.financeApproval,
     this.billNo,
+    this.columnSearch = const {},
   });
   final String? keyword;
   final String? supplierId;
@@ -40,6 +42,14 @@ class PurchaseDocFilter {
 
   /// 单据号表头值筛选（2026-09-25 单号列统一）：服务端精确匹配。
   final String? billNo;
+  final Map<String, String?> columnSearch;
+  Map<String, dynamic> get columnSearchQuery => {
+    for (final entry in columnSearch.entries)
+      if (entry.key.startsWith('search.') &&
+          entry.value != null &&
+          entry.value!.trim().isNotEmpty)
+        entry.key: entry.value!.trim(),
+  };
 }
 
 class PurchaseRepository {
@@ -57,6 +67,7 @@ class PurchaseRepository {
     String? order,
   }) async {
     final query = <String, dynamic>{
+      ...filter.columnSearchQuery,
       'page': page,
       'size': size,
       if (filter.keyword != null && filter.keyword!.trim().isNotEmpty)
@@ -83,6 +94,7 @@ class PurchaseRepository {
     PurchaseDocFilter filter = const PurchaseDocFilter(),
   }) async {
     final query = <String, dynamic>{
+      ...filter.columnSearchQuery,
       if (filter.keyword != null && filter.keyword!.trim().isNotEmpty)
         'keyword': filter.keyword!.trim(),
       if (filter.supplierId != null) 'supplierId': filter.supplierId,
@@ -101,6 +113,12 @@ class PurchaseRepository {
   Future<PurchaseDocDetail> detail(String id) async {
     final json = await api.get(ApiEndpoints.purchaseDoc(type.pathSegment, id));
     return PurchaseDocDetail.fromJson(json);
+  }
+
+  Future<PurchaseOrderPrintDocument> orderPrintDocument(String id) async {
+    if (type != PurchaseDocType.order) throw StateError('只能打印采购订货单');
+    final json = await api.get('$_base/$id/print-data');
+    return PurchaseOrderPrintDocument.fromJson(json);
   }
 
   Future<List<ProcurementDecompositionLine>> decompositionPreview(

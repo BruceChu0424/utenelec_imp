@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import 'package:uten_imp/features/basic_data/models/color_node.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/basic_data/models/unit_node.dart';
@@ -153,13 +154,25 @@ void main() {
     await tester.tap(find.text('编辑'));
     await tester.pumpAndSettle();
 
-    expect(find.text('最小起订量'), findsOneWidget);
-    expect(find.text('订货倍数'), findsOneWidget);
-    // 既有值回填到表单（编辑保存不得把已登记的起订量冲掉）。
-    expect(find.widgetWithText(TextField, '500'), findsOneWidget);
+    final minimum = _field('最小起订量');
+    final multiple = _field('订货倍数');
+    expect(minimum, findsOneWidget);
+    expect(multiple, findsOneWidget);
+    // Existing facts stay in the actual controller; matching a hint or label
+    // cannot stand in for successful input restoration.
+    expect(tester.widget<TextField>(minimum).controller?.text, '500');
+    expect(tester.widget<TextField>(minimum).readOnly, isFalse);
+    expect(tester.widget<TextField>(multiple).readOnly, isFalse);
     expect(tester.takeException(), isNull);
   });
 }
+
+Finder _field(String label) => find.byWidgetPredicate(
+  (widget) =>
+      widget is TextField &&
+      widget.decoration != null &&
+      utenDecorationFieldName(widget.decoration!) == label,
+);
 
 Widget _host(GoodsDetail detail) => ProviderScope(
   overrides: [

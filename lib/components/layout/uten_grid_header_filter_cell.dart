@@ -241,12 +241,13 @@ class _GridHeaderFilterCellState extends State<GridHeaderFilterCell> {
                               UtenSpacing.s4,
                             ),
                             child: TextField(
+                              key: const Key('uten-column-keyword-input'),
                               controller: _searchCtl,
                               autofocus: true,
                               style: theme.textTheme.bodyMedium,
                               decoration: InputDecoration(
                                 isDense: true,
-                                hintText: '输入关键字搜索',
+                                hintText: widget.label,
                                 prefixIcon: const Icon(
                                   Icons.search_rounded,
                                   size: 18,

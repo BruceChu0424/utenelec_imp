@@ -2,8 +2,8 @@
 // 图片和文件 / 库存与出入库), mode 感知: create (新增) / edit (编辑) / view (查看)。
 //
 // 只以整页呈现（GoodsDetailPage，路由 /basicinfo/goods/new、/basicinfo/goods/:id）：
-// - 新增货品 = create 态：基本信息可编辑（含颜色/单位内联新建），保存后同页转 edit 态，
-//   组装/成本页签激活（BOM 接口要求货品 id 已存在，故两阶段）。
+// - 新增货品 = create 态：基本信息可编辑（含颜色/单位内联新建）；整页保存成功后返回来源。
+//   已保存货品再次打开详情，可从组装/成本页签继续维护。
 // - 查看：基本信息只读网格 + 编辑/删除/流水；编辑切 inline 表单。
 // - 组装信息：货品 BOM 树（goods_bom_tab.dart），表格吃满全宽，层级添加组件、
 //   滑窗选组件；编辑/删除/添加组件/预览按钮挂在表格工具条，全屏表格内同样可用。
@@ -42,6 +42,7 @@ import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/measurement/weight_unit.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
 import '../../../shared/providers/master_name_provider.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/stock_ledger/goods_stock_ledger_panel.dart';
 import '../../../shared/stock_ledger/stock_ledger_models.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
@@ -146,6 +147,8 @@ class GoodsDetailBody extends ConsumerStatefulWidget {
     required this.onToggleStatus,
     required this.onDelete,
     required this.onDataChanged,
+    this.onSaved,
+    this.readBoundary,
   });
 
   final GoodsDetail? initialDetail;
@@ -162,6 +165,10 @@ class GoodsDetailBody extends ConsumerStatefulWidget {
   final VoidCallback? onToggleStatus;
   final VoidCallback? onDelete;
   final VoidCallback? onDataChanged;
+
+  /// Full-page hosts close to their actual source only after a successful save.
+  final VoidCallback? onSaved;
+  final SensitiveReadBoundary? readBoundary;
 
   @override
   ConsumerState<GoodsDetailBody> createState() => _GoodsDetailBodyState();
@@ -412,6 +419,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         hint: '老系统备注沿用（外购/外加工等）',
       ),
       const MasterFieldDef(key: 'model', label: '型号', group: '规格'),
+      const MasterFieldDef(key: 'cNumber', label: '客户型号', group: '规格'),
       const MasterFieldDef(key: 'spec', label: '规格', group: '规格'),
       const MasterFieldDef(key: 'material', label: '材质', group: '规格'),
       const MasterFieldDef(key: 'series', label: '系列', group: '规格'),
@@ -481,7 +489,8 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       ),
       MasterFieldDef(
         key: 'colorId',
-        label: '主颜色',
+        label: '颜色',
+        info: '货品的默认主颜色；单据明细仍可按实际情况选择颜色。',
         type: MasterFieldType.select,
         options: _colorIdOptions,
         onAddNew: canAddColor ? _addColorId : null,
@@ -493,6 +502,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         type: MasterFieldType.custom,
         group: '生产',
         customBuilder: (ctx) => MouldPickerField(
+          readBoundary: widget.readBoundary,
           initialValue: ctx.initialValue,
           initialDisplay: _mouldDisplay(),
           onChanged: ctx.onChanged,
@@ -675,6 +685,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       'sourceType': d.sourceType ?? '',
       'paper': d.paper ?? '',
       'model': d.model ?? '',
+      'cNumber': d.cNumber ?? '',
       'spec': d.spec ?? '',
       'material': d.material ?? '',
       'series': d.series ?? '',
@@ -751,6 +762,12 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         final created = await runFormDraftSubmission(() => repo.create(body));
         await completeFormDraft();
         if (!mounted) return;
+        if (widget.onSaved != null) {
+          context.appSuccess('货品已创建');
+          widget.onDataChanged?.call();
+          widget.onSaved!();
+          return;
+        }
         if (widget.canEdit && created.writable) {
           context.appSuccess('货品已创建，可继续编辑基本信息');
           _enterEdit(created);
@@ -762,6 +779,12 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       } else {
         await repo.update(_goodsId!, body);
         if (!mounted) return;
+        if (widget.onSaved != null) {
+          context.appSuccess('已保存');
+          widget.onDataChanged?.call();
+          widget.onSaved!();
+          return;
+        }
         // 刷新 detail（成本/sourceE 可能他处变动），保留表单编辑态。
         final fresh = await repo.detail(_goodsId!);
         if (!mounted) return;
@@ -1289,6 +1312,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       ]),
       _DetailSection('规格', [
         MasterDetailRow('型号', d.model),
+        MasterDetailRow('客户型号', d.cNumber),
         MasterDetailRow('规格', d.spec),
         MasterDetailRow('材质', d.material),
         MasterDetailRow(
@@ -1302,7 +1326,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         // ADR-131：有期间边的产品在单重旁只读显示 BOM 里的塑料单个重量。
         for (final w in d.periodicBomWeights)
           MasterDetailRow('塑料单个重量', _periodicBomWeightText(w)),
-        MasterDetailRow('主颜色', d.colorName),
+        MasterDetailRow('颜色', d.colorName),
         MasterDetailRow('系列', d.series),
         MasterDetailRow('库位号', d.stockPlace),
       ]),
@@ -1609,16 +1633,18 @@ class _OwningWarehousePickerFieldState
       key: const ValueKey('goods-owning-warehouse'),
       controller: _ctl,
       readOnly: true,
-      decoration: InputDecoration(
-        labelText: '所属仓库',
-        hintText: '点击选择这批货平时归哪个仓管',
-        suffixIcon: hasValue
-            ? IconButton(
-                icon: const Icon(Icons.close_rounded, size: 18),
-                tooltip: '清除',
-                onPressed: () => _set(null, ''),
-              )
-            : const Icon(Icons.chevron_right_rounded),
+      decoration: UtenInputDecoration(
+        InputDecoration(
+          labelText: '所属仓库',
+          hintText: '这批货平时归哪个仓管',
+          suffixIcon: hasValue
+              ? IconButton(
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                  tooltip: '清除',
+                  onPressed: () => _set(null, ''),
+                )
+              : const Icon(Icons.chevron_right_rounded),
+        ),
       ),
       onTap: _pick,
     );

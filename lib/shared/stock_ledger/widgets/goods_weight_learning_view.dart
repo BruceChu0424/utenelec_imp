@@ -899,7 +899,9 @@ class _ManualUnitWeightDialogState extends State<_ManualUnitWeightDialog> {
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
-                    decoration: InputDecoration(labelText: '每$unitName重'),
+                    decoration: UtenInputDecoration(
+                      InputDecoration(labelText: '每$unitName重'),
+                    ),
                     onChanged: (_) => setState(() => _error = null),
                   ),
                 ),
@@ -920,10 +922,12 @@ class _ManualUnitWeightDialogState extends State<_ManualUnitWeightDialog> {
               key: const ValueKey('manual-unit-weight-reason'),
               controller: _reason,
               maxLength: 200,
-              decoration: const InputDecoration(
-                labelText: '设定原因 *',
-                hintText: '例如: 供应商图纸标注单重 2.3 g',
-                counterText: '',
+              decoration: const UtenInputDecoration(
+                InputDecoration(
+                  labelText: '设定原因 *',
+                  hintText: '例如: 供应商图纸标注单重 2.3 g',
+                  counterText: '',
+                ),
               ),
               onChanged: (_) => setState(() => _error = null),
             ),

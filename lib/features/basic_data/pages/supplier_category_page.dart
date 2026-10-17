@@ -355,6 +355,7 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
     MasterColumnDef(
       key: 'priceStyle',
       label: '主结账方式',
+      columnSearchEnabled: false,
       width: 110,
       value: (_) => '—',
     ), // 无对应物理列，恒显示"—"

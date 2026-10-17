@@ -1,5 +1,7 @@
 package com.uten.imp.features.sales.order;
 
+import com.uten.imp.common.web.HeaderColumnFilter;
+
 import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.common.finance.MoneyPolicy;
@@ -249,6 +251,9 @@ public class SalesOrderService {
             f.headerFilters().requireAmountVisible(priceMasker != null && priceMasker.canView());
             if (f.headerFilters().hasAmountRange() && f.currencyId() == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "原币订单金额筛选须先选择币种");
             f.headerFilters().apply(root, cb, ps, "totalOriginal", priceMasker != null && priceMasker.canView(), "deliverDate", false, null, false);
+            f.headerFilters().applySearch(root, q, cb, ps, java.util.Map.of(
+                    "billNo", HeaderColumnFilter.SearchField.text("billNo"),
+                    "client", HeaderColumnFilter.SearchField.reference("clientId", com.uten.imp.features.master.client.Client.class)));
             return cb.and(ps.toArray(new Predicate[0]));
         };
     }

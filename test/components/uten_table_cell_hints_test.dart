@@ -156,9 +156,13 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.byIcon(Icons.warning_amber_rounded), findsNothing);
-      expect(find.byIcon(Icons.arrow_drop_down_rounded), findsOneWidget);
+      final dropdownArrow = find.descendant(
+        of: find.byType(UtenDropdownField),
+        matching: find.byIcon(Icons.arrow_drop_down_rounded),
+      );
+      expect(dropdownArrow, findsOneWidget);
       expect(find.byTooltip('已按上次记录预填，请核对'), findsOneWidget);
-      await tester.tap(find.byIcon(Icons.arrow_drop_down_rounded));
+      await tester.tap(dropdownArrow);
       await tester.pumpAndSettle();
       await tester.tap(find.text('CNY'));
       await tester.pumpAndSettle();

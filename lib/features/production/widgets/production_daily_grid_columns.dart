@@ -1494,7 +1494,9 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                             size: 16,
                           ),
                           label: Text(
-                            label.isEmpty ? '选择来源工单' : label,
+                            label.isEmpty
+                                ? utenFieldPlaceholder(label: '来源子任务')!
+                                : label,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: label.isEmpty

@@ -109,11 +109,11 @@ void main() {
         expect(controller.text, isEmpty, reason: '提示不是默认数量或已填写事实');
         expect(_hintOpacity(tester, hint), 1);
         expect(
-          UtenTableCellInputTheme.contains(tester.element(find.text(hint))),
+          UtenTableCellInputTheme.contains(tester.element(_hintText(hint))),
           isTrue,
         );
         expect(
-          tester.widget<Text>(find.text(hint)).style?.color,
+          tester.widget<Text>(_hintText(hint)).style?.color,
           // 表格宿主使用语义提示色，普通页面的暗色70%提示色不适用于表格。
           theme.colorScheme.onSurfaceVariant,
         );
@@ -176,12 +176,12 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('空选择格提示选择货品和来源，选定后展示真实值', (tester) async {
+  testWidgets('空选择格显示货品和来源字段名，选定后展示真实值', (tester) async {
     final row = DailyGridRow();
     addTearDown(row.dispose);
     final theme = buildLightTheme();
     await _pumpNamedCells(tester, [(row, 'goods'), (row, 'planNo')], theme);
-    for (final hint in ['选择货品', '选择来源工单']) {
+    for (final hint in ['货品名称', '来源子任务']) {
       expect(find.text(hint), findsOneWidget);
       expect(
         tester.widget<Text>(find.text(hint)).style?.color,
@@ -192,8 +192,8 @@ void main() {
     row.executionSegmentCode = 'ZX-原工单';
     row.planNo.text = 'SJ-原计划';
     await tester.pumpAndSettle();
-    expect(find.text('选择货品'), findsNothing);
-    expect(find.text('选择来源工单'), findsNothing);
+    expect(find.text('货品名称'), findsNothing);
+    expect(find.text('来源子任务'), findsNothing);
     expect(find.text('真实货品'), findsOneWidget);
     expect(find.text('ZX-原工单'), findsOneWidget);
     expect(row.planNo.text, 'SJ-原计划');
@@ -261,19 +261,32 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        expect(find.text('选择货品'), findsOneWidget);
-        expect(find.text('选择来源工单'), findsOneWidget);
-        final context = tester.element(find.text('选择货品'));
-        expect(UtenTableCellInputTheme.contains(context), isTrue);
-        final minimum = platform == TargetPlatform.android ? 48.0 : 32.0;
-        expect(UtenEditableGridCellSpec.heightOf(context), minimum);
         Finder inputOf(String text) => find
             .ancestor(
               of: find.text(text),
               matching: find.byType(InputDecorator),
             )
             .first;
-        final emptyHeight = tester.getSize(inputOf('选择货品')).height;
+        final goodsInput = inputOf('货品名称');
+        final goodsPlaceholder = find.descendant(
+          of: goodsInput,
+          matching: find.text('货品名称'),
+        );
+        expect(goodsPlaceholder, findsOneWidget);
+        final sourceButton = find.ancestor(
+          of: find.text('来源子任务'),
+          matching: find.byWidgetPredicate((widget) => widget is TextButton),
+        );
+        expect(sourceButton, findsOneWidget);
+        expect(
+          find.descendant(of: sourceButton, matching: find.text('来源子任务')),
+          findsOneWidget,
+        );
+        final context = tester.element(goodsPlaceholder);
+        expect(UtenTableCellInputTheme.contains(context), isTrue);
+        final minimum = platform == TargetPlatform.android ? 48.0 : 32.0;
+        expect(UtenEditableGridCellSpec.heightOf(context), minimum);
+        final emptyHeight = tester.getSize(goodsInput).height;
         expect(emptyHeight, greaterThanOrEqualTo(minimum));
         if (textScale > 1) expect(emptyHeight, greaterThan(minimum));
         expect(tester.takeException(), isNull);
@@ -282,8 +295,20 @@ void main() {
         row.executionSegmentCode = 'ZX-原工单';
         row.planNo.text = 'SJ-原计划';
         await tester.pumpAndSettle();
-        expect(find.text('选择货品'), findsNothing);
-        expect(find.text('选择来源工单'), findsNothing);
+        expect(
+          find.ancestor(
+            of: find.text('货品名称'),
+            matching: find.byType(InputDecorator),
+          ),
+          findsNothing,
+        );
+        expect(
+          find.ancestor(
+            of: find.text('来源子任务'),
+            matching: find.byWidgetPredicate((widget) => widget is TextButton),
+          ),
+          findsNothing,
+        );
         expect(find.text('真实货品'), findsOneWidget);
         expect(find.text('ZX-原工单'), findsOneWidget);
         expect(row.planNo.text, 'SJ-原计划');
@@ -748,13 +773,17 @@ void main() {
   });
 }
 
-double _hintOpacity(WidgetTester tester, String text) => tester
-    .widget<AnimatedOpacity>(
-      find
-          .ancestor(of: find.text(text), matching: find.byType(AnimatedOpacity))
-          .first,
-    )
-    .opacity;
+Finder _hintAnimation(String text) => find.byWidgetPredicate((widget) {
+  if (widget is! AnimatedOpacity) return false;
+  final child = widget.child;
+  return child is Text && (child.data ?? child.textSpan?.toPlainText()) == text;
+});
+
+Finder _hintText(String text) =>
+    find.descendant(of: _hintAnimation(text), matching: find.text(text));
+
+double _hintOpacity(WidgetTester tester, String text) =>
+    tester.widget<AnimatedOpacity>(_hintAnimation(text)).opacity;
 
 Future<void> _pumpNamedCells(
   WidgetTester tester,

@@ -164,8 +164,13 @@ void _registerProductDetailsResizeTests() {
       final selected = find.descendant(of: field, matching: find.text(name));
       expect(selected, findsOneWidget);
       expect(tester.widget<Text>(selected).maxLines, 1);
+      final paragraph = find.descendant(
+        of: selected,
+        matching: find.byType(RichText),
+      );
+      expect(paragraph, findsOneWidget);
       expect(
-        tester.renderObject<RenderParagraph>(selected).didExceedMaxLines,
+        tester.renderObject<RenderParagraph>(paragraph).didExceedMaxLines,
         isFalse,
       );
       expect(data.allocations.first.allocationQty.text, '1000');

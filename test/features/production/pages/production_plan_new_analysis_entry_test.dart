@@ -221,11 +221,12 @@ Future<void> _fillManualDemandHeader(
 
 /// 点这张单第一个空的「货品名称」格（弹多选选货）。
 Future<void> _pickManualDemandGoods(WidgetTester tester, {int card = 0}) async {
+  final emptyName = find.descendant(
+    of: find.byKey(ValueKey('manual-demand-grid-$card')),
+    matching: find.text('货品名称'),
+  );
   final cell = find
-      .descendant(
-        of: find.byKey(ValueKey('manual-demand-grid-$card')),
-        matching: find.text('点击选择'),
-      )
+      .ancestor(of: emptyName, matching: find.byType(InputDecorator))
       .first;
   await tester.ensureVisible(cell);
   await tester.pumpAndSettle();

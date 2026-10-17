@@ -347,6 +347,78 @@ void main() {
   });
 
   _testWindows(
+    'post-frame row swaps clear safely and invalidate an already open copy action',
+    (tester) async {
+      final previous = _Row('Alpha goods');
+      final next = _Row('Beta goods');
+      final controller = UtenEditableGridController<_Row>(initial: [previous]);
+      addTearDown(controller.dispose);
+      addTearDown(previous.dispose);
+      await tester.pumpWidget(_page(controller, editing: true));
+      await tester.pumpAndSettle();
+      final bodyState = tester.state<SelectionAreaState>(_bodyArea);
+      await _selectText(tester, 'Alpha goods');
+      await _rightClick(tester, find.text('Alpha goods'));
+      expect(find.text('复制所选文字'), findsOneWidget);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        controller.swapRows([previous, next]);
+        controller.swapRows([]);
+        controller.swapRows([next]);
+      });
+      await tester.pump();
+      await Clipboard.setData(const ClipboardData(text: 'Current clipboard'));
+      await tester.tap(find.text('复制所选文字'));
+      await tester.pumpAndSettle();
+      expect(
+        (await Clipboard.getData('text/plain'))?.text,
+        'Current clipboard',
+      );
+      expect(controller.rows, [next]);
+      expect(find.text('Alpha goods'), findsNothing);
+      expect(find.text('Beta goods'), findsOneWidget);
+      expect(tester.state<SelectionAreaState>(_bodyArea), same(bodyState));
+      expect(tester.takeException(), isNull);
+      await _selectText(tester, 'Beta goods');
+      await _copyShortcut(tester);
+      expect((await Clipboard.getData('text/plain'))?.text, 'Beta goods');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  _testWindows(
+    'native copy cannot use old selected text while a frame clear is pending',
+    (tester) async {
+      final previous = _Row('Alpha goods');
+      final next = _Row('Beta goods');
+      final controller = UtenEditableGridController<_Row>(initial: [previous]);
+      addTearDown(controller.dispose);
+      addTearDown(previous.dispose);
+      await tester.pumpWidget(_page(controller, editing: true));
+      await tester.pumpAndSettle();
+      final area = tester.state<SelectionAreaState>(_bodyArea);
+      await _selectText(tester, 'Alpha goods');
+      final focus = FocusManager.instance.primaryFocus;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        controller.swapRows([next]);
+      });
+      await tester.pump();
+      await Clipboard.setData(const ClipboardData(text: 'Current clipboard'));
+      await _copyShortcut(tester);
+      await tester.pumpAndSettle();
+      expect(
+        (await Clipboard.getData('text/plain'))?.text,
+        'Current clipboard',
+      );
+      expect(tester.state<SelectionAreaState>(_bodyArea), same(area));
+      expect(FocusManager.instance.primaryFocus, same(focus));
+      await _selectText(tester, 'Beta goods');
+      await _copyShortcut(tester);
+      expect((await Clipboard.getData('text/plain'))?.text, 'Beta goods');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  _testWindows(
     'frozen cells copy once and keep native input state while scrolling',
     (tester) async {
       tester.view.physicalSize = const Size(520, 600);

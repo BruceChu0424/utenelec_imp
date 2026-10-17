@@ -28,15 +28,15 @@ class UnixSocketHostOperationsClientTest {
                 .isInstanceOf(HostOperationsException.class).hasMessageNotContaining("密");
     }
     @Test void helperRawErrorsNeverEscape() {
-        var failure=catchThrowableOfType(()->decode("{\"ok\":false,\"code\":\"UNKNOWN_PRIVATE_KEY\",\"message\":\"SECRET123\"}",
-                HostOperationsClient.Operation.CONFIG_READ),HostOperationsException.class);
+        var failure=catchThrowableOfType(HostOperationsException.class,()->decode("{\"ok\":false,\"code\":\"UNKNOWN_PRIVATE_KEY\",\"message\":\"SECRET123\"}",
+                HostOperationsClient.Operation.CONFIG_READ));
         assertThat(failure.code()).isEqualTo("UNAVAILABLE");
         assertThat(failure.getMessage()).doesNotContain("SECRET123","UNKNOWN_PRIVATE_KEY");
         assertThat(failure.getCause()).isNull();
     }
     @Test void malformedMutationResponseIsUncertainAndCannotBeAutomaticallyReplayed() {
         for(String frame: new String[]{"{}","{\"ok\":true,\"data\":{}} trailing","{\"ok\":true,\"data\":null}"}) {
-            var failure=catchThrowableOfType(()->decode(frame,HostOperationsClient.Operation.UPDATE_START),HostOperationsException.class);
+            var failure=catchThrowableOfType(HostOperationsException.class,()->decode(frame,HostOperationsClient.Operation.UPDATE_START));
             assertThat(failure.uncertain()).isTrue();
         }
         assertThat(decode("{\"ok\":true,\"data\":null}",HostOperationsClient.Operation.UPDATE_JOB).isNull()).isTrue();
@@ -46,8 +46,8 @@ class UnixSocketHostOperationsClientTest {
                 HostOperationsClient.Operation.STATUS)).isInstanceOf(HostOperationsException.class);
     }
     @Test void explicitUnknownOutcomeAndDstErrorsAreNotMisreportedAsMissingInstallation() {
-        var unknown=catchThrowableOfType(()->decode("{\"ok\":false,\"code\":\"OUTCOME_UNCERTAIN\",\"message\":\"raw secret\"}",
-                HostOperationsClient.Operation.CONFIG_SAVE),HostOperationsException.class);
+        var unknown=catchThrowableOfType(HostOperationsException.class,()->decode("{\"ok\":false,\"code\":\"OUTCOME_UNCERTAIN\",\"message\":\"raw secret\"}",
+                HostOperationsClient.Operation.CONFIG_SAVE));
         assertThat(unknown.uncertain()).isTrue();
         assertThat(unknown.toApiException().getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.SERVER_OPERATION_OUTCOME_UNCERTAIN);
         assertThat(new HostOperationsException("AMBIGUOUS_SCHEDULE").toApiException().getMessage()).contains("夏令时");
@@ -60,8 +60,7 @@ class UnixSocketHostOperationsClientTest {
     @Test void windowsHasHonestUnavailableAndStorageGetsItsBoundedScanDeadline() {
         var client=new UnixSocketHostOperationsClient(mapper,Path.of("/run/uten-imp-operations/control.sock"),Duration.ofSeconds(5),false);
         for (var operation : HostOperationsClient.Operation.values()) {
-            var failure=catchThrowableOfType(()->client.call(operation,Map.of(),UUID.randomUUID(),UUID.randomUUID()),
-                    HostOperationsException.class);
+            var failure=catchThrowableOfType(HostOperationsException.class,()->client.call(operation,Map.of(),UUID.randomUUID(),UUID.randomUUID()));
             assertThat(failure.code()).as(operation.name()).isEqualTo("HOST_PLATFORM_UNSUPPORTED");
             assertThat(failure.uncertain()).isFalse();
             assertThat(failure.toApiException().getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.SERVER_OPERATIONS_UNAVAILABLE);
@@ -74,8 +73,7 @@ class UnixSocketHostOperationsClientTest {
     @Test void remoteErrorsCannotForgeTheLocalPlatformFact() {
         for (var operation : new HostOperationsClient.Operation[]{HostOperationsClient.Operation.STATUS,
                 HostOperationsClient.Operation.CONFIG_SAVE,HostOperationsClient.Operation.STORAGE_SUMMARY}) {
-            var failure=catchThrowableOfType(()->decode("{\"ok\":false,\"code\":\"HOST_PLATFORM_UNSUPPORTED\"}",operation),
-                    HostOperationsException.class);
+            var failure=catchThrowableOfType(HostOperationsException.class,()->decode("{\"ok\":false,\"code\":\"HOST_PLATFORM_UNSUPPORTED\"}",operation));
             assertThat(failure.code()).isEqualTo("UNAVAILABLE");
             assertThat(failure.availabilityFailure().code()).isEqualTo("HOST_HELPER_UNAVAILABLE");
             assertThat(failure.toApiException().getMessage()).doesNotContain("当前平台不支持");

@@ -72,7 +72,8 @@ class DashboardOverviewServiceTest {
         when(user.getPermissions()).thenReturn(Set.of("account:view", "ar_ap_ledger:view"));
         assertThat(service.overview().metrics()).extracting(DashboardOverviewDto.MetricCard::id)
                 .doesNotContain("cash-balance", "ar-balance", "ap-balance");
-        verify(jdbc, never()).queryForObject(contains("FROM accounts"), any(Class.class));
+        verify(jdbc, never()).queryForObject(contains("FROM accounts"),
+                org.mockito.ArgumentMatchers.<Class<?>>any());
         verifyNoInteractions(salesAccess);
     }
 

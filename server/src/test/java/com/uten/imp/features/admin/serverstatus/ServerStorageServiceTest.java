@@ -173,9 +173,9 @@ class ServerStorageServiceTest {
                 .put("deletedCount",1).put("reclaimedBytes",1024);
         malformed.putObject("detail").put("raw","PRIVATE_HELPER_DETAIL");
         when(host.call(any(),anyMap(),eq(actor.getId()),eq(request))).thenReturn(malformed);
-        var mutation=catchThrowableOfType(()->service.delete(new ServerStorageView.DeleteRequest(preview,request)),ApiException.class);
+        var mutation=catchThrowableOfType(ApiException.class,()->service.delete(new ServerStorageView.DeleteRequest(preview,request)));
         assertThat(mutation.getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.SERVER_OPERATION_OUTCOME_UNCERTAIN);
-        var read=catchThrowableOfType(()->service.result(request),ApiException.class);
+        var read=catchThrowableOfType(ApiException.class,()->service.result(request));
         assertThat(read.getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.SERVER_OPERATIONS_UNAVAILABLE);
         assertThat(mutation.getMessage()).doesNotContain("PRIVATE_HELPER_DETAIL");
         assertThat(read.getMessage()).doesNotContain("PRIVATE_HELPER_DETAIL");

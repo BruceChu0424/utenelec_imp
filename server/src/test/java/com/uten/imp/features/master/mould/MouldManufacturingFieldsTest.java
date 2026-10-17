@@ -67,7 +67,7 @@ class MouldManufacturingFieldsTest {
         request.setMstatus("2009-03-31"); // 兼容旧客户端，但业务仍按月份保存。
         service.update(mould.getId(), request);
         assertThat(mould.getMstatus()).isEqualTo("2009-03");
-        when(repository.findAll(any(Specification.class), any(Pageable.class)))
+        when(repository.findAll(org.mockito.ArgumentMatchers.<Specification<Mould>>any(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(mould)));
         var filter = new MouldQueryFilter(null, null, Set.of(), null, null, null, null, null, null, null);
         assertThat(service.list(filter, 1, 20).getItems().getFirst().getManufacturer()).isEqualTo("模具制造商");

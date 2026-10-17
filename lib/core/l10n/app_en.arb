@@ -1,4 +1,8 @@
 {
+  "tableFacetLoadFailed": "Could not load values. Retry",
+  "tableFacetLoadMore": "Load more values",
+  "masterSearchUpdating": "Updating search results",
+  "tableCopySelectedText": "Copy selected text",
   "release2518ServerUpdates": "Authorized staff can check for server updates manually, then update now or schedule an update in the server's local time. Available updates show a reminder and badge; there are no periodic update checks.",
   "release2518Storage": "Server storage shows memory, disks, database, upload and backup details. Authorized staff can preview cleanup of eligible resources; current versions, required rollback and recovery backups, and uploaded originals remain protected.",
   "release2518CompanyConnections": "Super administrators can configure each company's OSS update source and SMS gateway. Keys are write-only, and SMS gateway changes apply to the next code request.",

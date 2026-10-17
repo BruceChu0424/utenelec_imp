@@ -649,6 +649,66 @@ public class GoodsService {
 
     // ===== facets: the same authorized search/filter predicate as the list =====
 
+    /** Search one column over the whole authorized scope before limiting its distinct values. */
+    @Transactional(readOnly = true)
+    public com.uten.imp.features.master.goods.dto.GoodsFacetPage facetValues(
+            GoodsQueryFilter filter, String field, String search, int page, int size) {
+        boolean reference = "owningWarehouse".equals(field) || "owningWorkshop".equals(field);
+        if (!FACET_COLUMNS.containsKey(field) && !reference && !"code".equals(field)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "不支持的货品表头字段");
+        }
+        if (page < 1 || page > 100000 || size < 1 || size > 100 || (search != null && search.length() > 200)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "候选搜索参数无效");
+        }
+        GoodsQueryFilter facetFilter = filter.forFacet(field);
+        var scope = goodsScope();
+        var keyword = keywordPlan(filter);
+        var ids = resolveCategoryScopeIds(filter);
+        Map<Integer, String> colors = "colorLegacyId".equals(field) ? allColorNames() : Map.of();
+        Map<Integer, String> units = "unitLegacyId".equals(field) ? allUnitNames() : Map.of();
+        CriteriaBuilder cb = em.getCriteriaBuilder();
+        CriteriaQuery<Object[]> query = cb.createQuery(Object[].class);
+        Root<Goods> root = query.from(Goods.class);
+        jakarta.persistence.criteria.Expression<?> value = reference ? root.get(field).get("id") : root.get(field);
+        jakarta.persistence.criteria.Expression<String> label = reference ? root.get(field).get("name") : null;
+        var count = cb.count(root);
+        if (reference) query.multiselect(value, count, label).groupBy(value, label);
+        else query.multiselect(value, count).groupBy(value);
+        List<Predicate> predicates = new ArrayList<>();
+        predicates.add(goodsPredicate(facetFilter, ids, scope, root, cb, keyword));
+        predicates.add(cb.isNotNull(value));
+        if (!KeywordSearch.terms(search).isEmpty()) {
+            if ("colorLegacyId".equals(field) || "unitLegacyId".equals(field)) {
+                var names = "colorLegacyId".equals(field) ? colors : units;
+                var matchedIds = names.keySet().stream()
+                        .filter(id -> KeywordSearch.matches(search, labelFor(field, id.toString(), colors, units))).toList();
+                Predicate knownNames = matchedIds.isEmpty() ? cb.disjunction() : value.in(matchedIds);
+                // Historical unresolved references are displayed as #id; zero
+                // is the legacy '(空)' sentinel, never an unresolved #0 label.
+                Predicate unresolved = cb.and(cb.notEqual(value, 0),
+                        KeywordSearch.allTerms(cb, search, cb.concat("#",
+                                ((org.hibernate.query.criteria.JpaExpression<?>) value).cast(String.class))));
+                if (!names.isEmpty()) unresolved = cb.and(unresolved, cb.not(value.in(names.keySet())));
+                predicates.add(KeywordSearch.matches(search, "(空)")
+                        ? cb.or(knownNames, unresolved, cb.equal(value, 0)) : cb.or(knownNames, unresolved));
+            } else {
+                predicates.add(KeywordSearch.allTerms(cb, search, reference ? label : root.<String>get(field)));
+            }
+        }
+        query.where(cb.and(predicates.toArray(Predicate[]::new)));
+        query.orderBy(reference
+                ? List.of(cb.desc(count), cb.asc(label), cb.asc(value))
+                : List.of(cb.desc(count), cb.asc(value)));
+        List<Object[]> rows = em.createQuery(query).setFirstResult((page - 1) * size).setMaxResults(size + 1).getResultList();
+        boolean hasMore = rows.size() > size;
+        List<FacetBucket> result = rows.stream().limit(size).map(row -> {
+            String raw = String.valueOf(row[0]);
+            return new FacetBucket(raw, ((Number) row[1]).longValue(),
+                    reference ? String.valueOf(row[2]) : labelFor(field, raw, colors, units));
+        }).toList();
+        return new com.uten.imp.features.master.goods.dto.GoodsFacetPage(result, hasMore);
+    }
+
     /** Existing category-only callers retain their unfiltered bucket scope. */
     @Transactional(readOnly = true)
     public GoodsFacets facets(UUID categoryId) {

@@ -6,11 +6,50 @@ import 'package:uten_imp/components/layout/uten_split_view.dart';
 import 'package:uten_imp/features/basic_data/models/payment_style_node.dart';
 import 'package:uten_imp/features/basic_data/widgets/uten_category_tree_view.dart';
 import 'package:uten_imp/shared/widgets/uten_hierarchy_tree_view.dart';
+import 'package:uten_imp/shared/models/uten_tree_node.dart';
 
 const _longName = '屏外最长分类标题必须完整显示并且不能在滚到末尾时才改变分栏宽度';
 const _longLabel = '$_longName(C099)';
 
 void main() {
+  testWidgets('分类薄封装重建复用2440节点的标题量测，不扫描折叠后代', (tester) async {
+    final controller = UtenHierarchyContentWidthController();
+    addTearDown(controller.dispose);
+    var namesRead = 0;
+    final nodes = [
+      for (var root = 0; root < 40; root++)
+        _CountedCategory('root-$root', '分类$root', () => namesRead++, [
+          for (var child = 0; child < 60; child++)
+            _CountedCategory(
+              'child-$root-$child',
+              '屏外分类$root-$child',
+              () => namesRead++,
+            ),
+        ]),
+    ];
+    Widget frame(Set<String> selected) => MaterialApp(
+      home: Scaffold(
+        body: UtenHierarchyContentWidthScope(
+          controller: controller,
+          child: UtenCategoryTreeView<_CountedCategory>(
+            nodes: nodes,
+            showSearch: false,
+            initiallyExpandDepth: 0,
+            selectedIds: selected,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpWidget(frame(const {}));
+    await tester.pumpAndSettle();
+    expect(namesRead, greaterThanOrEqualTo(2440));
+    namesRead = 0;
+    await tester.pumpWidget(frame(const {'root-1'}));
+    await tester.pumpAndSettle();
+    expect(namesRead, lessThan(120), reason: '只更新已显示的40个根，不重测2400个折叠后代');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('100个分类未滚动就保护屏外最长标题，滚动往返下限不跳变', (tester) async {
     tester.view.physicalSize = const Size(2000, 600);
     tester.view.devicePixelRatio = 1;
@@ -219,3 +258,28 @@ Widget _scope(
 );
 
 String _label(PaymentStyleNode node) => '${node.name}(${node.code})';
+
+class _CountedCategory extends UtenTreeNode<_CountedCategory> {
+  _CountedCategory(
+    this.id,
+    this._name,
+    this.onNameRead, [
+    this.children = const [],
+  ]);
+  @override
+  final String id;
+  final String _name;
+  final VoidCallback onNameRead;
+  @override
+  String get name {
+    onNameRead();
+    return _name;
+  }
+
+  @override
+  String get code => id;
+  @override
+  final List<_CountedCategory> children;
+  @override
+  bool get hasChildren => children.isNotEmpty;
+}

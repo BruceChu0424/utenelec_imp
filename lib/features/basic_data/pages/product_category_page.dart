@@ -34,6 +34,7 @@ import '../models/product_category_node.dart';
 import '../providers/goods_clipboard.dart';
 import '../repositories/goods_bom_repository.dart';
 import '../repositories/goods_repository.dart';
+import '../repositories/goods_facet_repository.dart';
 import '../repositories/product_category_repository.dart';
 import '../widgets/category_edit_dialog.dart';
 import '../widgets/basic_data_l10n.dart';
@@ -557,6 +558,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
   /// 行菜单由本页接管(复制/粘贴/组件信息 + 多选批量菜单)。
   MasterEntityPaneConfig<GoodsListItem, GoodsDetail> _paneConfig() {
     final goods = ref.read(goodsRepositoryProvider);
+    final facetRepository = ref.read(goodsFacetRepositoryProvider);
     final includeRelated = _includeRelated;
     return MasterEntityPaneConfig<GoodsListItem, GoodsDetail>(
       noun: '货品', // TODO(l10n): 补 arb
@@ -612,6 +614,19 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
               );
         return MasterPaneFacets(fields: f.fields, nullCounts: f.nullCounts);
       },
+      loadFacetPage: facetRepository == null
+          ? null
+          : (query, field, search, page) => facetRepository.values(
+              field: field,
+              search: search,
+              page: page,
+              categoryId: query.categoryId,
+              keyword: query.keyword,
+              includeRelated: includeRelated && query.hasKeyword,
+              filters: query.filters,
+              excludeDisabled: !query.hasKeyword,
+              excludeStub: true,
+            ),
       batchEntityPath: ApiEndpoints.goods,
       statusResourceOf: ApiEndpoints.good,
       canCreate: _canCreateMaster,

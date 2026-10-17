@@ -1377,7 +1377,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     return MasterDataTableView<StockDocItem>(
       tableKey: 'warehouse.${widget.docType.name}.items',
       primary: true,
-      enableTextSelection: !capturing,
+      rowKeyOf: (item) => item.id,
       bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
       toolbarActions: capturing ? const [WeightEntryUnitButton()] : null,
       summaryBar: capturing

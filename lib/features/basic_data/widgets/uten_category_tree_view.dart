@@ -147,7 +147,7 @@ class UtenCategoryTreeView<T extends UtenTreeNode<T>> extends StatelessWidget {
     initiallyExpandDepth: initiallyExpandDepth,
     initiallyCollapsedNames: initiallyCollapsedNames,
     trailingBuilder: trailingBuilder,
-    labelOf: (node) => categoryNodeLabel(node),
+    labelOf: categoryNodeLabel<T>,
     header: header,
     searchHint: searchHint,
     searchFieldKey: searchFieldKey,

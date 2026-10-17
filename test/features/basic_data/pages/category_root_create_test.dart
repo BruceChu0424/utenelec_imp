@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/models/payment_style_node.dart';
 import 'package:uten_imp/features/basic_data/pages/client_category_page.dart';
@@ -19,16 +21,83 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/widgets/uten_location_field.dart';
 import '../../../support/filter_segment_tap.dart';
+import '../../../support/audit_screenshot_support.dart';
 
 const _rootId = '00000000-0000-0000-0000-000000000001';
 const _childId = '00000000-0000-0000-0000-000000000002';
 const _createdId = '00000000-0000-0000-0000-000000000003';
 
 void main() {
+  for (final scenario in [
+    (width: 390.0, scale: 1.0, dark: false),
+    (width: 900.0, scale: 1.3, dark: true),
+    (width: 1440.0, scale: 1.8, dark: false),
+  ]) {
+    testWidgets('category search header aligns at ${scenario.width}', (
+      tester,
+    ) async {
+      const capture = bool.fromEnvironment('UTEN_AUDIT_SCREENSHOTS');
+      if (capture) await loadAuditScreenshotFonts(tester);
+      final captureKey = GlobalKey();
+      final oldShadows = debugDisableShadows;
+      if (capture) debugDisableShadows = false;
+      addTearDown(() => debugDisableShadows = oldShadows);
+      await _pump(
+        tester,
+        _CategoryApi('goods'),
+        size: Size(scenario.width, 900),
+        textScale: scenario.scale,
+        captureKey: captureKey,
+        theme: auditScreenshotTheme(
+          scenario.dark ? buildDarkTheme() : buildLightTheme(),
+        ),
+      );
+      final field = find.byType(UtenSearchBar).first;
+      final add = find.byKey(const ValueKey('category-add-root')).first;
+      expect(tester.getRect(add).top, closeTo(tester.getRect(field).top, 0.1));
+      expect(
+        tester.getRect(add).bottom,
+        closeTo(tester.getRect(field).bottom, 0.1),
+      );
+      expect(add.hitTestable(), findsOneWidget);
+      final reads = _searchText(tester);
+      await tester.tap(
+        find.descendant(of: field, matching: find.byType(TextField)),
+      );
+      await tester.pumpAndSettle();
+      expect(_searchText(tester), reads);
+      expect(tester.takeException(), isNull);
+      if (capture) {
+        await saveAuditScreenshot(
+          tester,
+          captureKey,
+          'hierarchy-search-${scenario.width.toInt()}',
+        );
+      }
+      debugDisableShadows = oldShadows;
+    });
+  }
   for (final kind in ['goods', 'mould', 'client', 'supplier']) {
     testWidgets('$kind 根入口独立于选中子类和查询，创建真实根后清查询并定位UUID', (tester) async {
       final fixture = _CategoryApi(kind);
       await _pump(tester, fixture);
+      final search = tester.getRect(find.byType(UtenSearchBar).first);
+      final action = find.byKey(const ValueKey('category-add-root'));
+      final actionRect = tester.getRect(action);
+      expect(actionRect.top, closeTo(search.top, 0.1));
+      expect(actionRect.bottom, closeTo(search.bottom, 0.1));
+      expect(actionRect.width, closeTo(search.height, 0.1));
+      expect(
+        find.descendant(
+          of: action,
+          matching: find.byIcon(Icons.create_new_folder_outlined),
+        ),
+        findsOneWidget,
+      );
+      final tree = tester.getRect(
+        find.byWidgetPredicate((widget) => widget is UtenCategoryTreeView),
+      );
+      expect(search.left, closeTo(tree.left, 0.1));
       expect(find.text('真实业务根'), findsOneWidget);
       final beforeChild = tester.getTopLeft(find.text('既有子分类'));
       await tester.tap(find.text('既有子分类'));
@@ -99,6 +168,10 @@ void main() {
     await _pump(tester, fixture, size: const Size(390, 900), textScale: 1.8);
     final action = find.byTooltip('新增最外层分类');
     final search = find.byType(UtenSearchBar).first;
+    expect(
+      tester.getRect(action).height,
+      closeTo(tester.getRect(search).height, 0.1),
+    );
     expect(
       tester.getTopLeft(action).dx,
       greaterThanOrEqualTo(tester.getTopRight(search).dx),
@@ -326,6 +399,8 @@ Future<void> _pump(
   Size size = const Size(1600, 1000),
   double textScale = 1,
   GoRouter? router,
+  GlobalKey? captureKey,
+  ThemeData? theme,
 }) async {
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -347,6 +422,7 @@ Future<void> _pump(
   );
   final app = router == null
       ? MaterialApp(
+          theme: theme,
           home: switch (kind) {
             'goods' => const ProductCategoryPage(),
             'mould' => const MouldCategoryPage(),
@@ -360,6 +436,7 @@ Future<void> _pump(
           locale: const Locale('zh'),
         )
       : MaterialApp.router(
+          theme: theme,
           routerConfig: router,
           builder: builder,
           localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -374,7 +451,9 @@ Future<void> _pump(
         currentPermissionsProvider.overrideWithValue(permissions),
         isSuperAdminProvider.overrideWithValue(false),
       ],
-      child: app,
+      child: captureKey == null
+          ? app
+          : RepaintBoundary(key: captureKey, child: app),
     ),
   );
   await tester.pumpAndSettle();

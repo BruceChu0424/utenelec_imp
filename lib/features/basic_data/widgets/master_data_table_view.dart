@@ -1,4 +1,5 @@
 import '../../../components/data_display/uten_table_surface.dart';
+import '../../../components/data_display/uten_table_text_selection.dart';
 import '../../../shared/platform_tables/platform_table_binding.dart';
 import '../../../shared/platform_tables/platform_table_controller.dart';
 import '../../../shared/platform_tables/platform_table_picker.dart';
@@ -47,6 +48,7 @@ import '../../../core/responsive/scale.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/measurement/weight_unit.dart';
 import '../models/master_facet.dart';
+import 'basic_data_l10n.dart';
 import '../../../components/data_display/uten_color_name.dart';
 import '../../../shared/ai/page_context/ai_page_context.dart';
 
@@ -289,6 +291,8 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.rowsController,
     this.rowVisible,
     required this.facets,
+    this.loadFacetPage,
+    this.facetSearchScope,
     required this.nullCounts,
     required this.filters,
     this.externalFilterKeys = const <String>{},
@@ -426,6 +430,11 @@ class MasterDataTableView<T> extends StatefulWidget {
   final List<String> requiredLeadingColumnKeys;
   final List<T> items;
   final Map<String, List<MasterFacetBucket>> facets;
+
+  /// Optional full-scope candidate lookup for capped server facet previews.
+  /// This searches candidate values; choosing one keeps exact filtering.
+  final MasterFacetPageLoader? loadFacetPage;
+  final Object? facetSearchScope;
   final Map<String, int> nullCounts;
   final Map<String, String?> filters;
 
@@ -617,13 +626,12 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 桌面/全屏默认保留完整列显隐能力。
   final bool showColumnChooser;
 
-  /// 是否为只读表体创建独立 [SelectionArea]。
+  /// 是否允许表体文字框选与复制，与行勾选 [selectable] 相互独立。
   ///
-  /// 默认开启，保留普通数据表的复制能力。包含横向同步滚动、分页或密集行手势的
-  /// 重交互页面可显式关闭；此时各行内容用 [SelectionContainer.disabled] 隔离，避免
-  /// Flutter Web 在路由转场/滚动期间反复维护 SelectionRegistrar 导致主线程卡顿。
+  /// 默认开启，包括多选表和含输入格的表；输入控件保留自己的原生文字选择。
+  /// 特殊内容可显式关闭，此时各行内容用 [SelectionContainer.disabled] 隔离。
   /// 表体选择区实例保持稳定，禁用屏障位于 ListView 自动保活节点之下。
-  /// [selectable] 为 true 的业务多选表始终关闭文字框选，本开关不改变行勾选语义。
+  /// 拖选文字不触发行勾选；单击、复选框和行菜单保留原有业务选择语义。
   final bool enableTextSelection;
 
   /// 行底色（按行数据定，如货品按状态：使用=浅蓝/禁用=浅红）；返回 null = 默认透明。
@@ -1821,6 +1829,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   // 显示行就地过滤；宿主未接 onSortChange 时 sortable 列就地排序（取值感知
   // number/money/date，空值恒排末尾）。服务端分页页两者都由宿主回调接管。
   final Map<String, String?> _rowFilters = <String, String?>{};
+  // One selected remote caption per logical column, shared by its ordinary
+  // header and the frozen header copy.
+  final Map<String, MasterFacetBucket> _selectedFacetBuckets = {};
   String? _localSortColumn;
   bool _localSortAscending = true;
   String _queryPreferenceSignature = '';
@@ -2133,6 +2144,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   /// 当前选中（单击高亮）的行：滚动不刷新数据故高亮常驻，翻页/重查换对象后自然失效。
   T? _selectedItem;
+
+  final _textSelection = UtenTableTextSelection();
+  List<String>? _textSelectionColumnKeys;
+  List<String>? _textSelectionRowKeys;
 
   /// 手动双击检测（列表页「单击选中、双击打开」）：上次点击的行键与时刻。
   /// 用 package:clock 的 [clock]（widget 测试环境为 fake clock，随 pump 推进）
@@ -2807,9 +2822,54 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     if (_hBarY.value != barBottom) _hBarY.value = barBottom;
   }
 
+  bool _sameTextSelectionRows(MasterDataTableView<T> before) {
+    if (!_sameColumnKeys(before.columns, widget.columns)) return false;
+    bool sameRows(List<T> previous, List<T> current) {
+      if (listEquals(previous, current)) return true;
+      if (previous.length != current.length) return false;
+      for (var i = 0; i < previous.length; i++) {
+        if (before.idOf?.call(previous[i]) != widget.idOf?.call(current[i]) ||
+            before.rowKeyOf?.call(previous[i]) !=
+                widget.rowKeyOf?.call(current[i])) {
+          return false;
+        }
+        for (var column = 0; column < widget.columns.length; column++) {
+          if (before.columns[column].value(previous[i]) !=
+              widget.columns[column].value(current[i])) {
+            return false;
+          }
+        }
+      }
+      return true;
+    }
+
+    if (!sameRows(before.items, widget.items)) return false;
+    final previousGroups = before.leadingGroups ?? const [];
+    final currentGroups = widget.leadingGroups ?? const [];
+    if (identical(previousGroups, currentGroups)) return true;
+    if (previousGroups.length != currentGroups.length) return false;
+    for (var i = 0; i < previousGroups.length; i++) {
+      final previous = previousGroups[i];
+      final current = currentGroups[i];
+      if (previous.id != current.id ||
+          previous.title != current.title ||
+          previous.subtitle != current.subtitle ||
+          !sameRows(previous.items, current.items)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   @override
   void didUpdateWidget(covariant MasterDataTableView<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!widget.enableTextSelection ||
+        oldWidget.paginationScope != widget.paginationScope ||
+        oldWidget.paginationRevision != widget.paginationRevision ||
+        !_sameTextSelectionRows(oldWidget)) {
+      _textSelection.clear();
+    }
     if (!identical(oldWidget.items, widget.items) ||
         !identical(oldWidget.leadingGroups, widget.leadingGroups) ||
         oldWidget.paginationRevision != widget.paginationRevision ||
@@ -4190,6 +4250,19 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   Widget _buildProjectedTable(BuildContext context) {
+    final columnKeys = _columns.map((column) => column.key).toSet();
+    _selectedFacetBuckets.removeWhere(
+      (key, bucket) =>
+          !columnKeys.contains(key) || widget.filters[key] != bucket.value,
+    );
+    final selectionColumns = [
+      for (final i in _visibleIndices) _columns[i].key,
+      ..._pinnedKeys.map((key) => 'pinned:$key'),
+    ];
+    if (!listEquals(_textSelectionColumnKeys, selectionColumns)) {
+      _textSelection.clear();
+      _textSelectionColumnKeys = selectionColumns;
+    }
     _projectionOwner = ModalRoute.of(context);
     _publishProjection();
     final theme = Theme.of(context);
@@ -4198,6 +4271,16 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final showFullscreen = widget.showFullscreenToggle ?? !widget.embedded;
     final groups = widget.leadingGroups ?? <MasterDataGroup<T>>[];
     final displayItems = _displayItems;
+    final selectionRows = [
+      for (final group in groups)
+        if (_expandedGroups.contains(group.id) || group.initiallyExpanded)
+          for (final item in group.items) _textSelectionRowKey(item),
+      for (final item in displayItems) _textSelectionRowKey(item),
+    ];
+    if (!listEquals(_textSelectionRowKeys, selectionRows)) {
+      _textSelection.clear();
+      _textSelectionRowKeys = selectionRows;
+    }
 
     // 行区提示（2026-10-09 用户口径「搜索无结果/加载/错误时表格骨架也要在，页面不许跳」）：
     // 不再整块换空态/错误/加载占位壳——统一渲染同一张表（工具条+表头+列），只有行区
@@ -4589,6 +4672,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// SDK 的行保活节点在祖先 registrar 变 null 后仍可能收到旧文本的 remove，
   /// 此时内部强制解引用会崩溃。禁用文字选择必须放在行保活节点下面。
   Widget _maybeSelectionArea(Widget child) => SelectionArea(
+    key: _textSelection.areaKey,
+    onSelectionChanged: _textSelection.onSelectionChanged,
     // 2026-09-15 用户口径：表格自带右键行菜单时，只显示自家菜单。右键点到
     // 可选文字上 SelectionArea 会弹框架默认「全选/复制」工具条与行菜单撞车
     //（文字拖选/键盘复制不受影响，只静音右键工具条）。
@@ -4598,10 +4683,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     child: child,
   );
 
-  /// 多选和显式退出文字选择时，只隔离行内容，不改变 ListView 自动创建的
-  /// SelectionKeepAlive 的祖先 registrar；普通浏览仍可拖选和复制文本。
-  Widget _rowSelectionArea(Widget child) =>
-      widget.selectable || !widget.enableTextSelection
+  /// 显式退出文字选择时只隔离行内容，不改变 ListView 自动创建的
+  /// SelectionKeepAlive 的祖先 registrar；行勾选不影响文字选择。
+  Widget _rowSelectionArea(Widget child) => !widget.enableTextSelection
       ? SelectionContainer.disabled(child: child)
       : child;
 
@@ -4963,6 +5047,20 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final localSortActive = !serverSort && _localSortColumn == sortKey;
     final filterCell = _FilterCell(
       label: _columns[i].label,
+      selectedBucket: _selectedFacetBuckets[sortKey],
+      onBucketSelected: (bucket) {
+        if (bucket == null) {
+          _selectedFacetBuckets.remove(sortKey);
+        } else {
+          _selectedFacetBuckets[sortKey] = bucket;
+        }
+      },
+      loadFacetPage: rowFacets == null && widget.facets.containsKey(sortKey)
+          ? widget.loadFacetPage == null
+                ? null
+                : (search, page) => widget.loadFacetPage!(sortKey, search, page)
+          : null,
+      searchScope: widget.facetSearchScope ?? widget.paginationScope,
       sortKey: sortKey,
       type: _columns[i].type,
       sortable: _columns[i].sortable,
@@ -5099,6 +5197,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     return style;
   }
 
+  String _textSelectionRowKey(T item) =>
+      widget.rowKeyOf?.call(item) ??
+      widget.idOf?.call(item) ??
+      _columns.map((column) => column.value(item)).join('\u0000');
+
   Widget _buildDataCell(
     ThemeData theme,
     int columnIndex,
@@ -5106,6 +5209,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     bool selected,
     TextStyle textStyle, {
     required bool showRightDivider,
+    bool frozen = false,
   }) {
     final column = _columns[columnIndex];
     // 选中行整行青绿实底（utenTableSelectedRowColor，与编辑网格同款，2026-09-13
@@ -5172,12 +5276,24 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final listenable = selected
         ? null
         : column.cellColorListenableOf?.call(item);
-    return listenable == null
+    final cell = listenable == null
         ? buildCell()
         : ListenableBuilder(
             listenable: listenable,
             builder: (context, _) => buildCell(),
           );
+    if (frozen || !_pinnedKeys.contains(column.key)) return cell;
+    return AnimatedBuilder(
+      animation: _bodyH,
+      child: cell,
+      builder: (context, child) => UtenTableTextSelectionGate(
+        enabled:
+            !_bodyH.hasClients ||
+            _bodyH.positions.length != 1 ||
+            _bodyH.offset <= 0,
+        child: child!,
+      ),
+    );
   }
 
   Widget _buildDataRow(ThemeData theme, T item) {
@@ -5297,6 +5413,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                         selected,
                         textStyle,
                         showRightDivider: showRightDivider(i),
+                        frozen: true,
                       ),
                   ],
                 ),
@@ -5484,7 +5601,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     }
     if (rowMenuBuilder != null) {
       return UtenContextMenuRegion(
-        entriesBuilder: () => rowMenuBuilder(item),
+        entriesBuilder: () {
+          return [
+            if (widget.enableTextSelection)
+              ..._textSelection.copyMenuEntries(context),
+            ...rowMenuBuilder(item),
+          ];
+        },
         onMenuOpening: selectRowForMenu,
         onActionCompleted: clearSelectionAfterMenuAction,
         child: interactive,
@@ -5755,6 +5878,10 @@ class _FilterCell extends StatefulWidget {
     required this.nullCount,
     required this.selected,
     required this.onChanged,
+    this.loadFacetPage,
+    this.searchScope,
+    this.selectedBucket,
+    this.onBucketSelected,
     this.sortKey,
     this.type = 'text',
     this.sortable = false,
@@ -5770,6 +5897,11 @@ class _FilterCell extends StatefulWidget {
   final int nullCount;
   final String? selected;
   final ValueChanged<String?> onChanged;
+  final Future<MasterFacetPage> Function(String search, int page)?
+  loadFacetPage;
+  final Object? searchScope;
+  final MasterFacetBucket? selectedBucket;
+  final ValueChanged<MasterFacetBucket?>? onBucketSelected;
 
   /// 列头说明（MasterColumnDef.info 透传）：非空渲染 ⓘ，悬停 Tooltip、
   /// 点击（含手机）弹说明小窗。
@@ -5797,11 +5929,24 @@ class _FilterCellState extends State<_FilterCell> {
 
   /// 菜单内搜索框（选项多时启用，输入实时过滤 bucket 列表）。
   TextEditingController? _searchCtl;
+  Timer? _searchDebounce;
+  int _searchRevision = 0;
+  int? _fetchingRevision;
+  List<MasterFacetBucket> _remoteBuckets = const [];
+  bool _remoteLoading = false;
+  bool _remoteHasMore = false;
+  bool _remoteFailed = false;
+  int _remotePage = 0;
+  String _remoteQuery = '';
+  bool _remoteComposing = false;
+  TextEditingValue? _lastSearchValue;
 
   /// 切换分类后旧选中值可能不在新 facet：sanitize 退回"所有"。
   String? get _sanitized {
     final validValues = <String>{for (final b in widget.buckets) b.value};
     return (widget.selected == null ||
+            widget.loadFacetPage != null ||
+            widget.selectedBucket?.value == widget.selected ||
             widget.selected == kMasterFilterNullValue ||
             validValues.contains(widget.selected))
         ? widget.selected
@@ -5811,18 +5956,108 @@ class _FilterCellState extends State<_FilterCell> {
   void _open() {
     if (_overlay != null) return;
     _searchCtl = TextEditingController();
+    _remoteComposing = false;
+    _lastSearchValue = _searchCtl!.value;
+    if (widget.loadFacetPage != null) {
+      _searchCtl!.addListener(_remoteEditingChanged);
+    }
     _overlay = OverlayEntry(builder: _buildOverlay);
     Overlay.of(context, rootOverlay: true).insert(_overlay!);
+    if (widget.loadFacetPage != null) _searchRemote('', immediate: true);
   }
 
   void _close() {
+    _searchRevision++;
+    _searchDebounce?.cancel();
     _overlay?.remove();
     _overlay = null;
     _searchCtl?.dispose();
     _searchCtl = null;
   }
 
-  void _select(String? value) {
+  @override
+  void didUpdateWidget(covariant _FilterCell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.sortKey != widget.sortKey ||
+        oldWidget.searchScope != widget.searchScope ||
+        (oldWidget.loadFacetPage == null) != (widget.loadFacetPage == null)) {
+      _close();
+    }
+  }
+
+  void _searchRemote(String value, {bool immediate = false}) {
+    _searchDebounce?.cancel();
+    final revision = ++_searchRevision;
+    _remoteQuery = value.trim();
+    _remoteBuckets = const [];
+    _remotePage = 0;
+    _remoteHasMore = false;
+    _remoteFailed = false;
+    _remoteLoading = true;
+    _overlay?.markNeedsBuild();
+    if (immediate) {
+      _fetchRemote(revision, 1);
+    } else {
+      _searchDebounce = Timer(
+        const Duration(milliseconds: 250),
+        () => _fetchRemote(revision, 1),
+      );
+    }
+  }
+
+  void _remoteEditingChanged() {
+    final value = _searchCtl?.value;
+    if (value == null ||
+        (_lastSearchValue?.text == value.text &&
+            _lastSearchValue?.composing == value.composing)) {
+      return;
+    }
+    _lastSearchValue = value;
+    _remoteComposing = value.composing.isValid && !value.composing.isCollapsed;
+    if (_remoteComposing) {
+      _searchDebounce?.cancel();
+      _searchRevision++;
+      _remoteBuckets = const [];
+      _remoteHasMore = false;
+      _remoteFailed = false;
+      _remoteLoading = false;
+      _overlay?.markNeedsBuild();
+      return;
+    }
+    _searchRemote(value.text);
+  }
+
+  Future<void> _fetchRemote(int revision, int page) async {
+    if (_fetchingRevision == revision) return;
+    _fetchingRevision = revision;
+    _remoteLoading = true;
+    _remoteFailed = false;
+    _overlay?.markNeedsBuild();
+    try {
+      final result = await widget.loadFacetPage!(_remoteQuery, page);
+      if (!mounted || _overlay == null || revision != _searchRevision) return;
+      _fetchingRevision = null;
+      final byValue = <String, MasterFacetBucket>{
+        if (page > 1)
+          for (final bucket in _remoteBuckets) bucket.value: bucket,
+        for (final bucket in result.items) bucket.value: bucket,
+      };
+      _remoteBuckets = byValue.values.toList();
+      _remoteHasMore = result.hasMore;
+      _remotePage = page;
+      _remoteLoading = false;
+      _overlay?.markNeedsBuild();
+    } catch (_) {
+      if (!mounted || _overlay == null || revision != _searchRevision) return;
+      _fetchingRevision = null;
+      _remoteLoading = false;
+      _remoteFailed = true;
+      _overlay?.markNeedsBuild();
+    }
+  }
+
+  void _select(String? value, {MasterFacetBucket? bucket}) {
+    widget.onBucketSelected?.call(widget.loadFacetPage == null ? null : bucket);
     widget.onChanged(value);
     _close();
   }
@@ -5837,7 +6072,10 @@ class _FilterCellState extends State<_FilterCell> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final s = _sanitized;
-    final hasFacets = widget.buckets.isNotEmpty || widget.nullCount > 0;
+    final hasFacets =
+        widget.loadFacetPage != null ||
+        widget.buckets.isNotEmpty ||
+        widget.nullCount > 0;
     // 无 facets 且不可排序的列（如部分单据列表的纯标签列头）→ 纯标签，不渲染下拉/排序。
     // 这样文档页可直接复用 MasterDataTableView，与基础资料布局完全一致。
     final interactive = hasFacets || s != null || widget.sortable;
@@ -5890,7 +6128,12 @@ class _FilterCellState extends State<_FilterCell> {
           break;
         }
       }
-      display = sel ?? s;
+      display =
+          sel ??
+          (widget.selectedBucket?.value == s
+              ? widget.selectedBucket?.display
+              : null) ??
+          s;
     }
 
     return CompositedTransformTarget(
@@ -5958,9 +6201,13 @@ class _FilterCellState extends State<_FilterCell> {
   Widget _buildOverlay(BuildContext ctx) {
     final theme = Theme.of(ctx);
     final sanitized = _sanitized;
-    final hasFacets = widget.buckets.isNotEmpty || widget.nullCount > 0;
+    final hasFacets =
+        widget.loadFacetPage != null ||
+        widget.buckets.isNotEmpty ||
+        widget.nullCount > 0;
     // 选项较多时菜单顶部出搜索框（客户等长列表快速定位）。
-    final searchable = widget.buckets.length >= 6;
+    final searchable =
+        widget.loadFacetPage != null || widget.buckets.length >= 6;
     return Stack(
       children: [
         // 点菜单外空白关闭（兜底；TapRegion 是主机制）。
@@ -5989,11 +6236,13 @@ class _FilterCellState extends State<_FilterCell> {
                 child: StatefulBuilder(
                   builder: (ctx, setOverlayState) {
                     final q = _searchCtl?.text.trim().toLowerCase() ?? '';
-                    final buckets = rankedKeywordMatches(
-                      widget.buckets,
-                      q,
-                      fields: (bucket) => [bucket.display],
-                    );
+                    final buckets = widget.loadFacetPage != null
+                        ? _remoteBuckets
+                        : rankedKeywordMatches(
+                            widget.buckets,
+                            q,
+                            fields: (bucket) => [bucket.display],
+                          );
                     return Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -6042,7 +6291,9 @@ class _FilterCellState extends State<_FilterCell> {
                                   vertical: UtenSpacing.s8,
                                 ),
                               ),
-                              onChanged: (_) => setOverlayState(() {}),
+                              onChanged: (value) {
+                                setOverlayState(() {});
+                              },
                             ),
                           ),
                         Flexible(
@@ -6098,7 +6349,7 @@ class _FilterCellState extends State<_FilterCell> {
                                         ? '${b.display} (${b.count})'
                                         : b.display,
                                     isSelected: sanitized == b.value,
-                                    onTap: () => _select(b.value),
+                                    onTap: () => _select(b.value, bucket: b),
                                     theme: theme,
                                   ),
                                 // 「其他」兜底桶固定放最后（2026-09-16 用户口径）：
@@ -6116,7 +6367,45 @@ class _FilterCellState extends State<_FilterCell> {
                                         _select(kMasterFilterNullValue),
                                     theme: theme,
                                   ),
-                                if (buckets.isEmpty)
+                                if (_remoteLoading)
+                                  const Padding(
+                                    padding: EdgeInsets.all(UtenSpacing.s12),
+                                    child: Center(
+                                      child: SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                if (_remoteFailed)
+                                  TextButton(
+                                    onPressed: () => _fetchRemote(
+                                      _searchRevision,
+                                      _remotePage + 1,
+                                    ),
+                                    child: Text(
+                                      basicDataL10n(ctx).tableFacetLoadFailed,
+                                    ),
+                                  ),
+                                if (_remoteHasMore &&
+                                    !_remoteLoading &&
+                                    !_remoteFailed)
+                                  TextButton(
+                                    onPressed: () => _fetchRemote(
+                                      _searchRevision,
+                                      _remotePage + 1,
+                                    ),
+                                    child: Text(
+                                      basicDataL10n(ctx).tableFacetLoadMore,
+                                    ),
+                                  ),
+                                if (buckets.isEmpty &&
+                                    !_remoteLoading &&
+                                    !_remoteFailed &&
+                                    !_remoteComposing)
                                   Padding(
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: UtenSpacing.s12,

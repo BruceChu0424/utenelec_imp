@@ -17,11 +17,14 @@ class UtenHierarchySearchHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) => trailing == null
       ? search
-      : Row(
-          children: [
-            Expanded(child: search),
-            const SizedBox(width: UtenSpacing.s8),
-            trailing!,
-          ],
+      : IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: search),
+              const SizedBox(width: UtenSpacing.s8),
+              AspectRatio(aspectRatio: 1, child: trailing!),
+            ],
+          ),
         );
 }

@@ -9,6 +9,18 @@ class AppLocalizationsKo extends AppLocalizations {
   AppLocalizationsKo([String locale = 'ko']) : super(locale);
 
   @override
+  String get tableFacetLoadFailed => '값을 불러오지 못했습니다. 다시 시도';
+
+  @override
+  String get tableFacetLoadMore => '값 더 불러오기';
+
+  @override
+  String get masterSearchUpdating => '검색 결과 업데이트 중';
+
+  @override
+  String get tableCopySelectedText => '선택한 텍스트 복사';
+
+  @override
   String get release2518ServerUpdates =>
       '권한이 있는 직원은 서버 새 버전을 직접 확인한 뒤 즉시 업데이트하거나 서버 현지 시간으로 예약할 수 있습니다. 새 버전이 확인되면 알림과 배지가 표시되며, 정기적인 자동 확인은 실행하지 않습니다.';
 

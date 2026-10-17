@@ -1110,7 +1110,6 @@ abstract class _MaterialAnalysisMaterialTableState
         virtualized: !primary,
         rowKeyOf: (row) => row.key,
         rowWidgetKeyOf: _materialTableRowWidgetKey,
-        enableTextSelection: false,
         // 空态：组件层在有激活表头筛选时补「清除筛选」按钮与生效数提示（F2a-flow）。
         emptyMessage: '当前视图/筛选下没有物料任务，可切换“全部 BOM”、清除查找或清除表头筛选',
         rowColor: (row) {

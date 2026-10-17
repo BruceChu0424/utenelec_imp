@@ -3032,8 +3032,7 @@ void main() {
       await _tapBucketRowCheckbox(tester, '待自制壳体');
       expect(_bucketRowCheckboxValue(tester, '待自制壳体'), isTrue);
       expect(find.textContaining(RegExp(r'创建生产计划.*\(1\)')), findsOneWidget);
-      // 2026-09-22 起三个桶同一张只读 MasterDataTableView(不再是可编辑计划表),
-      // 表内不开文字框选。
+      // 三个桶统一只读 MasterDataTableView；行勾选与文字框选独立。
       final bucketTable = find.byWidgetPredicate(
         (widget) => widget is MasterDataTableView,
       );
@@ -3045,8 +3044,8 @@ void main() {
       );
       expect(
         SelectionContainer.maybeOf(tester.element(materialCell)),
-        isNull,
-        reason: '稳定挂载的表体选择区不能使业务多选行的文字可框选',
+        isNotNull,
+        reason: '业务行仍保持勾选，表体文字同时可框选复制',
       );
       expect(_bucketRowCheckboxValue(tester, '待自制壳体'), isTrue);
       await _closeBucketDetail(tester);

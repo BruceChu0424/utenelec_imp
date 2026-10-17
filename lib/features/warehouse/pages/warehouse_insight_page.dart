@@ -1033,8 +1033,6 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
       ),
       items: items,
       rowKeyOf: (r) => r.goodsId,
-      // 表内有输入框: 关掉表体文字框选, 免得拖选与输入打架。
-      enableTextSelection: false,
       facets: const {},
       nullCounts: const {},
       filters: const {},

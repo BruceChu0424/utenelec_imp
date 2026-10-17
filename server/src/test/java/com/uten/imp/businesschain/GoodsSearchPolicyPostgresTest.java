@@ -34,6 +34,74 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 class GoodsSearchPolicyPostgresTest extends AuthSessionPostgresTestSupport {
     @Autowired GoodsService service;
 
+    @Test void facetCandidateSearchFindsValuesBeyondPreviewAndPagesWholeAuthorizedScope() throws Exception {
+        String token = adminToken();
+        UUID root = category(null, "表头全量候选"), outside = category(null, "候选范围之外");
+        for (int index = 0; index < 60; index++) {
+            for (int copy = 0; copy < 2; copy++) {
+                goods(root, "FACET-" + UUID.randomUUID(), "高频货品" + index, "80-B", null);
+            }
+        }
+        UUID first = goods(root, "Z-" + UUID.randomUUID(), "V4一开", "80-B", null);
+        UUID second = goods(root, "Z-" + UUID.randomUUID(), "v4二开", "80-B", null);
+        UUID literal = goods(root, "Z-" + UUID.randomUUID(), "V4%_开关", "80-B", null);
+        goods(root, "Z-" + UUID.randomUUID(), "V4其他型号", "90-B", null);
+        goods(outside, "Z-" + UUID.randomUUID(), "V4范围外", "80-B", null);
+        JsonNode preview = request(token, get("/api/master/goods/facets")
+                .param("categoryId", root.toString()).param("model", "80-B"));
+        assertEquals(50, preview.path("name").size());
+        assertFalse(facetValues(preview, "name").contains("V4一开"), "The old 50-bucket preview cannot find this real value");
+        Set<String> found = new java.util.HashSet<>();
+        for (int page = 1; page <= 3; page++) {
+            JsonNode candidates = request(token, get("/api/master/goods/facet-values")
+                    .param("categoryId", root.toString()).param("field", "name").param("search", "v4")
+                    .param("model", "80-B").param("name", "V4一开")
+                    .param("page", Integer.toString(page)).param("size", "1"));
+            assertEquals(1, candidates.path("items").size());
+            found.add(candidates.path("items").get(0).path("value").asText());
+            assertEquals(page < 3, candidates.path("hasMore").asBoolean());
+        }
+        assertEquals(Set.of("V4一开", "v4二开", "V4%_开关"), found);
+        JsonNode escaped = request(token, get("/api/master/goods/facet-values")
+                .param("categoryId", root.toString()).param("field", "name").param("search", "%_"));
+        assertEquals(1, escaped.path("items").size());
+        assertEquals("V4%_开关", escaped.path("items").get(0).path("value").asText());
+        JsonNode exact = request(token, get("/api/master/goods").param("categoryId", root.toString())
+                .param("name", "V4一开").param("size", "1"));
+        assertEquals(List.of(first.toString()), ids(exact));
+        assertEquals(1, exact.path("total").asInt(), "Choosing a candidate must keep exact filtering");
+
+        jdbc.update("UPDATE goods SET color_legacy_id=? WHERE id=?", 2147000991, first);
+        jdbc.update("UPDATE goods SET unit_legacy_id=? WHERE id=?", 2147000992, second);
+        jdbc.update("UPDATE goods SET color_legacy_id=0,unit_legacy_id=0 WHERE id=?", literal);
+        for (String field : List.of("colorLegacyId", "unitLegacyId")) {
+            String raw = field.equals("colorLegacyId") ? "2147000991" : "2147000992";
+            JsonNode unresolved = request(token, get("/api/master/goods/facet-values")
+                    .param("categoryId", root.toString()).param("field", field).param("search", "#" + raw));
+            assertEquals(1, unresolved.path("items").size());
+            assertEquals(raw, unresolved.path("items").get(0).path("value").asText());
+            assertEquals("#" + raw, unresolved.path("items").get(0).path("label").asText());
+            JsonNode emptyLegacy = request(token, get("/api/master/goods/facet-values")
+                    .param("categoryId", root.toString()).param("field", field).param("search", "(空)"));
+            assertEquals(1, emptyLegacy.path("items").size());
+            assertEquals("0", emptyLegacy.path("items").get(0).path("value").asText());
+            assertEquals("(空)", emptyLegacy.path("items").get(0).path("label").asText());
+        }
+
+        Employee actor = newEmployee(token, "DEPT_ENG");
+        UUID other = UUID.fromString(newEmployee(token, "DEPT_ENG").employeeId());
+        UUID hidden = goods(root, "Z-" + UUID.randomUUID(), "V4不可见货品", "80-B", null);
+        jdbc.update("UPDATE goods SET owner_employee_id=? WHERE id=?", other, hidden);
+        JsonNode authorized = request(actor.accessToken(), get("/api/master/goods/facet-values")
+                .param("categoryId", root.toString()).param("field", "name").param("search", "v4")
+                .param("model", "80-B"));
+        assertEquals(3, authorized.path("items").size());
+        assertFalse(authorized.toString().contains("不可见"));
+        MvcResult unsupported = mvc.perform(get("/api/master/goods/facet-values")
+                .header("Authorization", "Bearer " + token).param("field", "price")).andReturn();
+        assertEquals(422, unsupported.getResponse().getStatus());
+    }
+
     @Test void categoryIntentPrimaryAndOptionalRelatedHaveOneRankBeforePagingAndExport() throws Exception {
         String token = adminToken();
         UUID root = category(null, "策略范围"), screws = category(root, "螺丝类"), child = category(screws, "镀锌件"), sockets = category(root, "电话插座");

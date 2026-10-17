@@ -307,7 +307,6 @@ class ProductionDrawDetailTable extends StatelessWidget {
           'features.warehouse.widgets.production_draw_detail_table.ProductionDrawDetailTable.build.1',
       key: const Key('production-draw-detail-table'),
       primary: primary,
-      enableTextSelection: !_capturesWeight && issueQtyControllers == null,
       rowKeyOf: (row) => row.stableRowKey,
       bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
       facets: const {},

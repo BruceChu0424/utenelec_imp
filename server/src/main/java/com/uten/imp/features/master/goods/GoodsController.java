@@ -119,6 +119,17 @@ public class GoodsController {
         return service.queryFacets(filter);
     }
 
+    @GetMapping("/facet-values")
+    @PreAuthorize("hasAuthority('goods:view')")
+    public com.uten.imp.features.master.goods.dto.GoodsFacetPage facetValues(
+            @org.springframework.web.bind.annotation.ModelAttribute GoodsQueryFilter filter,
+            @RequestParam String field,
+            @RequestParam(defaultValue = "") String search,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return service.facetValues(filter, field, search, page, size);
+    }
+
     /** 按 id 批量解析货品名（采购单据明细展示用；goods:view 全员有）。 */
     @GetMapping("/lookup")
     @PreAuthorize("hasAuthority('goods:view')")

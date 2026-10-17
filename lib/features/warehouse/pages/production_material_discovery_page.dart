@@ -635,7 +635,6 @@ class _DiscoveryPageState extends ConsumerState<ProductionMaterialDiscoveryPage>
                           'features.warehouse.pages.production_material_discovery_page.DiscoveryPageState.build.1',
                       key: const Key('discovery-material-table'),
                       primary: true,
-                      enableTextSelection: false,
                       columns: _columns(l10n),
                       items: List.unmodifiable(_grid.rows),
                       rowKeyOf: (row) => row.id,

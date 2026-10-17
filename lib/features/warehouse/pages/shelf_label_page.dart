@@ -914,14 +914,19 @@ class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
                   color: theme.colorScheme.surfaceContainerHighest,
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(UtenSpacing.s16),
-                    child: Center(
-                      child: Column(
-                        children: [
-                          for (final g in widget.groups) ...[
-                            _paperLabel(theme, g.key, g.value),
-                            const SizedBox(height: UtenSpacing.s16),
-                          ],
-                        ],
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Center(
+                        child: SelectionArea(
+                          child: Column(
+                            children: [
+                              for (final g in widget.groups) ...[
+                                _paperLabel(theme, g.key, g.value),
+                                const SizedBox(height: UtenSpacing.s16),
+                              ],
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),

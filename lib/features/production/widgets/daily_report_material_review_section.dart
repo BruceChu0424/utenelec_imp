@@ -146,7 +146,6 @@ class DailyReportMaterialReviewSection extends StatelessWidget {
                   virtualized: review.rows.length > 6,
                   showColumnChooser: false,
                   showFullscreenToggle: false,
-                  enableTextSelection: false,
                   columns: [
                     MasterColumnDef(
                       key: 'source',

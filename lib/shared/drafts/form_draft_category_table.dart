@@ -366,6 +366,8 @@ class _FormDraftCategoryTableState<T>
       ],
       items: rows,
       facets: table.facets,
+      loadFacetPage: table.loadFacetPage,
+      facetSearchScope: table.facetSearchScope,
       nullCounts: table.nullCounts,
       filters: table.filters,
       externalFilterKeys: table.externalFilterKeys,

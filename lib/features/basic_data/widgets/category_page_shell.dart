@@ -36,6 +36,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_anim.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../models/product_category_node.dart';
@@ -244,19 +245,17 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   void _onGlobalSearchInput(String raw) {
     _shellSearchDebounce?.cancel();
     _searchRequests.begin();
-    final tree = _tree;
     if (!mounted) return;
     final q = raw.trim();
     shellSearchQueryChanged(q);
     _acceptPendingSearch = true;
     setState(() {
-      _searchRevision++;
       if (q.isEmpty) _searchCategoryId = null;
       _globalQuery = q;
       _searchError = null;
-      _visibleFilterIds = q.isEmpty
-          ? null
-          : categoryHits(tree ?? const <ProductCategoryNode>[], q);
+      // Only invalidate commands here. Tree matching/ranking waits for the
+      // same committed query as the right pane, rather than scanning per key.
+      if (q.isEmpty) _visibleFilterIds = null;
       _searchLoading = q.isNotEmpty;
     });
     // Keep debounce alive when the input moves between an empty state, the
@@ -373,65 +372,84 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
 
   Widget _buildGlobalSearchBox() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          UtenHierarchySearchHeader(
-            search: UtenSearchBar(
-              initialValue: _globalQuery,
-              hint: shellSearchHint, // TODO(l10n): 补 arb
-              onInputChanged: _onGlobalSearchInput,
-              onChanged: _onGlobalSearch,
+      padding: const EdgeInsets.only(
+        top: UtenSpacing.s12,
+        bottom: UtenSpacing.s8,
+      ),
+      child: AnimatedSize(
+        alignment: Alignment.topLeft,
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : UtenAnim.fast,
+        curve: UtenAnim.standard,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            UtenHierarchySearchHeader(
+              search: UtenSearchBar(
+                initialValue: _globalQuery,
+                hint: shellSearchHint, // TODO(l10n): 补 arb
+                onInputChanged: _onGlobalSearchInput,
+                onChanged: _onGlobalSearch,
+              ),
+              trailing: shellCanCreate
+                  ? IconButton.filledTonal(
+                      key: const ValueKey('category-add-root'),
+                      tooltip: '新增最外层分类',
+                      constraints: BoxConstraints(
+                        minWidth: UtenControlMetrics.minimumHitExtent(
+                          context,
+                          desktop: 36,
+                        ),
+                        minHeight: UtenControlMetrics.minimumHitExtent(
+                          context,
+                          desktop: 36,
+                        ),
+                      ),
+                      style: IconButton.styleFrom(
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: UtenRadius.controlAll,
+                        ),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      padding: EdgeInsets.zero,
+                      onPressed: _loading
+                          ? null
+                          : () => shellShowCreateDialog(),
+                      icon: const Icon(Icons.create_new_folder_outlined),
+                    )
+                  : null,
             ),
-            trailing: shellCanCreate
-                ? IconButton(
-                    key: const ValueKey('category-add-root'),
-                    tooltip: '新增最外层分类',
-                    constraints: BoxConstraints.tightFor(
-                      width: UtenControlMetrics.minimumHitExtent(
-                        context,
-                        desktop: 36,
-                      ),
-                      height: UtenControlMetrics.minimumHitExtent(
-                        context,
-                        desktop: 36,
-                      ),
+            if (_globalQuery.isNotEmpty) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _searchCategoryId == null
+                          ? '搜索范围：全部分类'
+                          : '搜索范围：${utenTreeSelectionPath(_tree ?? const <ProductCategoryNode>[], _searchCategoryId) ?? '所选分类'}',
+                      key: const ValueKey('category-search-scope'),
+                      softWrap: true,
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
-                    padding: EdgeInsets.zero,
-                    onPressed: _loading ? null : () => shellShowCreateDialog(),
-                    icon: const Icon(Icons.add_rounded, size: 20),
-                  )
-                : null,
-          ),
-          if (_globalQuery.isNotEmpty) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _searchCategoryId == null
-                        ? '搜索范围：全部分类'
-                        : '搜索范围：${utenTreeSelectionPath(_tree ?? const <ProductCategoryNode>[], _searchCategoryId) ?? '所选分类'}',
-                    key: const ValueKey('category-search-scope'),
-                    softWrap: true,
-                    style: Theme.of(context).textTheme.bodySmall,
                   ),
-                ),
-                if (_searchCategoryId != null)
-                  IconButton(
-                    tooltip: '清除分类范围，搜索全部分类',
-                    onPressed: () {
-                      setState(() => _searchCategoryId = null);
-                      shellRefreshSearch();
-                    },
-                    icon: const Icon(Icons.close_rounded, size: 18),
-                  ),
-              ],
-            ),
-            ...shellSearchOptions(context),
+                  if (_searchCategoryId != null)
+                    IconButton(
+                      tooltip: '清除分类范围，搜索全部分类',
+                      onPressed: () {
+                        setState(() => _searchCategoryId = null);
+                        shellRefreshSearch();
+                      },
+                      icon: const Icon(Icons.close_rounded, size: 18),
+                    ),
+                ],
+              ),
+              ...shellSearchOptions(context),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -586,7 +604,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
           ? const {'未分类'}
           : const {},
       visibleFilterIds: _treeVisibleIds,
-      externalSearchQuery: _globalQuery,
+      externalSearchQuery: _treeSearchKeyword,
       externalSearchLoading: _searchLoading,
       externalSearchError: _searchError,
       header: _buildGlobalSearchBox(),

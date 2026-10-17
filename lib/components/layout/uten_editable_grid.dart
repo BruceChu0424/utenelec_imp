@@ -1,4 +1,5 @@
 import '../data_display/uten_table_surface.dart';
+import '../data_display/uten_table_text_selection.dart';
 import '../../shared/platform_tables/platform_table_binding.dart';
 import '../../shared/platform_tables/platform_table_controller.dart';
 import '../../shared/platform_tables/platform_table_picker.dart';
@@ -1002,6 +1003,10 @@ class _UtenEditableGridState<T extends EditableGridRow>
   bool _projectionScheduled = false;
   final _aiSlot = AiPageSlot();
   final _aiCells = AiCellRegistry();
+
+  final _textSelection = UtenTableTextSelection();
+  List<String>? _textSelectionColumnSignature;
+
   List<EditableGridColumn<T>> get _columns {
     if (_platformColumnCache != null &&
         identical(_platformBaseCache, widget.columns)) {
@@ -1588,6 +1593,10 @@ class _UtenEditableGridState<T extends EditableGridRow>
   @override
   void didUpdateWidget(covariant UtenEditableGrid<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.controller, widget.controller) ||
+        oldWidget.tableKey != widget.tableKey) {
+      _textSelection.clear();
+    }
     final previousColumns = _platformColumnCache ?? oldWidget.columns;
     if (_sameColumnKeys(oldWidget.columns, widget.columns)) {
       for (var i = 0; i < widget.columns.length && i < _widths.length; i++) {
@@ -2079,6 +2088,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// （表头全选 checkbox、_totalWidth 列宽需随之刷新）+ 重算 sticky。
   void _onControllerChanged() {
     if (!mounted) return;
+    _textSelection.clear();
     _configurePlatform();
     // 行集变化（增删/替换/粘贴）→ 拆线重挂自动加宽监听 + 标记整体重算列宽 +
     // 撤掉已失效的表头筛选值(本监听只挂在 rowsListenable 上，勾选不会进来)。
@@ -2567,6 +2577,15 @@ class _UtenEditableGridState<T extends EditableGridRow>
     _ensureAutoFit(context); // 随内容自动加宽：首帧/行集/字号档变化时量宽（手动锁定列除外）。
     final theme = Theme.of(context);
     final visibleColumnIndices = _visibleColumnIndices;
+    final selectionColumns = [
+      for (final i in visibleColumnIndices) _columns[i].key,
+      'pinned:',
+      for (final i in _pinnedVisibleColumnIndices) _columns[i].key,
+    ];
+    if (!listEquals(_textSelectionColumnSignature, selectionColumns)) {
+      _textSelection.clear();
+      _textSelectionColumnSignature = selectionColumns;
+    }
     final total = _totalWidth;
     final divider = BorderSide(
       color: theme.colorScheme.outlineVariant,
@@ -2595,105 +2614,115 @@ class _UtenEditableGridState<T extends EditableGridRow>
             // AR 选择器实测）。
             KeyedSubtree(
               key: _bodyKey,
-              child: ListenableBuilder(
-                // 只随行集变化重建；勾选由各行自己订阅(见 _RowSelectionListener)。
-                listenable: widget.controller.rowsListenable,
-                builder: (context, _) {
-                  final all = _allRows();
-                  if (all.isEmpty) {
-                    return _EmptyRows(
-                      message: widget.emptyMessage,
-                      child: widget.emptyPlaceholder,
-                    );
-                  }
-                  // 表头筛选为视图级过滤：只影响可见行集，不动数据与选中。
-                  final rows = _visibleRows();
-                  _publishHiddenByFilter(all, rows);
-                  if (rows.isEmpty) {
-                    return const _EmptyRows(message: '没有符合表头筛选条件的行');
-                  }
-                  final detailsBuilder = widget.rowDetailsBuilder;
-                  final rowIndices = detailsBuilder == null
-                      ? null
-                      : (Map<T, int>.identity()..addEntries(
-                          rows.asMap().entries.map(
-                            (entry) => MapEntry(entry.value, entry.key),
-                          ),
-                        ));
-                  Widget rowList(double canvasWidth, {double? detailsWidth}) {
-                    return UtenHScrollArea(
-                      controller: _bodyH,
-                      child: SizedBox(
-                        width: canvasWidth,
-                        child: ListView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          padding: EdgeInsets.zero,
-                          itemCount: rows.length,
-                          findChildIndexCallback: rowIndices == null
-                              ? null
-                              : (key) => key is ObjectKey
-                                    ? rowIndices[key.value]
-                                    : null,
-                          itemBuilder: (context, i) {
-                            final row = rows[i];
-                            final dataRow = _rowCellOrMenuRegion(
-                              row,
-                              i,
-                              divider,
-                              visibleColumnIndices,
-                            );
-                            return RepaintBoundary(
-                              key: detailsBuilder == null
-                                  ? null
-                                  : ObjectKey(row),
-                              // 主行与详情共用身份；筛选、删除、插入后展开状态不会串行。
-                              child: detailsBuilder == null
-                                  ? dataRow
-                                  : Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.stretch,
-                                      children: [
-                                        dataRow,
-                                        NotificationListener<
-                                          SizeChangedLayoutNotification
-                                        >(
-                                          onNotification: (_) {
-                                            _onDetailsLayoutChanged();
-                                            return true;
-                                          },
-                                          child: SizeChangedLayoutNotifier(
-                                            child: _ViewportRowDetails(
-                                              horizontal: _bodyH,
-                                              viewportWidth: detailsWidth!,
-                                              builder: (context) =>
-                                                  detailsBuilder(context, row),
+              // Plain Text and custom read-only cells share a local region;
+              // TextField keeps its own native selection. Header and action
+              // gestures stay outside it, isolated from any page region.
+              child: SelectionArea(
+                key: _textSelection.areaKey,
+                onSelectionChanged: _textSelection.onSelectionChanged,
+                child: ListenableBuilder(
+                  // 只随行集变化重建；勾选由各行自己订阅(见 _RowSelectionListener)。
+                  listenable: widget.controller.rowsListenable,
+                  builder: (context, _) {
+                    final all = _allRows();
+                    if (all.isEmpty) {
+                      return _EmptyRows(
+                        message: widget.emptyMessage,
+                        child: widget.emptyPlaceholder,
+                      );
+                    }
+                    // 表头筛选为视图级过滤：只影响可见行集，不动数据与选中。
+                    final rows = _visibleRows();
+                    _publishHiddenByFilter(all, rows);
+                    if (rows.isEmpty) {
+                      return const _EmptyRows(message: '没有符合表头筛选条件的行');
+                    }
+                    final detailsBuilder = widget.rowDetailsBuilder;
+                    final rowIndices = detailsBuilder == null
+                        ? null
+                        : (Map<T, int>.identity()..addEntries(
+                            rows.asMap().entries.map(
+                              (entry) => MapEntry(entry.value, entry.key),
+                            ),
+                          ));
+                    Widget rowList(double canvasWidth, {double? detailsWidth}) {
+                      return UtenHScrollArea(
+                        controller: _bodyH,
+                        child: SizedBox(
+                          width: canvasWidth,
+                          child: ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            padding: EdgeInsets.zero,
+                            itemCount: rows.length,
+                            findChildIndexCallback: rowIndices == null
+                                ? null
+                                : (key) => key is ObjectKey
+                                      ? rowIndices[key.value]
+                                      : null,
+                            itemBuilder: (context, i) {
+                              final row = rows[i];
+                              final dataRow = _rowCellOrMenuRegion(
+                                row,
+                                i,
+                                divider,
+                                visibleColumnIndices,
+                              );
+                              return RepaintBoundary(
+                                key: detailsBuilder == null
+                                    ? null
+                                    : ObjectKey(row),
+                                // 主行与详情共用身份；筛选、删除、插入后展开状态不会串行。
+                                child: detailsBuilder == null
+                                    ? dataRow
+                                    : Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.stretch,
+                                        children: [
+                                          dataRow,
+                                          NotificationListener<
+                                            SizeChangedLayoutNotification
+                                          >(
+                                            onNotification: (_) {
+                                              _onDetailsLayoutChanged();
+                                              return true;
+                                            },
+                                            child: SizeChangedLayoutNotifier(
+                                              child: _ViewportRowDetails(
+                                                horizontal: _bodyH,
+                                                viewportWidth: detailsWidth!,
+                                                builder: (context) =>
+                                                    detailsBuilder(
+                                                      context,
+                                                      row,
+                                                    ),
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                      ],
-                                    ),
-                            );
-                          },
+                                        ],
+                                      ),
+                              );
+                            },
+                          ),
                         ),
-                      ),
-                    );
-                  }
-
-                  if (detailsBuilder == null) return rowList(total);
-                  return LayoutBuilder(
-                    builder: (context, constraints) {
-                      final viewportWidth = constraints.maxWidth.isFinite
-                          ? constraints.maxWidth
-                          : total;
-                      return rowList(
-                        total > viewportWidth ? total : viewportWidth,
-                        detailsWidth: viewportWidth,
                       );
-                    },
-                  );
-                },
+                    }
+
+                    if (detailsBuilder == null) return rowList(total);
+                    return LayoutBuilder(
+                      builder: (context, constraints) {
+                        final viewportWidth = constraints.maxWidth.isFinite
+                            ? constraints.maxWidth
+                            : total;
+                        return rowList(
+                          total > viewportWidth ? total : viewportWidth,
+                          detailsWidth: viewportWidth,
+                        );
+                      },
+                    );
+                  },
+                ),
               ),
             ),
             // 表尾一条线：左「添加行/添加多行」、右合计。此前两者各占一行，
@@ -2787,7 +2816,10 @@ class _UtenEditableGridState<T extends EditableGridRow>
         widget.showAddRow && widget.selectionEnabled && widget.cloneRow != null
         ? UtenContextMenuRegion(
             behavior: HitTestBehavior.opaque,
-            entriesBuilder: _pasteMenuEntries,
+            entriesBuilder: () => [
+              ..._textSelection.copyMenuEntries(context),
+              ..._pasteMenuEntries(),
+            ],
             onActionCompleted: () => _clearSelection(),
             child: body,
           )
@@ -2795,9 +2827,9 @@ class _UtenEditableGridState<T extends EditableGridRow>
     // 操作条放在 Stack 之外（外层 Column），随页滚动且永不被 sticky 表头覆盖。
     // 编辑模式（showAddRow）只保留「表头设置」+ 宿主批量动作（全选走表头复选框、
     // 复制/粘贴/删除走行菜单）；只选/任务模式（含 onRemoveRows）保留全选与移出按钮。
-    // 整体 SelectionContainer.disabled：单元格本就是 TextField（自带长按选词复制，
-    // 不受 disabled 影响），而行级长按菜单/列宽拖拽把手与区域文字拖选手势打架，
-    // 故编辑网格整体不参与页面级 SelectionArea（准则 §3.4）。
+    // Keep the page region out of the grid chrome; the stable SelectionArea
+    // above registers body text only. Native input selection and the deeper
+    // row long-press menu continue to own their existing gestures.
     final actionsBar = _actionsBar(theme);
     Widget resolve(Widget child) {
       // 吸顶网格（stickyHeaderPinned）外包滚轮截停门：一格越置顶点即止 + 停顿窗
@@ -2919,19 +2951,21 @@ class _UtenEditableGridState<T extends EditableGridRow>
       // 组件在手势触发时先调 entriesBuilder 再回调 onMenuOpening——选中归位必须
       // 在构建条目前完成，"复制选中 (n)"/"删除选中 (n)" 的计数才是归位后的口径。
       entriesBuilder: () {
+        final textEntries = _textSelection.copyMenuEntries(context);
         _selectOnlyForMenu(row);
         final extra =
             widget.rowMenuExtraBuilder?.call(context, _selectedRows()) ??
             const <UtenContextMenuEntry>[];
         if (widget.showAddRow) {
           final base = _rowMenuEntries(row, i);
-          if (extra.isEmpty) return base;
-          return [...base, const UtenMenuDivider(), ...extra];
+          if (extra.isEmpty) return [...textEntries, ...base];
+          return [...textEntries, ...base, const UtenMenuDivider(), ...extra];
         }
         final victims = _selectedRows();
         final n = victims.length;
-        if (widget.onRemoveRows == null) return extra;
+        if (widget.onRemoveRows == null) return [...textEntries, ...extra];
         return [
+          ...textEntries,
           UtenMenuItem(
             label: '${widget.removeRowsActionLabel} ($n)',
             icon: Icons.remove_circle_outline_rounded,
@@ -3918,7 +3952,7 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
     final listenable = isSelected
         ? null
         : column.cellColorListenableOf?.call(row);
-    return SizedBox(
+    final cell = SizedBox(
       width: widths[i],
       child: listenable == null
           ? build()
@@ -3926,6 +3960,19 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
               listenable: listenable,
               builder: (context, _) => build(),
             ),
+    );
+    final horizontal = frozenSelectionScroll;
+    if (!pinnedColumnIndices.contains(i) || horizontal == null) return cell;
+    return AnimatedBuilder(
+      animation: horizontal,
+      child: cell,
+      builder: (context, child) => UtenTableTextSelectionGate(
+        enabled:
+            !horizontal.hasClients ||
+            horizontal.positions.length != 1 ||
+            horizontal.offset <= 0,
+        child: child!,
+      ),
     );
   }
 

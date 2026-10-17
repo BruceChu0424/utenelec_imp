@@ -1,5 +1,7 @@
 # MasterDataTableView（Excel 风格数据表格 —— 全局唯一数据展示组件）
 
+本组件的界面及交互修改默认使用 `frontend-design`，继续复用 Uten 组件与主题；`ui-ux-pro-max` 仅在用户明确指定时使用。
+
 > 🚨 **本组件是全项目「数据展示」的唯一标准表格。** 所有报表 / 主档 / 单据列表 / 任何"行×列"的数据展示
 > **必须**复用本组件，**禁止**另行手写 `ListView`/`Row`/`DataTable` 表格。详见
 > [00-项目准则/09-组件库使用规范.md §十一](../00-项目准则/09-组件库使用规范.md)。
@@ -29,6 +31,7 @@
   有可展开/加载/重试的前导分组时保留真实分组表。可编辑网格仍显示真实表头时，其表头内添加入口随表头显示。
 
 - **横排 autofilter 列头**：每列表头一个「标签 ▼」单元格，点开下拉筛选项（facet 桶 + 末尾兜底档），选中高亮。
+- **服务端候选搜索**：接入 `loadFacetPage` 的列在完整授权、分类及其他列条件范围内查询候选，再分页返回；初始 facet 桶是预览，不能把“前 50 项里没找到”显示成全范围无结果。搜索防抖、输入法组合保护、加载更多和失败重试均保持原菜单，选中一个候选仍回传原精确值。`facetSearchScope` 必须包含账号、分类、查询及筛选代际，范围变化后旧菜单和响应失效；未接能力的本地表继续用已有桶搜索。
 - **表头文字统一**：与 `UtenEditableGrid` 共用 `UtenTableHeader.textStyle`，普通列、可筛选列、可排序列均使用 `labelLarge`（当前主题 14px）、w600 和 `onSurfaceVariant`；筛选/排序生效时仅切换主色与背景，字号、字重保持一致。自动列宽测量也使用同一样式。
 - **空值兜底桶「其他 (n)」固定放列表末尾（2026-09-16 起，用户口径）**：菜单顺序为
   「所有 → 各 facet 桶 → 其他 (n)」；语义=该列为空/未归类的行的**兜底桶**（如货品未分类、
@@ -105,8 +108,7 @@
   始终可见。实现与两条踩坑见
   [UtenTableColumnKit §四之二 `UtenFrozenLeadingColumn`](UtenTableColumnKit.md)。
   **测试注意**：横滚后同一行有两个 `Checkbox`（行内原位 + 冻结副本），按行定位要用 `.first`。
-  多选表体整体 `SelectionContainer.disabled`——勾选场景不需要文本复制，也挡住页面级
-  SelectionArea（UtenContentContainer 默认包裹）渗入（2026-09-03，准则 §3.4）。
+  行勾选与文字选择独立：多选表同样支持拖选文字和复制，拖选不会切换业务勾选。
 - **空态文案与筛选生效数**（骨架口径见下方「空/错/加载态 = 同一张表的行区提示」）：
   空结果行区显示 `emptyMessage`，当 `filters` 里有任何激活值（非 null/非空串，含「筛空值」
   哨兵）时补一行「当前有 N 个表头筛选生效」——这是「看不见的筛选」的唯一线索
@@ -114,11 +116,12 @@
   2026-09-28 用户口径退役——分类分段条等筛选入口常驻表外，按钮是重复入口）。
   测试：`test/features/basic_data/widgets/master_data_table_view_empty_state_test.dart`、
   `test/master_data_table_view_stable_toolbar_test.dart`。
-- **文字框选(2026-09-03 全站口径，准则 §3.4)**：只读表体默认自带局部
+- **文字框选(2026-10-17 统一口径，准则 §3.4)**：所有表体默认自带局部
   `SelectionArea`(跨格框选 + 复制，页面 region 嵌套时各管各的)；**表头整体
   `SelectionContainer.disabled`**——表头有「按住拖拽隐藏列/拖拽调宽」手势，与拖选隔离，
-  且挡住页面级 SelectionArea 渗入。自动刷新或同时具有横向同步、纵向滚动、分页、行手势的
-  重交互大表应传 `enableTextSelection:false`，显式隔离整个表格；这不改变行多选语义。
+  且挡住页面级 SelectionArea 渗入。含输入格、多选、自动刷新或分页的大表同样保留复制，
+  输入控件使用原生选择；保持选择区挂载和稳定行键，不靠禁用复制规避生命周期问题。
+  Ctrl+C / Cmd+C 复制所选文字；有行菜单时另有“复制所选文字”，与复制货品/整行业务动作独立。
 - **分页**：上一页/下一页 + 跳页输入框；翻页后表体竖向回顶。窄屏与大字号下按钮使用
   纯图标，仍保留桌面至少 40、触屏至少 48 个显示逻辑像素的完整命中区；85% 缩小时补足尺寸。
   计数与两个按钮放不下一行时，完整页数独占一行，按钮另行排列；再窄时两个按钮纵向排列。
@@ -222,7 +225,7 @@ MasterDataTableView<T>(
                                         // （行单击切选中，靠行高亮表达，不画勾选框列）
   singleSelection: false,              // 选中互斥（单选）：点其他行自动换选、再点取消；防看岔
                                         // 纯阅读勾选传 true（通常同时 showSelectionSummary:false）
-  enableTextSelection: true,           // 只读表体文字框选；重交互/自动刷新大表可显式 false
+  enableTextSelection: true,           // 默认支持表体文字框选，与行勾选独立
   idOf: (item) => item.id,             // 多选业务键；无单一 id 时传稳定复合键
   selectedIds: selectedIds,            // 调用方持有的唯一选中真值
   onSelectedIdsChanged: (next) {},     // 行勾选与表头三态全选统一回交新 Set
@@ -321,10 +324,9 @@ return MasterDataTableView<Map<String, dynamic>>(
   id 发给某一个父(服务端归属校验会整批拒掉，这也是它挡越权的方式)。**原子性的粒度因此是
   单个请求，不是一次界面操作**——某组失败时其余组已经写进去了，调用方要如实报「成功 N 条，
   失败 M 条」并重拉整棵树，不能报一句「已完成」把失败吞掉。
-- **文字框选与业务多选是两个开关**：`selectable` 只控制行复选框；`enableTextSelection`
-  只控制只读表体是否创建局部 `SelectionArea`，默认 true 以保留复制。设置 false 或开启
-  `selectable:true` 时整表使用 `SelectionContainer.disabled`；不要为了关闭文字框选把只读表
-  伪装成可勾选表。
+- **文字框选与业务多选是两个开关**：`selectable` 只控制业务行选择；`enableTextSelection`
+  只控制行文字是否参与表体选择区，默认 true。开启 `selectable:true` 不再禁用文字复制。
+  显式关闭文字选择时只在行内容放置 `SelectionContainer.disabled`，表体选择区保持挂载。
 - **纯展示表不要传空回调**：没有真实详情/源单据可打开时省略 `onRowTap`，禁止用 `onRowTap: (_) {}` 占位；空回调会制造鼠标、选中与读屏都像可操作但实际无响应的假入口。
 - **仅选择也是真交互**：页面只传 `onSelectionChanged`、不传 `onRowTap` 时，整行仍可
   单击选中，但不暴露“打开详情”的无障碍动作。BOM 将展开/折叠放进树单元格后使用此模式。

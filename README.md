@@ -125,9 +125,11 @@ API 位于 `http://localhost:8080/api`, dev 下 Swagger 位于 `/swagger-ui.html
 另开一个终端，工作目录为仓库根目录（含 `pubspec.yaml`），不要沿用上一步的 `server/` 目录。
 
 ```bash
-flutter pub get
+flutter pub get --enforce-lockfile
 flutter run -d chrome --web-port=53764 --dart-define=API_BASE_URL=http://localhost:8080/api
 ```
+
+仓库 `pubspec.lock` 的 hosted 来源统一为默认 `https://pub.dev`。正式验证、CI 与发行构建不设置 `PUB_HOSTED_URL`，使用 `--enforce-lockfile` 核验同一锁文件的版本、来源和归档 SHA-256；缺锁、约束不匹配或内容哈希变化直接失败。个人镜像实验应使用独立目录，不能把镜像改写的锁文件用于提交或发布。依赖更新须单独审查并提交锁文件，再运行完整门禁。
 
 Debug 默认 API 即 `http://localhost:8080/api`; 桌面端把 `-d chrome` 换成 `-d windows` / `-d macos`。
 

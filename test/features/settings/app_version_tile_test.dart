@@ -108,7 +108,14 @@ void main() {
     },
   );
 
-  for (final release in ['2.5.17', '2.5.18', '2.5.19', '2.5.20', '2.5.21']) {
+  for (final release in [
+    '2.5.17',
+    '2.5.18',
+    '2.5.19',
+    '2.5.20',
+    '2.5.21',
+    '2.5.22',
+  ]) {
     for (final language in ['zh', 'en', 'ko']) {
       testWidgets(
         '$release $language notes remain localized and usable on a narrow screen',
@@ -122,7 +129,7 @@ void main() {
               tester,
               version: release,
               locale: Locale(language),
-              scale: {'2.5.20', '2.5.21'}.contains(release) ? 2 : 1.6,
+              scale: {'2.5.20', '2.5.21', '2.5.22'}.contains(release) ? 2 : 1.6,
               brightness: brightness,
             );
             final l10n = AppLocalizations.of(
@@ -141,7 +148,7 @@ void main() {
                 l10n.release2518CompanyConnections,
                 l10n.release2518LayoutAndTrace,
               ],
-              '2.5.21' => [
+              '2.5.21' || '2.5.22' => [
                 l10n.release2521Permissions,
                 l10n.release2521Session,
                 l10n.release2521PermissionSettings,
@@ -158,6 +165,26 @@ void main() {
             };
             for (final note in historicalNotes) {
               expect(find.textContaining(note), findsOneWidget);
+            }
+            if (release == '2.5.21' || release == '2.5.22') {
+              expect(
+                find.text('${l10n.releaseNotesTitle} · $release'),
+                findsOneWidget,
+              );
+              expect(historicalNotes, hasLength(11));
+              final renderedNotes = tester
+                  .widgetList<Text>(
+                    find.descendant(
+                      of: find.byType(SingleChildScrollView),
+                      matching: find.byType(Text),
+                    ),
+                  )
+                  .map((text) => text.data)
+                  .toList();
+              expect(renderedNotes, [
+                for (var index = 0; index < historicalNotes.length; index++)
+                  '${index + 1}. ${historicalNotes[index]}',
+              ]);
             }
             final currentNotes = switch (language) {
               'en' => [
@@ -302,15 +329,32 @@ void main() {
     expect(find.textContaining('模具制造年月可正常选择和修改'), findsNothing);
   });
 
-  testWidgets('a similar version never borrows 2.5.21 notes', (tester) async {
-    await pump(tester, version: 'v2.5.210');
-    final l10n = AppLocalizations.of(
-      tester.element(find.byType(AppVersionTile)),
-    );
-    expect(find.text(l10n.releaseNotesUnavailable), findsOneWidget);
-    expect(find.text(l10n.release2521Permissions), findsNothing);
-    expect(find.text(l10n.release2521ServerUpdates), findsNothing);
-  });
+  for (final version in ['v2.5.210', 'v2.5.220']) {
+    testWidgets('$version never borrows the 2.5.21 or 2.5.22 notes', (
+      tester,
+    ) async {
+      await pump(tester, version: version);
+      final l10n = AppLocalizations.of(
+        tester.element(find.byType(AppVersionTile)),
+      );
+      expect(find.text(l10n.releaseNotesUnavailable), findsOneWidget);
+      for (final note in [
+        l10n.release2521Permissions,
+        l10n.release2521Session,
+        l10n.release2521PermissionSettings,
+        l10n.release2521ReviewFeedback,
+        l10n.release2521ServerUpdates,
+        l10n.release2521TableSearchCopy,
+        l10n.release2521FieldHints,
+        l10n.release2521ReferencePickers,
+        l10n.release2521MasterDataImport,
+        l10n.release2521PurchaseDocuments,
+        l10n.release2521GoodsHistory,
+      ]) {
+        expect(find.textContaining(note), findsNothing);
+      }
+    });
+  }
 
   testWidgets('large text on a narrow screen scrolls in both themes', (
     tester,

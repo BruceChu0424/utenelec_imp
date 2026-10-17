@@ -235,6 +235,51 @@ class ReleaseGateTest(unittest.TestCase):
 
 
 class ReleaseWorkflowContractTest(unittest.TestCase):
+    def test_quality_and_release_use_the_same_strict_lock_before_all_flutter_consumers(self):
+        workflows = {name: (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
+                     for name in ("quality.yml", "simple-release.yml", "_unsigned-candidate-build.yml", "release.yml")}
+        versions = []
+        for name, source in workflows.items():
+            with self.subTest(workflow=name):
+                versions.append(re.findall(r"^\s+flutter-version: (\S+)$", source, re.MULTILINE))
+                resolves = re.findall(r"^\s*(?:- run:\s*)?(flutter pub [^\n]+)$", source, re.MULTILINE)
+                self.assertEqual(["flutter pub get --enforce-lockfile"], resolves)
+                strict_position = source.index(resolves[0])
+                consumers = list(re.finditer(
+                    r"^\s*(?:- run:\s*)?(flutter (?:analyze|test|build web)\b[^\n]*)",
+                    source, re.MULTILINE))
+                self.assertTrue(consumers)
+                for command in consumers:
+                    self.assertGreater(command.start(1), strict_position)
+                    self.assertIn("--no-pub", command.group(1).split())
+                strict_step = next(block for block in source.split("      - ")
+                                   if "flutter pub get --enforce-lockfile" in block)
+                self.assertNotIn("continue-on-error", strict_step)
+                self.assertNotIn("||", strict_step)
+                self.assertNotIn("--dry-run", strict_step)
+                if name in ("quality.yml", "simple-release.yml"):
+                    self.assertIn("-p 'test_release_gate.py' -v", source)
+        self.assertEqual(1, len(versions[0]))
+        self.assertTrue(all(version == versions[0] for version in versions[1:]))
+
+    def test_security_scan_and_build_share_the_canonical_hashed_checkout_lock(self):
+        lock = (ROOT / "pubspec.lock").read_text(encoding="utf-8")
+        hosted = [block for block in re.split(r"(?m)^  [a-z_][a-z0-9_]*:\n", lock)[1:]
+                  if re.search(r"(?m)^    source: hosted$", block)]
+        self.assertTrue(hosted)
+        for block in hosted:
+            self.assertEqual(["https://pub.dev"], re.findall(r'^      url: "([^"]+)"$', block, re.MULTILINE))
+            self.assertRegex(block, r'(?m)^      sha256: "?[a-f0-9]{64}"?$')
+        osv = (ROOT / ".github/workflows/osv-scanner.yml").read_text(encoding="utf-8")
+        self.assertIn("--lockfile\n            ./pubspec.lock", osv)
+        self.assertIn("\n            pubspec.lock\n", osv)
+        self.assertNotRegex(osv, r"\b(?:flutter|dart)\s+pub\b")
+        for name in ("quality.yml", "simple-release.yml", "_unsigned-candidate-build.yml", "release.yml", "osv-scanner.yml"):
+            source = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
+            with self.subTest(workflow=name):
+                self.assertNotIn("PUB_HOSTED_URL", source)
+                self.assertNotRegex(source, r"\b(?:rm|unlink|Remove-Item)\b[^\n]*pubspec\.lock")
+
     def test_current_release_verifies_migrations_before_signed_inventory(self):
         workflow = (ROOT / ".github/workflows/simple-release.yml").read_text(encoding="utf-8")
         build = workflow.split("      - name: Build server application and migrator\n", 1)[1].split("      - name:", 1)[0]

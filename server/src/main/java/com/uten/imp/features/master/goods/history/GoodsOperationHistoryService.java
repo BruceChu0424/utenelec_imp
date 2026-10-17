@@ -414,11 +414,11 @@ public class GoodsOperationHistoryService {
         return result.stream().map(r->new Operation(uuid(r[0]),r[1].toString(),r[2].toString(),time(r[3]),r[4].toString(),((Number)r[5]).longValue(),(Boolean)r[6],(String)r[7])).toList();
     }
     private UUID nextRedo(UUID actor) {
-        Object result=em.createNativeQuery("""
+        List<?> result=em.createNativeQuery("""
                 SELECT h.id FROM goods_operation_history_events e JOIN goods_operation_history h ON h.id=e.operation_id
                 WHERE e.actor_id=:actor AND e.action='UNDO' AND h.state='UNDONE' AND h.redo_allowed ORDER BY e.id DESC LIMIT 1
-                """).setParameter("actor",actor).getResultStream().findFirst().orElse(null);
-        return result==null?null:uuid(result);
+                """).setParameter("actor",actor).getResultList();
+        return result.isEmpty()?null:uuid(result.getFirst());
     }
     private List<Row> rows(UUID id) {
         return allRows(List.of(id)).getOrDefault(id,List.of());

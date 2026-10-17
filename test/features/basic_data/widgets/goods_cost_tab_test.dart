@@ -1156,7 +1156,7 @@ void main() {
         isNull,
         reason: 'No mapping is applied before review and target selection',
       );
-      tester.widget<UtenDropdownField>(target).onChanged!('edge-b');
+      tester.widget<UtenDropdownField>(target).onChanged('edge-b');
       await tester.pump();
       await tester.enterText(input(l10n.costPrice), '0.123456789123456');
       await tester.enterText(input(l10n.costPriceUnitRate), '25');

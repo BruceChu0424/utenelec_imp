@@ -216,8 +216,8 @@ void main() {
           ),
         ),
       );
-      final qty = find.byKey(ValueKey('stock-count-qty-$_screw|'));
-      final weight = find.byKey(ValueKey('stock-count-weight-$_screw|'));
+      final qty = find.byKey(const ValueKey('stock-count-qty-$_screw|'));
+      final weight = find.byKey(const ValueKey('stock-count-weight-$_screw|'));
       expect(tester.widget<TextField>(qty).controller, same(draft.qty));
       expect(tester.widget<TextField>(weight).controller, same(draft.weight));
       expect(draft.qty.text, isEmpty);

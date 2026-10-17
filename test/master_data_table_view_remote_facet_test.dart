@@ -322,15 +322,22 @@ void main() {
   );
 
   testWidgets(
-    'missing remote capability leaves the existing local candidate menu unchanged',
+    'local menus retain exact buckets and submit column keywords to the table',
     (tester) async {
       await tester.pumpWidget(_page(null));
       await tester.pumpAndSettle();
       await _open(tester);
       await tester.pumpAndSettle();
-      expect(find.byType(TextField), findsNothing);
+      final input = find.byKey(const ValueKey('uten-column-keyword-input'));
+      expect(tester.widget<TextField>(input).decoration?.hintText, '货品名称');
       expect(find.text('其他高频货品 (100)'), findsOneWidget);
       expect(find.text('加载更多候选'), findsNothing);
+      await tester.enterText(input, 'V4一');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(input, findsNothing);
+      expect(find.text('V4一开'), findsOneWidget);
+      expect(find.text('V4二开'), findsNothing);
     },
   );
 

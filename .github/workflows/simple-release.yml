@@ -107,7 +107,7 @@ jobs:
         run: |
           set -euo pipefail
           node --test web/update_check.test.cjs
-          flutter pub get
+          flutter pub get --enforce-lockfile
           flutter build web --release --no-pub --no-web-resources-cdn --no-wasm-dry-run \
             --dart-define="APP_VERSION=$VERSION" \
             --dart-define="APP_BUILD_ID=$GITHUB_SHA" \

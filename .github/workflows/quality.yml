@@ -275,7 +275,9 @@ jobs:
           flutter-version: 3.44.2
           channel: stable
           cache: true
-      - run: flutter pub get
+      - name: Verify locked Flutter build and security-scan contract
+        run: python3 -m unittest discover -s .github/scripts -p 'test_release_gate.py' -v
+      - run: flutter pub get --enforce-lockfile
       - name: Verify formatting
         run: dart format --output=none --set-exit-if-changed lib test
       - run: flutter analyze --no-pub

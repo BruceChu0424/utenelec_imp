@@ -59,7 +59,7 @@ dependencies:
   printing: ^5.14.2
 
   # 扫码 / 二维码（访客系统：保安扫码 + 访客凭证）
-  mobile_scanner: ^7.0.0
+  mobile_scanner: ^7.4.2
   qr_flutter: ^4.1.0
 
   # 工具

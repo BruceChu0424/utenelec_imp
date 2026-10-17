@@ -5540,5 +5540,81 @@
   "serverUpdateExitCode": "退出码",
   "serverUpdateCompanyVersion": "公司服务器版本",
   "serverUpdateReadyHint": "检查到新版本，可立即更新或安排在空闲时段执行。",
-  "serverUpdateReceiptStatus": "原请求的最新状态"
+  "serverUpdateReceiptStatus": "原请求的最新状态",
+  "goodsHistoryTitle": "货品操作记录",
+  "goodsHistoryHint": "保留最近 10 次资料修改，可选择其中一次撤回。取消撤回会恢复上次撤回；后续修改或业务引用可能限制恢复。",
+  "goodsHistoryUndo": "撤回",
+  "goodsHistoryRedo": "取消撤回",
+  "goodsHistoryUndoSelected": "撤回所选操作",
+  "goodsHistoryUndoConfirm": "撤回“{label}”，影响 {count} 条资料。确认撤回？",
+  "@goodsHistoryUndoConfirm": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "goodsHistoryRedoConfirm": "取消上次对“{label}”的撤回，恢复 {count} 条资料。确认取消撤回？",
+  "@goodsHistoryRedoConfirm": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "goodsHistoryUndoDone": "所选操作已撤回，已记录本次撤回。",
+  "goodsHistoryRedoDone": "已取消上次撤回，已记录本次取消撤回。",
+  "goodsHistoryLoadFailed": "操作记录加载失败，请刷新重试。",
+  "goodsHistoryActionFailed": "操作结果未确认。",
+  "goodsHistoryRefreshBeforeRetry": "记录已保留。请先刷新，核对最新状态后再操作。",
+  "goodsHistoryNoPermission": "当前没有可查看的货品操作权限。",
+  "goodsHistoryEmpty": "暂无可撤回的操作记录。完成资料修改后，可在这里查看。",
+  "goodsHistoryEvents": "撤回与取消撤回记录",
+  "goodsHistoryEvent": "{action}：{label}",
+  "@goodsHistoryEvent": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      },
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "goodsHistoryAffected": "影响 {count} 条",
+  "@goodsHistoryAffected": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "goodsHistoryUndone": "已撤回",
+  "goodsHistoryApplied": "已生效",
+  "goodsHistorySelected": "已选中",
+  "goodsHistoryBlocked": "此操作当前无法撤回或取消撤回，请刷新查看最新状态。",
+  "goodsHistoryOther": "资料修改",
+  "goodsHistoryGoodsCreate": "新建货品",
+  "goodsHistoryGoodsEdit": "修改货品",
+  "goodsHistoryGoodsNameEn": "修改货品英文名称",
+  "goodsHistoryGoodsStatus": "货品启用或停用",
+  "goodsHistoryGoodsDelete": "删除货品",
+  "goodsHistoryGoodsImport": "文件导入货品",
+  "goodsHistoryBomCreate": "新增组装组件",
+  "goodsHistoryBomEdit": "修改组装组件",
+  "goodsHistoryBomDelete": "删除组装组件",
+  "goodsHistoryBomPaste": "粘贴组装组件",
+  "goodsHistoryBomAudit": "组件审核变更",
+  "goodsHistoryCategoryCreate": "新建货品分类",
+  "goodsHistoryCategoryEdit": "修改货品分类",
+  "goodsHistoryCategoryDelete": "删除货品分类",
+  "goodsHistoryClose": "关闭",
+  "goodsHistoryGoodsPurchasePolicy": "修改货品采购收货方式",
+  "goodsHistoryGoodsSubcontractPolicy": "修改货品委外方式"
 }

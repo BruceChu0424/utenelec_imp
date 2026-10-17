@@ -22,7 +22,6 @@ import com.uten.imp.features.master.unit.dto.UnitDetail;
 import com.uten.imp.features.master.unit.dto.UnitSaveRequest;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.persistence.EntityManager;
-import com.uten.imp.features.master.lifecycle.MasterEntityKind;
 import com.uten.imp.features.master.lifecycle.MasterLifecycleService;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.EncryptedDocumentException;
@@ -96,6 +95,8 @@ public class GoodsImportService {
     private final EntityManager em;
     private final SecurityContextCurrentUser currentUser;
     private final MasterLifecycleService lifecycle;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.features.master.goods.history.GoodsOperationHistoryService operationHistory;
 
     /**
      * detect -> commit is deliberately a short-lived, single-node capability.
@@ -444,7 +445,8 @@ public class GoodsImportService {
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery(
                 "SELECT id, created_at, filename, row_count "
-                        + "FROM goods_import_batches WHERE status='IMPORTED' ORDER BY created_at DESC LIMIT 1")
+                        + "FROM goods_import_batches WHERE status='IMPORTED' AND created_by=:actor ORDER BY created_at DESC LIMIT 1")
+                .setParameter("actor", currentActorId())
                 .getResultList();
         if (rows.isEmpty()) return null;
         Object[] r = rows.get(0);
@@ -454,60 +456,7 @@ public class GoodsImportService {
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import:undo')")
     @Transactional
     public int undo(UUID batchId) {
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = em.createNativeQuery(
-                "SELECT entity_type, entity_id FROM goods_import_creations WHERE batch_id = :b")
-                .setParameter("b", batchId)
-                .getResultList();
-        if (rows.isEmpty()) {
-            throw new ApiException(ErrorCode.NOT_FOUND, "导入批次不存在或已撤回");
-        }
-        Map<String, List<UUID>> byType = new HashMap<>();
-        for (String t : List.of("GOODS", "CATEGORY", "COLOR", "UNIT")) byType.put(t, new ArrayList<>());
-        for (Object[] r : rows) {
-            String t = (String) r[0];
-            byType.computeIfAbsent(t, k -> new ArrayList<>()).add(toUuid(r[1]));
-        }
-        // 撤回走主档删除命令(ADR-111)：本批货品若已被批外的 BOM、单据、库存引用，或本批新建的
-        // 分类/颜色/单位后来被别的货品用上，整次撤回拒绝并列出原因，不留半截。
-        List<UUID> goodsIds = byType.get("GOODS");
-        int affected = 0;
-        affected += lifecycle.cascadeDeleteGoods(goodsIds, "撤回导入失败");
-        requireCategoriesOnlyHoldBatchGoods(byType.get("CATEGORY"), goodsIds);
-        affected += softDelete("material_categories", byType.get("CATEGORY"));
-        affected += lifecycle.cascadeDelete(MasterEntityKind.COLOR, byType.get("COLOR"), "撤回导入失败", goodsIds);
-        affected += lifecycle.cascadeDelete(MasterEntityKind.UNIT, byType.get("UNIT"), "撤回导入失败", goodsIds);
-        em.createNativeQuery("UPDATE goods_import_batches SET status='UNDONE' WHERE id=:b")
-                .setParameter("b", batchId).executeUpdate();
-        return affected;
-    }
-
-    /** 本批新建的分类下若已有批外的有效货品(导入后又有人往里加了货品)，撤回会让它们失去分类，拒绝。 */
-    private void requireCategoriesOnlyHoldBatchGoods(List<UUID> categoryIds, List<UUID> batchGoods) {
-        if (categoryIds == null || categoryIds.isEmpty()) return;
-        Number foreign = (Number) em.createNativeQuery("""
-                        SELECT count(*) FROM goods
-                        WHERE category_id IN (:categories) AND is_deleted = FALSE
-                          AND NOT (id = ANY(CAST(string_to_array(:batch, ',') AS uuid[])))
-                        """)
-                .setParameter("categories", categoryIds)
-                .setParameter("batch", batchGoods == null ? "" : batchGoods.stream()
-                        .map(UUID::toString).collect(java.util.stream.Collectors.joining(",")))
-                .getSingleResult();
-        if (foreign.longValue() > 0) {
-            throw new ApiException(ErrorCode.CONFLICT, "撤回导入失败：本次导入新建的分类下后来又加了 "
-                    + foreign.longValue() + " 个货品，请先把这些货品移到别的分类再撤回");
-        }
-    }
-
-    private int softDelete(String table, List<UUID> ids) {
-        if (ids == null || ids.isEmpty()) return 0;
-        // 表名来自固定白名单（非用户输入）
-        return em.createNativeQuery(
-                "UPDATE " + table + " SET is_deleted = true, deleted_at = now() "
-                        + "WHERE id IN (:ids) AND is_deleted = false")
-                .setParameter("ids", ids)
-                .executeUpdate();
+        return operationHistory.undoImport(batchId);
     }
 
     // ============================================================

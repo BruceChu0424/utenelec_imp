@@ -252,7 +252,11 @@ Future<void> _selectRowWarehouse(
   await tester.tap(field);
   await tester.pumpAndSettle();
   final option = find.byKey(
-    ValueKey(('uten-dropdown-option', dropdown.key, warehouseId)),
+    ValueKey<(String, Key?, String?)>((
+      'uten-dropdown-option',
+      dropdown.key,
+      warehouseId,
+    )),
   );
   expect(option, findsOneWidget);
   await tester.tap(option);

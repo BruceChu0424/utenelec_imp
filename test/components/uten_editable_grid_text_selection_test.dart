@@ -352,8 +352,12 @@ void main() {
       final previous = _Row('Alpha goods');
       final next = _Row('Beta goods');
       final controller = UtenEditableGridController<_Row>(initial: [previous]);
-      addTearDown(controller.dispose);
-      addTearDown(previous.dispose);
+      addTearDown(() {
+        final owned = controller.rows.toSet();
+        controller.dispose();
+        if (!owned.contains(previous)) previous.dispose();
+        if (!owned.contains(next)) next.dispose();
+      });
       await tester.pumpWidget(_page(controller, editing: true));
       await tester.pumpAndSettle();
       final bodyState = tester.state<SelectionAreaState>(_bodyArea);
@@ -365,6 +369,7 @@ void main() {
         controller.swapRows([]);
         controller.swapRows([next]);
       });
+      WidgetsBinding.instance.scheduleFrame();
       await tester.pump();
       await Clipboard.setData(const ClipboardData(text: 'Current clipboard'));
       await tester.tap(find.text('复制所选文字'));
@@ -391,8 +396,12 @@ void main() {
       final previous = _Row('Alpha goods');
       final next = _Row('Beta goods');
       final controller = UtenEditableGridController<_Row>(initial: [previous]);
-      addTearDown(controller.dispose);
-      addTearDown(previous.dispose);
+      addTearDown(() {
+        final owned = controller.rows.toSet();
+        controller.dispose();
+        if (!owned.contains(previous)) previous.dispose();
+        if (!owned.contains(next)) next.dispose();
+      });
       await tester.pumpWidget(_page(controller, editing: true));
       await tester.pumpAndSettle();
       final area = tester.state<SelectionAreaState>(_bodyArea);
@@ -401,6 +410,7 @@ void main() {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         controller.swapRows([next]);
       });
+      WidgetsBinding.instance.scheduleFrame();
       await tester.pump();
       await Clipboard.setData(const ClipboardData(text: 'Current clipboard'));
       await _copyShortcut(tester);

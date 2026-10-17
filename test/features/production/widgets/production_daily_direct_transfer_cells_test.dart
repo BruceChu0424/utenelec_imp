@@ -107,13 +107,16 @@ void main() {
       await _pumpNamedCells(tester, cells, theme);
       for (final (_, _, hint, controller, _) in fields) {
         expect(controller.text, isEmpty, reason: '提示不是默认数量或已填写事实');
-        expect(_hintOpacity(tester, hint), 1);
+        expect(_hintOpacity(tester, hint), 1, reason: '$hint 空框字段名必须可见');
+        final hintText = _hintText(tester, hint);
         expect(
-          UtenTableCellInputTheme.contains(tester.element(_hintText(hint))),
+          UtenTableCellInputTheme.contains(tester.element(hintText)),
           isTrue,
         );
         expect(
-          tester.widget<Text>(_hintText(hint)).style?.color,
+          DefaultTextStyle.of(
+            tester.element(hintText),
+          ).style.merge(tester.widget<Text>(hintText).style).color,
           // 表格宿主使用语义提示色，普通页面的暗色70%提示色不适用于表格。
           theme.colorScheme.onSurfaceVariant,
         );
@@ -779,11 +782,42 @@ Finder _hintAnimation(String text) => find.byWidgetPredicate((widget) {
   return child is Text && (child.data ?? child.textSpan?.toPlainText()) == text;
 });
 
-Finder _hintText(String text) =>
-    find.descendant(of: _hintAnimation(text), matching: find.text(text));
+Finder _hintText(WidgetTester tester, String text) {
+  final hintAnimation = _hintAnimation(text);
+  if (tester.widget<AnimatedOpacity>(hintAnimation).opacity > 0) {
+    return find.descendant(of: hintAnimation, matching: find.text(text));
+  }
+  // A standard empty field can paint its inline label instead of its identical
+  // hint. Count the actual in-field name, excluding floating labels on filled
+  // inputs and the hidden duplicate hint.
+  return find.byElementPredicate((element) {
+    final widget = element.widget;
+    if (widget is! Text ||
+        (widget.data ?? widget.textSpan?.toPlainText()) != text) {
+      return false;
+    }
+    final decorator = element.findAncestorWidgetOfExactType<InputDecorator>();
+    final opacity = element.findAncestorWidgetOfExactType<AnimatedOpacity>();
+    return decorator != null &&
+        decorator.isEmpty &&
+        !decorator.isFocused &&
+        decorator.decoration.labelText == text &&
+        decorator.decoration.floatingLabelBehavior !=
+            FloatingLabelBehavior.always &&
+        opacity != null &&
+        opacity.opacity > 0;
+  });
+}
 
-double _hintOpacity(WidgetTester tester, String text) =>
-    tester.widget<AnimatedOpacity>(_hintAnimation(text)).opacity;
+double _hintOpacity(WidgetTester tester, String text) {
+  final name = _hintText(tester, text);
+  if (!tester.any(name)) return 0;
+  return tester
+      .widget<AnimatedOpacity>(
+        find.ancestor(of: name, matching: find.byType(AnimatedOpacity)).first,
+      )
+      .opacity;
+}
 
 Future<void> _pumpNamedCells(
   WidgetTester tester,

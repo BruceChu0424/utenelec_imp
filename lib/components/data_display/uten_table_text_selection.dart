@@ -19,6 +19,7 @@ import '../feedback/uten_context_menu.dart';
 class UtenTableTextSelection {
   final areaKey = GlobalKey<SelectionAreaState>();
   String _selectedText = '';
+  bool _hasNativeSelection = false;
   int _revision = 0;
   bool _clearPending = false;
   bool _clearScheduled = false;
@@ -28,12 +29,18 @@ class UtenTableTextSelection {
   void onSelectionChanged(SelectedContent? content) {
     if (_clearPending) return;
     _selectedText = content?.plainText ?? '';
+    _hasNativeSelection = _selectedText.isNotEmpty;
   }
 
   /// Forget selection when the table's rows or business identity change.
   void clear() {
     _revision++;
     _selectedText = '';
+    // SelectionArea's public content callback is the source of truth. With no
+    // selected content there is nothing to dispatch: clearing inactive Flutter
+    // registrars can purge their child list while it is being traversed.
+    // A focused native input owns its own selection and is not part of this area.
+    if (!_hasNativeSelection && !_clearPending) return;
     _clearPending = true;
     if (!_copyGuardInstalled) {
       _copyGuardInstalled = true;
@@ -72,6 +79,7 @@ class UtenTableTextSelection {
     } finally {
       _clearing = false;
       if (revision == _revision) {
+        _hasNativeSelection = false;
         _clearPending = false;
         FocusManager.instance.removeEarlyKeyEventHandler(_guardPendingCopy);
         _copyGuardInstalled = false;

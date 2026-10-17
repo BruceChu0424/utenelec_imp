@@ -5,11 +5,14 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/models/reference_method_option.dart';
 import 'package:uten_imp/features/basic_data/repositories/reference_method_repository.dart';
 import 'package:uten_imp/features/subcontract/models/subcontract_doc.dart';
+import 'package:uten_imp/features/subcontract/config/subcontract_doc_config.dart';
+import 'package:uten_imp/features/subcontract/pages/subcontract_doc_detail_page.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_order_edit_page.dart';
 import 'package:uten_imp/features/subcontract/repositories/subcontract_repository.dart';
 import 'package:uten_imp/features/subcontract/widgets/subcontract_grid_columns.dart';
@@ -91,7 +94,7 @@ class _RecordingOrderRepository extends SubcontractRepository {
   }
 }
 
-Future<_RecordingOrderRepository> _pump(
+Future<({_RecordingOrderRepository repository, GoRouter router})> _pump(
   WidgetTester tester, {
   required bool secondLineBomMissing,
 }) async {
@@ -106,6 +109,23 @@ Future<_RecordingOrderRepository> _pump(
     ),
     api,
   );
+  final router = GoRouter(
+    initialLocation: SubcontractRoute.edit('orders', 'order-1'),
+    routes: [
+      GoRoute(
+        path: SubcontractRoute.edit('orders', 'order-1'),
+        builder: (_, _) => const SubcontractOrderEditPage(id: 'order-1'),
+      ),
+      GoRoute(
+        path: SubcontractRoute.detail('orders', 'order-1'),
+        builder: (_, _) => const SubcontractDocDetailPage(
+          docType: SubcontractDocType.order,
+          id: 'order-1',
+        ),
+      ),
+    ],
+  );
+  addTearDown(router.dispose);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -125,11 +145,11 @@ Future<_RecordingOrderRepository> _pump(
           (ref) async => const [_settlementMethod],
         ),
       ],
-      child: const MaterialApp(home: SubcontractOrderEditPage(id: 'order-1')),
+      child: MaterialApp.router(routerConfig: router),
     ),
   );
   await tester.pumpAndSettle();
-  return repository;
+  return (repository: repository, router: router);
 }
 
 void main() {
@@ -141,7 +161,7 @@ void main() {
   });
 
   testWidgets('缺 BOM 的明细行标红并提示研发完善后才能提交财务，草稿照常保存', (tester) async {
-    final repository = await _pump(tester, secondLineBomMissing: true);
+    final environment = await _pump(tester, secondLineBomMissing: true);
     expect(tester.takeException(), isNull);
 
     expect(
@@ -161,8 +181,16 @@ void main() {
 
     // 草稿可以保存(提交财务由服务端拒绝并通知研发)。
     await tester.tap(find.text('保存订货单草稿'));
-    await tester.pump();
-    expect(repository.updatedBody, isNotNull);
+    await tester.pumpAndSettle();
+    expect(environment.repository.updatedBody, isNotNull);
+    expect(
+      environment.router.routeInformationProvider.value.uri.toString(),
+      SubcontractRoute.detail('orders', 'order-1'),
+    );
+    expect(find.byType(SubcontractDocDetailPage), findsOneWidget);
+    expect(find.byType(SubcontractOrderEditPage), findsNothing);
+    expect(find.text('保存失败，请稍后重试'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('全部委外件都有 BOM 时不显示提示也不标红', (tester) async {

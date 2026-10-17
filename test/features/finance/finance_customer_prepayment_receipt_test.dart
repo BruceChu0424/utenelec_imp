@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/components/layout/uten_collapsible_section.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
@@ -12,12 +13,15 @@ import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/uten_control_theme.dart';
 import 'package:uten_imp/features/finance/models/finance_doc.dart';
 import 'package:uten_imp/features/finance/pages/finance_doc_edit_page.dart';
+import 'package:uten_imp/features/finance/pages/finance_doc_detail_page.dart';
 import 'package:uten_imp/features/finance/widgets/customer_prepayment_receipt_fields.dart';
 import 'package:uten_imp/features/finance/widgets/finance_grid_columns.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/models/user.dart';
 
 import '../../support/document_scope_capability_overrides.dart';
+import '../../support/native_detail_reader_overrides.dart';
 
 void main() {
   testWidgets('桌面预收订单选择按钮位于后缀槽，与金额汇率输入框同为44高', (tester) async {
@@ -136,10 +140,13 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     final api = _PrepaymentReceiptApi();
+    final router = _receiptRouter();
+    addTearDown(router.dispose);
 
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          ...nativeDetailReaderOverrides(includeSession: false),
           financeWriteAllDocumentScope(),
           apiClientProvider.overrideWithValue(api),
           sessionProvider.overrideWith(_TestSessionNotifier.new),
@@ -150,14 +157,11 @@ void main() {
             Perm.customerPrepaymentView,
           }),
         ],
-        child: const MaterialApp(
-          locale: Locale('zh'),
+        child: MaterialApp.router(
+          routerConfig: router,
+          locale: const Locale('zh'),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
-          home: FinanceDocEditPage(
-            docType: FinanceDocType.receipt,
-            id: 'receipt-1',
-          ),
         ),
       ),
     );
@@ -245,14 +249,18 @@ void main() {
     expect(body?['items'], isEmpty);
     expect(body?.containsKey('bankFee'), isFalse);
     expect(body?.containsKey('otherFee'), isFalse);
+    _expectSaved(tester, router);
   });
   testWidgets('无费用时只保留必要决策，选择扣费后展开，再选无费用清空并正常保存', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1100, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final api = _PrepaymentReceiptApi(noFees: true);
+    final router = _receiptRouter();
+    addTearDown(router.dispose);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          ...nativeDetailReaderOverrides(includeSession: false),
           financeWriteAllDocumentScope(),
           apiClientProvider.overrideWithValue(api),
           sessionProvider.overrideWith(_TestSessionNotifier.new),
@@ -263,14 +271,11 @@ void main() {
             Perm.customerPrepaymentView,
           }),
         ],
-        child: const MaterialApp(
-          locale: Locale('zh'),
+        child: MaterialApp.router(
+          routerConfig: router,
+          locale: const Locale('zh'),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
-          home: FinanceDocEditPage(
-            docType: FinanceDocType.receipt,
-            id: 'receipt-1',
-          ),
         ),
       ),
     );
@@ -334,7 +339,39 @@ void main() {
     expect(api.lastPutBody?['exchangeRateSource'], 'TRADE_AGENT_STATEMENT');
     expect(api.lastPutBody?['amountOriginal'], '88.1234');
     expect(api.lastPutBody?['accountAmount'], '627.7432');
+    _expectSaved(tester, router);
   });
+}
+
+GoRouter _receiptRouter() => GoRouter(
+  initialLocation: '/finance/receipts/receipt-1/edit',
+  routes: [
+    GoRoute(
+      path: '/finance/receipts/:id/edit',
+      builder: (_, state) => FinanceDocEditPage(
+        docType: FinanceDocType.receipt,
+        id: state.pathParameters['id'],
+      ),
+    ),
+    GoRoute(
+      path: '/finance/receipts/:id',
+      builder: (_, state) => FinanceDocDetailPage(
+        docType: FinanceDocType.receipt,
+        id: state.pathParameters['id']!,
+      ),
+    ),
+  ],
+);
+
+void _expectSaved(WidgetTester tester, GoRouter router) {
+  expect(
+    router.routeInformationProvider.value.uri.path,
+    '/finance/receipts/receipt-1',
+  );
+  expect(find.byType(FinanceDocDetailPage), findsOneWidget);
+  expect(find.byType(FinanceDocEditPage), findsNothing);
+  expect(find.text('保存失败，请稍后重试'), findsNothing);
+  expect(tester.takeException(), isNull);
 }
 
 Future<void> _openArrivalDetails(WidgetTester tester) async {
@@ -361,7 +398,10 @@ Finder _textField(String label) => find.byWidgetPredicate(
 
 class _TestSessionNotifier extends SessionNotifier {
   @override
-  SessionState build() => const SessionState();
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(id: 'native-detail-reader', code: 'reader', name: '测试读者'),
+  );
 }
 
 class _PrepaymentReceiptApi extends ApiClient {

@@ -23,6 +23,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_segment_row.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -140,6 +141,22 @@ class _SalesShipmentTaskWorkbenchState
   bool get _hasRequiredPermission =>
       ref.read(isSuperAdminProvider) ||
       ref.read(currentPermissionsProvider).contains(_requiredPermission);
+
+  bool _canDecideFinance({required bool forApprove}) =>
+      _isFinance &&
+      _hasRequiredPermission &&
+      (ref.read(isSuperAdminProvider) ||
+          ref
+              .read(currentPermissionsProvider)
+              .contains(
+                forApprove
+                    ? Perm.salesShipmentFinanceApprove
+                    : Perm.salesShipmentFinanceReject,
+              ));
+
+  bool get _canSelectFinance =>
+      _canDecideFinance(forApprove: true) ||
+      _canDecideFinance(forApprove: false);
 
   @override
   void initState() {
@@ -311,7 +328,7 @@ class _SalesShipmentTaskWorkbenchState
 
   /// 行可选条件：待财审 + 销售已确认提交（financeReviewPending）。
   bool _canSelectItem(SalesDocListItem item) =>
-      _isFinance &&
+      _canSelectFinance &&
       _taskDrafts(item).isEmpty &&
       item.financeAudit == 0 &&
       item.shipmentWorkflow.financeReviewPending;
@@ -330,7 +347,7 @@ class _SalesShipmentTaskWorkbenchState
   }
 
   void _setSelectedIds(Set<String> next) {
-    if (_batchClaim != null) return;
+    if (_batchClaim != null || (next.isNotEmpty && !_canSelectFinance)) return;
     final capped = next.length > _maxBatchSize;
     final normalized = capped ? next.take(_maxBatchSize).toSet() : next;
     setState(() {
@@ -378,8 +395,10 @@ class _SalesShipmentTaskWorkbenchState
   /// 整批认领 + 逐笔拉审核快照核对（对齐订货审批 _claimSelection）：
   /// 任一笔认领失败/内容失效 → 整批不提交。
   Future<TaskClaimSession?> _claimSelection({required bool forApprove}) async {
+    if (!_canDecideFinance(forApprove: forApprove)) return null;
     final claim = financeReviewClaim(
       ProviderScope.containerOf(context, listen: false),
+      localizations: AppLocalizations.of(context),
     );
     _batchClaim = claim;
     setState(() => _busyDecision = true);
@@ -400,7 +419,11 @@ class _SalesShipmentTaskWorkbenchState
       }
       for (final id in _selectedIds) {
         final info = await repo.financeAuditInfo(id);
-        if (!mounted || !claim.isReady || !_readableSnapshot(info)) {
+        if (!mounted ||
+            !_canDecideFinance(forApprove: forApprove) ||
+            !claim.isReady ||
+            !_readableSnapshot(info) ||
+            !info.allows(forApprove ? 'APPROVE' : 'REJECT')) {
           if (mounted) {
             context.appWarning('部分出货单的内容或处理权已变化，请刷新后重新核对');
           }
@@ -410,9 +433,12 @@ class _SalesShipmentTaskWorkbenchState
       }
       if (mounted) setState(() => _busyDecision = false);
       return claim;
-    } on Object {
+    } on Object catch (error) {
       if (mounted) {
-        context.appError('无法核对整批审核内容，请检查网络或权限后重试');
+        context.appApiError(
+          error,
+          fallback: AppLocalizations.of(context).financeBatchReviewCheckFailed,
+        );
       }
       await _releaseBatchClaim(claim);
       return null;
@@ -426,7 +452,11 @@ class _SalesShipmentTaskWorkbenchState
   }
 
   Future<void> _approveSelected() async {
-    if (_busyDecision || _batchClaim != null) return;
+    if (_busyDecision ||
+        _batchClaim != null ||
+        !_canDecideFinance(forApprove: true)) {
+      return;
+    }
     final issue = _selectionIssue();
     if (issue != null) {
       context.appWarning(issue);
@@ -478,6 +508,7 @@ class _SalesShipmentTaskWorkbenchState
             .financeAuditBatch(decisions),
         claim,
         '已批量放行 $count 笔出货',
+        forApprove: true,
       );
     } finally {
       await _releaseBatchClaim(claim);
@@ -485,7 +516,11 @@ class _SalesShipmentTaskWorkbenchState
   }
 
   Future<void> _rejectSelected() async {
-    if (_busyDecision || _batchClaim != null) return;
+    if (_busyDecision ||
+        _batchClaim != null ||
+        !_canDecideFinance(forApprove: false)) {
+      return;
+    }
     final issue = _selectionIssue();
     if (issue != null) {
       context.appWarning(issue);
@@ -575,6 +610,7 @@ class _SalesShipmentTaskWorkbenchState
             .rejectShipmentFinanceBatch(decisions, confirmedReason),
         claim,
         '已批量退回 $count 笔出货',
+        forApprove: false,
       );
     } finally {
       await _releaseBatchClaim(claim);
@@ -585,8 +621,10 @@ class _SalesShipmentTaskWorkbenchState
   Future<void> _runBatch(
     Future<void> Function(List<ShipmentFinanceBatchDecision>) action,
     TaskClaimSession claim,
-    String okMsg,
-  ) async {
+    String okMsg, {
+    required bool forApprove,
+  }) async {
+    if (!_canDecideFinance(forApprove: forApprove)) return;
     setState(() => _busyDecision = true);
     try {
       if (!await claim.validateForDecision() || !mounted) {
@@ -599,6 +637,15 @@ class _SalesShipmentTaskWorkbenchState
       final decisions = <ShipmentFinanceBatchDecision>[];
       for (final id in _selectedIds) {
         final info = await repo.financeAuditInfo(id);
+        if (!mounted ||
+            !_canDecideFinance(forApprove: forApprove) ||
+            !_readableSnapshot(info) ||
+            !info.allows(forApprove ? 'APPROVE' : 'REJECT')) {
+          if (mounted) {
+            context.appWarning('部分出货单的内容或处理权已变化，请刷新后重新核对');
+          }
+          return;
+        }
         decisions.add(
           ShipmentFinanceBatchDecision(
             id: id,
@@ -620,10 +667,15 @@ class _SalesShipmentTaskWorkbenchState
       // 列表立即换新，与单笔审核详情页的口径一致）。
       bumpListRefresh(ref, SalesDocConfig.by(SalesDocType.shipment).refreshKey);
       await _load(1);
-    } on ApiException catch (e) {
-      if (mounted) context.appError('整批未提交：${e.message}');
-    } catch (_) {
-      if (mounted) context.appError('整批未提交，请检查网络后重试');
+    } on Object catch (error) {
+      if (mounted) {
+        context.appApiError(
+          error,
+          fallback: AppLocalizations.of(
+            context,
+          ).financeBatchReviewResultUnknown,
+        );
+      }
     }
   }
 
@@ -746,7 +798,7 @@ class _SalesShipmentTaskWorkbenchState
     SalesMasterNameService names,
   ) {
     final selectable =
-        _isFinance &&
+        _canSelectFinance &&
         ((result.items.any(_canSelectItem)) || _selectedItems.isNotEmpty);
     final header = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -970,25 +1022,27 @@ class _SalesShipmentTaskWorkbenchState
   List<Widget> _batchActions(BuildContext context, Set<String> selectedIds) {
     final issue = _selectionIssue();
     return [
-      UtenButton(
-        key: const Key('finance-shipment-batch-reject'),
-        type: UtenButtonType.danger,
-        size: UtenButtonSize.large,
-        icon: Icons.reply_rounded,
-        isLoading: _busyDecision,
-        onPressed: issue == null && !_busyDecision ? _rejectSelected : null,
-        onDisabledTap: issue == null ? null : () => context.appWarning(issue),
-        child: Text('批量退回(${selectedIds.length})'),
-      ),
-      UtenButton(
-        key: const Key('finance-shipment-batch-approve'),
-        size: UtenButtonSize.large,
-        icon: Icons.fact_check_outlined,
-        isLoading: _busyDecision,
-        onPressed: issue == null && !_busyDecision ? _approveSelected : null,
-        onDisabledTap: issue == null ? null : () => context.appWarning(issue),
-        child: Text('批量放行(${selectedIds.length})'),
-      ),
+      if (_canDecideFinance(forApprove: false))
+        UtenButton(
+          key: const Key('finance-shipment-batch-reject'),
+          type: UtenButtonType.danger,
+          size: UtenButtonSize.large,
+          icon: Icons.reply_rounded,
+          isLoading: _busyDecision,
+          onPressed: issue == null && !_busyDecision ? _rejectSelected : null,
+          onDisabledTap: issue == null ? null : () => context.appWarning(issue),
+          child: Text('批量退回(${selectedIds.length})'),
+        ),
+      if (_canDecideFinance(forApprove: true))
+        UtenButton(
+          key: const Key('finance-shipment-batch-approve'),
+          size: UtenButtonSize.large,
+          icon: Icons.fact_check_outlined,
+          isLoading: _busyDecision,
+          onPressed: issue == null && !_busyDecision ? _approveSelected : null,
+          onDisabledTap: issue == null ? null : () => context.appWarning(issue),
+          child: Text('批量放行(${selectedIds.length})'),
+        ),
     ];
   }
 

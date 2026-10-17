@@ -26,6 +26,7 @@ import '../../../components/data_display/uten_table_surface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -60,6 +61,7 @@ import '../models/finance_procurement_revision.dart';
 import '../repositories/finance_procurement_workflow_repository.dart';
 import '../widgets/finance_document_unapproval_action.dart';
 import '../../../shared/drafts/review_task_draft.dart';
+import '../../../shared/drafts/review_authority_refresh_mixin.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/formatters/money_display.dart';
@@ -81,11 +83,46 @@ class _FinanceProcurementApprovalReviewPageState
     extends ConsumerState<FinanceProcurementApprovalReviewPage>
     with
         FormDraftMixin<FinanceProcurementApprovalReviewPage>,
-        ReviewTaskDraftMixin<FinanceProcurementApprovalReviewPage> {
+        ReviewTaskDraftMixin<FinanceProcurementApprovalReviewPage>,
+        ReviewAuthorityRefreshMixin<FinanceProcurementApprovalReviewPage> {
   FinanceProcurementApprovalReview? _review;
   bool _summaryExpanded = false;
   bool _loading = true;
   bool _busy = false;
+  bool _authorityStale = false;
+  @override
+  Set<String> get reviewAuthorityPermissionCodes => const {
+    Perm.financeOrderApprovalView,
+    Perm.financeOrderApprovalApprove,
+    Perm.financeOrderApprovalReject,
+    Perm.purchaseOrderReverse,
+    Perm.subcontractOrderReverse,
+  };
+  @override
+  bool get reviewAuthorityRefreshBlocked =>
+      _loading ||
+      _busy ||
+      formDraftHasUnknownSubmission ||
+      formDraftRestorationBlocked;
+  @override
+  Future<void> refreshReviewAuthority() => _load(authorityOnly: true);
+
+  bool _allowsReviewAction(String action) =>
+      !_authorityStale &&
+      _canView &&
+      (_review?.allowedActions.contains(action) ?? false) &&
+      (ref.read(isSuperAdminProvider) ||
+          switch (action) {
+            'APPROVE' =>
+              ref
+                  .read(currentPermissionsProvider)
+                  .contains(Perm.financeOrderApprovalApprove),
+            'REJECT' =>
+              ref
+                  .read(currentPermissionsProvider)
+                  .contains(Perm.financeOrderApprovalReject),
+            _ => true,
+          });
   String? _error;
   TaskClaimSession? _reviewClaim;
   int _loadGeneration = 0;
@@ -119,10 +156,11 @@ class _FinanceProcurementApprovalReviewPageState
   @override
   bool get reviewDraftEditable =>
       _review?.isPending == true &&
-      (_review!.allowedActions.contains('APPROVE') ||
-          _review!.allowedActions.contains('REJECT'));
+      (_allowsReviewAction('APPROVE') || _allowsReviewAction('REJECT'));
   @override
   bool canDispatchReviewCommand(String action) =>
+      !_authorityStale &&
+      _canView &&
       _review?.isPending == true &&
       _reviewClaim?.isReady == true &&
       _review?.allowedActions.contains(switch (action) {
@@ -273,13 +311,17 @@ class _FinanceProcurementApprovalReviewPageState
   @override
   void initState() {
     super.initState();
+    initializeReviewAuthorityRefresh();
     _caseId = widget.caseId;
     startFormDraftIdentityGuard();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
-  Future<void> _load() async {
-    await prepareReviewReload();
+  Future<void> _load({bool authorityOnly = false}) async {
+    final previousReview = _review;
+    final preserveInputs = authorityOnly && previousReview != null;
+    if (preserveInputs && reviewAuthorityRefreshBlocked) return;
+    if (!preserveInputs) await prepareReviewReload();
     if (!mounted || !formDraftIdentityIsCurrent) return;
     if (!_canView) return;
     final generation = ++_loadGeneration;
@@ -288,7 +330,10 @@ class _FinanceProcurementApprovalReviewPageState
     setState(() {
       _loading = true;
       _error = null;
-      _review = null;
+      if (!preserveInputs) {
+        _review = null;
+        _authorityStale = false;
+      }
     });
     try {
       _reviewClaim?.removeListener(_claimChanged);
@@ -303,7 +348,10 @@ class _FinanceProcurementApprovalReviewPageState
       if (ref.read(isSuperAdminProvider) ||
           permissions.contains(Perm.financeOrderApprovalApprove) ||
           permissions.contains(Perm.financeOrderApprovalReject)) {
-        final claim = financeReviewClaim(container)..addListener(_claimChanged);
+        final claim = financeReviewClaim(
+          container,
+          localizations: AppLocalizations.of(context),
+        )..addListener(_claimChanged);
         _reviewClaim = claim;
         await claim.claimAll('PROCUREMENT_FINANCE_APPROVE', [_caseId]);
         if (!mounted || generation != _loadGeneration || !claim.isCurrent) {
@@ -319,14 +367,32 @@ class _FinanceProcurementApprovalReviewPageState
           !container.read(sessionProvider).isSameIdentity(identity)) {
         return;
       }
+      if (preserveInputs &&
+          (review.caseId != previousReview.caseId ||
+              review.orderId != previousReview.orderId ||
+              review.attempt != previousReview.attempt ||
+              review.version != previousReview.version ||
+              review.status != previousReview.status)) {
+        await _reviewClaim?.releaseAll();
+        if (!mounted || generation != _loadGeneration) return;
+        setState(() {
+          _authorityStale = true;
+          _loading = false;
+          _error = AppLocalizations.of(context).financeReviewAuthorityChanged;
+        });
+        return;
+      }
       setState(() {
         _review = review;
+        _authorityStale = false;
         _loading = false;
         // 汇率编辑框每次加载重置为 case 默认值（已批 = 财务落定值，未批 = 快照兜底）。
-        _rateController.text = _defaultRateText(review);
-        _taxController.text = _defaultTaxText(review);
-        _approveRemark.clear();
-        _rejectReason.clear();
+        if (!preserveInputs) {
+          _rateController.text = _defaultRateText(review);
+          _taxController.text = _defaultTaxText(review);
+          _approveRemark.clear();
+          _rejectReason.clear();
+        }
       });
       await bindReviewDraft();
       if (!review.isPending) await _reviewClaim?.releaseAll();
@@ -334,12 +400,14 @@ class _FinanceProcurementApprovalReviewPageState
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _error = e.message;
+        if (preserveInputs) _authorityStale = true;
         _loading = false;
       });
     } catch (_) {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
-        _error = '审核详情加载失败，请检查网络或权限后重试';
+        _error = AppLocalizations.of(context).financeReviewLoadFailed;
+        if (preserveInputs) _authorityStale = true;
         _loading = false;
       });
     }
@@ -459,7 +527,7 @@ class _FinanceProcurementApprovalReviewPageState
       return;
     }
     final decision = review.decisionItem;
-    if (decision == null || !review.allowedActions.contains('APPROVE')) {
+    if (decision == null || !_allowsReviewAction('APPROVE')) {
       context.appWarning('当前账号不可办理该笔通过，请刷新后重试');
       return;
     }
@@ -585,7 +653,7 @@ class _FinanceProcurementApprovalReviewPageState
       return;
     }
     final decision = review.decisionItem;
-    if (decision == null || !review.allowedActions.contains('REJECT')) {
+    if (decision == null || !_allowsReviewAction('REJECT')) {
       context.appWarning('当前账号不可办理该笔驳回，请刷新后重试');
       return;
     }
@@ -694,10 +762,11 @@ class _FinanceProcurementApprovalReviewPageState
 
   @override
   Widget build(BuildContext context) {
+    scheduleReviewAuthorityRefresh();
     ref.watch(sessionProvider);
     ref.listen(sessionProvider, (previous, next) {
       // 只有真实换身份才清空（换号/登出/模拟切换/业务重置）；token 静默刷新、
-      // 权限滑动更新保持页面与认领（服务端在决策时点重校验权限）。
+      // 同身份授权变化由独立监听刷新动作与认领，保留原审核输入。
       if (previous?.isSameIdentity(next) ?? false) return;
       ++_loadGeneration;
       _reviewClaim?.removeListener(_claimChanged);
@@ -721,8 +790,8 @@ class _FinanceProcurementApprovalReviewPageState
     final showActions =
         review != null &&
         (review.isPending &&
-                (review.allowedActions.contains('APPROVE') ||
-                    review.allowedActions.contains('REJECT')) ||
+                (_allowsReviewAction('APPROVE') ||
+                    _allowsReviewAction('REJECT')) ||
             review.status == 'APPROVED');
     return withFormDraft(
       Scaffold(
@@ -875,7 +944,7 @@ class _FinanceProcurementApprovalReviewPageState
             ? null
             : UtenFloatingActionGroup(
                 children: [
-                  if (review.allowedActions.contains('UNAPPROVE') &&
+                  if (_allowsReviewAction('UNAPPROVE') &&
                       (ref.watch(isSuperAdminProvider) ||
                           ref.watch(currentPermissionsProvider).containsAll({
                             '${review.orderType == FinanceProcurementOrderType.purchase ? 'purchase_order' : 'subcontract_order'}:view',
@@ -915,7 +984,7 @@ class _FinanceProcurementApprovalReviewPageState
                     onPressed: _leaveReview,
                     child: const Text('返回'),
                   ),
-                  if (review.allowedActions.contains('REJECT'))
+                  if (_allowsReviewAction('REJECT'))
                     UtenButton(
                       key: const Key('finance-order-review-reject'),
                       type: UtenButtonType.danger,
@@ -929,7 +998,7 @@ class _FinanceProcurementApprovalReviewPageState
                           : () => context.appWarning('请先完成审核认领，再驳回'),
                       child: const Text('驳回'),
                     ),
-                  if (review.allowedActions.contains('APPROVE'))
+                  if (_allowsReviewAction('APPROVE'))
                     UtenButton(
                       key: const Key('finance-order-review-approve'),
                       type: UtenButtonType.success,
@@ -1281,7 +1350,7 @@ class _FinanceProcurementApprovalReviewPageState
                   'taxRate': (cellContext, row) {
                     if (!r.isPending ||
                         row.kind == UtenRevisionKind.removed ||
-                        !r.allowedActions.contains('APPROVE') ||
+                        !_allowsReviewAction('APPROVE') ||
                         !canDispatchReviewCommand('approve')) {
                       return Text(
                         _defaultTaxText(r),
@@ -1310,7 +1379,7 @@ class _FinanceProcurementApprovalReviewPageState
                   'exchangeRate': (cellContext, row) {
                     if (!r.isPending ||
                         row.kind == UtenRevisionKind.removed ||
-                        !r.allowedActions.contains('APPROVE') ||
+                        !_allowsReviewAction('APPROVE') ||
                         !canDispatchReviewCommand('approve')) {
                       return Text(
                         _trimNum(rateText) ?? '1',

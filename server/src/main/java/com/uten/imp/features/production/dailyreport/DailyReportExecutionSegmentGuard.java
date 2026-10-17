@@ -586,7 +586,7 @@ public class DailyReportExecutionSegmentGuard {
         if (Boolean.TRUE.equals(row[9])
                 || (!"REWORK".equals(row[7]) && !materialReady)) {
             throw conflict(
-                    "SCRAP/REJECT 必须先由计划部确认补产 BOM，完成仓库领料实发后才能报工");
+                    "报废或不合格补产需先确认补产用料清单，完成仓库领料实发后才能报工");
         }
         if (!Objects.equals(line.planItemId(), row[0])
                 || !Objects.equals(line.executionSegmentId(), row[1])

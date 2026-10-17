@@ -12,6 +12,7 @@ import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.features.rbac.DepartmentPermissionRepository;
 import com.uten.imp.features.rbac.ManagerPermissionDelegationRepository;
 import com.uten.imp.features.rbac.PermissionRepository;
+import com.uten.imp.features.rbac.PermissionDependencyCatalog;
 import com.uten.imp.features.rbac.UserPermissionOverrideRepository;
 import com.uten.imp.security.PermissionDelegationPolicy;
 import org.springframework.stereotype.Service;
@@ -19,6 +20,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
+import jakarta.annotation.PostConstruct;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -52,6 +55,7 @@ import java.util.UUID;
  * </ul>
  */
 @Service
+@DependsOnDatabaseInitialization
 public class PermissionResolver {
 
     private final PermissionRepository permissionRepo;
@@ -66,6 +70,13 @@ public class PermissionResolver {
     private final PermissionSurfaceRegistry surfaceRegistry;
     private final PagePermissionDelegationFeatureGate delegationFeatureGate;
     private final NamedParameterJdbcTemplate batchJdbc;
+    private volatile PermissionDependencyCatalog dependencies = new PermissionDependencyCatalog(List.of());
+
+    /** Catalog structure changes with migrations; loading once preserves bounded fanout reads. */
+    @PostConstruct
+    public void initializeDependencyCatalog() {
+        dependencies = new PermissionDependencyCatalog(permissionRepo.findAll());
+    }
 
     public PermissionResolver(PermissionRepository permissionRepo,
                               DepartmentPermissionRepository departmentPermissionRepo,
@@ -244,7 +255,8 @@ public class PermissionResolver {
         }
         Map<UUID, Set<String>> granted = new HashMap<>();
         var rows = batchJdbc.query(GRANTED_PERMISSION_BATCH_SQL,
-                Map.of("userIds", candidates, "codes", requested,
+                Map.of("userIds", candidates, "codes", dependencies.lookupPermissions(requested),
+                        "dependencyRules", dependencies.rulesJson(),
                         "delegationsEnabled", delegationFeatureGate.enabled()),
                 (rs, row) -> new BatchGrantedPermission(rs.getObject("user_id", UUID.class),
                         rs.getString("code"), rs.getString("surface_key")));
@@ -254,7 +266,11 @@ public class PermissionResolver {
                     || !surfaceRegistry.contains(row.surfaceKey(), row.code()))) continue;
             granted.computeIfAbsent(row.userId(), ignored -> new HashSet<>()).add(row.code());
         }
-        granted.replaceAll((id, codes) -> Set.copyOf(codes));
+        granted.replaceAll((id, codes) -> {
+            Set<String> usable = new HashSet<>(dependencies.usablePermissions(codes));
+            usable.retainAll(requested);
+            return Set.copyOf(usable);
+        });
         return Map.copyOf(granted);
     }
 
@@ -403,7 +419,7 @@ public class PermissionResolver {
                 List.copyOf(managerGrants),
                 contextualDelegationPresent,
                 base.revokes(),
-                Set.copyOf(effective));
+                dependencies.usablePermissions(effective));
     }
 
     private ManagerGrantResolution resolveManagerGrants(
@@ -538,6 +554,7 @@ public class PermissionResolver {
         }
         ceiling.removeAll(base.baselinePermissions());
         ceiling.removeAll(base.revokes());
+        ceiling.retainAll(dependencies.usablePermissions(base.effective()));
         ceiling.removeIf(code -> !delegationPolicy.isDelegable(code));
         return Set.copyOf(ceiling);
     }
@@ -559,6 +576,11 @@ public class PermissionResolver {
     private static final String GRANTED_PERMISSION_BATCH_SQL = """
             WITH RECURSIVE requested AS MATERIALIZED (
                 SELECT id, code, baseline FROM permissions WHERE code IN (:codes)
+            ), dependency_requirements AS MATERIALIZED (
+                SELECT dependency.key AS code,
+                       ARRAY(SELECT jsonb_array_elements_text(alternatives.value)) AS alternatives
+                FROM jsonb_each(CAST(:dependencyRules AS jsonb)) dependency
+                CROSS JOIN LATERAL jsonb_array_elements(dependency.value) alternatives(value)
             ), requested_accounts AS MATERIALIZED (
                 SELECT account.id, account.employee_id, account.is_super_admin,
                        account.permission_delegation_generation, account.auth_version
@@ -608,6 +630,16 @@ public class PermissionResolver {
                 SELECT allocation.user_id, allocation.code FROM overrides allocation
                 JOIN requested_accounts account ON account.id=allocation.user_id
                 WHERE allocation.effect IS DISTINCT FROM 'revoke'
+            ), grantor_base_codes(user_id, code) AS MATERIALIZED (
+                SELECT raw.user_id, raw.code FROM (
+                    SELECT account.id AS user_id, permission.code FROM accounts account
+                    CROSS JOIN requested permission WHERE permission.baseline
+                    UNION SELECT department.user_id, department.code FROM department_codes department
+                    UNION SELECT allocation.user_id, allocation.code FROM overrides allocation
+                          WHERE allocation.effect IS DISTINCT FROM 'revoke'
+                ) raw
+                WHERE NOT EXISTS (SELECT 1 FROM overrides allocation
+                    WHERE allocation.user_id=raw.user_id AND allocation.code=raw.code AND allocation.effect='revoke')
             ), delegation_targets AS MATERIALIZED (
                 SELECT delegation.*, permission.code, permission.baseline,
                        grantor.employee_id AS grantor_employee_id,
@@ -644,6 +676,11 @@ public class PermissionResolver {
                   AND NOT EXISTS (SELECT 1 FROM overrides allocation
                       WHERE allocation.user_id=grantor.id AND allocation.code=permission.code
                         AND allocation.effect='revoke')
+                  AND (grantor.is_super_admin OR NOT EXISTS (
+                      SELECT 1 FROM dependency_requirements required
+                      WHERE required.code=permission.code AND NOT EXISTS (
+                          SELECT 1 FROM grantor_base_codes held
+                          WHERE held.user_id=grantor.id AND held.code=ANY(required.alternatives))))
             ), scope_ancestors(user_id, permission_id, id, parent_id, code, level, manager_id, depth) AS (
                 SELECT target.user_id, target.permission_id, department.id, department.parent_id,
                        department.code, department.level, department.manager_id, 0

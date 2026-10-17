@@ -29,6 +29,7 @@ import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_table_column_kit.dart'
     show utenTableSelectedRowColor;
 import '../../../shared/hierarchy/uten_tree_path.dart';
+import '../../../shared/auth/session_snapshot_provider.dart';
 import '../models/managed_permission_department_forest.dart';
 import '../widgets/permission_action_badge.dart';
 import '../../../shared/auth/page_permission_delegation_models.dart';
@@ -523,20 +524,68 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
         _detail = value;
         _pending.clear();
       });
-      context.appSuccess('页面权限已保存');
+      try {
+        await ref.read(sessionSnapshotProvider.notifier).refresh();
+        if (!mounted) return;
+        if (ref.read(sessionSnapshotProvider).hasError) {
+          context.appWarning(
+            AppLocalizations.of(context).permissionSavedRefreshPending,
+          );
+          return;
+        }
+      } catch (_) {
+        if (mounted) {
+          context.appWarning(
+            AppLocalizations.of(context).permissionSavedRefreshPending,
+          );
+        }
+        return;
+      }
+      context.appSuccess(AppLocalizations.of(context).permissionSaved);
+    } on PagePermissionSaveCommittedError {
+      if (!mounted) return;
+      final message = AppLocalizations.of(context).permissionSavedDetailPending;
+      setState(() {
+        _detail = null;
+        _pending.clear();
+        _detailError = message;
+      });
+      try {
+        await ref.read(sessionSnapshotProvider.notifier).refresh();
+      } catch (_) {
+        // The assignment is already committed; session recovery retries separately.
+      }
+      if (mounted) context.appWarning(message);
     } on ApiException catch (error) {
       if (!mounted) return;
       if (error.code == 'CONFLICT') {
         context.appError('权限已被其他人更新，正在刷新当前员工');
         await _loadDetail();
+      } else if (error is NetworkException ||
+          error is NetworkTimeoutException ||
+          error.code == 'UNKNOWN' ||
+          error.code == 'INTERNAL' ||
+          error.httpStatus == 408 ||
+          (error.httpStatus ?? 0) >= 500) {
+        _markSaveOutcomeUnknown();
       } else {
         context.appError(error.message);
       }
     } catch (_) {
-      if (mounted) context.appError('权限保存失败，请重试');
+      if (mounted) _markSaveOutcomeUnknown();
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  void _markSaveOutcomeUnknown() {
+    final message = AppLocalizations.of(context).permissionSaveResultUnknown;
+    setState(() {
+      _detail = null;
+      _pending.clear();
+      _detailError = message;
+    });
+    context.appWarning(message);
   }
 
   Future<bool> _confirmDiscard() async {
@@ -562,19 +611,33 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
   // ===== 权限值与批量 =====
 
   bool _storedValue(PageStaffPermissionState permission) {
-    final detail = _detail;
-    if (detail == null) return false;
-    return detail.superAdminMode
-        ? permission.effective
-        : permission.baseEffective || permission.delegationEnabled;
+    return _detail != null && permission.effective;
   }
 
   bool _currentValue(PageStaffPermissionState permission) =>
       _pending[permission.code] ?? _storedValue(permission);
 
-  void _setCode(PageStaffPermissionState permission, bool next) {
+  bool _canEnable(PageStaffPermissionState permission) =>
+      permission.canEnable ?? permission.editable;
+
+  bool _canDisable(PageStaffPermissionState permission) =>
+      permission.canDisable ??
+      (permission.editable ||
+          (_detail?.superAdminMode == false && permission.delegationEnabled));
+
+  bool _canSet(PageStaffPermissionState permission, bool enabled) =>
+      enabled ? _canEnable(permission) : _canDisable(permission);
+
+  void _setCode(
+    PageStaffPermissionState permission,
+    bool next, {
+    bool clearInactive = false,
+  }) {
+    if (_saving || !_canSet(permission, next)) return;
     setState(() {
-      if (next == _storedValue(permission)) {
+      if (clearInactive) {
+        _pending[permission.code] = false;
+      } else if (next == _storedValue(permission)) {
         _pending.remove(permission.code);
       } else {
         _pending[permission.code] = next;
@@ -583,9 +646,10 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
   }
 
   Future<void> _toggleCode(PageStaffPermissionState permission) async {
-    if (!permission.editable || _saving) return;
+    if (_saving) return;
     final detail = _detail;
     final next = !_currentValue(permission);
+    if (!_canSet(permission, next)) return;
     if (next &&
         !permission.grantPolicy.bulkEligible &&
         !_currentValue(permission)) {
@@ -596,7 +660,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
     _setCode(permission, next);
   }
 
-  /// 族内/组内批量：只作用于当前可编辑且尚未到位的码。
+  /// 批量开启遵循目录策略；关闭时仍允许收回原先明确授予的敏感码。
   Future<void> _applyBatch(
     List<PageStaffPermissionState> permissions,
     bool enable,
@@ -604,24 +668,26 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
     if (_saving) return;
     final detail = _detail;
     final actionable = permissions
-        .where((permission) => permission.editable)
+        .where(
+          (permission) => enable
+              ? _canEnable(permission) && permission.grantPolicy.bulkEligible
+              : _canDisable(permission),
+        )
         .toList(growable: false);
     if (actionable.isEmpty) return;
     final toChange = actionable
-        .where((permission) => _currentValue(permission) != enable)
+        .where(
+          (permission) =>
+              _currentValue(permission) != enable ||
+              (!enable && permission.configuredEnabled),
+        )
         .toList(growable: false);
-    if (enable) {
-      final sensitive = toChange
-          .where((permission) => !permission.grantPolicy.bulkEligible)
-          .toList(growable: false);
-      if (sensitive.isNotEmpty && !await _confirmSensitiveGrant(sensitive)) {
-        return;
-      }
-    }
     if (!mounted || _saving || !identical(detail, _detail)) return;
     setState(() {
       for (final permission in toChange) {
-        if (enable == _storedValue(permission)) {
+        if (!enable && permission.configuredEnabled) {
+          _pending[permission.code] = false;
+        } else if (enable == _storedValue(permission)) {
           _pending.remove(permission.code);
         } else {
           _pending[permission.code] = enable;
@@ -1155,7 +1221,10 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
           itemBuilder: (context) => [
             PopupMenuItem(
               value: 'grant',
-              child: Text('本组全部授权（不含锁定项）', style: theme.textTheme.bodyMedium),
+              child: Text(
+                AppLocalizations.of(context).permissionBatchNormalOnly,
+                style: theme.textTheme.bodyMedium,
+              ),
             ),
             PopupMenuItem(
               value: 'revoke',
@@ -1197,12 +1266,15 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
     final familyKey = '${group.surfaceKey}:${family.name}';
     final expanded = _expandedFamilies.contains(familyKey);
     final editable = permissions
-        .where((permission) => permission.editable)
+        .where(
+          (permission) =>
+              _canEnable(permission) && permission.grantPolicy.bulkEligible,
+        )
         .toList(growable: false);
     final granted = permissions.where(_currentValue).length;
     final total = permissions.length;
-    final allOn = granted == total;
-    final someOn = granted > 0 && !allOn;
+    final allOn = editable.isNotEmpty && editable.every(_currentValue);
+    final someOn = editable.any(_currentValue) && !allOn;
     final canBatch = editable.isNotEmpty && !_saving;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1235,7 +1307,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
                     child: Text(
                       family.detailHint.isEmpty
                           ? family.label
-                          : '${family.label}（${family.detailHint}）',
+                          : '${family.label}(${family.detailHint})',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
@@ -1257,7 +1329,12 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
                     value: allOn ? true : (someOn ? null : false),
                     tristate: true,
                     onChanged: canBatch
-                        ? (_) => _applyBatch(permissions, !allOn)
+                        ? (_) => _applyBatch(
+                            permissions
+                                .where((row) => row.grantPolicy.bulkEligible)
+                                .toList(growable: false),
+                            !allOn,
+                          )
                         : null,
                   ),
                   AnimatedRotation(
@@ -1290,7 +1367,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
     final theme = Theme.of(context);
     final value = _currentValue(permission);
     return Opacity(
-      opacity: permission.editable ? 1 : 0.65,
+      opacity: _canEnable(permission) || _canDisable(permission) ? 1 : 0.65,
       child: Row(
         children: [
           Expanded(
@@ -1316,6 +1393,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
+                  _permissionDependencyState(permission),
                 ],
               ),
             ),
@@ -1326,12 +1404,62 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
               'page-permission-${_detail?.employeeId ?? ''}-${permission.code}',
             ),
             value: value,
-            onChanged: permission.editable && !_saving
+            onChanged: _canSet(permission, !value) && !_saving
                 ? (_) => _toggleCode(permission)
                 : null,
           ),
         ],
       ),
+    );
+  }
+
+  Widget _permissionDependencyState(PageStaffPermissionState permission) {
+    final l10n = AppLocalizations.of(context);
+    if (_pending[permission.code] == true &&
+        permission.missingDependencies.isNotEmpty) {
+      return Text(
+        l10n.permissionPendingReads,
+        style: Theme.of(context).textTheme.bodySmall,
+      );
+    }
+    if (!permission.configuredEnabled ||
+        permission.effective ||
+        _pending.containsKey(permission.code)) {
+      return const SizedBox.shrink();
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          !_canEnable(permission) && _canDisable(permission)
+              ? l10n.permissionRevokeOnly
+              : permission.missingDependencies.isNotEmpty
+              ? l10n.permissionMissingReads
+              : l10n.permissionInactiveGrant,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.error,
+          ),
+        ),
+        Wrap(
+          spacing: UtenSpacing.s8,
+          children: [
+            if (_canEnable(permission))
+              TextButton(
+                key: ValueKey('permission-repair-${permission.code}'),
+                onPressed: _saving ? null : () => _toggleCode(permission),
+                child: Text(l10n.permissionRenewGrant),
+              ),
+            if (_canDisable(permission))
+              TextButton(
+                key: ValueKey('permission-clear-inactive-${permission.code}'),
+                onPressed: _saving
+                    ? null
+                    : () => _setCode(permission, false, clearInactive: true),
+                child: Text(l10n.permissionRemoveInactiveGrant),
+              ),
+          ],
+        ),
+      ],
     );
   }
 

@@ -6,7 +6,7 @@
 // 批量命令只有一份)，本页只声明文案/图标/权限/仓储闭包 + 客户领域差异：
 // - 结账方式字典预取后再开新建弹窗；编辑走共享 showClientMasterEdit；
 // - 负责人和可见人(单个 / 批量)、只读客户(对象范围外)的行与批量门；
-// - 编辑类按钮按 client_category:* / client:* 权限显隐；查看全员可见(路由不设守卫)。
+// - 主档按 client:view 查看；分类按 client_category:view 独立显示，无权时使用主档全局列表。
 //
 // compact：分类树作为 endDrawer；medium/expanded：左树 + 右详情。
 // 文档：见 docs/数据迁移/07-客户资料-新库与迁移.md。
@@ -69,6 +69,8 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
   @override
   FormDraftDescriptor get shellCategoryDraftDescriptor =>
       FormDraftCatalog.clientCategory;
+  @override
+  String get shellCategoryViewPermission => Perm.clientCategoryView;
 
   @override
   bool get shellCanCreate =>

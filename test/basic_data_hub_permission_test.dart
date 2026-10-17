@@ -24,13 +24,7 @@ void main() {
   testWidgets('basic-data hub only exposes authorized resources', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      _app(const {
-        Perm.goodsView,
-        Perm.materialCategoryView,
-        Perm.currencyView,
-      }),
-    );
+    await tester.pumpWidget(_app(const {Perm.goodsView, Perm.currencyView}));
 
     expect(find.text('货品资料'), findsOneWidget);
     expect(find.text('币种资料'), findsOneWidget);

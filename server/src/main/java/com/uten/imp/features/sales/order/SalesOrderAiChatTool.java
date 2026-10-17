@@ -243,7 +243,7 @@ public class SalesOrderAiChatTool implements AiChatToolPort {
 
     private static String waiting(String stage, boolean awaitingFinance, OrderProgressRow progress,
                                   List<PlanProgressLine> lines) {
-        if (awaitingFinance) return "等财务审核组确认；确认之后才进入物料分析和排产。";
+        if (awaitingFinance) return "等待销售订单财务确认；确认后才进入物料分析和排产。";
         return switch (stage) {
             case "REVERSED" -> "这张订货单已红冲作废，不会再往下走。";
             case "DRAFT" -> "还是草稿，等销售审核。";
@@ -259,7 +259,7 @@ public class SalesOrderAiChatTool implements AiChatToolPort {
             case "SHIPMENT_PENDING" -> progress != null && progress.shipmentFinanceRejectedQty() > 1e-6
                     ? "有出货单被财务退回，等销售修改后重新提交。"
                     : progress != null && progress.shipmentPendingFinanceQty() > 1e-6
-                    ? "出货单已提交，等财务审核组放行。"
+                    ? "出货单已提交，等待出货财务审核放行。"
                     : "出货单还是草稿，等销售确认并提交财务。";
             case "WAREHOUSE_PENDING" -> "财务已放行出货，等仓库出库。";
             default -> "请在订货单详情里查看当前环节。";

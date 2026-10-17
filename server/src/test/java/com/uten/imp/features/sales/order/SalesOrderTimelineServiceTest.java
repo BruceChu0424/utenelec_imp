@@ -71,7 +71,7 @@ class SalesOrderTimelineServiceTest {
                         "已产 0 / 订货 10", null, null, null),
                 new OrderProgressTimelineEvent(30, "FINANCE_CONFIRMED", "财务审核",
                         null, null, null, OrderProgressTimelineEvent.CURRENT,
-                        "等待财务审核组确认", null, null, null),
+                        "等待销售订单财务确认", null, null, null),
                 new OrderProgressTimelineEvent(60, "PRODUCTION_PLAN", "生产计划下达",
                         "下达人", "张计划", OffsetDateTime.parse("2026-10-01T06:00Z"),
                         OrderProgressTimelineEvent.DONE, null, null, null, null),

@@ -25,6 +25,24 @@ class AiDocKnowledgeTest {
         docs = AiDocKnowledge.fromDirectory(Path.of("..", "docs"));
     }
 
+    @Test void effectiveFunctionalPermissionsOpenRestrictedRulesWithoutDepartmentMembership() {
+        var current = org.mockito.Mockito.mock(com.uten.imp.security.SecurityContextCurrentUser.class);
+        var jdbc = org.mockito.Mockito.mock(org.springframework.jdbc.core.JdbcTemplate.class);
+        var policy = new com.uten.imp.security.AiChatAccessPolicy(current, jdbc);
+        var actor = java.util.UUID.randomUUID();
+        var employee = java.util.UUID.randomUUID();
+        org.mockito.Mockito.when(current.get()).thenReturn(java.util.Optional.of(new com.uten.imp.security.AuthUser(
+                actor, employee, "cross-department", Set.of("ai:use", "goods:cost:view", "payroll:view"), false, true, false)));
+        assertThat(policy.domains()).contains("FINANCE", "HR");
+        assertThat(docs.restrictedTopic("货品成本是怎么算出来的", policy.domains())).isEmpty();
+        assertThat(docs.search("工资条怎么生成", policy.domains()))
+                .anySatisfy(chunk -> assertThat(chunk.domains()).contains("HR"));
+        org.mockito.Mockito.when(current.get()).thenReturn(java.util.Optional.of(new com.uten.imp.security.AuthUser(
+                actor, employee, "cross-department", Set.of("ai:use"), false, true, false)));
+        assertThat(docs.restrictedTopic("货品成本是怎么算出来的", policy.domains())).contains(Set.of("FINANCE"));
+        org.mockito.Mockito.verifyNoInteractions(jdbc);
+    }
+
     @Test void onlyWhitelistedDocumentsAreIndexed() {
         assertThat(docs.size()).isGreaterThan(1000);
         for (var chunk : docs.chunks()) {
@@ -288,7 +306,7 @@ class AiDocKnowledgeTest {
 
     /**
      * ADR-159 section-level domains (root cure for live N2): inside a document every chat user reads, the sections about
-     * personnel or finance (by heading or a list item's bold lead) are for those departments only; the rest of the document
+     * personnel or finance (by heading or a list item's bold lead) require the corresponding functional domain; the rest of the document
      * stays shared, and documents about one's own matters, the glossary and the assistant's guide stay fully visible.
      */
     @Test void sectionVisibilityMatrix() {

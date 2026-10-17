@@ -84,6 +84,9 @@ import '../widgets/customer_prepayment_apply_panel.dart';
 import '../widgets/customer_prepayment_receipt_fields.dart';
 import '../widgets/finance_grid_columns.dart';
 import '../widgets/finance_entry_l10n.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/l10n/gen/app_localizations_zh.dart';
+import '../../../core/ui/human_error_message.dart';
 import '../widgets/finance_receipt_totals.dart';
 import '../widgets/finance_entry_file_picker.dart';
 import '../../employee/repositories/employee_picker_candidates.dart';
@@ -567,8 +570,13 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
       }
     } on ApiException catch (e) {
       _initializationError = e.message;
-    } catch (_) {
-      _initializationError = '无法读取完整单据数据，请检查网络或权限后重试';
+    } catch (error) {
+      if (!mounted) return;
+      final l10n =
+          Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+          AppLocalizationsZh();
+      _initializationError =
+          humanErrorMessage(error) ?? l10n.productionDailyReportLoadFailed;
     } finally {
       if (mounted) {
         setState(() => _loading = false);

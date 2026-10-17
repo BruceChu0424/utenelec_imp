@@ -6283,8 +6283,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get quoteFinanceReopenedDone => '확정을 취소했습니다. 가격을 다시 수정할 수 있습니다';
 
   @override
-  String get quoteFinanceLoadDetailFailed =>
-      '견적 상세를 불러오지 못했습니다. 네트워크나 권한을 확인한 후 다시 시도하세요.';
+  String get quoteFinanceLoadDetailFailed => '견적 상세를 불러올 수 없습니다. 다시 시도하세요.';
 
   @override
   String get quoteFinanceActionFailed => '처리하지 못했습니다. 잠시 후 다시 시도하세요.';
@@ -10557,4 +10556,175 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get serverUpdateReceiptStatus => '원래 요청의 최신 상태';
+
+  @override
+  String get taskClaimChecking => '검토 점유를 확인하고 있습니다. 잠시 기다려 주세요.';
+
+  @override
+  String get taskClaimIdentityChanged => '로그인 계정이 변경되었습니다. 검토를 다시 여세요.';
+
+  @override
+  String get taskClaimAcquireFailed => '검토 점유를 얻지 못했습니다. 다시 시도하세요.';
+
+  @override
+  String get taskClaimNetworkUnavailable =>
+      '서버에 연결할 수 없습니다. 네트워크를 확인한 후 다시 점유하세요.';
+
+  @override
+  String get taskClaimNetworkTimeout => '서버 응답 시간이 초과되었습니다. 나중에 다시 점유하세요.';
+
+  @override
+  String get taskClaimLoginExpired => '로그인이 만료되었습니다. 다시 로그인한 후 시도하세요.';
+
+  @override
+  String get taskClaimPermissionDenied =>
+      '이 작업을 검토할 권한이 없습니다. 권한을 새로 고친 후 다시 시도하세요.';
+
+  @override
+  String get taskClaimConflict => '작업 점유 또는 내용이 변경되었습니다. 새로 고친 후 다시 점유하세요.';
+
+  @override
+  String get taskClaimNotFound => '검토 작업이 없거나 더 이상 대기 중이 아닙니다. 목록을 새로 고치세요.';
+
+  @override
+  String get taskClaimRateLimited => '요청이 너무 많습니다. 나중에 다시 점유하세요.';
+
+  @override
+  String get taskClaimServerUnavailable =>
+      '서버가 검토 점유를 처리할 수 없습니다. 나중에 다시 시도하세요.';
+
+  @override
+  String get taskClaimInvalidResponse => '유효한 검토 점유를 받지 못했습니다. 다시 점유하세요.';
+
+  @override
+  String get taskClaimExpired => '검토 점유가 만료되었습니다. 다시 점유하세요.';
+
+  @override
+  String taskClaimTakenBy(String name) {
+    return '$name 님이 검토 중입니다. 나중에 다시 시도하세요.';
+  }
+
+  @override
+  String get taskClaimDecisionNotReady =>
+      '검토 점유가 유효하지 않습니다. 다시 점유하고 최신 내용을 확인하세요.';
+
+  @override
+  String get taskClaimReplaced => '검토 점유가 만료되거나 교체되어 검토를 중지했습니다. 다시 점유하세요.';
+
+  @override
+  String get taskClaimRenewFailed =>
+      '검토 점유를 확인할 수 없어 검토를 중지했습니다. 다시 점유하고 최신 내용을 확인하세요.';
+
+  @override
+  String get taskClaimReadOnly => '유효한 검토 점유가 없어 조회만 가능합니다.';
+
+  @override
+  String get taskClaimRetry => '다시 점유 후 새로 고침';
+
+  @override
+  String get financeSalesReviewAccessHint =>
+      '판매 주문 재무 검토 조회 권한이 필요합니다. 권한 관리자에게 요청하세요.';
+
+  @override
+  String get financeProcurementReviewAccessHint =>
+      '발주 승인 조회 권한이 필요합니다. 권한 관리자에게 요청하세요.';
+
+  @override
+  String get financeArrivalReviewAccessHint =>
+      '해당 조회 및 승인 권한이 있는 직원은 초과 입고를 처리할 수 있습니다. 별도의 부서 소속이나 개인 지정 권한은 필요하지 않습니다.';
+
+  @override
+  String get dashboardAuthorizedScope => '허용된 기능 및 데이터 범위에 따라 표시';
+
+  @override
+  String get dashboardNoAuthorizedMetrics => '조회 가능한 범위에 개요 지표가 없습니다';
+
+  @override
+  String get dashboardNoAuthorizedTodos => '조회 가능한 범위에 대기 작업이 없습니다';
+
+  @override
+  String get financeBatchReviewCheckFailed =>
+      '일괄 검토 내용을 확인할 수 없습니다. 새로 고친 후 다시 시도하세요.';
+
+  @override
+  String get financeBatchReviewResultUnknown =>
+      '일괄 승인 결과가 확인되지 않았습니다. 새로 고쳐 문서 상태를 확인한 후 다시 처리하세요.';
+
+  @override
+  String get financeReviewLoadFailed => '검토 상세를 불러올 수 없습니다. 다시 시도하세요.';
+
+  @override
+  String get financeReportLoadFailed => '보고서를 불러올 수 없습니다. 새로 고친 후 다시 시도하세요.';
+
+  @override
+  String get financeBatchReviewRefreshFailed =>
+      '일괄 승인은 완료되었지만 페이지를 새로 고치지 못했습니다. 새로 고쳐 최신 문서 상태를 확인하세요.';
+
+  @override
+  String get financeReviewAuthorityChanged =>
+      '검토 내용이나 버전이 변경되었습니다. 입력 내용은 보존됩니다. 다시 불러와 최신 내용을 확인한 후 검토하세요.';
+
+  @override
+  String get permissionMissingReads =>
+      '권한 설정은 보존되어 있지만 현재 유효하지 않으며 해당 페이지에 필요한 조회 권한도 없습니다. 권한 상태를 확인하고 해당 페이지에 들어가야 할 때 조회 권한을 추가하세요.';
+
+  @override
+  String get permissionCompleteReads => '필요한 조회 권한 추가';
+
+  @override
+  String get permissionInactiveGrant => '이전 권한이 더 이상 유효하지 않아 현재 권한이 없습니다.';
+
+  @override
+  String get permissionRenewGrant => '다시 권한 부여';
+
+  @override
+  String get permissionRemoveInactiveGrant => '유효하지 않은 권한 제거';
+
+  @override
+  String get permissionPendingReads =>
+      '저장 시 자동으로 부여할 수 있는 일반 조회 권한만 추가합니다. 회수된 권한을 복구하거나 민감한 권한을 부여하려면 해당 권한 항목에서 개별적으로 확인하세요.';
+
+  @override
+  String get permissionBatchNormalOnly => '그룹 권한 부여(민감 및 잠긴 항목 제외)';
+
+  @override
+  String get permissionSavedRefreshPending =>
+      '권한은 저장되었지만 현재 세션을 새로 고치지 못했습니다. 페이지를 새로 고쳐 최신 권한을 확인하세요.';
+
+  @override
+  String get permissionSaved => '페이지 권한이 저장되었습니다';
+
+  @override
+  String get permissionSavedDetailPending =>
+      '권한은 저장되었지만 최신 설정을 읽지 못했습니다. 이 직원을 다시 불러온 후 변경하세요.';
+
+  @override
+  String get permissionSaveResultUnknown =>
+      '권한 저장 결과가 확인되지 않았습니다. 직원의 권한을 다시 불러와 확인한 후 작업하세요.';
+
+  @override
+  String get masterEntitySearchHint => '이름 또는 코드 검색';
+
+  @override
+  String get permissionRevokeOnly => '기존 권한만 제거할 수 있으며 다시 부여할 수 없습니다.';
+
+  @override
+  String get release2521Permissions =>
+      '재무 검토, 출하 전 최종 품질 검사 등의 작업은 유효한 권한에 따라 사용할 수 있으며 별도의 부서 소속이나 개인 지정 권한을 요구하지 않습니다. 업무 데이터 범위와 문서 상태 검증은 유지됩니다.';
+
+  @override
+  String get release2521Session =>
+      '권한 변경 후 세션과 페이지 작업이 최신 권한에 맞춰 동기화됩니다. 저장하지 않은 스위치 변경은 저장 대기로 표시됩니다.';
+
+  @override
+  String get release2521PermissionSettings =>
+      '일반 권한 스위치는 선택한 항목만 변경합니다. 저장 시 권한 규칙에 따라 자동 부여할 수 있는 일반 조회 권한을 추가하며, 민감 권한 부여와 회수된 권한 복구는 개별 확인이 필요합니다.';
+
+  @override
+  String get release2521ReviewFeedback =>
+      '검토 점유 실패 시 실제 사유를 표시합니다. 일괄 검토 결과가 확인되지 않았을 때는 새로 고쳐 문서 상태를 확인하도록 명확히 안내합니다.';
+
+  @override
+  String get release2521ServerUpdates =>
+      '서버 업데이트 작업의 현재 단계와 결과를 표시합니다. 페이지를 다시 열어 진행 상황을 계속 확인할 수 있으며, 실패 시 확인된 원인과 권장 조치를 안내합니다.';
 }

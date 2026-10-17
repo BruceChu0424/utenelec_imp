@@ -44,7 +44,7 @@ import java.util.stream.Collectors;
  * 采购/委外订货单财务审批服务（PURCHASE/SUBCONTRACT 多 port）。
  *
  * <p>提交 = 锁定订单 + 财务快照（规范 JSON + sha256）+ 写入 PENDING case；
- * 审批/驳回 = 财务部门审核组资格校验 + 悲观锁 + version CAS + 快照一致性校验，
+ * 审批/驳回 = 有效查看/动作权限及员工账号状态校验 + 悲观锁 + version CAS + 快照一致性校验，
  * 防止审批期订货单被改动。通过时创建到货预期（{@code inbound_expectations}）并发布领域事件。
  */
 @Service
@@ -1316,7 +1316,7 @@ public class ProcurementFinanceApprovalService {
         if (reviewerEligibility.eligibleReviewersFor(WorkflowReviewerEligibility.APPROVE_PERMISSION).isEmpty()) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "暂无持有订货批准权限的在职财务人员，请先授权 finance_order_approval:approve");
+                    "当前没有同时具备「查看订货审批任务」和「批准采购、委外订货及到货异常」权限的在职启用账号，请先在权限设置中配置审核人");
         }
     }
 
@@ -1324,7 +1324,7 @@ public class ProcurementFinanceApprovalService {
         UUID actor = currentUser.requireId();
         reviewerEligibility.findEligible(actor).orElseThrow(() -> new ApiException(
                 ErrorCode.FORBIDDEN,
-                "仅财务审核组内且持有对应批准或驳回权限的人员可处理"));
+                "无法处理订货审批：请核对账号是否启用、员工是否在职，以及订货审批查看和对应批准或驳回权限"));
     }
 
     private void requireNoPendingCase(String orderType, UUID orderId) {

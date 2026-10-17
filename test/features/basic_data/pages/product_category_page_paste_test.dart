@@ -83,6 +83,7 @@ Future<void> _pumpPage(
         apiClientProvider.overrideWithValue(ApiClient(Dio())),
         currentPermissionsProvider.overrideWithValue({
           Perm.goodsView,
+          Perm.materialCategoryView,
           if (canCreate) Perm.goodsCreate,
         }),
         isSuperAdminProvider.overrideWithValue(false),

@@ -146,9 +146,15 @@ class AiChatRestrictedTopicTest {
                 .contains("a colleague in personnel or an administrator");
     }
 
-    /** The finance reader is answered from the cost documents, through the model as before. */
-    @Test void aFinanceReaderStillGetsTheGroundedAnswer() throws Exception {
-        reader(Set.of("SELF", "FINANCE"), "ai:use", "goods:view", "goods:cost:view", "finance:view");
+    /** Effective cost access authorizes the rules even when no department membership is queried. */
+    @Test void aCrossDepartmentReaderWithFinancePermissionGetsTheGroundedAnswer() throws Exception {
+        var current = mock(com.uten.imp.security.SecurityContextCurrentUser.class);
+        var jdbc = mock(org.springframework.jdbc.core.JdbcTemplate.class);
+        actor = new AuthUser(UUID.randomUUID(), UUID.randomUUID(), "production-worker",
+                Set.of("ai:use", "goods:view", "goods:cost:view"), false, true, false);
+        when(current.get()).thenReturn(Optional.of(actor));
+        var effective = new AiChatAccessPolicy(current, jdbc).domains();
+        when(access.domains()).thenReturn(effective);
         var found = docs.search("货品成本是怎么算出来的", Set.of("SELF", "FINANCE"));
         assertThat(found).anySatisfy(chunk -> assertThat(chunk.domains()).contains("FINANCE"));
         var cost = found.stream().filter(chunk -> chunk.domains().contains("FINANCE")).findFirst().orElseThrow();
@@ -159,6 +165,7 @@ class AiChatRestrictedTopicTest {
         assertThat(sent().systemPrompt()).contains("knowledge." + cost.id());
         assertThat(result).containsEntry("intent", "KNOWLEDGE").doesNotContainKey("_scope");
         assertThat(result.get("reply").toString()).isNotEqualTo(FINANCE_REPLY);
+        org.mockito.Mockito.verifyNoInteractions(jdbc);
     }
 
     /** The personnel reader asking the full live question gets the payroll pages. */

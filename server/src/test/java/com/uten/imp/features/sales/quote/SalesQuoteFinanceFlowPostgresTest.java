@@ -294,12 +294,14 @@ class SalesQuoteFinanceFlowPostgresTest {
         loginAs(f.sales());
         quotes.submit(quoteId, new QuoteActionRequest(2));
 
-        // 不在财务部门树的权限持有人: 不能认领、不能改价。
+        // 非财务部门通过部门矩阵取得核价权限即可认领；改价仍需本人有效占用。
         loginAs(f.outsider());
         assertThat(currentPermissions()).contains("sales_quote_finance:confirm");
-        assertThat(finance.pendingCount()).as("不在核价组: 红徽章不算他的待办").containsEntry("pending", 0L);
-        assertForbidden(() -> claims.claim(CLAIM, quoteId.toString()));
-        assertForbidden(() -> finance.edit(quoteId, edit(3, null, List.of())));
+        assertThat(finance.pendingCount().get("pending")).isPositive();
+        assertConflict(() -> finance.edit(quoteId, edit(3, null, List.of())));
+        var outsideClaim = claims.claim(CLAIM, quoteId.toString());
+        assertThat(outsideClaim.claimedByMe()).isTrue();
+        claims.release(CLAIM, quoteId.toString(), outsideClaim.claimId());
 
         // 财务: 没认领不能改; 认领后确认被未定价行拦下; 陈旧修订号 409。
         loginAs(f.finance());

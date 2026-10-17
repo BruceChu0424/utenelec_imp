@@ -30,9 +30,9 @@ class ProductionFqcAttachmentAccessPolicyTest {
         verifyNoInteractions(h.mutations);
     }
 
-    @Test void actionPermissionAloneCannotBypassQualityOrganization() {
+    @Test void inactiveOrUnauthorizedReviewerCannotMutateEvidence() {
         var h = new Harness();
-        doThrow(new ApiException(ErrorCode.FORBIDDEN, "not in quality pool"))
+        doThrow(new ApiException(ErrorCode.FORBIDDEN, "review access is no longer active"))
                 .when(h.tasks).requireQualityPool(anyString());
         assertDoesNotThrow(() -> h.policy.requireCanView(h.id, h.user()));
         denied(ErrorCode.FORBIDDEN, () -> h.policy.requireCanManageForUpdate(h.id, h.user()));

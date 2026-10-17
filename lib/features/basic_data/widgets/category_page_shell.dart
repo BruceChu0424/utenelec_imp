@@ -43,6 +43,7 @@ import '../widgets/category_edit_dialog.dart';
 import '../widgets/category_tree_search.dart';
 import '../widgets/system_master_category_guard.dart';
 import '../widgets/uten_category_tree_view.dart';
+import 'basic_data_l10n.dart';
 
 /// 分类页壳层 mixin：与 ConsumerState 组合使用。
 ///
@@ -68,6 +69,12 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   String get shellPersistenceKey;
 
   FormDraftDescriptor get shellCategoryDraftDescriptor;
+  String get shellCategoryViewPermission;
+  bool get shellCanViewCategories =>
+      ref.read(isSuperAdminProvider) ||
+      ref
+          .read(currentPermissionsProvider)
+          .contains(shellCategoryViewPermission);
 
   bool get shellCanCreate;
   bool get shellCanEdit;
@@ -175,6 +182,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   // ---- 共享状态 -----------------------------------------------------------
 
   final _searchRequests = LatestRequestGuard();
+  final _treeRequests = LatestRequestGuard();
   List<ProductCategoryNode>? _tree;
   String? _selectedId;
   bool _loading = true;
@@ -199,6 +207,42 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   // 清空搜索 / 仅分类名命中 / 手动点树节点时复位为 null。
   String? _treeSearchKeyword;
 
+  @override
+  void initState() {
+    super.initState();
+    ref.listenManual(currentPermissionsProvider, (previous, next) {
+      if ((previous?.contains(shellCategoryViewPermission) ?? false) !=
+          next.contains(shellCategoryViewPermission)) {
+        _categoryAccessChanged();
+      }
+    });
+    ref.listenManual(isSuperAdminProvider, (previous, next) {
+      if (previous != next) _categoryAccessChanged();
+    });
+  }
+
+  void _categoryAccessChanged() {
+    _treeRequests.begin();
+    _searchRequests.begin();
+    _shellSearchDebounce?.cancel();
+    if (!mounted) return;
+    setState(() {
+      _tree = null;
+      _selectedId = null;
+      _searchCategoryId = null;
+      _visibleFilterIds = null;
+      _searchLoading = false;
+      _acceptPendingSearch = false;
+      _error = null;
+      _searchError = null;
+      _loading = shellCanViewCategories;
+      _shellDetailEpoch++;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) shellReload();
+    });
+  }
+
   // ---- 树加载 -------------------------------------------------------------
 
   /// 整页刷新（2026-09-05 用户口径：右上角刷新=刷新整个页面）：分类树 +
@@ -212,26 +256,41 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   /// 拉分类树（页面 onDataChanged / 刷新按钮 / CRUD 成功后都会走这里）。
   Future<void> shellReload() async {
     if (!mounted) return;
+    final generation = _treeRequests.begin();
+    if (!shellCanViewCategories) {
+      setState(() {
+        _tree = const [];
+        _selectedId = null;
+        _searchCategoryId = null;
+        _loading = false;
+        _error = null;
+      });
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
       final tree = await shellLoadTree();
-      if (!mounted) return;
+      if (!mounted ||
+          !_treeRequests.isCurrent(generation) ||
+          !shellCanViewCategories) {
+        return;
+      }
       setState(() {
         _tree = tree;
         // 不预选分类：默认右侧空态「请选择左侧分类」，点了分类才拉内容（省资源）。
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_treeRequests.isCurrent(generation)) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_treeRequests.isCurrent(generation)) return;
       setState(() {
         _error = '加载分类树失败，请稍后重试'; // TODO(l10n): 补 arb
         _loading = false;
@@ -288,6 +347,17 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   Future<void> _applyGlobalSearch(String q) async {
     final tree = _tree;
     final generation = _searchRequests.begin();
+    if (!shellCanViewCategories) {
+      setState(() {
+        _globalQuery = q;
+        _treeSearchKeyword = q;
+        _searchCategoryId = null;
+        _visibleFilterIds = null;
+        _searchLoading = false;
+        _searchError = null;
+      });
+      return;
+    }
     if (q.isEmpty) {
       setState(() {
         _globalQuery = '';
@@ -380,11 +450,13 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
           UtenHierarchySearchHeader(
             search: UtenSearchBar(
               initialValue: _globalQuery,
-              hint: shellSearchHint, // TODO(l10n): 补 arb
+              hint: shellCanViewCategories
+                  ? shellSearchHint
+                  : basicDataL10n(context).masterEntitySearchHint,
               onInputChanged: _onGlobalSearchInput,
               onChanged: _onGlobalSearch,
             ),
-            trailing: shellCanCreate
+            trailing: shellCanViewCategories && shellCanCreate
                 ? IconButton(
                     key: const ValueKey('category-add-root'),
                     tooltip: '新增最外层分类',
@@ -404,7 +476,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
                   )
                 : null,
           ),
-          if (_globalQuery.isNotEmpty) ...[
+          if (_globalQuery.isNotEmpty && shellCanViewCategories) ...[
             const SizedBox(height: UtenSpacing.s8),
             Row(
               children: [
@@ -538,10 +610,12 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
 
   String get shellSearchQuery => _globalQuery;
 
-  String? get shellSearchCategoryId => _searchCategoryId;
+  String? get shellSearchCategoryId =>
+      shellCanViewCategories ? _searchCategoryId : null;
 
   /// 当前分类树（product 页分批搜索钩子需要根节点列表；其它页面一般用不到）。
-  List<ProductCategoryNode>? get shellTree => _tree;
+  List<ProductCategoryNode>? get shellTree =>
+      shellCanViewCategories ? _tree : null;
 
   /// guardRun 的薄封装：mixin 里不便引用页面层的 action_feedback 扩展别名。
   Future<bool> guardShellAction(
@@ -648,7 +722,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     Widget Function(String query)? searchPaneBuilder,
   }) => FormDraftDialogResume(
     descriptor: shellCategoryDraftDescriptor,
-    ready: _tree != null && !_loading,
+    ready: shellCanViewCategories && _tree != null && !_loading,
     onResume: (parameters) async {
       final parentId = parameters['parentId'];
       final parent = parentId == null ? null : _findById(_tree ?? [], parentId);
@@ -718,7 +792,21 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     }
 
     Widget body;
-    if (shellKeepTreeMounted && tree.isNotEmpty) {
+    if (!shellCanViewCategories && searchPaneBuilder != null) {
+      body = Column(
+        children: [
+          _buildGlobalSearchBox(),
+          Expanded(
+            child: KeyedSubtree(
+              key: ValueKey(
+                'shell-entity-list-$_shellDetailEpoch-$_searchRevision',
+              ),
+              child: searchPaneBuilder(_treeSearchKeyword ?? ''),
+            ),
+          ),
+        ],
+      );
+    } else if (shellKeepTreeMounted && tree.isNotEmpty) {
       // 已有分类树时，增删改 / 手动刷新都保持树挂载（不切全屏 spinner），
       // 否则 UtenCategoryTreeView 会被卸载、重挂载后展开状态丢失。
       body = mainLayout();

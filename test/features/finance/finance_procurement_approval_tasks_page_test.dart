@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -35,6 +37,7 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
   rejectedBatches = [];
   String? lastKeyword;
   FinanceProcurementOrderType? lastOrderType;
+  Object? reviewError;
 
   @override
   Future<FinanceProcurementApprovalPage> approvalTasks({
@@ -81,6 +84,7 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
 
   @override
   Future<FinanceProcurementApprovalReview> review(String caseId) async {
+    if (reviewError case final error?) throw error;
     final task = items.firstWhere((task) => task.caseId == caseId);
     return FinanceProcurementApprovalReview.fromJson({
       'caseId': caseId,
@@ -368,6 +372,34 @@ void main() {
     await tester.pump();
     await tester.tap(find.byKey(const Key('finance-approval-batch-approve')));
     await tester.pumpAndSettle();
+    expect(repository.approvedBatches, isEmpty);
+    expect(repository.rejectedBatches, isEmpty);
+    expect(claims.released, ['lease-PROCUREMENT_FINANCE_APPROVE-case-1-1']);
+  });
+
+  testWidgets('批量认领后的快照拒绝保留真实原因并释放占用', (tester) async {
+    final repository = _FakeWorkflowRepo([
+      _task(
+        caseId: 'case-1',
+        orderId: 'order-1',
+        orderType: 'PURCHASE',
+        billNo: 'PO001',
+      ),
+    ])..reviewError = ApiException('FORBIDDEN', '此订货单不在你的数据范围内');
+    final claims = FinanceClaimFixture();
+    await _pumpPage(tester, repository, claims: claims);
+    final table = tester
+        .widget<MasterDataTableView<FinanceProcurementApprovalTask>>(
+          find.byKey(const Key('finance-approval-task-table')),
+        );
+    table.onSelectedIdsChanged?.call({'case-1'});
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('finance-approval-batch-approve')));
+    await tester.pumpAndSettle();
+    final notifications = ProviderScope.containerOf(
+      tester.element(find.byType(FinanceProcurementApprovalTasksPage)),
+    ).read(appNotificationProvider);
+    expect(notifications.last.message, '此订货单不在你的数据范围内');
     expect(repository.approvedBatches, isEmpty);
     expect(repository.rejectedBatches, isEmpty);
     expect(claims.released, ['lease-PROCUREMENT_FINANCE_APPROVE-case-1-1']);

@@ -25,7 +25,7 @@ import static org.mockito.Mockito.when;
 
 /**
  * ADR-110: 只有「已被轮换出新令牌」的旧令牌再次出现才是被盗重放 (吊销全部会话 + 安全事件)。
- * 改登录手机号、权限变更等整族作废的令牌在会话仍有效时出现, 是普通 401 (回登录页), 不误报重放。
+ * 改登录手机号、凭据重置等整族作废的令牌在会话仍有效时出现, 是普通 401 (回登录页), 不误报重放。
  */
 class StaffRefreshReuseClassificationTest {
 

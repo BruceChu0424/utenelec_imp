@@ -383,7 +383,7 @@ class SalesQuoteFinanceReview {
   final bool resubmitted;
   final String? convertedOrderNo;
 
-  /// 服务端能力位：当前人能去货品资料维护标价(持 goods:price:edit)。
+  /// 服务端功能能力位：持 goods:edit + goods:price:edit；具体货品仍按可写范围处理。
   final bool canMaintainGoodsPrice;
 
   /// 归一后的动作码([normalizeQuoteActionCode]): edit / return / confirm / reopen。

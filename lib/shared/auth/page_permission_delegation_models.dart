@@ -130,12 +130,19 @@ class PageStaffPermissionState {
     required this.rowVersion,
     required this.effective,
     required this.editable,
+    this.canEnable,
+    this.canDisable,
     this.actionType = PermissionActionType.other,
     this.description,
     this.grantPolicy = PermissionGrantPolicy.normalOnly,
     this.sensitivity = 'NORMAL',
     this.reason,
-  });
+    this.requiredPermissions = const [],
+    this.missingDependencies = const [],
+    bool? configuredEnabled,
+  }) : configuredEnabled =
+           configuredEnabled ??
+           (baseEffective || delegationEnabled || effective);
 
   final String code;
   final String name;
@@ -150,7 +157,14 @@ class PageStaffPermissionState {
   final int rowVersion;
   final bool effective;
   final bool editable;
+
+  /// Null keeps compatibility with servers that only supplied [editable].
+  final bool? canEnable;
+  final bool? canDisable;
   final String? reason;
+  final List<String> requiredPermissions;
+  final List<String> missingDependencies;
+  final bool configuredEnabled;
 
   factory PageStaffPermissionState.fromJson(Map<String, dynamic> json) {
     final configuredEffect = (json['configuredEffect'] as String?)
@@ -170,7 +184,16 @@ class PageStaffPermissionState {
       rowVersion: (json['rowVersion'] as num?)?.toInt() ?? 0,
       effective: json['effective'] as bool? ?? false,
       editable: json['editable'] as bool? ?? false,
+      canEnable: json['canEnable'] as bool?,
+      canDisable: json['canDisable'] as bool?,
       reason: json['reason'] as String?,
+      requiredPermissions:
+          (json['requiredPermissions'] as List<dynamic>? ?? const [])
+              .cast<String>(),
+      missingDependencies:
+          (json['missingDependencies'] as List<dynamic>? ?? const [])
+              .cast<String>(),
+      configuredEnabled: json['configuredEnabled'] as bool?,
     );
   }
 }

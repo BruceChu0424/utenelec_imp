@@ -333,19 +333,13 @@ class ProductionDrawNoticeTest {
                         "source_daily_report_id", reportId,
                         "source_doc_no", "BR-001",
                         "report_maker_user_id", makerId)));
-        when(jdbc.queryForList(
-                contains("WITH RECURSIVE subtree"),
-                eq(UUID.class),
-                eq("DEPT_PROD"))).thenReturn(List.of(supervisorId, readOnlyId));
-        when(jdbc.queryForList(
-                contains("WITH RECURSIVE subtree"),
-                eq(UUID.class),
-                eq("SUB_PLAN"))).thenReturn(List.of());
+        when(users.findAll()).thenReturn(List.of(supervisor, readOnly));
+        when(jdbc.queryForList(contains("active_action_recipients"), eq(UUID.class), anyString())).thenReturn(List.of(supervisorId));
         when(users.findById(makerId)).thenReturn(Optional.of(maker));
         when(users.findById(supervisorId)).thenReturn(Optional.of(supervisor));
         when(users.findById(readOnlyId)).thenReturn(Optional.of(readOnly));
         when(permissions.grantedPermsOf(supervisor)).thenReturn(Set.of(
-                "production_daily_report:approve"));
+                "notice:read", "production_daily_report:view", "production_daily_report:approve"));
         when(permissions.grantedPermsOf(readOnly)).thenReturn(Set.of(
                 "production_daily_report:view"));
 

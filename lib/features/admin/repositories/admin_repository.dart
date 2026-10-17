@@ -183,9 +183,14 @@ class DioAdminRepository implements AdminRepository {
     final json = await api.get(
       ApiEndpoints.departmentPermissions(departmentId),
     );
-    return (json['permissions'] as List<dynamic>? ?? const [])
-        .map((e) => e as String)
-        .toList();
+    return DepartmentPermissionCodes(
+      (json['permissions'] as List<dynamic>? ?? const []).cast<String>(),
+      inheritedPermissions:
+          (json['inheritedPermissions'] as List<dynamic>? ?? const [])
+              .cast<String>(),
+      requiredPermissions: permissionDependencyMap(json['requiredPermissions']),
+      missingDependencies: permissionDependencyMap(json['missingDependencies']),
+    );
   }
 
   @override

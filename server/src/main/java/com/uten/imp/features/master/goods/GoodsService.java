@@ -888,13 +888,13 @@ public class GoodsService {
         // 不可查看者前端隐藏价格字段、不提交价格（req.price=null 是脱敏产物而非改价意图），
         // 若恒判触碰会把他们改名字等正常编辑一并 403。apply 同步对不可查看者保留原价（见 apply）。
         if (canViewPrice() && bigDecimalChanged(oldPrice, req.getPrice())) {
-            throw new ApiException(ErrorCode.FORBIDDEN, "无编辑货品售价/折扣权限(goods:price:edit)");
+            throw new ApiException(ErrorCode.FORBIDDEN, "修改售价或折扣需要「编辑货品售价/折扣」权限，请联系权限管理员开通");
         }
         // 折扣仅可查看者（goods:discount:view）才参与触碰判定——不可查看者前端隐藏折扣字段、
         // 不提交折扣（req.discount=null 是脱敏产物而非改价意图），若仍判触碰会把他们改名字等
         // 正常编辑一并 403。apply 同步对不可查看者保留原折扣（见 apply）。
         if (canViewDiscount() && bigDecimalChanged(oldDiscount, req.getDiscount())) {
-            throw new ApiException(ErrorCode.FORBIDDEN, "无编辑货品售价/折扣权限(goods:price:edit)");
+            throw new ApiException(ErrorCode.FORBIDDEN, "修改售价或折扣需要「编辑货品售价/折扣」权限，请联系权限管理员开通");
         }
     }
 
@@ -948,7 +948,7 @@ public class GoodsService {
         if (submitted) {
             throw new ApiException(
                     ErrorCode.FORBIDDEN,
-                    "无编辑货品成本权限(goods:cost:view)");
+                    "维护货品成本字段需要「查看货品成本」权限，请联系权限管理员开通");
         }
     }
 

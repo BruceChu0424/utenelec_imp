@@ -25,6 +25,8 @@ import com.uten.imp.features.rbac.ManagerPermissionDelegation;
 import com.uten.imp.features.rbac.ManagerPermissionDelegationId;
 import com.uten.imp.features.rbac.ManagerPermissionDelegationRepository;
 import com.uten.imp.features.rbac.Permission;
+import com.uten.imp.features.rbac.PermissionDependencyCatalog;
+import com.uten.imp.features.rbac.PermissionDependencyGrantPlanner;
 import com.uten.imp.features.rbac.PermissionRepository;
 import com.uten.imp.features.rbac.UserPermissionOverride;
 import com.uten.imp.features.rbac.UserPermissionOverrideId;
@@ -52,6 +54,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import com.uten.imp.features.org.employee.EmploymentStatusPolicy;
 
@@ -222,6 +225,12 @@ public class PagePermissionWorkspaceService {
         List<Permission> catalog = permissionRepo.findByCodeIn(surfacePermissions).stream()
                 .sorted(permissionOrder())
                 .toList();
+        List<Permission> allDependencyPermissions = permissionRepo.findAll();
+        PermissionDependencyCatalog dependencies = new PermissionDependencyCatalog(allDependencyPermissions);
+        Map<String, Permission> dependencyPermissions = allDependencyPermissions.stream().collect(Collectors.toMap(
+                Permission::getCode, Function.identity()));
+        Map<String, String> dependencyNames = allDependencyPermissions.stream().collect(Collectors.toMap(
+                Permission::getCode, permission -> permission.getName() == null ? "所需页面查看权限" : permission.getName()));
         Set<UUID> enabledHistorical = delegations.stream()
                 .filter(ManagerPermissionDelegation::isEnabled)
                 .map(row -> row.getId().getPermissionId())
@@ -251,7 +260,8 @@ public class PagePermissionWorkspaceService {
                     actorCeiling,
                     targetBreakdowns,
                     delegationByPermission.get(permission.getId()),
-                    overrideByPermission.get(permission.getId())));
+                    overrideByPermission.get(permission.getId()), dependencies, dependencyNames,
+                    dependencyPermissions, surfaceKey));
         }
         List<PagePermissionEmployeePermissionsDto.SurfaceGroupDto> groups = new ArrayList<>();
         for (PermissionSurfaceRegistry.Surface surface : tree) {
@@ -302,7 +312,7 @@ public class PagePermissionWorkspaceService {
             if (!surfacePermissions.contains(change.code())) {
                 throw new ApiException(
                         ErrorCode.FORBIDDEN,
-                        "该权限不属于当前页面: " + change.code());
+                        "该权限不属于当前页面，请刷新权限列表后重试");
             }
         }
         tx.bind();
@@ -412,7 +422,7 @@ public class PagePermissionWorkspaceService {
         for (String code : codes) {
             Permission permission = permissionByCode.get(code);
             if (permission == null) {
-                throw new ApiException(ErrorCode.BUSINESS, "权限不存在: " + code);
+                throw new ApiException(ErrorCode.BUSINESS, "该权限已不存在，请刷新权限列表后重试");
             }
             // 只校验「新增授予」：负责人委派的开启在 applyManagerDelegations 里按授权策略判定，
             // 超管中央加授不能授出超管专属码；关闭委派、收回一律允许(ADR-109 差量口径)。
@@ -431,6 +441,49 @@ public class PagePermissionWorkspaceService {
         Set<String> actorCeiling = actor.isSuperAdmin()
                 ? Set.of()
                 : permissionResolver.delegableCeilingOf(actorAccount);
+        List<Permission> dependencyCatalog = permissionRepo.findAll();
+        Map<String, Permission> allPermissions = dependencyCatalog.stream().collect(Collectors.toMap(
+                Permission::getCode, Function.identity()));
+        Set<String> configured = PermissionDependencyGrantPlanner.configured(targetBreakdowns.full());
+        Set<String> baseConfigured = PermissionDependencyGrantPlanner.configured(targetBase);
+        Set<String> blocked = new LinkedHashSet<>(targetBase.revokes());
+        for (var change : changes) {
+            if (change.enabled()) {
+                configured.add(change.code());
+                blocked.remove(change.code());
+            } else if (actor.isSuperAdmin() || !baseConfigured.contains(change.code())) {
+                configured.remove(change.code());
+                blocked.add(change.code());
+            }
+        }
+        Set<String> configuredActions = changes.stream().filter(BatchSetStaffPermissionsRequest.Change::enabled)
+                .map(BatchSetStaffPermissionsRequest.Change::code).collect(Collectors.toCollection(LinkedHashSet::new));
+        Set<String> requiredReads = PermissionDependencyGrantPlanner.additions(dependencyCatalog, configuredActions,
+                configured, blocked, permission -> actor.isSuperAdmin()
+                        ? GrantPolicy.individuallyGrantable(permission.grantPolicies())
+                        : delegationPolicy.isDelegable(permission.getCode()) && actorCeiling.contains(permission.getCode())
+                                && dependencyOwnerSurface(surfaceKey, permission.getCode()) != null,
+                actor.isSuperAdmin() ? "页面个人授权" : "负责人页面委派");
+        if (!requiredReads.isEmpty()) {
+            List<BatchSetStaffPermissionsRequest.Change> expanded = new ArrayList<>(changes);
+            Set<String> requestedCodes = changes.stream().map(BatchSetStaffPermissionsRequest.Change::code)
+                    .collect(Collectors.toSet());
+            for (String dependency : requiredReads) {
+                if (requestedCodes.contains(dependency)) continue;
+                Permission permission = allPermissions.get(dependency);
+                if (!actor.isSuperAdmin() && dependencyOwnerSurface(surfaceKey, dependency) == null) {
+                    throw new ApiException(ErrorCode.FORBIDDEN, "所需查看权限尚未配置可委派页面：" + permission.getName());
+                }
+                long version = actor.isSuperAdmin()
+                        ? overrideRepo.findById(new UserPermissionOverrideId(targetAccount.getId(), permission.getId()))
+                                .map(UserPermissionOverride::getRowVersion).orElse(0L)
+                        : delegationRepo.findById(new ManagerPermissionDelegationId(targetAccount.getId(), permission.getId(),
+                                targetDepartment.getId())).map(ManagerPermissionDelegation::getRowVersion).orElse(0L);
+                expanded.add(new BatchSetStaffPermissionsRequest.Change(dependency, true, version));
+                permissionByCode.put(dependency, permission);
+            }
+            changes = expanded.stream().sorted(Comparator.comparing(BatchSetStaffPermissionsRequest.Change::code)).toList();
+        }
         String settingMode = actor.isSuperAdmin()
                 ? CENTRAL_OVERRIDE : MANAGER_DELEGATION;
         Map<String, Long> resultVersions = new LinkedHashMap<>();
@@ -472,7 +525,8 @@ public class PagePermissionWorkspaceService {
                     resultVersions,
                     changedCodes);        }
         if (changedAny) {
-            refreshTokenRepo.revokeAllByUserId(targetAccount.getId());
+            // Both central overrides and manager delegations invalidate old access via
+            // authorization versions; valid sessions refresh into the new permission set.
             recordChange(actor, targetAccount, departmentId, surfaceKey, changes, changedCodes);
         }
 
@@ -592,7 +646,7 @@ public class PagePermissionWorkspaceService {
             Permission permission = permissionByCode.get(code);
             // 委派行记码归属面(子面优先)：解析器校验「面含该码」天然成立，
             // 子页面抽屉与 hub 抽屉对同一码写出同一张面，幂等口径一致。
-            String ownerSurface = surfaceRegistry.treeOwnerSurface(surfaceKey, code);
+            String ownerSurface = dependencyOwnerSurface(surfaceKey, code);
             ManagerPermissionDelegationId id = new ManagerPermissionDelegationId(
                     targetAccount.getId(),
                     permission.getId(),
@@ -607,7 +661,7 @@ public class PagePermissionWorkspaceService {
                 if (!actorCeiling.contains(code)) {
                     throw new ApiException(
                             ErrorCode.FORBIDDEN,
-                            "该权限不在你可转授的范围内: " + code);
+                            "该权限不在你可转授的范围内，请刷新权限列表后重试");
                 }
                 if (targetBase.revokes().contains(code)) {
                     throw new ApiException(
@@ -736,7 +790,7 @@ public class PagePermissionWorkspaceService {
             if (!unique.add(code)) {
                 throw new ApiException(
                         ErrorCode.VALIDATION_FAILED,
-                        "同一权限不能在一批中重复修改: " + code);
+                        "同一权限不能在一批中重复修改，请刷新权限列表后重试");
             }
             normalized.add(new BatchSetStaffPermissionsRequest.Change(
                     code,
@@ -786,7 +840,7 @@ public class PagePermissionWorkspaceService {
         if (expected != actual) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "权限设置已被其他人更新，请刷新后重试: " + code);
+                    "权限设置已被其他人更新，请刷新后重试");
         }
     }
 
@@ -989,7 +1043,11 @@ public class PagePermissionWorkspaceService {
             Set<String> actorCeiling,
             PermissionResolver.PermissionBreakdowns targetBreakdowns,
             ManagerPermissionDelegation delegation,
-            UserPermissionOverride override) {
+            UserPermissionOverride override,
+            PermissionDependencyCatalog dependencies,
+            Map<String, String> dependencyNames,
+            Map<String, Permission> dependencyPermissions,
+            String rootSurface) {
         String code = permission.getCode();
         boolean baseEffective = targetBreakdowns != null
                 && targetBreakdowns.base().effective().contains(code);
@@ -1015,6 +1073,39 @@ public class PagePermissionWorkspaceService {
                 actorCeiling,
                 targetBreakdowns,
                 delegation);
+        Set<String> configured = targetBreakdowns == null ? Set.of()
+                : PermissionDependencyGrantPlanner.configured(targetBreakdowns.full());
+        boolean configuredEnabled = configured.contains(code) || (!centralMode && delegation != null && delegation.isEnabled());
+        Set<String> blockedReads = targetBreakdowns == null ? Set.of()
+                : Set.copyOf(targetBreakdowns.base().revokes());
+        Predicate<String> canAddRead = required -> {
+            Permission read = dependencyPermissions.get(required);
+            return !blockedReads.contains(required) && read != null
+                    && "VIEW".equals(read.getActionType())
+                    && "NORMAL".equals(read.getSensitivity())
+                    && GrantPolicy.bulkEligible(read.grantPolicies())
+                    && (centralMode ? GrantPolicy.individuallyGrantable(read.grantPolicies())
+                            : delegationPolicy.isDelegable(required) && actorCeiling.contains(required)
+                                    && dependencyOwnerSurface(rootSurface, required) != null);
+        };
+        List<String> requiredReads = dependencies.requiredPermissions(code, configured, canAddRead);
+        List<String> missing = configuredEnabled
+                ? requiredReads.stream().filter(required -> !configured.contains(required)).toList() : List.of();
+        if (editability.canEnable()) {
+            for (String required : dependencies.missingHardDependencies(code, configured, canAddRead)) {
+                String label = dependencyNames.getOrDefault(required, "所需页面查看权限");
+                if (blockedReads.contains(required)) {
+                    editability = new Editability(false, editability.canDisable(),
+                            "所需查看权限“" + label + "”已被明确收回，请由有权管理员在原授权入口处理");
+                    break;
+                }
+                if (!canAddRead.test(required)) {
+                    editability = new Editability(false, editability.canDisable(),
+                            "所需查看权限“" + label + "”不能从本页自动补齐，请在允许的授权入口单独处理");
+                    break;
+                }
+            }
+        }
         return new PermissionState(
                 code,
                 permission.getName(),
@@ -1028,7 +1119,19 @@ public class PagePermissionWorkspaceService {
                 configuredEffect,
                 rowVersion,
                 editability.editable(),
-                editability.reason());
+                editability.canEnable(), editability.canDisable(),
+                editability.reason() != null ? editability.reason()
+                        : missing.isEmpty() ? null : "缺少对应页面所需的查看权限：" + missing.stream()
+                                .map(required -> dependencyNames.getOrDefault(required, "所需页面查看权限"))
+                                .collect(Collectors.joining("、")),
+                requiredReads, missing, configuredEnabled);
+    }
+
+    private String dependencyOwnerSurface(String rootSurface, String code) {
+        String owner = surfaceRegistry.treeOwnerSurface(rootSurface, code);
+        if (owner != null) return owner;
+        return surfaceRegistry.knownKeys().stream().sorted().filter(key -> surfaceRegistry.contains(key, code))
+                .findFirst().orElse(null);
     }
 
     private Editability editability(
@@ -1062,7 +1165,7 @@ public class PagePermissionWorkspaceService {
                 || !actorCeiling.contains(code)
                 || targetBreakdowns == null
                 || targetBreakdowns.base().revokes().contains(code))) {
-            return new Editability(true, "仅允许关闭现有委派");
+            return new Editability(false, true, "仅允许关闭现有委派");
         }
         if (!delegationPolicy.isDelegable(code)) {
             return new Editability(false, delegationPolicy.nonDelegableReason(code));
@@ -1075,9 +1178,9 @@ public class PagePermissionWorkspaceService {
             return new Editability(false, "不在你可转授的权限范围内");
         }
         if (targetBreakdowns != null
-                && targetBreakdowns.base().effective().contains(code)
+                && PermissionDependencyGrantPlanner.configured(targetBreakdowns.base()).contains(code)
                 && !enabledHistorical) {
-            return new Editability(false, "已由基础、部门或中央个人授权生效");
+            return new Editability(false, "已由基础、部门或中央个人授权配置，请在原授权入口处理");
         }
         return new Editability(true, null);
     }
@@ -1131,6 +1234,13 @@ public class PagePermissionWorkspaceService {
         return value == null || value.isBlank() ? "OTHER" : value;
     }
 
-    private record Editability(boolean editable, String reason) {
+    private record Editability(boolean canEnable, boolean canDisable, String reason) {
+        private Editability(boolean allowed, String reason) {
+            this(allowed, allowed, reason);
+        }
+
+        private boolean editable() {
+            return canEnable || canDisable;
+        }
     }
 }

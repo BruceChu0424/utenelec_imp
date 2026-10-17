@@ -32,6 +32,7 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -54,6 +55,7 @@ import '../../sales/repositories/sales_repository.dart';
 import '../../sales/widgets/shipment_finance_change_summary.dart';
 import '../widgets/finance_party_snapshot_card.dart';
 import '../../../shared/drafts/review_task_draft.dart';
+import '../../../shared/drafts/review_authority_refresh_mixin.dart';
 import '../../../shared/badges/badge_registry.dart';
 
 class FinanceSalesShipmentAuditReviewPage extends ConsumerStatefulWidget {
@@ -70,12 +72,36 @@ class _FinanceSalesShipmentAuditReviewPageState
     extends ConsumerState<FinanceSalesShipmentAuditReviewPage>
     with
         FormDraftMixin<FinanceSalesShipmentAuditReviewPage>,
-        ReviewTaskDraftMixin<FinanceSalesShipmentAuditReviewPage> {
+        ReviewTaskDraftMixin<FinanceSalesShipmentAuditReviewPage>,
+        ReviewAuthorityRefreshMixin<FinanceSalesShipmentAuditReviewPage> {
   SalesDocDetail? _detail;
   ShipmentFinanceAuditInfo? _info;
   bool _loading = true;
   bool _summaryExpanded = false;
   bool _busy = false;
+  bool _authorityStale = false;
+  @override
+  Set<String> get reviewAuthorityPermissionCodes => const {
+    Perm.salesShipmentFinanceView,
+    Perm.salesShipmentFinanceApprove,
+    Perm.salesShipmentFinanceReject,
+    Perm.salesShipmentFinanceReverse,
+  };
+  @override
+  bool get reviewAuthorityRefreshBlocked =>
+      _loading ||
+      _busy ||
+      formDraftHasUnknownSubmission ||
+      formDraftRestorationBlocked;
+  @override
+  Future<void> refreshReviewAuthority() => _load(authorityOnly: true);
+
+  bool _hasReviewPermission(String code) =>
+      ref.read(isSuperAdminProvider) ||
+      (ref
+              .read(currentPermissionsProvider)
+              .contains(Perm.salesShipmentFinanceView) &&
+          ref.read(currentPermissionsProvider).contains(code));
   String? _error;
 
   /// 明细行勾选集（2026-10-10 审核页防看岔行口径：纯阅读辅助）。
@@ -107,17 +133,15 @@ class _FinanceSalesShipmentAuditReviewPageState
   bool get reviewDraftEditable => _decisionReady && _canDecide;
   @override
   bool canDispatchReviewCommand(String action) =>
+      !_authorityStale &&
       _decisionReady &&
       _claim?.isReady == true &&
       _info?.allows(action == 'reject' ? 'REJECT' : 'APPROVE') == true &&
-      (ref.read(isSuperAdminProvider) ||
-          ref
-              .read(currentPermissionsProvider)
-              .contains(
-                action == 'reject'
-                    ? Perm.salesShipmentFinanceReject
-                    : Perm.salesShipmentFinanceApprove,
-              ));
+      _hasReviewPermission(
+        action == 'reject'
+            ? Perm.salesShipmentFinanceReject
+            : Perm.salesShipmentFinanceApprove,
+      );
   @override
   Iterable<Listenable> get formDraftListenables => [
     _rateController,
@@ -184,9 +208,18 @@ class _FinanceSalesShipmentAuditReviewPageState
 
   /// 出货财审按动作分权(permissions-09)，按钮只按服务端下发的 allowedActions 显隐
   /// (permissions-15)：动作码、对象范围、单据状态都由服务端一次算好，页面不再本地拼权限。
-  bool get _canApprove => _info?.allows('APPROVE') ?? false;
-  bool get _canReject => _info?.allows('REJECT') ?? false;
-  bool get _canReverse => _info?.allows('REVERSE') ?? false;
+  bool get _canApprove =>
+      !_authorityStale &&
+      _hasReviewPermission(Perm.salesShipmentFinanceApprove) &&
+      (_info?.allows('APPROVE') ?? false);
+  bool get _canReject =>
+      !_authorityStale &&
+      _hasReviewPermission(Perm.salesShipmentFinanceReject) &&
+      (_info?.allows('REJECT') ?? false);
+  bool get _canReverse =>
+      !_authorityStale &&
+      _hasReviewPermission(Perm.salesShipmentFinanceReverse) &&
+      (_info?.allows('REVERSE') ?? false);
   bool get _canDecide => _canApprove || _canReject;
 
   /// 免费发货不立应收，不需要记账汇率。
@@ -258,6 +291,7 @@ class _FinanceSalesShipmentAuditReviewPageState
   @override
   void initState() {
     super.initState();
+    initializeReviewAuthorityRefresh();
     startFormDraftIdentityGuard();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
@@ -276,17 +310,23 @@ class _FinanceSalesShipmentAuditReviewPageState
     if (mounted) setState(() {});
   }
 
-  Future<void> _load() async {
-    await prepareReviewReload();
+  Future<void> _load({bool authorityOnly = false}) async {
+    final previousInfo = _info;
+    final preserveInputs = authorityOnly && previousInfo != null;
+    if (preserveInputs && reviewAuthorityRefreshBlocked) return;
+    if (!preserveInputs) await prepareReviewReload();
     if (!mounted || !formDraftIdentityIsCurrent) return;
     final generation = ++_loadGeneration;
     final container = ProviderScope.containerOf(context, listen: false);
     setState(() {
       _loading = true;
       _error = null;
-      _detail = null;
-      _info = null;
-      _settlementNames.clear();
+      if (!preserveInputs) {
+        _detail = null;
+        _info = null;
+        _settlementNames.clear();
+        _authorityStale = false;
+      }
     });
     try {
       _claim?.removeListener(_claimChanged);
@@ -301,8 +341,26 @@ class _FinanceSalesShipmentAuditReviewPageState
       // 核对信息里带着本人此刻能做的动作；只有能放行或退回时才认领(已办结 / 无权的不占认领)。
       final info = await repo.financeAuditInfo(widget.id);
       if (!mounted || generation != _loadGeneration) return;
-      if (info.allows('APPROVE') || info.allows('REJECT')) {
-        final claim = financeReviewClaim(container)..addListener(_claimChanged);
+      if (preserveInputs &&
+          (info.shipmentId != previousInfo.shipmentId ||
+              info.reviewRevision != previousInfo.reviewRevision ||
+              info.contentHash != previousInfo.contentHash ||
+              info.financeAudit != previousInfo.financeAudit)) {
+        setState(() {
+          _authorityStale = true;
+          _loading = false;
+          _error = AppLocalizations.of(context).financeReviewAuthorityChanged;
+        });
+        return;
+      }
+      if ((info.allows('APPROVE') &&
+              _hasReviewPermission(Perm.salesShipmentFinanceApprove)) ||
+          (info.allows('REJECT') &&
+              _hasReviewPermission(Perm.salesShipmentFinanceReject))) {
+        final claim = financeReviewClaim(
+          container,
+          localizations: AppLocalizations.of(context),
+        )..addListener(_claimChanged);
         _claim = claim;
         await claim.claimAll('SALES_SHIPMENT_FINANCE_AUDIT', [widget.id]);
         if (!mounted || generation != _loadGeneration || !claim.isCurrent) {
@@ -365,23 +423,28 @@ class _FinanceSalesShipmentAuditReviewPageState
       setState(() {
         _detail = detail;
         _info = info;
+        _authorityStale = false;
         _loading = false;
         // 预填记账汇率：已冻结的 > 本位币 1 > 主档参考汇率 > 空(主档没维护，要财务填)。
-        _rateController.text = info.suggestedExchangeRate ?? '';
-        _rateError = null;
-        _rejectReason.clear();
+        if (!preserveInputs) {
+          _rateController.text = info.suggestedExchangeRate ?? '';
+          _rateError = null;
+          _rejectReason.clear();
+        }
       });
       await bindReviewDraft();
     } on ApiException catch (e) {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _error = e.message;
+        if (preserveInputs) _authorityStale = true;
         _loading = false;
       });
     } catch (_) {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
-        _error = '审核详情加载失败，请检查网络或权限后重试';
+        _error = AppLocalizations.of(context).financeReviewLoadFailed;
+        if (preserveInputs) _authorityStale = true;
         _loading = false;
       });
     }
@@ -695,9 +758,11 @@ class _FinanceSalesShipmentAuditReviewPageState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(currentPermissionsProvider);
+    scheduleReviewAuthorityRefresh();
     ref.listen(sessionProvider, (previous, next) {
       // 只有真实换身份才清空（换号/登出/模拟切换/业务重置）；token 静默刷新、
-      // 权限滑动更新保持页面与认领（服务端在决策时点重校验权限）。
+      // 同身份授权变化由独立监听刷新动作与认领，保留原审核输入。
       if (previous?.isSameIdentity(next) ?? false) return;
       ++_loadGeneration;
       _claim?.removeListener(_claimChanged);

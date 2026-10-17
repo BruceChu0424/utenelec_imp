@@ -4,6 +4,12 @@ import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
 import 'page_permission_delegation_models.dart';
 
+/// The write was acknowledged; only the following read failed.
+class PagePermissionSaveCommittedError implements Exception {
+  const PagePermissionSaveCommittedError(this.cause);
+  final Object cause;
+}
+
 class PagePermissionDelegationRepository {
   const PagePermissionDelegationRepository(this._api);
 
@@ -67,11 +73,15 @@ class PagePermissionDelegationRepository {
       query: {'surfaceKey': surfaceKey, 'departmentId': departmentId},
       body: {'changes': changes.map((item) => item.toJson()).toList()},
     );
-    return employeePermissions(
-      surfaceKey: surfaceKey,
-      departmentId: departmentId,
-      employeeId: employeeId,
-    );
+    try {
+      return await employeePermissions(
+        surfaceKey: surfaceKey,
+        departmentId: departmentId,
+        employeeId: employeeId,
+      );
+    } catch (error) {
+      throw PagePermissionSaveCommittedError(error);
+    }
   }
 }
 

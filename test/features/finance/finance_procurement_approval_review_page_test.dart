@@ -25,9 +25,17 @@ import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/repositories/task_claim_repository.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/drafts/review_task_draft.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../shared/drafts/memory_form_draft_storage.dart';
 import '../../helpers/finance_claim_fixture.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+
+final _procurementReviewPermissions = StateProvider<Set<String>>((ref) => {});
 
 class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
   @override
@@ -40,6 +48,8 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
 
   FinanceProcurementApprovalReview reviewResult;
   String? requestedCaseId;
+  int reviewReads = 0;
+  Object? approvalError;
   final List<
     ({
       List<FinanceProcurementDecisionItem> items,
@@ -76,6 +86,7 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
 
   @override
   Future<FinanceProcurementApprovalReview> review(String caseId) async {
+    reviewReads++;
     requestedCaseId = caseId;
     return reviewResult;
   }
@@ -91,6 +102,7 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
       remark: remark,
       exchangeRate: exchangeRate,
     ));
+    if (approvalError case final error?) throw error;
   }
 
   @override
@@ -221,7 +233,13 @@ Future<GoRouter> _pumpReviewPage(
   FinanceClaimFixture? claims,
   Size size = const Size(1400, 1000),
   double? textScale,
+  bool withDraftStorage = false,
 }) async {
+  SharedPreferences? draftPreferences;
+  if (withDraftStorage) {
+    SharedPreferences.setMockInitialValues({});
+    draftPreferences = await SharedPreferences.getInstance();
+  }
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
@@ -247,15 +265,27 @@ Future<GoRouter> _pumpReviewPage(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        if (withDraftStorage) ...[
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'finance-reviewer'),
+          ),
+          formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+          sharedPreferencesProvider.overrideWithValue(draftPreferences!),
+        ],
         apiBaseUrlProvider.overrideWithValue('http://localhost:8080/api'),
         isSuperAdminProvider.overrideWithValue(false),
-        currentPermissionsProvider.overrideWithValue({
-          Perm.financeOrderApprovalView,
-          if (withApprovePerms) ...{
-            Perm.financeOrderApprovalApprove,
-            Perm.financeOrderApprovalReject,
+        _procurementReviewPermissions.overrideWith(
+          (ref) => {
+            Perm.financeOrderApprovalView,
+            if (withApprovePerms) ...{
+              Perm.financeOrderApprovalApprove,
+              Perm.financeOrderApprovalReject,
+            },
           },
-        }),
+        ),
+        currentPermissionsProvider.overrideWith(
+          (ref) => ref.watch(_procurementReviewPermissions),
+        ),
         sessionProvider.overrideWith(_FinanceReviewerSessionNotifier.new),
         taskClaimRepositoryProvider.overrideWithValue(
           claims ?? FinanceClaimFixture(),
@@ -288,6 +318,91 @@ Future<GoRouter> _pumpReviewPage(
 }
 
 void main() {
+  testWidgets('订货财审实时授权与撤权刷新动作及认领，汇率税率和意见原样保留', (tester) async {
+    final repository = _FakeWorkflowRepo(_pendingReview(allowedActions: {}));
+    final claims = FinanceClaimFixture();
+    await _pumpReviewPage(
+      tester,
+      repository,
+      withApprovePerms: false,
+      claims: claims,
+    );
+    final pageFinder = find.byType(FinanceProcurementApprovalReviewPage);
+    final container = ProviderScope.containerOf(tester.element(pageFinder));
+    final state =
+        tester.state(pageFinder)
+            as ReviewTaskDraftMixin<FinanceProcurementApprovalReviewPage>;
+    const inputs = {
+      'rate': '7.2300',
+      'taxRate': '0.1300',
+      'approveRemark': '保留核税意见',
+      'rejectReason': '保留退回说明',
+    };
+    state.restoreReviewInputs(inputs);
+    repository.reviewResult = _pendingReview(allowedActions: {'APPROVE'});
+    container.read(_procurementReviewPermissions.notifier).state = {
+      Perm.financeOrderApprovalView,
+      Perm.financeOrderApprovalApprove,
+    };
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<UtenButton>(
+            find.byKey(const Key('finance-order-review-approve')),
+          )
+          .onPressed,
+      isNotNull,
+    );
+    expect(find.byKey(const Key('finance-order-review-reject')), findsNothing);
+    expect(state.captureReviewInputs(), inputs);
+    expect(claims.acquired, ['case-1']);
+    container.read(_procurementReviewPermissions.notifier).state = {
+      Perm.financeOrderApprovalView,
+    };
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('finance-order-review-approve')), findsNothing);
+    expect(state.captureReviewInputs(), inputs);
+    expect(state.canDispatchReviewCommand('approve'), isFalse);
+    expect(repository.approved, isEmpty);
+    expect(repository.rejected, isEmpty);
+  });
+
+  testWidgets('财审原提交结果未知时权限变化不重读覆盖输入或自动重放', (tester) async {
+    final repository = _FakeWorkflowRepo(_pendingReview())
+      ..approvalError = NetworkTimeoutException();
+    await _pumpReviewPage(tester, repository, withDraftStorage: true);
+    final pageFinder = find.byType(FinanceProcurementApprovalReviewPage);
+    final state =
+        tester.state(pageFinder)
+            as FormDraftMixin<FinanceProcurementApprovalReviewPage>;
+    final reviewState =
+        tester.state(pageFinder)
+            as ReviewTaskDraftMixin<FinanceProcurementApprovalReviewPage>;
+    await tester.tap(find.byKey(const Key('finance-order-review-approve')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('finance-order-review-approve-submit')),
+    );
+    await tester.pumpAndSettle();
+    expect(repository.approved, hasLength(1));
+    expect(state.formDraftHasUnknownSubmission, isTrue);
+    final inputs = reviewState.captureReviewInputs();
+    final reads = repository.reviewReads;
+    final container = ProviderScope.containerOf(tester.element(pageFinder));
+    container.read(_procurementReviewPermissions.notifier).state = {
+      Perm.financeOrderApprovalView,
+    };
+    await tester.pumpAndSettle();
+    container.read(_procurementReviewPermissions.notifier).state = {
+      Perm.financeOrderApprovalView,
+      Perm.financeOrderApprovalApprove,
+    };
+    await tester.pumpAndSettle();
+    expect(state.formDraftHasUnknownSubmission, isTrue);
+    expect(reviewState.captureReviewInputs(), inputs);
+    expect(repository.reviewReads, reads);
+    expect(repository.approved, hasLength(1));
+  });
   testWidgets('未留存税率保持未知并阻止审批，不默认为零', (tester) async {
     final review = FinanceProcurementApprovalReview.fromJson({
       ..._pendingReviewJson(),
@@ -1061,12 +1176,8 @@ void main() {
         );
         expect(rowBottomAnchor, findsOneWidget);
         expect(
-          tester
-              .widget<UtenButton>(
-                find.byKey(const Key('finance-order-review-approve')),
-              )
-              .onPressed,
-          isNull,
+          find.byKey(const Key('finance-order-review-approve')),
+          findsNothing,
         );
       }
 
@@ -1101,8 +1212,10 @@ void main() {
         expect(repository.exactRates, ['6.5']);
         expect(repository.exactTaxes, ['13.1234']);
       } else {
-        await tester.tap(find.byKey(const Key('finance-order-review-approve')));
-        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('finance-order-review-approve')),
+          findsNothing,
+        );
         expect(
           find.byKey(const Key('finance-order-review-approve-submit')),
           findsNothing,

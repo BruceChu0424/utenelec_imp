@@ -3,6 +3,9 @@ import 'package:uten_imp/components/data_display/uten_revision_table.dart';
 import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/repositories/payment_style_repository.dart';
 import 'package:uten_imp/features/finance/providers/finance_name_provider.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
@@ -29,9 +32,12 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
+import 'package:uten_imp/shared/drafts/review_task_draft.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 import '../../support/detail_summary_tap.dart';
+
+final _reviewPermissions = StateProvider<Set<String>>((ref) => {});
 
 class _FakeConfirmationRepository
     implements SalesOrderFinanceConfirmationRepository {
@@ -45,7 +51,7 @@ class _FakeConfirmationRepository
   _FakeConfirmationRepository(this.items, {this.reviewValue});
 
   final List<SalesOrderFinancePendingItem> items;
-  final SalesOrderFinanceReview? reviewValue;
+  SalesOrderFinanceReview? reviewValue;
   final List<String?> keywords = [];
   final List<List<String>> batchIds = [];
   final List<String?> batchRemarks = [];
@@ -59,6 +65,9 @@ class _FakeConfirmationRepository
   final List<Map<String, int>> batchRevisions = [];
   final List<Map<String, String>> batchClaimIds = [];
   Completer<SalesOrderFinancePendingPage>? blockedChanges;
+  Object? batchError;
+  bool batchErrorAfterCommit = false;
+  Object? loadErrorAfterBatch;
 
   @override
   Future<SalesOrderFinancePendingPage> pending({
@@ -80,6 +89,9 @@ class _FakeConfirmationRepository
       changes: changesOnly,
       confirmed: confirmed,
     ));
+    if (batchIds.isNotEmpty) {
+      if (loadErrorAfterBatch case final error?) throw error;
+    }
     if (size > 1 &&
         rejected == false &&
         changesOnly == true &&
@@ -156,7 +168,13 @@ class _FakeConfirmationRepository
     batchRemarks.add(remark);
     batchRevisions.add(Map.of(expectedRevisions ?? const {}));
     batchClaimIds.add(Map.of(expectedClaimIds ?? const {}));
+    if (!batchErrorAfterCommit) {
+      if (batchError case final error?) throw error;
+    }
     items.removeWhere((item) => ids.contains(item.orderId));
+    if (batchErrorAfterCommit) {
+      if (batchError case final error?) throw error;
+    }
   }
 
   @override
@@ -285,7 +303,12 @@ Future<GoRouter> _pumpPage(
           repository,
         ),
       ],
-      child: MaterialApp.router(routerConfig: router),
+      child: MaterialApp.router(
+        routerConfig: router,
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -312,6 +335,7 @@ Future<void> _pumpReview(
   FinanceClaimFixture? claims,
   _FakeConfirmationRepository? repository,
   bool settle = true,
+  bool canConfirm = true,
 }) async {
   tester.view.physicalSize = const Size(900, 1100);
   tester.view.devicePixelRatio = 1;
@@ -325,10 +349,15 @@ Future<void> _pumpReview(
         ),
         sharedPreferencesProvider.overrideWithValue(_preferences),
         isSuperAdminProvider.overrideWithValue(false),
-        currentPermissionsProvider.overrideWithValue({
-          Perm.salesOrderFinanceView,
-          Perm.salesOrderFinanceConfirm,
-        }),
+        _reviewPermissions.overrideWith(
+          (ref) => {
+            Perm.salesOrderFinanceView,
+            if (canConfirm) Perm.salesOrderFinanceConfirm,
+          },
+        ),
+        currentPermissionsProvider.overrideWith(
+          (ref) => ref.watch(_reviewPermissions),
+        ),
         sessionProvider.overrideWith(_FinanceSessionNotifier.new),
         fixedBadgeSummaryOverride(
           badgeSummaryFixture(facts: {BadgeFact.salesOrderFinance: 0}),
@@ -341,7 +370,12 @@ Future<void> _pumpReview(
           claims ?? FinanceClaimFixture(),
         ),
       ],
-      child: MaterialApp(home: FinanceSalesOrderReviewPage(id: review.orderId)),
+      child: MaterialApp(
+        home: FinanceSalesOrderReviewPage(id: review.orderId),
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+      ),
     ),
   );
   if (settle) {
@@ -357,6 +391,63 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     _preferences = await SharedPreferences.getInstance();
+  });
+
+  testWidgets('销售财审实时授权取得认领且保留备注，版本改变时不把原输入套到新版本', (tester) async {
+    const review = SalesOrderFinanceReview(
+      orderId: 'order-authority',
+      billNo: 'XD-AUTH',
+      financeReviewRevision: 7,
+    );
+    final repository = _FakeConfirmationRepository([], reviewValue: review);
+    final claims = FinanceClaimFixture();
+    await _pumpReview(
+      tester,
+      review,
+      repository: repository,
+      claims: claims,
+      canConfirm: false,
+    );
+    final pageFinder = find.byType(FinanceSalesOrderReviewPage);
+    final container = ProviderScope.containerOf(tester.element(pageFinder));
+    final state =
+        tester.state(pageFinder)
+            as ReviewTaskDraftMixin<FinanceSalesOrderReviewPage>;
+    const inputs = {'confirmRemark': '已核对，保留原备注', 'rejectReason': '原退回原因'};
+    state.restoreReviewInputs(inputs);
+    container.read(_reviewPermissions.notifier).state = {
+      Perm.salesOrderFinanceView,
+      Perm.salesOrderFinanceConfirm,
+    };
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<UtenButton>(find.byKey(const Key('finance-review-confirm')))
+          .onPressed,
+      isNotNull,
+    );
+    expect(state.captureReviewInputs(), inputs);
+    expect(claims.acquired, ['order-authority']);
+    container.read(_reviewPermissions.notifier).state = {
+      Perm.salesOrderFinanceView,
+    };
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('finance-review-confirm')), findsNothing);
+    expect(state.captureReviewInputs(), inputs);
+    repository.reviewValue = const SalesOrderFinanceReview(
+      orderId: 'order-authority',
+      billNo: 'XD-AUTH',
+      financeReviewRevision: 8,
+    );
+    container.read(_reviewPermissions.notifier).state = {
+      Perm.salesOrderFinanceView,
+      Perm.salesOrderFinanceConfirm,
+    };
+    await tester.pumpAndSettle();
+    expect(find.textContaining('审核内容或版本已变化'), findsOneWidget);
+    expect(state.captureReviewInputs(), inputs);
+    expect(state.canDispatchReviewCommand('confirm'), isFalse);
+    expect(repository.confirmedRevisions, isEmpty);
   });
   for (final size in [const Size(1200, 900), const Size(390, 844)]) {
     testWidgets(
@@ -444,6 +535,49 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.batchIds, isEmpty);
     expect(claims.released, ['lease-SALES_ORDER_FINANCE_CONFIRM-order-1-1']);
+  });
+
+  testWidgets('批量认领显示真实拒绝原因，保留选择且不提交审批', (tester) async {
+    final repository = _FakeConfirmationRepository([
+      _item(id: 'order-1', billNo: 'XD001'),
+    ]);
+    final claims = FinanceClaimFixture()
+      ..claimError = ApiException(
+        'CONFLICT',
+        '李四正在审核 XD001，请稍后重试',
+        httpStatus: 409,
+        hasResponseCode: true,
+      );
+    await _pumpPage(
+      tester,
+      repository,
+      size: const Size(1440, 1000),
+      claims: claims,
+    );
+    final table = tester
+        .widget<MasterDataTableView<SalesOrderFinancePendingItem>>(
+          find.byKey(const Key('sales-order-finance-desktop-table')),
+        );
+    table.onSelectedIdsChanged?.call({'order-1'});
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const Key('sales-order-finance-batch-confirm')),
+    );
+    await tester.pumpAndSettle();
+    final notifications = ProviderScope.containerOf(
+      tester.element(find.byType(FinanceSalesOrderConfirmationPage)),
+    ).read(appNotificationProvider);
+    expect(notifications.last.message, '李四正在审核 XD001，请稍后重试');
+    expect(repository.batchIds, isEmpty);
+    expect(claims.acquired, ['order-1']);
+    expect(
+      tester
+          .widget<MasterDataTableView<SalesOrderFinancePendingItem>>(
+            find.byKey(const Key('sales-order-finance-desktop-table')),
+          )
+          .selectedIds,
+      {'order-1'},
+    );
   });
 
   testWidgets('销售批量认领后发现版本变化不会换用新版本偷偷提交', (tester) async {
@@ -636,6 +770,129 @@ void main() {
       'order-2',
     });
     expect(find.text('XD20260829000003'), findsNothing);
+  });
+
+  Future<void> submitSelectedOrder(WidgetTester tester) async {
+    tester
+        .widget<MasterDataTableView<SalesOrderFinancePendingItem>>(
+          find.byKey(const Key('sales-order-finance-desktop-table')),
+        )
+        .onSelectedIdsChanged!({'order-1'});
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const Key('sales-order-finance-batch-confirm')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('sales-order-finance-batch-submit')));
+    await tester.pumpAndSettle();
+  }
+
+  for (final (label, error) in <(String, Object)>[
+    ('网络断开', NetworkException()),
+    ('响应超时', NetworkTimeoutException()),
+    ('网关错误', ApiException('INTERNAL', 'Bad gateway', httpStatus: 502)),
+    ('未确认的HTTP响应', ApiException('UNKNOWN', 'Request timeout', httpStatus: 408)),
+    ('未知异常', StateError('Lost acknowledgement')),
+  ]) {
+    testWidgets('批量确认服务端已生效但$label时提示结果待核对，不声称回滚或自动重放', (tester) async {
+      final repository =
+          _FakeConfirmationRepository([
+              _item(id: 'order-1', billNo: 'XD-ACK-LOST'),
+            ])
+            ..batchErrorAfterCommit = true
+            ..batchError = error;
+      await _pumpPage(tester, repository, size: const Size(1440, 1000));
+      await submitSelectedOrder(tester);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(FinanceSalesOrderConfirmationPage)),
+      );
+      final notifications = container.read(appNotificationProvider);
+      expect(repository.batchIds, [
+        ['order-1'],
+      ]);
+      expect(repository.items, isEmpty);
+      expect(notifications.last.message, '批量审批结果尚未确认，请刷新核对单据状态后再操作。');
+      expect(
+        notifications.any((item) => item.message.contains('保持原状态')),
+        isFalse,
+      );
+      expect(
+        notifications.any((item) => item.message.contains('未提交')),
+        isFalse,
+      );
+      await tester.tap(
+        find.byKey(const Key('sales-order-finance-confirm-refresh')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('XD-ACK-LOST'), findsNothing);
+      expect(repository.batchIds, [
+        ['order-1'],
+      ]);
+    });
+  }
+
+  testWidgets('批量确认收到明确业务拒绝时保留原原因，不推断所有订单原状态', (tester) async {
+    final repository =
+        _FakeConfirmationRepository([
+            _item(id: 'order-1', billNo: 'XD-REJECTED'),
+          ])
+          ..batchError = ApiException(
+            'CONFLICT',
+            'XD-REJECTED 已被其他人审批，请刷新',
+            httpStatus: 409,
+            hasResponseCode: true,
+          );
+    await _pumpPage(tester, repository, size: const Size(1440, 1000));
+    await submitSelectedOrder(tester);
+    final notifications = ProviderScope.containerOf(
+      tester.element(find.byType(FinanceSalesOrderConfirmationPage)),
+    ).read(appNotificationProvider);
+    expect(notifications.last.message, 'XD-REJECTED 已被其他人审批，请刷新');
+    expect(repository.items, hasLength(1));
+    expect(repository.batchIds, [
+      ['order-1'],
+    ]);
+    expect(
+      notifications.any((item) => item.message.contains('保持原状态')),
+      isFalse,
+    );
+  });
+
+  testWidgets('批量确认成功后列表刷新失败仍保留成功结果，不误报审批失败或订单未变化', (tester) async {
+    final repository = _FakeConfirmationRepository([
+      _item(id: 'order-1', billNo: 'XD-CONFIRMED'),
+    ])..loadErrorAfterBatch = ApiException('FORBIDDEN', '待办列表权限已变化，请重新授权');
+    await _pumpPage(tester, repository, size: const Size(1440, 1000));
+    await submitSelectedOrder(tester);
+    final notifications = ProviderScope.containerOf(
+      tester.element(find.byType(FinanceSalesOrderConfirmationPage)),
+    ).read(appNotificationProvider);
+    expect(repository.batchIds, [
+      ['order-1'],
+    ]);
+    expect(repository.items, isEmpty);
+    expect(
+      notifications.any((item) => item.message.startsWith('已批量确认 1 笔')),
+      isTrue,
+    );
+    expect(
+      notifications.any((item) => item.message.contains('保持原状态')),
+      isFalse,
+    );
+    expect(notifications.any((item) => item.message.contains('未提交')), isFalse);
+    expect(
+      notifications.any((item) => item.message.contains('结果尚未确认')),
+      isFalse,
+    );
+    expect(find.textContaining('待办列表权限已变化，请重新授权'), findsOneWidget);
+    expect(
+      tester
+          .widget<MasterDataTableView<SalesOrderFinancePendingItem>>(
+            find.byKey(const Key('sales-order-finance-desktop-table')),
+          )
+          .selectedIds,
+      isEmpty,
+    );
   });
 
   testWidgets('待确认合并首次与修改，状态表头完整筛选并清除', (tester) async {
@@ -1192,7 +1449,12 @@ void main() {
           ),
           taskClaimRepositoryProvider.overrideWithValue(FinanceClaimFixture()),
         ],
-        child: MaterialApp.router(routerConfig: router),
+        child: MaterialApp.router(
+          routerConfig: router,
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+        ),
       ),
     );
     if (push) {

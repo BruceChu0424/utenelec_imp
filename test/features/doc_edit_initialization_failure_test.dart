@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_back_button.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations_zh.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/finance/models/finance_doc.dart';
@@ -61,7 +62,12 @@ void main() {
         find.byKey(const ValueKey('sales-doc-edit-load-error')),
         findsOneWidget,
       );
-      expect(find.textContaining('无法读取完整单据数据'), findsOneWidget);
+      expect(
+        find.textContaining(
+          AppLocalizationsZh().productionDailyReportLoadFailed,
+        ),
+        findsOneWidget,
+      );
       expect(find.text('保存'), findsNothing);
     });
 
@@ -209,7 +215,7 @@ class _FailingSalesMasterNameService extends SalesMasterNameService {
 
   @override
   Future<void> ensureLoaded() async {
-    throw ApiException('TEST_MASTER_INIT_FAILED', '主档初始化失败');
+    throw StateError('主档初始化失败');
   }
 }
 

@@ -641,6 +641,15 @@ void main() {
     expect(body['receiverEmployeeId'], 'emp-me');
     expect(body.containsKey('stockInBeforeInspection'), isFalse);
     final lines = (body['lines'] as List).cast<Map<String, dynamic>>();
+    expect(lines.every((line) => line['goodsProfile'] is Map), isTrue);
+    expect(
+      lines.every(
+        (line) => !(line['goodsProfile'] as Map).containsKey('goodsId'),
+      ),
+      isTrue,
+      reason: '资料学习只随实际登记行提交，不能另外指定货品身份',
+    );
+    expect((lines.first['goodsProfile'] as Map)['goodsCode'], 'G-001');
     expect(lines.map((line) => line['orderItemId']), [
       'batch-item-1',
       'batch-item-2',
@@ -1335,9 +1344,6 @@ class _BatchApi extends ApiClient {
       final error = arrivalError;
       if (error != null) throw error;
       return arrivalBatchAnswer(request);
-    }
-    if (path == '/warehouse/inbound/goods-profile-hints') {
-      return const {'updated': 0};
     }
     throw ApiException('TEST_UNEXPECTED_POST', path);
   }

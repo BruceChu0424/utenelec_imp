@@ -1,6 +1,7 @@
 package com.uten.imp.features.admin.dto;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -23,4 +24,6 @@ public record EffectivePermissionsDto(
         List<String> effective,
         // 超管标记：前端据此把全部权限点显示为"已授权"且不可在此调整
         // （超管恒为全量，个人覆盖对超管无意义，requireNotSuperAdmin 也已拦截写入）
-        boolean superAdmin) {}
+        boolean superAdmin,
+        Map<String, List<String>> requiredPermissions,
+        Map<String, List<String>> missingDependencies) {}

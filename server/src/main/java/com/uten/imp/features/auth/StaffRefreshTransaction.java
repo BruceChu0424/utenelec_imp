@@ -84,7 +84,7 @@ public class StaffRefreshTransaction {
             remoteAccessPolicy.requireStaffAccess(revokedUser);
             if (token.getReplacedBy() == null || session != AuthSessionService.Verdict.ACTIVE) {
                 // 只有「已被轮换出新令牌」的旧令牌再次出现才是被盗重放。整族被作废 (改登录手机号、
-                // 权限变更、远程访问变动…) 或会话本身已结束 (登出/改密/停用/空闲超时…) 时,
+                // 凭据重置、远程访问变动…) 或会话本身已结束 (登出/改密/停用/空闲超时…) 时,
                 // 旧令牌只是作废凭证: 普通 401 让客户端回登录页, 不误报安全事件、不连坐其它会话。
                 throw new ApiException(ErrorCode.UNAUTHORIZED);
             }

@@ -16,6 +16,8 @@ import com.uten.imp.features.rbac.DepartmentPermissionRepository;
 import com.uten.imp.features.rbac.GrantPolicy;
 import com.uten.imp.features.rbac.Permission;
 import com.uten.imp.features.rbac.PermissionRepository;
+import com.uten.imp.features.rbac.PermissionDependencyCatalog;
+import com.uten.imp.features.rbac.PermissionDependencyGrantPlanner;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
@@ -81,7 +83,9 @@ public class DepartmentPermissionAdminService {
     public List<PermissionCatalogDto> catalog() {
         support.requireCurrentSuperAdmin();
         record GroupKey(String module, String category) {}
-        Map<GroupKey, List<Permission>> byGroup = permissionRepo.findAll().stream()
+        List<Permission> catalog = permissionRepo.findAll();
+        PermissionDependencyCatalog dependencies = new PermissionDependencyCatalog(catalog);
+        Map<GroupKey, List<Permission>> byGroup = catalog.stream()
                 .collect(Collectors.groupingBy(
                         p -> new GroupKey(moduleOf(p), p.getCategory() == null ? "" : p.getCategory()),
                         LinkedHashMap::new, Collectors.toList()));
@@ -104,7 +108,8 @@ public class DepartmentPermissionAdminService {
                             p.grantPolicies().stream().map(Enum::name).toList(),
                             p.isBaseline(),
                             p.isBaselinePinned(),
-                            p.getSensitivity())).toList()));
+                            p.getSensitivity(),
+                            dependencies.requiredPermissions(p.getCode(), Set.of()))).toList()));
         }
         groups.sort(Comparator
                 .comparingInt((Group g) -> {
@@ -125,7 +130,13 @@ public class DepartmentPermissionAdminService {
         requireDepartment(departmentId);
         List<String> codes = departmentPermissionRepo.findPermissionCodesByDepartmentId(departmentId)
                 .stream().sorted().toList();
-        return new DepartmentPermissionsDto(codes);
+        Set<String> inherited = departmentInheritedPermissions(departmentId);
+        Set<String> configured = new LinkedHashSet<>(inherited);
+        configured.addAll(codes);
+        List<Permission> catalog = permissionRepo.findAll();
+        return new DepartmentPermissionsDto(codes, inherited.stream().sorted().toList(),
+                PermissionDependencyGrantPlanner.requirements(catalog, configured),
+                PermissionDependencyGrantPlanner.missing(catalog, configured));
     }
 
     /**
@@ -143,6 +154,16 @@ public class DepartmentPermissionAdminService {
         Set<String> desired = new LinkedHashSet<>(permissionCodes == null ? List.of() : permissionCodes);
         Set<String> current = new HashSet<>(
                 departmentPermissionRepo.findPermissionCodesByDepartmentId(departmentId));
+        Set<String> removedDependencies = new LinkedHashSet<>(current);
+        removedDependencies.removeAll(desired);
+        Set<String> inherited = departmentInheritedPermissions(departmentId);
+        removedDependencies.removeAll(inherited);
+        Set<String> enabledConfiguration = new LinkedHashSet<>(desired);
+        enabledConfiguration.removeAll(current);
+        Set<String> availableConfiguration = new LinkedHashSet<>(inherited);
+        availableConfiguration.addAll(desired);
+        desired.addAll(PermissionDependencyGrantPlanner.additions(permissionRepo.findAll(), enabledConfiguration, availableConfiguration,
+                removedDependencies, permission -> GrantPolicy.departmentGrantable(permission.grantPolicies()), "部门配置"));
         Set<String> added = new LinkedHashSet<>(desired);
         added.removeAll(current);
         Set<String> removed = new LinkedHashSet<>(current);
@@ -153,7 +174,7 @@ public class DepartmentPermissionAdminService {
         for (String code : added) {
             Permission permission = byCode.get(code);
             if (permission == null) {
-                throw new ApiException(ErrorCode.BUSINESS, "权限不存在: " + code);
+                throw new ApiException(ErrorCode.BUSINESS, "所选权限已不存在，请刷新权限列表后重试");
             }
             Set<GrantPolicy> policy = permission.grantPolicies();
             if (!GrantPolicy.departmentGrantable(policy)) {
@@ -177,13 +198,23 @@ public class DepartmentPermissionAdminService {
                 departmentPermissionRepo.findPermissionCodesByDepartmentId(departmentId));
         Map<String, Permission> byCode = new LinkedHashMap<>();
         Set<String> added = new LinkedHashSet<>();
-        for (Permission permission : bulkCandidates(scope)) {
+        List<Permission> candidates = bulkCandidates(scope);
+        for (Permission permission : candidates) {
             Set<GrantPolicy> policy = permission.grantPolicies();
             if (GrantPolicy.departmentGrantable(policy) && !current.contains(permission.getCode())) {
                 added.add(permission.getCode());
                 byCode.put(permission.getCode(), permission);
             }
         }
+        Set<String> desired = new LinkedHashSet<>(current);
+        desired.addAll(added);
+        Set<String> dependencies = PermissionDependencyGrantPlanner.additions(permissionRepo.findAll(),
+                candidates.stream().filter(permission -> GrantPolicy.departmentGrantable(permission.grantPolicies()))
+                        .map(Permission::getCode).toList(), desired,
+                Set.of(), permission -> GrantPolicy.departmentGrantable(permission.grantPolicies())
+                        && GrantPolicy.bulkEligible(permission.grantPolicies()), "部门批量配置");
+        added.addAll(dependencies);
+        byCode.putAll(byCode(dependencies));
         return applyDepartmentChange(departmentId, added, Set.of(), byCode);
     }
 
@@ -209,6 +240,12 @@ public class DepartmentPermissionAdminService {
         // 两个超管同时改基础包时串行化，先到者提交后后到者再读，差量与审计不会重复或丢失。
         permissionRepo.lockBaseline();
         Set<String> current = new HashSet<>(permissionRepo.findBaselineCodes());
+        Set<String> explicitRemoval = new LinkedHashSet<>(current);
+        explicitRemoval.removeAll(desired);
+        Set<String> newlyEnabled = new LinkedHashSet<>(desired);
+        newlyEnabled.removeAll(current);
+        desired.addAll(PermissionDependencyGrantPlanner.additions(permissionRepo.findAll(), newlyEnabled, desired,
+                explicitRemoval, permission -> GrantPolicy.baselineEligible(permission.grantPolicies()), "全员基础包"));
         Set<String> added = new LinkedHashSet<>(desired);
         added.removeAll(current);
         Set<String> removed = new LinkedHashSet<>(current);
@@ -228,7 +265,7 @@ public class DepartmentPermissionAdminService {
         for (String code : added) {
             Permission permission = byCode.get(code);
             if (permission == null) {
-                throw new ApiException(ErrorCode.BUSINESS, "权限不存在: " + code);
+                throw new ApiException(ErrorCode.BUSINESS, "所选权限已不存在，请刷新权限列表后重试");
             }
             if (!GrantPolicy.baselineEligible(permission.grantPolicies())) {
                 throw new ApiException(ErrorCode.BUSINESS,
@@ -265,7 +302,18 @@ public class DepartmentPermissionAdminService {
                 b.managerGrants().stream().sorted().toList(),
                 b.revokes().stream().sorted().toList(),
                 b.effective().stream().sorted().toList(),
-                target.isSuperAdmin());
+                target.isSuperAdmin(),
+                PermissionDependencyGrantPlanner.requirements(permissionRepo.findAll(), PermissionDependencyGrantPlanner.configured(b)),
+                target.isSuperAdmin() ? Map.of() : PermissionDependencyGrantPlanner.missing(permissionRepo.findAll(),
+                        PermissionDependencyGrantPlanner.configured(b)));
+    }
+
+    private Set<String> departmentInheritedPermissions(UUID departmentId) {
+        Set<String> inherited = new LinkedHashSet<>(permissionRepo.findBaselineCodes());
+        departmentRepo.findById(departmentId).map(com.uten.imp.features.org.department.Department::getParent)
+                .ifPresent(parent -> inherited.addAll(
+                        departmentPermissionRepo.findPermissionCodesByDepartmentIdWithAncestors(parent.getId())));
+        return inherited;
     }
 
     /** 批量授权候选：目录里可批量的码按范围筛选(范围字段为空 = 不限)。 */
@@ -299,11 +347,9 @@ public class DepartmentPermissionAdminService {
         if (inserted != added.size() || deleted != removed.size()) {
             throw new ApiException(ErrorCode.CONFLICT, "这个部门的权限刚被改过，请刷新后再保存");
         }
-        // 吊销该部门子树(含下级部门)所有用户的 refresh token；已签发的 access token 由
-        // department_permissions 的授权纪元触发器统一失效，下一次续期按新配置合成。
-        for (UUID uid : employeeRepo.findUserIdsByDepartmentSubtree(departmentId)) {
-            refreshTokenRepo.revokeAllByUserId(uid);
-        }
+        // The authorization epoch invalidates old access tokens immediately. Keep valid
+        // login sessions refreshable so every assignment source adopts current authority
+        // without turning an ordinary grant/revoke into a forced logout.
         changeAudit.record("department_permission_change", "departments", departmentId.toString(),
                 added, removed, null);
         return new PermissionChangeDto(sorted(added), sorted(removed));

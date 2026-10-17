@@ -148,6 +148,35 @@ class AiDocumentRoutePostgresTest extends AiPlatformPostgresTestSupport {
         assertThat(count("sales_orders")).isEqualTo(orders); assertThat(FAKE.requests()).isEmpty();
     }
 
+    @Test void departmentGrantedSalesWorkflowWorksForAProductionEmployeeAndRevocationStillApplies() throws Exception {
+        UUID department = UUID.randomUUID();
+        String code = "AI-CROSS-" + UUID.randomUUID().toString().substring(0, 8);
+        jdbc.update("""
+                INSERT INTO departments(id, code, name, level, parent_id)
+                SELECT ?, ?, ?, '二级班组', id FROM departments WHERE code='DEPT_PROD'
+                """, department, code, code);
+        jdbc.update("""
+                INSERT INTO department_permissions(department_id,permission_id)
+                SELECT ?, id FROM permissions WHERE code IN ('sales_order:view','sales_order:create')
+                """, department);
+        Staff staff = newEmployee(adminToken(), code);
+        String token = fresh(staff);
+        long orders = count("sales_orders");
+        byte[] input = csv("Commercial Invoice", "品名,数量,单价", "产品A,10,20");
+        JsonNode allowed = succeeded(token, upload(token, AiDocumentRouteHandler.KIND, "authorized.csv", input,
+                Map.of("workflow", "SALES_ORDER")));
+        assertThat(allowed.path("workflow").asText()).isEqualTo("SALES_ORDER");
+        assertThat(allowed.path("requiresReview").asBoolean()).isTrue();
+        assertThat(count("sales_orders")).isEqualTo(orders);
+        revoke(staff, "sales_order:create");
+        String revoked = fresh(staff);
+        MvcResult denied = request(revoked, AiDocumentRouteHandler.KIND, "revoked.csv", input,
+                Map.of("workflow", "SALES_ORDER"));
+        assertEquals(403, denied.getResponse().getStatus(), body(denied));
+        assertThat(count("sales_orders")).isEqualTo(orders);
+        assertThat(FAKE.requests()).isEmpty();
+    }
+
     @Test void docxTextIsLocalAndSalesConversionPausesAndXmlEntitiesNeverFetchAnything() throws Exception {
         byte[] quote = docx("<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body><w:p><w:r><w:t>报价单 品名 数量 单价</w:t></w:r></w:p></w:body></w:document>");
         JsonNode result = succeeded(admin, upload(admin, AiDocumentRouteHandler.KIND, "quote.docx", quote, Map.of()));

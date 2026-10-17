@@ -5,7 +5,6 @@ import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.purchase.receipt.PurchaseReceiptService;
 import com.uten.imp.features.subcontract.receipt.SubcontractReceiptService;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.ArrivalExceptionTask;
-import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.GoodsProfileHintRequest;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.InboundExpectationTask;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalExceptionBatchStockInRequest;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalExceptionBatchStockInResult;
@@ -180,16 +179,6 @@ public class WarehouseInboundController {
     public WarehouseArrivalBatchCompleteResult completeArrivalBatch(
             @Valid @RequestBody WarehouseArrivalBatchCompleteRequest request) {
         return arrivalRegistration.completeBatch(request);
-    }
-
-    /**
-     * 货品资料「学习」回写：仓库登记到货保存成功后，把本次填写的库位号/物料系列/物料编码
-     * 回写货品主档，下次登记自动带出。code 仅补空防误改业务主键；空值跳过。返回 {updated, skipped}。
-     */
-    @PostMapping("/goods-profile-hints")
-    public Map<String, Integer> goodsProfileHints(
-            @Valid @RequestBody List<GoodsProfileHintRequest> hints) {
-        return service.applyGoodsProfileHints(hints);
     }
 
     /**

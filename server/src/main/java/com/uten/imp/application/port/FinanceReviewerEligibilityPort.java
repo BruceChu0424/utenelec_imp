@@ -7,11 +7,10 @@ import java.util.UUID;
 /**
  * Neutral boundary for the finance approval reviewer pool.
  *
- * <p>From ADR-027 a finance approval task (procurement order approval
- * and over-arrival exception) is actionable by any active employee inside the
- * finance department tree who currently holds an approve or reject finance-order authority,
- * rather than a single configured assignee. This port is the single source of
- * truth for that eligibility.
+ * <p>A finance approval task (procurement order approval or over-arrival exception)
+ * is actionable by an enabled employee account with the current page and action authorities.
+ * Department membership and the source of an effective grant do not add another access gate.
+ * This port is the shared account-state and permission check for those operations.
  */
 public interface FinanceReviewerEligibilityPort {
 

@@ -40,7 +40,7 @@ import java.util.UUID;
 /**
  * 销售报价财务核价(ADR-134)。
  *
- * <p>核价人 = {@link SalesQuoteFinanceReviewerEligibilityPort}(财务部门树 + 查看/核价权限 + 在职); 改折扣/
+ * <p>核价人 = {@link SalesQuoteFinanceReviewerEligibilityPort}(有效查看/核价权限 + 在职启用账号); 改折扣/
  * 成交单价、退回、确认都要先认领({@code SALES_QUOTE_FINANCE_REVIEW}), 并带页面看到的核价修订号。
  * 核价可以改的只有: 各行折扣或成交单价(货品没有标价或成交单价高于标价时由财务定价)、赠品/0 价、按最新标价刷新,
  * 以及表头有效期、结账方式、财务备注。提交的数量、独立报价基价和货品行身份只读，需要改单退回销售。
@@ -159,7 +159,7 @@ public class SalesQuoteFinanceService {
 
     /**
      * 工作台徽章「报价待核价」(红 = 轮到我): 待核价张数; 只算合格核价人(与认领、通知同一资格口径:
-     * 财务部门树或个人加授 + 查看/核价权限 + 账号启用), 只看不办或不在核价组的人固定 0, 不查报价表。
+     * 有效查看/核价权限 + 在职启用账号), 只看不办的人固定 0, 不查报价表。
      */
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_quote_finance:view')")
@@ -304,7 +304,7 @@ public class SalesQuoteFinanceService {
                 pricePending, blocking,
                 confirmed != null || revisionLog.hasAction(id, SalesQuoteRevisionLog.RETURN),
                 convertedOrderNo,
-                accessPolicy.hasAuthority("goods:price:edit"),
+                accessPolicy.hasAuthority("goods:edit") && accessPolicy.hasAuthority("goods:price:edit"),
                 financeActions(q, convertedOrderNo != null),
                 TARGET,
                 lines,
@@ -612,7 +612,8 @@ public class SalesQuoteFinanceService {
 
     private void requireEligibleReviewer() {
         if (!reviewers.isEligible(currentUser.requireId())) {
-            throw new ApiException(ErrorCode.FORBIDDEN, "只有财务部门在职、并有报价核价权限的人员可以核价");
+            throw new ApiException(ErrorCode.FORBIDDEN,
+                    "无法办理报价核价：请核对账号是否启用、员工是否在职，以及报价核价查看和确认权限");
         }
     }
 

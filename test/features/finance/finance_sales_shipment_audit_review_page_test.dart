@@ -5,6 +5,7 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -16,8 +17,75 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/drafts/review_task_draft.dart';
+
+final _shipmentReviewPermissions = StateProvider<Set<String>>((ref) => {});
 
 void main() {
+  testWidgets('出货财审实时授权恢复对应动作并保留原汇率和退回意见，撤权不能继续提交', (tester) async {
+    final api = await _pumpReviewPage(
+      tester,
+      detail: {
+        'id': 'shipment-authority',
+        'billNo': 'XS-AUTH',
+        'status': 0,
+        'financeAudit': 0,
+        'salesConfirmed': true,
+        'financeReviewPending': true,
+        'warehouseWorkStatus': 'PENDING_PICK',
+        'items': <Map<String, dynamic>>[],
+      },
+      permissions: {Perm.salesShipmentFinanceView},
+      claimSucceeds: true,
+      financeAuditInfo: {
+        'shipmentId': 'shipment-authority',
+        'reviewRevision': 1,
+        'contentHash': 'authority-hash',
+        'financeAudit': 0,
+      },
+    );
+    final pageFinder = find.byType(FinanceSalesShipmentAuditReviewPage);
+    final container = ProviderScope.containerOf(tester.element(pageFinder));
+    final state =
+        tester.state(pageFinder)
+            as ReviewTaskDraftMixin<FinanceSalesShipmentAuditReviewPage>;
+    const inputs = {'rate': '7.2300', 'rejectReason': '保留原退回说明'};
+    state.restoreReviewInputs(inputs);
+    api.grants.add(Perm.salesShipmentFinanceApprove);
+    container.read(_shipmentReviewPermissions.notifier).state = {
+      Perm.salesShipmentFinanceView,
+      Perm.salesShipmentFinanceApprove,
+    };
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<UtenButton>(
+            find.byKey(const Key('finance-shipment-audit-approve')),
+          )
+          .onPressed,
+      isNotNull,
+    );
+    expect(
+      find.byKey(const Key('finance-shipment-audit-reject')),
+      findsNothing,
+    );
+    expect(state.captureReviewInputs(), inputs);
+    api.grants.remove(Perm.salesShipmentFinanceApprove);
+    container.read(_shipmentReviewPermissions.notifier).state = {
+      Perm.salesShipmentFinanceView,
+    };
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('finance-shipment-audit-approve')),
+      findsNothing,
+    );
+    expect(state.captureReviewInputs(), inputs);
+    expect(state.canDispatchReviewCommand('approve'), isFalse);
+    expect(
+      api.postPaths.where((path) => path.endsWith('/finance-audit')),
+      isEmpty,
+    );
+  });
   testWidgets('财审使用记录总金额与精确数量单价，缺额不回乘或造零', (tester) async {
     await _pumpReviewPage(
       tester,
@@ -640,47 +708,47 @@ void main() {
     );
   });
 
-  // permissions-15：按钮只认服务端下发的 allowedActions，本地权限集合不再参与判断。
-  testWidgets('decision buttons follow server allowedActions only', (
-    tester,
-  ) async {
-    const detail = {
-      'id': 'shipment-allowed-actions',
-      'billNo': 'XS-20260923-001',
-      'financeReviewPending': true,
-      'salesConfirmed': true,
-      'status': 0,
-      'financeAudit': 0,
-      'warehouseWorkStatus': 'PENDING_PICK',
-      'items': <Map<String, dynamic>>[
-        {'id': 'line-1', 'goodsId': 'goods-1', 'qty': 1, 'price': 10},
-      ],
-    };
-    // 本地只持查看码，但服务端判定可放行(例如经页面委派刚拿到放行权)：按服务端显示。
-    final api = await _pumpReviewPage(
-      tester,
-      detail: detail,
-      claimSucceeds: true,
-      permissions: const {Perm.salesShipmentFinanceView},
-      financeAuditInfo: const {
-        'shipmentId': 'shipment-allowed-actions',
-        'reviewRevision': 1,
-        'contentHash': 'hash-1',
+  testWidgets(
+    'decision buttons require current authority as well as server allowedActions',
+    (tester) async {
+      const detail = {
+        'id': 'shipment-allowed-actions',
+        'billNo': 'XS-20260923-001',
+        'financeReviewPending': true,
+        'salesConfirmed': true,
+        'status': 0,
         'financeAudit': 0,
-        'clientName': '测试客户',
-        'allowedActions': ['APPROVE'],
-      },
-    );
-    expect(
-      find.byKey(const Key('finance-shipment-audit-approve')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('finance-shipment-audit-reject')),
-      findsNothing,
-    );
-    expect(api.postPaths.any((path) => path.endsWith('/claim')), isTrue);
-  });
+        'warehouseWorkStatus': 'PENDING_PICK',
+        'items': <Map<String, dynamic>>[
+          {'id': 'line-1', 'goodsId': 'goods-1', 'qty': 1, 'price': 10},
+        ],
+      };
+      // 旧 allowedActions 不能替代当前动作授权。
+      final api = await _pumpReviewPage(
+        tester,
+        detail: detail,
+        claimSucceeds: true,
+        permissions: const {Perm.salesShipmentFinanceView},
+        financeAuditInfo: const {
+          'shipmentId': 'shipment-allowed-actions',
+          'reviewRevision': 1,
+          'contentHash': 'hash-1',
+          'financeAudit': 0,
+          'clientName': '测试客户',
+          'allowedActions': ['APPROVE'],
+        },
+      );
+      expect(
+        find.byKey(const Key('finance-shipment-audit-approve')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('finance-shipment-audit-reject')),
+        findsNothing,
+      );
+      expect(api.postPaths.any((path) => path.endsWith('/claim')), isFalse);
+    },
+  );
 
   testWidgets('no allowed action: no decision buttons and no claim', (
     tester,
@@ -815,10 +883,18 @@ Future<_ReviewApi> _pumpReviewPage(
         salesMasterNameServiceProvider.overrideWithValue(
           SalesMasterNameService(api),
         ),
-        currentPermissionsProvider.overrideWithValue(permissions),
+        _shipmentReviewPermissions.overrideWith((ref) => permissions),
+        currentPermissionsProvider.overrideWith(
+          (ref) => ref.watch(_shipmentReviewPermissions),
+        ),
         isSuperAdminProvider.overrideWithValue(false),
       ],
-      child: MaterialApp.router(routerConfig: router),
+      child: MaterialApp.router(
+        routerConfig: router,
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -830,8 +906,9 @@ class _ReviewApi extends ApiClient {
     this.detail, {
     this.financeAuditInfo,
     this.claimSucceeds = false,
-    this.grants = const {},
-  }) : super(Dio());
+    Set<String> grants = const {},
+  }) : grants = Set.of(grants),
+       super(Dio());
 
   /// 本账号持有的码：只用来模拟服务端算 allowedActions，页面自己不再读它决定按钮。
   final Set<String> grants;

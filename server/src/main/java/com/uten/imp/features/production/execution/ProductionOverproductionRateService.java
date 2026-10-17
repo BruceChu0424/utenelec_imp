@@ -155,7 +155,7 @@ public class ProductionOverproductionRateService {
             if(task.version()!=versions.get(task.id()))throw conflict("允许超产比例已变化，请刷新后重新修改");
             if(task.rate().compareTo(requested)==0)continue;
             UUID requestId=UUID.randomUUID();
-            String reason="计划部在首次报工前修改允许超产比例";
+            String reason="首次报工前调整允许超产比例";
             em.createNativeQuery("""
                     INSERT INTO production_overproduction_rate_requests(id,execution_segment_id,before_rate,requested_rate,
                         expected_rate_version,planned_qty,before_snapshot,after_snapshot,reason,idempotency_key,

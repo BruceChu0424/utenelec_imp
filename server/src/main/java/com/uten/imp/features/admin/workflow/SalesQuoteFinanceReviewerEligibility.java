@@ -12,12 +12,10 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * 销售报价财务核价人资格(ADR-134; 与 {@link SalesOrderFinanceConfirmerEligibility} 同一 ADR-027 审核组模型)。
+ * 销售报价财务核价权限(与 {@link SalesOrderFinanceConfirmerEligibility} 使用同一授权口径)。
  *
- * <p>合格核价人 = 财务部门(DEPT_FIN)子树在职员工(含兼职部门), 或经个人加授
- * {@code sales_quote_finance:confirm} 的人员; 账号启用; 最终权限集同时含
- * {@code sales_quote_finance:view} 与 {@code sales_quote_finance:confirm}。
- * 权限本身在权限设置里按部门/角色/个人配置, 本类只做「部门树资格 + 权限持有」的叠加判定。
+ * <p>账号启用、员工在职，且有效权限同时包含查看与核价即可办理。
+ * 所有授权来源统一由 PermissionResolver 解析，不再要求财务部门或个人点名。
  */
 @Service
 @RequiredArgsConstructor
@@ -62,40 +60,14 @@ public class SalesQuoteFinanceReviewerEligibility implements SalesQuoteFinanceRe
                 .orElse(false);
     }
 
-    /** 候选账号 = 财务部门子树在职员工账号 + 财务部门外个人加授核价权限的启用账号(权限仍在 permsOf 复核)。 */
+    /** 候选只校验账号和员工状态；核价权限仍在 permsOf 中复核。 */
     private List<UUID> candidateUserIds(UUID userId) {
         String userPredicate = userId == null ? "" : " AND u.id = ?";
         String sql = """
-                WITH RECURSIVE finance_departments(id) AS (
-                    SELECT id
-                    FROM departments
-                    WHERE code = 'DEPT_FIN' AND is_deleted = FALSE
-                    UNION ALL
-                    SELECT child.id
-                    FROM departments child
-                    JOIN finance_departments parent ON child.parent_id = parent.id
-                    WHERE child.is_deleted = FALSE
-                )
                 SELECT u.id
                 FROM users u
                 JOIN employees e ON e.id = u.employee_id
-                WHERE (
-                        e.department_id IN (SELECT id FROM finance_departments)
-                        OR EXISTS (
-                            SELECT 1 FROM employee_secondary_departments secondary
-                            WHERE secondary.employee_id = e.id
-                              AND secondary.department_id IN (SELECT id FROM finance_departments)
-                        )
-                        OR u.id IN (
-                            SELECT po.user_id
-                            FROM user_permission_overrides po
-                            JOIN permissions perm ON perm.id = po.permission_id
-                            WHERE perm.code = 'sales_quote_finance:confirm'
-                              AND po.effect = 'grant'
-                              AND po.active = TRUE
-                        )
-                    )
-                  AND u.is_deleted = FALSE
+                WHERE u.is_deleted = FALSE
                   AND u.status = 'active'
                   AND e.is_deleted = FALSE
                   AND e.status <> 'resigned'

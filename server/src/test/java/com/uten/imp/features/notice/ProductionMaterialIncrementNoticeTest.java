@@ -26,6 +26,7 @@ class ProductionMaterialIncrementNoticeTest {
     private final NoticeService notices = mock(NoticeService.class);
     private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
     private final UserAccountRepository accounts = mock(UserAccountRepository.class);
+    private final java.util.List<UserAccount> candidateAccounts = new java.util.ArrayList<>();
     private final PermissionResolver permissions = mock(PermissionResolver.class);
     private final ChainNoticeService service = new ChainNoticeService(notices, accounts, permissions, jdbc,
             mock(BusinessEventPublisher.class), mock(RdTaskService.class), mock(FinanceReviewerEligibilityPort.class),
@@ -37,8 +38,7 @@ class ProductionMaterialIncrementNoticeTest {
         row("PENDING");
         account(planner, Set.of("notice:read", "production_plan:approve"));
         account(viewer, Set.of("notice:read"));
-        when(jdbc.queryForList(contains("candidate_employee"), eq(UUID.class), eq("SUB_PLAN")))
-                .thenReturn(List.of(planner, viewer));
+        when(jdbc.queryForList(contains("active_action_recipients"), eq(UUID.class), anyString())).thenReturn(List.of(planner));
         service.deliverOutboxEvent("PRODUCTION_MATERIAL_INCREMENT_SUBMITTED", request, new ObjectMapper().createObjectNode());
         verify(notices).publishForUser(eq(planner), contains("待审批"), argThat(content -> content.contains("原料A") && content.contains("30")),
                 eq("approval"), eq("系统"), eq("/production/material-increment-requests/" + request),
@@ -84,6 +84,7 @@ class ProductionMaterialIncrementNoticeTest {
 
     private void account(UUID id, Set<String> grants) {
         UserAccount account = mock(UserAccount.class);
+        when(account.getId()).thenReturn(id); candidateAccounts.add(account); when(accounts.findAll()).thenReturn(candidateAccounts);
         when(account.isDeleted()).thenReturn(false);
         when(account.getStatus()).thenReturn("active");
         when(accounts.findById(id)).thenReturn(Optional.of(account));

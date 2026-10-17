@@ -4,7 +4,7 @@
 // MasterEntityDetailPane(ADR-111：分页/筛选/排序/打印导出/启停/删除/批量命令只有一份)。
 // 本页只保留货品特有的动作：复制/粘贴货品、组件信息的复制/粘贴/删除(粘贴与删除
 // 都是服务端整批原子命令)、禁用/不明货品前导分组、导入与撤回导入。
-// 编辑类按钮按 material_category:* / goods:* 权限显隐；查看全员可见(路由不设守卫)。
+// 主档按 goods:view 查看；分类按 material_category:view 独立显示，无权时使用主档全局列表。
 //
 // compact：分类树作为 endDrawer；medium/expanded：左树 + 右详情。
 // 文档：见 docs/03-页面/ 总览（基础资料）。
@@ -153,6 +153,8 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
   @override
   FormDraftDescriptor get shellCategoryDraftDescriptor =>
       FormDraftCatalog.goodsCategory;
+  @override
+  String get shellCategoryViewPermission => Perm.materialCategoryView;
 
   @override
   bool get shellCanCreate => ref
@@ -558,6 +560,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
   MasterEntityPaneConfig<GoodsListItem, GoodsDetail> _paneConfig() {
     final goods = ref.read(goodsRepositoryProvider);
     final includeRelated = _includeRelated;
+    final categoryBrowsing = shellCanViewCategories;
     return MasterEntityPaneConfig<GoodsListItem, GoodsDetail>(
       noun: '货品', // TODO(l10n): 补 arb
       icon: Icons.inventory_2_outlined,
@@ -581,8 +584,8 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
         filters: q.filters,
         sort: q.sort,
         order: q.order,
-        // 浏览态禁用品归前导分组；搜索态把禁用品直接纳入结果，避免「定位到了但右侧为空」。
-        excludeDisabled: !q.hasKeyword,
+        // 分类浏览态禁用品归前导分组；搜索及无分类权限的全局列表直接纳入禁用品。
+        excludeDisabled: categoryBrowsing && !q.hasKeyword,
         excludeStub: true, // 迁移兜底占位归「未分类」节点的集合行
       ),
       loadFacets: (id) async {
@@ -599,7 +602,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
                 keyword: query.keyword,
                 includeRelated: includeRelated && query.hasKeyword,
                 filters: query.filters,
-                excludeDisabled: !query.hasKeyword,
+                excludeDisabled: categoryBrowsing && !query.hasKeyword,
                 excludeStub: true,
               )
             : await goods.facets(
@@ -607,7 +610,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
                 keyword: query.keyword,
                 includeRelated: includeRelated && query.hasKeyword,
                 filters: query.filters,
-                excludeDisabled: !query.hasKeyword,
+                excludeDisabled: categoryBrowsing && !query.hasKeyword,
                 excludeStub: true,
               );
         return MasterPaneFacets(fields: f.fields, nullCounts: f.nullCounts);

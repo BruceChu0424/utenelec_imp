@@ -11,6 +11,7 @@ import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.rbac.GrantPolicy;
 import com.uten.imp.features.rbac.Permission;
 import com.uten.imp.features.rbac.PermissionRepository;
+import com.uten.imp.features.rbac.PermissionDependencyGrantPlanner;
 import com.uten.imp.features.rbac.UserPermissionOverride;
 import com.uten.imp.features.rbac.UserPermissionOverrideId;
 import com.uten.imp.features.rbac.UserPermissionOverrideRepository;
@@ -99,7 +100,7 @@ public class PermissionOverrideAdminService {
         Map<String, String> desired = new LinkedHashMap<>();
         grantSet.forEach(code -> desired.put(code, GRANT));
         revokeSet.forEach(code -> desired.put(code, REVOKE));
-        return apply(locked.account(), desired, sourceActorUserId);
+        return apply(locked.account(), desired, sourceActorUserId, false);
     }
 
     /**
@@ -121,7 +122,8 @@ public class PermissionOverrideAdminService {
         inherited.addAll(breakdown.baselinePermissions());
         inherited.addAll(breakdown.managerGrants());
         Map<String, String> desired = currentOverrides(userId);
-        for (Permission permission : departmentPermissionAdmin.bulkCandidates(scope)) {
+        List<Permission> candidates = departmentPermissionAdmin.bulkCandidates(scope);
+        for (Permission permission : candidates) {
             if (!GrantPolicy.individuallyGrantable(permission.grantPolicies())) {
                 continue;
             }
@@ -133,13 +135,41 @@ public class PermissionOverrideAdminService {
                 desired.put(code, GRANT);
             }
         }
-        return apply(target, desired, sourceActorUserId);
+        Set<String> available = new LinkedHashSet<>(inherited);
+        desired.forEach((code, effect) -> { if (GRANT.equals(effect)) available.add(code); else available.remove(code); });
+        Set<String> blocked = desired.entrySet().stream().filter(entry -> REVOKE.equals(entry.getValue()))
+                .map(Map.Entry::getKey).collect(Collectors.toSet());
+        PermissionDependencyGrantPlanner.additions(permissionRepo.findAll(),
+                candidates.stream().map(Permission::getCode).toList(), available, blocked,
+                permission -> GrantPolicy.individuallyGrantable(permission.grantPolicies())
+                        && GrantPolicy.bulkEligible(permission.grantPolicies()), "个人批量授权")
+                .forEach(code -> desired.put(code, GRANT));
+        return apply(target, desired, sourceActorUserId, true);
     }
 
     private PermissionChangeDto apply(
-            UserAccount target, Map<String, String> desired, UUID sourceActorUserId) {
+            UserAccount target, Map<String, String> desired, UUID sourceActorUserId, boolean bulk) {
         UUID userId = target.getId();
         Map<String, String> current = currentOverrides(userId);
+        PermissionResolver.PermBreakdown breakdown = permissionResolver.breakdownOf(target);
+        Set<String> inherited = new LinkedHashSet<>();
+        if (breakdown != null) {
+            inherited.addAll(breakdown.departmentPermissions());
+            inherited.addAll(breakdown.baselinePermissions());
+            inherited.addAll(breakdown.managerGrants());
+        }
+        Set<String> enabled = desired.entrySet().stream().filter(entry -> GRANT.equals(entry.getValue())
+                        && !GRANT.equals(current.get(entry.getKey())))
+                .map(Map.Entry::getKey).collect(Collectors.toCollection(LinkedHashSet::new));
+        Set<String> blocked = desired.entrySet().stream().filter(entry -> REVOKE.equals(entry.getValue()))
+                .map(Map.Entry::getKey).collect(Collectors.toSet());
+        inherited.removeAll(blocked);
+        desired.forEach((code, effect) -> { if (GRANT.equals(effect)) inherited.add(code); });
+        Set<String> requiredReads = PermissionDependencyGrantPlanner.additions(permissionRepo.findAll(), enabled,
+                inherited, blocked, permission -> GrantPolicy.individuallyGrantable(permission.grantPolicies())
+                        && (!bulk || GrantPolicy.bulkEligible(permission.grantPolicies())),
+                bulk ? "个人批量授权" : "个人授权");
+        requiredReads.forEach(code -> desired.put(code, GRANT));
         Set<String> newlyGranted = desired.entrySet().stream()
                 .filter(entry -> GRANT.equals(entry.getValue()) && !GRANT.equals(current.get(entry.getKey())))
                 .map(Map.Entry::getKey)
@@ -151,7 +181,7 @@ public class PermissionOverrideAdminService {
         for (String code : desired.keySet()) {
             Permission permission = byCode.get(code);
             if (permission == null) {
-                throw new ApiException(ErrorCode.BUSINESS, "权限不存在: " + code);
+                throw new ApiException(ErrorCode.BUSINESS, "所选权限已不存在，请刷新权限列表后重试");
             }
             if (newlyGranted.contains(code)
                     && !GrantPolicy.individuallyGrantable(permission.grantPolicies())) {
@@ -220,8 +250,8 @@ public class PermissionOverrideAdminService {
             return PermissionChangeDto.unchanged();
         }
         overrideRepo.saveAllAndFlush(changed);
-        // 吊销 refresh token，阻止继续续期旧权限；已签发 access token 由用户授权版本触发器失效。
-        refreshTokenRepo.revokeAllByUserId(userId);
+        // The auth-version trigger rejects old access tokens. Refresh resolves current
+        // authority from the database; ordinary grant/revoke retains the login session.
         changeAudit.record("user_permission_override_change", "users", userId.toString(),
                 added, removed, null);
         return new PermissionChangeDto(

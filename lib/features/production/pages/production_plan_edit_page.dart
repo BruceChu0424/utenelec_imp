@@ -43,9 +43,12 @@ import '../../../shared/platform_tables/platform_table_row.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/human_error_message.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../department/models/department_node.dart';
@@ -260,9 +263,13 @@ class _ProductionPlanEditPageState
       }
     } on ApiException catch (e) {
       if (isCurrent()) _initializationError = e.message;
-    } catch (_) {
-      if (isCurrent()) {
-        _initializationError = '无法读取完整单据数据，请检查网络或权限后重试';
+    } catch (error) {
+      if (mounted && isCurrent()) {
+        final l10n =
+            Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+            AppLocalizationsZh();
+        _initializationError =
+            humanErrorMessage(error) ?? l10n.productionDailyReportLoadFailed;
       }
     } finally {
       if (mounted && isCurrent()) setState(() => _loading = false);

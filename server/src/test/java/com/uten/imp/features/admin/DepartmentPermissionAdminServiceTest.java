@@ -115,7 +115,6 @@ class DepartmentPermissionAdminServiceTest {
                 .thenReturn(List.of("finance:view:all", "legacy:individual_only"));
         Permission added = permission("settlement_method:view", GrantPolicy.NORMAL);
         when(permissionRepo.findByCodeIn(anyCollection())).thenReturn(List.of(added));
-        when(employeeRepo.findUserIdsByDepartmentSubtree(departmentId)).thenReturn(List.of());
 
         PermissionChangeDto change = service.setDepartmentPermissions(departmentId, List.of(
                 "finance:view:all", "legacy:individual_only", "settlement_method:view"));
@@ -136,7 +135,6 @@ class DepartmentPermissionAdminServiceTest {
         when(departmentPermissionRepo.findPermissionCodesByDepartmentId(departmentId))
                 .thenReturn(List.of("employee:view", "authorization:manage"));
         when(permissionRepo.findByCodeIn(anyCollection())).thenReturn(List.of(legacy));
-        when(employeeRepo.findUserIdsByDepartmentSubtree(departmentId)).thenReturn(List.of());
 
         PermissionChangeDto change = service.setDepartmentPermissions(
                 departmentId, List.of("employee:view"));
@@ -215,7 +213,6 @@ class DepartmentPermissionAdminServiceTest {
                 permission("goods:price:view", GrantPolicy.BULK_EXCLUDED),
                 permission("stock:balance:adjust", GrantPolicy.INDIVIDUAL_ONLY),
                 permission("authorization:manage", GrantPolicy.SUPERADMIN_ONLY)));
-        when(employeeRepo.findUserIdsByDepartmentSubtree(departmentId)).thenReturn(List.of());
 
         PermissionChangeDto change = service.grantAll(departmentId, PermissionBulkScopeDto.everything());
 
@@ -308,6 +305,115 @@ class DepartmentPermissionAdminServiceTest {
                 .thenAnswer(invocation -> ((java.util.Collection<?>) invocation.getArgument(1)).size());
         org.mockito.Mockito.lenient().when(departmentPermissionRepo.deleteGrants(any(), anyCollection()))
                 .thenAnswer(invocation -> ((java.util.Collection<?>) invocation.getArgument(1)).size());
+    }
+
+    @Test
+    void savingANewActionCompletesOnlyItsNecessaryPageReads() {
+        givenDepartment();
+        Permission action = permission("purchase_order:decompose", GrantPolicy.NORMAL);
+        action.setActionType("EXECUTE");
+        Permission orderView = permission("purchase_order:view", GrantPolicy.NORMAL); orderView.setActionType("VIEW");
+        Permission requestView = permission("purchase_request:view", GrantPolicy.NORMAL); requestView.setActionType("VIEW");
+        Permission price = permission("purchase_order:price:view", GrantPolicy.BULK_EXCLUDED); price.setActionType("VIEW");
+        List<Permission> catalog = List.of(action, orderView, requestView, price);
+        when(permissionRepo.findAll()).thenReturn(catalog);
+        when(permissionRepo.findByCodeIn(anyCollection())).thenAnswer(invocation -> {
+            java.util.Collection<String> codes = invocation.getArgument(0);
+            return catalog.stream().filter(permission -> codes.contains(permission.getCode())).toList();
+        });
+
+        var change = service.setDepartmentPermissions(departmentId, List.of(action.getCode()));
+
+        assertThat(change.added()).containsExactly("purchase_order:decompose", "purchase_order:view", "purchase_request:view");
+        verify(departmentPermissionRepo).insertGrants(eq(departmentId), eq(Set.of(action.getCode(), orderView.getCode(), requestView.getCode())), any());
+    }
+
+    @Test
+    void categoryBulkCompletesCrossCategoryReadsButDoesNotGrantPricesOrAllOwnerScope() {
+        givenDepartment();
+        Permission action = permission("purchase_order:decompose", GrantPolicy.NORMAL); action.setActionType("EXECUTE");
+        action.setModule("采购管理"); action.setCategory("采购订货");
+        Permission orderView = permission("purchase_order:view", GrantPolicy.NORMAL); orderView.setActionType("VIEW");
+        Permission requestView = permission("purchase_request:view", GrantPolicy.NORMAL); requestView.setActionType("VIEW");
+        List<Permission> catalog = List.of(action, orderView, requestView);
+        when(permissionRepo.findAll()).thenReturn(catalog);
+        when(permissionRepo.findByCodeIn(anyCollection())).thenAnswer(invocation -> {
+            java.util.Collection<String> codes = invocation.getArgument(0);
+            return catalog.stream().filter(permission -> codes.contains(permission.getCode())).toList();
+        });
+
+        var change = service.grantAll(departmentId, new PermissionBulkScopeDto("采购管理", "采购订货"));
+
+        assertThat(change.added()).containsExactly("purchase_order:decompose", "purchase_order:view", "purchase_request:view");
+    }
+
+    @Test
+    void anUnavailableNavigationReadDoesNotBlockADepartmentActionGrant() {
+        givenDepartment();
+        Permission action = permission("purchase_order:decompose", GrantPolicy.NORMAL); action.setActionType("EXECUTE");
+        Permission orderView = permission("purchase_order:view", GrantPolicy.NORMAL); orderView.setActionType("VIEW");
+        Permission sourceView = permission("purchase_request:view", GrantPolicy.INDIVIDUAL_ONLY); sourceView.setActionType("VIEW");
+        List<Permission> catalog = List.of(action, orderView, sourceView);
+        when(permissionRepo.findAll()).thenReturn(catalog);
+        when(permissionRepo.findByCodeIn(anyCollection())).thenAnswer(invocation -> {
+            java.util.Collection<String> codes = invocation.getArgument(0);
+            return catalog.stream().filter(permission -> codes.contains(permission.getCode())).toList();
+        });
+
+        var change = service.setDepartmentPermissions(departmentId, List.of(action.getCode()));
+
+        assertThat(change.added()).containsExactly(action.getCode(), orderView.getCode());
+        verify(departmentPermissionRepo).insertGrants(eq(departmentId), eq(Set.of(action.getCode(), orderView.getCode())), any());
+    }
+
+    @Test
+    void anUnavailableHardFinanceReadStillBlocksADepartmentActionGrant() {
+        givenDepartment();
+        Permission action = permission("sales_order_finance:confirm", GrantPolicy.NORMAL); action.setActionType("APPROVE");
+        Permission read = permission("sales_order_finance:view", GrantPolicy.INDIVIDUAL_ONLY); read.setActionType("VIEW");
+        when(permissionRepo.findAll()).thenReturn(List.of(action, read));
+
+        assertThat(assertThrows(ApiException.class, () ->
+                service.setDepartmentPermissions(departmentId, List.of(action.getCode()))).getMessage())
+                .contains(read.getName()).contains("单独确认");
+        verify(departmentPermissionRepo, never()).insertGrants(any(), anyCollection(), any());
+    }
+
+    @Test
+    void withdrawingARequiredReadIsAllowedAndDoesNotRegrantItOrDeleteTheConfiguredAction() {
+        givenDepartment();
+        Permission action = permission("finance_order_approval:approve", GrantPolicy.NORMAL); action.setActionType("APPROVE");
+        Permission view = permission("finance_order_approval:view", GrantPolicy.NORMAL); view.setActionType("VIEW");
+        when(permissionRepo.findAll()).thenReturn(List.of(action, view));
+        when(departmentPermissionRepo.findPermissionCodesByDepartmentId(departmentId)).thenReturn(List.of(action.getCode(), view.getCode()));
+        when(permissionRepo.findByCodeIn(anyCollection())).thenReturn(List.of(view));
+
+        var result = service.setDepartmentPermissions(departmentId, List.of(action.getCode()));
+
+        assertThat(result.removed()).containsExactly(view.getCode());
+        assertThat(result.added()).isEmpty();
+        assertThat(new com.uten.imp.features.rbac.PermissionDependencyCatalog(List.of(action, view))
+                .usablePermissions(Set.of(action.getCode()))).doesNotContain(action.getCode());
+        verify(departmentPermissionRepo, never()).insertGrants(any(), anyCollection(), any());
+        verify(departmentPermissionRepo).deleteGrants(departmentId, List.of(view.getId()));
+    }
+
+    @Test
+    void dependencyMetadataMakesExistingIncompleteConfigurationVisible() {
+        var department = new com.uten.imp.features.org.department.Department(); department.setId(departmentId);
+        when(departmentRepo.findById(departmentId)).thenReturn(Optional.of(department));
+        Permission action = permission("sales_order_finance:confirm", GrantPolicy.NORMAL); action.setActionType("APPROVE");
+        Permission view = permission("sales_order_finance:view", GrantPolicy.NORMAL); view.setActionType("VIEW");
+        when(permissionRepo.findAll()).thenReturn(List.of(action, view));
+        when(departmentPermissionRepo.findPermissionCodesByDepartmentId(departmentId)).thenReturn(List.of(action.getCode()));
+
+        var response = service.getDepartmentPermissions(departmentId);
+
+        assertThat(response.permissions()).containsExactly(action.getCode());
+        assertThat(response.missingDependencies()).containsEntry(action.getCode(), List.of(view.getCode()));
+        assertThat(service.catalog().stream().flatMap(group -> group.permissions().stream())
+                .filter(item -> item.code().equals(action.getCode())).findFirst().orElseThrow().requiredPermissions())
+                .containsExactly(view.getCode());
     }
 
     private static Permission permission(String code, GrantPolicy... policy) {

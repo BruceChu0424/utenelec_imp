@@ -439,7 +439,7 @@ abstract final class Perm {
   static const salesOrderFinanceConfirm = 'sales_order_finance:confirm';
 
   /// 销售报价财务核价(ADR-134)：查看核价队列与详情 / 改价、退回、确认、撤销确认。
-  /// 服务端再叠加财务部门树在职资格(同订单财务确认)；页面按钮只认服务端 allowedActions。
+  /// 按有效查看/确认权限办理，不叠加部门或授权来源；按钮仍遵守服务端 allowedActions。
   static const salesQuoteFinanceView = 'sales_quote_finance:view';
   static const salesQuoteFinanceConfirm = 'sales_quote_finance:confirm';
 

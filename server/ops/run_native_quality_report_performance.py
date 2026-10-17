@@ -47,6 +47,7 @@ CLASS_FILES = {
     "stockBytecodeSha256": "com/uten/imp/features/stock/StockDocService.class",
     "qualityBytecodeSha256": "com/uten/imp/features/production/quality/ProductionFqcInspectionService.class",
 }
+REPOSITORY_SETTINGS = Path("server/.mvn/central-repository-settings.xml")
 
 
 def now() -> str:
@@ -83,6 +84,26 @@ def source_snapshot(root: Path) -> dict:
 
 def save(path: Path, value: object) -> None:
     path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def verify_repository_policy(output: Path, candidate: Path, expected: str) -> None:
+    for path in (output / "repository-settings.xml", candidate / REPOSITORY_SETTINGS):
+        if digest(path) != expected:
+            raise ValueError("Maven repository source policy changed")
+
+
+def prepare_maven(output: Path, candidate: Path) -> tuple[list[str], dict[str, str]]:
+    # The base revision may predate this policy. Both sides must resolve from
+    # the same frozen head policy, including plugin-built dependency models.
+    settings = output / "settings.xml"
+    settings.write_text('<settings xmlns="http://maven.apache.org/SETTINGS/1.2.0"/>\n', encoding="utf-8")
+    repository_settings = output / "repository-settings.xml"
+    repository_hash = digest(candidate / REPOSITORY_SETTINGS)
+    shutil.copyfile(candidate / REPOSITORY_SETTINGS, repository_settings)
+    verify_repository_policy(output, candidate, repository_hash)
+    return (["mvn", "-B", "-ntp", "--ignore-transitive-repositories", "-s", str(settings),
+             "-gs", str(repository_settings)],
+            {"settingsSha256": digest(settings), "repositorySettingsSha256": repository_hash})
 
 
 def capture(command: list[str], *, cwd: Path | None = None, env: dict | None = None) -> str:
@@ -324,9 +345,9 @@ def run(args: argparse.Namespace) -> None:
             raise ValueError("Java 21 is required")
         manifest["java"] = java
         manifest["maven"] = capture(["mvn", "--version"], env=env)
-        settings = output / "settings.xml"
-        settings.write_text('<settings xmlns="http://maven.apache.org/SETTINGS/1.2.0"/>\n', encoding="utf-8")
-        maven = ["mvn", "-B", "-ntp", "-s", str(settings)]
+        maven, maven_policy = prepare_maven(output, candidate)
+        manifest.update(maven_policy)
+        save(output / "manifest.json", manifest)
         for side, checkout, goal in (("baseline", baseline, "compile"), ("candidate", candidate, "test-compile")):
             command = [*maven, "-DskipTests", "-Duten.build.directory=" + str(output / ("build-" + side)), goal]
             execute(command, checkout / "server", env, output / (side + "-compile.log"))
@@ -343,7 +364,6 @@ def run(args: argparse.Namespace) -> None:
         execute([*maven, "dependency:build-classpath", "-DincludeScope=test", "-Dmdep.outputFile=" + str(dependency_file)],
                 candidate / "server", env, output / "classpath-prepare.log")
         manifest["dependencyJars"] = dependency_snapshot(dependency_file.read_text(encoding="utf-8").strip())
-        manifest["settingsSha256"] = digest(settings)
         for image in (POSTGRES_IMAGE, RYUK_IMAGE):
             execute(["docker", "pull", image], candidate, env, output / (image.split(":")[0].replace("/", "-") + "-pull.log"))
         manifest["fixtureImages"] = image_snapshot(env)
@@ -435,6 +455,7 @@ def verify_frozen(output: Path, manifest: dict, baseline: Path, candidate: Path,
         raise ValueError("Execution Maven model changed")
     if digest(output / "settings.xml") != manifest["settingsSha256"] or digest(Path(__file__)) != manifest["runnerSha256"]:
         raise ValueError("Runner or Maven settings changed")
+    verify_repository_policy(output, candidate, manifest["repositorySettingsSha256"])
     if any(digest(Path(path)) != expected for path, expected in manifest["dependencyJars"].items()):
         raise ValueError("Runtime dependency bytes changed")
     if image_snapshot(env) != manifest["fixtureImages"]:

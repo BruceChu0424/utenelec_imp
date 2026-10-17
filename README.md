@@ -102,7 +102,7 @@
 | 工具 | 版本 |
 |---|---|
 | Flutter / Dart | 3.44.2 / 3.12.2(通过 `PATH` 或 `FLUTTER_HOME` 配置, 不写死个人路径) |
-| JDK / Maven | 21 / 3.9+ |
+| JDK / Maven | 21 / 3.9.7+ |
 | Docker | 本地 PostgreSQL 与数据库测试(Testcontainers)需要 |
 
 ### 1. 启动后端

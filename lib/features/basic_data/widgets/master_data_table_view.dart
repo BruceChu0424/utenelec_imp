@@ -1892,6 +1892,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   String? _localSortColumn;
   bool _localSortAscending = true;
   String _queryPreferenceSignature = '';
+  String? _queryPreferenceTableKey;
+  bool _queryPreferencesPresent = false;
   int _queryRestoreRevision = 0;
   bool get _serverPaged =>
       widget.onPageChange != null ||
@@ -1927,10 +1929,26 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   ) {
     final signature = _querySignature(filters, sort, ascending, present);
     if (signature == _queryPreferenceSignature) return;
-    final previouslyPresent = _queryPreferenceSignature.isNotEmpty;
+    final tableKey = _platform.tableKey;
+    final tableChanged =
+        _queryPreferenceTableKey != null &&
+        _queryPreferenceTableKey != tableKey;
+    final previouslyPresent =
+        _queryPreferenceTableKey == tableKey && _queryPreferencesPresent;
     _queryPreferenceSignature = signature;
+    _queryPreferenceTableKey = tableKey;
+    _queryPreferencesPresent = present;
     final revision = ++_queryRestoreRevision;
     final lifecycle = _platform.queryLifecycle;
+    if (tableChanged) {
+      _rowFilters.clear();
+      _columnSearches.clear();
+      _localSortColumn = null;
+      _localSortAscending = true;
+    }
+    // A changed column set is not a removed preference. It still invalidates
+    // pending restores, but must not clear a page's controlled query when no
+    // stored query existed. An actual true -> false reset continues below.
     if (!present && !previouslyPresent) return;
     final local = <String, String?>{};
     final server = <String, String?>{};

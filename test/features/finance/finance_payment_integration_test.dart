@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -215,6 +216,10 @@ void main() {
         ),
       );
       expect(pickerGrid, findsOneWidget);
+      final pickerHeaders = find.descendant(
+        of: pickerGrid,
+        matching: find.byType(UtenColumnHeaderMenuRegion),
+      );
       for (final label in const [
         '应付单号',
         '关联单号',
@@ -224,10 +229,18 @@ void main() {
         '本次付款金额',
       ]) {
         expect(
-          find.descendant(of: pickerGrid, matching: find.text(label)),
+          find.descendant(of: pickerHeaders, matching: find.text(label)),
           findsOneWidget,
         );
       }
+      TextField amountField(String id) =>
+          tester.widget<TextField>(find.byKey(ValueKey('ar-ap-amount-$id')));
+      for (final id in ['ap-usd', 'ap-eur', 'ap-incomplete']) {
+        expect(amountField(id).decoration!.labelText, '本次付款金额');
+        expect(amountField(id).decoration!.hintText, '本次付款金额');
+      }
+      expect(amountField('ap-usd').decoration!.suffixText, '美金');
+      expect(amountField('ap-eur').decoration!.suffixText, '欧元');
       expect(find.text('搜索应付单号、关联单号或供应商'), findsOneWidget);
 
       Checkbox checkbox(String id) =>
@@ -244,6 +257,10 @@ void main() {
       expect(checkbox('ap-usd').value, isTrue);
       expect(checkbox('ap-eur').onChanged, isNull);
       expect(checkbox('ap-incomplete').onChanged, isNull);
+      expect(amountField('ap-usd').controller!.text, '80');
+      expect(amountField('ap-usd').enabled, isTrue);
+      expect(amountField('ap-eur').enabled, isFalse);
+      expect(amountField('ap-incomplete').enabled, isFalse);
       expect(find.text('本次币种：美金'), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('ar-ap-confirm')));

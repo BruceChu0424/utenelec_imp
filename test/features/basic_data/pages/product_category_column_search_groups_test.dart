@@ -27,7 +27,10 @@ void main() {
             sharedPreferencesProvider.overrideWithValue(
               await SharedPreferences.getInstance(),
             ),
-            currentPermissionsProvider.overrideWithValue({Perm.goodsView}),
+            currentPermissionsProvider.overrideWithValue({
+              Perm.goodsView,
+              Perm.materialCategoryView,
+            }),
             productCategoryRepositoryProvider.overrideWithValue(
               _OrphanCategory(),
             ),

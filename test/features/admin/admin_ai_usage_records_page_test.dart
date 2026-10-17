@@ -444,7 +444,20 @@ void main() {
       await tester.ensureVisible(find.text(l10n.aiRecordsBillingOpen));
       await tester.tap(find.text(l10n.aiRecordsBillingOpen));
       await tester.pumpAndSettle();
-      expect(find.text(l10n.aiAuditInputPrice), findsOneWidget);
+      for (final entry in {
+        l10n.aiAuditInputPrice: '1.0',
+        l10n.aiAuditOutputPrice: '2.0',
+      }.entries) {
+        final field = find.byWidgetPredicate(
+          (widget) => widget is UtenInput && widget.label == entry.key,
+        );
+        expect(field, findsOneWidget);
+        final input = tester.widget<TextField>(
+          find.descendant(of: field, matching: find.byType(TextField)),
+        );
+        expect(input.controller!.text, entry.value);
+        expect(input.decoration!.hintText, entry.key);
+      }
       expect(find.text(l10n.aiAuditSaveBilling), findsOneWidget);
       expect(find.byTooltip('关闭操作面板'), findsNothing);
       expect(tester.takeException(), isNull);

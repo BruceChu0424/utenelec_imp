@@ -230,6 +230,20 @@ void main() {
           ],
         };
         final api = _ExactEditorApi(detail);
+        final location = '/finance/${type.pathSegment}/document-1';
+        final router = GoRouter(
+          initialLocation: location,
+          routes: [
+            GoRoute(
+              path: '/finance/${type.pathSegment}/:id',
+              builder: (_, state) => FinanceDocEditPage(
+                docType: type,
+                id: state.pathParameters['id'],
+              ),
+            ),
+          ],
+        );
+        addTearDown(router.dispose);
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
@@ -237,9 +251,7 @@ void main() {
               apiClientProvider.overrideWithValue(api),
               sessionProvider.overrideWith(_TestSessionNotifier.new),
             ],
-            child: MaterialApp(
-              home: FinanceDocEditPage(docType: type, id: 'document-1'),
-            ),
+            child: MaterialApp.router(routerConfig: router),
           ),
         );
         await tester.pumpAndSettle();
@@ -255,6 +267,8 @@ void main() {
         await tester.tap(find.text('保存'));
         await tester.pumpAndSettle();
         expect(api.bodies, hasLength(1));
+        expect(router.routeInformationProvider.value.uri.toString(), location);
+        expect(find.text('保存失败，请稍后重试'), findsNothing);
         final first = (api.bodies.single['items'] as List).single as Map;
         expect(first['amountOriginal'], original);
         // ADR-112: 本币由服务端按表头汇率派生, 请求只带实际金额原文。
@@ -264,13 +278,24 @@ void main() {
           expect(first['qty'], '2.0000');
           expect(first['price'], '1.2345678901');
         }
-        row.amount.text = changed;
+        tester
+                .widget<UtenEditableGrid<FinanceGridRow>>(
+                  find.byType(UtenEditableGrid<FinanceGridRow>),
+                )
+                .controller
+                .rows
+                .single
+                .amount
+                .text =
+            changed;
         await tester.tap(find.text('保存'));
         await tester.pumpAndSettle();
         expect(api.bodies, hasLength(2));
         final second = (api.bodies.last['items'] as List).single as Map;
         expect(second['amountOriginal'], changed);
         expect(second.containsKey('amountLocal'), isFalse);
+        expect(router.routeInformationProvider.value.uri.toString(), location);
+        expect(find.text('保存失败，请稍后重试'), findsNothing);
         expect(tester.takeException(), isNull);
       },
     );

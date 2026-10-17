@@ -1,6 +1,6 @@
 ---
 name: ui-ux-pro-max
-description: "UI/UX design intelligence for web and mobile. Includes 50+ styles, 161 color palettes, 57 font pairings, 161 product types, 99 UX guidelines, and 25 chart types across 10 stacks (React, Next.js, Vue, Svelte, SwiftUI, React Native, Flutter, Tailwind, shadcn/ui, and HTML/CSS). Actions: plan, build, create, design, implement, review, fix, improve, optimize, enhance, refactor, and check UI/UX code. Projects: website, landing page, dashboard, admin panel, e-commerce, SaaS, portfolio, blog, and mobile app. Elements: button, modal, navbar, sidebar, card, table, form, and chart. Styles: glassmorphism, claymorphism, minimalism, brutalism, neumorphism, bento grid, dark mode, responsive, skeuomorphism, and flat design. Topics: color systems, accessibility, animation, layout, typography, font pairing, spacing, interaction states, shadow, and gradient. Integrations: shadcn/ui MCP for component search and examples."
+description: "Optional UI/UX reference database for styles, palettes, typography, accessibility, charts, and framework guidance. Use only when the user explicitly requests ui-ux-pro-max. Frontend code changes and related design documents default to frontend-design."
 ---
 
 # UI/UX Pro Max - Design Intelligence
@@ -9,41 +9,11 @@ Comprehensive design guide for web and mobile applications. Contains 50+ styles,
 
 ## When to Apply
 
-This Skill should be used when the task involves **UI structure, visual design decisions, interaction patterns, or user experience quality control**.
+Use this skill only when the user explicitly requests `ui-ux-pro-max`.
 
-### Must Use
+Frontend/UI code creation, changes, refactoring, reviews, and related design documents default to `frontend-design` at `~/.agents/skills/frontend-design/SKILL.md` (Windows: `C:/Users/bruce/.agents/skills/frontend-design/SKILL.md`). General requests to improve UI, fix a component, or review accessibility do not activate this optional skill.
 
-This Skill must be invoked in the following situations:
-
-- Designing new pages (Landing Page, Dashboard, Admin, SaaS, Mobile App)
-- Creating or refactoring UI components (buttons, modals, forms, tables, charts, etc.)
-- Choosing color schemes, typography systems, spacing standards, or layout systems
-- Reviewing UI code for user experience, accessibility, or visual consistency
-- Implementing navigation structures, animations, or responsive behavior
-- Making product-level design decisions (style, information hierarchy, brand expression)
-- Improving perceived quality, clarity, or usability of interfaces
-
-### Recommended
-
-This Skill is recommended in the following situations:
-
-- UI looks "not professional enough" but the reason is unclear
-- Receiving feedback on usability or experience
-- Pre-launch UI quality optimization
-- Aligning cross-platform design (Web / iOS / Android)
-- Building design systems or reusable component libraries
-
-### Skip
-
-This Skill is not needed in the following situations:
-
-- Pure backend logic development
-- Only involving API or database design
-- Performance optimization unrelated to the interface
-- Infrastructure or DevOps work
-- Non-visual scripts or automation tasks
-
-**Decision criteria**: If the task will change how a feature **looks, feels, moves, or is interacted with**, this Skill should be used.
+The reference tables and workflows below apply after explicit invocation. They do not require automatic use of this skill and do not override the project's existing components, theme tokens, accessibility, or business rules. Pure backend, database, deployment, and non-UI documentation tasks do not need a design skill.
 
 ## Rule Categories by Priority
 
@@ -336,7 +306,7 @@ winget install Python.Python.3.12
 
 ## How to Use This Skill
 
-Use this skill when the user requests any of the following:
+After the user explicitly invokes `ui-ux-pro-max`, choose the relevant workflow below:
 
 | Scenario | Trigger Examples | Start From |
 |----------|-----------------|------------|

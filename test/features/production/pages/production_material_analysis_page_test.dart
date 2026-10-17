@@ -4454,7 +4454,19 @@ void main() {
           ),
           findsOneWidget,
         );
-        await tester.tap(header);
+        // A frozen copy may cover the ordinary header at the same scroll
+        // position. Tap the label that actually participates in hit testing.
+        final activeLabel = find
+            .descendant(
+              of: find.byKey(
+                const Key('material-analysis-material-table-region'),
+              ),
+              matching: find.text(label),
+            )
+            .hitTestable()
+            .last;
+        expect(activeLabel, findsOneWidget);
+        await tester.tap(activeLabel);
         await tester.pumpAndSettle();
         final input = find.byKey(const Key('uten-column-keyword-input'));
         expect(input, findsOneWidget);
@@ -8043,7 +8055,15 @@ void main() {
       expect(find.text('可安排产品 101'), findsOneWidget);
       expect(_bucketShortageText(tester, '可安排产品 101'), '1');
 
-      await tester.tap(_bucketHeaderCheckbox());
+      final visibleSelectAll = find
+          .descendant(
+            of: find.byKey(const Key('material-analysis-bucket-entries')),
+            matching: find.byKey(const Key('master-data-table-select-all')),
+          )
+          .hitTestable()
+          .last;
+      expect(visibleSelectAll, findsOneWidget);
+      await tester.tap(visibleSelectAll);
       await tester.pumpAndSettle();
       expect(find.text('已选 101 项'), findsOneWidget);
       expect(find.text('创建生产计划(101)…'), findsOneWidget);

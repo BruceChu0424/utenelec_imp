@@ -1,21 +1,25 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { prisma } from '@/lib/db';
+import type { CaseItem } from '@prisma/client';
+import { getCmsEditState } from '@/lib/cms-revisions';
+import { CmsDraftForm } from '@/components/admin/CmsDraftForm';
 import { pickLocale } from '@/lib/content';
 import { saveCase } from '@/app/admin/actions';
 import { ImageUpload } from '@/components/admin/ImageUpload';
 
 export default async function CaseEditPage({ params }: { params: Promise<{ id?: string[] }> }) {
   const id = (await params).id?.[0];
-  const c = id ? await prisma.caseItem.findUnique({ where: { id } }) : null;
+  const editing = id ? await getCmsEditState('case', id) : null;
+  const c = editing?.snapshot.record as unknown as CaseItem | null;
   if (id && !c) notFound();
   const zh = c ? (pickLocale<{ title?: string; location?: string; content?: string }>(c.i18n, 'zh') ?? {}) : {};
   const en = c ? (pickLocale<{ title?: string; location?: string; content?: string }>(c.i18n, 'en') ?? {}) : {};
 
   return (
-    <form action={saveCase} className="max-w-2xl">
+    <CmsDraftForm action={saveCase} className="max-w-2xl">
       <h1 className="font-heading text-2xl font-bold">{c ? '编辑案例' : '新增案例'}</h1>
       {c && <input type="hidden" name="id" value={c.id} />}
+      <input type="hidden" name="expectedHash" value={editing?.baseHash || ''} />
       <div className="mt-5 card-uten space-y-4 p-5">
         <div><label className="label-uten">封面图片</label><ImageUpload name="coverImage" value={c?.coverImage || ''} /></div>
       </div>
@@ -31,7 +35,7 @@ export default async function CaseEditPage({ params }: { params: Promise<{ id?: 
         <div><label className="label-uten">Location</label><input name="en_location" defaultValue={en.location || ''} className="input-uten" /></div>
         <div><label className="label-uten">Description</label><textarea name="en_content" rows={4} defaultValue={en.content || ''} className="input-uten resize-none" /></div>
       </fieldset>
-      <div className="mt-6 flex gap-3"><button className="btn-accent">保存案例</button><Link href="/admin/cases" className="btn-outline">取消</Link></div>
-    </form>
+      <div className="mt-6 flex gap-3"><button className="btn-accent">保存案例草稿</button><Link href="/admin/cases" className="btn-outline">取消</Link></div>
+    </CmsDraftForm>
   );
 }

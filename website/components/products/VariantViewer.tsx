@@ -4,6 +4,7 @@ import Image from 'next/image';
 import { ArrowUpRight, Box, Layers3, Ruler } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from '@/i18n/navigation';
+import { productContactHref } from '@/lib/public-product';
 
 export type ViewerVariant = {
   id: string;
@@ -24,7 +25,7 @@ export function VariantViewer({
   initialVariantId,
   locale,
 }: {
-  product: { name: string; model?: string | null; seriesName: string; description?: string; studioHref: string };
+  product: { id: string; seriesId?: string | null; name: string; model?: string | null; seriesName: string; description?: string; studioHref?: string };
   variants: ViewerVariant[];
   labels: { variants: string; gallery: string; finish: string; dimensions: string; specsPending: string; tryOnWall: string; askAdvice: string; displayOnly: string };
   initialVariantId?: string;
@@ -69,9 +70,9 @@ export function VariantViewer({
       </div>
 
       <div className="lg:py-4">
-        <p className="text-xs font-bold uppercase tracking-[.2em] text-accent">{product.seriesName}</p>
+        <p className="text-sm font-medium text-muted-foreground">{product.seriesName}</p>
         <h1 className="mt-4 text-balance text-4xl font-semibold leading-[1.08] tracking-[-.045em] md:text-6xl">{product.name}</h1>
-        {product.model && <p className="mt-4 font-mono text-sm font-semibold tracking-[.1em] text-muted-foreground">MODEL · {product.model}</p>}
+        {product.model && <p className="mt-4 text-sm text-muted-foreground">{product.model}</p>}
         {product.description && <p className="mt-7 max-w-xl text-pretty text-base leading-8 text-muted-foreground">{product.description}</p>}
 
         {(variants.length > 1 || variants.some((item) => item.swatchHex || item.finish)) && (
@@ -105,8 +106,8 @@ export function VariantViewer({
         </dl>}
 
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-          <Link locale={locale} href={`${product.studioHref}${variant ? `?variant=${encodeURIComponent(variant.id)}` : ''}`} className="btn-accent"><Box className="h-4 w-4" />{labels.tryOnWall}</Link>
-          <Link locale={locale} href={`/contact?product=${encodeURIComponent(`${product.name}${variant ? ` · ${variant.name}` : ''}`)}`} className="btn-outline">{labels.askAdvice}<ArrowUpRight className="h-4 w-4" /></Link>
+          <Link locale={locale} href={productContactHref({ productId: product.id, variantId: variant?.id, seriesId: product.seriesId })} className="btn-accent">{labels.askAdvice}<ArrowUpRight className="h-4 w-4" /></Link>
+          {product.studioHref && <Link locale={locale} href={`${product.studioHref}${variant ? `?variant=${encodeURIComponent(variant.id)}` : ''}`} className="btn-outline"><Box className="h-4 w-4" />{labels.tryOnWall}</Link>}
         </div>
       </div>
     </div>

@@ -2,6 +2,8 @@ package com.uten.imp.features.webinquiry.dto;
 
 import java.time.Instant;
 import java.util.UUID;
+import java.util.List;
+import com.fasterxml.jackson.databind.JsonNode;
 
 /** 官网询盘详情（含完整留言与跟进信息）。 */
 public record WebsiteInquiryDetail(
@@ -28,6 +30,8 @@ public record WebsiteInquiryDetail(
         UUID clientId,
         String clientName,
         String note,
-        Instant receivedAt
+        Instant receivedAt,
+        JsonNode sourceContext,
+        List<InquiryTimelineEntry> timeline
 ) {
 }

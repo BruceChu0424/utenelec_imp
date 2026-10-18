@@ -3,6 +3,9 @@ package com.uten.imp.features.webinquiry;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.application.port.EmployeeNameLookupPort;
 import com.uten.imp.application.port.WebsiteInquiryClientPort;
+import com.uten.imp.application.port.BusinessEventPublisher;
+import com.uten.imp.features.webinquiry.dto.FollowUpRequest;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -44,6 +47,8 @@ public class WebsiteInquiryService {
     private final SecurityContextCurrentUser currentUser;
     private final AuditService audit;
     private final EntityManager entityManager;
+    private final WebsiteInquiryTimelineRepository timeline;
+    private final BusinessEventPublisher events;
 
     /** 官网推送落库；sourceId 已存在时幂等返回 false（不重复建行、不报错）。 */
     @Transactional
@@ -58,7 +63,12 @@ public class WebsiteInquiryService {
             return false;
         }
         WebsiteInquiry inquiry = new WebsiteInquiry();
+        if (request.sourceContext()!=null && (!request.sourceContext().isObject()
+                || request.sourceContext().toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length>32768)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"询盘来源信息格式或长度不正确");
+        }
         inquiry.setSourceId(request.sourceId());
+        inquiry.setSourceContext(request.sourceContext()==null ? JsonNodeFactory.instance.objectNode() : request.sourceContext().deepCopy());
         inquiry.setName(request.name());
         inquiry.setPhone(request.phone());
         inquiry.setEmail(request.email());
@@ -74,7 +84,10 @@ public class WebsiteInquiryService {
         inquiry.setMessage(request.message());
         inquiry.setSource(request.source() == null || request.source().isBlank() ? "contact" : request.source());
         inquiry.setLocale(request.locale() == null || request.locale().isBlank() ? "zh" : request.locale());
-        repository.save(inquiry);
+        repository.saveAndFlush(inquiry);
+        timeline.append(inquiry.getId(),"RECEIVED",null);
+        events.publishOnce("WEBSITE_INQUIRY_CREATED","WEBSITE_INQUIRY",inquiry.getId(),Map.of(),
+                "WEBSITE_INQUIRY_CREATED:"+inquiry.getId());
         return true;
     }
 
@@ -113,6 +126,16 @@ public class WebsiteInquiryService {
         if ("converted".equals(inquiry.getStatus())) {
             throw new ApiException(ErrorCode.CONFLICT, "已转客户的询盘不能再改状态");
         }
+        if (assignToMe && inquiry.getAssigneeEmployeeId()!=null
+                && !inquiry.getAssigneeEmployeeId().equals(currentUser.requireEmployeeId())) {
+            throw new ApiException(ErrorCode.CONFLICT,"这条询盘已由其他员工认领，请刷新后核对跟进人");
+        }
+        if (assignToMe && !"following".equals(request.status())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"认领询盘必须进入跟进中");
+        }
+        if (assignToMe && "following".equals(inquiry.getStatus())
+                && currentUser.requireEmployeeId().equals(inquiry.getAssigneeEmployeeId())
+                && (request.note()==null || request.note().isBlank())) return toDetail(inquiry);
         if (!assignToMe && !Objects.equals(assigneeToLock, inquiry.getAssigneeEmployeeId())) {
             // A handover/claim changed the responsibility while we waited.
             // Never acquire its new employee lock after the inquiry row lock.
@@ -126,6 +149,9 @@ public class WebsiteInquiryService {
             inquiry.setAssigneeEmployeeId(currentUser.requireEmployeeId());
         }
         repository.save(inquiry);
+        timeline.append(id,assignToMe?"CLAIMED":"STATUS_CHANGED",
+                request.note()==null || request.note().isBlank()?null:request.note().trim());
+        events.publish("WEBSITE_INQUIRY_UPDATED","WEBSITE_INQUIRY",id,Map.of());
         audit.logCommitted(currentUser.requireId(), currentAccount(),
                 "webinquiry_status", "website_inquiry",
                 "询价=" + inquiry.getId() + "；状态已更新", "success");
@@ -156,6 +182,8 @@ public class WebsiteInquiryService {
             inquiry.setAssigneeEmployeeId(currentUser.employeeId().orElse(null));
         }
         repository.save(inquiry);
+        timeline.append(id,"CONVERTED",null);
+        events.publish("WEBSITE_INQUIRY_UPDATED","WEBSITE_INQUIRY",id,Map.of());
         audit.logCommitted(currentUser.requireId(), currentAccount(),
                 "webinquiry_convert", "website_inquiry",
                 "询价=" + inquiry.getId() + "；客户=" + client.id(), "success");
@@ -165,6 +193,38 @@ public class WebsiteInquiryService {
     @Transactional(readOnly = true)
     public long countNew() {
         return repository.countByStatus("new");
+    }
+
+    @Transactional(readOnly=true)
+    public Map<String,Long> counts() {
+        var actor=currentUser.get().orElseThrow(()->new ApiException(ErrorCode.UNAUTHORIZED));
+        boolean mayClaim=!actor.isVisitor() && actor.getEmployeeId()!=null
+                && actor.getPermissions().contains("webinquiry:claim");
+        long unclaimed=mayClaim?repository.countByStatusAndAssigneeEmployeeIdIsNull("new"):0;
+        long following=mayClaim?repository.countByStatusAndAssigneeEmployeeId("following",actor.getEmployeeId()):0;
+        return Map.of("unclaimed",unclaimed,"myFollowing",following,"actionable",unclaimed);
+    }
+
+    @PreAuthorize("hasAuthority('webinquiry:view') and hasAuthority('webinquiry:claim')")
+    @Transactional
+    public WebsiteInquiryDetail followUp(UUID id,FollowUpRequest request) {
+        UUID actor=currentUser.requireEmployeeId();
+        WebsiteInquiry inquiry=requireForUpdate(id,actor);
+        if (!"following".equals(inquiry.getStatus()) || !actor.equals(inquiry.getAssigneeEmployeeId()))
+            throw new ApiException(ErrorCode.CONFLICT,"仅当前跟进人可为跟进中的询盘添加记录");
+        String note=request.note()==null?"":request.note().trim();
+        if(note.isEmpty() || note.length()>1000) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请填写1至1000字跟进记录");
+        timeline.append(id,"FOLLOW_UP",note);
+        inquiry.setNote(note);
+        repository.save(inquiry);
+        audit.logCommitted(currentUser.requireId(),currentAccount(),"webinquiry_follow_up","website_inquiry",
+                "询价="+id+"；已追加跟进记录","success");
+        return toDetail(inquiry);
+    }
+
+    @Transactional(readOnly=true)
+    public UUID idBySource(String sourceId) {
+        return repository.findBySourceId(sourceId).orElseThrow(()->new ApiException(ErrorCode.NOT_FOUND)).getId();
     }
 
     private WebsiteInquiry require(UUID id) {
@@ -230,6 +290,6 @@ public class WebsiteInquiryService {
                 item.getSource(), item.getLocale(), item.getStatus(),
                 item.getAssigneeEmployeeId(), assigneeName,
                 item.getClientId(), clientName,
-                item.getNote(), item.getReceivedAt());
+                item.getNote(), item.getReceivedAt(),item.getSourceContext(),timeline.list(item.getId()));
     }
 }

@@ -1,4 +1,7 @@
 import { prisma } from '@/lib/db';
+import { getCmsEditState } from '@/lib/cms-revisions';
+import { getProductPublicationIssue } from '@/lib/publication';
+import { pickLocale } from '@/lib/content';
 import { readAdminI18nLocale } from '@/lib/admin-i18n';
 import {
   SiteSettingsForm,
@@ -25,13 +28,14 @@ export default async function SettingsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const [records, query] = await Promise.all([
-    prisma.setting.findMany({
-      where: { key: { in: SETTING_KEYS } },
-      select: { key: true, i18n: true },
-    }),
+  const [editing, query, allSeries] = await Promise.all([
+    Promise.all(SETTING_KEYS.map(key => getCmsEditState('setting', key))),
     searchParams,
+    prisma.series.findMany({include:{parent:true},orderBy:{sortOrder:'asc'}}),
   ]);
+  const records = editing.flatMap(entry => entry.snapshot.record ? [{key:String(entry.snapshot.record.key),i18n:String(entry.snapshot.record.i18n)}] : []);
+  const baseHashes = Object.fromEntries(SETTING_KEYS.map((key,index)=>[key,editing[index].baseHash])) as Record<SiteSettingKey,string>;
+  const seriesOptions=allSeries.filter(series=>!getProductPublicationIssue(true,series)).map(series=>({id:series.id,name:pickLocale<{name?:string}>(series.i18n,'zh')?.name||series.code}));
   const byKey = new Map(records.map((record) => [record.key, record.i18n]));
   const errors: Partial<Record<SiteSettingKey, string>> = {};
 
@@ -90,12 +94,9 @@ export default async function SettingsPage({
     footer: { zh: stringFields(objectLocale('footer', 'zh')), en: stringFields(objectLocale('footer', 'en')) },
   };
 
-  const saved = Array.isArray(query.saved) ? query.saved[0] : query.saved;
   const setting = Array.isArray(query.setting) ? query.setting[0] : query.setting;
   const error = Array.isArray(query.error) ? query.error[0] : query.error;
-  const feedback = isSettingKey(saved)
-    ? { key: saved, kind: 'success' as const, message: '已保存并刷新公开页面缓存' }
-    : isSettingKey(setting) && error
+  const feedback = isSettingKey(setting) && error
       ? {
           key: setting,
           kind: 'error' as const,
@@ -103,5 +104,5 @@ export default async function SettingsPage({
         }
       : undefined;
 
-  return <SiteSettingsForm initial={initial} errors={errors} feedback={feedback} />;
+  return <SiteSettingsForm baseHashes={baseHashes} seriesOptions={seriesOptions} initial={initial} errors={errors} feedback={feedback} />;
 }

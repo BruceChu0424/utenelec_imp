@@ -3,9 +3,9 @@
 import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
 import { routing } from '@/i18n/routing';
-import { prisma } from './db';
+import { randomUUID } from 'node:crypto';
+import { acceptInquiry } from './inquiry-acceptance';
 import {
-  INQUIRY_CONSENT_POLICY_VERSION,
   inquiryRateLimiter,
   resolveTrustedClientIp,
 } from './inquiry-security';
@@ -49,11 +49,11 @@ export async function submitInquiry(formData: FormData) {
 
   const requestHeaders = await headers();
   const clientIp = resolveTrustedClientIp((header) => requestHeaders.get(header));
-  if (!inquiryRateLimiter.allow(clientIp)) return rejected();
 
   try {
-    const inquiry = await prisma.inquiry.create({
-      data: {
+    const rawKey = clean(formData.get('submissionKey'), 100);
+    if (rawKey && !/^[a-zA-Z0-9_-]{16,100}$/.test(rawKey)) return rejected();
+    const receiptId = await acceptInquiry({
         name,
         phone,
         email,
@@ -69,78 +69,11 @@ export async function submitInquiry(formData: FormData) {
         message,
         source,
         locale,
-        consentAt: new Date(),
-        consentPolicyVersion: INQUIRY_CONSENT_POLICY_VERSION,
-      },
-    });
+    }, { productId: clean(formData.get('productId'), 100), variantId: clean(formData.get('variantId'), 100),
+      seriesId: clean(formData.get('seriesId'), 100) }, rawKey || randomUUID(), () => inquiryRateLimiter.allow(clientIp));
     revalidatePath('/admin/inquiries');
-    forwardInquiryToImp({
-      sourceId: inquiry.id,
-      name,
-      phone,
-      email,
-      company,
-      market,
-      customerType,
-      requiredStandard,
-      productInterest,
-      requestType,
-      estimatedQuantity,
-      targetSchedule,
-      preferredContact,
-      message,
-      source,
-      locale,
-    });
-    return { ok: true as const };
+    return { ok: true as const, receiptId };
   } catch {
     return rejected();
   }
-}
-
-type ImpInquiryPayload = {
-  sourceId: string;
-  name: string;
-  phone: string | null;
-  email: string | null;
-  company: string | null;
-  market: string | null;
-  customerType: string | null;
-  requiredStandard: string | null;
-  productInterest: string | null;
-  requestType: string | null;
-  estimatedQuantity: string | null;
-  targetSchedule: string | null;
-  preferredContact: string | null;
-  message: string;
-  source: string;
-  locale: string;
-};
-
-/**
- * 询盘同步推送到 IMP 平台（销售统一工作台，POST /api/website-inquiries/ingest）。
- * 刻意 fire-and-forget：官网落库即成功，推送失败只记日志、由 IMP 侧缺单巡检兜底，
- * 绝不让内部系统抖动影响对外表单转化。未配置 IMP_INGEST_URL/TOKEN 时静默跳过。
- */
-function forwardInquiryToImp(payload: ImpInquiryPayload) {
-  const url = process.env.IMP_INGEST_URL;
-  const token = process.env.IMP_INGEST_TOKEN;
-  if (!url || !token) return;
-  fetch(url, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-uten-ingest-token': token,
-    },
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(4000),
-  })
-    .then(async (response) => {
-      if (!response.ok) {
-        console.warn(`[inquiry] IMP ingest rejected ${response.status} for ${payload.sourceId}`);
-      }
-    })
-    .catch((error: unknown) => {
-      console.warn(`[inquiry] IMP ingest failed for ${payload.sourceId}:`, error);
-    });
 }

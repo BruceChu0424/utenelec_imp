@@ -62,8 +62,12 @@ class WebsiteInquiry {
     this.targetSchedule,
     this.preferredContact,
     this.source = 'contact',
+    this.sourceId,
     this.locale = 'zh',
     this.assigneeName,
+    this.assigneeEmployeeId,
+    this.sourceContext = const {},
+    this.timeline = const [],
     this.clientId,
     this.clientName,
     this.note,
@@ -87,10 +91,14 @@ class WebsiteInquiry {
   final String? targetSchedule;
   final String? preferredContact;
   final String source;
+  final String? sourceId;
   final String locale;
 
   /// 跟进人姓名快照（服务端按 assigneeEmployeeId 解析）。
   final String? assigneeName;
+  final String? assigneeEmployeeId;
+  final Map<String, dynamic> sourceContext;
+  final List<WebsiteInquiryEvent> timeline;
 
   /// 转客户后关联的客户主档。
   final String? clientId;
@@ -104,4 +112,23 @@ class WebsiteInquiry {
     company,
     market,
   ].whereType<String>().where((s) => s.isNotEmpty).join(' · ');
+}
+
+class WebsiteInquiryEvent {
+  const WebsiteInquiryEvent({
+    required this.id,
+    required this.kind,
+    required this.createdAt,
+    this.note,
+    this.actorName,
+    this.actorEmployeeCode,
+  });
+  final String id, kind;
+  final DateTime createdAt;
+  final String? note, actorName, actorEmployeeCode;
+  String? get actorLabel => actorName == null
+      ? null
+      : actorEmployeeCode == null || actorEmployeeCode!.isEmpty
+      ? actorName
+      : '$actorName($actorEmployeeCode)';
 }

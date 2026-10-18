@@ -41,4 +41,6 @@ public interface WebsiteInquiryRepository extends JpaRepository<WebsiteInquiry, 
     }
 
     long countByStatus(String status);
+    long countByStatusAndAssigneeEmployeeIdIsNull(String status);
+    long countByStatusAndAssigneeEmployeeId(String status,UUID assigneeEmployeeId);
 }

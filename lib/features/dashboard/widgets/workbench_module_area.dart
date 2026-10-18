@@ -152,7 +152,9 @@ class WorkbenchModuleArea extends ConsumerWidget {
       key: key,
       padding: const EdgeInsets.only(bottom: UtenSpacing.s24),
       child: UtenCollapsibleSection(
-        title: group.title,
+        title: group.key == 'website'
+            ? AppLocalizations.of(context).websiteOperationsTitle
+            : group.title,
         accentColor: group.color,
         // 折叠状态受控：由布局 Provider 驱动（持久化到服务端）
         expanded: expanded,
@@ -228,7 +230,9 @@ class _SectionDragFeedback extends StatelessWidget {
               const SizedBox(width: UtenSpacing.s8),
               Expanded(
                 child: Text(
-                  group.title,
+                  group.key == 'website'
+                      ? AppLocalizations.of(context).websiteOperationsTitle
+                      : group.title,
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -521,6 +525,7 @@ const _allGroups = <_ModuleGroup>[
         icon: Icons.mail_outline_rounded,
         label: '官网询盘',
         location: RouteName.websiteInquiry,
+        badge: WorkbenchBadgeKind.websiteInquiry,
       ),
     ],
   ),
@@ -529,6 +534,18 @@ const _allGroups = <_ModuleGroup>[
     title: '新媒体事业部',
     color: UtenColors.slate500,
     items: [],
+  ),
+  _ModuleGroup(
+    key: 'website',
+    title: '',
+    color: UtenColors.teal700,
+    items: [
+      _ModuleItem(
+        icon: Icons.language,
+        label: '',
+        location: RouteName.websiteManagement,
+      ),
+    ],
   ),
   _ModuleGroup(
     key: 'rail',
@@ -751,6 +768,8 @@ class _ModuleTile extends StatelessWidget {
     final comingSoon = item.comingSoon;
     final label = item.location == RouteName.adminServerStatus
         ? AppLocalizations.of(context).serverStatusTitle
+        : item.location == RouteName.websiteManagement
+        ? AppLocalizations.of(context).websiteManagementTitle
         : item.label;
     final accent = comingSoon ? theme.disabledColor : color;
     return Material(

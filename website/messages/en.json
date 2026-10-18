@@ -61,7 +61,7 @@
     "featured": "Featured now",
     "discoverEyebrow": "A complete product system",
     "discoverTitle": "The right detail\nfor every space.",
-    "discoverBody": "Explore switches, sockets and floor outlets by collection, function, material and finish. Variants stay neatly grouped within each model.",
+    "discoverBody": "Explore each series, its appearance, functions and matching models to create consistent details throughout a space.",
     "seriesTitle": "Product collections",
     "seriesSubtitle": "Precision made · Built for safety",
     "craftTitle": "Materials and craft define the lasting touch",
@@ -95,7 +95,7 @@
     "craftGlassTitle": "Tempered glass",
     "craftGlassBody": "Clean, resilient and visually light",
     "globalEyebrow": "Built for international briefs",
-    "globalTitle": "Clear product decisions across markets.",
+    "globalTitle": "Clearer product conversations across markets.",
     "globalBody": "International projects begin with a clearly defined market, installation system and model-specific evidence. We organise each enquiry around those decisions.",
     "marketTitle": "Market requirements first",
     "marketBody": "Tell us the destination market and required installation system. Product availability and documentation are confirmed by model.",
@@ -113,27 +113,7 @@
     "latestStudio": "See it in a space",
     "spotlightEyebrow": "New release",
     "factsEyebrow": "The company behind the product",
-    "factsTitle": "Two decades devoted to a single detail.",
-    "factsBody": "Zhongshan Uten Electrical Co., Ltd. integrates R&D, manufacturing and sales. Since its first in-house tooling programme in 2007, the company has built a 30,000 m² modern production base, with ISO 9001 quality system and CCC certified products, and a Hong Kong team for global affairs — supporting international customers with product selection and OEM / ODM cooperation.",
-    "factsCta": "More about Uten",
-    "facts": [
-      {
-        "value": "2007",
-        "label": "In-house tooling programme begins"
-      },
-      {
-        "value": "30,000 m²",
-        "label": "Modern production base"
-      },
-      {
-        "value": "ISO 9001 · CCC",
-        "label": "System & product certification"
-      },
-      {
-        "value": "Zhongshan · Hong Kong",
-        "label": "Manufacturing & global affairs"
-      }
-    ]
+    "sceneIllustration": "Room styling illustration"
   },
   "Products": {
     "title": "Products",
@@ -150,10 +130,10 @@
     "variants": "Colours / finishes",
     "finish": "Surface finish",
     "dimensions": "Dimensions",
-    "specsPending": "Specification data pending",
+    "specsPending": "Contact sales for current specifications",
     "tryOnWall": "See it on the wall",
     "askAdvice": "Ask about this model",
-    "displayOnly": "Product display · Not an online store",
+    "displayOnly": "Appearance and details",
     "clear": "Clear filters",
     "viewDetail": "View product",
     "loadMore": "Load more",
@@ -170,11 +150,11 @@
     "browseSeriesBody": "Each family keeps matching switches, sockets and modules together, so you can choose a coherent look before narrowing by function.",
     "seriesProducts": "{count} products",
     "exploreSeries": "Explore series",
-    "noSeries": "No published product series yet.",
-    "viewProductMatrix": "View product matrix",
+    "noSeries": "No series are currently available to browse. Contact us for product information.",
+    "viewProductMatrix": "Browse series products",
     "productMatrixEyebrow": "Models by function",
     "productMatrixTitle": "Find the exact function and gang count",
-    "productMatrixBody": "Products are grouped by function and ordered by gang count. Inferred legacy classifications remain review candidates and never invent electrical specifications.",
+    "productMatrixBody": "Filter by function or gang count to explore individual models and matching products.",
     "filterFunction": "Function",
     "filterGang": "Gang count",
     "allFunctions": "All functions",
@@ -192,12 +172,17 @@
       "hospitality": "Hospitality controls",
       "accessories": "Accessories",
       "other": "Other functions"
-    }
+    },
+    "previousPage": "Previous",
+    "nextPage": "Next",
+    "pagination": "Product pages",
+    "historicalTitle": "Product information",
+    "historicalNote": "Information from an earlier product catalog. Contact sales to confirm current specifications, packaging and availability."
   },
   "Studio": {
     "eyebrow": "UTEN SPACE STUDIO",
-    "title": "Place the product in a room\nand see the relationship.",
-    "subtitle": "Choose a room and product, then drag its position and adjust visual scale. This first release uses a lightweight 2.5D preview that opens quickly on mobile.",
+    "title": "See how a product fits your space.",
+    "subtitle": "Choose a room and product, then adjust its position and visual scale to explore the combination.",
     "scenes": "Interior styles",
     "products": "Choose a product",
     "search": "Search product or model",
@@ -212,13 +197,13 @@
     "askAdvice": "Ask for advice",
     "disclaimer": "For visual reference only. Refer to physical samples and dimension sheets.",
     "noProducts": "No matching products",
-    "workflowTitle": "A continuous path from discovery to specification",
-    "workflowBody": "The selected product stays linked to product details and enquiries. The preview can be upgraded after audited finishes, dimensions and transparent front views are supplied.",
+    "workflowTitle": "From room inspiration to product choice",
+    "workflowBody": "Compare room settings and product appearances. Once you find a direction, view the model information or contact sales.",
     "startPreview": "Start preview",
     "chooseRoomTitle": "Choose room",
     "chooseRoomBody": "Living, office and hospitality presets",
     "chooseFinishTitle": "Choose finish",
-    "chooseFinishBody": "Choose a product with an available preview image",
+    "chooseFinishBody": "Compare the product appearances you like.",
     "placeTitle": "Place it",
     "placeBody": "Drag position and adjust visual scale",
     "standardVariant": "Standard"
@@ -232,7 +217,7 @@
     "latest": "Latest",
     "related": "Related",
     "empty": "No articles yet",
-    "fallbackNote": "This article is currently available in English. A reviewed translation will be added before it is indexed in this language."
+    "fallbackNote": "This article is currently available in English."
   },
   "Cases": {
     "eyebrow": "UTEN · REFERENCE PROJECTS",
@@ -256,25 +241,7 @@
     "mission": "Mission & vision",
     "coreCraftTitle": "Core craftsmanship",
     "teamTitle": "Complete management · Professional team · Global service",
-    "teamBody": "Integrated production, R&D, testing, sales, planning and customer service teams, backed by experienced industry professionals.",
-    "facts": [
-      {
-        "value": "2007",
-        "label": "In-house tooling programme begins"
-      },
-      {
-        "value": "30,000 m²",
-        "label": "Modern production base"
-      },
-      {
-        "value": "ISO 9001 · CCC",
-        "label": "System & product certification"
-      },
-      {
-        "value": "Zhongshan · Hong Kong",
-        "label": "Manufacturing & global affairs"
-      }
-    ]
+    "teamBody": "Integrated production, R&D, testing, sales, planning and customer service teams, backed by experienced industry professionals."
   },
   "Join": {
     "title": "Partners",
@@ -358,7 +325,7 @@
   },
   "Resources": {
     "eyebrow": "PROFESSIONAL RESOURCES",
-    "title": "Information that helps a product move from interest to approval.",
+    "title": "Product documents for your next decision.",
     "subtitle": "Use the guides below to prepare a clear brief, compare a series and request the right model-specific evidence.",
     "guidesEyebrow": "BUYER GUIDES",
     "guidesTitle": "Start with the decisions that matter",
@@ -368,8 +335,8 @@
     "documentsList": "Data sheet · dimensional drawing · installation instructions · applicable certificate or declaration · finish sample · packaging information",
     "faqEyebrow": "FAQ",
     "faqTitle": "Before you send an enquiry",
-    "faq1q": "Does Uten sell products online?",
-    "faq1a": "No. This is a product and company information website. Contact Uten for selection support, samples, project review or commercial enquiries.",
+    "faq1q": "How can I ask about a product?",
+    "faq1a": "Browse a series or model, or tell us about your project. Use the contact page to discuss your needs and request documents.",
     "faq2q": "Does Uten support OEM / ODM?",
     "faq2a": "Yes. Uten welcomes OEM / ODM enquiries. Each request is reviewed for product feasibility, specifications, branding, packaging, quantity and schedule.",
     "faq3q": "Are all products available in every country?",
@@ -377,9 +344,15 @@
     "faq4q": "Can I request samples and finishes?",
     "faq4a": "Yes, subject to availability and project review. Physical samples take precedence over colours shown on a screen.",
     "faq5q": "Can I download certificates from the website?",
-    "faq5a": "Only current, model-specific documents should be used for approval. Request the relevant file from Uten until a verified download library is published.",
+    "faq5a": "Use the document links on this page and check the applicable model, market and version. Contact sales for other documents.",
     "faq6q": "What should an initial enquiry include?",
-    "faq6a": "Include the target market, customer type, installation standard, product functions, estimated quantity, schedule and required documents."
+    "faq6a": "Include the target market, customer type, installation standard, product functions, estimated quantity, schedule and required documents.",
+    "download": "Download document",
+    "fileVersion": "Version",
+    "fileLanguage": "Language",
+    "fileMarket": "Market",
+    "fileUpdated": "Updated",
+    "downloadTitle": "Available documents"
   },
   "Privacy": {
     "eyebrow": "DATA & ENQUIRIES",
@@ -452,7 +425,11 @@
     "consent": "I agree that Uten may use these contact details only to respond to this enquiry",
     "privacyPrefix": "Read the",
     "privacyLink": "privacy notice",
-    "productPrefill": "I would like product advice for: {product}"
+    "productPrefill": "I would like product advice for: {product}",
+    "receivedTitle": "Your inquiry has been received",
+    "receiptNumber": "Reference number",
+    "receivedBody": "Your inquiry has been saved. We will use your contact details to discuss your requirements.",
+    "contextTitle": "Product for this inquiry"
   },
   "Footer": {
     "products": "Products",
@@ -463,8 +440,7 @@
     "quickLinks": "Explore",
     "ctaTitle": "Better electrical details for spaces that deserve attention.",
     "brandStatement": "Uten develops and manufactures wall switches, sockets and panels, providing global customers with clear product information and specification support.",
-    "privacy": "Privacy",
-    "estLine": "Zhongshan · Hong Kong · Since 2007"
+    "privacy": "Privacy"
   },
   "NotFound": {
     "title": "Page not found",

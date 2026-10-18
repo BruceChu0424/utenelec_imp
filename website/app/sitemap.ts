@@ -2,7 +2,7 @@ import type { MetadataRoute } from 'next';
 import { catalogFamilySlug } from '@/lib/catalog';
 import { prisma } from '@/lib/db';
 import { publicNewsWhere, publicProductWhere } from '@/lib/publication';
-import { getCatalogFamilies } from '@/lib/queries';
+import { getCatalogNavigation } from '@/lib/queries';
 import { directContentLocales, hasText, localizedUrl, REVIEWED_SITE_LOCALES } from '@/lib/seo';
 
 // Product/news/media publication is CMS state, not code-release state. Never
@@ -15,7 +15,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       where: publicProductWhere(),
       select: { slug: true, i18n: true, updatedAt: true, series: { include: { parent: true } } },
     }),
-    getCatalogFamilies(),
+    getCatalogNavigation(),
     prisma.news.findMany({
       where: publicNewsWhere(),
       select: { slug: true, i18n: true, updatedAt: true },

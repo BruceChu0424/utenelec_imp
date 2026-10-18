@@ -35,6 +35,9 @@ prisma/backups/
 
 # runtime media (persistent volume / object storage, never source control)
 /public/uploads/
+/generated/
+/.local-state/
+/.audit-*.json
 
 # 爬虫临时输出可保留(素材), 但日志忽略
 .scrape/scrape.log

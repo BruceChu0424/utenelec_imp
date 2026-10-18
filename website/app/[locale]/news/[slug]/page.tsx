@@ -46,12 +46,13 @@ export default async function NewsDetailPage({ params }: { params: Promise<{ loc
   const more = (await prisma.news.findMany({
     where: publicNewsWhere({ NOT: { id: news.id } }),
     orderBy: { publishedAt: 'desc' },
+    take: 24,
   }))
     .filter((item) => locale === 'zh' || getDirectNewsContent(item.i18n, locale))
     .slice(0, 4);
 
   return (
-    <article>
+    <article className="public-article">
       <header className="page-hero">
         <div className="container-uten relative">
           <Link locale={locale} href="/news" className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-muted-foreground transition hover:text-accent">

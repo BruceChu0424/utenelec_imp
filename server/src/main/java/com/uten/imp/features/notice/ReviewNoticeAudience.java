@@ -237,6 +237,7 @@ public class ReviewNoticeAudience {
             case "EXPENSE_CLAIM_REJECTED" -> permissions.contains("expense:apply");
             case "PAYROLL_BATCH_SUBMITTED" -> permissions.contains("payroll:review");
             case "PAYROLL_BATCH_PENDING_PUBLISH" -> permissions.contains("payroll:publish");
+            case "WEBSITE_INQUIRY_NEW" -> permissions.containsAll(Set.of("webinquiry:view","webinquiry:claim"));
             case "SUGGESTION_SUBMITTED" -> permissions.containsAll(Set.of("suggestion:submit", "suggestion:reply"));
             case "STOCK_COUNT_PENDING_FINANCE_REVIEW" -> permissions.contains("stock:count:finance_review");
             case "STOCK_COUNT_PENDING_WAREHOUSE_REVIEW" -> permissions.contains("stock:count:warehouse_review");

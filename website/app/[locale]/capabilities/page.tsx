@@ -1,3 +1,4 @@
+import { PublicPageIntro } from '@/components/layout/PublicPageIntro';
 import type { Metadata } from 'next';
 import Image from 'next/image';
 import {
@@ -66,15 +67,7 @@ export default async function CapabilitiesPage({ params }: { params: Promise<{ l
 
   return (
     <>
-      <section className="page-hero">
-        <div className="container-uten relative grid items-end gap-8 lg:grid-cols-[1fr_.7fr] lg:gap-16">
-          <div>
-            <p className="eyebrow">{t('eyebrow')}</p>
-            <h1 className="page-title mt-7 max-w-5xl">{custom.title || t('title')}</h1>
-          </div>
-          <p className="prose-intro border-s border-border ps-6 lg:ps-8">{custom.subtitle || t('subtitle')}</p>
-        </div>
-      </section>
+      <PublicPageIntro locale={locale} title={custom?.title || t('title')} description={custom?.subtitle || t('subtitle')} />
 
       <section className="section">
         <div className="container-uten">

@@ -98,6 +98,9 @@ class WebsiteInquiryConcurrencyPostgresTest {
     @Autowired private JdbcTemplate jdbc;
     @Autowired private EntityManager entityManager;
     @Autowired private PlatformTransactionManager transactionManager;
+    @Autowired private com.uten.imp.features.notice.WebsiteInquiryNoticeHandler inquiryNotices;
+    @Autowired private com.uten.imp.application.port.WebsiteActorAuthorityPort websiteActors;
+    @Autowired private com.uten.imp.features.auth.AuthSessionService authSessions;
     @MockitoSpyBean private AuditService audit;
     private Actor first;
     private Actor second;
@@ -347,6 +350,129 @@ class WebsiteInquiryConcurrencyPostgresTest {
         String source = "web-race-" + UUID.randomUUID();
         assertThat(as(first, () -> service.ingest(request(source, "original inquiry")))).isTrue();
         return new Inquiry(jdbc.queryForObject("SELECT id FROM website_inquiries WHERE source_id=?", UUID.class, source), source);
+    }
+
+    @Test
+    void simultaneousClaimsKeepTheFirstEmployeeAndAppendHistoryOnce() throws Exception {
+        Inquiry inquiry=inquiry();
+        String oneLabel=label("claim-first"),twoLabel=label("claim-second");
+        try(var workers=Executors.newFixedThreadPool(2);Connection blocker=lockInquiry(inquiry.id())){
+            Future<?> one=workers.submit(()->inTransaction(oneLabel,first,()->service.updateStatus(inquiry.id(),
+                    new StatusUpdateRequest("following",null,true))));
+            assertLockWaiting(one,oneLabel);
+            Future<?> two=workers.submit(()->inTransaction(twoLabel,second,()->service.updateStatus(inquiry.id(),
+                    new StatusUpdateRequest("following",null,true))));
+            assertLockWaiting(two,twoLabel);blocker.commit();
+            one.get(15,TimeUnit.SECONDS);assertConflict(two);
+        }
+        as(first,()->service.updateStatus(inquiry.id(),new StatusUpdateRequest("following",null,true)));
+        assertThat(jdbc.queryForObject("SELECT assignee_employee_id FROM website_inquiries WHERE id=?",UUID.class,inquiry.id())).isEqualTo(first.employee());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM website_inquiry_events WHERE inquiry_id=? AND kind='CLAIMED'",Long.class,inquiry.id())).isEqualTo(1);
+    }
+
+    @Test
+    void followUpTimelineIsAppendOnlyAndSourcesSurviveReplay() throws Exception {
+        var mapper=new com.fasterxml.jackson.databind.ObjectMapper();
+        String source="web-timeline-"+UUID.randomUUID();
+        var plain=request(source,"original");
+        var context=mapper.readTree("{\"series\":\"V2.0\",\"products\":[{\"id\":\"legacy:1\",\"name\":\"GK11\",\"series\":\"V1.0\"},{\"id\":\"legacy:64\",\"name\":\"GK11\",\"series\":\"V2.0\"}]}");
+        var withContext=new IngestRequest(plain.sourceId(),plain.name(),plain.phone(),plain.email(),plain.company(),plain.market(),
+                plain.customerType(),plain.requiredStandard(),plain.productInterest(),plain.requestType(),plain.estimatedQuantity(),
+                plain.targetSchedule(),plain.preferredContact(),plain.message(),plain.source(),plain.locale(),context);
+        as(first,()->service.ingest(withContext));UUID id=service.idBySource(source);
+        as(first,()->service.updateStatus(id,new StatusUpdateRequest("following",null,true)));
+        as(first,()->service.followUp(id,new com.uten.imp.features.webinquiry.dto.FollowUpRequest("first note")));
+        as(first,()->service.followUp(id,new com.uten.imp.features.webinquiry.dto.FollowUpRequest("second note")));
+        as(second,()->service.ingest(request(source,"replayed change")));
+        var detail=as(first,()->service.detail(id));
+        assertThat(detail.sourceContext()).isEqualTo(context);
+        assertThat(detail.timeline().stream().filter(e->"FOLLOW_UP".equals(e.kind())).map(e->e.note()).toList())
+                .containsExactly("first note","second note");
+        assertThat(detail.timeline().stream().filter(e->"FOLLOW_UP".equals(e.kind())).allMatch(e->e.actorEmployeeCode()!=null)).isTrue();
+        assertThatThrownBy(()->jdbc.update("UPDATE website_inquiry_events SET note='overwrite' WHERE inquiry_id=?",id))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class);
+        assertThatThrownBy(()->as(second,()->service.followUp(id,new com.uten.imp.features.webinquiry.dto.FollowUpRequest("denied"))))
+                .isInstanceOf(ApiException.class);
+    }
+
+    @Test
+    void notificationTargetsOnlyActuallyGrantedSalesAndResolvesAfterClaim() throws Exception {
+        jdbc.update("""
+                INSERT INTO user_permission_overrides(user_id,permission_id,effect,authority_source)
+                SELECT ?,id,'revoke','SUPER_ADMIN_CONFIRMED' FROM permissions WHERE code='webinquiry:claim'
+                """,second.user());
+        Inquiry inquiry=inquiry();
+        var payload=new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
+        inTransaction(label("notice"),first,()->{
+            inquiryNotices.handle(UUID.randomUUID(),"WEBSITE_INQUIRY_CREATED",inquiry.id(),payload,null);
+            return null;
+        });
+        assertThat(jdbc.queryForObject("""
+                SELECT count(*) FROM notices WHERE aggregate_id=? AND source_event='WEBSITE_INQUIRY_NEW' AND audience_user_id=?
+                """,Long.class,inquiry.id(),first.user())).isEqualTo(1);
+        assertThat(jdbc.queryForObject("""
+                SELECT count(*) FROM notices WHERE aggregate_id=? AND source_event='WEBSITE_INQUIRY_NEW' AND audience_user_id=?
+                """,Long.class,inquiry.id(),second.user())).isZero();
+        as(first,()->service.updateStatus(inquiry.id(),new StatusUpdateRequest("following",null,true)));
+        inTransaction(label("resolve-notice"),first,()->{
+            inquiryNotices.handle(UUID.randomUUID(),"WEBSITE_INQUIRY_UPDATED",inquiry.id(),payload,null);return null;
+        });
+        assertThat(jdbc.queryForObject("""
+                SELECT count(*) FROM notices WHERE aggregate_id=? AND source_event='WEBSITE_INQUIRY_NEW' AND resolved_at IS NULL
+                """,Long.class,inquiry.id())).isZero();
+    }
+
+    @Test
+    void websiteSessionAuthorityUsesCurrentDatabaseGrantsAndAccountState() {
+        jdbc.update("""
+                INSERT INTO user_permission_overrides(user_id,permission_id,effect,authority_source)
+                SELECT ?,id,'grant','SUPER_ADMIN_CONFIRMED' FROM permissions WHERE code IN ('website:view','website:content_edit')
+                """,first.user());
+        UUID sid=authSessions.openStaffSession(first.user()).sid();
+        assertThat(websiteActors.currentPermissions(first.user(),sid)).contains("website:view","website:content_edit");
+        jdbc.update("""
+                UPDATE user_permission_overrides SET effect='revoke',row_version=row_version+1
+                WHERE user_id=? AND permission_id=(SELECT id FROM permissions WHERE code='website:content_edit')
+                """,first.user());
+        assertThat(websiteActors.currentPermissions(first.user(),sid)).contains("website:view").doesNotContain("website:content_edit");
+        jdbc.update("UPDATE users SET status='disabled' WHERE id=?",first.user());
+        assertThat(websiteActors.currentPermissions(first.user(),sid)).isEmpty();
+        jdbc.update("UPDATE users SET status='active',must_change_password=true WHERE id=?",first.user());
+        assertThat(websiteActors.currentPermissions(first.user(),sid)).isEmpty();
+        jdbc.update("UPDATE users SET must_change_password=false WHERE id=?",first.user());
+        sid=authSessions.openStaffSession(first.user()).sid();
+        assertThat(websiteActors.currentPermissions(first.user(),sid)).contains("website:view");
+        jdbc.update("""
+                UPDATE user_permission_overrides SET effect='revoke',row_version=row_version+1
+                WHERE user_id=? AND permission_id=(SELECT id FROM permissions WHERE code='website:view')
+                """,first.user());
+        assertThat(websiteActors.currentPermissions(first.user(),sid)).isEmpty();
+        assertThat(websiteActors.currentPermissions(UUID.randomUUID(),sid)).isEmpty();
+    }
+
+    @Test
+    void portalLeasesHonorPersistentOriginSessionRevocationOwnershipAndAbsoluteExpiry(){
+        jdbc.update("""
+                INSERT INTO user_permission_overrides(user_id,permission_id,effect,authority_source)
+                SELECT ?,id,'grant','SUPER_ADMIN_CONFIRMED' FROM permissions WHERE code='website:view'
+                """,first.user());
+        UUID original=authSessions.openStaffSession(first.user()).sid();
+        assertThat(websiteActors.currentPermissions(first.user(),original)).contains("website:view");
+        authSessions.revoke(original,com.uten.imp.features.auth.AuthSessionService.REASON_PASSWORD_RESET);
+        // Even after a completed password change restored the active account, this session stays revoked.
+        assertThat(websiteActors.currentPermissions(first.user(),original)).isEmpty();
+        UUID current=authSessions.openStaffSession(first.user()).sid();
+        assertThat(websiteActors.currentPermissions(first.user(),current)).contains("website:view");
+        assertThat(websiteActors.currentPermissions(first.user(),authSessions.openStaffSession(second.user()).sid())).isEmpty();
+        assertThat(websiteActors.currentPermissions(first.user(),null)).isEmpty();
+        jdbc.update("""
+                UPDATE auth_sessions SET created_at=now()-interval '2 days',last_seen_at=now()-interval '2 days',
+                absolute_expires_at=now()-interval '1 day' WHERE sid=?
+                """,current);
+        assertThat(websiteActors.currentPermissions(first.user(),current)).isEmpty();
+        UUID loggedOut=authSessions.openStaffSession(first.user()).sid();
+        authSessions.revoke(loggedOut,com.uten.imp.features.auth.AuthSessionService.REASON_LOGOUT);
+        assertThat(websiteActors.currentPermissions(first.user(),loggedOut)).isEmpty();
     }
 
     private static IngestRequest request(String source, String message) {

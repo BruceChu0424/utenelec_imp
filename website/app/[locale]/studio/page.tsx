@@ -1,9 +1,12 @@
+import { notFound, redirect } from 'next/navigation';
+import { Link } from '@/i18n/navigation';
+import { PublicPageIntro } from '@/components/layout/PublicPageIntro';
 import type { Metadata } from 'next';
-import { ArrowDown, ImageIcon, Layers3, Move } from 'lucide-react';
+import { ImageIcon, Layers3, Move } from 'lucide-react';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { SceneStudio } from '@/components/studio/SceneStudio';
 import { toStudioScene, toStudioVariants } from '@/lib/catalog';
-import { getProducts, getScenePresets, getSceneProducts } from '@/lib/queries';
+import { getScenePresets, queryStudioProducts } from '@/lib/queries';
 import { buildPageMetadata } from '@/lib/seo';
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
@@ -22,47 +25,48 @@ export default async function StudioPage({
   searchParams,
 }: {
   params: Promise<{ locale: string }>;
-  searchParams: Promise<{ variant?: string }>;
+  searchParams: Promise<{ variant?: string; q?: string; page?: string }>;
 }) {
   const { locale } = await params;
   const resolvedSearchParams = await searchParams;
   setRequestLocale(locale);
-  const t = await getTranslations('Studio');
-  const [sceneRecords, enabledProducts] = await Promise.all([getScenePresets(), getSceneProducts()]);
-  const fallbackProducts = enabledProducts.length ? enabledProducts : await getProducts({ take: 36 });
+  const [t, common, productT] = await Promise.all([getTranslations({ locale, namespace: 'Studio' }), getTranslations({ locale, namespace: 'Common' }), getTranslations({ locale, namespace: 'Products' })]);
+  const query = typeof resolvedSearchParams.q === 'string' ? resolvedSearchParams.q.trim().slice(0, 80) : '';
+  const pageValue = Number(resolvedSearchParams.page);
+  const page = Number.isInteger(pageValue) ? Math.max(1, Math.min(4167, pageValue)) : 1;
+  const variantId = typeof resolvedSearchParams.variant === 'string' ? resolvedSearchParams.variant.trim().slice(0, 120) : '';
+  const [sceneRecords, result] = await Promise.all([getScenePresets(), queryStudioProducts({ query, offset: (page - 1) * 24, variantId })]);
+  if (variantId && !result.selected) notFound();
+  const pages = Math.max(1, Math.ceil(result.total / 24));
+  const pageHref = (target: number) => { const params = new URLSearchParams(); if (query) params.set('q', query); if (target > 1) params.set('page', String(target)); return `/studio${params.size ? '?' + params : ''}#studio`; };
+  if (page > pages) redirect(`/${locale}${pageHref(pages)}`);
+  const enabledProducts = result.products;
   const scenes = sceneRecords.map((scene) => toStudioScene(scene, locale));
-  const variants = toStudioVariants(fallbackProducts, locale, t('standardVariant')).filter((variant) => variant.image);
+  const variants = toStudioVariants(enabledProducts, locale, t('standardVariant')).filter((variant) => variant.image);
   const titleLines = t('title').split(/\n+/).map((line) => line.trim()).filter(Boolean);
 
   return (
     <>
-      <section className="page-hero">
-        <div className="container-uten relative grid items-end gap-10 lg:grid-cols-[1fr_.7fr]">
-          <div>
-            <p className="eyebrow">{t('eyebrow')}</p>
-            <h1 className="page-title mt-7 max-w-5xl text-balance max-sm:!text-[2.45rem]">
-              {titleLines.map((line) => <span key={line} className="block">{line}</span>)}
-            </h1>
-          </div>
-          <div>
-            <p className="text-pretty text-base leading-8 text-muted-foreground md:text-lg">{t('subtitle')}</p>
-            <a href="#studio" className="mt-6 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-accent">{t('startPreview')}<ArrowDown className="h-4 w-4" /></a>
-          </div>
-        </div>
-      </section>
+      <PublicPageIntro locale={locale} title={titleLines.join(' ')} description={t('subtitle')} />
 
       <section id="studio" className="section-tight">
         <div className="container-uten">
+          <form action={`/${locale}/studio#studio`} method="get" className="studio-catalog-search"><label><span>{t('search')}</span><input type="search" name="q" defaultValue={query} maxLength={80} className="input-uten" /></label><button type="submit" className="btn-primary">{common('search')}</button><p>{productT('resultCount', { count: result.total })}</p></form>
           <SceneStudio
+            key={`${query}:${page}:${variantId}`}
+            searchable={false}
             scenes={scenes}
             variants={variants}
-            initialVariantId={resolvedSearchParams.variant}
+            initialVariantId={variantId}
             labels={{
               scenes: t('scenes'), products: t('products'), search: t('search'), scale: t('scale'), reset: t('reset'),
               dragHint: t('dragHint'), keyboardHint: t('keyboardHint'), selected: t('selected'), dimensions: t('dimensions'), finish: t('finish'),
-              viewProduct: t('viewProduct'), askAdvice: t('askAdvice'), disclaimer: t('disclaimer'), noProducts: t('noProducts'),
+              viewProduct: t('viewProduct'), askAdvice: t('askAdvice'), disclaimer: t('disclaimer'), noProducts: t('noProducts'), noScenes: common('noData'),
             }}
           />
+          <nav className="catalog-pagination" aria-label={productT('pagination')}>
+            {page > 1 ? <Link locale={locale} href={pageHref(page - 1)} className="btn-outline">{productT('previousPage')}</Link> : <span className="pagination-disabled">{productT('previousPage')}</span>}<span>{page} / {pages}</span>{page < pages ? <Link locale={locale} href={pageHref(page + 1)} className="btn-outline">{productT('nextPage')}</Link> : <span className="pagination-disabled">{productT('nextPage')}</span>}
+          </nav>
         </div>
       </section>
 

@@ -187,6 +187,7 @@ import '../../features/suggestion/pages/suggestion_list_page.dart';
 import '../../features/suggestion/pages/suggestion_new_page.dart';
 import '../../features/webinquiry/pages/website_inquiry_detail_page.dart';
 import '../../features/webinquiry/pages/website_inquiry_list_page.dart';
+import '../../features/website_management/pages/website_management_page.dart';
 import '../../features/sales/models/sales_doc.dart';
 import '../../features/sales/pages/sales_doc_detail_page.dart';
 import '../../features/sales/pages/sales_doc_edit_page.dart';
@@ -647,6 +648,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
 
           // —— 官网询盘（综合营销统一收件箱）——
+          DraftAwareGoRoute(
+            path: RouteName.websiteManagement,
+            name: 'website-management',
+            builder: (_, _) => const WebsiteManagementPage(),
+          ),
           DraftAwareGoRoute(
             path: '/webinquiry',
             name: 'webinquiry-list',

@@ -57,7 +57,7 @@ export default async function ScenesAdminPage() {
                     <td className="whitespace-nowrap p-3 text-right">
                       <Link href={`/admin/scenes/edit/${scene.id}`} className="inline-flex min-h-11 items-center text-accent hover:underline">编辑</Link>
                       <span className="mx-2 text-border">|</span>
-                      <DeleteButton action={deleteScenePreset.bind(null, scene.id)} confirmText="确认删除这个场景预设？此操作不可恢复。" />
+                      <DeleteButton draft action={deleteScenePreset.bind(null, scene.id)} confirmText="确认删除这个场景预设？此操作不可恢复。" />
                     </td>
                   </tr>
                 );

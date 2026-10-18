@@ -108,7 +108,7 @@ public class WorkbenchAiChatTool implements AiChatToolPort {
         return switch(entry.module()) {
             case people->"HR"; case finance->"FINANCE"; case production,workshop->"PRODUCTION";
             case rd->"RD"; case warehouse->"WAREHOUSE"; case purchase->"PURCHASE";
-            case subcontract->"SUBCONTRACT"; case quality->"QUALITY"; case sales->"SALES"; case system->"ADMIN";
+            case subcontract->"SUBCONTRACT"; case quality->"QUALITY"; case sales,websiteInquiry->"SALES"; case system->"ADMIN";
         };
     }
     private static String module(Map<String,Object> args) {
@@ -139,6 +139,7 @@ public class WorkbenchAiChatTool implements AiChatToolPort {
             case qualityIqcPending->"来料待检"; case qualityFqcPending->"产成品待检"; case salesAttention->"销售待处理";
             case salesOrderInFlight->"销售在途订单"; case salesShipmentFinanceRejected->"发货财务退回"; case salesQuoteFinanceRejected->"报价财务退回";
             case salesQuoteAwaitingCustomerConfirmation->"报价待客户确认"; case salesQuoteAwaitingConversion->"报价待转订货"; case salesDrafts->"销售单据草稿";
+            case websiteInquiry->"官网询盘";
             case serverStatusAlert->"服务器告警"; case serverUpdateAvailable->"服务器新版本"; case expenseMine,expenseFinance->throw invalid();
         };
     }

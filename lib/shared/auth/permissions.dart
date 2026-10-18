@@ -477,6 +477,12 @@ abstract final class Perm {
   static const suggestionReply = 'suggestion:reply';
   // 官网询盘（综合营销统一收件箱；部门授权非全员基础包）
   static const webinquiryView = 'webinquiry:view';
+  static const websiteView = 'website:view';
+  static const websiteContentEdit = 'website:content_edit';
+  static const websiteProductEdit = 'website:product_edit';
+  static const websiteMediaManage = 'website:media_manage';
+  static const websitePublish = 'website:publish';
+  static const websiteRollback = 'website:rollback';
   static const purchaseReportExport = 'purchase_report:export';
 
   // 注：supplierView/supplierEdit（'supplier:view'/'supplier:edit'）见上方财税部段——

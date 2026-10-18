@@ -659,6 +659,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 case "STOCK_COUNT_SUBMITTED", "STOCK_COUNT_APPROVED", "STOCK_COUNT_REJECTED", "STOCK_COUNT_CANCELLED" -> {
                     // StockCountNoticeHandler delivers the scoped review tasks and resolves them in this outbox transaction.
                 }
+                case "WEBSITE_INQUIRY_CREATED", "WEBSITE_INQUIRY_UPDATED" -> {
+                    // WebsiteInquiryNoticeHandler projects only currently actionable recipients.
+                }
                 default -> throw new IllegalArgumentException(
                         "Unsupported business outbox event: " + eventType);
             }

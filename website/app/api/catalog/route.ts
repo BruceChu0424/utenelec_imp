@@ -9,7 +9,7 @@ const PAGE_SIZE = 24;
 
 function parseGang(value: string | null): number | null {
   if (!value) return null;
-  const parsed = Number.parseInt(value, 10);
+  const parsed = Number(value);
   return Number.isInteger(parsed) && parsed >= 1 && parsed <= 12 ? parsed : null;
 }
 
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
   const functionType = isProductFunctionType(requestedFunction) ? requestedFunction : null;
   const gangCount = parseGang(searchParams.get('gang'));
   const offsetValue = Number.parseInt(searchParams.get('offset') || '0', 10);
-  const offset = Number.isFinite(offsetValue) ? Math.min(5000, Math.max(0, offsetValue)) : 0;
+  const offset = Number.isFinite(offsetValue) ? Math.min(100_000, Math.max(0, offsetValue)) : 0;
 
   if (!familyIdentifier) {
     return NextResponse.json(
@@ -51,6 +51,6 @@ export async function GET(request: NextRequest) {
   }
 
   const response = NextResponse.json(result);
-  response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=900');
+  response.headers.set('Cache-Control', 'private, no-store');
   return response;
 }

@@ -1,3 +1,4 @@
+import { PublicPageIntro } from '@/components/layout/PublicPageIntro';
 import type { Metadata } from 'next';
 import Image from 'next/image';
 import { ArrowUpRight, CalendarDays } from 'lucide-react';
@@ -14,11 +15,14 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
   return buildPageMetadata({ locale, path: '/news', title: t('title'), description: t('subtitle') });
 }
 
-export default async function NewsPage({ params }: { params: Promise<{ locale: string }> }) {
+export default async function NewsPage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<{ category?: string }> }) {
   const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations('News');
-  const allNews = await getNewsList();
+  const common = await getTranslations({ locale, namespace: 'Common' });
+  const requested = (await searchParams).category;
+  const category = typeof requested === 'string' && ['company', 'industry', 'guide'].includes(requested) ? requested : undefined;
+  const allNews = await getNewsList(undefined, category);
   const news = allNews.filter((item) => locale === 'zh' || getDirectNewsContent(item.i18n, locale));
   const localizedContent = (i18n: string) =>
     getDirectNewsContent(i18n, locale) ?? tr<{ title: string; summary?: string; content?: string }>(i18n, locale);
@@ -32,13 +36,7 @@ export default async function NewsPage({ params }: { params: Promise<{ locale: s
 
   return (
     <>
-      <section className="page-hero">
-        <div className="container-uten relative">
-          <span className="eyebrow">UTEN NEWSROOM</span>
-          <h1 className="page-title mt-7">{t('title')}</h1>
-          <p className="prose-intro mt-5">{t('subtitle')}</p>
-        </div>
-      </section>
+      <PublicPageIntro locale={locale} title={t('title')} description={t('subtitle')}><nav className="news-category-nav" aria-label={t('title')}><Link locale={locale} href="/news" aria-current={!category ? 'page' : undefined}>{common('viewAll')}</Link>{(['company', 'industry', 'guide'] as const).map(value => <Link locale={locale} key={value} href={`/news?category=${value}`} aria-current={category === value ? 'page' : undefined}>{t(value)}</Link>)}</nav></PublicPageIntro>
 
       <div className="container-uten section-tight">
         {news.length === 0 ? (

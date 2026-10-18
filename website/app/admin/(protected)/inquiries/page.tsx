@@ -1,44 +1,14 @@
+import Link from 'next/link';
 import { prisma } from '@/lib/db';
+import { requireCmsPermission } from '@/lib/auth';
 import { formatDate } from '@/lib/content';
-import { handleInquiry, deleteInquiry } from '@/app/admin/actions';
-import { DeleteButton } from '@/components/admin/DeleteButton';
-
-export default async function InquiriesAdmin() {
-  const inquiries = await prisma.inquiry.findMany({ orderBy: { createdAt: 'desc' } });
-  return (
-    <div>
-      <h1 className="font-heading text-2xl font-bold">客户留言</h1>
-      <p className="text-sm text-muted-foreground">共 {inquiries.length} 条 · 来自前台联系、国际合作与产品表单</p>
-      <div className="mt-6 space-y-3">
-        {inquiries.length === 0 && <p className="card-uten p-10 text-center text-muted-foreground">暂无留言</p>}
-        {inquiries.map((i) => (
-          <div key={i.id} className={`card-uten p-5 ${i.handled ? 'opacity-60' : 'border-l-4 border-l-accent'}`}>
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="font-semibold">{i.name} {i.company && <span className="font-normal text-muted-foreground">· {i.company}</span>}</p>
-                <p className="mt-0.5 text-sm text-muted-foreground">
-                  {[i.phone, i.email].filter(Boolean).join(' / ') || '未留联系方式'} · 来源:{i.source === 'partner' ? '国际合作' : i.source === 'join' ? '招商' : i.source === 'product' ? '产品' : i.source === 'studio' ? '试装' : '联系'} · {formatDate(i.createdAt, 'zh')}
-                </p>
-              </div>
-              {!i.handled ? (
-                <form action={handleInquiry.bind(null, i.id)}><button className="btn-outline btn-sm">标记已处理</button></form>
-              ) : (
-                <span className="chip">已处理</span>
-              )}
-            </div>
-            {[i.market, i.customerType, i.requiredStandard, i.productInterest, i.requestType, i.estimatedQuantity, i.targetSchedule, i.preferredContact].some(Boolean) && (
-              <dl className="mt-4 grid gap-3 rounded-xl border border-border bg-background-elevated/55 p-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
-                {[
-                  ['目标市场', i.market], ['客户类型', i.customerType], ['标准/安装体系', i.requiredStandard], ['关注产品', i.productInterest],
-                  ['需求类型', i.requestType], ['预计数量', i.estimatedQuantity], ['目标时间', i.targetSchedule], ['首选联系', i.preferredContact],
-                ].filter((entry): entry is [string, string] => Boolean(entry[1])).map(([label, value]) => <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1 font-medium">{value}</dd></div>)}
-              </dl>
-            )}
-            <p className="mt-3 whitespace-pre-line rounded-lg bg-muted/40 p-3 text-sm">{i.message}</p>
-            <div className="mt-3 text-right"><DeleteButton action={deleteInquiry.bind(null, i.id)} /></div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+export default async function InquiriesAdmin({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
+  await requireCmsPermission('webinquiry:view');
+  const query = await searchParams; const page = Math.max(1, Math.trunc(Number(query.page) || 1));
+  const [inquiries, total] = await Promise.all([prisma.inquiry.findMany({ orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], skip: (page - 1) * 30, take: 30, include: { delivery: true } }), prisma.inquiry.count()]);
+  return <div className="max-w-6xl"><h1 className="text-2xl font-semibold">询盘送达</h1><p className="mt-3 text-sm leading-7 text-muted-foreground">共 {total} 条受理记录。此处核对官网保存与 IMP 入库回执；认领、分配、跟进和转客户请在 IMP 销售工作台办理。</p>
+    <div className="mt-7 space-y-4">{inquiries.map(i => <article key={i.id} className="rounded-lg border border-border bg-card p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-semibold">{i.company || i.name}</h2><p className="mt-1 text-sm text-muted-foreground">{i.name} · {[i.phone, i.email].filter(Boolean).join(' / ')}</p></div><span className={`rounded px-3 py-1 text-xs ${i.delivery?.state === 'ACKNOWLEDGED' ? 'bg-accent/10 text-accent' : 'bg-amber-50 text-amber-800'}`}>{i.delivery?.state === 'ACKNOWLEDGED' ? 'IMP 已接收' : i.delivery ? '等待同步到 IMP' : '历史记录 · 未自动投递'}</span></div>
+      <p className="mt-4 whitespace-pre-line rounded bg-muted/40 p-4 text-sm">{i.message}</p><dl className="mt-4 grid gap-3 text-xs text-muted-foreground sm:grid-cols-2"><div><dt>官网受理编号</dt><dd className="mt-1 break-all text-foreground">{i.id}</dd></div><div><dt>受理时间</dt><dd className="mt-1 text-foreground">{formatDate(i.createdAt, 'zh')}</dd></div>{i.delivery?.erpInquiryId && <div><dt>IMP 记录编号</dt><dd className="mt-1 break-all text-foreground">{i.delivery.erpInquiryId}</dd></div>}{i.productInterest && <div><dt>关注产品</dt><dd className="mt-1 text-foreground">{i.productInterest}</dd></div>}</dl></article>)}{!inquiries.length && <p className="rounded-lg border border-border p-10 text-center text-sm text-muted-foreground">暂无官网询盘。客户提交需求后会在此记录受理与送达状态。</p>}</div>
+    <div className="mt-6 flex items-center gap-5 text-sm">{page > 1 && <Link href={`?page=${page - 1}`}>上一页</Link>}<span>{page} / {Math.max(1, Math.ceil(total / 30))}</span>{page * 30 < total && <Link href={`?page=${page + 1}`}>下一页</Link>}</div>
+  </div>;
 }

@@ -6,7 +6,8 @@ import {
   type ProductWithRelations,
   toCatalogProduct,
 } from './catalog';
-import { PRODUCT_FUNCTION_TYPES, type ProductFunctionType } from './product-taxonomy';
+import { type ProductFunctionType } from './product-taxonomy';
+import { catalogFacets, catalogWhere, catalogWindow, catalogTextFilter } from './catalog-query';
 import { prisma } from './db';
 import { publicNewsWhere, publicProductWhere } from './publication';
 
@@ -51,7 +52,7 @@ const productPreviewSelection = {
       select: { id: true, image: true, sortOrder: true },
     },
   },
-} as const;
+} satisfies Prisma.ProductFindManyArgs;
 
 /**
  * Marketing families are the only records exposed as top-level catalog
@@ -100,32 +101,45 @@ export const getCatalogFamilies = cache(async (): Promise<CatalogFamilyRecord[]>
   return records as unknown as CatalogFamilyRecord[];
 });
 
+/** Navigation never loads product images, variants or descriptions. */
+export const getCatalogNavigation = cache(async () => prisma.series.findMany({
+  where: { published: true, OR: [{ catalogRole: 'FAMILY' }, { catalogRole: 'UNCLASSIFIED', parentId: null, OR: [{ products: { some: { published: true } } }, { children: { some: { published: true, products: { some: { published: true } } } } }] }] },
+  orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+  select: { id: true, code: true, publicSlug: true, i18n: true, updatedAt: true, children: { where: { published: true, OR: [{ catalogRole: 'COLLECTION' }, { catalogRole: 'UNCLASSIFIED' }] }, select: { id: true, code: true, publicSlug: true } } },
+}));
+
 export type CatalogFamilyResolution = {
   family: CatalogFamilyRecord;
   canonicalSlug: string;
   matchedCollectionId?: string;
 };
 
-export async function resolveCatalogFamily(identifier: string): Promise<CatalogFamilyResolution | null> {
+const resolveCatalogIdentity = cache(async (identifier: string) => {
   const normalized = identifier.trim().toLocaleLowerCase();
   if (!normalized) return null;
-  const families = await getCatalogFamilies();
-  for (const family of families) {
-    const canonicalSlug = family.publicSlug || family.code;
-    if ([family.code, family.publicSlug].some((value) => value?.toLocaleLowerCase() === normalized)) {
-      return { family, canonicalSlug };
-    }
-    const collection = family.children.find((child) =>
-      [child.code, child.publicSlug].some((value) => value?.toLocaleLowerCase() === normalized),
-    );
-    if (collection) return { family, canonicalSlug, matchedCollectionId: collection.id };
+  const identities = await getCatalogNavigation();
+  for (const identity of identities) {
+    const direct = [identity.code, identity.publicSlug].some(value => value?.toLocaleLowerCase() === normalized);
+    const collection = identity.children.find(child => [child.code, child.publicSlug].some(value => value?.toLocaleLowerCase() === normalized));
+    if (direct || collection) return { identity, canonicalSlug: identity.publicSlug || identity.code, matchedCollectionId: collection?.id };
   }
   return null;
-}
+});
 
-export function catalogFamilySeriesIds(family: CatalogFamilyRecord): string[] {
-  return [family.id, ...family.children.map((child) => child.id)];
-}
+/** Cover media is loaded only by pages that actually show a family cover. */
+export const resolveCatalogFamily = cache(async (identifier: string): Promise<CatalogFamilyResolution | null> => {
+  const resolution = await resolveCatalogIdentity(identifier);
+  if (!resolution) return null;
+  const family = await prisma.series.findUnique({ where: { id: resolution.identity.id }, include: {
+    parent: true,
+    media: { where: { published: true }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] },
+    products: productPreviewSelection,
+    children: { where: { published: true, OR: [{ catalogRole: 'COLLECTION' }, { catalogRole: 'UNCLASSIFIED' }] }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }], include: { parent: true, products: productPreviewSelection, _count: { select: { products: { where: { published: true } } } } } },
+    _count: { select: { products: { where: { published: true } } } },
+  } });
+  if (!family?.published) return null;
+  return { family: family as unknown as CatalogFamilyRecord, canonicalSlug: resolution.canonicalSlug, matchedCollectionId: resolution.matchedCollectionId };
+});
 
 export const getProducts = (opts: { seriesId?: string; take?: number; featured?: boolean } = {}) =>
   prisma.product.findMany({
@@ -182,77 +196,25 @@ export type CatalogQueryResult = {
  * conservative inference fallback; explicit conflicting classifications are
  * excluded in SQL before the in-memory review-candidate check. */
 export async function queryCatalogProducts(input: CatalogQueryInput): Promise<CatalogQueryResult | null> {
-  const resolution = await resolveCatalogFamily(input.familyIdentifier);
+  const resolution = await resolveCatalogIdentity(input.familyIdentifier);
   if (!resolution) return null;
-  const query = input.query?.trim().slice(0, 80) || '';
-  const seriesIds = catalogFamilySeriesIds(resolution.family);
-  const taxonomyFilters: Array<Record<string, unknown>> = [];
-  if (input.functionType) {
-    taxonomyFilters.push({
-      OR: [{ functionType: input.functionType }, { functionType: null }],
-    });
-  }
-  if (input.gangCount) {
-    taxonomyFilters.push({
-      OR: [{ gangCount: input.gangCount }, { gangCount: null }],
-    });
-  }
-  const extraWhere = {
-    seriesId: { in: seriesIds },
-    ...(taxonomyFilters.length ? { AND: taxonomyFilters } : {}),
-    ...(query
-      ? {
-          OR: [
-            { model: { contains: query } },
-            { category: { contains: query } },
-            { i18n: { contains: query } },
-            { variants: { some: { i18n: { contains: query }, published: true } } },
-            { variants: { some: { sku: { contains: query }, published: true } } },
-          ],
-        }
-      : {}),
-  } as unknown as Prisma.ProductWhereInput;
-  const records = await prisma.product.findMany({
-    where: publicProductWhere(extraWhere),
-    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
-    include: {
-      series: { include: { parent: true } },
-      variants: { where: { published: true }, orderBy: [{ isDefault: 'desc' }, { sortOrder: 'asc' }] },
-    },
-  });
-  const mapped = (records as unknown as ProductWithRelations[]).map((product) =>
-    toCatalogProduct(product, input.locale, input.standardName),
-  );
-  const functionCounts = new Map<ProductFunctionType, number>();
-  const gangCounts = new Map<number, number>();
-  for (const product of mapped) {
-    functionCounts.set(product.functionType, (functionCounts.get(product.functionType) || 0) + 1);
-    if (product.gangCount) gangCounts.set(product.gangCount, (gangCounts.get(product.gangCount) || 0) + 1);
-  }
-  const filtered = mapped
-    .filter((product) => !input.functionType || product.functionType === input.functionType)
-    .filter((product) => !input.gangCount || product.gangCount === input.gangCount)
-    .sort((left, right) => {
-      const functionOrder = PRODUCT_FUNCTION_TYPES.indexOf(left.functionType) - PRODUCT_FUNCTION_TYPES.indexOf(right.functionType);
-      if (functionOrder) return functionOrder;
-      const leftGang = left.gangCount ?? Number.MAX_SAFE_INTEGER;
-      const rightGang = right.gangCount ?? Number.MAX_SAFE_INTEGER;
-      if (leftGang !== rightGang) return leftGang - rightGang;
-      return (left.model || left.name).localeCompare(right.model || right.name, input.locale, { numeric: true });
-    });
-  const offset = Math.max(0, Math.min(5000, input.offset || 0));
-  const take = Math.max(1, Math.min(5000, input.take || 24));
-
+  const seriesIds = [resolution.identity.id, ...resolution.identity.children.map(child => child.id)];
+  const where = catalogWhere(seriesIds, input);
+  const window = catalogWindow(input.offset, input.take);
+  const [records, total, groups] = await prisma.$transaction([
+    prisma.product.findMany({
+      where, ...window,
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }, { id: 'asc' }],
+      include: { series: { include: { parent: true } }, variants: { where: { published: true }, orderBy: [{ isDefault: 'desc' }, { sortOrder: 'asc' }, { id: 'asc' }] } },
+    }),
+    prisma.product.count({ where }),
+    prisma.product.groupBy({ by: ['functionType', 'gangCount'], orderBy: [{ functionType: 'asc' }, { gangCount: 'asc' }], where: catalogWhere(seriesIds, { query: input.query }), _count: { _all: true } }),
+  ]);
   return {
-    products: filtered.slice(offset, offset + take),
-    total: filtered.length,
+    products: (records as unknown as ProductWithRelations[]).map(product => toCatalogProduct(product, input.locale, input.standardName)),
+    total,
     canonicalSlug: resolution.canonicalSlug,
-    facets: {
-      functions: PRODUCT_FUNCTION_TYPES
-        .map((value) => ({ value, count: functionCounts.get(value) || 0 }))
-        .filter((item) => item.count > 0),
-      gangs: Array.from(gangCounts, ([value, count]) => ({ value, count })).sort((a, b) => a.value - b.value),
-    },
+    facets: catalogFacets(groups as Array<{ functionType: string | null; gangCount: number | null; _count: { _all: number } }>),
   };
 }
 
@@ -268,22 +230,27 @@ export const getLatestProducts = (take = 4) =>
     include: { series: { include: { parent: true } }, variants: { where: { published: true }, orderBy: [{ isDefault: 'desc' }, { sortOrder: 'asc' }] } },
   });
 
-/** Public products and concrete variants enabled for the room studio. */
-export const getSceneProducts = () =>
-  prisma.product.findMany({
-    where: publicProductWhere({
-      sceneEnabled: true,
-      variants: { some: { published: true, image: { not: null } } },
-    }),
-    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
-    include: {
-      series: { include: { parent: true } },
-      variants: {
-        where: { published: true, image: { not: null } },
-        orderBy: [{ isDefault: 'desc' }, { sortOrder: 'asc' }],
-      },
-    },
-  });
+/** Studio search is bounded at the database; a valid variant deep link is
+ * pinned independently of the current page rather than silently substituted. */
+export async function queryStudioProducts(input: { query?: string; offset?: number; variantId?: string } = {}) {
+  // Explicit NULL branches are essential: SQL NOT over nullable source/slug
+  // fields otherwise removes ordinary unclassified series from the preview.
+  const wallSeries = { AND: [
+    { OR: [{ publicSlug: null }, { publicSlug: { not: { contains: 'floor' } } }] },
+    { code: { not: { contains: 'floor' } } },
+    { OR: [{ sourceIdentity: null }, { sourceIdentity: { not: 'ch-uten-v2:series:53' } }] },
+  ] };
+  const base = publicProductWhere({ sceneEnabled: true, variants: { some: { published: true, image: { not: null } } }, series: { is: { AND: [wallSeries, { OR: [{ parentId: null }, { parent: { is: wallSeries } }] }] } } });
+  const query = input.query?.normalize('NFKC').trim().slice(0, 80) || '';
+  const where = query ? { AND: [base, { OR: [{ i18n: catalogTextFilter(query) }, { model: catalogTextFilter(query) }, { series: { is: { i18n: catalogTextFilter(query) } } }] }] } : base;
+  const include = { series: { include: { parent: true } }, variants: { where: { published: true, image: { not: null } }, orderBy: [{ isDefault: 'desc' as const }, { sortOrder: 'asc' as const }, { id: 'asc' as const }] } };
+  const [products, total] = await prisma.$transaction([
+    prisma.product.findMany({ where, ...catalogWindow(input.offset, 24), orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }, { id: 'asc' }], include }),
+    prisma.product.count({ where }),
+  ]);
+  const selected = input.variantId ? await prisma.product.findFirst({ where: { AND: [base, { variants: { some: { id: input.variantId, published: true, image: { not: null } } } }] }, include }) : null;
+  return { products: selected && !products.some(product => product.id === selected.id) ? [selected, ...products] : products, total, selected };
+}
 
 /** Only published scene presets are visible in the public studio. */
 export const getScenePresets = () =>
@@ -292,9 +259,9 @@ export const getScenePresets = () =>
     orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
   });
 
-export const getNewsList = (take?: number) =>
+export const getNewsList = (take?: number, category?: string) =>
   prisma.news.findMany({
-    where: publicNewsWhere(),
+    where: publicNewsWhere(category ? { category } : {}),
     orderBy: { publishedAt: 'desc' },
     ...(take ? { take } : {}),
   });
@@ -314,3 +281,25 @@ export async function getSetting<T = unknown>(key: string): Promise<string | nul
 
 export const getInquiries = () =>
   prisma.inquiry.findMany({ orderBy: { createdAt: 'desc' } });
+
+/** Read-only context for the contact page; the action independently repeats
+ * these publication checks when accepting an inquiry. */
+export async function getPublicInquiryContext(input: { productId?: string; variantId?: string; seriesId?: string }, locale: string): Promise<{ context: { productId?: string; variantId?: string; seriesId?: string }; label: string } | null> {
+  if (input.productId) {
+    const product = await prisma.product.findFirst({ where: publicProductWhere({ id: input.productId }), include: { series: { include: { parent: true } }, variants: { where: { published: true } } } });
+    if (!product || (input.seriesId && input.seriesId !== product.seriesId && input.seriesId !== product.series?.parentId)) return null;
+    const variant = input.variantId ? product.variants.find(item => item.id === input.variantId) : undefined;
+    if (input.variantId && !variant) return null;
+    const view = toCatalogProduct(product as unknown as ProductWithRelations, locale);
+    return { context: { productId: product.id, ...(variant ? { variantId: variant.id } : {}), ...(product.seriesId ? { seriesId: product.seriesId } : {}) }, label: [view.seriesName, view.name].filter(Boolean).join(' · ') };
+  }
+  if (input.variantId) return null;
+  if (input.seriesId) {
+    const families = await getCatalogNavigation();
+    const family = families.find(item => item.id === input.seriesId || item.children.some(child => child.id === input.seriesId));
+    if (!family) return null;
+    const { tr } = await import('./content');
+    return { context: { seriesId: input.seriesId }, label: tr<{ name?: string }>(family.i18n, locale).name || family.code };
+  }
+  return { context: {}, label: '' };
+}

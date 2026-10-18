@@ -1,85 +1,76 @@
-# Uten Architectural · Design System v2
+# Uten public website design system
 
-## 1. 品牌方向
+The public website is a corporate product showroom. It supports product research,
+company information, documents and direct contact with sales. It does not contain
+a cart, selection basket, checkout, payment or shopping workflow.
 
-网站是建筑空间中的电气细节目录，不是电商商城。视觉关键词：建筑、精密、安静、自信、触感。采用暖白纸张底、炭黑结构和 Uten 青绿点睛，避免常见科技蓝紫渐变、满屏玻璃态和无意义的连续动画。
+Use `frontend-design` by default for public UI and design documentation. Preserve
+Uten branding, source identity, publication controls and the website's languages.
 
-## 2. 色彩 tokens
+## Visual direction
 
-| Token | 角色 |
+The visual reference is the product in an architectural space: a quiet wall,
+precise product proportions and clear information. Product photography carries
+the identity. Large scenes establish context; original low-resolution product
+images remain at a restrained size. Generated room imagery represents a concept,
+never a delivered project or a fabricated product.
+
+| Role | Color |
 |---|---|
-| `--background` | 暖白主背景 |
-| `--background-elevated` | 轻微抬升的纸张层 |
-| `--foreground` | 炭黑正文与大标题 |
-| `--muted-foreground` | 次级信息 |
-| `--card` | 产品/内容卡片 |
-| `--border` | 低对比发丝边框 |
-| `--accent` | Uten 青绿，CTA、焦点和关键状态 |
-| `--accent-soft` | 青绿浅底提示 |
+| Main surface | `#FFFFFF` |
+| Product stage | `#F3F5F4` |
+| Main text | `#17292D` |
+| Secondary text | `#657377` |
+| Uten accent | `#0A707B` |
+| Rules and controls | `#D7DFDF` |
 
-深色只用于需要制造节奏的品牌段落、页脚和工艺展示，不提供会破坏品牌一致性的主题切换。
+Public tokens live under `.public-site`; admin pages retain their existing root
+tokens. Do not change CMS contrast or layout to implement public-page styling.
+Use the existing local system font stacks. Titles are restrained and readable;
+body text is 16–18 px with generous line height. Avoid decorative all-caps labels,
+continuous marquees, repeated gradient cards and animation on every section.
 
-## 3. 字体与信息层级
+## Page structure
 
-- 字体使用可靠的系统无衬线栈，避免构建时依赖远程字体。
-- Hero 标题使用 `clamp()` 大字号、紧凑行高和适度负字距。
-- Eyebrow 采用小号大写、宽字距，不承载关键信息。
-- 正文移动端不小于 16px；辅助标签不小于 12px。
-- 型号、尺寸和数量使用 tabular numerals。
+- Home: one product/space story, series discovery, a small featured product set,
+  a published room preview and concrete routes to company, documents and sales.
+- Catalog: family-first navigation and server-rendered, database-paginated
+  product results. Filters and pages are URL state and work without JavaScript.
+- Details: real product/gallery, reviewed attributes, a clearly separate legacy
+  description, applicable published documents and a direct sales inquiry.
+- Company, manufacturing, partners, resources and careers: editorial reading
+  layouts with actual CMS content and clear next actions.
+- News: real article dates, published content and readable long-form text.
+- Cases: actual published records; concept room previews are not case studies.
+- Contact: the server resolves stable product/variant/series IDs; the accepting
+  action repeats authorization/publication checks before saving the inquiry.
+- Privacy: explain the actual service and contact route, not prototype storage.
 
-## 4. 布局
+## Content and media
 
-- `container-uten` 最大宽度约 1440px，左右安全边距随视口变化。
-- `section` 为主节奏，`section-tight` 用于连续内容。
-- 首页突出少量产品与场景入口；完整产品通过搜索和系列筛选探索。
-- 产品模型卡内部再聚合颜色/材质款式，避免把每个颜色复制成一张同级卡。
-- 触控目标最小 44×44px；移动筛选使用明确的抽屉/面板。
+Family covers prefer published `SeriesMedia.role=combination`, then `coverImage`,
+then a source-backed composition. Never turn navigation badges into covers.
+Use `object-contain` for product images and preserve their proportions. Do not
+fabricate materials, colors, stock, prices, certifications, ratings or dimensions.
 
-## 5. 组件
+`publicProductView` is the common card/detail/Studio boundary. Historical plain
+text remains visible as historical material; it is not promoted into current
+specifications or search snippets. Synthetic base variants are image fallbacks.
+Reviewed dimensions/materials require the applicable product and variant review
+states. Room preview additionally requires `sceneEnabled`; floor sockets do not
+appear on a wall.
 
-- `btn-primary`：炭黑主要动作。
-- `btn-accent`：青绿关键转化，仅每个区块一个首要动作。
-- `btn-outline`：次要探索动作。
-- `card-uten`：暖白卡、细边框、低幅 hover 位移。
-- `input-uten` / `label-uten`：显式标签、可见焦点、错误信息靠近字段。
-- 所有图标使用 Lucide；不以 emoji 代替界面图标。
+Files appear as downloads only through published resource records. File links
+use the protected download endpoint and expose actual language/version/market
+metadata. Missing documents lead to a sales request, not a fake download.
 
-## 6. 动效
+## Interaction and acceptance
 
-- 统一缓动 `cubic-bezier(0.16, 1, 0.3, 1)`。
-- 动画优先只改变 `transform` 和 `opacity`。
-- Hero 可有一个持续的空间/产品微动；列表只在交互时响应。
-- `prefers-reduced-motion: reduce` 时取消持续运动和大幅过渡。
-- 页面可读性不能依赖动画完成后才出现。
+Direct inquiries retain stable identity and a retry-stable submission key. A
+successful submission shows the returned reference number and receipt status;
+it never implies that a salesperson has already read or followed up.
 
-## 7. 图片原则
-
-- 产品图使用 `object-contain`，保持真实比例，不裁切面板边缘。
-- 场景图必须保留明确的空墙安装区域；产品以真实款式图叠加。
-- AI 生成背景只能表达空间氛围，不能伪造产品实物、认证或工程案例。
-- 低分辨率旧图不得强行铺满大屏；优先使用克制尺寸、留白和浅底。
-
-## 8. 无障碍与国际化
-
-- 键盘焦点始终可见；弹层支持 Esc，打开时锁定背景滚动。
-- 文本与背景达到 WCAG AA；不能只靠颜色表达选中状态。
-- 图片具有准确 alt，装饰图 alt 为空。
-- 阿拉伯语页面设置 `dir="rtl"`；组件避免只适用于 LTR 的绝对方向假设。
-- UI 字符串来自 messages，内容按当前语言 → 英文 → 中文逐字段回退。
-
-## 9. 禁止模式
-
-- 不展示虚构价格、库存、销量或评分。
-- 不把企业展示站伪装成商城。
-- 不为“炫酷”加入阻塞首屏的大型 3D 包、自动播放视频或滚动劫持。
-- 不把 1000+ 产品一次性渲染在首屏。
-- 不以翻译回退掩盖待审核的产品技术参数。
-
-## 10. 交付检查
-
-- 375、768、1024、1440px 页面无横向溢出。
-- 导航、筛选、款式色卡、表单和 Studio 可用键盘操作。
-- 减少动态偏好生效。
-- 产品、款式、场景后台保存后前台可见。
-- 每种 locale 均能加载且 key/ICU 参数一致。
-- 首页、产品列表、详情、Studio、联系页通过正式构建和浏览器实测。
+Keep visible keyboard focus, 44 px touch targets, RTL support and reduced-motion
+behavior. Check 375, 768, 1024 and 1440 px; long names, empty content, unavailable
+records, form failures and published/unpublished changes are part of acceptance.
+Verify all public page families and child routes, not just the homepage.

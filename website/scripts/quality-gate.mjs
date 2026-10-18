@@ -12,8 +12,8 @@ if (args.length !== 0 && (args.length !== 2 || args[0] !== '--schema-contract'))
   throw new Error('Usage: node scripts/quality-gate.mjs [--schema-contract <output.json>]');
 }
 const [nodeMajor, nodeMinor, nodePatch] = process.versions.node.split('.').map(Number);
-if (nodeMajor !== 22 || nodeMinor < 13 || (nodeMinor === 13 && nodePatch < 1)) {
-  throw new Error('Website quality gate requires Node >=22.13.1 <23 (CI uses 22.13.1)');
+if (!((nodeMajor === 22 && (nodeMinor > 13 || (nodeMinor === 13 && nodePatch >= 1))) || (nodeMajor === 24 && nodeMinor >= 11))) {
+  throw new Error('Website quality gate requires Node >=22.13.1 <23 or >=24.11.0 <25');
 }
 const npmCli = [process.env.npm_execpath,
   path.join(path.dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js'),

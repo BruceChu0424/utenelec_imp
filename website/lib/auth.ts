@@ -5,6 +5,7 @@ import { cookies, headers } from 'next/headers';
 import { LoginRateLimiter } from './admin-security';
 import { requireStrongAuthSecret } from './auth-secret';
 import { resolveTrustedClientIp } from './inquiry-security';
+import type { Prisma } from '@prisma/client';
 
 const COOKIE_NAME = 'uten_admin_session';
 const DUMMY_PASSWORD_HASH = '$2a$12$alZ8KYbq2bT.jLWevVvrT.WfzaHti.2tVSG1cWljhISyGb4Vm37ZO';
@@ -104,6 +105,14 @@ export async function createSessionToken(username: string, passwordHash: string)
 }
 
 type PasswordHashResolver = (username: string) => Promise<string | null>;
+export type AdminSession = {
+  username: string;
+  source?: 'imp';
+  actorId?: string;
+  portalSessionId?: string;
+  permissions?: string[];
+  expiresAt?: Date;
+};
 
 async function resolveCurrentPasswordHash(username: string): Promise<string | null> {
   const { prisma } = await import('./db');
@@ -114,7 +123,7 @@ async function resolveCurrentPasswordHash(username: string): Promise<string | nu
 export async function verifySessionToken(
   token: string,
   resolvePasswordHash: PasswordHashResolver = resolveCurrentPasswordHash,
-): Promise<{ username: string } | null> {
+): Promise<AdminSession | null> {
   try {
     const { payload } = await jwtVerify(token, getSecret(), {
       algorithms: ['HS256'],
@@ -122,6 +131,17 @@ export async function verifySessionToken(
       audience: 'uten-admin-cms',
     });
     if (typeof payload.username !== 'string' || !payload.username) return null;
+    if (payload.source === 'imp') {
+      if (typeof payload.portalSessionId !== 'string') return null;
+      const { prisma } = await import('./db');
+      const { bridgeSiteId } = await import('./imp-bridge-security');
+      const session = await prisma.impPortalSession.findUnique({ where: { id: payload.portalSessionId } });
+      if (!session || !session.authSessionId || session.revokedAt || session.expiresAt.getTime() <= Date.now() || session.siteId !== bridgeSiteId()) return null;
+      const permissions: unknown = JSON.parse(session.permissions);
+      if (!Array.isArray(permissions) || !permissions.every(p => typeof p === 'string')) return null;
+      return { username: session.displayName, source: 'imp', actorId: session.actorId,
+        portalSessionId: session.id, permissions, expiresAt: session.expiresAt };
+    }
     const currentPasswordHash = await resolvePasswordHash(payload.username);
     if (!currentPasswordHash) return null;
     const expectedVersion = passwordVersionFingerprint(currentPasswordHash);
@@ -151,7 +171,51 @@ export async function setSession(username: string, passwordHash: string) {
   });
 }
 
+export async function setPortalSession(id: string, displayName: string, expiresAt: Date) {
+  // The cookie is only an opaque session reference. Every read/write separately
+  // verifies the 5-minute DB lease and current permissions maintained by IMP.
+  if (expiresAt.getTime() <= Date.now()) throw new Error('Portal authorization expired');
+  const cookieExpiresAt = new Date(Date.now() + 30 * 60_000);
+  const token = await new SignJWT({ source: 'imp', portalSessionId: id, username: displayName })
+    .setProtectedHeader({ alg: 'HS256' }).setIssuer('uten-admin').setAudience('uten-admin-cms')
+    .setIssuedAt().setExpirationTime(Math.floor(cookieExpiresAt.getTime() / 1000)).sign(getSecret());
+  (await cookies()).set(COOKIE_NAME, token, {
+    httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/',
+    maxAge: 30 * 60,
+  });
+}
+
+export function hasCmsPermission(session: AdminSession | null, permission: string): boolean {
+  return !!session && (session.source !== 'imp' || !!session.permissions?.includes(permission));
+}
+export async function requireCmsPermission(permission: string): Promise<AdminSession> {
+  const session = await getSession();
+  if (!hasCmsPermission(session, permission)) throw new Error('没有此官网操作权限，或登录授权已过期，请从 IMP 重新进入');
+  return session as AdminSession;
+}
+
+/** Recheck after expensive file processing, in the transaction that commits it. */
+export async function assertCmsSessionInTransaction(tx: Prisma.TransactionClient, session: AdminSession, permission: string): Promise<void> {
+  if (session.source === 'imp') {
+    const { bridgeSiteId } = await import('./imp-bridge-security');
+    const lease = session.portalSessionId ? await tx.impPortalSession.findUnique({ where: { id: session.portalSessionId } }) : null;
+    let permissions: unknown = [];
+    try { permissions = lease ? JSON.parse(lease.permissions) : []; } catch { /* fail closed */ }
+    if (!lease || !lease.authSessionId || lease.siteId !== bridgeSiteId() || lease.actorId !== session.actorId || lease.revokedAt
+      || lease.expiresAt.getTime() <= Date.now() || !Array.isArray(permissions) || !permissions.includes('website:view') || !permissions.includes(permission)) {
+      throw new Error('官网授权已过期或权限已变化，请从 IMP 重新进入');
+    }
+  } else if (!await tx.user.findUnique({ where: { username: session.username }, select: { id: true } })) {
+    throw new Error('后台账号已失效');
+  }
+}
+
 export async function clearSession() {
+  const session = await getSession();
+  if (session?.portalSessionId) {
+    const { prisma } = await import('./db');
+    await prisma.impPortalSession.updateMany({ where: { id: session.portalSessionId, revokedAt: null }, data: { revokedAt: new Date() } });
+  }
   const cookieStore = await cookies();
   cookieStore.delete(COOKIE_NAME);
 }

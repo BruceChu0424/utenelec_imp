@@ -486,6 +486,9 @@ List<String>? requiredAnyPermFor(String rawLocation) {
     return const [Perm.suggestionSubmit];
   }
   // 官网询盘：按权限点收口（部门授权，非全员基础包）。
+  if (location == RouteName.websiteManagement) {
+    return const [Perm.websiteView];
+  }
   if (location == RouteName.websiteInquiry ||
       location.startsWith('/webinquiry/')) {
     return const [Perm.webinquiryView];

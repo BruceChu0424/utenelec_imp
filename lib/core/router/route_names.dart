@@ -121,6 +121,7 @@ abstract final class RouteName {
 
   // 官网询盘
   static const String websiteInquiry = '/webinquiry';
+  static const String websiteManagement = '/website-management';
   static const String websiteInquiryDetail = '/webinquiry/:id';
 
   // 独立草稿页(基础资料/建议箱/HR 工作台/品质任务中心顶栏「草稿」按钮落点，

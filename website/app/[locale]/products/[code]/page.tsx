@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
-import { ArrowLeft, Box, Layers3 } from 'lucide-react';
+import { ArrowLeft, Layers3 } from 'lucide-react';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
-import { notFound, permanentRedirect } from 'next/navigation';
+import { notFound, permanentRedirect, redirect } from 'next/navigation';
 import { ProductExplorer } from '@/components/products/ProductExplorer';
 import { SeriesCollage } from '@/components/products/SeriesCollage';
 import { StructuredData } from '@/components/products/StructuredData';
@@ -9,6 +9,7 @@ import { Link } from '@/i18n/navigation';
 import { toCatalogFamily } from '@/lib/catalog';
 import { catalogSeriesRedirectTarget } from '@/lib/catalog-routing';
 import { pickLocale } from '@/lib/content';
+import { CATALOG_PAGE_SIZE } from '@/lib/catalog-query';
 import { isProductFunctionType } from '@/lib/product-taxonomy';
 import { queryCatalogProducts, resolveCatalogFamily } from '@/lib/queries';
 import { buildPageMetadata, directContentLocales, hasText, localizedUrl } from '@/lib/seo';
@@ -20,7 +21,7 @@ function firstValue(value: string | string[] | undefined): string {
 }
 
 function parseGang(value: string): number | null {
-  const parsed = Number.parseInt(value, 10);
+  const parsed = Number(value);
   return Number.isInteger(parsed) && parsed >= 1 && parsed <= 12 ? parsed : null;
 }
 
@@ -32,6 +33,8 @@ function safeFilterQuery(searchParams: PageSearchParams): string {
   if (query) output.set('q', query);
   if (isProductFunctionType(functionType)) output.set('function', functionType);
   if (gang) output.set('gang', String(gang));
+  const page = Number.parseInt(firstValue(searchParams.page), 10);
+  if (page > 1) output.set('page', String(Math.min(page, 4167)));
   const value = output.toString();
   return value ? `?${value}` : '';
 }
@@ -76,17 +79,17 @@ export default async function SeriesPage({
 
   const t = await getTranslations({ locale, namespace: 'Products' });
   const tc = await getTranslations({ locale, namespace: 'Common' });
-  const result = await queryCatalogProducts({
-    locale,
-    familyIdentifier: resolution.canonicalSlug,
-    take: 5000,
-    standardName: t('standardVariant'),
-  });
-  if (!result) notFound();
-  const family = toCatalogFamily(resolution.family, locale);
   const requestedFunction = firstValue(filters.function);
   const initialFunction = isProductFunctionType(requestedFunction) ? requestedFunction : null;
   const initialGang = parseGang(firstValue(filters.gang));
+  const initialQuery = firstValue(filters.q).trim().slice(0, 80);
+  const requestedPage = Number.parseInt(firstValue(filters.page), 10);
+  const page = Number.isFinite(requestedPage) ? Math.max(1, Math.min(4167, requestedPage)) : 1;
+  const result = await queryCatalogProducts({ locale, familyIdentifier: resolution.canonicalSlug, query: initialQuery, functionType: initialFunction, gangCount: initialGang, offset: (page - 1) * CATALOG_PAGE_SIZE, take: CATALOG_PAGE_SIZE, standardName: t('standardVariant') });
+  if (!result) notFound();
+  const lastPage = Math.max(1, Math.ceil(result.total / CATALOG_PAGE_SIZE));
+  if (page > lastPage) redirect(`/${locale}/products/${resolution.canonicalSlug}${safeFilterQuery({ ...filters, page: String(lastPage) })}#product-matrix`);
+  const family = toCatalogFamily(resolution.family, locale);
   const functionTypes = {
     switches: t('functionTypes.switches'),
     'power-sockets': t('functionTypes.power-sockets'),
@@ -149,7 +152,7 @@ export default async function SeriesPage({
               </div>
               <div className="mt-8 flex flex-wrap gap-3">
                 <a href="#product-matrix" className="btn-accent"><Layers3 className="h-4 w-4" />{t('viewProductMatrix')}</a>
-                <Link locale={locale} href="/studio" className="btn-outline"><Box className="h-4 w-4" />{t('tryOnWall')}</Link>
+                <Link locale={locale} href={`/contact?seriesId=${encodeURIComponent(family.id)}`} className="btn-outline">{t('askAdvice')}</Link>
               </div>
             </div>
             <SeriesCollage images={family.images} name={family.name} priority className="aspect-[16/11] rounded-[1.5rem] border border-border shadow-sm" />
@@ -166,12 +169,18 @@ export default async function SeriesPage({
           </div>
           <ProductExplorer
             products={result.products}
+            total={result.total}
+            facets={result.facets}
+            page={page}
+            pageSize={CATALOG_PAGE_SIZE}
+            familySlug={family.slug}
             locale={locale}
             initialQuery={firstValue(filters.q).trim().slice(0, 80)}
             initialFunction={initialFunction}
             initialGang={initialGang}
             labels={{
               search: tc('searchPlaceholder'),
+              previous: t('previousPage'), next: t('nextPage'), page: t('pagination'), apply: tc('search'),
               resultCount: t.raw('resultCount') as string,
               variants: t('variants'),
               viewDetail: t('viewDetail'),

@@ -41,7 +41,7 @@ export default async function SeriesAdmin({ searchParams }: { searchParams: Prom
                   <td className="whitespace-nowrap p-3 text-right">
                     <Link href={`/admin/series/edit/${s.id}`} className="text-accent hover:underline">编辑</Link>
                     <span className="mx-2 text-border">|</span>
-                    <DeleteButton action={deleteSeries.bind(null, s.id)} confirmText="仅允许删除已下架且没有产品/下级的系列，确认继续？" />
+                    <DeleteButton draft action={deleteSeries.bind(null, s.id)} confirmText="仅允许删除已下架且没有产品/下级的系列，确认继续？" />
                   </td>
                 </tr>
               );

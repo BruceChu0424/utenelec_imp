@@ -77,29 +77,17 @@ export function getProductPublicationIssue(
  * for the legacy import before its one-time family classification is reviewed;
  * once a parent is marked FAMILY, its own published flag is authoritative.
  */
+export function publicSeriesWhere(extra: Prisma.SeriesWhereInput = {}): Prisma.SeriesWhereInput {
+  return { AND: [{ published: true, OR: [
+    { catalogRole: 'FAMILY' },
+    { catalogRole: 'UNCLASSIFIED', parentId: null },
+    { catalogRole: { in: ['COLLECTION', 'UNCLASSIFIED'] }, parent: { is: { published: true, catalogRole: 'FAMILY' } } },
+    { catalogRole: 'UNCLASSIFIED', parent: { is: { published: true, catalogRole: 'UNCLASSIFIED' } } },
+  ] }, extra] };
+}
+
 export function publicProductWhere(extra: Prisma.ProductWhereInput = {}): Prisma.ProductWhereInput {
-  return {
-    AND: [
-      {
-        published: true,
-        series: {
-          is: {
-            published: true,
-            OR: [
-              { catalogRole: 'FAMILY' },
-              { catalogRole: 'UNCLASSIFIED', parentId: null },
-              { parent: { is: { published: true, catalogRole: 'FAMILY' } } },
-              {
-                catalogRole: 'UNCLASSIFIED',
-                parent: { is: { published: true, catalogRole: 'UNCLASSIFIED' } },
-              },
-            ],
-          },
-        },
-      } as unknown as Prisma.ProductWhereInput,
-      extra,
-    ],
-  };
+  return { AND: [{ published: true, series: { is: publicSeriesWhere() } }, extra] };
 }
 
 /** Public news records must always be explicitly published. */

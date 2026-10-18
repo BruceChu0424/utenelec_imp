@@ -9,6 +9,213 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get websiteInquirySeries => '产品系列';
+
+  @override
+  String get websiteInquiryProductId => '产品标识';
+
+  @override
+  String get websiteInquirySourceIdentity => '来源标识';
+
+  @override
+  String get websiteInquiryConsent => '联系授权时间';
+
+  @override
+  String get websiteInquiryConsentPolicy => '隐私条款版本';
+
+  @override
+  String get websiteInquiryExpandProducts => '展开全部关联产品';
+
+  @override
+  String get websiteInquiryCollapseProducts => '收起关联产品';
+
+  @override
+  String get websiteManagementTitle => '官网管理';
+
+  @override
+  String get websiteOperationsTitle => '官网运营';
+
+  @override
+  String get websiteManageSubtitle => '维护官网内容与产品，客户咨询在销售收件箱持续跟进。';
+
+  @override
+  String get websiteConnectionTitle => '云端连接';
+
+  @override
+  String get websiteConnectionReady => '连接正常';
+
+  @override
+  String get websiteConnectionNotReady => '暂不可编辑';
+
+  @override
+  String get websiteConnectionChecking => '正在检查云端连接';
+
+  @override
+  String get websiteConnectionHelp => '请检查云端服务与连接配置，然后重新检查。';
+
+  @override
+  String get websiteCheckAgain => '重新检查';
+
+  @override
+  String get websiteOpenPublic => '浏览官网';
+
+  @override
+  String get websiteOpenEditor => '进入编辑器';
+
+  @override
+  String get websiteOpening => '正在打开';
+
+  @override
+  String get websiteOpenFailed => '未能打开官网，请检查浏览器设置后重试。';
+
+  @override
+  String get websiteUntrustedTarget => '官网地址与受信配置不一致，已停止打开。';
+
+  @override
+  String get websiteSessionChanged => '登录身份或权限已变化，请重新进入此页面。';
+
+  @override
+  String get websiteAccessDenied => '当前账号没有官网管理权限。';
+
+  @override
+  String get websiteConfigure => '连接配置';
+
+  @override
+  String get websiteConfigureHelp => '仅超级管理员可选择已批准的官网地址。连接凭据由服务器维护。';
+
+  @override
+  String get websiteDisplayName => '网站名称';
+
+  @override
+  String get websiteApprovedOrigin => '已批准的官网地址';
+
+  @override
+  String get websiteEnabled => '启用官网管理连接';
+
+  @override
+  String get websiteSaveConfig => '保存连接配置';
+
+  @override
+  String get websiteConfigSaved => '连接配置已保存';
+
+  @override
+  String get websiteConfigRequired => '请填写网站名称并选择已批准的地址。';
+
+  @override
+  String get websiteLastChecked => '本次检查';
+
+  @override
+  String get websiteLastSync => '最近咨询同步';
+
+  @override
+  String get websitePublishedRevision => '已发布版本';
+
+  @override
+  String get websitePendingInquiries => '待同步咨询';
+
+  @override
+  String get websiteNoRecord => '暂无记录';
+
+  @override
+  String get websiteContentTitle => '内容管理';
+
+  @override
+  String get websiteHomeSection => '首页与栏目';
+
+  @override
+  String get websiteHomeDescription => '调整首页展示、品牌介绍与联系信息。';
+
+  @override
+  String get websiteProductsSection => '产品目录';
+
+  @override
+  String get websiteProductsDescription => '管理产品系列、款式、图片与技术参数。';
+
+  @override
+  String get websiteResourcesSection => '素材与资料';
+
+  @override
+  String get websiteResourcesDescription => '维护图片、产品资料和可下载文件。';
+
+  @override
+  String get websiteNewsSection => '新闻与案例';
+
+  @override
+  String get websiteNewsDescription => '维护新闻和经审核的工程案例。';
+
+  @override
+  String get websiteReleasesSection => '发布记录';
+
+  @override
+  String get websiteReleasesDescription => '预览发布内容，查看版本并按权限恢复。';
+
+  @override
+  String get websiteSettingsSection => '网站设置';
+
+  @override
+  String get websiteSettingsDescription => '维护语言、导航和网站基本信息。';
+
+  @override
+  String get websiteInquiryEntry => '销售询盘收件箱';
+
+  @override
+  String get websiteInquiryDescription => '查看客户留言、认领跟进并关联客户资料。';
+
+  @override
+  String get websiteEditingRequiresConnection => '连接检查通过后可进入编辑器。';
+
+  @override
+  String get websiteConfigNoOrigins => '服务器尚未提供已批准的官网地址，请联系系统维护人员。';
+
+  @override
+  String get websiteInquiryTimeline => '跟进记录';
+
+  @override
+  String get websiteInquiryTimelineEmpty => '尚无跟进记录';
+
+  @override
+  String get websiteInquiryNote => '新增跟进记录';
+
+  @override
+  String get websiteInquirySaveNote => '保存跟进记录';
+
+  @override
+  String get websiteInquiryNoteSaved => '跟进记录已保存';
+
+  @override
+  String get websiteInquiryNoteRequired => '请输入 1–2000 字的跟进记录。';
+
+  @override
+  String get websiteInquiryOrigin => '咨询来源';
+
+  @override
+  String get websiteInquirySourceUrl => '来源页面';
+
+  @override
+  String get websiteInquiryProduct => '关联产品';
+
+  @override
+  String get websiteInquiryCampaign => '推广来源';
+
+  @override
+  String get websiteInquiryReceivedEvent => '收到咨询';
+
+  @override
+  String get websiteInquiryClaimedEvent => '认领跟进';
+
+  @override
+  String get websiteInquiryNoteEvent => '跟进记录';
+
+  @override
+  String get websiteInquiryClosedEvent => '询盘关闭';
+
+  @override
+  String get websiteInquiryConvertedEvent => '转为客户';
+
+  @override
+  String get websiteInquiryEvent => '状态更新';
+
+  @override
   String get tableFacetLoadFailed => '候选加载失败，点击重试';
 
   @override

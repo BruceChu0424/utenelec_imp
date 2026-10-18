@@ -7,11 +7,11 @@ import { requireStrongAuthSecret } from './lib/auth-secret';
 const intl = createMiddleware(routing);
 const COOKIE = 'uten_admin_session';
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   // 后台鉴权: 除登录页外都需要有效 session
   if (pathname === '/admin' || pathname.startsWith('/admin/')) {
-    if (pathname === '/admin/login') return NextResponse.next();
+    if (pathname === '/admin/login' || pathname === '/admin/imp-entry') return NextResponse.next();
     const token = req.cookies.get(COOKIE)?.value;
     const secret = new TextEncoder().encode(requireStrongAuthSecret(process.env.AUTH_SECRET));
     if (token) {

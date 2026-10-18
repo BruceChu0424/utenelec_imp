@@ -92,9 +92,11 @@ function mediaField(key: string, field: string) {
 
 export function SeriesForm({
   series,
+  baseHash,
   parentOptions,
 }: {
   series: SeriesRecord;
+  baseHash: string;
   parentOptions: ParentOption[];
 }) {
   const zh = series ? (pickLocale<SeriesLocale>(series.i18n, 'zh') ?? {}) : {};
@@ -129,6 +131,8 @@ export function SeriesForm({
 
   return (
     <form onSubmit={onSubmit} className="max-w-4xl pb-10">
+      <input type="hidden" name="expectedHash" value={baseHash} />
+      <p className="mb-4 text-sm text-muted-foreground">保存草稿后进入版本预览；审核发布才会更新官网。</p>
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">Series CMS</p>
         <h1 className="mt-1 font-heading text-2xl font-bold">{series ? '编辑系列' : '新增系列'}</h1>
@@ -323,7 +327,7 @@ export function SeriesForm({
 
       <div className="mt-7 flex flex-wrap gap-3 border-t border-border pt-6">
         <button type="submit" disabled={saving} className="btn-accent min-h-11 disabled:cursor-wait disabled:opacity-60">
-          {saving ? '保存中…' : '保存系列'}
+          {saving ? '保存中…' : '保存系列草稿'}
         </button>
         <Link href="/admin/series" className="btn-outline min-h-11">取消</Link>
       </div>

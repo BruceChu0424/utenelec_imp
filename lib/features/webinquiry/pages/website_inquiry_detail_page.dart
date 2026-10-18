@@ -14,6 +14,8 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/responsive/breakpoint.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/uten_notify.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
@@ -21,6 +23,9 @@ import '../../../core/ui/human_error_message.dart';
 import '../../../shared/auth/permissions.dart';
 import '../models/website_inquiry.dart';
 import '../providers/website_inquiry_providers.dart';
+import '../widgets/website_inquiry_source_timeline.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
+import '../../../shared/providers/session_provider.dart';
 
 class WebsiteInquiryDetailPage extends ConsumerWidget {
   const WebsiteInquiryDetailPage({super.key, required this.inquiryId});
@@ -31,9 +36,18 @@ class WebsiteInquiryDetailPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final detail = ref.watch(websiteInquiryDetailProvider(inquiryId));
     final permissions = ref.watch(currentPermissionsProvider);
-    final canClaim = permissions.contains(Perm.webinquiryClaim);
-    final canClose = permissions.contains(Perm.webinquiryClose);
-    final canConvert = permissions.contains(Perm.webinquiryConvertClient);
+    final scope = ref.watch(authenticatedScopeProvider);
+    final writable = scope != null && !scope.readOnly;
+    final employeeId = ref.watch(
+      sessionProvider.select((s) => s.user?.employeeId),
+    );
+    final canClaim =
+        writable &&
+        employeeId != null &&
+        permissions.contains(Perm.webinquiryClaim);
+    final canClose = writable && permissions.contains(Perm.webinquiryClose);
+    final canConvert =
+        writable && permissions.contains(Perm.webinquiryConvertClient);
 
     Widget body = detail.when(
       loading: () => const UtenSkeletonList(itemCount: 4),
@@ -66,6 +80,19 @@ class WebsiteInquiryDetailPage extends ConsumerWidget {
                 _MessageCard(inquiry: inquiry),
                 const SizedBox(height: UtenSpacing.s16),
                 _RequirementCard(inquiry: inquiry),
+                const SizedBox(height: UtenSpacing.s16),
+                WebsiteInquirySourceCard(
+                  key: ValueKey(inquiry.id),
+                  inquiry: inquiry,
+                ),
+                const SizedBox(height: UtenSpacing.s16),
+                WebsiteInquiryTimelineCard(
+                  key: ValueKey((
+                    inquiry.id,
+                    ref.watch(authenticatedScopeProvider),
+                  )),
+                  inquiry: inquiry,
+                ),
                 if ((canClaim || canClose || canConvert) &&
                     inquiry.status != WebsiteInquiryStatus.converted) ...[
                   const SizedBox(height: UtenSpacing.s24),
@@ -353,7 +380,14 @@ class _ActionPanel extends ConsumerWidget {
       if (context.mounted) UtenNotify.success(context, successMessage);
     } catch (error) {
       if (context.mounted) {
-        UtenNotify.apiError(context, error, fallback: '操作失败，请重试');
+        if (isSessionBoundaryError(error)) {
+          UtenNotify.error(
+            context,
+            AppLocalizations.of(context).websiteSessionChanged,
+          );
+        } else {
+          UtenNotify.apiError(context, error, fallback: '操作失败，请重试');
+        }
       }
     }
   }

@@ -156,6 +156,7 @@ enum BadgeEntry {
 
   /// 销售草稿(订货/发货/退货/报价)。
   salesDrafts(BadgeModule.sales),
+  websiteInquiry(BadgeModule.websiteInquiry),
 
   // —— 系统管理 ——
   /// 服务器状态: 越过警告或危急阈值的告警条数。

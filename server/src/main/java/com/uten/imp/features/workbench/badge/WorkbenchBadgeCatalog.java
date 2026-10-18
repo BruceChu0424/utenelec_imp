@@ -164,6 +164,8 @@ enum WorkbenchBadgeCatalog {
     /** 销售草稿: 订货/发货/退货/报价(报价草稿不含财务退回件)。 */
     salesDrafts(Module.sales, facts("drafts.salesOrder", "drafts.salesShipment", "drafts.salesReturn", "drafts.salesQuote"), none()),
 
+    websiteInquiry(Module.websiteInquiry, facts("websiteInquiry.unclaimed"), facts("websiteInquiry.myFollowing")),
+
     // —— 系统管理 ——
     /** 服务器状态: 越过警告或危急阈值的告警条数。 */
     serverStatusAlert(Module.system, facts("serverStatus.alerts"), none()),
@@ -172,7 +174,7 @@ enum WorkbenchBadgeCatalog {
 
     /** 徽章容器: 一个容器对应工作台上的一张模块卡 / 一个 hub。 */
     enum Module {
-        people, finance, production, workshop, rd, warehouse, purchase, subcontract, quality, sales, system
+        people, finance, production, workshop, rd, warehouse, purchase, subcontract, quality, sales, websiteInquiry, system
     }
 
     private final Module module;

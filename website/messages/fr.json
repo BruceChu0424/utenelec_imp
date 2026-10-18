@@ -57,7 +57,7 @@
     "featured": "À la une",
     "discoverEyebrow": "Un système de produits complet",
     "discoverTitle": "Le détail juste\npour chaque espace.",
-    "discoverBody": "Explorez nos interrupteurs, prises et boîtiers de sol par collection, fonction, matériau et finition. Les variantes restent clairement regroupées au sein de chaque modèle.",
+    "discoverBody": "Explorez l’aspect, les fonctions et les modèles de chaque série pour créer des détails cohérents dans votre espace.",
     "seriesTitle": "Collections de produits",
     "seriesSubtitle": "Fabrication de précision · Conçu pour la sécurité",
     "craftTitle": "Les matériaux et le savoir-faire créent un toucher durable",
@@ -95,7 +95,7 @@
     "craftGlassTitle": "Verre trempé",
     "craftGlassBody": "Épuré, résistant et visuellement léger",
     "globalEyebrow": "Prêts pour les projets internationaux",
-    "globalTitle": "Des décisions produit claires d’un marché à l’autre.",
+    "globalTitle": "Des échanges plus clairs pour les projets internationaux.",
     "globalBody": "Les projets internationaux commencent par un marché cible clairement défini, un système d’installation et des justificatifs propres au modèle. Nous structurons chaque demande autour de ces décisions.",
     "marketTitle": "Les exigences du marché d’abord",
     "marketBody": "Indiquez-nous le marché de destination et le système d’installation requis. La disponibilité et la documentation sont confirmées pour chaque modèle.",
@@ -113,27 +113,7 @@
     "latestStudio": "Le voir dans un espace",
     "spotlightEyebrow": "New release",
     "factsEyebrow": "The company behind the product",
-    "factsTitle": "Two decades devoted to a single detail.",
-    "factsBody": "Zhongshan Uten Electrical Co., Ltd. integrates R&D, manufacturing and sales. Since its first in-house tooling programme in 2007, the company has built a 30,000 m² modern production base, with ISO 9001 quality system and CCC certified products, and a Hong Kong team for global affairs — supporting international customers with product selection and OEM / ODM cooperation.",
-    "factsCta": "More about Uten",
-    "facts": [
-      {
-        "value": "2007",
-        "label": "In-house tooling programme begins"
-      },
-      {
-        "value": "30,000 m²",
-        "label": "Modern production base"
-      },
-      {
-        "value": "ISO 9001 · CCC",
-        "label": "System & product certification"
-      },
-      {
-        "value": "Zhongshan · Hong Kong",
-        "label": "Manufacturing & global affairs"
-      }
-    ]
+    "sceneIllustration": "Illustration d’ambiance"
   },
   "Products": {
     "title": "Produits",
@@ -150,10 +130,10 @@
     "variants": "Coloris / finitions",
     "finish": "Finition de surface",
     "dimensions": "Dimensions",
-    "specsPending": "Caractéristiques à venir",
+    "specsPending": "Contactez notre équipe pour les caractéristiques actuelles",
     "tryOnWall": "Visualisez-le sur le mur",
     "askAdvice": "Se renseigner sur ce modèle",
-    "displayOnly": "Présentation des produits · Ce site n’est pas une boutique en ligne",
+    "displayOnly": "Aspect et détails",
     "clear": "Effacer les filtres",
     "viewDetail": "Voir le produit",
     "loadMore": "Charger plus",
@@ -170,11 +150,11 @@
     "browseSeriesBody": "Chaque famille rassemble interrupteurs, prises et modules assortis afin de choisir une esthétique cohérente avant d’affiner la fonction.",
     "seriesProducts": "{count} produits",
     "exploreSeries": "Découvrir la série",
-    "noSeries": "Aucune série de produits publiée pour le moment.",
-    "viewProductMatrix": "Voir la matrice produits",
+    "noSeries": "Aucune série n’est disponible pour le moment. Contactez-nous pour plus d’informations.",
+    "viewProductMatrix": "Voir les produits de la série",
     "productMatrixEyebrow": "Modèles par fonction",
     "productMatrixTitle": "Trouvez précisément la fonction et le nombre de postes",
-    "productMatrixBody": "Les produits sont regroupés par fonction et classés par nombre de postes. Les classifications historiques déduites n’inventent aucune donnée électrique.",
+    "productMatrixBody": "Filtrez par fonction ou nombre de commandes pour découvrir les modèles et les produits assortis.",
     "filterFunction": "Fonction",
     "filterGang": "Nombre de postes",
     "allFunctions": "Toutes les fonctions",
@@ -192,12 +172,17 @@
       "hospitality": "Fonctions hôtelières",
       "accessories": "Accessoires",
       "other": "Autres fonctions"
-    }
+    },
+    "previousPage": "Précédent",
+    "nextPage": "Suivant",
+    "pagination": "Pages produits",
+    "historicalTitle": "Informations sur le produit",
+    "historicalNote": "Informations d’un ancien catalogue. Confirmez les caractéristiques, l’emballage et la disponibilité actuels auprès de notre équipe."
   },
   "Studio": {
     "eyebrow": "UTEN SPACE STUDIO",
-    "title": "Placez le produit dans une pièce\net visualisez son intégration.",
-    "subtitle": "Choisissez une pièce et un produit, puis faites-le glisser pour le positionner et ajustez son échelle visuelle. Cette première version utilise un aperçu 2.5D léger qui s’ouvre rapidement sur mobile.",
+    "title": "Découvrez le produit dans votre espace.",
+    "subtitle": "Choisissez un espace et un produit, puis ajustez sa position et son échelle visuelle pour comparer les associations.",
     "scenes": "Styles d’intérieur",
     "products": "Choisir un produit",
     "search": "Rechercher un produit ou un modèle",
@@ -212,12 +197,12 @@
     "askAdvice": "Demander conseil",
     "disclaimer": "À titre de référence visuelle uniquement. Reportez-vous aux échantillons physiques et aux fiches dimensionnelles.",
     "noProducts": "Aucun produit correspondant",
-    "workflowTitle": "Un parcours continu, de la découverte à la prescription",
-    "workflowBody": "Le produit sélectionné reste associé à sa fiche et aux demandes. L’aperçu pourra évoluer après validation des finitions, dimensions et vues de face transparentes.",
+    "workflowTitle": "De l’inspiration au choix",
+    "workflowBody": "Comparez les ambiances et les produits. Consultez ensuite les informations du modèle ou contactez notre équipe.",
     "chooseRoomTitle": "Choisissez la pièce",
     "chooseRoomBody": "Ambiances prédéfinies pour le salon, le bureau et l’hôtellerie",
     "chooseFinishTitle": "Choisissez la finition",
-    "chooseFinishBody": "Choisissez un produit disposant d’une image d’aperçu",
+    "chooseFinishBody": "Comparez les aspects qui vous plaisent.",
     "placeTitle": "Positionnez-le",
     "placeBody": "Faites-le glisser et ajustez son échelle visuelle",
     "startPreview": "Lancer l’aperçu",
@@ -232,7 +217,7 @@
     "latest": "Dernières actualités",
     "related": "À découvrir aussi",
     "empty": "Aucun article pour le moment",
-    "fallbackNote": "Cet article est actuellement disponible en anglais. Une traduction relue sera ajoutée avant son indexation dans cette langue."
+    "fallbackNote": "Cet article est actuellement disponible en anglais."
   },
   "Cases": {
     "eyebrow": "UTEN · PROJETS DE RÉFÉRENCE",
@@ -256,25 +241,7 @@
     "mission": "Mission et vision",
     "coreCraftTitle": "Savoir-faire essentiels",
     "teamTitle": "Gestion intégrée · Équipe professionnelle · Service international",
-    "teamBody": "Des équipes intégrées en production, R&D, essais, vente, planification et service client, appuyées par des professionnels expérimentés du secteur.",
-    "facts": [
-      {
-        "value": "2007",
-        "label": "In-house tooling programme begins"
-      },
-      {
-        "value": "30,000 m²",
-        "label": "Modern production base"
-      },
-      {
-        "value": "ISO 9001 · CCC",
-        "label": "System & product certification"
-      },
-      {
-        "value": "Zhongshan · Hong Kong",
-        "label": "Manufacturing & global affairs"
-      }
-    ]
+    "teamBody": "Des équipes intégrées en production, R&D, essais, vente, planification et service client, appuyées par des professionnels expérimentés du secteur."
   },
   "Join": {
     "title": "Partenaires",
@@ -358,7 +325,7 @@
   },
   "Resources": {
     "eyebrow": "RESSOURCES PROFESSIONNELLES",
-    "title": "Les informations qui font passer un produit de l’intérêt à l’approbation.",
+    "title": "Des documents pour guider votre choix.",
     "subtitle": "Utilisez les guides ci-dessous pour préparer un brief clair, comparer une série et demander les preuves adaptées à chaque modèle.",
     "guidesEyebrow": "GUIDES DE L’ACHETEUR",
     "guidesTitle": "Commencez par les décisions qui comptent",
@@ -368,8 +335,8 @@
     "documentsList": "Fiche technique · plan coté · instructions d’installation · certificat ou déclaration applicable · échantillon de finition · informations d’emballage",
     "faqEyebrow": "QUESTIONS FRÉQUENTES",
     "faqTitle": "Avant d’envoyer une demande",
-    "faq1q": "UTEN vend-elle ses produits en ligne ?",
-    "faq1a": "Non. Ce site présente les produits et l’entreprise. Contactez UTEN pour une aide à la sélection, des échantillons, un examen de projet ou une demande commerciale.",
+    "faq1q": "Comment demander conseil sur un produit ?",
+    "faq1a": "Explorez une série ou un modèle, ou présentez votre projet. Contactez-nous pour discuter de vos besoins et demander les documents utiles.",
     "faq2q": "UTEN propose-t-elle des projets OEM / ODM ?",
     "faq2a": "Oui. Uten accueille les demandes OEM / ODM. Chaque projet est étudié selon la faisabilité du produit, les spécifications, l’identité de marque, l’emballage, la quantité et le calendrier.",
     "faq3q": "Tous les produits sont-ils disponibles dans tous les pays ?",
@@ -377,9 +344,15 @@
     "faq4q": "Puis-je demander des échantillons et des finitions ?",
     "faq4a": "Oui, sous réserve de disponibilité et d’examen du projet. Les échantillons physiques prévalent sur les couleurs affichées à l’écran.",
     "faq5q": "Puis-je télécharger des certificats depuis le site ?",
-    "faq5a": "Seuls les documents à jour et propres au modèle doivent être utilisés pour l’approbation. Demandez le fichier correspondant à UTEN jusqu’à la publication d’une bibliothèque vérifiée.",
+    "faq5a": "Utilisez les liens de cette page et vérifiez le modèle, le marché et la version applicables. Contactez notre équipe pour les autres documents.",
     "faq6q": "Que doit contenir une première demande ?",
-    "faq6a": "Indiquez le marché cible, le type de client, la norme d’installation, les fonctions du produit, la quantité estimée, le calendrier et les documents requis."
+    "faq6a": "Indiquez le marché cible, le type de client, la norme d’installation, les fonctions du produit, la quantité estimée, le calendrier et les documents requis.",
+    "download": "Télécharger le document",
+    "fileVersion": "Version",
+    "fileLanguage": "Langue",
+    "fileMarket": "Marché",
+    "fileUpdated": "Mise à jour",
+    "downloadTitle": "Documents disponibles"
   },
   "Privacy": {
     "eyebrow": "DONNÉES ET DEMANDES",
@@ -452,7 +425,11 @@
     "consent": "J’accepte qu’UTEN utilise ces coordonnées uniquement pour répondre à cette demande",
     "privacyPrefix": "Lire l’",
     "privacyLink": "avis de confidentialité",
-    "productPrefill": "Je souhaite obtenir des conseils sur le produit suivant : {product}"
+    "productPrefill": "Je souhaite obtenir des conseils sur le produit suivant : {product}",
+    "receivedTitle": "Votre demande a été reçue",
+    "receiptNumber": "Numéro de référence",
+    "receivedBody": "Votre demande a été enregistrée. Nous vous contacterons pour échanger sur vos besoins.",
+    "contextTitle": "Produit concerné"
   },
   "Footer": {
     "products": "Produits",
@@ -463,8 +440,7 @@
     "rights": "Tous droits réservés",
     "quickLinks": "Explorer",
     "ctaTitle": "De meilleurs équipements électriques pour les espaces qui méritent toute notre attention.",
-    "brandStatement": "UTEN conçoit et fabrique des interrupteurs muraux, des prises et des plaques, et fournit à ses clients du monde entier des informations produits claires ainsi qu’un accompagnement technique.",
-    "estLine": "Zhongshan · Hong Kong · Since 2007"
+    "brandStatement": "UTEN conçoit et fabrique des interrupteurs muraux, des prises et des plaques, et fournit à ses clients du monde entier des informations produits claires ainsi qu’un accompagnement technique."
   },
   "NotFound": {
     "title": "Page introuvable",

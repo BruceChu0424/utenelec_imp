@@ -32,6 +32,7 @@ public final class PermissionDependencyCatalog {
         actions(hard, catalog, "sales_quote_finance", "confirm");
         actions(hard, catalog, "sales_shipment_finance", "approve", "reject");
         actions(hard, catalog, "production_quality_inspection", "approve");
+        actions(hard, catalog, "website", "content_edit", "product_edit", "media_manage", "publish", "rollback");
         add(hard, catalog, "goods:price_analysis:view", "goods:view");
         // Import preview legitimately edits cost inputs without general goods browsing.
         add(hard, catalog, "goods:cost:edit", "goods:cost:view");

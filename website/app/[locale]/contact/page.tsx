@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { setRequestLocale, getTranslations } from 'next-intl/server';
-import { getSetting } from '@/lib/queries';
+import { notFound } from 'next/navigation';
+import { PublicPageIntro } from '@/components/layout/PublicPageIntro';
+import { getSetting, getPublicInquiryContext } from '@/lib/queries';
 import { pick } from '@/lib/content';
 import { InquiryForm } from '@/components/InquiryForm';
 import { Phone, Mail, MapPin, Globe } from 'lucide-react';
@@ -17,13 +19,17 @@ export default async function ContactPage({
   searchParams,
 }: {
   params: Promise<{ locale: string }>;
-  searchParams: Promise<{ product?: string }>;
+  searchParams: Promise<{ product?: string; productId?: string; variantId?: string; seriesId?: string; source?: string }>;
 }) {
   const { locale } = await params;
   const resolvedSearchParams = await searchParams;
   setRequestLocale(locale);
   const t = await getTranslations('Contact');
-  const product = String(resolvedSearchParams.product || '').trim().slice(0, 160);
+  const cleanId = (value: unknown) => typeof value === 'string' ? value.trim().slice(0, 120) : '';
+  const bound = await getPublicInquiryContext({ productId: cleanId(resolvedSearchParams.productId), variantId: cleanId(resolvedSearchParams.variantId), seriesId: cleanId(resolvedSearchParams.seriesId) }, locale);
+  if (!bound) notFound();
+  const product = bound.label || (typeof resolvedSearchParams.product === 'string' ? resolvedSearchParams.product.trim().slice(0, 160) : '');
+  const source = resolvedSearchParams.source === 'studio' && bound.context.productId ? 'studio' : bound.context.productId ? 'product' : 'contact';
   const contact = pick<{ phone?: string; phone2?: string; email?: string; address?: string; company?: string }>(await getSetting('contact'), locale) || {};
   const titleLines = t('title').split(/\n+/).map((line) => line.trim()).filter(Boolean);
 
@@ -36,17 +42,8 @@ export default async function ContactPage({
 
   return (
     <>
-      <section className="page-hero">
-        <div className="container-uten relative grid items-end gap-8 lg:grid-cols-[1fr_.7fr]">
-          <div>
-            <span className="eyebrow">{t('eyebrow')}</span>
-            <h1 className="section-title mt-7 text-balance">{titleLines.map((line) => <span key={line} className="block">{line}</span>)}</h1>
-          </div>
-          <p className="max-w-xl text-base leading-8 text-muted-foreground md:text-lg">{t('intro')}</p>
-        </div>
-      </section>
-
-      <div className="container-uten section-tight">
+      <PublicPageIntro locale={locale} title={titleLines.join(' ')} description={t('intro')} />
+  <div className="container-uten section-tight">
         <div className="grid gap-12 lg:grid-cols-[.8fr_1.2fr] lg:gap-20">
           <div>
             <div className="space-y-6">
@@ -78,7 +75,9 @@ export default async function ContactPage({
           <div className="card-uten p-6 md:p-8">
             <h2 className="mb-5 font-heading text-xl font-bold">{t('formTitle')}</h2>
             <InquiryForm
-              source={product ? 'product' : 'contact'}
+              source={source}
+              context={bound.context}
+              contextLabel={bound.label}
               initialMessage={product ? t('productPrefill', { product }) : ''}
             />
           </div>

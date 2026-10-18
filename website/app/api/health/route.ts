@@ -13,26 +13,32 @@ const noStoreHeaders = {
 
 export async function GET() {
   try {
+    const postgres = process.env.DATABASE_URL?.startsWith('postgres') ?? false;
     const [schemaRows, migrationRows] = await Promise.all([
-      prisma.$queryRaw<Array<{ name: string }>>`
+      postgres ? prisma.$queryRaw<Array<{ name: string }>>`
+        SELECT table_name AS name FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name IN ('Series', 'Product', 'Setting', 'User', 'Inquiry', '_prisma_migrations', 'InquiryDelivery', 'CmsRevision')
+      ` : prisma.$queryRaw<Array<{ name: string }>>`
         SELECT name
         FROM sqlite_master
         WHERE type = 'table'
-          AND name IN ('Series', 'Product', 'Setting', 'User', 'Inquiry', '_prisma_migrations')
+          AND name IN ('Series', 'Product', 'Setting', 'User', 'Inquiry', '_prisma_migrations', 'InquiryDelivery', 'CmsRevision')
       `,
       prisma.$queryRaw<Array<{ migration_name: string; finished_at: Date | null; rolled_back_at: Date | null }>>`
         SELECT migration_name, finished_at, rolled_back_at
         FROM _prisma_migrations
         ORDER BY migration_name
       `,
-      access('/var/lib/uten-website/runtime/website.db', constants.R_OK | constants.W_OK),
+      !postgres && process.env.NODE_ENV === 'production'
+        ? access('/var/lib/uten-website/runtime/website.db', constants.R_OK | constants.W_OK) : Promise.resolve(),
       assertUploadsDirectoryReady(),
     ]);
-    const requiredTables = new Set(['Series', 'Product', 'Setting', 'User', 'Inquiry', '_prisma_migrations']);
+    const requiredTables = new Set(['Series', 'Product', 'Setting', 'User', 'Inquiry', '_prisma_migrations', 'InquiryDelivery', 'CmsRevision']);
     for (const row of schemaRows) requiredTables.delete(row.name);
     if (requiredTables.size > 0) throw new Error('required website schema is incomplete');
     const baseline = migrationRows.find(
-      (row) => row.migration_name === '20260812000000_initial_production_baseline',
+      (row) => row.migration_name === (postgres ? '20261017000000_postgresql_baseline' : '20260812000000_initial_production_baseline'),
     );
     if (!baseline?.finished_at || baseline.rolled_back_at) {
       throw new Error('required website Prisma baseline is not successfully applied');

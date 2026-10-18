@@ -57,7 +57,7 @@
     "featured": "注目の製品",
     "discoverEyebrow": "一貫した製品システム",
     "discoverTitle": "あらゆる空間に、\nふさわしいディテールを。",
-    "discoverBody": "スイッチ、コンセント、フロアコンセントを、コレクション、機能、素材、仕上げからお選びいただけます。各モデルのバリエーションも分かりやすく整理されています。",
+    "discoverBody": "各シリーズの外観、機能、対応モデルを見比べ、空間全体に統一感のある細部を選べます。",
     "seriesTitle": "製品コレクション",
     "seriesSubtitle": "精密なものづくり · 確かな安全性",
     "craftTitle": "素材と技術が、長く心地よい手触りを生み出す",
@@ -95,7 +95,7 @@
     "craftGlassTitle": "強化ガラス",
     "craftGlassBody": "清潔感、強さ、そして視覚的な軽やかさ",
     "globalEyebrow": "国際案件に対応",
-    "globalTitle": "市場を越えて、明確な製品判断を。",
+    "globalTitle": "海外プロジェクトの製品選びを、より明確に。",
     "globalBody": "国際プロジェクトは、対象市場、設置方式、モデルごとの根拠資料を明確にすることから始まります。お問い合わせごとに、これらの条件を軸に整理して対応します。",
     "marketTitle": "市場要件を最優先",
     "marketBody": "仕向け市場と必要な設置方式をお知らせください。製品の提供可否と資料はモデルごとに確認します。",
@@ -113,27 +113,7 @@
     "latestStudio": "空間で見る",
     "spotlightEyebrow": "New release",
     "factsEyebrow": "The company behind the product",
-    "factsTitle": "Two decades devoted to a single detail.",
-    "factsBody": "Zhongshan Uten Electrical Co., Ltd. integrates R&D, manufacturing and sales. Since its first in-house tooling programme in 2007, the company has built a 30,000 m² modern production base, with ISO 9001 quality system and CCC certified products, and a Hong Kong team for global affairs — supporting international customers with product selection and OEM / ODM cooperation.",
-    "factsCta": "More about Uten",
-    "facts": [
-      {
-        "value": "2007",
-        "label": "In-house tooling programme begins"
-      },
-      {
-        "value": "30,000 m²",
-        "label": "Modern production base"
-      },
-      {
-        "value": "ISO 9001 · CCC",
-        "label": "System & product certification"
-      },
-      {
-        "value": "Zhongshan · Hong Kong",
-        "label": "Manufacturing & global affairs"
-      }
-    ]
+    "sceneIllustration": "空間コーディネートのイメージ"
   },
   "Products": {
     "title": "製品",
@@ -150,10 +130,10 @@
     "variants": "カラー / 仕上げ",
     "finish": "表面仕上げ",
     "dimensions": "寸法",
-    "specsPending": "仕様データは準備中です",
+    "specsPending": "現在の仕様は営業担当者にお問い合わせください",
     "tryOnWall": "壁面で確認する",
     "askAdvice": "このモデルについて相談する",
-    "displayOnly": "製品展示用 · オンラインストアではありません",
+    "displayOnly": "外観とディテール",
     "clear": "絞り込みをクリア",
     "viewDetail": "製品を見る",
     "loadMore": "さらに読み込む",
@@ -170,11 +150,11 @@
     "browseSeriesBody": "各シリーズに調和するスイッチ、コンセント、機能モジュールをまとめています。まず外観を決め、その後に機能を絞り込めます。",
     "seriesProducts": "{count} 製品",
     "exploreSeries": "シリーズを見る",
-    "noSeries": "公開中の製品シリーズはまだありません。",
-    "viewProductMatrix": "製品マトリクスを見る",
+    "noSeries": "現在閲覧できるシリーズはありません。製品についてはお問い合わせください。",
+    "viewProductMatrix": "シリーズの製品を見る",
     "productMatrixEyebrow": "機能別モデル",
     "productMatrixTitle": "必要な機能と連数をすばやく選択",
-    "productMatrixBody": "製品は機能別に分類し、連数順に表示します。旧データからの推定分類で電気仕様を作り出すことはありません。",
+    "productMatrixBody": "機能やスイッチ数で絞り込み、各モデルと対応製品を確認できます。",
     "filterFunction": "機能",
     "filterGang": "連数",
     "allFunctions": "すべての機能",
@@ -192,12 +172,17 @@
       "hospitality": "ホテル向け機能",
       "accessories": "アクセサリー",
       "other": "その他の機能"
-    }
+    },
+    "previousPage": "前へ",
+    "nextPage": "次へ",
+    "pagination": "製品ページ",
+    "historicalTitle": "製品情報",
+    "historicalNote": "旧カタログの情報です。現在の仕様、梱包、供給状況は営業担当者にご確認ください。"
   },
   "Studio": {
     "eyebrow": "UTEN SPACE STUDIO",
-    "title": "製品を空間に配置し、\nその調和を確かめる。",
-    "subtitle": "空間と製品を選び、ドラッグで位置を移動して見た目のスケールを調整できます。初回リリースでは、モバイルでもすばやく開く軽量な2.5Dプレビューを採用しています。",
+    "title": "製品を空間に合わせてみる。",
+    "subtitle": "空間と製品を選び、位置と見た目の大きさを調整して組み合わせを確認できます。",
     "scenes": "インテリアスタイル",
     "products": "製品を選ぶ",
     "search": "製品名または型番を検索",
@@ -212,12 +197,12 @@
     "askAdvice": "相談する",
     "disclaimer": "表示はイメージです。実物サンプルおよび寸法図をご確認ください。",
     "noProducts": "条件に一致する製品がありません",
-    "workflowTitle": "発見から仕様決定まで、途切れない体験を",
-    "workflowBody": "選択した製品は、詳細ページやお問い合わせに引き継がれます。仕上げ、寸法、透過正面画像の確認後、プレビューをさらに高精度化できます。",
+    "workflowTitle": "空間のイメージから製品選びへ",
+    "workflowBody": "部屋の雰囲気と製品の外観を比較し、気になるモデルの資料を確認するか、営業担当者にご相談ください。",
     "chooseRoomTitle": "空間を選ぶ",
     "chooseRoomBody": "リビング、オフィス、ホスピタリティ空間のプリセット",
     "chooseFinishTitle": "仕上げを選ぶ",
-    "chooseFinishBody": "プレビュー画像のある製品を選択",
+    "chooseFinishBody": "気になる製品の外観を比較できます。",
     "placeTitle": "配置する",
     "placeBody": "ドラッグで位置を動かし、表示スケールを調整",
     "startPreview": "プレビューを開始",
@@ -232,7 +217,7 @@
     "latest": "最新",
     "related": "関連記事",
     "empty": "記事はまだありません",
-    "fallbackNote": "この記事は現在英語でのみご覧いただけます。専門家による翻訳確認後、この言語で検索対象に追加します。"
+    "fallbackNote": "この記事は現在、英語でご覧いただけます。"
   },
   "Cases": {
     "eyebrow": "UTEN · 導入事例",
@@ -256,25 +241,7 @@
     "mission": "ミッションとビジョン",
     "coreCraftTitle": "中核となる製造技術",
     "teamTitle": "一貫したマネジメント · 専門チーム · グローバルサービス",
-    "teamBody": "経験豊富な業界のプロフェッショナルを基盤に、生産、研究開発、試験、営業、企画、カスタマーサービスの各チームが一体となって取り組んでいます。",
-    "facts": [
-      {
-        "value": "2007",
-        "label": "In-house tooling programme begins"
-      },
-      {
-        "value": "30,000 m²",
-        "label": "Modern production base"
-      },
-      {
-        "value": "ISO 9001 · CCC",
-        "label": "System & product certification"
-      },
-      {
-        "value": "Zhongshan · Hong Kong",
-        "label": "Manufacturing & global affairs"
-      }
-    ]
+    "teamBody": "経験豊富な業界のプロフェッショナルを基盤に、生産、研究開発、試験、営業、企画、カスタマーサービスの各チームが一体となって取り組んでいます。"
   },
   "Join": {
     "title": "パートナー",
@@ -358,7 +325,7 @@
   },
   "Resources": {
     "eyebrow": "専門資料",
-    "title": "関心から承認まで、製品選定を支える情報。",
+    "title": "製品選びを進めるための資料。",
     "subtitle": "以下のガイドを活用して、明確な要件を準備し、シリーズを比較し、適切なモデル別資料をご請求ください。",
     "guidesEyebrow": "バイヤーガイド",
     "guidesTitle": "重要な判断事項から始める",
@@ -368,8 +335,8 @@
     "documentsList": "データシート · 寸法図 · 取付説明書 · 該当する証明書または宣言書 · 仕上げサンプル · 包装情報",
     "faqEyebrow": "よくある質問",
     "faqTitle": "お問い合わせの前に",
-    "faq1q": "UTENはオンライン販売をしていますか？",
-    "faq1a": "いいえ。本サイトは製品・会社情報を提供するためのものです。製品選定、サンプル、プロジェクト確認、商談についてはUTENへお問い合わせください。",
+    "faq1q": "製品について相談するには？",
+    "faq1a": "シリーズやモデルを選ぶか、プロジェクトのご要望をお知らせください。お問い合わせページから相談や資料請求ができます。",
     "faq2q": "UTENはOEM / ODMに対応していますか？",
     "faq2a": "はい。UtenではOEM / ODMのご相談を受け付けています。製品の実現可能性、仕様、ブランド、包装、数量、日程を依頼ごとに確認します。",
     "faq3q": "すべての製品をすべての国で利用できますか？",
@@ -377,9 +344,15 @@
     "faq4q": "サンプルや仕上げ見本を請求できますか？",
     "faq4a": "はい。在庫状況とプロジェクト確認に応じて対応します。色は画面表示ではなく実物サンプルを基準にご確認ください。",
     "faq5q": "ウェブサイトから証明書をダウンロードできますか？",
-    "faq5a": "承認には、最新かつモデル別の資料のみを使用してください。検証済みの資料ライブラリが公開されるまでは、UTENへ該当資料をご請求ください。",
+    "faq5a": "ページ内のリンクから資料を取得し、対象型番、市場、版をご確認ください。その他の資料は営業担当者にご依頼ください。",
     "faq6q": "最初の問い合わせには何が必要ですか？",
-    "faq6a": "対象市場、顧客種別、設置規格、製品機能、予定数量、日程、必要資料をご記入ください。"
+    "faq6a": "対象市場、顧客種別、設置規格、製品機能、予定数量、日程、必要資料をご記入ください。",
+    "download": "資料をダウンロード",
+    "fileVersion": "版",
+    "fileLanguage": "言語",
+    "fileMarket": "対象市場",
+    "fileUpdated": "更新日",
+    "downloadTitle": "公開資料"
   },
   "Privacy": {
     "eyebrow": "データとお問い合わせ",
@@ -452,7 +425,11 @@
     "consent": "本件への回答に限り、UTENがこれらの連絡先情報を利用することに同意します",
     "privacyPrefix": "以下をご確認ください：",
     "privacyLink": "プライバシー通知",
-    "productPrefill": "次の製品について相談を希望します：{product}"
+    "productPrefill": "次の製品について相談を希望します：{product}",
+    "receivedTitle": "お問い合わせを受け付けました",
+    "receiptNumber": "受付番号",
+    "receivedBody": "お問い合わせを保存しました。ご入力の連絡先へ、担当者からご連絡します。",
+    "contextTitle": "お問い合わせの製品"
   },
   "Footer": {
     "products": "製品",
@@ -463,8 +440,7 @@
     "rights": "すべての権利を保有します",
     "quickLinks": "サイトを探す",
     "ctaTitle": "こだわりある空間に、より良い電気設備のディテールを。",
-    "brandStatement": "UTENは壁面スイッチ、コンセント、パネルを開発・製造し、世界のお客様に明確な製品情報と仕様選定サポートを提供しています。",
-    "estLine": "Zhongshan · Hong Kong · Since 2007"
+    "brandStatement": "UTENは壁面スイッチ、コンセント、パネルを開発・製造し、世界のお客様に明確な製品情報と仕様選定サポートを提供しています。"
   },
   "NotFound": {
     "title": "ページが見つかりません",

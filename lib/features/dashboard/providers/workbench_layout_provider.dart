@@ -61,6 +61,7 @@ class WorkbenchLayoutNotifier
     'pmc',
     'qa',
     'sales',
+    'website',
     'newmedia',
     'rail',
     'security',

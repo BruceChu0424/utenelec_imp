@@ -10,6 +10,10 @@ import lombok.Setter;
 
 import java.time.Instant;
 import java.util.UUID;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /**
  * 官网询盘（客户留言统一收件箱，综合营销）。
@@ -29,6 +33,11 @@ public class WebsiteInquiry extends BaseEntity {
     /** 官网 inquiries.id（重推幂等键，唯一约束兜底）。 */
     @Column(name = "source_id", nullable = false, unique = true)
     private String sourceId;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @org.hibernate.annotations.ColumnDefault("'{}'::jsonb")
+    @Column(name = "source_context",columnDefinition = "jsonb",nullable = false)
+    private JsonNode sourceContext = JsonNodeFactory.instance.objectNode();
 
     @Column(nullable = false)
     private String name;

@@ -922,7 +922,6 @@
   "subcontractHubReportInOut": "입출고 현황",
   "subcontractHubReportInOutSub": "종합 입출 현황",
   "productionHubTitle": "생산",
-  "productionHubSchedule": "일정 및 진행",
   "productionHubScheduleSub": "계획·진행·완료",
   "productionHubPlan": "새 생산 계획",
   "productionHubPlanSub": "판매 주문을 참조해 직접 생성",

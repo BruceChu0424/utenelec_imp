@@ -11,6 +11,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
+import '../../core/theme/uten_tokens.dart';
 import '../../shared/auth/page_permission_action.dart';
 import '../buttons/uten_back_button.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
@@ -182,13 +183,10 @@ class _UtenAppBarState extends State<UtenAppBar> {
         );
       }
       if (source is ButtonStyleButton) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: UtenAppBarNativeActionButton(
-            source: source,
-            onPressed: source.onPressed,
-            onLongPress: source.onLongPress,
-          ),
+        return UtenAppBarNativeActionButton(
+          source: source,
+          onPressed: source.onPressed,
+          onLongPress: source.onLongPress,
         );
       }
       return source;
@@ -234,6 +232,10 @@ class _UtenAppBarState extends State<UtenAppBar> {
         );
         final expandedActions = Row(
           mainAxisSize: MainAxisSize.min,
+          // 顶栏动作间隙全站统一 4px（2026-10-18 口径）：此前各动作自带 0/4/8
+          // 不等水平内边距，相邻按钮间隙忽大忽小；现在动作自身一律零内边距，
+          // 间距只由这里的 spacing 决定，宽窄一致。
+          spacing: UtenSpacing.s4,
           children: [
             for (final action in presentedActions)
               UtenAppBarActionPresentation(child: action),
@@ -255,7 +257,14 @@ class _UtenAppBarState extends State<UtenAppBar> {
                   ? const UtenBackButton()
                   : const SizedBox.shrink()),
           automaticallyImplyLeading: false,
-          leadingWidth: leading == null && !showBackButton ? 0 : null,
+          // 返回键槽收窄到按钮宽（2026-10-18 左缘对齐口径）：IconButton 型 leading
+          // 会被 AppBar 居中在槽内，56 宽槽会把图标顶到 ~18px；40 宽槽 + 按钮自身
+          // 贴左对齐（UtenBackButton centerStart）让图标落在 x=0，与分栏页左栏
+          // 搜索框共缘。非返回键型 leading 维持默认 56 槽不动。
+          leadingWidth:
+              (showBackButton || leading is UtenBackButton)
+                  ? 40
+                  : (leading == null && !showBackButton ? 0 : null),
           actions: [
             ConstrainedBox(
               constraints: BoxConstraints(maxWidth: actionBudget),

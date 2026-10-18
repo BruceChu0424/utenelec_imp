@@ -28,7 +28,6 @@ import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../components/layout/uten_picker_footer_layout.dart';
 import '../../../components/layout/uten_split_view.dart';
 import '../../../components/layout/uten_segment_row.dart';
-import '../../../core/responsive/breakpoint.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/hierarchy/uten_tree_path.dart';
@@ -1345,12 +1344,8 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
 
   Widget _buildUnifiedSearch() {
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        context.breakpoint.isCompact ? 8 : 16,
-        8,
-        context.breakpoint.isCompact ? 8 : 16,
-        8,
-      ),
+      // 左缘贴 0（2026-10-18 全站分栏口径）：与分类页左栏搜索共缘。
+      padding: const EdgeInsets.only(top: 8, bottom: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

@@ -554,8 +554,8 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   if (location == RouteName.salesScarcity) {
     return const [Perm.salesOrderReallocate];
   }
-  if (location == RouteName.salesOrderProgress ||
-      location.startsWith('${RouteName.salesOrderProgress}/')) {
+  // 进度详情整页已退役（2026-10-18）：履约时间线并入订货单详情页（/sales/orders/:id）。
+  if (location == RouteName.salesOrderProgress) {
     return const [Perm.salesOrderView];
   }
   // 销售任务中心（2026-09-24 三段式）：任一单据查看权限即可进入，
@@ -637,12 +637,12 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   if (location.startsWith('/production/reports')) {
     return const [Perm.productionReportView];
   }
-  // 生产调度工作台（业务链 · 排产段）：view 可见列表，页面内按 edit 权限显隐合并排产面板
-  if (location == RouteName.productionSchedule) {
-    return const [Perm.productionPlanView];
-  }
-  if (location == RouteName.productionProgress) {
-    return const [Perm.productionExecutionOverview];
+  // 生产调度与进度（业务链 · 排产段）：view 可见列表，页面内按 edit 权限显隐合并排产面板。
+  // 2026-10-19 同页双路由收口：调度员（计划 view）与执行视角（执行总览）两类账号
+  // 从同一入口进，/production/progress 已是重定向，守卫与主路由同码（any-of 并集）。
+  if (location == RouteName.productionSchedule ||
+      location == RouteName.productionProgress) {
+    return const [Perm.productionPlanView, Perm.productionExecutionOverview];
   }
   if (routePath == RouteName.productionWorkshopTasks ||
       routePath == RouteName.productionBatchDraw ||

@@ -129,10 +129,12 @@ class UtenHierarchyTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
   /// 无缩进层级色模式（选择器滑窗窄左栏用，2026-09-24 用户口径：层级多或名字长
   /// 时缩进吃掉宽度，名字几乎看不到）。行不按深度缩进，改为整行按深度铺色：
   /// 五档梯度（UtenColors.treeLevelRow）——一级深绿实底白字、往下逐档降饱和降
-  /// 明度、四档起转中性灰，4 及更深固定第五档（至少 5 个层级色差、最深层固定
-  /// 一色、色差拉开且协调，2026-09-24 第二轮口径）；方角、行距收紧、行间 1px
-  /// 分隔线；选中 = 左缘 3px 强调条 + 加粗 + 勾选图标（深绿行上反白）。
+  /// 明度、四档起转中性灰，4 及更深固定第五档（至少 5 个层级色差、最深一层固定
+  /// 一色、色差拉开且协调，2026-09-24 第二轮口径）；行距收紧、行间 1px 分隔线；
+  /// 选中 = 左缘 3px 强调条 + 加粗 + 勾选图标（深绿行上反白）。
   /// 完整祖先路径由名称提示与外部选中路径表达；行内只保留单行节点标题。
+  /// 2026-10-18：整列视作一块卡片——首行上两角、末行下两角用系统圆角
+  /// （UtenRadius.md），中间行保持方角相接。
   final bool flatLevelColors;
 
   @override
@@ -322,6 +324,39 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
   /// 搜索时：命中节点 + 其全部祖先(命中路径自动展开)。
   Set<String> _visibleIds() => categoryHits(widget.nodes, _query);
 
+  /// 行是否按渲染态展开（与 [_buildNode] 的判定同源）。
+  bool _rowExpanded(T node) =>
+      _searching ||
+      _expanded.contains(node.id) ||
+      (widget.visibleFilterIds?.contains(node.id) ?? false);
+
+  /// flat 模式下当前实际成行的首/末节点 id（卡片圆角只挂在这两行上）。
+  /// 按渲染顺序走一遍（透传下沉、可见过滤、展开态、同级排序全部同源）。
+  ({String? firstId, String? lastId}) _computeFlatEdgeRowIds(
+    Set<String>? visible,
+  ) {
+    String? first;
+    String? last;
+    void walk(List<T> nodes) {
+      for (final n in _ordered(nodes)) {
+        if (_passes(n)) {
+          walk(n.children);
+          continue;
+        }
+        if (visible != null && !visible.contains(n.id)) continue;
+        first ??= n.id;
+        last = n.id;
+        if (n.hasChildren && _rowExpanded(n)) walk(n.children);
+      }
+    }
+
+    walk(widget.nodes);
+    return (firstId: first, lastId: last);
+  }
+
+  /// 本次 build 的 flat 首末行 id（build 开头重算，_buildNode 只读）。
+  ({String? firstId, String? lastId})? _flatEdgeRowIds;
+
   /// Preserve the established sibling order within each relevance tier.
   List<T> _ordered(List<T> nodes) {
     final ordered = widget.sortByCode
@@ -392,19 +427,15 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
     }
     final theme = Theme.of(context);
     final enabled = _enabled(node);
-    // 外部可见集合(搜索定位用)：命中节点的祖先链也展开，否则深层命中不可见。
-    // 用原始 widget.visibleFilterIds 判展开(非交集)，内部搜索不误展开外部节点。
-    final externalFilter = widget.visibleFilterIds;
-    final expanded =
-        _searching ||
-        _expanded.contains(node.id) ||
-        (externalFilter != null && externalFilter.contains(node.id));
+    // 外部可见集合(搜索定位用)经 [_rowExpanded] 参与展开判定：命中节点的祖先链
+    // 也展开，否则深层命中不可见。
+    final expanded = _rowExpanded(node);
     final isSelected = widget.selectedIds.contains(node.id);
     final trailing = widget.trailingBuilder?.call(node);
     final leading = widget.leadingBuilder?.call(node, enabled);
     final highlight = widget.mode == UtenTreeSelectMode.none && isSelected;
 
-    // flat 模式的行样式（见 [flatLevelColors] 文档）：铺色 + 方角 + 无缩进；
+    // flat 模式的行样式（见 [flatLevelColors] 文档）：铺色 + 首末行圆角 + 无缩进；
     // 非 flat 保持原样（缩进 + 圆角高亮）。
     final flat = widget.flatLevelColors;
     final rowBg = flat
@@ -413,6 +444,17 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
     // 深绿实底行上的前景（文字/勾选/强调条）一律反白，浅色行用主色强调选中。
     final onDarkRow = flat && depth == 0;
     final rowAccent = onDarkRow ? Colors.white : theme.colorScheme.primary;
+    // 卡片圆角（flat）：首行上两角、末行下两角；其余方角相接不露缝。
+    final rowRadius = !flat
+        ? BorderRadius.circular(UtenRadius.md)
+        : BorderRadius.vertical(
+            top: Radius.circular(
+              node.id == _flatEdgeRowIds?.firstId ? UtenRadius.md : 0,
+            ),
+            bottom: Radius.circular(
+              node.id == _flatEdgeRowIds?.lastId ? UtenRadius.md : 0,
+            ),
+          );
 
     final row = LayoutBuilder(
       builder: (context, constraints) {
@@ -437,6 +479,11 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
           selection = isSelected
               ? Icon(Icons.check_circle_rounded, size: 18, color: rowAccent)
               : const SizedBox(width: 18, height: 18);
+        } else if (flat && isSelected) {
+          // 浏览态(flat)的选中勾（2026-10-18 全站统一口径）：此前浅色档行上
+          // 只有左缘强调条+加粗，选中态在低对比档位不够显眼、页与页之间观感
+          // 不一致；勾选图标在深绿行反白、浅色行用主色，与单选模式同一形态。
+          selection = Icon(Icons.check_circle_rounded, size: 18, color: rowAccent);
         } else {
           selection = null;
         }
@@ -446,9 +493,7 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
             expanded: node.hasChildren ? expanded : null,
             child: Material(
               color: rowBg,
-              borderRadius: flat
-                  ? BorderRadius.zero
-                  : BorderRadius.circular(UtenRadius.md),
+              borderRadius: rowRadius,
               clipBehavior: Clip.antiAlias,
               child: InkWell(
                 onTap: enabled || node.hasChildren
@@ -600,6 +645,10 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
         !widget.externalSearchLoading &&
         widget.externalSearchError == null &&
         (visibleFilter?.isEmpty ?? false);
+    // flat 模式：先按当前渲染顺序定出首/末行（圆角挂点），再构建行。
+    _flatEdgeRowIds = widget.flatLevelColors
+        ? _computeFlatEdgeRowIds(visibleFilter)
+        : null;
     final header = KeyedSubtree(
       key: _headerKey,
       child: Column(
@@ -608,7 +657,9 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
           ?widget.header,
           if (widget.showSearch)
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              // 左缘贴 0（2026-10-18 全站分栏口径）：与壳层分类页的左栏搜索、
+              // 返回键图标共用 x=0 左缘，不再各自缩进。
+              padding: const EdgeInsets.only(bottom: 8),
               // 本地过滤：_searchCtl 的监听器随每次输入(含内置清除按钮)刷新 _query。
               child: UtenHierarchySearchHeader(
                 search: KeyedSubtree(
@@ -626,7 +677,8 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
             const LinearProgressIndicator(minHeight: 2),
           if (widget.externalSearchError != null)
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              // 与内置搜索框共缘（左缘贴 0 口径）。
+              padding: const EdgeInsets.fromLTRB(0, 4, 0, 8),
               child: Semantics(
                 liveRegion: true,
                 child: Text(

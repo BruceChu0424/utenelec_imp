@@ -86,6 +86,7 @@ class DocumentTaskAudienceCountTest {
         var service = new DocumentStatusCountQueryService(em, owners, current);
         ReflectionTestUtils.setField(service, "taskAudience", new TaskAudiencePort() {
             @Override public <T> T read(Supplier<T> work) { return work.get(); }
+            @Override public <T> T browsingRead(Supplier<T> work) { return work.get(); }
         });
         assertThat(service.counts("salesShipment", "DIRECT_CUSTOMER", null))
                 .containsEntry("DRAFT", 4L).containsEntry("ACTIONABLE_DRAFT", 2L);
@@ -108,6 +109,7 @@ class DocumentTaskAudienceCountTest {
         var service = new DocumentStatusCountQueryService(em, owners, current);
         ReflectionTestUtils.setField(service, "taskAudience", new TaskAudiencePort() {
             @Override public <T> T read(Supplier<T> work) { return work.get(); }
+            @Override public <T> T browsingRead(Supplier<T> work) { return work.get(); }
         });
         var result = service.counts("salesQuote", null, null);
         assertThat(result).containsEntry("DRAFT", 9L).containsEntry("FINANCE_REJECTED", 5L)

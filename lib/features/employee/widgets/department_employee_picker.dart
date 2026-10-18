@@ -515,20 +515,14 @@ class _DeptEmployeePickerSheetState
       flatLevelColors: true,
       expandOnRowTap: true,
       showSearch: false,
-      header: LayoutBuilder(
-        builder: (context, constraints) => Padding(
-          padding: EdgeInsets.fromLTRB(
-            constraints.maxWidth < 240 ? 8 : 12,
-            12,
-            constraints.maxWidth < 240 ? 8 : 12,
-            8,
-          ),
-          child: UtenSearchBar(
-            controller: _keywordCtl,
-            hint: '搜索部门/员工姓名或工号',
-            onInputChanged: _onSearchInput,
-            onChanged: _applyGlobalSearch,
-          ),
+      header: Padding(
+        // 左缘贴 0（2026-10-18 全站分栏口径）：与分类页左栏搜索共缘。
+        padding: const EdgeInsets.fromLTRB(0, 12, 0, 8),
+        child: UtenSearchBar(
+          controller: _keywordCtl,
+          hint: '搜索部门/员工姓名或工号',
+          onInputChanged: _onSearchInput,
+          onChanged: _applyGlobalSearch,
         ),
       ),
       visibleFilterIds: _visibleFilterIds,

@@ -123,21 +123,22 @@ class WorkbenchLayoutNotifier
     'itemOrders': state.itemOrders,
   };
 
-  /// 与默认分组定义合并：丢弃已删除的 key，补上新增的 key。
+  /// 与默认分组定义合并：丢弃已删除的 key，补上新增的 key，重复 key 只留首次
+  ///（服务端偏好一旦写坏出现重复，渲染端会把整个分区连卡成对渲染，必须在这里挡住）。
   WorkbenchLayoutState _merge(
     List<String>? order,
     List<String>? collapsed,
     Map<String, List<String>>? itemOrders,
   ) {
     final known = defaultOrder.toSet();
-    final incoming = (order ?? const <String>[]).where(known.contains).toSet();
+    final placed = <String>{};
     final mergedOrder = <String>[
-      // 服务端顺序中仍然存在的分组
+      // 服务端顺序中仍然存在的分组（重复 key 只保留首次出现）
       for (final k in order ?? const <String>[])
-        if (known.contains(k)) k,
+        if (known.contains(k) && placed.add(k)) k,
       // 代码新增、服务端还没有的分组，按默认顺序补末尾
       for (final k in defaultOrder)
-        if (!incoming.contains(k)) k,
+        if (!placed.contains(k)) k,
     ];
     final mergedCollapsed = (collapsed ?? const <String>[])
         .where(known.contains)

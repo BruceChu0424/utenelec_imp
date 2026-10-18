@@ -4627,12 +4627,6 @@ abstract class AppLocalizations {
   /// **'生产管理'**
   String get productionHubTitle;
 
-  /// No description provided for @productionHubSchedule.
-  ///
-  /// In zh, this message translates to:
-  /// **'生产调度与进度'**
-  String get productionHubSchedule;
-
   /// No description provided for @productionHubScheduleSub.
   ///
   /// In zh, this message translates to:

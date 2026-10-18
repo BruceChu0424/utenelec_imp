@@ -16,7 +16,6 @@ import '../widgets/client_ship_address_sheet.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -71,6 +70,11 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
       FormDraftCatalog.clientCategory;
   @override
   String get shellCategoryViewPermission => Perm.clientCategoryView;
+
+  /// 已有分类树时保持挂载（与货品资料页同款）：分类增删改/刷新不再整页白闪、
+  /// 树的展开状态不丢——此前本页未开启，每次保存分类整棵树卸载重挂（2026-10-18）。
+  @override
+  bool get shellKeepTreeMounted => true;
 
   @override
   bool get shellCanCreate =>
@@ -254,7 +258,6 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
       labelOf: (c) => c.name?.isNotEmpty == true ? c.name! : (c.code ?? '该客户'),
       writableOf: (c) => c.writable,
       readOnlyRowHint: (_) => '该客户对你只读，不能修改', // TODO(l10n): 补 arb
-      readOnlyBatchHint: '所选客户包含只读数据，请取消只读客户后再批量改资料', // TODO(l10n): 补 arb
       loadCategory: (id) =>
           ref.read(clientCategoryRepositoryProvider).detail(id),
       loadPage: (q) => q.categoryId == null
@@ -324,7 +327,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
           onTap: () => pane.withDetail(c.id, (d) => _showClientAccess(pane, d)),
         ),
       ],
-      extraBatchActions: (pane, ids) {
+      extraBatchMenuItems: (pane, ids) {
         if (!perms.contains(Perm.clientAssign)) return const [];
         // 归属批量看 accessManageable(服务端已合并 client:assign 与对象范围)，
         // 与「只读数据」是两条独立的门：只读客户照样可以换负责人。
@@ -336,7 +339,22 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
             .where((id) => byId[id]?.accessManageable == true)
             .toSet();
         if (assignable.isEmpty) return const [];
-        return _accessBatchButtons(pane, assignable);
+        // 归属批量菜单(批量设负责人 / 批量设可见人)。两者分开是因为语义不同：
+        // 负责人是「归谁」，可见人是「额外给谁看」，混在一个弹窗里容易误把可见人清空。
+        return [
+          UtenMenuItem(
+            label: '批量设负责人 (${assignable.length})', // TODO(l10n): 补 arb
+            icon: Icons.person_outline_rounded,
+            enabled: !pane.busy,
+            onTap: () => _batchSetClientAccess(pane, assignable, owner: true),
+          ),
+          UtenMenuItem(
+            label: '批量设可见人 (${assignable.length})', // TODO(l10n): 补 arb
+            icon: Icons.visibility_outlined,
+            enabled: !pane.busy,
+            onTap: () => _batchSetClientAccess(pane, assignable, owner: false),
+          ),
+        ];
       },
     );
   }
@@ -437,34 +455,6 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
     );
     if (saved != null && mounted) await pane.reload();
   }
-
-  /// 归属批量按钮(批量设负责人 / 批量设可见人)。两者分开是因为语义不同：
-  /// 负责人是「归谁」，可见人是「额外给谁看」，混在一个弹窗里容易误把可见人清空。
-  List<Widget> _accessBatchButtons(
-    MasterEntityPaneController<ClientListItem, ClientDetail> pane,
-    Set<String> ids,
-  ) => [
-    UtenButton(
-      key: const ValueKey('client-batch-set-owner'),
-      size: UtenButtonSize.small,
-      type: UtenButtonType.tonal,
-      icon: Icons.person_outline_rounded,
-      onPressed: pane.busy
-          ? null
-          : () => _batchSetClientAccess(pane, ids, owner: true),
-      child: Text('批量设负责人 (${ids.length})'), // TODO(l10n): 补 arb
-    ),
-    UtenButton(
-      key: const ValueKey('client-batch-set-viewers'),
-      size: UtenButtonSize.small,
-      type: UtenButtonType.tonal,
-      icon: Icons.visibility_outlined,
-      onPressed: pane.busy
-          ? null
-          : () => _batchSetClientAccess(pane, ids, owner: false),
-      child: Text('批量设可见人 (${ids.length})'), // TODO(l10n): 补 arb
-    ),
-  ];
 
   /// 多选客户批量设负责人/可见人：一个端点一个事务，任一客户被拒则整批不生效
   /// (半批生效比不生效更难收拾)。未设置的那一维服务端保持各客户原值。

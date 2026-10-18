@@ -195,7 +195,6 @@ import '../../features/sales/pages/sales_hub_page.dart';
 import '../../features/sales/config/sales_report_config.dart';
 import '../../features/sales/pages/sales_report_page.dart';
 import '../../features/sales/pages/sales_scarcity_page.dart';
-import '../../features/sales/pages/sales_order_progress_detail_page.dart';
 import '../../features/sales/pages/sales_order_progress_page.dart';
 import '../../features/sales/pages/sales_task_center_page.dart';
 import '../../features/subcontract/models/subcontract_doc.dart';
@@ -1593,13 +1592,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.salesOrderProgress,
             name: 'sales-order-progress',
             builder: (_, _) => const SalesOrderProgressPage(),
-          ),
-          DraftAwareGoRoute(
-            path: '${RouteName.salesOrderProgress}/:orderId',
-            name: 'sales-order-progress-detail',
-            builder: (_, s) => SalesOrderProgressDetailPage(
-              orderId: s.pathParameters['orderId']!,
-            ),
           ),
           // 销售任务中心（2026-09-24 三段式：一站式查看；静态段 tasks 须先于
           // /sales/:seg 参数路由声明，否则会被 :seg 列表路由吞掉）。

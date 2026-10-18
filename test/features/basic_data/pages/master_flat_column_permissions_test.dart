@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
+import 'package:uten_imp/features/basic_data/models/color_node.dart';
 import 'package:uten_imp/features/basic_data/pages/account_workspace_page.dart';
 import 'package:uten_imp/features/basic_data/pages/color_page.dart';
 import 'package:uten_imp/features/basic_data/pages/currency_page.dart';
@@ -134,6 +135,22 @@ void main() {
         _expectFloatingCreate(tester, createLabel, const Size(1440, 900));
       }
       if (page.name == '颜色') {
+        // 行菜单启停/删除随权限灰置（2026-10-18 口径：批量也走右键菜单，
+        // 常驻批量按钮已退役）。
+        UtenMenuItem colorMenuEntry(String label) {
+          final table = tester.widget<MasterDataTableView<ColorListItem>>(
+            find.byWidgetPredicate(
+              (w) => w is MasterDataTableView<ColorListItem>,
+            ),
+          );
+          return table
+              .rowMenuBuilder!(table.items.single)
+              .whereType<UtenMenuItem>()
+              .firstWhere((e) => e.label == label);
+        }
+
+        expect(colorMenuEntry('禁用颜色').enabled, isFalse);
+        expect(colorMenuEntry('删除颜色').enabled, isFalse);
         container.read(permissions.notifier).state = {
           page.view,
           page.create,
@@ -141,22 +158,8 @@ void main() {
           Perm.colorDelete,
         };
         await tester.pumpAndSettle();
-        UtenButton action(String label) => tester.widget<UtenButton>(
-          find.ancestor(
-            of: find.text(label),
-            matching: find.byType(UtenButton),
-          ),
-        );
-        expect(action('批量禁用').onPressed, isNull);
-        expect(action('批量删除').onPressed, isNull);
-        expect(action('添加颜色').onPressed, isNotNull);
-        final table = tester.widget<MasterDataTableView<dynamic>>(
-          find.byWidgetPredicate((w) => w is MasterDataTableView),
-        );
-        table.onSelectedIdsChanged!({'master-1'});
-        await tester.pumpAndSettle();
-        expect(action('批量禁用').onPressed, isNotNull);
-        expect(action('批量删除').onPressed, isNotNull);
+        expect(colorMenuEntry('禁用颜色').enabled, isTrue);
+        expect(colorMenuEntry('删除颜色').enabled, isTrue);
         _expectFloatingCreate(tester, '添加颜色', const Size(1440, 900));
       }
 

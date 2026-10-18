@@ -655,6 +655,7 @@ class _SubcontractShortDeliveryPageState
                         key: ValueKey('short-delivery-accept-${c.id}'),
                         type: UtenButtonType.danger,
                         size: UtenButtonSize.small,
+                        isLoading: _decidingId == c.id,
                         onPressed: _decidingId != null
                             ? null
                             : () => _decide(c, decision: 'ACCEPT_LOSS'),

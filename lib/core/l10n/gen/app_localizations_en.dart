@@ -2523,9 +2523,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get productionHubTitle => 'Production';
 
   @override
-  String get productionHubSchedule => 'Scheduling & progress';
-
-  @override
   String get productionHubScheduleSub => 'Plan, WIP, completion';
 
   @override

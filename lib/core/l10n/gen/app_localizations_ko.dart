@@ -2465,9 +2465,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get productionHubTitle => '생산';
 
   @override
-  String get productionHubSchedule => '일정 및 진행';
-
-  @override
   String get productionHubScheduleSub => '계획·진행·완료';
 
   @override

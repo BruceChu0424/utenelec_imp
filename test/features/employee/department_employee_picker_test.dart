@@ -461,7 +461,8 @@ void main() {
     await tester.pumpAndSettle();
     final treeFinder = find.byType(UtenDepartmentTreeView);
     expect(tester.getSize(treeFinder).width, 160);
-    expect(tester.getSize(_pickerSearch(tester)).width, 144);
+    // 2026-10-18 左缘贴 0 口径：左栏搜索框水平内边距为 0，贴满面板宽。
+    expect(tester.getSize(_pickerSearch(tester)).width, 160);
 
     await tester.tap(find.byTooltip('展开销售部'));
     await tester.pumpAndSettle();

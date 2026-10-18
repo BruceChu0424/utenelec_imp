@@ -22,6 +22,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
@@ -167,10 +168,8 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新',
-            onPressed: () => ref.read(expenseListProvider.notifier).refresh(),
+          UtenRefreshButton(
+            onRefresh: () => ref.read(expenseListProvider.notifier).refresh(),
           ),
         ],
       ),

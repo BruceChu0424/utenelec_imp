@@ -296,21 +296,7 @@ class _Content extends ConsumerWidget {
               runSpacing: UtenSpacing.s8,
               children: [
                 if (notice.kind == NoticeKind.todo && !notice.taskCompleted)
-                  FilledButton.icon(
-                    onPressed: () async {
-                      try {
-                        await completeNoticeTodo(ref, notice.id);
-                        ref.invalidate(dashboardOverviewProvider);
-                        if (context.mounted) {
-                          context.appSuccess('待办已完成');
-                        }
-                      } catch (error) {
-                        if (context.mounted) context.appApiError(error);
-                      }
-                    },
-                    icon: const Icon(Icons.task_alt_rounded),
-                    label: const Text('标记完成'),
-                  ),
+                  _CompleteTodoButton(noticeId: notice.id),
                 // 非 TODO 但带 actionRoute 的系统通知（排产/发货等，问题 #12）：
                 // 只给「查看详情」跳转，不给「标记完成」——完成态是 TODO 语义专属。
                 if (notice.actionRoute != null)
@@ -454,4 +440,46 @@ class _Content extends ConsumerWidget {
     return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')} '
         '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
   }
+}
+
+/// 「标记完成」：网络段自带 loading 与防连点（此前裸跑，等待期可连点且零反馈）。
+class _CompleteTodoButton extends ConsumerStatefulWidget {
+  const _CompleteTodoButton({required this.noticeId});
+
+  final String noticeId;
+
+  @override
+  ConsumerState<_CompleteTodoButton> createState() =>
+      _CompleteTodoButtonState();
+}
+
+class _CompleteTodoButtonState extends ConsumerState<_CompleteTodoButton> {
+  bool _busy = false;
+
+  Future<void> _complete() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await completeNoticeTodo(ref, widget.noticeId);
+      ref.invalidate(dashboardOverviewProvider);
+      if (mounted) context.appSuccess('待办已完成');
+    } catch (error) {
+      if (mounted) context.appApiError(error);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => FilledButton.icon(
+    onPressed: _busy ? null : _complete,
+    icon: _busy
+        ? const SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2.5),
+          )
+        : const Icon(Icons.task_alt_rounded),
+    label: const Text('标记完成'),
+  );
 }

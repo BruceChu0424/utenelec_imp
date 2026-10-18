@@ -41,6 +41,25 @@ class BusinessTaskReadConfigurationTest {
         }
     }
 
+    @Test void badgeBrowsingReadEvaluatesMethodSecurityAgainstTheSessionPrincipal() {
+        try (var context = new AnnotationConfigApplicationContext(Config.class)) {
+            var permissions = context.getBean(PermissionResolver.class);
+            var audience = context.getBean(TaskAudiencePort.class);
+            var endpoint = context.getBean(TaskEndpoint.class);
+            AuthUser admin = new AuthUser(UUID.randomUUID(), UUID.randomUUID(), "badge-admin",
+                    Set.of("subcontract_order:draw"), false, true, true);
+            SecurityContextHolder.getContext().setAuthentication(
+                    UsernamePasswordAuthenticationToken.authenticated(admin, null, admin.getAuthorities()));
+            when(permissions.grantedPermsOf(admin.getId())).thenReturn(Set.of());
+            assertThatThrownBy(() -> audience.read(endpoint::count))
+                    .isInstanceOf(AccessDeniedException.class);
+            assertThat(audience.browsingRead(endpoint::count)).isEqualTo(1);
+            assertThatThrownBy(() -> audience.read(endpoint::count))
+                    .isInstanceOf(AccessDeniedException.class);
+            assertThat(new SecurityContextCurrentUser().get()).contains(admin);
+        }
+    }
+
     @Configuration(proxyBeanMethods = false)
     @EnableMethodSecurity
     @Import(BusinessTaskReadConfiguration.class)

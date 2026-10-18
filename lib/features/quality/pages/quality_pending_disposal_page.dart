@@ -408,12 +408,68 @@ class _QualityPendingDisposalPageState
 
   /// 行的状态文案（状态列单元与表头筛选共用同一口径）。
   List<FormDraft> _taskDrafts(_DisposalRow row) => qualityTaskDrafts(
-    ref.read(formDraftsProvider),
+    _draftsSnapshot,
     receiptType: row.receipt?.receiptType,
     receiptId: row.receipt?.receiptId,
     sheetId: row.sheet?.id ?? row.inspection?.sheetId,
     inspectionId: row.inspection?.id,
   );
+
+  /// 本帧草稿快照（build 顶部随 watch 捕获）。派生集缓存与状态列口径都读它，
+  /// 不再在每行/每格里 ref.read。
+  List<FormDraft> _draftsSnapshot = const [];
+
+  /// 派生集缓存：三源数据/草稿列表/筛选/关键词任一身份变化才重算 [_filtered]
+  /// 与 [_statusFacets]。此前两者都是裸 getter，一次 build 里被列定义、表头筛选、
+  /// 分页与尾部计数反复调用，每次都对整队（三源合计可达千行）逐行跑 ranked
+  /// 匹配 + 每行扫草稿列表——勾选一格、翻一页都整套重算，队列大时搜索/翻页
+  /// 肉眼可见地卡（2026-10-18 修复）。
+  Object? _derivedKey;
+  List<_DisposalRow>? _filteredCache;
+  List<MasterFacetBucket>? _statusFacetsCache;
+
+  Object get _deriveKey => (
+    _receipts,
+    _fqcSheets,
+    _fqcInspections,
+    _draftsSnapshot,
+    _typeFilter,
+    _statusFilter,
+    _keyword,
+  );
+
+  void _ensureDerived() {
+    final key = _deriveKey;
+    if (_derivedKey == key && _filteredCache != null) return;
+    _derivedKey = key;
+    final rows = _rows;
+    final labels = {for (final row in rows) row.identity: _statusLabel(row)};
+    _filteredCache = rankedKeywordMatches(
+      rows.where(
+        (row) =>
+            (_typeFilter == null || row.kind == _typeFilter) &&
+            (_statusFilter == null || labels[row.identity] == _statusFilter),
+      ),
+      _keyword,
+      fields: _keywordFields,
+      primaryFields: _keywordNames,
+    );
+    final counts = <String, int>{};
+    for (final row in rows) {
+      if (_typeFilter != null && row.kind != _typeFilter) continue;
+      if (!_matchesKeyword(row)) continue;
+      final label = labels[row.identity]!;
+      counts[label] = (counts[label] ?? 0) + 1;
+    }
+    _statusFacetsCache = [
+      for (final entry in counts.entries)
+        MasterFacetBucket(
+          value: entry.key,
+          count: entry.value,
+          label: entry.key,
+        ),
+    ]..sort((a, b) => a.display.compareTo(b.display));
+  }
 
   String _statusLabel(_DisposalRow row) {
     final source = switch (row.kind) {
@@ -453,21 +509,8 @@ class _QualityPendingDisposalPageState
 
   /// 状态表头桶统计完整已加载队列，再按来源/关键词收敛，不取当前显示页。
   List<MasterFacetBucket> get _statusFacets {
-    final counts = <String, int>{};
-    for (final row in _rows) {
-      if (_typeFilter != null && row.kind != _typeFilter) continue;
-      if (!_matchesKeyword(row)) continue;
-      final label = _statusLabel(row);
-      counts[label] = (counts[label] ?? 0) + 1;
-    }
-    return [
-      for (final entry in counts.entries)
-        MasterFacetBucket(
-          value: entry.key,
-          count: entry.value,
-          label: entry.key,
-        ),
-    ]..sort((a, b) => a.display.compareTo(b.display));
+    _ensureDerived();
+    return _statusFacetsCache!;
   }
 
   /// 刷新/切类型后旧状态值可能已不存在：撤回「所有」，避免用户面对空表却
@@ -479,16 +522,10 @@ class _QualityPendingDisposalPageState
     }
   }
 
-  List<_DisposalRow> get _filtered => rankedKeywordMatches(
-    _rows.where(
-      (row) =>
-          (_typeFilter == null || row.kind == _typeFilter) &&
-          (_statusFilter == null || _statusLabel(row) == _statusFilter),
-    ),
-    _keyword,
-    fields: _keywordFields,
-    primaryFields: _keywordNames,
-  );
+  List<_DisposalRow> get _filtered {
+    _ensureDerived();
+    return _filteredCache!;
+  }
 
   int get _totalPages {
     final pages = (_filtered.length + _pageSize - 1) ~/ _pageSize;
@@ -630,7 +667,7 @@ class _QualityPendingDisposalPageState
 
   @override
   Widget build(BuildContext context) {
-    ref.watch(formDraftsProvider);
+    _draftsSnapshot = ref.watch(formDraftsProvider);
     // 返回本页（从处置页/其他页回退）时重拉两域队列，角标同源刷新。
     ref.onPageResume(RouteName.warehouseInspections, _load);
     return Scaffold(

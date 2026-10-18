@@ -5,6 +5,8 @@
 // - 默认行为：能 pop 则 pop（go_router 下 push 进来的页面）；
 //   不能 pop（深链 / context.go 直达）则回工作台兜底，保证永远可返回
 // - 视觉与 IconButtonTheme 对齐：圆角 8、前景 textSecondary
+// - 图标贴按钮盒左缘（2026-10-18 全站左缘对齐口径）：返回键图标与分栏页
+//   左栏搜索框共用 x=0 左缘；命中区仍是完整 40x40，只是图标不再居中缩进
 
 import 'package:flutter/material.dart';
 
@@ -37,6 +39,8 @@ class UtenBackButton extends StatelessWidget {
     return IconButton(
       icon: Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: color),
       tooltip: tooltip ?? '返回',
+      alignment: AlignmentDirectional.centerStart,
+      padding: EdgeInsets.zero,
       onPressed: onPressed ?? () => _defaultBack(context),
     );
   }

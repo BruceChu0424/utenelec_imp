@@ -202,7 +202,8 @@ class _MyDepartmentPageState extends ConsumerState<MyDepartmentPage> {
           selectedLeadingLabel: utenTreeSelectionPath(tree, node.id),
           selectedLeadingKey: node.id,
           compactHeader: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            // 左缘贴 0（2026-10-18 全站分栏口径），与展开态左栏搜索同缘。
+            padding: const EdgeInsets.only(top: 8),
             child: UtenSearchBar(
               key: const ValueKey('my-department-compact-search'),
               initialValue: _searchQuery,
@@ -284,7 +285,8 @@ class _MyDepartmentPageState extends ConsumerState<MyDepartmentPage> {
       externalSearchLoading: _searchLoading,
       externalSearchError: _searchError,
       header: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        // 左缘贴 0（2026-10-18 全站分栏口径）：与分类页左栏搜索、返回键图标共缘。
+        padding: const EdgeInsets.only(top: 12, bottom: 8),
         child: UtenSearchBar(
           initialValue: _searchQuery,
           hint: '搜索部门名称/编号、员工姓名/工号',

@@ -116,6 +116,11 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   int _pageNum = 1;
   bool _loading = false;
   String? _error;
+
+  /// 合计条过期标记：任何回第 1 页的重查（搜索/筛选/分类/仓库变化）进行中时，
+  /// 旧合计不得当作当前值展示（防误开旧范围分析，钉于合计条测试口径）。
+  /// 行数据照常保留到新结果落地（keepPreviousData），只有合计条隐藏。
+  bool _summaryStale = false;
   final _loadRequests = LatestRequestGuard();
 
   /// 「返回即刷新」登记用的本页路径（build 首次捕获）。
@@ -175,9 +180,11 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
     final generation = _searchRequests.begin();
     _searchDebounce?.cancel();
     _acceptPendingSearch = false;
-    await ref.read(masterNameServiceProvider).ensureCommonLoaded();
-    if (!mounted || !_searchRequests.isCurrent(generation)) return;
-    await _loadTree();
+    // 字典与分类树互不依赖，并行拉取（此前串行，点刷新要等两段往返）。
+    await Future.wait([
+      ref.read(masterNameServiceProvider).ensureCommonLoaded(),
+      _loadTree(),
+    ]);
     if (!mounted || !_searchRequests.isCurrent(generation)) return;
     await _applySearch(_searchQuery);
   }
@@ -241,6 +248,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
       setState(() {
         _page = r;
         _pageSummaryScopeLabel = _summaryScopeLabel;
+        _summaryStale = false;
       });
     } on ApiException catch (e) {
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
@@ -632,12 +640,16 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
     final q = raw.trim();
     setState(() {
       _searchQuery = q;
-      _page = null;
+      // 保留旧结果直到新查询落地（keepPreviousData 口径）：此前这里先把 _page
+      // 置 null，防抖/网络期间表格立刻闪「暂无库存」空态，数据回来再跳一次。
       if (q.isEmpty) {
         _searchCategoryId = null;
         _includeRelated = false;
       }
       _acceptPendingSearch = true;
+      // 合计条走独立的过期口径（_summaryStale）：范围一变立即隐藏旧合计；
+      // 行数据保留到新结果落地（keepPreviousData）。
+      _summaryStale = true;
       _visibleCategoryIds = q.isEmpty ? null : categoryHits(_categoryNodes, q);
       _searchLoading = q.isNotEmpty;
       _searchError = null;
@@ -745,6 +757,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
       _keyword = '';
       _searchLoading = false;
       _searchError = null;
+      _summaryStale = true;
     });
     _load(1);
   }
@@ -756,7 +769,8 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
     _queryContextVersion++;
     setState(() {
       _acceptPendingSearch = false;
-      _page = null;
+      // 与 _onSearchInput 同口径：旧行保留、旧合计隐藏（此前整页清空闪骨架）。
+      _summaryStale = true;
       _pageNum = 1;
       _error = null;
     });
@@ -764,6 +778,8 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   }
 
   void _reloadAfterFilterChange() {
+    // 仓库/开关/表头列筛选都改合计范围：旧行保留、旧合计隐藏。
+    setState(() => _summaryStale = true);
     if (_searchQuery.isNotEmpty) {
       _restartSearch();
     } else {
@@ -780,7 +796,12 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   }
 
   Widget _buildSearchBox() => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+    // 左缘贴 0（2026-10-18 全站分栏口径）：与货品资料等分类页的左栏搜索、
+    // 返回键图标共用 x=0 左缘。
+    padding: const EdgeInsets.only(
+      top: UtenSpacing.s12,
+      bottom: UtenSpacing.s8,
+    ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1074,8 +1095,12 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
         onRetry: () => _load(_pageNum),
         emptyMessage: '暂无库存', // TODO(l10n): 补 arb
         // 页脚收敛为重量 + 详情；分析只消费同一响应的全筛选范围服务端合计。
-        // 加载/失败时禁止打开旧范围的快照，缺失 totals 不伪造本页合计。
-        summaryBar: _page == null || _page!.totals.isEmpty
+        // 加载/失败/防抖挂起时禁止打开旧范围的快照，缺失 totals 不伪造本页合计。
+        summaryBar:
+            (_page == null ||
+                _page!.totals.isEmpty ||
+                _summaryStale ||
+                _acceptPendingSearch)
             ? null
             : InstantInventorySummaryBar(
                 summary: InstantInventorySummary(

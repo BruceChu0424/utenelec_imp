@@ -324,7 +324,7 @@ class WorkbenchBadgeSummaryPostgresTest {
     }
 
     @Test
-    void administratorCatalogAndReadOnlyPermissionsNeverSubscribeToUnassignedBusinessTasks() throws Exception {
+    void viewOnlyReadersStayAtZeroWhileTheDirectorySuperAdminKeepsBadges() throws Exception {
         var world = fixture.seedWorld("AUDIENCE" + tag());
         UUID readOnly = fixture.createUserWithPerms(world, "reader-" + tag(),
                 "rd_task:view", "subcontract_order:view", "subcontract_application:view",
@@ -338,13 +338,15 @@ class WorkbenchBadgeSummaryPostgresTest {
                 INSERT INTO rd_tasks(id, task_no, title, category, status, priority, goods_id, reporter_employee_id)
                 VALUES (?, ?, '任务资格测试', 'BOM', 'OPEN', 'NORMAL', ?, ?)
                 """, UUID.randomUUID(), docNumbers.nextNumber(com.uten.imp.common.docnumber.DocNumberPrefix.RD_TASK), world.goodsA(), world.employeeId());
-        for (UUID observer : List.of(readOnly, admin)) {
-            JsonNode summary = getJson("/api/workbench/badges", auth(observer));
-            assertThat(summary.path("entries").path("rdTaskCenter").path("todo").asLong()).isZero();
-            assertThat(summary.path("entries").path("subcontractTaskCenter").path("todo").asLong()).isZero();
-            assertThat(summary.path("entries").path("purchaseTaskCenter").path("todo").asLong()).isZero();
-            assertThat(summary.path("entries").path("productionSchedule").path("todo").asLong()).isZero();
-        }
+        // 仅查看权限: 分档计数恒 0, 卡片徽章不出现(2026-10-17 口径)。
+        JsonNode reader = getJson("/api/workbench/badges", auth(readOnly));
+        assertThat(reader.path("entries").path("rdTaskCenter").path("todo").asLong()).isZero();
+        assertThat(reader.path("entries").path("subcontractTaskCenter").path("todo").asLong()).isZero();
+        assertThat(reader.path("entries").path("purchaseTaskCenter").path("todo").asLong()).isZero();
+        assertThat(reader.path("entries").path("productionSchedule").path("todo").asLong()).isZero();
+        // 仅目录镜像的超管: 徽章是展示层, 按会话主体浏览口径照常显示(2026-10-18 ADR-184 修订)。
+        assertThat(getJson("/api/workbench/badges", auth(admin))
+                .path("entries").path("rdTaskCenter").path("todo").asLong()).isPositive();
         JsonNode operator = getJson("/api/workbench/badges", auth(rdOperator));
         assertThat(operator.path("entries").path("rdTaskCenter").path("todo").asLong()).isPositive();
         db.update("""

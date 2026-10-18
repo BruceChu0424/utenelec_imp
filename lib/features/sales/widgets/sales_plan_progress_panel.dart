@@ -5,12 +5,13 @@
 // 有计划查看权限（production_plan:view）时点计划单号/执行子计划可跳生产计划详情。
 //
 // 2026-08-19 起由模态底表改为内嵌面板（SalesPlanProgressPanel），
-// 在「订单进度详情页」中作为产品进度区使用（弹窗已下线，见该页文档）。
+// 曾在「订单进度详情页」中作为产品进度区使用（2026-10-18 该整页退役后
+// 唯一宿主是销售订货单详情页的「产品进度与分批发货」段）。
 //
 // 2026-09-12 交互改版（与全站批量页统一口径）：
 // - 行单击只切换勾选，不再弹进度弹窗——弹窗只由「查看进度」列按钮触发；
 // - 宿主传入 [SalesShipmentActionScope] 后，勾选数与去发货动作经 scope 交给
-//   宿主页渲染到右下 UtenFloatingActionGroup（订单进度详情页）。
+//   宿主页渲染到右下 UtenFloatingActionGroup（销售订货单详情页）。
 // 2026-09-13 面板不再提供「本次发货数量」输入列：只展示「本次可发」，去发货
 //   按可发量预填跳转出货页，实际发货数量在出货单明细里填写（出货页终校验 ≤可发）。
 // 2026-09-26 旧宿主（销售订货单详情页）也改走右下悬浮标准形态：scope 改为必传，
@@ -41,7 +42,7 @@ import '../../../shared/badges/badge_registry.dart';
 
 /// 宿主与产品进度面板「去发货」动作的桥（统一悬浮口径，2026-09-12）。
 ///
-/// 宿主（订单进度详情页、销售订货单详情页）创建并传入面板；面板在可发货态/
+/// 宿主（销售订货单详情页）创建并传入面板；面板在可发货态/
 /// 勾选数/忙碌态变化时更新字段并通知监听，宿主用 [ListenableBuilder] 据此重建
 /// 右下 UtenFloatingActionGroup（「已选 N 项」胶囊 + 红色「去发货(N)」大按钮）。
 /// 按钮点击分别回调 [createShipment] / [clearSelection]，由面板完成数量校验、
@@ -148,7 +149,7 @@ class _SalesPlanProgressPanelState
   List<OrderPlanProgressLine>? _lines;
   bool _navigating = false;
 
-  /// 宿主页面(订货单详情/订单进度详情)的稳定路由，首次 build 捕获，供「返回即刷新」复位用。
+  /// 宿主页面(订货单详情)的稳定路由，首次 build 捕获，供「返回即刷新」复位用。
   String? _myLocation;
 
   @override

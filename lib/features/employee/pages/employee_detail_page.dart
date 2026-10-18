@@ -18,6 +18,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../components/data_display/uten_info_row.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
@@ -220,19 +221,24 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
           ),
         ],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-          ? UtenEmpty.error(
-              message: _error,
-              actionLabel: l10n.commonRetry,
-              onAction: _load,
-            )
-          // Builder 在资料成功加载后构建分类栏与内容（_p 依赖当前档案），
-          // 仅资料加载完成后才可调用。
-          : Builder(
-              builder: (context) {
-                final categories = _categoryBar(theme);
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // 刷新保数据：已有档案时不再整页换转圈（返回/刷新/保存后回读都不清屏），
+          // 只在顶部给细进度条；错误仅在无档案时整页呈现。
+          _loading && _profile == null
+              ? const Center(child: CircularProgressIndicator())
+              : _error != null && _profile == null
+              ? UtenEmpty.error(
+                  message: _error,
+                  actionLabel: l10n.commonRetry,
+                  onAction: _load,
+                )
+              // Builder 在资料成功加载后构建分类栏与内容（_p 依赖当前档案），
+              // 仅资料加载完成后才可调用。
+              : Builder(
+                  builder: (context) {
+                    final categories = _categoryBar(theme);
                 return UtenContentContainer(
                   // 「顶部折叠 + Tab 吸顶 + 内容内滚」：身份卡、变更审批、
                   // 到期横幅随上滑收起腾出空间，Tab 栏顶到上沿后吸顶，
@@ -268,6 +274,17 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
                   ),
                 );
               },
+                ),
+                if (_loading && _profile != null)
+                  const Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: LinearProgressIndicator(minHeight: 2),
+                  ),
+                if (_actionBusyTitle != null)
+                  UtenBusyOverlay(title: _actionBusyTitle!),
+              ],
             ),
     );
   }
@@ -356,19 +373,14 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   }
 
   Future<void> _onSetAvatar(String attachmentId) async {
-    try {
+    await _runConfirmedAction('正在设置头像', '已设为头像', () async {
+      // TODO(l10n): 补 arb
       await ref
           .read(employeeRepositoryProvider)
           .setAvatar(widget.employeeId, attachmentId);
-      if (!mounted) return;
       ref.invalidate(employeeAvatarProvider);
       ref.invalidate(myEmployeeProfileProvider);
-      context.appSuccess('已设为头像');
-      await _load();
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      context.appApiError(e);
-    }
+    });
   }
 
   Widget _scrollTab(List<Widget> children) {
@@ -1038,8 +1050,9 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
       ),
     );
     if (ok != true || !mounted) return;
-    try {
-      await ref.read(employeeRepositoryProvider).renewContract(
+    await _runConfirmedAction('续签 / 补录合同', '合同已保存', () {
+      // TODO(l10n): 补 arb
+      return ref.read(employeeRepositoryProvider).renewContract(
         widget.employeeId,
         {
           'contractType': contractType,
@@ -1047,13 +1060,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
           'endDate': ?endDate,
         },
       );
-      if (!mounted) return;
-      context.appSuccess('合同已保存');
-      _load();
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      context.appApiError(e);
-    }
+    });
   }
 
   // ============================================================
@@ -1295,6 +1302,31 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   // ============================================================
   // 操作
   // ============================================================
+  /// 弹窗确认后的网络段统一收口（忙碌遮罩 + 防重入 + 成功提示 + 回读档案）。
+  /// 此前这些 handler 弹窗一关就裸跑网络：触发按钮已随弹窗消失、页面零反馈，
+  /// 等待期还能重复打开弹窗重复提交（2026-10-18 修复）。
+  String? _actionBusyTitle;
+
+  Future<void> _runConfirmedAction(
+    String busyTitle,
+    String successMessage,
+    Future<void> Function() action,
+  ) async {
+    if (_actionBusyTitle != null) return;
+    setState(() => _actionBusyTitle = busyTitle);
+    try {
+      await action();
+      if (!mounted) return;
+      context.appSuccess(successMessage);
+      await _load();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      context.appApiError(e);
+    } finally {
+      if (mounted) setState(() => _actionBusyTitle = null);
+    }
+  }
+
   Future<void> _onTransfer() async {
     final ok = await showEmployeeTransferDialog(
       context,
@@ -1307,49 +1339,37 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   Future<void> _onChangePhone() async {
     final newPhone = await showEmployeeChangePhoneDialog(context, _p.phone);
     if (newPhone == null || !mounted) return;
-    try {
-      await ref
+    await _runConfirmedAction(
+      '正在更换手机号', // TODO(l10n): 补 arb
+      '手机号已更换，登录账号已同步为新手机号，该员工需重新登录',
+      () => ref
           .read(employeeRepositoryProvider)
-          .changePhone(widget.employeeId, newPhone);
-      if (!mounted) return;
-      context.appSuccess('手机号已更换，登录账号已同步为新手机号，该员工需重新登录');
-      _load();
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      context.appApiError(e);
-    }
+          .changePhone(widget.employeeId, newPhone),
+    );
   }
 
   Future<void> _editVehicles() async {
     final ok = await showEmployeeVehiclesDialog(context, _p.vehicles);
     if (ok == null || !mounted) return;
-    try {
-      await ref.read(employeeRepositoryProvider).update(widget.employeeId, {
+    await _runConfirmedAction(
+      '正在保存车辆信息', // TODO(l10n): 补 arb
+      '车辆信息已更新',
+      () => ref.read(employeeRepositoryProvider).update(widget.employeeId, {
         'vehicles': ok,
-      });
-      if (!mounted) return;
-      context.appSuccess('车辆信息已更新');
-      _load();
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      context.appApiError(e);
-    }
+      }),
+    );
   }
 
   Future<void> _editPhones() async {
     final ok = await showEmployeePhonesDialog(context, _p.phones);
     if (ok == null || !mounted) return;
-    try {
-      await ref.read(employeeRepositoryProvider).update(widget.employeeId, {
+    await _runConfirmedAction(
+      '正在保存备用手机号', // TODO(l10n): 补 arb
+      '备用手机号已更新',
+      () => ref.read(employeeRepositoryProvider).update(widget.employeeId, {
         'phones': ok,
-      });
-      if (!mounted) return;
-      context.appSuccess('备用手机号已更新');
-      _load();
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      context.appApiError(e);
-    }
+      }),
+    );
   }
 
   Future<void> _openPermissionSettings() async {
@@ -1627,17 +1647,11 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
       ),
     );
     if (ok != true || !mounted) return;
-    try {
-      await ref
+    await _runConfirmedAction(l10n.employeeConfirmTitle, l10n.employeeConfirmSuccess, () {
+      return ref
           .read(employeeRepositoryProvider)
           .confirm(widget.employeeId, confirmedDate: _fmtDate(selected));
-      if (!mounted) return;
-      context.appSuccess(l10n.employeeConfirmSuccess);
-      _load();
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      context.appApiError(e);
-    }
+    });
   }
 
   static String _fmtDate(DateTime d) =>
@@ -1665,15 +1679,11 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
       ),
     );
     if (ok != true || !mounted) return;
-    try {
-      await ref.read(employeeRepositoryProvider).rehire(widget.employeeId);
-      if (!mounted) return;
-      context.appSuccess(l10n.employeeRehireSuccess);
-      _load();
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      context.appApiError(e);
-    }
+    await _runConfirmedAction(
+      l10n.employeeRehireTitle,
+      l10n.employeeRehireSuccess,
+      () => ref.read(employeeRepositoryProvider).rehire(widget.employeeId),
+    );
   }
 
   // ============================================================

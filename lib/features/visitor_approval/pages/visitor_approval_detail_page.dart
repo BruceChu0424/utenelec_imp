@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
@@ -27,29 +28,45 @@ import '../../visitor/widgets/visitor_status_ui.dart';
 import '../providers/visitor_approval_providers.dart';
 import '../../../shared/badges/badge_registry.dart';
 
-class VisitorApprovalDetailPage extends ConsumerWidget {
+class VisitorApprovalDetailPage extends ConsumerStatefulWidget {
   const VisitorApprovalDetailPage({super.key, required this.applicationId});
   final String applicationId;
 
+  @override
+  ConsumerState<VisitorApprovalDetailPage> createState() =>
+      _VisitorApprovalDetailPageState();
+}
+
+class _VisitorApprovalDetailPageState
+    extends ConsumerState<VisitorApprovalDetailPage> {
+  /// 审批动作网络段的全屏忙碌标题。此前确认弹窗一关网络就裸跑：按钮无转圈、
+  /// 可连点，「转接待人」甚至没有确认框——点了像没反应（2026-10-18 修复）。
+  String? _busyTitle;
+
   Future<void> _action(
-    BuildContext context,
-    WidgetRef ref,
     String action, {
     String? comment,
     String? rejectReason,
   }) async {
+    if (_busyTitle != null) return;
     final l10n = AppLocalizations.of(context);
+    final busyTitle = switch (action) {
+      'approve' => l10n.visitorApprovalApprove,
+      'reject' => l10n.visitorApprovalReject,
+      _ => l10n.visitorApprovalForward,
+    };
+    setState(() => _busyTitle = busyTitle);
     try {
       await ref
           .read(visitorStaffRepositoryProvider)
           .action(
-            applicationId,
+            widget.applicationId,
             action: action,
             comment: comment,
             rejectReason: rejectReason,
           );
-      if (!context.mounted) return;
-      ref.invalidate(visitorApprovalDetailProvider(applicationId));
+      if (!mounted) return;
+      ref.invalidate(visitorApprovalDetailProvider(widget.applicationId));
       // 审批动作改变列表状态：审批列表可能保活在其它分支/栈下，
       // 不失效的话返回后仍显示「待审批」老状态。
       ref.invalidate(visitorApprovalListProvider);
@@ -65,24 +82,23 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
         _ => l10n.visitorApprovalDoneFallback,
       });
     } on ApiException catch (e) {
-      if (context.mounted) {
+      if (mounted) {
         context.appApiError(
           e,
           fallback: AppLocalizations.of(context).commonError,
         );
       }
     } catch (_) {
-      if (context.mounted) {
+      if (mounted) {
         context.appError(AppLocalizations.of(context).commonError);
       }
+    } finally {
+      if (mounted) setState(() => _busyTitle = null);
     }
   }
 
-  Future<void> _approve(
-    BuildContext context,
-    WidgetRef ref,
-    AppLocalizations l10n,
-  ) async {
+  Future<void> _approve() async {
+    final l10n = AppLocalizations.of(context);
     final ok = await UtenDialog.show(
       context,
       title: l10n.visitorApprovalApprove,
@@ -101,16 +117,13 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
       confirmLabel: l10n.visitorApprovalApprove,
       cancelLabel: l10n.commonCancel,
     );
-    if (ok == true && context.mounted) {
-      await _action(context, ref, 'approve');
+    if (ok == true && mounted) {
+      await _action('approve');
     }
   }
 
-  Future<void> _reject(
-    BuildContext context,
-    WidgetRef ref,
-    AppLocalizations l10n,
-  ) async {
+  Future<void> _reject() async {
+    final l10n = AppLocalizations.of(context);
     final ctl = TextEditingController();
     late final String? reason;
     try {
@@ -157,149 +170,169 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
     } finally {
       ctl.dispose();
     }
-    if (reason != null && context.mounted) {
-      await _action(
-        context,
-        ref,
-        'reject',
-        rejectReason: reason.isEmpty ? null : reason,
-      );
+    if (reason != null && mounted) {
+      await _action('reject', rejectReason: reason.isEmpty ? null : reason);
+    }
+  }
+
+  Future<void> _forward() async {
+    final l10n = AppLocalizations.of(context);
+    final ok = await UtenDialog.show(
+      context,
+      title: l10n.visitorApprovalForward,
+      content: const Text('将转给本次来访的接待人确认；转出后由接待人继续办理。'), // TODO(l10n): 补 arb
+      confirmLabel: l10n.visitorApprovalForward,
+      cancelLabel: l10n.commonCancel,
+    );
+    if (ok == true && mounted) {
+      await _action('forward');
     }
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final detail = ref.watch(visitorApprovalDetailProvider(applicationId));
+    final detail = ref.watch(
+      visitorApprovalDetailProvider(widget.applicationId),
+    );
+    final busy = _busyTitle != null;
     return Scaffold(
       appBar: UtenAppBar(
         title: l10n.visitorApprovalTitle,
         showBackButton: true,
       ),
-      body: detail.when(
-        loading: () => const UtenSkeletonList(itemCount: 4),
-        error: (e, _) => UtenEmpty.error(
-          message: '$e',
-          actionLabel: l10n.commonRetry,
-          onAction: () =>
-              ref.invalidate(visitorApprovalDetailProvider(applicationId)),
-        ),
-        data: (d) {
-          final app = d.application;
-          final isCompact = context.breakpoint.isCompact;
-          Widget content = SingleChildScrollView(
-            padding: EdgeInsets.fromLTRB(
-              isCompact ? 0 : UtenSpacing.s16,
-              UtenSpacing.s16,
-              isCompact ? 0 : UtenSpacing.s16,
-              // 底部留出右下悬浮操作组的高度，末段内容可滚出按钮区。
-              UtenFloatingActionGroup.scrollClearance,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          detail.when(
+            loading: () => const UtenSkeletonList(itemCount: 4),
+            error: (e, _) => UtenEmpty.error(
+              message: '$e',
+              actionLabel: l10n.commonRetry,
+              onAction: () => ref.invalidate(
+                visitorApprovalDetailProvider(widget.applicationId),
+              ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                UtenDetailSummaryCard(
-                  key: ValueKey('visitor-approval-summary-${app.id}'),
-                  heading: Text(app.visitPurpose),
-                  status: UtenStatusBadge(
-                    label: visitorStatusLabel(app.status, l10n),
-                    type: visitorBadgeType(app.status),
-                    icon: visitorStatusIcon(app.status),
-                  ),
-                  facts: [
-                    UtenSummaryField(
-                      label: l10n.visitorApplyName,
-                      value: app.visitorName,
-                      emphasis: true,
-                    ),
-                    UtenSummaryField(
-                      label: l10n.visitorDetailHost,
-                      value: app.hostName ?? app.hostDepartment,
-                    ),
-                    UtenSummaryField(
-                      label: l10n.visitorDetailVisitTime,
-                      value: fmtDateTime(app.plannedVisitAt),
-                    ),
-                    if (app.hasVehicle && app.plateNo != null)
-                      UtenSummaryField(
-                        label: l10n.securityPlate,
-                        value: app.plateNo,
+            data: (d) {
+              final app = d.application;
+              final isCompact = context.breakpoint.isCompact;
+              Widget content = SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(
+                  isCompact ? 0 : UtenSpacing.s16,
+                  UtenSpacing.s16,
+                  isCompact ? 0 : UtenSpacing.s16,
+                  // 底部留出右下悬浮操作组的高度，末段内容可滚出按钮区。
+                  UtenFloatingActionGroup.scrollClearance,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    UtenDetailSummaryCard(
+                      key: ValueKey('visitor-approval-summary-${app.id}'),
+                      heading: Text(app.visitPurpose),
+                      status: UtenStatusBadge(
+                        label: visitorStatusLabel(app.status, l10n),
+                        type: visitorBadgeType(app.status),
+                        icon: visitorStatusIcon(app.status),
                       ),
-                  ],
-                  details: [
-                    UtenSummaryField(
-                      label: l10n.visitorDetailAppliedAt,
-                      value: fmtDateTime(app.appliedAt),
+                      facts: [
+                        UtenSummaryField(
+                          label: l10n.visitorApplyName,
+                          value: app.visitorName,
+                          emphasis: true,
+                        ),
+                        UtenSummaryField(
+                          label: l10n.visitorDetailHost,
+                          value: app.hostName ?? app.hostDepartment,
+                        ),
+                        UtenSummaryField(
+                          label: l10n.visitorDetailVisitTime,
+                          value: fmtDateTime(app.plannedVisitAt),
+                        ),
+                        if (app.hasVehicle && app.plateNo != null)
+                          UtenSummaryField(
+                            label: l10n.securityPlate,
+                            value: app.plateNo,
+                          ),
+                      ],
+                      details: [
+                        UtenSummaryField(
+                          label: l10n.visitorDetailAppliedAt,
+                          value: fmtDateTime(app.appliedAt),
+                        ),
+                      ],
+                      notices: [
+                        if (app.rejectReason != null &&
+                            app.rejectReason!.isNotEmpty)
+                          UtenSummaryField(
+                            label: l10n.visitorDetailRejectReason,
+                            value: app.rejectReason,
+                            danger: true,
+                          ),
+                      ],
                     ),
-                  ],
-                  notices: [
-                    if (app.rejectReason != null &&
-                        app.rejectReason!.isNotEmpty)
-                      UtenSummaryField(
-                        label: l10n.visitorDetailRejectReason,
-                        value: app.rejectReason,
-                        danger: true,
-                      ),
                   ],
                 ),
-              ],
-            ),
-          );
-          // compact 自套窄收敛；selectable:false——访客待办计数轮询与拖选并发有
-          // CME 风险（准则 §3.4，用户口径：轮询页不包）。
-          if (isCompact) {
-            content = UtenContentContainer.narrow(
-              selectable: false,
-              child: content,
-            );
-          }
-          return content;
-        },
+              );
+              // compact 自套窄收敛；selectable:false——访客待办计数轮询与拖选并发有
+              // CME 风险（准则 §3.4，用户口径：轮询页不包）。
+              if (isCompact) {
+                content = UtenContentContainer.narrow(
+                  selectable: false,
+                  child: content,
+                );
+              }
+              return content;
+            },
+          ),
+          if (busy) UtenBusyOverlay(title: _busyTitle!),
+        ],
       ),
       // 2026-09-14 UI 统一口径：吸底操作条改右下悬浮组（大小/高度/禁用态全站统一）。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: detail.maybeWhen(
-        data: (d) {
-          final canApprove =
-              d.application.status == VisitorApplicationStatus.pending ||
-              d.application.status == VisitorApplicationStatus.hostReviewing;
-          final canForward =
-              d.application.status == VisitorApplicationStatus.pending;
-          if (!canApprove && !canForward) return null;
-          return UtenFloatingActionGroup(
-            children: [
-              if (canForward)
-                UtenButton(
-                  type: UtenButtonType.secondary,
-                  size: UtenButtonSize.large,
-                  onPressed: () => _action(context, ref, 'forward'),
-                  child: Text(
-                    AppLocalizations.of(context).visitorApprovalForward,
-                  ),
-                ),
-              UtenButton(
-                type: UtenButtonType.danger,
-                size: UtenButtonSize.large,
-                onPressed: canApprove
-                    ? () => _reject(context, ref, AppLocalizations.of(context))
-                    : null,
-                child: Text(AppLocalizations.of(context).visitorApprovalReject),
-              ),
-              UtenButton(
-                size: UtenButtonSize.large,
-                onPressed: canApprove
-                    ? () => _approve(context, ref, AppLocalizations.of(context))
-                    : null,
-                child: Text(
-                  AppLocalizations.of(context).visitorApprovalApprove,
-                ),
-              ),
-            ],
-          );
-        },
-        orElse: () => null,
-      ),
+      floatingActionButton: busy
+          ? null
+          : detail.maybeWhen(
+              data: (d) {
+                final canApprove =
+                    d.application.status == VisitorApplicationStatus.pending ||
+                    d.application.status ==
+                        VisitorApplicationStatus.hostReviewing;
+                final canForward =
+                    d.application.status == VisitorApplicationStatus.pending;
+                if (!canApprove && !canForward) return null;
+                return UtenFloatingActionGroup(
+                  children: [
+                    if (canForward)
+                      UtenButton(
+                        type: UtenButtonType.secondary,
+                        size: UtenButtonSize.large,
+                        onPressed: _forward,
+                        child: Text(
+                          AppLocalizations.of(context).visitorApprovalForward,
+                        ),
+                      ),
+                    UtenButton(
+                      type: UtenButtonType.danger,
+                      size: UtenButtonSize.large,
+                      onPressed: canApprove ? _reject : null,
+                      child: Text(
+                        AppLocalizations.of(context).visitorApprovalReject,
+                      ),
+                    ),
+                    UtenButton(
+                      size: UtenButtonSize.large,
+                      onPressed: canApprove ? _approve : null,
+                      child: Text(
+                        AppLocalizations.of(context).visitorApprovalApprove,
+                      ),
+                    ),
+                  ],
+                );
+              },
+              orElse: () => null,
+            ),
     );
   }
 }

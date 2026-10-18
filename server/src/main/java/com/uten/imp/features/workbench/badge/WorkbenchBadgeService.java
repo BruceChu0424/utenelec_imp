@@ -46,6 +46,9 @@ import java.util.function.Supplier;
  *
  * <p>同时实现 {@link WorkbenchBadgeReadPort}: 工作台「今日概览」的本部门待办只算自己要的
  * 几个入口(只读它们引用的来源), 数字与红徽章同一口径(permissions-08)。
+ *
+ * <p>徽章属展示层: 全部来源在 {@code TaskAudiencePort.browsingRead} 里按会话主体浏览口径
+ * 读取(ADR-184 修订, 2026-10-18), 不进入任务受众改写; 任务口径只属于任务页面、弹窗与行动通知。
  */
 @Slf4j
 @Service
@@ -148,17 +151,12 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
         Map<String, Long> facts = new TreeMap<>();
         Set<String> granted = new HashSet<>();
         Set<String> failed = new HashSet<>();
-        // One actual-grant snapshot for every business source, including its method
-        // security and ordinary owner/warehouse/workshop responsibility policies.
-        taskAudience.read(() -> {
+        taskAudience.browsingRead(() -> {
             for (WorkbenchBadgeSources.Source source : toRead) {
-                if (source.businessTask()) readFacts(source, facts, granted, failed);
+                readFacts(source, facts, granted, failed);
             }
             return null;
         });
-        for (WorkbenchBadgeSources.Source source : toRead) {
-            if (!source.businessTask()) readFacts(source, facts, granted, failed);
-        }
 
         Map<String, WorkbenchBadgeSummary.Counts> entries = new LinkedHashMap<>();
         List<String> stale = new ArrayList<>();

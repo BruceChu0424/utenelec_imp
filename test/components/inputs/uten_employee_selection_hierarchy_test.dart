@@ -389,7 +389,8 @@ void main() {
           );
           await tester.pumpAndSettle();
           expect(tester.getSize(find.byKey(_treeKey)).width, 160);
-          expect(tester.getSize(_search()).width, 144);
+          // 2026-10-18 左缘贴 0 口径：左栏搜索框水平内边距为 0，贴满面板宽。
+          expect(tester.getSize(_search()).width, 160);
           expect(
             find.byTooltip('$_company / $_salesCenter / 业务部 / $_longTeam'),
             findsNWidgets(2),

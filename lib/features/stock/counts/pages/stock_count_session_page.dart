@@ -17,6 +17,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../components/buttons/uten_back_button.dart';
 import '../../../../components/buttons/uten_button.dart';
+import '../../../../components/buttons/uten_refresh_button.dart';
 import '../../../../components/feedback/uten_dialog.dart';
 import '../../../../components/inputs/uten_dropdown_field.dart';
 import '../../../../components/inputs/uten_filter_picker_field.dart';
@@ -170,7 +171,7 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
     super.initState();
     _count = StockCountInlineController(
       ref.read(stockCountRequestRepositoryProvider),
-    )..addListener(_onCountChanged);
+    )..structureSignal.addListener(_onCountStructureChanged);
     startFormDraftIdentityGuard();
     _start();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -180,13 +181,16 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
 
   @override
   void dispose() {
-    _count.removeListener(_onCountChanged);
+    _count.structureSignal.removeListener(_onCountStructureChanged);
     _search.dispose();
     _count.dispose();
     super.dispose();
   }
 
-  void _onCountChanged() {
+  /// 只在结构变化（行集/仓库/busy/送审态）时重建页面外壳；输入文本的编辑通知
+  /// 由悬浮按钮组（changedCount）、表格单元格（行级监听）与草稿 mixin 各自
+  /// 局部消费——此前任意一格输入都触发整页 setState，录数时打字发卡。
+  void _onCountStructureChanged() {
     if (mounted) setState(() {});
   }
 
@@ -635,6 +639,12 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
           maxDecimals: 4,
         );
       },
+      // 差额随本行实盘输入变化：行级监听只重建本格，不再靠整页 setState 刷新。
+      exactValueOf: (row) {
+        final delta = _deltaText(row);
+        return delta ?? '';
+      },
+      exactListenableOf: (row) => _count.rows[row.key]?.qty,
     ),
   ];
 
@@ -650,11 +660,7 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
               backTo(context, defaultPath: RouteName.stockInstantInventory),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新', // TODO(l10n): 补 arb
-            onPressed: _starting ? null : () => _load(_pageNum),
-          ),
+          UtenRefreshButton(onRefresh: () => _load(_pageNum), busy: _starting),
         ],
       ),
       body: withFormDraft(
@@ -681,7 +687,8 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
                   setState(() {
                     _keyword = raw.trim();
                     _acceptPendingSearch = true;
-                    _page = null;
+                    // 旧行保留到新查询落地（keepPreviousData）：此前防抖窗口内
+                    // 先清 _page，表格闪「没有符合条件的物料」空态再闪骨架。
                     _pageNum = 1;
                     _loading = false;
                     _error = null;
@@ -775,37 +782,41 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: (_scope == null || _warehouse == null)
           ? null
-          : UtenFloatingActionGroup(
-              children: [
-                UtenButton(
-                  key: const Key('stock-count-add'),
-                  size: UtenButtonSize.large,
-                  type: UtenButtonType.secondary,
-                  onPressed: _count.busy ? null : _addMaterials,
-                  child: const Text('添加物料'),
-                ),
-                UtenButton(
-                  key: const Key('stock-count-exit'),
-                  size: UtenButtonSize.large,
-                  type: UtenButtonType.secondary,
-                  onPressed: _count.busy
-                      ? null
-                      : () => backTo(
-                          context,
-                          defaultPath: RouteName.stockInstantInventory,
-                        ),
-                  child: const Text('退出盘点'),
-                ),
-                UtenButton(
-                  key: const Key('stock-count-save'),
-                  size: UtenButtonSize.large,
-                  onPressed:
-                      _submitting || _count.busy || _count.changedCount == 0
-                      ? null
-                      : _save,
-                  child: const Text('保存并送审'),
-                ),
-              ],
+          : ListenableBuilder(
+              // 局部消费 changedCount/busy：随输入刷新送审按钮，不牵动整页。
+              listenable: _count,
+              builder: (context, _) => UtenFloatingActionGroup(
+                children: [
+                  UtenButton(
+                    key: const Key('stock-count-add'),
+                    size: UtenButtonSize.large,
+                    type: UtenButtonType.secondary,
+                    onPressed: _count.busy ? null : _addMaterials,
+                    child: const Text('添加物料'),
+                  ),
+                  UtenButton(
+                    key: const Key('stock-count-exit'),
+                    size: UtenButtonSize.large,
+                    type: UtenButtonType.secondary,
+                    onPressed: _count.busy
+                        ? null
+                        : () => backTo(
+                            context,
+                            defaultPath: RouteName.stockInstantInventory,
+                          ),
+                    child: const Text('退出盘点'),
+                  ),
+                  UtenButton(
+                    key: const Key('stock-count-save'),
+                    size: UtenButtonSize.large,
+                    onPressed:
+                        _submitting || _count.busy || _count.changedCount == 0
+                        ? null
+                        : _save,
+                    child: const Text('保存并送审'),
+                  ),
+                ],
+              ),
             ),
     );
   }

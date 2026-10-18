@@ -142,7 +142,21 @@ class StockCountInlineController extends ChangeNotifier {
   bool get active => warehouse != null;
   int get session => _session;
   int get changedCount => rows.values.where((row) => row.changed).length;
+
+  /// 结构信号：行集增删/仓库切换/busy/送审态/错误等影响整页与单元格可用性的
+  /// 变化才 bump。此前任意一格输入都通知整个 controller，页面外壳与每个可见
+  /// 输入格全量重建——盘点高强度录数时打字发卡的第一根因（2026-10-18 拆频道：
+  /// 文本编辑只走 controller 自身通知，工具条/送审按钮/草稿监听照旧生效）。
+  final _structureSignal = ValueNotifier<int>(0);
+  Listenable get structureSignal => _structureSignal;
+
   void _notify() {
+    if (_disposed) return;
+    _structureSignal.value++;
+    notifyListeners();
+  }
+
+  void _notifyEdits() {
     if (!_disposed) notifyListeners();
   }
 
@@ -185,7 +199,7 @@ class StockCountInlineController extends ChangeNotifier {
       if (!snapshot.canEdit) continue;
       final row = rows.putIfAbsent(
         snapshot.key,
-        () => StockCountEditRow(snapshot, _notify),
+        () => StockCountEditRow(snapshot, _notifyEdits),
       );
       // Repeat selection must preserve both the edited values and their basis.
       addedRows.putIfAbsent(snapshot.key, () => row.snapshot);
@@ -229,7 +243,7 @@ class StockCountInlineController extends ChangeNotifier {
       }
       for (final row in snapshots) {
         if (row.canEdit) {
-          rows.putIfAbsent(row.key, () => StockCountEditRow(row, _notify));
+          rows.putIfAbsent(row.key, () => StockCountEditRow(row, _notifyEdits));
         }
       }
       _loadedGoods.addAll(ids);
@@ -326,6 +340,7 @@ class StockCountInlineController extends ChangeNotifier {
       row.dispose();
     }
     reason.dispose();
+    _structureSignal.dispose();
     super.dispose();
   }
 }
@@ -346,60 +361,71 @@ class StockCountInlineCell extends StatelessWidget {
   final bool weight;
 
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
-    listenable: controller,
-    builder: (context, _) {
-      final row = controller.rows[rowKey];
-      // 待审核展示态：刚送审的行是只读回执，不再是输入框(账面照旧、审核通过前库存不动)。
-      if (controller.reviewing) {
-        if (row == null) return const SizedBox.shrink();
-        if (weight && row.snapshot.weightExact) {
+  Widget build(BuildContext context) {
+    // 行级重建：本格只随「本行文本变化 + 控制器结构变化（busy/待审核/行集）」
+    // 重建，别的行打字不再牵连本格（此前盯整个 controller，任何一格输入全部
+    // 可见输入格一起重建）。
+    final row = controller.rows[rowKey];
+    final listenable = row == null
+        ? controller.structureSignal
+        : Listenable.merge([controller.structureSignal, row.qty, row.weight]);
+    return ListenableBuilder(
+      listenable: listenable,
+      builder: (context, _) {
+        final row = controller.rows[rowKey];
+        // 待审核展示态：刚送审的行是只读回执，不再是输入框(账面照旧、审核通过前库存不动)。
+        if (controller.reviewing) {
+          if (row == null) return const SizedBox.shrink();
+          if (weight && row.snapshot.weightExact) {
+            return Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '${financeExactTrimmed(row.targetWeightKg) ?? '—'}（自动）',
+              ),
+            );
+          }
+          final typed = (weight ? row.weight.text : row.qty.text).trim();
+          final fallback = weight
+              ? (row.snapshot.weightKg ?? '未称')
+              : row.snapshot.qty;
           return Align(
             alignment: Alignment.centerLeft,
-            child: Text(
-              '${financeExactTrimmed(row.targetWeightKg) ?? '—'}（自动）',
-            ),
+            child: Text(typed.isEmpty ? fallback : typed),
           );
         }
-        final typed = (weight ? row.weight.text : row.qty.text).trim();
-        final fallback = weight
-            ? (row.snapshot.weightKg ?? '未称')
-            : row.snapshot.qty;
-        return Align(
-          alignment: Alignment.centerLeft,
-          child: Text(typed.isEmpty ? fallback : typed),
-        );
-      }
-      if (row == null) return Text(controller.busy ? '读取中…' : '不可编辑');
-      if (weight && row.snapshot.weightExact) {
-        return Text('${financeExactTrimmed(row.targetWeightKg) ?? '—'}（自动）');
-      }
-      final text = weight ? row.weight : row.qty;
-      return TextField(
-        key: ValueKey('stock-count-${weight ? 'weight' : 'qty'}-$rowKey'),
-        controller: text,
-        enabled: !controller.busy,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        // 紧凑格：共享规格单一事实源（2026-10-08 起全站表格输入格同源，
-        // 见 UtenEditableGridCellSpec），无额外叠层。
-        // 2026-10-10「数量+单位」内联口径：实盘数量和重量的单位保留在输入框后缀。
-        decoration: UtenInputDecoration(
-          InputDecoration(
-            isDense: true,
-            contentPadding: UtenEditableGridCellSpec.contentPaddingOf(context),
-            suffixText: weight ? 'kg' : row.snapshot.unitName,
-            hintText: weight ? '实盘重量' : '实盘数量',
-            error: row.validation == null
-                ? null
-                : const UtenFieldMessage.error('请核对'),
+        if (row == null) return Text(controller.busy ? '读取中…' : '不可编辑');
+        if (weight && row.snapshot.weightExact) {
+          return Text('${financeExactTrimmed(row.targetWeightKg) ?? '—'}（自动）');
+        }
+        final text = weight ? row.weight : row.qty;
+        return TextField(
+          key: ValueKey('stock-count-${weight ? 'weight' : 'qty'}-$rowKey'),
+          controller: text,
+          enabled: !controller.busy,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          // 紧凑格：共享规格单一事实源（2026-10-08 起全站表格输入格同源，
+          // 见 UtenEditableGridCellSpec），无额外叠层。
+          // 2026-10-10「数量+单位」内联口径：实盘数量和重量的单位保留在输入框后缀。
+          decoration: UtenInputDecoration(
+            InputDecoration(
+              isDense: true,
+              contentPadding: UtenEditableGridCellSpec.contentPaddingOf(
+                context,
+              ),
+              suffixText: weight ? 'kg' : row.snapshot.unitName,
+              hintText: weight ? '实盘重量' : '实盘数量',
+              error: row.validation == null
+                  ? null
+                  : const UtenFieldMessage.error('请核对'),
+            ),
+            info: weight
+                ? '账面重量：${row.snapshot.weightKg == null ? '未称' : '${row.snapshot.weightKg} kg'}'
+                : '账面数量：${row.snapshot.qty} ${row.snapshot.unitName}',
           ),
-          info: weight
-              ? '账面重量：${row.snapshot.weightKg == null ? '未称' : '${row.snapshot.weightKg} kg'}'
-              : '账面数量：${row.snapshot.qty} ${row.snapshot.unitName}',
-        ),
-      );
-    },
-  );
+        );
+      },
+    );
+  }
 }
 
 /// Right-bottom floating count actions shared by both existing inventory tables;

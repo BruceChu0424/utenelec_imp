@@ -439,7 +439,15 @@ class _IncrementCreateState
                     children: [
                       OutlinedButton(
                         onPressed: _busy ? null : _load,
-                        child: const Text('重新核对来源'),
+                        child: _busy
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                ),
+                              )
+                            : const Text('重新核对来源'),
                       ),
                       FilledButton(
                         onPressed:
@@ -449,7 +457,23 @@ class _IncrementCreateState
                                 selected['pendingRequestId'] != null
                             ? null
                             : _submit,
-                        child: const Text('提交计划部审批'),
+                        child: _busy
+                            ? const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.5,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text('提交计划部审批'),
+                                ],
+                              )
+                            : const Text('提交计划部审批'),
                       ),
                     ],
                   ),

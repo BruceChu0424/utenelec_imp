@@ -5,10 +5,15 @@
 // (选 100 条就是 200 次串行请求，失败 catch 吞掉只报「N 个跳过」)。
 //
 // 现在明细区只有这一份：
-// - 分类信息卡 + 标题/搜索/添加 + MasterDataTableView(表头筛选/排序/分页/多选)；
+// - 分类信息卡(标题=名称（备注）(数量: N)) + 本地搜索 + MasterDataTableView
+//   (表头筛选/排序/分页/多选)；
+// - 右下悬浮组只挂「已选 N 项 + 添加X」（2026-10-18 用户口径：添加按钮悬浮在
+//   右下角紧挨已选计数，原「X (N) + 添加X」标题行整行删除，数量移到分类卡片）；
 // - 行启停走单条窄命令(PATCH /status，带列表行版本，不再先拉详情)；
 // - 行删除、批量启停、批量删除走服务端批量命令(一次请求、一个事务、逐条原因)，
 //   结果经 showMasterBatchOutcome 逐条展示；
+// - 批量操作全部走右键菜单(多选时出批量项，与货品页同形)，工具条不再常驻
+//   批量按钮（2026-10-18 用户口径：表格可右键操作，常驻批量按钮冗余）；
 // - 各页只给 [MasterEntityPaneConfig]：列、仓储闭包、文案、权限，以及特有动作
 //   (客户负责人/可见人、货品复制粘贴与组件信息、模具详情弹层)。
 import 'package:flutter/material.dart';
@@ -162,7 +167,6 @@ class MasterEntityPaneConfig<TItem, TDetail> {
     this.versionOf,
     this.writableOf,
     this.readOnlyRowHint,
-    this.readOnlyBatchHint,
     this.defaultSortKey,
     this.columnOfFacetField = const {},
     this.filterParamOfColumn = const {},
@@ -175,8 +179,7 @@ class MasterEntityPaneConfig<TItem, TDetail> {
     this.extraMenuItems,
     this.rowMenuOverride,
     this.backgroundMenuBuilder,
-    this.extraBatchActions,
-    this.batchActionsOverride,
+    this.extraBatchMenuItems,
     this.cardActions,
     this.loadLeadingGroups,
   });
@@ -199,7 +202,6 @@ class MasterEntityPaneConfig<TItem, TDetail> {
   /// 对象级写权限(客户)；为空表示行都可写。
   final bool Function(TItem row)? writableOf;
   final String Function(TItem row)? readOnlyRowHint;
-  final String? readOnlyBatchHint;
 
   final Future<ProductCategoryDetail> Function(String categoryId) loadCategory;
   final Future<PagedResult<TItem>> Function(MasterPaneQuery query) loadPage;
@@ -268,16 +270,14 @@ class MasterEntityPaneConfig<TItem, TDetail> {
     MasterEntityPaneController<TItem, TDetail> pane,
   )?
   backgroundMenuBuilder;
-  final List<Widget> Function(
+
+  /// 多选右键批量菜单里的页面特有条目（客户：批量设负责人/可见人），
+  /// 排在默认批量启停/删除之后。批量操作只走右键菜单，不再常驻工具条按钮。
+  final List<UtenContextMenuEntry> Function(
     MasterEntityPaneController<TItem, TDetail> pane,
     Set<String> ids,
   )?
-  extraBatchActions;
-  final List<Widget> Function(
-    MasterEntityPaneController<TItem, TDetail> pane,
-    Set<String> ids,
-  )?
-  batchActionsOverride;
+  extraBatchMenuItems;
 
   /// 分类信息卡上的额外按钮(货品页：导入货品)。
   final List<Widget> Function(MasterEntityPaneController<TItem, TDetail> pane)?
@@ -949,6 +949,12 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   List<UtenContextMenuEntry> _menuItems(TItem row) {
     final override = _c.rowMenuOverride;
     if (override != null) return override(this, row);
+    // 多选时右键已勾选的行 → 批量菜单（作用于整个选中集）；单行/未勾选行 →
+    // 单行菜单。表格保证右键未勾选行时选择集先替换为该行，不会走错分支。
+    final selected = _selectedIds;
+    if (selected.length > 1 && selected.contains(_c.idOf(row))) {
+      return _batchMenuItems(selected);
+    }
     final inUse = _c.statusOf(row) == '使用';
     final writable = _rowWritable(row);
     return [
@@ -988,59 +994,73 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     ];
   }
 
-  List<Widget> _batchActions(BuildContext context, Set<String> ids) {
-    final override = _c.batchActionsOverride;
-    if (override != null) return override(this, ids);
-    final extra = _c.extraBatchActions?.call(this, ids) ?? const <Widget>[];
-    if (!_c.canStatus && !_c.canDelete) return extra;
+  /// 多选批量菜单（2026-10-18 用户口径：批量操作走右键菜单，与货品页同形；
+  /// 工具条不再常驻批量按钮）。只读行混选时批量启停/删除灰置。
+  List<UtenContextMenuEntry> _batchMenuItems(Set<String> ids) {
+    final n = ids.length;
     final byId = _rowsById();
-    final includesReadOnly =
-        _c.writableOf != null &&
-        ids.any((id) => byId[id] == null || !_c.writableOf!(byId[id] as TItem));
-    if (includesReadOnly) {
-      return [
-        ...extra,
-        Text(
-          _c.readOnlyBatchHint ??
-              '所选${_c.noun}包含只读数据，请取消只读的再批量操作', // TODO(l10n): 补 arb
-        ),
-      ];
-    }
-    // 没勾选时按钮灰着(悬浮批量区常驻，未选态靠按钮禁用态辨识)。
-    final idle = busy || ids.isEmpty;
+    final allWritable = _c.writableOf == null ||
+        ids.every(
+          (id) => byId[id] != null && _c.writableOf!(byId[id] as TItem),
+        );
+    final idle = busy || !allWritable;
     return [
-      ...extra,
       if (_c.canStatus) ...[
-        UtenButton(
-          key: const ValueKey('master-batch-disable'),
-          size: UtenButtonSize.small,
-          type: UtenButtonType.tonal,
+        UtenMenuItem(
+          label: '批量禁用($n)', // TODO(l10n): 补 arb
           icon: Icons.pause_circle_outline_rounded,
-          onPressed: idle ? null : () => batchSetStatus(ids, '禁用'),
-          child: const Text('批量禁用'), // TODO(l10n): 补 arb
+          enabled: !idle,
+          onTap: () => batchSetStatus(ids, '禁用'),
         ),
-        UtenButton(
-          key: const ValueKey('master-batch-enable'),
-          size: UtenButtonSize.small,
-          type: UtenButtonType.tonal,
+        UtenMenuItem(
+          label: '批量启用($n)', // TODO(l10n): 补 arb
           icon: Icons.play_circle_outline_rounded,
-          onPressed: idle ? null : () => batchSetStatus(ids, '使用'),
-          child: const Text('批量启用'), // TODO(l10n): 补 arb
+          enabled: !idle,
+          onTap: () => batchSetStatus(ids, '使用'),
         ),
       ],
       if (_c.canDelete)
-        UtenButton(
-          key: const ValueKey('master-batch-delete'),
-          size: UtenButtonSize.small,
-          type: UtenButtonType.danger,
+        UtenMenuItem(
+          label: '批量删除($n)', // TODO(l10n): 补 arb
           icon: Icons.delete_outline_rounded,
-          onPressed: idle ? null : () => batchDelete(ids),
-          child: const Text('批量删除'), // TODO(l10n): 补 arb
+          destructive: true,
+          enabled: !idle,
+          onTap: () => batchDelete(ids),
         ),
+      ...?_c.extraBatchMenuItems?.call(this, ids),
+    ];
+  }
+
+  /// 右下悬浮组：只挂「添加X」（已选胶囊由表格恒置首位）。
+  /// 批量操作在右键菜单(多选时出批量项)；全局搜索态(categoryId 为空)不提供新增。
+  List<Widget> _batchActions(BuildContext context, Set<String> ids) {
+    if (widget.categoryId == null || !_c.canCreate || _c.onCreate == null) {
+      return const [];
+    }
+    return [
+      UtenButton(
+        key: const ValueKey('master-add-entity'),
+        size: UtenButtonSize.large,
+        icon: Icons.add_rounded,
+        onPressed: () => _c.onCreate!(this),
+        child: Text('添加${_c.noun}'), // TODO(l10n): 补 arb
+      ),
     ];
   }
 
   // ---- build -------------------------------------------------------------
+
+  /// 分类卡片标题：名称（备注）——与左侧分类列表同形；列表加载完成后缀上
+  /// (数量: N)。数量为当前列表口径（本地搜索/筛选时随之变化，与原标题行
+  /// 「X (N)」同一语义）。
+  String _categoryCardTitle(ProductCategoryDetail d) {
+    final remark = d.remark?.trim();
+    final label = (remark == null || remark.isEmpty)
+        ? d.name
+        : '${d.name}（$remark）';
+    final page = _page;
+    return page == null ? label : '$label (数量: ${page.total})';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1076,7 +1096,6 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     final exportInCard = d != null && (_c.export?.inCard ?? false);
     // compact：容器 gutter 已提供水平留白；medium+：明细区自带水平内边距。
     final hPad = context.breakpoint.isCompact ? 0.0 : UtenSpacing.s16;
-    final total = _page?.total ?? 0;
     final content = Padding(
       padding: EdgeInsets.symmetric(horizontal: hPad),
       child: UtenCollapsingHeaderScrollView(
@@ -1091,11 +1110,13 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                   UtenSpacing.s12,
                 ),
                 child: MasterDetailCard(
-                  title: d.name,
+                  // 标题与左侧分类列表同形（名称（备注）），数量缀尾
+                  // （2026-10-18 用户口径：原「X (N) + 添加X」标题行删除，
+                  // 备注与数量都收进分类卡片；数量取当前列表口径）。
+                  title: _categoryCardTitle(d),
                   icon: _c.icon,
                   subtitle:
-                      '编号前缀 ${d.effectivePrefix ?? _c.defaultCodePrefix}${d.codePrefix == null ? '(继承)' : ''}'
-                      '${d.remark?.isNotEmpty == true ? ' · ${d.remark}' : ''} · 层级 L${d.level}',
+                      '编号前缀 ${d.effectivePrefix ?? _c.defaultCodePrefix}${d.codePrefix == null ? '(继承)' : ''} · 层级 L${d.level}',
                   // 卡片只留标题 + 操作：层级/父级/子项数左侧分类树里都能看出。
                   stats: const [],
                   canEdit: canMutateCategory,
@@ -1125,54 +1146,26 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                   ],
                 ),
               ),
-        // body：标题 + 搜索 + 添加(卡片收起后吸顶) + 表格(内滚)。
+        // body：本地搜索(卡片收起后吸顶) + 表格(内滚)。原「X (N) + 添加X」标题行
+        // 已删（2026-10-18 用户口径）：数量进分类卡片标题，添加X悬浮右下角紧挨
+        // 已选计数（见 [_batchActions]）。
         body: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-              child: Row(
-                children: [
-                  Icon(_c.icon, size: 18, color: theme.colorScheme.primary),
-                  const SizedBox(width: UtenSpacing.s8),
-                  Text(
-                    '${_c.noun} ($total)', // TODO(l10n): 补 arb
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+            if (_c.showLocalSearch &&
+                widget.categoryId != null &&
+                widget.externalKeyword == null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+                child: UtenSearchBar(
+                  // key 含分类 + 种子：切分类 / 树搜索写入关键词时重建搜索框。
+                  key: ValueKey(
+                    '${_c.keyPrefix}-search-${widget.categoryId}-$_kwSeed',
                   ),
-                  const SizedBox(width: UtenSpacing.s12),
-                  if (!_c.showLocalSearch ||
-                      widget.categoryId == null ||
-                      widget.externalKeyword != null)
-                    const Spacer(),
-                  if (_c.showLocalSearch &&
-                      widget.categoryId != null &&
-                      widget.externalKeyword == null)
-                    Expanded(
-                      child: UtenSearchBar(
-                        // key 含分类 + 种子：切分类 / 树搜索写入关键词时重建搜索框。
-                        key: ValueKey(
-                          '${_c.keyPrefix}-search-${widget.categoryId}-$_kwSeed',
-                        ),
-                        hint: _c.searchHint,
-                        initialValue: _keyword,
-                        onChanged: _onKeywordChanged,
-                      ),
-                    ),
-                  if (widget.categoryId != null &&
-                      _c.canCreate &&
-                      _c.onCreate != null) ...[
-                    const SizedBox(width: UtenSpacing.s16),
-                    UtenButton(
-                      type: UtenButtonType.tonal,
-                      icon: Icons.add_rounded,
-                      onPressed: () => _c.onCreate!(this),
-                      child: Text('添加${_c.noun}'), // TODO(l10n): 补 arb
-                    ),
-                  ],
-                ],
+                  hint: _c.searchHint,
+                  initialValue: _keyword,
+                  onChanged: _onKeywordChanged,
+                ),
               ),
-            ),
             // primary:true → 表体参与「卡片折叠 → 表格内滚」联动。
             Expanded(
               child: MasterDataTableView<TItem>(

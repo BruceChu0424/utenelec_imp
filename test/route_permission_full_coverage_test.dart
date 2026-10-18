@@ -90,7 +90,9 @@ void _collect(RouteBase base, String parent, List<String> out) {
   }
 }
 
-/// 原守卫基数 205，新增路径另由下方精确登记；当前 240 条守卫 / 18 条豁免。
+/// 原守卫基数 204，新增路径另由下方精确登记；当前 239 条守卫 / 18 条豁免。
+/// 2026-10-18 销售订单进度详情整页退役（履约时间线并入订货单详情页），
+/// /sales/progress/:orderId 路由删除，守卫 205→204；
 /// 两表共 36 项 any/all 登记，/workshop-material/count 同时登记两类守卫，去重为 35 条路径。
 /// 2026-10-17 外网管理页增加1条受限路径，个人MFA增加1条员工自助豁免；访客会话不能进入。
 /// 2026-10-15 三条运维设置路径逐条登记，写动作仍由各自服务端能力校验；
@@ -109,7 +111,7 @@ void _collect(RouteBase base, String parent, List<String> out) {
 /// 包含报销编辑路径，仍继承 expense:apply；生产路线重构不新增页面。
 /// 断言精确计数：新增路由必须同步改代码守卫 + 本处计数 + 文档数字，
 /// 防止「文档说 180、实际已 190」的静默漂移。
-const _legacyGuardedCount = 205;
+const _legacyGuardedCount = 204;
 const _expectedExemptCount = 18;
 
 /// 2026-09-26 实际新增路径逐条核对，不能用总数 +5 代替路由身份/组合权限验证。

@@ -271,7 +271,6 @@ const _registeredPagePermissionScopes = <PagePermissionScope>[
   _productionHubScope,
   _productionPlanScope,
   _productionScheduleScope,
-  _productionProgressScope,
   _materialAnalysisScope,
   _materialAnalysisHistoryScope,
   _productionDailyReportScope,
@@ -396,7 +395,8 @@ PagePermissionScope? _salesScopeFor(List<String> segments) {
     return segments.length == 2 ? _salesScarcityScope : null;
   }
   if (segments[1] == 'progress') {
-    return segments.length <= 3 ? _salesProgressScope : null;
+    // 进度详情整页已退役（2026-10-18 并入订货单详情页），本面只剩看板一页。
+    return segments.length == 2 ? _salesProgressScope : null;
   }
   final scope = _salesDocumentScopes[segments[1]];
   if (scope == null || !_isDocumentPath(segments)) return null;
@@ -420,10 +420,12 @@ PagePermissionScope? _subcontractScopeFor(List<String> segments) {
 PagePermissionScope? _productionScopeFor(List<String> segments) {
   if (segments.length == 1) return _productionHubScope;
   switch (segments[1]) {
+    // 2026-10-19 同页双路由收口：/production/progress 已重定向到
+    // /production/schedule?tab=progress，production.progress 面退役，
+    // 两条路径都解析到同一张 production.schedule 面。
     case 'schedule':
-      return segments.length == 2 ? _productionScheduleScope : null;
     case 'progress':
-      return segments.length == 2 ? _productionProgressScope : null;
+      return segments.length == 2 ? _productionScheduleScope : null;
     case 'material-analysis':
       return segments.length == 2 ? _materialAnalysisScope : null;
     // 超产比例/追加用料审批队列（V812 补挂）：审批动作复用 production_plan:approve，
@@ -910,13 +912,11 @@ const _productionPlanScope = PagePermissionScope(
 );
 // V456：调度看板/进度页挂 view-only 专属面；完整生产动作仍在 /production/plans
 // 的 production.plan 面授予（安全收紧：不再随看板委派全套生产权限）。
+// 2026-10-19 V878：production.progress 面退役并入本面，更名与页面标题一致，
+// 面上码为两类入口守卫的并集（production_plan:view + production_execution:overview）。
 const _productionScheduleScope = PagePermissionScope(
   surfaceKey: 'production.schedule',
-  title: '生产调度',
-);
-const _productionProgressScope = PagePermissionScope(
-  surfaceKey: 'production.progress',
-  title: '生产进度',
+  title: '生产调度与进度',
 );
 const _materialAnalysisScope = PagePermissionScope(
   surfaceKey: 'production.material-analysis',

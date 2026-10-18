@@ -15,12 +15,13 @@
 // 2026-09-03 起统一「分类分段」范式（ADR-066，原 AppBar 下 TabBar 退役）：
 // 大类行 = 待排产/进行中/历史记录 + 页级搜索；默认不选显示引导占位不发请求
 //（路由深链 initialTab 预选例外：/production/schedule 预选待排产、
-// /production/progress 预选进行中）。各分段保留自己的细化筛选
+// /production/schedule?tab=progress 预选进行中）。各分段保留自己的细化筛选
 //（待排产：表头排序/状态值筛选；进行中：车间/排序）。
 //
 // 进度 = 完工入库量 ÷ 排产量（成品入库审核后即时反映）。
-// 路由：/production/schedule → 预选待排产；/production/progress → 预选进行中（旧两页合并；
-// 生产 Hub 只剩一张「生产调度与进度」卡进 /production/schedule，进行中靠 progress 深链预选）。
+// 路由：/production/schedule → 预选待排产；/production/schedule?tab=progress → 预选进行中
+//（2026-10-19 同页双路由收口：旧 /production/progress 深链重定向到 ?tab=progress；
+// 生产 Hub 只剩一张「生产调度与进度」卡进 /production/schedule，进行中靠深链预选）。
 // 待排产表 2026-09-10（V545）起加「已排」列：部分排产的行按剩余未排量继续留在本段，
 // 状态列标「部分已排 已排/订货」，不再因 planned>0 从待排产消失。
 // 2026-09-15(ADR-088)待排产口径再收一层：缺口列改为「尚未被活动物料分析承接的量」

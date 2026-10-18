@@ -354,7 +354,35 @@ class _ColorPageState extends ConsumerState<ColorPage> {
   }
 
   /// 行菜单条目（右击/长按弹出）。可用性按权限 + 行状态实时决定。
+  /// 多选时右键已勾选的行 → 批量菜单（作用于整个选中集），与主档分类页同形
+  /// （2026-10-18 用户口径：批量走右键菜单，工具条不再常驻批量按钮）。
   List<UtenContextMenuEntry> _colorMenuItems(ColorListItem c) {
+    final selected = _selectedColorIds;
+    if (selected.length > 1 && selected.contains(c.id)) {
+      final n = selected.length;
+      final idle = _rowOpBusy;
+      return [
+        UtenMenuItem(
+          label: '批量禁用($n)', // TODO(l10n): 补 arb
+          icon: Icons.pause_circle_outline_rounded,
+          enabled: _canStatus && !idle,
+          onTap: () => _batchSetColorStatus(selected, '禁用'),
+        ),
+        UtenMenuItem(
+          label: '批量启用($n)', // TODO(l10n): 补 arb
+          icon: Icons.play_circle_outline_rounded,
+          enabled: _canStatus && !idle,
+          onTap: () => _batchSetColorStatus(selected, '使用'),
+        ),
+        UtenMenuItem(
+          label: '批量删除($n)', // TODO(l10n): 补 arb
+          icon: Icons.delete_outline_rounded,
+          destructive: true,
+          enabled: _canDelete && !idle,
+          onTap: () => _batchDeleteColors(selected),
+        ),
+      ];
+    }
     final inUse = c.status == '使用';
     return [
       UtenMenuItem(
@@ -388,28 +416,10 @@ class _ColorPageState extends ConsumerState<ColorPage> {
     ];
   }
 
+  /// 右下悬浮组只挂「添加颜色」（已选胶囊由表格恒置首位）；批量启停/删除走
+  /// 右键菜单（见 [_colorMenuItems] 的多选分支）。
   List<Widget> _colorBatchActions(BuildContext context, Set<String> ids) {
     return [
-      if (_canStatus)
-        UtenButton(
-          size: UtenButtonSize.small,
-          type: UtenButtonType.tonal,
-          icon: Icons.pause_circle_outline_rounded,
-          onPressed: _rowOpBusy || ids.isEmpty
-              ? null
-              : () => _batchSetColorStatus(ids, '禁用'),
-          child: const Text('批量禁用'), // TODO(l10n): 补 arb
-        ),
-      if (_canDelete)
-        UtenButton(
-          size: UtenButtonSize.small,
-          type: UtenButtonType.danger,
-          icon: Icons.delete_outline_rounded,
-          onPressed: _rowOpBusy || ids.isEmpty
-              ? null
-              : () => _batchDeleteColors(ids),
-          child: const Text('批量删除'), // TODO(l10n): 补 arb
-        ),
       if (_canCreate)
         UtenButton(
           size: UtenButtonSize.large,

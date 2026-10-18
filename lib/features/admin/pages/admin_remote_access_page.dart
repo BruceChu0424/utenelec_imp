@@ -343,12 +343,14 @@ class _RemoteAccessSessionState extends ConsumerState<_RemoteAccessSession> {
                                   status.currentAccessChannel == 'local')
                                 UtenButton(
                                   type: UtenButtonType.ghost,
+                                  isLoading: _busy,
                                   onPressed: _busy ? null : () => _reset(user),
                                   child: Text(t('reset')),
                                 ),
                               UtenButton(
                                 key: ValueKey('remote-revoke-${user.id}'),
                                 type: UtenButtonType.ghost,
+                                isLoading: _busy,
                                 onPressed: _busy ? null : () => _revoke(user),
                                 child: Text(t('revoke')),
                               ),

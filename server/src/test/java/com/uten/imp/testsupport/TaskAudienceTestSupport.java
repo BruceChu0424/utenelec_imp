@@ -9,6 +9,7 @@ public final class TaskAudienceTestSupport {
     public static TaskAudiencePort direct() {
         return new TaskAudiencePort() {
             @Override public <T> T read(Supplier<T> work) { return work.get(); }
+            @Override public <T> T browsingRead(Supplier<T> work) { return work.get(); }
         };
     }
 }

@@ -1040,7 +1040,6 @@
   "subcontractHubReportInOut": "In-out status",
   "subcontractHubReportInOutSub": "Overall in/out status",
   "productionHubTitle": "Production",
-  "productionHubSchedule": "Scheduling & progress",
   "productionHubScheduleSub": "Plan, WIP, completion",
   "productionHubPlan": "New production plan",
   "productionHubPlanSub": "Create a plan manually, optionally referencing a sales order",

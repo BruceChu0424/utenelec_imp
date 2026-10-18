@@ -43,6 +43,9 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
   List<DepartmentNode>? _tree;
   String? _selectedId;
   bool _loading = true;
+
+  /// 删除进行中的节点 id（行内删除按钮转圈 + 防重入）。
+  String? _deletingId;
   String? _error;
 
   // 顶部统一搜索（部门名 + 员工姓名/工号）→ 定位部门：visibleFilterIds 驱动树只显示命中部门 + 祖先链。
@@ -233,7 +236,8 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
 
   Widget _buildGlobalSearchBox() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      // 左缘贴 0（2026-10-18 全站分栏口径）：与分类页左栏搜索、返回键图标共缘。
+      padding: const EdgeInsets.only(top: 12, bottom: 8),
       child: UtenSearchBar(
         initialValue: _globalQuery,
         hint: _hasPermission(Perm.employeeView)
@@ -329,7 +333,11 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
         ],
       ),
     );
-    if (ok != true) return;
+    if (ok != true || !mounted) return;
+    // 删除的网络段带忙碌遮罩 + 防重入：确认弹窗关闭后按钮已随弹窗消失，
+    // 此前页面静默等待且可对同一节点重复触发删除（2026-10-18 修复）。
+    if (_deletingId != null) return;
+    setState(() => _deletingId = node.id);
     try {
       await ref.read(departmentRepositoryProvider).delete(node.id);
       _toastSuccess(l10n.departmentDeleted);
@@ -337,6 +345,8 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
       await _load();
     } on ApiException catch (e) {
       _toastError(e.message);
+    } finally {
+      if (mounted) setState(() => _deletingId = null);
     }
   }
 
@@ -473,8 +483,14 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
               visualDensity: VisualDensity.compact,
               constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
               tooltip: '删除 ${node.name}',
-              onPressed: () => _delete(node),
-              icon: const Icon(Icons.delete_outline, size: 18),
+              onPressed: _deletingId == null ? () => _delete(node) : null,
+              icon: _deletingId == node.id
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    )
+                  : const Icon(Icons.delete_outline, size: 18),
             ),
         ],
       ),

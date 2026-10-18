@@ -247,31 +247,8 @@ class SettingsPage extends ConsumerWidget {
 
               const SizedBox(height: UtenSpacing.s24),
 
-              // 退出登录
-              UtenCard(
-                padding: const EdgeInsets.symmetric(
-                  vertical: UtenSpacing.s4,
-                  horizontal: UtenSpacing.s8,
-                ),
-                child: Material(
-                  color: Colors.transparent,
-                  child: ListTile(
-                    leading: const Icon(
-                      Icons.logout,
-                      color: UtenColors.error,
-                      size: 20,
-                    ),
-                    title: const Text(
-                      '退出登录',
-                      style: TextStyle(color: UtenColors.error),
-                    ),
-                    onTap: () => _confirmLogout(context, ref),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: UtenSpacing.s8,
-                    ),
-                  ),
-                ),
-              ),
+              // 退出登录（网络段带忙碌态：确认后到跳登录页之间不再静默无反馈）
+              const _LogoutTile(),
 
               const SizedBox(height: UtenSpacing.s32),
 
@@ -291,33 +268,6 @@ class SettingsPage extends ConsumerWidget {
       ),
     );
   }
-
-  Future<void> _confirmLogout(BuildContext context, WidgetRef ref) async {
-    final l10n = AppLocalizations.of(context);
-    final confirmed = await UtenNotify.alert(
-      context,
-      title: l10n.settingsLogout,
-      message: l10n.settingsLogoutConfirm,
-      confirmLabel: l10n.commonConfirm,
-      cancelLabel: l10n.commonCancel,
-      icon: Icons.logout_rounded,
-    );
-
-    if (confirmed != true) return;
-
-    // Capture the app-level host before logout changes the route. The warning
-    // remains visible on the login page even if this Settings context unmounts.
-    final notifications = ref.read(appNotificationProvider.notifier);
-    try {
-      await ref.read(sessionProvider.notifier).logout();
-    } catch (_) {
-      notifications.showError('退出未完全完成，请重新打开应用后再登录。', force: true);
-    } finally {
-      if (context.mounted) {
-        context.go(RouteName.login);
-      }
-    }
-  }
 }
 
 String _serverModeLabel(ServerMode mode) {
@@ -329,4 +279,69 @@ String _serverModeLabel(ServerMode mode) {
     case ServerMode.cloud:
       return '仅托管云端';
   }
+}
+
+/// 退出登录入口：确认弹窗关闭后的登出网络段自带忙碌态（尾图标位换转圈并禁点），
+/// 不再「确认完了卡在原页看不出在退」（2026-10-18）。
+class _LogoutTile extends ConsumerStatefulWidget {
+  const _LogoutTile();
+
+  @override
+  ConsumerState<_LogoutTile> createState() => _LogoutTileState();
+}
+
+class _LogoutTileState extends ConsumerState<_LogoutTile> {
+  bool _busy = false;
+
+  Future<void> _confirmLogout() async {
+    if (_busy) return;
+    final l10n = AppLocalizations.of(context);
+    final confirmed = await UtenNotify.alert(
+      context,
+      title: l10n.settingsLogout,
+      message: l10n.settingsLogoutConfirm,
+      confirmLabel: l10n.commonConfirm,
+      cancelLabel: l10n.commonCancel,
+      icon: Icons.logout_rounded,
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _busy = true);
+    // Capture the app-level host before logout changes the route. The warning
+    // remains visible on the login page even if this Settings context unmounts.
+    final notifications = ref.read(appNotificationProvider.notifier);
+    try {
+      await ref.read(sessionProvider.notifier).logout();
+    } catch (_) {
+      notifications.showError('退出未完全完成，请重新打开应用后再登录。', force: true);
+    } finally {
+      if (mounted) {
+        context.go(RouteName.login);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => UtenCard(
+    padding: const EdgeInsets.symmetric(
+      vertical: UtenSpacing.s4,
+      horizontal: UtenSpacing.s8,
+    ),
+    child: Material(
+      color: Colors.transparent,
+      child: ListTile(
+        leading: const Icon(Icons.logout, color: UtenColors.error, size: 20),
+        title: const Text('退出登录', style: TextStyle(color: UtenColors.error)),
+        trailing: _busy
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2.5),
+              )
+            : null,
+        onTap: _busy ? null : _confirmLogout,
+        contentPadding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s8),
+      ),
+    ),
+  );
 }

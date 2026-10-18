@@ -635,8 +635,6 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       onOpen: _showGoodsDetail,
       rowMenuOverride: _goodsMenuItems,
       backgroundMenuBuilder: _goodsPasteMenuItems,
-      // 批量操作在右键菜单(多选时出批量项)；工具条只保留「已选 N 项 + 取消选择」。
-      batchActionsOverride: (pane, ids) => const [],
       loadLeadingGroups: _leadingGroups,
     );
   }

@@ -14,6 +14,7 @@ import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../components/buttons/uten_back_button.dart';
+import '../../../../components/buttons/uten_refresh_button.dart';
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/data_display/uten_status_badge.dart';
 import '../../../../components/data_display/uten_status_cell_color.dart';
@@ -209,7 +210,7 @@ class _WorkshopMaterialBinPageState
     super.initState();
     _countEditor = StockCountInlineController(
       ref.read(stockCountRequestRepositoryProvider),
-    )..addListener(_countChanged);
+    )..structureSignal.addListener(_countChanged);
     _workshopId = widget.workshopId;
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadAll());
   }
@@ -217,7 +218,7 @@ class _WorkshopMaterialBinPageState
   @override
   void dispose() {
     _poller.stop();
-    _countEditor.removeListener(_countChanged);
+    _countEditor.structureSignal.removeListener(_countChanged);
     _countEditor.dispose();
     super.dispose();
   }
@@ -644,13 +645,11 @@ class _WorkshopMaterialBinPageState
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
         actions: [
-          IconButton(
+          UtenRefreshButton(
             key: const Key('wm-bin-refresh'),
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新',
-            onPressed: () {
+            onRefresh: () async {
               setState(() => _busyTitle = null);
-              _loadAll();
+              await _loadAll();
             },
           ),
         ],

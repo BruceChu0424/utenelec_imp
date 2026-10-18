@@ -17,11 +17,14 @@ import java.util.function.Supplier;
  * A bounded read scope; the request's original security context is always restored.
  * Normal commands retain the administrator's full capability. Business tasks instead
  * reuse the ordinary permission and owner/warehouse/workshop policies with actual grants.
+ * Display aggregates (workbench badges) browse under the session principal instead
+ * ({@link #browsingRead}); the task rewriting stays suspended for the whole aggregation.
  */
 @Service
 public class BusinessTaskAudienceService implements TaskAudiencePort {
     private final PermissionResolver permissions;
     private final ThreadLocal<Boolean> reading = new ThreadLocal<>();
+    private final ThreadLocal<Boolean> browsing = new ThreadLocal<>();
 
     public BusinessTaskAudienceService(PermissionResolver permissions) {
         this.permissions = permissions;
@@ -29,7 +32,7 @@ public class BusinessTaskAudienceService implements TaskAudiencePort {
 
     @Override
     public <T> T read(Supplier<T> work) {
-        if (Boolean.TRUE.equals(reading.get())) return work.get();
+        if (Boolean.TRUE.equals(browsing.get()) || Boolean.TRUE.equals(reading.get())) return work.get();
         SecurityContext original = SecurityContextHolder.getContext();
         Authentication authentication = original.getAuthentication();
         if (authentication == null || !authentication.isAuthenticated()
@@ -56,6 +59,17 @@ public class BusinessTaskAudienceService implements TaskAudiencePort {
         } finally {
             SecurityContextHolder.setContext(original);
             reading.remove();
+        }
+    }
+
+    @Override
+    public <T> T browsingRead(Supplier<T> work) {
+        if (Boolean.TRUE.equals(browsing.get())) return work.get();
+        browsing.set(true);
+        try {
+            return work.get();
+        } finally {
+            browsing.remove();
         }
     }
 }

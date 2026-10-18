@@ -153,6 +153,8 @@ class _VisitorCheckResultPageState
       ctl.dispose();
     }
     if (confirmed != true || reason.isEmpty || !mounted) return;
+    // 网络段置忙：确认弹窗已关，此前按钮保持可点，连点会重复提交拉黑。
+    setState(() => _checking = true);
     try {
       await ref
           .read(visitorStaffRepositoryProvider)
@@ -171,6 +173,8 @@ class _VisitorCheckResultPageState
       }
     } catch (_) {
       if (mounted) context.appError(l10n.commonError);
+    } finally {
+      if (mounted) setState(() => _checking = false);
     }
   }
 
@@ -311,6 +315,7 @@ class _VisitorCheckResultPageState
                     size: UtenButtonSize.large,
                     icon: Icons.block_rounded,
                     onPressed: _checking ? null : _blacklist,
+                    isLoading: _checking,
                     child: Text(l10n.securityBlacklistAction),
                   ),
                 if (valid && canCheckIn && _result?.checkInAt == null)

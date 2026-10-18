@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../components/buttons/uten_back_button.dart';
+import '../../../../components/buttons/uten_refresh_button.dart';
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/feedback/uten_dialog.dart';
 import '../../../../components/feedback/uten_empty.dart';
@@ -126,11 +127,7 @@ class _WorkshopMaterialSetupPageState
           onPressed: () => backTo(context, defaultPath: RouteName.warehouse),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: l10n.commonRefresh,
-            onPressed: _load,
-          ),
+          UtenRefreshButton(tooltip: l10n.commonRefresh, onRefresh: _load),
         ],
       ),
       body: SafeArea(

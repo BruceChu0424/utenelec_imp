@@ -20,6 +20,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -244,10 +245,8 @@ class _WarehouseTaskCenterScaffoldState
         ),
         actions: [
           const WarehouseScopeSelector(),
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新',
-            onPressed: () {
+          UtenRefreshButton(
+            onRefresh: () {
               ref.invalidate(myWarehouseScopeProvider);
               setState(() => _refreshTick++);
               widget.onResume?.call();

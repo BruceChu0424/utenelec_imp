@@ -1888,6 +1888,7 @@
       "record": false,
       "anyOf": [
         "production_daily_report:create",
+        "production_execution:overview",
         "production_material_analysis:create",
         "production_material_analysis:view",
         "production_plan:approve",
@@ -2184,22 +2185,6 @@
       "doc": "docs/03-页面/生产订单排产页.md"
     },
     {
-      "route": "/production/progress",
-      "title": "生产主管看板页",
-      "aliases": [],
-      "module": "生产管理",
-      "purpose": "",
-      "paths": [],
-      "parent": "/production",
-      "record": false,
-      "anyOf": [
-        "production_execution:overview"
-      ],
-      "allOf": [],
-      "hubOf": [],
-      "doc": "docs/03-页面/生产主管看板页.md"
-    },
-    {
       "route": "/production/reports/plan-detail",
       "title": "计划明细",
       "aliases": [],
@@ -2264,6 +2249,7 @@
       "parent": null,
       "record": false,
       "anyOf": [
+        "production_execution:overview",
         "production_plan:view"
       ],
       "allOf": [],
@@ -2878,22 +2864,6 @@
       "allOf": [],
       "hubOf": [],
       "doc": "docs/03-页面/销售订单生产进度.md"
-    },
-    {
-      "route": "/sales/progress/:orderId",
-      "title": "销售订单进度详情页",
-      "aliases": [],
-      "module": "销售管理",
-      "purpose": "",
-      "paths": [],
-      "parent": "/sales/progress",
-      "record": true,
-      "anyOf": [
-        "sales_order:view"
-      ],
-      "allOf": [],
-      "hubOf": [],
-      "doc": "docs/03-页面/销售订单进度详情页.md"
     },
     {
       "route": "/sales/quotes",

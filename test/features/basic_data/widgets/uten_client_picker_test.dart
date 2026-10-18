@@ -45,7 +45,8 @@ void main() {
     await tester.drag(_splitGutter(), const Offset(-1400, 0));
     await tester.pumpAndSettle();
     expect(tester.getSize(_categoryPane()).width, 160);
-    expect(tester.getSize(_searchTextField()).width, 144);
+    // 2026-10-18 左缘贴 0 口径：左栏搜索框水平内边距为 0，贴满面板宽。
+    expect(tester.getSize(_searchTextField()).width, 160);
     expect(
       tester
           .renderObject<RenderParagraph>(find.text(_longOverseasCategory))

@@ -22,7 +22,6 @@ import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../components/layout/uten_picker_footer_layout.dart';
 import '../../../components/layout/uten_split_view.dart';
-import '../../../core/responsive/breakpoint.dart';
 import '../../../shared/hierarchy/uten_tree_path.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
@@ -511,26 +510,16 @@ class _MasterPickerSheetState<TItem>
   );
 
   Widget _buildUnifiedSearch() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final horizontalPadding =
-            context.breakpoint.isCompact || constraints.maxWidth < 240
-            ? 8.0
-            : 16.0;
-        return Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: horizontalPadding,
-            vertical: 8,
-          ),
-          child: UtenSearchBar(
-            key: _spec.searchKey,
-            controller: _keywordCtl,
-            hint: '搜索分类/${_spec.noun}',
-            onInputChanged: _onKeywordInputChanged,
-            onChanged: _onKeywordChanged,
-          ),
-        );
-      },
+    return Padding(
+      // 左缘贴 0（2026-10-18 全站分栏口径）：与分类页左栏搜索共缘。
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: UtenSearchBar(
+        key: _spec.searchKey,
+        controller: _keywordCtl,
+        hint: '搜索分类/${_spec.noun}',
+        onInputChanged: _onKeywordInputChanged,
+        onChanged: _onKeywordChanged,
+      ),
     );
   }
 }

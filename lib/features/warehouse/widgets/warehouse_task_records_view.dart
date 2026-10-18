@@ -74,6 +74,11 @@ class _WarehouseTaskRecordsViewState
   String? _error;
   bool _loading = false;
   bool _busy = false;
+
+  /// 批量确认弹窗/批量办理页打开中：拦截重复触发，但不进入 [_busy]（busy 语义
+  /// =网络进行中）。此前弹窗一开就置 busy，接上按钮转圈后用户阅读确认框的整段
+  /// 时间里按钮无限转圈（也是 widget 测试 pumpAndSettle 不落定的根因）。
+  bool _batchPromptOpen = false;
   int _requestVersion = 0;
   Set<String> _selected = {};
   final _rows = MasterDataTableRowsController<WarehouseTaskCenterRecord>();
@@ -88,16 +93,16 @@ class _WarehouseTaskRecordsViewState
     super.initState();
     _status = widget.initialStatus;
     ref.listenManual(authenticatedScopeProvider, (previous, next) {
-      if (previous != next) _invalidate();
+      if (previous != next) _invalidate(reset: true);
     });
     ref.listenManual(apiBaseUrlProvider, (previous, next) {
-      if (previous != next) _invalidate();
+      if (previous != next) _invalidate(reset: true);
     });
     ref.listenManual(currentPermissionsProvider, (previous, next) {
-      if (!setEquals(previous, next)) _invalidate();
+      if (!setEquals(previous, next)) _invalidate(reset: true);
     });
     ref.listenManual(warehouseTaskScopeProvider, (previous, next) {
-      if (previous != next) _invalidate();
+      if (previous != next) _invalidate(reset: true);
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
   }
@@ -111,7 +116,7 @@ class _WarehouseTaskRecordsViewState
       _status = null;
       _billNo = null;
       _dates = null;
-      _invalidate();
+      _invalidate(reset: true);
     } else if (oldWidget.initialStatus != widget.initialStatus) {
       _status = widget.initialStatus;
       _invalidate();
@@ -126,11 +131,14 @@ class _WarehouseTaskRecordsViewState
     _selectedRows.clear();
   }
 
-  void _invalidate() {
+  /// [reset]=true 表示换了视图/身份（不同单据族，旧行不串台）；关键词/筛选/刷新
+  /// 变化保留旧行到新数据落地（keepPreviousData）——此前一律清空，任务中心每
+  /// 次搜索停顿 300ms 就整表闪一次全屏骨架（2026-10-18 口径统一）。
+  void _invalidate({bool reset = false}) {
     ++_requestVersion;
     if (!mounted) return;
     setState(() {
-      _result = null;
+      if (reset) _result = null;
       _error = null;
       _clearSelection();
       _decisionFingerprint = null;
@@ -193,7 +201,7 @@ class _WarehouseTaskRecordsViewState
   }
 
   void _filter(String key, String? value) {
-    if (_busy) return;
+    if (_busy || _batchPromptOpen) return;
     if (key == 'status') {
       if (value?.startsWith('source:') == true &&
           (widget.source != 'ALL' ||
@@ -354,7 +362,7 @@ class _WarehouseTaskRecordsViewState
   }
 
   Future<void> _open(WarehouseTaskCenterRecord row) async {
-    if (_busy || _loading) return;
+    if (_busy || _batchPromptOpen || _loading) return;
     if (!_history &&
         row.action == 'ARRIVAL_CONTINUE' &&
         _draftsFor(row).isEmpty &&
@@ -415,7 +423,12 @@ class _WarehouseTaskRecordsViewState
     bool? preStock,
     List<WarehouseTaskCenterRecord>? targets,
   }) async {
-    if (_busy || _loading || (targets == null && _selectedRows.isEmpty)) return;
+    if (_busy ||
+        _batchPromptOpen ||
+        _loading ||
+        (targets == null && _selectedRows.isEmpty)) {
+      return;
+    }
     final selectedRows =
         targets ?? _selectedRows.values.toList(growable: false);
     final rows = warehouseTaskCommandTargets(selectedRows);
@@ -444,7 +457,7 @@ class _WarehouseTaskRecordsViewState
     final requestVersion = _requestVersion;
     final scope = ref.read(authenticatedScopeProvider);
     final server = ref.read(apiBaseUrlProvider);
-    setState(() => _busy = true);
+    setState(() => _batchPromptOpen = true);
     try {
       if (family == 'ARRIVAL_EXCEPTION' || family == 'ARRIVAL_CONTINUE') {
         final requestScope = await AuthenticatedRequestScope.capture(
@@ -505,6 +518,8 @@ class _WarehouseTaskRecordsViewState
             server != ref.read(apiBaseUrlProvider)) {
           return;
         }
+        // 网络段才开始转圈：确认后的提交期间按钮 isLoading 生效。
+        setState(() => _busy = true);
         final fingerprint =
             rows.map((row) => '${row.rowKey}:${row.expectedVersion}').toList()
               ..sort();
@@ -609,7 +624,12 @@ class _WarehouseTaskRecordsViewState
         );
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _batchPromptOpen = false;
+          _busy = false;
+        });
+      }
     }
   }
 
@@ -625,10 +645,12 @@ class _WarehouseTaskRecordsViewState
         if (canPreStock)
           UtenButton(
             type: UtenButtonType.tonal,
+            isLoading: _busy,
             onPressed: _busy ? null : () => _batch(preStock: true),
             child: Text('先入库后质检(${ids.length})'),
           ),
         UtenButton(
+          isLoading: _busy,
           onPressed: _busy ? null : () => _batch(preStock: false),
           child: Text('先质检后入库(${ids.length})'),
         ),
@@ -637,6 +659,7 @@ class _WarehouseTaskRecordsViewState
     return [
       UtenButton(
         key: const Key('warehouse-task-record-batch'),
+        isLoading: _busy,
         onPressed: family == null || _busy ? null : _batch,
         onDisabledTap: ids.isNotEmpty && family == null
             ? () => context.appWarning('不同办理方式的单据，请分别选择后处理')

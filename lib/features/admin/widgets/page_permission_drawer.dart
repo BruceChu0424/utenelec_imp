@@ -845,7 +845,8 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
           _departmentForest.selectableIds.contains(node.id),
       onToggleSelect: (node) => _changeDepartment(node.id),
       header: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s8),
+        // 左缘贴 0（2026-10-18 全站分栏口径）：与分类页左栏搜索共缘。
+        padding: const EdgeInsets.fromLTRB(0, UtenSpacing.s8, 0, UtenSpacing.s8),
         child: Column(
           children: [
             UtenSearchBar(

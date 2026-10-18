@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_split_view.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/core/theme/uten_colors.dart';
+import 'package:uten_imp/core/theme/uten_tokens.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_repository.dart';
@@ -360,16 +361,23 @@ void main() {
     // medium+ 布局换成 UtenSplitView（可拖分割线，货品资料页同款）。
     expect(find.byType(UtenSplitView), findsOneWidget);
 
-    // 一级行（提升后的三个根分类）：深绿实底 + 方角（无缩进层级色模式）。
-    expect(
-      find.byWidgetPredicate(
-        (widget) =>
-            widget is Material &&
-            widget.color == UtenColors.deepGreen &&
-            widget.borderRadius == BorderRadius.zero,
-      ),
-      findsNWidgets(3),
+    // 一级行（提升后的三个根分类）：深绿实底（无缩进层级色模式）。整列卡片
+    // 口径（2026-10-18）：首行上两角、末行下两角用系统圆角，中间行方角相接。
+    final flatRows = find.byWidgetPredicate(
+      (widget) => widget is Material && widget.color == UtenColors.deepGreen,
     );
+    expect(flatRows, findsNWidgets(3));
+    final rowRadii = [
+      for (final row in tester.widgetList<Material>(flatRows))
+        row.borderRadius as BorderRadius,
+    ];
+    expect(rowRadii[0].topLeft, const Radius.circular(UtenRadius.md),
+        reason: '首行上两角为系统圆角');
+    expect(rowRadii[0].bottomLeft, Radius.zero);
+    expect(rowRadii[1], BorderRadius.zero, reason: '中间行方角相接');
+    expect(rowRadii[2].bottomLeft, const Radius.circular(UtenRadius.md),
+        reason: '末行下两角为系统圆角');
+    expect(rowRadii[2].topLeft, Radius.zero);
     // flat 行间有 1px 分隔线：收起时整列同色（全是一级深绿行）也分得清一行一行。
     expect(
       find.descendant(

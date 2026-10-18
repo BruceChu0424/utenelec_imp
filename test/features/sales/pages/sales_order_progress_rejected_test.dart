@@ -76,7 +76,7 @@ void main() {
       expect(api.progressQueries.last['stage'], 'REJECTED');
 
       // 2026-09-05 起列表为 MasterDataTableView：阶段列为语义底色单元格
-      //（驳回人/时间在进度详情页展示，不再进表格行）。
+      //（驳回人/时间在订货单详情页展示，不再进表格行）。
       expect(find.text('财务驳回'), findsWidgets);
       expect(find.text('SO-REJECTED'), findsOneWidget);
       expect(

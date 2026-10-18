@@ -428,10 +428,11 @@ class PermissionSurfaceCatalogPostgresTest {
                         "warehouse_iqc_stock_in:before_inspection",
                         "warehouse_iqc_return:view"),
                 registry.permissionsFor("warehouse.quality-results"));
-        assertEquals(Set.of("production_plan:view"),
+        // V878 同页双路由收口：执行总览码并入生产调度与进度面，旧「生产进度」面退役。
+        assertEquals(Set.of("production_plan:view", "production_execution:overview"),
                 registry.permissionsFor("production.schedule"));
-        assertEquals(Set.of("production_execution:overview"),
-                registry.permissionsFor("production.progress"));
+        assertFalse(registry.isKnown("production.progress"),
+                "生产进度面已并入 production.schedule，不再出现页面内授权入口");
         assertEquals(Set.of("production_material_analysis:view"),
                 registry.permissionsFor("production.chain-health"));
     }

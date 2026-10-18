@@ -416,6 +416,7 @@ class _SmsEditorState extends ConsumerState<_SmsEditor> {
                                   UtenButton(
                                     key: const ValueKey('sms-settings-env'),
                                     type: UtenButtonType.secondary,
+                                    isLoading: _saving,
                                     onPressed: _enabled
                                         ? () => _save(environment: true)
                                         : null,

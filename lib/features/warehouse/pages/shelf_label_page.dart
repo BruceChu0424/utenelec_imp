@@ -15,6 +15,7 @@ import 'package:pdf/widgets.dart' as pw;
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/data_display/uten_rack_grid.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
@@ -167,38 +168,59 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
         : s;
   }
 
-  /// 列头筛选后的行（货架图与打印用这一份：不含「点格定位」的临时收敛）。
-  List<ShelfLabelRow> get _filteredRows {
-    final rows = _rows ?? const <ShelfLabelRow>[];
-    if (_filters.values.every((v) => v == null || v.isEmpty)) return rows;
-    final rack = _filters['rack'];
-    final level = _filters['level'];
-    final status = _filters['status'];
-    return rows.where((r) {
-      final rackOk = rack == null || rack.isEmpty || _rackLabel(r) == rack;
-      final levelOk = level == null || level.isEmpty || _levelLabel(r) == level;
-      final statusOk =
-          status == null || status.isEmpty || _statusLabel(r) == status;
-      return rackOk && levelOk && statusOk;
-    }).toList();
-  }
+  /// 派生集缓存：行集/列头筛选/点格定位任一变化才重算。此前
+  /// _filteredRows/_tableRows/_facets 都是裸 getter，每次 build 都对全量行
+  /// 跑 where 过滤 + 三列全量分桶排序，点格定位、勾筛选、搜索重拉全都整套
+  /// 重算——大仓行集上千时交互明显发卡（2026-10-18 修复）。
+  Object? _derivedKey;
+  List<ShelfLabelRow>? _filteredRowsCache;
+  List<ShelfLabelRow>? _tableRowsCache;
+  Map<String, List<MasterFacetBucket>>? _facetsCache;
 
-  /// 表格行 = 列头筛选 + （点格定位时）收敛到该库位。
-  List<ShelfLabelRow> get _tableRows {
-    final rows = _filteredRows;
-    if (!_placeFilterActive || _selectedPlace == null) return rows;
-    return rows
-        .where(
-          (r) =>
-              r.place == _selectedPlace &&
-              r.warehouseId == _selectedPlaceWarehouseId,
-        )
-        .toList();
-  }
+  Object get _deriveKey => (
+    _rows,
+    _filters['rack'],
+    _filters['level'],
+    _filters['status'],
+    _placeFilterActive,
+    _selectedPlace,
+    _selectedPlaceWarehouseId,
+  );
 
-  /// 货架/层/状态三列的筛选桶：按列头筛选前的全量行聚合，空值不进桶。
-  Map<String, List<MasterFacetBucket>> get _facets {
+  void _ensureDerived() {
+    final key = _deriveKey;
+    if (_derivedKey == key && _filteredRowsCache != null) return;
+    _derivedKey = key;
     final rows = _rows ?? const <ShelfLabelRow>[];
+    final hasFilter = _filters.values.any((v) => v != null && v.isNotEmpty);
+    List<ShelfLabelRow> filtered;
+    if (!hasFilter) {
+      filtered = rows;
+    } else {
+      final rack = _filters['rack'];
+      final level = _filters['level'];
+      final status = _filters['status'];
+      filtered = rows.where((r) {
+        final rackOk = rack == null || rack.isEmpty || _rackLabel(r) == rack;
+        final levelOk =
+            level == null || level.isEmpty || _levelLabel(r) == level;
+        final statusOk =
+            status == null || status.isEmpty || _statusLabel(r) == status;
+        return rackOk && levelOk && statusOk;
+      }).toList();
+    }
+    _filteredRowsCache = filtered;
+    if (_placeFilterActive && _selectedPlace != null) {
+      _tableRowsCache = filtered
+          .where(
+            (r) =>
+                r.place == _selectedPlace &&
+                r.warehouseId == _selectedPlaceWarehouseId,
+          )
+          .toList();
+    } else {
+      _tableRowsCache = filtered;
+    }
     List<MasterFacetBucket> bucketsOf(
       Iterable<String> texts, {
       bool numeric = false,
@@ -220,11 +242,29 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
       ];
     }
 
-    return {
+    _facetsCache = {
       'rack': bucketsOf(rows.map(_rackLabel)),
       'level': bucketsOf(rows.map(_levelLabel), numeric: true),
       'status': bucketsOf(rows.map(_statusLabel)),
     };
+  }
+
+  /// 列头筛选后的行（货架图与打印用这一份：不含「点格定位」的临时收敛）。
+  List<ShelfLabelRow> get _filteredRows {
+    _ensureDerived();
+    return _filteredRowsCache!;
+  }
+
+  /// 表格行 = 列头筛选 + （点格定位时）收敛到该库位。
+  List<ShelfLabelRow> get _tableRows {
+    _ensureDerived();
+    return _tableRowsCache!;
+  }
+
+  /// 货架/层/状态三列的筛选桶：按列头筛选前的全量行聚合，空值不进桶。
+  Map<String, List<MasterFacetBucket>> get _facets {
+    _ensureDerived();
+    return _facetsCache!;
   }
 
   /// 计数与当前行集一致；货架布局也直接由这些精确维度行推导。
@@ -399,11 +439,9 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
           onPressed: () => backTo(context, defaultPath: RouteName.warehouse),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新', // TODO(l10n): 补 arb
+          UtenRefreshButton(
             // 整页刷新：字典 + 清单（货架图由行集推导，随清单一起刷新）。
-            onPressed: () async {
+            onRefresh: () async {
               await ref.read(masterNameServiceProvider).ensureLoaded();
               await _load();
             },

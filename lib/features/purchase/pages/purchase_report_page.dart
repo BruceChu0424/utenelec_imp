@@ -12,6 +12,7 @@ import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -61,6 +62,10 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
   List<_Pending> _pending = const [];
   bool _loading = false;
 
+  /// 请求代际守卫：快速连改日期/类型时旧响应不得回写（2026-10-18 修复——此前
+  /// 本页是四域里唯一无守卫的报表页，慢响应晚到会覆盖新条件的结果）。
+  final _requests = LatestRequestGuard();
+
   @override
   void initState() {
     super.initState();
@@ -70,22 +75,25 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
   }
 
   Future<void> _load() async {
+    final generation = _requests.begin();
     setState(() => _loading = true);
     final api = ref.read(apiClientProvider);
     try {
-      final m = await api.getList(
-        ApiEndpoints.purchaseReportMonthly,
-        query: {
-          'docType': _docType,
-          'dateFrom': _fmt(_from),
-          'dateTo': _fmt(_to),
-          'limit': 200,
-        },
-      );
-      final p = await api.getList(
-        ApiEndpoints.purchaseReportPending,
-        query: {'limit': 200},
-      );
+      // 月度汇总与待交货互不依赖，并行拉取（此前串行两趟往返）。
+      final results = await Future.wait([
+        api.getList(
+          ApiEndpoints.purchaseReportMonthly,
+          query: {
+            'docType': _docType,
+            'dateFrom': _fmt(_from),
+            'dateTo': _fmt(_to),
+            'limit': 200,
+          },
+        ),
+        api.getList(ApiEndpoints.purchaseReportPending, query: {'limit': 200}),
+      ]);
+      final m = results[0];
+      final p = results[1];
       final allGoods = <String?>[
         ...m.map((e) => e['goodsId'] as String?),
         ...p.map((e) => e['goodsId'] as String?),
@@ -95,7 +103,7 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
           .map((s) => s!)
           .toSet();
       await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
-      if (!mounted) return;
+      if (!mounted || !_requests.isCurrent(generation)) return;
       setState(() {
         _monthly = m
             .map(
@@ -122,7 +130,7 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
         _loading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_requests.isCurrent(generation)) return;
       context.appApiError(e, fallback: '加载报表失败');
       setState(() => _loading = false);
     }
@@ -138,6 +146,22 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
+    // 懒列表：月度 200 + 待交货 200 共 400 行，此前 ListView(children:) 一次性
+    // 全量构建；改为先铺一张轻量条目计划（小对象，非 widget），再按可见行构建。
+    final entries = <(_RowKind, Object?)>[
+      (_RowKind.toolbar, null),
+      (_RowKind.dates, null),
+      (_RowKind.monthlyHeader, null),
+      if (_monthly.isEmpty)
+        (_RowKind.empty, null)
+      else
+        for (final r in _monthly) (_RowKind.monthly, r),
+      (_RowKind.pendingHeader, null),
+      if (_pending.isEmpty)
+        (_RowKind.empty, null)
+      else
+        for (final r in _pending) (_RowKind.pending, r),
+    ];
     return Scaffold(
       appBar: UtenAppBar(
         title: '采购报表',
@@ -147,111 +171,172 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
       ),
       body: SafeArea(
         child: UtenContentContainer(
-          child: _loading
-              ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
-              : ListView(
-                  // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊
-                  padding: EdgeInsets.fromLTRB(
-                    UtenSpacing.s12,
-                    UtenSpacing.s12,
-                    UtenSpacing.s12,
-                    math.max(
-                      UtenSpacing.s12,
-                      UtenCapsuleNavScope.occlusionOf(context),
-                    ),
-                  ),
-                  children: [
-                    // 筛选条：单据类型走统一筛选工具条分段；日期/查询保留原按钮行。
-                    UtenFilterToolbar<String>(
-                      segments: [
-                        for (final t in const ['ORDER', 'RECEIPT', 'RETURN'])
-                          UtenFilterSegment(value: t, label: _docLabel(t)),
-                      ],
-                      selected: {_docType!},
-                      onSelectionChanged: (v) => setState(() => _docType = v),
-                    ),
-                    const SizedBox(height: UtenSpacing.s8),
-                    Wrap(
-                      spacing: 12,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        TextButton.icon(
-                          onPressed: () async {
-                            final p = await showDatePicker(
-                              context: context,
-                              initialDate: _from,
-                              firstDate: DateTime(2010),
-                              lastDate: DateTime(2100),
-                            );
-                            // 撤掉「查询」按钮后，选完日期即刻重查。
-                            if (p != null) {
-                              setState(() => _from = p);
-                              _load();
-                            }
-                          },
-                          icon: const Icon(Icons.event_outlined, size: 18),
-                          label: Text('起 ${_fmt(_from)}'),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // 已有数据时重查不清屏：顶部细进度条随查询走（2026-10-18 口径）。
+              if (_loading && entries.length > 4)
+                const LinearProgressIndicator(minHeight: 2),
+              Expanded(
+                child: _loading && _monthly.isEmpty && _pending.isEmpty
+                    ? const Center(
+                        child: CircularProgressIndicator(strokeWidth: 2.5),
+                      )
+                    : ListView.builder(
+                        // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊
+                        padding: EdgeInsets.fromLTRB(
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                          math.max(
+                            UtenSpacing.s12,
+                            UtenCapsuleNavScope.occlusionOf(context),
+                          ),
                         ),
-                        TextButton.icon(
-                          onPressed: () async {
-                            final p = await showDatePicker(
-                              context: context,
-                              initialDate: _to,
-                              firstDate: DateTime(2010),
-                              lastDate: DateTime(2100),
-                            );
-                            if (p != null) {
-                              setState(() => _to = p);
-                              _load();
-                            }
-                          },
-                          icon: const Icon(Icons.event_outlined, size: 18),
-                          label: Text('止 ${_fmt(_to)}'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: UtenSpacing.s12),
-                    Text(
-                      '月度汇总(${_docLabel(_docType!)}，共 ${_monthly.length} 条)',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
+                        itemCount: entries.length,
+                        itemBuilder: (context, index) {
+                          final (kind, data) = entries[index];
+                          switch (kind) {
+                            case _RowKind.toolbar:
+                              return UtenFilterToolbar<String>(
+                                segments: [
+                                  for (final t in const [
+                                    'ORDER',
+                                    'RECEIPT',
+                                    'RETURN',
+                                  ])
+                                    UtenFilterSegment(
+                                      value: t,
+                                      label: _docLabel(t),
+                                    ),
+                                ],
+                                selected: {_docType!},
+                                // 切类型即刻重查：此前只切标题不重查，数据还是旧类型。
+                                onSelectionChanged: (v) {
+                                  if (v == _docType) return;
+                                  setState(() => _docType = v);
+                                  _load();
+                                },
+                              );
+                            case _RowKind.dates:
+                              return Padding(
+                                padding: const EdgeInsets.only(
+                                  top: UtenSpacing.s8,
+                                ),
+                                child: Wrap(
+                                  spacing: 12,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: [
+                                    TextButton.icon(
+                                      onPressed: () async {
+                                        final picked = await showDatePicker(
+                                          context: context,
+                                          initialDate: _from,
+                                          firstDate: DateTime(2010),
+                                          lastDate: DateTime(2100),
+                                        );
+                                        // 撤掉「查询」按钮后，选完日期即刻重查。
+                                        if (picked != null) {
+                                          setState(() => _from = picked);
+                                          _load();
+                                        }
+                                      },
+                                      icon: const Icon(
+                                        Icons.event_outlined,
+                                        size: 18,
+                                      ),
+                                      label: Text('起 ${_fmt(_from)}'),
+                                    ),
+                                    TextButton.icon(
+                                      onPressed: () async {
+                                        final picked = await showDatePicker(
+                                          context: context,
+                                          initialDate: _to,
+                                          firstDate: DateTime(2010),
+                                          lastDate: DateTime(2100),
+                                        );
+                                        if (picked != null) {
+                                          setState(() => _to = picked);
+                                          _load();
+                                        }
+                                      },
+                                      icon: const Icon(
+                                        Icons.event_outlined,
+                                        size: 18,
+                                      ),
+                                      label: Text('止 ${_fmt(_to)}'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            case _RowKind.monthlyHeader:
+                              return Padding(
+                                padding: const EdgeInsets.only(
+                                  top: UtenSpacing.s12,
+                                ),
+                                child: Text(
+                                  '月度汇总(${_docLabel(_docType!)}，共 ${_monthly.length} 条)',
+                                  style: theme.textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              );
+                            case _RowKind.pendingHeader:
+                              return Padding(
+                                padding: const EdgeInsets.only(
+                                  top: UtenSpacing.s12,
+                                ),
+                                child: Text(
+                                  '待交货订货汇总(共 ${_pending.length} 条)',
+                                  style: theme.textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              );
+                            case _RowKind.empty:
+                              return const UtenEmpty();
+                            case _RowKind.monthly:
+                              final r = data as _Monthly;
+                              return ListTile(
+                                dense: true,
+                                title: Text(names.goods(r.goodsId)),
+                                subtitle: Text(
+                                  '${r.ym.substring(0, 10)}  ·  ${names.supplier(r.supplierId)}',
+                                  style: theme.textTheme.labelSmall,
+                                ),
+                                trailing: Text(
+                                  '¥${r.amt.toStringAsFixed(0)} · ${r.qty.toStringAsFixed(1)}',
+                                ),
+                              );
+                            case _RowKind.pending:
+                              final r = data as _Pending;
+                              return ListTile(
+                                dense: true,
+                                title: Text(names.goods(r.goodsId)),
+                                subtitle: Text(
+                                  names.color(r.colorId),
+                                  style: theme.textTheme.labelSmall,
+                                ),
+                                trailing: Text('待 ${r.qty.toStringAsFixed(1)}'),
+                              );
+                          }
+                        },
                       ),
-                    ),
-                    if (_monthly.isEmpty) const UtenEmpty(),
-                    for (final r in _monthly)
-                      ListTile(
-                        dense: true,
-                        title: Text(names.goods(r.goodsId)),
-                        subtitle: Text(
-                          '${r.ym.substring(0, 10)}  ·  ${names.supplier(r.supplierId)}',
-                          style: theme.textTheme.labelSmall,
-                        ),
-                        trailing: Text(
-                          '¥${r.amt.toStringAsFixed(0)} · ${r.qty.toStringAsFixed(1)}',
-                        ),
-                      ),
-                    const SizedBox(height: UtenSpacing.s12),
-                    Text(
-                      '待交货订货汇总(共 ${_pending.length} 条)',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (_pending.isEmpty) const UtenEmpty(),
-                    for (final r in _pending)
-                      ListTile(
-                        dense: true,
-                        title: Text(names.goods(r.goodsId)),
-                        subtitle: Text(
-                          names.color(r.colorId),
-                          style: theme.textTheme.labelSmall,
-                        ),
-                        trailing: Text('待 ${r.qty.toStringAsFixed(1)}'),
-                      ),
-                  ],
-                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+enum _RowKind {
+  toolbar,
+  dates,
+  monthlyHeader,
+  monthly,
+  pendingHeader,
+  pending,
+  empty,
 }

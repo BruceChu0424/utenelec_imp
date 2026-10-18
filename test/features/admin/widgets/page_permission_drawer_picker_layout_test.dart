@@ -211,7 +211,8 @@ void main() {
     final tree = find.byType(UtenDepartmentTreeView);
     expect(tester.getSize(tree).width, 160);
     final search = find.descendant(of: tree, matching: find.byType(TextField));
-    expect(tester.getSize(search).width, 144);
+    // 2026-10-18 左缘贴 0 口径：左栏搜索框水平内边距为 0，贴满面板宽。
+    expect(tester.getSize(search).width, 160);
     await tester.enterText(search, 'UT0006');
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();

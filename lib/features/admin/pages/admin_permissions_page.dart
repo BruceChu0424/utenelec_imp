@@ -305,21 +305,6 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
         for (final row in r.items) {
           if (row.id == selected.id) refreshed = row;
         }
-        // A selected account can be on another page or outside the current status
-        // filter. Search its unique login, then bind only the exact original UUID.
-        if (refreshed == null) {
-          final targetPage = await ref
-              .read(adminRepositoryProvider)
-              .listUsers(search: selected.loginAccount);
-          if (!mounted ||
-              requestEpoch != _requestEpoch ||
-              ref.read(sensitiveReadBoundaryProvider) != boundary) {
-            return;
-          }
-          for (final row in targetPage.items) {
-            if (row.id == selected.id) refreshed = row;
-          }
-        }
       }
       setState(() {
         _items
@@ -327,12 +312,34 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
           ..addAll(r.items);
         _totalPages = r.totalPages;
         _loading = false;
-        if (selected != null && _selected?.id == selected.id) {
+        if (selected != null &&
+            _selected?.id == selected.id &&
+            refreshed != null) {
           _selected = refreshed;
-          if (refreshed == null) _detailDirty = false;
         }
       });
       if (_selected == null) widget.onPermissionDirtyChanged(false);
+      // 选中账号可能在别的页/筛选外：补查其最新档案放后台，不阻塞列表落地
+      // （此前串行等这趟往返，刷新耗时直接翻倍）。
+      if (selected != null && refreshed == null) {
+        final targetPage = await ref
+            .read(adminRepositoryProvider)
+            .listUsers(search: selected.loginAccount);
+        if (!mounted ||
+            requestEpoch != _requestEpoch ||
+            ref.read(sensitiveReadBoundaryProvider) != boundary ||
+            _selected?.id != selected.id) {
+          return;
+        }
+        AdminUserSummary? found;
+        for (final row in targetPage.items) {
+          if (row.id == selected.id) found = row;
+        }
+        setState(() {
+          _selected = found;
+          if (found == null) _detailDirty = false;
+        });
+      }
     } on ApiException catch (e) {
       if (!mounted ||
           requestEpoch != _requestEpoch ||
@@ -592,8 +599,12 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
   }
 
   Widget _listBody() {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) {
+    // 首次加载整块转圈；重查（搜索/状态筛选变化）保留旧列表 + 顶部细进度条
+    // ——此前一律整列换成全屏转圈，每个搜索词闪一次（2026-10-18 keepPreviousData
+    // 口径）。重查失败且已有数据时保留列表并给内联错误条，不清屏。
+    final firstLoad = _loading && _items.isEmpty && _error == null;
+    if (firstLoad) return const Center(child: CircularProgressIndicator());
+    if (_error != null && _items.isEmpty) {
       return UtenEmpty.error(
         message: _error,
         actionLabel: '重试',
@@ -607,7 +618,7 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
         message: '暂无匹配的员工账号',
       );
     }
-    return ListView.builder(
+    final list = ListView.builder(
       // compact 悬浮胶囊避让：滚到底末行要能越过胶囊
       padding: EdgeInsets.only(
         bottom: UtenCapsuleNavScope.occlusionOf(context),
@@ -686,6 +697,33 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
           ),
         );
       },
+    );
+    if (!_loading && _error == null) return list;
+    return Column(
+      children: [
+        if (_loading) const LinearProgressIndicator(minHeight: 2),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: UtenSpacing.s16,
+              vertical: UtenSpacing.s8,
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _error!,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: Theme.of(context).colorScheme.error),
+                  ),
+                ),
+                TextButton(onPressed: _reload, child: const Text('重试')),
+              ],
+            ),
+          ),
+        Expanded(child: list),
+      ],
     );
   }
 }

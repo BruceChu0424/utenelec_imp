@@ -62,6 +62,11 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
   @override
   String get shellCategoryViewPermission => Perm.supplierCategoryView;
 
+  /// 已有分类树时保持挂载（与货品资料页同款）：分类增删改/刷新不再整页白闪、
+  /// 树的展开状态不丢——此前本页未开启，每次保存分类整棵树卸载重挂（2026-10-18）。
+  @override
+  bool get shellKeepTreeMounted => true;
+
   @override
   bool get shellCanCreate => ref
       .read(currentPermissionsProvider)

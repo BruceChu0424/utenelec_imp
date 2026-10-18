@@ -213,6 +213,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   String _draftBaseline = '';
   String? _draftSavedJson;
   String? _draftPendingJson;
+  Timer? _draftCaptureDebounce;
   Object? _draftError;
   Future<void>? _draftWriting;
   Future<bool>? _draftExitPrompt;
@@ -450,6 +451,33 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
       return;
     }
     _syncDraftListeners();
+    // 首个未保存变化立即捕获；连发输入防抖合并。此前每次按键/每个行控制器通知
+    // 都同步 jsonEncode 整表快照（销售编辑页含附件 base64），是编辑页打字发闷的
+    // 根因。退出/提交/后台切走各自走 saveFormDraftNow 的即时捕获，不受防抖影响。
+    final idle =
+        _draftPendingJson == null ||
+        (_draftPendingJson == _draftSavedJson && _draftError == null);
+    if (idle) {
+      _captureDraftChangeNow();
+      return;
+    }
+    _draftCaptureDebounce?.cancel();
+    _draftCaptureDebounce = Timer(const Duration(milliseconds: 300), () {
+      _draftCaptureDebounce = null;
+      if (!_draftReady ||
+          _draftRestoring ||
+          _draftFinished ||
+          _draftDisposed ||
+          _draftRestoreBlocked ||
+          _draftSubmissionBlocked ||
+          _draftIdentityChanged) {
+        return;
+      }
+      _captureDraftChangeNow();
+    });
+  }
+
+  void _captureDraftChangeNow() {
     try {
       final snapshot = _captureDraftJson();
       if (snapshot == _draftPendingJson ||
@@ -983,6 +1011,8 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   @override
   void dispose() {
     _draftDisposed = true;
+    _draftCaptureDebounce?.cancel();
+    _draftCaptureDebounce = null;
     _removeDraftLifecycle?.call();
     WidgetsBinding.instance.removeObserver(_draftLifecycleObserver);
     FormDraftNavigation.unregister(this);

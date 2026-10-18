@@ -511,6 +511,8 @@ abstract final class RouteName {
   // 生产管理（生产部）：hub + 调度 + 计划单 + 日报 + 4 报表入口。
   static const String production = '/production';
   static const String productionSchedule = '/production/schedule';
+  // 旧「生产进度」深链（同页双路由 2026-10-19 收口）：现仅作重定向落点注册，
+  // 一律转到 /production/schedule?tab=progress；不要再往新代码里引用。
   static const String productionProgress = '/production/progress';
   static const String productionWorkshopTasks = '/production/workshop-tasks';
   static const String productionOverproductionRateRequests =
@@ -820,10 +822,6 @@ abstract final class RoutePath {
   static String salesDocNew(String seg) => '/sales/$seg/new';
   static String salesDocDetail(String seg, String id) => '/sales/$seg/$id';
   static String salesDocEdit(String seg, String id) => '/sales/$seg/$id/edit';
-
-  /// 销售订单进度详情（快递式全链路追踪整页）。
-  static String salesOrderProgressDetail(String orderId) =>
-      '/sales/progress/$orderId';
 
   /// 委外单据：详情。
   /// [seg] = inquiries|applications|orders|receipts|material-issues|returns|material-returns|wastes。

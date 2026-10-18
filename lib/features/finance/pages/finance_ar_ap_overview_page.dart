@@ -537,7 +537,8 @@ class _FinanceArApOverviewPageState
       externalSearchError: _searchError,
       emptySearchText: _searchQuery.isEmpty ? null : '未找到匹配分类，往来单位结果见右侧',
       header: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        // 左缘贴 0（2026-10-18 全站分栏口径）：与分类页左栏搜索、返回键图标共缘。
+        padding: const EdgeInsets.only(top: 8, bottom: 8),
         child: UtenSearchBar(
           key: const ValueKey('finance-ar-ap-unified-search'),
           controller: _treeSearchController,
@@ -581,7 +582,8 @@ class _FinanceArApOverviewPageState
       selectedLeadingLabel: selectedLabel,
       selectedLeadingKey: (_categoryType, _categoryId),
       compactHeader: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        // 左缘贴 0（2026-10-18 全站分栏口径），与展开态左栏搜索同缘。
+        padding: const EdgeInsets.only(top: 8),
         child: UtenSearchBar(
           key: const ValueKey('finance-ar-ap-compact-search'),
           controller: _searchController,

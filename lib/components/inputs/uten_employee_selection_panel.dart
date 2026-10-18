@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../core/network/api_exception.dart';
-import '../../core/responsive/breakpoint.dart';
 import '../../features/basic_data/widgets/master_data_table_view.dart';
 import '../../features/department/models/department_node.dart';
 import '../../features/employee/providers/employee_picker_department_tree_provider.dart';
@@ -425,25 +424,19 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
     }
   }
 
-  Widget _search() => LayoutBuilder(
-    builder: (context, constraints) => Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: context.breakpoint.isCompact || constraints.maxWidth < 240
-            ? 8
-            : 16,
-        vertical: 8,
-      ),
-      child: UtenSearchBar(
-        key: const Key('uten-employee-picker-search'),
-        controller: _searchController,
-        hint:
-            !widget.showDepartmentFilter &&
-                widget.searchHint == '搜索部门 / 姓名 / 工号'
-            ? '搜索姓名 / 工号'
-            : widget.searchHint,
-        onInputChanged: _onInput,
-        onChanged: (_) => _load(),
-      ),
+  Widget _search() => Padding(
+    // 左缘贴 0（2026-10-18 全站分栏口径）：与分类页左栏搜索共缘。
+    padding: const EdgeInsets.symmetric(vertical: 8),
+    child: UtenSearchBar(
+      key: const Key('uten-employee-picker-search'),
+      controller: _searchController,
+      hint:
+          !widget.showDepartmentFilter &&
+              widget.searchHint == '搜索部门 / 姓名 / 工号'
+          ? '搜索姓名 / 工号'
+          : widget.searchHint,
+      onInputChanged: _onInput,
+      onChanged: (_) => _load(),
     ),
   );
 

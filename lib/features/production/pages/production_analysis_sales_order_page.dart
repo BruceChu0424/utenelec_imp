@@ -97,10 +97,12 @@ class _ProductionAnalysisSalesOrderPageState
         title: billNo == null ? '订单货品清单' : '订单货品清单 · $billNo',
         // 从物料分析页 push 进来，正常一路 pop 回去；栈空(Web 深链/刷新)时
         // 回「生产调度与进度 · 进行中」——用户真实来路就是那一段，退回一张
-        // 空白的新建分析页等于把人丢在半路。
+        // 空白的新建分析页等于把人丢在半路。(?tab=progress 预选进行中段)
         leading: UtenBackButton(
-          onPressed: () =>
-              popOrBackTo(context, defaultPath: RouteName.productionProgress),
+          onPressed: () => popOrBackTo(
+            context,
+            defaultPath: '${RouteName.productionSchedule}?tab=progress',
+          ),
         ),
       ),
       body: SafeArea(

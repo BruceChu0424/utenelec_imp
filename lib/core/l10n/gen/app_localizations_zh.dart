@@ -2410,9 +2410,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get productionHubTitle => '生产管理';
 
   @override
-  String get productionHubSchedule => '生产调度与进度';
-
-  @override
   String get productionHubScheduleSub => '待排产·在产·完工';
 
   @override

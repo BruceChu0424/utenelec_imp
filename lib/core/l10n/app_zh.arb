@@ -1038,7 +1038,6 @@
   "subcontractHubReportInOut": "委外出入状况表",
   "subcontractHubReportInOutSub": "进出综合状况",
   "productionHubTitle": "生产管理",
-  "productionHubSchedule": "生产调度与进度",
   "productionHubScheduleSub": "待排产·在产·完工",
   "productionHubPlan": "新建生产计划单",
   "productionHubPlanSub": "手工新建排产计划，可引用销售订单",

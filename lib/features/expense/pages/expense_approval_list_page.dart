@@ -10,6 +10,7 @@
 
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../shared/models/retained_async_page.dart';
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/master_name_provider.dart'
     show masterDataSessionKeyProvider;
@@ -301,13 +302,7 @@ class _ExpenseApprovalListPageState
       appBar: UtenAppBar(
         title: '报销审批',
         showBackButton: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新',
-            onPressed: _refreshQueue,
-          ),
-        ],
+        actions: [UtenRefreshButton(onRefresh: _refreshQueue)],
       ),
       body: body,
     );

@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
 class ServerOperationsWorkbenchBadgeSources implements WorkbenchBadgeSources {
     private final ServerOperationsController controller;
     @Override public List<Source> sources() {
-        return List.of(Source.platform("serverOperations", () -> {
+        return List.of(new Source("serverOperations", () -> {
             var status = controller.status();
             if (!status.available()) {
                 // A locally unsupported platform has no update task. A broken Linux helper remains stale.

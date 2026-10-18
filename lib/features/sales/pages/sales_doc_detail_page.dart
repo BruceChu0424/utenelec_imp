@@ -44,9 +44,11 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_progress_timeline.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsible_section.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
@@ -67,6 +69,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/formatters/money_display.dart';
 import '../../../shared/formatters/quantity_display.dart';
+import '../../../shared/models/progress_timeline_event.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/widgets/source_doc_link.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
@@ -112,6 +115,11 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
   bool _summaryExpanded = false;
   bool _busy = false;
   String? _error;
+  // 履约进度时间线（2026-10-18 进度详情整页并入本页，见表格上方折叠卡）：
+  // 与详情并行加载、独立报错，互不阻塞。
+  List<ProgressTimelineEvent>? _timeline;
+  String? _timelineError;
+  bool _timelineExpanded = false;
   List<SalesReturnQualityItem>? _returnQualitySnapshot;
   // 销售订单审核并发认领（SALES_ORDER_APPROVE；page-state 持有，跨 _busy 底栏切换不丢）。
   TaskClaimSession? _approveClaim;
@@ -154,6 +162,9 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
     ++_viewEpoch;
     _summaryExpanded = false;
     _detail = null;
+    _timeline = null;
+    _timelineError = null;
+    _timelineExpanded = false;
     _myLocation = null;
     _busy = false;
     _approveClaim?.releaseAll().ignore();
@@ -721,6 +732,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
     final names = ref.read(salesMasterNameServiceProvider);
     // 字典与详情并行，首屏只等详情(ADR-108)；名称在首屏之后补齐再重绘一次。
     final dictionaries = names.ensureLoaded();
+    // 履约进度时间线：订货单才拉，与详情并行、独立报错（刷新随 _load 整页重读）。
+    if (widget.docType == SalesDocType.order) unawaited(_loadTimeline());
     try {
       final repository = ref.read(salesRepositoryProvider(widget.docType));
       final d = widget.historyRead
@@ -758,6 +771,26 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
         _error = '详情加载失败，请稍后重试';
         _loading = false;
       });
+    }
+  }
+
+  /// 履约进度时间线（原订单进度详情页 ②段并入）：与详情并行、独立报错，
+  /// 加载失败只影响本折叠卡，不阻塞页面其余部分。
+  Future<void> _loadTimeline() async {
+    setState(() {
+      _timeline = null;
+      _timelineError = null;
+    });
+    try {
+      final events = await ref
+          .read(salesRepositoryProvider(SalesDocType.order))
+          .progressTimeline(widget.id);
+      if (!mounted) return;
+      setState(() => _timeline = events);
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _timelineError = e.message);
+    } catch (_) {
+      if (mounted) setState(() => _timelineError = '加载失败，请稍后重试');
     }
   }
 
@@ -1423,6 +1456,15 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                               names,
                               canViewMoneySummary: canViewMoneySummary,
                             ),
+                            // 履约进度（2026-10-18 原订单进度详情整页并入本页）：
+                            // 快递式时间线放明细表上方，默认折叠只露「最新」状态，
+                            // 点「展开查看全部进度」展开完整链路（责任人/时间/关联单跳转）。
+                            // 草稿单没有履约链可看，不渲染。
+                            if (_cfg.type == SalesDocType.order &&
+                                _detail!.status != kSalesStatusDraft) ...[
+                              const SizedBox(height: UtenSpacing.s12),
+                              _timelineSection(theme),
+                            ],
                             if (_cfg.type == SalesDocType.order &&
                                 _detail!.financeConfirmed) ...[
                               const SizedBox(height: UtenSpacing.s12),
@@ -2706,6 +2748,170 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
     return UtenFloatingActionGroup(children: children);
   }
 
+  // ============================ 履约进度（原订单进度详情页并入） ============================
+
+  /// 履约进度折叠卡：标题行常驻「最新」状态胶囊；尾部动作收起时为
+  /// 「展开查看全部进度」（用户 2026-10-18 口径：替代右下「进度追踪」按钮），
+  /// 展开后切换为「收起」。整行可点，受控模式。
+  Widget _timelineSection(ThemeData theme) {
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          UtenSpacing.s12,
+          UtenSpacing.s4,
+          UtenSpacing.s12,
+          UtenSpacing.s12,
+        ),
+        child: UtenCollapsibleSection(
+          title: '履约进度',
+          expanded: _timelineExpanded,
+          onExpandedChanged: (value) =>
+              setState(() => _timelineExpanded = value),
+          titleTrailing: _latestStatusChip(theme),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _timelineExpanded ? '收起' : '展开查看全部进度',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 2),
+              Icon(
+                _timelineExpanded
+                    ? Icons.unfold_less_rounded
+                    : Icons.unfold_more_rounded,
+                size: 18,
+                color: theme.colorScheme.primary,
+              ),
+            ],
+          ),
+          child: _timelineBody(theme),
+        ),
+      ),
+    );
+  }
+
+  Widget _timelineBody(ThemeData theme) {
+    if (_timelineError != null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+        child: Row(
+          children: [
+            Icon(Icons.error_outline, size: 18, color: theme.colorScheme.error),
+            const SizedBox(width: UtenSpacing.s8),
+            Expanded(
+              child: Text(
+                '履约进度加载失败：$_timelineError',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.error,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    final events = _timeline;
+    if (events == null) {
+      return const Padding(
+        padding: EdgeInsets.all(UtenSpacing.s24),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    return UtenProgressTimeline(
+      events: events,
+      onOpenDoc: _openLinkedDoc,
+      emptyText: '暂无履约进度',
+    );
+  }
+
+  /// 折叠态常驻的最新状态胶囊（与时间线最新节点同色系，置顶的未开始阶段不抢「最新」）。
+  Widget _latestStatusChip(ThemeData theme) {
+    final (text, color) = _latestStatus(theme);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(UtenRadius.md),
+      ),
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: theme.textTheme.labelMedium?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  (String, Color) _latestStatus(ThemeData theme) {
+    if (_timelineError != null) {
+      return ('最新：加载失败', theme.colorScheme.error);
+    }
+    final events = _timeline;
+    if (events == null) return ('最新：加载中…', theme.colorScheme.onSurfaceVariant);
+    if (events.isEmpty) return ('暂无履约进度', theme.colorScheme.onSurfaceVariant);
+    final latest = events.firstWhere(
+      (e) => !e.isPending,
+      orElse: () => events.first,
+    );
+    final time = UtenProgressTimeline.formatTime(latest.occurredAt);
+    final short = time.length >= 16 ? time.substring(5) : time;
+    final label = short.isEmpty
+        ? '最新：${latest.title}'
+        : '最新：${latest.title} · $short';
+    final color = switch (latest.state) {
+      'REJECTED' => theme.colorScheme.error,
+      'CURRENT' => theme.colorScheme.tertiary,
+      'DONE' => theme.colorScheme.primary,
+      _ => theme.colorScheme.onSurfaceVariant,
+    };
+    return (label, color);
+  }
+
+  /// 时间线单号跳转：按 docType 映射目标详情页；无权限时顶部提示。
+  void _openLinkedDoc(ProgressTimelineEvent event) {
+    if (!event.hasDoc) return;
+    final perms = ref.read(currentPermissionsProvider);
+    final superAdmin = ref.read(isSuperAdminProvider);
+    bool can(String perm) => superAdmin || perms.contains(perm);
+    final (path, perm) = switch (event.docType) {
+      'SALES_SHIPMENT' => (
+        '/sales/shipments/${event.docId}',
+        Perm.salesShipmentView,
+      ),
+      'PURCHASE_ORDER' => (
+        '/purchase/orders/${event.docId}',
+        Perm.purchaseOrderView,
+      ),
+      'SUBCONTRACT_ORDER' => (
+        '/subcontract/orders/${event.docId}',
+        Perm.subcontractOrderView,
+      ),
+      'PRODUCTION_PLAN' => (
+        RoutePath.productionPlanDetail(event.docId!),
+        Perm.productionPlanView,
+      ),
+      'MATERIAL_ANALYSIS' => (
+        RouteName.productionMaterialAnalysis,
+        Perm.productionMaterialAnalysisView,
+      ),
+      _ => (null, null),
+    };
+    if (path == null || perm == null) return;
+    if (!can(perm)) {
+      context.appWarning('当前账号没有该单据的查看权限', force: true);
+      return;
+    }
+    context.push(path);
+  }
+
   Widget _actions(ThemeData theme) {
     if (_isQuote) return _quoteActions();
     final s = _detail!.status;
@@ -2903,21 +3109,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
             )
             ..add(const SizedBox(width: UtenSpacing.s8));
         }
-        children
-          // 进度追踪：进入订单进度详情整页（2026-08-19 起替代排产进度底表弹窗），
-          // 含产品进度（每行 已排/已产 + 计划溯源）与快递式履约时间线（带责任人）。
-          // 财务确认前也可进入：产品进度区按 V300 口径隐藏，时间线仍展示审核轨迹。
-          ..addAll([
-            UtenButton(
-              type: UtenButtonType.secondary,
-              size: UtenButtonSize.large,
-              icon: Icons.local_shipping_outlined,
-              onPressed: () =>
-                  context.push(RoutePath.salesOrderProgressDetail(widget.id)),
-              child: const Text('进度追踪'),
-            ),
-          ])
-          ..add(const SizedBox(width: UtenSpacing.s8));
+        // 进度追踪按钮已退役（2026-10-18 用户口径）：履约时间线并入表格上方
+        // 折叠卡（见 _timelineSection），产品进度本就在「产品进度与分批发货」段。
         if (_canCancelOrder) {
           children
             ..add(
@@ -2990,7 +3183,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
     }
     // 2026-09-26 全站口径：产品进度的批量发货动作并入本悬浮组——「已选 N 项」
     // 胶囊居首、红色「去发货(N)」收尾（面板经 SalesShipmentActionScope 上报，
-    // 与订单进度详情页同一条路径）；scope 帧末通知驱动选中数联动。
+    // 原订单进度详情整页与本页走同一套 scope 机制）；scope 帧末通知驱动选中数联动。
     return ListenableBuilder(
       listenable: _shipmentActions,
       builder: (context, _) {

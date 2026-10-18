@@ -1483,6 +1483,16 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       ? const LinearProgressIndicator(minHeight: 2)
       : null;
 
+  /// 重查反馈：已有旧行时再次查询（回车搜索/切筛选/翻页），行区顶部钉 2px 细
+  /// 进度条。此前这类重查只有表尾 loadingMore 小转圈，视口在顶部时完全不可见，
+  /// 用户以为「点击没生效/页面卡住」——2026-10-18 全站统一补齐的口径。
+  /// 滚动已贴底时表尾指示行在屏内，不再叠加顶部条（滚动追加期间不多耗帧）。
+  Widget? get _requeryFeedback {
+    if (_prepending || !_busy || _items.isEmpty) return null;
+    if (_bodyV.hasClients && _bodyV.position.extentAfter < 400) return null;
+    return const LinearProgressIndicator(minHeight: 2);
+  }
+
   Widget _appendFailure() => Padding(
     padding: const EdgeInsets.all(UtenSpacing.s8),
     child: Wrap(
@@ -4331,6 +4341,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         ),
         if (_prependFeedback case final feedback?)
           Positioned(left: 0, right: 0, top: 0, child: feedback),
+        if (_requeryFeedback case final feedback?)
+          Positioned(left: 0, right: 0, top: 0, child: feedback),
         if (boundedActions)
           PositionedDirectional(
             start: UtenSpacing.s16,
@@ -4674,6 +4686,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                 child: _buildVerticalScrollbar(),
               ),
               if (_prependFeedback case final feedback?)
+                Positioned(left: 0, right: 14, top: 0, child: feedback),
+              if (_requeryFeedback case final feedback?)
                 Positioned(left: 0, right: 14, top: 0, child: feedback),
               // 横滚条覆盖层：按内容高度定位（[_hBarY] 为底边 local top）。
               // 内容少 → 贴末行下方（约 1px 空隙）；超高 → 钉表体区底。与 _bodyH 双向同步，

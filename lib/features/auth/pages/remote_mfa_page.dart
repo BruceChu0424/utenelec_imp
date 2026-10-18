@@ -245,12 +245,14 @@ class _MfaSessionState extends ConsumerState<_MfaSession> {
                               enrollment == null)
                             UtenButton(
                               key: const Key('mfa-enroll'),
+                              isLoading: _busy,
                               onPressed: _busy ? null : _enroll,
                               child: Text(t('enroll')),
                             ),
                           if (status.enabled)
                             UtenButton(
                               key: const Key('mfa-verify'),
+                              isLoading: _busy,
                               onPressed: _busy ? null : _verify,
                               child: Text(t('verify')),
                             ),
@@ -258,11 +260,13 @@ class _MfaSessionState extends ConsumerState<_MfaSession> {
                             UtenButton(
                               key: const Key('mfa-disable'),
                               type: UtenButtonType.ghost,
+                              isLoading: _busy,
                               onPressed: _busy ? null : _disable,
                               child: Text(t('disable')),
                             ),
                           UtenButton(
                             type: UtenButtonType.ghost,
+                            isLoading: _busy,
                             onPressed: _busy ? null : _load,
                             child: Text(t('refresh')),
                           ),

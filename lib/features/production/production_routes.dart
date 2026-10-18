@@ -108,13 +108,20 @@ final List<RouteBase> productionRoutes = [
   DraftAwareGoRoute(
     path: RouteName.productionSchedule,
     name: 'production-schedule',
-    // 深链预选「待排产」大类段（2026-09-03 分类范式：默认不选，路由偏好例外）。
-    builder: (_, _) => const ProductionBoardPage(initialTab: 0),
+    // 深链预选大类段（2026-09-03 分类范式：默认不选，路由偏好例外）：
+    // 默认「待排产」，?tab=progress 预选「进行中」。
+    builder: (_, state) => ProductionBoardPage(
+      initialTab: state.uri.queryParameters['tab'] == 'progress' ? 1 : 0,
+    ),
   ),
+  // 2026-10-19 同页双路由收口：/production/progress 与 /production/schedule 自
+  // 2026-09-03 两页合并后一直是同一页面的两个入口，还各挂各的守卫与权限面。
+  // 旧深链（通知办理路由、历史收藏）一律重定向到 /production/schedule?tab=progress，
+  // 「进行中」预选语义不变；守卫与权限面统一到 production_schedule 路由/面上。
   DraftAwareGoRoute(
     path: RouteName.productionProgress,
     name: 'production-progress',
-    builder: (_, _) => const ProductionBoardPage(initialTab: 1),
+    redirect: (_, _) => '${RouteName.productionSchedule}?tab=progress',
   ),
   DraftAwareGoRoute(
     path: RouteName.productionBatchDraw,

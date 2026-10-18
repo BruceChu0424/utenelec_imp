@@ -14,8 +14,8 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 /// 宿主样例（2026-09-26 全站口径）：scope 必传后，面板不再自带批量工具条；
-/// 「已选 N 项」胶囊与「去发货(N)」由宿主渲染成右下悬浮组——与订货单详情页、
-/// 订单进度详情页同一条路径。本夹具按同款渲染，供用例驱动真实按钮。
+/// 「已选 N 项」胶囊与「去发货(N)」由宿主渲染成右下悬浮组——与订货单详情页
+/// 同一条路径。本夹具按同款渲染，供用例驱动真实按钮。
 Widget _hostScopeActions(SalesShipmentActionScope scope) {
   return ListenableBuilder(
     listenable: scope,

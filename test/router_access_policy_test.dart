@@ -334,10 +334,14 @@ void main() {
       },
     );
 
-    test('production progress uses the backend view permission', () {
-      expect(requiredAnyPermFor(RouteName.productionProgress), const [
+    test('production board accepts planner and execution accounts', () {
+      // 2026-10-19 同页双路由收口：/production/progress 已是重定向，守卫与主路由同码。
+      const expected = [
+        Perm.productionPlanView,
         Perm.productionExecutionOverview,
-      ]);
+      ];
+      expect(requiredAnyPermFor(RouteName.productionSchedule), expected);
+      expect(requiredAnyPermFor(RouteName.productionProgress), expected);
     });
 
     test('notice and suggestion routes use their backend permission codes', () {

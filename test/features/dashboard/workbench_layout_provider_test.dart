@@ -155,5 +155,23 @@ void main() {
       const state = WorkbenchLayoutState(order: ['system'], collapsed: {});
       expect(state.itemOrders, isEmpty);
     });
+
+    test('order 里的重复分组 key 只保留首次（防整组卡片成对渲染）', () {
+      final c = _container();
+      addTearDown(c.dispose);
+      final n = c.read(workbenchLayoutProvider.notifier);
+      // 服务端偏好写坏：prod 出现两次、未知 key 夹在中间
+      final decoded = n.decode({
+        'order': ['hr', 'prod', 'prod', 'ghost', 'fin'],
+        'collapsed': <String>[],
+      });
+      expect(decoded, isNotNull);
+      final keys = decoded!.order;
+      // 每个 key 恰好一次，未知 key 丢弃，缺的默认组补尾
+      expect(keys.toSet().length, keys.length);
+      expect(keys.where((k) => k == 'prod').length, 1);
+      expect(keys, containsAll(<String>['hr', 'prod', 'fin']));
+      expect(keys.length, WorkbenchLayoutNotifier.defaultOrder.length);
+    });
   });
 }

@@ -8,4 +8,11 @@ import java.util.function.Supplier;
  */
 public interface TaskAudiencePort {
     <T> T read(Supplier<T> work);
+
+    /**
+     * Runs a display-layer aggregate (workbench badges) as ordinary browsing under the
+     * caller's own session principal: task rewriting and its warehouse task scope stay
+     * suspended, so the numbers follow the same visibility as the pages they point to.
+     */
+    <T> T browsingRead(Supplier<T> work);
 }

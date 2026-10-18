@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -90,10 +91,8 @@ class _StockItemDetailPageState extends ConsumerState<StockItemDetailPage> {
           ),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新',
-            onPressed: () => _panelKey.currentState?.reload(),
+          UtenRefreshButton(
+            onRefresh: () async => _panelKey.currentState?.reload(),
           ),
         ],
       ),

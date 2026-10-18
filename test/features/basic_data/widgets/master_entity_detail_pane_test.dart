@@ -1,5 +1,9 @@
 // 共享明细区(ADR-111)：批量启停/删除一次请求、失败逐条展示原因；行启停带列表行版本、
 // 不先拉详情。锁住「选 100 条就是 200 次串行请求、catch 吞错只报 N 个跳过」不再回来。
+// 2026-10-18 口径：批量操作走右键菜单（多选时出批量项），右下悬浮组只挂
+// 「已选 N 项 + 添加X」——测试同步改为经 rowMenuBuilder 驱动批量命令。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -188,6 +192,14 @@ Future<void> _selectAll(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+/// 右键多选批量菜单里的指定条目（作用于整个选中集）。取首行——它必须已在
+/// 选中集内，多选分支才会出批量项。
+UtenMenuItem _batchMenuEntry(WidgetTester tester, String label) => _table(
+  tester,
+).rowMenuBuilder!(_rows[0]).whereType<UtenMenuItem>().firstWhere(
+  (e) => e.label == label,
+);
+
 void main() {
   testWidgets('批量禁用 100 条只发 1 次请求，带上每行版本，不逐条拉详情', (tester) async {
     final batch = _FakeBatchRepository();
@@ -195,7 +207,7 @@ void main() {
     final counts = await _pump(tester, batch, status);
     await _selectAll(tester);
 
-    await tester.tap(find.byKey(const ValueKey('master-batch-disable')));
+    await _batchMenuEntry(tester, '批量禁用(100)').onTap();
     await tester.pumpAndSettle();
 
     expect(batch.statusCalls, hasLength(1), reason: '选 100 条也只发一次批量命令');
@@ -208,16 +220,8 @@ void main() {
     expect(counts.detailCalls, 0, reason: '不再逐条拉详情拿版本');
     // 全部成功不弹结果框(只走顶部通知)。
     expect(find.byKey(const Key('master-batch-outcome')), findsNothing);
-    // 全部成功：勾选清空，批量按钮回灰。
+    // 全部成功：勾选清空。
     expect(_table(tester).selectedIds, isEmpty);
-    expect(
-      tester
-          .widget<UtenButton>(
-            find.byKey(const ValueKey('master-batch-disable')),
-          )
-          .onPressed,
-      isNull,
-    );
   });
 
   testWidgets('批量删除失败逐条展示服务端原因，失败行保留勾选', (tester) async {
@@ -225,7 +229,10 @@ void main() {
     await _pump(tester, batch, _FakeStatusRepository());
     await _selectAll(tester);
 
-    await tester.tap(find.byKey(const ValueKey('master-batch-delete')));
+    // 不等待 onTap：它会停在删除确认弹窗上，测试要在弹窗开着的当口去点「删除」
+    //（与真实右键菜单交互同形，旧按钮测试的 tester.tap 也不等待按钮回调）。
+    final confirmDelete = _batchMenuEntry(tester, '批量删除(100)').onTap;
+    unawaited(Future<void>.sync(confirmDelete));
     await tester.pumpAndSettle();
     // 确认框(危险操作) → 删除。
     await tester.tap(find.widgetWithText(UtenButton, '删除'));
@@ -267,7 +274,7 @@ void main() {
     _table(tester).onSelectedIdsChanged!({'g0', 'g1'});
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('master-batch-disable')));
+    await _batchMenuEntry(tester, '批量禁用(2)').onTap();
     await tester.pumpAndSettle();
     expect(batch.statusCalls, hasLength(1));
     expect(
@@ -289,5 +296,35 @@ void main() {
 
     expect(status.calls, [('/master/goods/g2', '禁用', 9)]);
     expect(counts.detailCalls, 0);
+  });
+
+  testWidgets('单行勾选右键出单行菜单，未多选不出批量项', (tester) async {
+    await _pump(tester, _FakeBatchRepository(), _FakeStatusRepository());
+    _table(tester).onSelectedIdsChanged!({'g2'});
+    await tester.pumpAndSettle();
+
+    final labels = _table(tester)
+        .rowMenuBuilder!(_rows[2])
+        .whereType<UtenMenuItem>()
+        .map((e) => e.label)
+        .toList();
+    expect(labels, contains('禁用货品'));
+    expect(labels.where((l) => l.startsWith('批量')), isEmpty,
+        reason: '单选右键是单行菜单；批量项只在多选(>1)时出现');
+  });
+
+  testWidgets('右下悬浮组只挂「已选 N 项 + 添加X」，添加随新增权限出现', (tester) async {
+    // 默认 canCreate:false → 悬浮组只有已选胶囊，没有添加按钮。
+    await _pump(tester, _FakeBatchRepository(), _FakeStatusRepository());
+    expect(find.byKey(const ValueKey('master-add-entity')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('master-table-clear-selection')),
+      findsOneWidget,
+    );
+    // 标题行已删：数量进分类卡片标题，不再出现「货品 (100)」工具行文案。
+    expect(find.text('货品 (100)'), findsNothing);
+    expect(find.textContaining('（备注'), findsNothing);
+    expect(find.text('成品类 (数量: 100)'), findsOneWidget,
+        reason: '分类卡片标题 = 名称（备注）(数量: N)，与左侧列表同形');
   });
 }

@@ -1334,7 +1334,21 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
         floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-        floatingActionButton: _d == null || _busy ? null : _actions(),
+        // busy 时不再让整组按钮消失（用户会以为页面坏了）：换成一枚「处理中」
+        // 转圈按钮占位，网络段结束自动恢复（2026-10-18）。
+        floatingActionButton: _d == null
+            ? null
+            : _busy
+            ? const UtenFloatingActionGroup(
+                children: [
+                  UtenButton(
+                    size: UtenButtonSize.large,
+                    isLoading: true,
+                    child: Text('处理中…'), // TODO(l10n): 补 arb
+                  ),
+                ],
+              )
+            : _actions(),
       ),
     );
   }

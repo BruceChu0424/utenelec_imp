@@ -354,8 +354,10 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
+            // 左缘贴 0（2026-10-18 全站分栏口径）：目录头/分段行/搜索与
+            // 分类页左栏、返回键图标共用 x=0 左缘。
             padding: const EdgeInsets.fromLTRB(
-              UtenSpacing.s16,
+              0,
               UtenSpacing.s16,
               UtenSpacing.s8,
               UtenSpacing.s8,
@@ -394,7 +396,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(
-              UtenSpacing.s12,
+              0,
               0,
               UtenSpacing.s12,
               UtenSpacing.s12,
@@ -414,7 +416,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            padding: const EdgeInsets.only(bottom: 8),
             child: UtenHierarchySearchHeader(
               search: UtenSearchBar(
                 controller: _categorySearch,

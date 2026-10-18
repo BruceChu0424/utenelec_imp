@@ -370,6 +370,7 @@ class ProcurementIqcRejectionServiceContractTest {
         org.springframework.test.util.ReflectionTestUtils.setField(service, "taskAudience",
                 new com.uten.imp.application.port.TaskAudiencePort() {
                     @Override public <T> T read(java.util.function.Supplier<T> work) { return work.get(); }
+                    @Override public <T> T browsingRead(java.util.function.Supplier<T> work) { return work.get(); }
                 });
         return service;
     }

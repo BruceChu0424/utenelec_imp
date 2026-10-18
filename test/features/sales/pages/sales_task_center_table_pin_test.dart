@@ -1,6 +1,8 @@
 // 销售任务中心表格置顶回归（2026-09-24 用户口径「表格要能置顶到头，
-// 参考物料分析页」）：大字号下滑到头后，页面头（单据计数 + 动作按钮）必须
-// 已随页滚走，表头钉在剩余固定家具（大类行 + 表格工具条）之下。
+// 参考物料分析页」）：大字号下滑到头后，折叠头里的宿主大类行与小类行必须
+// 已随页滚走，表头钉在剩余固定家具（AppBar + 表格工具条）之下。
+//（2026-10-17 起原「单据计数 + 动作按钮」页面头退役并入表格工具条/悬浮
+// 动作组，置顶断言锚点随之改到表格数据行与宿主大类行。）
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -95,9 +97,12 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
 
-    // 滑之前：页面头（计数行）与小类行都在场。
-    expect(find.textContaining('出货 (60)'), findsOneWidget);
+    // 滑之前：出货大类已加载 60 行，小类行与宿主大类行都在场。
+    //（2026-10-17 5c7803e14 起单据计数页面头「出货 (N)」退役，动作按钮并入
+    // 悬浮动作组；加载证据改锚表格首行数据。）
+    expect(find.text('SO-2026-000'), findsOneWidget);
     expect(find.text('历史记录'), findsOneWidget);
+    expect(find.text('出货单'), findsOneWidget);
 
     // 滑到头（外层收完 + 表内滚）。
     for (var i = 0; i < 10; i++) {
@@ -108,11 +113,10 @@ void main() {
     // 表头在场且贴近顶部（1.5 倍字号下只剩 AppBar + 表格自身工具条）。
     final header = tester.getRect(find.text('单据号'));
     expect(header.top, lessThan(160));
-    // 页面头（计数行）已随页滚走，不再占据表头上方。
-    expect(find.textContaining('出货 (60)'), findsNothing);
-    // 小类行同样收走。
+    // 小类行（历史记录等分段）随页收走。
     expect(find.text('历史记录'), findsNothing);
-    // 2026-09-24 第三批：宿主大类行也进折叠头——滑到头后一并收走。
-    expect(find.text('订货进度'), findsNothing);
+    // 2026-09-24 第三批：宿主大类行也进折叠头——滑到头后一并收走
+    //（本权限集大类行只有「出货单」一段，它滚走即宿主大类行收走的证据）。
+    expect(find.text('出货单'), findsNothing);
   });
 }

@@ -9,17 +9,14 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
-import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/finance/pages/finance_sales_shipment_audit_page.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
-import 'package:uten_imp/features/warehouse/models/warehouse_sales_outbound.dart';
+import 'package:uten_imp/features/warehouse/models/warehouse_task_center_record.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_sales_outbound_page.dart';
-import 'package:uten_imp/features/warehouse/repositories/warehouse_sales_outbound_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
-import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
 
-import '../../../support/filter_segment_tap.dart';
-import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
+import '../../../helpers/badge_summary_fixture.dart';
 
 late SharedPreferences _preferences;
 final _permissionStateProvider = StateProvider<Set<String>>((ref) => {});
@@ -158,9 +155,11 @@ void main() {
   testWidgets(
     'warehouse task page stays usable at 375px and filters work status',
     (tester) async {
-      // 页面已改走 /warehouse/sales-outbound 投影网关（不再查 /sales/shipments），
-      // 状态筛选也从 ChoiceChip 行换成统一筛选工具条分段。
-      final gateway = _OutboundGateway();
+      // 2026-10-17 24abc2aed 起独立页并入仓库任务中心（出库 · 销售出库）：
+      // 列表改走 /warehouse/task-center/outbound 投影（不再查
+      // /warehouse/sales-outbound），作业阶段由状态表头查询（旧「待出库/
+      // 已出库」分段退役）；深链 initialSection: SALES 挂载即选中并加载。
+      final api = _TaskCenterApi();
       await tester.binding.setSurfaceSize(const Size(375, 812));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
@@ -170,30 +169,44 @@ void main() {
               (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
             ),
             sharedPreferencesProvider.overrideWithValue(_preferences),
-            warehouseSalesOutboundRepositoryProvider.overrideWithValue(gateway),
+            apiClientProvider.overrideWithValue(api),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.warehouseSalesOutboundView,
+            }),
+            isSuperAdminProvider.overrideWithValue(false),
+            // 分段红数随徽章汇总一次带回(ADR-108/184)：销售出库待出库红 1。
+            fixedBadgeSummaryOverride(
+              badgeSummaryFixture(
+                facts: {BadgeFact.warehouseSalesOutboundPendingPick: 1},
+              ),
+            ),
           ],
           child: const MaterialApp(home: WarehouseSalesOutboundPage()),
         ),
       );
       await tester.pumpAndSettle();
 
-      // 分类分段范式（ADR-066）：状态默认不选不发请求（引导占位），
-      // 先点「待拣货」段加载列表，再点「拣货中」验证状态筛选下发。
-      // 375px 下状态行放不下收成「分类」下拉（2026-09-14），统一走共用助手。
-      await selectFilterSegment(tester, '待出库');
-      await tester.pumpAndSettle();
-
-      expect(
-        find.byKey(const Key('warehouse-sales-outbound-table')),
-        findsOneWidget,
-      );
+      // 375px 下仍可用：销售出库小类自动选中，表格已加载出库任务行。
       expect(find.text('SO-OUT-001'), findsOneWidget);
-      expect(gateway.workStatuses.first, SalesWarehouseWorkStatus.pendingPick);
+      expect(api.queries.first['source'], 'SALES');
+      expect(
+        api.queries.first.containsKey('status'),
+        isFalse,
+        reason: '挂载首查不带作业状态（状态由表头筛选下发）',
+      );
 
-      await selectFilterSegment(tester, '已出库');
+      // 作业阶段筛选（状态表头）：待出库 → 已出库，逐次下发服务端。
+      MasterDataTableView<WarehouseTaskCenterRecord> table() => tester.widget(
+        find.byKey(const ValueKey('warehouse-task-records-outbound')),
+      );
+      table().onFilterChanged('status', SalesWarehouseWorkStatus.pendingPick);
       await tester.pumpAndSettle();
+      expect(api.queries.last['status'], SalesWarehouseWorkStatus.pendingPick);
+      expect(api.queries.last['source'], 'SALES');
 
-      expect(gateway.workStatuses.last, 'SHIPPED');
+      table().onFilterChanged('status', SalesWarehouseWorkStatus.shipped);
+      await tester.pumpAndSettle();
+      expect(api.queries.last['status'], SalesWarehouseWorkStatus.shipped);
       expect(tester.takeException(), isNull);
     },
   );
@@ -286,63 +299,59 @@ Future<void> _pump(
   await tester.pumpAndSettle();
 }
 
-class _OutboundGateway implements WarehouseSalesOutboundGateway {
-  final List<String?> workStatuses = <String?>[];
+/// 出库任务中心投影假 API（/warehouse/task-center/outbound）：一条销售出库
+/// 待出库行 + 待出库/已出库两个作业状态 facet（状态表头筛选项与服务端契约一致）。
+class _TaskCenterApi extends ApiClient {
+  _TaskCenterApi() : super(Dio());
+
+  final List<Map<String, dynamic>> queries = [];
 
   @override
-  Future<PagedResult<WarehouseSalesOutboundSummary>> list({
-    int page = 1,
-    int size = 20,
-    String? keyword,
-    String? warehouseWorkStatus,
-    String? dateFrom,
-    String? dateTo,
-    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
-    String? sort,
-    String? order,
-    String? billNo,
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
   }) async {
-    workStatuses.add(warehouseWorkStatus);
-    return PagedResult(
-      items: [
-        WarehouseSalesOutboundSummary.fromJson(const <String, dynamic>{
+    if (path != '/warehouse/task-center/outbound') {
+      return const <String, dynamic>{};
+    }
+    queries.add(Map<String, dynamic>.from(query ?? const {}));
+    return <String, dynamic>{
+      'items': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'rowKey': 'SALES:SHIPMENT:shipment-1',
           'id': 'shipment-1',
+          'sourceType': 'SALES',
+          'recordType': 'SHIPMENT',
+          'status': SalesWarehouseWorkStatus.pendingPick,
+          'statusLabel': '待出库',
           'billNo': 'SO-OUT-001',
-          'billDate': '2026-08-31',
-          'clientName': '客户甲',
+          'sourceDocNo': 'XS-001',
+          'businessDate': '2026-08-31',
+          'partyName': '客户甲',
           'warehouseName': '一号仓',
-          'warehouseWorkStatus': 'PENDING_PICK',
-        }),
+          'responsibleName': '仓管甲',
+          'canHandle': false,
+        },
       ],
-      page: page,
-      size: size,
-      total: 1,
-      totalPages: 1,
-    );
+      'page': 1,
+      'size': 20,
+      'total': 1,
+      'totalPages': 1,
+      'facets': {
+        'status': <Map<String, dynamic>>[
+          {'value': SalesWarehouseWorkStatus.pendingPick, 'label': '待出库', 'count': 1},
+          {'value': SalesWarehouseWorkStatus.shipped, 'label': '已出库', 'count': 0},
+        ],
+        'billNo': <Map<String, dynamic>>[],
+      },
+    };
   }
 
   @override
-  Future<List<MasterFacetBucket>> billNoFacets({
-    String? keyword,
-    String? warehouseWorkStatus,
-    String? dateFrom,
-    String? dateTo,
-    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
-  }) async => const []; // 2026-09-25 单号列统一：页面 facets 静默降级。
-
-  @override
-  Future<WarehouseSalesOutboundDetail> detail(String id) =>
-      throw UnimplementedError();
-
-  @override
-  Future<WarehouseSalesOutboundDetail> transition(
-    String id, {
-    required String targetStatus,
-    String? reason,
-    Map<String, String>? stockPlaces,
-    Map<String, String?>? lineWarehouses,
-    Map<String, double>? lineWeights,
-  }) => throw UnimplementedError();
+  Future<List<Map<String, dynamic>>> getList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async => const <Map<String, dynamic>>[];
 }
 
 class _ShipmentTaskApi extends ApiClient {

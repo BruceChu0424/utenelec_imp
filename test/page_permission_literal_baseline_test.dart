@@ -65,6 +65,16 @@ final _fullPermReference = RegExp(r'\bPerm\.[a-zA-Z]\w*');
 // ADR-182: 货品操作历史替换原「撤回导入」入口，将该入口的一处引用移入
 // 历史面板。其余 15 处仅决定拥有对应操作权的人能否打开历史，实际撤回/重做
 // 继续由服务端按原动作权限、身份、版本和当前对象状态裁决；不授予写权限。
+// 2026-10-18 main 合入 V875 与 ADR-184（合并 d20e36971）后全量 684，按来源逐项登记 +8：
+//   · V875 部门权限配置转移：入口操作条与导入对话框分别本地预演 authorization:manage
+//     （2 处 / 1 处）；服务端 PermissionConfigurationTransferController/Service 统一强制
+//     authorization:manage + superAdmin，预览、落库与审计均以服务端裁决为准。
+//   · ADR-184 人事任务卡：任务可办与操作按钮改按真实已授动作权限逐类预演
+//     （employeeView 门槛 +1、employeeConfirm +1、employeeEdit +1、employeePiiEdit +1、
+//     noticePublish +1），与 HrTaskClaimService.requireCanHandle / HrTaskService.hasAction
+//     的任务类型→动作码映射一一对应；接管仍为 isSuperAdmin || employee:task_takeover。
+//   · production_plan_list_page 在表格化选择器重排中合并重复的 productionPlanApprove
+//     预演净 -1，不占登记额度；登记后全量 676，仍守 677 基线。
 const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> tokens})>{
   'lib/features/finance/pages/finance_procurement_approval_review_page.dart': (
     legacyCount: 4,
@@ -294,6 +304,30 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
       'Perm.clientViewAll': 1,
     },
   ),
+  // V875 部门权限配置转移：本地只预演 authorization:manage 入口，服务端另加
+  // superAdmin 双重强制，转移预览/落库/审计全部由服务端裁决。
+  'lib/features/admin/widgets/admin_permission_transfer_actions.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.authorizationManage': 2},
+  ),
+  'lib/features/admin/widgets/permission_configuration_import_dialog.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.authorizationManage': 1},
+  ),
+  // ADR-184 任务卡按真实已授动作权限逐类预演，映射与
+  // HrTaskClaimService.requireCanHandle / HrTaskService.hasAction 一一对应；
+  // 认领/接管与实际动作仍由服务端按对象与人裁决。
+  'lib/features/hr_task/widgets/hr_task_widgets.dart': (
+    legacyCount: 3,
+    tokens: {
+      'Perm.employeeConfirm': 2,
+      'Perm.employeeEdit': 1,
+      'Perm.employeePiiEdit': 1,
+      'Perm.employeeTaskTakeover': 1,
+      'Perm.employeeView': 1,
+      'Perm.noticePublish': 2,
+    },
+  ),
 };
 
 Map<String, int> _permissionTokens(String source) {
@@ -392,7 +426,7 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
         (sum, entry) =>
             sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
       ),
-      80, // Previous 65 + 15 exact history-entry guards; the original undo guard moved.
+      88, // Previous 65 + 15 history guards; 2026-10-18 +8 for the V875 transfer UI and ADR-184 HR task cards.
     );
   });
 

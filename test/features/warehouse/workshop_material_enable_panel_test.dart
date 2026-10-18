@@ -8,10 +8,12 @@ import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/materialbin/models/workshop_material_models.dart';
 import 'package:uten_imp/features/warehouse/materialbin/repositories/workshop_material_repository.dart';
 import 'package:uten_imp/features/warehouse/materialbin/widgets/workshop_material_enable_panel.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/master_name_provider.dart';
 
 const _main = {
   'id': 'main',
@@ -211,10 +213,27 @@ void main() {
       // 先主仓 (只导航), 再子仓。
       await tester.tap(find.byKey(const Key('warehouse-picker-entry-main')));
       await tester.pumpAndSettle();
-      final defective = tester.widget<ListTile>(
-        find.byKey(const Key('warehouse-picker-entry-bad')),
+      // 2026-10 表格统一：条目是表格行, 不良品仓以置灰表示不可选。
+      final pickerTable = tester.widget<MasterDataTableView<WarehouseDictEntry>>(
+        find.byWidgetPredicate(
+          (widget) => widget is MasterDataTableView<WarehouseDictEntry>,
+        ),
       );
-      expect(defective.enabled, isFalse, reason: '不良品仓不能当发料来源仓');
+      final defectiveEntry = pickerTable.items.singleWhere(
+        (entry) => entry.id == 'bad',
+      );
+      final disabledColor = Theme.of(
+        tester.element(
+          find.byWidgetPredicate(
+            (widget) => widget is MasterDataTableView<WarehouseDictEntry>,
+          ),
+        ),
+      ).disabledColor;
+      expect(
+        pickerTable.rowForegroundColor!(defectiveEntry),
+        disabledColor,
+        reason: '不良品仓不能当发料来源仓',
+      );
       await tester.tap(find.byKey(const Key('warehouse-picker-entry-plastic')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));

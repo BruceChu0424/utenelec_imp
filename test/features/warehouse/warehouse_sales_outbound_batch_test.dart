@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/cards/uten_card.dart';
@@ -10,15 +11,20 @@ import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_sales_outbound.dart';
+import 'package:uten_imp/features/warehouse/models/warehouse_task_center_record.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_sales_outbound_batch_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_sales_outbound_detail_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_sales_outbound_page.dart';
 import 'package:uten_imp/features/warehouse/repositories/warehouse_sales_outbound_repository.dart';
+import 'package:uten_imp/features/warehouse/repositories/warehouse_task_center_repository.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_sales_outbound_table_columns.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 
+import '../../helpers/badge_summary_fixture.dart';
 import 'outbound_weight_fakes.dart';
 
 late SharedPreferences _preferences;
@@ -166,24 +172,52 @@ void main() {
         _detail('2'),
         _detail('blocked', targets: []),
       ]);
-      await _pump(tester, gateway, const WarehouseSalesOutboundPage());
-      await tester.tap(find.text('待出库'));
+      final tasks = _TaskCenterGateway(gateway);
+      // 2026-10-17 起销售出库深链直落「出库任务中心 · 销售出库」统一表;
+      // 批量核对出库按行 canHandle(服务端动作资格)进批量页。
+      final router = GoRouter(
+        initialLocation: '/',
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (_, _) => const WarehouseSalesOutboundPage(),
+          ),
+          GoRoute(
+            path: '/warehouse/sales-outbound/batch',
+            builder: (_, state) => WarehouseSalesOutboundBatchPage(
+              targets: [
+                for (final id
+                    in (state.uri.queryParameters['shipmentIds'] ?? '').split(','))
+                  if (id.isNotEmpty) gateway.values[id]!.header,
+              ],
+              action: WarehouseSalesOutboundAction.confirmShipment,
+            ),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await _pump(
+        tester,
+        gateway,
+        const WarehouseSalesOutboundPage(),
+        tasks: tasks,
+        router: router,
+      );
       await tester.pumpAndSettle();
-      final listFinder = find.byKey(
-        const Key('warehouse-sales-outbound-table'),
+      final table = tester.widget<MasterDataTableView<WarehouseTaskCenterRecord>>(
+        find.byWidgetPredicate(
+          (widget) => widget is MasterDataTableView<WarehouseTaskCenterRecord>,
+        ),
       );
-      final table = tester
-          .widget<MasterDataTableView<WarehouseSalesOutboundSummary>>(
-            listFinder,
-          );
-      expect(table.idOf!(gateway.values['blocked']!.header), isNull);
-      await tester.tap(
-        find.descendant(of: listFinder, matching: find.byType(Checkbox)).first,
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const Key('warehouse-sales-outbound-open-batch')),
-      );
+      // 无办理资格的行(服务端 allowedWarehouseTargets 为空)不可勾选。
+      final blockedRow = table.items.singleWhere((row) => row.id == 'blocked');
+      expect(table.idOf!(blockedRow), isNull);
+      table.onSelectedIdsChanged!({
+        'SALES:SALES_SHIPMENT:1',
+        'SALES:SALES_SHIPMENT:2',
+      });
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('warehouse-task-record-batch')));
       await tester.pumpAndSettle();
       expect(
         find.byKey(const Key('warehouse-sales-outbound-batch-table')),
@@ -225,11 +259,14 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(gateway.commands, ['1:SHIPPED', '2:SHIPPED']);
+      // 回任务中心统一表, 办理返回后列表重拉。
       expect(
-        find.byKey(const Key('warehouse-sales-outbound-table')),
+        find.byWidgetPredicate(
+          (widget) => widget is MasterDataTableView<WarehouseTaskCenterRecord>,
+        ),
         findsOneWidget,
       );
-      expect(gateway.listReads, greaterThan(1));
+      expect(tasks.pages, hasLength(2));
       expect(tester.takeException(), isNull);
     },
   );
@@ -421,34 +458,41 @@ void main() {
     'work status header filter overrides segment and reloads page one',
     (tester) async {
       // 表头筛选生效冒烟：仓库作业固定枚举桶（含分段之外的 取消/红冲/迁移异常），
-      // 选桶 → warehouseWorkStatus 收到该值并回第 1 页；切段时清表头筛选。
+      // 选桶 → status 收到该值并回第 1 页；切段时清表头筛选。
       await tester.binding.setSurfaceSize(const Size(1500, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final gateway = _Gateway([_detail('1')]);
-      await _pump(tester, gateway, const WarehouseSalesOutboundPage());
-      await tester.tap(find.text('待出库'));
+      final tasks = _TaskCenterGateway(gateway);
+      await _pump(
+        tester,
+        gateway,
+        const WarehouseSalesOutboundPage(),
+        tasks: tasks,
+      );
       await tester.pumpAndSettle();
 
-      final table = tester
-          .widget<MasterDataTableView<WarehouseSalesOutboundSummary>>(
-            find.byKey(const Key('warehouse-sales-outbound-table')),
-          );
-      expect(table.facets.keys, contains('warehouseWorkStatus'));
+      final table = tester.widget<MasterDataTableView<WarehouseTaskCenterRecord>>(
+        find.byWidgetPredicate(
+          (widget) => widget is MasterDataTableView<WarehouseTaskCenterRecord>,
+        ),
+      );
+      expect(table.facets.keys, contains('status'));
       expect(
-        table.facets['warehouseWorkStatus']?.map((bucket) => bucket.value),
+        table.facets['status']?.map((bucket) => bucket.value),
         containsAll(<String>['PENDING_PICK', 'SHIPPED', 'CANCELLED']),
       );
 
-      table.onFilterChanged('warehouseWorkStatus', 'CANCELLED');
+      table.onFilterChanged('status', 'CANCELLED');
       await tester.pumpAndSettle();
-      expect(gateway.workStatuses.last, 'CANCELLED');
-      expect(gateway.listPages.last, 1);
-      // 切回「已出库」段：表头状态桶被清，回分段口径。
-      await tester.ensureVisible(find.text('已出库', skipOffstage: false));
+      expect(tasks.statuses.last, 'CANCELLED');
+      expect(tasks.pages.last, 1);
+      // 切回「全部任务」段：表头状态桶被清，回分段口径。
+      await tester.ensureVisible(find.text('全部任务', skipOffstage: false));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('已出库'));
+      await tester.tap(find.text('全部任务'));
       await tester.pumpAndSettle();
-      expect(gateway.workStatuses.last, 'SHIPPED');
+      expect(tasks.statuses.last, isNull);
+      expect(tasks.pages.last, 1);
       expect(tester.takeException(), isNull);
     },
   );
@@ -458,24 +502,109 @@ Future<void> _pump(
   WidgetTester tester,
   _Gateway gateway,
   Widget page, {
+  _TaskCenterGateway? tasks,
+  GoRouter? router,
   FakeWeightRepository? weights,
 }) async {
+  final needsTaskCenter = tasks != null;
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(_preferences),
         warehouseSalesOutboundRepositoryProvider.overrideWithValue(gateway),
         fakeWeightRepositoryOverride(weights),
+        if (needsTaskCenter) ...[
+          // 2026-10-17 起深链页正文是任务中心统一表；分段红数固定为徽章事实。
+          warehouseTaskCenterRepositoryProvider.overrideWithValue(tasks),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.warehouseSalesOutboundView,
+          }),
+          isSuperAdminProvider.overrideWithValue(false),
+          fixedBadgeSummaryOverride(
+            badgeSummaryFixture(
+              facts: const {BadgeFact.warehouseSalesOutboundPendingPick: 2},
+            ),
+          ),
+        ],
       ],
-      child: MaterialApp(
-        locale: const Locale('zh'),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: page,
-      ),
+      child: router == null
+          ? MaterialApp(
+              locale: const Locale('zh'),
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: page,
+            )
+          : MaterialApp.router(
+              locale: const Locale('zh'),
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              routerConfig: router,
+            ),
     ),
   );
   await tester.pumpAndSettle();
+}
+
+/// 任务中心统一表网关：把销售出库夹具折成 SALES 行与状态枚举桶(ADR-184：
+/// canHandle 折叠 allowedWarehouseTargets 动作资格)。
+class _TaskCenterGateway implements WarehouseTaskCenterGateway {
+  _TaskCenterGateway(this.sales);
+
+  final _Gateway sales;
+  final List<int> pages = [];
+  final List<String?> statuses = [];
+
+  @override
+  Future<WarehouseTaskCenterPageResult> list({
+    required WarehouseTaskDirection direction,
+    String source = 'ALL',
+    WarehouseTaskView view = WarehouseTaskView.active,
+    String? status,
+    String? keyword,
+    String? billNo,
+    String? dateFrom,
+    String? dateTo,
+    WarehouseTaskScope warehouseScope = const WarehouseTaskScope.all(),
+    int page = 1,
+    int size = 20,
+    String? sort,
+    String? order,
+  }) async {
+    pages.add(page);
+    statuses.add(status);
+    final rows = [
+      for (final detail in sales.values.values)
+        if ((source == 'ALL' || source == 'SALES') &&
+            (status == null ||
+                detail.header.warehouseWorkStatus == status))
+          WarehouseTaskCenterRecord(
+            rowKey: 'SALES:SALES_SHIPMENT:${detail.header.id}',
+            id: detail.header.id,
+            sourceType: 'SALES',
+            recordType: 'SALES_SHIPMENT',
+            status: detail.header.warehouseWorkStatus ?? 'PENDING_PICK',
+            statusLabel: detail.header.statusLabel,
+            billNo: detail.header.billNo,
+            action: 'SALES_OUTBOUND',
+            targetId: detail.header.id,
+            canHandle: detail.header.allowedWarehouseTargets.isNotEmpty,
+          ),
+    ];
+    return WarehouseTaskCenterPageResult(
+      items: rows,
+      page: page,
+      size: size,
+      total: rows.length,
+      totalPages: rows.isEmpty ? 0 : 1,
+      facets: const {
+        'status': [
+          MasterFacetBucket(value: 'PENDING_PICK', label: '待出库', count: 1),
+          MasterFacetBucket(value: 'SHIPPED', label: '已出库', count: 0),
+          MasterFacetBucket(value: 'CANCELLED', label: '已取消', count: 0),
+        ],
+      },
+    );
+  }
 }
 
 Future<void> _confirm(WidgetTester tester) async {

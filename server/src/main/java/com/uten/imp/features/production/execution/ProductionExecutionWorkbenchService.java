@@ -148,7 +148,6 @@ public class ProductionExecutionWorkbenchService {
     public long inProgressRootCount() {
         if (!productionAccess.hasAuthority("production_execution:overview")
                 || !(productionAccess.hasAuthority("production_material_analysis:create")
-                    || productionAccess.hasAuthority("production_material_analysis:edit")
                     || productionAccess.hasAuthority("production_plan:edit")
                     || productionAccess.hasAuthority("production_plan:approve"))) return 0L;
         var owners = productionAccess.scope();

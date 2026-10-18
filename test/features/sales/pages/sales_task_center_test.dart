@@ -208,9 +208,14 @@ void main() {
             SalesMasterNameService(_FakeApi()),
           ),
           documentStatusCountsProvider.overrideWith(
+            // ADR-184 任务口径: 草稿/退回段红数读 ACTIONABLE_ 前缀(等本人动手),
+            // 待财务核价黄数读 RESPONSIBLE_ 前缀; 普通桶键保留作渲染兜底。
             (ref, scope) async => {
+              'ACTIONABLE_DRAFT': 2,
               'DRAFT': 2,
+              'ACTIONABLE_FINANCE_REJECTED': 1,
               'FINANCE_REJECTED': 1,
+              'RESPONSIBLE_PENDING_FINANCE': 4,
               'PENDING_FINANCE': 4,
               'APPROVED': 9,
             },

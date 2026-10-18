@@ -58,7 +58,7 @@ public class ProductionExecutionWorkbenchController {
     @GetMapping("/count")
     @com.uten.imp.security.BusinessTaskRead
     @PreAuthorize("hasAuthority('production_execution:overview') and hasAnyAuthority('production_material_analysis:create',"
-            + "'production_material_analysis:edit','production_plan:edit','production_plan:approve')")
+            + "'production_plan:edit','production_plan:approve')")
     public Map<String, Long> count() {
         return Map.of("count", service.inProgressRootCount());
     }

@@ -1,26 +1,33 @@
+// 产成品入库队列(2026-10-17 起 /warehouse/production-finished-inbound 深链直落
+// 「入库任务中心 · 产成品入库」分段): 待登记与最终点收两族任务在同一多选表;
+// ADR-184 起「先入库后质检」资格由服务端折进行事实 canRegisterBeforeInspection,
+// 触发批量动作时仍观察当前资格(只读身份 / 行资格被服务端撤回)。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
-import 'package:uten_imp/core/router/route_names.dart';
-import 'package:uten_imp/features/warehouse/pages/production_finished_batch_stock_in_page.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/core/network/api_client.dart';
-import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
+import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
-import 'package:uten_imp/features/warehouse/models/production_finished_inbound_task.dart';
+import 'package:uten_imp/features/warehouse/models/warehouse_task_center_record.dart';
 import 'package:uten_imp/features/warehouse/pages/production_finished_inbound_tasks_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
-import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uten_imp/features/warehouse/widgets/production_finished_inbound_tasks_view.dart';
+import 'package:uten_imp/shared/warehouse/warehouse_task_badges.dart';
 
-const _stockInFirstBatchKey = Key('inbound-route-batch-stockInFirst');
-const _inspectFirstBatchKey = Key('inbound-route-batch-inspectFirst');
+import '../../helpers/badge_summary_fixture.dart';
+
+const _reportId = '20000000-0000-0000-0000-000000000001';
+const _documentId = '10000000-0000-0000-0000-000000000001';
+const _registerRowKey = 'FINISHED:FINISHED_REGISTER:$_reportId';
+const _countRowKey = 'FINISHED:FINAL_COUNT:$_documentId';
 final _liveTaskPermissions = StateProvider<Set<String>>(
   (ref) => const {
     Perm.stockDocView,
@@ -31,78 +38,87 @@ final _liveTaskPermissions = StateProvider<Set<String>>(
 final _liveTaskScope = StateProvider<AuthenticatedScope?>((ref) => null);
 
 void main() {
-  for (final readOnly in [false, true]) {
-    testWidgets(
-      'finished queue stale shelf action observes current authority or readonly ($readOnly)',
-      (tester) async {
-        await tester.binding.setSurfaceSize(const Size(1400, 900));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
-        SharedPreferences.setMockInitialValues({});
-        final preferences = await SharedPreferences.getInstance();
-        var navigations = 0;
-        final router = GoRouter(
-          routes: [
-            GoRoute(
-              path: '/',
-              builder: (_, _) => const ProductionFinishedInboundTasksPage(),
+  for (final mode in ['readOnly', 'serverWithdraws']) {
+    testWidgets('finished queue stale shelf action observes current authority ($mode)', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1400, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      var navigations = 0;
+      final api = _FinishedInboundApi();
+      final router = GoRouter(
+        initialLocation: '/',
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (_, _) => const ProductionFinishedInboundTasksPage(),
+          ),
+          GoRoute(
+            path: RouteName.warehouseProductionFinishedArrivalRegistration,
+            builder: (_, _) {
+              navigations++;
+              return const Scaffold(body: Text('finished shelf'));
+            },
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            sharedPreferencesProvider.overrideWithValue(preferences),
+            isSuperAdminProvider.overrideWithValue(true),
+            currentPermissionsProvider.overrideWith(
+              (ref) => ref.watch(_liveTaskPermissions),
             ),
-            GoRoute(
-              path: RouteName.warehouseProductionFinishedArrivalRegistration,
-              builder: (_, _) {
-                navigations++;
-                return const Scaffold(body: Text('finished shelf'));
-              },
+            authenticatedScopeProvider.overrideWith(
+              (ref) => ref.watch(_liveTaskScope),
+            ),
+            fixedBadgeSummaryOverride(
+              badgeSummaryFixture(facts: const {BadgeFact.finishedInbound: 1}),
             ),
           ],
-        );
-        addTearDown(router.dispose);
-        await tester.pumpWidget(
-          ProviderScope(
-            overrides: [
-              apiClientProvider.overrideWithValue(_FinishedInboundApi()),
-              sharedPreferencesProvider.overrideWithValue(preferences),
-              isSuperAdminProvider.overrideWithValue(true),
-              currentPermissionsProvider.overrideWith(
-                (ref) => ref.watch(_liveTaskPermissions),
-              ),
-              authenticatedScopeProvider.overrideWith(
-                (ref) => ref.watch(_liveTaskScope),
-              ),
-            ],
-            child: MaterialApp.router(routerConfig: router),
-          ),
-        );
-        await tester.pumpAndSettle();
-        await tester.tap(find.byType(Checkbox).at(1));
-        await tester.pump();
-        final stale = tester
-            .widget<UtenButton>(find.byKey(_stockInFirstBatchKey))
-            .onPressed;
-        expect(stale, isNotNull);
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+      _table(tester).onSelectedIdsChanged!(const {_registerRowKey});
+      await tester.pump();
+      final stale = tester
+          .widget<UtenButton>(
+            find.ancestor(
+              of: find.text('先入库后质检(1)'),
+              matching: find.byType(UtenButton),
+            ),
+          )
+          .onPressed;
+      expect(stale, isNotNull);
+      if (mode == 'readOnly') {
         final container = ProviderScope.containerOf(
-          tester.element(find.byType(ProductionFinishedInboundTasksView)),
+          tester.element(find.text('先质检后入库(1)')),
         );
-        if (readOnly) {
-          container
-              .read(_liveTaskScope.notifier)
-              .state = const AuthenticatedScope(
-            userId: 'finished-reader',
-            actorId: 'actor',
-            readOnly: true,
-          );
-        } else {
-          container.read(_liveTaskPermissions.notifier).state = const {
-            Perm.stockDocView,
-            Perm.stockDocApprove,
-          };
-        }
+        container.read(_liveTaskScope.notifier).state = const AuthenticatedScope(
+          userId: 'finished-reader',
+          actorId: 'actor',
+          readOnly: true,
+        );
         await tester.pump();
-        stale!();
+      } else {
+        // ADR-184：动作资格折进行事实 —— 服务端刷新后撤回「先入库后质检」,
+        // 行资格与选择集一起失效。
+        api.allowPreStock = false;
+        await tester.tap(find.byTooltip('刷新'));
         await tester.pumpAndSettle();
-        expect(navigations, 0);
-        expect(tester.takeException(), isNull);
-      },
-    );
+        expect(find.text('先入库后质检(1)'), findsNothing);
+      }
+      stale!();
+      await tester.pumpAndSettle();
+      expect(navigations, 0);
+      expect(tester.takeException(), isNull);
+    });
   }
   for (final withExtra in [false, true]) {
     testWidgets(
@@ -110,16 +126,25 @@ void main() {
       (tester) async {
         await tester.binding.setSurfaceSize(const Size(1400, 900));
         addTearDown(() => tester.binding.setSurfaceSize(null));
+        SharedPreferences.setMockInitialValues({});
+        final preferences = await SharedPreferences.getInstance();
+        final api = _FinishedInboundApi()..allowPreStock = withExtra;
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
-              apiClientProvider.overrideWithValue(_FinishedInboundApi()),
+              apiClientProvider.overrideWithValue(api),
+              sharedPreferencesProvider.overrideWithValue(preferences),
               isSuperAdminProvider.overrideWithValue(true),
               currentPermissionsProvider.overrideWithValue({
                 Perm.stockDocView,
                 Perm.stockDocApprove,
                 if (withExtra) Perm.productionFinishedInBeforeInspection,
               }),
+              fixedBadgeSummaryOverride(
+                badgeSummaryFixture(
+                  facts: const {BadgeFact.finishedInbound: 1},
+                ),
+              ),
             ],
             child: const MaterialApp(
               home: ProductionFinishedInboundTasksPage(),
@@ -127,11 +152,15 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        _table(tester).onSelectedIdsChanged!(const {_registerRowKey});
+        await tester.pump();
+        // ADR-184：超管不再隐式获得「先入库后质检」——服务端只按显式权限
+        // 折进行事实, 没有额外权限时只保留「先质检后入库」。
         expect(
-          find.byKey(_stockInFirstBatchKey),
+          find.text('先入库后质检(1)'),
           withExtra ? findsOneWidget : findsNothing,
         );
-        expect(find.byKey(_inspectFirstBatchKey), findsOneWidget);
+        expect(find.text('先质检后入库(1)'), findsOneWidget);
         expect(tester.takeException(), isNull);
       },
     );
@@ -141,124 +170,88 @@ void main() {
   ) async {
     await tester.binding.setSurfaceSize(const Size(375, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
 
-    final api = _FinishedInboundApi();
-    // 2026-09-12 弹窗改页：批量全量点收进独立页，路由壳带上该页。
-    final router = GoRouter(
-      initialLocation: '/',
-      routes: [
-        GoRoute(
-          path: '/',
-          builder: (_, _) => const ProductionFinishedInboundTasksPage(),
-        ),
-        GoRoute(
-          path: RouteName.warehouseProductionFinishedBatchStockIn,
-          builder: (_, state) => ProductionFinishedBatchStockInPage(
-            targets: state.extra is List<ProductionFinishedInboundTask>
-                ? state.extra! as List<ProductionFinishedInboundTask>
-                : const [],
-          ),
-        ),
-      ],
-    );
-    addTearDown(router.dispose);
+    final api = _FinishedInboundApi()..allowPreStock = false;
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          apiBaseUrlProvider.overrideWithValue(
-            'https://finished-task-test.example/api',
-          ),
           apiClientProvider.overrideWithValue(api),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+          isSuperAdminProvider.overrideWithValue(false),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.stockDocView,
             Perm.stockDocApprove,
           }),
-          isSuperAdminProvider.overrideWithValue(false),
+          fixedBadgeSummaryOverride(
+            badgeSummaryFixture(facts: const {BadgeFact.finishedInbound: 2}),
+          ),
         ],
-        child: MaterialApp.router(routerConfig: router),
+        child: const MaterialApp(home: ProductionFinishedInboundTasksPage()),
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('产成品入库任务'), findsOneWidget);
-    expect(find.text('共 2 项 · 单击多选，双击详情'), findsOneWidget);
+    expect(find.text('产成品入库'), findsOneWidget);
+    expect(find.text('共 2 条'), findsOneWidget);
     expect(find.text('待登记入库'), findsOneWidget);
     expect(find.text('短收余量待点收'), findsOneWidget);
     expect(find.text('SJ202608280001'), findsOneWidget);
-    final tableFinder = find.byKey(
-      const Key('production-finished-inbound-task-table'),
-    );
-    var table = tester
-        .widget<MasterDataTableView<ProductionFinishedInboundTask>>(
-          tableFinder,
-        );
+    var table = _table(tester);
     expect(table.selectable, isTrue);
     expect(table.batchActionsBuilder, isNotNull);
     expect(table.columns.map((column) => column.label), [
-      '任务步骤',
-      '任务单号',
-      '生产计划',
-      '报工单',
-      '货品',
+      '状态',
+      '货品名称',
+      '货品编码',
+      '规格',
+      '颜色',
+      '数量',
+      '单据 / 任务单号',
+      '来源单据',
+      '客户 / 供应商 / 委外商',
       '仓库',
-      '待处理数量',
-      '实物批数',
-      '单据日期',
-      '进入队列时间',
+      '业务日期',
+      '负责人 / 制单人',
     ]);
     final actionLabels = [
       for (final item in table.items)
         (table.rowMenuBuilder!(item).single as UtenMenuItem).label,
     ];
-    expect(actionLabels, ['登记入库仓库与库位', '进入最终点收']);
+    expect(actionLabels, ['打开办理', '打开办理']);
 
     await tester.tap(find.text('待登记入库'));
     await tester.pump();
-    table = tester.widget<MasterDataTableView<ProductionFinishedInboundTask>>(
-      tableFinder,
-    );
-    // 2026-09-03 起待登记任务也可多选（键 reg:<reportId>），进入汇总登记页。
-    // 单击行即选中：点步骤单元格会把该登记任务选进 reg: 键。
-    expect(
-      table.idOf!(table.items.first),
-      'reg:20000000-0000-0000-0000-000000000001',
-    );
-    // 2026-09-27 与预计到货同款路线按钮：没有「先入库后质检」独立权限时只显示
+    table = _table(tester);
+    // 登记任务按来源行键选中; 没有「先入库后质检」独立资格时只显示
     // 「先质检后入库(N)」。
-    expect(find.byKey(_inspectFirstBatchKey), findsOneWidget);
+    expect(table.idOf!(table.items.first), _registerRowKey);
+    expect(find.byKey(const Key('warehouse-task-record-batch')), findsNothing);
     expect(find.text('先质检后入库(1)'), findsOneWidget);
-    expect(find.byKey(_stockInFirstBatchKey), findsNothing);
-    expect(table.selectedIds, {'reg:20000000-0000-0000-0000-000000000001'});
+    expect(find.text('先入库后质检(1)'), findsNothing);
+    expect(table.selectedIds, {_registerRowKey});
     await tester.tap(find.text('短收余量待点收'));
     await tester.pump();
-    table = tester.widget<MasterDataTableView<ProductionFinishedInboundTask>>(
-      tableFinder,
+    table = _table(tester);
+    expect(table.idOf!(table.items.last), _countRowKey);
+    expect(table.selectedIds, {_registerRowKey, _countRowKey});
+    // 登记送检与最终点收属不同办理族：混选没有统一动作(按钮禁用，只给分别选择提示)。
+    final mixed = find.text('办理所选(2)');
+    expect(mixed, findsOneWidget);
+    final mixedButton = tester.widget<UtenButton>(
+      find.ancestor(of: mixed, matching: find.byType(UtenButton)),
     );
-    expect(
-      table.idOf!(table.items.last),
-      'doc:10000000-0000-0000-0000-000000000001',
-    );
-    expect(table.selectedIds, {
-      'reg:20000000-0000-0000-0000-000000000001',
-      'doc:10000000-0000-0000-0000-000000000001',
-    });
-    expect(find.text('登记送检与最终点收请分开选择'), findsOneWidget);
-    expect(find.byKey(_inspectFirstBatchKey), findsNothing);
-    expect(find.byKey(_stockInFirstBatchKey), findsNothing);
-    expect(
-      find.byKey(const Key('production-finished-inbound-batch-confirm')),
-      findsNothing,
-    );
+    expect(mixedButton.onPressed, isNull);
+    expect(mixedButton.onDisabledTap, isNotNull);
     await tester.tap(find.text('待登记入库'));
     await tester.pump();
-    expect(find.byKey(_inspectFirstBatchKey), findsNothing);
-    expect(find.byKey(_stockInFirstBatchKey), findsNothing);
-    final batchButton = find.byKey(
-      const Key('production-finished-inbound-batch-confirm'),
-    );
+    table = _table(tester);
+    expect(table.selectedIds, {_countRowKey});
+    // 只剩最终点收任务 → 核对最终点收进入批量点收页 → 小结确认 → 整批提交。
+    final batchButton = find.byKey(const Key('warehouse-task-record-batch'));
     expect(batchButton, findsOneWidget);
-    // 2026-09-12 弹窗改页：进批量点收页 → 小结确认 → 整批提交。
-    // 2026-09-24 折叠联动改版后矮视口浮动条在折叠下方，先滚入视野再点。
+    expect(find.text('核对最终点收(1)'), findsOneWidget);
     await tester.ensureVisible(batchButton);
     await tester.pump(const Duration(milliseconds: 100));
     await tester.tap(batchButton);
@@ -276,9 +269,7 @@ void main() {
     await tester.tap(find.text('确认批量入库'));
     await tester.pumpAndSettle();
 
-    expect(api.batchBody?['documentIds'], [
-      '10000000-0000-0000-0000-000000000001',
-    ]);
+    expect(api.batchBody?['documentIds'], [_documentId]);
     expect(api.batchBody?['idempotencyKey'], startsWith('finished-in-batch-'));
     expect(find.text('短收余量待点收'), findsNothing);
     expect(tester.takeException(), isNull);
@@ -289,38 +280,54 @@ void main() {
   ) async {
     await tester.binding.setSurfaceSize(const Size(375, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
 
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          apiClientProvider.overrideWithValue(_FinishedInboundApi()),
-          apiBaseUrlProvider.overrideWithValue(
-            'https://finished-task-test.example/api',
+          apiClientProvider.overrideWithValue(
+            _FinishedInboundApi()..rowsHandleable = false,
           ),
+          sharedPreferencesProvider.overrideWithValue(preferences),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.stockDocView,
           }),
           isSuperAdminProvider.overrideWithValue(false),
+          // ADR-184：只读查看不计任务红数 —— 汇总不带回 finishedInbound 事实。
+          fixedBadgeSummaryOverride(badgeSummaryFixture()),
         ],
         child: const MaterialApp(home: ProductionFinishedInboundTasksPage()),
       ),
     );
     await tester.pumpAndSettle();
 
-    final table = tester
-        .widget<MasterDataTableView<ProductionFinishedInboundTask>>(
-          find.byKey(const Key('production-finished-inbound-task-table')),
-        );
+    final table = _table(tester);
     final actionLabels = [
       for (final item in table.items)
         (table.rowMenuBuilder!(item).single as UtenMenuItem).label,
     ];
-    expect(actionLabels, ['查看到货登记详情', '查看待点收详情']);
+    expect(actionLabels, ['查看原单', '查看原单']);
     expect(table.selectable, isFalse);
     expect(table.batchActionsBuilder, isNull);
+    final container = ProviderScope.containerOf(
+      tester.element(find.text('产成品入库')),
+    );
+    expect(
+      container.read(warehouseTaskFactOrNullProvider(BadgeFact.finishedInbound)),
+      isNull,
+      reason: '汇总未带回该事实时分段不显示任何数(不把未知伪装成 0)',
+    );
     expect(tester.takeException(), isNull);
   });
 }
+
+MasterDataTableView<WarehouseTaskCenterRecord> _table(WidgetTester tester) =>
+    tester.widget(
+      find.byWidgetPredicate(
+        (widget) => widget is MasterDataTableView<WarehouseTaskCenterRecord>,
+      ),
+    );
 
 class _FinishedInboundApi extends ApiClient {
   _FinishedInboundApi() : super(Dio());
@@ -328,57 +335,67 @@ class _FinishedInboundApi extends ApiClient {
   Map<String, dynamic>? batchBody;
   bool batchConfirmed = false;
 
+  /// 服务端按显式权限折进行事实的「先入库后质检」资格(ADR-184)。
+  bool allowPreStock = true;
+
+  /// 服务端下发的行办理资格; false 模拟只读账号。
+  bool rowsHandleable = true;
+
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path.endsWith('/count')) return const {'count': 2};
-    return {
-      'items': [
-        const {
-          'taskStage': 'ARRIVAL_REGISTRATION',
-          'taskId': '20000000-0000-0000-0000-000000000001',
-          'reportId': '20000000-0000-0000-0000-000000000001',
-          'documentId': null,
-          'documentNo': null,
-          'documentDate': '2026-08-28',
-          'warehouseId': null,
-          'warehouseName': null,
-          'planId': '20000000-0000-0000-0000-000000000003',
-          'planNo': 'SJ202608270001',
-          'reportNos': 'RB202608280001',
-          'goodsSummary': 'V5多功能三极插座E极插套(酸洗)',
-          'lineCount': 1,
-          'pendingQty': 1000,
-          'createdAt': '2026-08-28T04:00:00Z',
-          'residualTask': false,
-        },
-        if (!batchConfirmed)
-          const {
-            'taskStage': 'FINAL_COUNT',
-            'taskId': '10000000-0000-0000-0000-000000000001',
-            'reportId': '20000000-0000-0000-0000-000000000001',
-            'documentId': '10000000-0000-0000-0000-000000000001',
-            'documentNo': 'CPRK202608280001',
-            'documentDate': '2026-08-28',
-            'warehouseId': '10000000-0000-0000-0000-000000000002',
+    if (path == '/warehouse/task-center/inbound') {
+      return {
+        'items': [
+          {
+            'rowKey': _registerRowKey,
+            'id': _reportId,
+            'sourceType': 'FINISHED',
+            'recordType': 'FINISHED_ARRIVAL_REPORT',
+            'status': 'FINISHED_REGISTER',
+            'statusLabel': '待登记入库',
+            'billNo': 'SJ202608280001',
+            'businessDate': '2026-08-28',
             'warehouseName': '半成品仓',
-            'planId': '10000000-0000-0000-0000-000000000003',
-            'planNo': 'SJ202608280001',
-            'reportNos': 'RB202608280001',
-            'goodsSummary': 'V5多功能三极插座E极插套(酸洗)',
-            'lineCount': 1,
-            'pendingQty': 1000,
-            'createdAt': '2026-08-28T05:00:00Z',
-            'residualTask': true,
+            'action': 'FINISHED_REGISTER',
+            'targetId': _reportId,
+            'canHandle': rowsHandleable,
+            'actionData': {
+              'reportId': _reportId,
+              'canRegisterBeforeInspection': allowPreStock,
+            },
           },
-      ],
-      'page': 1,
-      'size': 40,
-      'total': batchConfirmed ? 1 : 2,
-      'totalPages': 1,
-    };
+          if (!batchConfirmed)
+            {
+              'rowKey': _countRowKey,
+              'id': _documentId,
+              'sourceType': 'FINISHED',
+              'recordType': 'FINISHED_IN_DOCUMENT',
+              'status': 'FINAL_COUNT',
+              'statusLabel': '短收余量待点收',
+              'billNo': 'CPRK202608280001',
+              'businessDate': '2026-08-28',
+              'warehouseName': '半成品仓',
+              'action': 'FINISHED_COUNT',
+              'targetId': _documentId,
+              'canHandle': rowsHandleable,
+              'actionData': {
+                'taskId': _documentId,
+                'documentId': _documentId,
+                'pendingQty': 1000,
+              },
+            },
+        ],
+        'page': 1,
+        'size': 40,
+        'total': batchConfirmed ? 1 : 2,
+        'totalPages': 1,
+        'facets': const <String, dynamic>{},
+      };
+    }
+    return const {'items': <Map<String, dynamic>>[], 'page': 1, 'total': 0};
   }
 
   @override
@@ -396,11 +413,7 @@ class _FinishedInboundApi extends ApiClient {
       'replay': false,
       'confirmedCount': 1,
       'items': [
-        {
-          'documentId': '10000000-0000-0000-0000-000000000001',
-          'billNo': 'CPRK202608280001',
-          'status': 1,
-        },
+        {'documentId': _documentId, 'billNo': 'CPRK202608280001', 'status': 1},
       ],
     };
   }

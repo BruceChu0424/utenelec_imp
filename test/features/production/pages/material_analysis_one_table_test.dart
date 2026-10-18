@@ -1002,8 +1002,13 @@ void main() {
     );
     tester.widget<InkWell>(field).onTap!();
     await tester.pumpAndSettle();
-    // ADR-145：所属仓库只能选可选的良品子仓，主仓只作导航；面板直接展开当前仓所在的主仓层。
-    await tester.tap(find.text('综合主仓-成品子仓').last);
+    // ADR-145：所属仓库只能选可选的良品子仓，主仓只作导航；面板直接展开当前仓
+    // （warehouse-1）所在的主仓层。2026-10-17 取料器表格化(5c7803e14)后：面板是
+    // 仓库表格，名称列只显示子仓名（完整「主仓名-子仓名」在 Tooltip 与回传 label），
+    // 点行只是暂存，还要点底部确认条才生效。
+    await tester.tap(find.byKey(const Key('warehouse-picker-entry-warehouse-2')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
     await tester.pumpAndSettle();
     expect(
       find.descendant(of: field, matching: find.text('综合主仓-成品子仓')),

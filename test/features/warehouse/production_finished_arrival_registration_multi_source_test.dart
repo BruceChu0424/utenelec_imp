@@ -12,12 +12,14 @@ import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/models/inbound_registration_line.dart';
 import 'package:uten_imp/features/warehouse/pages/production_finished_arrival_registration_page.dart';
 import 'package:uten_imp/features/warehouse/providers/inbound_warehouse_fill_memory.dart';
 import 'package:uten_imp/features/warehouse/repositories/warehouse_place_suggestion_repository.dart';
 import 'package:uten_imp/features/warehouse/widgets/inbound_registration_widgets.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/providers/uten_page_prefs_notifier.dart';
 import 'package:uten_imp/core/network/server_config.dart';
@@ -684,7 +686,14 @@ Future<void> _selectWarehouse(
   await tester.pumpAndSettle();
   final option = find.byKey(Key('warehouse-picker-entry-$warehouseId'));
   expect(option, findsOneWidget);
-  expect(tester.widget<ListTile>(option).enabled, isTrue);
+  // 2026-10 表格统一：条目是表格行, 未置灰即可选。
+  final pickerTable = tester.widget<MasterDataTableView<WarehouseDictEntry>>(
+    find.byWidgetPredicate(
+      (widget) => widget is MasterDataTableView<WarehouseDictEntry>,
+    ),
+  );
+  final entry = pickerTable.items.singleWhere((item) => item.id == warehouseId);
+  expect(pickerTable.rowForegroundColor!(entry), isNull, reason: '该仓可选用');
   await tester.tap(option);
   await tester.pumpAndSettle();
   await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));

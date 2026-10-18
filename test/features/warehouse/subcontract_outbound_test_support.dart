@@ -128,6 +128,10 @@ class SubcontractOutboundFakeApi extends ApiClient {
   final taskReads = <String>[];
   int listRequests = 0;
   bool failNextList = false;
+
+  /// 任务中心行的 canHandle(ADR-184 动作权由服务端逐行下发): false 模拟
+  /// 没有出仓执行资格的账号 —— 行仍可见可看, 但前端不给勾选批量办理。
+  bool rowsHandleable = true;
   Future<Map<String, dynamic>>? employeeResult;
   int employeeLookups = 0;
   bool timeoutAfterSecondApproval = false;
@@ -232,11 +236,19 @@ class SubcontractOutboundFakeApi extends ApiClient {
     if (path == '/warehouse/task-center/outbound') {
       listRequests++;
       taskQueries.add(Map<String, dynamic>.from(query ?? const {}));
+      if (failNextList) {
+        failNextList = false;
+        throw StateError('offline');
+      }
+      final keyword = query?['keyword']?.toString();
       final rows = <Map<String, dynamic>>[
         for (final issueId in taskHeaders.keys)
           if ({'ALL', 'SUBCONTRACT'}.contains(query?['source']) &&
               (query?['status'] != 'SUBCONTRACT_PENDING' ||
-                  documents[issueId]!['status'] == 0))
+                  documents[issueId]!['status'] == 0) &&
+              (keyword == null ||
+                  keyword.isEmpty ||
+                  (documents[issueId]!['billNo'] as String).contains(keyword)))
             {
               'rowKey': 'SUBCONTRACT:SUBCONTRACT_MATERIAL_ISSUE:$issueId',
               'id': issueId,
@@ -253,7 +265,8 @@ class SubcontractOutboundFakeApi extends ApiClient {
                   ? 'SUBCONTRACT_OUTBOUND'
                   : 'HISTORY_DETAIL',
               'targetId': issueId,
-              'canHandle': documents[issueId]!['status'] == 0,
+              'canHandle':
+                  rowsHandleable && documents[issueId]!['status'] == 0,
             },
       ];
       return {

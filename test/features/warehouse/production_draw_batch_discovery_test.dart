@@ -1396,7 +1396,10 @@ void main() {
         find.byKey(ValueKey('draw-discovery-warehouse-${row.id}')),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('原料仓二'));
+      // 2026-10 表格统一：选仓面板选中行后须确认(不再点击即关)。
+      await tester.tap(find.byKey(const Key('warehouse-picker-entry-w2')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
       await tester.pumpAndSettle();
       expect(
         find.descendant(

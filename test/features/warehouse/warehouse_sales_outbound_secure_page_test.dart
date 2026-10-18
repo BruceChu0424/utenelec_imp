@@ -13,15 +13,19 @@ import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_sales_outbound.dart';
+import 'package:uten_imp/features/warehouse/models/warehouse_task_center_record.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_sales_outbound_detail_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_sales_outbound_page.dart';
 import 'package:uten_imp/features/warehouse/repositories/warehouse_sales_outbound_repository.dart';
+import 'package:uten_imp/features/warehouse/repositories/warehouse_task_center_repository.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_sales_outbound_table_columns.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_sales_picking_fields.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 
+import '../../helpers/badge_summary_fixture.dart';
 import 'outbound_weight_fakes.dart';
 
 late SharedPreferences _preferences;
@@ -267,15 +271,26 @@ void main() {
           ),
           sharedPreferencesProvider.overrideWithValue(_preferences),
           warehouseSalesOutboundRepositoryProvider.overrideWithValue(gateway),
+          // 2026-10-17 起销售出库深链直落「出库任务中心 · 销售出库」统一表。
+          warehouseTaskCenterRepositoryProvider.overrideWithValue(
+            _SecureTaskCenterGateway(summary),
+          ),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.warehouseSalesOutboundView,
+          }),
+          isSuperAdminProvider.overrideWithValue(false),
+          fixedBadgeSummaryOverride(
+            badgeSummaryFixture(
+              facts: const {BadgeFact.warehouseSalesOutboundPendingPick: 1},
+            ),
+          ),
         ],
         child: const MaterialApp(home: WarehouseSalesOutboundPage()),
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('仓库销售出库'), findsOneWidget);
-    // 2026-09-03 分类范式：状态行默认不选（不发请求），先 tap「待拣货」才加载。
-    await tester.tap(find.text('待出库'));
-    await tester.pumpAndSettle();
+    expect(find.text('仓库任务中心'), findsOneWidget);
+    expect(find.text('销售出库'), findsOneWidget);
     expect(find.text('SO-OUT-001'), findsOneWidget);
     // 2026-09-24 标题下说明小字全站删除：顶栏不再有「仓库作业视图」副标题。
     expect(find.textContaining('仓库作业视图'), findsNothing);
@@ -290,6 +305,20 @@ void main() {
           ),
           sharedPreferencesProvider.overrideWithValue(_preferences),
           warehouseSalesOutboundRepositoryProvider.overrideWithValue(gateway),
+          // 同一测试内重挂 ProviderScope 时覆写集合长度必须一致(详情页用不到,
+          // 只为与列表挂载同长)。
+          warehouseTaskCenterRepositoryProvider.overrideWithValue(
+            _SecureTaskCenterGateway(summary),
+          ),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.warehouseSalesOutboundView,
+          }),
+          isSuperAdminProvider.overrideWithValue(false),
+          fixedBadgeSummaryOverride(
+            badgeSummaryFixture(
+              facts: const {BadgeFact.warehouseSalesOutboundPendingPick: 1},
+            ),
+          ),
         ],
         child: const MaterialApp(
           home: WarehouseSalesOutboundDetailPage(id: 'shipment-1'),
@@ -570,6 +599,50 @@ const _detailJson = <String, dynamic>{
     },
   ],
 };
+
+/// 任务中心统一表网关: 把销售出库夹具折成 SALES 行(2026-10-17 深链改版)。
+class _SecureTaskCenterGateway implements WarehouseTaskCenterGateway {
+  _SecureTaskCenterGateway(this.summary);
+
+  final WarehouseSalesOutboundSummary summary;
+
+  @override
+  Future<WarehouseTaskCenterPageResult> list({
+    required WarehouseTaskDirection direction,
+    String source = 'ALL',
+    WarehouseTaskView view = WarehouseTaskView.active,
+    String? status,
+    String? keyword,
+    String? billNo,
+    String? dateFrom,
+    String? dateTo,
+    WarehouseTaskScope warehouseScope = const WarehouseTaskScope.all(),
+    int page = 1,
+    int size = 20,
+    String? sort,
+    String? order,
+  }) async => WarehouseTaskCenterPageResult(
+    items: [
+      WarehouseTaskCenterRecord(
+        rowKey: 'SALES:SALES_SHIPMENT:${summary.id}',
+        id: summary.id,
+        sourceType: 'SALES',
+        recordType: 'SALES_SHIPMENT',
+        status: summary.warehouseWorkStatus ?? 'PENDING_PICK',
+        statusLabel: summary.statusLabel,
+        billNo: summary.billNo,
+        warehouseName: summary.warehouseName,
+        action: 'SALES_OUTBOUND',
+        targetId: summary.id,
+        canHandle: true,
+      ),
+    ],
+    page: page,
+    size: size,
+    total: 1,
+    totalPages: 1,
+  );
+}
 
 class _SalesGateway implements WarehouseSalesOutboundGateway {
   _SalesGateway(this.summary, this.value);

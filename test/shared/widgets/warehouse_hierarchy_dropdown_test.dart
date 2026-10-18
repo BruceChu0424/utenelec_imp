@@ -7,6 +7,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/widgets/warehouse_hierarchy_dropdown.dart';
 import 'package:uten_imp/shared/widgets/warehouse_picker_panel.dart';
@@ -435,6 +436,17 @@ void main() {
   });
 
   // ---- 查询口径侧滑面板(即时库存/货架目视化统一入口)------------
+
+  /// 面板条目改为统一表格行(2026-10 表格统一)：选中态读表格的 isSelected 谓词。
+  bool entrySelected(WidgetTester tester, String id) {
+    final table = tester.widget<MasterDataTableView<WarehouseDictEntry>>(
+      find.byWidgetPredicate(
+        (widget) => widget is MasterDataTableView<WarehouseDictEntry>,
+      ),
+    );
+    return table.isSelected!(table.items.singleWhere((e) => e.id == id));
+  }
+
   Future<void> pumpQueryPanel(
     WidgetTester tester,
     void Function(WarehousePickerResult?) onPicked, {
@@ -491,14 +503,7 @@ void main() {
       await tester.tap(find.byKey(const Key('warehouse-picker-entry-main')));
       await tester.pumpAndSettle();
       expect(result, isNull);
-      expect(
-        tester
-            .widget<ListTile>(
-              find.byKey(const Key('warehouse-picker-entry-main')),
-            )
-            .selected,
-        isTrue,
-      );
+      expect(entrySelected(tester, 'main'), isTrue);
       await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
       await tester.pumpAndSettle();
       expect(result?.id, 'main');
@@ -576,14 +581,7 @@ void main() {
         expect(results, [null]);
         await tester.tap(find.text('选择仓库'));
         await tester.pumpAndSettle();
-        expect(
-          tester
-              .widget<ListTile>(
-                find.byKey(const Key('warehouse-picker-entry-finished')),
-              )
-              .selected,
-          isTrue,
-        );
+        expect(entrySelected(tester, 'finished'), isTrue);
         await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
         await tester.pumpAndSettle();
         expect(results.last?.id, 'finished');

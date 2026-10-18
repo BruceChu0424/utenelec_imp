@@ -3,11 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 
-import '../../support/filter_segment_tap.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_iqc_stock_in.dart';
+import 'package:uten_imp/features/warehouse/models/warehouse_task_center_record.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_quality_result.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_sales_outbound.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_quality_result_detail_page.dart';
@@ -16,6 +16,10 @@ import 'package:uten_imp/features/warehouse/pages/warehouse_sales_outbound_page.
 import 'package:uten_imp/features/warehouse/repositories/warehouse_iqc_stock_in_repository.dart';
 import 'package:uten_imp/features/warehouse/repositories/warehouse_quality_result_repository.dart';
 import 'package:uten_imp/features/warehouse/repositories/warehouse_sales_outbound_repository.dart';
+import 'package:uten_imp/features/warehouse/repositories/warehouse_task_center_repository.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
+
+import '../../helpers/badge_summary_fixture.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
@@ -40,22 +44,34 @@ void main() {
           warehouseSalesOutboundRepositoryProvider.overrideWithValue(
             _SalesGateway(),
           ),
+          // 2026-10-17 起销售出库深链直落「出库任务中心 · 销售出库」统一表。
+          warehouseTaskCenterRepositoryProvider.overrideWithValue(
+            _SalesTaskCenterGateway(),
+          ),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.warehouseSalesOutboundView,
+          }),
+          isSuperAdminProvider.overrideWithValue(false),
+          fixedBadgeSummaryOverride(
+            badgeSummaryFixture(
+              facts: const {BadgeFact.warehouseSalesOutboundPendingPick: 1},
+            ),
+          ),
         ],
         child: const MaterialApp(home: WarehouseSalesOutboundPage()),
       ),
     );
     await tester.pumpAndSettle();
-    // 2026-09-03 分类范式：状态行默认不选（未选不发请求），
-    // 先选「待拣货」段再断言表格列。
-    await selectFilterSegment(tester, '待出库');
-    await tester.pumpAndSettle();
 
-    final table = tester
-        .widget<MasterDataTableView<WarehouseSalesOutboundSummary>>(
-          find.byKey(const Key('warehouse-sales-outbound-table')),
+    final table =
+        tester.widget<MasterDataTableView<WarehouseTaskCenterRecord>>(
+          find.byWidgetPredicate(
+            (widget) => widget is MasterDataTableView<WarehouseTaskCenterRecord>,
+          ),
         );
+    // 投影口径不变: 单号 / 作业状态 / 仓库等物理列在场, 商业列与商业文案缺席。
     final keys = {for (final column in table.columns) column.key};
-    expect(keys, containsAll(<String>{'billNo', 'warehouseWorkStatus'}));
+    expect(keys, containsAll(<String>{'billNo', 'status', 'warehouseName'}));
     expect(keys.any(_commercialKey), isFalse);
     _expectNoCommercialText();
     expect(tester.takeException(), isNull);
@@ -164,6 +180,46 @@ void _viewport(WidgetTester tester) {
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
+}
+
+/// 任务中心统一表网关: 把销售出库夹具折成 SALES 行(2026-10-17 深链改版)。
+class _SalesTaskCenterGateway implements WarehouseTaskCenterGateway {
+  @override
+  Future<WarehouseTaskCenterPageResult> list({
+    required WarehouseTaskDirection direction,
+    String source = 'ALL',
+    WarehouseTaskView view = WarehouseTaskView.active,
+    String? status,
+    String? keyword,
+    String? billNo,
+    String? dateFrom,
+    String? dateTo,
+    WarehouseTaskScope warehouseScope = const WarehouseTaskScope.all(),
+    int page = 1,
+    int size = 20,
+    String? sort,
+    String? order,
+  }) async => WarehouseTaskCenterPageResult(
+    items: [
+      WarehouseTaskCenterRecord(
+        rowKey: 'SALES:SALES_SHIPMENT:${_salesDetail.header.id}',
+        id: _salesDetail.header.id,
+        sourceType: 'SALES',
+        recordType: 'SALES_SHIPMENT',
+        status: _salesDetail.header.warehouseWorkStatus ?? 'PENDING_PICK',
+        statusLabel: _salesDetail.header.statusLabel,
+        billNo: _salesDetail.header.billNo,
+        warehouseName: _salesDetail.header.warehouseName,
+        action: 'SALES_OUTBOUND',
+        targetId: _salesDetail.header.id,
+        canHandle: true,
+      ),
+    ],
+    page: page,
+    size: size,
+    total: 1,
+    totalPages: 1,
+  );
 }
 
 class _SalesGateway implements WarehouseSalesOutboundGateway {

@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/data_display/uten_status_badge.dart'
     show UtenStatusBadgeType;
 import 'package:uten_imp/components/data_display/uten_status_cell_color.dart'
@@ -17,9 +18,12 @@ import 'package:uten_imp/features/operations_workbench/models/operations_workben
 import 'package:uten_imp/features/operations_workbench/repositories/operations_workbench_repository.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_decomposition_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/models/subcontract_short_delivery.dart'
     show subcontractProgressStatusLabel;
+import 'package:uten_imp/shared/providers/shared_providers.dart';
 
+import '../../helpers/badge_summary_fixture.dart';
 import 'fake_subcontract_draw_gateway.dart';
 
 class _Api extends ApiClient {
@@ -161,6 +165,8 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     final gateway = _Gateway();
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -168,7 +174,23 @@ void main() {
             Perm.subcontractApplicationView,
             Perm.subcontractOrderView,
           }),
+          isSuperAdminProvider.overrideWithValue(false),
           apiClientProvider.overrideWithValue(_Api()),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+          // ADR-184 后分段红黄数来自徽章事实(与网关 summary 同数): 待处理红 =
+          // 申请待下单(subcontractTaskWaitingOrder), 进行中红 = 财务驳回(rework),
+          // 黄 = 真实在办(subcontractTaskInProgress)。待处理红数 > 0 → 进页面
+          // 自动选中「待处理」, 待处理拍平表随挂载可见。
+          fixedBadgeSummaryOverride(
+            badgeSummaryFixture(
+              facts: const {
+                BadgeFact.subcontractTaskWaitingOrder: 1,
+                BadgeFact.subcontractTaskRework: 1,
+                BadgeFact.subcontractTaskShortDelivery: 0,
+                BadgeFact.subcontractTaskInProgress: 5,
+              },
+            ),
+          ),
         ],
         child: MaterialApp(
           home: SubcontractDecompositionPage(

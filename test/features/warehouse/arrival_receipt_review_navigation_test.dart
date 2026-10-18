@@ -9,6 +9,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -23,8 +24,10 @@ import 'package:uten_imp/core/theme/uten_colors.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/department/repositories/department_repository.dart';
+import 'package:uten_imp/core/security/secure_storage.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
 import 'package:uten_imp/core/router/route_names.dart';
+import 'package:uten_imp/features/warehouse/models/warehouse_task_center_record.dart';
 import 'package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_inbound_expectations_page.dart';
 import 'package:uten_imp/features/warehouse/repositories/procurement_inbound_repository.dart';
@@ -36,6 +39,7 @@ import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
+import '../../helpers/badge_summary_fixture.dart';
 import 'arrival_weight_test_support.dart';
 import 'inbound_arrival_test_support.dart';
 
@@ -834,6 +838,7 @@ void main() {
           employeeRepositoryProvider.overrideWithValue(
             DioEmployeeRepository(api),
           ),
+          apiClientProvider.overrideWithValue(api),
           procurementInboundRepositoryProvider.overrideWithValue(
             DioProcurementInboundRepository(api),
           ),
@@ -843,6 +848,11 @@ void main() {
           departmentCodeIdMapProvider.overrideWith(
             (ref) async => <String, String>{},
           ),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.warehouseInboundView,
+          }),
+          isSuperAdminProvider.overrideWithValue(false),
+          fixedBadgeSummaryOverride(badgeSummaryFixture()),
         ],
         child: MaterialApp.router(
           routerConfig: router,
@@ -863,17 +873,18 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final taskTable = tester.widget<MasterDataTableView<InboundExpectation>>(
-      find.byKey(const Key('inbound-expectation-task-table')),
+    // 2026-10-17 起预计到货深链直落「入库任务中心 · 全部任务」统一表。
+    final taskTable = tester.widget<MasterDataTableView<WarehouseTaskCenterRecord>>(
+      find.byWidgetPredicate(
+        (widget) => widget is MasterDataTableView<WarehouseTaskCenterRecord>,
+      ),
     );
-    expect(taskTable.selectable, isFalse);
-    expect(find.textContaining('双击直达下一步办理'), findsOneWidget);
-    expect(find.text('已选 0 项'), findsNothing);
+    expect(taskTable.items, hasLength(1));
 
-    // 没有安全批量登记命令：单击仅单选、不打开详情；双击仍沿用原业务链。
+    // 单击仅选中待登记任务，不打开详情、不弹任何确认框。
     await tester.tap(find.text('SC-PO-001'));
     await tester.pump();
-    expect(find.text('已选 1 项'), findsNothing);
+    expect(find.text('登记实际到货'), findsNothing);
     expect(find.byType(AlertDialog), findsNothing);
     await tester.pump(const Duration(milliseconds: 400));
 
@@ -992,7 +1003,7 @@ void main() {
 
     // 断言 2：回任务中心（不再直达审核页）；原结果由第二次同-key 响应收敛。
     expect(find.byType(_ReviewStub), findsNothing);
-    expect(find.text('预计到货任务中心'), findsOneWidget);
+    expect(find.text('仓库任务中心'), findsOneWidget);
     await tester.pumpAndSettle(const Duration(seconds: 5));
 
     // A new delivery with identical fields must not replay the previous receipt.
@@ -1081,12 +1092,22 @@ void main() {
           sessionProvider.overrideWith(_TestSessionNotifier.new),
           masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
           ...warehouseWeightTestOverrides(api),
+          apiClientProvider.overrideWithValue(api),
           procurementInboundRepositoryProvider.overrideWithValue(
             DioProcurementInboundRepository(api),
           ),
           warehousePlaceSuggestionRepositoryProvider.overrideWithValue(
             WarehousePlaceSuggestionRepository(api),
           ),
+          // 「继续送检」的认证请求范围捕获读令牌记录; 前面的登记页用例会在测试
+          // 结束时留下未完成的读取, 把进程级令牌锁留在持有态——这里用无锁桩
+          // 直接给空快照, 不排在那条永远不会完成的队列后面。
+          secureStorageProvider.overrideWithValue(_UnlockedSecureStorage()),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.warehouseInboundView,
+          }),
+          isSuperAdminProvider.overrideWithValue(false),
+          fixedBadgeSummaryOverride(badgeSummaryFixture()),
         ],
         child: MaterialApp.router(
           routerConfig: router,
@@ -1110,23 +1131,26 @@ void main() {
     expect(find.text('委外 · 已登记 · 待送检'), findsOneWidget);
     await _doubleTapRow(tester, find.text('SC-PO-001'));
     await tester.pumpAndSettle();
-    expect(find.text('确认送检'), findsOneWidget);
-    await tester.tap(find.text('确认送检'));
+    expect(find.text('继续送检 1 张收货单'), findsOneWidget);
+    await tester.tap(find.text('确认处理'));
     await tester.pump();
     for (var i = 0; i < 12; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
 
-    // 断言 1：请求打到「完成登记」端点（按草稿单 id），不进收货单详情页。
+    // 断言 1：请求打到「批量完成登记」端点（按草稿单 id，幂等键跟随本次决定），
+    // 不进收货单详情页。
+    expect(api.lastPostPath, '/warehouse/inbound/arrivals/batch-complete');
+    expect((api.lastPostBody!['receiptIds'] as List).single, 'sc-receipt-9');
     expect(
-      api.lastPostPath,
-      '/warehouse/inbound/arrivals/sc-receipt-9/complete',
+      api.lastPostBody!['idempotencyKey'] as String,
+      startsWith('arrival-stock-in-batch-'),
     );
     expect(find.byType(_ReviewStub), findsNothing);
 
-    // 断言 2：回任务中心并提示下一步。
-    expect(find.text('预计到货任务中心'), findsOneWidget);
-    expect(find.textContaining('检查进度与结果请在「品质部检查结果」页查看'), findsWidgets);
+    // 断言 2：回任务中心并提示下一步（品质进度去「品质部检查结果」核对）。
+    expect(find.text('仓库任务中心'), findsOneWidget);
+    expect(find.textContaining('请继续核对品质与入库状态'), findsWidgets);
     await tester.pumpAndSettle(const Duration(seconds: 5));
   });
 
@@ -1144,8 +1168,9 @@ void main() {
           path: '/',
           builder: (_, _) => const WarehouseInboundExpectationsPage(),
         ),
+        // 双击行直达「品质部检查结果」详情（2026-10-17 起按收货类型+id 深链）。
         GoRoute(
-          path: '/warehouse/quality-results',
+          path: '${RouteName.warehouseQualityResults}/:type/:id',
           builder: (_, _) => const _QualityResultsStub(),
         ),
       ],
@@ -1161,12 +1186,18 @@ void main() {
           sessionProvider.overrideWith(_TestSessionNotifier.new),
           masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
           ...warehouseWeightTestOverrides(api),
+          apiClientProvider.overrideWithValue(api),
           procurementInboundRepositoryProvider.overrideWithValue(
             DioProcurementInboundRepository(api),
           ),
           warehousePlaceSuggestionRepositoryProvider.overrideWithValue(
             WarehousePlaceSuggestionRepository(api),
           ),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.warehouseInboundView,
+          }),
+          isSuperAdminProvider.overrideWithValue(false),
+          fixedBadgeSummaryOverride(badgeSummaryFixture()),
         ],
         child: MaterialApp.router(routerConfig: router),
       ),
@@ -1199,12 +1230,18 @@ void main() {
           sessionProvider.overrideWith(_TestSessionNotifier.new),
           masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
           ...warehouseWeightTestOverrides(api),
+          apiClientProvider.overrideWithValue(api),
           procurementInboundRepositoryProvider.overrideWithValue(
             DioProcurementInboundRepository(api),
           ),
           warehousePlaceSuggestionRepositoryProvider.overrideWithValue(
             WarehousePlaceSuggestionRepository(api),
           ),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.warehouseInboundView,
+          }),
+          isSuperAdminProvider.overrideWithValue(false),
+          fixedBadgeSummaryOverride(badgeSummaryFixture()),
         ],
         child: MaterialApp.router(
           routerConfig: router,
@@ -1256,6 +1293,18 @@ class _QualityResultsStub extends StatelessWidget {
   @override
   Widget build(BuildContext context) =>
       const Scaffold(body: Text('品质部检查结果(桩)'));
+}
+
+/// 无锁安全存储桩：认证请求范围捕获只读令牌快照与模拟身份，直接给空记录。
+class _UnlockedSecureStorage extends SecureStorage {
+  _UnlockedSecureStorage() : super(const FlutterSecureStorage());
+
+  @override
+  Future<AuthTokenSnapshot> getAuthTokenSnapshot() async =>
+      const AuthTokenSnapshot.empty();
+
+  @override
+  Future<ImpersonationRecord?> getImpersonationRecord() async => null;
 }
 
 /// 固定当前登录人为 emp-me（收货人默认值来源）；无权限点（角标/计数不拉网）。
@@ -1315,6 +1364,18 @@ class _FakeApi extends ApiClient {
         'total': 1,
       };
     }
+    // 2026-10-17 起任务中心统一表：预计到货深链直落「入库任务中心 · 全部任务」，
+    // 行按办理阶段下发 action / canHandle / tone。
+    if (path == '/warehouse/task-center/inbound') {
+      return {
+        'items': [_taskCenterRowJson()],
+        'page': 1,
+        'size': 20,
+        'total': 1,
+        'totalPages': 1,
+        'facets': const <String, dynamic>{},
+      };
+    }
     if (path.contains('/count')) return const {'count': 0};
     throw ApiException('TEST_UNEXPECTED_GET', path);
   }
@@ -1358,13 +1419,20 @@ class _FakeApi extends ApiClient {
       }
       return arrivalBatchAnswer(lastPostBody!);
     }
-    if (path.startsWith('/warehouse/inbound/arrivals/') &&
-        path.endsWith('/complete')) {
+    if (path == '/warehouse/inbound/arrivals/batch-complete') {
       lastPostPath = path;
-      return const {
-        'outcome': 'SUBMITTED_FOR_INSPECTION',
-        'receiptId': 'sc-receipt-9',
-        'receiptBillNo': 'SC-SR-009',
+      lastPostBody = Map<String, dynamic>.from(body! as Map);
+      final receiptIds = (lastPostBody!['receiptIds'] as List).cast<String>();
+      return {
+        'processedCount': receiptIds.length,
+        'items': [
+          for (final receiptId in receiptIds)
+            {
+              'receiptId': receiptId,
+              'receiptBillNo': 'SC-SR-009',
+              'outcome': 'SUBMITTED_FOR_INSPECTION',
+            },
+        ],
       };
     }
     if (path == '/warehouse/place-suggestions') {
@@ -1373,6 +1441,52 @@ class _FakeApi extends ApiClient {
       return const {'items': <Map<String, dynamic>>[]};
     }
     throw ApiException('TEST_UNEXPECTED_POST', path);
+  }
+
+  /// 任务中心统一表行(2026-10-17 起)：与 [_expectationJson] 同一份数据按办理阶段
+  /// 折成 action / statusLabel / tone —— 待登记可双击直达登记页, 已登记待送检走
+  /// 一步「继续送检」, 纯等待品质行只读移交「品质部检查结果」。
+  Map<String, dynamic> _taskCenterRowJson() {
+    final registered = pendingDraftReceiptIds.isNotEmpty;
+    final awaitingQuality = inspectionPendingReceipts > 0;
+    return {
+      'rowKey': 'SUBCONTRACT:'
+          '${awaitingQuality ? 'QUALITY_RESULT' : registered ? 'ARRIVAL_CONTINUE' : 'ARRIVAL_REGISTER'}'
+          ':expectation-1',
+      'id': 'expectation-1',
+      'sourceType': 'SUBCONTRACT',
+      'recordType': 'SUBCONTRACT_EXPECTATION',
+      'status': awaitingQuality
+          ? 'AWAITING_QUALITY'
+          : registered
+          ? 'DRAFT_PENDING_INSPECTION'
+          : 'OPEN',
+      'statusLabel': awaitingQuality
+          ? '委外 · 已送检 · 结果见「品质部检查结果」'
+          : registered
+          ? '委外 · 已登记 · 待送检'
+          : '委外 · 待登记',
+      'tone': awaitingQuality ? 'warning' : 'info',
+      'billNo': 'SC-PO-001',
+      'partyName': '测试委外商',
+      'businessDate': '2026-10-01',
+      'warehouseName': '成品仓',
+      'action': awaitingQuality
+          ? 'QUALITY_RESULT'
+          : registered
+          ? 'ARRIVAL_CONTINUE'
+          : 'ARRIVAL_REGISTER',
+      'targetId': 'expectation-1',
+      'canHandle': !awaitingQuality,
+      'actionData': {
+        if (registered) 'draftReceiptIds': pendingDraftReceiptIds,
+        if (awaitingQuality)
+          ...const {
+            'receiptType': 'SUBCONTRACT',
+            'receiptId': 'receipt-inspection-1',
+          },
+      },
+    };
   }
 
   Map<String, dynamic> _expectationJson() {

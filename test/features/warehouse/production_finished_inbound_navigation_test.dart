@@ -1,3 +1,7 @@
+// 产成品入库导航(2026-10-17 起 /warehouse/production-finished-in/tasks 深链直落
+// 「入库任务中心 · 产成品入库」分段): 列表/搜索/返回刷新走统一任务中心;
+// 双击按任务阶段进现有到货登记路由, 保留 returnTo 与返回后的刷新;
+// 多选两颗路线按钮的 preStock 参数由服务端行事实 + 所选路线决定(ADR-184)。
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -8,20 +12,23 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:go_router/go_router.dart';
-import 'package:uten_imp/components/buttons/uten_app_bar_action_button.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/core/network/api_client.dart';
-import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/core/router/nav_helpers.dart';
 import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
-import 'package:uten_imp/features/warehouse/models/production_finished_inbound_task.dart';
+import 'package:uten_imp/features/warehouse/models/warehouse_task_center_record.dart';
 import 'package:uten_imp/features/warehouse/pages/production_finished_inbound_tasks_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
+
+import '../../helpers/badge_summary_fixture.dart';
 
 const _arrivalTaskId = '20000000-0000-0000-0000-000000000001';
 const _finalTaskId = '10000000-0000-0000-0000-000000000001';
+const _registerRowKey = 'FINISHED:FINISHED_REGISTER:$_arrivalTaskId';
+const _finalRowKey = 'FINISHED:FINAL_COUNT:$_finalTaskId';
 
 late SharedPreferences _preferences;
 
@@ -51,8 +58,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(api.taskRequestCount, 1);
+      // ADR-184：分段红数来自徽章汇总(挂载已固定), 不再单发 /count。
       expect(api.countRequestCount, 0);
-      expect(find.text('产成品入库任务'), findsOneWidget);
+      expect(find.text('产成品入库'), findsOneWidget);
       expect(
         find.byType(ModalBarrier).evaluate().length,
         baselineModalBarrierCount,
@@ -72,54 +80,39 @@ void main() {
         location: RouteName.warehouse,
         tick: 1,
       );
-      await tester.pump();
+      await tester.pumpAndSettle();
+      // 其他页面的返回信号不刷新本页。
+      expect(api.taskRequestCount, 1);
       container.read(pageResumeProvider.notifier).state = (
         location: RouteName.warehouseProductionFinishedInboundTasks,
         tick: 2,
       );
       await tester.pumpAndSettle();
+      // 本页返回信号: 纯查看返回不重拉(ADR-108 收紧: 期间没写过数据、未超 30 秒)。
       expect(api.taskRequestCount, 1);
 
       api.blockNextTaskRequest();
-      await tester.tap(
-        find.byKey(const Key('production-finished-inbound-refresh')),
-      );
-      // 2026-09-01 起正文抽成 View：加载态经 onLoadingChanged 回传独立页 AppBar，
-      // 置灰在第二帧生效（tap 帧 + post-frame 加载帧）。
+      await tester.tap(find.byTooltip('刷新'));
       await tester.pump();
-      await tester.pump();
-      expect(api.taskRequestCount, 2);
-      // 2026-09-11 起顶栏动作统一走 UtenAppBarActionButton（与「权限设置」同高 36）。
-      expect(
-        tester
-            .widget<UtenAppBarActionButton>(
-              find.byKey(const Key('production-finished-inbound-refresh')),
-            )
-            .onPressed,
-        isNull,
-      );
-      await tester.tap(
-        find.byKey(const Key('production-finished-inbound-refresh')),
-      );
       await tester.pump();
       expect(api.taskRequestCount, 2);
 
       final searchField = find.descendant(
-        of: find.byKey(const Key('production-finished-inbound-search')),
+        of: find.byKey(const Key('warehouse-task-center-search')),
         matching: find.byType(TextField),
       );
       await tester.enterText(searchField, 'RB202608280001');
-      await tester.pump();
-      api.completeBlockedTaskRequest(total: 99);
-      await tester.pump();
-
-      expect(find.text('共 99 项 · 单击多选，双击详情'), findsNothing);
-      await tester.pump(const Duration(milliseconds: 301));
+      // 300ms 防抖后按新关键词重拉; 期间卡住的旧刷新随后迟到, 不能覆盖新结果。
+      await tester.pump(const Duration(milliseconds: 350));
       await tester.pumpAndSettle();
-
       expect(api.taskRequestCount, 3, reason: api.taskKeywords.toString());
       expect(api.taskKeywords.last, 'RB202608280001');
-      expect(find.text('共 2 项 · 单击多选，双击详情'), findsOneWidget);
+      expect(find.text('共 2 条'), findsOneWidget);
+
+      api.completeBlockedTaskRequest(total: 99);
+      await tester.pumpAndSettle();
+      expect(find.text('共 99 条'), findsNothing);
+      expect(find.text('共 2 条'), findsOneWidget);
 
       // 单击只切换多选，不进入任何详情。
       await tester.tap(find.text('短收余量待点收'));
@@ -132,19 +125,28 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('arrival-report-$_arrivalTaskId'), findsOneWidget);
+      final pushedLocation = tester
+          .widget<_RegistrationRouteProbe>(find.byType(_RegistrationRouteProbe))
+          .location;
       expect(
-        find.text(
-          'return-${RouteName.warehouseProductionFinishedInboundTasks}',
-        ),
+        find.text('return-${pushedLocation.queryParameters['returnTo']}'),
         findsOneWidget,
+      );
+      // returnTo 记录进入时的完整地址(含 hub 带来的原 returnTo 参数),
+      // 回退仍先落回本任务页。
+      expect(
+        Uri.parse(pushedLocation.queryParameters['returnTo']!).path,
+        RouteName.warehouseProductionFinishedInboundTasks,
+        reason: pushedLocation.toString(),
       );
       expect(api.taskRequestCount, 3);
 
       await tester.tap(find.byKey(const Key('complete-arrival-route')));
       await tester.pumpAndSettle();
 
+      // 办理返回后由打开路径主动重拉一次列表。
       expect(api.taskRequestCount, 4);
-      expect(find.text('产成品入库任务'), findsOneWidget);
+      expect(find.text('产成品入库'), findsOneWidget);
 
       await tester.tap(find.byTooltip('返回'));
       await tester.pumpAndSettle();
@@ -161,7 +163,7 @@ void main() {
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1200, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      final api = _TrackingFinishedInboundApi();
+      final api = _TrackingFinishedInboundApi()..rowsHandleable = false;
       final router = _buildRouter(
         initialLocation: RouteName.warehouseProductionFinishedInboundTasks,
       );
@@ -172,22 +174,22 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final table = tester
-          .widget<MasterDataTableView<ProductionFinishedInboundTask>>(
-            find.byKey(const Key('production-finished-inbound-task-table')),
-          );
+      final table = tester.widget<MasterDataTableView<WarehouseTaskCenterRecord>>(
+        find.byWidgetPredicate(
+          (widget) => widget is MasterDataTableView<WarehouseTaskCenterRecord>,
+        ),
+      );
       expect(table.selectable, isFalse);
       expect(table.batchActionsBuilder, isNull);
       final actionLabels = [
         for (final item in table.items)
           (table.rowMenuBuilder!(item).single as UtenMenuItem).label,
       ];
-      expect(actionLabels, ['查看到货登记详情', '查看待点收详情']);
+      expect(actionLabels, ['查看原单', '查看原单']);
       expect(
-        find.byKey(
-          const ValueKey('finished-inbound-task-action-$_finalTaskId'),
-        ),
+        find.byKey(const Key('warehouse-task-record-batch')),
         findsNothing,
+        reason: '只读账号没有批量办理动作',
       );
 
       await _doubleTapRow(tester, find.text('短收余量待点收'));
@@ -203,7 +205,7 @@ void main() {
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1200, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      final api = _TrackingFinishedInboundApi();
+      final api = _TrackingFinishedInboundApi()..allowPreStock = true;
       final router = _buildRouter(
         initialLocation: RouteName.warehouseProductionFinishedInboundTasks,
       );
@@ -218,13 +220,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // 待登记阶段：与预计到货同款两颗路线按钮并排(未勾选时置灰、不带计数)。
-      const stockInFirst = Key('inbound-route-batch-stockInFirst');
-      const inspectFirst = Key('inbound-route-batch-inspectFirst');
-      expect(find.byKey(stockInFirst), findsOneWidget);
-      expect(find.byKey(inspectFirst), findsOneWidget);
-      expect(find.text('先入库后质检'), findsOneWidget);
-      expect(find.text('先质检后入库'), findsOneWidget);
+      // 未勾选时不占位显示路线按钮(旧版置灰按钮改由选择后才出现)。
+      expect(find.text('先入库后质检'), findsNothing);
+      expect(find.text('先质检后入库'), findsNothing);
       expect(
         find.byKey(const Key('production-finished-inbound-batch-register')),
         findsNothing,
@@ -236,7 +234,7 @@ void main() {
       expect(find.text('先质检后入库(1)'), findsOneWidget);
 
       // 「先入库后质检(N)」：进批量登记页带 preStock=1。
-      await tester.tap(find.byKey(stockInFirst));
+      await tester.tap(find.text('先入库后质检(1)'));
       await tester.pumpAndSettle();
       expect(find.byType(_RegistrationRouteProbe), findsOneWidget);
       var location = tester
@@ -253,11 +251,14 @@ void main() {
         RouteName.warehouseProductionFinishedInboundTasks,
       );
 
-      // 未办理直接返回：勾选保留，改点「先质检后入库(N)」带 preStock=0。
+      // 未办理直接返回：列表刷新清空勾选，重新勾选后改点「先质检后入库(N)」带 preStock=0。
       await tester.tap(find.byKey(const Key('leave-batch-route')));
       await tester.pumpAndSettle();
+      expect(find.text('先质检后入库(1)'), findsNothing);
+      await tester.tap(find.text('待登记入库'));
+      await tester.pump();
       expect(find.text('先质检后入库(1)'), findsOneWidget);
-      await tester.tap(find.byKey(inspectFirst));
+      await tester.tap(find.text('先质检后入库(1)'));
       await tester.pumpAndSettle();
       location = tester
           .widget<_RegistrationRouteProbe>(find.byType(_RegistrationRouteProbe))
@@ -294,6 +295,10 @@ Widget _testApp({
       ...extraPermissions,
     }),
     isSuperAdminProvider.overrideWithValue(false),
+    // ADR-184：分段红数固定为徽章事实, 不再单发 /count, 也不走真实轮询。
+    fixedBadgeSummaryOverride(
+      badgeSummaryFixture(facts: const {BadgeFact.finishedInbound: 2}),
+    ),
   ],
   child: MaterialApp.router(routerConfig: router),
 );
@@ -366,18 +371,24 @@ class _TrackingFinishedInboundApi extends ApiClient {
 
   int taskRequestCount = 0;
   int countRequestCount = 0;
-  int facetRequestCount = 0;
   final List<String> taskKeywords = [];
-  Completer<Map<String, dynamic>>? _blockedTaskRequest;
+  Completer<Map<String, dynamic>>? _armedBlock;
+  Completer<Map<String, dynamic>>? _issuedBlock;
+
+  /// 服务端行事实(ADR-184)：canHandle 折叠办理资格, canRegisterBeforeInspection
+  /// 折叠「先入库后质检」显式权限。
+  bool rowsHandleable = true;
+  bool allowPreStock = false;
 
   void blockNextTaskRequest() {
-    _blockedTaskRequest = Completer<Map<String, dynamic>>();
+    _armedBlock = Completer<Map<String, dynamic>>();
   }
 
   void completeBlockedTaskRequest({required int total}) {
-    final blocked = _blockedTaskRequest;
-    if (blocked == null) throw StateError('No blocked task request');
-    blocked.complete(_taskPayload(total: total));
+    final issued = _issuedBlock;
+    _issuedBlock = null;
+    if (issued == null) throw StateError('No blocked task request');
+    issued.complete(_taskPayload(total: total));
   }
 
   @override
@@ -385,64 +396,69 @@ class _TrackingFinishedInboundApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == ApiEndpoints.productionFinishedInboundTaskFacets) {
-      facetRequestCount++;
-      return const {};
-    }
     if (path.endsWith('/count')) {
       countRequestCount++;
       return const {'count': 2};
     }
-    if (path != ApiEndpoints.productionFinishedInboundTasks) {
+    if (path != '/warehouse/task-center/inbound') {
       throw StateError('Unexpected request: $path');
     }
     taskRequestCount++;
     taskKeywords.add(query?['keyword'] as String? ?? '');
-    final blocked = _blockedTaskRequest;
+    // 只拦截下一次请求(刷新), 防抖后的关键词请求走正常数据。
+    final blocked = _armedBlock;
+    _armedBlock = null;
     if (blocked != null && !blocked.isCompleted) {
+      _issuedBlock = blocked;
       return blocked.future;
     }
     return _taskPayload();
   }
 
   Map<String, dynamic> _taskPayload({int total = 2}) => {
-    'items': const [
+    'items': [
       {
-        'taskStage': 'ARRIVAL_REGISTRATION',
-        'taskId': _arrivalTaskId,
-        'reportId': _arrivalTaskId,
-        'documentId': null,
-        'documentNo': null,
-        'documentDate': '2026-08-28',
-        'planNo': 'SJ202608270001',
-        'reportNos': 'RB202608280001',
-        'goodsSummary': 'V5多功能三极插座E极插套(酸洗)',
-        'lineCount': 1,
-        'pendingQty': 1000,
-        'createdAt': '2026-08-28T04:00:00Z',
-        'residualTask': false,
+        'rowKey': _registerRowKey,
+        'id': _arrivalTaskId,
+        'sourceType': 'FINISHED',
+        'recordType': 'FINISHED_ARRIVAL_REPORT',
+        'status': 'FINISHED_REGISTER',
+        'statusLabel': '待登记入库',
+        'billNo': 'SJ202608270001',
+        'businessDate': '2026-08-28',
+        'warehouseName': '半成品仓',
+        'action': 'FINISHED_REGISTER',
+        'targetId': _arrivalTaskId,
+        'canHandle': rowsHandleable,
+        'actionData': {
+          'reportId': _arrivalTaskId,
+          'canRegisterBeforeInspection': allowPreStock,
+        },
       },
       {
-        'taskStage': 'FINAL_COUNT',
-        'taskId': _finalTaskId,
-        'reportId': _arrivalTaskId,
-        'documentId': _finalTaskId,
-        'documentNo': 'CPRK202608280001',
-        'documentDate': '2026-08-28',
-        'warehouseId': '10000000-0000-0000-0000-000000000002',
+        'rowKey': _finalRowKey,
+        'id': _finalTaskId,
+        'sourceType': 'FINISHED',
+        'recordType': 'FINISHED_IN_DOCUMENT',
+        'status': 'FINAL_COUNT',
+        'statusLabel': '短收余量待点收',
+        'billNo': 'CPRK202608280001',
+        'businessDate': '2026-08-28',
         'warehouseName': '半成品仓',
-        'planNo': 'SJ202608280001',
-        'reportNos': 'RB202608280001',
-        'goodsSummary': 'V5多功能三极插座E极插套(酸洗)',
-        'lineCount': 1,
-        'pendingQty': 1000,
-        'createdAt': '2026-08-28T05:00:00Z',
-        'residualTask': true,
+        'action': 'FINISHED_COUNT',
+        'targetId': _finalTaskId,
+        'canHandle': rowsHandleable,
+        'actionData': {
+          'taskId': _finalTaskId,
+          'documentId': _finalTaskId,
+          'pendingQty': 1000,
+        },
       },
     ],
     'page': 1,
     'size': 40,
     'total': total,
     'totalPages': 1,
+    'facets': const <String, dynamic>{},
   };
 }

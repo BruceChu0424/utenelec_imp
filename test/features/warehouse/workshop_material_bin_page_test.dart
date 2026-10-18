@@ -4,6 +4,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
@@ -381,10 +382,16 @@ void main() {
       '没勾选时按钮灰显', (tester) async {
     final repo = FakeWorkshopMaterialRepository()
       ..settingsResult = const [wmTestWorkshop, _targetOpenable];
+    // 同一棵树上切换权限(第二棵 ProviderScope 不会让页面状态读到新权限):
+    // 从只有查看切到持有设置码, 勾选列与批量动作随之出现。
+    final livePermissions = StateProvider<Set<String>>(
+      (ref) => const {Perm.workshopMaterialView},
+    );
     await pumpWorkshopMaterialPage(
       tester,
       const WorkshopMaterialBinPage(),
       repo: repo,
+      permissionState: livePermissions,
     );
     expect(find.byKey(const Key('wm-overview-table')), findsOneWidget);
     expect(
@@ -397,12 +404,13 @@ void main() {
     );
     expect(find.byKey(const Key('wm-overview-batch-open')), findsNothing);
 
-    await pumpWorkshopMaterialPage(
-      tester,
-      const WorkshopMaterialBinPage(),
-      repo: repo,
-      permissions: const {Perm.workshopMaterialSetup},
+    final container = ProviderScope.containerOf(
+      tester.element(find.byKey(const Key('wm-overview-table'))),
     );
+    container.read(livePermissions.notifier).state = const {
+      Perm.workshopMaterialSetup,
+    };
+    await tester.pumpAndSettle();
     expect(
       tester
           .widget<MasterDataTableView<WmSetting>>(

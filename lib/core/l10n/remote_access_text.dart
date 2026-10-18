@@ -197,7 +197,16 @@ const remoteAccessTexts = <String, List<String>>{
     'Identity verified. Check the original result before continuing; the request was not retried.',
     '본인 인증이 완료되었습니다. 원래 결과를 확인한 후 계속하세요. 요청은 재전송되지 않았습니다.',
   ],
-  'loginOtp': ['需要动态验证码？', 'Use an authenticator code', '인증 앱 코드 사용'],
+  'loginOtpRequired': [
+    '当前为外网登录，请输入验证器中的 6 位动态验证码',
+    'You are signing in remotely. Enter the 6-digit code from your authenticator.',
+    '외부에서 로그인 중입니다. 인증 앱의 6자리 코드를 입력하세요.',
+  ],
+  'loginCancelOtp': [
+    '返回账号密码登录',
+    'Back to account and password',
+    '계정 및 비밀번호 로그인으로 돌아가기',
+  ],
   'loginEnroll': [
     '该账号尚未绑定验证器，请先在公司内网登录并到“设置 → 远程身份验证”绑定。',
     'Set up an authenticator first: sign in from the office, then open Settings → Remote identity verification.',

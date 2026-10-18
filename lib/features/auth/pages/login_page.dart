@@ -56,7 +56,9 @@ class _LoginPageState extends ConsumerState<LoginPage>
   final _accountController = TextEditingController();
   final _passwordController = TextEditingController();
   final _otpController = TextEditingController();
-  bool _showOtp = false;
+  bool _requiresOtp = false;
+  String _lastAccount = '';
+  int _loginContextEpoch = 0;
   bool _isLoading = false;
   bool _isRecoveringServer = false;
   String? _errorMessage;
@@ -65,6 +67,9 @@ class _LoginPageState extends ConsumerState<LoginPage>
   void initState() {
     super.initState();
     _accountController.addListener(_clearOtpForAccountChange);
+    ref.listenManual(apiBaseUrlProvider, (previous, next) {
+      if (previous != next) _resetOtpChallenge();
+    });
     _controller = AnimationController(vsync: this, duration: UtenAnim.slow);
     _fadeAnimation = CurvedAnimation(
       parent: _controller,
@@ -87,7 +92,21 @@ class _LoginPageState extends ConsumerState<LoginPage>
   }
 
   void _clearOtpForAccountChange() {
+    final account = _accountController.text.trim();
+    if (account == _lastAccount) return;
+    _lastAccount = account;
+    _resetOtpChallenge();
+  }
+
+  void _resetOtpChallenge() {
+    // Challenges belong to one account and connection, including A -> B -> A.
+    _loginContextEpoch++;
     _otpController.clear();
+    if (!_requiresOtp && _errorMessage == null) return;
+    setState(() {
+      _requiresOtp = false;
+      _errorMessage = null;
+    });
   }
 
   Future<void> _handleLogin() async {
@@ -97,6 +116,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
       return;
     }
 
+    final loginContextEpoch = _loginContextEpoch;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -109,7 +129,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
           .login(
             account: account,
             password: _passwordController.text,
-            otpCode: _showOtp ? _otpController.text : null,
+            otpCode: _requiresOtp ? _otpController.text : null,
           );
       // 登录成功：记住账号（只记账号不记密码）
       await ref.read(accountHistoryProvider).add(account);
@@ -119,18 +139,22 @@ class _LoginPageState extends ConsumerState<LoginPage>
         context.go(widget.returnTo ?? RouteName.dashboard);
       }
     } on ApiException catch (e) {
-      if (mounted) {
+      if (mounted && loginContextEpoch == _loginContextEpoch) {
         setState(() {
-          if (e.code == 'MFA_REQUIRED' || e.code == 'MFA_INVALID') {
-            _showOtp = true;
-          }
-          _errorMessage = remoteAccessError(context, e);
+          _requiresOtp = e.code == 'MFA_REQUIRED' || e.code == 'MFA_INVALID';
+          _errorMessage = e.code == 'MFA_REQUIRED'
+              ? remoteAccessText(context, 'loginOtpRequired')
+              : remoteAccessError(context, e);
           _otpController.clear();
         });
       }
     } catch (e) {
-      if (mounted) {
-        setState(() => _errorMessage = '登录失败，请稍后重试');
+      if (mounted && loginContextEpoch == _loginContextEpoch) {
+        setState(() {
+          _requiresOtp = false;
+          _errorMessage = '登录失败，请稍后重试';
+          _otpController.clear();
+        });
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -140,6 +164,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
   Future<void> _restoreAutomaticServer() async {
     if (_isLoading || _isRecoveringServer || kIsWeb) return;
     final l10n = AppLocalizations.of(context);
+    _resetOtpChallenge();
     setState(() {
       _isRecoveringServer = true;
       _errorMessage = null;
@@ -151,10 +176,6 @@ class _LoginPageState extends ConsumerState<LoginPage>
       await ref.read(localServerReachableProvider.notifier).probe();
       ref.invalidate(apiBaseUrlProvider);
       if (mounted) {
-        setState(() {
-          _showOtp = false;
-          _otpController.clear();
-        });
         context.appSuccess(l10n.loginServerRecoverySuccess);
       }
     } catch (_) {
@@ -305,9 +326,10 @@ class _LoginPageState extends ConsumerState<LoginPage>
                 : null,
             autofillHints: const ['password'],
           ),
-          const SizedBox(height: UtenSpacing.s16),
           // 「记住此设备」开关已移除：安全考虑，每次登录必须输密码（不长期记住设备/免密）。
-          if (_showOtp) ...[
+          // Only a server challenge may add OTP to the ordinary password form.
+          if (_requiresOtp) ...[
+            const SizedBox(height: UtenSpacing.s16),
             UtenInput(
               key: const Key('login-otp'),
               controller: _otpController,
@@ -326,15 +348,14 @@ class _LoginPageState extends ConsumerState<LoginPage>
                   : remoteAccessText(context, 'otpInvalid'),
               onFieldSubmitted: (_) => _handleLogin(),
             ),
-            const SizedBox(height: UtenSpacing.s16),
-          ] else
             TextButton(
-              key: const Key('login-show-otp'),
+              key: const Key('login-cancel-otp'),
               onPressed: _isLoading || _isRecoveringServer
                   ? null
-                  : () => setState(() => _showOtp = true),
-              child: Text(remoteAccessText(context, 'loginOtp')),
+                  : _resetOtpChallenge,
+              child: Text(remoteAccessText(context, 'loginCancelOtp')),
             ),
+          ],
           // 账号历史单独记忆（AccountField 下拉，只记账号不记密码）。
           if (_errorMessage != null) ...[
             const SizedBox(height: UtenSpacing.s16),

@@ -13,6 +13,9 @@ analyzer:
     - "server/target/**"
     - "server/target-*/**"
     - ".local-tmp/**"
+    # 本地构建证据和源码快照由原始 lib/test 覆盖分析，避免重复扫描。
+    - "output/**"
+    - ".local-artifacts/**"
     - ".claude/**"
   language:
     strict-casts: true

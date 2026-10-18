@@ -174,11 +174,13 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final table = tester.widget<MasterDataTableView<WarehouseTaskCenterRecord>>(
-        find.byWidgetPredicate(
-          (widget) => widget is MasterDataTableView<WarehouseTaskCenterRecord>,
-        ),
-      );
+      final table = tester
+          .widget<MasterDataTableView<WarehouseTaskCenterRecord>>(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is MasterDataTableView<WarehouseTaskCenterRecord>,
+            ),
+          );
       expect(table.selectable, isFalse);
       expect(table.batchActionsBuilder, isNull);
       final actionLabels = [

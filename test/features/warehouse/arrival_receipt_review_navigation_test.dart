@@ -874,11 +874,13 @@ void main() {
     await tester.pumpAndSettle();
 
     // 2026-10-17 起预计到货深链直落「入库任务中心 · 全部任务」统一表。
-    final taskTable = tester.widget<MasterDataTableView<WarehouseTaskCenterRecord>>(
-      find.byWidgetPredicate(
-        (widget) => widget is MasterDataTableView<WarehouseTaskCenterRecord>,
-      ),
-    );
+    final taskTable = tester
+        .widget<MasterDataTableView<WarehouseTaskCenterRecord>>(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is MasterDataTableView<WarehouseTaskCenterRecord>,
+          ),
+        );
     expect(taskTable.items, hasLength(1));
 
     // 单击仅选中待登记任务，不打开详情、不弹任何确认框。
@@ -1450,8 +1452,13 @@ class _FakeApi extends ApiClient {
     final registered = pendingDraftReceiptIds.isNotEmpty;
     final awaitingQuality = inspectionPendingReceipts > 0;
     return {
-      'rowKey': 'SUBCONTRACT:'
-          '${awaitingQuality ? 'QUALITY_RESULT' : registered ? 'ARRIVAL_CONTINUE' : 'ARRIVAL_REGISTER'}'
+      'rowKey':
+          'SUBCONTRACT:'
+          '${awaitingQuality
+              ? 'QUALITY_RESULT'
+              : registered
+              ? 'ARRIVAL_CONTINUE'
+              : 'ARRIVAL_REGISTER'}'
           ':expectation-1',
       'id': 'expectation-1',
       'sourceType': 'SUBCONTRACT',
@@ -1480,11 +1487,10 @@ class _FakeApi extends ApiClient {
       'canHandle': !awaitingQuality,
       'actionData': {
         if (registered) 'draftReceiptIds': pendingDraftReceiptIds,
-        if (awaitingQuality)
-          ...const {
-            'receiptType': 'SUBCONTRACT',
-            'receiptId': 'receipt-inspection-1',
-          },
+        if (awaitingQuality) ...const {
+          'receiptType': 'SUBCONTRACT',
+          'receiptId': 'receipt-inspection-1',
+        },
       },
     };
   }

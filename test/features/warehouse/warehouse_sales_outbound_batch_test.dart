@@ -187,7 +187,9 @@ void main() {
             builder: (_, state) => WarehouseSalesOutboundBatchPage(
               targets: [
                 for (final id
-                    in (state.uri.queryParameters['shipmentIds'] ?? '').split(','))
+                    in (state.uri.queryParameters['shipmentIds'] ?? '').split(
+                      ',',
+                    ))
                   if (id.isNotEmpty) gateway.values[id]!.header,
               ],
               action: WarehouseSalesOutboundAction.confirmShipment,
@@ -204,11 +206,13 @@ void main() {
         router: router,
       );
       await tester.pumpAndSettle();
-      final table = tester.widget<MasterDataTableView<WarehouseTaskCenterRecord>>(
-        find.byWidgetPredicate(
-          (widget) => widget is MasterDataTableView<WarehouseTaskCenterRecord>,
-        ),
-      );
+      final table = tester
+          .widget<MasterDataTableView<WarehouseTaskCenterRecord>>(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is MasterDataTableView<WarehouseTaskCenterRecord>,
+            ),
+          );
       // 无办理资格的行(服务端 allowedWarehouseTargets 为空)不可勾选。
       final blockedRow = table.items.singleWhere((row) => row.id == 'blocked');
       expect(table.idOf!(blockedRow), isNull);
@@ -471,11 +475,13 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final table = tester.widget<MasterDataTableView<WarehouseTaskCenterRecord>>(
-        find.byWidgetPredicate(
-          (widget) => widget is MasterDataTableView<WarehouseTaskCenterRecord>,
-        ),
-      );
+      final table = tester
+          .widget<MasterDataTableView<WarehouseTaskCenterRecord>>(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is MasterDataTableView<WarehouseTaskCenterRecord>,
+            ),
+          );
       expect(table.facets.keys, contains('status'));
       expect(
         table.facets['status']?.map((bucket) => bucket.value),
@@ -575,8 +581,7 @@ class _TaskCenterGateway implements WarehouseTaskCenterGateway {
     final rows = [
       for (final detail in sales.values.values)
         if ((source == 'ALL' || source == 'SALES') &&
-            (status == null ||
-                detail.header.warehouseWorkStatus == status))
+            (status == null || detail.header.warehouseWorkStatus == status))
           WarehouseTaskCenterRecord(
             rowKey: 'SALES:SALES_SHIPMENT:${detail.header.id}',
             id: detail.header.id,

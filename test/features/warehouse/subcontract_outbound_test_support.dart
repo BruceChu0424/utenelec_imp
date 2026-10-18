@@ -265,8 +265,7 @@ class SubcontractOutboundFakeApi extends ApiClient {
                   ? 'SUBCONTRACT_OUTBOUND'
                   : 'HISTORY_DETAIL',
               'targetId': issueId,
-              'canHandle':
-                  rowsHandleable && documents[issueId]!['status'] == 0,
+              'canHandle': rowsHandleable && documents[issueId]!['status'] == 0,
             },
       ];
       return {

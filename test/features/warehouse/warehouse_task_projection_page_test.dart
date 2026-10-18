@@ -63,12 +63,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final table =
-        tester.widget<MasterDataTableView<WarehouseTaskCenterRecord>>(
-          find.byWidgetPredicate(
-            (widget) => widget is MasterDataTableView<WarehouseTaskCenterRecord>,
-          ),
-        );
+    final table = tester.widget<MasterDataTableView<WarehouseTaskCenterRecord>>(
+      find.byWidgetPredicate(
+        (widget) => widget is MasterDataTableView<WarehouseTaskCenterRecord>,
+      ),
+    );
     // 投影口径不变: 单号 / 作业状态 / 仓库等物理列在场, 商业列与商业文案缺席。
     final keys = {for (final column in table.columns) column.key};
     expect(keys, containsAll(<String>{'billNo', 'status', 'warehouseName'}));

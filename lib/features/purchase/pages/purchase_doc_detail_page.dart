@@ -688,7 +688,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
         names.loadGoodsDetails(
           d.items.map((e) => e.goodsId).whereType<String>(),
         ),
-        if (d.purchaserName == null || d.senderName == null || d.receiverName == null)
+        if (d.purchaserName == null ||
+            d.senderName == null ||
+            d.receiverName == null)
           names.loadEmployeeNames([
             if (_cfg.hasPurchaser && d.purchaserName == null) d.purchaserId,
             if (_cfg.hasSender && d.senderName == null) d.senderId,

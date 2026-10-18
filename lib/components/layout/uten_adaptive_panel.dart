@@ -32,7 +32,10 @@ class UtenPanelWidth {
 /// [showUtenAdaptivePanel] 与各自绘右滑面板（page_permission_drawer 等 5 处）
 /// 共用这一个函数，保证全站滑窗一个口径。
 double utenPanelWidth(Size screenSize, double preferred, double fraction) =>
-    math.min(screenSize.width, math.max(preferred, screenSize.width * fraction));
+    math.min(
+      screenSize.width,
+      math.max(preferred, screenSize.width * fraction),
+    );
 
 /// Opens a Uten panel as a bottom sheet on compact screens and an end drawer
 /// on wider screens.
@@ -119,7 +122,11 @@ Future<T?> showUtenAdaptivePanel<T>({
             color: Theme.of(dialogContext).colorScheme.surface,
             elevation: panelElevation,
             child: SizedBox(
-              width: utenPanelWidth(mediaQuery.size, drawerWidth, widthFraction),
+              width: utenPanelWidth(
+                mediaQuery.size,
+                drawerWidth,
+                widthFraction,
+              ),
               height: double.infinity,
               child: content,
             ),

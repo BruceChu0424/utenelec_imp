@@ -144,11 +144,7 @@ void main() {
     final table = _table(tester);
     expect(table.selectable, isFalse, reason: '服务端未授予办理资格不给勾选');
     expect(table.batchActionsBuilder, isNull);
-    expect(
-      table.facets['status'],
-      isEmpty,
-      reason: '列表只有待发料一种状态',
-    );
+    expect(table.facets['status'], isEmpty, reason: '列表只有待发料一种状态');
     expect(table.columns.map((column) => column.label), [
       '状态',
       '货品名称',

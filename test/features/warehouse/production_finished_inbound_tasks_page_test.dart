@@ -39,86 +39,91 @@ final _liveTaskScope = StateProvider<AuthenticatedScope?>((ref) => null);
 
 void main() {
   for (final mode in ['readOnly', 'serverWithdraws']) {
-    testWidgets('finished queue stale shelf action observes current authority ($mode)', (
-      tester,
-    ) async {
-      await tester.binding.setSurfaceSize(const Size(1400, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      SharedPreferences.setMockInitialValues({});
-      final preferences = await SharedPreferences.getInstance();
-      var navigations = 0;
-      final api = _FinishedInboundApi();
-      final router = GoRouter(
-        initialLocation: '/',
-        routes: [
-          GoRoute(
-            path: '/',
-            builder: (_, _) => const ProductionFinishedInboundTasksPage(),
-          ),
-          GoRoute(
-            path: RouteName.warehouseProductionFinishedArrivalRegistration,
-            builder: (_, _) {
-              navigations++;
-              return const Scaffold(body: Text('finished shelf'));
-            },
-          ),
-        ],
-      );
-      addTearDown(router.dispose);
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            apiClientProvider.overrideWithValue(api),
-            sharedPreferencesProvider.overrideWithValue(preferences),
-            isSuperAdminProvider.overrideWithValue(true),
-            currentPermissionsProvider.overrideWith(
-              (ref) => ref.watch(_liveTaskPermissions),
+    testWidgets(
+      'finished queue stale shelf action observes current authority ($mode)',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1400, 900));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        SharedPreferences.setMockInitialValues({});
+        final preferences = await SharedPreferences.getInstance();
+        var navigations = 0;
+        final api = _FinishedInboundApi();
+        final router = GoRouter(
+          initialLocation: '/',
+          routes: [
+            GoRoute(
+              path: '/',
+              builder: (_, _) => const ProductionFinishedInboundTasksPage(),
             ),
-            authenticatedScopeProvider.overrideWith(
-              (ref) => ref.watch(_liveTaskScope),
-            ),
-            fixedBadgeSummaryOverride(
-              badgeSummaryFixture(facts: const {BadgeFact.finishedInbound: 1}),
+            GoRoute(
+              path: RouteName.warehouseProductionFinishedArrivalRegistration,
+              builder: (_, _) {
+                navigations++;
+                return const Scaffold(body: Text('finished shelf'));
+              },
             ),
           ],
-          child: MaterialApp.router(routerConfig: router),
-        ),
-      );
-      await tester.pumpAndSettle();
-      _table(tester).onSelectedIdsChanged!(const {_registerRowKey});
-      await tester.pump();
-      final stale = tester
-          .widget<UtenButton>(
-            find.ancestor(
-              of: find.text('先入库后质检(1)'),
-              matching: find.byType(UtenButton),
-            ),
-          )
-          .onPressed;
-      expect(stale, isNotNull);
-      if (mode == 'readOnly') {
-        final container = ProviderScope.containerOf(
-          tester.element(find.text('先质检后入库(1)')),
         );
-        container.read(_liveTaskScope.notifier).state = const AuthenticatedScope(
-          userId: 'finished-reader',
-          actorId: 'actor',
-          readOnly: true,
+        addTearDown(router.dispose);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              apiClientProvider.overrideWithValue(api),
+              sharedPreferencesProvider.overrideWithValue(preferences),
+              isSuperAdminProvider.overrideWithValue(true),
+              currentPermissionsProvider.overrideWith(
+                (ref) => ref.watch(_liveTaskPermissions),
+              ),
+              authenticatedScopeProvider.overrideWith(
+                (ref) => ref.watch(_liveTaskScope),
+              ),
+              fixedBadgeSummaryOverride(
+                badgeSummaryFixture(
+                  facts: const {BadgeFact.finishedInbound: 1},
+                ),
+              ),
+            ],
+            child: MaterialApp.router(routerConfig: router),
+          ),
         );
-        await tester.pump();
-      } else {
-        // ADR-184：动作资格折进行事实 —— 服务端刷新后撤回「先入库后质检」,
-        // 行资格与选择集一起失效。
-        api.allowPreStock = false;
-        await tester.tap(find.byTooltip('刷新'));
         await tester.pumpAndSettle();
-        expect(find.text('先入库后质检(1)'), findsNothing);
-      }
-      stale!();
-      await tester.pumpAndSettle();
-      expect(navigations, 0);
-      expect(tester.takeException(), isNull);
-    });
+        _table(tester).onSelectedIdsChanged!(const {_registerRowKey});
+        await tester.pump();
+        final stale = tester
+            .widget<UtenButton>(
+              find.ancestor(
+                of: find.text('先入库后质检(1)'),
+                matching: find.byType(UtenButton),
+              ),
+            )
+            .onPressed;
+        expect(stale, isNotNull);
+        if (mode == 'readOnly') {
+          final container = ProviderScope.containerOf(
+            tester.element(find.text('先质检后入库(1)')),
+          );
+          container
+              .read(_liveTaskScope.notifier)
+              .state = const AuthenticatedScope(
+            userId: 'finished-reader',
+            actorId: 'actor',
+            readOnly: true,
+          );
+          await tester.pump();
+        } else {
+          // ADR-184：动作资格折进行事实 —— 服务端刷新后撤回「先入库后质检」,
+          // 行资格与选择集一起失效。
+          api.allowPreStock = false;
+          await tester.tap(find.byTooltip('刷新'));
+          await tester.pumpAndSettle();
+          expect(find.text('先入库后质检(1)'), findsNothing);
+        }
+        stale!();
+        await tester.pumpAndSettle();
+        expect(navigations, 0);
+        expect(tester.takeException(), isNull);
+      },
+    );
   }
   for (final withExtra in [false, true]) {
     testWidgets(
@@ -314,7 +319,9 @@ void main() {
       tester.element(find.text('产成品入库')),
     );
     expect(
-      container.read(warehouseTaskFactOrNullProvider(BadgeFact.finishedInbound)),
+      container.read(
+        warehouseTaskFactOrNullProvider(BadgeFact.finishedInbound),
+      ),
       isNull,
       reason: '汇总未带回该事实时分段不显示任何数(不把未知伪装成 0)',
     );

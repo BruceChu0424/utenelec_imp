@@ -339,8 +339,16 @@ class _TaskCenterApi extends ApiClient {
       'totalPages': 1,
       'facets': {
         'status': <Map<String, dynamic>>[
-          {'value': SalesWarehouseWorkStatus.pendingPick, 'label': '待出库', 'count': 1},
-          {'value': SalesWarehouseWorkStatus.shipped, 'label': '已出库', 'count': 0},
+          {
+            'value': SalesWarehouseWorkStatus.pendingPick,
+            'label': '待出库',
+            'count': 1,
+          },
+          {
+            'value': SalesWarehouseWorkStatus.shipped,
+            'label': '已出库',
+            'count': 0,
+          },
         ],
         'billNo': <Map<String, dynamic>>[],
       },

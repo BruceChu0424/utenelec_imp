@@ -51,7 +51,9 @@ void main() {
     _setTestSize(tester, const Size(1200, 900));
 
     await tester.pumpWidget(
-      const MaterialApp(home: _PanelHarness(widthFraction: UtenPanelWidth.form)),
+      const MaterialApp(
+        home: _PanelHarness(widthFraction: UtenPanelWidth.form),
+      ),
     );
     await tester.tap(find.byKey(const Key('open-panel')));
     await tester.pumpAndSettle();
@@ -61,7 +63,9 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.pumpWidget(
-      const MaterialApp(home: _PanelHarness(widthFraction: UtenPanelWidth.none)),
+      const MaterialApp(
+        home: _PanelHarness(widthFraction: UtenPanelWidth.none),
+      ),
     );
     await tester.tap(find.byKey(const Key('open-panel')));
     await tester.pumpAndSettle();

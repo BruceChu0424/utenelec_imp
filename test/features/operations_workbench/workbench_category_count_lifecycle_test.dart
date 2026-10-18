@@ -232,14 +232,17 @@ void main() {
       (tester) async {
         Map<String, int> factsOf(int n) => {
           subcontract
-              ? BadgeFact.subcontractTaskRework
-              : BadgeFact.purchaseTaskRework: n,
+                  ? BadgeFact.subcontractTaskRework
+                  : BadgeFact.purchaseTaskRework:
+              n,
           subcontract
-              ? BadgeFact.subcontractTaskShortDelivery
-              : BadgeFact.purchaseTaskWaitingOrder: 0,
+                  ? BadgeFact.subcontractTaskShortDelivery
+                  : BadgeFact.purchaseTaskWaitingOrder:
+              0,
           subcontract
-              ? BadgeFact.subcontractTaskInProgress
-              : BadgeFact.purchaseTaskInProgress: n,
+                  ? BadgeFact.subcontractTaskInProgress
+                  : BadgeFact.purchaseTaskInProgress:
+              n,
         };
         final gateway = _Gateway();
         final (_, badges) = await _mount(

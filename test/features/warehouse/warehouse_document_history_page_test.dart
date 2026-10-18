@@ -82,7 +82,10 @@ void main() {
     expect(wastes.lastBillNo, isNull);
     expect(wastes.lastSourceDocNo, isNull);
     expect(wastes.lastRange, ('2026-10-01', '2026-10-12'));
-    expect(table(type.value).requiredLeadingColumnKeys, ['status', 'goodsName']);
+    expect(table(type.value).requiredLeadingColumnKeys, [
+      'status',
+      'goodsName',
+    ]);
     expect(
       table(type.value).items.single.type,
       WarehouseDocumentHistoryType.subcontractWaste,

@@ -234,7 +234,10 @@ void main() {
     await tester.pumpAndSettle();
     // 首行「全部仓库」, 先主仓后子仓(2026-10 表格统一: 主仓既是行也是分组标题)。
     expect(find.byKey(const Key('warehouse-picker-all')), findsOneWidget);
-    expect(find.byKey(const Key('warehouse-picker-entry-main')), findsOneWidget);
+    expect(
+      find.byKey(const Key('warehouse-picker-entry-main')),
+      findsOneWidget,
+    );
     expect(find.text('主仓'), findsWidgets);
     await tester.tap(find.text('成品仓'));
     await tester.pumpAndSettle();

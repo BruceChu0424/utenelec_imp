@@ -214,11 +214,12 @@ void main() {
       await tester.tap(find.byKey(const Key('warehouse-picker-entry-main')));
       await tester.pumpAndSettle();
       // 2026-10 表格统一：条目是表格行, 不良品仓以置灰表示不可选。
-      final pickerTable = tester.widget<MasterDataTableView<WarehouseDictEntry>>(
-        find.byWidgetPredicate(
-          (widget) => widget is MasterDataTableView<WarehouseDictEntry>,
-        ),
-      );
+      final pickerTable = tester
+          .widget<MasterDataTableView<WarehouseDictEntry>>(
+            find.byWidgetPredicate(
+              (widget) => widget is MasterDataTableView<WarehouseDictEntry>,
+            ),
+          );
       final defectiveEntry = pickerTable.items.singleWhere(
         (entry) => entry.id == 'bad',
       );

@@ -63,8 +63,7 @@ import 'app_localizations_zh.dart';
 /// be consistent with the languages listed in the AppLocalizations.supportedLocales
 /// property.
 abstract class AppLocalizations {
-  AppLocalizations(String locale)
-    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+  AppLocalizations(String locale) : localeName = intl.Intl.canonicalizedLocale(locale.toString());
 
   final String localeName;
 
@@ -72,8 +71,7 @@ abstract class AppLocalizations {
     return Localizations.of<AppLocalizations>(context, AppLocalizations)!;
   }
 
-  static const LocalizationsDelegate<AppLocalizations> delegate =
-      _AppLocalizationsDelegate();
+  static const LocalizationsDelegate<AppLocalizations> delegate = _AppLocalizationsDelegate();
 
   /// A list of this localizations delegate along with the default localizations
   /// delegates.
@@ -85,20 +83,433 @@ abstract class AppLocalizations {
   /// Additional delegates can be added by appending to this list in
   /// MaterialApp. This list does not have to be used at all if a custom list
   /// of delegates is preferred or required.
-  static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
-      <LocalizationsDelegate<dynamic>>[
-        delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ];
+  static const List<LocalizationsDelegate<dynamic>> localizationsDelegates = <LocalizationsDelegate<dynamic>>[
+    delegate,
+    GlobalMaterialLocalizations.delegate,
+    GlobalCupertinoLocalizations.delegate,
+    GlobalWidgetsLocalizations.delegate,
+  ];
 
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
     Locale('zh'),
     Locale('en'),
-    Locale('ko'),
+    Locale('ko')
   ];
+
+  /// No description provided for @websiteInquirySeries.
+  ///
+  /// In zh, this message translates to:
+  /// **'产品系列'**
+  String get websiteInquirySeries;
+
+  /// No description provided for @websiteInquiryProductId.
+  ///
+  /// In zh, this message translates to:
+  /// **'产品标识'**
+  String get websiteInquiryProductId;
+
+  /// No description provided for @websiteInquirySourceIdentity.
+  ///
+  /// In zh, this message translates to:
+  /// **'来源标识'**
+  String get websiteInquirySourceIdentity;
+
+  /// No description provided for @websiteInquiryConsent.
+  ///
+  /// In zh, this message translates to:
+  /// **'联系授权时间'**
+  String get websiteInquiryConsent;
+
+  /// No description provided for @websiteInquiryConsentPolicy.
+  ///
+  /// In zh, this message translates to:
+  /// **'隐私条款版本'**
+  String get websiteInquiryConsentPolicy;
+
+  /// No description provided for @websiteInquiryExpandProducts.
+  ///
+  /// In zh, this message translates to:
+  /// **'展开全部关联产品'**
+  String get websiteInquiryExpandProducts;
+
+  /// No description provided for @websiteInquiryCollapseProducts.
+  ///
+  /// In zh, this message translates to:
+  /// **'收起关联产品'**
+  String get websiteInquiryCollapseProducts;
+
+  /// No description provided for @websiteManagementTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'官网管理'**
+  String get websiteManagementTitle;
+
+  /// No description provided for @websiteOperationsTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'官网运营'**
+  String get websiteOperationsTitle;
+
+  /// No description provided for @websiteManageSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'维护官网内容与产品，客户咨询在销售收件箱持续跟进。'**
+  String get websiteManageSubtitle;
+
+  /// No description provided for @websiteConnectionTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'云端连接'**
+  String get websiteConnectionTitle;
+
+  /// No description provided for @websiteConnectionReady.
+  ///
+  /// In zh, this message translates to:
+  /// **'连接正常'**
+  String get websiteConnectionReady;
+
+  /// No description provided for @websiteConnectionNotReady.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂不可编辑'**
+  String get websiteConnectionNotReady;
+
+  /// No description provided for @websiteConnectionChecking.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在检查云端连接'**
+  String get websiteConnectionChecking;
+
+  /// No description provided for @websiteConnectionHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'请检查云端服务与连接配置，然后重新检查。'**
+  String get websiteConnectionHelp;
+
+  /// No description provided for @websiteCheckAgain.
+  ///
+  /// In zh, this message translates to:
+  /// **'重新检查'**
+  String get websiteCheckAgain;
+
+  /// No description provided for @websiteOpenPublic.
+  ///
+  /// In zh, this message translates to:
+  /// **'浏览官网'**
+  String get websiteOpenPublic;
+
+  /// No description provided for @websiteOpenEditor.
+  ///
+  /// In zh, this message translates to:
+  /// **'进入编辑器'**
+  String get websiteOpenEditor;
+
+  /// No description provided for @websiteOpening.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在打开'**
+  String get websiteOpening;
+
+  /// No description provided for @websiteOpenFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'未能打开官网，请检查浏览器设置后重试。'**
+  String get websiteOpenFailed;
+
+  /// No description provided for @websiteUntrustedTarget.
+  ///
+  /// In zh, this message translates to:
+  /// **'官网地址与受信配置不一致，已停止打开。'**
+  String get websiteUntrustedTarget;
+
+  /// No description provided for @websiteSessionChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'登录身份或权限已变化，请重新进入此页面。'**
+  String get websiteSessionChanged;
+
+  /// No description provided for @websiteAccessDenied.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前账号没有官网管理权限。'**
+  String get websiteAccessDenied;
+
+  /// No description provided for @websiteConfigure.
+  ///
+  /// In zh, this message translates to:
+  /// **'连接配置'**
+  String get websiteConfigure;
+
+  /// No description provided for @websiteConfigureHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅超级管理员可选择已批准的官网地址。连接凭据由服务器维护。'**
+  String get websiteConfigureHelp;
+
+  /// No description provided for @websiteDisplayName.
+  ///
+  /// In zh, this message translates to:
+  /// **'网站名称'**
+  String get websiteDisplayName;
+
+  /// No description provided for @websiteApprovedOrigin.
+  ///
+  /// In zh, this message translates to:
+  /// **'已批准的官网地址'**
+  String get websiteApprovedOrigin;
+
+  /// No description provided for @websiteEnabled.
+  ///
+  /// In zh, this message translates to:
+  /// **'启用官网管理连接'**
+  String get websiteEnabled;
+
+  /// No description provided for @websiteSaveConfig.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存连接配置'**
+  String get websiteSaveConfig;
+
+  /// No description provided for @websiteConfigSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'连接配置已保存'**
+  String get websiteConfigSaved;
+
+  /// No description provided for @websiteConfigRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写网站名称并选择已批准的地址。'**
+  String get websiteConfigRequired;
+
+  /// No description provided for @websiteLastChecked.
+  ///
+  /// In zh, this message translates to:
+  /// **'本次检查'**
+  String get websiteLastChecked;
+
+  /// No description provided for @websiteLastSync.
+  ///
+  /// In zh, this message translates to:
+  /// **'最近咨询同步'**
+  String get websiteLastSync;
+
+  /// No description provided for @websitePublishedRevision.
+  ///
+  /// In zh, this message translates to:
+  /// **'已发布版本'**
+  String get websitePublishedRevision;
+
+  /// No description provided for @websitePendingInquiries.
+  ///
+  /// In zh, this message translates to:
+  /// **'待同步咨询'**
+  String get websitePendingInquiries;
+
+  /// No description provided for @websiteNoRecord.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无记录'**
+  String get websiteNoRecord;
+
+  /// No description provided for @websiteContentTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'内容管理'**
+  String get websiteContentTitle;
+
+  /// No description provided for @websiteHomeSection.
+  ///
+  /// In zh, this message translates to:
+  /// **'首页与栏目'**
+  String get websiteHomeSection;
+
+  /// No description provided for @websiteHomeDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'调整首页展示、品牌介绍与联系信息。'**
+  String get websiteHomeDescription;
+
+  /// No description provided for @websiteProductsSection.
+  ///
+  /// In zh, this message translates to:
+  /// **'产品目录'**
+  String get websiteProductsSection;
+
+  /// No description provided for @websiteProductsDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'管理产品系列、款式、图片与技术参数。'**
+  String get websiteProductsDescription;
+
+  /// No description provided for @websiteResourcesSection.
+  ///
+  /// In zh, this message translates to:
+  /// **'素材与资料'**
+  String get websiteResourcesSection;
+
+  /// No description provided for @websiteResourcesDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'维护图片、产品资料和可下载文件。'**
+  String get websiteResourcesDescription;
+
+  /// No description provided for @websiteNewsSection.
+  ///
+  /// In zh, this message translates to:
+  /// **'新闻与案例'**
+  String get websiteNewsSection;
+
+  /// No description provided for @websiteNewsDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'维护新闻和经审核的工程案例。'**
+  String get websiteNewsDescription;
+
+  /// No description provided for @websiteReleasesSection.
+  ///
+  /// In zh, this message translates to:
+  /// **'发布记录'**
+  String get websiteReleasesSection;
+
+  /// No description provided for @websiteReleasesDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'预览发布内容，查看版本并按权限恢复。'**
+  String get websiteReleasesDescription;
+
+  /// No description provided for @websiteSettingsSection.
+  ///
+  /// In zh, this message translates to:
+  /// **'网站设置'**
+  String get websiteSettingsSection;
+
+  /// No description provided for @websiteSettingsDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'维护语言、导航和网站基本信息。'**
+  String get websiteSettingsDescription;
+
+  /// No description provided for @websiteInquiryEntry.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售询盘收件箱'**
+  String get websiteInquiryEntry;
+
+  /// No description provided for @websiteInquiryDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看客户留言、认领跟进并关联客户资料。'**
+  String get websiteInquiryDescription;
+
+  /// No description provided for @websiteEditingRequiresConnection.
+  ///
+  /// In zh, this message translates to:
+  /// **'连接检查通过后可进入编辑器。'**
+  String get websiteEditingRequiresConnection;
+
+  /// No description provided for @websiteConfigNoOrigins.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务器尚未提供已批准的官网地址，请联系系统维护人员。'**
+  String get websiteConfigNoOrigins;
+
+  /// No description provided for @websiteInquiryTimeline.
+  ///
+  /// In zh, this message translates to:
+  /// **'跟进记录'**
+  String get websiteInquiryTimeline;
+
+  /// No description provided for @websiteInquiryTimelineEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'尚无跟进记录'**
+  String get websiteInquiryTimelineEmpty;
+
+  /// No description provided for @websiteInquiryNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'新增跟进记录'**
+  String get websiteInquiryNote;
+
+  /// No description provided for @websiteInquirySaveNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存跟进记录'**
+  String get websiteInquirySaveNote;
+
+  /// No description provided for @websiteInquiryNoteSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'跟进记录已保存'**
+  String get websiteInquiryNoteSaved;
+
+  /// No description provided for @websiteInquiryNoteRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入 1–2000 字的跟进记录。'**
+  String get websiteInquiryNoteRequired;
+
+  /// No description provided for @websiteInquiryOrigin.
+  ///
+  /// In zh, this message translates to:
+  /// **'咨询来源'**
+  String get websiteInquiryOrigin;
+
+  /// No description provided for @websiteInquirySourceUrl.
+  ///
+  /// In zh, this message translates to:
+  /// **'来源页面'**
+  String get websiteInquirySourceUrl;
+
+  /// No description provided for @websiteInquiryProduct.
+  ///
+  /// In zh, this message translates to:
+  /// **'关联产品'**
+  String get websiteInquiryProduct;
+
+  /// No description provided for @websiteInquiryCampaign.
+  ///
+  /// In zh, this message translates to:
+  /// **'推广来源'**
+  String get websiteInquiryCampaign;
+
+  /// No description provided for @websiteInquiryReceivedEvent.
+  ///
+  /// In zh, this message translates to:
+  /// **'收到咨询'**
+  String get websiteInquiryReceivedEvent;
+
+  /// No description provided for @websiteInquiryClaimedEvent.
+  ///
+  /// In zh, this message translates to:
+  /// **'认领跟进'**
+  String get websiteInquiryClaimedEvent;
+
+  /// No description provided for @websiteInquiryNoteEvent.
+  ///
+  /// In zh, this message translates to:
+  /// **'跟进记录'**
+  String get websiteInquiryNoteEvent;
+
+  /// No description provided for @websiteInquiryClosedEvent.
+  ///
+  /// In zh, this message translates to:
+  /// **'询盘关闭'**
+  String get websiteInquiryClosedEvent;
+
+  /// No description provided for @websiteInquiryConvertedEvent.
+  ///
+  /// In zh, this message translates to:
+  /// **'转为客户'**
+  String get websiteInquiryConvertedEvent;
+
+  /// No description provided for @websiteInquiryEvent.
+  ///
+  /// In zh, this message translates to:
+  /// **'状态更新'**
+  String get websiteInquiryEvent;
 
   /// No description provided for @tableFacetLoadFailed.
   ///
@@ -3548,10 +3959,7 @@ abstract class AppLocalizations {
   ///
   /// In zh, this message translates to:
   /// **'已选 {departmentCount} 个部门、{employeeCount} 人'**
-  String noticePublishAudienceSummary(
-    Object departmentCount,
-    Object employeeCount,
-  );
+  String noticePublishAudienceSummary(Object departmentCount, Object employeeCount);
 
   /// No description provided for @noticePublishAudienceRecalculateHint.
   ///
@@ -7085,11 +7493,7 @@ abstract class AppLocalizations {
   ///
   /// In zh, this message translates to:
   /// **'已提交本批 {quantity} {unit} 领料；剩余 {remaining} {unit} 留待后续安排'**
-  String productionBatchSubmitted(
-    String quantity,
-    String unit,
-    String remaining,
-  );
+  String productionBatchSubmitted(String quantity, String unit, String remaining);
 
   /// No description provided for @productionBatchUncertain.
   ///
@@ -12225,12 +12629,7 @@ abstract class AppLocalizations {
   ///
   /// In zh, this message translates to:
   /// **'{doc} {billNo} ({date}, {reason})'**
-  String salesIntakeDuplicateItem(
-    String doc,
-    String billNo,
-    String date,
-    String reason,
-  );
+  String salesIntakeDuplicateItem(String doc, String billNo, String date, String reason);
 
   /// No description provided for @salesIntakeDuplicateMessage.
   ///
@@ -19523,8 +19922,7 @@ abstract class AppLocalizations {
   String get goodsHistoryGoodsSubcontractPolicy;
 }
 
-class _AppLocalizationsDelegate
-    extends LocalizationsDelegate<AppLocalizations> {
+class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {
   const _AppLocalizationsDelegate();
 
   @override
@@ -19533,28 +19931,26 @@ class _AppLocalizationsDelegate
   }
 
   @override
-  bool isSupported(Locale locale) =>
-      <String>['en', 'ko', 'zh'].contains(locale.languageCode);
+  bool isSupported(Locale locale) => <String>['en', 'ko', 'zh'].contains(locale.languageCode);
 
   @override
   bool shouldReload(_AppLocalizationsDelegate old) => false;
 }
 
 AppLocalizations lookupAppLocalizations(Locale locale) {
+
+
   // Lookup logic when only language code is specified.
   switch (locale.languageCode) {
-    case 'en':
-      return AppLocalizationsEn();
-    case 'ko':
-      return AppLocalizationsKo();
-    case 'zh':
-      return AppLocalizationsZh();
+    case 'en': return AppLocalizationsEn();
+    case 'ko': return AppLocalizationsKo();
+    case 'zh': return AppLocalizationsZh();
   }
 
   throw FlutterError(
     'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
     'an issue with the localizations generation tool. Please file an issue '
     'on GitHub with a reproducible sample app and the gen-l10n configuration '
-    'that was used.',
+    'that was used.'
   );
 }

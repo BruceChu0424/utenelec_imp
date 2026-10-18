@@ -6,6 +6,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.webinquiry.dto.IngestRequest;
+import com.uten.imp.features.webinquiry.dto.FollowUpRequest;
 import com.uten.imp.features.webinquiry.dto.StatusUpdateRequest;
 import com.uten.imp.features.webinquiry.dto.WebsiteInquiryDetail;
 import com.uten.imp.features.webinquiry.dto.WebsiteInquiryListItem;
@@ -88,6 +89,16 @@ public class WebsiteInquiryController {
     @PreAuthorize("hasAuthority('webinquiry:view')")
     public Map<String, Long> newCount() {
         return Map.of("count", service.countNew());
+    }
+
+    @GetMapping("/counts")
+    @PreAuthorize("hasAuthority('webinquiry:view')")
+    public Map<String,Long> counts() { return service.counts(); }
+
+    @PostMapping("/{id}/follow-ups")
+    @PreAuthorize("hasAuthority('webinquiry:view') and hasAuthority('webinquiry:claim')")
+    public WebsiteInquiryDetail followUp(@PathVariable UUID id,@Valid @RequestBody FollowUpRequest request) {
+        return service.followUp(id,request);
     }
 
     @GetMapping("/{id}")

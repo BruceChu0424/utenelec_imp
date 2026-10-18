@@ -9,6 +9,230 @@ class AppLocalizationsKo extends AppLocalizations {
   AppLocalizationsKo([String locale = 'ko']) : super(locale);
 
   @override
+  String get websiteInquirySeries => 'Product series';
+
+  @override
+  String get websiteInquiryProductId => 'Product ID';
+
+  @override
+  String get websiteInquirySourceIdentity => 'Source identity';
+
+  @override
+  String get websiteInquiryConsent => 'Contact consent time';
+
+  @override
+  String get websiteInquiryConsentPolicy => 'Privacy policy version';
+
+  @override
+  String get websiteInquiryExpandProducts => 'Show all related products';
+
+  @override
+  String get websiteInquiryCollapseProducts => 'Collapse related products';
+
+  @override
+  String get websiteManagementTitle => 'Website management';
+
+  @override
+  String get websiteOperationsTitle => 'Website operations';
+
+  @override
+  String get websiteManageSubtitle =>
+      'Manage site content and products. Follow up with customers in the sales inbox.';
+
+  @override
+  String get websiteConnectionTitle => 'Cloud connection';
+
+  @override
+  String get websiteConnectionReady => 'Connected';
+
+  @override
+  String get websiteConnectionNotReady => 'Editing unavailable';
+
+  @override
+  String get websiteConnectionChecking => 'Checking the cloud connection';
+
+  @override
+  String get websiteConnectionHelp =>
+      'Check the cloud service and connection settings, then check again.';
+
+  @override
+  String get websiteCheckAgain => 'Check again';
+
+  @override
+  String get websiteOpenPublic => 'View website';
+
+  @override
+  String get websiteOpenEditor => 'Open editor';
+
+  @override
+  String get websiteOpening => 'Opening';
+
+  @override
+  String get websiteOpenFailed =>
+      'Could not open the website. Check your browser settings and retry.';
+
+  @override
+  String get websiteUntrustedTarget =>
+      'The website address does not match the trusted configuration. Opening was stopped.';
+
+  @override
+  String get websiteSessionChanged =>
+      'Your session or permissions changed. Open this page again.';
+
+  @override
+  String get websiteAccessDenied => 'This account cannot manage the website.';
+
+  @override
+  String get websiteConfigure => 'Connection settings';
+
+  @override
+  String get websiteConfigureHelp =>
+      'Only super administrators can select an approved website address. Credentials are managed on the server.';
+
+  @override
+  String get websiteDisplayName => 'Website name';
+
+  @override
+  String get websiteApprovedOrigin => 'Approved website address';
+
+  @override
+  String get websiteEnabled => 'Enable website management connection';
+
+  @override
+  String get websiteSaveConfig => 'Save connection settings';
+
+  @override
+  String get websiteConfigSaved => 'Connection settings saved';
+
+  @override
+  String get websiteConfigRequired =>
+      'Enter a website name and select an approved address.';
+
+  @override
+  String get websiteLastChecked => 'Last checked';
+
+  @override
+  String get websiteLastSync => 'Last inquiry sync';
+
+  @override
+  String get websitePublishedRevision => 'Published revision';
+
+  @override
+  String get websitePendingInquiries => 'Inquiries awaiting sync';
+
+  @override
+  String get websiteNoRecord => 'No record';
+
+  @override
+  String get websiteContentTitle => 'Content management';
+
+  @override
+  String get websiteHomeSection => 'Home and sections';
+
+  @override
+  String get websiteHomeDescription =>
+      'Edit the home page, brand content and contact information.';
+
+  @override
+  String get websiteProductsSection => 'Product catalogue';
+
+  @override
+  String get websiteProductsDescription =>
+      'Manage series, variants, images and technical details.';
+
+  @override
+  String get websiteResourcesSection => 'Media and documents';
+
+  @override
+  String get websiteResourcesDescription =>
+      'Maintain images, product documents and downloads.';
+
+  @override
+  String get websiteNewsSection => 'News and projects';
+
+  @override
+  String get websiteNewsDescription =>
+      'Manage news and verified project stories.';
+
+  @override
+  String get websiteReleasesSection => 'Publication history';
+
+  @override
+  String get websiteReleasesDescription =>
+      'Preview content, review versions and restore when authorized.';
+
+  @override
+  String get websiteSettingsSection => 'Website settings';
+
+  @override
+  String get websiteSettingsDescription =>
+      'Manage languages, navigation and site information.';
+
+  @override
+  String get websiteInquiryEntry => 'Sales inquiry inbox';
+
+  @override
+  String get websiteInquiryDescription =>
+      'Read inquiries, claim follow-ups and link customer records.';
+
+  @override
+  String get websiteEditingRequiresConnection =>
+      'The editor becomes available after a successful connection check.';
+
+  @override
+  String get websiteConfigNoOrigins =>
+      'No approved website addresses are configured on the server. Contact your administrator.';
+
+  @override
+  String get websiteInquiryTimeline => 'Follow-up history';
+
+  @override
+  String get websiteInquiryTimelineEmpty => 'No follow-up history';
+
+  @override
+  String get websiteInquiryNote => 'Add follow-up note';
+
+  @override
+  String get websiteInquirySaveNote => 'Save follow-up note';
+
+  @override
+  String get websiteInquiryNoteSaved => 'Follow-up note saved';
+
+  @override
+  String get websiteInquiryNoteRequired =>
+      'Enter a follow-up note between 1 and 2000 characters.';
+
+  @override
+  String get websiteInquiryOrigin => 'Inquiry source';
+
+  @override
+  String get websiteInquirySourceUrl => 'Source page';
+
+  @override
+  String get websiteInquiryProduct => 'Related product';
+
+  @override
+  String get websiteInquiryCampaign => 'Campaign';
+
+  @override
+  String get websiteInquiryReceivedEvent => 'Inquiry received';
+
+  @override
+  String get websiteInquiryClaimedEvent => 'Follow-up claimed';
+
+  @override
+  String get websiteInquiryNoteEvent => 'Follow-up note';
+
+  @override
+  String get websiteInquiryClosedEvent => 'Inquiry closed';
+
+  @override
+  String get websiteInquiryConvertedEvent => 'Converted to customer';
+
+  @override
+  String get websiteInquiryEvent => 'Status update';
+
+  @override
   String get tableFacetLoadFailed => '값을 불러오지 못했습니다. 다시 시도';
 
   @override

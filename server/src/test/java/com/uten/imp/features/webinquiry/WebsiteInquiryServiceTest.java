@@ -52,7 +52,8 @@ class WebsiteInquiryServiceTest {
         when(entityManager.createNativeQuery(anyString())).thenReturn(sourceLock);
         when(sourceLock.setParameter(anyString(), any())).thenReturn(sourceLock);
         service = new WebsiteInquiryService(
-                repository, clientPort, employeeNames, currentUser, audit, entityManager);
+                repository, clientPort, employeeNames, currentUser, audit, entityManager,
+                mock(WebsiteInquiryTimelineRepository.class),mock(com.uten.imp.application.port.BusinessEventPublisher.class));
 
         UUID userId = UUID.randomUUID();
         UUID employeeId = UUID.randomUUID();
@@ -89,11 +90,11 @@ class WebsiteInquiryServiceTest {
     void ingestCreatesOnceAndRepeatsIdempotently() {
         when(repository.findBySourceId("web-1")).thenReturn(Optional.empty());
         assertTrue(service.ingest(ingestRequest("web-1")));
-        verify(repository).save(any(WebsiteInquiry.class));
+        verify(repository).saveAndFlush(any(WebsiteInquiry.class));
 
         when(repository.findBySourceId("web-1")).thenReturn(Optional.of(new WebsiteInquiry()));
         assertFalse(service.ingest(ingestRequest("web-1")));
-        verify(repository).save(any(WebsiteInquiry.class)); // 仍只有一次
+        verify(repository).saveAndFlush(any(WebsiteInquiry.class)); // 仍只有一次
     }
 
     @Test
@@ -145,5 +146,29 @@ class WebsiteInquiryServiceTest {
         WebsiteInquiryIngestGuard configured = new WebsiteInquiryIngestGuard("secret-token");
         assertFalse(configured.tokenValid("wrong"));
         assertTrue(configured.tokenValid("secret-token"));
+    }
+
+    @Test
+    void anotherEmployeeCannotOverwriteAClaimOrAppendFollowUps() {
+        WebsiteInquiry inquiry=new WebsiteInquiry();
+        inquiry.setId(UUID.randomUUID());inquiry.setStatus("following");
+        inquiry.setAssigneeEmployeeId(UUID.randomUUID());
+        when(repository.findById(inquiry.getId())).thenReturn(Optional.of(inquiry));
+        assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,()->service.updateStatus(inquiry.getId(),
+                new StatusUpdateRequest("following",null,true))).getCode());
+        assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,()->service.followUp(inquiry.getId(),
+                new com.uten.imp.features.webinquiry.dto.FollowUpRequest("other operator"))).getCode());
+        verify(repository,never()).save(any());
+    }
+
+    @Test
+    void sourceContextRequiresABoundedObject() {
+        var old=ingestRequest("invalid-context");
+        var request=new IngestRequest(old.sourceId(),old.name(),old.phone(),old.email(),old.company(),old.market(),
+                old.customerType(),old.requiredStandard(),old.productInterest(),old.requestType(),old.estimatedQuantity(),
+                old.targetSchedule(),old.preferredContact(),old.message(),old.source(),old.locale(),
+                com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.arrayNode());
+        assertThrows(ApiException.class,()->service.ingest(request));
+        verify(repository,never()).saveAndFlush(any());
     }
 }

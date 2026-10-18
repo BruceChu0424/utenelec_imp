@@ -28,6 +28,7 @@ abstract interface class WebsiteInquiryRepository {
 
   /// 一键转客户主档（幂等；成功后状态为 converted）。
   Future<WebsiteInquiry> convert(String id);
+  Future<WebsiteInquiry> followUp(String id, String note);
 }
 
 class DioWebsiteInquiryRepository implements WebsiteInquiryRepository {
@@ -85,6 +86,15 @@ class DioWebsiteInquiryRepository implements WebsiteInquiryRepository {
     return _fromJson(json);
   }
 
+  @override
+  Future<WebsiteInquiry> followUp(String id, String note) async {
+    final json = await _api.post(
+      '${ApiEndpoints.websiteInquiry(id)}/follow-ups',
+      body: {'note': note.trim()},
+    );
+    return _fromJson(json);
+  }
+
   WebsiteInquiry _fromJson(Map<String, dynamic> json) {
     final receivedAt = ChinaDateTime.tryParse(json['receivedAt'] as String?);
     if (receivedAt == null) {
@@ -110,8 +120,31 @@ class DioWebsiteInquiryRepository implements WebsiteInquiryRepository {
       targetSchedule: json['targetSchedule'] as String?,
       preferredContact: json['preferredContact'] as String?,
       source: json['source'] as String? ?? 'contact',
+      sourceId: json['sourceId'] as String?,
       locale: json['locale'] as String? ?? 'zh',
       assigneeName: json['assigneeName'] as String?,
+      assigneeEmployeeId: json['assigneeEmployeeId'] as String?,
+      sourceContext: Map<String, dynamic>.unmodifiable(
+        json['sourceContext'] is Map
+            ? Map<String, dynamic>.from(json['sourceContext'] as Map)
+            : {},
+      ),
+      timeline: List<WebsiteInquiryEvent>.unmodifiable([
+        for (final value in json['timeline'] as List? ?? [])
+          if (value is Map<String, dynamic>)
+            WebsiteInquiryEvent(
+              id: value['id'] as String,
+              kind: value['kind'] as String,
+              createdAt:
+                  ChinaDateTime.tryParse(value['createdAt'] as String?) ??
+                  (throw const FormatException(
+                    'Invalid inquiry event timestamp',
+                  )),
+              note: value['note'] as String?,
+              actorName: value['actorName'] as String?,
+              actorEmployeeCode: value['actorEmployeeCode'] as String?,
+            ),
+      ]),
       clientId: json['clientId'] as String?,
       clientName: json['clientName'] as String?,
       note: json['note'] as String?,

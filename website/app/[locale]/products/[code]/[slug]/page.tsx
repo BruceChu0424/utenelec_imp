@@ -1,3 +1,5 @@
+import { getPublicResources } from '@/lib/resources';
+import { PublicResourceList } from '@/components/products/PublicResourceList';
 import type { Metadata } from 'next';
 import { ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
@@ -5,17 +7,17 @@ import { notFound, permanentRedirect } from 'next/navigation';
 import { cache } from 'react';
 import { ProductMatrixCard } from '@/components/products/ProductMatrixCard';
 import { StructuredData } from '@/components/products/StructuredData';
-import { VariantViewer, type ViewerVariant } from '@/components/products/VariantViewer';
+import { VariantViewer } from '@/components/products/VariantViewer';
 import { Link } from '@/i18n/navigation';
 import {
   catalogFamilyDisplayName,
   catalogFamilySlug,
   catalogSeriesIdentifiers,
-  resolveProductTaxonomy,
   type ProductWithRelations,
 } from '@/lib/catalog';
+import { publicProductView } from '@/lib/public-product';
 import { catalogProductRedirectTarget } from '@/lib/catalog-routing';
-import { pick, pickLocale, tr } from '@/lib/content';
+import { pickLocale, tr } from '@/lib/content';
 import { getProductBySlug, queryCatalogProducts } from '@/lib/queries';
 import { buildPageMetadata, directContentLocales, hasText, localizedUrl } from '@/lib/seo';
 
@@ -26,18 +28,6 @@ export const dynamicParams = true;
 export const dynamic = 'force-dynamic';
 
 const getCachedProduct = cache(getProductBySlug);
-
-function parseGallery(raw?: string | null): string[] {
-  if (!raw) return [];
-  try {
-    const value = JSON.parse(raw);
-    return Array.isArray(value)
-      ? value.filter((item): item is string => typeof item === 'string' && item.startsWith('/'))
-      : [];
-  } catch {
-    return [];
-  }
-}
 
 function firstValue(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value[0] || '' : value || '';
@@ -99,32 +89,16 @@ export default async function ProductDetailPage({
 
   const t = await getTranslations({ locale, namespace: 'Products' });
   const tc = await getTranslations({ locale, namespace: 'Common' });
-  const content = tr<{ name?: string; description?: string }>(product.i18n, locale);
+  const resourcesT = await getTranslations({ locale, namespace: 'Resources' });
+  const resources = await getPublicResources(locale, product.id);
+  const view = publicProductView(product, locale, t('standardVariant'));
+  if (requestedVariant && !view.variants.some(variant => variant.id === requestedVariant)) notFound();
   const seriesName = catalogFamilyDisplayName(product.series, locale);
-  const productName = content.name || product.model || slug;
-  const taxonomy = resolveProductTaxonomy(product, locale);
-  const reviewedDescription = taxonomy.status === 'VERIFIED' ? content.description : undefined;
-  const productGallery = parseGallery(product.gallery);
-  const variants: ViewerVariant[] = product.variants.filter((variant) => variant.image).map((variant) => ({
-    id: variant.id,
-    name: tr<{ name?: string }>(variant.i18n, locale).name || variant.sku || t('standardVariant'),
-    image: variant.image!,
-    gallery: Array.from(new Set([variant.image!, ...parseGallery(variant.gallery)])),
-    swatchHex: variant.swatchHex,
-    finish: variant.finish,
-    widthMm: variant.widthMm,
-    heightMm: variant.heightMm,
-    depthMm: variant.depthMm,
-  }));
-  if (!variants.length && product.image) {
-    variants.push({
-      id: `${product.id}-default`,
-      name: t('standardVariant'),
-      image: product.image,
-      gallery: Array.from(new Set([product.image, ...productGallery])),
-    });
-  }
-
+  const productName = view.name;
+  const taxonomy = { functionType: view.functionType, status: product.classificationStatus };
+  const reviewedDescription = view.description;
+  const variants = view.variants;
+  const productGallery = variants.flatMap(variant => variant.gallery);
   const relatedResult = await queryCatalogProducts({
     locale,
     familyIdentifier: familySlug,
@@ -133,10 +107,7 @@ export default async function ProductDetailPage({
     standardName: t('standardVariant'),
   });
   const related = (relatedResult?.products || []).filter((item) => item.id !== product.id).slice(0, 3);
-  const localizedSpecs = pick<{ label?: string; value?: string }[]>(product.specs, locale);
-  const specs = Array.isArray(localizedSpecs)
-    ? localizedSpecs.filter((spec) => spec && typeof spec.label === 'string' && typeof spec.value === 'string' && spec.label.trim() && spec.value.trim())
-    : [];
+  const specs = view.specs;
   const functionTypes = {
     switches: t('functionTypes.switches'),
     'power-sockets': t('functionTypes.power-sockets'),
@@ -170,7 +141,7 @@ export default async function ProductDetailPage({
           '@context': 'https://schema.org',
           '@type': 'Product',
           name: productName,
-          ...(product.model ? { model: product.model } : {}),
+          ...(view.model ? { model: view.model } : {}),
           ...(reviewedDescription ? { description: reviewedDescription } : {}),
           ...(schemaImages.length ? { image: schemaImages } : {}),
           brand: { '@type': 'Brand', name: 'UTEN' },
@@ -188,12 +159,16 @@ export default async function ProductDetailPage({
       <section className="container-uten pb-16 md:pb-24">
         <VariantViewer
           locale={locale}
-          product={{ name: productName, model: product.model, seriesName, description: reviewedDescription, studioHref: '/studio' }}
+          product={{ id: product.id, seriesId: product.seriesId, name: productName, model: view.model, seriesName, description: reviewedDescription, studioHref: product.sceneEnabled && product.variants.some(variant => variant.published && variant.image) && !familySlug.includes('floor') ? '/studio' : undefined }}
           variants={variants}
           initialVariantId={requestedVariant}
           labels={{ variants: t('variants'), gallery: t('gallery'), finish: t('finish'), dimensions: t('dimensions'), specsPending: t('specsPending'), tryOnWall: t('tryOnWall'), askAdvice: t('askAdvice'), displayOnly: t('displayOnly') }}
         />
       </section>
+
+      {view.historicalDescription && <section className="container-uten pb-16"><div className="public-history"><h2>{t('historicalTitle')}</h2><p>{t('historicalNote')}</p><p className="historical-copy">{view.historicalDescription}</p></div></section>}
+
+      {resources.length > 0 && <section className="container-uten pb-16"><div className="public-section-heading"><h2>{resourcesT('downloadTitle')}</h2></div><PublicResourceList resources={resources} locale={locale} /></section>}
 
       {specs.length > 0 && (
         <section className="border-y border-border bg-background-elevated/55 py-14 md:py-20">

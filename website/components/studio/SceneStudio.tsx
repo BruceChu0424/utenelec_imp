@@ -33,6 +33,7 @@ export type StudioVariant = {
   seriesName?: string;
   legacySynthetic?: boolean;
   productHref: string;
+  contactHref: string;
 };
 
 type Labels = {
@@ -80,11 +81,13 @@ export function SceneStudio({
   variants,
   labels,
   initialVariantId,
+  searchable = true,
 }: {
   scenes: StudioScene[];
   variants: StudioVariant[];
   labels: Labels;
   initialVariantId?: string;
+  searchable?: boolean;
 }) {
   const stageRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ pointerId: number; offsetX: number; offsetY: number } | null>(null);
@@ -258,11 +261,11 @@ export function SceneStudio({
 
         <div className="flex min-h-0 flex-1 flex-col p-5">
           <p className="text-xs font-bold uppercase tracking-[.18em] text-muted-foreground">03 · {labels.products}</p>
-          <label className="relative mt-3 block">
+          {searchable && <label className="relative mt-3 block">
             <Search className="pointer-events-none absolute start-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <span className="sr-only">{labels.search}</span>
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={labels.search} className="input-uten ps-10" />
-          </label>
+          </label>}
 
           <div className="mt-3 grid max-h-[270px] gap-5 overflow-y-auto pe-1 xl:max-h-none xl:flex-1">
             {variantGroups.length ? variantGroups.map((group) => (
@@ -306,7 +309,7 @@ export function SceneStudio({
             </div>
             <div className="mt-4 grid grid-cols-2 gap-2">
               <Link href={variant.productHref} className="btn-outline btn-sm">{labels.viewProduct}</Link>
-              <Link href={`/contact?product=${encodeURIComponent(studioVariantTitle(variant))}`} className="btn-primary btn-sm">{labels.askAdvice}<ArrowUpRight className="h-3.5 w-3.5" /></Link>
+              <Link href={variant.contactHref} className="btn-primary btn-sm">{labels.askAdvice}<ArrowUpRight className="h-3.5 w-3.5" /></Link>
             </div>
           </div>
         )}

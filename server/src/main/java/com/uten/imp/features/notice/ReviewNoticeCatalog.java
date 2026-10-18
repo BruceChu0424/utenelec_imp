@@ -18,6 +18,7 @@ public final class ReviewNoticeCatalog {
 
     /** sourceEvent → 注册项。 */
     private static final Map<String, Entry> ENTRIES = Map.ofEntries(
+            Map.entry("WEBSITE_INQUIRY_NEW", new Entry("WEBSITE_INQUIRY", null)),
             Map.entry("PRODUCTION_OVER_LIMIT_PENDING",
                     new Entry("PRODUCTION_OVER_LIMIT_DISPOSITION",null)),
             Map.entry("PRODUCTION_OVERPRODUCTION_RATE_SUBMITTED",
@@ -246,6 +247,7 @@ public final class ReviewNoticeCatalog {
             java.util.Map.entry("PAYROLL_BATCH_SUBMITTED", "工资批次待审核"),
             java.util.Map.entry("PAYROLL_BATCH_PENDING_PUBLISH", "工资批次待发布"),
             java.util.Map.entry("SUGGESTION_SUBMITTED", "建议待回复"),
+            java.util.Map.entry("WEBSITE_INQUIRY_NEW", "官网询盘待认领"),
             java.util.Map.entry("STOCK_COUNT_PENDING_FINANCE_REVIEW", "普通仓盘点待审核"),
             java.util.Map.entry("STOCK_COUNT_PENDING_WAREHOUSE_REVIEW", "内料仓盘点待审核"),
             java.util.Map.entry("WORKSHOP_MATERIAL_REQUISITION_PENDING", "车间请领待发料"),

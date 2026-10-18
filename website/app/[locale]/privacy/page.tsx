@@ -1,3 +1,4 @@
+import { PublicPageIntro } from '@/components/layout/PublicPageIntro';
 import type { Metadata } from 'next';
 import { Database, Eye, FileText, Mail, ShieldCheck, TimerReset } from 'lucide-react';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
@@ -30,16 +31,10 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
 
   return (
     <>
-      <section className="page-hero">
-        <div className="container-uten relative max-w-5xl">
-          <p className="eyebrow">{t('eyebrow')}</p>
-          <h1 className="page-title mt-7">{t('title')}</h1>
-          <p className="prose-intro mt-6">{t('intro')}</p>
-        </div>
-      </section>
+      <PublicPageIntro locale={locale} title={t('title')} description={t('intro')} />
       <section className="section-tight">
         <div className="container-uten max-w-5xl">
-          <div className="grid gap-px overflow-hidden rounded-[1.5rem] border border-border bg-border md:grid-cols-2">
+          <div className="public-policy-sections">
             {sections.map((section) => <article key={section.title} className="bg-card p-6 md:p-8"><section.icon className="h-5 w-5 text-accent" /><h2 className="mt-8 text-xl font-semibold">{section.title}</h2><p className="mt-4 text-sm leading-7 text-muted-foreground md:text-base md:leading-8">{section.body}</p></article>)}
           </div>
           {(contact.company || contact.email) && <p className="mt-8 rounded-2xl border border-border bg-background-elevated p-5 text-sm leading-7"><strong>{contact.company}</strong>{contact.email && <> · <a href={`mailto:${contact.email}`} className="font-semibold text-accent underline-offset-4 hover:underline">{contact.email}</a></>}</p>}

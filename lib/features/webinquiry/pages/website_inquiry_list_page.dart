@@ -6,6 +6,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
@@ -55,7 +56,9 @@ class WebsiteInquiryListPage extends ConsumerWidget {
                         : status == null
                         ? '暂无进行中的询盘'
                         : '该状态下暂无询盘',
-                    description: '客户在官网提交的留言会实时汇入这里',
+                    description: AppLocalizations.of(
+                      context,
+                    ).websiteInquiryDescription,
                   );
                 }
                 return SingleChildScrollView(

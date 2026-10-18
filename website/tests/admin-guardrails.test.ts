@@ -270,13 +270,11 @@ test('catalog publication requires a visible FAMILY hierarchy without blocking d
   );
 });
 
-test('catalog admin mutations retain optimistic-lock, publication and hard-delete guards', async () => {
+test('public content actions can only stage revisions and cannot bypass the publisher', async () => {
   const actionsPath = fileURLToPath(new URL('../app/admin/actions.ts', import.meta.url));
   const actions = await readFile(actionsPath, 'utf8');
-  assert.match(actions, /where: \{ id, rowVersion: version as number \}/);
-  assert.match(actions, /发布产品前必须选择一个已发布系列/);
-  assert.match(actions, /至少需要一个已发布且有图片的款式/);
-  assert.match(actions, /旧站合成占位，不得填写或伪装真实 SKU/);
-  assert.match(actions, /unpublish-before-delete/);
-  assert.match(actions, /series-not-empty/);
+  assert.match(actions, /stageCmsRevision/);
+  assert.doesNotMatch(actions, /prisma\.(product|series|productVariant|seriesMedia|scenePreset|news|caseItem|job|setting)\.(create|update|upsert|delete)/);
+  // Real database tests in cms-revisions.test.ts exercise concurrency, failed
+  // publication, parent gates, lease expiry and stable source-aware rollback.
 });

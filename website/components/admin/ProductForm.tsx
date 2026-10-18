@@ -264,7 +264,7 @@ function SwatchField({ fieldName, value }: { fieldName: string; value: string | 
   );
 }
 
-export function ProductForm({ product, series }: { product: Product; series: SeriesLite[] }) {
+export function ProductForm({ product, series, baseHash }: { product: Product; series: SeriesLite[]; baseHash: string }) {
   const zh = product
     ? (pickLocale<{ name?: string; description?: string }>(product.i18n, 'zh') ?? {})
     : {};
@@ -312,6 +312,8 @@ export function ProductForm({ product, series }: { product: Product; series: Ser
 
   return (
     <form onSubmit={onSubmit} className="max-w-5xl pb-10">
+      <input type="hidden" name="expectedHash" value={baseHash} />
+      <p className="mb-4 text-sm text-muted-foreground">保存草稿后进入版本预览；审核发布才会更新官网。</p>
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">Product CMS</p>
         <h1 className="mt-1 font-heading text-2xl font-bold">{product ? '编辑产品' : '新增产品'}</h1>
@@ -611,7 +613,7 @@ export function ProductForm({ product, series }: { product: Product; series: Ser
       )}
       <div className="mt-7 flex flex-wrap gap-3 border-t border-border pt-6">
         <button type="submit" disabled={saving} className="btn-accent min-h-11 disabled:cursor-wait disabled:opacity-60">
-          {saving ? '保存中…' : '保存产品'}
+          {saving ? '保存中…' : '保存产品草稿'}
         </button>
         <Link href="/admin/products" className="btn-outline min-h-11">取消</Link>
       </div>

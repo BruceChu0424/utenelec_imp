@@ -1,3 +1,4 @@
+import { PublicPageIntro } from '@/components/layout/PublicPageIntro';
 import type { Metadata } from 'next';
 import Image from 'next/image';
 import { Building2, CalendarDays, MapPin } from 'lucide-react';
@@ -24,21 +25,7 @@ export default async function CasesPage({ params }: { params: Promise<{ locale: 
 
   return (
     <>
-      <section className="page-hero">
-        <div className="container-uten relative grid items-end gap-8 lg:grid-cols-[1fr_auto]">
-          <div>
-            <span className="eyebrow">{t('eyebrow')}</span>
-            <h1 className="page-title mt-7">{t('title')}</h1>
-            <p className="prose-intro mt-5">{t('subtitle')}</p>
-          </div>
-          {projectCases.length > 0 && (
-            <div className="flex min-w-40 items-center gap-4 border-y border-border py-4 lg:justify-end">
-              <Building2 className="h-5 w-5 text-accent" />
-              <div><p className="text-2xl font-bold tracking-[-.04em]">{formatSequence.format(projectCases.length)}</p><p className="text-xs uppercase tracking-[.14em] text-muted-foreground">{t('projectsLabel')}</p></div>
-            </div>
-          )}
-        </div>
-      </section>
+      <PublicPageIntro locale={locale} title={t('title')} description={t('subtitle')} />
       <div className="container-uten section-tight">
         {projectCases.length === 0 ? (
           <div className="rounded-3xl border border-dashed border-border bg-card px-6 py-20 text-center text-muted-foreground">{t('empty')}</div>

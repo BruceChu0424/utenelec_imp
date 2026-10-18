@@ -11,7 +11,8 @@ async function loadCatalogRedirects() {
   if (catalogRedirectsPromise) return catalogRedirectsPromise;
 
   catalogRedirectsPromise = (async () => {
-    const { PrismaClient } = await import('@prisma/client');
+    const { PrismaClient } = process.env.DATABASE_URL?.startsWith('postgres')
+      ? await import('./generated/postgresql/index.js') : await import('@prisma/client');
     const prisma = new PrismaClient();
 
     try {
@@ -118,7 +119,7 @@ const nextConfig = {
     ],
   },
   experimental: {
-    serverActions: { bodySizeLimit: '10mb' },
+    serverActions: { bodySizeLimit: '22mb' },
   },
   async headers() {
     return [{
@@ -129,6 +130,14 @@ const nextConfig = {
   // Redirect legacy catalogue aliases before React starts streaming. A
   // Server Component redirect can otherwise degrade to `200 + meta refresh`,
   // which is slower for visitors and ambiguous to search engines.
+  // The legacy ASP source URLs are resolved against current publication state
+  // by a route handler, so unknown or withdrawn IDs return an actual HTTP 404.
+  async rewrites() {
+    return [
+      { source: '/en/:legacyFile([a-zA-Z0-9_-]+\\.asp)', destination: '/api/legacy/en/:legacyFile' },
+      { source: '/:legacyFile([a-zA-Z0-9_-]+\\.asp)', destination: '/api/legacy/zh/:legacyFile' },
+    ];
+  },
   async redirects() {
     return loadCatalogRedirects();
   },

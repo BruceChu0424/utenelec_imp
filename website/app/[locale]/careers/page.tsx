@@ -1,9 +1,10 @@
+import { PublicPageIntro } from '@/components/layout/PublicPageIntro';
 import type { Metadata } from 'next';
 import { setRequestLocale, getTranslations } from 'next-intl/server';
 import { getJobs, getSetting } from '@/lib/queries';
 import { tr, pick } from '@/lib/content';
 import { Link } from '@/i18n/navigation';
-import { ArrowUpRight, BriefcaseBusiness, Building2, Mail, MapPin } from 'lucide-react';
+import { ArrowUpRight, BriefcaseBusiness, Mail, MapPin } from 'lucide-react';
 import { buildPageMetadata } from '@/lib/seo';
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
@@ -27,21 +28,7 @@ export default async function CareersPage({ params }: { params: Promise<{ locale
 
   return (
     <>
-      <section className="page-hero">
-        <div className="container-uten relative grid items-end gap-8 lg:grid-cols-[1fr_.68fr] lg:gap-16">
-          <div>
-            <span className="eyebrow">{t('eyebrow')}</span>
-            <h1 className="page-title mt-7">{meta.title || t('title')}</h1>
-            {meta.subtitle && <p className="prose-intro mt-5">{meta.subtitle}</p>}
-          </div>
-          {meta.body && (
-            <div className="border-s border-border ps-6 lg:ps-8">
-              <Building2 className="h-5 w-5 text-accent" />
-              <p className="mt-4 text-pretty text-sm leading-7 text-muted-foreground md:text-base md:leading-8">{meta.body}</p>
-            </div>
-          )}
-        </div>
-      </section>
+      <PublicPageIntro locale={locale} title={meta.title || t('title')} description={meta.subtitle} />
 
       <section className="section-tight">
         <div className="container-uten">
@@ -56,7 +43,7 @@ export default async function CareersPage({ params }: { params: Promise<{ locale
             {jobs.map((j, index) => {
               const jd = tr<{ title: string; requirements?: string; description?: string }>(j.i18n, locale);
               return (
-                <article key={j.slug} className="card-uten flex h-full flex-col p-6 md:p-8">
+                <article id={`job-${j.slug}`} key={j.slug} className="card-uten flex h-full flex-col p-6 md:p-8">
                   <div className="flex flex-wrap items-start justify-between gap-5">
                     <div>
                       <p className="text-xs font-bold tracking-[.16em] text-accent">{t('positionLabel', { number: formatSequence.format(index + 1) })}</p>

@@ -1,5 +1,7 @@
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db';
+import type { Series, SeriesMedia } from '@prisma/client';
+import { getCmsEditState } from '@/lib/cms-revisions';
 import { pickLocale } from '@/lib/content';
 import { SeriesForm } from '@/components/admin/SeriesForm';
 
@@ -32,7 +34,8 @@ export default async function SeriesEditPage({ params }: { params: Promise<{ id?
     orderBy: [{ sortOrder: 'asc' }, { code: 'asc' }],
     include: { media: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] } },
   });
-  const series = id ? allSeries.find((item) => item.id === id) ?? null : null;
+  const editing = id ? await getCmsEditState('series', id) : null;
+  const series = editing?.snapshot.record ? { ...(editing.snapshot.record as unknown as Series), media: editing.snapshot.media as unknown as SeriesMedia[] } : null;
   if (id && !series) notFound();
 
   const unavailableParentIds = series
@@ -59,5 +62,5 @@ export default async function SeriesEditPage({ params }: { params: Promise<{ id?
     media: series.media,
   } : null;
 
-  return <SeriesForm series={editableSeries} parentOptions={parentOptions} />;
+  return <SeriesForm baseHash={editing?.baseHash || ''} series={editableSeries} parentOptions={parentOptions} />;
 }

@@ -20,10 +20,12 @@ type VariantOption = { id: string; label: string; image: string };
 
 export function SceneForm({
   scene,
+  baseHash,
   variants,
   config,
 }: {
   scene: Scene;
+  baseHash: string;
   variants: VariantOption[];
   config: { defaultVariantId: string; placement: ScenePlacement };
 }) {
@@ -52,10 +54,11 @@ export function SceneForm({
 
   return (
     <form onSubmit={onSubmit} className="max-w-4xl pb-10">
+      <input type="hidden" name="expectedHash" value={baseHash} />
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">Scene preset</p>
         <h1 className="mt-1 font-heading text-2xl font-bold">{scene ? '编辑场景' : '新增场景'}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">背景与安装参数会直接提供给前台试装工具，访客仍可切换其他具体产品款式。</p>
+        <p className="mt-1 text-sm text-muted-foreground">保存为草稿并审核发布后，背景与安装参数提供给前台试装工具。</p>
       </div>
       {err && (
         <div role="alert" aria-live="assertive" className="mt-4 rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">
@@ -151,7 +154,7 @@ export function SceneForm({
 
       <div className="mt-7 flex flex-wrap gap-3 border-t border-border pt-6">
         <button type="submit" disabled={saving} className="btn-accent min-h-11 disabled:cursor-wait disabled:opacity-60">
-          {saving ? '保存中…' : '保存场景'}
+          {saving ? '保存中…' : '保存场景草稿'}
         </button>
         <Link href="/admin/scenes" className="btn-outline min-h-11">取消</Link>
       </div>

@@ -149,7 +149,7 @@ export default async function ProductsAdmin({
                   <td className="p-3"><p>{product.functionType || '未分类'}</p><p className="mt-1 text-xs text-muted-foreground">{product.classificationStatus}</p></td>
                   <td className="p-3 tabular-nums">{product._count.variants}</td>
                   <td className="p-3 text-xs"><p className={product.published ? 'text-accent' : 'text-muted-foreground'}>{product.published ? '已发布' : '未发布'}</p>{product.sceneEnabled && <p className="mt-1 text-muted-foreground">可试装</p>}</td>
-                  <td className="whitespace-nowrap p-3 text-right"><Link href={`/admin/products/edit/${product.id}`} className="text-accent hover:underline">编辑</Link><span className="mx-2 text-border">|</span><DeleteButton action={deleteProduct.bind(null, product.id)} /></td>
+                  <td className="whitespace-nowrap p-3 text-right"><Link href={`/admin/products/edit/${product.id}`} className="text-accent hover:underline">编辑</Link><span className="mx-2 text-border">|</span><DeleteButton draft action={deleteProduct.bind(null, product.id)} /></td>
                 </tr>
               );
             })}

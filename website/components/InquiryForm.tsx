@@ -11,10 +11,14 @@ export function InquiryForm({
   source = 'contact',
   initialMessage = '',
   projectBrief = false,
+  context,
+  contextLabel,
 }: {
   source?: string;
   initialMessage?: string;
   projectBrief?: boolean;
+  context?: { productId?: string; variantId?: string; seriesId?: string };
+  contextLabel?: string;
 }) {
   const t = useTranslations('Contact');
   const tc = useTranslations('Common');
@@ -22,6 +26,8 @@ export function InquiryForm({
   const locale = routing.locales.find((candidate) => candidate === activeLocale) ?? routing.defaultLocale;
   const [pending, start] = useTransition();
   const [done, setDone] = useState(false);
+  const [receiptId, setReceiptId] = useState('');
+  const submissionAttempt = useRef<{ fingerprint: string; key: string } | null>(null);
   const [error, setError] = useState(false);
   const [contactError, setContactError] = useState(false);
   const phoneRef = useRef<HTMLInputElement>(null);
@@ -40,9 +46,14 @@ export function InquiryForm({
     }
     setContactError(false);
 
+    const fingerprint = JSON.stringify([...data.entries()].map(([key, value]) => [key, String(value)]).sort(([a], [b]) => a.localeCompare(b)));
+    if (submissionAttempt.current?.fingerprint !== fingerprint) submissionAttempt.current = { fingerprint, key: crypto.randomUUID() };
+    data.set('submissionKey', submissionAttempt.current.key);
     start(async () => {
+      try {
       const result = await submitInquiry(data);
       if (result.ok) {
+        setReceiptId('receiptId' in result ? String(result.receiptId || '') : '');
         setDone(true);
         form.reset();
       } else if ('reason' in result && result.reason === 'contact-required') {
@@ -51,17 +62,22 @@ export function InquiryForm({
       } else {
         setError(true);
       }
+      } catch { setError(true); }
     });
   };
 
   if (done) {
-    return <div className="rounded-2xl border border-accent/30 bg-accent/10 p-10 text-center" role="status"><CheckCircle className="mx-auto h-10 w-10 text-accent" /><p className="mt-3 font-semibold text-foreground">{tc('submitted')}</p></div>;
+    return <div className="inquiry-receipt" role="status"><CheckCircle className="h-8 w-8 text-accent" /><h3>{t('receivedTitle')}</h3>{receiptId && <p>{t('receiptNumber')} <strong>{receiptId}</strong></p>}<p>{t('receivedBody')}</p></div>;
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-5" aria-busy={pending}>
+    <form onSubmit={onSubmit} onChange={() => { submissionAttempt.current = null; }} className="space-y-5 public-inquiry-form" aria-busy={pending}>
       <input type="hidden" name="source" value={source} />
       <input type="hidden" name="locale" value={locale} />
+      {context?.productId && <input type="hidden" name="productId" value={context.productId} />}
+      {context?.variantId && <input type="hidden" name="variantId" value={context.variantId} />}
+      {context?.seriesId && <input type="hidden" name="seriesId" value={context.seriesId} />}
+      {contextLabel && <div className="inquiry-context"><p>{t('contextTitle')}</p><strong>{contextLabel}</strong></div>}
       <div className="absolute -left-[9999px]" aria-hidden="true"><label htmlFor="website">Website</label><input id="website" name="website" tabIndex={-1} autoComplete="off" /></div>
       <div>
         <label htmlFor="inquiry-name" className="label-uten">{t('name')} <span className="text-destructive">*</span></label>

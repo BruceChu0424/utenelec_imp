@@ -1,22 +1,26 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { prisma } from '@/lib/db';
+import type { News } from '@prisma/client';
+import { getCmsEditState } from '@/lib/cms-revisions';
+import { CmsDraftForm } from '@/components/admin/CmsDraftForm';
 import { pickLocale } from '@/lib/content';
 import { saveNews } from '@/app/admin/actions';
 import { ImageUpload } from '@/components/admin/ImageUpload';
 
 export default async function NewsEditPage({ params }: { params: Promise<{ id?: string[] }> }) {
   const id = (await params).id?.[0];
-  const n = id ? await prisma.news.findUnique({ where: { id } }) : null;
+  const editing = id ? await getCmsEditState('news', id) : null;
+  const n = editing?.snapshot.record as unknown as News | null;
   if (id && !n) notFound();
   const zh = n ? (pickLocale<{ title?: string; summary?: string; content?: string }>(n.i18n, 'zh') ?? {}) : {};
   const en = n ? (pickLocale<{ title?: string; summary?: string; content?: string }>(n.i18n, 'en') ?? {}) : {};
   const date = n ? new Date(n.publishedAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
 
   return (
-    <form action={saveNews} className="max-w-2xl">
+    <CmsDraftForm action={saveNews} className="max-w-2xl">
       <h1 className="font-heading text-2xl font-bold">{n ? '编辑文章' : '新增文章'}</h1>
       {n && <input type="hidden" name="id" value={n.id} />}
+      <input type="hidden" name="expectedHash" value={editing?.baseHash || ''} />
       <div className="mt-5 card-uten space-y-4 p-5">
         <div className="grid gap-4 sm:grid-cols-2">
           <div><label className="label-uten">分类</label>
@@ -45,7 +49,7 @@ export default async function NewsEditPage({ params }: { params: Promise<{ id?: 
         <div><label className="label-uten">Summary</label><input name="en_summary" defaultValue={en.summary || ''} className="input-uten" /></div>
         <div><label className="label-uten">Content</label><textarea name="en_content" rows={14} defaultValue={en.content || ''} aria-describedby="article-syntax-help" className="input-uten min-h-80 resize-y" /></div>
       </fieldset>
-      <div className="mt-6 flex gap-3"><button className="btn-accent">保存文章</button><Link href="/admin/news" className="btn-outline">取消</Link></div>
-    </form>
+      <div className="mt-6 flex gap-3"><button className="btn-accent">保存文章草稿</button><Link href="/admin/news" className="btn-outline">取消</Link></div>
+    </CmsDraftForm>
   );
 }

@@ -81,6 +81,7 @@ PagePermissionScope? pagePermissionScopeFor(String location) {
   if (path == '/webinquiry' || _isDescendant(path, '/webinquiry')) {
     return _websiteInquiryScope;
   }
+  if (path == '/website-management') return _websiteManagementScope;
 
   // 销售任务中心（V812 补挂：合并浏览页此前拿不到 scope，右上角入口静默消失）。
   if (path == '/sales/tasks' || _isDescendant(path, '/sales/tasks')) {
@@ -195,6 +196,7 @@ const _registeredPagePermissionScopes = <PagePermissionScope>[
   _noticePublishScope,
   _suggestionScope,
   _websiteInquiryScope,
+  _websiteManagementScope,
   _goodsScope,
   _mouldScope,
   _clientScope,
@@ -564,6 +566,11 @@ const _suggestionScope = PagePermissionScope(
 const _websiteInquiryScope = PagePermissionScope(
   surfaceKey: 'website.inquiry',
   title: '官网询盘',
+);
+
+const _websiteManagementScope = PagePermissionScope(
+  surfaceKey: 'website.management',
+  title: '官网管理',
 );
 
 const _goodsScope = PagePermissionScope(

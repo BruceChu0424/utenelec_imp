@@ -36,6 +36,7 @@ enum BadgeModule {
 
   /// 销售管理 hub。
   sales,
+  websiteInquiry,
 
   /// 系统管理（服务器状态告警）。
   system,

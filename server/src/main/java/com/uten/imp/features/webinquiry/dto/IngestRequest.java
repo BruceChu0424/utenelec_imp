@@ -2,6 +2,7 @@ package com.uten.imp.features.webinquiry.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * 官网询盘推送载荷（POST /api/website-inquiries/ingest）。
@@ -23,6 +24,14 @@ public record IngestRequest(
         @Size(max = 80) String preferredContact,
         @NotBlank @Size(max = 3000) String message,
         @Size(max = 24) String source,
-        @Size(max = 8) String locale
+        @Size(max = 8) String locale,
+        JsonNode sourceContext
 ) {
+    public IngestRequest(String sourceId,String name,String phone,String email,String company,String market,
+                         String customerType,String requiredStandard,String productInterest,String requestType,
+                         String estimatedQuantity,String targetSchedule,String preferredContact,String message,
+                         String source,String locale) {
+        this(sourceId,name,phone,email,company,market,customerType,requiredStandard,productInterest,requestType,
+                estimatedQuantity,targetSchedule,preferredContact,message,source,locale,null);
+    }
 }

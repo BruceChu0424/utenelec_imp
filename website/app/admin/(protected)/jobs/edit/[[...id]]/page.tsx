@@ -1,20 +1,24 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { prisma } from '@/lib/db';
+import type { Job } from '@prisma/client';
+import { getCmsEditState } from '@/lib/cms-revisions';
+import { CmsDraftForm } from '@/components/admin/CmsDraftForm';
 import { pickLocale } from '@/lib/content';
 import { saveJob } from '@/app/admin/actions';
 
 export default async function JobEditPage({ params }: { params: Promise<{ id?: string[] }> }) {
   const id = (await params).id?.[0];
-  const j = id ? await prisma.job.findUnique({ where: { id } }) : null;
+  const editing = id ? await getCmsEditState('job', id) : null;
+  const j = editing?.snapshot.record as unknown as Job | null;
   if (id && !j) notFound();
   const zh = j ? (pickLocale<{ title?: string; requirements?: string; description?: string }>(j.i18n, 'zh') ?? {}) : {};
   const en = j ? (pickLocale<{ title?: string; requirements?: string; description?: string }>(j.i18n, 'en') ?? {}) : {};
 
   return (
-    <form action={saveJob} className="max-w-2xl">
+    <CmsDraftForm action={saveJob} className="max-w-2xl">
       <h1 className="font-heading text-2xl font-bold">{j ? '编辑岗位' : '新增岗位'}</h1>
       {j && <input type="hidden" name="id" value={j.id} />}
+      <input type="hidden" name="expectedHash" value={editing?.baseHash || ''} />
       <div className="mt-5 card-uten space-y-4 p-5">
         <div className="grid gap-4 sm:grid-cols-2">
           <div><label className="label-uten">所属部门</label><input name="department" defaultValue={j?.department || ''} className="input-uten" /></div>
@@ -34,6 +38,6 @@ export default async function JobEditPage({ params }: { params: Promise<{ id?: s
         <div><label className="label-uten">Requirements</label><textarea name="en_requirements" rows={5} defaultValue={en.requirements || ''} className="input-uten resize-none" /></div>
       </fieldset>
       <div className="mt-6 flex gap-3"><button className="btn-accent">保存岗位</button><Link href="/admin/jobs" className="btn-outline">取消</Link></div>
-    </form>
+    </CmsDraftForm>
   );
 }

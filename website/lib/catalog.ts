@@ -2,6 +2,7 @@ import type { Prisma, Series } from '@prisma/client';
 import type { CatalogProduct } from '@/components/products/ProductExplorer';
 import type { StudioScene, StudioVariant } from '@/components/studio/SceneStudio';
 import { seriesDisplayName, tr } from './content';
+import { publicProductView, productContactHref } from './public-product';
 import {
   PRODUCT_FUNCTION_TYPES,
   inferProductTaxonomy,
@@ -311,111 +312,37 @@ export function resolveProductTaxonomy(product: ProductWithRelations, locale: st
 }
 
 export function toCatalogProduct(product: ProductWithRelations, locale: string, standardName = 'Standard'): CatalogProduct {
-  const content = tr<{ name?: string; description?: string }>(product.i18n, locale);
+  const view = publicProductView(product, locale, standardName);
   const familySlug = catalogFamilySlug(product.series);
-  const seriesName = catalogFamilyDisplayName(product.series, locale);
-  const collectionName = product.series
-    ? tr<{ name?: string }>(product.series.i18n, locale).name?.trim() || seriesDisplayName(product.series, locale)
-    : undefined;
-  const taxonomy = resolveProductTaxonomy(product, locale);
-  const isReviewed = taxonomy.status === 'VERIFIED';
-  const variants = product.variants
-    .filter((variant) => variant.published && variant.image)
-    .map((variant) => ({
-      id: variant.id,
-      name: tr<{ name?: string }>(variant.i18n, locale).name || variant.sku || standardName,
-      image: variant.image!,
-      swatchHex: isReviewed ? variant.swatchHex : null,
-    }));
-
-  if (!variants.length && product.image) {
-    variants.push({
-      id: `${product.id}-default`,
-      name: standardName,
-      image: product.image,
-      swatchHex: null,
-    });
-  }
-
   return {
-    id: product.id,
-    name: content.name || product.model || product.slug,
-    model: isReviewed ? product.model : null,
-    category: isReviewed ? product.category : null,
-    description: isReviewed ? content.description : undefined,
+    id: product.id, name: view.name, model: view.model, category: view.category,
+    description: view.description,
     href: familySlug ? `/products/${familySlug}/${product.slug}` : '/products',
+    contactHref: productContactHref({ productId: product.id, seriesId: product.seriesId }),
     seriesCode: familySlug || undefined,
-    seriesName,
-    collectionName,
-    image: product.image,
-    variants,
-    functionType: taxonomy.functionType,
-    gangCount: taxonomy.gangCount,
-    controlMode: isReviewed ? taxonomy.controlMode : null,
-    configuration: isReviewed ? product.configuration?.trim() || null : null,
-    classificationStatus: taxonomy.status,
+    seriesName: catalogFamilyDisplayName(product.series, locale),
+    collectionName: product.series ? seriesDisplayName(product.series, locale) : undefined,
+    image: view.image,
+    variants: view.variants.map(variant => ({ id: variant.id, name: variant.name, image: variant.image, swatchHex: variant.swatchHex })),
+    functionType: view.functionType, gangCount: view.gangCount,
+    controlMode: view.controlMode, configuration: view.configuration,
+    classificationStatus: product.classificationStatus,
   };
 }
 
 export function toStudioVariants(products: ProductWithRelations[], locale: string, standardName = 'Standard'): StudioVariant[] {
-  return products.flatMap((product) => {
-    const content = tr<{ name?: string }>(product.i18n, locale);
-    const seriesName = catalogFamilyDisplayName(product.series, locale);
-    const productName = content.name || product.model || product.slug;
+  return products.flatMap(product => {
+    const family = catalogFamilyForSeries(product.series);
     const familySlug = catalogFamilySlug(product.series);
+    if (!product.sceneEnabled || familySlug?.includes('floor') || family?.sourceIdentity === 'ch-uten-v2:series:53') return [];
+    const view = publicProductView(product, locale, standardName);
     const baseProductHref = familySlug ? `/products/${familySlug}/${product.slug}` : '/products';
-    const variants = product.variants
-      .filter((variant) => variant.published && variant.image)
-      .map((variant) => {
-        const localizedName = tr<{ name?: string }>(variant.i18n, locale).name || variant.sku || standardName;
-        const sourceNames = [
-          tr<{ name?: string }>(variant.i18n, 'zh').name,
-          tr<{ name?: string }>(variant.i18n, 'en').name,
-        ].filter((value): value is string => Boolean(value)).map((value) => value.trim().toLocaleLowerCase());
-        const legacySynthetic = Boolean(variant.legacySynthetic) || (
-          !variant.sourceIdentity
-          && !variant.sku
-          && !variant.swatchHex
-          && !variant.finish
-          && !variant.widthMm
-          && !variant.heightMm
-          && !variant.depthMm
-          && sourceNames.every((name) => name === 'standard' || name === '标准款')
-        );
-        return {
-          id: variant.id,
-          name: localizedName,
-          productName,
-          model: legacySynthetic ? null : product.model || variant.sku,
-          image: variant.image!,
-          swatchHex: legacySynthetic ? null : variant.swatchHex,
-          finish: legacySynthetic ? null : variant.finish,
-          widthMm: legacySynthetic ? null : variant.widthMm,
-          heightMm: legacySynthetic ? null : variant.heightMm,
-          seriesName,
-          productHref: `${baseProductHref}?variant=${encodeURIComponent(variant.id)}`,
-          legacySynthetic,
-        };
-      });
-
-    if (!variants.length && product.image) {
-      const fallbackId = `${product.id}-default`;
-      variants.push({
-        id: fallbackId,
-        name: standardName,
-        productName,
-        model: product.model,
-        image: product.image,
-        swatchHex: null,
-        finish: null,
-        widthMm: null,
-        heightMm: null,
-        seriesName,
-        productHref: `${baseProductHref}?variant=${encodeURIComponent(fallbackId)}`,
-        legacySynthetic: true,
-      });
-    }
-    return variants;
+    return view.variants.map(variant => ({
+      ...variant, productName: view.name, model: variant.verified ? view.model : null,
+      seriesName: catalogFamilyDisplayName(product.series, locale),
+      productHref: `${baseProductHref}?variant=${encodeURIComponent(variant.id)}`,
+      contactHref: productContactHref({ productId: product.id, variantId: variant.id, seriesId: product.seriesId }, 'studio'),
+    }));
   });
 }
 

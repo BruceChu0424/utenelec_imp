@@ -61,6 +61,7 @@ model Series {
   products       Product[]
   media          SeriesMedia[]
   legacyRecords  LegacySourceRecord[]
+  resources      ResourceDocument[]
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
 
@@ -113,6 +114,7 @@ model Product {
   variants             ProductVariant[]
   legacyMedia          ProductMedia[]
   legacyRecords        LegacySourceRecord[]
+  resources            ResourceDocument[]
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt
 
@@ -344,9 +346,128 @@ model Inquiry {
   consentAt            DateTime? // 历史记录不倒填；新提交必须由服务端写入
   consentPolicyVersion String? // 历史记录不倒填；新提交由服务端固定版本
   handled              Boolean   @default(false)
+  submissionKey        String?   @unique
+  submissionFingerprint String?
+  sourceContext        String?
+  delivery             InquiryDelivery?
   createdAt            DateTime  @default(now())
 
   @@index([handled])
   @@index([createdAt])
   @@index([source, locale])
+}
+
+/// Written in the same transaction as Inquiry. Removed from polling only after
+/// a committed IMP receipt is acknowledged; browser success never means read.
+model InquiryDelivery {
+  id             String   @id @default(cuid())
+  inquiryId      String   @unique
+  inquiry        Inquiry  @relation(fields: [inquiryId], references: [id], onDelete: Restrict)
+  state          String   @default("PENDING")
+  erpInquiryId   String?
+  acknowledgedAt DateTime?
+  createdAt      DateTime @default(now())
+  @@index([state, createdAt])
+}
+
+/// One-use authorization is registered over the authenticated server channel.
+/// Only its hash is stored. Browser possession also requires the PKCE verifier.
+model ImpPortalAuthorization {
+  requestId     String   @id
+  codeHash      String   @unique
+  codeChallenge String
+  actorId       String
+  authSessionId String?
+  employeeId    String?
+  displayName   String
+  permissions   String
+  section       String
+  siteId        String
+  expiresAt     DateTime
+  leaseExpiresAt DateTime
+  consumedAt    DateTime?
+  createdAt     DateTime @default(now())
+  @@index([actorId, expiresAt])
+}
+
+model ImpPortalSession {
+  id           String   @id
+  actorId      String
+  authSessionId String?
+  employeeId   String?
+  displayName  String
+  permissions  String
+  siteId       String
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  createdAt    DateTime @default(now())
+  @@index([actorId, expiresAt])
+}
+
+model CmsRevision {
+  id           String   @id @default(cuid())
+  entityType   String
+  entityId     String?
+  operation    String
+  title        String
+  payload      String
+  beforeState  String?
+  afterState   String?
+  baseVersion  Int?
+  baseHash     String   @default("")
+  status       String   @default("DRAFT")
+  createdBy    String
+  publishedBy  String?
+  publishedAt  DateTime?
+  createdAt    DateTime @default(now())
+  @@index([status, createdAt])
+  @@index([entityType, entityId, createdAt])
+}
+
+model CmsAuditEvent {
+  id         String   @id @default(cuid())
+  actorId    String
+  action     String
+  entityType String
+  entityId   String?
+  revisionId String?
+  summary    String
+  createdAt  DateTime @default(now())
+  @@index([createdAt])
+}
+
+/// Files remain private until an approved ResourceDocument references them.
+model WebsiteDocumentAsset {
+  id           String   @id @default(cuid())
+  storageKey   String   @unique
+  sha256       String
+  mimeType     String
+  originalName String
+  sizeBytes    Int
+  createdBy    String
+  createdAt    DateTime @default(now())
+  resources    ResourceDocument[]
+  @@index([createdAt])
+}
+
+model ResourceDocument {
+  id         String   @id @default(cuid())
+  slug       String   @unique
+  i18n       String
+  language   String
+  version    String
+  market     String?
+  assetId    String
+  asset      WebsiteDocumentAsset @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  seriesId   String?
+  series     Series?  @relation(fields: [seriesId], references: [id], onDelete: Restrict)
+  productId  String?
+  product    Product? @relation(fields: [productId], references: [id], onDelete: Restrict)
+  published  Boolean  @default(false)
+  rowVersion Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  @@index([published, language])
+  @@index([productId])
+  @@index([seriesId])
 }

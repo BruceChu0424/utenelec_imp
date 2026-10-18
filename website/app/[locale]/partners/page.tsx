@@ -1,5 +1,6 @@
+import { PublicPageIntro } from '@/components/layout/PublicPageIntro';
 import type { Metadata } from 'next';
-import { ArrowDownRight, Building2, Check, Handshake, Palette, Store, Wrench } from 'lucide-react';
+import { Building2, Check, Handshake, Palette, Store, Wrench } from 'lucide-react';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { InquiryForm } from '@/components/InquiryForm';
 import { Reveal } from '@/components/motion/Reveal';
@@ -35,18 +36,7 @@ export default async function PartnersPage({ params }: { params: Promise<{ local
 
   return (
     <>
-      <section className="page-hero">
-        <div className="container-uten relative grid items-end gap-8 lg:grid-cols-[1fr_.7fr] lg:gap-16">
-          <div>
-            <p className="eyebrow">{t('eyebrow')}</p>
-            <h1 className="page-title mt-7 max-w-5xl">{custom.title || t('title')}</h1>
-          </div>
-          <div className="border-s border-border ps-6 lg:ps-8">
-            <p className="prose-intro">{custom.subtitle || t('subtitle')}</p>
-            <a href="#project-brief" className="mt-6 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-accent">{custom.cta || t('formTitle')}<ArrowDownRight className="h-4 w-4" /></a>
-          </div>
-        </div>
-      </section>
+      <PublicPageIntro locale={locale} title={custom.title || t('title')} description={custom.subtitle || t('subtitle')} />
 
       <section className="section">
         <div className="container-uten">

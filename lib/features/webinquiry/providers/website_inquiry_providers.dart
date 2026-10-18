@@ -3,6 +3,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/master_name_provider.dart'
     show masterDataSessionKeyProvider;
@@ -143,6 +145,8 @@ class WebsiteInquiryListNotifier
 
 final websiteInquiryDetailProvider = FutureProvider.autoDispose
     .family<WebsiteInquiry?, String>((ref, id) async {
+      ref.watch(masterDataSessionKeyProvider);
+      ref.watch(authenticatedScopeProvider);
       return ref.watch(websiteInquiryRepositoryProvider).getById(id);
     });
 
@@ -154,17 +158,65 @@ Future<WebsiteInquiry> updateWebsiteInquiryStatus(
   String? note,
   bool assignToMe = false,
 }) async {
-  final updated = await ref
-      .read(websiteInquiryRepositoryProvider)
-      .updateStatus(id: id, status: status, note: note, assignToMe: assignToMe);
-  ref.read(websiteInquiryListProvider.notifier).replaceIfPresent(updated);
-  ref.invalidate(websiteInquiryDetailProvider(id));
-  return updated;
+  return _mutateInquiry(
+    ref,
+    id,
+    status == WebsiteInquiryStatus.closed
+        ? Perm.webinquiryClose
+        : Perm.webinquiryClaim,
+    () => ref
+        .read(websiteInquiryRepositoryProvider)
+        .updateStatus(
+          id: id,
+          status: status,
+          note: note,
+          assignToMe: assignToMe,
+        ),
+  );
 }
 
 /// 一键转客户；成功后同步列表页与详情缓存。
 Future<WebsiteInquiry> convertWebsiteInquiry(WidgetRef ref, String id) async {
-  final updated = await ref.read(websiteInquiryRepositoryProvider).convert(id);
+  return _mutateInquiry(
+    ref,
+    id,
+    Perm.webinquiryConvertClient,
+    () => ref.read(websiteInquiryRepositoryProvider).convert(id),
+  );
+}
+
+Future<WebsiteInquiry> followUpWebsiteInquiry(
+  WidgetRef ref,
+  String id,
+  String note,
+) => _mutateInquiry(
+  ref,
+  id,
+  Perm.webinquiryClaim,
+  () => ref.read(websiteInquiryRepositoryProvider).followUp(id, note),
+);
+
+Future<WebsiteInquiry> _mutateInquiry(
+  WidgetRef ref,
+  String id,
+  String permission,
+  Future<WebsiteInquiry> Function() action,
+) async {
+  final owner = ref.read(authenticatedScopeProvider);
+  final sessionKey = ref.read(masterDataSessionKeyProvider);
+  final scope = await ref
+      .read(apiClientProvider)
+      .captureRequestScope(
+        isCurrent: () =>
+            ref.context.mounted &&
+            owner != null &&
+            !owner.readOnly &&
+            ref.read(authenticatedScopeProvider) == owner &&
+            ref.read(masterDataSessionKeyProvider) == sessionKey &&
+            ref.read(currentPermissionsProvider).contains(permission),
+      );
+  final updated = await scope.run(action);
+  await scope.verify();
   ref.read(websiteInquiryListProvider.notifier).replaceIfPresent(updated);
   ref.invalidate(websiteInquiryDetailProvider(id));
   return updated;

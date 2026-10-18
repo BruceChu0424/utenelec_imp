@@ -1,101 +1,44 @@
-# Homepage Apple-style Content Specification (Website CMS Contract)
+# Homepage and public navigation contract
 
-This document describes the homepage and navigation contract for the public site.
+The filename is retained for existing links. The current direction is the Uten
+product showroom documented in `../design-system/MASTER.md`, developed using
+`frontend-design`. The public site is a corporate showcase with direct sales
+contact. No cart, shopping list, checkout or payment interaction is permitted.
 
-## 1. Homepage intent
+## Homepage
 
-The homepage should behave as a premium showroom, not a full catalog dump.
+Use one calm image/text composition with a real product and an explicitly
+conceptual room image where appropriate. Keep original product images at a
+natural size. `hero` settings retain title/subtitle/CTA fields and may provide a
+site-local space-background `heroImage` and published `heroSeriesId`. Both media fields are shared under the Chinese settings entry; text remains localized. A source-backed product from the chosen series is layered over the space background. A selected family must never
+be labeled over another family's product image.
 
-- Hero introduces the category family strategy in one clear story.
-- Navigation priority is:
-  - Series discovery (`/products`)
-  - Featured latest products section
-  - Studio / project style preview
-  - Trust and inquiry entry
+Show a small featured set; `featured`, `sortOrder` and creation time are editorial
+selection inputs, not proof that an imported product is newly launched. Do not
+infer launch dates from import timestamps. The complete catalog is reached via
+family pages with server-rendered database pagination.
 
-## 2. Layout model
+Series cover precedence is published combination media, explicit cover image,
+then real source-linked product composition. Legacy descriptions are retained
+on product detail pages as historical information. They do not become verified
+current specifications or homepage claims.
 
-### Desktop
+## Navigation
 
-- Two-column presentation on the first screen:
-  - Left: headline + supporting value statements + primary CTAs
-  - Right: full-height product/family scene visual
-- Keep negative space in both columns; avoid text crowding at 1024–1400.
+The desktop header exposes products, room preview, manufacturing/quality,
+company and news, plus language selection and contact. The logo returns home.
+The footer and mobile navigation expose partners, resources, cases, careers and
+privacy as well. All links preserve locale. Catalog filters and pagination are
+encoded in the URL, including when following an old family alias.
 
-### Mobile
+Header, footer and sitemap use the lightweight catalog navigation projection;
+they do not load product image pools. Public publication state is read at request
+time. Do not add caches that keep an unpublished record publicly available.
 
-- Stacked layout
-- One media hero first, then short blocks in order above the fold
-- Keep one primary action per block for conversion clarity
+## Verification
 
-## 3. “Latest products only” rule
-
-- Homepage product zone must show only:
-  - products/entries explicitly marked for homepage priority, or
-  - latest-published fallback when no explicit selection exists.
-- No automatic full catalog display on the first screen.
-- Hard cap: 6–12 cards shown on first load.
-- Add progressive exploration (`Load more` / filtered entry points), do not expose all items at once.
-
-## 4. Family-first navigation
-
-- Homepage calls must link to families (`/products/<familySlug>`), not legacy internal codes.
-- Product cards should avoid showing family and product as flat identical rows.
-- Each family card should include:
-  - short family tag
-  - 1 hero image
-  - one-line positioning line
-  - one explicit CTA
-
-## 5. Series/collection image policy
-
-For each family cover image:
-
-1. Use `SeriesMedia.role=combination` when available
-2. Fallback to `coverImage`
-3. Fallback to CMS-generated curated collage
-
-Do not use “navigation badge” or unrelated category banners as cover visuals.
-
-## 6. Content quality rules
-
-- Keep all claims data-aligned.
-- If a statement is only `INFERRED`/`NEEDS_REVIEW`, mark as non-guaranteed copy.
-- Do not mention price, MOQ, shipping, or certification data that is not in verified fields.
-- Any non-verified multilingual content should be:
-  - temporarily hidden in production search-sensitive placements, or
-  - explicitly marked and localized as secondary supporting copy.
-
-## 7. Navigation contract
-
-The header must always expose:
-
-- Home
-- Products
-- Cases/Projects (if applicable)
-- News
-- Contacts
-- Join/Cooperation
-
-Locale switch must keep route consistency (e.g. `/zh`, `/en`) and render correctly under current locale context.
-
-## 8. Visual QA checkpoints
-
-- Max first-screen height: stable with no abrupt jump from image decoding
-- Typography:
-  - no ultra-dense title collision
-  - mobile readable size and line-height
-- Cards:
-  - no oversized single image blow-up
-  - image rendered within natural scale
-- Accessibility:
-  - keyboard focus visible
-  - contrast for essential text meets AA threshold
-
-## 9. Release acceptance (homepage/doc only)
-
-- CMS has at least one validated family highlight for homepage
-- Latest section points to manually selected/high-confidence records
-- Home route and one language sample pass smoke run
-- No dead links in top 20 CTA targets
-- SEO metadata and alternate links updated for locale routing
+Check each public page family, a real series, multiple catalog pages, a product
+with historical description, an applicable document, and direct inquiry receipt.
+Test mobile layout, long names, keyboard navigation, reduced motion, RTL,
+unpublished parents, unknown IDs and failure/retry behavior. Source tests and a
+local preview are not production deployment or external delivery evidence.

@@ -27,6 +27,7 @@ enum WorkbenchBadgeKind {
   finance, // 钱流管理
   subcontract, // 委外管理
   sales, // 销售管理
+  websiteInquiry, // 官网询盘：独立容器，避免销售管理重复计数。
   qualityInspection, // 品质任务中心（IQC 待检收货单 + FQC 待检行）
   serverStatus, // 服务器状态(越过警告或危急阈值的告警条数)
   serverUpdate, // 上次手动检查发现的待更新版本
@@ -60,6 +61,7 @@ BadgeCounts workbenchBadgeCounts(
     WorkbenchBadgeKind.finance => module(BadgeModule.finance),
     WorkbenchBadgeKind.subcontract => module(BadgeModule.subcontract),
     WorkbenchBadgeKind.sales => module(BadgeModule.sales),
+    WorkbenchBadgeKind.websiteInquiry => entry(BadgeEntry.websiteInquiry),
     WorkbenchBadgeKind.qualityInspection => module(BadgeModule.quality),
     WorkbenchBadgeKind.serverStatus => entry(BadgeEntry.serverStatusAlert),
     WorkbenchBadgeKind.serverUpdate => entry(BadgeEntry.serverUpdateAvailable),

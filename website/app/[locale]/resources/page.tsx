@@ -1,3 +1,6 @@
+import { getPublicResources } from '@/lib/resources';
+import { PublicResourceList } from '@/components/products/PublicResourceList';
+import { PublicPageIntro } from '@/components/layout/PublicPageIntro';
 import type { Metadata } from 'next';
 import { ArrowUpRight, BookOpen, ChevronDown, FileCheck2 } from 'lucide-react';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
@@ -30,24 +33,21 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
 export default async function ResourcesPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
   setRequestLocale(locale);
-  const [t, common, newsT, rawSetting, guides] = await Promise.all([
+  const [t, common, newsT, rawSetting, guides, resources] = await Promise.all([
     getTranslations({ locale, namespace: 'Resources' }),
     getTranslations({ locale, namespace: 'Common' }),
     getTranslations({ locale, namespace: 'News' }),
     getSetting('resources'),
     prisma.news.findMany({ where: publicNewsWhere({ category: 'guide' }), orderBy: { publishedAt: 'desc' }, take: 12 }),
+    getPublicResources(locale),
   ]);
   const custom = pickLocale<ResourceSetting>(rawSetting, locale);
   const faqs = Array.from({ length: 6 }, (_, index) => ({ q: t(`faq${index + 1}q`), a: t(`faq${index + 1}a`) }));
 
   return (
     <>
-      <section className="page-hero">
-        <div className="container-uten relative grid items-end gap-8 lg:grid-cols-[1fr_.68fr] lg:gap-16">
-          <div><p className="eyebrow">{t('eyebrow')}</p><h1 className="page-title mt-7 max-w-5xl">{custom?.title || t('title')}</h1></div>
-          <p className="prose-intro border-s border-border ps-6 lg:ps-8">{custom?.subtitle || t('subtitle')}</p>
-        </div>
-      </section>
+      <PublicPageIntro locale={locale} title={custom?.title || t('title')} description={custom?.subtitle || t('subtitle')} />
+      {resources.length > 0 && <section className="container-uten pb-16"><div className="public-section-heading"><h2>{t('downloadTitle')}</h2></div><PublicResourceList resources={resources} locale={locale} /></section>}
 
       <section className="section">
         <div className="container-uten">
@@ -83,7 +83,7 @@ export default async function ResourcesPage({ params }: { params: Promise<{ loca
         </div>
       </section>
 
-      <section className="section">
+      <section id="faq" className="section">
         <div className="container-uten grid gap-12 lg:grid-cols-[.65fr_1.35fr] lg:gap-20">
           <Reveal><p className="eyebrow">{t('faqEyebrow')}</p><h2 className="section-title mt-7">{t('faqTitle')}</h2>{custom?.faqIntro && <p className="mt-6 max-w-lg text-pretty leading-8 text-muted-foreground">{custom.faqIntro}</p>}</Reveal>
           <div className="divide-y divide-border border-y border-border">

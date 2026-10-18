@@ -261,6 +261,9 @@ class AuditTriggerCoverageMigrationContractTest {
                     List.of("status", "closed_by", "closed_at", "close_reason"),
                     "物料改挪记录: 新建时行内已带发起人与原因, 之后会被人工撤回/取消、随优先履约推进状态: "
                             + "只记状态与关闭人、关闭时间、关闭原因"),
+            new ScopedTable("website_management_settings", "system", false,
+                    List.of("version", "display_name", "public_origin", "enabled"),
+                    "Website bridge public configuration decisions; secrets are environment-only and never stored or returned"),
             new ScopedTable("sms_gateway_settings", "system", false,
                     List.of("mode", "provider", "endpoint", "sign_name", "template_code", "version"),
                     "V867 SMS runtime settings: only public decisions and revision; neither encrypted credential, hint nor INSERT/DELETE snapshots enter audit"),
@@ -367,6 +370,7 @@ class AuditTriggerCoverageMigrationContractTest {
             new NoneGroup("derived",
                     "派生投影与计算结果: 可由单据和流水重算, 每次重算整行复制只是噪声",
                     Set.of(
+                        "website_bridge_status",
                         "account_flow_monthly_summaries", "da_amortization_log",
                         // V739 / ADR-129：学习档案、样本与真实使用数量由台账重算。
                         "goods_bom_actual_usages", "goods_bom_learning_profiles", "production_bom_learning_samples",
@@ -413,6 +417,7 @@ class AuditTriggerCoverageMigrationContractTest {
             new NoneGroup("ledger",
                     "只追加的事件/流水/批次账: 行内带操作人与时间(子行经父行追溯), 行本身就是留痕",
                     Set.of(
+                        "website_inquiry_events",
                         "document_malware_scans",
                         "account_balance_adjustment_batches", "account_balance_adjustment_items",
                         "ar_ap_source_refs", "client_access_change_events",

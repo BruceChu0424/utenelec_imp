@@ -1,5 +1,7 @@
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db';
+import type { ScenePreset } from '@prisma/client';
+import { getCmsEditState } from '@/lib/cms-revisions';
 import { tr } from '@/lib/content';
 import { STUDIO_DEFAULT_PLACEMENT, normalizeStudioPlacement } from '@/lib/studio-config';
 import { SceneForm, type ScenePlacement } from './SceneForm';
@@ -23,14 +25,15 @@ function parseSceneConfig(config: string | null): { defaultVariantId: string; pl
 
 export default async function SceneEditPage({ params }: { params: Promise<{ id?: string[] }> }) {
   const id = (await params).id?.[0];
-  const [scene, variants] = await Promise.all([
-    id ? prisma.scenePreset.findUnique({ where: { id } }) : Promise.resolve(null),
+  const [editing, variants] = await Promise.all([
+    id ? getCmsEditState('scene', id) : Promise.resolve(null),
     prisma.productVariant.findMany({
       where: { published: true, image: { not: null }, product: { sceneEnabled: true, published: true } },
       include: { product: true },
       orderBy: [{ productId: 'asc' }, { sortOrder: 'asc' }],
     }),
   ]);
+  const scene = editing?.snapshot.record as unknown as ScenePreset | null;
   if (id && !scene) notFound();
 
   const variantOptions = variants.map((variant) => ({
@@ -41,5 +44,5 @@ export default async function SceneEditPage({ params }: { params: Promise<{ id?:
   const parsedConfig = parseSceneConfig(scene?.config || null);
   const config = { ...parsedConfig, defaultVariantId: scene?.defaultVariantId || parsedConfig.defaultVariantId };
 
-  return <SceneForm scene={scene} variants={variantOptions} config={config} />;
+  return <SceneForm baseHash={editing?.baseHash || ''} scene={scene} variants={variantOptions} config={config} />;
 }

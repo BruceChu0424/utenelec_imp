@@ -37,7 +37,7 @@ export default async function NewsAdmin({ searchParams }: { searchParams: Promis
                 <td className="whitespace-nowrap p-3 text-right">
                   <Link href={`/admin/news/edit/${n.id}`} className="text-accent hover:underline">编辑</Link>
                   <span className="mx-2 text-border">|</span>
-                  <DeleteButton action={deleteNews.bind(null, n.id)} />
+                  <DeleteButton draft action={deleteNews.bind(null, n.id)} />
                 </td>
               </tr>
             ))}

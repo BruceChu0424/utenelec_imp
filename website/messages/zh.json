@@ -61,7 +61,7 @@
     "featured": "本期精选",
     "discoverEyebrow": "完整产品体系",
     "discoverTitle": "每一种空间，\n都有合适的细节。",
-    "discoverBody": "从开关、插座到地面插座，按系列、功能、材质和颜色清晰选型。颜色变体收纳在型号内，信息完整但不拥挤。",
+    "discoverBody": "查看各系列的外观、功能与配套型号，为空间找到一致的细节。",
     "seriesTitle": "产品系列",
     "seriesSubtitle": "精工制造 · 安全可靠",
     "craftTitle": "材料与工艺，决定长期触感",
@@ -95,7 +95,7 @@
     "craftGlassTitle": "钢化玻璃",
     "craftGlassBody": "易清洁，通透且坚固",
     "globalEyebrow": "面向国际项目",
-    "globalTitle": "让跨市场选型更清晰、更可核验。",
+    "globalTitle": "让跨市场项目的选型沟通更清楚。",
     "globalBody": "国际项目应从明确的目标市场、安装体系与型号级资料出发；我们围绕这些关键条件整理并响应每一份需求。",
     "marketTitle": "先确认目标市场",
     "marketBody": "请说明目的国家与安装体系；产品可用性和资料按具体型号确认。",
@@ -113,27 +113,7 @@
     "latestStudio": "放进空间看看",
     "spotlightEyebrow": "全新主推",
     "factsEyebrow": "走进优腾",
-    "factsTitle": "二十余年，只把面板这一件事做深。",
-    "factsBody": "中山市优腾电器有限公司集研发、生产与销售于一体。自 2007 年首套自主模具开发至今，建成 30,000 平方米现代化生产基地，产品通过 ISO9001 质量体系与 CCC 认证，并由香港团队对接全球事务，为海内外客户提供产品、选型与 OEM / ODM 合作支持。",
-    "factsCta": "了解优腾",
-    "facts": [
-      {
-        "value": "2007",
-        "label": "首套自主模具开发至今"
-      },
-      {
-        "value": "30,000㎡",
-        "label": "现代化生产基地"
-      },
-      {
-        "value": "ISO9001 · CCC",
-        "label": "体系与产品认证"
-      },
-      {
-        "value": "中山 · 香港",
-        "label": "研发制造与全球事务"
-      }
-    ]
+    "sceneIllustration": "空间搭配示意"
   },
   "Products": {
     "title": "产品中心",
@@ -150,14 +130,14 @@
     "variants": "颜色 / 材质",
     "finish": "表面工艺",
     "dimensions": "产品尺寸",
-    "specsPending": "规格资料待完善",
+    "specsPending": "请联系销售获取当前规格资料",
     "tryOnWall": "放到墙上看看",
     "askAdvice": "咨询这个型号",
-    "displayOnly": "产品展示 · 非在线购买",
+    "displayOnly": "外观与细节",
     "clear": "清除筛选",
     "viewDetail": "查看产品",
     "loadMore": "加载更多",
-    "modelsLabel": "产品条目",
+    "modelsLabel": "产品",
     "finishesLabel": "产品系列",
     "yearsLabel": "年经验",
     "factsEyebrow": "产品信息",
@@ -170,11 +150,11 @@
     "browseSeriesBody": "每个设计系列把相配的开关、插座与功能件整理在一起，先确定统一风格，再按功能和开数精确选型。",
     "seriesProducts": "{count} 个产品",
     "exploreSeries": "查看系列",
-    "noSeries": "暂时没有已发布的产品系列。",
-    "viewProductMatrix": "查看产品矩阵",
+    "noSeries": "暂时没有可浏览的系列，请联系我们了解产品。",
+    "viewProductMatrix": "浏览系列产品",
     "productMatrixEyebrow": "按功能查看型号",
     "productMatrixTitle": "快速找到具体功能与开数",
-    "productMatrixBody": "产品按功能分区，并按开数顺序排列。旧站推断分类只用于辅助浏览，不会虚构电气规格。",
+    "productMatrixBody": "按功能或开数筛选，查看具体型号、外观及配套产品。",
     "filterFunction": "产品功能",
     "filterGang": "开数",
     "allFunctions": "全部功能",
@@ -192,12 +172,17 @@
       "hospitality": "酒店功能",
       "accessories": "面板与配件",
       "other": "其他功能"
-    }
+    },
+    "previousPage": "上一页",
+    "nextPage": "下一页",
+    "pagination": "产品分页",
+    "historicalTitle": "产品说明",
+    "historicalNote": "以下为旧版产品资料。当前规格、包装与供货信息，请联系销售确认。"
   },
   "Studio": {
     "eyebrow": "UTEN SPACE STUDIO",
-    "title": "把产品放进空间，\n看见真正的\n搭配效果。",
-    "subtitle": "选择空间与产品后，可拖动安装位置并调整视觉比例。首版采用轻量 2.5D 预览，移动端也能快速打开。",
+    "title": "把产品放进空间，看看不同的搭配。",
+    "subtitle": "选择空间和产品，调整摆放位置与视觉比例，看看它们如何搭配。",
     "scenes": "空间风格",
     "products": "选择产品",
     "search": "搜索产品或型号",
@@ -212,13 +197,13 @@
     "askAdvice": "咨询选型",
     "disclaimer": "效果仅供搭配参考，请以实物和尺寸资料为准",
     "noProducts": "没有匹配的产品",
-    "workflowTitle": "从浏览到选型，信息始终连贯",
-    "workflowBody": "场景中选择的具体产品会带回详情与咨询上下文；待补充并审核颜色、尺寸与透明正视图后，可继续升级更真实的预览。",
+    "workflowTitle": "从空间灵感，到具体选择",
+    "workflowBody": "比较不同房间氛围与产品外观。确定喜欢的方向后，查看型号资料或联系销售。",
     "startPreview": "开始试装",
     "chooseRoomTitle": "选空间",
     "chooseRoomBody": "客厅、办公、酒店等预设场景",
     "chooseFinishTitle": "选产品",
-    "chooseFinishBody": "选择当前已有展示图的具体产品",
+    "chooseFinishBody": "对比喜欢的产品外观。",
     "placeTitle": "调位置",
     "placeBody": "拖动位置并调整视觉比例",
     "standardVariant": "标准款"
@@ -232,7 +217,7 @@
     "latest": "最新动态",
     "related": "相关阅读",
     "empty": "暂无文章",
-    "fallbackNote": "本文当前提供英文版本；完成专业审校的翻译后，才会在当前语言中进入搜索索引。"
+    "fallbackNote": "本文当前提供英文版本。"
   },
   "Cases": {
     "eyebrow": "优腾 · 项目参考",
@@ -256,25 +241,7 @@
     "mission": "使命与愿景",
     "coreCraftTitle": "核心工艺实力",
     "teamTitle": "管理完善 · 团队专业 · 服务全球",
-    "teamBody": "生产、研发、检验检测、销售、企划及客户服务团队协同，为全球客户提供专业支持。",
-    "facts": [
-      {
-        "value": "2007",
-        "label": "首套自主模具开发至今"
-      },
-      {
-        "value": "30,000㎡",
-        "label": "现代化生产基地"
-      },
-      {
-        "value": "ISO9001 · CCC",
-        "label": "体系与产品认证"
-      },
-      {
-        "value": "中山 · 香港",
-        "label": "研发制造与全球事务"
-      }
-    ]
+    "teamBody": "生产、研发、检验检测、销售、企划及客户服务团队协同，为全球客户提供专业支持。"
   },
   "Join": {
     "title": "合作伙伴",
@@ -358,7 +325,7 @@
   },
   "Resources": {
     "eyebrow": "专业资料",
-    "title": "帮助产品从感兴趣，走向可审批。",
+    "title": "产品资料，帮助选型更进一步。",
     "subtitle": "通过以下指南准备清晰需求、比较产品系列，并索取正确的型号级证据。",
     "guidesEyebrow": "采购指南",
     "guidesTitle": "先解决真正影响决策的问题",
@@ -368,8 +335,8 @@
     "documentsList": "规格书 · 尺寸图 · 安装说明 · 适用证书或声明 · 表面样板 · 包装信息",
     "faqEyebrow": "常见问题",
     "faqTitle": "提交咨询之前",
-    "faq1q": "优腾是否在线销售产品？",
-    "faq1a": "不在线销售。本网站用于展示产品与公司信息；如需选型、样品、项目评审或商务合作，请联系优腾。",
+    "faq1q": "如何咨询产品选型？",
+    "faq1a": "可以先查看系列和型号，也可以直接说明项目需求。通过联系页面与我们沟通，并索取需要的资料。",
     "faq2q": "优腾是否支持 OEM / ODM？",
     "faq2a": "支持。优腾欢迎 OEM / ODM 项目咨询，并围绕产品可行性、规格、品牌、包装、数量与时间计划逐项评审。",
     "faq3q": "所有产品都适用于每个国家吗？",
@@ -377,9 +344,15 @@
     "faq4q": "可以申请样品和表面工艺样板吗？",
     "faq4a": "可以在库存与项目评审基础上沟通；颜色与表面效果以实物样板为准。",
     "faq5q": "可以直接从网站下载证书吗？",
-    "faq5a": "审批时只应使用当前且对应具体型号的文件；在核验下载中心上线前，请向优腾索取相关资料。",
+    "faq5a": "可通过页面上的链接下载资料，请核对适用型号、市场与版本。需要其他资料时，请联系销售。",
     "faq6q": "首次咨询应包含什么？",
-    "faq6a": "请提供目标市场、客户类型、安装标准、产品功能、预计数量、时间计划和所需资料。"
+    "faq6a": "请提供目标市场、客户类型、安装标准、产品功能、预计数量、时间计划和所需资料。",
+    "download": "下载资料",
+    "fileVersion": "文件版本",
+    "fileLanguage": "文档语言",
+    "fileMarket": "适用市场",
+    "fileUpdated": "更新时间",
+    "downloadTitle": "可下载文件"
   },
   "Privacy": {
     "eyebrow": "数据与咨询",
@@ -452,7 +425,11 @@
     "consent": "我同意优腾仅为回复本次咨询而使用以上联系方式",
     "privacyPrefix": "请阅读",
     "privacyLink": "隐私说明",
-    "productPrefill": "我想咨询这款产品：{product}"
+    "productPrefill": "我想咨询这款产品：{product}",
+    "receivedTitle": "需求已受理",
+    "receiptNumber": "提交编号",
+    "receivedBody": "您的需求已保存。我们会通过您提供的联系方式，与您进一步沟通。",
+    "contextTitle": "本次咨询的产品"
   },
   "Footer": {
     "products": "产品中心",
@@ -463,8 +440,7 @@
     "quickLinks": "快速导航",
     "ctaTitle": "为值得被认真对待的空间，提供更好的电气细节。",
     "brandStatement": "优腾专注墙壁开关、插座与面板的研发制造，面向全球客户提供完整、清晰、可靠的产品信息与选型支持。",
-    "privacy": "隐私说明",
-    "estLine": "中山 · 香港 · 自 2007 年起"
+    "privacy": "隐私说明"
   },
   "NotFound": {
     "title": "页面未找到",

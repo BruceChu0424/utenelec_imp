@@ -5,6 +5,7 @@ import { useFormStatus } from 'react-dom';
 import { ArrowDown, ArrowUp, ImageIcon, Loader2, Plus, Save, Settings2, Trash2 } from 'lucide-react';
 import { saveSiteSetting } from '@/app/admin/actions';
 import { ImageUpload } from './ImageUpload';
+import { CmsDraftForm } from './CmsDraftForm';
 
 export type SiteSettingKey = 'hero' | 'contact' | 'about' | 'stats' | 'craft' | 'join' | 'capabilities' | 'partners' | 'resources' | 'careers' | 'footer';
 type LocaleObject = Record<string, string>;
@@ -80,13 +81,14 @@ function SettingSubmitButton({ disabled }: { disabled: boolean }) {
   return (
     <button type="submit" disabled={pending || disabled} className="btn-accent min-h-11 disabled:cursor-not-allowed disabled:opacity-50">
       {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-      {pending ? '保存中' : '保存本节'}
+      {pending ? '保存中' : '保存本节草稿'}
     </button>
   );
 }
 
 function SettingForm({
   settingKey,
+  expectedHash,
   title,
   description,
   invalidReason,
@@ -94,6 +96,7 @@ function SettingForm({
   children,
 }: {
   settingKey: SiteSettingKey;
+  expectedHash: string;
   title: string;
   description: string;
   invalidReason?: string;
@@ -101,8 +104,9 @@ function SettingForm({
   children: ReactNode;
 }) {
   return (
-    <form id={`setting-${settingKey}`} action={saveSiteSetting} className="scroll-mt-24 border-t border-border py-9 first:border-t-0 first:pt-0">
+    <CmsDraftForm id={`setting-${settingKey}`} action={saveSiteSetting} className="scroll-mt-24 border-t border-border py-9 first:border-t-0 first:pt-0">
       <input type="hidden" name="settingKey" value={settingKey} />
+      <input type="hidden" name="expectedHash" value={expectedHash} />
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="max-w-2xl">
           <p className="text-xs font-bold uppercase tracking-[.18em] text-accent">{settingKey}</p>
@@ -127,7 +131,7 @@ function SettingForm({
         </div>
       )}
       <div className="mt-5">{children}</div>
-    </form>
+    </CmsDraftForm>
   );
 }
 
@@ -243,10 +247,14 @@ function AdvantagesEditor({ locale, items }: { locale: 'zh' | 'en'; items: strin
 
 export function SiteSettingsForm({
   initial,
+  baseHashes,
+  seriesOptions,
   errors,
   feedback,
 }: {
   initial: SiteSettingsInitial;
+  baseHashes: Record<SiteSettingKey, string>;
+  seriesOptions: {id: string; name: string}[];
   errors: Partial<Record<SiteSettingKey, string>>;
   feedback?: { key: SiteSettingKey; kind: 'success' | 'error'; message: string };
 }) {
@@ -262,14 +270,24 @@ export function SiteSettingsForm({
     <div className="max-w-5xl pb-12">
       <div className="flex items-center gap-2 text-accent"><Settings2 className="h-5 w-5" /><p className="text-xs font-bold uppercase tracking-[.18em]">Site content</p></div>
       <h1 className="mt-2 font-heading text-2xl font-bold md:text-3xl">全站内容设置</h1>
-      <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">集中维护公开网站现有的中英文企业内容。每一节独立保存；未展示的其他语言会原样保留。</p>
+      <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">集中维护公开网站现有的中英文企业内容。每一节独立保存为草稿，经审核发布后生效；其他语言原样保留。</p>
 
       <nav aria-label="设置分区" className="mt-6 flex flex-wrap gap-2">
         {sections.map((section) => <a key={section.key} href={`#setting-${section.key}`} className="inline-flex min-h-11 items-center rounded-full border border-border px-4 text-sm font-medium transition hover:border-accent hover:text-accent">{section.label}</a>)}
       </nav>
 
       <div className="mt-8">
-        <SettingForm settingKey="hero" title="首页首屏" description="首页最重要的标题、副标题与两个行动按钮。" invalidReason={errors.hero} feedback={feedback?.key === 'hero' ? feedback : undefined}>
+        <SettingForm settingKey="hero" expectedHash={baseHashes.hero} title="首页首屏" description="首页最重要的标题、副标题与两个行动按钮。" invalidReason={errors.hero} feedback={feedback?.key === 'hero' ? feedback : undefined}>
+          <div className="mb-5 grid gap-5 lg:grid-cols-2">
+            <div><p className="label-uten">首页空间背景图</p><ImageUpload name="heroImage" value={initial.hero.zh.heroImage || ''} /><p className="mt-2 text-sm text-muted-foreground">选择保留安装区域的空间背景，首页会叠加所选系列的真实产品图。</p></div>
+            <div><label htmlFor="heroSeriesId" className="label-uten">首页展示系列</label>
+              <select id="heroSeriesId" name="heroSeriesId" className="input-uten" defaultValue={initial.hero.zh.heroSeriesId || ''}>
+                <option value="">自动使用精选系列</option>
+                {seriesOptions.map(series => <option key={series.id} value={series.id}>{series.name}</option>)}
+              </select>
+              <p className="mt-2 text-sm text-muted-foreground">仅可选择已公开的有效系列。图片与系列随本节版本一同审核发布。</p>
+            </div>
+          </div>
           <div className="grid gap-5 lg:grid-cols-2">
             {(['zh', 'en'] as const).map((locale) => {
               const value = initial.hero[locale];
@@ -285,7 +303,7 @@ export function SiteSettingsForm({
           </div>
         </SettingForm>
 
-        <SettingForm settingKey="capabilities" title="国际能力" description="维护制造、质量、OEM/ODM 与技术资料页的中英文核心表述；认证和测试不得脱离具体型号夸大。" invalidReason={errors.capabilities} feedback={feedback?.key === 'capabilities' ? feedback : undefined}>
+        <SettingForm settingKey="capabilities" expectedHash={baseHashes.capabilities} title="国际能力" description="维护制造、质量、OEM/ODM 与技术资料页的中英文核心表述；认证和测试不得脱离具体型号夸大。" invalidReason={errors.capabilities} feedback={feedback?.key === 'capabilities' ? feedback : undefined}>
           <div className="grid gap-5 lg:grid-cols-2">
             {(['zh', 'en'] as const).map((locale) => { const value = initial.capabilities[locale]; return <LocalePanel key={locale} locale={locale}>
               <TextField id={`${locale}-capabilities-title`} name={`${locale}_title`} label={locale === 'zh' ? '标题' : 'Title'} maxLength={180} required={locale === 'zh'} value={value.title} />
@@ -298,7 +316,7 @@ export function SiteSettingsForm({
           </div>
         </SettingForm>
 
-        <SettingForm settingKey="partners" title="国际合作" description="维护国际渠道、工程与 OEM/ODM 合作页的主文案和流程补充。" invalidReason={errors.partners} feedback={feedback?.key === 'partners' ? feedback : undefined}>
+        <SettingForm settingKey="partners" expectedHash={baseHashes.partners} title="国际合作" description="维护国际渠道、工程与 OEM/ODM 合作页的主文案和流程补充。" invalidReason={errors.partners} feedback={feedback?.key === 'partners' ? feedback : undefined}>
           <div className="grid gap-5 lg:grid-cols-2">
             {(['zh', 'en'] as const).map((locale) => { const value = initial.partners[locale]; return <LocalePanel key={locale} locale={locale}>
               <TextField id={`${locale}-partners-title`} name={`${locale}_title`} label={locale === 'zh' ? '标题' : 'Title'} maxLength={180} required={locale === 'zh'} value={value.title} />
@@ -310,7 +328,7 @@ export function SiteSettingsForm({
           </div>
         </SettingForm>
 
-        <SettingForm settingKey="resources" title="专业资料" description="维护采购指南、文件申请和常见问题页的中英文核心说明。具体文章继续在“新闻资讯”中以采购指南分类维护。" invalidReason={errors.resources} feedback={feedback?.key === 'resources' ? feedback : undefined}>
+        <SettingForm settingKey="resources" expectedHash={baseHashes.resources} title="专业资料" description="维护采购指南、文件申请和常见问题页的中英文核心说明。具体文章继续在“新闻资讯”中以采购指南分类维护。" invalidReason={errors.resources} feedback={feedback?.key === 'resources' ? feedback : undefined}>
           <div className="grid gap-5 lg:grid-cols-2">
             {(['zh', 'en'] as const).map((locale) => { const value = initial.resources[locale]; return <LocalePanel key={locale} locale={locale}>
               <TextField id={`${locale}-resources-title`} name={`${locale}_title`} label={locale === 'zh' ? '标题' : 'Title'} maxLength={180} required={locale === 'zh'} value={value.title} />
@@ -322,7 +340,7 @@ export function SiteSettingsForm({
           </div>
         </SettingForm>
 
-        <SettingForm settingKey="about" title="关于我们" description="公司介绍、按钮和公开页面使用的三张企业图片。图片只接受站内路径。" invalidReason={errors.about} feedback={feedback?.key === 'about' ? feedback : undefined}>
+        <SettingForm settingKey="about" expectedHash={baseHashes.about} title="关于我们" description="公司介绍、按钮和公开页面使用的三张企业图片。图片只接受站内路径。" invalidReason={errors.about} feedback={feedback?.key === 'about' ? feedback : undefined}>
           <div className="card-uten p-5">
             <div className="flex items-center gap-2"><ImageIcon className="h-4 w-4 text-accent" /><h3 className="font-semibold">企业图片</h3></div>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">图片字段由中英文共用；保存时同步到本表单维护的两种语言，其他语言保持不变。</p>
@@ -343,19 +361,19 @@ export function SiteSettingsForm({
           </div>
         </SettingForm>
 
-        <SettingForm settingKey="stats" title="企业数据" description="用于关于页面的数字和标签，可新增、删除并上下调整顺序。" invalidReason={errors.stats} feedback={feedback?.key === 'stats' ? feedback : undefined}>
+        <SettingForm settingKey="stats" expectedHash={baseHashes.stats} title="企业数据" description="用于关于页面的数字和标签，可新增、删除并上下调整顺序。" invalidReason={errors.stats} feedback={feedback?.key === 'stats' ? feedback : undefined}>
           <div className="grid gap-5 lg:grid-cols-2">
             {(['zh', 'en'] as const).map((locale) => <StructuredListEditor key={locale} locale={locale} group="stats" title={locale === 'zh' ? '中文企业数据' : 'English company facts'} items={initial.stats[locale]} fields={[{ name: 'value', label: '数值', maxLength: 40, placeholder: '如 R&D / 2007' }, { name: 'label', label: '说明', maxLength: 120, placeholder: '如 研发制造 / 公司成立' }]} />)}
           </div>
         </SettingForm>
 
-        <SettingForm settingKey="craft" title="核心工艺" description="维护工艺名称与说明，可新增、删除并上下调整顺序。" invalidReason={errors.craft} feedback={feedback?.key === 'craft' ? feedback : undefined}>
+        <SettingForm settingKey="craft" expectedHash={baseHashes.craft} title="核心工艺" description="维护工艺名称与说明，可新增、删除并上下调整顺序。" invalidReason={errors.craft} feedback={feedback?.key === 'craft' ? feedback : undefined}>
           <div className="grid gap-5 lg:grid-cols-2">
             {(['zh', 'en'] as const).map((locale) => <StructuredListEditor key={locale} locale={locale} group="craft" title={locale === 'zh' ? '中文工艺' : 'English craftsmanship'} items={initial.craft[locale]} fields={[{ name: 'title', label: '标题', maxLength: 160, placeholder: '工艺名称' }, { name: 'desc', label: '说明', maxLength: 500, placeholder: '已核实的工艺说明' }]} />)}
           </div>
         </SettingForm>
 
-        <SettingForm settingKey="contact" title="联系方式" description="公司名称、电话、邮箱、地址与备案信息；服务端会校验电话和邮箱格式。" invalidReason={errors.contact} feedback={feedback?.key === 'contact' ? feedback : undefined}>
+        <SettingForm settingKey="contact" expectedHash={baseHashes.contact} title="联系方式" description="公司名称、电话、邮箱、地址与备案信息；服务端会校验电话和邮箱格式。" invalidReason={errors.contact} feedback={feedback?.key === 'contact' ? feedback : undefined}>
           <div className="grid gap-5 lg:grid-cols-2">
             {(['zh', 'en'] as const).map((locale) => {
               const value = initial.contact[locale];
@@ -373,7 +391,7 @@ export function SiteSettingsForm({
           </div>
         </SettingForm>
 
-        <SettingForm settingKey="join" title="招商加盟" description="维护招商标题、说明、按钮和合作优势；优势支持增删排序。" invalidReason={errors.join} feedback={feedback?.key === 'join' ? feedback : undefined}>
+        <SettingForm settingKey="join" expectedHash={baseHashes.join} title="招商加盟" description="维护招商标题、说明、按钮和合作优势；优势支持增删排序。" invalidReason={errors.join} feedback={feedback?.key === 'join' ? feedback : undefined}>
           <div className="grid gap-5 lg:grid-cols-2">
             {(['zh', 'en'] as const).map((locale) => {
               const value = initial.join[locale];
@@ -387,7 +405,7 @@ export function SiteSettingsForm({
           </div>
         </SettingForm>
 
-        <SettingForm settingKey="careers" title="人才招聘" description="人才页的公司招聘主张和团队介绍；具体职位仍在“招聘职位”中维护。" invalidReason={errors.careers} feedback={feedback?.key === 'careers' ? feedback : undefined}>
+        <SettingForm settingKey="careers" expectedHash={baseHashes.careers} title="人才招聘" description="人才页的公司招聘主张和团队介绍；具体职位仍在“招聘职位”中维护。" invalidReason={errors.careers} feedback={feedback?.key === 'careers' ? feedback : undefined}>
           <div className="grid gap-5 lg:grid-cols-2">
             {(['zh', 'en'] as const).map((locale) => {
               const value = initial.careers[locale];
@@ -400,7 +418,7 @@ export function SiteSettingsForm({
           </div>
         </SettingForm>
 
-        <SettingForm settingKey="footer" title="页脚" description="页脚公司简介和版权文字。" invalidReason={errors.footer} feedback={feedback?.key === 'footer' ? feedback : undefined}>
+        <SettingForm settingKey="footer" expectedHash={baseHashes.footer} title="页脚" description="页脚公司简介和版权文字。" invalidReason={errors.footer} feedback={feedback?.key === 'footer' ? feedback : undefined}>
           <div className="grid gap-5 lg:grid-cols-2">
             {(['zh', 'en'] as const).map((locale) => {
               const value = initial.footer[locale];

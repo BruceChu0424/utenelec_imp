@@ -6,9 +6,8 @@ import '@/app/globals.css';
 import { SiteFooter } from '@/components/layout/SiteFooter';
 import { SiteHeader } from '@/components/layout/SiteHeader';
 import { routing } from '@/i18n/routing';
-import { toCatalogFamily } from '@/lib/catalog';
-import { pick } from '@/lib/content';
-import { getCatalogFamilies, getSetting } from '@/lib/queries';
+import { pick, tr } from '@/lib/content';
+import { getCatalogNavigation, getSetting } from '@/lib/queries';
 import { getSiteUrl } from '@/lib/seo';
 
 const RTL_LOCALES = new Set(['ar']);
@@ -40,24 +39,18 @@ export default async function LocaleLayout({ children, params }: { children: Rea
 
   const [messages, familyRecords, contactRaw, footerRaw, common] = await Promise.all([
     getMessages({ locale }),
-    getCatalogFamilies(),
+    getCatalogNavigation(),
     getSetting('contact'),
     getSetting('footer'),
     getTranslations({ locale, namespace: 'Common' }),
   ]);
-  const seriesLite = familyRecords.map((record) => {
-    const family = toCatalogFamily(record, locale);
-    return {
-      code: family.slug,
-      name: family.name,
-    };
-  });
+  const seriesLite = familyRecords.map(record => ({ code: record.publicSlug || record.code, name: tr<{ name?: string }>(record.i18n, locale).name || record.code }));
   const contact = pick<Record<string, string>>(contactRaw, locale) || {};
   const footer = pick<Record<string, string>>(footerRaw, locale) || {};
 
   return (
     <html lang={locale} dir={RTL_LOCALES.has(locale) ? 'rtl' : 'ltr'}>
-      <body>
+      <body className="public-site">
         <NextIntlClientProvider locale={locale} messages={messages}>
           <a href="#main-content" className="sr-only z-[200] rounded-lg bg-primary px-4 py-3 text-primary-foreground focus:not-sr-only focus:fixed focus:start-4 focus:top-4">{common('skipContent')}</a>
           <SiteHeader locale={locale} series={seriesLite} />

@@ -90,7 +90,7 @@ class _WarehouseTaskPhysicalDetailDialogState
       final detail = await ref
           .read(apiClientProvider)
           .get(
-            '/warehouse/task-center/$_direction/${Uri.encodeComponent(widget.row.rowKey)}/detail',
+            '/warehouse/task-center/$_direction/${Uri.encodeComponent(widget.row.documentRowKey)}/detail',
             query: {
               ...widget.warehouseScope.queryParameters,
               'linePage': page,

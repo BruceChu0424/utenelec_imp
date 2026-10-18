@@ -32,6 +32,30 @@ class WarehouseOutboundTaskCenterQueryServiceTest {
     private static final UUID OTHER_OWNER = UUID.fromString("00000000-0000-0000-0000-000000000002");
 
     @Test
+    void physicalItemsRetainDistinctSelectionKeysAndOneDocumentCommandIdentity() {
+        Fixture fixture = new Fixture(Set.of("warehouse_sales_outbound:execute"), false, new OwnerScope(true, Set.of()));
+        var access = new WarehouseOutboundTaskCenterSql.Access(true, false, false, false, false, new OwnerScope(true, Set.of()));
+        UUID document = UUID.randomUUID();
+        UUID firstItem = UUID.randomUUID(), secondItem = UUID.randomUUID();
+        List<Row> items = java.util.stream.Stream.of(firstItem, secondItem).map(item -> {
+            Object[] raw = java.util.Arrays.copyOf(row("SALES", "SALES_SHIPMENT", document, "SALES_PENDING", ACTOR, true), 28);
+            Object[] line = {item.toString(), item, 1, "SAME-GOODS", "相同货品", "规格", "本色", "kg", new BigDecimal("2.5"), new BigDecimal("1.2")};
+            System.arraycopy(line, 0, raw, 18, line.length);
+            return fixture.service.map(raw, access);
+        }).toList();
+        assertThat(items).extracting(Row::rowKey).containsExactly("SALES:SALES_SHIPMENT:" + document + ":" + firstItem,
+                "SALES:SALES_SHIPMENT:" + document + ":" + secondItem);
+        assertThat(items).allSatisfy(item -> {
+            assertThat(item.id()).isEqualTo(document);
+            assertThat(item.targetId()).isEqualTo(document);
+            assertThat(item.canHandle()).isTrue();
+            assertThat(item.line().quantity()).isEqualByComparingTo("2.5");
+            assertThat(item.actionData()).containsEntry("documentRowKey", "SALES:SALES_SHIPMENT:" + document)
+                    .containsEntry("itemId", item.line().itemId());
+        });
+    }
+
+    @Test
     void oneDatabasePageUsesSourceIdentityAndGlobalFacetsRatherThanFirstPages() throws Exception {
         Fixture f = new Fixture(Set.of("stock_doc:view", "warehouse_sales_outbound:view"), true,
                 new OwnerScope(true, Set.of()));
@@ -190,7 +214,7 @@ class WarehouseOutboundTaskCenterQueryServiceTest {
                 UUID.randomUUID(), 2, "MATERIAL-2", "撤回物料", "本色", "kg", new BigDecimal("3.25"), new BigDecimal("4"), null, null, "A-2"
         }));
         when(f.em.createNativeQuery(anyString())).thenReturn(header, count, lines);
-        var detail = f.service.detail("SUBCONTRACT:SUBCONTRACT_MATERIAL_ISSUE:" + id, null, 2, 1);
+        var detail = f.service.detail("SUBCONTRACT:SUBCONTRACT_MATERIAL_ISSUE:" + id + ":physical-item", null, 2, 1);
         assertThat(detail.document().canHandle()).isFalse();
         assertThat(detail.document().actionData()).containsEntry("retained", true);
         assertThat(detail.page()).isEqualTo(2);

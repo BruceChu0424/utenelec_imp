@@ -96,6 +96,69 @@ MasterDataTableView<WmRequisition> _table(WidgetTester tester) =>
     tester.widget(find.byType(MasterDataTableView<WmRequisition>));
 
 void main() {
+  testWidgets('同一领退料申请逐货品展示，数量单位与行身份独立', (tester) async {
+    final repo = _Requisitions();
+    repo.rows
+      ..clear()
+      ..addAll([
+        for (var i = 1; i <= 2; i++)
+          WmRequisition(
+            id: 'same-request',
+            requestNo: 'REQ-001',
+            kind: 'ISSUE',
+            status: 'PENDING',
+            lines: [
+              WmRequisitionLine(
+                id: 'line-$i',
+                goodsId: 'goods-$i',
+                goodsCode: 'M-$i',
+                goodsName: '材料$i',
+                colorName: i == 1 ? '白色' : '黑色',
+                unitName: i == 1 ? 'kg' : '件',
+                requestedQty: i == 1 ? 2.5 : 8,
+              ),
+            ],
+          ),
+      ]);
+    await pumpWorkshopMaterialPage(
+      tester,
+      const Scaffold(
+        body: WmRequisitionSegment(
+          keyword: '',
+          refreshTick: 0,
+          header: SizedBox.shrink(),
+        ),
+      ),
+      repo: repo,
+    );
+    final table = _table(tester);
+    expect(table.items, hasLength(2));
+    expect(
+      table.items.map((row) => table.rowKeyOf!(row)).toSet(),
+      hasLength(2),
+    );
+    expect(table.items.map((row) => row.id).toSet(), {'same-request'});
+    expect(
+      table.items.map(
+        table.columns.singleWhere((column) => column.key == 'material').value,
+      ),
+      ['材料1', '材料2'],
+    );
+    expect(
+      table.items.map(
+        table.columns.singleWhere((column) => column.key == 'goodsCode').value,
+      ),
+      ['M-1', 'M-2'],
+    );
+    expect(
+      table.items.map(
+        table.columns.singleWhere((column) => column.key == 'qty').value,
+      ),
+      ['2.5 kg', '8 件'],
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('旧记录查询偏好不能覆盖待收退回入口的默认数据范围', (tester) async {
     final repo = _Requisitions();
     const key =

@@ -1,64 +1,14 @@
-// 预计到货任务中心独立页（/warehouse/inbound/expectations，深链保底；委外模块
-// 卡片直达）。正文逻辑在 widgets/warehouse_inbound_expectations_view.dart；
-// 2026-09-01 起主入口是「入库任务中心」的采购入库/委外入库分段
-//（/warehouse/tasks/inbound）。
+// Legacy links use the same item rows, filters and workflow entry points as the task center.
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../components/buttons/uten_app_bar_action_button.dart';
-import '../../../components/buttons/uten_back_button.dart';
-import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_content_container.dart';
-import '../../../core/router/nav_helpers.dart';
-import '../../../core/router/page_resume_provider.dart';
-import '../../../core/router/route_names.dart';
-import '../../../core/theme/uten_tokens.dart';
-import '../widgets/warehouse_inbound_expectations_view.dart';
+import 'warehouse_task_center_page.dart';
 
-class WarehouseInboundExpectationsPage extends ConsumerStatefulWidget {
+class WarehouseInboundExpectationsPage extends StatelessWidget {
   const WarehouseInboundExpectationsPage({super.key});
 
   @override
-  ConsumerState<WarehouseInboundExpectationsPage> createState() =>
-      _WarehouseInboundExpectationsPageState();
-}
-
-class _WarehouseInboundExpectationsPageState
-    extends ConsumerState<WarehouseInboundExpectationsPage> {
-  String? _myLocation;
-  int _refreshTick = 0;
-
-  @override
-  Widget build(BuildContext context) {
-    _myLocation ??= currentLocationOr(
-      context,
-      RouteName.warehouseInboundExpectations,
-    );
-    ref.onPageResume(_myLocation!, () {
-      setState(() => _refreshTick++);
-    });
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: '预计到货任务中心',
-        leading: UtenBackButton(
-          onPressed: () => backTo(context, defaultPath: RouteName.warehouse),
-        ),
-        actions: [
-          UtenAppBarActionButton(
-            label: '刷新',
-            icon: Icons.refresh_rounded,
-            onPressed: () => setState(() => _refreshTick++),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: UtenContentContainer.wide(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-            child: WarehouseInboundExpectationsView(refreshTick: _refreshTick),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => const WarehouseTaskCenterPage(
+    initialGroup: 'inbound',
+    initialSection: 'ALL',
+  );
 }

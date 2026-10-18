@@ -280,7 +280,7 @@ class _WarehouseDocumentHistoryViewState
         ],
       ),
       body: MasterDataTableView<WarehouseDocumentHistorySummary>(
-        requiredLeadingColumnKeys: const ['status'],
+        requiredLeadingColumnKeys: const ['status', 'goodsName'],
         tableKey:
             'features.warehouse.widgets.warehouse_document_history_view.WarehouseDocumentHistoryViewState.build.1',
         // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
@@ -288,6 +288,7 @@ class _WarehouseDocumentHistoryViewState
         key: Key('warehouse-history-table-${widget.type.segment}'),
         columns: _columns,
         items: result.items,
+        rowKeyOf: (item) => item.rowKey,
         // 单据号/来源单据表头值筛选（2026-09-25 单号列统一）：服务端分组计数桶。
         facets: {
           if (widget.embedded)
@@ -399,6 +400,37 @@ class _WarehouseDocumentHistoryViewState
           warehouseHistoryStatusCellColor(item.status, closed: item.closed),
     ),
     MasterColumnDef(
+      key: 'goodsName',
+      label: '货品名称',
+      width: 200,
+      value: (item) => item.line?.goodsName ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'goodsCode',
+      label: '货品编码',
+      width: 140,
+      value: (item) => item.line?.goodsCode ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'specification',
+      label: '规格',
+      width: 140,
+      value: (item) => item.line?.specification ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'colorName',
+      label: '颜色',
+      width: 100,
+      value: (item) => item.line?.colorName ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'quantity',
+      label: '数量',
+      width: 130,
+      type: 'number',
+      value: (item) => item.line?.quantityLabel ?? '—',
+    ),
+    MasterColumnDef(
       key: 'billNo',
       label: '单据号',
       width: 170,
@@ -430,13 +462,6 @@ class _WarehouseDocumentHistoryViewState
       width: 170,
       sortable: true, // 2026-09-25 单号列统一：表头排序 + 值筛选。
       value: (item) => item.sourceDocNo ?? '—',
-    ),
-    MasterColumnDef(
-      key: 'itemCount',
-      label: '明细行',
-      width: 82,
-      type: 'number',
-      value: (item) => item.itemCount.toString(),
     ),
     MasterColumnDef(
       key: 'makerName',

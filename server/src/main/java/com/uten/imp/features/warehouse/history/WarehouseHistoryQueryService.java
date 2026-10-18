@@ -234,7 +234,16 @@ public class WarehouseHistoryQueryService {
                 header.makerName(),
                 header.approverId(),
                 header.approverName(),
-                number(row[15]).longValue());
+                number(row[15]).longValue(),
+                row.length <= 16 || row[16] == null ? null :
+                    new com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.Line(
+                        row[16].toString(), NativeValueConverters.uuid(row[16]),
+                        row[17] == null ? null : number(row[17]).intValue(),
+                        NativeValueConverters.text(row[18]), NativeValueConverters.text(row[19]),
+                        NativeValueConverters.text(row[20]), NativeValueConverters.text(row[21]),
+                        NativeValueConverters.text(row[22]),
+                        row[23] == null ? null : NativeValueConverters.toBigDecimal(row[23]),
+                        row[24] == null ? null : NativeValueConverters.toBigDecimal(row[24])));
     }
 
     private HeaderRow header(Object[] row, Map<UUID, String> employeeCache) {

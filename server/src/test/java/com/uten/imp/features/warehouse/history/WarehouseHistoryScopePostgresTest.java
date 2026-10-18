@@ -131,6 +131,44 @@ class WarehouseHistoryScopePostgresTest {
                 .isZero();
     }
 
+    @Test void sameDocumentItemsStaySeparateBeforePagingSearchAndBillNumberFacets() {
+        var scope = new WarehouseTaskScope(true, List.of(warehouse), false);
+        for (WarehouseHistoryType type : WarehouseHistoryType.values()) {
+            UUID document = header(type, warehouse, "TWO-ITEMS");
+            UUID first = line(type, document, false), second = line(type, document, false);
+            execute("UPDATE " + type.itemTable() + " SET line_no=2,goods_name_snapshot='Second physical item',qty=7 WHERE id=:id",
+                    "id", second);
+            var values = parameters(scope).addValue("bill_no", "TWO-ITEMS").addValue("limit", 1);
+            assertThat(jdbc.queryForObject(WarehouseHistoryQueries.countSql(type,scope),values,Long.class)).isEqualTo(2);
+            String sql = WarehouseHistoryQueries.listSql(type,WarehouseHistoryQueries.DEFAULT_ORDER_BY,scope);
+            assertThat(jdbc.queryForList(sql,values)).extracting(row -> row.get("item_id")).containsExactly(first);
+            assertThat(jdbc.queryForList(sql,values.addValue("offset",1))).extracting(row -> row.get("item_id")).containsExactly(second);
+            assertThat(jdbc.queryForList(WarehouseHistoryQueries.facetsSql(type,"h.bill_no",scope),values))
+                    .extracting(row -> ((Number)row.get("count")).longValue()).containsExactly(2L);
+            values.addValue("keyword","Second physical item").addValue("offset",0);
+            assertThat(jdbc.queryForObject(WarehouseHistoryQueries.countSql(type,scope),values,Long.class)).isEqualTo(1);
+            assertThat(jdbc.queryForList(sql,values)).extracting(row -> row.get("item_id")).containsExactly(second);
+        }
+    }
+
+    @Test void receiptItemsInOtherWarehousesCannotLeakThroughTheirSharedHeader() {
+        var type = WarehouseHistoryType.PURCHASE_RECEIPT;
+        UUID document = header(type,warehouse,"SPLIT-RECEIPT");
+        UUID first = line(type,document,false), second = line(type,document,false);
+        for (UUID item : List.of(first,second)) {
+            execute("INSERT INTO procurement_inspection_items(id,receipt_type,receipt_id,receipt_item_id,warehouse_id,status)"
+                    + " VALUES(:id,'PURCHASE',:receipt,:item,:warehouse,'PASSED')",
+                    "id",UUID.randomUUID(),"receipt",document,"item",item,"warehouse",item.equals(first)?warehouse:outside);
+        }
+        execute("UPDATE procurement_inspection_items SET warehouse_id=NULL WHERE receipt_item_id=:item", "item",first);
+        var scope = new WarehouseTaskScope(true,List.of(warehouse),false);
+        assertThat(jdbc.queryForObject(WarehouseHistoryQueries.countSql(type,scope),parameters(scope),Long.class)).isEqualTo(1);
+        assertThat(jdbc.queryForList(WarehouseHistoryQueries.listSql(type,WarehouseHistoryQueries.DEFAULT_ORDER_BY,scope),parameters(scope)))
+                .extracting(row -> row.get("item_id")).containsExactly(first);
+        assertThat(jdbc.queryForList(WarehouseHistoryQueries.detailLinesSql(type,scope),parameters(scope).addValue("id",document)))
+                .extracting(row -> row.get("id")).containsExactly(first);
+    }
+
     private UUID header(WarehouseHistoryType type, UUID warehouseId, String billNo) {
         UUID id = UUID.randomUUID();
         execute("INSERT INTO " + type.headerTable()

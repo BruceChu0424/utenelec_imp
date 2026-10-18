@@ -391,6 +391,89 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
     }
 
     @Test
+    void subcontractItemsKeepIndependentQuantitiesStagesAndDocumentFiltering() throws Exception {
+        UUID application = UUID.randomUUID();
+        UUID firstApplicationItem = UUID.randomUUID();
+        UUID secondApplicationItem = UUID.randomUUID();
+        UUID order = UUID.randomUUID();
+        UUID firstOrderItem = UUID.randomUUID();
+        UUID secondOrderItem = UUID.randomUUID();
+        UUID settlement = UUID.randomUUID();
+        String applicationNo = businessIdentifier("EB", LocalDate.now());
+        String orderNo = businessIdentifier("EO", LocalDate.now());
+        try (Connection connection = connection()) {
+            Fixture data = fixture(connection);
+            insert(connection, "INSERT INTO settlement_methods(id,code,name) VALUES(?,?,'现结')",
+                    settlement, "SETTLE-" + settlement);
+            UUID materialA;
+            try (PreparedStatement statement = connection.prepareStatement("SELECT goods_id FROM stock_balances WHERE id=?")) {
+                statement.setObject(1, data.balanceA());
+                try (ResultSet result = statement.executeQuery()) { result.next(); materialA = result.getObject(1, UUID.class); }
+            }
+            insert(connection, """
+                    INSERT INTO subcontract_applications(id,bill_no,bill_date,warehouse_id,status)
+                    VALUES(?,?,CURRENT_DATE,?,1)
+                    """, application, applicationNo, data.warehouse());
+            insert(connection, """
+                    INSERT INTO subcontract_application_items(id,bill_no,bill_date,application_id,line_no,
+                        goods_id,unit_id,unit_rate,qty,ordered_qty,goods_snapshot_source)
+                    VALUES(?,?,CURRENT_DATE,?,1,?,?,1,10,3,'MASTER_AT_SAVE'),
+                          (?,?,CURRENT_DATE,?,2,?,?,1,20,4,'MASTER_AT_SAVE')
+                    """, firstApplicationItem, applicationNo, application, materialA, data.unit(),
+                    secondApplicationItem, applicationNo, application, data.materialB(), data.unit());
+            insert(connection, """
+                    INSERT INTO subcontract_orders(id,bill_no,bill_date,warehouse_id,settlement_method_id,status)
+                    VALUES(?,?,CURRENT_DATE,?,?,1)
+                    """, order, orderNo, data.warehouse(), settlement);
+            insert(connection, """
+                    INSERT INTO subcontract_order_items(id,bill_no,bill_date,order_id,line_no,goods_id,unit_id,
+                        unit_rate,qty,received_qty,returned_qty,goods_snapshot_source)
+                    VALUES(?,?,CURRENT_DATE,?,1,?,?,1,10,3,1,'MASTER_AT_SAVE'),
+                          (?,?,CURRENT_DATE,?,2,?,?,1,20,20,0,'MASTER_AT_SAVE')
+                    """, firstOrderItem, orderNo, order, materialA, data.unit(),
+                    secondOrderItem, orderNo, order, data.materialB(), data.unit());
+        }
+        FulfillmentWorkbenchAccessPolicy access = mock(FulfillmentWorkbenchAccessPolicy.class);
+        for (String type : List.of("SUBCONTRACT_APPLICATION", "SUBCONTRACT_ORDER")) {
+            when(access.documentAccess("SUBCONTRACT", type))
+                    .thenReturn(new FulfillmentWorkbenchAccessPolicy.DocumentAccess(true, false));
+        }
+        var service = new FulfillmentWorkbenchQueryService(entityManager, access);
+        for (String number : List.of(applicationNo, orderNo)) {
+            var filter = FulfillmentWorkbenchTableQuery.from("docNo", "asc", java.util.Map.of("f.docNo", number),
+                    null, null, null, null);
+            var firstPage = transactions.execute(status -> service.query("SUBCONTRACT", "", "", "", null, null, 1, 1, filter));
+            var secondPage = transactions.execute(status -> service.query("SUBCONTRACT", "", "", "", null, null, 2, 1, filter));
+            assertNotNull(firstPage);
+            assertNotNull(secondPage);
+            assertEquals(2L, firstPage.total());
+            assertEquals(2, firstPage.totalPages());
+            var items = List.of(firstPage.items().getFirst(), secondPage.items().getFirst());
+            assertEquals(2L, items.stream().map(FulfillmentTaskRow::taskId).distinct().count());
+            assertTrue(items.stream().allMatch(row -> !row.isDocumentGrouped()
+                    && row.actionItemIds().equals(List.of(row.taskId().toString()))
+                    && number.equals(row.actionDocNo()) && "件".equals(row.unitName())));
+            var byItem = items.stream().collect(java.util.stream.Collectors.toMap(FulfillmentTaskRow::taskId, row -> row));
+            UUID firstId = number.equals(applicationNo) ? firstApplicationItem : firstOrderItem;
+            UUID secondId = number.equals(applicationNo) ? secondApplicationItem : secondOrderItem;
+            assertEquals(0, new BigDecimal("10").compareTo(byItem.get(firstId).requiredQty()));
+            assertEquals(0, new BigDecimal("20").compareTo(byItem.get(secondId).requiredQty()));
+            assertEquals(0, new BigDecimal(number.equals(applicationNo) ? "7" : "8").compareTo(byItem.get(firstId).openQty()));
+            assertEquals(0, new BigDecimal(number.equals(applicationNo) ? "16" : "0").compareTo(byItem.get(secondId).openQty()));
+            if (number.equals(orderNo)) {
+                assertEquals("PARTIAL_RECEIVED", byItem.get(firstId).displayStage());
+                assertEquals("RECEIVED_PENDING_STOCK", byItem.get(secondId).displayStage());
+            }
+            var goodsFilter = FulfillmentWorkbenchTableQuery.from("docNo", "asc",
+                    java.util.Map.of("f.docNo", number, "search.goods", "物料 A"), null, null, null, null);
+            var searched = transactions.execute(status -> service.query("SUBCONTRACT", "", "", "", null, null, 1, 20, goodsFilter));
+            assertNotNull(searched);
+            assertEquals(1L, searched.total());
+            assertEquals(firstId, searched.items().getFirst().actionDocItemId());
+        }
+    }
+
+    @Test
     void pendingExportIncludesRowsBeyondTheCurrentPageAndRetainsExactQuantityUnits() throws Exception {
         String unique = "EXPORT" + UUID.randomUUID();
         try (Connection connection = connection()) {

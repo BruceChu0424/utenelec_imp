@@ -12,7 +12,7 @@ import java.util.UUID;
 
 /**
  * 品质部检查结果合并页（原 IQC 合格待入库 + IQC 不合格实物退回）的无金额契约。
- * 每行聚合到收货单：作业状态把「等待检查结果 / 全部合格待入库 / 部分合格 / 全部不合格需退回 /
+ * 列表逐实物检验行展示：作业状态把「等待检查结果 / 全部合格待入库 / 部分合格 / 全部不合格需退回 /
  * 已完结」统一成一个口径；切片与退回明细由详情接口提供。
  */
 public final class WarehouseQualityResultContracts {
@@ -38,7 +38,16 @@ public final class WarehouseQualityResultContracts {
             long pendingReturnCount,
             OffsetDateTime lastActivityAt,
             /** 先入库后检(V596)：仍在等结论且已上架的明细行数(>0 表示实物已在库位、合格自动转正)。 */
-            long preStockedLineCount) {
+            long preStockedLineCount,
+            com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.Line line) {
+        public TaskSummary(String workStatus,String receiptType,UUID receiptId,String billNo,LocalDate billDate,
+                UUID supplierId,String supplierName,UUID warehouseId,String warehouseName,long goodsLineCount,
+                long passedLineCount,long failedLineCount,long openItemCount,long pendingSliceCount,
+                long pendingReturnCount,OffsetDateTime lastActivityAt,long preStockedLineCount) {
+            this(workStatus,receiptType,receiptId,billNo,billDate,supplierId,supplierName,warehouseId,warehouseName,
+                    goodsLineCount,passedLineCount,failedLineCount,openItemCount,pendingSliceCount,pendingReturnCount,
+                    lastActivityAt,preStockedLineCount,null);
+        }
     }
 
     public record TaskDetail(

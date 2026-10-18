@@ -16,6 +16,7 @@ import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.Filter;
 import com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.Page;
 import com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.Row;
+import com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.Line;
 import com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.StatusFacet;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -97,6 +98,10 @@ public class WarehouseInboundTaskCenterQueryService {
         if(identity!=null) {
             parameters.addValue("rowId",identity.id()).addValue("recordType",identity.record());
             identityFilter=" AND id=:rowId AND record_type=:recordType";
+            if(identity.lineKey()!=null) {
+                parameters.addValue("lineKey",identity.lineKey());
+                identityFilter+=" AND line_data->>'key'=:lineKey";
+            }
         }
         Long total = jdbc.queryForObject(WarehouseInboundTaskCenterSql.count(base)+identityFilter,parameters,Long.class);
         long count=total==null?0:total;
@@ -125,7 +130,7 @@ public class WarehouseInboundTaskCenterQueryService {
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public Map<String,Object> detail(String rowKey,UUID warehouseId,int linePage,int lineSize) {
         String[] parts=rowKey==null?new String[0]:rowKey.split(":",-1);
-        if(parts.length!=3 || !SOURCES.contains(parts[0]) || parts[0].equals("ALL")) throw invalid("入库记录身份不正确");
+        if((parts.length!=3 && parts.length!=4) || !SOURCES.contains(parts[0]) || parts[0].equals("ALL")) throw invalid("入库记录身份不正确");
         UUID id;
         try { id=UUID.fromString(parts[2]); } catch(IllegalArgumentException failure) { throw invalid("入库记录身份不正确"); }
         return warehouseScopes.withQueryScopeCache(() -> detailScoped(parts, id, warehouseId, linePage, lineSize));
@@ -133,7 +138,7 @@ public class WarehouseInboundTaskCenterQueryService {
 
     private Map<String,Object> detailScoped(String[] parts, UUID id, UUID warehouseId, int linePage, int lineSize) {
         Page page=list(new Filter(parts[0],"","",null,null,null,warehouseId,1,1,null,null,
-                WarehouseTaskCenterContracts.TaskView.ALL),new Identity(id,parts[1]));
+                WarehouseTaskCenterContracts.TaskView.ALL),new Identity(id,parts[1],parts.length==4?parts[3]:null));
         if(page.items().isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND,"入库记录不存在或已不在当前范围");
         Row row=page.items().getFirst();
         MapSqlParameterSource parameters=new MapSqlParameterSource("id",id);
@@ -226,6 +231,11 @@ public class WarehouseInboundTaskCenterQueryService {
         List<Map<String,Object>> items;
         if(sql==null) { total=1;items=safePage==1?List.of(row.actionData()):List.of(); }
         else {
+            // A document may span several warehouses. Details must retain the same
+            // physical item boundary as rows, including legacy three-part keys.
+            List<UUID> visibleItems=visibleLineItems(row,warehouseId,parts.length==4?parts[3]:null);
+            parameters.addValue("visibleItems",visibleItems.isEmpty()?List.of(new UUID(0,0)):visibleItems);
+            sql="SELECT visible_detail.* FROM ("+sql+") visible_detail WHERE visible_detail.id IN (:visibleItems)";
             Long count=jdbc.queryForObject("SELECT COUNT(*) FROM ("+sql+") detail_rows",parameters,Long.class);
             total=count==null?0:count;
             parameters.addValue("lineLimit",safeSize).addValue("lineOffset",((long)safePage-1)*safeSize);
@@ -235,7 +245,25 @@ public class WarehouseInboundTaskCenterQueryService {
                 "totalPages",(int)Math.min(Integer.MAX_VALUE,total==0?0:(total+safeSize-1)/safeSize));
     }
 
-    private record Identity(UUID id,String record) {}
+    private List<UUID> visibleLineItems(Row row,UUID warehouseId,String lineKey) {
+        AuthUser actor=currentUser.get().orElseThrow(()->new ApiException(ErrorCode.FORBIDDEN,"没有仓库入库查看权限"));
+        Rights rights=new Rights(actor,productionAccess.canAccessWarehouseTasks(),stockAccess.scope());
+        var scope=warehouseScopes.current(warehouseId);
+        var owner=stockAccess.nativeReadScope("document.maker_id","stockOwners",rights.owner());
+        var access=new WarehouseInboundTaskCenterSql.Access(rights.inbound(),rights.purchaseHistory(),
+                rights.subcontractHistory(),rights.quality(),rights.stock(),rights.productionPool(),owner.predicate());
+        var parameters=new MapSqlParameterSource("type","ALL").addValue("warehouseScope",scope.idsCsv())
+                .addValue("ownDraftMaker",warehouseId==null && actor.getEmployeeId()!=null?actor.getEmployeeId().toString():"")
+                .addValue("id",row.id()).addValue("record",row.recordType()).addValue("source",row.sourceType());
+        if(owner.parameterName()!=null) parameters.addValue(owner.parameterName(),owner.owners());
+        String identity=" WHERE id=:id AND record_type=:record AND source_type=:source AND line_data IS NOT NULL";
+        if(lineKey!=null) { identity+=" AND line_data->>'key'=:lineKey";parameters.addValue("lineKey",lineKey); }
+        return jdbc.query(WarehouseInboundTaskCenterSql.base(access,scope)+
+                " SELECT CAST(line_data->>'key' AS uuid) FROM inbound_rows"+identity,parameters,
+                (rs,index)->rs.getObject(1,UUID.class));
+    }
+
+    private record Identity(UUID id,String record,String lineKey) {}
 
     private Row row(ResultSet rs,Rights rights) throws SQLException {
         UUID id=rs.getObject("id",UUID.class);
@@ -288,10 +316,14 @@ public class WarehouseInboundTaskCenterQueryService {
         if(action.equals("STOCK_EDIT") && !rights.has("stock_doc:edit")) action="STOCK_DETAIL";
         if(action.equals("HISTORY_DETAIL")) data.put("historyEndpoint","/warehouse/task-center/inbound/"+rowKey+"/detail");
         data.put("status",status);
-        return new Row(rowKey,id,source,record,rs.getString("bill_no"),rs.getString("source_doc_no"),
+        Row row=new Row(rowKey,id,source,record,rs.getString("bill_no"),rs.getString("source_doc_no"),
                 rs.getObject("business_date",java.time.LocalDate.class),rs.getString("party_name"),
                 rs.getString("warehouse_name"),rs.getString("responsible_name"),(Integer)rs.getObject("line_count"),
                 status,presentation.label(),presentation.tone(),action,rs.getObject("target_id",UUID.class),canHandle,data);
+        String lineJson=rs.getString("line_data");
+        if(lineJson==null) return row;
+        try { return row.withLine(objectMapper.readValue(lineJson,Line.class)); }
+        catch(java.io.IOException failure) { throw new SQLException("入库货品身份解析失败",failure); }
     }
 
     private static boolean writable(UUID maker,OwnerScope owner) {

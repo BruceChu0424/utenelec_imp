@@ -17,6 +17,7 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/features/warehouse/models/warehouse_task_center_record.dart';
 import 'package:uten_imp/features/warehouse/repositories/warehouse_task_center_repository.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_task_records_view.dart';
+import 'package:uten_imp/features/warehouse/widgets/warehouse_task_record_actions.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/form_draft_catalog.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
@@ -52,8 +53,9 @@ WarehouseTaskCenterRecord warehouseTestRecord({
   String action = 'NONE',
   bool canHandle = false,
   Map<String, dynamic> data = const {},
+  WarehouseTaskLine? line,
 }) => WarehouseTaskCenterRecord(
-  rowKey: '$source:$record:$id',
+  rowKey: '$source:$record:$id${line == null ? '' : ':${line.key}'}',
   id: id,
   sourceType: source,
   recordType: record,
@@ -71,6 +73,7 @@ WarehouseTaskCenterRecord warehouseTestRecord({
   canHandle: canHandle,
   targetId: id,
   actionData: data,
+  line: line,
 );
 
 class WarehouseTaskRecordsCall {
@@ -935,6 +938,90 @@ void main() {
     });
   }
 
+  testWidgets('同单两货品独立展示选择，按单号筛选，办理只打开一次原单', (tester) async {
+    final rows = [
+      for (var index = 1; index <= 2; index++)
+        warehouseTestRecord(
+          source: 'SALES',
+          record: 'SALES_SHIPMENT',
+          id: 'same-document',
+          billNo: 'ONE-DOCUMENT',
+          action: 'SALES_OUTBOUND',
+          canHandle: true,
+          line: WarehouseTaskLine(
+            key: 'item-$index',
+            itemId: 'item-$index',
+            goodsCode: 'CODE-$index',
+            goodsName: '货品$index',
+            specification: 'M$index',
+            colorName: '蓝色',
+            quantity: index * 5,
+            unitName: '件',
+          ),
+        ),
+    ];
+    final gateway = WarehouseTaskRecordsFakeGateway(rows);
+    final harness = await _pump(tester, gateway);
+    var table = _table(tester);
+    expect(table.items, hasLength(2));
+    expect(table.items.map(table.rowKeyOf!).toSet(), hasLength(2));
+    expect(table.columns.any((column) => column.key == 'lineCount'), isFalse);
+    expect(
+      table.columns
+          .firstWhere((column) => column.key == 'quantity')
+          .value(rows.last),
+      '10 件',
+    );
+    expect(find.text('货品1'), findsOneWidget);
+    expect(find.text('货品2'), findsOneWidget);
+    table.onFilterChanged('billNo', 'ONE-DOCUMENT');
+    await tester.pumpAndSettle();
+    expect(gateway.calls.last.billNo, 'ONE-DOCUMENT');
+    table = _table(tester);
+    table.onSelectedIdsChanged!(rows.map((row) => row.rowKey).toSet());
+    await tester.pumpAndSettle();
+    expect(_table(tester).selectedIds, hasLength(2));
+    await tester.tap(find.byKey(const Key('warehouse-task-record-batch')));
+    await tester.pumpAndSettle();
+    expect(
+      harness.opened.single.queryParameters['shipmentIds'],
+      'same-document',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  test('逐行最终点收按原task去重，继续送检保留各行收货单身份', () {
+    final rows = [
+      for (var index = 1; index <= 2; index++)
+        warehouseTestRecord(
+          source: 'FINISHED',
+          record: 'FINISHED_COUNT',
+          id: 'doc',
+          billNo: 'B',
+          action: 'FINISHED_COUNT',
+          data: {'taskId': 'task', 'pendingQty': 20},
+          line: WarehouseTaskLine(key: '$index', quantity: 10),
+        ),
+    ];
+    expect(warehouseTaskCommandTargets(rows), hasLength(1));
+    expect(rows.first.documentRowKey, 'FINISHED:FINISHED_COUNT:doc');
+    expect(
+      warehouseTaskCommandTargets([
+        for (final source in ['OTHER', 'FINISHED'])
+          warehouseTestRecord(
+            source: source,
+            record: 'STOCK_DOC',
+            id: 'shared-id',
+            billNo: 'SAME',
+            action: 'STOCK_EDIT',
+            canHandle: true,
+            data: {'docType': '${source}_OUT'},
+          ),
+      ]),
+      hasLength(2),
+    );
+  });
+
   testWidgets('全部单据同UUID/同单号仍按source+record复合ID独立显示与选择', (tester) async {
     final rows = [
       warehouseTestRecord(
@@ -1057,7 +1144,7 @@ void main() {
       gateway,
       layout: const PlatformTableLayout(
         order: ['partyName', 'billNo', 'status', 'sourceDocNo'],
-        hidden: {'status', 'sourceDocNo'},
+        hidden: {'status', 'goodsName', 'sourceDocNo'},
         pinned: {'partyName'},
         widths: {'billNo': 225},
         filters: {'status': 'source:OTHER'},
@@ -1065,7 +1152,7 @@ void main() {
       ),
     );
     expect(gateway.calls.every((call) => call.source == 'ALL'), isTrue);
-    expect(_table(tester).requiredLeadingColumnKeys, ['status']);
+    expect(_table(tester).requiredLeadingColumnKeys, ['status', 'goodsName']);
     expect(find.text('来源单据'), findsNothing);
     final status = find.text('状态').hitTestable().first;
     final party = find.text('客户 / 供应商 / 委外商').hitTestable().first;

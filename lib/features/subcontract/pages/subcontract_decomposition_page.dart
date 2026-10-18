@@ -787,7 +787,7 @@ class _SubcontractDecompositionPageState
       _drawApplicationId = null;
       _drawApplicationLabel = null;
       _drawOrderId = orderId;
-      _drawOrderItemId = null;
+      _drawOrderItemId = task.actionDocItemId;
       final number = task.actionDocument?.number.trim() ?? '';
       _drawOrderLabel = number.isEmpty ? null : number;
       _drawPage = 1;
@@ -1329,7 +1329,7 @@ class _SubcontractDecompositionPageState
           value: (t) => t.planNo,
         ),
         MasterColumnDef(
-          // ADR-065 修订：行=当前执行单据；归组行（多货品合并申请）显示物料规模摘要。
+          // 每行保留一个真实货品明细，原单据号用于查找同单各行。
           key: 'docNo',
           sortable: true,
           label: '委外申请号',
@@ -1345,46 +1345,41 @@ class _SubcontractDecompositionPageState
           sortable: true,
           label: '委外件名称',
           width: 200,
-          value: (t) => t.isDocumentGrouped ? t.goodsSummaryLabel : t.goodsName,
+          value: (t) => t.goodsName,
         ),
         MasterColumnDef(
           key: 'goodsCode',
           sortable: true,
           label: '编号',
           width: 130,
-          value: (t) => t.isDocumentGrouped ? '—' : t.goodsCode,
+          value: (t) => t.goodsCode,
         ),
         MasterColumnDef(
           key: 'colorName',
           label: '颜色',
           width: 96,
-          value: (t) => t.isDocumentGrouped ? '—' : t.colorName,
+          value: (t) => t.colorName,
         ),
         MasterColumnDef(
           key: 'spec',
           sortable: true,
           label: '规格',
           width: 150,
-          value: (t) => t.isDocumentGrouped ? '—' : t.spec,
+          value: (t) => t.spec,
         ),
         MasterColumnDef(
           key: 'requiredQty',
           label: '需求量',
           width: 110,
           type: 'number',
-          value: (t) => t.isDocumentGrouped
-              ? '—'
-              : '${formatWorkbenchQuantity(t.requiredQty)} ${t.unitName}'
-                    .trim(),
+          value: (t) => formatQtyWithUnit(t.requiredQty, t.unitName),
         ),
         MasterColumnDef(
           key: 'openQty',
           label: '待下单量',
           width: 120,
           type: 'number',
-          value: (t) => t.isDocumentGrouped
-              ? '${t.openLineCount} 行'
-              : '${formatWorkbenchQuantity(t.openQty)} ${t.unitName}'.trim(),
+          value: (t) => formatQtyWithUnit(t.openQty, t.unitName),
         ),
         MasterColumnDef(
           key: 'issuedAt',
@@ -1682,8 +1677,7 @@ class _SubcontractDecompositionPageState
           label: '委外件名称',
           width: 200,
           value: (row) => switch (row) {
-            SubcontractApplicationRow(:final task) =>
-              task.isDocumentGrouped ? task.goodsSummaryLabel : task.goodsName,
+            SubcontractApplicationRow(:final task) => task.goodsName,
             SubcontractPendingDrawRow(:final row) => _label(row.goodsName),
           },
         ),
@@ -1693,8 +1687,7 @@ class _SubcontractDecompositionPageState
           label: '编号',
           width: 130,
           value: (row) => switch (row) {
-            SubcontractApplicationRow(:final task) =>
-              task.isDocumentGrouped ? '—' : task.goodsCode,
+            SubcontractApplicationRow(:final task) => task.goodsCode,
             SubcontractPendingDrawRow(:final row) => _label(row.goodsCode),
           },
         ),
@@ -1703,8 +1696,7 @@ class _SubcontractDecompositionPageState
           label: '颜色',
           width: 96,
           value: (row) => switch (row) {
-            SubcontractApplicationRow(:final task) =>
-              task.isDocumentGrouped ? '—' : task.colorName,
+            SubcontractApplicationRow(:final task) => task.colorName,
             SubcontractPendingDrawRow(:final row) => _label(row.colorName),
           },
         ),
@@ -1714,8 +1706,7 @@ class _SubcontractDecompositionPageState
           label: '规格',
           width: 150,
           value: (row) => switch (row) {
-            SubcontractApplicationRow(:final task) =>
-              task.isDocumentGrouped ? '—' : task.spec,
+            SubcontractApplicationRow(:final task) => task.spec,
             SubcontractPendingDrawRow() => '—',
           },
         ),
@@ -1726,11 +1717,10 @@ class _SubcontractDecompositionPageState
           width: 110,
           type: 'number',
           value: (row) => switch (row) {
-            SubcontractApplicationRow(:final task) =>
-              task.isDocumentGrouped
-                  ? '—'
-                  : '${formatWorkbenchQuantity(task.requiredQty)} ${task.unitName}'
-                        .trim(),
+            SubcontractApplicationRow(:final task) => formatQtyWithUnit(
+              task.requiredQty,
+              task.unitName,
+            ),
             SubcontractPendingDrawRow(:final row) => formatQtyWithUnit(
               row.orderQty,
               row.unitName,
@@ -1743,11 +1733,10 @@ class _SubcontractDecompositionPageState
           width: 120,
           type: 'number',
           value: (row) => switch (row) {
-            SubcontractApplicationRow(:final task) =>
-              task.isDocumentGrouped
-                  ? '${task.openLineCount} 行'
-                  : '${formatWorkbenchQuantity(task.openQty)} ${task.unitName}'
-                        .trim(),
+            SubcontractApplicationRow(:final task) => formatQtyWithUnit(
+              task.openQty,
+              task.unitName,
+            ),
             SubcontractPendingDrawRow(:final row) => formatQtyWithUnit(
               0,
               row.unitName,
@@ -1755,10 +1744,10 @@ class _SubcontractDecompositionPageState
           },
           cellBuilder: (context, row) =>
               _pendingQuantityCell(context, switch (row) {
-                SubcontractApplicationRow(:final task) =>
-                  task.isDocumentGrouped
-                      ? '${task.openLineCount} 行'
-                      : formatQtyWithUnit(task.openQty, task.unitName),
+                SubcontractApplicationRow(:final task) => formatQtyWithUnit(
+                  task.openQty,
+                  task.unitName,
+                ),
                 SubcontractPendingDrawRow(:final row) => formatQtyWithUnit(
                   0,
                   row.unitName,

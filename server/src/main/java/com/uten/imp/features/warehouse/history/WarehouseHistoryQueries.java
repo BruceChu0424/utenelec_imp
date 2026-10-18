@@ -21,8 +21,13 @@ final class WarehouseHistoryQueries {
     static String listSql(WarehouseHistoryType type, String orderBy, WarehouseTaskScope scope) {
         String rank = TaskKeywordSearch.rankNamesFirstParameter("keyword", new String[]{}, new String[]{"history_goods.goods_names"},
                 new String[]{"h.bill_no", "h.source_doc_no"}, "history_goods.goods_codes");
-        return headerSelect(type) + searchJoins(type) + where(type, true) + scopeFilter(type, scope)
-                + orderBy.replace("ORDER BY ", "ORDER BY " + rank + ", ") + "\n" + """
+        return headerSelect(type) + ", line.id AS item_id,line.line_no,"
+                + "COALESCE(NULLIF(line.goods_code_snapshot,''),goods.code),"
+                + "COALESCE(NULLIF(line.goods_name_snapshot,''),goods.name),goods.spec,"
+                + "color.name,unit.name,line.qty,line.weight "
+                + lineJoins(type, scope) + where(type, true) + lineScopeFilter(type, scope)
+                + orderBy.strip().replace("ORDER BY ", "ORDER BY " + rank + ", ")
+                + ", line.line_no NULLS LAST,line.id\n" + """
                 LIMIT :limit OFFSET :offset
                 """;
     }
@@ -51,8 +56,8 @@ final class WarehouseHistoryQueries {
     }
 
     static String facetsSql(WarehouseHistoryType type, String expr, WarehouseTaskScope scope) {
-        return "SELECT " + expr + ", COUNT(*) " + searchJoins(type)
-                + where(type, true) + scopeFilter(type, scope) + " GROUP BY 1 ORDER BY 1\n";
+        return "SELECT " + expr + ", COUNT(*) " + lineJoins(type, scope)
+                + where(type, true) + lineScopeFilter(type, scope) + " GROUP BY 1 ORDER BY 1\n";
     }
 
     static String countSql(WarehouseHistoryType type) {
@@ -60,7 +65,7 @@ final class WarehouseHistoryQueries {
     }
 
     static String countSql(WarehouseHistoryType type, WarehouseTaskScope scope) {
-        return "SELECT COUNT(*) " + searchJoins(type) + where(type, true) + scopeFilter(type, scope);
+        return "SELECT COUNT(*) " + lineJoins(type, scope) + where(type, true) + lineScopeFilter(type, scope);
     }
 
     static String detailHeaderSql(WarehouseHistoryType type) {
@@ -147,7 +152,7 @@ final class WarehouseHistoryQueries {
                 type.parentGoodsJoin(),
                 type.inspectionJoin(),
                 type.itemForeignKey(),
-                scopeFilter(type, scope));
+                lineScopeFilter(type, scope).replaceAll("\\bline\\.", "i."));
     }
 
     private static String headerSelect(WarehouseHistoryType type) {
@@ -192,6 +197,56 @@ final class WarehouseHistoryQueries {
                   WHERE line.%s=h.id AND NOT COALESCE(line.is_deleted,FALSE)
                 ) history_goods ON TRUE
                 """.formatted(type.headerTable(), type.itemTable(), type.itemForeignKey());
+    }
+
+    /** Search, facets and paging all share the same physical item relation. */
+    private static String lineJoins(WarehouseHistoryType type, WarehouseTaskScope scope) {
+        return """
+                FROM %s h
+                LEFT JOIN suppliers supplier ON supplier.id=h.supplier_id
+                LEFT JOIN %s line ON line.%s=h.id AND NOT COALESCE(line.is_deleted,FALSE)
+                LEFT JOIN goods ON goods.id=line.goods_id
+                LEFT JOIN colors color ON color.id=line.color_id
+                LEFT JOIN units unit ON unit.id=line.unit_id
+                LEFT JOIN LATERAL (
+                  SELECT string_agg(DISTINCT physical_warehouse.name,'、' ORDER BY physical_warehouse.name) AS name
+                  FROM warehouses physical_warehouse WHERE physical_warehouse.id=ANY(%s) %s
+                ) warehouse ON TRUE
+                CROSS JOIN LATERAL (
+                  SELECT concat_ws(' ',COALESCE(NULLIF(line.goods_code_snapshot,''),goods.code),
+                           COALESCE(NULLIF(line.goods_name_snapshot,''),goods.name),goods.spec,color.name) AS goods_text,
+                         ARRAY[COALESCE(NULLIF(line.goods_code_snapshot,''),goods.code)] AS goods_codes,
+                         ARRAY[COALESCE(NULLIF(line.goods_name_snapshot,''),goods.name)] AS goods_names
+                ) history_goods
+                """.formatted(type.headerTable(),type.itemTable(),type.itemForeignKey(),lineWarehouseIds(type),
+                        scope.active() ? " AND " + scope.predicateAny("ARRAY[physical_warehouse.id]", ":warehouse_scope") : "");
+    }
+
+    private static String lineScopeFilter(WarehouseHistoryType type, WarehouseTaskScope scope) {
+        if (!scope.active()) return "";
+        return " AND " + scope.predicateAny(lineWarehouseIds(type), ":warehouse_scope") + "\n";
+    }
+
+    private static String lineWarehouseIds(WarehouseHistoryType type) {
+        return switch(type) {
+            case PURCHASE_RECEIPT, SUBCONTRACT_RECEIPT -> """
+                    ARRAY(SELECT COALESCE(inspection_scope.warehouse_id,h.warehouse_id)
+                          FROM procurement_inspection_items inspection_scope
+                          WHERE inspection_scope.receipt_type='%s' AND inspection_scope.receipt_item_id=line.id
+                            AND inspection_scope.status<>'REVERSED'
+                          UNION SELECT h.warehouse_id WHERE NOT EXISTS (
+                            SELECT 1 FROM procurement_inspection_items active_inspection
+                            WHERE active_inspection.receipt_type='%s' AND active_inspection.receipt_item_id=line.id
+                              AND active_inspection.status<>'REVERSED'))
+                    """.formatted(type == WarehouseHistoryType.PURCHASE_RECEIPT ? "PURCHASE" : "SUBCONTRACT",
+                            type == WarehouseHistoryType.PURCHASE_RECEIPT ? "PURCHASE" : "SUBCONTRACT");
+            case SUBCONTRACT_WASTE -> """
+                    ARRAY(SELECT COALESCE((SELECT issued.warehouse_id FROM subcontract_material_issue_items issue_line
+                          JOIN subcontract_material_issues issued ON issued.id=issue_line.issue_id
+                          WHERE issue_line.id=line.material_issue_item_id),h.warehouse_id))
+                    """;
+            default -> "ARRAY[h.warehouse_id]";
+        };
     }
 
     private static String scopeFilter(WarehouseHistoryType type, WarehouseTaskScope scope) {

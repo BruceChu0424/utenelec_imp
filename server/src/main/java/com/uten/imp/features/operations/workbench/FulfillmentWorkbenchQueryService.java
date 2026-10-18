@@ -55,8 +55,13 @@ public class FulfillmentWorkbenchQueryService {
     static final List<String> IN_PROGRESS_STATUSES =
             List.of("ORDER_PENDING_APPROVAL", "FINANCE_APPROVED", "FINANCE_REJECTED");
 
-    /** Each purchase row keeps the real source item and its own physical quantities. */
-    static final String PURCHASE_ITEM_ROWS = """
+    /** Purchase and subcontract rows retain each source item's identity, units and quantities. */
+    static final String PURCHASE_ITEM_ROWS = procurementItemRows("PURCHASE");
+    static final String SUBCONTRACT_ITEM_ROWS = procurementItemRows("SUBCONTRACT");
+
+    private static String procurementItemRows(String department) {
+        boolean subcontract = "SUBCONTRACT".equals(department);
+        return """
             (SELECT v.department, v.task_id, v.package_id, v.plan_id, v.plan_no,
                     v.warehouse_id,
                     COALESCE(NULLIF(concat_ws(' - ',parent_warehouse.name,warehouse.name),''),v.warehouse_name) AS warehouse_name,
@@ -71,17 +76,19 @@ public class FulfillmentWorkbenchQueryService {
                     ARRAY[v.action_item_id::text] AS action_item_ids,
                     NULL::text AS workshop_name, NULL::text AS worker_name,
                     NULL::text AS draw_batch_no, '[]'::jsonb AS lines,
-                    supplier.name AS supplier_name,
+                    %s AS supplier_name,
                     ARRAY[v.goods_name::text] AS search_goods_names,
                     ARRAY[v.goods_code::text] AS search_goods_codes
              FROM v_procurement_decomposition_tasks v
-             LEFT JOIN purchase_orders purchase_order
-               ON v.action_doc_type='PURCHASE_ORDER' AND purchase_order.id=v.action_doc_id
-             LEFT JOIN suppliers supplier ON supplier.id=purchase_order.supplier_id
+             LEFT JOIN %s current_order
+               ON v.action_doc_type='%s_ORDER' AND current_order.id=v.action_doc_id
+             LEFT JOIN suppliers supplier ON supplier.id=current_order.supplier_id
              LEFT JOIN warehouses warehouse ON warehouse.id=v.warehouse_id
              LEFT JOIN warehouses parent_warehouse ON parent_warehouse.id=warehouse.parent_id
-             WHERE v.department='PURCHASE')
-            """;
+             WHERE v.department='%s')
+            """.formatted(subcontract ? "COALESCE(supplier.name,v.supplier_name)" : "supplier.name",
+                subcontract ? "subcontract_orders" : "purchase_orders", department, department);
+    }
     /**
      * 上面三档的 SQL 字面量。列表筛选、分段合计、黄徽章计数三处都从这一个常量展开，
      * 免得有人只在其中一处加档，让黄数与列表行数对不上。
@@ -95,7 +102,7 @@ public class FulfillmentWorkbenchQueryService {
      */
     static final String SHORT_DELIVERY_PENDING_EXISTS = """
             EXISTS (SELECT 1 FROM subcontract_short_delivery_cases short_case
-                    WHERE short_case.order_id = %s
+                    WHERE short_case.order_id = %s%s
                       AND ((short_case.status = 'PENDING_OWNER'
                             AND short_case.severity IN ('SEVERE', 'BELOW_FLOOR'))
                            OR (short_case.status = 'WAITING_MORE'
@@ -103,7 +110,7 @@ public class FulfillmentWorkbenchQueryService {
                                AND short_case.expected_complete_by < CURRENT_DATE)))""";
     static final String SHORT_DELIVERY_TOLERANT_EXISTS = """
             EXISTS (SELECT 1 FROM subcontract_short_delivery_cases tolerant_case
-                    WHERE tolerant_case.order_id = %s
+                    WHERE tolerant_case.order_id = %s%s
                       AND ((tolerant_case.status = 'PENDING_OWNER'
                             AND tolerant_case.severity IN ('WITHIN_TOLERANCE', 'UNSET_TOLERANCE'))
                            OR (tolerant_case.status = 'WAITING_MORE'
@@ -319,84 +326,11 @@ public class FulfillmentWorkbenchQueryService {
         String normalizedStatus = status == null ? "" : status.strip();
         String normalizedKeyword = KeywordSearch.phrase(keyword);
         String normalizedException = exception == null ? "" : exception.strip().toUpperCase();
-        // 采购保留真实申请/订货明细，一张单可显示多行；数量和来源不能整单复制。
-        // 委外继续 ADR-065 的按当前执行单据归组规则。
-        // ADR-065 修订（2026-09-03）：委外任务行按「当前执行单据」归组——
-        // 申请待分解阶段一行=一张采购/委外申请（多货品合并单只见一行，双击进
-        // 详情看逐货品明细）；分解订货后一行=一张订货单（供应商已分好）。
-        // 单货品单据保留货品身份与数量列；多货品单据数量列置空，改由
-        // goods_count/open_line_count 表达规模。
-        // 仓库任务同口径归组（2026-09-03 用户确认）：一行=一张 DRAW 领料单
-        // （执行分段开工时已把整段物料合为一张单），状态按整单出库进度
-        // （全部行未出库=READY_TO_PICK、出过一部分=PARTIAL、全部出完=DONE）。
-        // 尚未挂接领料单的行（action_doc_id 为 NULL）退回行级，不并入同一组。
+        // Display every real application/order item before filtering and pagination.
+        // Document identities remain available for original workflow commands and badge counts.
         String sourceView = "WAREHOUSE".equals(department)
                 ? WAREHOUSE_DOCUMENT_ROWS
-                : "PURCHASE".equals(department) ? PURCHASE_ITEM_ROWS
-                : """
-                  (SELECT v.department,
-                          v.action_doc_id AS task_id,
-                          NULL::UUID AS package_id,
-                          NULL::UUID AS plan_id,
-                          MAX(v.plan_no) AS plan_no,
-                          -- PostgreSQL 无 max(uuid)/min(uuid) 聚合；UUID 列经
-                          -- text 聚合后 cast 回，保持 mapRow 的 UUID 类型不变。
-                          MIN(v.warehouse_id::text)::uuid AS warehouse_id,
-                          MAX(v.warehouse_name) AS warehouse_name,
-                          CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                               THEN MIN(v.goods_id::text)::uuid END AS goods_id,
-                          CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                               THEN MAX(v.goods_code) END AS goods_code,
-                          CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                               THEN MAX(v.goods_name) END AS goods_name,
-                          CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                               THEN MAX(v.spec) END AS spec,
-                          CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                               THEN MIN(v.color_id::text)::uuid END AS color_id,
-                          CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                               THEN MAX(v.color_name) END AS color_name,
-                          CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                               THEN MIN(v.unit_id::text)::uuid END AS unit_id,
-                          CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                               THEN MAX(v.unit_name) END AS unit_name,
-                          MAX(v.supply_route) AS supply_route,
-                          CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                               THEN SUM(v.required_qty) END AS required_qty,
-                          CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                               THEN SUM(v.allocated_qty) END AS allocated_qty,
-                          CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                               THEN SUM(v.fulfilled_qty) END AS fulfilled_qty,
-                          CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                               THEN SUM(v.supply_pegged_qty) END AS supply_pegged_qty,
-                          CASE WHEN COUNT(DISTINCT v.goods_id) = 1
-                               THEN SUM(v.open_qty) END AS open_qty,
-                          v.task_status,
-                          MIN(v.need_date) AS need_date,
-                          MIN(v.expected_date) AS expected_date,
-                          MAX(v.exception_code) AS exception_code,
-                          MAX(v.updated_at) AS updated_at,
-                          v.action_doc_type,
-                          v.action_doc_id,
-                          MAX(v.action_doc_no) AS action_doc_no,
-                          NULL::UUID AS action_item_id,
-                          MAX(v.action_doc_status) AS action_doc_status,
-                          COUNT(DISTINCT v.goods_id) AS goods_count,
-                          COUNT(*) FILTER (WHERE v.open_qty > 0) AS open_line_count,
-                          COALESCE(
-                              ARRAY_AGG(v.action_item_id::TEXT ORDER BY v.action_item_id)
-                                  FILTER (WHERE v.action_item_id IS NOT NULL),
-                              ARRAY[]::TEXT[]
-                          ) AS action_item_ids,
-                          NULL::text AS workshop_name, NULL::text AS worker_name,
-                          NULL::text AS draw_batch_no, '[]'::jsonb AS lines,
-                          -- 2026-10-10 V836：委外申请行的委外商（未定商为 NULL）；
-                          -- 按单归组后同单同商，MAX 取一即可。
-                          MAX(v.supplier_name) AS supplier_name,
-                          array_remove(array_agg(DISTINCT v.goods_name::text), NULL) AS search_goods_names,
-                          array_remove(array_agg(DISTINCT v.goods_code::text), NULL) AS search_goods_codes
-                   FROM v_procurement_decomposition_tasks v
-                   GROUP BY v.department, v.action_doc_type, v.action_doc_id, v.task_status)
-                  """;
+                : "PURCHASE".equals(department) ? PURCHASE_ITEM_ROWS : SUBCONTRACT_ITEM_ROWS;
         sourceView = enrichTableRows(sourceView, department);
         String statusBranches = """
                        OR (:status = 'IN_PROGRESS' AND task_status IN (%s))
@@ -486,7 +420,7 @@ public class FulfillmentWorkbenchQueryService {
         String statusKey = "SUBCONTRACT".equals(department)
                 ? "CASE WHEN display_stage = 'BOM_MISSING' THEN 'BOM_MISSING' ELSE task_status END"
                 : "task_status";
-        String documentCount = "PURCHASE".equals(department) ? "COUNT(DISTINCT action_doc_id)" : "COUNT(*)";
+        String documentCount = usesDecompositionProjection(department) ? "COUNT(DISTINCT action_doc_id)" : "COUNT(*)";
         Query statusQuery = em.createNativeQuery("""
                 SELECT %s AS status_key, %s
                 FROM %s
@@ -529,7 +463,7 @@ public class FulfillmentWorkbenchQueryService {
 
         // 「待完成」卡计数：open_line_count > 0，部门×关键字全量口径（与状态卡一致，
         // 不受当前状态卡筛选影响——否则选中「已完成」时待完成卡会被错误清零）。
-        // 采购/委外按单据归组后即「仍有未完成明细的单据数」。
+        // 列表按明细展示；采购/委外待办仍按「含未完成明细的原单据数」计数。
         Query pendingQuery = em.createNativeQuery("""
                 SELECT %s FILTER (WHERE open_line_count > 0)
                 FROM %s
@@ -716,8 +650,7 @@ public class FulfillmentWorkbenchQueryService {
      *
      * <p>委外缺 BOM 的申请(ADR-143 §二.3, 列表状态 {@code BOM_MISSING}「缺 BOM·已通知研发」)
      * 照样列在「待处理」段, 但球在研发手上(研发任务中心已计红一次), 不计入红数: 与列表同一判据,
-     * 按 (单据, 状态) 归组, 组内任一申请明细的货品没有可发外直属物料({@code fn_subcontract_draw_edges})
-     * 即整组不计。
+     * 仅排除缺 BOM 的明细；同单仍有其他可处理明细时，该单据仍计一次待办。
      *
      * <p>口径依据 docs/00-项目准则/14-徽章与计数口径.md。
      */
@@ -744,22 +677,20 @@ public class FulfillmentWorkbenchQueryService {
         // ADR-098：委外还要数「回厂短交待判定」的订货单(财务已通过但有待判定案件), 与列表异常行同源。
         String shortDelivery = " OR (decomposition.task_status = 'FINANCE_APPROVED'"
                 + " AND decomposition.action_doc_type = 'SUBCONTRACT_ORDER' AND "
-                + SHORT_DELIVERY_PENDING_EXISTS.formatted("decomposition.action_doc_id") + ")";
+                + SHORT_DELIVERY_PENDING_EXISTS.formatted("decomposition.action_doc_id", "") + ")";
         Query query = em.createNativeQuery("SUBCONTRACT".equals(department)
                 ? """
                     SELECT COUNT(*) FROM (
                         SELECT DISTINCT counted.action_doc_id
                         FROM (
                             SELECT decomposition.action_doc_id, decomposition.open_qty, decomposition.task_status,
-                                   bool_or(decomposition.action_doc_type = 'SUBCONTRACT_APPLICATION'
+                                   (decomposition.action_doc_type = 'SUBCONTRACT_APPLICATION'
                                            AND decomposition.task_status = 'WAITING_ORDER'
                                            AND EXISTS (
                                                SELECT 1 FROM subcontract_application_items gap_item
                                                WHERE gap_item.id = decomposition.action_item_id
                                                  AND gap_item.is_deleted = FALSE
-                                                 AND NOT EXISTS (SELECT 1 FROM fn_subcontract_draw_edges(gap_item.goods_id))))
-                                       OVER (PARTITION BY decomposition.action_doc_type, decomposition.action_doc_id,
-                                                          decomposition.task_status) AS bom_missing
+                                                 AND NOT EXISTS (SELECT 1 FROM fn_subcontract_draw_edges(gap_item.goods_id)))) AS bom_missing
                             FROM v_procurement_decomposition_tasks decomposition
                             WHERE decomposition.department = :department
                               AND (decomposition.task_status IN ('WAITING_ORDER', 'FINANCE_REJECTED')%s)
@@ -793,9 +724,8 @@ public class FulfillmentWorkbenchQueryService {
      * 与分段栏 {@code summary.statusCounts.IN_PROGRESS} 同一口径——等待财务审核 /
      * 财务已通过 / 财务已退回三档，球都不在本部门手上，但单子还在流程里没结束。
      *
-     * <p>分组键与列表的归组完全一致 (action_doc_type + action_doc_id + task_status)，
-     * 所以黄数与「进行中」列表的行数逐条相等；这与红数 {@link #countPending} 的
-     * {@code DISTINCT action_doc_id} 是两个量纲，ADR-100 §2.6 已写明不要拿两个数对账。
+     * <p>黄数保留单据量纲 (action_doc_type + action_doc_id + task_status)。
+     * 列表按明细展示，分页总数与表头分面按货品行计数，不能与单据徽章相加。
      *
      * <p>刻意不套 {@code open_qty > 0}：回厂净量已到齐、订货单还没关闭的单子仍在
      * 进行中列表里看得见，黄数漏掉它就会与列表行数对不上。
@@ -920,7 +850,7 @@ public class FulfillmentWorkbenchQueryService {
                       AND action.external_document_type='SUBCONTRACT_APPLICATION' AND action.route='SUBCONTRACT'
                 ) issue ON TRUE
                 """ : "";
-        // ADR-143 §4.1「进行中」状态列: 已批准的委外订货单按各明细聚合, 取第一个命中——
+        // 委外订货状态按当前明细的实物事实判定，不能把同单其他货品的进度复制过来。
         // 回厂短交待判定 > 分批等待中 > 容差内待结案 > 已回厂待入库(回厂净量已到齐, 只差质检入库)
         // > 可领料 > 已提交领料·待仓库发料 > 部分回厂 > 委外加工中(有已发料) > 等待物料。
         // 已批准的订货单一定有冻结领料计划行(缺 BOM 的委外件不能下单, ADR-143 §二.3)。
@@ -932,16 +862,16 @@ public class FulfillmentWorkbenchQueryService {
                     SELECT %s AS short_pending,
                            %s AS tolerant_pending,
                            EXISTS (SELECT 1 FROM subcontract_short_delivery_cases waiting_case
-                                   WHERE waiting_case.order_id = base.action_doc_id
+                                   WHERE waiting_case.order_id = base.action_doc_id AND waiting_case.order_item_id = base.action_item_id
                                      AND waiting_case.status = 'WAITING_MORE'
                                      AND waiting_case.severity <> 'WITHIN_TOLERANCE'
                                      AND waiting_case.expected_complete_by >= CURRENT_DATE) AS waiting_more,
                            EXISTS (SELECT 1 FROM subcontract_order_items received_item
-                                   WHERE received_item.order_id = base.action_doc_id
+                                   WHERE received_item.order_id = base.action_doc_id AND received_item.id = base.action_item_id
                                      AND NOT received_item.is_deleted
                                      AND COALESCE(received_item.received_qty, 0) > 0) AS any_received,
                            NOT EXISTS (SELECT 1 FROM subcontract_order_items pending_item
-                                       WHERE pending_item.order_id = base.action_doc_id
+                                       WHERE pending_item.order_id = base.action_doc_id AND pending_item.id = base.action_item_id
                                          AND NOT pending_item.is_deleted
                                          AND COALESCE(pending_item.received_qty, 0)
                                              - COALESCE(pending_item.returned_qty, 0)
@@ -950,7 +880,7 @@ public class FulfillmentWorkbenchQueryService {
                            EXISTS (SELECT 1 FROM subcontract_order_items draw_item
                                    CROSS JOIN LATERAL fn_subcontract_draw_summary(draw_item.id) draw_summary
                                    WHERE base.task_status = 'FINANCE_APPROVED'
-                                     AND draw_item.order_id = base.action_doc_id
+                                     AND draw_item.order_id = base.action_doc_id AND draw_item.id = base.action_item_id
                                      AND NOT draw_item.is_deleted
                                      AND draw_summary.drawable_qty > 0
                                      AND GREATEST(COALESCE(draw_item.received_qty, 0)
@@ -974,7 +904,7 @@ public class FulfillmentWorkbenchQueryService {
                                     AND draft_doc.status = 0 AND NOT draft_doc.is_deleted
                                    JOIN subcontract_order_items draft_order_item
                                      ON draft_order_item.id = draft_item.order_item_id
-                                   WHERE draft_order_item.order_id = base.action_doc_id
+                                   WHERE draft_order_item.order_id = base.action_doc_id AND draft_order_item.id = base.action_item_id
                                      AND draft_item.plan_item_id IS NOT NULL
                                      AND NOT draft_item.is_deleted) AS any_draw_submitted,
                            EXISTS (SELECT 1 FROM subcontract_material_issue_items issued_item
@@ -983,12 +913,14 @@ public class FulfillmentWorkbenchQueryService {
                                     AND issued_doc.status = 1 AND NOT issued_doc.is_deleted
                                    JOIN subcontract_order_items issued_order_item
                                      ON issued_order_item.id = issued_item.order_item_id
-                                   WHERE issued_order_item.order_id = base.action_doc_id
+                                   WHERE issued_order_item.order_id = base.action_doc_id AND issued_order_item.id = base.action_item_id
                                      AND NOT issued_item.is_deleted) AS any_issued
                     WHERE base.action_doc_type = 'SUBCONTRACT_ORDER'
                 ) progress ON TRUE
-                """.formatted(SHORT_DELIVERY_PENDING_EXISTS.formatted("base.action_doc_id"),
-                        SHORT_DELIVERY_TOLERANT_EXISTS.formatted("base.action_doc_id"),
+                """.formatted(SHORT_DELIVERY_PENDING_EXISTS.formatted("base.action_doc_id",
+                                " AND short_case.order_item_id = base.action_item_id"),
+                        SHORT_DELIVERY_TOLERANT_EXISTS.formatted("base.action_doc_id",
+                                " AND tolerant_case.order_item_id = base.action_item_id"),
                         SubcontractLossSettlementSql.acceptedLossQty("pending_item.id"),
                         SubcontractLossSettlementSql.acceptedLossQty("draw_item.id")) : "";
         // ADR-100：采购侧的执行状态就是 task_status 本身(等待财务审核 / 财务已通过 /
@@ -1092,7 +1024,7 @@ public class FulfillmentWorkbenchQueryService {
                 ) kit ON TRUE
                 """ : "";
         // Materialize the existing department/source rows before projecting kit
-        // quantities. One batch serves every grouped application and every count;
+        // quantities. One batch serves all source items and every count;
         // the authority still accounts for ALL global orders, not only these rows.
         String kitPrefix = subcontract ? """
                 WITH kit_base AS MATERIALIZED (SELECT * FROM %s WHERE department = 'SUBCONTRACT'),
@@ -1105,8 +1037,8 @@ public class FulfillmentWorkbenchQueryService {
                 )
                 """.formatted(source) : "";
         if (subcontract) source = "kit_base";
-        // A grouped order can contain several real source issues. Its earliest source issue
-        // remains the displayed date; later application creation never substitutes for it.
+        // An order item can have several source issues. Its earliest issue remains
+        // the displayed date; later application creation never substitutes for it.
         return """
                 (%sSELECT base.department, base.task_id, base.package_id, base.plan_id, base.plan_no,
                         base.warehouse_id, base.warehouse_name, base.goods_id, base.goods_code,

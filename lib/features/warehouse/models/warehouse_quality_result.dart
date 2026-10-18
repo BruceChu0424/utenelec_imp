@@ -9,6 +9,7 @@ import 'warehouse_iqc_stock_in.dart'
         WarehouseIqcStockInConfirmCommand,
         WarehouseIqcStockInReceiptType;
 import 'warehouse_pre_stocked_location.dart';
+import 'warehouse_task_center_record.dart' show WarehouseTaskLine;
 
 export 'warehouse_pre_stocked_location.dart';
 
@@ -142,7 +143,7 @@ Map<WarehouseIqcStockInReceiptType, int> _receiptTypeCounts(Object? value) {
   };
 }
 
-/// 合并页任务行：按收货单聚合的品质结论 + 仓库待办量（无金额字段）。
+/// 品质结果逐货品任务行，办理复核保留原收货单身份（无金额字段）。
 class WarehouseQualityResultTask {
   const WarehouseQualityResultTask({
     required this.receiptType,
@@ -162,6 +163,7 @@ class WarehouseQualityResultTask {
     this.warehouseName,
     this.lastActivityAt,
     this.preStockedLineCount = 0,
+    this.line,
   });
 
   final WarehouseIqcStockInReceiptType receiptType;
@@ -185,6 +187,10 @@ class WarehouseQualityResultTask {
 
   /// 先入库后质检(V596)：仍在等结论且已上架的明细行数(>0 = 实物已在库位、合格自动转正)。
   final int preStockedLineCount;
+  final WarehouseTaskLine? line;
+
+  String get documentKey => '$receiptTypeValue:$receiptId';
+  String get rowKey => line == null ? documentKey : '$documentKey:${line!.key}';
 
   String get receiptTypeValue => receiptType.apiValue;
 
@@ -199,6 +205,14 @@ class WarehouseQualityResultTask {
 
   /// 列表「品质结论」列：合格 / 不合格 / 待检 行数一眼可比。
   String get verdictLabel {
+    if (line != null) {
+      if (failedLineCount > 0 && passedLineCount > 0) return '部分合格';
+      if (failedLineCount > 0) return '不合格';
+      if (passedLineCount > 0 && openItemCount > 0) return '部分合格';
+      if (passedLineCount > 0) return '合格';
+      if (openItemCount > 0) return '待检';
+      return '已完结';
+    }
     final parts = <String>[
       '合格 $passedLineCount',
       if (failedLineCount > 0) '不合格 $failedLineCount',
@@ -226,6 +240,11 @@ class WarehouseQualityResultTask {
         pendingReturnCount: _integer(json['pendingReturnCount']),
         lastActivityAt: _text(json['lastActivityAt']),
         preStockedLineCount: _integer(json['preStockedLineCount']),
+        line: json['line'] is Map
+            ? WarehouseTaskLine.fromJson(
+                Map<String, dynamic>.from(json['line'] as Map),
+              )
+            : null,
       );
 }
 

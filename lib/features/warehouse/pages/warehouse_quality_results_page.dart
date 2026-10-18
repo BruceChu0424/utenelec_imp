@@ -42,7 +42,7 @@ import '../../../shared/warehouse/warehouse_task_scope.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 
 /// 品质部检查结果：原「IQC 合格待入库」+「IQC 不合格实物退回」的合并任务中心。
-/// 与预计到货任务中心同款表格工作台——列表按收货单聚合作业状态（等待检查结果 /
+/// 与预计到货任务中心同款表格工作台——列表按货品展示作业状态（等待检查结果 /
 /// 全部合格待入库 / 部分合格 / 全部不合格需退回 / 已完结），作业状态列整格底色
 /// （ADR-169：黄/绿/橙/红/灰五档互区分，与详情页头部徽章同一份映射）；
 /// 可多选批量入库（整批同事务），双击行进入完整详情页办理入库或登记退回。
@@ -124,7 +124,7 @@ class _WarehouseQualityResultsPageState
   /// 排序列 key 见 [_kSortFields]，null = 服务端默认序。
   final _columnFilters = MasterServerColumnFilters();
 
-  /// 表格多选：键为「receiptType:receiptId」，跨页保留。
+  /// 表格多选保留原货品身份；办理入口按关联收货单去重。
   Set<String> _selectedIds = {};
 
   bool get _shouldLoad {
@@ -418,17 +418,16 @@ class _WarehouseQualityResultsPageState
     return null;
   }
 
-  static String _taskId(WarehouseQualityResultTask task) =>
-      '${task.receiptTypeValue}:${task.receiptId}';
+  static String _taskId(WarehouseQualityResultTask task) => task.rowKey;
 
   /// 当前选中且仍有待入库切片的任务（批量入库目标）。
-  List<WarehouseQualityResultTask> get _selectedStockInTasks => [
+  List<WarehouseQualityResultTask> get _selectedStockInTasks => {
     for (final id in _selectedIds)
       if (_taskById(id) case final task?
           when task.pendingSliceCount > 0 &&
               task.workStatus != WarehouseQualityWorkStatus.completed)
-        task,
-  ];
+        task.documentKey: task,
+  }.values.toList(growable: false);
 
   /// 多选批量入库（2026-09-12 弹窗改页）：进批量入库页——所选任务的放行切片
   /// 集中成一张表，可勾选、可改数量/库位，整批同事务提交。
@@ -552,7 +551,7 @@ class _WarehouseQualityResultsPageState
                 // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
                 primary: true,
                 key: const Key('warehouse-quality-result-table'),
-                requiredLeadingColumnKeys: const ['workStatus'],
+                requiredLeadingColumnKeys: const ['workStatus', 'goodsName'],
                 columns: _columns,
                 items: result.items,
                 // 收货单号表头值筛选（2026-09-25 单号列统一）：服务端分组计数桶。
@@ -664,7 +663,7 @@ class _WarehouseQualityResultsPageState
     }
     if (_statusSeg?.history == true) return '该时间段内暂无检查结果记录';
     return switch (_statusSeg?.status) {
-      WarehouseQualityWorkStatus.waitingInspection => '没有等待检查结果的收货单',
+      WarehouseQualityWorkStatus.waitingInspection => '没有等待检查结果的货品',
       WarehouseQualityWorkStatus.allPassed => '没有全部合格待入库的任务',
       WarehouseQualityWorkStatus.partialPassed => '没有部分合格的任务',
       WarehouseQualityWorkStatus.returnRequired => '没有待退回的不合格任务',
@@ -682,7 +681,7 @@ class _WarehouseQualityResultsPageState
         type: UtenButtonType.danger,
         icon: Icons.move_to_inbox_rounded,
         onPressed: _loading ? null : () => _openBatchStockIn(),
-        child: Text(stockInCount > 0 ? '批量入库($stockInCount 单)' : '批量入库'),
+        child: Text(stockInCount > 0 ? '复核入库($stockInCount 单)' : '批量入库'),
       ),
     ];
   }
@@ -828,6 +827,37 @@ class _WarehouseQualityResultsPageState
       value: (task) => task.verdictLabel,
     ),
     MasterColumnDef(
+      key: 'goodsCode',
+      label: '货品编号',
+      width: 150,
+      value: (task) => task.line?.goodsCode ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'goodsName',
+      label: '货品名称',
+      width: 220,
+      value: (task) => task.line?.goodsName ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'specification',
+      label: '规格',
+      width: 130,
+      value: (task) => task.line?.specification ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'colorName',
+      label: '颜色',
+      width: 100,
+      value: (task) => task.line?.colorName ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'quantity',
+      label: '收货数量',
+      width: 135,
+      type: 'number',
+      value: (task) => task.line?.quantityLabel ?? '—',
+    ),
+    MasterColumnDef(
       key: 'receiptType',
       label: '来源类型',
       width: 100,
@@ -855,7 +885,7 @@ class _WarehouseQualityResultsPageState
     ),
     MasterColumnDef(
       key: 'warehouseName',
-      label: '收货参考仓',
+      label: '所在仓库',
       width: 130,
       value: (task) => task.warehouseName ?? '—',
     ),

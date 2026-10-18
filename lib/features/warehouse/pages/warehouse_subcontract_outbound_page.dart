@@ -1,65 +1,14 @@
-// 委外领料待发料独立页(/warehouse/subcontract-outbound，深链保底；
-// V436 仓库专属)。正文逻辑在 widgets/warehouse_subcontract_outbound_workbench.dart，
-// 2026-09-01 起主入口是「出库任务中心 · 委外出库」分段（/warehouse/tasks/outbound）。
+// Legacy links use the same item rows, filters and workflow entry points as the task center.
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../components/buttons/uten_app_bar_action_button.dart';
-import '../../../components/buttons/uten_back_button.dart';
-import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_content_container.dart';
-import '../../../core/router/nav_helpers.dart';
-import '../../../core/router/page_resume_provider.dart';
-import '../../../core/router/route_names.dart';
-import '../../../core/theme/uten_tokens.dart';
-import '../widgets/warehouse_subcontract_outbound_workbench.dart';
+import 'warehouse_task_center_page.dart';
 
-class WarehouseSubcontractOutboundPage extends ConsumerStatefulWidget {
+class WarehouseSubcontractOutboundPage extends StatelessWidget {
   const WarehouseSubcontractOutboundPage({super.key});
 
   @override
-  ConsumerState<WarehouseSubcontractOutboundPage> createState() =>
-      _WarehouseSubcontractOutboundPageState();
-}
-
-class _WarehouseSubcontractOutboundPageState
-    extends ConsumerState<WarehouseSubcontractOutboundPage> {
-  String? _myLocation;
-  int _refreshTick = 0;
-
-  @override
-  Widget build(BuildContext context) {
-    _myLocation ??= currentLocationOr(
-      context,
-      RouteName.warehouseSubcontractOutbound,
-    );
-    ref.onPageResume(_myLocation!, () {
-      setState(() => _refreshTick++);
-    });
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: '委外出仓任务中心',
-        leading: UtenBackButton(
-          onPressed: () => backTo(context, defaultPath: RouteName.warehouse),
-        ),
-        actions: [
-          UtenAppBarActionButton(
-            label: '刷新',
-            icon: Icons.refresh_rounded,
-            onPressed: () => setState(() => _refreshTick++),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: UtenContentContainer.wide(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-            child: WarehouseSubcontractOutboundWorkbench(
-              refreshTick: _refreshTick,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => const WarehouseTaskCenterPage(
+    initialGroup: 'outbound',
+    initialSection: 'SUBCONTRACT',
+  );
 }

@@ -23,6 +23,7 @@ class WarehouseTaskCenterRecord {
     this.targetId,
     this.canHandle = false,
     this.actionData = const {},
+    this.line,
   });
 
   final String rowKey;
@@ -43,6 +44,9 @@ class WarehouseTaskCenterRecord {
   final String? targetId;
   final bool canHandle;
   final Map<String, dynamic> actionData;
+  final WarehouseTaskLine? line;
+
+  String get documentRowKey => '$sourceType:$recordType:$id';
 
   UtenStatusBadgeType get statusType => UtenStatusBadgeType.values.firstWhere(
     (type) => type.name == tone,
@@ -97,8 +101,63 @@ class WarehouseTaskCenterRecord {
             ? Map<String, dynamic>.from(json['actionData'] as Map)
             : const {},
       ),
+      line: json['line'] is Map
+          ? WarehouseTaskLine.fromJson(
+              Map<String, dynamic>.from(json['line'] as Map),
+            )
+          : null,
     );
   }
+}
+
+/// Original item identity, including repeated goods on the same document.
+class WarehouseTaskLine {
+  const WarehouseTaskLine({
+    required this.key,
+    this.itemId,
+    this.lineNo,
+    this.goodsCode,
+    this.goodsName,
+    this.specification,
+    this.colorName,
+    this.unitName,
+    this.quantity,
+    this.weight,
+  });
+
+  final String key;
+  final String? itemId;
+  final int? lineNo;
+  final String? goodsCode;
+  final String? goodsName;
+  final String? specification;
+  final String? colorName;
+  final String? unitName;
+  final num? quantity;
+  final num? weight;
+
+  String get quantityLabel {
+    final value = quantity;
+    if (value == null) return '—';
+    final text = value == value.roundToDouble()
+        ? value.toInt().toString()
+        : value.toString();
+    return '$text ${unitName ?? ''}'.trim();
+  }
+
+  factory WarehouseTaskLine.fromJson(Map<String, dynamic> json) =>
+      WarehouseTaskLine(
+        key: json['key']?.toString() ?? '',
+        itemId: json['itemId']?.toString(),
+        lineNo: (json['lineNo'] as num?)?.toInt(),
+        goodsCode: json['goodsCode']?.toString(),
+        goodsName: json['goodsName']?.toString(),
+        specification: json['specification']?.toString(),
+        colorName: json['colorName']?.toString(),
+        unitName: json['unitName']?.toString(),
+        quantity: num.tryParse('${json['quantity']}'),
+        weight: num.tryParse('${json['weight']}'),
+      );
 }
 
 class WarehouseTaskCenterPageResult {

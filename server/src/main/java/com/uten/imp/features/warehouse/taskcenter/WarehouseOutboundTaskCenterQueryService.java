@@ -123,7 +123,8 @@ public class WarehouseOutboundTaskCenterQueryService {
     public PhysicalDetail detail(String rowKey, UUID requestedWarehouse, int linePage, int lineSize) {
         if (currentUser.get().isEmpty() || currentUser.get().orElseThrow().isVisitor()) throw notFound();
         String[] parts = rowKey == null ? new String[0] : rowKey.split(":", -1);
-        if (parts.length != 3 || !SOURCES.contains(parts[0]) || parts[0].equals("ALL")) throw notFound();
+        if ((parts.length != 3 && parts.length != 4) || !SOURCES.contains(parts[0]) || parts[0].equals("ALL")
+                || (parts.length == 4 && parts[3].isBlank())) throw notFound();
         UUID id;
         try {
             id = UUID.fromString(parts[2]);
@@ -142,15 +143,16 @@ public class WarehouseOutboundTaskCenterQueryService {
                     .setParameter("rowSource", parts[0]).setParameter("rowRecord", parts[1]).setParameter("rowId", documentId);
             List<Object[]> found = NativeQueryResults.objectArrayRows(rowQuery);
             if (found.isEmpty()) throw notFound();
-            Row document = map(found.getFirst(), access);
+            Row document = map(java.util.Arrays.copyOf(found.getFirst(), 18), access);
             int size = Math.max(1, Math.min(500, lineSize));
-            String lineSql = physicalLines(document);
-            long total = ((Number) em.createNativeQuery("SELECT COUNT(*) FROM (" + lineSql + ") physical_detail")
+            // The task's visible header never grants access to sibling items from another warehouse.
+            String lineSql = scopedPhysicalLines(document);
+            long total = ((Number) bindDetail(em.createNativeQuery(sql.cte() + " SELECT COUNT(*) FROM (" + lineSql + ") physical_detail"), sql, parts, documentId)
                     .setParameter("documentId", documentId).getSingleResult()).longValue();
             int pages = (int) ((total + size - 1) / size);
             int page = pages == 0 ? 1 : Math.max(1, Math.min(linePage, pages));
-            List<PhysicalLine> lines = NativeQueryResults.objectArrayRows(em.createNativeQuery(
-                    "SELECT * FROM (" + lineSql + ") physical_detail ORDER BY line_no NULLS LAST,id NULLS LAST LIMIT :lineLimit OFFSET :lineOffset")
+            List<PhysicalLine> lines = NativeQueryResults.objectArrayRows(bindDetail(em.createNativeQuery(
+                    sql.cte() + " SELECT * FROM (" + lineSql + ") physical_detail ORDER BY line_no NULLS LAST,id NULLS LAST LIMIT :lineLimit OFFSET :lineOffset"), sql, parts, documentId)
                     .setParameter("documentId", documentId).setParameter("lineLimit", size)
                     .setParameter("lineOffset", (long) (page - 1) * size)).stream().map(raw -> new PhysicalLine(
                         NativeValueConverters.uuid(raw[0]), raw[1] instanceof Number n ? n.intValue() : null,
@@ -169,6 +171,16 @@ public class WarehouseOutboundTaskCenterQueryService {
         });
     }
 
+    private Query bindDetail(Query query, WarehouseOutboundTaskCenterSql.Plan sql, String[] identity, UUID id) {
+        return bind(query, sql).setParameter("rowSource", identity[0]).setParameter("rowRecord", identity[1]).setParameter("rowId", id);
+    }
+
+    static String scopedPhysicalLines(Row document) {
+        return "SELECT detail.* FROM (" + physicalLines(document) + ") detail WHERE EXISTS ("
+                + "SELECT 1 FROM filtered visible WHERE visible.source_type=:rowSource AND visible.record_type=:rowRecord"
+                + " AND visible.id=:rowId AND (visible.item_id=detail.id OR (visible.item_id IS NULL AND visible.line_no=detail.line_no)))";
+    }
+
     private static BigDecimal decimalOrNull(Object value) {
         return value == null ? null : NativeValueConverters.toBigDecimal(value);
     }
@@ -181,12 +193,17 @@ public class WarehouseOutboundTaskCenterQueryService {
                     || document.status().equals("DRAW_DISCOVERY_BLOCKED")) {
                 return """
                         SELECT NULL::uuid AS id,suggestion.ordinality::int AS line_no,
-                               suggestion.item->>'goodsCode',suggestion.item->>'goodsName',
-                               suggestion.item->>'colorName',suggestion.item->>'unitName',
-                               CAST(suggestion.item->>'qty' AS numeric),NULL::numeric,NULL::numeric,NULL::numeric,
+                               COALESCE(NULLIF(suggestion.item->>'goodsCode',''),goods.code),
+                               COALESCE(NULLIF(suggestion.item->>'goodsName',''),goods.name),
+                               COALESCE(NULLIF(suggestion.item->>'colorName',''),color.name),
+                               COALESCE(NULLIF(suggestion.item->>'unitName',''),unit.name),
+                               NULLIF(suggestion.item->>'qty','')::numeric,NULL::numeric,NULL::numeric,NULL::numeric,
                                suggestion.item->>'stockPlace'
                         FROM production_material_discovery_requests request
                         CROSS JOIN LATERAL jsonb_array_elements(request.requested_materials) WITH ORDINALITY suggestion(item,ordinality)
+                        LEFT JOIN goods ON goods.id=NULLIF(suggestion.item->>'goodsId','')::uuid
+                        LEFT JOIN colors color ON color.id=NULLIF(suggestion.item->>'colorId','')::uuid
+                        LEFT JOIN units unit ON unit.id=NULLIF(suggestion.item->>'unitId','')::uuid
                         WHERE request.id=:documentId
                         """;
             }
@@ -323,12 +340,23 @@ public class WarehouseOutboundTaskCenterQueryService {
             }
             default -> throw new IllegalStateException("Unrecognized outbound source");
         }
-        return new Row(source + ":" + record + ":" + id, id, source, record,
+        String documentKey = source + ":" + record + ":" + id;
+        if (raw.length >= 28) {
+            data.put("documentRowKey", documentKey);
+            data.put("lineKey", String.valueOf(raw[18]));
+            UUID itemId = NativeValueConverters.uuid(raw[19]);
+            if (itemId != null) data.put("itemId", itemId);
+        }
+        Row row = new Row(documentKey, id, source, record,
                 raw[3] == null ? null : raw[3].toString(), raw[4] == null ? null : raw[4].toString(),
                 NativeValueConverters.toLocalDate(raw[5]),
                 raw[6] == null ? "" : raw[6].toString(), raw[7] == null ? "" : raw[7].toString(),
                 raw[8] == null ? "" : raw[8].toString(), raw[9] instanceof Number number ? number.intValue() : 0,
                 status, state.label(), state.tone(), action, id, canHandle, data);
+        return raw.length < 28 ? row : row.withLine(new Line(String.valueOf(raw[18]), NativeValueConverters.uuid(raw[19]),
+                raw[20] instanceof Number number ? number.intValue() : null,
+                NativeValueConverters.text(raw[21]), NativeValueConverters.text(raw[22]), NativeValueConverters.text(raw[23]),
+                NativeValueConverters.text(raw[24]), NativeValueConverters.text(raw[25]), decimalOrNull(raw[26]), decimalOrNull(raw[27])));
     }
 
     private static Map<String, State> states() {

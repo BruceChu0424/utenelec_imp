@@ -92,7 +92,10 @@ public class WarehouseQualityResultController {
     @GetMapping("/{receiptType}/{receiptId}")
     public TaskDetail detail(
             @PathVariable String receiptType,
-            @PathVariable UUID receiptId) {
-        return service.detail(receiptType, receiptId);
+            @PathVariable UUID receiptId,
+            @RequestParam(required=false) UUID scopeWarehouseId) {
+        return service.detail(receiptType, receiptId,warehouseScopes.current(scopeWarehouseId));
     }
+
+    public TaskDetail detail(String receiptType,UUID receiptId) { return detail(receiptType,receiptId,null); }
 }

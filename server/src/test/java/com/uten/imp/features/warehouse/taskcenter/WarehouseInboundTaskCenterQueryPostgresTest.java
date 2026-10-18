@@ -69,7 +69,7 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
                 "production_fqc_inspection_sheets","production_fqc_inspection_sheet_items",
                 "production_finished_in_confirmations","procurement_arrival_exceptions","goods",
                 "inbound_expectations","inbound_expectation_items","production_fqc_legacy_exemptions",
-                "procurement_inspection_items","procurement_inspection_events","procurement_iqc_stock_in_batch_items",
+                "procurement_inspection_items","procurement_inspection_events","procurement_iqc_stock_in_batch_items","procurement_iqc_stock_in_batches",
                 "procurement_iqc_rejection_cases");
         // PostgreSQL views bind source relation OIDs. Rebind the actual migrated
         // predicate to these rollback-only facts instead of accidentally reading
@@ -117,6 +117,258 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
         searchStock("WILDCARD","AxYB","special","2026-10-16",warehouse);
         assertThat(service.list(new Filter("OTHER","","A%_B",null,null,null,null,1,20)).items())
                 .extracting(Row::id).containsExactly(literal);
+    }
+
+    @Test void goodsLinesAreExpandedBeforePagingAndSearchAndKeepSameDocumentItemsDistinct() {
+        UUID document=UUID.randomUUID(),goods=UUID.randomUUID(),first=UUID.randomUUID(),second=UUID.randomUUID();
+        stock(document,"OTHER_IN","ITEM-ROWS","2026-10-12",null);
+        execute("INSERT INTO goods(id,code,name,spec) VALUES(:id,'SAME-CODE','Current goods','M10')","id",goods);
+        execute("INSERT INTO stock_document_items(id,doc_id,line_no,goods_id,goods_name_snapshot,qty,weight,is_deleted)"
+                +" VALUES(:id,:document,1,:goods,'First snapshot',2.5000,1.2500,FALSE)",
+                "id",first,"document",document,"goods",goods);
+        execute("INSERT INTO stock_document_items(id,doc_id,line_no,goods_id,goods_name_snapshot,qty,is_deleted)"
+                +" VALUES(:id,:document,2,:goods,'Second snapshot',4.5000,FALSE)",
+                "id",second,"document",document,"goods",goods);
+        var service=service(Set.of("stock_doc:view"),WarehouseTaskScope.ALL,false);
+        var firstPage=service.list(filter("OTHER","",1,1));
+        var secondPage=service.list(filter("OTHER","",2,1));
+        assertThat(firstPage.total()).isEqualTo(2);
+        assertThat(firstPage.totalPages()).isEqualTo(2);
+        assertThat(firstPage.facets().get("status")).singleElement().satisfies(facet->assertThat(facet.count()).isEqualTo(2));
+        assertThat(firstPage.items().getFirst().rowKey()).isNotEqualTo(secondPage.items().getFirst().rowKey());
+        assertThat(firstPage.items().getFirst().id()).isEqualTo(document);
+        assertThat(secondPage.items().getFirst().id()).isEqualTo(document);
+        var search=service.list(new Filter("OTHER","","First snapshot",null,null,null,null,1,20));
+        assertThat(search.total()).isEqualTo(1);
+        assertThat(search.items()).singleElement().satisfies(row->{
+            assertThat(row.line().itemId()).isEqualTo(first);
+            assertThat(row.line().goodsName()).isEqualTo("First snapshot");
+            assertThat(row.line().specification()).isEqualTo("M10");
+            assertThat(row.line().quantity()).isEqualByComparingTo("2.5000");
+            assertThat(row.line().weight()).isEqualByComparingTo("1.2500");
+            assertThat(service.detail(row.rowKey(),null).get("total")).isEqualTo(1L);
+        });
+        assertThat(service.detail("OTHER:STOCK_DOCUMENT:"+document,null).get("total")).isEqualTo(2L);
+    }
+
+    @Test void sameDocumentOtherWarehouseItemsCannotLeakThroughRowsSearchFacetsOrDetails() {
+        UUID document=UUID.randomUUID(),warehouse=UUID.randomUUID(),outside=UUID.randomUUID();
+        UUID shown=UUID.randomUUID(),hidden=UUID.randomUUID();
+        stock(document,"OTHER_IN","MIXED-WAREHOUSES","2026-10-12",null);
+        execute("UPDATE stock_documents SET warehouse_id=:warehouse WHERE id=:id","warehouse",warehouse,"id",document);
+        execute("INSERT INTO stock_document_items(id,doc_id,line_no,warehouse_id,goods_name_snapshot,qty,is_deleted)"
+                +" VALUES(:id,:document,1,:warehouse,'Visible physical item',2,FALSE)",
+                "id",shown,"document",document,"warehouse",warehouse);
+        execute("INSERT INTO stock_document_items(id,doc_id,line_no,warehouse_id,goods_name_snapshot,qty,is_deleted)"
+                +" VALUES(:id,:document,2,:warehouse,'Outside physical item',3,FALSE)",
+                "id",hidden,"document",document,"warehouse",outside);
+        var service=service(Set.of("stock_doc:view"),new WarehouseTaskScope(true,List.of(warehouse),false),false);
+        var page=service.list(filter("OTHER","",1,20));
+        assertThat(page.total()).isEqualTo(1);
+        assertThat(page.items()).singleElement().satisfies(row->assertThat(row.line().itemId()).isEqualTo(shown));
+        assertThat(page.facets().get("billNo")).singleElement().satisfies(facet->assertThat(facet.count()).isEqualTo(1));
+        assertThat(service.list(new Filter("OTHER","","Outside",null,null,null,null,1,20)).total()).isZero();
+        assertThat(service.detail("OTHER:STOCK_DOCUMENT:"+document,null).get("total")).isEqualTo(1L);
+        assertThatThrownBy(()->service.detail("OTHER:STOCK_DOCUMENT:"+document+":"+hidden,null)).isInstanceOf(ApiException.class);
+        var otherScope=service(Set.of("stock_doc:view"),new WarehouseTaskScope(true,List.of(outside),false),false);
+        assertThat(otherScope.list(filter("OTHER","",1,20)).items()).singleElement()
+                .satisfies(row->assertThat(row.line().itemId()).isEqualTo(hidden));
+        execute("UPDATE stock_document_items SET is_deleted=TRUE WHERE id=:id","id",shown);
+        assertThat(service.list(filter("OTHER","",1,20)).total()).isZero();
+        assertThat(otherScope.list(filter("OTHER","",1,20)).total()).isEqualTo(1);
+    }
+
+    @Test void receiptItemLifecycleAndInspectionWarehouseDoNotMergeAcrossSiblingGoods() {
+        for(String type:List.of("PURCHASE","SUBCONTRACT")) {
+            String table=type.equals("PURCHASE")?"purchase_receipts":"subcontract_receipts";
+            UUID receipt=UUID.randomUUID(),waiting=UUID.randomUUID(),finished=UUID.randomUUID();
+            UUID warehouse=UUID.randomUUID(),outside=UUID.randomUUID();
+            receipt(table,receipt,"LINE-"+type,"2026-10-12",warehouse);
+            execute("UPDATE "+table+" SET status=1 WHERE id=:id","id",receipt);
+            for(UUID item:List.of(waiting,finished)) {
+                execute("INSERT INTO "+table.replace("receipts","receipt_items")+"(id,receipt_id,line_no,qty,goods_name_snapshot,is_deleted)"
+                        +" VALUES(:id,:receipt,:line,5,:name,FALSE)","id",item,"receipt",receipt,
+                        "line",item.equals(waiting)?1:2,"name",item.equals(waiting)?"Waiting goods":"Completed goods");
+                execute("INSERT INTO procurement_inspection_items(id,receipt_type,receipt_id,receipt_item_id,warehouse_id,status,received_base_qty,"
+                        +" passed_base_qty,failed_base_qty,warehouse_stocked_base_qty) VALUES(:id,:type,:receipt,:item,:warehouse,:status,5,:passed,0,:passed)",
+                        "id",UUID.randomUUID(),"type",type,"receipt",receipt,"item",item,
+                        "warehouse",item.equals(waiting)?warehouse:outside,"status",item.equals(waiting)?"PENDING":"RESOLVED",
+                        "passed",item.equals(waiting)?0:5);
+            }
+            var all=service(Set.of("warehouse_purchase_receipt_history:view","warehouse_subcontract_receipt_history:view"),WarehouseTaskScope.ALL,false);
+            assertThat(all.list(filter(type,"",1,20)).items()).singleElement().satisfies(row->{
+                assertThat(row.line().itemId()).isEqualTo(waiting);
+                assertThat(row.status()).isEqualTo(type+"_WAITING_INSPECTION");
+            });
+            assertThat(all.list(new Filter(type,"","",null,null,null,null,1,20,null,null,TaskView.HISTORY)).items())
+                    .singleElement().satisfies(row->assertThat(row.line().itemId()).isEqualTo(finished));
+            var scoped=service(Set.of("warehouse_purchase_receipt_history:view","warehouse_subcontract_receipt_history:view"),
+                    new WarehouseTaskScope(true,List.of(warehouse),false),false);
+            assertThat(scoped.list(new Filter(type,"","",null,null,null,null,1,20,null,null,TaskView.HISTORY)).total()).isZero();
+            assertThat(scoped.detail(type+":"+type+"_RECEIPT:"+receipt,null).get("total")).isEqualTo(1L);
+            var quality=new com.uten.imp.features.warehouse.inbound.WarehouseQualityResultService(
+                    executingEntityManager(),mock(SecurityContextCurrentUser.class));
+            var qualityPage=quality.list("",type,"",null,null,1,20,null,null,null,WarehouseTaskScope.ALL,TaskView.ACTIVE);
+            assertThat(qualityPage.getTotal()).isEqualTo(1);
+            assertThat(qualityPage.getItems()).singleElement().satisfies(row->{
+                assertThat(row.line()).isNotNull();
+                assertThat(row.workStatus()).isEqualTo("WAITING_INSPECTION");
+                assertThat(row.line().quantity()).isEqualByComparingTo("5");
+            });
+            assertThat(quality.list("",type,"",null,null,1,20,null,null,null,
+                    new WarehouseTaskScope(true,List.of(warehouse),false),TaskView.HISTORY).getTotal()).isZero();
+        }
+    }
+
+    @Test void qualityResultGoodsSearchPagingAndCountsUseIndividualInspectionRows() {
+        UUID receipt=UUID.randomUUID(),goods=UUID.randomUUID(),completedGoods=UUID.randomUUID();
+        UUID warehouse=UUID.randomUUID(),outside=UUID.randomUUID();
+        receipt("purchase_receipts",receipt,"QUALITY-ITEMS","2026-10-12",warehouse);
+        execute("UPDATE purchase_receipts SET status=1 WHERE id=:id","id",receipt);
+        execute("INSERT INTO goods(id,code,name,spec) VALUES(:id,'SAME-GOODS','Repeat goods','M8')","id",goods);
+        execute("INSERT INTO goods(id,code,name,spec) VALUES(:id,'OTHER-GOODS','Completed outside goods','M10')","id",completedGoods);
+        for(int i=0;i<2;i++) execute("INSERT INTO procurement_inspection_items(id,receipt_type,receipt_id,goods_id,status,"
+                +" received_base_qty,passed_base_qty,failed_base_qty,warehouse_stocked_base_qty,warehouse_id)"
+                +" VALUES(:id,'PURCHASE',:receipt,:goods,'PENDING',3,0,0,0,:warehouse)",
+                "id",UUID.randomUUID(),"receipt",receipt,"goods",goods,"warehouse",warehouse);
+        execute("INSERT INTO procurement_inspection_items(id,receipt_type,receipt_id,goods_id,status,"
+                +" received_base_qty,passed_base_qty,failed_base_qty,warehouse_stocked_base_qty,warehouse_id)"
+                +" VALUES(:id,'PURCHASE',:receipt,:goods,'RESOLVED',7,7,0,7,:warehouse)",
+                "id",UUID.randomUUID(),"receipt",receipt,"goods",completedGoods,"warehouse",outside);
+        var quality=new com.uten.imp.features.warehouse.inbound.WarehouseQualityResultService(
+                executingEntityManager(),mock(SecurityContextCurrentUser.class));
+        var first=quality.list("Repeat goods","PURCHASE","",null,null,1,1,null,null,null,WarehouseTaskScope.ALL,TaskView.ACTIVE);
+        var second=quality.list("Repeat goods","PURCHASE","",null,null,2,1,null,null,null,WarehouseTaskScope.ALL,TaskView.ACTIVE);
+        assertThat(first.getTotal()).isEqualTo(2);
+        assertThat(first.getTotalPages()).isEqualTo(2);
+        assertThat(first.getItems().getFirst().line().key()).isNotEqualTo(second.getItems().getFirst().line().key());
+        assertThat(first.getItems().getFirst().line().goodsName()).isEqualTo("Repeat goods");
+        assertThat(first.getItems().getFirst().line().specification()).isEqualTo("M8");
+        assertThat(quality.statusCounts("PURCHASE","Repeat goods",WarehouseTaskScope.ALL)).containsEntry("WAITING_INSPECTION",2L);
+        assertThat(quality.statusCounts("PURCHASE","",WarehouseTaskScope.ALL))
+                .containsEntry("WAITING_INSPECTION",2L).containsEntry("COMPLETED",1L);
+        assertThat(quality.typeCounts(WarehouseTaskScope.ALL).inProgress()).containsEntry("PURCHASE",1L);
+        assertThat(quality.facets("Repeat goods","PURCHASE","",null,null,WarehouseTaskScope.ALL).get("billNo"))
+                .singleElement().satisfies(bucket->assertThat(((Number)bucket.get("count")).longValue()).isEqualTo(2));
+        var history=quality.list("Completed outside goods","PURCHASE","",null,null,1,1,null,null,"QUALITY-ITEMS",
+                WarehouseTaskScope.ALL,TaskView.HISTORY);
+        assertThat(history.getTotal()).isEqualTo(1);
+        assertThat(history.getItems()).singleElement().satisfies(row->{
+            assertThat(row.workStatus()).isEqualTo("COMPLETED");
+            assertThat(row.line().goodsName()).isEqualTo("Completed outside goods");
+            assertThat(row.line().quantity()).isEqualByComparingTo("7");
+            assertThat(row.warehouseId()).isEqualTo(outside);
+        });
+        var scoped=new WarehouseTaskScope(true,List.of(warehouse),false);
+        assertThat(quality.list("","PURCHASE","",null,null,1,20,null,null,null,scoped,TaskView.ACTIVE).getTotal()).isEqualTo(2);
+        assertThat(quality.list("Completed outside goods","PURCHASE","",null,null,1,20,null,null,null,scoped,TaskView.HISTORY).getTotal()).isZero();
+        assertThat(quality.statusCounts("PURCHASE","",scoped)).containsEntry("WAITING_INSPECTION",2L).containsEntry("COMPLETED",0L);
+        assertThat(quality.facets("Completed outside goods","PURCHASE","",null,null,scoped,TaskView.HISTORY).get("billNo")).isEmpty();
+    }
+
+    @Test void qualityBadgesAggregateOnlyVisibleInspectionReleaseAndReturnFactsThenCountReceiptOnce() {
+        UUID receipt=UUID.randomUUID(),warehouseA=UUID.randomUUID(),warehouseB=UUID.randomUUID();
+        UUID waiting=UUID.randomUUID(),released=UUID.randomUUID(),rejected=UUID.randomUUID();
+        receipt("purchase_receipts",receipt,"SCOPED-QUALITY-BADGE","2026-10-12",warehouseA);
+        execute("UPDATE purchase_receipts SET status=1 WHERE id=:id","id",receipt);
+        execute("INSERT INTO procurement_inspection_items(id,receipt_type,receipt_id,warehouse_id,status,received_base_qty,"
+                +" passed_base_qty,failed_base_qty,warehouse_stocked_base_qty) VALUES(:id,'PURCHASE',:receipt,:warehouse,'PENDING',5,0,0,0)",
+                "id",waiting,"receipt",receipt,"warehouse",warehouseA);
+        execute("INSERT INTO procurement_inspection_items(id,receipt_type,receipt_id,warehouse_id,status,received_base_qty,"
+                +" passed_base_qty,failed_base_qty,warehouse_stocked_base_qty) VALUES(:id,'PURCHASE',:receipt,:warehouse,'RESOLVED',5,5,0,0)",
+                "id",released,"receipt",receipt,"warehouse",warehouseB);
+        execute("INSERT INTO procurement_inspection_events(id,inspection_item_id,action,requires_warehouse_stock_in,base_qty,occurred_at)"
+                +" VALUES(:id,:inspection,'PASS',TRUE,5,now())","id",UUID.randomUUID(),"inspection",released);
+        var quality=new com.uten.imp.features.warehouse.inbound.WarehouseQualityResultService(
+                executingEntityManager(),mock(SecurityContextCurrentUser.class));
+        var scopeA=new WarehouseTaskScope(true,List.of(warehouseA),false);
+        var scopeB=new WarehouseTaskScope(true,List.of(warehouseB),false);
+        assertThat(quality.list("","PURCHASE","",null,null,1,20,null,null,null,scopeA,TaskView.ACTIVE).getItems())
+                .singleElement().satisfies(row->assertThat(row.workStatus()).isEqualTo("WAITING_INSPECTION"));
+        assertThat(quality.list("","PURCHASE","",null,null,1,20,null,null,null,scopeB,TaskView.ACTIVE).getItems())
+                .singleElement().satisfies(row->assertThat(row.workStatus()).isEqualTo("ALL_PASSED"));
+        assertThat(quality.typeCounts(scopeA).inProgress()).containsEntry("PURCHASE",1L);
+        assertThat(quality.typeCounts(scopeA).actionable()).containsEntry("PURCHASE",0L);
+        assertThat(quality.typeCounts(scopeB).inProgress()).containsEntry("PURCHASE",0L);
+        assertThat(quality.typeCounts(scopeB).actionable()).containsEntry("PURCHASE",1L);
+        assertThat(quality.typeCounts(WarehouseTaskScope.ALL).actionable()).containsEntry("PURCHASE",1L);
+
+        // A sibling warehouse's rejection must not turn the waiting warehouse's badge red either.
+        execute("UPDATE procurement_inspection_items SET warehouse_stocked_base_qty=5 WHERE id=:id","id",released);
+        execute("INSERT INTO procurement_inspection_items(id,receipt_type,receipt_id,warehouse_id,status,received_base_qty,"
+                +" passed_base_qty,failed_base_qty,warehouse_stocked_base_qty) VALUES(:id,'PURCHASE',:receipt,:warehouse,'RESOLVED',2,0,2,0)",
+                "id",rejected,"receipt",receipt,"warehouse",warehouseB);
+        execute("INSERT INTO procurement_iqc_rejection_cases(id,inspection_item_id,receipt_type,receipt_id,status,is_deleted)"
+                +" VALUES(:id,:inspection,'PURCHASE',:receipt,'OPEN',FALSE)",
+                "id",UUID.randomUUID(),"inspection",rejected,"receipt",receipt);
+        assertThat(quality.typeCounts(scopeA).inProgress()).containsEntry("PURCHASE",1L);
+        assertThat(quality.typeCounts(scopeA).actionable()).containsEntry("PURCHASE",0L);
+        assertThat(quality.typeCounts(scopeB).actionable()).containsEntry("PURCHASE",1L);
+    }
+
+    @Test void qualityDetailAndBatchReadsKeepOnlyVisibleInspectionSlicesHistoryAndRejections() {
+        UUID warehouseA=UUID.randomUUID(),warehouseB=UUID.randomUUID(),outside=UUID.randomUUID();
+        var scopeA=new WarehouseTaskScope(true,List.of(warehouseA),false);
+        var scopeB=new WarehouseTaskScope(true,List.of(warehouseB),false);
+        var scopes=mock(WarehouseTaskScopePort.class);
+        when(scopes.current(null)).thenReturn(scopeA);
+        when(scopes.current(warehouseB)).thenReturn(scopeB);
+        var quality=new com.uten.imp.features.warehouse.inbound.WarehouseQualityResultService(
+                executingEntityManager(),mock(SecurityContextCurrentUser.class));
+        org.springframework.test.util.ReflectionTestUtils.setField(quality,"warehouseScopes",scopes);
+        var controller=new com.uten.imp.features.warehouse.inbound.WarehouseQualityResultController(quality,scopes);
+        var actor=new AuthUser(UUID.randomUUID(),UUID.randomUUID(),"warehouse",Set.of(
+                "warehouse_iqc_stock_in:view","warehouse_iqc_stock_in:confirm","warehouse_iqc_stock_in:before_inspection",
+                "warehouse_iqc_return:view","procurement_iqc_rejection:record_return"),false,true,false);
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(actor,"",actor.getAuthorities()));
+        try {
+            // Batch forms call this same detail read once per receipt. Check both independently.
+            for(int index=0;index<2;index++) {
+                UUID receipt=UUID.randomUUID(),waiting=UUID.randomUUID(),handled=UUID.randomUUID(),event=UUID.randomUUID(),batch=UUID.randomUUID();
+                UUID goodsA=UUID.randomUUID(),goodsB=UUID.randomUUID();
+                receipt("purchase_receipts",receipt,"DETAIL-SCOPE-"+index,"2026-10-12",warehouseA);
+                execute("UPDATE purchase_receipts SET status=1 WHERE id=:id","id",receipt);
+                execute("INSERT INTO goods(id,code,name) VALUES(:id,:code,'Local waiting goods')","id",goodsA,"code","LOCAL-"+index);
+                execute("INSERT INTO goods(id,code,name) VALUES(:id,:code,'Other warehouse goods')","id",goodsB,"code","OTHER-"+index);
+                execute("INSERT INTO procurement_inspection_items(id,receipt_type,receipt_id,warehouse_id,goods_id,status,received_base_qty,"
+                        +" passed_base_qty,failed_base_qty,warehouse_stocked_base_qty) VALUES(:id,'PURCHASE',:receipt,:warehouse,:goods,'PENDING',5,0,0,0)",
+                        "id",waiting,"receipt",receipt,"warehouse",warehouseA,"goods",goodsA);
+                execute("INSERT INTO procurement_inspection_items(id,receipt_type,receipt_id,warehouse_id,goods_id,status,received_base_qty,"
+                        +" passed_base_qty,failed_base_qty,warehouse_stocked_base_qty) VALUES(:id,'PURCHASE',:receipt,:warehouse,:goods,'RESOLVED',5,3,2,1)",
+                        "id",handled,"receipt",receipt,"warehouse",warehouseB,"goods",goodsB);
+                execute("INSERT INTO procurement_inspection_events(id,inspection_item_id,action,requires_warehouse_stock_in,base_qty,occurred_at)"
+                        +" VALUES(:id,:inspection,'PASS',TRUE,3,now())","id",event,"inspection",handled);
+                execute("INSERT INTO procurement_iqc_stock_in_batches(id,receipt_type,receipt_id,confirmed_at,origin)"
+                        +" VALUES(:id,'PURCHASE',:receipt,now(),'MANUAL')","id",batch,"receipt",receipt);
+                execute("INSERT INTO procurement_iqc_stock_in_batch_items(id,batch_id,inspection_item_id,pass_event_id,goods_id,base_qty,warehouse_id,position)"
+                        +" VALUES(:id,:batch,:inspection,:event,:goods,1,:warehouse,1)","id",UUID.randomUUID(),"batch",batch,
+                        "inspection",handled,"event",event,"goods",goodsB,"warehouse",warehouseB);
+                execute("INSERT INTO procurement_iqc_rejection_cases(id,inspection_item_id,receipt_type,receipt_id,goods_id,failed_qty,status,is_deleted,row_version)"
+                        +" VALUES(:id,:inspection,'PURCHASE',:receipt,:goods,2,'PENDING_RETURN',FALSE,1)",
+                        "id",UUID.randomUUID(),"inspection",handled,"receipt",receipt,"goods",goodsB);
+                var local=controller.detail("PURCHASE",receipt,null);
+                assertThat(local.lines()).singleElement().satisfies(line->assertThat(line.inspectionItemId()).isEqualTo(waiting));
+                assertThat(local.items()).isEmpty();
+                assertThat(local.history()).isEmpty();
+                assertThat(local.rejections()).isEmpty();
+                assertThat(local.pendingSliceCount()).isZero();
+                assertThat(local.pendingReturnCount()).isZero();
+                assertThat(local.workStatus()).isEqualTo("WAITING_INSPECTION");
+                assertThat(local.allowedActions()).containsExactly("PRE_STOCK_IN");
+                assertThat(quality.detail("PURCHASE",receipt).lines()).hasSize(1);
+                var selected=controller.detail("PURCHASE",receipt,warehouseB);
+                assertThat(selected.lines()).singleElement().satisfies(line->assertThat(line.inspectionItemId()).isEqualTo(handled));
+                assertThat(selected.items()).hasSize(1);
+                assertThat(selected.history()).hasSize(1);
+                assertThat(selected.rejections()).hasSize(1);
+                assertThat(selected.pendingSliceCount()).isEqualTo(1);
+                assertThat(selected.pendingReturnCount()).isEqualTo(1);
+                assertThat(selected.allowedActions()).containsExactly("CONFIRM");
+                assertThatThrownBy(()->quality.detail("PURCHASE",receipt,new WarehouseTaskScope(true,List.of(outside),false)))
+                        .isInstanceOf(ApiException.class);
+            }
+        } finally { org.springframework.security.core.context.SecurityContextHolder.clearContext(); }
     }
 
     private UUID searchStock(String bill,String code,String name,String date,UUID warehouse) {
@@ -207,7 +459,12 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
                 return query;
             });
             when(query.setMaxResults(org.mockito.ArgumentMatchers.anyInt())).thenReturn(query);
-            when(query.getSingleResult()).thenAnswer(result->jdbc.queryForObject(sql,bindings,Long.class));
+            when(query.getSingleResult()).thenAnswer(result->jdbc.query(sql,bindings,(rows,index)->{
+                if(rows.getMetaData().getColumnCount()==1) return rows.getObject(1);
+                Object[] values=new Object[rows.getMetaData().getColumnCount()];
+                for(int column=0;column<values.length;column++) values[column]=rows.getObject(column+1);
+                return values;
+            }).getFirst());
             when(query.getResultList()).thenAnswer(result->jdbc.query(sql,bindings,(rows,index)->{
                 Object[] values=new Object[rows.getMetaData().getColumnCount()];
                 for(int column=0;column<values.length;column++) values[column]=rows.getObject(column+1);

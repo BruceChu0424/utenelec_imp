@@ -670,6 +670,11 @@ class WmRequisition {
   bool get isReturn => kind == 'RETURN';
   bool get isPending => status == 'PENDING';
 
+  /// The list API pages material lines; the requisition ID remains the command target.
+  WmRequisitionLine? get materialLine =>
+      lines.length == 1 ? lines.single : null;
+  String get rowKey => materialLine == null ? id : '$id:${materialLine!.id}';
+
   /// 料名摘要 (列表行; 服务端没给时由明细拼)。
   String get materialSummary {
     final summary = _materialSummary;

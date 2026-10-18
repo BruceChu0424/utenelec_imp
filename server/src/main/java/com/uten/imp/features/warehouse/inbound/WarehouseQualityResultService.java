@@ -3,6 +3,7 @@ package com.uten.imp.features.warehouse.inbound;
 import com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.TaskView;
 import com.uten.imp.application.port.PreplanInboundAllocationReadPort;
 import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
+import com.uten.imp.application.port.WarehouseTaskScopePort;
 import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -40,7 +41,7 @@ import java.util.UUID;
 
 /**
  * 品质部检查结果合并页（原 IQC 合格待入库 + IQC 不合格实物退回）的查询聚合：
- * 按收货单聚合品质结论、放行待入库切片与待登记退回案件，推导统一「作业状态」；
+ * 列表逐实物检验行关联品质结论、待入库切片与待退回案件；原全局徽章仍按收货单计数；
  * 仓库动作（确认入库 / 登记退回）仍走各自权威服务，本服务只读不写业务事实。
  *
  * <p>读路径按“数据量大了也快”设计（V448 索引配套）：
@@ -193,33 +194,65 @@ public class WarehouseQualityResultService {
             )
             """;
 
-    /** 聚合主体（列表 / 计数 / 状态分组共用 FROM+JOIN；绑定 type、keyword、pattern）。 */
+    /** Each physical inspection remains a row before search, status, totals and pagination. */
+    private static final String ITEM_CTE = AGGREGATE_CTE + """
+            , line_inspection AS (
+                SELECT i.*,1::bigint AS item_count,
+                       CASE WHEN i.passed_base_qty>0 THEN 1 ELSE 0 END AS passed_line_count,
+                       CASE WHEN i.failed_base_qty>0 THEN 1 ELSE 0 END AS failed_line_count,
+                       CASE WHEN i.status IN('PENDING','PARTIAL') THEN 1 ELSE 0 END AS open_item_count,
+                       CASE WHEN i.status IN('PENDING','PARTIAL') AND i.pre_stocked_at IS NOT NULL THEN 1 ELSE 0 END AS pre_stocked_line_count
+                FROM procurement_inspection_items i JOIN receipt_scope scope
+                  ON scope.receipt_type=i.receipt_type AND scope.receipt_id=i.receipt_id
+                WHERE i.status<>'REVERSED'
+            ), line_pending_release AS (
+                SELECT event.inspection_item_id,COUNT(*) AS pending_slice_count
+                FROM procurement_inspection_events event JOIN line_inspection i ON i.id=event.inspection_item_id
+                WHERE event.action='PASS' AND event.requires_warehouse_stock_in
+                  AND i.passed_base_qty>i.warehouse_stocked_base_qty
+                  AND event.base_qty>COALESCE((SELECT SUM(stocked.base_qty) FROM procurement_iqc_stock_in_batch_items stocked
+                                               WHERE stocked.pass_event_id=event.id),0)
+                GROUP BY event.inspection_item_id
+            ), line_pending_return AS (
+                SELECT rejection.inspection_item_id,COUNT(*) AS pending_return_count
+                FROM procurement_iqc_rejection_cases rejection JOIN line_inspection i ON i.id=rejection.inspection_item_id
+                WHERE NOT COALESCE(rejection.is_deleted,FALSE) AND rejection.return_recorded_at IS NULL
+                  AND rejection.status<>'REVERSED'
+                GROUP BY rejection.inspection_item_id
+            ), line_last_event AS (
+                SELECT event.inspection_item_id,MAX(event.occurred_at) AS last_event_at
+                FROM procurement_inspection_events event JOIN line_inspection i ON i.id=event.inspection_item_id
+                GROUP BY event.inspection_item_id
+            )
+            """;
+
+    /** 列表 / 计数 / 状态分组共用逐货品关系；办理详情仍保留单据复核。 */
     private static final String AGGREGATE_FROM = """
             FROM receipt_scope scope
-            JOIN inspection
+            JOIN line_inspection inspection
               ON inspection.receipt_type = scope.receipt_type
              AND inspection.receipt_id = scope.receipt_id
-            LEFT JOIN pending_release
-              ON pending_release.receipt_type = scope.receipt_type
-             AND pending_release.receipt_id = scope.receipt_id
-            LEFT JOIN pending_return
-              ON pending_return.receipt_type = scope.receipt_type
-             AND pending_return.receipt_id = scope.receipt_id
-            LEFT JOIN last_event
-              ON last_event.receipt_type = scope.receipt_type
-             AND last_event.receipt_id = scope.receipt_id
+            LEFT JOIN line_pending_release pending_release ON pending_release.inspection_item_id=inspection.id
+            LEFT JOIN line_pending_return pending_return ON pending_return.inspection_item_id=inspection.id
+            LEFT JOIN line_last_event last_event ON last_event.inspection_item_id=inspection.id
             LEFT JOIN suppliers supplier
               ON supplier.id = scope.supplier_id
             LEFT JOIN warehouses warehouse
-              ON warehouse.id = scope.warehouse_id
+              ON warehouse.id = COALESCE(inspection.warehouse_id,scope.warehouse_id)
             LEFT JOIN LATERAL (
-              SELECT string_agg(concat_ws(' ',goods.code,goods.name),' ') AS goods_text,
-                     array_agg(DISTINCT goods.code) AS goods_codes,array_agg(DISTINCT goods.name) AS goods_names
-              FROM procurement_inspection_items searched LEFT JOIN goods ON goods.id=searched.goods_id
-              WHERE searched.receipt_type=scope.receipt_type AND searched.receipt_id=scope.receipt_id
-                AND searched.status<>'REVERSED'
+              SELECT concat_ws(' ',goods.code,goods.name) AS goods_text,
+                     ARRAY[goods.code] AS goods_codes,ARRAY[goods.name] AS goods_names,
+                     goods.code AS goods_code,goods.name AS goods_name,goods.spec AS specification,
+                     color.name AS color_name,unit.name AS unit_name
+              FROM (SELECT 1) single_line LEFT JOIN goods ON goods.id=inspection.goods_id
+              LEFT JOIN colors color ON color.id=inspection.color_id LEFT JOIN units unit ON unit.id=goods.unit_id
             ) quality_goods ON TRUE
             """;
+
+    /** Badges aggregate only visible line facts, then count each receipt once. */
+    private static final String BADGE_STATUS_CASE = STATUS_CASE
+            .replace("pending_release.pending_slice_count","inspection.pending_slice_count")
+            .replace("pending_return.pending_return_count","inspection.pending_return_count");
 
     /** 关键字过滤（收货单 / 供应商 / 仓库 / 货品编码或名称）。 */
     private static final String KEYWORD_WHERE = "WHERE (:type = 'ALL' OR scope.receipt_type = :type) AND "
@@ -237,6 +270,7 @@ public class WarehouseQualityResultService {
 
     private final EntityManager em;
     private final SecurityContextCurrentUser currentUser;
+    private WarehouseTaskScopePort warehouseScopes;
     private PreplanInboundAllocationReadPort inboundAllocationRead =
             PreplanInboundAllocationReadPort.NOOP;
 
@@ -244,6 +278,9 @@ public class WarehouseQualityResultService {
     void setInboundAllocationRead(PreplanInboundAllocationReadPort value) {
         this.inboundAllocationRead = value;
     }
+
+    @Autowired
+    void setWarehouseScopes(WarehouseTaskScopePort value) { this.warehouseScopes=value; }
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('" + WarehouseQualityResultPermissions.STOCK_IN_VIEW + "')"
@@ -308,7 +345,7 @@ public class WarehouseQualityResultService {
                        scope.bill_date,
                        scope.supplier_id,
                        supplier.name,
-                       scope.warehouse_id,
+                       COALESCE(inspection.warehouse_id,scope.warehouse_id),
                        warehouse.name,
                        inspection.item_count,
                        inspection.passed_line_count,
@@ -317,7 +354,9 @@ public class WarehouseQualityResultService {
                        COALESCE(pending_release.pending_slice_count, 0),
                        COALESCE(pending_return.pending_return_count, 0),
                        last_event.last_event_at,
-                       inspection.pre_stocked_line_count
+                       inspection.pre_stocked_line_count,
+                       inspection.id,quality_goods.goods_code,quality_goods.goods_name,quality_goods.specification,
+                       quality_goods.color_name,quality_goods.unit_name,inspection.received_base_qty
                 %s%s
                 %s
                 LIMIT :limit OFFSET :offset
@@ -348,7 +387,10 @@ public class WarehouseQualityResultService {
                 number(row[9]).longValue(), number(row[10]).longValue(),
                 number(row[11]).longValue(), number(row[12]).longValue(),
                 number(row[13]).longValue(), number(row[14]).longValue(),
-                NativeValueConverters.toOffsetDateTime(row[15]), number(row[16]).longValue())).toList();
+                NativeValueConverters.toOffsetDateTime(row[15]), number(row[16]).longValue(),
+                new com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.Line(
+                        str(row[17]),NativeValueConverters.uuid(row[17]),null,str(row[18]),str(row[19]),str(row[20]),
+                        str(row[21]),str(row[22]),row[23]==null?null:new BigDecimal(row[23].toString()),null))).toList();
         int totalPages = total == 0 ? 0
                 : (int) ((total + normalizedSize - 1) / normalizedSize);
         return new PageResponse<>(
@@ -365,12 +407,12 @@ public class WarehouseQualityResultService {
                     + " THEN 1 ELSE 0 END),\n"
                     + "         COALESCE(last_event.last_event_at,\n"
                     + "                  scope.bill_date::timestamptz) DESC NULLS LAST,\n"
-                    + "         scope.receipt_id\n";
+                    + "         scope.receipt_id, inspection.id\n";
             default -> """
                     ORDER BY (CASE WHEN (%s) = 'COMPLETED' THEN 1 ELSE 0 END),
                              COALESCE(last_event.last_event_at,
                                       scope.bill_date::timestamptz) DESC NULLS LAST,
-                             scope.bill_no, scope.receipt_id
+                             scope.bill_no, scope.receipt_id, inspection.id
                     """.formatted(STATUS_CASE);
         };
     }
@@ -447,12 +489,12 @@ public class WarehouseQualityResultService {
      * 来源类型(大类)分段的两枚计数。
      * actionable = 轮到仓库动手(全部合格待入库 + 部分合格 + 全部不合格需退回);
      * inProgress = 等待检查结果(货已收、结论在品质部手上, 仓库不用动手)。
-     * 两支同出一次聚合, 结构上保证「卡面数字 = 页内同色分段之和」。
+     * 两支同出一次收货单聚合；页内货品行计数独立，列表展开不增加全局待办。
      */
     public record TypeCounts(Map<String, Long> actionable, Map<String, Long> inProgress) {}
 
     /**
-     * 来源类型分段的红黄两枚计数：复用列表聚合管线按 (来源类型, 作业状态) 分组，
+     * 来源类型分段的红黄两枚计数：保留收货单聚合按 (来源类型, 作业状态) 分组，
      * 只扫一次再在 Java 侧分流。
      *
      * <p>「等待检查结果」{@code WAITING_INSPECTION} 不进红色：那一档球在品质部
@@ -468,10 +510,20 @@ public class WarehouseQualityResultService {
     public TypeCounts typeCounts(WarehouseTaskScope warehouseScope) {
         @SuppressWarnings("unchecked")
         List<Object[]> rows = (List<Object[]>) aggregateQuery("ALL", "", "", warehouseScope, """
-                SELECT scope.receipt_type, (%s) AS work_status, COUNT(*)
-                %s%s%s
-                GROUP BY scope.receipt_type, (%s)
-                """.formatted(STATUS_CASE, AGGREGATE_FROM, KEYWORD_WHERE, scopeFilter(warehouseScope), STATUS_CASE))
+                , badge_inspection AS (
+                    SELECT scope.receipt_type,scope.receipt_id,
+                           SUM(inspection.passed_line_count) AS passed_line_count,
+                           SUM(inspection.failed_line_count) AS failed_line_count,
+                           SUM(inspection.open_item_count) AS open_item_count,
+                           SUM(COALESCE(pending_release.pending_slice_count,0)) AS pending_slice_count,
+                           SUM(COALESCE(pending_return.pending_return_count,0)) AS pending_return_count
+                    %s%s%s
+                    GROUP BY scope.receipt_type,scope.receipt_id
+                )
+                SELECT inspection.receipt_type, (%s) AS work_status, COUNT(*)
+                FROM badge_inspection inspection
+                GROUP BY inspection.receipt_type, (%s)
+                """.formatted(AGGREGATE_FROM,KEYWORD_WHERE,scopeFilter(warehouseScope),BADGE_STATUS_CASE,BADGE_STATUS_CASE))
                 .getResultList();
         Map<String, Long> actionable = new LinkedHashMap<>();
         Map<String, Long> inProgress = new LinkedHashMap<>();
@@ -496,18 +548,28 @@ public class WarehouseQualityResultService {
     @PreAuthorize("hasAuthority('" + WarehouseQualityResultPermissions.STOCK_IN_VIEW + "')"
             + " or hasAuthority('" + WarehouseQualityResultPermissions.RETURN_VIEW + "')")
     public TaskDetail detail(String receiptType, UUID receiptId) {
+        if(warehouseScopes==null) throw new ApiException(ErrorCode.FORBIDDEN,"无法确定仓库数据范围");
+        return detail(receiptType,receiptId,warehouseScopes.current(null));
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('" + WarehouseQualityResultPermissions.STOCK_IN_VIEW + "')"
+            + " or hasAuthority('" + WarehouseQualityResultPermissions.RETURN_VIEW + "')")
+    public TaskDetail detail(String receiptType,UUID receiptId,WarehouseTaskScope scope) {
         String type = normalizeReceiptType(receiptType);
+        List<UUID> visibleInspectionIds=visibleInspectionIds(type,receiptId,scope);
+        if(visibleInspectionIds.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND,"该收货单没有当前仓库范围内的品质检查结果");
         Object[] header = headerRow(type, receiptId);
-        Counts counts = counts(type, receiptId);
-        List<InspectionLineItem> lines = lines(type, receiptId);
-        List<ReleasedSlice> slices = slices(type, receiptId);
-        List<StockInHistoryItem> history = history(type, receiptId);
-        List<RejectionCaseItem> rejections = rejections(type, receiptId);
+        Counts counts = counts(type, receiptId,visibleInspectionIds);
+        List<InspectionLineItem> lines = lines(type, receiptId,visibleInspectionIds);
+        List<ReleasedSlice> slices = slices(type, receiptId,visibleInspectionIds);
+        List<StockInHistoryItem> history = history(type, receiptId,visibleInspectionIds);
+        List<RejectionCaseItem> rejections = rejections(type, receiptId,visibleInspectionIds);
         UUID actorEmployeeId = currentUser.employeeId().orElse(null);
         // 单人维护场景允许同人完成「品质放行 + 仓库确认」：containsOwnRelease 只作为
         // 前端复核提示的标记，不再阻断入库确认。
         boolean containsOwnRelease = actorEmployeeId != null
-                && containsOwnRelease(type, receiptId, actorEmployeeId);
+                && containsOwnRelease(type, receiptId, actorEmployeeId,visibleInspectionIds);
         boolean canConfirm = hasWarehouseWriteAuthority(ProcurementIqcStockInPermissions.VIEW,
                 ProcurementIqcStockInPermissions.CONFIRM)
                 && !slices.isEmpty();
@@ -525,7 +587,7 @@ public class WarehouseQualityResultService {
                 workStatus, type, receiptId,
                 str(header[0]), NativeValueConverters.toLocalDate(header[1]),
                 NativeValueConverters.uuid(header[2]), str(header[3]), NativeValueConverters.uuid(header[4]), str(header[5]),
-                qualityStatus(type, receiptId),
+                qualityStatus(type, receiptId,visibleInspectionIds),
                 counts.itemCount(), counts.passedLineCount(),
                 counts.failedLineCount(), counts.openItemCount(),
                 slices.size(), counts.pendingReturnCount(),
@@ -534,6 +596,21 @@ public class WarehouseQualityResultService {
                 allowedActions,
                 lines, slices, history, rejections,
                 counts.preStockedLineCount());
+    }
+
+    private List<UUID> visibleInspectionIds(String type,UUID receiptId,WarehouseTaskScope scope) {
+        if(scope==null) throw new ApiException(ErrorCode.FORBIDDEN,"无法确定仓库数据范围");
+        String receiptTable=PURCHASE.equals(type)?"purchase_receipts":"subcontract_receipts";
+        Query query=em.createNativeQuery("""
+                SELECT inspection.id FROM procurement_inspection_items inspection
+                JOIN %s receipt ON receipt.id=inspection.receipt_id AND NOT COALESCE(receipt.is_deleted,FALSE)
+                WHERE inspection.receipt_type=:receiptType AND inspection.receipt_id=:receiptId
+                """.formatted(receiptTable)+(scope.active()?" AND "+scope.predicate(
+                        "COALESCE(inspection.warehouse_id,receipt.warehouse_id)",":warehouseScope"):""))
+                .setParameter("receiptType",type).setParameter("receiptId",receiptId);
+        if(scope.active()) query.setParameter("warehouseScope",scope.idsCsv());
+        return ((List<?>)query.getResultList()).stream()
+                .map(value->NativeValueConverters.uuid(value instanceof Object[] row?row[0]:value)).toList();
     }
 
     /**
@@ -560,7 +637,7 @@ public class WarehouseQualityResultService {
 
     private Query aggregateQuery(
             String type, String search, String workStatus, WarehouseTaskScope warehouseScope, String bodySql) {
-        Query query = em.createNativeQuery(AGGREGATE_CTE + bodySql)
+        Query query = em.createNativeQuery(ITEM_CTE + bodySql)
                 .setParameter("type", type)
                 .setParameter("keyword", search);
         if (!workStatus.isEmpty()) {
@@ -573,17 +650,10 @@ public class WarehouseQualityResultService {
     }
 
     /**
-     * 品质检查结果任务的「所在仓」(ADR-149, 唯一定义): 收货单表头仓 + 各检验行的目标入库仓
-     * (未红冲); 任一在范围内即算。列表、facets、状态/来源计数与徽章同用这一条件。
+     * 列表货品的「所在仓」：当前检验行目标仓，未指定才回落收货单表头仓。
+     * 列表、facets、页内状态及全局徽章共用；徽章只在过滤后按收货单归并计数。
      */
-    static final String RESULT_WAREHOUSES = """
-            ARRAY(SELECT scope.warehouse_id
-                  UNION
-                  SELECT scoped_inspection.warehouse_id
-                  FROM procurement_inspection_items scoped_inspection
-                  WHERE scoped_inspection.receipt_type = scope.receipt_type
-                    AND scoped_inspection.receipt_id = scope.receipt_id
-                    AND scoped_inspection.status <> 'REVERSED')""";
+    static final String RESULT_WAREHOUSES = "ARRAY[COALESCE(inspection.warehouse_id,scope.warehouse_id)]";
 
     private static String scopeFilter(WarehouseTaskScope warehouseScope) {
         return warehouseScope == null || !warehouseScope.active() ? ""
@@ -605,7 +675,7 @@ public class WarehouseQualityResultService {
             long preStockedLineCount) {
     }
 
-    private Counts counts(String type, UUID receiptId) {
+    private Counts counts(String type, UUID receiptId,List<UUID> visibleInspectionIds) {
         List<?> inspectionRows = em.createNativeQuery("""
                 SELECT COUNT(*),
                        COUNT(*) FILTER (WHERE inspection.passed_base_qty > 0),
@@ -617,9 +687,11 @@ public class WarehouseQualityResultService {
                 WHERE inspection.receipt_type = :receiptType
                   AND inspection.receipt_id = :receiptId
                   AND inspection.status <> 'REVERSED'
+                  AND inspection.id IN (:visibleInspectionIds)
                 """)
                 .setParameter("receiptType", type)
                 .setParameter("receiptId", receiptId)
+                .setParameter("visibleInspectionIds",visibleInspectionIds)
                 .getResultList();
         if (inspectionRows.isEmpty()) {
             // 草稿/未送检收货单无检验明细，不进入本页；深链按不存在失败关闭。
@@ -638,9 +710,11 @@ public class WarehouseQualityResultService {
                   AND rejection.return_recorded_at IS NULL
                   AND rejection.status <> 'REVERSED'
                   AND inspection.status <> 'REVERSED'
+                  AND inspection.id IN (:visibleInspectionIds)
                 """)
                 .setParameter("receiptType", type)
                 .setParameter("receiptId", receiptId)
+                .setParameter("visibleInspectionIds",visibleInspectionIds)
                 .getSingleResult();
         return new Counts(
                 number(inspectionRow[0]).longValue(),
@@ -681,7 +755,7 @@ public class WarehouseQualityResultService {
      * 部分合格(黄警) / 待检(蓝沙漏) 前导图标。
      */
     @SuppressWarnings("unchecked")
-    private List<InspectionLineItem> lines(String receiptType, UUID receiptId) {
+    private List<InspectionLineItem> lines(String receiptType, UUID receiptId,List<UUID> visibleInspectionIds) {
         List<Object[]> rows = em.createNativeQuery("""
                 WITH pending_release AS (
                     SELECT event.inspection_item_id,
@@ -742,10 +816,12 @@ public class WarehouseQualityResultService {
                         WHERE inspection.receipt_type = :receiptType
                           AND inspection.receipt_id = :receiptId
                           AND inspection.status <> 'REVERSED'
+                          AND inspection.id IN (:visibleInspectionIds)
                         ORDER BY inspection.received_at, inspection.id
                         """)
                 .setParameter("receiptType", receiptType)
                 .setParameter("receiptId", receiptId)
+                .setParameter("visibleInspectionIds",visibleInspectionIds)
                 .getResultList();
         return rows.stream().map(row -> new InspectionLineItem(
                 NativeValueConverters.uuid(row[0]), NativeValueConverters.uuid(row[1]), str(row[2]), str(row[3]),
@@ -758,7 +834,7 @@ public class WarehouseQualityResultService {
 
     /** 品质放行待入库切片（与 IQC 待入库详情同口径、只读不加锁）。 */
     @SuppressWarnings("unchecked")
-    private List<ReleasedSlice> slices(String receiptType, UUID receiptId) {
+    private List<ReleasedSlice> slices(String receiptType, UUID receiptId,List<UUID> visibleInspectionIds) {
         List<Object[]> rows = em.createNativeQuery("""
                         SELECT event.id,
                                inspection.id,
@@ -820,6 +896,7 @@ public class WarehouseQualityResultService {
                         WHERE inspection.receipt_type = :receiptType
                           AND inspection.receipt_id = :receiptId
                           AND inspection.status <> 'REVERSED'
+                          AND inspection.id IN (:visibleInspectionIds)
                           AND event.action = 'PASS'
                           AND event.requires_warehouse_stock_in = TRUE
                           AND event.base_qty > COALESCE(event_stocked.stocked_qty, 0)
@@ -827,6 +904,7 @@ public class WarehouseQualityResultService {
                         """)
                 .setParameter("receiptType", receiptType)
                 .setParameter("receiptId", receiptId)
+                .setParameter("visibleInspectionIds",visibleInspectionIds)
                 .getResultList();
         List<ReleasedSlice> base = rows.stream().map(row -> new ReleasedSlice(
                 NativeValueConverters.uuid(row[0]), NativeValueConverters.uuid(row[1]), NativeValueConverters.uuid(row[2]),
@@ -872,7 +950,7 @@ public class WarehouseQualityResultService {
 
     /** 仓库入库历史（与 IQC 待入库详情同口径）。 */
     @SuppressWarnings("unchecked")
-    private List<StockInHistoryItem> history(String receiptType, UUID receiptId) {
+    private List<StockInHistoryItem> history(String receiptType, UUID receiptId,List<UUID> visibleInspectionIds) {
         List<Object[]> rows = em.createNativeQuery("""
                         SELECT item.id, batch.id, item.pass_event_id,
                                item.goods_id, goods.code, goods.name,
@@ -896,11 +974,13 @@ public class WarehouseQualityResultService {
                           ON employee.id = batch.actor_employee_id
                         WHERE batch.receipt_type = :receiptType
                           AND batch.receipt_id = :receiptId
+                          AND inspection.id IN (:visibleInspectionIds)
                         ORDER BY batch.confirmed_at DESC, item.position
                         LIMIT 200
                         """)
                 .setParameter("receiptType", receiptType)
                 .setParameter("receiptId", receiptId)
+                .setParameter("visibleInspectionIds",visibleInspectionIds)
                 .getResultList();
         return rows.stream().map(row -> new StockInHistoryItem(
                 NativeValueConverters.uuid(row[0]), NativeValueConverters.uuid(row[1]), NativeValueConverters.uuid(row[2]), NativeValueConverters.uuid(row[3]),
@@ -912,7 +992,7 @@ public class WarehouseQualityResultService {
 
     /** 检查不合格的实物退回案件（V440 拒收案件在仓库侧的投影）。 */
     @SuppressWarnings("unchecked")
-    private List<RejectionCaseItem> rejections(String receiptType, UUID receiptId) {
+    private List<RejectionCaseItem> rejections(String receiptType, UUID receiptId,List<UUID> visibleInspectionIds) {
         boolean canRecord = hasWarehouseWriteAuthority(WarehouseQualityResultPermissions.RETURN_VIEW,
                 WarehouseQualityResultPermissions.RECORD_RETURN);
         List<Object[]> rows = em.createNativeQuery("""
@@ -965,11 +1045,13 @@ public class WarehouseQualityResultService {
                           ON return_employee.id = return_user.employee_id
                         WHERE rejection.receipt_type = :receiptType
                           AND rejection.receipt_id = :receiptId
+                          AND inspection.id IN (:visibleInspectionIds)
                           AND COALESCE(rejection.is_deleted, FALSE) = FALSE
                         ORDER BY rejection.created_at, rejection.id
                         """)
                 .setParameter("receiptType", receiptType)
                 .setParameter("receiptId", receiptId)
+                .setParameter("visibleInspectionIds",visibleInspectionIds)
                 .getResultList();
         return rows.stream().map(row -> new RejectionCaseItem(
                 NativeValueConverters.uuid(row[0]), NativeValueConverters.uuid(row[1]), NativeValueConverters.uuid(row[2]),
@@ -981,7 +1063,7 @@ public class WarehouseQualityResultService {
                 preStocked(row[16], row[17], row[18], row[19], row[20]))).toList();
     }
 
-    private String qualityStatus(String type, UUID receiptId) {
+    private String qualityStatus(String type, UUID receiptId,List<UUID> visibleInspectionIds) {
         Object[] row = (Object[]) em.createNativeQuery("""
                         SELECT COUNT(*),
                                COUNT(*) FILTER (WHERE status = 'PENDING'),
@@ -991,9 +1073,11 @@ public class WarehouseQualityResultService {
                         FROM procurement_inspection_items
                         WHERE receipt_type = :receiptType
                           AND receipt_id = :receiptId
+                          AND id IN (:visibleInspectionIds)
                         """)
                 .setParameter("receiptType", type)
                 .setParameter("receiptId", receiptId)
+                .setParameter("visibleInspectionIds",visibleInspectionIds)
                 .getSingleResult();
         if (number(row[0]).longValue() == 0) return "UNKNOWN";
         if (number(row[4]).longValue() > 0) return "REVERSED";
@@ -1004,7 +1088,7 @@ public class WarehouseQualityResultService {
     }
 
     /** 品质放行人本人不得再执行仓库确认（职责分离）：检查待入库切片是否由当前员工放行。 */
-    private boolean containsOwnRelease(String type, UUID receiptId, UUID employeeId) {
+    private boolean containsOwnRelease(String type, UUID receiptId, UUID employeeId,List<UUID> visibleInspectionIds) {
         Object result = em.createNativeQuery("""
                         SELECT EXISTS (
                             SELECT 1
@@ -1019,6 +1103,7 @@ public class WarehouseQualityResultService {
                             WHERE inspection.receipt_type = :receiptType
                               AND inspection.receipt_id = :receiptId
                               AND inspection.status <> 'REVERSED'
+                              AND inspection.id IN (:visibleInspectionIds)
                               AND event.action = 'PASS'
                               AND event.requires_warehouse_stock_in = TRUE
                               AND event.base_qty
@@ -1028,6 +1113,7 @@ public class WarehouseQualityResultService {
                         """)
                 .setParameter("receiptType", type)
                 .setParameter("receiptId", receiptId)
+                .setParameter("visibleInspectionIds",visibleInspectionIds)
                 .setParameter("employeeId", employeeId)
                 .getSingleResult();
         return NativeValueConverters.booleanValue(result);

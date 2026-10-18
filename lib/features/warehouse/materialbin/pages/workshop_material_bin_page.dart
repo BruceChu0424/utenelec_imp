@@ -1167,16 +1167,31 @@ class _WorkshopMaterialBinPageState
         ),
         MasterColumnDef(
           key: 'material',
-          label: '料',
+          label: '货品名称',
           width: 200,
-          value: (r) => r.materialSummary,
+          value: (r) => r.materialLine?.goodsName ?? '—',
+        ),
+        MasterColumnDef(
+          key: 'goodsCode',
+          label: '编号',
+          width: 130,
+          value: (r) => r.materialLine?.goodsCode ?? '—',
+        ),
+        MasterColumnDef(
+          key: 'colorName',
+          label: '颜色',
+          width: 96,
+          value: (r) => r.materialLine?.colorName ?? '—',
         ),
         MasterColumnDef(
           key: 'totalQty',
-          label: l10n.wmKg,
+          label: '数量',
           width: 100,
           type: 'number',
-          value: (r) => wmQty(r.totalQty),
+          value: (r) => r.materialLine == null
+              ? '—'
+              : '${wmQty(r.materialLine!.requestedQty)} ${r.materialLine!.unitName ?? ''}'
+                    .trim(),
         ),
         MasterColumnDef(
           key: 'receiver',
@@ -1209,7 +1224,7 @@ class _WorkshopMaterialBinPageState
       nullCounts: const {},
       filters: const {},
       onFilterChanged: (_, _) {},
-      rowKeyOf: (r) => r.id,
+      rowKeyOf: (r) => r.rowKey,
       canShowRowMenu: (r) => r.isPending && r.can(WmAction.cancel),
       rowMenuBuilder: (r) => [
         if (r.isPending && r.can(WmAction.cancel))

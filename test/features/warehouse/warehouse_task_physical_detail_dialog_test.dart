@@ -22,7 +22,7 @@ final _warehouse = StateProvider<WarehouseTaskScope>(
 );
 
 const _row = WarehouseTaskCenterRecord(
-  rowKey: 'OTHER:STOCK_DOC:original-id',
+  rowKey: 'OTHER:STOCK_DOC:original-id:item-id',
   id: 'original-id',
   sourceType: 'OTHER',
   recordType: 'STOCK_DOC',
@@ -31,6 +31,7 @@ const _row = WarehouseTaskCenterRecord(
   action: 'HISTORY_DETAIL',
   billNo: 'ORIGINAL-OUT',
   actionData: {'docType': 'OTHER_OUT'},
+  line: WarehouseTaskLine(key: 'item-id', itemId: 'item-id'),
 );
 
 class _Api extends ApiClient {

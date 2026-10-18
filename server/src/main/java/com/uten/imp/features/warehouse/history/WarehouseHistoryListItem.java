@@ -20,5 +20,6 @@ public record WarehouseHistoryListItem(
         String makerName,
         UUID approverId,
         String approverName,
-        long lineCount) {
+        long lineCount,
+        com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.Line line) {
 }

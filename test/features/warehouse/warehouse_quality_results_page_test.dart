@@ -485,7 +485,7 @@ void main() {
     await tester.pumpAndSettle();
     MasterDataTableView<WarehouseQualityResultTask> table() =>
         tester.widget(find.byKey(const Key('warehouse-quality-result-table')));
-    expect(table().requiredLeadingColumnKeys, ['workStatus']);
+    expect(table().requiredLeadingColumnKeys, ['workStatus', 'goodsName']);
     expect(table().columns.first.label, '状态');
     table().onSelectedIdsChanged!({'PURCHASE:receipt-1'});
     await tester.pumpAndSettle();
@@ -810,6 +810,75 @@ void main() {
     );
     expect(pushed, ['/warehouse/quality-results/PURCHASE/receipt-1']);
     expect(find.text('品质检查结果详情'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('同单货品独立显示和选择，入库复核只打开关联单据一次', (tester) async {
+    _viewport(tester, const Size(1440, 1000));
+    final tasks = [
+      for (final key in ['inspection-1', 'inspection-2'])
+        WarehouseQualityResultTask.fromJson({
+          ..._summaryJson(
+            'ALL_PASSED',
+            pendingSliceCount: 1,
+            passedLineCount: 1,
+          ),
+          'line': {
+            'key': key,
+            'itemId': key,
+            'goodsCode': 'MAT-001',
+            'goodsName': '同一货品',
+            'specification': 'M8',
+            'colorName': '银色',
+            'quantity': 3.5,
+            'unitName': '件',
+          },
+        }),
+    ];
+    final gateway = _QualityGateway(tasks);
+    final preferences = await SharedPreferences.getInstance();
+    final pushed = <String>[];
+    final router = GoRouter(
+      initialLocation: '/warehouse/quality-results',
+      routes: [
+        GoRoute(
+          path: '/warehouse/quality-results',
+          builder: (_, _) => const WarehouseQualityResultsPage(),
+        ),
+        GoRoute(
+          path: '/warehouse/quality-results/:receiptType/:receiptId',
+          builder: (_, state) {
+            pushed.add(state.uri.path);
+            return const Scaffold(body: Text('品质检查结果详情'));
+          },
+        ),
+      ],
+    );
+    await tester.pumpWidget(_app(null, gateway, preferences, router: router));
+    await tester.pumpAndSettle();
+    final table = tester
+        .widget<MasterDataTableView<WarehouseQualityResultTask>>(
+          find.byKey(const Key('warehouse-quality-result-table')),
+        );
+    expect(table.items, hasLength(2));
+    expect(table.rowKeyOf!(tasks.first), isNot(table.rowKeyOf!(tasks.last)));
+    expect(
+      table.columns.firstWhere((c) => c.key == 'goodsName').value(tasks.first),
+      '同一货品',
+    );
+    expect(
+      table.columns.firstWhere((c) => c.key == 'quantity').value(tasks.first),
+      '3.5 件',
+    );
+    expect(tasks.first.verdictLabel, '合格');
+    table.onSelectedIdsChanged!({tasks.first.rowKey, tasks.last.rowKey});
+    await tester.pumpAndSettle();
+    expect(find.text('复核入库(1 单)'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const Key('warehouse-quality-result-batch-stock-in')),
+    );
+    await tester.pumpAndSettle();
+    expect(pushed, ['/warehouse/quality-results/PURCHASE/receipt-1']);
     expect(tester.takeException(), isNull);
   });
 }

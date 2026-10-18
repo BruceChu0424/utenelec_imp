@@ -1,4 +1,5 @@
 import '../config/warehouse_document_history_config.dart';
+import 'warehouse_task_center_record.dart' show WarehouseTaskLine;
 
 /// Commercial keys that are outside the warehouse-history API contract.
 ///
@@ -44,6 +45,7 @@ class WarehouseDocumentHistorySummary {
     this.makerName,
     this.approverId,
     this.approverName,
+    this.line,
   });
 
   final String id;
@@ -63,6 +65,8 @@ class WarehouseDocumentHistorySummary {
   final String? makerName;
   final String? approverId;
   final String? approverName;
+  final WarehouseTaskLine? line;
+  String get rowKey => '$id:${line?.key ?? 'empty'}';
 
   String get displayBillNo => _nonBlank(billNo) ?? '—';
 
@@ -93,6 +97,11 @@ class WarehouseDocumentHistorySummary {
       makerName: _text(json['makerName']),
       approverId: _text(json['approverId']),
       approverName: _text(json['approverName']),
+      line: json['line'] is Map
+          ? WarehouseTaskLine.fromJson(
+              Map<String, dynamic>.from(json['line'] as Map),
+            )
+          : null,
     );
   }
 }

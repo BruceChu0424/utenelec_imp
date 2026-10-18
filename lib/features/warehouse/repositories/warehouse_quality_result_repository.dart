@@ -4,6 +4,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/warehouse/warehouse_task_view.dart';
+import '../../../shared/warehouse/warehouse_task_scope.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../models/warehouse_iqc_stock_in.dart';
 import '../models/warehouse_quality_result.dart';
@@ -56,9 +57,10 @@ abstract interface class WarehouseQualityResultGateway {
 
 class WarehouseQualityResultRepository
     implements WarehouseQualityResultGateway {
-  const WarehouseQualityResultRepository(this.api);
+  const WarehouseQualityResultRepository(this.api, {this.scopeWarehouseId});
 
   final ApiClient api;
+  final String? scopeWarehouseId;
 
   @override
   Future<PagedResult<WarehouseQualityResultTask>> list({
@@ -155,6 +157,7 @@ class WarehouseQualityResultRepository
   ) async {
     final json = await api.get(
       ApiEndpoints.warehouseQualityResultDetail(receiptType, receiptId),
+      query: {'scopeWarehouseId': ?scopeWarehouseId},
     );
     return WarehouseQualityResultDetail.fromJson(_body(json));
   }
@@ -185,5 +188,8 @@ Map<String, dynamic> _body(Map<String, dynamic> json) {
 
 final warehouseQualityResultRepositoryProvider =
     Provider<WarehouseQualityResultGateway>((ref) {
-      return WarehouseQualityResultRepository(ref.watch(apiClientProvider));
+      return WarehouseQualityResultRepository(
+        ref.watch(apiClientProvider),
+        scopeWarehouseId: ref.watch(warehouseTaskScopeProvider).warehouseId,
+      );
     });

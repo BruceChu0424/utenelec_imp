@@ -1,6 +1,7 @@
 package com.uten.imp.features.warehouse.taskcenter;
 
 import java.time.LocalDate;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -29,11 +30,33 @@ public final class WarehouseTaskCenterContracts {
             String billNo, String sourceDocNo, LocalDate businessDate,
             String partyName, String warehouseName, String responsibleName, Integer lineCount,
             String status, String statusLabel, String tone,
-            String action, UUID targetId, boolean canHandle, Map<String, Object> actionData) {
+            String action, UUID targetId, boolean canHandle, Map<String, Object> actionData, Line line) {
         public Row {
             actionData = actionData == null ? Map.of() : Map.copyOf(actionData);
         }
+
+        public Row(String rowKey, UUID id, String sourceType, String recordType,
+                   String billNo, String sourceDocNo, LocalDate businessDate,
+                   String partyName, String warehouseName, String responsibleName, Integer lineCount,
+                   String status, String statusLabel, String tone,
+                   String action, UUID targetId, boolean canHandle, Map<String, Object> actionData) {
+            this(rowKey, id, sourceType, recordType, billNo, sourceDocNo, businessDate,
+                    partyName, warehouseName, responsibleName, lineCount, status, statusLabel, tone,
+                    action, targetId, canHandle, actionData, null);
+        }
+
+        public Row withLine(Line item) {
+            return new Row(sourceType + ":" + recordType + ":" + id + ":" + item.key(), id,
+                    sourceType, recordType, billNo, sourceDocNo, businessDate, partyName, warehouseName,
+                    responsibleName, lineCount, status, statusLabel, tone, action, targetId, canHandle,
+                    actionData, item);
+        }
     }
+
+    /** Stable physical item identity; repeated goods on one document remain separate lines. */
+    public record Line(String key, UUID itemId, Integer lineNo, String goodsCode, String goodsName,
+                       String specification, String colorName, String unitName,
+                       BigDecimal quantity, BigDecimal weight) {}
 
     public record StatusFacet(String value, String label, long count) {}
 

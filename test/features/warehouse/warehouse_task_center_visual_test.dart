@@ -91,6 +91,17 @@ WarehouseTaskCenterRecord _record(
   canHandle: canHandle,
   targetId: 'visual-$index',
   actionData: data,
+  line: WarehouseTaskLine(
+    key: 'item-$index',
+    itemId: 'item-$index',
+    lineNo: index,
+    goodsCode: 'UT-$index',
+    goodsName: index.isEven ? '不锈钢六角螺栓' : '接线端子',
+    specification: index.isEven ? 'M8 × 30' : 'UT-2.5',
+    colorName: '本色',
+    unitName: '件',
+    quantity: index * 120,
+  ),
 );
 
 final _inbound = [

@@ -449,16 +449,31 @@ class _WmRequisitionSegmentState extends ConsumerState<WmRequisitionSegment> {
           ),
           MasterColumnDef(
             key: 'material',
-            label: '料',
+            label: '货品名称',
             width: 220,
-            value: (r) => r.materialSummary,
+            value: (r) => r.materialLine?.goodsName ?? '—',
+          ),
+          MasterColumnDef(
+            key: 'goodsCode',
+            label: '编号',
+            width: 130,
+            value: (r) => r.materialLine?.goodsCode ?? '—',
+          ),
+          MasterColumnDef(
+            key: 'colorName',
+            label: '颜色',
+            width: 96,
+            value: (r) => r.materialLine?.colorName ?? '—',
           ),
           MasterColumnDef(
             key: 'qty',
-            label: l10n.wmKg,
+            label: '数量',
             width: 100,
             type: 'number',
-            value: (r) => wmQty(r.totalQty),
+            value: (r) => r.materialLine == null
+                ? '—'
+                : '${wmQty(r.materialLine!.requestedQty)} ${r.materialLine!.unitName ?? ''}'
+                      .trim(),
           ),
           MasterColumnDef(
             key: 'requestedBy',
@@ -527,7 +542,7 @@ class _WmRequisitionSegmentState extends ConsumerState<WmRequisitionSegment> {
           if (widget.kind != null) 'kind',
         },
         onFilterChanged: _onHeaderFilter,
-        rowKeyOf: (r) => r.id,
+        rowKeyOf: (r) => r.rowKey,
         onRowTap: _open,
         rowMenuBuilder: (r) => [
           UtenMenuItem(

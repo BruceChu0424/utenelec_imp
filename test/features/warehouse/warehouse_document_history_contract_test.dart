@@ -12,6 +12,31 @@ import 'package:uten_imp/features/warehouse/models/warehouse_document_history.da
 import 'package:uten_imp/features/warehouse/repositories/warehouse_document_history_repository.dart';
 
 void main() {
+  test('历史同单重复货品保留原明细身份与行数量', () {
+    final rows = [
+      for (var index = 1; index <= 2; index++)
+        WarehouseDocumentHistorySummary.fromJson(
+          WarehouseDocumentHistoryType.subcontractReturn,
+          {
+            'id': 'return-document',
+            'billNo': 'RETURN-001',
+            'lineCount': 2,
+            'line': {
+              'key': 'line-$index',
+              'itemId': 'line-$index',
+              'goodsCode': 'SAME-GOODS',
+              'goodsName': '同货品',
+              'quantity': index * 3,
+              'unitName': '件',
+            },
+          },
+        ),
+    ];
+    expect(rows.map((row) => row.rowKey).toSet(), hasLength(2));
+    expect(rows.map((row) => row.id).toSet(), {'return-document'});
+    expect(rows.map((row) => row.line!.quantityLabel), ['3 件', '6 件']);
+  });
+
   test('all six warehouse history types use stable dedicated segments', () {
     expect(
       WarehouseDocumentHistoryType.values.map((type) => type.segment),

@@ -1,68 +1,14 @@
-// 仓库销售出库独立页（深链保底）：正文逻辑在
-// widgets/warehouse_sales_outbound_workbench.dart，2026-09-01 起主入口是
-// 「出库任务中心 · 销售出库」分段（/warehouse/tasks/outbound）。
+// Legacy links use the same item rows, filters and workflow entry points as the task center.
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../components/buttons/uten_app_bar_action_button.dart';
-import '../../../components/buttons/uten_back_button.dart';
-import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_content_container.dart';
-import '../../../core/router/nav_helpers.dart';
-import '../../../core/router/route_names.dart';
-import '../../../core/router/page_resume_provider.dart';
-import '../../../core/theme/uten_tokens.dart';
-import '../widgets/warehouse_sales_outbound_workbench.dart';
-import '../../../shared/badges/badge_registry.dart';
+import 'warehouse_task_center_page.dart';
 
-/// Dedicated warehouse projection for released sales outbound work.
-class WarehouseSalesOutboundPage extends ConsumerStatefulWidget {
+class WarehouseSalesOutboundPage extends StatelessWidget {
   const WarehouseSalesOutboundPage({super.key});
 
   @override
-  ConsumerState<WarehouseSalesOutboundPage> createState() =>
-      _WarehouseSalesOutboundPageState();
-}
-
-class _WarehouseSalesOutboundPageState
-    extends ConsumerState<WarehouseSalesOutboundPage> {
-  String? _myLocation;
-  int _refreshTick = 0;
-
-  @override
-  Widget build(BuildContext context) {
-    // 返回即刷新：从详情页回到本页时重拉列表并同步角标。
-    _myLocation ??= currentLocationOr(
-      context,
-      RouteName.warehouseSalesOutbound,
-    );
-    ref.onPageResume(_myLocation!, () {
-      setState(() => _refreshTick++);
-      refreshBadges(ref);
-    });
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: '仓库销售出库',
-        leading: UtenBackButton(
-          onPressed: () => popOrBackTo(context, defaultPath: '/warehouse'),
-        ),
-        actions: [
-          UtenAppBarActionButton(
-            key: const Key('warehouse-sales-outbound-refresh'),
-            label: '刷新',
-            icon: Icons.refresh_rounded,
-            onPressed: () => setState(() => _refreshTick++),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: UtenContentContainer.wide(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-            child: WarehouseSalesOutboundWorkbench(refreshTick: _refreshTick),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => const WarehouseTaskCenterPage(
+    initialGroup: 'outbound',
+    initialSection: 'SALES',
+  );
 }

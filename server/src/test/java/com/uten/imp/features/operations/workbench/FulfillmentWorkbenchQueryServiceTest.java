@@ -233,6 +233,11 @@ class FulfillmentWorkbenchQueryServiceTest {
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em, times(5)).createNativeQuery(sql.capture());
         String rowsSql = sql.getAllValues().getFirst();
+        assertTrue(rowsSql.contains("v.task_id, v.package_id, v.plan_id, v.plan_no"));
+        assertTrue(rowsSql.contains("ARRAY[v.action_item_id::text] AS action_item_ids"));
+        assertFalse(rowsSql.contains("GROUP BY v.department, v.action_doc_type, v.action_doc_id"));
+        assertTrue(rowsSql.contains("received_item.id = base.action_item_id"));
+        assertTrue(rowsSql.contains("short_case.order_item_id = base.action_item_id"));
         List<String> precedence = List.of(
                 "THEN 'SHORT_DELIVERY'", "THEN 'WAITING_MORE_BATCH'", "THEN 'TOLERANT_SHORT'",
                 "THEN 'RECEIVED_PENDING_STOCK'", "WHEN progress.any_drawable THEN 'DRAWABLE'",

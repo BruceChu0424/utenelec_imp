@@ -188,7 +188,14 @@ public final class WorkshopMaterialDtos {
                                   String doneByName, OffsetDateTime doneAt, String cancelReason, String remark,
                                   long rowVersion, List<RequisitionLineView> lines,
                                   List<RequisitionDocumentView> documents, PeriodRef period,
-                                  List<String> allowedActions) {}
+                                    List<String> allowedActions) {
+        /** List rows keep one real material; detail and commands retain the original requisition. */
+        public RequisitionView withLine(RequisitionLineView line) {
+            return new RequisitionView(id, requestNo, kind, origin, status, workshopDepartmentId, workshopName,
+                    binWarehouseId, binWarehouseName, receiverEmployeeId, receiverName, requestedByName, requestedAt,
+                    doneByName, doneAt, cancelReason, remark, rowVersion, List.of(line), documents, period, allowedActions);
+        }
+    }
 
     public record OtherIssueRequest(UUID workshopDepartmentId, UUID goodsId, UUID colorId, BigDecimal qty,
                                     String reason, String reasonText, String idempotencyKey) {}

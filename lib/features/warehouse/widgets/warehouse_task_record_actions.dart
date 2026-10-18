@@ -44,6 +44,21 @@ const _openActions = {
 bool warehouseTaskRecordCanOpen(WarehouseTaskCenterRecord row) =>
     _openActions.contains(row.action) && (row.targetId ?? row.id).isNotEmpty;
 
+/// Lists select physical items; the existing review pages still own document commands.
+/// Continue-inspection keeps all item payloads until receipt IDs are unioned.
+List<WarehouseTaskCenterRecord> warehouseTaskCommandTargets(
+  Iterable<WarehouseTaskCenterRecord> rows,
+) => {
+  for (final row in rows)
+    '${row.sourceType}:${row.action}:${switch (row.action) {
+          'FINISHED_REGISTER' => row.dataId('reportId') ?? row.targetId ?? row.id,
+          'FINISHED_COUNT' => row.dataId('taskId') ?? row.targetId ?? row.id,
+          'ARRIVAL_CONTINUE' => row.rowKey,
+          _ => row.targetId ?? row.id,
+        }}':
+        row,
+}.values.toList(growable: false);
+
 String? warehouseTaskRecordBatchFamily(WarehouseTaskCenterRecord row) {
   if (!row.canHandle || !warehouseTaskRecordCanOpen(row)) return null;
   return switch (row.action) {
@@ -287,9 +302,10 @@ Future<void> openWarehouseTaskRecordBatch(
     return;
   }
   final family = families.single!;
+  rows = warehouseTaskCommandTargets(rows);
   final max = family == 'SUBCONTRACT_OUTBOUND' ? 50 : 100;
   if (rows.length > max) {
-    context.appWarning('本次最多选择 $max 条，请分批办理');
+    context.appWarning('本次最多办理 $max 张单据，请分批办理');
     return;
   }
   final ids = rows.map((row) => row.targetId ?? row.id).toSet().toList()

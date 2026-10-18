@@ -42,6 +42,78 @@ const _decomposePermissions = {
 
 void main() {
   testWidgets(
+    'same application shows each goods line and scopes picking to its source item',
+    (tester) async {
+      _desktop(tester, const Size(1800, 1100));
+      final template = _data(capability: true);
+      final tasks = [
+        _task('line-one', 'same-application', 'item-one', allocatedQty: 4),
+        _task('line-two', 'same-application', 'item-two'),
+      ];
+      final gateway = _Gateway(
+        OperationsWorkbenchData(
+          department: template.department,
+          summary: template.summary,
+          items: tasks,
+          page: 1,
+          size: 20,
+          total: 2,
+          totalPages: 1,
+          capabilities: template.capabilities,
+        ),
+      );
+      final draw = FakeSubcontractDrawGateway();
+      await tester.pumpWidget(
+        _scope(
+          child: MaterialApp(
+            home: SubcontractDecompositionPage(
+              repository: gateway,
+              drawRepository: draw,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final finder = find.byKey(
+        const Key('subcontract-decomposition-pending-table'),
+      );
+      final table = tester.widget<MasterDataTableView<SubcontractPendingRow>>(
+        finder,
+      );
+      expect(table.items, hasLength(2));
+      expect(
+        table.items.map((row) => table.rowKeyOf!(row)).toSet(),
+        hasLength(2),
+      );
+      final document = table.columns.singleWhere(
+        (column) => column.key == 'docNo',
+      );
+      final code = table.columns.singleWhere(
+        (column) => column.key == 'goodsCode',
+      );
+      final quantity = table.columns.singleWhere(
+        (column) => column.key == 'requiredQty',
+      );
+      expect(
+        table.items.map(document.value),
+        everyElement('EA-same-application'),
+      );
+      expect(table.items.map(code.value), ['FG-line-one', 'FG-line-two']);
+      expect(table.items.map(quantity.value), everyElement('10 件'));
+      final link =
+          table.columns
+                  .singleWhere((column) => column.key == 'drawnQty')
+                  .cellBuilder!(tester.element(finder), table.items.first)
+              as InkWell;
+      link.onTap!();
+      await tester.pumpAndSettle();
+      expect(draw.listQueries.last['applicationItemIds'], ['item-one']);
+      expect(draw.listQueries.last['applicationId'], isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'history never adopts a pending picking response or exposes active draw pagination',
     (tester) async {
       _desktop(tester, const Size(1600, 1000));

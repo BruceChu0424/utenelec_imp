@@ -416,7 +416,9 @@ class _WarehouseTaskRecordsViewState
     List<WarehouseTaskCenterRecord>? targets,
   }) async {
     if (_busy || _loading || (targets == null && _selectedRows.isEmpty)) return;
-    final rows = targets ?? _selectedRows.values.toList(growable: false);
+    final selectedRows =
+        targets ?? _selectedRows.values.toList(growable: false);
+    final rows = warehouseTaskCommandTargets(selectedRows);
     final families = rows.map(warehouseTaskRecordBatchFamily).toSet();
     final family = families.length == 1 ? families.single : null;
     if (family == null) {
@@ -424,15 +426,18 @@ class _WarehouseTaskRecordsViewState
       return;
     }
     final max = family == 'SUBCONTRACT_OUTBOUND' ? 50 : 100;
-    if (rows.length > max) {
-      context.appWarning('本次最多选择 $max 条，请分批办理');
+    final commandCount = family == 'ARRIVAL_CONTINUE'
+        ? rows.expand((row) => row.dataIds('draftReceiptIds')).toSet().length
+        : rows.length;
+    if (commandCount > max) {
+      context.appWarning('本次最多办理 $max 张单据，请分批办理');
       return;
     }
-    if (rows.any((row) => !_canSelect(row))) {
+    if (selectedRows.any((row) => !_canSelect(row))) {
       context.appWarning('单据状态或填写快照已变化，请刷新后重新选择');
       return;
     }
-    if (preStock == true && !rows.every(_canRegisterBeforeInspection)) {
+    if (preStock == true && !selectedRows.every(_canRegisterBeforeInspection)) {
       context.appWarning('所选单据当前不能先入库后质检，请刷新后核对办理方式');
       return;
     }
@@ -459,7 +464,7 @@ class _WarehouseTaskRecordsViewState
             title: Text(
               family == 'ARRIVAL_EXCEPTION'
                   ? '按批准量处理 ${rows.length} 条到货异常'
-                  : '继续送检 ${rows.length} 条到货任务',
+                  : '继续送检 $commandCount 张收货单',
             ),
             content: SingleChildScrollView(
               child: Column(
@@ -687,6 +692,37 @@ class _WarehouseTaskRecordsViewState
         ),
       ),
       MasterColumnDef(
+        key: 'goodsName',
+        label: '货品名称',
+        width: 200,
+        value: (row) => row.line?.goodsName ?? '—',
+      ),
+      MasterColumnDef(
+        key: 'goodsCode',
+        label: '货品编码',
+        width: 150,
+        value: (row) => row.line?.goodsCode ?? '—',
+      ),
+      MasterColumnDef(
+        key: 'specification',
+        label: '规格',
+        width: 140,
+        value: (row) => row.line?.specification ?? '—',
+      ),
+      MasterColumnDef(
+        key: 'colorName',
+        label: '颜色',
+        width: 100,
+        value: (row) => row.line?.colorName ?? '—',
+      ),
+      MasterColumnDef(
+        key: 'quantity',
+        label: '数量',
+        width: 130,
+        type: 'number',
+        value: (row) => row.line?.quantityLabel ?? '—',
+      ),
+      MasterColumnDef(
         key: 'billNo',
         label: '单据 / 任务单号',
         width: 180,
@@ -720,13 +756,6 @@ class _WarehouseTaskRecordsViewState
         value: (row) => row.businessDate ?? '—',
       ),
       MasterColumnDef(
-        key: 'lineCount',
-        label: '明细行数',
-        width: 100,
-        type: 'number',
-        value: (row) => row.lineCount?.toString() ?? '—',
-      ),
-      MasterColumnDef(
         key: 'responsibleName',
         label: '负责人 / 制单人',
         width: 150,
@@ -745,7 +774,7 @@ class _WarehouseTaskRecordsViewState
         key: ValueKey('warehouse-task-records-${widget.direction.name}'),
         tableKey:
             'warehouse.task-center.${widget.direction.name}.${widget.source}${_history ? '.history' : ''}',
-        requiredLeadingColumnKeys: const ['status'],
+        requiredLeadingColumnKeys: const ['status', 'goodsName'],
         primary: true,
         rowsController: _rows,
         paginationRevision: result,

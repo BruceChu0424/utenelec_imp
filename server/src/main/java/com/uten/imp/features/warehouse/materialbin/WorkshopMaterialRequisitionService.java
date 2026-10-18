@@ -372,29 +372,36 @@ public class WorkshopMaterialRequisitionService {
         params.addValue("keyword", com.uten.imp.common.util.KeywordSearch.phrase(keyword));
         String from = """
                 FROM workshop_material_requisitions requisition
+                JOIN workshop_material_requisition_lines line ON line.requisition_id=requisition.id
+                JOIN goods ON goods.id=line.goods_id
                 LEFT JOIN departments search_workshop ON search_workshop.id=requisition.workshop_department_id
-                LEFT JOIN LATERAL (
-                  SELECT string_agg(concat_ws(' ',goods.code,goods.name),' ') AS goods_text,
-                         array_agg(DISTINCT goods.code) AS goods_codes,array_agg(DISTINCT goods.name) AS goods_names
-                  FROM workshop_material_requisition_lines line JOIN goods ON goods.id=line.goods_id
-                  WHERE line.requisition_id=requisition.id
-                ) search_material ON TRUE
                 """;
         where.append(" AND ").append(com.uten.imp.common.util.TaskKeywordSearch.conditionParameter("keyword",
-                "requisition.request_no", "search_workshop.name", "search_material.goods_text"));
+                "requisition.request_no", "search_workshop.name", "goods.code", "goods.name"));
         String rank = com.uten.imp.common.util.TaskKeywordSearch.rankNamesFirstParameter("keyword",
-                new String[]{}, new String[]{"search_material.goods_names"},
-                new String[]{"requisition.request_no"}, "search_material.goods_codes");
+                new String[]{"goods.name"}, new String[]{},
+                new String[]{"requisition.request_no"}, "ARRAY[goods.code]");
         var pageable = Pageables.of(page, size);
         Long total = db.queryForObject("SELECT count(*) " + from + " WHERE "
                 + where, params, Long.class);
         params.addValue("limit", pageable.getPageSize()).addValue("offset", pageable.getOffset());
-        List<UUID> ids = db.queryForList("SELECT requisition.id " + from + " WHERE "
-                + where + " ORDER BY " + rank + ",requisition.requested_at DESC, requisition.id LIMIT :limit OFFSET :offset",
-                params, UUID.class);
+        record ItemIdentity(UUID requisitionId, UUID lineId) {}
+        List<ItemIdentity> identities = db.query("SELECT requisition.id,line.id " + from + " WHERE "
+                + where + " ORDER BY " + rank + ",requisition.requested_at DESC,requisition.id,line.line_no,line.id LIMIT :limit OFFSET :offset",
+                params, (rs, index) -> new ItemIdentity(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class)));
+        Map<UUID, RequisitionView> headers = new LinkedHashMap<>();
+        views(identities.stream().map(ItemIdentity::requisitionId).distinct().toList())
+                .forEach(header -> headers.put(header.id(), header));
+        List<RequisitionView> rows = new ArrayList<>();
+        for (ItemIdentity identity : identities) {
+            RequisitionView header = headers.get(identity.requisitionId());
+            if (header == null) continue;
+            header.lines().stream().filter(line -> line.id().equals(identity.lineId())).findFirst()
+                    .map(header::withLine).ifPresent(rows::add);
+        }
         long count = total == null ? 0 : total;
         int pages = (int) ((count + pageable.getPageSize() - 1) / pageable.getPageSize());
-        return new PageResponse<>(views(ids), pageable.getPageNumber() + 1, pageable.getPageSize(), count, pages);
+        return new PageResponse<>(rows, pageable.getPageNumber() + 1, pageable.getPageSize(), count, pages);
     }
 
     /** 直接发料的领料人默认该车间上一次的领料人。 */

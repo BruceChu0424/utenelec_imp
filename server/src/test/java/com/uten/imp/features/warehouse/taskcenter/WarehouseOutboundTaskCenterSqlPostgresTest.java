@@ -37,7 +37,7 @@ class WarehouseOutboundTaskCenterSqlPostgresTest {
             "public.fn_production_draw_item_requested_qty(uuid)", "public.fn_is_production_linked_stock_document(uuid)",
             "public.fn_stock_document_matches_warehouse_scope(uuid,text,boolean,text)");
     private static final String[] TABLES = {
-            "warehouses", "clients", "suppliers", "employees", "departments", "goods", "units",
+            "warehouses", "clients", "suppliers", "employees", "departments", "goods", "colors", "units",
             "sales_shipments", "sales_shipment_items", "subcontract_material_issues", "subcontract_material_issue_items",
             "subcontract_material_plan_items", "subcontract_material_plans", "stock_documents", "stock_document_items",
             "production_material_discovery_requests", "production_material_discovery_lines",
@@ -84,6 +84,97 @@ class WarehouseOutboundTaskCenterSqlPostgresTest {
         if (connection != null) { connection.rollback(); connection.close(); }
     }
     @AfterAll static void closeBaseline() throws Exception { if (database != null) database.close(); }
+
+    @Test
+    void repeatedGoodsRemainSeparateRowsBeforePagingSearchAndFacetsForEveryOutboundSource() {
+        UUID sales = UUID.randomUUID(), subcontract = UUID.randomUUID();
+        sale(sales, "ITEM-SALES", WAREHOUSE_A);
+        for (int line = 1; line <= 2; line++) {
+            jdbc.update("INSERT INTO sales_shipment_items(id,shipment_id,line_no,goods_id,unit_id,qty,weight,is_deleted)"
+                            + " VALUES(:id,:doc,:line,:goods,:unit,:qty,:weight,FALSE)",
+                    Map.of("id", UUID.randomUUID(), "doc", sales, "line", line, "goods", GOODS, "unit", UNIT,
+                            "qty", line, "weight", line * 2));
+        }
+        subcontract(subcontract, "ITEM-SUBCONTRACT", WAREHOUSE_A, 0, false, true);
+        jdbc.update("INSERT INTO subcontract_material_issue_items(id,issue_id,line_no,goods_id,unit_id,qty,is_deleted)"
+                        + " VALUES(:id,:doc,2,:goods,:unit,3,FALSE)",
+                Map.of("id", UUID.randomUUID(), "doc", subcontract, "goods", GOODS, "unit", UNIT));
+        for (String type : List.of("DRAW", "OTHER_OUT", "FINISHED_OUT")) {
+            UUID document = UUID.randomUUID();
+            stock(document, type, "ITEM-" + type, ACTOR, WAREHOUSE_A, 0, 0);
+            jdbc.update("INSERT INTO stock_document_items(id,doc_id,line_no,goods_id,unit_id,qty,issued_qty,is_deleted)"
+                            + " VALUES(:id,:doc,2,:goods,:unit,7,0,FALSE)",
+                    Map.of("id", UUID.randomUUID(), "doc", document, "goods", GOODS, "unit", UNIT));
+        }
+        var all = plan("ALL", null, null, "billNo", "asc", full(), WarehouseTaskScope.ALL, "");
+        assertThat(count(all)).isEqualTo(10);
+        assertThat(rows(all, 1, 20)).allSatisfy(row -> {
+            assertThat(row.get("item_id")).isNotNull();
+            assertThat(row.get("line_key")).isEqualTo(row.get("item_id").toString());
+            assertThat(row.get("line_count")).isEqualTo(1);
+        });
+        assertThat(rows(all, 1, 1).getFirst().get("id")).isEqualTo(rows(all, 2, 1).getFirst().get("id"));
+        assertThat(rows(all, 1, 1).getFirst().get("line_key")).isNotEqualTo(rows(all, 2, 1).getFirst().get("line_key"));
+        assertThat(jdbc.queryForList(all.billNoFacetsSql(), parameters(all))).hasSize(5)
+                .allSatisfy(row -> assertThat(row.get("count")).isEqualTo(2L));
+        jdbc.update("UPDATE sales_shipment_items SET goods_name_snapshot='独有行匹配' WHERE shipment_id=:id AND line_no=2", Map.of("id", sales));
+        var search = search("SALES", "独有行匹配", WarehouseTaskScope.ALL);
+        assertThat(count(search)).isEqualTo(1);
+        assertThat(rows(search, 1, 20).getFirst().get("line_no")).isEqualTo(2);
+        assertThat(jdbc.queryForList(search.facetsSql(), parameters(search)).getFirst().get("count")).isEqualTo(1L);
+    }
+
+    @Test
+    void visibleHeaderDoesNotExposeSiblingItemsFromAnotherWarehouse() {
+        UUID sales = UUID.randomUUID();
+        sale(sales, "SCOPED-ITEMS", WAREHOUSE_A);
+        UUID visible = UUID.randomUUID(), hidden = UUID.randomUUID();
+        for (var entry : Map.of(visible, WAREHOUSE_A, hidden, WAREHOUSE_B).entrySet()) {
+            jdbc.update("INSERT INTO sales_shipment_items(id,shipment_id,warehouse_id,goods_name_snapshot,is_deleted)"
+                            + " VALUES(:id,:doc,:warehouse,:name,FALSE)",
+                    Map.of("id", entry.getKey(), "doc", sales, "warehouse", entry.getValue(),
+                            "name", entry.getKey().equals(visible) ? "可见材料" : "隐藏材料"));
+        }
+        var scope = new WarehouseTaskScope(true, List.of(WAREHOUSE_A), false);
+        var scoped = plan("SALES", null, null, null, null, full(), scope, "");
+        assertThat(count(scoped)).isEqualTo(1);
+        assertThat(rows(scoped, 1, 20).getFirst()).containsEntry("item_id", visible).containsEntry("warehouse_name", "A仓");
+        assertThat(count(search("SALES", "隐藏材料", scope))).isZero();
+        var detailDocument = new WarehouseTaskCenterContracts.Row("SALES:SALES_SHIPMENT:" + sales, sales,
+                "SALES", "SALES_SHIPMENT", "SCOPED-ITEMS", null, null, "", "", "", 1,
+                "SALES_PENDING", "", "", "HISTORY_DETAIL", sales, false, Map.of());
+        assertThat(jdbc.queryForList(scoped.cte() + " " + WarehouseOutboundTaskCenterQueryService.scopedPhysicalLines(detailDocument),
+                parameters(scoped).addValue("rowSource", "SALES").addValue("rowRecord", "SALES_SHIPMENT")
+                        .addValue("rowId", sales).addValue("documentId", sales)))
+                .hasSize(1).allSatisfy(row -> assertThat(row.get("id")).isEqualTo(visible));
+        UUID other = UUID.randomUUID();
+        stock(other, "OTHER_OUT", "SCOPED-STOCK", ACTOR, WAREHOUSE_A, 1, 0);
+        jdbc.update("INSERT INTO stock_document_items(id,doc_id,warehouse_id,goods_id,unit_id,qty,is_deleted)"
+                        + " VALUES(:id,:doc,:warehouse,:goods,:unit,2,FALSE)",
+                Map.of("id", UUID.randomUUID(), "doc", other, "warehouse", WAREHOUSE_B, "goods", GOODS, "unit", UNIT));
+        assertThat(count(plan("OTHER", null, null, null, null, full(), scope, ""))).isEqualTo(1);
+        var otherWarehouse = new WarehouseTaskScope(true, List.of(WAREHOUSE_B), false);
+        assertThat(rows(plan("OTHER", null, null, null, null, full(), otherWarehouse, ""), 1, 20))
+                .hasSize(1).allSatisfy(row -> assertThat(row.get("warehouse_name")).isEqualTo("B仓"));
+        jdbc.update("UPDATE stock_document_items SET warehouse_id=:warehouse WHERE doc_id=:doc",
+                Map.of("warehouse", WAREHOUSE_B, "doc", other));
+        assertThat(count(plan("OTHER", null, null, null, null, full(), scope, ""))).isZero();
+        assertThat(count(plan("OTHER", null, null, null, null, full(), otherWarehouse, ""))).isEqualTo(2);
+    }
+
+    @Test
+    void requestedMaterialsWithNoItemUuidKeepStableSeparateOrdinalKeysAndExactGoodsSearch() {
+        UUID request = discovery("PENDING");
+        jdbc.update("UPDATE production_material_discovery_requests SET requested_materials=CAST(:materials AS jsonb) WHERE id=:id",
+                Map.of("id", request, "materials", "[{\"goodsId\":\"" + GOODS + "\",\"unitId\":\"" + UNIT + "\",\"qty\":2},"
+                        + "{\"goodsName\":\"第二种材料\",\"qty\":3},{\"goodsName\":\"第二种材料\",\"qty\":4}]"));
+        var query = plan("DRAW", null, null, "billNo", "asc", full(), WarehouseTaskScope.ALL, "");
+        assertThat(count(query)).isEqualTo(3);
+        assertThat(rows(query, 1, 20)).extracting(row -> row.get("line_key"))
+                .containsExactly("suggestion-1", "suggestion-2", "suggestion-3");
+        assertThat(rows(query, 1, 20).getFirst()).containsEntry("goods_name", "真实字段物料").containsEntry("unit_name", "kg");
+        assertThat(count(search("DRAW", "第二种材料", WarehouseTaskScope.ALL))).isEqualTo(2);
+    }
 
     @Test
     void globalSortAndPagesKeepSameNumbersAndSameUuidsFromDifferentSources() {
@@ -280,6 +371,10 @@ class WarehouseOutboundTaskCenterSqlPostgresTest {
             WarehouseOutboundTaskCenterSql.Access access, WarehouseTaskScope scope, String own) {
         return WarehouseOutboundTaskCenterSql.build(new Filter(source, status, null, billNo, null, null, null, 1, 20, sort, order,
                 WarehouseTaskCenterContracts.TaskView.ALL), access, scope, own);
+    }
+    private static WarehouseOutboundTaskCenterSql.Plan search(String source, String keyword, WarehouseTaskScope scope) {
+        return WarehouseOutboundTaskCenterSql.build(new Filter(source, null, keyword, null, null, null, null, 1, 20,
+                null, null, WarehouseTaskCenterContracts.TaskView.ALL), full(), scope, "");
     }
     private static MapSqlParameterSource parameters(WarehouseOutboundTaskCenterSql.Plan plan) {
         return new MapSqlParameterSource(plan.parameters());

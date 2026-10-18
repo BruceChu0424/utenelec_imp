@@ -14,9 +14,11 @@ import 'package:uten_imp/features/operations_workbench/pages/operations_workbenc
 import 'package:uten_imp/features/operations_workbench/repositories/operations_workbench_repository.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_decomposition_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
+import '../../helpers/badge_summary_fixture.dart';
 import '../subcontract/fake_subcontract_draw_gateway.dart';
 
 final _reader = StateProvider<AuthenticatedScope?>(
@@ -97,7 +99,25 @@ void main() {
       '${subcontract ? 'subcontract' : 'purchase'} workbench clears rows and ignores old reader failure',
       (tester) async {
         final gateway = _Gateway();
-        final container = await _mount(tester, gateway, subcontract);
+        // ADR-184：初始概览 statusCounts 是 WAITING_ORDER 红 1，用同值事实
+        // 恢复「待处理/申请待分解」段自动选中，PRIVATE-A 随首段加载出现。
+        final container = await _mount(
+          tester,
+          gateway,
+          subcontract,
+          facts: subcontract
+              ? const {
+                  BadgeFact.subcontractTaskWaitingOrder: 1,
+                  BadgeFact.subcontractTaskRework: 0,
+                  BadgeFact.subcontractTaskShortDelivery: 0,
+                  BadgeFact.subcontractTaskInProgress: 0,
+                }
+              : const {
+                  BadgeFact.purchaseTaskWaitingOrder: 1,
+                  BadgeFact.purchaseTaskRework: 0,
+                  BadgeFact.purchaseTaskInProgress: 0,
+                },
+        );
         await tester.pumpAndSettle();
         expect(find.text('PRIVATE-A'), findsOneWidget);
         final old = Completer<OperationsWorkbenchData>();
@@ -133,7 +153,21 @@ void main() {
     'changing shared workbench department invalidates the old in-flight summary',
     (tester) async {
       final gateway = _Gateway();
-      final container = await _mount(tester, gateway, false);
+      // ADR-184：采购段红 1 维持原自动选中；切到仓库部门后「待备料 / 待领取」
+      // 段红 1 才能自动选中并展示 WAREHOUSE-B 行。
+      final container = await _mount(
+        tester,
+        gateway,
+        false,
+        facts: const {
+          BadgeFact.purchaseTaskWaitingOrder: 1,
+          BadgeFact.purchaseTaskRework: 0,
+          BadgeFact.purchaseTaskInProgress: 0,
+          BadgeFact.productionDrawReady: 1,
+          BadgeFact.productionDrawPartial: 0,
+          BadgeFact.productionDrawMaterialsToDefine: 0,
+        },
+      );
       await tester.pumpAndSettle();
       final old = Completer<OperationsWorkbenchData>();
       gateway.responses.add(old);
@@ -160,8 +194,9 @@ void main() {
 Future<ProviderContainer> _mount(
   WidgetTester tester,
   _Gateway gateway,
-  bool subcontract,
-) async {
+  bool subcontract, {
+  Map<String, int> facts = const {},
+}) async {
   await tester.binding.setSurfaceSize(const Size(1600, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   SharedPreferences.setMockInitialValues(const {});
@@ -177,6 +212,9 @@ Future<ProviderContainer> _mount(
           Perm.subcontractApplicationView,
           Perm.subcontractOrderView,
         }),
+        // ADR-184：阶段红黄数改由徽章事实提供。facts 为空 = 无红黄数，
+        // 分段回落中性浏览数且不自动选中（首个用例依赖「未选阶段」形态）。
+        fixedBadgeSummaryOverride(badgeSummaryFixture(facts: facts)),
       ],
       child: MaterialApp(
         home: Consumer(

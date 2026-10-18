@@ -96,7 +96,8 @@ void main() {
         )
         .count;
 
-    // 分段计数：草稿 = 服务端 2 + 本地计划草稿 1（红）；已审 5（中性括号数）。
+    // 分段计数（ADR-184 任务口径）：草稿红数只跟 ACTIONABLE_DRAFT（本人可动手）——
+    // = 服务端 2 + 本地计划草稿 1；裸 DRAFT（可见范围口径 4）不参与红数，若沿用会得 5。
     expect(badgeCount('草稿'), 3);
     expect(find.text('(5)'), findsOneWidget, reason: '已审中性括号数');
 
@@ -116,7 +117,8 @@ void main() {
   });
 }
 
-/// 报表行（两张计划草稿）+ 分段计数（草稿 2 / 已审 5 / 红冲 0）的假 API。
+/// 报表行（两张计划草稿）+ 分段计数（可见范围草稿 4 / 可动手草稿 2 / 已审 5 / 红冲 0）
+/// 的假 API；分段计数桶键按 ADR-184 任务口径（ACTIONABLE_ 前缀）。
 class _ReportApi extends ApiClient {
   _ReportApi() : super(Dio());
 
@@ -153,7 +155,14 @@ class _ReportApi extends ApiClient {
       };
     }
     if (path.contains('status-counts')) {
-      return const {'DRAFT': 2, 'APPROVED': 5, 'REVERSED': 0};
+      // ADR-184：服务端同时发裸桶（可见范围口径）与任务口径前缀键
+      //（生产计划只有草稿是可动手桶）。草稿红数 = ACTIONABLE_DRAFT + 本地草稿。
+      return const {
+        'DRAFT': 4,
+        'ACTIONABLE_DRAFT': 2,
+        'APPROVED': 5,
+        'REVERSED': 0,
+      };
     }
     return const {};
   }

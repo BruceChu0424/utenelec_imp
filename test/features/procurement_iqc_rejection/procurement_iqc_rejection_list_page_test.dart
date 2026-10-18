@@ -94,7 +94,8 @@ void main() {
     await tester.pumpAndSettle();
 
     // 2026-09-29「大小屏共用一张表」：窄屏由表格内建卡片形态接管，统一挂
-    // 表格 key；compact-list 键退役。
+    // 表格 key；compact-list 键退役。行数据来自红段（待退回）自动选中的首笔
+    // 列表请求（ADR-184 计数带可动手口径）。
     expect(find.byKey(const Key('iqc-rejection-compact-list')), findsNothing);
     expect(find.byKey(const Key('iqc-rejection-task-table')), findsOneWidget);
     // 通用卡片明细按列名渲染（2026-09-29 共用表）：掩码行金额 ***，
@@ -161,6 +162,8 @@ void main() {
       final lists = requests
           .where((request) => request.path == '/procurement/iqc-rejections')
           .toList();
+      // 首笔列表请求由红段（财务异常）自动选中触发且带状态约束——不发无约束
+      // 全状态请求；再挑来源是第二笔，重复选同状态不再发请求。
       expect(lists, hasLength(2), reason: '未选择分类不再先拉全量终态记录');
       expect(lists.last.method, 'GET');
       expect(lists.last.uri.queryParameters, {
@@ -181,6 +184,16 @@ void main() {
             .queryParameters['receiptType'],
         isNull,
       );
+      // 本页只发列表与计数两种 GET（原拦截器内联断言改为对记录事后断言）。
+      expect(
+        requests.map((request) => '${request.method} ${request.path}'),
+        everyElement(
+          anyOf(
+            'GET /procurement/iqc-rejections',
+            'GET /procurement/iqc-rejections/counts',
+          ),
+        ),
+      );
       expect(tester.takeException(), isNull);
     },
   );
@@ -192,6 +205,10 @@ void main() {
     await tester.pumpWidget(_app(gateway));
     await tester.pumpAndSettle();
 
+    // 计数带红段（actionablePendingReturn>0）→ 进页面自动选中「待退回」并发
+    // 第一笔列表请求；首笔失败进入恢复态。
+    expect(gateway.calls, 1, reason: '首笔列表请求由红段自动选中触发');
+    expect(gateway.filters.last.status, 'PENDING_RETURN');
     expect(find.text('无法加载 IQC 不合格任务'), findsOneWidget);
     expect(find.text('重新加载'), findsOneWidget);
     await tester.tap(find.text('重新加载'));
@@ -206,6 +223,7 @@ void main() {
     final gateway = _RaceGateway();
     await tester.pumpWidget(_app(gateway));
     await tester.pumpAndSettle();
+    // 初始行来自红段（待退回）自动选中的首笔列表请求；之后再比赛关键词响应。
     final input = find.descendant(
       of: find.byKey(const Key('iqc-rejection-search')),
       matching: find.byType(TextField),
@@ -270,6 +288,10 @@ class _Gateway implements ProcurementIqcRejectionGateway {
     closedNoCredit: 0,
     financeException: 1,
     reversed: 0,
+    // ADR-184：服务端另发本人可动手口径；>0 时「待退回」分段挂红徽章，
+    // 进页面自动选中该段并发第一笔列表请求（autoSelectBadge 口径）。
+    actionablePendingReturn: 1,
+    actionableFinanceException: 1,
   );
 
   @override
@@ -368,17 +390,17 @@ ProcurementIqcRejectionRepository _filterRepository(
   dio.interceptors.add(
     InterceptorsWrapper(
       onRequest: (request, handler) {
+        // 只记录请求，不在拦截器里 expect：expect 是被守卫的测试函数，在 Dio
+        // 回调里同步触发会抛「Guarded function conflict」，把请求打断成本页
+        // NETWORK 错误态；方法/路径断言移到泵完后对这份记录进行。
         requests.add(request);
-        expect(request.method, 'GET');
-        expect(
-          request.path,
-          anyOf(
-            '/procurement/iqc-rejections',
-            '/procurement/iqc-rejections/counts',
-          ),
-        );
         final data = request.path.endsWith('/counts')
-            ? <String, dynamic>{'total': 1, 'financeException': 1}
+            ? <String, dynamic>{
+                'total': 1,
+                'financeException': 1,
+                // ADR-184 可动手口径：财务异常红段进页面自动选中并发首笔列表请求。
+                'actionableFinanceException': 1,
+              }
             : <String, dynamic>{
                 'items': [
                   <String, dynamic>{

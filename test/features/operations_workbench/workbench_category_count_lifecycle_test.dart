@@ -17,6 +17,7 @@ import 'package:uten_imp/features/operations_workbench/repositories/operations_w
 import 'package:uten_imp/features/subcontract/pages/subcontract_decomposition_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
@@ -44,19 +45,19 @@ void main() {
         final gateway = _Gateway();
         await _mount(tester, gateway, subcontract);
         await tester.pumpAndSettle();
-        expect(_progressCounts(tester), (1, 1));
+        expect(_progressCounts(tester), (1, null));
         await _select(tester, '草稿');
         await tester.pumpAndSettle();
         expect(
           _progressCounts(tester),
-          (1, 1),
+          (1, null),
           reason:
               'an empty draft table does not clear the other business categories',
         );
         expect(find.text('RETURNED-1'), findsNothing);
         await _select(tester, subcontract ? '待处理' : '申请待分解');
         await tester.pumpAndSettle();
-        expect(_progressCounts(tester), (1, 1));
+        expect(_progressCounts(tester), (1, null));
         expect(
           find.text('RETURNED-1'),
           findsNothing,
@@ -88,12 +89,12 @@ void main() {
         );
         expect(gateway.queries.last['status'], isNull);
         expect(gateway.queries.last['size'], 1);
-        expect(_progressCounts(tester), (1, 1));
+        expect(_progressCounts(tester), (1, null));
         old.complete(_page(subcontract, 9, null));
         await tester.pumpAndSettle();
         expect(
           _progressCounts(tester),
-          (1, 1),
+          (1, null),
           reason: 'the old request cannot replace the fresh draft overview',
         );
         expect(find.text('RETURNED-9'), findsNothing);
@@ -106,11 +107,11 @@ void main() {
         '$name $boundary invalidates counts while drafts stay open and rejects old overview',
         (tester) async {
           final gateway = _Gateway();
-          final container = await _mount(tester, gateway, subcontract);
+          final (container, _) = await _mount(tester, gateway, subcontract);
           await tester.pumpAndSettle();
           await _select(tester, '草稿');
           await tester.pumpAndSettle();
-          expect(_progressCounts(tester), (1, 1));
+          expect(_progressCounts(tester), (1, null));
           final old = Completer<OperationsWorkbenchData>();
           gateway.gates.add(old);
           await tester.tap(find.byTooltip(subcontract ? '刷新委外任务' : '刷新'));
@@ -139,11 +140,11 @@ void main() {
           );
           fresh.complete(_page(subcontract, 2, null));
           await tester.pumpAndSettle();
-          expect(_progressCounts(tester), (2, 2));
+          expect(_progressCounts(tester), (2, null));
           expect(gateway.queries.last['status'], isNull);
           old.complete(_page(subcontract, 9, null));
           await tester.pumpAndSettle();
-          expect(_progressCounts(tester), (2, 2));
+          expect(_progressCounts(tester), (2, null));
           expect(find.text('RETURNED-9'), findsNothing);
           expect(tester.takeException(), isNull);
         },
@@ -169,7 +170,7 @@ void main() {
         gateway.count = 2;
         search.complete(_page(subcontract, 2, null));
         await tester.pumpAndSettle();
-        expect(_progressCounts(tester), (2, 2));
+        expect(_progressCounts(tester), (2, null));
         await _select(tester, '进行中');
         await tester.pumpAndSettle();
         final filtered = Completer<OperationsWorkbenchData>();
@@ -182,14 +183,14 @@ void main() {
         await tester.pump();
         expect(
           _progressCounts(tester),
-          (2, 2),
+          (2, null),
           reason:
               'status table facets filter rows rather than all-category counts',
         );
         expect(gateway.queries.last['filters'], {'status': 'FINANCE_REJECTED'});
         filtered.complete(_page(subcontract, 2, 'IN_PROGRESS'));
         await tester.pumpAndSettle();
-        expect(_progressCounts(tester), (2, 2));
+        expect(_progressCounts(tester), (2, null));
         expect(tester.takeException(), isNull);
       },
     );
@@ -197,14 +198,14 @@ void main() {
     testWidgets(
       '$name default repository reader change clears counts and fences the old server response',
       (tester) async {
-        final container = await _mount(
+        final (container, _) = await _mount(
           tester,
           _Gateway(),
           subcontract,
           defaultRepository: true,
         );
         await tester.pumpAndSettle();
-        expect(_progressCounts(tester), (1, 1));
+        expect(_progressCounts(tester), (1, null));
         await _select(tester, '草稿');
         await tester.pumpAndSettle();
         final oldApi = container.read(_apiSource);
@@ -218,8 +219,47 @@ void main() {
         expect(_progressCounts(tester), (null, null));
         nextApi.gate!.complete(_jsonPage(2));
         await tester.pumpAndSettle();
-        expect(_progressCounts(tester), (2, 2));
+        expect(_progressCounts(tester), (2, null));
         oldApi.gate!.complete(_jsonPage(9));
+        await tester.pumpAndSettle();
+        expect(_progressCounts(tester), (2, null));
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      '$name badge facts drive the actionable counts and fence the overview',
+      (tester) async {
+        Map<String, int> factsOf(int n) => {
+          subcontract
+              ? BadgeFact.subcontractTaskRework
+              : BadgeFact.purchaseTaskRework: n,
+          subcontract
+              ? BadgeFact.subcontractTaskShortDelivery
+              : BadgeFact.purchaseTaskWaitingOrder: 0,
+          subcontract
+              ? BadgeFact.subcontractTaskInProgress
+              : BadgeFact.purchaseTaskInProgress: n,
+        };
+        final gateway = _Gateway();
+        final (_, badges) = await _mount(
+          tester,
+          gateway,
+          subcontract,
+          facts: factsOf(1),
+        );
+        await tester.pumpAndSettle();
+        expect(_progressCounts(tester), (1, 1));
+        // 概览翻到 9 也不能把浏览数伪装成任务红黄数(事实管道与概览独立)。
+        final churn = Completer<OperationsWorkbenchData>();
+        gateway.gates.add(churn);
+        await tester.tap(find.byTooltip(subcontract ? '刷新委外任务' : '刷新'));
+        await tester.pump();
+        churn.complete(_page(subcontract, 9, null));
+        await tester.pumpAndSettle();
+        expect(_progressCounts(tester), (1, 1));
+        // 下一轮徽章汇总把事实更新为 2, 分段随之走新事实。
+        badges.emit(badgeSummaryFixture(facts: factsOf(2)));
         await tester.pumpAndSettle();
         expect(_progressCounts(tester), (2, 2));
         expect(tester.takeException(), isNull);
@@ -242,6 +282,9 @@ UtenFilterToolbar<dynamic> _toolbar(WidgetTester tester) => tester.widget(
   return (segment.count, segment.inProgressCount);
 }
 
+/// 浏览口径(空 facts)下: count = 概览 statusCounts 的中性浏览数,
+/// inProgressCount = null —— ADR-184「无任务来源不把未知伪装成 0」。
+
 Future<void> _select(WidgetTester tester, String label) async {
   if (tester.any(find.byType(NestedScrollView))) {
     tester
@@ -254,11 +297,12 @@ Future<void> _select(WidgetTester tester, String label) async {
   await tester.pump();
 }
 
-Future<ProviderContainer> _mount(
+Future<(ProviderContainer, FixedBadgeSummaryNotifier)> _mount(
   WidgetTester tester,
   _Gateway gateway,
   bool subcontract, {
   bool defaultRepository = false,
+  Map<String, int> facts = const {},
 }) async {
   await tester.binding.setSurfaceSize(const Size(1600, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -284,10 +328,14 @@ Future<ProviderContainer> _mount(
     ],
   );
   addTearDown(router.dispose);
+  // ADR-184 后分段红黄数来自徽章事实: 默认空 facts = 无任务来源, 分段回退
+  // 中性浏览数(概览 statusCounts), 黄数恒 null —— 生命周期用例全部按浏览口径跑;
+  // 事实驱动的口径由 badge facts 专测覆盖。
+  final badges = FixedBadgeSummaryNotifier(badgeSummaryFixture(facts: facts));
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        fixedBadgeSummaryOverride(),
+        badgeSummaryProvider.overrideWith(() => badges),
         sharedPreferencesProvider.overrideWithValue(prefs),
         apiClientProvider.overrideWith((ref) => ref.watch(_apiSource)),
         apiBaseUrlProvider.overrideWithValue('http://localhost:8080/api'),
@@ -300,7 +348,10 @@ Future<ProviderContainer> _mount(
       child: MaterialApp.router(routerConfig: router),
     ),
   );
-  return ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
+  return (
+    ProviderScope.containerOf(tester.element(find.byType(MaterialApp))),
+    badges,
+  );
 }
 
 OperationsWorkbenchData _page(bool subcontract, int count, String? status) {

@@ -1,16 +1,23 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/data_display/uten_status_badge.dart'
     show UtenStatusBadgeType;
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/data_display/uten_status_cell_color.dart'
     show utenStatusBadgeCellColor;
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/operations_workbench/models/operations_workbench.dart';
 import 'package:uten_imp/features/operations_workbench/pages/operations_workbench_page.dart';
 import 'package:uten_imp/features/operations_workbench/repositories/operations_workbench_repository.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+
+import '../../helpers/badge_summary_fixture.dart';
 
 void main() {
   testWidgets(
@@ -30,8 +37,27 @@ void main() {
         'actionDocId': 'request-1',
         'actionDocCanView': true,
       }, OperationsWorkbenchDepartment.warehouse);
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
       await tester.pumpWidget(
         ProviderScope(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
+            // 覆写 prefs 后真实 api 链路（仓库字典预热）会在测试环境发起真网络
+            // 请求并永久挂起，页面停在加载圈；注入假 api 让预热走空数据。
+            apiClientProvider.overrideWithValue(_FakeApi()),
+            // ADR-184：阶段红黄数改由徽章事实提供；红 1 的「待填写物料」
+            // 段保持 actionable，进页面才会自动选中并直接出表。
+            fixedBadgeSummaryOverride(
+              badgeSummaryFixture(
+                facts: const {
+                  BadgeFact.productionDrawMaterialsToDefine: 1,
+                  BadgeFact.productionDrawReady: 0,
+                  BadgeFact.productionDrawPartial: 0,
+                },
+              ),
+            ),
+          ],
           child: MaterialApp(
             home: OperationsWorkbenchPage(
               department: OperationsWorkbenchDepartment.warehouse,
@@ -96,8 +122,24 @@ void main() {
   ) async {
     await tester.binding.setSurfaceSize(const Size(1600, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
     await tester.pumpWidget(
       ProviderScope(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          apiClientProvider.overrideWithValue(_FakeApi()),
+          // ADR-184：红 2 的「申请待分解」段改由徽章事实提供，保持进页面自动选中。
+          fixedBadgeSummaryOverride(
+            badgeSummaryFixture(
+              facts: const {
+                BadgeFact.purchaseTaskWaitingOrder: 2,
+                BadgeFact.purchaseTaskRework: 0,
+                BadgeFact.purchaseTaskInProgress: 0,
+              },
+            ),
+          ),
+        ],
         child: MaterialApp(
           home: OperationsWorkbenchPage(
             department: OperationsWorkbenchDepartment.purchase,
@@ -234,8 +276,25 @@ void main() {
         nullCounts: const {'spec': 1},
       ),
     );
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
     await tester.pumpWidget(
       ProviderScope(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          apiClientProvider.overrideWithValue(_FakeApi()),
+          // ADR-184：红 1 的「申请待分解」段改由徽章事实提供（本用例不断言
+          // 红黄数，事实按 statusCounts 同值给出，保持原有自动选中后手动复点）。
+          fixedBadgeSummaryOverride(
+            badgeSummaryFixture(
+              facts: const {
+                BadgeFact.purchaseTaskWaitingOrder: 1,
+                BadgeFact.purchaseTaskRework: 0,
+                BadgeFact.purchaseTaskInProgress: 0,
+              },
+            ),
+          ),
+        ],
         child: MaterialApp(
           home: OperationsWorkbenchPage(
             department: OperationsWorkbenchDepartment.purchase,
@@ -306,8 +365,25 @@ void main() {
   ) async {
     await tester.binding.setSurfaceSize(const Size(1600, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
     await tester.pumpWidget(
       ProviderScope(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          apiClientProvider.overrideWithValue(_FakeApi()),
+          // ADR-184：本用例只断言状态列配色，事实按 statusCounts 同值给出
+          // （申请待分解红 1 仍自动选中，再手动切「进行中」）。
+          fixedBadgeSummaryOverride(
+            badgeSummaryFixture(
+              facts: const {
+                BadgeFact.purchaseTaskWaitingOrder: 1,
+                BadgeFact.purchaseTaskRework: 1,
+                BadgeFact.purchaseTaskInProgress: 4,
+              },
+            ),
+          ),
+        ],
         child: MaterialApp(
           home: OperationsWorkbenchPage(
             department: OperationsWorkbenchDepartment.purchase,
@@ -441,6 +517,24 @@ class _FakeGateway implements OperationsWorkbenchGateway {
     String? needFrom,
     String? needTo,
   }) async => data;
+}
+
+/// 其余请求（徽章、仓库字典预热等）一律回空, 不走真网络（ADR-184 起覆写
+/// sharedPreferencesProvider 后, 真实 api 链路在测试环境会挂起加载）。
+class _FakeApi extends ApiClient {
+  _FakeApi() : super(Dio(BaseOptions(baseUrl: 'http://localhost:8080/api')));
+
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async => {'items': <Object?>[], 'page': 1, 'total': 0, 'totalPages': 1};
+
+  @override
+  Future<List<Map<String, dynamic>>> getList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async => [];
 }
 
 OperationsWorkbenchTask _task({

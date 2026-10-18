@@ -7,6 +7,9 @@ import com.uten.imp.features.notice.dto.NoticeAudienceEmployeeDto;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -15,6 +18,7 @@ import java.sql.ResultSet;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -26,6 +30,49 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class PersonPickerCandidateProjectionTest {
+
+    static Stream<Arguments> keeperStates() {
+        return Stream.of("active", "locked", "disabled", "notProvisioned")
+                .flatMap(account -> Stream.of("active", "probation", "onLeave")
+                        .map(employment -> Arguments.of(account, employment)));
+    }
+
+    @ParameterizedTest
+    @MethodSource("keeperStates")
+    void warehouseFalseHasAccountDoesNotCollapseLockedDisabledAndUnprovisioned(String account, String employment) throws Exception {
+        Fixture fixture = new Fixture();
+        fixture.rows(List.of());
+        fixture.warehouses().candidates(null);
+        WarehouseKeeper mapped = fixture.mapRow(account, employment);
+        assertThat(mapped.accountStatus()).isEqualTo(account);
+        assertThat(mapped.employmentStatus()).isEqualTo(employment);
+        assertThat(mapped.hasAccount()).isEqualTo("active".equals(account));
+        assertThat(fixture.sql()).contains(
+                "LEFT JOIN users account ON account.employee_id = e.id AND account.is_deleted = FALSE",
+                "COALESCE(account.status, 'notProvisioned') AS account_status",
+                "e.status <> 'resigned'");
+    }
+
+    @Test
+    void noticeCurrentEmployeeDoesNotEraseProbationOrLeaveStatus() throws Exception {
+        for (String employment : List.of("active", "probation", "onLeave")) {
+            Fixture fixture = new Fixture();
+            fixture.rows(List.of());
+            new NoticeAudienceService(fixture.jdbc).searchEmployees(null);
+            NoticeAudienceEmployeeDto mapped = fixture.mapRow("active", employment);
+            assertThat(mapped.accountStatus()).isEqualTo("active");
+            assertThat(mapped.employmentStatus()).isEqualTo(employment);
+            assertThat(fixture.sql()).contains("u.status = 'active'", "e.status <> 'resigned'");
+        }
+    }
+
+    @Test
+    void oldCandidateConstructorsKeepMissingStatesUnknown() {
+        assertThat(new WarehouseKeeper(UUID.randomUUID(), "员工", "UT01", null, null, false, false, false)
+                .accountStatus()).isNull();
+        assertThat(new NoticeAudienceEmployeeDto("e", "员工", "UT01", null, null)
+                .employmentStatus()).isNull();
+    }
 
     @Test
     void noticeCandidatesReturnDepartmentIdentityAndDoNotTruncateAtOneHundred() throws Exception {
@@ -98,6 +145,10 @@ class PersonPickerCandidateProjectionTest {
         }
 
         <T> T mapRow() throws Exception {
+            return mapRow(null, null);
+        }
+
+        <T> T mapRow(String accountStatus, String employmentStatus) throws Exception {
             ArgumentCaptor<RowMapper> mapper = ArgumentCaptor.forClass(RowMapper.class);
             verify(statement).query(mapper.capture());
             ResultSet row = mock(ResultSet.class);
@@ -105,6 +156,9 @@ class PersonPickerCandidateProjectionTest {
             when(row.getObject("department_id", UUID.class)).thenReturn(departmentId);
             when(row.getString("department_id")).thenReturn(departmentId.toString());
             when(row.getString("department_name")).thenReturn("同名部门");
+            when(row.getString("account_status")).thenReturn(accountStatus);
+            when(row.getString("employment_status")).thenReturn(employmentStatus);
+            when(row.getBoolean("has_account")).thenReturn("active".equals(accountStatus));
             return (T) mapper.getValue().mapRow(row, 0);
         }
 

@@ -40,7 +40,9 @@ public class NoticeAudienceService {
                                e.full_name,
                                e.code,
                                e.department_id,
-                               d.name AS department_name
+                               d.name AS department_name,
+                               u.status AS account_status,
+                               e.status AS employment_status
                         FROM employees e
                         JOIN users u ON u.employee_id = e.id
                         LEFT JOIN departments d ON d.id = e.department_id
@@ -61,7 +63,8 @@ public class NoticeAudienceService {
                         rs.getString("full_name"),
                         rs.getString("code"),
                         rs.getString("department_id"),
-                        rs.getString("department_name")))
+                        rs.getString("department_name"),
+                        rs.getString("account_status"), rs.getString("employment_status")))
                 .list();
         if (candidates.size() > MAX_SEARCH_RESULTS) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,

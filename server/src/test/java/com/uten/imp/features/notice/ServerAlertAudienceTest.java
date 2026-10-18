@@ -39,8 +39,23 @@ class ServerAlertAudienceTest {
         when(candidates.possibleUsers(any())).thenReturn(Optional.of(Set.of(allowed,revoked)));
         when(permissions.usersGrantedAll(anyList(),anySet())).thenReturn(List.of(allowed));
         assertThat(new ServerAlertAudience(candidates,users,permissions).receivers()).containsExactly(allowed);
-        verifyNoInteractions(users);
+        // Normal schema loads no ORM user/department proxy: the only repository call is
+        // the scalar super-admin ID projection that restores the ops-alert caliber.
+        verify(users,only()).findActiveSuperAdminIds();
         verify(permissions,never()).permsOf(any(UserAccount.class));
+    }
+    @Test void superAdministratorsReceiveOpsAlertsWithoutRealGrants() {
+        var candidates=mock(NoticePermissionCandidateQuery.class);
+        var users=mock(UserAccountRepository.class);
+        var permissions=mock(PermissionResolver.class);
+        UUID holder=UUID.randomUUID(),superAdmin=UUID.randomUUID();
+        when(candidates.possibleUsers(any())).thenReturn(Optional.of(Set.of(holder,superAdmin)));
+        when(permissions.usersGrantedAll(anyList(),anySet())).thenReturn(List.of(holder));
+        when(users.findActiveSuperAdminIds()).thenReturn(List.of(superAdmin));
+        // ADR-063 例外口径：运维告警面向超管本身，批量池不做镜像展开，须在此并回——
+        // 否则超管不再收到任何服务器状态告警（2026-10-17 修复的回归）。
+        assertThat(new ServerAlertAudience(candidates,users,permissions).receivers())
+                .containsExactlyInAnyOrder(holder,superAdmin);
     }
     private static UserAccount user(String status) {
         var user=spy(new UserAccount());user.setId(UUID.randomUUID());user.setStatus(status);

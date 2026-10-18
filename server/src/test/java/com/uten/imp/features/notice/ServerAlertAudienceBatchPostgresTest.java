@@ -39,7 +39,7 @@ class ServerAlertAudienceBatchPostgresTest {
         List<UUID> actual=audience.receivers();
         assertThat(actual).hasSize(447).doesNotContain(revoked,disabled,deleted,noPageGate);
         assertThat(source.statements.get()).isEqualTo(3); // shape + positive superset + coherent actual grants
-        verifyNoInteractions(users); // Normal schema loads no ORM user/department proxy.
+        verify(users,only()).findActiveSuperAdminIds(); // scalar ID projection; no ORM user/department proxy.
         data.override(all.get(4),receive,"revoke","SUPER_ADMIN_CONFIRMED");
         assertThat(audience.receivers()).hasSize(446).doesNotContain(all.get(4));
 
@@ -55,5 +55,12 @@ class ServerAlertAudienceBatchPostgresTest {
         source.statements.set(0);
         assertThat(new ServerAlertAudience(fallback,users,data.resolver(true)).receivers()).hasSize(446);
         assertThat(source.statements.get()).isEqualTo(1);
+
+        // Ops alerts target super administrators themselves (ADR-063 exception): a super
+        // admin with no real grant is filtered by the batch statement, then restored by
+        // the union — without it the whole audience could silently drop to zero (2026-10-17).
+        UUID superAdmin=data.account(data.other,true);
+        when(users.findActiveSuperAdminIds()).thenReturn(List.of(superAdmin));
+        assertThat(audience.receivers()).hasSize(447).contains(superAdmin);
     }
 }

@@ -6,5 +6,11 @@ public record NoticeAudienceEmployeeDto(
         String name,
         String code,
         String departmentId,
-        String departmentName) {
+        String departmentName,
+        String accountStatus,
+        String employmentStatus) {
+    public NoticeAudienceEmployeeDto(String id, String name, String code,
+                                     String departmentId, String departmentName) {
+        this(id, name, code, departmentId, departmentName, null, null);
+    }
 }

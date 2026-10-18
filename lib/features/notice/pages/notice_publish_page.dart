@@ -254,6 +254,8 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage>
           employeeCode: item.code,
           departmentId: item.departmentId,
           departmentName: item.departmentName,
+          accountStatus: item.accountStatus,
+          employmentStatus: item.employmentStatus,
         ),
     ];
   }

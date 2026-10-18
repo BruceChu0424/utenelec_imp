@@ -35,9 +35,14 @@ class NoticeAudienceEmployee {
     required this.code,
     this.departmentId,
     this.departmentName,
+    this.accountStatus,
+    this.employmentStatus,
   });
 
   /// employees.id；发布请求由服务端再映射为 users.id。
+  final String? accountStatus;
+  final String? employmentStatus;
+
   final String id;
   final String name;
   final String code;
@@ -46,6 +51,8 @@ class NoticeAudienceEmployee {
 
   factory NoticeAudienceEmployee.fromJson(Map<String, dynamic> json) {
     return NoticeAudienceEmployee(
+      accountStatus: json['accountStatus'] as String?,
+      employmentStatus: json['employmentStatus'] as String?,
       id: json['id'] as String,
       name: json['name'] as String? ?? '',
       code: json['code'] as String? ?? '',

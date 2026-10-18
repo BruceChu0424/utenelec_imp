@@ -21,6 +21,7 @@ import 'package:uten_imp/features/department/models/department_node.dart';
 import 'package:uten_imp/features/department/models/workforce_overview.dart';
 import 'package:uten_imp/features/department/repositories/department_repository.dart';
 import 'package:uten_imp/features/employee/models/employee_api_models.dart';
+import 'package:uten_imp/features/employee/providers/employee_picker_department_tree_provider.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
 import 'package:uten_imp/features/production/models/production_direct_transfer_candidate.dart';
 import 'package:uten_imp/features/production/models/production_daily_report_create_request.dart';
@@ -1543,6 +1544,9 @@ void main() {
             departmentRepositoryProvider.overrideWithValue(
               _FakeDepartmentRepository(),
             ),
+            employeePickerDepartmentTreeProvider.overrideWith(
+              (ref) => _FakeDepartmentRepository().tree(),
+            ),
             masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
             productionDailyReportRepositoryProvider.overrideWithValue(
               ProductionDailyReportRepository(api),
@@ -1579,8 +1583,12 @@ void main() {
 
       await tester.tap(find.byType(UtenEmployeeMultiPicker));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('张三(UT001)'));
-      await tester.tap(find.text('李四(UT002)'));
+      await tester.tap(
+        find.byKey(const ValueKey('employee-picker-item-employee-1')),
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('employee-picker-item-employee-2')),
+      );
       await tester.pump();
       await tester.tap(find.widgetWithText(UtenButton, '确定'));
       await tester.pumpAndSettle();

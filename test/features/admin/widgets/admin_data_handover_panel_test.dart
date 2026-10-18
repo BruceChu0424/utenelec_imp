@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/components/inputs/uten_employee_picker.dart';
 import 'package:uten_imp/features/admin/widgets/admin_data_handover_panel.dart';
+import 'package:uten_imp/features/employee/providers/employee_picker_department_tree_provider.dart';
 import 'package:uten_imp/shared/handover/data_handover_models.dart';
 import 'package:uten_imp/shared/handover/data_handover_repository.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
@@ -28,6 +29,7 @@ void main() {
       ProviderScope(
         overrides: [
           dataHandoverRepositoryProvider.overrideWithValue(repository),
+          employeePickerDepartmentTreeProvider.overrideWith((ref) async => []),
           sharedPreferencesProvider.overrideWithValue(preferences),
         ],
         child: const MaterialApp(
@@ -48,7 +50,9 @@ void main() {
 
     await tester.tap(find.byType(UtenEmployeePicker));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('交出人甲(E001)'));
+    await tester.tap(
+      find.byKey(const ValueKey('employee-picker-item-source-1')),
+    );
     await tester.pump();
     await tester.tap(find.text('确定'));
     await tester.pumpAndSettle();

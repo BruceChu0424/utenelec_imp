@@ -715,7 +715,9 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
                     _error!,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
                   ),
                 ),
                 TextButton(onPressed: _reload, child: const Text('重试')),

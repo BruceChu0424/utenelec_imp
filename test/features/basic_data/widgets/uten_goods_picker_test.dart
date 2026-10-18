@@ -371,12 +371,18 @@ void main() {
       for (final row in tester.widgetList<Material>(flatRows))
         row.borderRadius as BorderRadius,
     ];
-    expect(rowRadii[0].topLeft, const Radius.circular(UtenRadius.md),
-        reason: '首行上两角为系统圆角');
+    expect(
+      rowRadii[0].topLeft,
+      const Radius.circular(UtenRadius.md),
+      reason: '首行上两角为系统圆角',
+    );
     expect(rowRadii[0].bottomLeft, Radius.zero);
     expect(rowRadii[1], BorderRadius.zero, reason: '中间行方角相接');
-    expect(rowRadii[2].bottomLeft, const Radius.circular(UtenRadius.md),
-        reason: '末行下两角为系统圆角');
+    expect(
+      rowRadii[2].bottomLeft,
+      const Radius.circular(UtenRadius.md),
+      reason: '末行下两角为系统圆角',
+    );
     expect(rowRadii[2].topLeft, Radius.zero);
     // flat 行间有 1px 分隔线：收起时整列同色（全是一级深绿行）也分得清一行一行。
     expect(

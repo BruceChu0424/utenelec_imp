@@ -194,11 +194,10 @@ Future<void> _selectAll(WidgetTester tester) async {
 
 /// 右键多选批量菜单里的指定条目（作用于整个选中集）。取首行——它必须已在
 /// 选中集内，多选分支才会出批量项。
-UtenMenuItem _batchMenuEntry(WidgetTester tester, String label) => _table(
-  tester,
-).rowMenuBuilder!(_rows[0]).whereType<UtenMenuItem>().firstWhere(
-  (e) => e.label == label,
-);
+UtenMenuItem _batchMenuEntry(WidgetTester tester, String label) =>
+    _table(tester).rowMenuBuilder!(_rows[0])
+        .whereType<UtenMenuItem>()
+        .firstWhere((e) => e.label == label);
 
 void main() {
   testWidgets('批量禁用 100 条只发 1 次请求，带上每行版本，不逐条拉详情', (tester) async {
@@ -303,14 +302,16 @@ void main() {
     _table(tester).onSelectedIdsChanged!({'g2'});
     await tester.pumpAndSettle();
 
-    final labels = _table(tester)
-        .rowMenuBuilder!(_rows[2])
+    final labels = _table(tester).rowMenuBuilder!(_rows[2])
         .whereType<UtenMenuItem>()
         .map((e) => e.label)
         .toList();
     expect(labels, contains('禁用货品'));
-    expect(labels.where((l) => l.startsWith('批量')), isEmpty,
-        reason: '单选右键是单行菜单；批量项只在多选(>1)时出现');
+    expect(
+      labels.where((l) => l.startsWith('批量')),
+      isEmpty,
+      reason: '单选右键是单行菜单；批量项只在多选(>1)时出现',
+    );
   });
 
   testWidgets('右下悬浮组只挂「已选 N 项 + 添加X」，添加随新增权限出现', (tester) async {
@@ -324,7 +325,10 @@ void main() {
     // 标题行已删：数量进分类卡片标题，不再出现「货品 (100)」工具行文案。
     expect(find.text('货品 (100)'), findsNothing);
     expect(find.textContaining('（备注'), findsNothing);
-    expect(find.text('成品类 (数量: 100)'), findsOneWidget,
-        reason: '分类卡片标题 = 名称（备注）(数量: N)，与左侧列表同形');
+    expect(
+      find.text('成品类 (数量: 100)'),
+      findsOneWidget,
+      reason: '分类卡片标题 = 名称（备注）(数量: N)，与左侧列表同形',
+    );
   });
 }

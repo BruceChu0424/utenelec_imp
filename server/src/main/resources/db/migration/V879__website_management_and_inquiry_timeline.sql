@@ -61,7 +61,7 @@ DECLARE definition text; anchor text := 'ELSIF p_table_name = ''website_inquirie
 BEGIN
  SELECT pg_get_functiondef('public.fn_audit_redact_row(text,jsonb)'::regprocedure) INTO definition;
  IF (SELECT count(*) FROM regexp_matches(definition,anchor,'g'))<>1 THEN
-  RAISE EXCEPTION 'V873 cannot extend website source-context audit redaction safely';
+  RAISE EXCEPTION 'V879 cannot extend website source-context audit redaction safely';
  END IF;
  EXECUTE regexp_replace(definition,anchor,
   E'ELSIF p_table_name = ''website_inquiries'' THEN\n        v_row := v_row - ARRAY[''name'',''source_context''];');
@@ -87,7 +87,7 @@ DECLARE definition text; anchor text := '(''system_settings'', ''PRESERVE'')';
 BEGIN
  SELECT pg_get_functiondef('public.business_data_reset()'::regprocedure) INTO definition;
  IF (length(definition)-length(replace(definition,anchor,'')))/length(anchor)<>1 THEN
-  RAISE EXCEPTION 'V873 cannot extend business-data reset policy safely';
+  RAISE EXCEPTION 'V879 cannot extend business-data reset policy safely';
  END IF;
  EXECUTE replace(definition,anchor,anchor||E',\n            (''website_management_settings'', ''PRESERVE''),\n            (''website_bridge_status'', ''PRESERVE''),\n            (''website_inquiry_events'', ''CLEAR'')');
 END $reset_policy$;

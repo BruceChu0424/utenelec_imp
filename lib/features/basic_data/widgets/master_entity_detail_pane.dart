@@ -999,7 +999,8 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   List<UtenContextMenuEntry> _batchMenuItems(Set<String> ids) {
     final n = ids.length;
     final byId = _rowsById();
-    final allWritable = _c.writableOf == null ||
+    final allWritable =
+        _c.writableOf == null ||
         ids.every(
           (id) => byId[id] != null && _c.writableOf!(byId[id] as TItem),
         );

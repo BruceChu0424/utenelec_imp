@@ -261,10 +261,9 @@ class _UtenAppBarState extends State<UtenAppBar> {
           // 会被 AppBar 居中在槽内，56 宽槽会把图标顶到 ~18px；40 宽槽 + 按钮自身
           // 贴左对齐（UtenBackButton centerStart）让图标落在 x=0，与分栏页左栏
           // 搜索框共缘。非返回键型 leading 维持默认 56 槽不动。
-          leadingWidth:
-              (showBackButton || leading is UtenBackButton)
-                  ? 40
-                  : (leading == null && !showBackButton ? 0 : null),
+          leadingWidth: (showBackButton || leading is UtenBackButton)
+              ? 40
+              : (leading == null && !showBackButton ? 0 : null),
           actions: [
             ConstrainedBox(
               constraints: BoxConstraints(maxWidth: actionBudget),

@@ -483,7 +483,11 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
           // 浏览态(flat)的选中勾（2026-10-18 全站统一口径）：此前浅色档行上
           // 只有左缘强调条+加粗，选中态在低对比档位不够显眼、页与页之间观感
           // 不一致；勾选图标在深绿行反白、浅色行用主色，与单选模式同一形态。
-          selection = Icon(Icons.check_circle_rounded, size: 18, color: rowAccent);
+          selection = Icon(
+            Icons.check_circle_rounded,
+            size: 18,
+            color: rowAccent,
+          );
         } else {
           selection = null;
         }

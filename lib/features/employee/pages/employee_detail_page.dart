@@ -239,53 +239,53 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
               : Builder(
                   builder: (context) {
                     final categories = _categoryBar(theme);
-                return UtenContentContainer(
-                  // 「顶部折叠 + Tab 吸顶 + 内容内滚」：身份卡、变更审批、
-                  // 到期横幅随上滑收起腾出空间，Tab 栏顶到上沿后吸顶，
-                  // 各 Tab 正文内滚（_scrollTab 的竖向 ListView 无显式
-                  // controller，自动拾取 NestedScrollView 注入的
-                  // PrimaryScrollController 参与联动）。
-                  child: UtenCollapsingHeaderScrollView(
-                    collapsingHeader: Column(
-                      children: [
-                        const SizedBox(height: UtenSpacing.s12),
-                        _header(theme, l10n),
-                        ProfileChangePendingSection(
-                          employeeId: widget.employeeId,
+                    return UtenContentContainer(
+                      // 「顶部折叠 + Tab 吸顶 + 内容内滚」：身份卡、变更审批、
+                      // 到期横幅随上滑收起腾出空间，Tab 栏顶到上沿后吸顶，
+                      // 各 Tab 正文内滚（_scrollTab 的竖向 ListView 无显式
+                      // controller，自动拾取 NestedScrollView 注入的
+                      // PrimaryScrollController 参与联动）。
+                      child: UtenCollapsingHeaderScrollView(
+                        collapsingHeader: Column(
+                          children: [
+                            const SizedBox(height: UtenSpacing.s12),
+                            _header(theme, l10n),
+                            ProfileChangePendingSection(
+                              employeeId: widget.employeeId,
+                            ),
+                            ?_identityIssueBanner(),
+                            ..._expiryBanners(l10n),
+                            const SizedBox(height: UtenSpacing.s12),
+                          ],
                         ),
-                        ?_identityIssueBanner(),
-                        ..._expiryBanners(l10n),
-                        const SizedBox(height: UtenSpacing.s12),
-                      ],
-                    ),
-                    pinnedHeader: categories,
-                    pinnedHeaderExtent: categories.preferredSize.height,
-                    body: TabBarView(
-                      controller: _tab,
-                      children: [
-                        _overviewTab(l10n),
-                        _orgContractTab(l10n),
-                        _contactVehicleTab(l10n),
-                        _compensationTab(l10n),
-                        _historyTab(l10n),
-                        _documentsTab(l10n),
-                      ],
-                    ),
-                  ),
-                );
-              },
+                        pinnedHeader: categories,
+                        pinnedHeaderExtent: categories.preferredSize.height,
+                        body: TabBarView(
+                          controller: _tab,
+                          children: [
+                            _overviewTab(l10n),
+                            _orgContractTab(l10n),
+                            _contactVehicleTab(l10n),
+                            _compensationTab(l10n),
+                            _historyTab(l10n),
+                            _documentsTab(l10n),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
-                if (_loading && _profile != null)
-                  const Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    child: LinearProgressIndicator(minHeight: 2),
-                  ),
-                if (_actionBusyTitle != null)
-                  UtenBusyOverlay(title: _actionBusyTitle!),
-              ],
+          if (_loading && _profile != null)
+            const Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: LinearProgressIndicator(minHeight: 2),
             ),
+          if (_actionBusyTitle != null)
+            UtenBusyOverlay(title: _actionBusyTitle!),
+        ],
+      ),
     );
   }
 
@@ -1647,11 +1647,15 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
       ),
     );
     if (ok != true || !mounted) return;
-    await _runConfirmedAction(l10n.employeeConfirmTitle, l10n.employeeConfirmSuccess, () {
-      return ref
-          .read(employeeRepositoryProvider)
-          .confirm(widget.employeeId, confirmedDate: _fmtDate(selected));
-    });
+    await _runConfirmedAction(
+      l10n.employeeConfirmTitle,
+      l10n.employeeConfirmSuccess,
+      () {
+        return ref
+            .read(employeeRepositoryProvider)
+            .confirm(widget.employeeId, confirmedDate: _fmtDate(selected));
+      },
+    );
   }
 
   static String _fmtDate(DateTime d) =>

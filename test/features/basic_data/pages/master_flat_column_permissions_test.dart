@@ -143,8 +143,7 @@ void main() {
               (w) => w is MasterDataTableView<ColorListItem>,
             ),
           );
-          return table
-              .rowMenuBuilder!(table.items.single)
+          return table.rowMenuBuilder!(table.items.single)
               .whereType<UtenMenuItem>()
               .firstWhere((e) => e.label == label);
         }

@@ -96,10 +96,7 @@ Future<void> _pump(WidgetTester tester, {required int status}) async {
         isSuperAdminProvider.overrideWithValue(false),
       ],
       child: const MaterialApp(
-        home: SalesDocDetailPage(
-          docType: SalesDocType.order,
-          id: 'order-1',
-        ),
+        home: SalesDocDetailPage(docType: SalesDocType.order, id: 'order-1'),
       ),
     ),
   );
@@ -120,9 +117,9 @@ void main() {
     // AnimatedCrossFade 折叠子树仍在树中但被裁剪，不可点。
     expect(find.text('销售下单').hitTestable(), findsNothing);
     final timelineTop = tester.getTopLeft(find.text('履约进度')).dy;
-    final tableTop = tester.getTopLeft(
-      find.byType(MasterDataTableView<SalesDocItem>),
-    ).dy;
+    final tableTop = tester
+        .getTopLeft(find.byType(MasterDataTableView<SalesDocItem>))
+        .dy;
     expect(timelineTop, lessThan(tableTop), reason: '履约进度必须在明细表上方');
 
     // 展开动作换成「收起」，完整时间线可见（置顶 PENDING 在最新节点之上）。

@@ -10721,6 +10721,30 @@ class AppLocalizationsKo extends AppLocalizations {
   String get permissionRevokeOnly => '기존 권한만 제거할 수 있으며 다시 부여할 수 없습니다.';
 
   @override
+  String get release2523TaskAudience =>
+      '작업 대시보드의 할 일, 빨강·노랑 배지 및 알림이 실제 부여된 작업 권한과 문서 책임 범위를 따릅니다. 조회 권한만으로는 업무 할 일이 생성되지 않고, 실제 부여받은 타 부서 담당자는 정상적으로 받으며, 시스템 관리자는 기본적으로 모든 업무 할 일을 받지 않습니다.';
+
+  @override
+  String get release2523PermissionTransfer =>
+      '권한 구성을 부서 간 가져오기·미리보기·이전할 수 있고 공유 도구 권한 분류가 자동으로 일치하며, 과정이 감사 기록에 남습니다.';
+
+  @override
+  String get release2523PickerTables =>
+      '거래처·직원·품목 등 선택기를 표 형태로 업그레이드하고 하단 확인 바를 통일해 비교가 쉬워졌습니다. 열람 패널 폭 단계가 통일되고 좁은 화면에 자동 대응합니다.';
+
+  @override
+  String get release2523PlatformSettings =>
+      '플랫폼 설정 페이지를 간결한 제목·권한 배지·공유 연결 상태 요약으로 재구성하고 분석형 레이아웃을 적용했습니다. 분류 전환 시 저장하지 않은 초안은 유지됩니다.';
+
+  @override
+  String get release2523LoginOtp =>
+      '로그인 2단계 인증 질문이 계정·서버별로 격리되어 계정이나 서버를 바꿔도 이전 질문이 남지 않고, 늦은 응답은 자동으로 만료됩니다.';
+
+  @override
+  String get release2523ServerAlert =>
+      '서버 상태 알림이 시스템 관리자 수신 예외 기준을 회복하고, 알림 대상이 실제 권한으로 계산됩니다.';
+
+  @override
   String get release2521Permissions =>
       '재무 검토, 출하 전 최종 품질 검사 등의 작업은 유효한 권한에 따라 사용할 수 있으며 별도의 부서 소속이나 개인 지정 권한을 요구하지 않습니다. 업무 데이터 범위와 문서 상태 검증은 유지됩니다.';
 

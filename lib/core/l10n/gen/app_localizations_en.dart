@@ -11126,6 +11126,30 @@ class AppLocalizationsEn extends AppLocalizations {
       'You can only remove the existing grant. Granting it again is not allowed.';
 
   @override
+  String get release2523TaskAudience =>
+      'Workbench todos, red and yellow badges and action notices now follow actually granted operations and document responsibility: view-only access no longer creates operational tasks, real cross-department grants still receive them, and the system administrator no longer receives every business todo by default.';
+
+  @override
+  String get release2523PermissionTransfer =>
+      'Permission configurations can be imported, previewed and transferred across departments, keeping shared-tool permission categories consistent, with a full audit trail.';
+
+  @override
+  String get release2523PickerTables =>
+      'Customer, employee, goods and similar pickers are upgraded to table views with a unified bottom confirm bar for clearer comparison; browsing panel width tiers are unified and adapt to narrow screens.';
+
+  @override
+  String get release2523PlatformSettings =>
+      'The platform settings page is reorganized into a concise title, permission badge and a shared connection status summary with responsive sections; unsaved drafts survive section switches.';
+
+  @override
+  String get release2523LoginOtp =>
+      'The login verification challenge is isolated per account and server context; switching account or server no longer leaves a stale challenge, and late callbacks expire automatically.';
+
+  @override
+  String get release2523ServerAlert =>
+      'Server status alerts restore the system-administrator receiving exception, and alert pools resolve by real grants.';
+
+  @override
   String get release2521Permissions =>
       'Finance reviews, final quality inspections and similar operations follow effective permissions without extra department or named-grant requirements. Business data scopes and document-state checks remain in place.';
 

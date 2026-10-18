@@ -115,6 +115,7 @@ void main() {
     '2.5.20',
     '2.5.21',
     '2.5.22',
+    '2.5.23',
   ]) {
     for (final language in ['zh', 'en', 'ko']) {
       testWidgets(
@@ -129,7 +130,9 @@ void main() {
               tester,
               version: release,
               locale: Locale(language),
-              scale: {'2.5.20', '2.5.21', '2.5.22'}.contains(release) ? 2 : 1.6,
+              scale: {'2.5.20', '2.5.21', '2.5.22', '2.5.23'}.contains(release)
+                  ? 2
+                  : 1.6,
               brightness: brightness,
             );
             final l10n = AppLocalizations.of(
@@ -147,6 +150,14 @@ void main() {
                 l10n.release2518Storage,
                 l10n.release2518CompanyConnections,
                 l10n.release2518LayoutAndTrace,
+              ],
+              '2.5.23' => [
+                l10n.release2523TaskAudience,
+                l10n.release2523PermissionTransfer,
+                l10n.release2523PickerTables,
+                l10n.release2523PlatformSettings,
+                l10n.release2523LoginOtp,
+                l10n.release2523ServerAlert,
               ],
               '2.5.21' || '2.5.22' => [
                 l10n.release2521Permissions,

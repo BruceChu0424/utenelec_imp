@@ -10463,6 +10463,29 @@ class AppLocalizationsZh extends AppLocalizations {
   String get permissionRevokeOnly => '当前只能移除原有授权，不能重新授权。';
 
   @override
+  String get release2523TaskAudience =>
+      '工作台待办、红黄徽章和行动通知按真实授予的操作权限与单据责任计算：仅能查看不再生成运营任务，跨部门真实授权正常收到任务，系统管理员不再默认接收全部业务待办。';
+
+  @override
+  String get release2523PermissionTransfer =>
+      '权限配置支持跨部门导入、预览与整套迁移，共享工具权限分类自动保持一致，过程留有审计记录。';
+
+  @override
+  String get release2523PickerTables =>
+      '客户、员工、货品等选择器升级为表格视图并统一底部确认条，列清晰可比较；浏览面板宽度档位统一，窄屏自动适配。';
+
+  @override
+  String get release2523PlatformSettings =>
+      '平台设置页重构为简洁标题、权限徽标与共享连接状态摘要，分区响应式布局，切换分区保留未保存草稿。';
+
+  @override
+  String get release2523LoginOtp =>
+      '登录二次验证挑战与账号、服务器上下文隔离，切换账号或服务器不再残留旧挑战，过期回调自动失效。';
+
+  @override
+  String get release2523ServerAlert => '服务器状态告警恢复系统管理员接收例外口径，告警池按真实授权解析。';
+
+  @override
   String get release2521Permissions =>
       '财务审核、出厂质检等操作按有效权限开放，取消额外的部门归属和个人点名授权门槛，继续保留业务数据范围与单据状态校验。';
 

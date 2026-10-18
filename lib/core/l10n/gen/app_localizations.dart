@@ -19222,6 +19222,42 @@ abstract class AppLocalizations {
   /// **'当前只能移除原有授权，不能重新授权。'**
   String get permissionRevokeOnly;
 
+  /// No description provided for @release2523TaskAudience.
+  ///
+  /// In zh, this message translates to:
+  /// **'工作台待办、红黄徽章和行动通知按真实授予的操作权限与单据责任计算：仅能查看不再生成运营任务，跨部门真实授权正常收到任务，系统管理员不再默认接收全部业务待办。'**
+  String get release2523TaskAudience;
+
+  /// No description provided for @release2523PermissionTransfer.
+  ///
+  /// In zh, this message translates to:
+  /// **'权限配置支持跨部门导入、预览与整套迁移，共享工具权限分类自动保持一致，过程留有审计记录。'**
+  String get release2523PermissionTransfer;
+
+  /// No description provided for @release2523PickerTables.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户、员工、货品等选择器升级为表格视图并统一底部确认条，列清晰可比较；浏览面板宽度档位统一，窄屏自动适配。'**
+  String get release2523PickerTables;
+
+  /// No description provided for @release2523PlatformSettings.
+  ///
+  /// In zh, this message translates to:
+  /// **'平台设置页重构为简洁标题、权限徽标与共享连接状态摘要，分区响应式布局，切换分区保留未保存草稿。'**
+  String get release2523PlatformSettings;
+
+  /// No description provided for @release2523LoginOtp.
+  ///
+  /// In zh, this message translates to:
+  /// **'登录二次验证挑战与账号、服务器上下文隔离，切换账号或服务器不再残留旧挑战，过期回调自动失效。'**
+  String get release2523LoginOtp;
+
+  /// No description provided for @release2523ServerAlert.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务器状态告警恢复系统管理员接收例外口径，告警池按真实授权解析。'**
+  String get release2523ServerAlert;
+
   /// No description provided for @release2521Permissions.
   ///
   /// In zh, this message translates to:

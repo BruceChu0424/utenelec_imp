@@ -408,7 +408,23 @@ Future<void> _selectAccount(WidgetTester tester, FinanceDocType type) async {
     );
     await tester.tap(field);
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(ListTile, 'ZH000001 · 人民币账户'));
+    final accountRow = find.byKey(
+      const ValueKey('finance-account-picker-account-1'),
+    );
+    await tester.ensureVisible(accountRow);
+    expect(
+      find.descendant(of: accountRow, matching: find.text('人民币账户')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: accountRow, matching: find.text('ZH000001')),
+      findsOneWidget,
+    );
+    await tester.tap(accountRow);
+    await tester.pumpAndSettle();
+    final confirm = find.byKey(const Key('finance-account-picker-confirm'));
+    await tester.ensureVisible(confirm);
+    await tester.tap(confirm);
   }
   await tester.pumpAndSettle();
 }

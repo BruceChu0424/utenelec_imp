@@ -70,7 +70,7 @@ jobs:
       - name: Generate OSV SARIF
         id: osv-report
         if: ${{ !cancelled() && steps.osv-scan.outcome != 'skipped' }}
-        uses: google/osv-scanner-action/osv-reporter-action@8dc09193bb540e09b23da07ad7e30bd33bf87018 # v2.3.8
+        uses: google/osv-scanner-action/osv-reporter-action@9a96bc4d2b09685b6142bcfe25a3dc17cb2d7347 # v2.3.8
         continue-on-error: true
         with:
           scan-args: |-

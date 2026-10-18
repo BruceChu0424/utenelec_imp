@@ -22,6 +22,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.inOrder;
 
 /**
  * ADR-110: 只有「已被轮换出新令牌」的旧令牌再次出现才是被盗重放 (吊销全部会话 + 安全事件)。
@@ -65,6 +66,29 @@ class StaffRefreshReuseClassificationTest {
         assertTrue(outcome.reuseDetected());
         assertEquals(token.getId(), outcome.tokenId());
         verifyNoInteractions(tokenService);
+        var order = inOrder(tokens, users, sessions);
+        order.verify(tokens).findIdentityByTokenHash(HashUtil.sha256("rotated-then-replayed"));
+        order.verify(users).findByIdForUpdate(token.getUserId());
+        order.verify(tokens).findAndLockByTokenHash(HashUtil.sha256("rotated-then-replayed"));
+        order.verify(sessions).lockAndEvaluateForRefresh(token.getSessionId(), token.getUserId(), null);
+    }
+
+    @Test
+    void tokenOwnerChangedAfterScalarLookupIsRejectedBeforeSessionOrIssuance() {
+        RefreshToken token = revokedToken("owner-changed", null);
+        token.setUserId(UUID.randomUUID());
+        assertEquals(ErrorCode.UNAUTHORIZED, assertThrows(ApiException.class,
+                () -> transaction.rotate("owner-changed")).getCode());
+        verifyNoInteractions(sessions, tokenService);
+    }
+
+    @Test
+    void tokenSessionChangedAfterScalarLookupIsRejectedBeforeSessionOrIssuance() {
+        RefreshToken token = revokedToken("session-changed", null);
+        token.setSessionId(UUID.randomUUID());
+        assertEquals(ErrorCode.UNAUTHORIZED, assertThrows(ApiException.class,
+                () -> transaction.rotate("session-changed")).getCode());
+        verifyNoInteractions(sessions, tokenService);
     }
 
     private RefreshToken revokedToken(String raw, UUID replacedBy) {
@@ -78,7 +102,11 @@ class StaffRefreshReuseClassificationTest {
         token.setReplacedBy(replacedBy);
         token.setSessionId(UUID.randomUUID());
         when(tokens.findAndLockByTokenHash(HashUtil.sha256(raw))).thenReturn(Optional.of(token));
-        when(users.findById(account.getId())).thenReturn(Optional.of(account));
+        var identity = mock(RefreshTokenRepository.Identity.class);
+        when(identity.getUserId()).thenReturn(token.getUserId());
+        when(identity.getSessionId()).thenReturn(token.getSessionId());
+        when(tokens.findIdentityByTokenHash(HashUtil.sha256(raw))).thenReturn(Optional.of(identity));
+        when(users.findByIdForUpdate(account.getId())).thenReturn(Optional.of(account));
         return token;
     }
 }

@@ -27,7 +27,10 @@ import java.util.List;
 import java.util.UUID;
 import java.util.function.Supplier;
 
-/** Server-owned TOTP lifecycle. Locks user -> factor -> session; failures commit before being reported. */
+/**
+ * Server-owned TOTP lifecycle. Factor mutations serialize on the user row. Credential revocation
+ * takes refresh-token locks before session locks; rejected OTP attempts commit before being reported.
+ */
 @Service
 public class RemoteMfaService {
     static final Duration ENROLLMENT_TTL = Duration.ofMinutes(10);
@@ -168,10 +171,16 @@ public class RemoteMfaService {
         AuthUser principal = lanStaff();
         Attempt<Revoked> result = transaction.execute(status -> {
             UserAccount user = lockUser(principal.getId());
-            requireCurrentSession(principal);
+            // Refresh/logout take token -> session locks. Do not hold the session while
+            // waiting to revoke tokens: that would deadlock with an in-flight rotation.
+            requireCurrentSessionSnapshot(principal);
             ErrorCode denied = verifyLocked(user, state(user.getId(), true), code);
             if (denied != null) return Attempt.denied(denied);
-            clear(user.getId());
+            refreshTokens.revokeAllByUserId(user.getId());
+            // Logout may have won while we waited. A failed locked recheck must throw,
+            // rolling back both token revocation and OTP consumption before clearing MFA.
+            requireCurrentSession(principal);
+            clearFactorAndSessions(user.getId());
             audit(user, "mfa_disabled", "success");
             return Attempt.ok(new Revoked(true));
         });
@@ -194,20 +203,23 @@ public class RemoteMfaService {
             if (AuthSessionService.evaluate(actor.session(), AuthSessionService.idleTimeoutMinutes(actor.idleTimeoutRaw()), sessions.now())
                     != AuthSessionService.Verdict.ACTIVE) throw new ApiException(ErrorCode.UNAUTHORIZED);
             state(userId, true);
-            clear(userId);
+            refreshTokens.revokeAllByUserId(userId);
+            clearFactorAndSessions(userId);
             audit.logCommitted(principal.getId(), principal.getLoginAccount(), "mfa_admin_reset", "users",
                     userId.toString(), "success;reason=" + reason.strip());
             return new Revoked(true);
         });
     }
 
-    private void clear(UUID userId) {
+    /** Never reacquire refresh-token locks here: the caller may already hold a session lock. */
+    private void clearFactorAndSessions(UUID userId) {
         jdbc.update("""
                 UPDATE staff_mfa SET secret_ciphertext=NULL,enabled_at=NULL,pending_secret_ciphertext=NULL,
                     pending_session_id=NULL,pending_expires_at=NULL,last_accepted_step=NULL,
                     failed_attempts=0,locked_until=NULL,updated_at=:now WHERE user_id=:user
                 """, params(userId));
-        refreshTokens.revokeAllByUserId(userId);
+        // A refresh that committed while the bulk token update waited can have inserted
+        // a token outside that UPDATE's snapshot. Revoking its shared sid is authoritative.
         sessions.revokeAllForUser(userId, AuthSessionService.REASON_MFA_CHANGED);
         sessions.clearMfaForUser(userId);
     }
@@ -261,6 +273,13 @@ public class RemoteMfaService {
     private void requireCurrentSession(AuthUser user) {
         if (sessions.lockAndEvaluateForRefresh(user.getSessionId(), user.getId(), null) != AuthSessionService.Verdict.ACTIVE)
             throw new ApiException(ErrorCode.UNAUTHORIZED);
+    }
+
+    private void requireCurrentSessionSnapshot(AuthUser user) {
+        var state = sessions.loadStaff(user.getId(), user.getSessionId(), user.getId())
+                .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
+        if (AuthSessionService.evaluate(state.session(), AuthSessionService.idleTimeoutMinutes(state.idleTimeoutRaw()), sessions.now())
+                != AuthSessionService.Verdict.ACTIVE) throw new ApiException(ErrorCode.UNAUTHORIZED);
     }
 
     private AuthUser staff() {

@@ -53,7 +53,8 @@ class StaffRefreshRemoteAccessTest {
         token.setDeviceInfo("test-device");
         when(tokens.findAndLockByTokenHash(HashUtil.sha256(rawToken)))
                 .thenReturn(Optional.of(token));
-        when(users.findById(account.getId())).thenReturn(Optional.of(account));
+        identity(tokens, rawToken, token);
+        when(users.findByIdForUpdate(account.getId())).thenReturn(Optional.of(account));
 
         ApiException denied = assertThrows(
                 ApiException.class,
@@ -89,11 +90,19 @@ class StaffRefreshRemoteAccessTest {
         token.setRevokedAt(OffsetDateTime.now());
         when(tokens.findAndLockByTokenHash(HashUtil.sha256(rawToken)))
                 .thenReturn(Optional.of(token));
-        when(users.findById(account.getId())).thenReturn(Optional.of(account));
+        identity(tokens, rawToken, token);
+        when(users.findByIdForUpdate(account.getId())).thenReturn(Optional.of(account));
 
         ApiException denied = assertThrows(ApiException.class, () -> transaction.rotate(rawToken));
 
         assertEquals(ErrorCode.REMOTE_ACCESS_DENIED, denied.getCode());
         verifyNoInteractions(tokenService);
+    }
+
+    private static void identity(RefreshTokenRepository tokens, String raw, RefreshToken token) {
+        var identity = mock(RefreshTokenRepository.Identity.class);
+        when(identity.getUserId()).thenReturn(token.getUserId());
+        when(identity.getSessionId()).thenReturn(token.getSessionId());
+        when(tokens.findIdentityByTokenHash(HashUtil.sha256(raw))).thenReturn(Optional.of(identity));
     }
 }

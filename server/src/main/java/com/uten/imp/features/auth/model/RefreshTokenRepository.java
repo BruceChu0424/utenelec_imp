@@ -14,6 +14,15 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
 
     Optional<RefreshToken> findByTokenHash(String tokenHash);
 
+    /** Scalar lookup only: never cache the token entity before its rotation lock is acquired. */
+    interface Identity {
+        UUID getUserId();
+        UUID getSessionId();
+    }
+
+    @Query("SELECT t.userId AS userId, t.sessionId AS sessionId FROM RefreshToken t WHERE t.tokenHash=:tokenHash")
+    Optional<Identity> findIdentityByTokenHash(@Param("tokenHash") String tokenHash);
+
     /** 悲观锁查询（SELECT ... FOR UPDATE），用于刷新轮换时杜绝 TOCTOU 重用竞态。 */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<RefreshToken> findAndLockByTokenHash(@Param("tokenHash") String tokenHash);

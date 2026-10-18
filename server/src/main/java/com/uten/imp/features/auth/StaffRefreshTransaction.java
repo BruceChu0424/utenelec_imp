@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -67,9 +68,23 @@ public class StaffRefreshTransaction {
             throw new ApiException(ErrorCode.UNAUTHORIZED);
         }
 
-        RefreshToken token = tokenRepo
-                .findAndLockByTokenHash(HashUtil.sha256(rawRefresh))
+        String tokenHash = HashUtil.sha256(rawRefresh);
+        // Account writes (password, access grants, lock/reset) can flush unique columns
+        // and take a stronger PostgreSQL user lock. Lock user -> token -> session before
+        // rotation inserts a token with a user FK; the opposite order can deadlock.
+        // This first read is a scalar projection, so the later locked token is fresh.
+        RefreshTokenRepository.Identity identity = tokenRepo.findIdentityByTokenHash(tokenHash)
                 .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
+        UserAccount user = userRepo.findByIdForUpdate(identity.getUserId())
+                .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
+        RefreshToken token = tokenRepo
+                .findAndLockByTokenHash(tokenHash)
+                .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
+        if (!Objects.equals(user.getId(), token.getUserId())
+                || !Objects.equals(identity.getSessionId(), token.getSessionId())
+                || !Objects.equals(tokenHash, token.getTokenHash())) {
+            throw new ApiException(ErrorCode.UNAUTHORIZED);
+        }
 
         // 服务端会话是刷新的前提 (ADR-110): 已吊销 (登出/改密/停用/空闲超时…)、超过从登录起算的
         // 绝对期限、或空闲超时的会话一律不能再换新令牌。锁住会话行, 与并发登出串行。
@@ -79,9 +94,7 @@ public class StaffRefreshTransaction {
             // A remote-access toggle revokes the whole family. On the cloud site,
             // preserve the explicit policy response instead of misclassifying that
             // intentional revocation as a stolen-token reuse incident.
-            UserAccount revokedUser = userRepo.findById(token.getUserId())
-                    .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
-            remoteAccessPolicy.requireStaffAccess(revokedUser);
+            remoteAccessPolicy.requireStaffAccess(user);
             if (token.getReplacedBy() == null || session != AuthSessionService.Verdict.ACTIVE) {
                 // 只有「已被轮换出新令牌」的旧令牌再次出现才是被盗重放。整族被作废 (改登录手机号、
                 // 凭据重置、远程访问变动…) 或会话本身已结束 (登出/改密/停用/空闲超时…) 时,
@@ -95,8 +108,6 @@ public class StaffRefreshTransaction {
             throw new ApiException(ErrorCode.UNAUTHORIZED);
         }
 
-        UserAccount user = userRepo.findById(token.getUserId())
-                .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
         if ("disabled".equals(user.getStatus()) || user.isDeleted()) {
             throw new ApiException(ErrorCode.ACCOUNT_DISABLED);
         }

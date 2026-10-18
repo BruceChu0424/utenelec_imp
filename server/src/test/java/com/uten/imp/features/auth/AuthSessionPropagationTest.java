@@ -100,12 +100,17 @@ class AuthSessionPropagationTest {
         current.setTokenHash(com.uten.imp.common.util.HashUtil.sha256(raw));
         current.setExpiresAt(OffsetDateTime.now().plusHours(1));
         UserAccount user = new UserAccount();
+        user.setId(current.getUserId());
         user.setStatus("active");
         RefreshTokenRepository repository = mock(RefreshTokenRepository.class);
         when(repository.findAndLockByTokenHash(current.getTokenHash()))
                 .thenReturn(Optional.of(current));
         UserAccountRepository users = mock(UserAccountRepository.class);
-        when(users.findById(current.getUserId())).thenReturn(Optional.of(user));
+        var identity = mock(RefreshTokenRepository.Identity.class);
+        when(identity.getUserId()).thenReturn(current.getUserId());
+        when(identity.getSessionId()).thenReturn(sessionId);
+        when(repository.findIdentityByTokenHash(current.getTokenHash())).thenReturn(Optional.of(identity));
+        when(users.findByIdForUpdate(current.getUserId())).thenReturn(Optional.of(user));
         RefreshTokenService tokenService = mock(RefreshTokenService.class);
         UUID replacementId = UUID.randomUUID();
         when(tokenService.issueInSession(

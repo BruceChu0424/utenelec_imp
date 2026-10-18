@@ -206,8 +206,13 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
                                 """)
                         .setParameter("itemId", purchaseTaskId)
                         .getSingleResult());
+        // Other scenarios insert over 100 rows into this class's shared database.
+        // Scope this timestamp/authorization assertion to its own document.
+        String requestNo = transactions.execute(status -> (String) entityManager.createNativeQuery(
+                "SELECT bill_no FROM purchase_requests WHERE id=:id")
+                .setParameter("id", requestId).getSingleResult());
         FulfillmentWorkbenchPage page = transactions.execute(status ->
-                service.query("PURCHASE", "", "", "", null, null, 1, 100));
+                service.query("PURCHASE", "", requestNo, "", null, null, 1, 100));
         assertNotNull(page);
         FulfillmentTaskRow task = page.items().stream()
                 .filter(row -> row.taskId().equals(purchaseTaskId))
@@ -246,7 +251,7 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
                         true,
                         false));
         FulfillmentWorkbenchPage openPage = transactions.execute(status ->
-                service.query("PURCHASE", "", "", "", null, null, 1, 100));
+                service.query("PURCHASE", "", requestNo, "", null, null, 1, 100));
         FulfillmentTaskRow openTask = openPage.items().stream()
                 .filter(row -> row.taskId().equals(purchaseTaskId))
                 .findFirst()

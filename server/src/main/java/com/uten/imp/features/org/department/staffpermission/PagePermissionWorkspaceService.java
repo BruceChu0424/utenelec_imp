@@ -1198,7 +1198,8 @@ public class PagePermissionWorkspaceService {
                 account != null,
                 account != null
                         && !account.isDeleted()
-                        && "active".equals(account.getStatus()));
+                        && "active".equals(account.getStatus()),
+                accountStatus(account), row.employmentStatus());
     }
 
     private StaffSummary summary(
@@ -1218,7 +1219,12 @@ public class PagePermissionWorkspaceService {
                 account != null,
                 account != null
                         && !account.isDeleted()
-                        && "active".equals(account.getStatus()));
+                        && "active".equals(account.getStatus()),
+                accountStatus(account), employee.getStatus());
+    }
+
+    private String accountStatus(UserAccount account) {
+        return account == null || account.isDeleted() ? "notProvisioned" : account.getStatus();
     }
 
     private Comparator<Permission> permissionOrder() {

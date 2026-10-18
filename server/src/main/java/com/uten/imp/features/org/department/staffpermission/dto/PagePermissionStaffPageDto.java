@@ -23,6 +23,14 @@ public record PagePermissionStaffPageDto(
             String positionName,
             boolean departmentManager,
             boolean hasAccount,
-            boolean accountActive) {
+            boolean accountActive,
+            String accountStatus,
+            String employmentStatus) {
+        public StaffSummary(UUID employeeId, String code, String fullName, UUID departmentId,
+                            String departmentName, String positionName, boolean departmentManager,
+                            boolean hasAccount, boolean accountActive) {
+            this(employeeId, code, fullName, departmentId, departmentName, positionName,
+                    departmentManager, hasAccount, accountActive, null, null);
+        }
     }
 }

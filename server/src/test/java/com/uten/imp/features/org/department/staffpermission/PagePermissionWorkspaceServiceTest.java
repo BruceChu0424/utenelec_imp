@@ -142,7 +142,7 @@ class PagePermissionWorkspaceServiceTest {
                                 departmentId,
                                 "测试部门",
                                 "跟单员",
-                                false)),
+                                false, "onLeave")),
                         2,
                         30,
                         31,
@@ -157,6 +157,8 @@ class PagePermissionWorkspaceServiceTest {
         assertEquals(31L, result.total());
         assertEquals(1, result.staff().size());
         assertTrue(result.staff().getFirst().accountActive());
+        assertEquals("active", result.staff().getFirst().accountStatus());
+        assertEquals("onLeave", result.staff().getFirst().employmentStatus());
         assertEquals(departmentId, result.staff().getFirst().departmentId());
         verify(staffQuery).query(
                 searchAuthority, departmentId, actorEmployeeId,

@@ -10,5 +10,10 @@ public record ClientAccessCandidate(
         UUID departmentId,
         String departmentName,
         String status,
-        boolean activeAccount) {
+        boolean activeAccount,
+        String accountStatus) {
+    public ClientAccessCandidate(UUID employeeId, String name, String code, UUID departmentId,
+                                 String departmentName, String status, boolean activeAccount) {
+        this(employeeId, name, code, departmentId, departmentName, status, activeAccount, null);
+    }
 }

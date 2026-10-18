@@ -25,7 +25,7 @@ class DataScopeHistoricalOwnerCandidateTest {
         Query query = mock(Query.class);
         when(em.createNativeQuery(anyString())).thenReturn(query);
         when(query.getResultList()).thenReturn(
-                List.<Object[]>of(new Object[]{owner, "离职业务员", "E009", "resigned", 7L, department, "销售组"}));
+                List.<Object[]>of(new Object[]{owner, "离职业务员", "E009", "resigned", 7L, department, "销售组", "disabled"}));
         DataScopeAdminService service = new DataScopeAdminService(
                 em, mock(TxSessionVars.class), mock(AdminUserSupport.class),
                 mock(SecurityContextCurrentUser.class), mock(DataScopeCasGuard.class),
@@ -41,6 +41,8 @@ class DataScopeHistoricalOwnerCandidateTest {
                 "historicalOnly", true,
                 "count", 7L,
                 "departmentId", department.toString(),
-                "departmentName", "销售组"));
+                "departmentName", "销售组",
+                "accountStatus", "disabled",
+                "employmentStatus", "resigned"));
     }
 }

@@ -38,8 +38,8 @@ class AuditActorDirectoryTest {
         when(data.setFirstResult(0)).thenReturn(data);
         when(data.setMaxResults(20)).thenReturn(data);
         when(data.getResultList()).thenReturn(List.of(
-                new Object[]{staffId, "staff", "13800000000", "张三", "财务部", "会计", departmentId},
-                new Object[]{visitorId, "visitor", "V123456", "李访客", "外部访客", "访客", null}));
+                new Object[]{staffId, "staff", "13800000000", "张三", "财务部", "会计", departmentId, "deleted", "resigned"},
+                new Object[]{visitorId, "visitor", "V123456", "李访客", "外部访客", "访客", null, "blocked", null}));
         when(count.getSingleResult()).thenReturn(2L);
         when(activity.getResultList()).thenReturn(java.util.Collections.<Object>singletonList(
                 new Object[]{staffId, OffsetDateTime.parse("2026-08-29T08:00:00+08:00")}));
@@ -54,6 +54,10 @@ class AuditActorDirectoryTest {
         assertEquals("*******0000", result.getItems().get(0).account());
         assertEquals("staff", result.getItems().get(0).actorType());
         assertEquals(departmentId, result.getItems().get(0).departmentId());
+        assertEquals("deleted", result.getItems().get(0).accountStatus());
+        assertEquals("resigned", result.getItems().get(0).employmentStatus());
+        assertEquals("blocked", result.getItems().get(1).accountStatus());
+        assertNull(result.getItems().get(1).employmentStatus());
         assertNull(result.getItems().get(1).departmentId());
         assertEquals("李访客(V123456)", result.getItems().get(1).displayName());
         assertEquals("visitor", result.getItems().get(1).actorType());
@@ -69,8 +73,9 @@ class AuditActorDirectoryTest {
                         && combined.contains("directory.employee_code"),
                 "staff code must participate in people-directory keyword search");
         assertTrue(!combined.contains("phone_enc") && !combined.contains("phone_hash"));
-        assertTrue(!combined.contains("visitor.status"),
+        assertTrue(!combined.contains("where visitor.status") && !combined.contains("and visitor.status"),
                 "blocked/disabled historical people must remain selectable");
+        assertTrue(combined.contains("case when u.is_deleted then 'deleted' else u.status end"));
         assertTrue(!combined.contains("lateral"),
                 "last activity must be batched for the selected page, never per user");
     }

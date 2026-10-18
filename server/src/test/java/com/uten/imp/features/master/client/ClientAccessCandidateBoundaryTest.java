@@ -41,6 +41,10 @@ class ClientAccessCandidateBoundaryTest {
                 .containsExactly(firstDepartment, secondDepartment);
         assertThat(result.getItems()).extracting(row -> row.departmentName())
                 .containsExactly("销售组", "销售组");
+        assertThat(result.getItems()).allSatisfy(row -> {
+            assertThat(row.accountStatus()).isEqualTo("active");
+            assertThat(row.status()).isEqualTo("active");
+        });
     }
 
     @Test

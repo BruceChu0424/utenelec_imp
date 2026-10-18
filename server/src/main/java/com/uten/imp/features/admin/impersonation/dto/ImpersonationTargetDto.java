@@ -9,5 +9,11 @@ public record ImpersonationTargetDto(
         String employeeCode,
         String departmentName,
         String positionName,
-        UUID departmentId) {
+        UUID departmentId,
+        String accountStatus,
+        String employmentStatus) {
+    public ImpersonationTargetDto(UUID employeeId, String name, String employeeCode,
+                                  String departmentName, String positionName, UUID departmentId) {
+        this(employeeId, name, employeeCode, departmentName, positionName, departmentId, null, null);
+    }
 }

@@ -57,11 +57,10 @@ public class DepartmentPermissionAdminService {
     private static final List<String> MODULE_ORDER = List.of(
             // V831：工作台「常用功能」四张自助卡（我的访客/工资条/我的报销/意见箱）的
             // 权限码归「常用模块」并排最前，权限管理页勾选/收回即控这些卡片显隐（ADR-168）。
-            "常用模块",
+            "常用模块", "通用",
             "基础资料", "销售管理", "采购管理", "委外管理", "生产管理",
-            "仓库管理", "财税管理", "工程研发", "人事行政", "品质检测", "系统管理",
-            // V546：跨模块共用的附件权限（attachment:*）归「通用 → 附件」，排在业务模块之后。
-            "通用");
+            // V875：跨业务的 AI 助手和附件归「通用」，系统运维管理留在目录最后。
+            "仓库管理", "财税管理", "工程研发", "人事行政", "品质检测", "系统管理");
 
     private final PermissionRepository permissionRepo;
     private final DepartmentRepository departmentRepo;
@@ -148,6 +147,16 @@ public class DepartmentPermissionAdminService {
      */
     @Transactional
     public PermissionChangeDto setDepartmentPermissions(UUID departmentId, List<String> permissionCodes) {
+        return setDepartmentPermissions(departmentId, permissionCodes, false);
+    }
+
+    /** Restore an explicitly reviewed configuration without introducing optional navigation grants. */
+    @Transactional
+    public PermissionChangeDto restoreExactDepartmentPermissions(UUID departmentId, List<String> permissionCodes) {
+        return setDepartmentPermissions(departmentId, permissionCodes, true);
+    }
+
+    private PermissionChangeDto setDepartmentPermissions(UUID departmentId, List<String> permissionCodes, boolean exact) {
         support.requireCurrentSuperAdmin();
         tx.bind();
         lockDepartment(departmentId);
@@ -162,7 +171,7 @@ public class DepartmentPermissionAdminService {
         enabledConfiguration.removeAll(current);
         Set<String> availableConfiguration = new LinkedHashSet<>(inherited);
         availableConfiguration.addAll(desired);
-        desired.addAll(PermissionDependencyGrantPlanner.additions(permissionRepo.findAll(), enabledConfiguration, availableConfiguration,
+        if (!exact) desired.addAll(PermissionDependencyGrantPlanner.additions(permissionRepo.findAll(), enabledConfiguration, availableConfiguration,
                 removedDependencies, permission -> GrantPolicy.departmentGrantable(permission.grantPolicies()), "部门配置"));
         Set<String> added = new LinkedHashSet<>(desired);
         added.removeAll(current);
@@ -234,6 +243,15 @@ public class DepartmentPermissionAdminService {
      */
     @Transactional
     public PermissionChangeDto setBaseline(List<String> permissionCodes) {
+        return setBaseline(permissionCodes, false);
+    }
+
+    @Transactional
+    public PermissionChangeDto restoreExactBaseline(List<String> permissionCodes) {
+        return setBaseline(permissionCodes, true);
+    }
+
+    private PermissionChangeDto setBaseline(List<String> permissionCodes, boolean exact) {
         support.requireCurrentSuperAdmin();
         tx.bind();
         Set<String> desired = new LinkedHashSet<>(permissionCodes == null ? List.of() : permissionCodes);
@@ -244,7 +262,7 @@ public class DepartmentPermissionAdminService {
         explicitRemoval.removeAll(desired);
         Set<String> newlyEnabled = new LinkedHashSet<>(desired);
         newlyEnabled.removeAll(current);
-        desired.addAll(PermissionDependencyGrantPlanner.additions(permissionRepo.findAll(), newlyEnabled, desired,
+        if (!exact) desired.addAll(PermissionDependencyGrantPlanner.additions(permissionRepo.findAll(), newlyEnabled, desired,
                 explicitRemoval, permission -> GrantPolicy.baselineEligible(permission.grantPolicies()), "全员基础包"));
         Set<String> added = new LinkedHashSet<>(desired);
         added.removeAll(current);

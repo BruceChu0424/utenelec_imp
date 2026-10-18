@@ -32,12 +32,14 @@ class ImpersonationTargetDirectoryTest {
                 rows.stream().map(row -> row.employeeId()).toList());
         assertEquals(List.of(first.getDepartmentId(), second.getDepartmentId()),
                 rows.stream().map(row -> row.departmentId()).toList());
+        assertEquals(List.of("locked", "locked"), rows.stream().map(row -> row.accountStatus()).toList());
+        assertEquals(List.of("active", "active"), rows.stream().map(row -> row.employmentStatus()).toList());
         verify(query).list(2, 100, null, Set.of("active"), null, false, null, null);
     }
 
     private EmployeeListItem employee(UUID id, UUID departmentId) {
         return new EmployeeListItem(id, "UT-" + id, "同名员工", null,
                 "同名部门", null, "active", null, null, null, false, 0,
-                departmentId, null);
+                departmentId, null, "locked");
     }
 }

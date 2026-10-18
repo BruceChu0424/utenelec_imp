@@ -12,6 +12,7 @@ import com.uten.imp.features.rbac.GrantPolicy;
 import com.uten.imp.features.rbac.Permission;
 import com.uten.imp.features.rbac.PermissionRepository;
 import com.uten.imp.features.rbac.PermissionDependencyGrantPlanner;
+import com.uten.imp.features.rbac.PermissionDependencyCatalog;
 import com.uten.imp.features.rbac.UserPermissionOverride;
 import com.uten.imp.features.rbac.UserPermissionOverrideId;
 import com.uten.imp.features.rbac.UserPermissionOverrideRepository;
@@ -149,6 +150,37 @@ public class PermissionOverrideAdminService {
 
     private PermissionChangeDto apply(
             UserAccount target, Map<String, String> desired, UUID sourceActorUserId, boolean bulk) {
+        return apply(target, desired, sourceActorUserId, bulk, false);
+    }
+
+    /** Portable restore preserves explicit future policy as well as today's effective permissions. */
+    @Transactional
+    public PermissionChangeDto restoreExactPermissionOverrides(UUID userId,Set<String> grants,Set<String> revokes,Set<String> expected) {
+        tx.bind();
+        var locked=accountLifecycle.lock(userId);
+        support.requireAuthorizationTarget(locked.account());
+        accountLifecycle.requireCurrentEmployee(locked);
+        accountLifecycle.requireActiveAccount(locked);
+        if(!java.util.Collections.disjoint(grants,revokes)) throw new ApiException(ErrorCode.BUSINESS,"同一权限不能同时加授和收回");
+        Map<String,String> desired=new LinkedHashMap<>();
+        grants.stream().sorted().forEach(code->desired.put(code,GRANT));
+        revokes.stream().sorted().forEach(code->desired.put(code,REVOKE));
+        return applyExact(locked.account(),desired,expected);
+    }
+
+    private PermissionChangeDto applyExact(UserAccount target,Map<String,String> desired,Set<String> expected) {
+        if(!new PermissionDependencyCatalog(permissionRepo.findAll()).usablePermissions(expected).equals(expected)) {
+            throw new ApiException(ErrorCode.BUSINESS,"权限快照缺少操作必需的查看权限，请重新导出或复制");
+        }
+        var change = apply(target, desired, support.requireCurrentUser().getId(), false, true);
+        if (!permissionResolver.breakdownOf(target).effective().equals(expected)) {
+            throw new ApiException(ErrorCode.CONFLICT, "权限来源已变化，未能得到预览中的相同权限，本次修改已回滚，请重新预览");
+        }
+        return change;
+    }
+
+    private PermissionChangeDto apply(
+            UserAccount target, Map<String, String> desired, UUID sourceActorUserId, boolean bulk, boolean exact) {
         UUID userId = target.getId();
         Map<String, String> current = currentOverrides(userId);
         PermissionResolver.PermBreakdown breakdown = permissionResolver.breakdownOf(target);
@@ -165,7 +197,7 @@ public class PermissionOverrideAdminService {
                 .map(Map.Entry::getKey).collect(Collectors.toSet());
         inherited.removeAll(blocked);
         desired.forEach((code, effect) -> { if (GRANT.equals(effect)) inherited.add(code); });
-        Set<String> requiredReads = PermissionDependencyGrantPlanner.additions(permissionRepo.findAll(), enabled,
+        Set<String> requiredReads = exact ? Set.of() : PermissionDependencyGrantPlanner.additions(permissionRepo.findAll(), enabled,
                 inherited, blocked, permission -> GrantPolicy.individuallyGrantable(permission.grantPolicies())
                         && (!bulk || GrantPolicy.bulkEligible(permission.grantPolicies())),
                 bulk ? "个人批量授权" : "个人授权");

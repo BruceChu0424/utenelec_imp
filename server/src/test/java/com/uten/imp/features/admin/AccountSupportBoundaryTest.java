@@ -610,6 +610,7 @@ class AccountSupportBoundaryTest {
         Employee zhang = new Employee();
         zhang.setCode("UT0001");
         zhang.setFullName("张三");
+        zhang.setStatus("probation");
         UUID zhangId = zhang.getId();
         EmployeeSensitive zhangSensitive = new EmployeeSensitive();
         zhangSensitive.setEmployeeId(zhangId);
@@ -625,6 +626,8 @@ class AccountSupportBoundaryTest {
         assertEquals(zhangId, rows.get(0).employeeId());
         assertEquals("张三", rows.get(0).name());
         assertTrue(rows.get(0).hasPhone());
+        assertEquals("notProvisioned", rows.get(0).accountStatus());
+        assertEquals("probation", rows.get(0).employmentStatus());
     }
 
     @Test
@@ -633,6 +636,7 @@ class AccountSupportBoundaryTest {
         Employee li = new Employee();
         li.setCode("UT0002");
         li.setFullName("李四");
+        li.setStatus("onLeave");
         // 无敏感记录：hasPhone 为 false，前端据此置灰(证件号码有问题不拦开号，V807)
         when(employees.findProvisionCandidates(eq("李"), any(Pageable.class)))
                 .thenReturn(List.of(li));
@@ -642,6 +646,8 @@ class AccountSupportBoundaryTest {
 
         assertEquals(1, rows.size());
         assertFalse(rows.get(0).hasPhone());
+        assertEquals("notProvisioned", rows.get(0).accountStatus());
+        assertEquals("onLeave", rows.get(0).employmentStatus());
     }
 
     private AuthUser superActor() {

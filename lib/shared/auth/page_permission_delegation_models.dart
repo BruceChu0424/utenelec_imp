@@ -49,7 +49,12 @@ class PagePermissionStaffSummary {
     this.code,
     this.fullName,
     this.positionName,
+    this.accountStatus,
+    this.employmentStatus,
   });
+
+  final String? accountStatus;
+  final String? employmentStatus;
 
   final String employeeId;
   final String departmentId;
@@ -63,6 +68,8 @@ class PagePermissionStaffSummary {
 
   factory PagePermissionStaffSummary.fromJson(Map<String, dynamic> json) =>
       PagePermissionStaffSummary(
+        accountStatus: json['accountStatus'] as String?,
+        employmentStatus: json['employmentStatus'] as String?,
         employeeId: json['employeeId'] as String,
         departmentId: json['departmentId'] as String? ?? '',
         departmentName: json['departmentName'] as String? ?? '',

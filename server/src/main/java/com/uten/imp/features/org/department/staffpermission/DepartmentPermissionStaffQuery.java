@@ -83,7 +83,8 @@ public class DepartmentPermissionStaffQuery {
                                department.id AS department_id,
                                department.name AS department_name,
                                position.name AS position_name,
-                               (department.manager_id = employee.id) AS department_manager
+                               (department.manager_id = employee.id) AS department_manager,
+                               employee.status AS employment_status
                         """
                         + filter
                         + "\n"
@@ -95,7 +96,7 @@ public class DepartmentPermissionStaffQuery {
                         rs.getObject("department_id", UUID.class),
                         rs.getString("department_name"),
                         rs.getString("position_name"),
-                        rs.getBoolean("department_manager")),
+                        rs.getBoolean("department_manager"), rs.getString("employment_status")),
                 pageParameters.toArray());
         int totalPages = total == 0L ? 0 : (int) Math.ceil((double) total / size);
         return new Result(List.copyOf(rows), page, size, total, totalPages);
@@ -213,7 +214,13 @@ public class DepartmentPermissionStaffQuery {
             UUID departmentId,
             String departmentName,
             String positionName,
-            boolean departmentManager) {
+            boolean departmentManager,
+            String employmentStatus) {
+        public StaffProjection(UUID employeeId, String code, String fullName, UUID departmentId,
+                               String departmentName, String positionName, boolean departmentManager) {
+            this(employeeId, code, fullName, departmentId, departmentName, positionName,
+                    departmentManager, null);
+        }
     }
 
     public record Result(

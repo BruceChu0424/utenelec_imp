@@ -13,5 +13,13 @@ public record AuditActorOption(
         String department,
         String position,
         OffsetDateTime lastActivityAt,
-        UUID departmentId) {
+        UUID departmentId,
+        String accountStatus,
+        String employmentStatus) {
+    public AuditActorOption(UUID actorId, String actorType, String account, String displayName,
+                            String name, String department, String position, OffsetDateTime lastActivityAt,
+                            UUID departmentId) {
+        this(actorId, actorType, account, displayName, name, department, position,
+                lastActivityAt, departmentId, null, null);
+    }
 }

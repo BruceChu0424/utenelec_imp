@@ -90,6 +90,17 @@ class JsonRequestBodyLimitAdviceTest {
                 .andExpect(jsonPath("$.code").value(ErrorCode.PAYLOAD_TOO_LARGE.name()));
     }
 
+    @Test
+    void explicitEndpointLimitAcceptsBoundedConfigurationWithoutWideningOrdinaryEndpoints() throws Exception {
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(new BodyController())
+                .setControllerAdvice(new JsonRequestBodyLimitAdvice(16), new GlobalExceptionHandler()).build();
+        String body = "{\"value\":\"12345678901234567890\"}";
+        mvc.perform(post("/configuration").contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isOk());
+        mvc.perform(post("/body").contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isPayloadTooLarge());
+        mvc.perform(post("/configuration").contentType(MediaType.APPLICATION_JSON).content("{\"value\":\""+"x".repeat(70)+"\"}"))
+                .andExpect(status().isPayloadTooLarge());
+    }
+
     private static MockHttpInputMessage input(String body, MediaType contentType) {
         MockHttpInputMessage input =
                 new MockHttpInputMessage(body.getBytes(StandardCharsets.UTF_8));
@@ -104,5 +115,9 @@ class JsonRequestBodyLimitAdviceTest {
         Map<String, Object> body(@RequestBody Map<String, Object> body) {
             return body;
         }
+
+        @PostMapping("/configuration")
+        @JsonBodyLimit(64)
+        Map<String, Object> configuration(@RequestBody Map<String, Object> body) { return body; }
     }
 }

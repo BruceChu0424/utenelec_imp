@@ -231,7 +231,9 @@ public class AuditActorDirectory {
                        directory.name,
                        directory.department_name,
                        directory.position_name,
-                       directory.department_id
+                       directory.department_id,
+                       directory.account_status,
+                       directory.employment_status
                 FROM (
                     SELECT u.id AS actor_id,
                            'staff' AS actor_type,
@@ -240,7 +242,9 @@ public class AuditActorDirectory {
                            e.code AS employee_code,
                            d.name AS department_name,
                            p.name AS position_name,
-                           e.department_id AS department_id
+                           e.department_id AS department_id,
+                           CASE WHEN u.is_deleted THEN 'deleted' ELSE u.status END AS account_status,
+                           e.status AS employment_status
                     FROM users u
                     LEFT JOIN employees e ON e.id = u.employee_id
                     LEFT JOIN departments d ON d.id = e.department_id
@@ -253,7 +257,9 @@ public class AuditActorDirectory {
                            NULL,
                            '外部访客',
                            '访客',
-                           NULL::uuid
+                           NULL::uuid,
+                           visitor.status,
+                           NULL::text
                     FROM visitor_accounts visitor
                 ) directory
                 """ + filter + """
@@ -311,7 +317,7 @@ public class AuditActorDirectory {
                     toText(row[4]),
                     toText(row[5]),
                     null,
-                    toUuid(row[6])));
+                    toUuid(row[6]), toText(row[7]), toText(row[8])));
         }
         if (!items.isEmpty()) {
             var activityQuery = entityManager.createNativeQuery("""
@@ -333,7 +339,8 @@ public class AuditActorDirectory {
             items.replaceAll(item -> new AuditActorOption(
                     item.actorId(), item.actorType(), item.account(),
                     item.displayName(), item.name(),
-                    item.department(), item.position(), lastActivity.get(item.actorId()), item.departmentId()));
+                    item.department(), item.position(), lastActivity.get(item.actorId()), item.departmentId(),
+                    item.accountStatus(), item.employmentStatus()));
         }
         long total = ((Number) countQuery.getSingleResult()).longValue();
         int totalPages = total == 0

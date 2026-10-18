@@ -42,6 +42,7 @@ public final class AuditClassifier {
             "verify_password", "verify_password_failed");
     private static final Set<String> AUTHORIZATION_ACTIONS = Set.of(
             "super_admin_grant", "super_admin_revoke", "remote_access_grant", "remote_access_revoke",
+            "permission_configuration_import", "permission_configuration_copy",
             "impersonation_enter", "impersonation_switch", "impersonation_exit");
     private static final Set<String> SYSTEM_ACTIONS = Set.of(
             "update_system_setting", "audit_retention_completed", "audit_retention_failed",
@@ -69,6 +70,7 @@ public final class AuditClassifier {
     /** 语义写事件里属于授权治理的资源(控制器)。 */
     private static final Set<String> AUTHORIZATION_RESOURCES = Set.of(
             "admin_permission", "admin_user", "department_staff_permission",
+            "permission_configuration_transfer",
             "page_permission_workspace", "impersonation", "client_access");
     /** 系统级资源: 成功的写入一律记高风险(AI 服务配置与系统设置同级, ADR-133)。 */
     private static final Set<String> SYSTEM_RESOURCES = Set.of(

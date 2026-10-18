@@ -440,7 +440,12 @@ class DataScopeOwner {
     this.departmentId,
     this.departmentName,
     this.historicalOnly = false,
+    this.accountStatus,
+    this.employmentStatus,
   });
+
+  final String? accountStatus;
+  final String? employmentStatus;
 
   final String employeeId;
   final String name;
@@ -452,6 +457,9 @@ class DataScopeOwner {
   final bool historicalOnly;
 
   factory DataScopeOwner.fromJson(Map<String, dynamic> json) => DataScopeOwner(
+    accountStatus: json['accountStatus'] as String?,
+    employmentStatus:
+        json['employmentStatus'] as String? ?? json['status'] as String?,
     employeeId: json['employeeId'] as String? ?? '',
     name: json['name'] as String? ?? '',
     code: json['code'] as String?,
@@ -514,7 +522,12 @@ class AccountProvisionCandidate {
     required this.hasPhone,
     this.departmentId,
     this.departmentName,
+    this.accountStatus,
+    this.employmentStatus,
   });
+
+  final String? accountStatus;
+  final String? employmentStatus;
 
   final String employeeId;
   final String name;
@@ -534,6 +547,8 @@ class AccountProvisionCandidate {
 
   factory AccountProvisionCandidate.fromJson(Map<String, dynamic> json) =>
       AccountProvisionCandidate(
+        accountStatus: json['accountStatus'] as String?,
+        employmentStatus: json['employmentStatus'] as String?,
         employeeId: json['employeeId'] as String,
         name: json['name'] as String? ?? '',
         code: json['code'] as String? ?? '',

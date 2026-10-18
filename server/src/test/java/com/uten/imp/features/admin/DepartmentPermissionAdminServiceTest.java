@@ -264,6 +264,24 @@ class DepartmentPermissionAdminServiceTest {
     }
 
     @Test
+    void catalogPlacesSharedToolsAfterSelfServiceAndSystemManagementLast() {
+        List<String> expected = List.of("常用模块", "通用", "基础资料", "销售管理", "采购管理",
+                "委外管理", "生产管理", "仓库管理", "财税管理", "工程研发", "人事行政", "品质检测", "系统管理");
+        List<Permission> catalog = new java.util.ArrayList<>();
+        for (int i = 0; i < expected.size(); i++) {
+            Permission item = permission("catalog:item" + i, GrantPolicy.NORMAL);
+            item.setModule(expected.get(i));
+            item.setCategory("分组");
+            item.setSortOrder(expected.size() - i);
+            catalog.add(0, item);
+        }
+        when(permissionRepo.findAll()).thenReturn(catalog);
+
+        assertThat(service.catalog()).extracting(group -> group.module())
+                .containsExactlyElementsOf(expected);
+    }
+
+    @Test
     void baselineRejectsBulkExcludedCodeAndWritesOnlyTheDifference() {
         when(permissionRepo.findBaselineCodes()).thenReturn(List.of("notice:read", "visitor:host_confirm"));
         Permission price = permission("goods:price:view", GrantPolicy.BULK_EXCLUDED);

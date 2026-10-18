@@ -346,6 +346,13 @@ class InternalTestRuntimeContractTest(unittest.TestCase):
                 ("POST", "/api/website-inquiries/ingest"),
                 ("GET", "/api/website-inquiries"),
                 ("GET", "/api/website-inquiries/new-count"),
+                # 2026-10-18 官网询盘并入新增两条，已按本测试的用意复核过网关策略：
+                #   counts 是极小的读（徽章三桶计数），follow-ups 是写（保存本人跟进
+                # 记录，服务端再核 webinquiry:claim 与认领归属）。两者都落在下方通用
+                # `location /api/`（不限方法、走同一限流区），不需要像 ingest（桥接
+                # 专用入口）那样单开 location。改动这两条时请重新做同样的判断。
+                ("GET", "/api/website-inquiries/counts"),
+                ("POST", "/api/website-inquiries/{id}/follow-ups"),
                 ("GET", "/api/website-inquiries/{id}"),
                 ("POST", "/api/website-inquiries/{id}/status"),
                 ("POST", "/api/website-inquiries/{id}/convert"),
@@ -397,7 +404,9 @@ class InternalTestRuntimeContractTest(unittest.TestCase):
         security_config = read("server/src/main/java/com/uten/imp/config/SecurityConfig.java")
         self.assertIn('"/api/website-inquiries/ingest"', security_config)
         self.assertIn(".anyRequest().authenticated()", security_config)
-        self.assertEqual(3, inquiry_controller.count("hasAuthority('webinquiry:view')"))
+        # 2026-10-18 +2：counts（徽章计数读）与 follow-ups（跟进写入，叠加
+        # webinquiry:claim 复核）各自带一条 webinquiry:view 门槛。
+        self.assertEqual(5, inquiry_controller.count("hasAuthority('webinquiry:view')"))
         dynamic_inquiry_guard = (
             "hasAuthority(#request.requiredPermission()) and "
             "(#request.assignToMe() != true or hasAuthority('webinquiry:claim'))"

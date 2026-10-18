@@ -15,6 +15,8 @@ import 'package:uten_imp/features/warehouse/materialbin/models/workshop_source_w
 import 'package:uten_imp/features/warehouse/materialbin/repositories/workshop_material_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/providers/sensitive_read_boundary_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
@@ -417,6 +419,7 @@ Future<void> pumpWorkshopMaterialPage(
   Size size = const Size(1400, 900),
   double textScale = 1,
   Set<String> permissions = const {Perm.workshopMaterialView},
+  ProviderListenable<Set<String>>? permissionState,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -430,8 +433,22 @@ Future<void> pumpWorkshopMaterialPage(
     ProviderScope(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(prefs),
-        currentPermissionsProvider.overrideWithValue(permissions),
+        currentPermissionsProvider.overrideWith(
+          (ref) => permissionState == null
+              ? permissions
+              : ref.watch(permissionState),
+        ),
         isSuperAdminProvider.overrideWithValue(false),
+        // The fake repository and its read boundary belong to the same test
+        // session; do not start the real API/session restoration for a picker.
+        sensitiveReadBoundaryProvider.overrideWith(
+          (ref) => SensitiveReadBoundary(
+            identity: const AuthenticatedScope(userId: 'workshop-test-user'),
+            api: repo.api,
+            permissions: ref.watch(currentPermissionsProvider),
+            superAdmin: ref.watch(isSuperAdminProvider),
+          ),
+        ),
         fixedBadgeSummaryOverride(badgeSummaryFixture()),
         workshopMaterialRepositoryProvider.overrideWithValue(repo),
       ],

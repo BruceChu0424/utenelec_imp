@@ -11,7 +11,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
-import '../../../components/inputs/uten_filter_picker_field.dart';
+import '../../../components/inputs/uten_reference_picker_field.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -28,6 +28,7 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/stock_ledger/material_trace_models.dart';
+import '../../../shared/stock_ledger/material_trace_repository.dart';
 import '../../../shared/stock_ledger/widgets/goods_production_trace_view.dart';
 import '../../../shared/stock_ledger/widgets/material_trace_subject_picker.dart';
 import '../../basic_data/models/goods_node.dart';
@@ -63,6 +64,11 @@ enum _TraceEntry {
 }
 
 enum _TraceResultMode { actual, relationships }
+
+typedef _TraceCandidate = ({
+  MaterialTraceSubject subject,
+  GoodsListItem? material,
+});
 
 typedef _WhereUsedFilters = ({
   _WhereUsedSource source,
@@ -100,6 +106,8 @@ class WhereUsedReportPage extends ConsumerStatefulWidget {
 }
 
 class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
+  final _subjectController = TextEditingController();
+  bool _queryDirty = false;
   GoodsListItem? _material;
   MaterialTraceSubject? _subject;
   _TraceEntry _entry = _TraceEntry.goods;
@@ -129,18 +137,21 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
   /// 「返回即刷新」登记用的本页路径（build 首次捕获）。
   String? _myLocation;
 
-  String get _subjectLabel {
+  String get _subjectHint => switch (_entry) {
+    _TraceEntry.goods => '搜索物料名称或编号',
+    _TraceEntry.document => '搜索单据编号',
+    _TraceEntry.batch => '搜索生产批次号',
+  };
+
+  static String _subjectLabel(MaterialTraceSubject subject) =>
+      subject.code.isEmpty || subject.displayName == subject.code
+      ? subject.displayName
+      : '${subject.displayName} · ${subject.code}';
+
+  void _restoreSubjectDisplay() {
     final subject = _subject;
-    if (subject == null) {
-      return switch (_entry) {
-        _TraceEntry.goods => '搜索并选择物料',
-        _TraceEntry.document => '输入并选择单据',
-        _TraceEntry.batch => '输入并选择生产批次',
-      };
-    }
-    return subject.code.isEmpty || subject.displayName == subject.code
-        ? subject.displayName
-        : '${subject.displayName} · ${subject.code}';
+    _subjectController.text = subject == null ? '' : _subjectLabel(subject);
+    _queryDirty = false;
   }
 
   @override
@@ -155,6 +166,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
         ++_traceReloadTick;
         _subject = null;
         _material = null;
+        _restoreSubjectDisplay();
         _entry = _TraceEntry.goods;
         _mode = _TraceResultMode.relationships;
         _traceDirection = 'usage';
@@ -208,6 +220,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
     ++_loadGeneration;
     _closeReadRoute(_filterRoute);
     _closeReadRoute(_basisRoute);
+    _subjectController.dispose();
     super.dispose();
   }
 
@@ -230,70 +243,109 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
     _loading = false;
   }
 
-  Future<void> _pickMaterial() async {
-    final boundary = ref.read(sensitiveReadBoundaryProvider);
-    final epoch = _readEpoch;
-    final selected = await showWhereUsedMaterialPicker(context, ref);
-    if (selected == null ||
-        !mounted ||
-        epoch != _readEpoch ||
-        boundary != ref.read(sensitiveReadBoundaryProvider)) {
-      return;
+  static _TraceCandidate _materialCandidate(GoodsListItem material) => (
+    material: material,
+    subject: MaterialTraceSubject(
+      type: 'GOODS',
+      id: material.id,
+      code: material.code ?? '',
+      label: material.name ?? material.code ?? '',
+      goodsId: material.id,
+      goodsCode: material.code,
+      goodsName: material.name,
+      status: material.status,
+    ),
+  );
+
+  Future<List<_TraceCandidate>> _loadSubjectSuggestions(
+    String keyword,
+    _TraceEntry entry,
+  ) async {
+    if (entry == _TraceEntry.goods) {
+      final materials = await loadWhereUsedMaterialSuggestions(
+        ref.read(apiClientProvider),
+        keyword,
+      );
+      return materials.map(_materialCandidate).toList();
     }
+    final result = await ref
+        .read(materialTraceRepositoryProvider)
+        .subjects(kind: entry.value, keyword: keyword);
+    return [
+      for (final subject in result.items) (subject: subject, material: null),
+    ];
+  }
+
+  Future<void> _selectSubject(_TraceCandidate candidate) async {
     setState(() {
       _invalidateLoadedResults();
-      _material = selected;
-      _subject = MaterialTraceSubject(
-        type: 'GOODS',
-        id: selected.id,
-        code: selected.code ?? '',
-        label: selected.name ?? selected.code ?? '',
-        goodsId: selected.id,
-        goodsCode: selected.code,
-        goodsName: selected.name,
-        status: selected.status,
-      );
-      _mode = _TraceResultMode.relationships;
+      _material = candidate.material;
+      _subject = candidate.subject;
+      _restoreSubjectDisplay();
+      _mode = candidate.material == null
+          ? _TraceResultMode.actual
+          : _TraceResultMode.relationships;
       _traceDirection = 'usage';
       _page = 1;
       _sortKey = null;
       _sortAscending = true;
+      ++_traceReloadTick;
     });
-    await _load();
+    if (candidate.material != null) await _load();
   }
 
-  Future<void> _pickSubject() async {
-    if (_entry == _TraceEntry.goods) return _pickMaterial();
+  void _clearSubject() {
+    setState(() {
+      ++_readEpoch;
+      _subject = null;
+      _material = null;
+      _restoreSubjectDisplay();
+      _invalidateLoadedResults();
+      ++_traceReloadTick;
+    });
+  }
+
+  Future<void> _pickSubject([String keyword = '']) async {
     final boundary = ref.read(sensitiveReadBoundaryProvider);
     final epoch = _readEpoch;
-    final selected = await showMaterialTraceSubjectPicker(
-      context,
-      ref,
-      kind: _entry.value,
-    );
+    final entry = _entry;
+    final initialKeyword = _queryDirty ? keyword : '';
+    _TraceCandidate? candidate;
+    if (entry == _TraceEntry.goods) {
+      final material = await showWhereUsedMaterialPicker(
+        context,
+        ref,
+        initialKeyword: initialKeyword,
+      );
+      if (material != null) candidate = _materialCandidate(material);
+    } else {
+      final subject = await showMaterialTraceSubjectPicker(
+        context,
+        ref,
+        kind: entry.value,
+        initialKeyword: initialKeyword,
+      );
+      if (subject != null) candidate = (subject: subject, material: null);
+    }
     if (!mounted ||
-        selected == null ||
+        candidate == null ||
+        entry != _entry ||
         epoch != _readEpoch ||
         boundary != ref.read(sensitiveReadBoundaryProvider)) {
       return;
     }
-    setState(() {
-      _invalidateLoadedResults();
-      _subject = selected;
-      _material = null;
-      _mode = _TraceResultMode.actual;
-      _traceDirection = 'usage';
-      ++_traceReloadTick;
-    });
+    await _selectSubject(candidate);
   }
 
   void _changeEntry(String? value) {
     final entry = _TraceEntry.values.where((e) => e.value == value).firstOrNull;
     if (entry == null || entry == _entry) return;
     setState(() {
+      ++_readEpoch;
       _entry = entry;
       _subject = null;
       _material = null;
+      _restoreSubjectDisplay();
       _mode = entry == _TraceEntry.goods
           ? _TraceResultMode.relationships
           : _TraceResultMode.actual;
@@ -570,118 +622,224 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
     );
   }
 
-  Widget _buildQueryToolbar() => LayoutBuilder(
-    builder: (context, constraints) {
-      Widget entry() => Semantics(
-        label: '查询入口',
-        child: UtenDropdownField(
-          key: const Key('where-used-entry-kind'),
-          value: _entry.value,
-          allowClear: false,
-          enabled: !_loading,
-          items: [
-            for (final entry in _TraceEntry.values)
-              UtenDropdownItem(value: entry.value, label: entry.label),
-          ],
-          onChanged: _changeEntry,
-        ),
-      );
-      Widget subject(double width) => UtenFilterPickerField(
-        key: const Key('where-used-query-subject'),
-        label: '查询对象',
-        value: _subject == null ? null : _subjectLabel,
-        placeholder: _subjectLabel,
-        width: width,
-        icon: Icons.search_rounded,
-        enabled: !_loading,
-        onTap: _pickSubject,
-      );
-      final hasFilters =
-          _limitHistoryDates ||
-          (_mode == _TraceResultMode.relationships &&
-              _source != _WhereUsedSource.all);
-      final filterLabel = hasFilters ? '筛选 · 已设置' : '筛选';
-      final actions = <Widget>[
-        UtenButton(
-          key: const Key('where-used-search'),
-          onPressed: _loading || _subject == null ? null : _refreshQuery,
-          isLoading: _loading,
-          child: const Text('查询'),
-        ),
-        if (constraints.maxWidth < 460)
-          IconButton.outlined(
-            key: const Key('where-used-filters'),
-            tooltip: filterLabel,
-            isSelected: hasFilters,
-            icon: const Icon(Icons.filter_alt_outlined),
-            selectedIcon: const Icon(Icons.filter_alt_rounded),
-            onPressed: _loading ? null : _showFilters,
-          )
-        else
-          UtenButton(
-            key: const Key('where-used-filters'),
-            type: UtenButtonType.secondary,
-            onPressed: _loading ? null : _showFilters,
-            child: Text(filterLabel),
-          ),
-      ];
-      if (constraints.maxWidth >= 760) {
-        return Row(
-          children: [
-            SizedBox(width: 140, child: entry()),
-            const SizedBox(width: UtenSpacing.s12),
-            Flexible(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 560),
-                child: LayoutBuilder(
-                  builder: (_, available) => subject(available.maxWidth),
-                ),
-              ),
-            ),
-            const SizedBox(width: UtenSpacing.s12),
-            ...actions.expand(
-              (action) => [action, const SizedBox(width: UtenSpacing.s8)],
-            ),
-          ],
+  Widget _buildQueryToolbar() {
+    final theme = Theme.of(context);
+    final height = UtenControlMetrics.controlHeight(context);
+    ButtonStyle toolbarAction(ButtonStyle? style) =>
+        (style ?? const ButtonStyle()).copyWith(
+          minimumSize: WidgetStatePropertyAll(Size.square(height)),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          visualDensity: VisualDensity.standard,
         );
-      }
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (constraints.maxWidth < 460)
-            Row(
-              children: [
-                Expanded(child: entry()),
-                const SizedBox(width: UtenSpacing.s8),
-                actions.first,
-                const SizedBox(width: UtenSpacing.s8),
-                actions.last,
-              ],
-            )
-          else
-            Wrap(
-              spacing: UtenSpacing.s8,
-              runSpacing: UtenSpacing.s8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                SizedBox(
-                  width: 132.0.clamp(0, constraints.maxWidth),
-                  child: entry(),
-                ),
-                ...actions,
-              ],
+    // This query row has a standard command height, independently of the
+    // compact filter-row and ordinary form-field heights elsewhere.
+    return Theme(
+      data: theme.copyWith(
+        inputDecorationTheme: theme.inputDecorationTheme.copyWith(
+          isDense: true,
+          visualDensity: VisualDensity.standard,
+          floatingLabelBehavior: FloatingLabelBehavior.never,
+          constraints: BoxConstraints(minHeight: height),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: UtenSpacing.s12,
+            vertical: UtenSpacing.s8,
+          ),
+          prefixIconConstraints: BoxConstraints(
+            minWidth: height,
+            minHeight: height,
+          ),
+          suffixIconConstraints: BoxConstraints(
+            minWidth: height,
+            minHeight: height,
+          ),
+        ),
+        textButtonTheme: TextButtonThemeData(
+          style: toolbarAction(theme.textButtonTheme.style),
+        ),
+        iconButtonTheme: IconButtonThemeData(
+          style: toolbarAction(theme.iconButtonTheme.style),
+        ),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final boundary = ref.watch(sensitiveReadBoundaryProvider);
+          final epoch = _readEpoch;
+          final entryKind = _entry;
+          bool current() =>
+              mounted &&
+              epoch == _readEpoch &&
+              entryKind == _entry &&
+              boundary == ref.read(sensitiveReadBoundaryProvider);
+          final entryText = TextPainter(
+            text: TextSpan(
+              text: _entry.label,
+              style: theme.textTheme.bodyLarge,
             ),
-          const SizedBox(height: UtenSpacing.s8),
-          subject(constraints.maxWidth),
-        ],
-      );
-    },
-  );
+            textDirection: Directionality.of(context),
+            textScaler: MediaQuery.textScalerOf(context),
+          )..layout();
+          final entryWidth = (entryText.width + height + UtenSpacing.s24)
+              .clamp(112.0, double.infinity)
+              .clamp(0.0, constraints.maxWidth);
+          entryText.dispose();
+          Widget entry() => Semantics(
+            label: '查询入口',
+            child: UtenDropdownField(
+              key: const Key('where-used-entry-kind'),
+              value: _entry.value,
+              allowClear: false,
+              menuMatchContentWidth: true,
+              enabled: !_loading,
+              items: [
+                for (final entry in _TraceEntry.values)
+                  UtenDropdownItem(value: entry.value, label: entry.label),
+              ],
+              onChanged: _changeEntry,
+            ),
+          );
+          Widget subject(double width) => SizedBox(
+            key: const Key('where-used-query-subject'),
+            width: width,
+            child: UtenReferencePickerField<_TraceCandidate>(
+              controller: _subjectController,
+              label: _subjectHint,
+              hint: _subjectHint,
+              enabled: !_loading,
+              suggestionScope: (boundary, epoch, entryKind),
+              isCurrent: current,
+              loadSuggestions: (keyword) async {
+                if (!current()) return const [];
+                final candidates = await _loadSubjectSuggestions(
+                  keyword,
+                  entryKind,
+                );
+                return current() ? candidates : const [];
+              },
+              labelOf: (candidate) => _subjectLabel(candidate.subject),
+              onInputChanged: (text) {
+                _queryDirty =
+                    text != (_subject == null ? '' : _subjectLabel(_subject!));
+              },
+              onSelected: (candidate) {
+                if (current()) unawaited(_selectSubject(candidate));
+              },
+              onOpenPicker: (keyword) async {
+                if (current()) await _pickSubject(keyword);
+              },
+              onClear: () {
+                if (current()) _clearSubject();
+              },
+              onEditingDismissed: () {
+                if (current()) _restoreSubjectDisplay();
+              },
+              optionBuilder: (context, candidate) {
+                final material = candidate.material;
+                final subject = candidate.subject;
+                final details = [
+                  if (material != null) ...[
+                    if (material.model?.isNotEmpty ?? false) material.model!,
+                    if (material.spec?.isNotEmpty ?? false) material.spec!,
+                  ] else
+                    materialTraceSubjectTypeLabel(subject.type),
+                  if (subject.status?.isNotEmpty ?? false)
+                    materialTraceStatusLabel(subject.status!),
+                ];
+                return ListTile(
+                  key: ValueKey((
+                    'where-used-suggestion',
+                    subject.type,
+                    subject.id,
+                  )),
+                  dense: true,
+                  title: Text(
+                    _subjectLabel(subject),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: details.isEmpty ? null : Text(details.join(' · ')),
+                );
+              },
+            ),
+          );
+          final hasFilters =
+              _limitHistoryDates ||
+              (_mode == _TraceResultMode.relationships &&
+                  _source != _WhereUsedSource.all);
+          final filterLabel = hasFilters ? '筛选 · 已设置' : '筛选';
+          final actions = <Widget>[
+            UtenButton(
+              key: const Key('where-used-search'),
+              onPressed: _loading || _subject == null ? null : _refreshQuery,
+              isLoading: _loading,
+              child: const Text('查询'),
+            ),
+            if (constraints.maxWidth < 460)
+              IconButton.outlined(
+                key: const Key('where-used-filters'),
+                tooltip: filterLabel,
+                isSelected: hasFilters,
+                icon: const Icon(Icons.filter_alt_outlined),
+                selectedIcon: const Icon(Icons.filter_alt_rounded),
+                onPressed: _loading ? null : _showFilters,
+              )
+            else
+              UtenButton(
+                key: const Key('where-used-filters'),
+                type: UtenButtonType.secondary,
+                onPressed: _loading ? null : _showFilters,
+                child: Text(filterLabel),
+              ),
+          ];
+          if (constraints.maxWidth >= 760 &&
+              MediaQuery.textScalerOf(context).scale(14) <= 21) {
+            return Row(
+              children: [
+                SizedBox(width: entryWidth, child: entry()),
+                const SizedBox(width: UtenSpacing.s12),
+                Flexible(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 360),
+                    child: LayoutBuilder(
+                      builder: (_, available) => subject(available.maxWidth),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: UtenSpacing.s12),
+                ...actions.expand(
+                  (action) => [action, const SizedBox(width: UtenSpacing.s8)],
+                ),
+              ],
+            );
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Wrap(
+                spacing: UtenSpacing.s8,
+                runSpacing: UtenSpacing.s8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  SizedBox(width: entryWidth, child: entry()),
+                  ...actions,
+                ],
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: subject(constraints.maxWidth.clamp(0.0, 360.0)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
 
   Future<void> _showBasis() {
     final boundary = ref.read(sensitiveReadBoundaryProvider);
     return showUtenAdaptivePanel<void>(
       context: context,
+      widthFraction: UtenPanelWidth.form,
       builder: (panelContext) => _readPanel(
         panelContext,
         boundary,
@@ -728,6 +886,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
     String? error;
     final result = await showUtenAdaptivePanel<_WhereUsedFilters>(
       context: context,
+      widthFraction: UtenPanelWidth.form,
       builder: (panelContext) => _readPanel(
         panelContext,
         boundary,
@@ -952,7 +1111,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
         title: '先搜索一个物料',
         message: '可搜索当前、停用、软删除及迁移占位的历史物料。',
         actionLabel: '选择物料',
-        onAction: _pickMaterial,
+        onAction: _pickSubject,
       );
     }
     if (_loading && _data == null) {

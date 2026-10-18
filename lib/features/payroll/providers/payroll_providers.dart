@@ -9,26 +9,31 @@ import '../models/payroll_batch.dart';
 import '../models/payroll_slip.dart';
 import '../repositories/payroll_repository.dart';
 
-enum PayrollFilter { all, published, viewed, downloaded }
+enum PayrollFilter { published, viewed, viewedOnly, downloaded }
 
 extension PayrollFilterValue on PayrollFilter {
   String get label => switch (this) {
-    PayrollFilter.all => '全部',
     PayrollFilter.published => '未查看',
     PayrollFilter.viewed => '已查看',
+    PayrollFilter.viewedOnly => '已查看未下载',
     PayrollFilter.downloaded => '已下载',
   };
 
   String get apiStatus => switch (this) {
-    PayrollFilter.all => 'PUBLISHED',
     PayrollFilter.published => 'UNVIEWED',
     PayrollFilter.viewed => 'VIEWED',
+    PayrollFilter.viewedOnly => 'VIEWED_ONLY',
     PayrollFilter.downloaded => 'DOWNLOADED',
   };
+
+  /// 下载也是已查看；表头细筛不增加一个独立的顶部分类。
+  PayrollFilter get category => this == PayrollFilter.published
+      ? PayrollFilter.published
+      : PayrollFilter.viewed;
 }
 
 final payrollFilterProvider = StateProvider<PayrollFilter>(
-  (ref) => PayrollFilter.all,
+  (ref) => PayrollFilter.published,
 );
 
 final payrollListProvider =

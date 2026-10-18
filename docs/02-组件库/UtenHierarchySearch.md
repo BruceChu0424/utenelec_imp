@@ -78,7 +78,7 @@
 
 - 货品定位要求 `goods:view`；`GoodsService` 的 owner 隔离仅在 `UTEN_GOODS_OWNER_SCOPE_ENABLED=true` 时启用，默认关闭。货品资料页仅排除 stub，选择器同时排除禁用和 stub；货品/库存分类树还分别需要页面组合中的 `material_category:view`。
 - 模具、客户、供应商资料沿用各自主档查看权限；客户结果继续受 owner 可见范围约束。
-- 部门管理的树/员工列表分别使用 `department:view`、`employee:view`；没有 `employee:view` 时统一框只搜部门节点，不发员工请求。员工选择器专用最小树 `GET /api/org/departments/employee-picker-tree` 只要求 `employee:view`，仅返回定位字段，不扩大部门管理权限。
+- 部门管理的树/员工列表分别使用 `department:view`、`employee:view`；没有 `employee:view` 时统一框只搜部门节点，不发员工请求。员工选择器专用最小树 `GET /api/org/departments/employee-picker-tree` 向已有内部候选选择权限的业务提供 `id/code/name/level/parentId/children`，包括员工查看、账号支持、通知发布、客户分配、仓库编辑、交接/离职、审计查看与超管授权管理，具体权限见 [最小权限树](UtenDepartmentEmployeePicker.md#三最小权限树)。访客不可读取；各业务候选仍独立授权，树不扩大员工名册或部门管理权限。
 - “我的部门”只使用 `/api/my-department/tree` 与 `/api/my-department/roster`，服务端限制在本人所在大部门分支，并只返回安全花名册字段。
 - 应收应付分类定位要求 `finance_report:view`，服务层与公司级总览一致继续要求 `finance:view:all`；不能借用受客户 owner 范围裁剪的主档搜索。
 

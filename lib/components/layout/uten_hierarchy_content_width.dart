@@ -20,16 +20,17 @@ class UtenHierarchyContentWidthController extends ChangeNotifier {
   bool _scheduled = false;
   bool _disposed = false;
 
+  /// Non-text space needed by the widest observed row: expand/selection
+  /// controls, badges, actions and padding. A manual resize may elide titles,
+  /// but must keep these controls available.
+  double get chromeWidth => math.max(
+    _maximumChrome,
+    _chromeWidths.isEmpty ? 0 : _chromeWidths.lastKey()!,
+  );
+
   double get minimumWidth => math.max(
     _widths.isEmpty ? 0 : _widths.lastKey()!,
-    _labelWidths.isEmpty
-        ? 0
-        : _labelWidths.lastKey()! +
-              math.max(
-                _maximumChrome,
-                _chromeWidths.isEmpty ? 0 : _chromeWidths.lastKey()!,
-              ) +
-              12,
+    _labelWidths.isEmpty ? 0 : _labelWidths.lastKey()! + chromeWidth + 12,
   );
 
   void _replaceWidth(
@@ -58,10 +59,10 @@ class UtenHierarchyContentWidthController extends ChangeNotifier {
 
   /// A model-level title measurement also covers collapsed/offscreen nodes.
   /// Metrics changes start a fresh control-width measurement; scrolling alone
-  /// keeps the highest observed chrome so the lower drag bound cannot jump.
+  /// keeps the highest observed chrome so manual resizing remains safe.
   void reportLabelWidth(Object owner, double? width, {Object? metricsKey}) {
     if (_disposed || (width != null && (!width.isFinite || width < 0))) return;
-    final before = minimumWidth;
+    final before = (minimumWidth, chromeWidth);
     if (width == null) {
       _metricsKeys.remove(owner);
     } else if (!_metricsKeys.containsKey(owner) ||
@@ -76,7 +77,7 @@ class UtenHierarchyContentWidthController extends ChangeNotifier {
 
   void _report(Object row, double? width, {double? chrome}) {
     if (_disposed || (width != null && (!width.isFinite || width < 0))) return;
-    final before = minimumWidth;
+    final before = (minimumWidth, chromeWidth);
     _replaceWidth(_rows, _widths, row, width);
     _replaceWidth(
       _rowChrome,
@@ -90,8 +91,8 @@ class UtenHierarchyContentWidthController extends ChangeNotifier {
     _notifyAfterFrame(before);
   }
 
-  void _notifyAfterFrame(double before) {
-    if (minimumWidth == before || _scheduled) return;
+  void _notifyAfterFrame((double, double) before) {
+    if ((minimumWidth, chromeWidth) == before || _scheduled) return;
     _scheduled = true;
     SchedulerBinding.instance.addPostFrameCallback((_) {
       _scheduled = false;

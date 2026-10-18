@@ -18,5 +18,13 @@ public record WarehouseKeeper(
         String departmentName,
         boolean hasAccount,
         boolean warehouseMember,
-        boolean duplicateName) {
+        boolean duplicateName,
+        String accountStatus,
+        String employmentStatus) {
+    public WarehouseKeeper(UUID employeeId, String name, String code, UUID departmentId,
+                           String departmentName, boolean hasAccount, boolean warehouseMember,
+                           boolean duplicateName) {
+        this(employeeId, name, code, departmentId, departmentName, hasAccount,
+                warehouseMember, duplicateName, null, null);
+    }
 }

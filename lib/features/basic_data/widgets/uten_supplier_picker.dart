@@ -2,7 +2,7 @@
 //
 // 面板本体是泛型的 showUtenMasterPicker(与客户选择器共用一份，ADR-111)：compact
 // 底部抽屉 / medium+ 右侧滑入面板（宽 = max(720, 屏宽 50%)）；左侧供应商分类树 +
-// 右侧供应商列表(搜索+分页)。
+// 右侧重点字段表格(搜索+分页)。
 // 数据请求 selectableOnly：仅「使用」状态的供应商进入分页。
 // 头部带「添加供应商」（supplier:create 权限）：快捷新建入主档后自动选中该新商。
 import 'package:flutter/material.dart';
@@ -14,6 +14,7 @@ import '../models/supplier_node.dart';
 import '../repositories/supplier_category_repository.dart';
 import '../repositories/supplier_repository.dart';
 import 'supplier_quick_create_sheet.dart';
+import 'master_data_table_view.dart';
 import 'uten_master_picker.dart';
 
 /// 弹出供应商选择器，返回所选供应商；取消返回 null。
@@ -43,7 +44,40 @@ Future<SupplierListItem?> showUtenSupplierPicker(
       idOf: (s) => s.id,
       categoryIdOf: (s) => s.categoryId,
       labelOf: _supplierLabel,
-      subtitleOf: (s) => [s.place, s.linkman, s.mobile],
+      tableColumns: [
+        const MasterColumnDef(
+          key: 'name',
+          label: '供应商名称',
+          width: 220,
+          value: _supplierLabel,
+          columnSearchEnabled: false,
+        ),
+        MasterColumnDef(
+          key: 'linkman',
+          label: '联系人',
+          width: 120,
+          value: (s) => s.linkman,
+          columnSearchEnabled: false,
+        ),
+        MasterColumnDef(
+          key: 'phone',
+          label: '联系电话',
+          width: 160,
+          value: (s) => [s.mobile, s.phone, s.phone2]
+              .whereType<String>()
+              .map((value) => value.trim())
+              .where((value) => value.isNotEmpty)
+              .firstOrNull,
+          columnSearchEnabled: false,
+        ),
+        MasterColumnDef(
+          key: 'place',
+          label: '地区',
+          width: 150,
+          value: (s) => s.place,
+          columnSearchEnabled: false,
+        ),
+      ],
       quickCreateLabel: '添加供应商',
       // 快捷新建入主档 → 刷新供应商字典(表单下拉名解析) → 面板直接选中新商。
       quickCreate: canAdd

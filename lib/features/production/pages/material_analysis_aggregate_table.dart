@@ -1703,6 +1703,8 @@ final class _MaterialAggregateTableController {
               id: employee.id,
               name: employee.fullName,
               employeeCode: employee.code,
+              accountStatus: employee.accountStatus,
+              employmentStatus: employee.status,
               departmentId: employee.departmentId,
               departmentName: employee.departmentName,
             ),

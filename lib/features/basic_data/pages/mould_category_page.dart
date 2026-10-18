@@ -497,6 +497,10 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
                 id: employee.id,
                 name: employee.fullName ?? '',
                 employeeCode: employee.code,
+                accountStatus: employee.accountDeleted
+                    ? 'notProvisioned'
+                    : employee.accountStatus ?? 'notProvisioned',
+                employmentStatus: employee.status,
                 departmentId: employee.departmentId,
                 departmentName: employee.departmentName,
               );

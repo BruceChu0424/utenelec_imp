@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_reference_picker_field.dart';
+import 'package:uten_imp/components/layout/uten_picker_confirm_bar.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/models/mould_node.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
@@ -82,9 +83,16 @@ void main() {
     final table = tester.widget<MasterDataTableView<MouldListItem>>(
       find.byKey(const Key('mould-picker-results')),
     );
+    await tester.tap(find.text('边界模具'));
+    await tester.pumpAndSettle();
+    expect(changes, isEmpty);
+    final oldConfirm = tester
+        .widget<UtenPickerConfirmBar>(find.byType(UtenPickerConfirmBar))
+        .onConfirm!;
     container.read(source.notifier).state = _boundary(canRead: false);
     container.read(sensitiveReadBoundaryProvider);
     table.onRowTap!(_candidate);
+    oldConfirm();
     await tester.pumpAndSettle();
     expect(find.text('选择模具'), findsNothing);
     expect(changes, isEmpty);

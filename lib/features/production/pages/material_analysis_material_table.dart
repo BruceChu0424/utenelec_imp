@@ -1630,6 +1630,12 @@ abstract class _MaterialAnalysisMaterialTableState
       width: 140,
       minimumWidthOf: (_) => 116,
       value: _materialTableRouteText,
+      cellColor: (_, row) {
+        final route = _materialTableRoute(row);
+        return route == null
+            ? null
+            : utenStatusBadgeCellColor(_materialSupplyRouteBadgeType(route));
+      },
       info:
           '这批物料怎么准备：采购 = 向供应商买；委外 = 发给加工商加工；'
           '自制 = 自己车间生产。带下层物料的可选路线更多。'
@@ -2237,12 +2243,8 @@ abstract class _MaterialAnalysisMaterialTableState
     final route = _materialTableRoute(row);
     final groups = _materialRowGroups(row);
     final editable = _canRoute && !_busy && groups.isNotEmpty;
-    final foreground = _materialTableForeground(theme);
     if (!editable) {
-      return Text(
-        _materialTableRouteText(row) ?? '—',
-        style: theme.textTheme.bodyMedium?.copyWith(color: foreground),
-      );
+      return Text(_materialTableRouteText(row) ?? '—');
     }
     // 2026-09-16 用户口径：表格内下拉统一用自家 UtenDropdownField（统一弹层/
     // 单行省略号/描边与同行格一致），不再用原生 DropdownButton。
@@ -4567,6 +4569,8 @@ abstract class _MaterialAnalysisMaterialTableState
               id: employee.id,
               name: employee.fullName,
               employeeCode: employee.code,
+              accountStatus: employee.accountStatus,
+              employmentStatus: employee.status,
               departmentId: employee.departmentId,
               departmentName: employee.departmentName,
             ),

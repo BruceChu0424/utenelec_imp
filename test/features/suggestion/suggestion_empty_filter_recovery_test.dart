@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -78,7 +79,7 @@ void main() {
       expect(find.text('当前筛选下暂无建议，可调整表头筛选'), findsOneWidget);
       expect(find.text('您还没有提交过建议'), findsNothing);
       expect(find.text('提交第一条建议，与同事一起推动改进'), findsNothing);
-      expect(find.byType(FloatingActionButton), findsOneWidget);
+      expect(find.byType(UtenFloatingActionGroup), findsOneWidget);
       table().onFilterChanged(key, null);
       await tester.pumpAndSettle();
       expect(api.queries.last.containsKey(key), isFalse);

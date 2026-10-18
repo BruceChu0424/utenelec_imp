@@ -1,7 +1,7 @@
 // 基本单位资料管理页（基础资料 · 扁平主档，无分类树）。
 //
 // 与货品/模具/客户/供应商/颜色同级，扁平字典（编号/名称/状态 3 字段）：
-// AppBar + 区段标题（含添加）+ 全屏主档表格。复用 MasterDataTableView +
+// AppBar + 搜索栏 + 全屏主档表格；添加统一在右下角悬浮。复用 MasterDataTableView +
 // showMasterEditDialog + showMasterDetailSheet，CRUD/详情/并发防护流程与货品 _DetailPane 一致。
 // 查看全员可见（路由不设守卫），编辑按 unit:edit 权限显隐。
 // 文档：见 docs/03-页面/基础资料页.md。
@@ -18,6 +18,7 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
@@ -461,8 +462,6 @@ class _UnitPageState extends ConsumerState<UnitPage> {
 
   Widget _buildDraftHost(BuildContext context) {
     ref.watch(currentPermissionsProvider);
-    final theme = Theme.of(context);
-    final total = _page?.total ?? 0;
     return Scaffold(
       appBar: UtenAppBar(
         title: '基本单位', // TODO(l10n): 补 arb
@@ -477,6 +476,20 @@ class _UnitPageState extends ConsumerState<UnitPage> {
           ),
         ],
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: _canCreate
+          ? UtenFloatingActionGroup(
+              children: [
+                UtenButton(
+                  size: UtenButtonSize.large,
+                  icon: Icons.add_rounded,
+                  onPressed: _showCreate,
+                  child: const Text('添加单位'),
+                ),
+              ],
+            )
+          : null,
       body: SafeArea(
         child: UtenContentContainer(
           child: Padding(
@@ -489,42 +502,17 @@ class _UnitPageState extends ConsumerState<UnitPage> {
                     left: UtenSpacing.s4,
                     right: UtenSpacing.s4,
                   ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.straighten_outlined,
-                        size: 18,
-                        color: theme.colorScheme.primary,
-                      ),
-                      const SizedBox(width: UtenSpacing.s8),
-                      Text(
-                        '单位 ($total)', // TODO(l10n): 补 arb
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(width: UtenSpacing.s12),
-                      Expanded(
-                        child: UtenSearchBar(
-                          hint: '搜索单位(名称/编号)', // TODO(l10n): 补 arb
-                          initialValue: _keyword,
-                          onChanged: _onKeywordChanged,
-                        ),
-                      ),
-                      if (_canCreate) ...[
-                        const SizedBox(width: UtenSpacing.s8),
-                        UtenButton(
-                          type: UtenButtonType.tonal,
-                          icon: Icons.add_rounded,
-                          onPressed: _showCreate,
-                          child: const Text('添加单位'), // TODO(l10n): 补 arb
-                        ),
-                      ],
-                    ],
+                  child: UtenSearchBar(
+                    hint: '搜索单位(名称/编号)', // TODO(l10n): 补 arb
+                    initialValue: _keyword,
+                    onChanged: _onKeywordChanged,
                   ),
                 ),
                 Expanded(
                   child: MasterDataTableView<UnitListItem>(
+                    bottomContentPadding: _canCreate
+                        ? UtenFloatingActionGroup.scrollClearance
+                        : 0,
                     columnEditingEnabled: _canEdit,
                     tableKey:
                         'features.basic_data.pages.unit_page.UnitPageState._buildDraftHost.1',

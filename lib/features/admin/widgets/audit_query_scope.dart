@@ -800,6 +800,10 @@ class _AuditActorPickerState extends ConsumerState<AuditActorPicker>
               ? 'audit-external-visitors'
               : actor.departmentId,
           departmentName: actor.department,
+          accountStatus: actor.accountStatus,
+          employmentStatus: actor.actorType == 'visitor'
+              ? 'notApplicable'
+              : actor.employmentStatus,
           subtitle: [
             if (actor.actorType == 'visitor') '访客',
             if (actor.position?.trim().isNotEmpty == true)

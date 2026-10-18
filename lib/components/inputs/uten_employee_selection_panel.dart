@@ -5,23 +5,27 @@ import 'package:flutter/material.dart';
 
 import '../../core/network/api_exception.dart';
 import '../../core/responsive/breakpoint.dart';
+import '../../features/basic_data/widgets/master_data_table_view.dart';
+import '../../features/department/models/department_node.dart';
+import '../../features/employee/providers/employee_picker_department_tree_provider.dart';
 import '../../shared/hierarchy/uten_tree_path.dart';
-import '../../shared/models/uten_tree_node.dart';
+import '../../shared/formatters/employee_display.dart';
 import '../../shared/widgets/uten_hierarchy_tree_view.dart';
 import '../feedback/uten_empty.dart';
 import '../layout/uten_adaptive_panel.dart';
 import '../layout/uten_picker_confirm_bar.dart';
 import '../layout/uten_split_view.dart';
-import '../layout/uten_table_column_kit.dart' show utenTableSelectedRowColor;
+import 'uten_employee_department_tree.dart';
 import 'uten_employee_picker_models.dart';
 import 'uten_employee_picker_access.dart';
 import 'uten_search_bar.dart';
 
-/// Only the caller's authorized candidates form this directory. This panel
-/// never reads an HR directory or widens a business-specific candidate scope.
+/// Only the caller's authorized candidates form this directory. Minimal
+/// organization metadata supplies hierarchy, never additional staff records.
 Future<List<UtenEmployeePickerItem>?> showUtenEmployeeSelectionPanel(
   BuildContext context, {
   required UtenEmployeePickerLoader loader,
+  Future<List<DepartmentNode>> Function()? departmentTreeLoader,
   String title = '选择人员',
   bool multiple = false,
   List<UtenEmployeePickerItem> initialSelection = const [],
@@ -43,9 +47,10 @@ Future<List<UtenEmployeePickerItem>?> showUtenEmployeeSelectionPanel(
   try {
     final result = await showUtenAdaptivePanel<List<UtenEmployeePickerItem>>(
       context: context,
-      drawerWidth: math.max(720, MediaQuery.sizeOf(context).width * 0.5),
+      drawerWidth: 720,
       builder: (_) => UtenEmployeeSelectionPanel(
         loader: loader,
+        departmentTreeLoader: departmentTreeLoader,
         title: title,
         multiple: multiple,
         initialSelection: initialSelection,
@@ -80,6 +85,7 @@ class UtenEmployeeSelectionPanel extends StatefulWidget {
   const UtenEmployeeSelectionPanel({
     super.key,
     required this.loader,
+    this.departmentTreeLoader,
     this.title = '选择人员',
     this.multiple = false,
     this.initialSelection = const [],
@@ -98,6 +104,7 @@ class UtenEmployeeSelectionPanel extends StatefulWidget {
   });
 
   final UtenEmployeePickerLoader loader;
+  final Future<List<DepartmentNode>> Function()? departmentTreeLoader;
   final String title;
   final bool multiple;
   final List<UtenEmployeePickerItem> initialSelection;
@@ -121,12 +128,15 @@ class UtenEmployeeSelectionPanel extends StatefulWidget {
 
 class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
     with EmployeePickerAccessState<UtenEmployeeSelectionPanel> {
-  static const _allDepartments = 'employee-picker:all';
-  static const _unknownDepartment = 'employee-picker:unknown';
+  static const _allDepartments = UtenEmployeeDepartmentDirectory.allDepartments;
   final _searchController = TextEditingController();
   late final Map<String, UtenEmployeePickerItem> _selected;
   List<UtenEmployeePickerItem> _baseline = const [];
   List<UtenEmployeePickerItem> _items = const [];
+  List<DepartmentNode> _organization = const [];
+  bool _treeLoading = false;
+  bool _treeFailed = false;
+  int _treeRequest = 0;
   String _department = _allDepartments;
   String _query = '';
   bool _loading = true;
@@ -156,6 +166,7 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
     if (!_started) {
       _started = true;
       _accessTicket = pickerAccess.capture();
+      _loadOrganization();
       _load();
     }
   }
@@ -164,9 +175,11 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
   void onPickerAccessInvalidated() {
     _invalidated = true;
     _request++;
+    _treeRequest++;
     _selected.clear();
     _baseline = const [];
     _items = const [];
+    _organization = const [];
     // Never pop whichever unrelated dialog happened to open above this picker.
     final route = _route;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -195,6 +208,7 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
         );
     if (!scopeChanged && !selectionChanged) return;
     _request++;
+    _treeRequest++;
     _selected.clear();
     if (!scopeChanged || selectionChanged) {
       for (final item
@@ -207,8 +221,14 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
     _baseline = const [];
     _items = const [];
     _department = _allDepartments;
+    if (scopeChanged) {
+      _organization = const [];
+      _treeLoading = false;
+      _treeFailed = false;
+    }
     _query = '';
     _searchController.clear();
+    _loadOrganization();
     _load();
   }
 
@@ -218,20 +238,61 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
     super.dispose();
   }
 
-  static String _departmentKey(UtenEmployeePickerItem item) {
-    final id = item.departmentId?.trim();
-    return id == null || id.isEmpty ? _unknownDepartment : 'department:$id';
+  UtenEmployeeDepartmentDirectory get _directory =>
+      UtenEmployeeDepartmentDirectory(
+        organization: _organization,
+        candidates: [..._baseline, ..._items],
+      );
+
+  Future<void> _loadOrganization() async {
+    if (_invalidated || !widget.showDepartmentFilter) return;
+    final ticket = pickerAccess.capture();
+    final request = ++_treeRequest;
+    setState(() {
+      _treeLoading = true;
+      _treeFailed = false;
+    });
+    try {
+      final loader = widget.departmentTreeLoader;
+      final source = pickerAccess.container;
+      final organization = loader != null
+          ? await loader()
+          : source == null
+          ? <DepartmentNode>[]
+          : await source.read(employeePickerDepartmentTreeProvider.future);
+      if (!mounted || !ticket.isCurrent || request != _treeRequest) return;
+      setState(() {
+        _organization = organization;
+        _treeLoading = false;
+      });
+      if (_query.isNotEmpty) _load();
+    } catch (_) {
+      if (!mounted || !ticket.isCurrent || request != _treeRequest) return;
+      setState(() {
+        _organization = const [];
+        _treeLoading = false;
+        _treeFailed = true;
+      });
+    }
   }
 
-  bool _matchesDepartment(UtenEmployeePickerItem item, String query) =>
+  bool _matchesDepartment(
+    UtenEmployeePickerItem item,
+    String query,
+    UtenEmployeeDepartmentDirectory directory,
+  ) =>
       widget.showDepartmentFilter &&
-      keywordSearchTerms(
-        query,
-      ).any((term) => matchesKeywordSearch([item.departmentName], term)) &&
+      keywordSearchTerms(query).any(
+        (term) => matchesKeywordSearch([
+          item.departmentName,
+          directory.pathOf(item),
+        ], term),
+      ) &&
       matchesKeywordSearch([
         item.name,
         item.employeeCode,
         item.departmentName,
+        directory.pathOf(item),
       ], query);
 
   void _onInput(String value) {
@@ -262,12 +323,13 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
           query != _query) {
         return;
       }
+      final directory = _directory;
       final byId = <String, UtenEmployeePickerItem>{
         // A department-name search must also find its already-authorized
         // people when the business endpoint searches only names/codes.
         if (query.isNotEmpty)
           for (final item in _baseline)
-            if (_matchesDepartment(item, query)) item.id: item,
+            if (_matchesDepartment(item, query, directory)) item.id: item,
         for (final item in result) item.id: item,
       };
       setState(() {
@@ -317,33 +379,6 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
     }
   }
 
-  List<_EmployeeDepartmentNode> _departments() {
-    final names = <String, String>{};
-    for (final item in [..._baseline, ..._items]) {
-      final key = _departmentKey(item);
-      final name = item.departmentName?.trim();
-      names[key] = key == _unknownDepartment
-          ? '未提供部门'
-          : name == null || name.isEmpty
-          ? '未命名部门'
-          : name;
-    }
-    final departments =
-        [
-          for (final entry in names.entries)
-            _EmployeeDepartmentNode(entry.key, entry.value),
-        ]..sort((a, b) {
-          if (a.id == _unknownDepartment) return 1;
-          if (b.id == _unknownDepartment) return -1;
-          final byName = a.name.compareTo(b.name);
-          return byName == 0 ? a.id.compareTo(b.id) : byName;
-        });
-    return [
-      const _EmployeeDepartmentNode(_allDepartments, '全部部门'),
-      ...departments,
-    ];
-  }
-
   void _toggle(UtenEmployeePickerItem item) {
     if (!_accessTicket.isCurrent ||
         _invalidated ||
@@ -390,36 +425,48 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
     }
   }
 
-  Widget _search() => Padding(
-    padding: EdgeInsets.symmetric(
-      horizontal: context.breakpoint.isCompact ? 8 : 16,
-      vertical: 8,
-    ),
-    child: UtenSearchBar(
-      key: const Key('uten-employee-picker-search'),
-      controller: _searchController,
-      hint:
-          !widget.showDepartmentFilter && widget.searchHint == '搜索部门 / 姓名 / 工号'
-          ? '搜索姓名 / 工号'
-          : widget.searchHint,
-      onInputChanged: _onInput,
-      onChanged: (_) => _load(),
+  Widget _search() => LayoutBuilder(
+    builder: (context, constraints) => Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: context.breakpoint.isCompact || constraints.maxWidth < 240
+            ? 8
+            : 16,
+        vertical: 8,
+      ),
+      child: UtenSearchBar(
+        key: const Key('uten-employee-picker-search'),
+        controller: _searchController,
+        hint:
+            !widget.showDepartmentFilter &&
+                widget.searchHint == '搜索部门 / 姓名 / 工号'
+            ? '搜索姓名 / 工号'
+            : widget.searchHint,
+        onInputChanged: _onInput,
+        onChanged: (_) => _load(),
+      ),
     ),
   );
 
-  double _treeWidth(List<_EmployeeDepartmentNode> nodes, ThemeData theme) {
+  double _treeWidth(List<UtenEmployeeDepartmentNode> nodes, ThemeData theme) {
     final painter = TextPainter(
       textDirection: Directionality.of(context),
       textScaler: MediaQuery.textScalerOf(context),
     );
     var width = 0.0;
-    for (final node in nodes) {
+    void measure(UtenEmployeeDepartmentNode node) {
       painter.text = TextSpan(
         text: node.name,
         style: theme.textTheme.bodyMedium,
       );
       painter.layout();
       width = math.max(width, painter.width);
+      for (final child in node.children) {
+        measure(child);
+      }
+    }
+
+    for (final node in nodes) {
+      measure(node);
     }
     painter.dispose();
     return (width + 65).clamp(200, 560);
@@ -438,16 +485,12 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
         ],
       );
     } else {
-      final departments = _departments();
+      final directory = _directory;
+      final departments = directory.nodes;
       final visibleIds = _query.isEmpty
           ? null
-          : {
-              _allDepartments,
-              for (final item in _items) _departmentKey(item),
-              for (final node in departments)
-                if (matchesKeywordSearch([node.name], _query)) node.id,
-            };
-      final tree = UtenHierarchyTreeView<_EmployeeDepartmentNode>(
+          : directory.visibleIdsFor(_items);
+      final tree = UtenHierarchyTreeView<UtenEmployeeDepartmentNode>(
         key: const Key('uten-employee-picker-departments'),
         nodes: departments,
         mode: UtenTreeSelectMode.single,
@@ -460,21 +503,35 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
         externalSearchQuery: _query,
         externalSearchLoading: _loading,
         flatLevelColors: true,
-        initiallyExpandDepth: 0,
         expandOnRowTap: true,
         onToggleSelect: (node) => setState(() => _department = node.id),
       );
       body = UtenSplitView(
         persistenceKey: 'employeePicker.departmentTree',
         initialLeadingWidth: _treeWidth(departments, theme),
-        minLeadingWidth: 200,
+        minLeadingWidth: 160,
         maxLeadingWidth: 560,
         leadingNoun: '部门',
         selectedLeadingLabel:
             utenTreeSelectionPath(departments, _department) ?? '全部部门',
         selectedLeadingKey: _department,
         compactHeader: _search(),
-        leading: tree,
+        leading: _treeLoading || _treeFailed
+            ? Column(
+                children: [
+                  _search(),
+                  Expanded(
+                    child: _treeFailed
+                        ? UtenEmpty.error(
+                            message: '部门层级加载失败',
+                            actionLabel: '重试',
+                            onAction: _loadOrganization,
+                          )
+                        : const Center(child: CircularProgressIndicator()),
+                  ),
+                ],
+              )
+            : tree,
         trailing: _list(theme),
       );
     }
@@ -531,12 +588,9 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
         onAction: _load,
       );
     }
+    final directory = _directory;
     final items = _items
-        .where(
-          (item) =>
-              _department == _allDepartments ||
-              _departmentKey(item) == _department,
-        )
+        .where((item) => directory.contains(_department, item))
         .toList(growable: false);
     if (items.isEmpty) {
       return UtenEmpty(
@@ -545,58 +599,109 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
         description: _query.isEmpty ? widget.emptyDescription : null,
       );
     }
-    return ListView.separated(
+    final showNotes = items.any(
+      (item) => item.subtitle?.trim().isNotEmpty == true || !item.enabled,
+    );
+    return MasterDataTableView<UtenEmployeePickerItem>(
       key: const Key('uten-employee-picker-candidates'),
-      itemCount: items.length,
-      separatorBuilder: (_, _) => const Divider(height: 1),
-      itemBuilder: (context, index) {
-        final item = items[index];
-        final selected = _selected.containsKey(item.id);
-        final text = [
-          if (item.departmentName?.trim().isNotEmpty == true)
-            item.departmentName!.trim(),
-          if (item.subtitle?.trim().isNotEmpty == true) item.subtitle!.trim(),
-          if (!item.enabled && item.disabledReason?.trim().isNotEmpty == true)
-            item.disabledReason!.trim(),
-        ].join(' · ');
-        return ListTile(
-          key: ValueKey('employee-picker-item-${item.id}'),
-          selected:
-              selected || (_selected.isEmpty && item.id == widget.selectedId),
-          selectedTileColor: utenTableSelectedRowColor(theme),
-          enabled: item.enabled || (widget.multiple && selected),
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 12,
-            vertical: 4,
+      columns: [
+        MasterColumnDef(
+          key: 'name',
+          label: '姓名',
+          width: 150,
+          value: (item) => item.name,
+          columnSearchEnabled: false,
+        ),
+        MasterColumnDef(
+          key: 'employeeCode',
+          label: '工号',
+          width: 130,
+          value: (item) => item.employeeCode,
+          columnSearchEnabled: false,
+        ),
+        if (widget.showDepartmentFilter)
+          MasterColumnDef(
+            key: 'department',
+            label: '部门',
+            width: 200,
+            value: (item) => item.departmentName,
+            columnSearchEnabled: false,
+            cellBuilder: (_, item) => Tooltip(
+              message: directory.pathOf(item) ?? item.departmentName ?? '未提供部门',
+              child: Text(item.departmentName ?? '未提供部门'),
+            ),
           ),
-          leading: widget.multiple
-              ? Checkbox(
-                  value: selected,
-                  onChanged: item.enabled || selected
-                      ? (_) => _toggle(item)
-                      : null,
-                )
-              : null,
-          title: Text(
-            item.displayName,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+        if (widget.showDepartmentFilter) ...[
+          MasterColumnDef(
+            key: 'accountStatus',
+            label: '账号状态',
+            width: 110,
+            value: (item) => employeeAccountStatusLabel(item.accountStatus),
+            columnSearchEnabled: false,
           ),
-          subtitle: text.isEmpty
-              ? null
-              : Text(text, maxLines: 3, overflow: TextOverflow.ellipsis),
-          trailing: !widget.multiple && selected
-              ? Icon(
-                  Icons.check_circle_rounded,
-                  color: theme.colorScheme.primary,
-                  size: 22,
-                )
-              : null,
-          onTap: item.enabled || (widget.multiple && selected)
-              ? () => _toggle(item)
-              : null,
-        );
+          MasterColumnDef(
+            key: 'employmentStatus',
+            label: '在职状态',
+            width: 110,
+            value: (item) =>
+                employeeEmploymentStatusLabel(item.employmentStatus),
+            columnSearchEnabled: false,
+          ),
+        ],
+        if (showNotes)
+          MasterColumnDef(
+            key: 'notes',
+            label: '说明',
+            width: 240,
+            value: (item) => [
+              if (item.subtitle?.trim().isNotEmpty == true)
+                item.subtitle!.trim(),
+              if (!item.enabled) item.disabledReason ?? '不可选择',
+            ].join('；'),
+            columnSearchEnabled: false,
+          ),
+      ],
+      items: items,
+      rowKeyOf: (item) => item.id,
+      rowWidgetKeyOf: (item) => ValueKey('employee-picker-item-${item.id}'),
+      rowForegroundColor: (item) => item.enabled ? null : theme.disabledColor,
+      idOf: (item) =>
+          item.enabled || _selected.containsKey(item.id) ? item.id : null,
+      singleTapRows: true,
+      selectable: widget.multiple,
+      selectedIds: _selected.keys.toSet(),
+      isSelected: (item) =>
+          _selected.containsKey(item.id) ||
+          (_selected.isEmpty && item.id == widget.selectedId),
+      onRowTap: widget.multiple ? null : _toggle,
+      onRowSelectionChanged: widget.multiple
+          ? (item, _) => _toggle(item)
+          : null,
+      onSelectedIdsChanged: (ids) {
+        if (!_accessTicket.isCurrent ||
+            _invalidated ||
+            _loading ||
+            _error != null) {
+          return;
+        }
+        setState(() {
+          _selected.removeWhere((id, _) => !ids.contains(id));
+          for (final item in items) {
+            if (item.enabled && ids.contains(item.id)) {
+              _selected[item.id] = item;
+            }
+          }
+        });
       },
+      facets: const {},
+      nullCounts: const {},
+      filters: const {},
+      onFilterChanged: (_, _) {},
+      showSelectionSummary: false,
+      showFullscreenToggle: false,
+      showColumnChooser: false,
+      showPaginationControls: false,
+      enableTextSelection: false,
     );
   }
 
@@ -630,19 +735,4 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
       confirmLabel: widget.confirmLabel,
     );
   }
-}
-
-class _EmployeeDepartmentNode implements UtenTreeNode<_EmployeeDepartmentNode> {
-  const _EmployeeDepartmentNode(this.id, this.name);
-
-  @override
-  final String id;
-  @override
-  final String name;
-  @override
-  String get code => '';
-  @override
-  List<_EmployeeDepartmentNode> get children => const [];
-  @override
-  bool get hasChildren => false;
 }

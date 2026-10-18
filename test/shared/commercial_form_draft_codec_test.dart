@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/inputs/uten_employee_picker_models.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/features/purchase/models/purchase_doc.dart';
 import 'package:uten_imp/features/purchase/widgets/purchase_grid_columns.dart';
@@ -15,6 +16,47 @@ Map<String, dynamic> persisted(Map<String, dynamic> data) =>
     jsonDecode(jsonEncode(data)) as Map<String, dynamic>;
 
 void main() {
+  test('employee field and cache drafts preserve separate status facts', () {
+    const source = UtenEmployeePickerItem(
+      id: 'employee-1',
+      name: '张三',
+      employeeCode: 'UT001',
+      departmentId: 'finance',
+      departmentName: '财务部',
+      accountStatus: 'locked',
+      employmentStatus: 'onLeave',
+      subtitle: '负责审核',
+    );
+    final saved = persisted(draftEmployee(source));
+    final restored = restoreDraftEmployee(saved);
+    expect(restored.sameSnapshot(source), isTrue);
+    final cache = <String, UtenEmployeePickerItem>{};
+    restoreDraftEmployees(
+      cache,
+      jsonDecode(jsonEncode(draftEmployees({source.id: source}))),
+    );
+    expect(cache[source.id]!.sameSnapshot(source), isTrue);
+    expect(
+      cache[source.id]!.enabled,
+      isTrue,
+      reason: '展示状态不是操作权限，恢复草稿不根据账号状态自行禁选',
+    );
+  });
+
+  test(
+    'legacy employee drafts leave absent account and employment facts unknown',
+    () {
+      final legacy = {'id': 'legacy', 'name': '李四'};
+      final restored = restoreDraftEmployee(legacy);
+      expect(restored.accountStatus, isNull);
+      expect(restored.employmentStatus, isNull);
+      final cache = <String, UtenEmployeePickerItem>{};
+      restoreDraftEmployees(cache, [legacy]);
+      expect(cache['legacy']!.accountStatus, isNull);
+      expect(cache['legacy']!.employmentStatus, isNull);
+    },
+  );
+
   test(
     'sales recovery keeps incomplete text and independent source identities',
     () {

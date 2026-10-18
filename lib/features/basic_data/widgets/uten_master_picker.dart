@@ -5,12 +5,11 @@
 // 现在面板只有这一份，[showUtenClientPicker] / [showUtenSupplierPicker] 只提供
 // [UtenMasterPickerSpec]；表单字段 [UtenMasterPickerField] 同理。
 //
-// 形态：compact 底部抽屉 / medium+ 右侧滑入面板，宽 = max(720, 屏宽 50%)（2026-09-24
+// 形态：compact 底部抽屉 / medium+ 右侧滑入面板，使用公共 browse 宽度档位（2026-09-24
 // 与货品选择滑窗同步改版：左树无缩进层级色 + 单根提升 + UtenSplitView 可拖分割线，
 // 默认左栏宽 = 最长一行实测宽）。列表始终请求服务端
 // selectableOnly(只含「使用」状态)，total/totalPages 与 items 是同一数据库谓词下的
 // 权威结果，前端不再二次过滤。
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,17 +20,15 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
-import '../../../components/layout/uten_paged_picker_list.dart';
 import '../../../components/layout/uten_picker_footer_layout.dart';
 import '../../../components/layout/uten_split_view.dart';
-import '../../../components/layout/uten_table_column_kit.dart'
-    show utenTableSelectedRowColor;
 import '../../../core/responsive/breakpoint.dart';
 import '../../../shared/hierarchy/uten_tree_path.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/product_category_node.dart';
 import 'category_tree_search.dart';
+import 'master_data_table_view.dart';
 import 'uten_category_tree_view.dart';
 import '../../../shared/ai/page_context/ai_page_context.dart';
 
@@ -46,7 +43,7 @@ class UtenMasterPickerSpec<TItem> {
     required this.idOf,
     required this.categoryIdOf,
     required this.labelOf,
-    required this.subtitleOf,
+    required this.tableColumns,
     this.searchKey,
     this.quickCreateLabel,
     this.quickCreate,
@@ -71,7 +68,10 @@ class UtenMasterPickerSpec<TItem> {
   final String Function(TItem item) idOf;
   final String? Function(TItem item) categoryIdOf;
   final String Function(TItem item) labelOf;
-  final List<String?> Function(TItem item) subtitleOf;
+
+  /// 主档选择器统一使用重点字段表格。
+  /// 选择器只使用左侧统一搜索，列不接主档自定义布局或额外筛选。
+  final List<MasterColumnDef<TItem>> tableColumns;
   final Key? searchKey;
 
   /// 面板头部「添加…」按钮(有权限才给)：返回新建好的记录，面板直接选中它。
@@ -96,11 +96,10 @@ Future<TItem?> showUtenMasterPicker<TItem>(
   if (!context.mounted) return null;
   // 单根提升：与货品选择滑窗同口径（2026-09-24），单包装根不占一层。
   tree = hoistSingleRootTree(tree);
-  // 滑窗宽度跟屏幕自适应：约占屏宽 50%，下限保持旧款 720。
-  final screenWidth = MediaQuery.sizeOf(context).width;
+  // 滑窗宽度口径 2026-10-17：比例优先（browse 档 75% 屏宽），720 只作小屏下限。
   return showUtenAdaptivePanel<TItem>(
     context: context,
-    drawerWidth: math.max(720.0, screenWidth * 0.5),
+    drawerWidth: 720,
     builder: (_) => _MasterPickerSheet<TItem>(spec: spec, tree: tree),
   );
 }
@@ -413,14 +412,15 @@ class _MasterPickerSheetState<TItem>
     final body = UtenSplitView(
       persistenceKey: 'masterPicker.categoryTree',
       initialLeadingWidth: _treeNaturalWidth(theme),
-      minLeadingWidth: 200,
+      // 手动缩窄仍由分栏组件保护分类行按钮和可读标题片段。
+      minLeadingWidth: 160,
       maxLeadingWidth: 560,
       selectedLeadingLabel:
           utenTreeSelectionPath(widget.tree, _selectedCategoryId) ?? '全部分类',
       selectedLeadingKey: _selectedCategoryId,
       compactHeader: treePane.header,
       leading: treePane,
-      trailing: _buildRightPane(theme),
+      trailing: _buildRightPane(),
     );
     return Column(
       children: [
@@ -464,70 +464,73 @@ class _MasterPickerSheetState<TItem>
     );
   }
 
-  Widget _buildRightPane(ThemeData theme) => UtenPagedPickerList<TItem>(
-    rowsController: _pickerRows,
-    showPaginationControls: false,
-    items: _items ?? <TItem>[],
-    idOf: _spec.idOf,
-    itemBuilder: (context, item) => _buildItem(context, theme, item),
-    currentPage: _confirmedPage,
-    totalPages: _totalPages,
-    onPageChange: _changePage,
-    paginationScope: (
-      _queryRevision,
-      _selectedCategoryId,
-      _globalQuery,
-      _showingGlobalResults,
-      _categoryContentKeyword,
-    ),
-    paginationRevision: _items,
-    loading: _loading,
-    error: _error,
-    onRetry: _reloadCurrentPage,
-    emptyMessage: '未找到匹配${_spec.noun}',
-    separatorBuilder: (_, _) => const Divider(height: 1),
-  );
-
-  Widget _buildUnifiedSearch() {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        context.breakpoint.isCompact ? 8 : 16,
-        8,
-        context.breakpoint.isCompact ? 8 : 16,
-        8,
-      ),
-      child: UtenSearchBar(
-        key: _spec.searchKey,
-        controller: _keywordCtl,
-        hint: '搜索分类/${_spec.noun}',
-        onInputChanged: _onKeywordInputChanged,
-        onChanged: _onKeywordChanged,
-      ),
+  Widget _buildRightPane() {
+    final columns = _spec.tableColumns;
+    final requestVersion = _requestVersion;
+    final picked = _picked;
+    return MasterDataTableView<TItem>(
+      columns: columns,
+      items: _items ?? <TItem>[],
+      rowKeyOf: _spec.idOf,
+      rowsController: _pickerRows,
+      singleTapRows: true,
+      isSelected: (item) =>
+          picked != null && _spec.idOf(picked) == _spec.idOf(item),
+      onRowTap: (item) {
+        if (_loading || requestVersion != _requestVersion) return;
+        setState(() => _picked = item);
+      },
+      facets: const {},
+      nullCounts: const {},
+      filters: const {},
+      onFilterChanged: (_, _) {},
+      currentPage: _confirmedPage,
+      totalPages: _totalPages,
+      onPageChange: _changePage,
+      paginationScope: _paginationScope,
+      paginationRevision: _items,
+      isLoading: _loading && (_items?.isEmpty ?? true),
+      loadingMore: _loading && (_items?.isNotEmpty ?? false),
+      error: _error,
+      onRetry: _reloadCurrentPage,
+      emptyMessage: '未找到匹配${_spec.noun}',
+      showPaginationControls: false,
+      showFullscreenToggle: false,
+      showColumnChooser: false,
+      showSelectionSummary: false,
+      enableTextSelection: false,
     );
   }
 
-  Widget _buildItem(BuildContext context, ThemeData theme, TItem item) {
-    final sub = _spec
-        .subtitleOf(item)
-        .where((value) => value != null && value.isNotEmpty)
-        .join(' · ');
-    final current = _picked;
-    final picked = current != null && _spec.idOf(current) == _spec.idOf(item);
-    return ListTile(
-      selected: picked,
-      selectedTileColor: utenTableSelectedRowColor(theme),
-      title: Text(_spec.labelOf(item)),
-      subtitle: sub.isEmpty
-          ? null
-          : Text(sub, style: Theme.of(context).textTheme.bodySmall),
-      trailing: picked
-          ? Icon(
-              Icons.check_circle_rounded,
-              color: theme.colorScheme.primary,
-              size: 22,
-            )
-          : null,
-      onTap: () => setState(() => _picked = item),
+  Object get _paginationScope => (
+    _queryRevision,
+    _selectedCategoryId,
+    _globalQuery,
+    _showingGlobalResults,
+    _categoryContentKeyword,
+  );
+
+  Widget _buildUnifiedSearch() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final horizontalPadding =
+            context.breakpoint.isCompact || constraints.maxWidth < 240
+            ? 8.0
+            : 16.0;
+        return Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: horizontalPadding,
+            vertical: 8,
+          ),
+          child: UtenSearchBar(
+            key: _spec.searchKey,
+            controller: _keywordCtl,
+            hint: '搜索分类/${_spec.noun}',
+            onInputChanged: _onKeywordInputChanged,
+            onChanged: _onKeywordChanged,
+          ),
+        );
+      },
     );
   }
 }

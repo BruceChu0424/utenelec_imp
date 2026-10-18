@@ -738,13 +738,14 @@ public class PurchaseReturnService {
         return new ReturnDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getSupplierId(), r.getWarehouseId(), priceMasked ? null : r.getCurrencyId(),
                 priceMasked ? null : r.getExchangeRate(), priceMasked ? null : r.getTaxRate(),
-                r.getReceiverId(), priceMasked ? null : r.getSettlementMethodId(),
+                r.getReceiverId(), nameResolver.nameWithCodeOf(r.getReceiverId()),
+                priceMasked ? null : r.getSettlementMethodId(),
                 priceMasked || r.getSettlementStyleLegacy() == null
                         ? null : r.getSettlementStyleLegacy().intValue(),
                 r.getMakerId(), r.getApproverId(), r.getRemark(),
                 priceMasked ? null : r.getTotalOriginal(), priceMasked ? null : r.getTotalLocal(),
                 r.getStatus(), r.isClosed(), r.getSourceDocNo(), safeItems,
-                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt(), priceMasked);
+                nameResolver.nameWithCodeOf(r.getMakerId()), r.getCreatedAt(), priceMasked);
     }
 
     private boolean purchasePriceMasked() {

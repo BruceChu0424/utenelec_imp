@@ -23,7 +23,9 @@ void main() {
     expect(find.text('result:selected'), findsOneWidget);
   });
 
-  testWidgets('wide screens use a right drawer with the configured width', (
+  // 2026-10-17 宽度口径：比例优先——min(屏宽, max(drawerWidth, 屏宽 × 档位))。
+  // 1200 屏 browse 档（默认）= 1200 × 0.75 = 900 > 720 下限。
+  testWidgets('wide screens use a right drawer sized by width fraction', (
     tester,
   ) async {
     _setTestSize(tester, const Size(1200, 900));
@@ -35,13 +37,51 @@ void main() {
     await tester.pumpAndSettle();
 
     final content = find.byKey(const Key('panel-content'));
-    expect(tester.getSize(content).width, 720);
-    expect(tester.getTopLeft(content).dx, 480);
+    expect(tester.getSize(content).width, 900);
+    expect(tester.getTopLeft(content).dx, 300);
 
     await tester.tap(find.byKey(const Key('complete-panel')));
     await tester.pumpAndSettle();
 
     expect(find.text('result:selected'), findsOneWidget);
+  });
+
+  /// form / none 档不放大到 browse：表单与菜单类面板保持自己的宽度语义。
+  testWidgets('form and none fractions keep the panel narrow', (tester) async {
+    _setTestSize(tester, const Size(1200, 900));
+
+    await tester.pumpWidget(
+      const MaterialApp(home: _PanelHarness(widthFraction: UtenPanelWidth.form)),
+    );
+    await tester.tap(find.byKey(const Key('open-panel')));
+    await tester.pumpAndSettle();
+    // form 档 = 1200 × 0.35 = 420（等于默认下限，不取更大者以外的东西）。
+    expect(tester.getSize(find.byKey(const Key('panel-content'))).width, 420);
+    await tester.tap(find.byKey(const Key('complete-panel')));
+    await tester.pumpAndSettle();
+
+    await tester.pumpWidget(
+      const MaterialApp(home: _PanelHarness(widthFraction: UtenPanelWidth.none)),
+    );
+    await tester.tap(find.byKey(const Key('open-panel')));
+    await tester.pumpAndSettle();
+    // none 档 = drawerWidth 原值（默认 420），菜单类不放大。
+    expect(tester.getSize(find.byKey(const Key('panel-content'))).width, 420);
+  });
+
+  /// 下限在比例之上时生效：小屏（800 × 0.75 = 600 < 720）取 drawerWidth 下限。
+  testWidgets('drawerWidth floors the panel on smaller wide screens', (
+    tester,
+  ) async {
+    _setTestSize(tester, const Size(800, 900));
+
+    await tester.pumpWidget(
+      const MaterialApp(home: _PanelHarness(drawerWidth: 720)),
+    );
+    await tester.tap(find.byKey(const Key('open-panel')));
+    await tester.pumpAndSettle();
+
+    expect(tester.getSize(find.byKey(const Key('panel-content'))).width, 720);
   });
 
   testWidgets('barrier dismissal returns null without committing panel state', (
@@ -70,9 +110,10 @@ void _setTestSize(WidgetTester tester, Size size) {
 }
 
 class _PanelHarness extends StatefulWidget {
-  const _PanelHarness({this.drawerWidth = 420});
+  const _PanelHarness({this.drawerWidth = 420, this.widthFraction});
 
   final double drawerWidth;
+  final double? widthFraction;
 
   @override
   State<_PanelHarness> createState() => _PanelHarnessState();
@@ -85,6 +126,7 @@ class _PanelHarnessState extends State<_PanelHarness> {
     final result = await showUtenAdaptivePanel<String>(
       context: context,
       drawerWidth: widget.drawerWidth,
+      widthFraction: widget.widthFraction ?? UtenPanelWidth.browse,
       barrierLabel: '关闭测试面板',
       builder: (panelContext) => ColoredBox(
         key: const Key('panel-content'),

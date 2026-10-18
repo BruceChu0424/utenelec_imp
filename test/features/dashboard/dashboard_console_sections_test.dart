@@ -3,8 +3,8 @@
 // 写的测试，合并后改为直接泵 DashboardOverviewPanel）。
 //
 // 锁住的六件事：
-// 1. 合并结构成立：一段面板同时承载「今日概览」标题栏、指标区与「待办任务」
-//    小节头，总数徽章 = 各待办 count 之和；
+// 1. 合并结构成立：一段面板同时承载「今日概览」标题栏、指标区与待办卡片；
+//    有待办时隐藏小节头、排序说明和总数徽章，无待办时保留标题与空态；
 // 2. 数值与标题真的渲染出来了（不是只剩装饰）；非数字指标值不被当成 0；
 // 3. 空态与授权功能及数据范围一致，不把部门名称当作功能准入或数据范围；
 // 4. reduced-motion 下不崩、内容照常完整（动效不承载信息）；
@@ -107,7 +107,7 @@ void main() {
     generatedAt: DateTime(2026, 9, 28, 9, 41),
   );
 
-  testWidgets('合并面板一段承载今日概览标题栏与待办小节头，总数徽章=各待办之和', (tester) async {
+  testWidgets('有待办时保留今日概览，隐藏待办小节头、排序说明和总数徽章', (tester) async {
     await tester.pumpWidget(
       host(
         panel(
@@ -122,9 +122,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('今日概览'), findsOneWidget);
-    expect(find.text('待办任务'), findsOneWidget);
-    // 总数徽章 = 3 + 1 = 4（瓦片上的 3 / 1 是各自计数，只有一枚 4）。
-    expect(find.text('4'), findsOneWidget);
+    expect(find.text('待办任务'), findsNothing);
+    expect(find.text('按紧急度排布'), findsNothing);
+    expect(find.text('4'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -183,7 +183,7 @@ void main() {
 
     expect(find.text('你有 3 项报销申请待审批'), findsOneWidget);
     expect(find.text('你有 1 项访客申请待审批'), findsOneWidget);
-    // 各瓦片一枚计数徽章（总数 4 由合并结构用例单独锁定）。
+    // 各瓦片仍保留自己的计数徽章。
     expect(find.text('3'), findsOneWidget);
     expect(find.text('1'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -193,6 +193,8 @@ void main() {
     await tester.pumpWidget(host(panel()));
     await tester.pumpAndSettle();
 
+    expect(find.text('待办任务'), findsOneWidget);
+    expect(find.text('按紧急度排布'), findsNothing);
     expect(find.text('当前可见范围内没有待办'), findsOneWidget);
     expect(find.text('财税部当前没有待办'), findsNothing);
   });
@@ -247,8 +249,7 @@ void main() {
         panel(
           todos: [
             todo(urgentCount: 2, tone: 'danger'),
-            // 第二条非紧急待办把总数徽章顶到 4，避免「3」同时出现在
-            // 瓦片徽章与总数徽章、findsOneWidget 误红。
+            // 紧急和非紧急待办的标题、数量在 reduced-motion 下照常显示。
             todo(id: 'visitor-approval', title: '你有 1 项访客申请待审批', count: 1),
           ],
         ),
@@ -294,6 +295,8 @@ void main() {
     expect(find.text('你有 3 项报销申请待审批'), findsOneWidget);
     expect(find.text('你有 1 项访客申请待审批'), findsNothing);
     expect(find.text('还有 1 项任务'), findsOneWidget);
+    expect(find.text('待办任务'), findsNothing);
+    expect(find.text('按紧急度排布'), findsNothing);
     expect(find.text('已逾期 47 小时'), findsOneWidget);
     expect(
       tester.getTopLeft(find.byKey(const ValueKey('dashboard-todo-more'))).dy,
@@ -327,7 +330,7 @@ void main() {
     expect(find.byKey(const ValueKey('dashboard-todo-t2')), findsNothing);
     // 四张隐藏卡片各含 3、4、5、6 项，入口应显示 18 项任务。
     expect(find.text('还有 18 项任务'), findsOneWidget);
-    expect(find.text('21'), findsOneWidget);
+    expect(find.text('21'), findsNothing);
     final originalHeight = tester
         .getSize(find.byType(DashboardOverviewPanel))
         .height;

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/components/layout/uten_app_bar.dart';
 import 'package:uten_imp/features/finance/pages/finance_report_table_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
@@ -34,6 +35,12 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.text('所选日期和客户暂无客户预收流水'), findsOneWidget);
+    final title = tester.widget<UtenAppBar>(find.byType(UtenAppBar)).title!;
+    expect(
+      find.descendant(of: find.byType(UtenAppBar), matching: find.text(title)),
+      findsOneWidget,
+    );
+    expect(find.text('共 0 条'), findsNothing);
   });
 }
 

@@ -351,6 +351,10 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
             id: p.id,
             name: p.fullName ?? '',
             employeeCode: p.code,
+            accountStatus: p.accountDeleted
+                ? 'notProvisioned'
+                : p.accountStatus ?? 'notProvisioned',
+            employmentStatus: p.status,
             departmentId: p.departmentId,
             departmentName: p.departmentName,
           );
@@ -2196,6 +2200,8 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
               id: e.id,
               name: e.fullName,
               employeeCode: e.code,
+              accountStatus: e.accountStatus,
+              employmentStatus: e.status,
               departmentId: e.departmentId,
               departmentName: e.departmentName,
             ),

@@ -1,7 +1,7 @@
 // 客户收货地址簿弹窗（V300）：出货开单时选择/新增/删除该客户的收货地址。
 //
 // 交互（简而易懂）：
-//  - 列表按最近使用降序；点某行 = 选用该地址（连同记住的联系电话回填表单）并关闭；
+//  - 列表按最近使用降序；点行暂选，底部确定后回填地址和记住的联系电话；
 //  - 「新增地址」展开内联表单，提交即入库并自动选中回填；
 //  - 删除按钮仅持 client_address:delete 者可见，删除前二次确认（后端仍独立鉴权）；
 //  - 空态说明学习规则：保存出货单后会自动记住本次填写的地址。
@@ -11,6 +11,9 @@ import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/layout/uten_picker_confirm_bar.dart';
+import '../../../components/layout/uten_table_column_kit.dart'
+    show utenTableSelectedRowColor;
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -67,6 +70,7 @@ class _ClientShipAddressSheetState
     extends ConsumerState<_ClientShipAddressSheet>
     with FormDraftMixin<_ClientShipAddressSheet> {
   List<ClientShipAddress>? _items;
+  String? _pickedId;
   String? _error;
   bool _adding = false;
   bool _busy = false;
@@ -137,7 +141,12 @@ class _ClientShipAddressSheetState
   }
 
   Future<void> _close([ClientShipAddress? selected]) async {
-    if (_busy || !await confirmFormDraftExit() || !mounted) return;
+    if (!mounted || _busy || !await confirmFormDraftExit() || !mounted) return;
+    if (selected != null &&
+        (_pickedId != selected.id ||
+            !(_items?.any((item) => item.id == selected.id) ?? false))) {
+      return;
+    }
     Navigator.of(context).pop(selected);
   }
 
@@ -184,17 +193,22 @@ class _ClientShipAddressSheetState
           .read(clientShipAddressRepositoryProvider)
           .list(widget.clientId);
       if (!mounted) return;
-      setState(() => _items = items);
+      setState(() {
+        _items = items;
+        if (!items.any((item) => item.id == _pickedId)) _pickedId = null;
+      });
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
         _items = const [];
+        _pickedId = null;
         _error = e.message;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _items = const [];
+        _pickedId = null;
         _error = '地址簿加载失败，请稍后重试';
       });
     }
@@ -282,6 +296,7 @@ class _ClientShipAddressSheetState
   Widget _buildAddressSheet(BuildContext context) {
     final theme = Theme.of(context);
     final items = _items;
+    final picked = items?.where((item) => item.id == _pickedId).firstOrNull;
     return Padding(
       padding: EdgeInsets.fromLTRB(
         UtenSpacing.s16,
@@ -289,157 +304,197 @@ class _ClientShipAddressSheetState
         UtenSpacing.s16,
         MediaQuery.of(context).viewInsets.bottom + UtenSpacing.s16,
       ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // 新增/删除地址网络段的全屏加载遮罩（root Overlay 传送门，不占布局；
-            // 删除的确认弹窗在置位之前，不会被遮）。
-            if (_busy)
-              const UtenBusyOverlay(
-                title: '正在保存收货地址',
-                description: '正在写入地址资料，请稍候。',
-              ),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '收货地址 · ${widget.clientName}',
-                    style: theme.textTheme.titleMedium,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                IconButton(
-                  tooltip: '关闭',
-                  onPressed: _busy ? null : () => _close(),
-                  icon: const Icon(Icons.close),
-                ),
-              ],
-            ),
-            const SizedBox(height: UtenSpacing.s4),
-            Text(
-              '保存出货单后会自动记住本次填写的地址与电话，下次开单默认带出最近使用的一条。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            if (!_accessLoading && !_objectWritable) ...[
-              Container(
-                padding: const EdgeInsets.all(UtenSpacing.s12),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(UtenRadius.md),
-                ),
-                child: const Text('当前客户只能查看：可选择已有地址，但不能新增或删除地址。'),
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-            ],
-            if (items == null)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: UtenSpacing.s24),
-                child: Center(
-                  child: CircularProgressIndicator(strokeWidth: 2.5),
-                ),
-              )
-            else ...[
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                  child: Text(
-                    _error!,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.error,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // 新增/删除地址网络段的全屏加载遮罩（root Overlay 传送门，不占布局；
+                  // 删除的确认弹窗在置位之前，不会被遮）。
+                  if (_busy)
+                    const UtenBusyOverlay(
+                      title: '正在保存收货地址',
+                      description: '正在写入地址资料，请稍候。',
                     ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '收货地址 · ${widget.clientName}',
+                          style: theme.textTheme.titleMedium,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: '关闭',
+                        onPressed: _busy ? null : () => _close(),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
                   ),
-                ),
-              if (items.isEmpty && _error == null)
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: UtenSpacing.s16,
-                  ),
-                  child: Text(
-                    '暂无已保存的收货地址。本次直接在表单填写并保存后，系统会记住它。',
-                    style: theme.textTheme.bodyMedium?.copyWith(
+                  const SizedBox(height: UtenSpacing.s4),
+                  Text(
+                    '保存出货单后会自动记住本次填写的地址与电话，下次开单默认带出最近使用的一条。',
+                    style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
-                ),
-              for (final item in items)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                  child: _AddressTile(
-                    item: item,
-                    enabled: !_busy,
-                    canDelete: _canDelete,
-                    onTap: () => _close(item),
-                    onDelete: () => _delete(item),
-                  ),
-                ),
-            ],
-            if (_canCreate) ...[
-              const Divider(height: UtenSpacing.s24),
-              if (!_adding)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    key: const ValueKey('client-ship-address-add-toggle'),
-                    icon: const Icon(Icons.add_location_alt_outlined, size: 18),
-                    onPressed: _busy
-                        ? null
-                        : () => setState(() => _adding = true),
-                    label: const Text('新增地址'),
-                  ),
-                )
-              else ...[
-                TextField(
-                  key: const ValueKey('client-ship-address-new-address'),
-                  controller: _newAddr,
-                  autofocus: true,
-                  maxLength: 500,
-                  decoration: const UtenInputDecoration(
-                    InputDecoration(labelText: '收货地址', hintText: '省市区 + 详细地址'),
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s8),
-                TextField(
-                  key: const ValueKey('client-ship-address-new-phone'),
-                  controller: _newPhone,
-                  maxLength: 64,
-                  decoration: const UtenInputDecoration(
-                    InputDecoration(labelText: '联系电话', hintText: '随地址一起记住，可空'),
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: _busy
-                          ? null
-                          : () => setState(() => _adding = false),
-                      child: const Text('收起'),
+                  const SizedBox(height: UtenSpacing.s12),
+                  if (!_accessLoading && !_objectWritable) ...[
+                    Container(
+                      padding: const EdgeInsets.all(UtenSpacing.s12),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(UtenRadius.md),
+                      ),
+                      child: const Text('当前客户只能查看：可选择已有地址，但不能新增或删除地址。'),
                     ),
-                    const SizedBox(width: UtenSpacing.s8),
-                    FilledButton.icon(
-                      key: const ValueKey('client-ship-address-add-submit'),
-                      onPressed: _busy ? null : _add,
-                      icon: _busy
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.check, size: 18),
-                      label: const Text('保存并选用'),
-                    ),
+                    const SizedBox(height: UtenSpacing.s12),
                   ],
-                ),
-              ],
-            ],
-          ],
-        ),
+                  if (items == null)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: UtenSpacing.s24),
+                      child: Center(
+                        child: CircularProgressIndicator(strokeWidth: 2.5),
+                      ),
+                    )
+                  else ...[
+                    if (_error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+                        child: Text(
+                          _error!,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.error,
+                          ),
+                        ),
+                      ),
+                    if (items.isEmpty && _error == null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: UtenSpacing.s16,
+                        ),
+                        child: Text(
+                          '暂无已保存的收货地址。本次直接在表单填写并保存后，系统会记住它。',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    for (final item in items)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+                        child: _AddressTile(
+                          item: item,
+                          enabled: !_busy,
+                          selected: item.id == _pickedId,
+                          canDelete: _canDelete,
+                          onTap: () {
+                            if (!mounted ||
+                                _busy ||
+                                !(_items?.contains(item) ?? false)) {
+                              return;
+                            }
+                            setState(() => _pickedId = item.id);
+                          },
+                          onDelete: () => _delete(item),
+                        ),
+                      ),
+                  ],
+                  if (_canCreate) ...[
+                    const Divider(height: UtenSpacing.s24),
+                    if (!_adding)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          key: const ValueKey('client-ship-address-add-toggle'),
+                          icon: const Icon(
+                            Icons.add_location_alt_outlined,
+                            size: 18,
+                          ),
+                          onPressed: _busy
+                              ? null
+                              : () => setState(() => _adding = true),
+                          label: const Text('新增地址'),
+                        ),
+                      )
+                    else ...[
+                      TextField(
+                        key: const ValueKey('client-ship-address-new-address'),
+                        controller: _newAddr,
+                        autofocus: true,
+                        maxLength: 500,
+                        decoration: const UtenInputDecoration(
+                          InputDecoration(
+                            labelText: '收货地址',
+                            hintText: '省市区 + 详细地址',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: UtenSpacing.s8),
+                      TextField(
+                        key: const ValueKey('client-ship-address-new-phone'),
+                        controller: _newPhone,
+                        maxLength: 64,
+                        decoration: const UtenInputDecoration(
+                          InputDecoration(
+                            labelText: '联系电话',
+                            hintText: '随地址一起记住，可空',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: UtenSpacing.s8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: _busy
+                                ? null
+                                : () => setState(() => _adding = false),
+                            child: const Text('收起'),
+                          ),
+                          const SizedBox(width: UtenSpacing.s8),
+                          FilledButton.icon(
+                            key: const ValueKey(
+                              'client-ship-address-add-submit',
+                            ),
+                            onPressed: _busy ? null : _add,
+                            icon: _busy
+                                ? const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.check, size: 18),
+                            label: const Text('保存并选用'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ],
+              ),
+            ),
+          ),
+          UtenPickerConfirmBar(
+            selectedCount: picked == null ? 0 : 1,
+            selectedLabel: picked?.address,
+            confirmButtonKey: const Key('client-ship-address-confirm'),
+            confirmEnabled: !_busy && picked != null,
+            onConfirm: () {
+              if (!_busy && picked != null) _close(picked);
+            },
+            onCancel: () {
+              if (!_busy) _close();
+            },
+          ),
+        ],
       ),
     );
   }
@@ -449,6 +504,7 @@ class _AddressTile extends StatelessWidget {
   const _AddressTile({
     required this.item,
     required this.enabled,
+    required this.selected,
     required this.canDelete,
     required this.onTap,
     required this.onDelete,
@@ -456,6 +512,7 @@ class _AddressTile extends StatelessWidget {
 
   final ClientShipAddress item;
   final bool enabled;
+  final bool selected;
   final bool canDelete;
   final VoidCallback onTap;
   final VoidCallback onDelete;
@@ -463,62 +520,76 @@ class _AddressTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Material(
-      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-      borderRadius: BorderRadius.circular(UtenRadius.md),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: enabled ? onTap : null,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: UtenSpacing.s12,
-            vertical: UtenSpacing.s8,
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      item.address,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
+    return Semantics(
+      selected: selected,
+      child: Material(
+        color: selected
+            ? utenTableSelectedRowColor(theme)
+            : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(UtenRadius.md),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: enabled ? onTap : null,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: UtenSpacing.s12,
+              vertical: UtenSpacing.s8,
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.address,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                    if (item.linkPhone != null)
+                      if (item.linkPhone != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            item.linkPhone!,
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ),
                       Padding(
                         padding: const EdgeInsets.only(top: 2),
                         child: Text(
-                          item.linkPhone!,
-                          style: theme.textTheme.bodySmall,
+                          '已使用 ${item.usageCount} 次',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ),
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        '已使用 ${item.usageCount} 次',
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (canDelete)
-                IconButton(
-                  key: ValueKey('client-ship-address-delete-${item.id}'),
-                  tooltip: '删除该地址',
-                  icon: Icon(
-                    Icons.delete_outline,
-                    size: 20,
-                    color: theme.colorScheme.error,
+                    ],
                   ),
-                  onPressed: enabled ? onDelete : null,
                 ),
-            ],
+                if (selected)
+                  Padding(
+                    padding: const EdgeInsets.all(UtenSpacing.s8),
+                    child: Icon(
+                      Icons.check_circle_rounded,
+                      color: theme.colorScheme.primary,
+                      size: 22,
+                    ),
+                  ),
+                if (canDelete)
+                  IconButton(
+                    key: ValueKey('client-ship-address-delete-${item.id}'),
+                    tooltip: '删除该地址',
+                    icon: Icon(
+                      Icons.delete_outline,
+                      size: 20,
+                      color: theme.colorScheme.error,
+                    ),
+                    onPressed: enabled ? onDelete : null,
+                  ),
+              ],
+            ),
           ),
         ),
       ),

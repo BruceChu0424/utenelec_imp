@@ -357,6 +357,10 @@ class _FinanceAssetFormSurfaceState
           id: profile.id,
           name: profile.fullName ?? '',
           employeeCode: profile.code,
+          accountStatus: profile.accountDeleted
+              ? 'notProvisioned'
+              : profile.accountStatus ?? 'notProvisioned',
+          employmentStatus: profile.status,
           departmentId: profile.departmentId,
           departmentName: profile.departmentName,
         );
@@ -381,6 +385,8 @@ class _FinanceAssetFormSurfaceState
           id: employee.id,
           name: employee.fullName,
           employeeCode: employee.code,
+          accountStatus: employee.accountStatus,
+          employmentStatus: employee.status,
           departmentId: employee.departmentId,
           departmentName: employee.departmentName,
         ),

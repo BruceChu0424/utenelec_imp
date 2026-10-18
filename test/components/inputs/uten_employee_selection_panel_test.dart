@@ -8,6 +8,7 @@ import 'package:uten_imp/components/inputs/uten_employee_multi_picker.dart';
 import 'package:uten_imp/components/inputs/uten_employee_picker.dart';
 import 'package:uten_imp/components/layout/uten_split_view.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 
 const _sales = UtenEmployeePickerItem(
   id: 'sales-1',
@@ -52,7 +53,8 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.byType(UtenSplitView), findsOneWidget);
-    expect(tester.getSize(find.byType(UtenEmployeeSelectionPanel)).width, 960);
+    // 2026-10-17 滑窗口径：browse 档 = min(屏宽, max(720, 1920 × 75%)) = 1440。
+    expect(tester.getSize(find.byType(UtenEmployeeSelectionPanel)).width, 1440);
     await tester.tap(
       find.byKey(const ValueKey('employee-picker-item-sales-1')),
     );
@@ -117,9 +119,8 @@ void main() {
         find.byKey(const ValueKey('employee-picker-item-c')),
         findsOneWidget,
       );
-      expect(find.text('不得充当分组'), findsNothing);
-      expect(find.text('负责18个客户'), findsNothing);
-      expect(find.text('不得充当分组 · 负责18个客户'), findsOneWidget);
+      expect(find.text('不得充当分组'), findsOneWidget);
+      expect(find.text('负责18个客户'), findsOneWidget);
     },
   );
 
@@ -255,11 +256,10 @@ void main() {
       expect(find.text('人员列表加载失败，请重试'), findsOneWidget);
       await tester.tap(find.text('重试'));
       await tester.pumpAndSettle();
-      final tile = tester.widget<ListTile>(
+      await tester.tap(
         find.byKey(const ValueKey('employee-picker-item-blocked')),
       );
-      expect(tile.enabled, isFalse);
-      expect(tile.onTap, isNull);
+      await tester.pumpAndSettle();
       expect(find.text('缺少手机号'), findsOneWidget);
       expect(
         tester
@@ -289,22 +289,11 @@ void main() {
       find.byKey(const ValueKey('employee-picker-item-production-1')),
     );
     await tester.pump();
-    expect(
-      tester
-          .widget<ListTile>(
-            find.byKey(const ValueKey('employee-picker-item-sales-1')),
-          )
-          .selected,
-      isFalse,
+    final table = tester.widget<MasterDataTableView<UtenEmployeePickerItem>>(
+      find.byType(MasterDataTableView<UtenEmployeePickerItem>),
     );
-    expect(
-      tester
-          .widget<ListTile>(
-            find.byKey(const ValueKey('employee-picker-item-production-1')),
-          )
-          .selected,
-      isTrue,
-    );
+    expect(table.isSelected!(_sales), isFalse);
+    expect(table.isSelected!(_production), isTrue);
   });
 
   testWidgets('candidate API guidance is shown without raw exception details', (

@@ -38,8 +38,8 @@ public class DepartmentService {
     }
 
     /**
-     * 员工选择器的最小部门树。调用端随后仍通过 employee:view 员工列表取候选人，
-     * 本接口本身不返回任何员工、负责人或编制信息。
+     * 内部员工选择器的最小部门树。调用端仍通过各业务原有的授权候选接口取人，
+     * 本接口只提供真实组织路径，不返回任何员工、负责人或编制信息。
      */
     @Transactional(readOnly = true)
     public List<DepartmentPickerNode> employeePickerTree() {

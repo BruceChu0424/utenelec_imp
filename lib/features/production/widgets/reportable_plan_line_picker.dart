@@ -17,7 +17,7 @@ import '../repositories/production_repository.dart';
 
 /// 选择本次报工对应的生产子任务（2026-09-11 起**支持多选**）。
 ///
-/// 桌面端右侧 840px 滑入（外壳 showUtenAdaptivePanel，带面板投影），
+/// 桌面端右侧滑入（外壳 showUtenAdaptivePanel，带面板投影；browse 档 75% 屏宽、840 小屏下限），
 /// 手机端底部全屏；数据只来自服务端“可报工计划”读侧，不在客户端猜
 /// 计划号或销售订单分摊。
 ///

@@ -13,6 +13,7 @@ class EmployeeSummary {
     this.departmentName,
     this.positionName,
     this.status,
+    this.accountStatus,
     this.employmentType,
     this.hireDate,
     this.positionLevel,
@@ -29,6 +30,10 @@ class EmployeeSummary {
   final String? departmentName;
   final String? positionName;
   final String? status;
+
+  /// Account availability supplied by the authorized employee-list response.
+  /// Separate from employment [status]; absent data remains unknown.
+  final String? accountStatus;
   final String? employmentType;
   final String? hireDate; // yyyy-MM-dd
   final String? positionLevel;
@@ -46,6 +51,7 @@ class EmployeeSummary {
         departmentName: json['departmentName'] as String?,
         positionName: json['positionName'] as String?,
         status: json['status'] as String?,
+        accountStatus: json['accountStatus'] as String?,
         employmentType: json['employmentType'] as String?,
         hireDate: json['hireDate'] as String?,
         positionLevel: json['positionLevel'] as String?,

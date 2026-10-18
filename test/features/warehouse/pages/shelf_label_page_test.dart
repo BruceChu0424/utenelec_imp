@@ -117,11 +117,14 @@ void main() {
     expect(repo.racksWarehouseCalls, isEmpty);
     expect(repo.layoutWarehouseCalls, isEmpty);
 
-    // 仓库筛选 = 侧滑面板（2026-09-11 全站统一）：点字段拉面板，点仓行即选即关。
+    // 点仓行只暂存，确认后才更新筛选并重查。
     await tester.tap(find.byKey(const Key('shelf-label-warehouse')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('warehouse-picker-all')), findsOneWidget);
     await tester.tap(find.byKey(const Key('warehouse-picker-entry-w1')));
+    await tester.pumpAndSettle();
+    expect(repo.warehouseCalls, [null]);
+    await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
     await tester.pumpAndSettle();
 
     expect(repo.warehouseCalls, [null, 'w1']);

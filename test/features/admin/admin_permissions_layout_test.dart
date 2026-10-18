@@ -4,11 +4,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_app_bar.dart';
+import 'package:uten_imp/components/layout/uten_split_view.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/admin/models/admin_models.dart';
 import 'package:uten_imp/features/admin/pages/admin_permissions_page.dart';
 import 'package:uten_imp/features/admin/repositories/admin_repository.dart';
 import 'package:uten_imp/features/admin/widgets/page_permission_drawer.dart';
+import 'package:uten_imp/features/admin/widgets/admin_permission_transfer_actions.dart';
 import 'package:uten_imp/features/department/models/department_node.dart';
 import 'package:uten_imp/shared/auth/page_permission_delegation_models.dart';
 import 'package:uten_imp/shared/auth/page_permission_delegation_repository.dart';
@@ -18,11 +21,53 @@ import 'package:uten_imp/shared/auth/permission_action_type.dart';
 import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import '../../support/audit_screenshot_support.dart';
 
 final _role = StateProvider<bool>((ref) => true);
-const _captureKey = ValueKey('admin-permissions-capture');
+final _captureKey = GlobalKey();
+const _captureScreenshots = bool.fromEnvironment(
+  'UTEN_CAPTURE_PERMISSION_LAYOUT',
+);
 
 void main() {
+  if (_captureScreenshots) {
+    testWidgets('capture permission workspace modes', (tester) async {
+      await loadAuditScreenshotFonts(tester);
+      await _mount(
+        tester,
+        _Repository(editablePermission: true, aiPermission: true),
+        _AiRepository(),
+        width: 1440,
+        initialDepartmentId: 'department-target',
+      );
+      await _selectMode(tester, '按员工');
+      await saveAuditScreenshot(
+        tester,
+        _captureKey,
+        'permission-workspace-employee',
+      );
+      await _selectMode(tester, '按部门');
+      await saveAuditScreenshot(
+        tester,
+        _captureKey,
+        'permission-workspace-department',
+      );
+      await _selectMode(tester, '全员基础包');
+      await saveAuditScreenshot(
+        tester,
+        _captureKey,
+        'permission-workspace-baseline',
+      );
+      tester.view.physicalSize = const Size(375, 1000);
+      await tester.pumpAndSettle();
+      await saveAuditScreenshot(
+        tester,
+        _captureKey,
+        'permission-workspace-baseline-compact',
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
   for (final width in [375.0, 1440.0]) {
     testWidgets(
       'account header and left filters fit at $width with large text',
@@ -61,7 +106,7 @@ void main() {
           expect(search.top, lessThan(filter.top));
           expect(
             search.top,
-            lessThan(
+            greaterThan(
               tester
                   .getRect(
                     find.byKey(const ValueKey('admin-permission-modules')),
@@ -86,6 +131,177 @@ void main() {
     );
   }
 
+  testWidgets(
+    'department and baseline drafts also block imports across modes',
+    (tester) async {
+      await _mount(
+        tester,
+        _Repository(editablePermission: true),
+        _AiRepository(),
+        width: 1440,
+        initialDepartmentId: 'department-target',
+      );
+      await tester.tap(find.text('常用模块'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('资料'));
+      await tester.pumpAndSettle();
+      final permission = find.byKey(const ValueKey('permission-goods:view'));
+      tester
+          .widget<Switch>(
+            find.descendant(of: permission, matching: find.byType(Switch)),
+          )
+          .onChanged!(true);
+      await tester.pumpAndSettle();
+      expect(_archiveActions(tester).importEnabled, isFalse);
+      await _selectMode(tester, '全员基础包');
+      await tester.tap(find.text('常用模块'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('资料'));
+      await tester.pumpAndSettle();
+      tester
+          .widget<Switch>(
+            find.byKey(const ValueKey('baseline-switch-goods:view')),
+          )
+          .onChanged!(true);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('撤销'));
+      await tester.pumpAndSettle();
+      expect(_archiveActions(tester).importEnabled, isFalse);
+      await _selectMode(tester, '按部门');
+      expect(find.text('已修改 1 项'), findsOneWidget);
+      await tester.tap(find.text('撤销'));
+      await tester.pumpAndSettle();
+      expect(_archiveActions(tester).importEnabled, isTrue);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'authorization modes keep navigation and detail columns aligned',
+    (tester) async {
+      await _mount(tester, _Repository(), _AiRepository(), width: 1440);
+      final navigation = find.byKey(const ValueKey('admin-permission-modules'));
+      final originalNavigation = tester.getRect(navigation);
+      final originalDetail = tester.getRect(
+        find.byKey(const ValueKey('admin-user-summary-card')),
+      );
+      expect(find.byType(UtenSplitView), findsOneWidget);
+      await tester.tap(find.text('按部门'));
+      await tester.pumpAndSettle();
+      expect(tester.getRect(navigation), originalNavigation);
+      expect(find.byType(UtenSplitView), findsOneWidget);
+      await tester.tap(find.text('全员基础包'));
+      await tester.pumpAndSettle();
+      expect(tester.getRect(navigation), originalNavigation);
+      final baselineDetail = tester.getRect(
+        find.byKey(const ValueKey('admin-baseline-permission-card')),
+      );
+      expect(baselineDetail.left, originalDetail.left);
+      expect(baselineDetail.width, originalDetail.width);
+      expect(find.byType(UtenSplitView), findsOneWidget);
+      expect(find.text('全体在职员工'), findsOneWidget);
+      expect(find.text('全部授权'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'bulk operations and shared pane width retain drafts across modes',
+    (tester) async {
+      await _mount(
+        tester,
+        _Repository(editablePermission: true),
+        _AiRepository(),
+        width: 1440,
+        initialDepartmentId: 'department-target',
+      );
+      await _selectMode(tester, '按员工');
+      final detail = find.byKey(const ValueKey('admin-user-permission-card'));
+      final summary = find.byKey(const ValueKey('admin-user-summary-card'));
+      for (final label in ['全部授权', '全部收回']) {
+        expect(
+          find.descendant(of: detail, matching: find.text(label)),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: summary, matching: find.text(label)),
+          findsNothing,
+        );
+      }
+      await tester.tap(find.text('常用模块'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('资料'));
+      await tester.pumpAndSettle();
+      final permission = find.byKey(const ValueKey('permission-goods:view'));
+      tester
+          .widget<Switch>(
+            find.descendant(of: permission, matching: find.byType(Switch)),
+          )
+          .onChanged!(true);
+      await tester.pumpAndSettle();
+      expect(find.text('已修改 1 项'), findsOneWidget);
+      expect(_archiveActions(tester).importEnabled, isFalse);
+      final originalLeft = tester.getRect(summary).left;
+      await tester.drag(find.byTooltip('拖动调整宽度 · 双击复位'), const Offset(90, 0));
+      await tester.pumpAndSettle();
+      final draggedLeft = tester.getRect(summary).left;
+      expect(draggedLeft, greaterThan(originalLeft));
+      expect(find.text('已修改 1 项'), findsOneWidget);
+      await _selectMode(tester, '按部门');
+      expect(
+        tester
+            .getRect(
+              find.byKey(const ValueKey('admin-department-permission-card')),
+            )
+            .left,
+        draggedLeft,
+      );
+      await tester.tap(find.text('全员基础包'));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .getRect(
+              find.byKey(const ValueKey('admin-baseline-permission-card')),
+            )
+            .left,
+        draggedLeft,
+      );
+      expect(_archiveActions(tester).importEnabled, isFalse);
+      await tester.tap(find.text('按员工'));
+      await tester.pumpAndSettle();
+      expect(tester.getRect(summary).left, draggedLeft);
+      expect(find.text('已修改 1 项'), findsOneWidget);
+      tester.view.physicalSize = const Size(375, 1000);
+      await tester.pumpAndSettle();
+      expect(find.text('已修改 1 项'), findsOneWidget);
+      await tester.tap(find.text('撤销'));
+      await tester.pumpAndSettle();
+      expect(_archiveActions(tester).importEnabled, isTrue);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final width in [375.0, 1440.0]) {
+    testWidgets('all authorization modes fit large text at $width', (
+      tester,
+    ) async {
+      await _mount(
+        tester,
+        _Repository(),
+        _AiRepository(),
+        width: width,
+        scale: 1.6,
+      );
+      final navigation = find.byKey(const ValueKey('admin-permission-modules'));
+      final position = tester.getTopLeft(navigation);
+      for (final mode in ['按部门', '全员基础包', '按员工']) {
+        await _selectMode(tester, mode);
+        expect(tester.getTopLeft(navigation), position);
+        expect(tester.takeException(), isNull);
+      }
+    });
+  }
+
   testWidgets('AI use is an editable category inside permission details', (
     tester,
   ) async {
@@ -98,7 +314,8 @@ void main() {
     );
     expect(find.byType(PagePermissionDrawer), findsNothing);
     expect(ai.scopes, isEmpty);
-    await tester.tap(find.text('系统管理'));
+    expect(find.text('系统管理'), findsNothing);
+    await tester.tap(find.text('通用'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('AI 助手'));
     await tester.pumpAndSettle();
@@ -229,6 +446,27 @@ void main() {
   );
 }
 
+AdminPermissionArchiveActions _archiveActions(WidgetTester tester) => tester
+    .widget<UtenAppBar>(find.byType(UtenAppBar))
+    .actions!
+    .whereType<AdminPermissionArchiveActions>()
+    .single;
+
+Future<void> _selectMode(WidgetTester tester, String label) async {
+  final navigation = find.byKey(const ValueKey('admin-permission-modules'));
+  final choice = find.descendant(of: navigation, matching: find.text(label));
+  if (choice.evaluate().isEmpty) {
+    await tester.tap(
+      find.descendant(of: navigation, matching: find.byType(OutlinedButton)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(label).last);
+  } else {
+    await tester.tap(choice);
+  }
+  await tester.pumpAndSettle();
+}
+
 Future<void> _mount(
   WidgetTester tester,
   _Repository repository,
@@ -236,6 +474,7 @@ Future<void> _mount(
   required double width,
   double scale = 1,
   String? initialEmployeeId = 'employee-target',
+  String? initialDepartmentId,
 }) async {
   tester.view.physicalSize = Size(width, 1000);
   tester.view.devicePixelRatio = 1;
@@ -260,6 +499,10 @@ Future<void> _mount(
       child: RepaintBoundary(
         key: _captureKey,
         child: MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: _captureScreenshots
+              ? auditScreenshotTheme(buildLightTheme())
+              : null,
           locale: const Locale('zh'),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
@@ -269,7 +512,10 @@ Future<void> _mount(
             ).copyWith(textScaler: TextScaler.linear(scale)),
             child: child!,
           ),
-          home: AdminPermissionsPage(initialEmployeeId: initialEmployeeId),
+          home: AdminPermissionsPage(
+            initialEmployeeId: initialEmployeeId,
+            initialDepartmentId: initialDepartmentId,
+          ),
         ),
       ),
     ),
@@ -360,24 +606,19 @@ class _Repository implements AdminRepository {
   @override
   Future<AdminUserSummary> userByEmployeeId(String employeeId) async => user;
   @override
-  Future<List<DepartmentNode>> departmentTree() async => [];
+  Future<List<DepartmentNode>> departmentTree() async => [
+    DepartmentNode(
+      id: 'department-target',
+      code: 'DEPT_PROD',
+      name: '制造部',
+      level: '一级部门',
+      children: [],
+    ),
+  ];
+  @override
+  Future<List<String>> departmentPermissions(String departmentId) async => [];
   @override
   Future<List<PermissionCatalogGroup>> permissionCatalog() async => [
-    if (aiPermission)
-      const PermissionCatalogGroup(
-        category: 'AI 助手',
-        module: '系统管理',
-        permissions: [
-          AdminPermission(
-            id: 'permission-ai',
-            code: Perm.aiUse,
-            actionType: PermissionActionType.execute,
-            name: '使用 AI 助手（对话与文件识别）',
-            category: 'AI 助手',
-            module: '系统管理',
-          ),
-        ],
-      ),
     if (editablePermission)
       const PermissionCatalogGroup(
         category: '资料',
@@ -390,6 +631,21 @@ class _Repository implements AdminRepository {
             name: '查看测试资料',
             category: '资料',
             module: '常用模块',
+          ),
+        ],
+      ),
+    if (aiPermission)
+      const PermissionCatalogGroup(
+        category: 'AI 助手',
+        module: '通用',
+        permissions: [
+          AdminPermission(
+            id: 'permission-ai',
+            code: Perm.aiUse,
+            actionType: PermissionActionType.execute,
+            name: '使用 AI 助手（对话与文件识别）',
+            category: 'AI 助手',
+            module: '通用',
           ),
         ],
       ),

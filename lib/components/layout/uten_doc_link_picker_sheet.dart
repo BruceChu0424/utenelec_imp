@@ -3,7 +3,7 @@ import '../../shared/formatters/exact_decimal.dart';
 //
 // 结构收敛（2026-08-16，审计 §4.1 第 1 批）：purchase/sales/subcontract 三个
 // 逐字重复的 _UpstreamImportSheet 状态机抽成本组件，外壳复用
-// [showUtenAdaptivePanel]（compact 底部弹层降级 + 宽屏 840 右滑入）。
+// [showUtenAdaptivePanel]（compact 底部弹层降级 + 宽屏右滑入，browse 档 75% 屏宽、840 只作小屏下限，2026-10-17）。
 //  两步各自 Excel 表：
 //  Step1 上游单据：MasterDataTableView（搜索 + 往来方筛选 + 表头排序 +
 //        「表头设置」列显隐 + 分页，状态固定已审——由配置方在 listDocs 里过滤）。

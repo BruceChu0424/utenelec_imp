@@ -369,6 +369,8 @@ class _WorkshopMaterialIssuePageState
           id: e.id,
           name: e.fullName,
           employeeCode: e.code,
+          accountStatus: e.accountStatus,
+          employmentStatus: e.status,
           departmentId: e.departmentId,
           departmentName: e.departmentName,
         ),

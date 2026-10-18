@@ -9,13 +9,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/position.dart';
 import '../repositories/position_repository.dart';
+import 'position_picker_table_columns.dart';
 import 'uten_department_picker.dart';
 
 /// 岗位输入的已确认值：已有岗位（保留 id）、自定义名称，或空值。
@@ -124,13 +127,26 @@ class _UtenPositionEntryPickerState
         ).modalBarrierDismissLabel,
         barrierColor: Colors.black54,
         transitionDuration: const Duration(milliseconds: 250),
-        pageBuilder: (dialogContext, _, _) => Align(
-          alignment: Alignment.centerRight,
-          child: Material(
-            color: Theme.of(dialogContext).colorScheme.surface,
-            child: SizedBox(width: 420, height: double.infinity, child: sheet),
-          ),
-        ),
+        pageBuilder: (dialogContext, _, _) {
+          // 滑窗宽度口径 2026-10-17：职位选择是简单列表，form 档（35% 屏宽，420 下限），
+          // 与其他右滑面板同一口径（uten_adaptive_panel.dart 的 UtenPanelWidth）。
+          final width = utenPanelWidth(
+            MediaQuery.sizeOf(dialogContext),
+            420,
+            UtenPanelWidth.form,
+          );
+          return Align(
+            alignment: Alignment.centerRight,
+            child: Material(
+              color: Theme.of(dialogContext).colorScheme.surface,
+              child: SizedBox(
+                width: width,
+                height: double.infinity,
+                child: sheet,
+              ),
+            ),
+          );
+        },
         transitionBuilder: (dialogContext, animation, _, child) =>
             SlideTransition(
               position:
@@ -369,29 +385,6 @@ class _PositionEntrySheetState extends ConsumerState<_PositionEntrySheet> {
     );
   }
 
-  Widget _positionTile(Position position) {
-    final theme = Theme.of(context);
-    final selected = _selected?.id == position.id;
-    final metadata = [
-      if (position.code.trim().isNotEmpty) position.code.trim(),
-      if (position.level.trim().isNotEmpty) position.level.trim(),
-    ].join(' · ');
-    return ListTile(
-      key: Key('position-option-${position.id}'),
-      minVerticalPadding: 10,
-      selected: selected,
-      selectedTileColor: theme.colorScheme.primaryContainer.withValues(
-        alpha: 0.45,
-      ),
-      title: Text(position.name),
-      subtitle: metadata.isEmpty ? null : Text(metadata),
-      trailing: selected
-          ? Icon(Icons.check_circle_rounded, color: theme.colorScheme.primary)
-          : null,
-      onTap: () => _select(position),
-    );
-  }
-
   Widget _customTile(AppLocalizations l10n) {
     final theme = Theme.of(context);
     return ListTile(
@@ -414,9 +407,7 @@ class _PositionEntrySheetState extends ConsumerState<_PositionEntrySheet> {
     }
     final filtered = _filteredPositions;
     final showCustom = _query.isNotEmpty && _exactMatch == null;
-    return ListView(
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      padding: const EdgeInsets.only(bottom: 12),
+    return Column(
       children: [
         if (_error != null)
           Padding(
@@ -442,19 +433,30 @@ class _PositionEntrySheetState extends ConsumerState<_PositionEntrySheet> {
               ),
             ),
           ),
-        if (_positions?.isEmpty == true && _query.isEmpty)
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(
-              l10n.positionPickerNoPositions,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
         if (showCustom) _customTile(l10n),
-        for (final position in filtered) _positionTile(position),
+        Expanded(
+          child: MasterDataTableView<Position>(
+            key: const Key('position-entry-candidates-table'),
+            columns: positionPickerTableColumns(),
+            items: filtered,
+            rowKeyOf: (position) => position.id,
+            rowWidgetKeyOf: (position) => Key('position-option-${position.id}'),
+            facets: const {},
+            nullCounts: const {},
+            filters: const {},
+            onFilterChanged: (_, _) {},
+            isSelected: (position) => _selected?.id == position.id,
+            onRowTap: _select,
+            singleTapRows: true,
+            showFullscreenToggle: false,
+            showColumnChooser: false,
+            showPaginationControls: false,
+            enableTextSelection: false,
+            emptyMessage: _error != null || showCustom
+                ? ''
+                : l10n.positionPickerNoPositions,
+          ),
+        ),
       ],
     );
   }

@@ -232,8 +232,9 @@ void main() {
       final panel = tester.getRect(
         find.byKey(const Key('where-used-product-detail-dialog')),
       );
-      expect(panel.width, 760);
-      expect(panel.left, 440);
+      // 2026-10-17 滑窗口径：1200 屏 browse 档宽 = max(760, 900) = 900。
+      expect(panel.width, 900);
+      expect(panel.left, 300);
       expect(panel.right, 1200);
       expect(find.text('多来源关系详情'), findsOneWidget);
       expect(find.text('产成品编号：CP-001'), findsOneWidget);

@@ -74,6 +74,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('warehouse-picker-entry-wa')));
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
+      await tester.pumpAndSettle();
       expect(_table(tester).items, hasLength(4));
       final grid = tester.widget<UtenRackGrid>(find.byType(UtenRackGrid));
       expect(grid.items, hasLength(3));

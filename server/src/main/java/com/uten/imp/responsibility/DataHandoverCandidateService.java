@@ -46,6 +46,7 @@ public class DataHandoverCandidateService {
         String where = """
                 FROM employees employee
                 LEFT JOIN departments department ON department.id=employee.department_id
+                LEFT JOIN users account ON account.employee_id=employee.id AND account.is_deleted=false
                 WHERE employee.is_deleted=false
                   AND NOT EXISTS (
                       SELECT 1 FROM users protected_account
@@ -74,7 +75,8 @@ public class DataHandoverCandidateService {
 
         var dataQuery = em.createNativeQuery("""
                 SELECT employee.id, employee.code, employee.full_name,
-                       employee.department_id, department.name, employee.status
+                       employee.department_id, department.name, employee.status,
+                       COALESCE(account.status, 'notProvisioned') AS account_status
                 """ + where + " ORDER BY "
                 + TaskKeywordSearch.rankNamesFirstParameter("keyword", new String[]{"employee.full_name"},
                         new String[]{}, new String[]{"employee.full_name", "employee.code"}) + """
@@ -93,7 +95,7 @@ public class DataHandoverCandidateService {
                     uuid(row[0]), Objects.toString(row[1], ""),
                     Objects.toString(row[2], ""), uuid(row[3]),
                     row[4] == null ? null : row[4].toString(),
-                    Objects.toString(row[5], "")));
+                    Objects.toString(row[5], ""), row[6] == null ? null : row[6].toString()));
         }
         return new DataHandoverCandidatePage(List.copyOf(items), page, size, total);
     }

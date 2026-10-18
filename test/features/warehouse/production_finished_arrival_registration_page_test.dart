@@ -1008,6 +1008,8 @@ void main() {
       find.byKey(const Key('warehouse-picker-entry-warehouse-2')),
     );
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
+    await tester.pumpAndSettle();
     expect(api.suggestionWarehouses, ['warehouse-1', 'warehouse-2']);
     expect(_warehouseDecoration(tester, _row1).autofilled, isTrue);
     expect(_warehouseDecoration(tester, _row2).autofilled, isFalse);
@@ -1045,6 +1047,8 @@ void main() {
     await tester.tap(
       find.byKey(const Key('warehouse-picker-entry-warehouse-2')),
     );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
     await tester.pumpAndSettle();
     await tester.enterText(_placeField(_row1), 'CP-A-01');
     await tester.enterText(_placeField(_row2), 'CP-B-01');
@@ -1360,6 +1364,8 @@ Future<void> _selectWarehouse(
   await tester.pump(const Duration(milliseconds: 300));
   final entry = {'成品仓': 'warehouse-1', '备用成品仓': 'warehouse-2'}[label]!;
   await tester.tap(find.byKey(ValueKey('warehouse-picker-entry-$entry')));
+  await tester.pump();
+  await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 250));
   if (settle) await tester.pumpAndSettle();

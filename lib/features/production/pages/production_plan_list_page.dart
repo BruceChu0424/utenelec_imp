@@ -1,7 +1,6 @@
 // 生产计划单列表页（生产管理 / production_plan:view）。
 //
-// 复用基础资料布局：UtenAppBar(标题/返回/刷新) + UtenContentContainer > 标题行
-// (Icon+label+(N)+新建) + 状态筛选(UtenFilterToolbar 分段+搜索) + MasterDataTableView。
+// 标题/返回/页级操作统一在 UtenAppBar；正文从分类/搜索开始，新建放右下悬浮区。
 // 过滤由本页自带的状态分段工具条 + 关键词搜索承担（facets 传空，表头降级为纯标签）。
 // 「新建」进入计划前物料分析，按 production_material_analysis:create 权限显隐。
 //
@@ -21,9 +20,9 @@ import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_document_lifecycle_filter.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
@@ -107,6 +106,19 @@ class _ProductionPlanListPageState
 
   bool get _canBatchDelete =>
       ref.read(currentPermissionsProvider).contains(Perm.productionPlanDelete);
+
+  bool get _canSelectDrafts =>
+      !_historyMode &&
+      _statusFilter == kProductionStatusDraft &&
+      (_canBatchApprove || _canBatchDelete);
+
+  Widget _createButton() => UtenButton(
+    key: const Key('production-plan-list-create'),
+    size: UtenButtonSize.large,
+    icon: Icons.add_rounded,
+    onPressed: () => context.push('/production/plans/new'),
+    child: const Text('新建'),
+  );
 
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
   Future<PagedResult<ProductionPlanListItem>> _fetch() async {
@@ -329,12 +341,13 @@ class _ProductionPlanListPageState
     }
   }
 
-  /// 批量业务动作由 MasterDataTableView 统一悬浮在右下角；选择摘要仍在表头上方。
+  /// 草稿的新建、选择摘要与批量业务动作共用表格右下角悬浮组。
   List<Widget> _planBatchActions(
     BuildContext context,
     Set<String> selectedIds,
   ) {
     return [
+      if (_canCreate) _createButton(),
       if (_canBatchApprove)
         UtenButton(
           type: UtenButtonType.tonal,
@@ -421,7 +434,10 @@ class _ProductionPlanListPageState
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final permissions = ref.watch(currentPermissionsProvider);
+    final canReviewOverproduction =
+        permissions.contains(Perm.productionPlanApprove) ||
+        ref.watch(isSuperAdminProvider);
     final names = ref.watch(masterNameServiceProvider);
     // 分段计数(一次请求带回草稿/已审/红冲三桶); 加载中或无权限为 null, 不渲染数字。
     final statusCounts = ref
@@ -438,6 +454,22 @@ class _ProductionPlanListPageState
           onPressed: () => backTo(context, defaultPath: RouteName.production),
         ),
         actions: [
+          if (canReviewOverproduction) ...[
+            UtenButton(
+              type: UtenButtonType.secondary,
+              icon: Icons.fact_check_outlined,
+              onPressed: () =>
+                  context.push(RouteName.productionOverproductionRateRequests),
+              child: const Text('超产比例审批'),
+            ),
+            UtenButton(
+              type: UtenButtonType.secondary,
+              icon: Icons.inventory_2_outlined,
+              onPressed: () =>
+                  context.push(RouteName.productionOverLimitDispositions),
+              child: const Text('超限产出处置'),
+            ),
+          ],
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新',
@@ -445,6 +477,11 @@ class _ProductionPlanListPageState
           ),
         ],
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: _canCreate && !_canSelectDrafts
+          ? UtenFloatingActionGroup(children: [_createButton()])
+          : null,
       body: SafeArea(
         child: UtenContentContainer.wide(
           child: Padding(
@@ -452,151 +489,84 @@ class _ProductionPlanListPageState
             child: ListenableBuilder(
               listenable: _list,
               builder: (context, _) {
-                final total = _list.total;
-                // 「顶部折叠 + 表格吸顶内滚」：标题行随上滑收起腾出空间，
-                // 筛选/表格区占满剩余空间、表体内部滚动（与单据列表页统一）。
-                return UtenCollapsingHeaderScrollView(
-                  // 页面头：Icon + 标题 + 计数 + 新建按钮（搜索条挪到下方筛选区/侧栏）
-                  collapsingHeader: Padding(
-                    padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.assignment_outlined,
-                          size: 18,
-                          color: theme.colorScheme.primary,
+                return UtenListTwoPane(
+                  // 全平台统一筛选工具条：状态分段 + 胶囊搜索框。
+                  filterPane: _lifecycleFilters(statusCounts),
+                  tablePane: _withFormDraftRows(
+                    MasterDataTableView<ProductionPlanListItem>(
+                      tableKey: 'production.plan.list',
+                      bottomContentPadding:
+                          UtenFloatingActionGroup.scrollClearance,
+                      columns: _columns(names),
+                      items: _list.page?.items ?? const [],
+                      facets: {
+                        'workshop': masterDictionaryFacets(
+                          names.departmentEntries,
                         ),
-                        const SizedBox(width: UtenSpacing.s8),
-                        Text(
-                          '计划单 ($total)',
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
+                        'status': const [
+                          MasterFacetBucket(
+                            value: '$kProductionStatusDraft',
+                            count: 0,
+                            label: '草稿',
                           ),
-                        ),
-                        const Spacer(),
-                        if (ref
-                                .watch(currentPermissionsProvider)
-                                .contains(Perm.productionPlanApprove) ||
-                            ref.watch(isSuperAdminProvider))
-                          UtenButton(
-                            type: UtenButtonType.secondary,
-                            icon: Icons.fact_check_outlined,
-                            onPressed: () => context.push(
-                              RouteName.productionOverproductionRateRequests,
-                            ),
-                            child: const Text('超产比例审批'),
+                          MasterFacetBucket(
+                            value: '$kProductionStatusApproved',
+                            count: 0,
+                            label: '已审',
                           ),
-                        if (ref
-                                .watch(currentPermissionsProvider)
-                                .contains(Perm.productionPlanApprove) ||
-                            ref.watch(isSuperAdminProvider))
-                          UtenButton(
-                            type: UtenButtonType.secondary,
-                            icon: Icons.inventory_2_outlined,
-                            onPressed: () => context.push(
-                              RouteName.productionOverLimitDispositions,
-                            ),
-                            child: const Text('超限产出处置'),
-                          ),
-                        if (_canCreate &&
-                            _statusFilter != kProductionStatusDraft) ...[
-                          const SizedBox(width: UtenSpacing.s8),
-                          UtenButton(
-                            type: UtenButtonType.tonal,
-                            icon: Icons.add_rounded,
-                            onPressed: () =>
-                                context.push('/production/plans/new'),
-                            child: const Text('新建'),
+                          MasterFacetBucket(
+                            value: '$kProductionStatusReversed',
+                            count: 0,
+                            label: '已反审',
                           ),
                         ],
-                      ],
-                    ),
-                  ),
-                  // 多选批量操作条由 MasterDataTableView.batchActionsBuilder 统一渲染
-                  // （常驻、未选灰色禁用，与货品资料等主档页一致），见 _planBatchActions。
-                  // 桌面：左筛选侧栏（统一筛选工具条）+ 右表格；手机：垂直堆叠
-                  body: UtenListTwoPane(
-                    // 全平台统一筛选工具条：状态分段 + 胶囊搜索框。
-                    filterPane: _lifecycleFilters(statusCounts),
-                    tablePane: _withFormDraftRows(
-                      MasterDataTableView<ProductionPlanListItem>(
-                        tableKey: 'production.plan.list',
-                        // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
-                        primary: true,
-                        columns: _columns(names),
-                        items: _list.page?.items ?? const [],
-                        facets: {
-                          'workshop': masterDictionaryFacets(
-                            names.departmentEntries,
-                          ),
-                          'status': const [
-                            MasterFacetBucket(
-                              value: '$kProductionStatusDraft',
-                              count: 0,
-                              label: '草稿',
-                            ),
-                            MasterFacetBucket(
-                              value: '$kProductionStatusApproved',
-                              count: 0,
-                              label: '已审',
-                            ),
-                            MasterFacetBucket(
-                              value: '$kProductionStatusReversed',
-                              count: 0,
-                              label: '已反审',
-                            ),
-                          ],
-                        },
-                        nullCounts: const {},
-                        filters: {
-                          'workshop': _workshopIdFilter,
-                          'status': _statusFilterSelected
-                              ? _statusFilter?.toString()
-                              : null,
-                        },
-                        onFilterChanged: _onColumnFilterChanged,
-                        sortColumn: _list.sortKey,
-                        sortAscending: _list.sortAsc,
-                        onSortChange: _onSortChange,
-                        onRowTap: (it) =>
-                            context.push('/production/plans/${it.id}'),
-                        // 审核与删除只接收草稿；仍走服务端已有的批量单事务接口。
-                        selectable:
-                            !_historyMode &&
-                            _statusFilter == kProductionStatusDraft &&
-                            (_canBatchApprove || _canBatchDelete),
-                        idOf: (it) =>
-                            !_batching &&
-                                !_list.loading &&
-                                it.status == kProductionStatusDraft
-                            ? it.id
+                      },
+                      nullCounts: const {},
+                      filters: {
+                        'workshop': _workshopIdFilter,
+                        'status': _statusFilterSelected
+                            ? _statusFilter?.toString()
                             : null,
-                        rowKeyOf: (it) => it.id,
-                        selectedIds: _selectedIds,
-                        onSelectedIdsChanged: _batching
-                            ? null
-                            : (next) => setState(() {
-                                _selectedIds
-                                  ..clear()
-                                  ..addAll(next);
-                              }),
-                        // 批量操作条：组件统一渲染（常驻、未选灰色禁用）。
-                        batchActionsBuilder: _planBatchActions,
-                        isLoading: _list.isLoadingFirst,
-                        loadingMore: _list.isLoadingMore,
-                        error: _list.error,
-                        onRetry: () => _reload(),
-                        emptyMessage: '暂无生产计划单',
-                        currentPage: _list.currentPage,
-                        totalPages: _list.totalPages,
-                        paginationRevision: _list.page,
-                        paginationScope: (
-                          _list.normalizedKeyword,
-                          _statusFilter,
-                          _workshopIdFilter,
-                        ),
-                        onPageChange: (p) => _reload(p),
+                      },
+                      onFilterChanged: _onColumnFilterChanged,
+                      sortColumn: _list.sortKey,
+                      sortAscending: _list.sortAsc,
+                      onSortChange: _onSortChange,
+                      onRowTap: (it) =>
+                          context.push('/production/plans/${it.id}'),
+                      // 审核与删除只接收草稿；仍走服务端已有的批量单事务接口。
+                      selectable: _canSelectDrafts,
+                      idOf: (it) =>
+                          !_batching &&
+                              !_list.loading &&
+                              it.status == kProductionStatusDraft
+                          ? it.id
+                          : null,
+                      rowKeyOf: (it) => it.id,
+                      selectedIds: _selectedIds,
+                      onSelectedIdsChanged: _batching
+                          ? null
+                          : (next) => setState(() {
+                              _selectedIds
+                                ..clear()
+                                ..addAll(next);
+                            }),
+                      // 批量操作条：组件统一渲染（常驻、未选灰色禁用）。
+                      batchActionsBuilder: _planBatchActions,
+                      isLoading: _list.isLoadingFirst,
+                      loadingMore: _list.isLoadingMore,
+                      error: _list.error,
+                      onRetry: () => _reload(),
+                      emptyMessage: '暂无生产计划单',
+                      currentPage: _list.currentPage,
+                      totalPages: _list.totalPages,
+                      paginationRevision: _list.page,
+                      paginationScope: (
+                        _list.normalizedKeyword,
+                        _statusFilter,
+                        _workshopIdFilter,
                       ),
+                      onPageChange: (p) => _reload(p),
                     ),
                   ),
                 );
@@ -606,7 +576,18 @@ class _ProductionPlanListPageState
         ),
       ),
     );
-    // 内嵌（生产任务中心「草稿」段）：剥掉 Scaffold/AppBar，只留筛选+表体。
-    return widget.embedded ? page.body! : page;
+    if (!widget.embedded) return page;
+    // 内嵌页仍不重复外层标题；没有草稿批量组时保留唯一的新建悬浮入口。
+    return Stack(
+      children: [
+        page.body!,
+        if (page.floatingActionButton != null)
+          Positioned(
+            right: UtenSpacing.s16,
+            bottom: UtenSpacing.s16,
+            child: page.floatingActionButton!,
+          ),
+      ],
+    );
   }
 }

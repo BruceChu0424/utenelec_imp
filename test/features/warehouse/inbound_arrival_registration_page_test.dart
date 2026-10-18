@@ -609,6 +609,8 @@ void main() {
       find.byKey(const Key('warehouse-picker-entry-warehouse-2')),
     );
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
+    await tester.pumpAndSettle();
     expect(
       find.text('原料仓'),
       findsNWidgets(3),

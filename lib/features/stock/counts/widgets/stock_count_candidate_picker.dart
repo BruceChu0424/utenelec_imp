@@ -5,6 +5,7 @@ import '../../../../shared/models/paged_result.dart';
 import '../../../basic_data/models/goods_node.dart';
 import '../../../basic_data/models/product_category_node.dart';
 import '../../../basic_data/widgets/uten_goods_picker.dart';
+import '../../../basic_data/widgets/master_data_table_view.dart';
 import '../models/stock_count_request.dart';
 import '../repositories/stock_count_request_repository.dart';
 
@@ -129,53 +130,51 @@ class _StockCountPickerSource extends UtenGoodsPickerDataSource {
   bool isSelectable(GoodsListItem goods) => snapshots[goods]?.canEdit ?? false;
 
   @override
-  Widget? buildSubtitle(BuildContext context, GoodsListItem goods) {
-    final row = snapshots[goods];
-    if (row == null) return null;
-    final style = Theme.of(context).textTheme.bodyMedium;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Wrap(
-          spacing: 12,
-          runSpacing: 4,
-          children: [
-            Text(
-              [
-                row.goodsCode,
-                row.colorName,
-              ].whereType<String>().where((v) => v.isNotEmpty).join(' · '),
-              style: style,
-            ),
-            if (goods.isRelatedSearchMatch)
-              Text(
-                '相关结果',
-                key: ValueKey('count-related-${row.key}'),
-                style: style,
-              ),
-          ],
-        ),
-        Wrap(
-          spacing: 12,
-          runSpacing: 4,
-          children: [
-            Text('当前 ${row.qty} ${row.unitName}', style: style),
-            Text(
-              '重量 ${row.weightKg == null ? '未称' : '${row.weightKg} kg'}',
-              key: ValueKey('count-weight-${row.key}'),
-              style: style,
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  @override
-  String? subtitleOf(GoodsListItem goods) {
-    final row = snapshots[goods]!;
-    return '${[row.goodsCode, row.colorName].whereType<String>().where((v) => v.isNotEmpty).join(' · ')}'
-        '\n当前 ${row.qty} ${row.unitName} · 重量 ${row.weightKg == null ? '未称' : '${row.weightKg} kg'}'
-        '${goods.isRelatedSearchMatch ? ' · 相关结果' : ''}';
-  }
+  List<MasterColumnDef<GoodsListItem>> get pickerColumns => [
+    MasterColumnDef(
+      key: 'name',
+      label: '物料名称',
+      width: 200,
+      value: (goods) => goods.name,
+      columnSearchEnabled: false,
+    ),
+    MasterColumnDef(
+      key: 'code',
+      label: '编号',
+      width: 130,
+      value: (goods) => goods.code,
+      columnSearchEnabled: false,
+    ),
+    MasterColumnDef(
+      key: 'color',
+      label: '颜色',
+      width: 100,
+      value: (goods) => goods.colorName,
+      columnSearchEnabled: false,
+    ),
+    MasterColumnDef(
+      key: 'quantity',
+      label: '当前库存',
+      width: 150,
+      value: (goods) {
+        final row = snapshots[goods];
+        return row == null ? null : '${row.qty} ${row.unitName}';
+      },
+      columnSearchEnabled: false,
+    ),
+    MasterColumnDef(
+      key: 'weight',
+      label: '重量',
+      width: 130,
+      value: (goods) {
+        final row = snapshots[goods];
+        return row == null
+            ? null
+            : row.weightKg == null
+            ? '未称'
+            : '${row.weightKg} kg';
+      },
+      columnSearchEnabled: false,
+    ),
+  ];
 }

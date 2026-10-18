@@ -22,6 +22,7 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -388,9 +389,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
 
   Widget _buildDraftHost(BuildContext context) {
     ref.watch(currentPermissionsProvider);
-    final theme = Theme.of(context);
     final items = _filtered;
-    final total = _items?.length ?? 0;
     return Scaffold(
       appBar: UtenAppBar(
         title: '结算方式',
@@ -405,6 +404,20 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
           ),
         ],
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: _canCreate
+          ? UtenFloatingActionGroup(
+              children: [
+                UtenButton(
+                  size: UtenButtonSize.large,
+                  icon: Icons.add_rounded,
+                  onPressed: _showCreate,
+                  child: const Text('添加结算方式'),
+                ),
+              ],
+            )
+          : null,
       body: SafeArea(
         child: UtenContentContainer(
           child: Padding(
@@ -417,43 +430,18 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
                     left: UtenSpacing.s4,
                     right: UtenSpacing.s4,
                   ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.event_note_rounded,
-                        size: 18,
-                        color: theme.colorScheme.primary,
-                      ),
-                      const SizedBox(width: UtenSpacing.s8),
-                      Text(
-                        '结算方式 ($total)',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(width: UtenSpacing.s12),
-                      Expanded(
-                        child: UtenSearchBar(
-                          hint: '搜索结算方式(名称/编号)',
-                          initialValue: _keyword,
-                          onChanged: (kw) =>
-                              setState(() => _keyword = kw), // 本地过滤，小字典
-                        ),
-                      ),
-                      if (_canCreate) ...[
-                        const SizedBox(width: UtenSpacing.s8),
-                        UtenButton(
-                          type: UtenButtonType.tonal,
-                          icon: Icons.add_rounded,
-                          onPressed: _showCreate,
-                          child: const Text('添加结算方式'), // TODO(l10n): 补 arb
-                        ),
-                      ],
-                    ],
+                  child: UtenSearchBar(
+                    hint: '搜索结算方式(名称/编号)',
+                    initialValue: _keyword,
+                    onChanged: (kw) =>
+                        setState(() => _keyword = kw), // 本地过滤，小字典
                   ),
                 ),
                 Expanded(
                   child: MasterDataTableView<SettlementMethodAdminItem>(
+                    bottomContentPadding: _canCreate
+                        ? UtenFloatingActionGroup.scrollClearance
+                        : 0,
                     columnEditingEnabled: _canEdit,
                     tableKey:
                         'features.basic_data.pages.settlement_method_page.SettlementMethodPageState._buildDraftHost.1',

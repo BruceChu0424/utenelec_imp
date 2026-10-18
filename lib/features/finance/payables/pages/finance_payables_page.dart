@@ -1085,6 +1085,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
   Future<void> _showCompactFilters() async {
     await showUtenAdaptivePanel<void>(
       context: context,
+      widthFraction: UtenPanelWidth.form,
       showDragHandle: true,
       barrierLabel: '关闭应付筛选',
       builder: (panelContext) => StatefulBuilder(

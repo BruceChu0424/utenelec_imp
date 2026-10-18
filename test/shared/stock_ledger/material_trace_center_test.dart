@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/layout/uten_picker_confirm_bar.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/router/permission_by_path.dart';
@@ -398,6 +400,17 @@ void main() {
       await tester.enterText(_search(), 'CG001');
       await tester.pump(const Duration(milliseconds: 251));
       await tester.pumpAndSettle();
+      final table = tester.widget<MasterDataTableView<MaterialTraceSubject>>(
+        find.byType(MasterDataTableView<MaterialTraceSubject>),
+      );
+      expect(table.columns.map((column) => column.label), [
+        '单据号',
+        '类型',
+        '日期',
+        '货品 / 摘要',
+        '状态',
+      ]);
+      expect(table.tableKey, isNull);
       expect(
         find.descendant(
           of: find.byKey(
@@ -417,10 +430,239 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      expect(selected, isNull);
+      expect(find.text('选择追溯单据'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('material-trace-subject-confirm')));
+      await tester.pumpAndSettle();
       expect(selected!.identity, ('SUBCONTRACT_ORDER', 'order-2'));
       expect(tester.takeException(), isNull);
     },
   );
+
+  for (final dismissal in ['取消', '关闭', '遮罩']) {
+    testWidgets('subject draft is discarded by $dismissal', (tester) async {
+      final api = _Api()
+        ..subjects = (_) async => {
+          'items': [_identity(_subject)],
+          'page': 1,
+          'size': 30,
+          'total': 1,
+          'totalPages': 1,
+        };
+      final results = <MaterialTraceSubject?>[];
+      await _pump(tester, api, _pickerButton(onSelected: results.add));
+      await tester.tap(find.text('选择单据'));
+      await tester.pumpAndSettle();
+      await tester.enterText(_search(), 'CG001');
+      await tester.pump(const Duration(milliseconds: 251));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(
+          const ValueKey((
+            'material-trace-subject',
+            'PURCHASE_ORDER',
+            'order-1',
+          )),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(results, isEmpty);
+      expect(
+        tester
+            .widget<UtenPickerConfirmBar>(find.byType(UtenPickerConfirmBar))
+            .selectedCount,
+        1,
+      );
+      if (dismissal == '遮罩') {
+        await tester.tapAt(const Offset(20, 400));
+      } else if (dismissal == '关闭') {
+        await tester.tap(find.byTooltip('关闭'));
+      } else {
+        await tester.tap(find.text('取消'));
+      }
+      await tester.pumpAndSettle();
+      expect(results, [null]);
+    });
+  }
+
+  for (final changeExact in [false, true]) {
+    testWidgets(
+      'subject draft and cached confirmation expire on ${changeExact ? 'exact filter' : 'keyword'} change',
+      (tester) async {
+        final api = _Api()
+          ..subjects = (_) async => {
+            'items': [_identity(_subject)],
+            'page': 1,
+            'size': 30,
+            'total': 1,
+            'totalPages': 1,
+          };
+        final results = <MaterialTraceSubject?>[];
+        await _pump(tester, api, _pickerButton(onSelected: results.add));
+        await tester.tap(find.text('选择单据'));
+        await tester.pumpAndSettle();
+        await tester.enterText(_search(), 'CG001');
+        await tester.pump(const Duration(milliseconds: 251));
+        await tester.pumpAndSettle();
+        final row = find.byKey(
+          const ValueKey((
+            'material-trace-subject',
+            'PURCHASE_ORDER',
+            'order-1',
+          )),
+        );
+        final table = tester.widget<MasterDataTableView<MaterialTraceSubject>>(
+          find.byType(MasterDataTableView<MaterialTraceSubject>),
+        );
+        final oldSubject = table.items.singleWhere(
+          (item) => item.identity == _subject.identity,
+        );
+        void oldSelect() => table.onRowTap!(oldSubject);
+        await tester.tap(row);
+        await tester.pumpAndSettle();
+        final oldConfirm = tester
+            .widget<UtenButton>(
+              find.byKey(const Key('material-trace-subject-confirm')),
+            )
+            .onPressed!;
+        if (changeExact) {
+          await tester.tap(find.text('精确匹配编号'));
+        } else {
+          await tester.enterText(_search(), 'CG002');
+        }
+        oldSelect();
+        oldConfirm();
+        await tester.pump();
+        expect(results, isEmpty);
+        expect(
+          tester
+              .widget<UtenButton>(
+                find.byKey(const Key('material-trace-subject-confirm')),
+              )
+              .onPressed,
+          isNull,
+        );
+        await tester.pump(const Duration(milliseconds: 251));
+        await tester.pumpAndSettle();
+        expect(
+          tester
+              .widget<UtenPickerConfirmBar>(find.byType(UtenPickerConfirmBar))
+              .selectedCount,
+          0,
+        );
+      },
+    );
+  }
+
+  for (final paging in ['append', 'jump', 'failure']) {
+    testWidgets('subject draft follows the settled $paging page window', (
+      tester,
+    ) async {
+      final nextPage = Completer<Map<String, dynamic>>();
+      final api = _Api()
+        ..subjects = (query) async => query['page'] == 2
+            ? nextPage.future
+            : {
+                'items': [
+                  _identity(_subject),
+                  for (var index = 1; index < 30; index++)
+                    {
+                      'type': 'PURCHASE_ORDER',
+                      'id': 'first-$index',
+                      'code': 'CG-$index',
+                      'label': '采购订货',
+                    },
+                ],
+                'page': 1,
+                'size': 30,
+                'total': 31,
+                'totalPages': 2,
+              };
+      final results = <MaterialTraceSubject?>[];
+      await _pump(tester, api, _pickerButton(onSelected: results.add));
+      await tester.tap(find.text('选择单据'));
+      await tester.pumpAndSettle();
+      await tester.enterText(_search(), 'CG');
+      await tester.pump(const Duration(milliseconds: 251));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(
+          const ValueKey((
+            'material-trace-subject',
+            'PURCHASE_ORDER',
+            'order-1',
+          )),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final rows = tester
+          .widget<MasterDataTableView<MaterialTraceSubject>>(
+            find.byType(MasterDataTableView<MaterialTraceSubject>),
+          )
+          .rowsController!;
+      if (paging == 'jump') {
+        rows.goToPage(2);
+      } else {
+        unawaited(rows.loadNextPage());
+      }
+      await tester.pump();
+      expect(api.calls.last.query['page'], 2);
+      expect(
+        tester
+            .widget<UtenButton>(
+              find.byKey(const Key('material-trace-subject-confirm')),
+            )
+            .onPressed,
+        isNull,
+      );
+      expect(results, isEmpty);
+      if (paging == 'failure') {
+        nextPage.completeError(ApiException('FORBIDDEN', '候选范围已变化'));
+      } else {
+        nextPage.complete({
+          'items': [
+            {
+              'type': 'PURCHASE_ORDER',
+              'id': 'next',
+              'code': 'CG-NEXT',
+              'label': '采购订货',
+            },
+          ],
+          'page': 2,
+          'size': 30,
+          'total': 31,
+          'totalPages': 2,
+        });
+      }
+      await tester.pumpAndSettle();
+      final bar = tester.widget<UtenPickerConfirmBar>(
+        find.byType(UtenPickerConfirmBar),
+      );
+      if (paging == 'append') {
+        expect(
+          rows.items.map((row) => row.id),
+          containsAll(['order-1', 'next']),
+        );
+        expect(bar.selectedCount, 1);
+        await tester.tap(
+          find.byKey(const Key('material-trace-subject-confirm')),
+        );
+        await tester.pumpAndSettle();
+        expect(results.single?.identity, _subject.identity);
+      } else {
+        expect(bar.selectedCount, 0);
+        expect(
+          tester
+              .widget<UtenButton>(
+                find.byKey(const Key('material-trace-subject-confirm')),
+              )
+              .onPressed,
+          isNull,
+        );
+        expect(results, isEmpty);
+      }
+    });
+  }
 
   testWidgets(
     'typing a replacement invalidates old results before debounce and ignores late response',
@@ -507,6 +749,13 @@ void main() {
         const ValueKey(('material-trace-subject', 'PURCHASE_ORDER', 'order-1')),
       );
       expect(row, findsOneWidget);
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+      final oldConfirm = tester
+          .widget<UtenButton>(
+            find.byKey(const Key('material-trace-subject-confirm')),
+          )
+          .onPressed!;
       final container = ProviderScope.containerOf(
         tester.element(_search()),
         listen: false,
@@ -520,8 +769,18 @@ void main() {
       expect(row, findsOneWidget);
       expect(api.calls, hasLength(1));
       container.read(_permissions.notifier).state = {Perm.productionPlanView};
+      oldConfirm();
       await tester.pumpAndSettle();
       expect(row, findsNothing);
+      expect(find.text('选择追溯单据'), findsOneWidget);
+      expect(
+        tester
+            .widget<UtenButton>(
+              find.byKey(const Key('material-trace-subject-confirm')),
+            )
+            .onPressed,
+        isNull,
+      );
       expect(find.text('账号、服务器或权限已变化，请重新搜索'), findsWidgets);
       expect(tester.takeException(), isNull);
     },

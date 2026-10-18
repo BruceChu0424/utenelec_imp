@@ -19,6 +19,7 @@ class UtenPickerConfirmBar extends StatelessWidget {
     this.selectedLabel,
     this.onClear,
     this.confirmLabel = '确定',
+    this.cancelLabel = '取消',
     this.hint,
     this.pagination,
     this.summary,
@@ -44,6 +45,7 @@ class UtenPickerConfirmBar extends StatelessWidget {
 
   /// 确认按钮文案；多选场景调用方传「确定（n）」。
   final String confirmLabel;
+  final String cancelLabel;
 
   /// 左侧提示文案覆盖（默认按选中状态自动生成）。
   final String? hint;
@@ -88,6 +90,7 @@ class UtenPickerConfirmBar extends StatelessWidget {
           onClear: hasSelection ? onClear : null,
           clearLabel: clearLabel,
           onCancel: onCancel,
+          cancelLabel: cancelLabel,
           onConfirm: (confirmEnabled ?? hasSelection) ? onConfirm : null,
           confirmLabel: confirmLabel,
           confirmButtonKey: confirmButtonKey,

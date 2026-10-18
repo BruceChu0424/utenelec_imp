@@ -73,10 +73,13 @@ public class WarehouseKeeperService {
         requireWarehouse(warehouseId, false);
         return jdbc.sql("""
                         SELECT e.id, e.full_name, e.code, e.department_id, d.name AS department_name,
+                               e.status AS employment_status,
+                               COALESCE(account.status, 'notProvisioned') AS account_status,
                                %s AS has_account, %s AS warehouse_member, %s AS duplicate_name
                         FROM warehouse_keepers keeper
                         JOIN employees e ON e.id = keeper.employee_id
                         LEFT JOIN departments d ON d.id = e.department_id
+                        LEFT JOIN users account ON account.employee_id = e.id AND account.is_deleted = FALSE
                         WHERE keeper.warehouse_id = :warehouseId
                         ORDER BY e.full_name, e.code
                         """.formatted(ACTIVE_ACCOUNT_SQL, WAREHOUSE_MEMBER_SQL, DUPLICATE_NAME_SQL))
@@ -89,7 +92,8 @@ public class WarehouseKeeperService {
                         rs.getString("department_name"),
                         rs.getBoolean("has_account"),
                         rs.getBoolean("warehouse_member"),
-                        rs.getBoolean("duplicate_name")))
+                        rs.getBoolean("duplicate_name"),
+                        rs.getString("account_status"), rs.getString("employment_status")))
                 .list();
     }
 
@@ -175,9 +179,12 @@ public class WarehouseKeeperService {
         List<WarehouseKeeper> candidates = jdbc.sql("""
                         SELECT * FROM (
                             SELECT e.id, e.full_name, e.code, e.department_id, d.name AS department_name,
+                                   e.status AS employment_status,
+                                   COALESCE(account.status, 'notProvisioned') AS account_status,
                                    %s AS has_account, %s AS warehouse_member, %s AS duplicate_name
                             FROM employees e
                             LEFT JOIN departments d ON d.id = e.department_id
+                            LEFT JOIN users account ON account.employee_id = e.id AND account.is_deleted = FALSE
                             WHERE e.is_deleted = FALSE
                               AND e.status <> 'resigned'
                               AND (%s)) candidate
@@ -193,7 +200,8 @@ public class WarehouseKeeperService {
                         rs.getString("department_name"),
                         rs.getBoolean("has_account"),
                         rs.getBoolean("warehouse_member"),
-                        rs.getBoolean("duplicate_name")))
+                        rs.getBoolean("duplicate_name"),
+                        rs.getString("account_status"), rs.getString("employment_status")))
                 .list();
         if (candidates.size() > 5000) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,

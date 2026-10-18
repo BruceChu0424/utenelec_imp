@@ -8,7 +8,6 @@
 import 'package:flutter/material.dart';
 
 import '../../components/layout/uten_adaptive_panel.dart';
-import '../../components/layout/uten_bottom_action_bar.dart';
 import '../../components/layout/uten_picker_confirm_bar.dart';
 import '../../core/theme/uten_tokens.dart';
 
@@ -178,6 +177,7 @@ Future<LocationPickResult<T>?> showUtenPickerSheet<T>({
 
   return showUtenAdaptivePanel<LocationPickResult<T>>(
     context: context,
+    widthFraction: UtenPanelWidth.form,
     builder: buildSheet,
   );
 }
@@ -299,16 +299,13 @@ class _UtenLocationPickerSheetState<T>
             _selectRoot,
           ),
         ),
-        UtenBottomActionBar(
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: UtenPickerActions(
-              onCancel: _cancel,
-              onConfirm: _canConfirm ? _confirm : null,
-              cancelLabel: widget.cancelLabel,
-              confirmLabel: widget.confirmLabel,
-            ),
-          ),
+        UtenPickerConfirmBar(
+          selectedCount: _canConfirm ? 1 : 0,
+          selectedLabel: rootSelected ? widget.rootLabel : null,
+          onCancel: _cancel,
+          onConfirm: _canConfirm ? _confirm : null,
+          cancelLabel: widget.cancelLabel,
+          confirmLabel: widget.confirmLabel,
         ),
       ],
     );

@@ -1,9 +1,10 @@
 // 货品分类侧滑选择面板（2026-09-11 取代 ProductCategoryDropdown）：
 // - 面板内就是货品资料那棵树（可展开折叠 + 搜索 + 选中高亮 + 每节点货品数）；
-// - 顶部「全部」行 = 清空筛选；点分类行 = 返回该分类 id 并立即关窗；
+// - 顶部「全部」行 = 清空筛选；点分类行或全部暂存，确定后返回；
 // - 零货品分类（goodsCount == 0）整支剪掉，goodsCount == null（后端未给计数）保留。
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/widgets/product_category_picker_panel.dart';
 import 'package:uten_imp/features/basic_data/widgets/uten_category_tree_view.dart';
@@ -108,7 +109,38 @@ void main() {
     expect(find.text('成品'), findsNothing);
   });
 
-  testWidgets('点分类行 = 返回该分类 id 并关窗', (tester) async {
+  for (final selectedId in ['missing', 'orphan']) {
+    testWidgets('已删除或被零货品剪枝的初值 $selectedId 不可直接确认', (tester) async {
+      await open(tester, selectedId: selectedId);
+      expect(
+        tester
+            .widget<UtenButton>(find.widgetWithText(UtenButton, '确定'))
+            .onPressed,
+        isNull,
+      );
+      await tester.tap(find.byKey(const Key('category-picker-all')));
+      await tester.pump();
+      expect(
+        tester
+            .widget<UtenButton>(find.widgetWithText(UtenButton, '确定'))
+            .onPressed,
+        isNotNull,
+      );
+    });
+  }
+
+  testWidgets('只是单根提升的包装根初值仍有效且显示其名称', (tester) async {
+    await open(tester, selectedId: 'root');
+    expect(find.text('已选择：货品资料'), findsOneWidget);
+    expect(
+      tester
+          .widget<UtenButton>(find.widgetWithText(UtenButton, '确定'))
+          .onPressed,
+      isNotNull,
+    );
+  });
+
+  testWidgets('点分类行只更新选中态，确定后返回分类 id 并关窗', (tester) async {
     ProductCategoryPickResult? picked;
     await tester.binding.setSurfaceSize(const Size(1400, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -135,13 +167,25 @@ void main() {
     await tester.tap(find.text('成品'));
     await tester.pumpAndSettle();
 
+    expect(picked, isNull);
+    expect(
+      tester
+          .widget<UtenCategoryTreeView<ProductCategoryNode>>(
+            find.byKey(const Key('category-picker-tree')),
+          )
+          .selectedIds,
+      {'finished'},
+    );
+    await tester.tap(find.widgetWithText(UtenButton, '确定'));
+    await tester.pumpAndSettle();
+
     expect(picked?.id, 'finished');
     expect(picked?.name, '成品');
     expect(picked?.isAll, isFalse);
     expect(find.byKey(const Key('category-picker-tree')), findsNothing);
   });
 
-  testWidgets('点「全部」= 返回 isAll（清空筛选）', (tester) async {
+  testWidgets('点「全部」先暂存，确定才返回 isAll（清空筛选）', (tester) async {
     ProductCategoryPickResult? picked;
     await tester.binding.setSurfaceSize(const Size(1400, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -169,10 +213,76 @@ void main() {
     await tester.tap(find.byKey(const Key('category-picker-all')));
     await tester.pumpAndSettle();
 
+    expect(picked, isNull);
+    expect(
+      tester
+          .widget<ListTile>(find.byKey(const Key('category-picker-all')))
+          .selected,
+      isTrue,
+    );
+    await tester.tap(find.widgetWithText(UtenButton, '确定'));
+    await tester.pumpAndSettle();
+
     expect(picked, isNotNull);
     expect(picked?.isAll, isTrue);
     expect(picked?.id, isNull);
   });
+
+  for (final dismiss in ['取消', '关闭', '遮罩']) {
+    testWidgets('分类改选与全部均可由$dismiss放弃，重开保留原初值', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1400, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final results = <ProductCategoryPickResult?>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () async => results.add(
+                  await showUtenProductCategoryPickerPanel(
+                    context,
+                    tree: _tree(),
+                    selectedId: 'finished',
+                  ),
+                ),
+                child: const Text('打开分类'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('打开分类'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('配件'));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('category-picker-all')));
+      await tester.pump();
+      expect(results, isEmpty);
+      switch (dismiss) {
+        case '取消':
+          await tester.tap(find.widgetWithText(UtenButton, '取消'));
+        case '关闭':
+          await tester.tap(find.byTooltip('关闭'));
+        case '遮罩':
+          await tester.tapAt(const Offset(20, 400));
+      }
+      await tester.pumpAndSettle();
+      expect(results, [null]);
+      await tester.tap(find.text('打开分类'));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<UtenCategoryTreeView<ProductCategoryNode>>(
+              find.byKey(const Key('category-picker-tree')),
+            )
+            .selectedIds,
+        {'finished'},
+      );
+      await tester.tap(find.widgetWithText(UtenButton, '确定'));
+      await tester.pumpAndSettle();
+      expect(results.last?.id, 'finished');
+    });
+  }
 
   test('pruneCategoriesWithoutGoods：零货品整支剪掉，未给计数一律保留', () {
     final pruned = pruneCategoriesWithoutGoods(_tree());

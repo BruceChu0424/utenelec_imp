@@ -261,6 +261,8 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
         employeeCode: candidate.code,
         departmentId: candidate.departmentId,
         departmentName: candidate.departmentName,
+        accountStatus: candidate.accountStatus,
+        employmentStatus: candidate.employmentStatus,
         subtitle: candidate.historicalOnly
             ? '历史只读 · 原负责人名下 ${candidate.count} 条数据'
             : '负责 ${candidate.count} 条数据',

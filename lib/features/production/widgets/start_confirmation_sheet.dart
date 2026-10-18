@@ -84,11 +84,11 @@ Future<StartConfirmationOutcome?> showStartConfirmationSheet(
 }) {
   // 八列 (产品/编号/任务数/用料/另领/路线/单重/确认后) 合计约 1450 宽,
   // 侧板放得下时不必横向滚动去找路线列。
-  final width = math.min(1560.0, MediaQuery.sizeOf(context).width * 0.94);
+  // 宽度口径 2026-10-17：1560 只作小屏下限，browse 档 75% 屏宽优先（大屏比旧 94%/1560 更宽）。
   return showUtenAdaptivePanel<StartConfirmationOutcome>(
     context: context,
     compactHeightFactor: 0.94,
-    drawerWidth: width,
+    drawerWidth: 1560,
     barrierDismissible: false,
     enableDrag: false,
     panelElevation: 16,

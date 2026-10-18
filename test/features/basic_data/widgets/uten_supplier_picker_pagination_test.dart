@@ -4,7 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:uten_imp/components/layout/uten_paged_picker_list.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/models/supplier_node.dart';
 import 'package:uten_imp/features/basic_data/repositories/supplier_category_repository.dart';
@@ -77,6 +77,10 @@ PagedResult<SupplierListItem> _page(String category, int page) => PagedResult(
         categoryId: category,
         status: '使用',
         linkman: '联系人 $index',
+        mobile: '  ',
+        phone: '0755-8000$index',
+        place: '广东',
+        bankAccount: '不应显示的银行账号',
       ),
   ],
   page: page,
@@ -142,11 +146,11 @@ Future<void> _open(
   expect(find.text('选择委外商'), findsOneWidget);
 }
 
-Finder get _picker => find.byType(UtenPagedPickerList<SupplierListItem>);
+Finder get _picker => find.byType(MasterDataTableView<SupplierListItem>);
 
 ScrollableState _scrollable(WidgetTester tester) {
   final row = find
-      .descendant(of: _picker, matching: find.byType(ListTile))
+      .descendant(of: _picker, matching: find.textContaining('委外商'))
       .first;
   return Scrollable.of(tester.element(row), axis: Axis.vertical);
 }
@@ -169,6 +173,22 @@ Future<void> _wheel(WidgetTester tester, double dy) async {
 }
 
 void main() {
+  testWidgets('供应商表格只展示重点字段并保留固定电话回退', (tester) async {
+    await _open(tester, _Suppliers());
+    final table = tester.widget<MasterDataTableView<SupplierListItem>>(_picker);
+    expect(table.columns.map((column) => column.label), [
+      '供应商名称',
+      '联系人',
+      '联系电话',
+      '地区',
+    ]);
+    expect(table.tableKey, isNull);
+    expect(find.text('0755-80000'), findsOneWidget);
+    expect(find.text('不应显示的银行账号'), findsNothing);
+    expect(find.byType(ListTile), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('supplier append keeps an earlier selection until confirmation', (
     tester,
   ) async {
@@ -212,8 +232,8 @@ void main() {
       final suppliers = _Suppliers();
       await _open(tester, suppliers);
       await tester
-          .widget<UtenPagedPickerList<SupplierListItem>>(_picker)
-          .onPageChange(3);
+          .widget<MasterDataTableView<SupplierListItem>>(_picker)
+          .onPageChange!(3);
       await tester.pumpAndSettle();
       expect(find.text('A-委外商3-0'), findsOneWidget);
       final oldRowTop = tester.getTopLeft(find.text('A-委外商3-0')).dy;
@@ -288,8 +308,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('B-委外商1-0'), findsOneWidget);
     expect(find.text('A-委外商2-0'), findsNothing);
-    final pageWindow = tester.widget<UtenPagedPickerList<SupplierListItem>>(
-      find.byType(UtenPagedPickerList<SupplierListItem>),
+    final pageWindow = tester.widget<MasterDataTableView<SupplierListItem>>(
+      find.byType(MasterDataTableView<SupplierListItem>),
     );
     expect(pageWindow.currentPage, 1);
     expect(pageWindow.totalPages, 4);

@@ -21,6 +21,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(find.text('应收应付台账'), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^台账 \(')), findsNothing);
 
     final table = tester.widget<MasterDataTableView<ArApLedgerItem>>(
       find.byWidgetPredicate(

@@ -36,7 +36,12 @@ class DataHandoverCandidate {
     required this.status,
     this.departmentId,
     this.departmentName,
+    this.accountStatus,
+    this.employmentStatus,
   });
+
+  final String? accountStatus;
+  final String? employmentStatus;
 
   final String employeeId;
   final String name;
@@ -47,6 +52,9 @@ class DataHandoverCandidate {
 
   factory DataHandoverCandidate.fromJson(Map<String, dynamic> json) =>
       DataHandoverCandidate(
+        accountStatus: json['accountStatus'] as String?,
+        employmentStatus:
+            json['employmentStatus'] as String? ?? json['status'] as String?,
         employeeId: json['employeeId'] as String? ?? '',
         name: json['name'] as String? ?? '',
         code: json['code'] as String? ?? '',

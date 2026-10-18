@@ -2,7 +2,7 @@
 //
 // 输入 departmentId；未选部门时禁用并提示「请先选择部门」。
 // 数据：GET /org/departments/{deptId}/positions，点击时按需拉取。
-// 选项按 level 分组（「领导层」组排最前，带分区标题）；空数据提示联系 HR。
+// 表格展示岗位名称、编号、职级；按 level 排序，领导层最前，空数据提示联系 HR。
 import '../../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,8 +10,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/position.dart';
 import '../repositories/position_repository.dart';
+import 'position_picker_table_columns.dart';
 
 /// 「领导层」固定排第一组（部级节点的岗位 = 领导层）。
 const kLeaderPositionLevel = '领导层';
@@ -84,7 +86,10 @@ class _UtenPositionPickerState extends ConsumerState<UtenPositionPicker> {
         ),
       ),
     );
-    if (result != null && mounted) {
+    if (result != null &&
+        mounted &&
+        widget.departmentId == deptId &&
+        widget.enabled) {
       setState(() => _value = result);
       widget.onChanged(result);
     }
@@ -246,39 +251,27 @@ class _PositionListSheetState extends ConsumerState<_PositionListSheet> {
                     ),
                   ),
                 )
-              : ListView(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  children: [
-                    for (final group in _group(positions)) ...[
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                        child: Text(
-                          group.level,
-                          style: theme.textTheme.labelLarge?.copyWith(
-                            color: group.level == kLeaderPositionLevel
-                                ? theme.colorScheme.primary
-                                : theme.colorScheme.onSurfaceVariant,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      for (final p in group.items)
-                        ListTile(
-                          dense: true,
-                          selected: p.id == (_picked?.id ?? widget.selectedId),
-                          title: Text(p.name),
-                          subtitle: p.code.isEmpty ? null : Text(p.code),
-                          trailing: p.id == (_picked?.id ?? widget.selectedId)
-                              ? Icon(
-                                  Icons.check_circle_rounded,
-                                  size: 18,
-                                  color: theme.colorScheme.primary,
-                                )
-                              : null,
-                          onTap: () => setState(() => _picked = p),
-                        ),
-                    ],
+              : MasterDataTableView<Position>(
+                  key: const Key('position-candidates-table'),
+                  columns: positionPickerTableColumns(),
+                  items: [
+                    for (final group in _group(positions)) ...group.items,
                   ],
+                  rowKeyOf: (position) => position.id,
+                  rowWidgetKeyOf: (position) =>
+                      Key('position-option-${position.id}'),
+                  facets: const {},
+                  nullCounts: const {},
+                  filters: const {},
+                  onFilterChanged: (_, _) {},
+                  isSelected: (position) =>
+                      position.id == (_picked?.id ?? widget.selectedId),
+                  onRowTap: (position) => setState(() => _picked = position),
+                  singleTapRows: true,
+                  showFullscreenToggle: false,
+                  showColumnChooser: false,
+                  showPaginationControls: false,
+                  enableTextSelection: false,
                 ),
         ),
         UtenPickerConfirmBar(

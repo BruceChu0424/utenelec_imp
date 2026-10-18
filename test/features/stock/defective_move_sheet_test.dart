@@ -147,6 +147,8 @@ Future<void> _pickTo(WidgetTester tester, String id) async {
   await tester.pumpAndSettle();
   await tester.tap(find.byKey(Key('warehouse-picker-entry-$id')));
   await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
+  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -176,6 +178,8 @@ void main() {
     );
     expect(find.byKey(const Key('warehouse-picker-entry-good2')), findsNothing);
     await tester.tap(find.byKey(const Key('warehouse-picker-entry-bad')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
     await tester.pumpAndSettle();
 
     await tester.enterText(
@@ -228,6 +232,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('warehouse-picker-entry-good')), findsNothing);
     await tester.tap(find.byKey(const Key('warehouse-picker-entry-bad')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
     await tester.pumpAndSettle();
     await _pickTo(tester, 'good2');
     expect(

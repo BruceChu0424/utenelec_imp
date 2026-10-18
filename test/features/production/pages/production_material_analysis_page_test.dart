@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/components/layout/uten_segment_row.dart';
+import 'package:uten_imp/components/layout/uten_picker_confirm_bar.dart';
 import 'package:uten_imp/core/theme/uten_tokens.dart';
 
 import 'package:uten_imp/shared/providers/session_provider.dart';
@@ -11761,7 +11762,7 @@ Future<void> _enterCascadeSeedQty(
   await tester.pumpAndSettle();
 }
 
-/// 下单页种子行点「生产车间」格, 在滑窗里点选车间(单选点行即选定); 负责人由
+/// 下单页种子行点「生产车间」格, 在滑窗里点选车间并确认；负责人由
 /// 车间经理自动带出(黄标提醒核对)。选完等去抖的下达预览回来。
 Future<void> _pickCascadeWorkshop(
   WidgetTester tester,
@@ -11793,6 +11794,18 @@ Future<void> _pickCascadeWorkshop(
   await tester.pumpAndSettle();
   await tester.tap(find.text(workshopName).last);
   await tester.pumpAndSettle();
+  final pickerActions = find.byType(UtenPickerConfirmBar);
+  expect(pickerActions, findsOneWidget);
+  final confirm = find.descendant(
+    of: pickerActions,
+    matching: find.widgetWithText(UtenButton, '确定'),
+  );
+  await tester.ensureVisible(confirm);
+  await tester.pumpAndSettle();
+  expect(confirm.hitTestable(), findsOneWidget);
+  await tester.tap(confirm);
+  await tester.pumpAndSettle();
+  expect(pickerActions, findsNothing);
   await tester.pump(const Duration(milliseconds: 400));
   await tester.pumpAndSettle();
 }

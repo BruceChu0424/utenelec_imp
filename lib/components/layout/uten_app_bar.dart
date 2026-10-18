@@ -54,7 +54,8 @@ class UtenAppBar extends StatefulWidget implements PreferredSizeWidget {
   final PreferredSizeWidget? bottom;
   final Widget? flexibleSpace;
 
-  /// 标题区内「居中」部件（如列表页的 [UtenSegmentedFilter]）。
+  /// 标题区内的辅助部件。分类/状态导航应放在标题下方独立工具栏，
+  /// 不使用此槽位，以免挤压返回按钮、标题及页面操作。
   /// 与 [title] 共存：[title] 文字靠最左，[centerWidget] 在标题区水平居中；
   /// 向部件提供实际可用宽度，由其响应式布局保留可读字号。
   final Widget? centerWidget;
@@ -419,6 +420,8 @@ class _UtenAppBarState extends State<UtenAppBar> {
     return showUtenAdaptivePanel<void>(
       context: context,
       compactHeightFactor: 0.5,
+      // 溢出操作是菜单不是内容面板，保持紧凑宽（不随 browse 档放大）。
+      widthFraction: UtenPanelWidth.none,
       builder: (panelContext) {
         panel.route = ModalRoute.of<void>(panelContext);
         return ValueListenableBuilder<_AppBarActionPresentation>(

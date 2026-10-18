@@ -2,7 +2,7 @@
 //
 // account:support 可执行账号锁定/启停/重置密码。
 // authorization:manage + superAdmin 才显示个人/部门授权与数据范围。
-// 搜索置于分段分类上方；超管可见「按员工 | 按部门 | 全员基础包」。
+// 三种授权模式共用固定位置的分类导航与左右分栏，切换时保留未保存修改。
 // 按员工：主从布局（expanded 左列表右详情；compact 列表 → 详情带返回）。
 // 按部门：单选部门 + 从完整权限目录勾选权限点（见 widgets/admin_department_perm_view.dart）。
 // 全员基础包：每个在职员工默认拥有的码(见 widgets/admin_baseline_perm_view.dart)。
@@ -18,7 +18,6 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_split_view.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -33,6 +32,8 @@ import '../models/admin_models.dart';
 import '../repositories/admin_repository.dart';
 import '../widgets/admin_baseline_perm_view.dart';
 import '../widgets/admin_department_perm_view.dart';
+import '../widgets/admin_permission_transfer_actions.dart';
+import '../widgets/admin_permission_workspace.dart';
 import '../widgets/admin_user_detail_panel.dart';
 import '../widgets/provision_account_dialog.dart';
 
@@ -55,6 +56,20 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
   /// 0=按员工，1=按部门，2=全员基础包。
   int _segment = 0;
   String _employeeSearch = '';
+  final _pendingPermissionChanges = <int, bool>{};
+  final _workspaceKey = GlobalKey();
+  final _leadingWidth = ValueNotifier<double?>(null);
+
+  @override
+  void dispose() {
+    _leadingWidth.dispose();
+    super.dispose();
+  }
+
+  void _permissionPendingChanged(int segment, bool pending) {
+    if (_pendingPermissionChanges[segment] == pending || !mounted) return;
+    setState(() => _pendingPermissionChanges[segment] = pending);
+  }
 
   @override
   void initState() {
@@ -66,7 +81,10 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
   Widget build(BuildContext context) {
     ref.listen(sensitiveReadBoundaryProvider, (previous, next) {
       if (previous != null && previous != next) {
-        setState(() => _employeeSearch = '');
+        setState(() {
+          _employeeSearch = '';
+          _pendingPermissionChanges.clear();
+        });
       }
     });
     final permissions = ref.watch(currentPermissionsProvider);
@@ -116,32 +134,41 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
             },
           ),
         ),
-        categoryNavigation,
       ],
     );
-    Widget body = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (segment != 0) categoryNavigation,
-        Expanded(
-          child: IndexedStack(
-            index: segment,
-            children: [
-              _EmployeePermTab(
-                canManageAuthorization: canManageAuthorization,
-                initialEmployeeId: widget.initialEmployeeId,
-                search: _employeeSearch,
-                leadingHeader: accountListHeader,
+    Widget body = KeyedSubtree(
+      key: _workspaceKey,
+      child: AdminPermissionWorkspaceScope(
+        leadingWidth: _leadingWidth,
+        child: IndexedStack(
+          key: ValueKey(ref.watch(sensitiveReadBoundaryProvider)),
+          index: segment,
+          children: [
+            _EmployeePermTab(
+              canManageAuthorization: canManageAuthorization,
+              initialEmployeeId: widget.initialEmployeeId,
+              search: _employeeSearch,
+              leadingHeader: accountListHeader,
+              navigation: categoryNavigation,
+              onPermissionDirtyChanged: (pending) =>
+                  _permissionPendingChanged(0, pending),
+            ),
+            if (canManageAuthorization)
+              AdminDepartmentPermView(
+                initialDepartmentId: widget.initialDepartmentId,
+                leadingHeader: categoryNavigation,
+                onPermissionDirtyChanged: (pending) =>
+                    _permissionPendingChanged(1, pending),
               ),
-              if (canManageAuthorization)
-                AdminDepartmentPermView(
-                  initialDepartmentId: widget.initialDepartmentId,
-                ),
-              if (canManageAuthorization) const AdminBaselinePermView(),
-            ],
-          ),
+            if (canManageAuthorization)
+              AdminBaselinePermView(
+                leadingHeader: categoryNavigation,
+                onPermissionDirtyChanged: (pending) =>
+                    _permissionPendingChanged(2, pending),
+              ),
+          ],
         ),
-      ],
+      ),
     );
     // compact 下页面自带宽度收敛；medium+ 由 MainShell 的容器统一处理
     if (context.breakpoint.isCompact) {
@@ -153,6 +180,14 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
       appBar: UtenAppBar(
         title: canManageAuthorization ? '账号与权限管理' : '账号支持',
         showBackButton: true,
+        actions: [
+          if (canManageAuthorization)
+            AdminPermissionArchiveActions(
+              importEnabled: !_pendingPermissionChanges.values.any(
+                (pending) => pending,
+              ),
+            ),
+        ],
       ),
       body: body,
     );
@@ -165,12 +200,16 @@ class _EmployeePermTab extends ConsumerStatefulWidget {
     required this.canManageAuthorization,
     required this.search,
     required this.leadingHeader,
+    required this.navigation,
+    required this.onPermissionDirtyChanged,
     this.initialEmployeeId,
   });
 
   final bool canManageAuthorization;
   final String search;
   final Widget leadingHeader;
+  final Widget navigation;
+  final ValueChanged<bool> onPermissionDirtyChanged;
 
   @override
   ConsumerState<_EmployeePermTab> createState() => _EmployeePermTabState();
@@ -193,6 +232,7 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
   AdminUserSummary? _selected;
   bool _showDetail = false; // compact 下是否进入详情视图
   bool _detailDirty = false;
+  final _detailPanelKey = GlobalKey();
 
   @override
   void initState() {
@@ -289,8 +329,10 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
         _loading = false;
         if (selected != null && _selected?.id == selected.id) {
           _selected = refreshed;
+          if (refreshed == null) _detailDirty = false;
         }
       });
+      if (_selected == null) widget.onPermissionDirtyChanged(false);
     } on ApiException catch (e) {
       if (!mounted ||
           requestEpoch != _requestEpoch ||
@@ -378,6 +420,7 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
       _showDetail = true;
       _detailDirty = false;
     });
+    widget.onPermissionDirtyChanged(false);
   }
 
   Future<void> _onBack() async {
@@ -387,6 +430,7 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
       _showDetail = false;
       _detailDirty = false;
     });
+    widget.onPermissionDirtyChanged(false);
   }
 
   /// 详情面板完成账号操作后回调：刷新列表并同步选中项。
@@ -413,23 +457,14 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
         });
       }
     });
-    final isExpanded =
-        context.breakpoint.isExpanded &&
-        MediaQuery.sizeOf(context).width >= 1100;
-    if (isExpanded) {
-      return UtenSplitView(
-        leadingNoun: '权限资源',
-        selectedLeadingLabel: '查看权限资源',
-        persistenceKey: 'admin.permissions',
-        initialLeadingWidth: 320,
-        leading: _listColumn(),
-        trailing: _detailArea(showBack: false),
-      );
-    }
-    // compact：列表 ↔ 详情 切换
-    return _showDetail && _selected != null
-        ? _detailArea(showBack: true)
-        : _listColumn();
+    return AdminPermissionWorkspace(
+      navigation: widget.navigation,
+      leading: _listColumn(),
+      trailing: _detailArea(showBack: false),
+      compact: _showDetail && _selected != null
+          ? _detailArea(showBack: true)
+          : _listColumn(),
+    );
   }
 
   Widget _detailArea({required bool showBack}) {
@@ -457,7 +492,7 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
       );
     }
     return AdminUserDetailPanel(
-      key: ValueKey(u.id),
+      key: _detailPanelKey,
       user: u,
       canManageAuthorization: widget.canManageAuthorization,
       showBack: showBack,
@@ -465,7 +500,10 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
       onAccountChanged: _onAccountChanged,
       onProvisionAccount: () =>
           showProvisionAccountDialog(context, onProvisioned: _reload),
-      onPermissionDirtyChanged: (dirty) => _detailDirty = dirty,
+      onPermissionDirtyChanged: (dirty) {
+        _detailDirty = dirty;
+        widget.onPermissionDirtyChanged(dirty);
+      },
     );
   }
 

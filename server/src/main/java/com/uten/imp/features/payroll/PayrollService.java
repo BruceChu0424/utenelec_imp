@@ -48,7 +48,7 @@ import java.util.stream.Collectors;
 public class PayrollService {
 
     private static final Set<String> SLIP_FILTERS =
-            Set.of("PENDING", "PUBLISHED", "UNVIEWED", "VIEWED", "DOWNLOADED");
+            Set.of("PENDING", "PUBLISHED", "UNVIEWED", "VIEWED", "VIEWED_ONLY", "DOWNLOADED");
     private static final Set<String> BATCH_STATUSES =
             Set.of("DRAFT", "SUBMITTED", "APPROVED", "REJECTED", "PUBLISHED");
 
@@ -637,6 +637,13 @@ public class PayrollService {
                 predicates.add(cb.isNull(root.get("downloadedAt")));
             }
             case "VIEWED" -> {
+                predicates.add(cb.equal(root.get("status"), "PUBLISHED"));
+                // A direct download need not create viewedAt, but belongs to the read category.
+                predicates.add(cb.or(
+                        cb.isNotNull(root.get("viewedAt")),
+                        cb.isNotNull(root.get("downloadedAt"))));
+            }
+            case "VIEWED_ONLY" -> {
                 predicates.add(cb.equal(root.get("status"), "PUBLISHED"));
                 predicates.add(cb.isNotNull(root.get("viewedAt")));
                 predicates.add(cb.isNull(root.get("downloadedAt")));

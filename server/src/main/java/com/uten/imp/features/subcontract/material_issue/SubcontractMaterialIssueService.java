@@ -711,13 +711,13 @@ public class SubcontractMaterialIssueService {
     private void canonicalizeMaker(SubcontractMaterialIssue issue) {
         if (issue.getMakerId() == null) return;
         issue.setMakerLegacyId(null); // historical Sys_Operator ids are a different namespace
-        issue.setMakerName(nameResolver.nameOf(issue.getMakerId()));
+        issue.setMakerName(nameResolver.nameWithCodeOf(issue.getMakerId()));
     }
 
     private void canonicalizeApprover(SubcontractMaterialIssue issue) {
         if (issue.getApproverId() == null) return;
         issue.setApproverLegacyId(null);
-        issue.setApproverName(nameResolver.nameOf(issue.getApproverId()));
+        issue.setApproverName(nameResolver.nameWithCodeOf(issue.getApproverId()));
     }
 
     private List<MaterialIssueItemDto> saveItems(SubcontractMaterialIssue r, List<MaterialIssueItemLine> lines,
@@ -930,12 +930,14 @@ public class SubcontractMaterialIssueService {
                 ? items.stream().map(SubcontractMaterialIssueService::maskItemPrices).toList()
                 : items;
         return new MaterialIssueDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
-                r.getSupplierId(), r.getWarehouseId(), r.getWorkerId(), r.getMakerId(), r.getApproverId(),
+                r.getSupplierId(), r.getWarehouseId(), r.getWorkerId(),
+                nameResolver.nameWithCodeOf(r.getWorkerId()),
+                r.getMakerId(), r.getApproverId(),
                 r.getDeliverDate(), r.getRemark(), priceMasked ? null : r.getTotalOriginal(),
                 priceMasked ? null : r.getTotalLocal(), r.getStatus(),
                 r.isClosed(), r.getSourceDocNo(), safeItems, r.getOperatorLegacyId(), r.getOperatorName(),
                 r.getMakerLegacyId(),
-                (r.getMakerName() != null && !r.getMakerName().isBlank()) ? r.getMakerName() : nameResolver.nameOf(r.getMakerId()),
+                (r.getMakerName() != null && !r.getMakerName().isBlank()) ? r.getMakerName() : nameResolver.nameWithCodeOf(r.getMakerId()),
                 r.getApproverLegacyId(), r.getApproverName(), r.getCreatedAt(), priceMasked);
     }
 

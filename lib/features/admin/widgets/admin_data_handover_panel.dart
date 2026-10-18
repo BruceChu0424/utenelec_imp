@@ -31,6 +31,7 @@ Future<DataHandoverResult?> showAdminDataHandoverPanel({
 }) => showUtenAdaptivePanel<DataHandoverResult>(
   context: context,
   drawerWidth: 520,
+  widthFraction: UtenPanelWidth.form,
   barrierDismissible: false,
   showDragHandle: true,
   builder: (_) => AdminDataHandoverPanel(
@@ -118,7 +119,8 @@ class _AdminDataHandoverPanelState
             employeeCode: employee.code,
             departmentId: employee.departmentId,
             departmentName: employee.departmentName,
-            subtitle: _statusLabel(employee.status),
+            accountStatus: employee.accountStatus,
+            employmentStatus: employee.employmentStatus,
           ),
         )
         .toList(growable: false);
@@ -607,11 +609,3 @@ class _AdminDataHandoverPanelState
 
 bool _sameStringSet(Set<String> left, Set<String> right) =>
     left.length == right.length && left.every(right.contains);
-
-String _statusLabel(String? status) => switch (status) {
-  'active' => '在职',
-  'probation' => '试用',
-  'onLeave' => '休假',
-  'resigned' => '离职',
-  _ => status ?? '状态未知',
-};

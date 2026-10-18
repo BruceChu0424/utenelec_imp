@@ -24,7 +24,6 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
@@ -297,50 +296,14 @@ class _SubcontractReportTablePageState
         child: UtenContentContainer.wide(
           child: Padding(
             padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            // 「顶部折叠 + 表格吸顶内滚」：标题行随上滑收起腾出空间，
-            // 筛选/表格区占满剩余空间、表体内部滚动（与单据列表页统一）。
-            child: UtenCollapsingHeaderScrollView(
-              collapsingHeader: Padding(
-                padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                child: Row(
-                  children: [
-                    Icon(
-                      _kind.icon,
-                      size: 18,
-                      color: theme.colorScheme.primary,
-                    ),
-                    const SizedBox(width: UtenSpacing.s8),
-                    Text(
-                      _title,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(width: UtenSpacing.s8),
-                    if (_data != null)
-                      Text(
-                        '共 ${_data!.total} $_countUnit',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              body: UtenListTwoPane(
-                filterPane: _buildFilterPane(theme),
-                tablePane: _buildTable(),
-              ),
+            child: UtenListTwoPane(
+              filterPane: _buildFilterPane(theme),
+              tablePane: _buildTable(),
             ),
           ),
         ),
       ),
     );
-  }
-
-  String get _countUnit {
-    if (_kind.isInOut) return '条';
-    return _kind.isDetail ? '条明细' : '张单';
   }
 
   Widget _buildFilterPane(ThemeData theme) {
@@ -463,8 +426,6 @@ class _SubcontractReportTablePageState
     return MasterDataTableView<Map<String, dynamic>>(
       tableKey:
           'features.subcontract.pages.subcontract_report_table_page.SubcontractReportTablePageState._buildTable.1',
-      // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
-      primary: true,
       columns: columns,
       items: data.rows,
       toolbarActions: [

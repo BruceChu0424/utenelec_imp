@@ -50,7 +50,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('100个分类未滚动就保护屏外最长标题，滚动往返下限不跳变', (tester) async {
+  testWidgets('屏外最长分类决定初始自然宽，主动缩窄后滚动往返不反弹', (tester) async {
     tester.view.physicalSize = const Size(2000, 600);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -86,11 +86,16 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text(_longName), findsNothing, reason: '最长标题仍在视口和缓存外');
-    final floor = tester.getSize(find.byKey(const Key('forest-pane'))).width;
-    expect(floor, greaterThan(400));
+    final naturalWidth = tester
+        .getSize(find.byKey(const Key('forest-pane')))
+        .width;
+    expect(naturalWidth, greaterThan(400));
     await tester.drag(find.byTooltip('拖动调整宽度 · 双击复位'), const Offset(-1800, 0));
     await tester.pumpAndSettle();
-    expect(tester.getSize(find.byKey(const Key('forest-pane'))).width, floor);
+    final compactWidth = tester
+        .getSize(find.byKey(const Key('forest-pane')))
+        .width;
+    expect(compactWidth, 200);
     final scroll = tester.state<ScrollableState>(find.byType(Scrollable).first);
     scroll.position.jumpTo(scroll.position.maxScrollExtent);
     await tester.pumpAndSettle();
@@ -99,13 +104,20 @@ void main() {
       tester
           .renderObject<RenderParagraph>(find.text(_longName))
           .didExceedMaxLines,
-      isFalse,
+      isTrue,
     );
-    expect(tester.getSize(find.byKey(const Key('forest-pane'))).width, floor);
+    expect(find.byTooltip(_longName), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const Key('forest-pane'))).width,
+      compactWidth,
+    );
     scroll.position.jumpTo(0);
     await tester.pumpAndSettle();
     expect(find.text(_longName), findsNothing);
-    expect(tester.getSize(find.byKey(const Key('forest-pane'))).width, floor);
+    expect(
+      tester.getSize(find.byKey(const Key('forest-pane'))).width,
+      compactWidth,
+    );
     expect(tester.takeException(), isNull);
   });
 

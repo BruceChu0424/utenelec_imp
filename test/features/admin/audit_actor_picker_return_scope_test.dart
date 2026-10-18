@@ -9,6 +9,8 @@ import 'package:uten_imp/features/admin/models/audit_log_entry.dart';
 import 'package:uten_imp/features/admin/pages/admin_audit_log_page.dart';
 import 'package:uten_imp/features/admin/repositories/audit_log_repository.dart';
 import 'package:uten_imp/features/admin/widgets/audit_query_scope.dart';
+import 'package:uten_imp/features/department/models/department_node.dart';
+import 'package:uten_imp/features/employee/providers/employee_picker_department_tree_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -35,6 +37,26 @@ void main() {
           overrides: [
             sharedPreferencesProvider.overrideWithValue(preferences),
             auditLogRepositoryProvider.overrideWithValue(_Repository()),
+            employeePickerDepartmentTreeProvider.overrideWith(
+              (ref) async => [
+                DepartmentNode(
+                  id: 'company',
+                  code: 'COMPANY',
+                  name: '测试公司',
+                  level: '公司',
+                  children: [
+                    DepartmentNode(
+                      id: 'finance',
+                      code: 'DEPT_FIN',
+                      name: '财务部',
+                      level: '一级部门',
+                      parentId: 'company',
+                      children: [],
+                    ),
+                  ],
+                ),
+              ],
+            ),
             auditArchivePurgeModeProvider.overrideWithValue(
               AuditArchivePurgeMode.unknown,
             ),
@@ -114,7 +136,12 @@ class _Repository extends Fake implements AuditLogRepository {
     String? keyword,
   }) async => const AuditActorPage(
     items: [
-      AuditActorOption(actorId: 'user-id-not-employee-id', name: '审计旧账号'),
+      AuditActorOption(
+        actorId: 'user-id-not-employee-id',
+        name: '审计旧账号',
+        departmentId: 'finance',
+        department: '财务部',
+      ),
     ],
     page: 1,
     size: 1,

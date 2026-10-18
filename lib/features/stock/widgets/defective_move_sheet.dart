@@ -38,6 +38,7 @@ Future<bool> showDefectiveMoveSheet(
 }) async {
   final result = await showUtenAdaptivePanel<bool>(
     context: context,
+    widthFraction: UtenPanelWidth.content,
     builder: (_) => DefectiveMoveSheet(
       kind: kind,
       goodsId: goodsId,

@@ -305,7 +305,8 @@ class _StripMetric extends StatelessWidget {
   }
 }
 
-/// 待办区：小节头与单行瓦片，剩余待办在独立面板查看。
+/// 待办区：有任务时直接展示单行瓦片，仅空态保留小节头。
+/// 剩余待办在独立面板查看。
 class _TodoSide extends StatelessWidget {
   const _TodoSide({required this.todos});
 
@@ -316,16 +317,13 @@ class _TodoSide extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _TodoZoneHeader(
-          // 总数徽章 = 各待办 count 之和（无待办时徽章自身不渲染）。
-          total: todos.fold<int>(0, (sum, t) => sum + t.count),
-        ),
-        if (todos.isEmpty)
+        if (todos.isEmpty) ...[
+          const _TodoZoneHeader(),
           _ZoneEmpty(
             icon: Icons.task_alt_rounded,
             message: AppLocalizations.of(context).dashboardNoAuthorizedTodos,
-          )
-        else
+          ),
+        ] else
           _TodoTileRow(todos: _ordered()),
       ],
     );
@@ -344,11 +342,9 @@ class _TodoSide extends StatelessWidget {
   }
 }
 
-/// 待办区小节头：区内标题 + 排布说明 + 总数徽章。
+/// 待办空态小节头：保留区内标题，说明下方空态所属区域。
 class _TodoZoneHeader extends StatelessWidget {
-  const _TodoZoneHeader({required this.total});
-
-  final int total;
+  const _TodoZoneHeader();
 
   @override
   Widget build(BuildContext context) {
@@ -369,27 +365,13 @@ class _TodoZoneHeader extends StatelessWidget {
           ),
           const SizedBox(width: UtenSpacing.s8),
           Expanded(
-            child: Wrap(
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: UtenSpacing.s8,
-              runSpacing: UtenSpacing.s2,
-              children: [
-                Text(
-                  '待办任务',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                Text(
-                  '按紧急度排布',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
+            child: Text(
+              '待办任务',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
-          UtenNotificationBadge(count: total, size: 20, showLabel: true),
         ],
       ),
     );
@@ -407,7 +389,7 @@ class _TodoTileRow extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         UtenSpacing.s16,
-        0,
+        UtenSpacing.s12,
         UtenSpacing.s16,
         UtenSpacing.s16,
       ),
@@ -492,6 +474,7 @@ class _TodoTileRow extends StatelessWidget {
     final route = await showUtenAdaptivePanel<String>(
       context: context,
       drawerWidth: 520,
+      widthFraction: UtenPanelWidth.form,
       builder: (panelContext) => Column(
         children: [
           Padding(

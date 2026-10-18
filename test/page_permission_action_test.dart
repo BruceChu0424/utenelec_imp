@@ -253,8 +253,9 @@ void main() {
       await tester.pumpWidget(_drawerApp(repository));
       await tester.pumpAndSettle();
 
-      // 选人前是选人视图：部门筛选 + 人员列表。
-      expect(find.text('张三(S001)'), findsOneWidget);
+      // 选人前是选人视图：部门筛选 + 重点字段表格。
+      expect(find.text('张三'), findsOneWidget);
+      expect(find.text('S001'), findsOneWidget);
       expect(find.text('销售订货查看'), findsNothing);
       await tester.tap(
         find.byKey(const ValueKey('page-permission-staff-employee-1')),
@@ -508,7 +509,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('未开通账号'), findsOneWidget);
+      expect(find.text('未开通'), findsOneWidget);
       await tester.tap(
         find.byKey(const ValueKey('page-permission-staff-employee-1')),
       );
@@ -770,6 +771,8 @@ class _FakePagePermissionRepository
         departmentManager: false,
         hasAccount: hasAccount,
         accountActive: hasAccount,
+        accountStatus: hasAccount ? 'active' : 'notProvisioned',
+        employmentStatus: 'active',
       ),
     ];
     return PagePermissionStaffPage(

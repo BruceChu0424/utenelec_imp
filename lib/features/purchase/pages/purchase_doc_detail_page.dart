@@ -676,6 +676,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
 
   /// 首屏之后并行补齐字典与明细货品名/编号/库位号(采购明细服务端暂未随单下发货品
   /// 展示字段，由一次批量货品查询补齐)，完成后重绘一次。
+  /// 人员姓名(工号)优先用服务端随单下发的解析值；旧后端未下发时按 id 补查本地字典。
   Future<void> _resolveDisplayNames(
     MasterNameService names,
     PurchaseDocDetail d,
@@ -687,6 +688,12 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
         names.loadGoodsDetails(
           d.items.map((e) => e.goodsId).whereType<String>(),
         ),
+        if (d.purchaserName == null || d.senderName == null || d.receiverName == null)
+          names.loadEmployeeNames([
+            if (_cfg.hasPurchaser && d.purchaserName == null) d.purchaserId,
+            if (_cfg.hasSender && d.senderName == null) d.senderId,
+            if (_cfg.hasReceiver && d.receiverName == null) d.receiverId,
+          ]),
       ]);
     } catch (_) {
       // 名称补齐失败只影响占位符，不影响正文。
@@ -1229,9 +1236,13 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
               : d.exchangeRate?.toString(),
         ),
       if (_cfg.hasApplicant) _KV('申请人', d.applicantName ?? '—'),
-      if (_cfg.hasPurchaser) _KV('采购员', d.purchaserId ?? '—'),
-      if (_cfg.hasSender) _KV('交货人', d.senderId ?? '—'),
-      if (_cfg.hasReceiver) _KV('收货人', d.receiverId ?? '—'),
+      // 人员身份统一 姓名(工号)：优先服务端随单解析值，旧后端未下发时退回本地员工字典。
+      if (_cfg.hasPurchaser)
+        _KV('采购员', names.employeeOr(d.purchaserName, d.purchaserId)),
+      if (_cfg.hasSender)
+        _KV('交货人', names.employeeOr(d.senderName, d.senderId)),
+      if (_cfg.hasReceiver)
+        _KV('收货人', names.employeeOr(d.receiverName, d.receiverId)),
       if (_cfg.hasNeedDate) _KV('需求日', d.needDate),
       if (_cfg.hasDeliverDate) _KV('交货日', d.deliverDate),
       if (canViewCommercialAmounts && _historicalReceipt) ...[

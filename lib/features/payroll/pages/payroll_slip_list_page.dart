@@ -2,11 +2,11 @@
 //
 // 2026-09-09 表格化改版：卡片网格 → MasterDataTableView（列对齐 + 分页）。
 // 列：期间/应发合计/扣除合计/实发合计/状态/发布时间（原卡片字段全部保留）。
-// 顶部 UtenSegmentedFilter 分段（全部/未查看/已查看/已下载）保留；行双击进详情；
+// 标题下方独立分类行（未查看/已查看，已下载归已查看）；行双击进详情；
 // 无多选（工资条对员工本人只有「看/下载」，没有可批量的状态动作）。分页走表格内置
 // 翻页条（含跳页）。
 // 2026-09-10 表头筛选：「状态」列筛选桶 = 分段可选状态集（已发布未查看/已查看/
-// 已下载），选中即切到对应分段并回第 1 页（下推后端 status 参数，非页内裁剪）。
+// 已下载），在当前分类内细筛并回第 1 页（下推后端 status 参数，非页内裁剪）。
 // 文档：docs/03-页面/工资条列表页.md
 //
 // 响应式：compact 由页面自套 UtenContentContainer（gutter 16）；
@@ -26,9 +26,10 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_segmented_filter.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/human_error_message.dart';
 import '../../../shared/formatters/money_display.dart';
 import '../../basic_data/models/master_facet.dart';
@@ -80,7 +81,7 @@ class _PayrollSlipListPageState extends ConsumerState<PayrollSlipListPage> {
           onRetry: () => ref.invalidate(payrollListProvider),
           columns: _columns,
           items: page.items,
-          facets: {'status': _statusFacets()},
+          facets: {'status': _statusFacets(filter)},
           nullCounts: const {},
           filters: {'status': _statusFilterOf(filter)},
           onFilterChanged: (key, value) => _onFilterChanged(ref, key, value),
@@ -95,25 +96,31 @@ class _PayrollSlipListPageState extends ConsumerState<PayrollSlipListPage> {
         ),
       ),
     );
+    body = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+          child: UtenFilterToolbar<PayrollFilter>(
+            key: const Key('payroll-slip-categories'),
+            selected: {filter.category},
+            onSelectionChanged: (value) =>
+                ref.read(payrollFilterProvider.notifier).state = value,
+            segments: const [
+              UtenFilterSegment(value: PayrollFilter.published, label: '未查看'),
+              UtenFilterSegment(value: PayrollFilter.viewed, label: '已查看'),
+            ],
+          ),
+        ),
+        Expanded(child: body),
+      ],
+    );
     if (context.breakpoint.isCompact) {
       body = UtenContentContainer(child: body);
     }
 
     return Scaffold(
-      appBar: UtenAppBar(
-        title: '工资条',
-        showBackButton: true,
-        centerWidget: UtenSegmentedFilter<PayrollFilter>(
-          selected: filter,
-          onChanged: (v) => ref.read(payrollFilterProvider.notifier).state = v,
-          segments: const [
-            UtenSegment(value: PayrollFilter.all, label: '全部'),
-            UtenSegment(value: PayrollFilter.published, label: '未查看'),
-            UtenSegment(value: PayrollFilter.viewed, label: '已查看'),
-            UtenSegment(value: PayrollFilter.downloaded, label: '已下载'),
-          ],
-        ),
-      ),
+      appBar: const UtenAppBar(title: '工资条', showBackButton: true),
       body: body,
     );
   }
@@ -121,33 +128,31 @@ class _PayrollSlipListPageState extends ConsumerState<PayrollSlipListPage> {
 
 /// 「状态」列筛选桶：员工可见的三态（待发布对员工不可见，不进桶）。
 /// value = PayrollSlipStatus 枚举名，桶不带计数（按页拉取，无全量计数口径）。
-List<MasterFacetBucket> _statusFacets() => [
-  for (final status in const [
-    PayrollSlipStatus.published,
-    PayrollSlipStatus.viewed,
-    PayrollSlipStatus.downloaded,
-  ])
+List<MasterFacetBucket> _statusFacets(PayrollFilter filter) => [
+  for (final status
+      in filter.category == PayrollFilter.published
+          ? const [PayrollSlipStatus.published]
+          : const [PayrollSlipStatus.viewed, PayrollSlipStatus.downloaded])
     MasterFacetBucket(value: status.name, count: 0, label: status.label),
 ];
 
-/// 分段 → 表头选中值（全部段不选中任何状态）。
+/// 分类默认覆盖自身全部状态，只有表头的精确子状态显示为选中。
 String? _statusFilterOf(PayrollFilter filter) => switch (filter) {
-  PayrollFilter.all => null,
-  PayrollFilter.published => PayrollSlipStatus.published.name,
-  PayrollFilter.viewed => PayrollSlipStatus.viewed.name,
+  PayrollFilter.published || PayrollFilter.viewed => null,
+  PayrollFilter.viewedOnly => PayrollSlipStatus.viewed.name,
   PayrollFilter.downloaded => PayrollSlipStatus.downloaded.name,
 };
 
-/// 表头状态筛选 → 切到对应分段（provider 重建即回第 1 页）。
+/// 清除表头细筛仅回当前分类全集，始终保留一个可见分类。
 void _onFilterChanged(WidgetRef ref, String key, String? value) {
   if (key != 'status') return;
   final next = switch (value) {
-    null => PayrollFilter.all,
+    null => ref.read(payrollFilterProvider).category,
     _ when value == PayrollSlipStatus.published.name => PayrollFilter.published,
-    _ when value == PayrollSlipStatus.viewed.name => PayrollFilter.viewed,
+    _ when value == PayrollSlipStatus.viewed.name => PayrollFilter.viewedOnly,
     _ when value == PayrollSlipStatus.downloaded.name =>
       PayrollFilter.downloaded,
-    _ => PayrollFilter.all,
+    _ => ref.read(payrollFilterProvider),
   };
   ref.read(payrollFilterProvider.notifier).state = next;
 }
@@ -157,7 +162,7 @@ final List<MasterColumnDef<PayrollSlip>> _columns = [
     key: 'status',
     label: '状态',
     width: 72,
-    info: '表头筛选与顶部分段同一口径：选中状态即切到对应分段并回第 1 页。',
+    info: '在当前分类内筛选具体状态；已下载归入已查看。清除筛选显示当前分类全部工资条。',
     value: (s) => s.status.label,
     // 2026-09-27 用户口径「表格状态列整格底色」；档位按 ADR-169 锚定
     // （与 PayrollSlipStatus.badgeType 同源）：待发布=灰 / 已发布=蓝（分发

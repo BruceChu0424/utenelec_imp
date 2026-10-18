@@ -1,5 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/layout/uten_app_bar.dart';
+import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
+import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -91,13 +94,37 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(repository.statuses.last, 'pending,hostReviewing,approved');
+      expect(repository.statuses.last, 'pending,hostReviewing');
+      final l10n = AppLocalizations.of(
+        tester.element(find.byType(VisitorHomePage)),
+      );
+      expect(
+        tester.getTopLeft(find.byType(UtenFilterToolbar<VisitorFilter>)).dy,
+        greaterThanOrEqualTo(tester.getBottomLeft(find.byType(UtenAppBar)).dy),
+      );
+      await tester.tap(find.text(l10n.visitorFilterApproved));
+      await tester.pumpAndSettle();
+      expect(repository.statuses.last, 'approved');
       await tester.tap(find.text('历史单据'));
       await tester.pumpAndSettle();
       expect(repository.statuses.last, 'checkedIn,rejected,cancelled');
-      await tester.tap(find.text('全部在办'));
+      expect(find.text('全部在办'), findsNothing);
+      await tester.tap(
+        find.text(
+          AppLocalizations.of(
+            tester.element(find.byType(VisitorHomePage)),
+          ).visitorFilterPending,
+        ),
+      );
       await tester.pumpAndSettle();
-      expect(repository.statuses.last, 'pending,hostReviewing,approved');
+      expect(repository.statuses.last, 'pending,hostReviewing');
+      await tester.binding.setSurfaceSize(const Size(390, 850));
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenFloatingActionGroup), findsOneWidget);
+      expect(
+        tester.getCenter(find.text(l10n.visitorApplyNew)).dy,
+        greaterThan(425),
+      );
       expect(tester.takeException(), isNull);
     },
   );

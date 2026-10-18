@@ -1,5 +1,7 @@
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/features/finance/providers/finance_name_provider.dart';
 import 'package:uten_imp/features/finance/widgets/finance_account_picker_panel.dart';
@@ -40,11 +42,88 @@ void main() {
       await tester.enterText(_search(), 'USD 基本户');
       await tester.pumpAndSettle();
       expect(_titles(tester), ['ZH002 · 外贸基本户']);
-      await tester.tap(find.text('ZH002 · 外贸基本户'));
+      await tester.tap(find.text('外贸基本户'));
+      await tester.pumpAndSettle();
+      expect(selected, isNull);
+      expect(find.text('选择收款账户'), findsOneWidget);
+      expect(_isSelected(tester, 'usd'), isTrue);
+      await tester.tap(find.byKey(const Key('finance-account-picker-confirm')));
       await tester.pumpAndSettle();
       expect(selected, 'usd');
     },
   );
+
+  for (final dismissal in ['取消', '关闭', '遮罩']) {
+    testWidgets('account draft is discarded by $dismissal', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final results = <String?>[];
+      await _open(
+        tester,
+        const [
+          FinanceAccountReference(id: 'old', name: '原账户', status: '使用'),
+          FinanceAccountReference(id: 'new', name: '新账户', status: '使用'),
+        ],
+        results.add,
+        selectedId: 'old',
+      );
+      await tester.tap(find.text('新账户'));
+      await tester.pumpAndSettle();
+      expect(results, isEmpty);
+      if (dismissal == '遮罩') {
+        await tester.tapAt(const Offset(20, 400));
+      } else if (dismissal == '关闭') {
+        await tester.tap(find.byTooltip('关闭'));
+      } else {
+        await tester.tap(find.text('取消'));
+      }
+      await tester.pumpAndSettle();
+      expect(results, [null]);
+      await tester.tap(find.text('打开'));
+      await tester.pumpAndSettle();
+      expect(_isSelected(tester, 'old'), isTrue);
+    });
+  }
+
+  testWidgets('disabled initial account cannot be confirmed', (tester) async {
+    await _open(
+      tester,
+      const [
+        FinanceAccountReference(id: 'disabled', name: '禁用账户', status: '禁用'),
+        FinanceAccountReference(id: 'usable', name: '可用账户', status: '使用'),
+      ],
+      (_) {},
+      selectedId: 'disabled',
+    );
+    expect(find.text('禁用账户'), findsNothing);
+    expect(
+      tester
+          .widget<UtenButton>(
+            find.byKey(const Key('finance-account-picker-confirm')),
+          )
+          .onPressed,
+      isNull,
+    );
+  });
+
+  testWidgets('local search keeps an eligible draft until confirmation', (
+    tester,
+  ) async {
+    String? selected;
+    await _open(tester, const [
+      FinanceAccountReference(id: 'first', name: '第一账户', status: '使用'),
+      FinanceAccountReference(id: 'second', name: '第二账户', status: '使用'),
+    ], (value) => selected = value);
+    await tester.tap(find.text('第一账户'));
+    await tester.pumpAndSettle();
+    await tester.enterText(_search(), '第二');
+    await tester.pumpAndSettle();
+    expect(selected, isNull);
+    expect(find.text('已选择：第一账户'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('finance-account-picker-confirm')));
+    await tester.pumpAndSettle();
+    expect(selected, 'first');
+  });
 
   testWidgets(
     'account names rank before code-only hits and ties keep the supplied order',
@@ -103,15 +182,26 @@ Finder _search() => find.descendant(
   of: find.byType(UtenSearchBar),
   matching: find.byType(TextField),
 );
+bool _isSelected(WidgetTester tester, String id) {
+  final table = tester.widget<MasterDataTableView<FinanceAccountReference>>(
+    find.byType(MasterDataTableView<FinanceAccountReference>),
+  );
+  return table.isSelected!(table.items.firstWhere((item) => item.id == id));
+}
+
 List<String?> _titles(WidgetTester tester) => tester
-    .widgetList<ListTile>(find.byType(ListTile))
-    .map((tile) => (tile.title as Text).data)
+    .widget<MasterDataTableView<FinanceAccountReference>>(
+      find.byType(MasterDataTableView<FinanceAccountReference>),
+    )
+    .items
+    .map((a) => '${a.code} · ${a.name}')
     .toList();
 Future<void> _open(
   WidgetTester tester,
   List<FinanceAccountReference> accounts,
-  ValueChanged<String?> selected,
-) async {
+  ValueChanged<String?> selected, {
+  String? selectedId,
+}) async {
   await tester.pumpWidget(
     MaterialApp(
       home: Builder(
@@ -121,6 +211,7 @@ Future<void> _open(
               await showFinanceAccountPickerPanel(
                 context: context,
                 accounts: accounts,
+                selectedId: selectedId,
               ),
             ),
             child: const Text('打开'),

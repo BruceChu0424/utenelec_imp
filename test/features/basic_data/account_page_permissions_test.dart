@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_back_button.dart';
+import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/features/basic_data/models/account_node.dart';
 import 'package:uten_imp/features/basic_data/models/currency_node.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
@@ -67,6 +68,8 @@ void main() {
         findsNothing,
       );
       expect(find.text('打开选中账户'), findsOneWidget);
+      expect(find.text('添加账户'), findsNothing);
+      expect(find.textContaining(RegExp(r'^账户（\d+）$')), findsNothing);
       expect(find.textContaining('当前仅展示非敏感账户数量'), findsOneWidget);
       expect(find.text('99999999999999.1234'), findsNothing);
       final menu = table.rowMenuBuilder!(repository.item);
@@ -214,6 +217,15 @@ void main() {
     );
     expect(currencies.dictCalls, 0);
     expect(styles.treeCalls, 0);
+
+    final create = find.text('添加账户');
+    expect(create, findsOneWidget);
+    expect(
+      find.ancestor(of: create, matching: find.byType(UtenFloatingActionGroup)),
+      findsOneWidget,
+    );
+    expect(tester.getRect(create).top, greaterThan(450));
+    expect(find.textContaining(RegExp(r'^账户（\d+）$')), findsNothing);
 
     await tester.tap(find.text('添加账户'));
     await tester.pumpAndSettle();

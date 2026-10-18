@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../components/inputs/uten_employee_picker.dart';
 import '../../components/inputs/uten_search_bar.dart';
+import '../../components/layout/uten_adaptive_panel.dart';
 import '../../components/layout/uten_picker_confirm_bar.dart';
 import '../../components/layout/uten_picker_footer_layout.dart';
 import '../../core/network/api_exception.dart';
@@ -66,8 +67,13 @@ Future<SalesDocListItem?> showSalesOrderPicker(
     transitionDuration: const Duration(milliseconds: 250),
     pageBuilder: (ctx, _, _) {
       // 浮动留边：面板与屏幕上/右/下边各留 16px，圆角 + 阴影，不再贴边。
-      final viewportWidth = MediaQuery.sizeOf(ctx).width;
-      final panelWidth = viewportWidth < 920 ? viewportWidth * 0.92 : 840.0;
+      // 宽度口径 2026-10-17：browse 档（75% 屏宽，840 只作小屏下限），
+      // 与其他右滑面板同一口径（uten_adaptive_panel.dart 的 UtenPanelWidth）。
+      final panelWidth = utenPanelWidth(
+        MediaQuery.sizeOf(ctx),
+        840,
+        UtenPanelWidth.browse,
+      );
       return Align(
         alignment: Alignment.centerRight,
         child: Padding(
@@ -283,6 +289,8 @@ class _SalesOrderPickerSheetState
                             id: e.id,
                             name: e.fullName,
                             employeeCode: e.code,
+                            accountStatus: e.accountStatus,
+                            employmentStatus: e.status,
                             departmentId: e.departmentId,
                             departmentName: e.departmentName,
                           ),

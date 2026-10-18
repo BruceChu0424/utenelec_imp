@@ -198,7 +198,12 @@ class AuditActorOption {
     this.departmentId,
     this.position,
     this.lastActivityAt,
+    this.accountStatus,
+    this.employmentStatus,
   });
+
+  final String? accountStatus;
+  final String? employmentStatus;
 
   final String actorId;
   final String? account;
@@ -222,6 +227,8 @@ class AuditActorOption {
 
   factory AuditActorOption.fromJson(Map<String, dynamic> json) =>
       AuditActorOption(
+        accountStatus: json['accountStatus'] as String?,
+        employmentStatus: json['employmentStatus'] as String?,
         actorId: json['actorId'] as String? ?? '',
         account: json['account'] as String?,
         actorType: json['actorType'] as String?,

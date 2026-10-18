@@ -25,6 +25,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -427,9 +428,16 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
         )
       : table;
 
+  Widget _createButton() => UtenButton(
+    key: const Key('stock-list-create'),
+    size: UtenButtonSize.large,
+    icon: Icons.add_rounded,
+    onPressed: () => context.push(RoutePath.stockDocNew(widget.docType.code)),
+    child: const Text('新建'),
+  );
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final docType = widget.docType;
     ref.watch(currentPermissionsProvider);
     // watch 一下以在 ensureLoaded 完成（虽 Provider 实例不变，但语义上声明依赖）
@@ -464,6 +472,11 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
           ),
         ],
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: _canCreate && !_canSelectDrafts
+          ? UtenFloatingActionGroup(children: [_createButton()])
+          : null,
       body: SafeArea(
         child: UtenContentContainer.wide(
           child: Padding(
@@ -471,7 +484,6 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
             child: ListenableBuilder(
               listenable: _list,
               builder: (context, _) {
-                final total = _list.total;
                 // 「顶部折叠 + 表格吸顶内滚」：分类工具条随上滑收起腾出空间。
                 // 2026-09-24 对齐物料分析页：页面头/时间行一并移入滚走区，
                 // body 只剩表格——上滑后表格直抵页顶。
@@ -512,37 +524,6 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
                           _reload(1);
                         },
                       ),
-                      // 页面头：Icon + 标题 + 计数 + 新建（2026-09-24 移入滚走区）。
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                        child: Row(
-                          children: [
-                            Icon(
-                              iconFor(widget.docType),
-                              size: 18,
-                              color: theme.colorScheme.primary,
-                            ),
-                            const SizedBox(width: UtenSpacing.s8),
-                            Text(
-                              '${widget.docType.label} ($total)',
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const Spacer(),
-                            if (_canCreate &&
-                                !(seg?.status == 0 && seg?.history != true))
-                              UtenButton(
-                                type: UtenButtonType.tonal,
-                                icon: Icons.add_rounded,
-                                onPressed: () => context.push(
-                                  RoutePath.stockDocNew(widget.docType.code),
-                                ),
-                                child: const Text('新建'), // TODO(l10n): 补 arb
-                              ),
-                          ],
-                        ),
-                      ),
                       if (seg?.history == true) ...[
                         Padding(
                           padding: const EdgeInsets.only(
@@ -567,6 +548,9 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
                       : _withFormDraftRows(
                           MasterDataTableView<StockDocListItem>(
                             rowsController: _tableRows,
+                            bottomContentPadding: _canCreate
+                                ? UtenFloatingActionGroup.scrollClearance
+                                : 0,
                             tableKey: 'warehouse.${widget.docType.name}.list',
                             // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
                             primary: true,
@@ -584,6 +568,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
                                 ? null
                                 : selectDraftIds,
                             batchActionsBuilder: (_, _) => [
+                              if (_canCreate) _createButton(),
                               buildDraftDeleteButton(
                                 documentLabel: docType.label,
                                 delete: (id) => deleteStockDraft(

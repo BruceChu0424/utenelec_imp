@@ -884,13 +884,16 @@ public class PurchaseReceiptService {
                 r.getSupplierId(), r.getWarehouseId(), mask ? null : r.getCurrencyId(),
                 mask ? null : r.getExchangeRate(), mask ? null : r.getTaxRate(),
                 r.getSenderId(), r.getReceiverId(), r.getPurchaserId(),
+                nameResolver.nameWithCodeOf(r.getSenderId()),
+                nameResolver.nameWithCodeOf(r.getReceiverId()),
+                nameResolver.nameWithCodeOf(r.getPurchaserId()),
                 mask ? null : r.getSettlementMethodId(),
                 mask || r.getSettlementStyleLegacy() == null
                         ? null : r.getSettlementStyleLegacy().intValue(),
                 r.getMakerId(), r.getApproverId(), r.getRemark(),
                 mask ? null : r.getTotalOriginal(), mask ? null : r.getTotalLocal(),
                 r.getStatus(), r.isClosed(), r.getSourceDocNo(), safeItems,
-                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt(),
+                nameResolver.nameWithCodeOf(r.getMakerId()), r.getCreatedAt(),
                 sourceOrder == null ? null : sourceOrder.id(),
                 sourceOrder == null ? null : sourceOrder.billNo(),
                 mask);

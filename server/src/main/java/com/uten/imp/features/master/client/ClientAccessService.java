@@ -96,7 +96,9 @@ public class ClientAccessService {
                         Objects.toString(row[2], ""),
                         (UUID) row[6],
                         row[3] == null ? null : row[3].toString(),
-                        Objects.toString(row[4], ""), Boolean.TRUE.equals(row[5])))
+                        Objects.toString(row[4], ""), Boolean.TRUE.equals(row[5]),
+                        // The original candidate predicate requires an active, non-deleted account.
+                        "active"))
                 .toList();
         long total = totalValue.longValue();
         int totalPages = (int) ((total + safeSize - 1) / safeSize);

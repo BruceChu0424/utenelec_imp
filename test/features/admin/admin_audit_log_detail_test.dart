@@ -30,8 +30,29 @@ import 'package:uten_imp/features/admin/models/audit_log_entry.dart';
 import 'package:uten_imp/features/admin/models/audit_session.dart';
 import 'package:uten_imp/features/admin/pages/admin_audit_log_page.dart';
 import 'package:uten_imp/features/admin/repositories/audit_log_repository.dart';
+import 'package:uten_imp/features/department/models/department_node.dart';
+import 'package:uten_imp/features/employee/providers/employee_picker_department_tree_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+
+final _auditDepartmentTree = [
+  DepartmentNode(
+    id: 'audit-company',
+    code: 'AUDIT_COMPANY',
+    name: '测试公司',
+    level: '公司',
+    children: [
+      DepartmentNode(
+        id: 'audit-production',
+        code: 'AUDIT_PRODUCTION',
+        name: '生产部',
+        level: '一级部门',
+        parentId: 'audit-company',
+        children: [],
+      ),
+    ],
+  ),
+];
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -77,6 +98,9 @@ void main() {
           await tester.pumpWidget(
             ProviderScope(
               overrides: [
+                employeePickerDepartmentTreeProvider.overrideWith(
+                  (ref) async => _auditDepartmentTree,
+                ),
                 auditLogRepositoryProvider.overrideWithValue(repository),
                 sharedPreferencesProvider.overrideWithValue(preferences),
               ],
@@ -130,6 +154,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            employeePickerDepartmentTreeProvider.overrideWith(
+              (ref) async => _auditDepartmentTree,
+            ),
             auditLogRepositoryProvider.overrideWithValue(repository),
             sharedPreferencesProvider.overrideWithValue(preferences),
           ],
@@ -196,6 +223,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          employeePickerDepartmentTreeProvider.overrideWith(
+            (ref) async => _auditDepartmentTree,
+          ),
           auditLogRepositoryProvider.overrideWithValue(repository),
           currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
           sharedPreferencesProvider.overrideWithValue(preferences),
@@ -245,6 +275,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          employeePickerDepartmentTreeProvider.overrideWith(
+            (ref) async => _auditDepartmentTree,
+          ),
           auditLogRepositoryProvider.overrideWithValue(repository),
           currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
           sharedPreferencesProvider.overrideWithValue(preferences),
@@ -291,6 +324,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            employeePickerDepartmentTreeProvider.overrideWith(
+              (ref) async => _auditDepartmentTree,
+            ),
             auditLogRepositoryProvider.overrideWithValue(repository),
             currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
             sharedPreferencesProvider.overrideWithValue(preferences),
@@ -368,6 +404,9 @@ void main() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
+              employeePickerDepartmentTreeProvider.overrideWith(
+                (ref) async => _auditDepartmentTree,
+              ),
               auditLogRepositoryProvider.overrideWithValue(repository),
               currentPermissionsProvider.overrideWithValue({
                 Perm.auditLogExport,
@@ -505,6 +544,9 @@ void main() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
+              employeePickerDepartmentTreeProvider.overrideWith(
+                (ref) async => _auditDepartmentTree,
+              ),
               auditLogRepositoryProvider.overrideWithValue(repository),
               currentPermissionsProvider.overrideWithValue({
                 Perm.auditLogExport,
@@ -642,6 +684,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          employeePickerDepartmentTreeProvider.overrideWith(
+            (ref) async => _auditDepartmentTree,
+          ),
           auditLogRepositoryProvider.overrideWithValue(repository),
           currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
           sharedPreferencesProvider.overrideWithValue(preferences),
@@ -707,6 +752,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          employeePickerDepartmentTreeProvider.overrideWith(
+            (ref) async => _auditDepartmentTree,
+          ),
           auditLogRepositoryProvider.overrideWithValue(repository),
           currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
           sharedPreferencesProvider.overrideWithValue(preferences),
@@ -747,6 +795,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          employeePickerDepartmentTreeProvider.overrideWith(
+            (ref) async => _auditDepartmentTree,
+          ),
           auditLogRepositoryProvider.overrideWithValue(repository),
           currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
           sharedPreferencesProvider.overrideWithValue(preferences),
@@ -837,6 +888,9 @@ void main() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
+              employeePickerDepartmentTreeProvider.overrideWith(
+                (ref) async => _auditDepartmentTree,
+              ),
               auditLogRepositoryProvider.overrideWithValue(repository),
               currentPermissionsProvider.overrideWithValue({
                 Perm.auditLogExport,
@@ -918,6 +972,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            employeePickerDepartmentTreeProvider.overrideWith(
+              (ref) async => _auditDepartmentTree,
+            ),
             auditLogRepositoryProvider.overrideWithValue(repository),
             currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
             sharedPreferencesProvider.overrideWithValue(preferences),
@@ -982,6 +1039,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          employeePickerDepartmentTreeProvider.overrideWith(
+            (ref) async => _auditDepartmentTree,
+          ),
           auditLogRepositoryProvider.overrideWithValue(repository),
           currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
           sharedPreferencesProvider.overrideWithValue(preferences),
@@ -1021,6 +1081,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          employeePickerDepartmentTreeProvider.overrideWith(
+            (ref) async => _auditDepartmentTree,
+          ),
           auditLogRepositoryProvider.overrideWithValue(repository),
           currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
           sharedPreferencesProvider.overrideWithValue(preferences),
@@ -1063,6 +1126,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          employeePickerDepartmentTreeProvider.overrideWith(
+            (ref) async => _auditDepartmentTree,
+          ),
           auditLogRepositoryProvider.overrideWithValue(repository),
           currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
           sharedPreferencesProvider.overrideWithValue(preferences),
@@ -1116,6 +1182,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            employeePickerDepartmentTreeProvider.overrideWith(
+              (ref) async => _auditDepartmentTree,
+            ),
             auditLogRepositoryProvider.overrideWithValue(repository),
             currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
             sharedPreferencesProvider.overrideWithValue(preferences),
@@ -1184,6 +1253,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          employeePickerDepartmentTreeProvider.overrideWith(
+            (ref) async => _auditDepartmentTree,
+          ),
           auditLogRepositoryProvider.overrideWithValue(repository),
           currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
           sharedPreferencesProvider.overrideWithValue(preferences),
@@ -1238,6 +1310,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            employeePickerDepartmentTreeProvider.overrideWith(
+              (ref) async => _auditDepartmentTree,
+            ),
             auditLogRepositoryProvider.overrideWithValue(repository),
             currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
             sharedPreferencesProvider.overrideWithValue(preferences),
@@ -1343,6 +1418,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            employeePickerDepartmentTreeProvider.overrideWith(
+              (ref) async => _auditDepartmentTree,
+            ),
             auditLogRepositoryProvider.overrideWithValue(repository),
             currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
             sharedPreferencesProvider.overrideWithValue(preferences),
@@ -1393,6 +1471,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            employeePickerDepartmentTreeProvider.overrideWith(
+              (ref) async => _auditDepartmentTree,
+            ),
             auditLogRepositoryProvider.overrideWithValue(repository),
             currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
             sharedPreferencesProvider.overrideWithValue(preferences),
@@ -1476,6 +1557,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            employeePickerDepartmentTreeProvider.overrideWith(
+              (ref) async => _auditDepartmentTree,
+            ),
             auditLogRepositoryProvider.overrideWithValue(repository),
             currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
             sharedPreferencesProvider.overrideWithValue(preferences),
@@ -1528,6 +1612,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          employeePickerDepartmentTreeProvider.overrideWith(
+            (ref) async => _auditDepartmentTree,
+          ),
           auditLogRepositoryProvider.overrideWithValue(repository),
           currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
           sharedPreferencesProvider.overrideWithValue(preferences),
@@ -1574,6 +1661,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          employeePickerDepartmentTreeProvider.overrideWith(
+            (ref) async => _auditDepartmentTree,
+          ),
           auditLogRepositoryProvider.overrideWithValue(repository),
           currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
           sharedPreferencesProvider.overrideWithValue(preferences),
@@ -1622,6 +1712,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          employeePickerDepartmentTreeProvider.overrideWith(
+            (ref) async => _auditDepartmentTree,
+          ),
           auditLogRepositoryProvider.overrideWithValue(repository),
           currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
           sharedPreferencesProvider.overrideWithValue(preferences),
@@ -1657,6 +1750,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          employeePickerDepartmentTreeProvider.overrideWith(
+            (ref) async => _auditDepartmentTree,
+          ),
           auditLogRepositoryProvider.overrideWithValue(repository),
           currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
           sharedPreferencesProvider.overrideWithValue(preferences),
@@ -1699,6 +1795,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            employeePickerDepartmentTreeProvider.overrideWith(
+              (ref) async => _auditDepartmentTree,
+            ),
             auditLogRepositoryProvider.overrideWithValue(repository),
             currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
             sharedPreferencesProvider.overrideWithValue(preferences),
@@ -1849,10 +1948,24 @@ Future<void> _selectDefaultAuditScope(
     const ValueKey('employee-picker-item-${_AuditRepository.actorId}'),
   );
   expect(actor, findsOneWidget);
-  await tester.tap(actor);
+  // The shared candidate table can scroll horizontally: the full row center
+  // may lie outside its viewport on narrow or zoomed screens.
+  final candidateTable = find.byKey(
+    const Key('uten-employee-picker-candidates'),
+  );
+  final visibleActor = _auditGlobalRect(tester, actor)
+      .intersect(_auditGlobalRect(tester, candidateTable))
+      .intersect(
+        Offset.zero & (tester.view.physicalSize / tester.view.devicePixelRatio),
+      );
+  expect(visibleActor.isEmpty, isFalse);
+  await tester.tapAt(visibleActor.center);
   await tester.pumpAndSettle();
-  await tester.tap(find.widgetWithText(UtenButton, '确定'));
+  final confirm = find.widgetWithText(UtenButton, '确定');
+  expect(tester.widget<UtenButton>(confirm).onPressed, isNotNull);
+  await tester.tap(confirm);
   await tester.pumpAndSettle();
+  expect(find.byType(AuditActorPicker), findsNothing);
 
   final today = find.byKey(const ValueKey('audit-date-today'));
   await _scrollAuditPageUntilVisible(tester, today);
@@ -2099,6 +2212,7 @@ class _AuditRepository implements AuditLogRepository {
           actorType: 'user',
           displayName: entry?.actorDisplay ?? '计划员(planner)',
           name: entry?.actorName ?? '计划员',
+          departmentId: 'audit-production',
           department: entry?.actorDepartment ?? '生产部',
           position: entry?.actorPosition ?? '计划专员',
           lastActivityAt: '2026-07-31T06:00:00+08:00',

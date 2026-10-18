@@ -458,6 +458,7 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
     showUtenAdaptivePanel<void>(
       context: context,
       drawerWidth: 500,
+      widthFraction: UtenPanelWidth.form,
       builder: (panelContext) => trackNativeReadDialog(
         panelContext,
         _PriceBasisPanel(
@@ -555,6 +556,7 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
     final result = await showUtenAdaptivePanel<Object?>(
       context: context,
       drawerWidth: 520,
+      widthFraction: UtenPanelWidth.form,
       builder: (panelContext) => trackNativeReadDialog(
         panelContext,
         GoodsPriceFacetPicker(

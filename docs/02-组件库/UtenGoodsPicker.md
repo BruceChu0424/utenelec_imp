@@ -14,7 +14,7 @@
 
 **解决什么**：旧款居中搜索框（`sales_goods_picker` / `goods_picker_dialog`，**已删除**）只有关键词搜索、没有分类树、会把「原材料/辅料/未分类」也列出来、且选中后只返回 `{id,code,name}` 无法自动回填颜色/单位。
 
-**何时用**：通用的「选一个或多个货品」场景——销售 / 采购 / 委外 / 仓库 / 生产（日报、计划、物料分析）单据或分析入口。物料反查与盘点候选通过专用 `UtenGoodsPickerDataSource` 复用分类、分页和确认壳；它们继续使用各自授权 API 和业务证据列表。
+**何时用**：通用的「选一个或多个货品」场景——销售 / 采购 / 委外 / 仓库 / 生产（日报、计划、物料分析）单据或分析入口。物料反查与盘点候选通过专用 `UtenGoodsPickerDataSource` 复用分类、分页和确认壳；它们继续使用各自授权 API 和业务证据表格。
 
 **何时不用**：
 - 货品资料**管理**（查看/新增/编辑/删除货品主档）→ 用 [基础资料页](../03-页面/基础资料页.md) 的货品资料页（分类树 + `MasterDataTableView` + 详情弹窗）。
@@ -26,7 +26,7 @@
 
 | 项 | 签名 | 说明 |
 |---|---|---|
-| 入口 | `Future<GoodsListItem?> showUtenGoodsPicker(BuildContext context, WidgetRef ref, {UtenGoodsPickerScope scope = UtenGoodsPickerScope.sellable, bool requireConfirm = true})` | 弹出选择器；默认二次操作（点行高亮 → 底部「取消/确定」确认），`requireConfirm=false` 恢复点行即返回的历史行为；取消/关闭返回 `null` |
+| 入口 | `Future<GoodsListItem?> showUtenGoodsPicker(BuildContext context, WidgetRef ref, {UtenGoodsPickerScope scope = UtenGoodsPickerScope.sellable})` | 弹出选择器；点行暂选，底部「确定」后返回；取消/关闭返回 `null`，不提供自动提交选项 |
 | 多选入口 | `Future<List<GoodsListItem>> showUtenGoodsPickerMulti(BuildContext context, WidgetRef ref, {UtenGoodsPickerScope scope = UtenGoodsPickerScope.component})` | 多选款：点货品行勾选/取消（显 ✓），**底部「已选 N 项」胶囊点开从底部滑出已选清单滑层，可逐项取消选择**（2026-09-24）；「确定(N)」返回所选列表；取消返回空列表。BOM 组装「一个层级添加多个组件」批量录入用 |
 | 返回 | `GoodsListItem` | 完整模型：除 `id/code/name/spec/model/price/series/material` 外，还含 `discount/status/legacyId/cNumber/requireRemark/sourceType/categoryId/autoCreated/stockQty/stockPlace` 及颜色、单位 UUID/名称；legacy ID 只作历史溯源，权威字段见 `goods_node.dart` |
 
@@ -42,13 +42,13 @@
 - 单位等选项列沿用选择语义，不增加关键词框。分类内走 `GoodsRepository.list(filters: ...)`；跨分类关键词及列条件由可选 `GoodsColumnSearchGateway` 提供。`DioGoodsRepository` 的新入口复用原 `categoryRootIds` 分批、完整失败、稳定分页和定位流程，各批均携带同一列条件，不对当前页作局部筛选冒充全量结果。
 - 列条件、初始关键词、全局关键词和分类范围共同进入行查询。表头修改会使旧响应与旧确认回调失效；已选货品快照不会因勾选其他行被同 ID 的新响应静默替换。
 - BOM 组件输入复用 `UtenReferencePickerField`。`loadUtenGoodsPickerSuggestions` 与完整选择器共用 scope 过滤，候选排除禁用 / stub，身份变化后拒绝迟到结果。点击候选只加入对话框暂选并保留已有用量；最终保存继续使用原原子 BOM 命令、循环检查、期间边与兼容性约束。取消查找或弹窗不保存 BOM。
-- 专用盘点 / 反查来源保留 `UtenPagedPickerList` 的库存、冻结、历史状态等证据展示及原 API。它们不因主档新增列搜索改用 `goods:view`，也不以当前页过滤代替其真实服务器查询。
+- 专用盘点 / 反查来源通过 `UtenGoodsPickerDataSource.pickerColumns` 配置 `MasterDataTableView` 重点列。盘点展示名称、编号、颜色、带单位的库存量和重量；反查展示名称、编号、分类、状态提示和关联依据，保留库存、冻结、历史状态等业务证据及原 API。它们不因主档新增列搜索改用 `goods:view`，也不以当前页过滤代替其真实服务器查询。
 
 ### scope 参数（按单据场景分流）
 
 默认 `sellable`（成品/可售卖类，排除原材料/辅料/未分类）——历史行为，未显式传参的调用点零回归。
 
-> **2026-08-16 二次操作契约统一**：`requireConfirm` 默认值从 `false` 改为 `true`，单选与多选一致——点货品行仅高亮勾选(✓)，底部为共享 [UtenPickerConfirmBar](UtenPickerConfirmBar.md)(多选带「清空」与「确定(n)」)，点「确定」才返回；点「取消」/右上角关闭/遮罩 = 放弃。所有未显式传 `requireConfirm` 的调用点(销售/采购/委外/仓库/生产等单据编辑页)随之统一。
+> **2026-10-17 二次操作契约统一**：移除 `requireConfirm` 及点行即返回的旧分支；单选与多选一致——点货品行仅高亮勾选(✓)，底部为共享 [UtenPickerConfirmBar](UtenPickerConfirmBar.md)(多选带「清空」与「确定(n)」)，点「确定」才返回；点「取消」/右上角关闭/遮罩 = 放弃。所有销售/采购/委外/仓库/生产等调用点遵守同一规则。
 
 | scope | 显示 | 适用调用点 |
 |---|---|---|
@@ -56,7 +56,7 @@
 | `material` | 原材料/辅料：只保留原材料/辅料子树 | 采购（4 类）、委外发料/材料退/损耗、仓库领料/退料 |
 | `all` | 全部：不过滤（未分类默认收起） | 仓库调拨/其它入库/其它出库/盘点 |
 | `component` | 组件类：只保留原材料/半成品/辅料/OEM成品/OEM物料/OEM功能件子树（白名单 6 分类，仿 `material`） | **货品 BOM 组装信息「添加组件」**（`goods_bom_tab.dart`） |
-| `rawMaterial` | 原材料：只保留原材料子树 | 货品详情“包装材料”字段（`requireConfirm=true`） |
+| `rawMaterial` | 原材料：只保留原材料子树 | 货品详情“包装材料”字段（选中后确认） |
 | `allExceptUncategorized` | 除未分类外的全部货品分类 | 销售 5 类单据多选；生产物料分析手工需求单货品多选(`showUtenGoodsPickerMulti`，2026-09-27 ADR-130 起由单选改多选) |
 
 - docType→scope 映射封装在各编辑页 `_pickerScope` getter，不泄漏到 picker。
@@ -78,9 +78,9 @@
 | 断点 | 形态 |
 |---|---|
 | **compact**（手机） | 底部抽屉（`showModalBottomSheet`，`isScrollControlled` + `useSafeArea`，85% 屏高），左树固定 176 宽 |
-| **medium / expanded**（平板/桌面） | 右侧滑入面板（`showGeneralDialog` + `SlideTransition` 右滑 250ms），**宽 = max(720, 屏宽 50%)**（2026-09-24：跟屏幕自适应，下限保持旧款 720） |
+| **medium / expanded**（平板/桌面） | 右侧滑入面板（`showGeneralDialog` + `SlideTransition` 右滑 250ms），**宽 = min(屏宽, max(720, 屏宽 × 75%))**（2026-10-17：滑窗适当收窄并保留表格可读性；720 只作小屏下限，全站滑窗档位见 `UtenPanelWidth`） |
 
-内部布局：`标题行 + UtenSplitView[ 左分类树（含统一搜索）| 可拖分割线 | 右（明细表 / 专用证据列表 + 分页）] + 底栏`。空间不足时由共享层切到全宽分类目录与正文路径入口；主档明细表保持横向滚动，不删减身份列。
+内部布局：`标题行 + UtenSplitView[ 左分类树（含统一搜索）| 可拖分割线 | 右（明细表 / 专用证据表格 + 分页）] + 底栏`。空间不足时由共享层切到全宽分类目录与正文路径入口；主档明细表保持横向滚动，不删减身份列。
 
 - **可拖分割线**（medium+）：与货品资料页同款 [UtenSplitView](UtenSplitView.md)，持久化 key `goodsPicker.categoryTree`；**默认左栏宽 = 全树最长一行「名称(编码)」的 TextPainter 实测宽**（+行内装具，夹在 200–560），双击复位也回该宽度。compact 仍为固定 176 + 1px 分隔线。
 - **左树 = 无缩进层级色**（`UtenCategoryTreeView(flatLevelColors: true)`，同款样式也用于货品分类筛选面板）：行不缩进，整行按深度铺**五档梯度色**（`UtenColors.treeLevelRow`，2026-09-24 第二轮口径「至少 5 个层级色差、最底层固定一色、色差拉开且协调」）——一级深绿实底白字（teal800）、二级中青灰绿 `#BCDED8`、三级浅青绿 `#DDEEEA`、四级中性灰 `#E3E8EF`、五级及更深固定近白 `#F8FAFC`（深色主题同构五档渐沉再转深 slate）；方角、行距收紧、行间 1px 分隔线（深绿行白线 / 浅色行灰线）；选中 = 左缘 3px 强调条 + 加粗 + 勾选图标（深绿行上反白）。**默认全部收起**（`initiallyExpandDepth: 0`，2026-09-24）：只显示一级分类，点行/箭头再展开；搜索命中路径仍自动展开。

@@ -77,7 +77,8 @@ public class ImpersonationService {
             for (var employee : page.getItems()) {
                 targets.add(new ImpersonationTargetDto(
                         employee.getId(), employee.getFullName(), employee.getCode(),
-                        employee.getDepartmentName(), employee.getPositionName(), employee.getDepartmentId()));
+                        employee.getDepartmentName(), employee.getPositionName(), employee.getDepartmentId(),
+                        employee.getAccountStatus(), employee.getStatus()));
             }
             if (targets.size() > 5000) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "候选人员过多，请输入姓名或工号缩小范围");

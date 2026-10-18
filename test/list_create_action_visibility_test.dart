@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/layout/uten_app_bar.dart';
+import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
+import 'package:uten_imp/features/expense/providers/expense_providers.dart';
 import 'package:uten_imp/features/expense/providers/expense_counts_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/features/expense/models/expense_claim.dart';
@@ -87,7 +91,7 @@ Widget _expenseApp(List<ExpenseClaim> items, {bool canApply = true}) {
   );
 }
 
-Widget _suggestionApp(List<Suggestion> items) {
+Widget _suggestionApp(List<Suggestion> items, {bool enlargedDark = false}) {
   return ProviderScope(
     overrides: [
       sharedPreferencesProvider.overrideWithValue(_preferences),
@@ -95,7 +99,16 @@ Widget _suggestionApp(List<Suggestion> items) {
         _SuggestionRepository(items),
       ),
     ],
-    child: const MaterialApp(home: SuggestionListPage()),
+    child: MaterialApp(
+      theme: enlargedDark ? ThemeData.dark() : ThemeData.light(),
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(
+          context,
+        ).copyWith(textScaler: TextScaler.linear(enlargedDark ? 1.5 : 1)),
+        child: child!,
+      ),
+      home: const SuggestionListPage(),
+    ),
   );
 }
 
@@ -137,7 +150,29 @@ void main() {
     _preferences = await SharedPreferences.getInstance();
   });
 
-  testWidgets('expense empty state owns the only create action', (
+  for (final width in [390.0, 1280.0]) {
+    testWidgets('suggestion categories stay below the title at $width', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(Size(width, 850));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(_suggestionApp(const [], enlargedDark: true));
+      await tester.pumpAndSettle();
+      final appBar = tester.getRect(find.byType(UtenAppBar));
+      final filters = tester.getRect(
+        find.byType(UtenFilterToolbar<SuggestionScope>),
+      );
+      final create = tester.getRect(find.text('提建议'));
+      expect(filters.top, greaterThanOrEqualTo(appBar.bottom));
+      expect(filters.right, lessThanOrEqualTo(width));
+      expect(create.center.dx, greaterThan(width / 2));
+      expect(create.center.dy, greaterThan(425));
+      expect(find.text('建议箱'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('expense empty state keeps the only create action floating', (
     tester,
   ) async {
     _useCompactViewport(tester);
@@ -145,19 +180,48 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('新建报销'), findsOneWidget);
-    expect(find.byType(FloatingActionButton), findsNothing);
+    expect(find.byType(UtenFloatingActionGroup), findsOneWidget);
+    expect(find.text('我的报销'), findsOneWidget);
+    expect(find.textContaining('我的报销 ('), findsNothing);
+    final create = find.byKey(const Key('expense-list-create'));
+    expect(tester.getRect(create).top, greaterThan(400));
+    expect(tester.getRect(create).right, lessThanOrEqualTo(600));
+    expect(tester.takeException(), isNull);
   });
 
-  testWidgets('expense non-empty state exposes header create button', (
+  testWidgets('expense all categories retain one floating create action', (
     tester,
   ) async {
     _useCompactViewport(tester);
     await tester.pumpWidget(_expenseApp([_claim]));
     await tester.pumpAndSettle();
 
-    // 2026-09-19 V608 对齐 purchase 范式：新建入口迁到页面头行按钮，不再出 FAB。
-    expect(find.text('新建报销'), findsOneWidget);
-    expect(find.byType(FloatingActionButton), findsNothing);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ExpenseListPage)),
+    );
+    for (final filter in ExpenseFilter.values) {
+      container.read(expenseFilterProvider.notifier).state = filter;
+      await tester.pumpAndSettle();
+      expect(find.text('新建报销'), findsOneWidget, reason: filter.name);
+      expect(find.byType(UtenFloatingActionGroup), findsOneWidget);
+      expect(find.text('我的报销'), findsOneWidget);
+      expect(find.textContaining('我的报销 ('), findsNothing);
+      final create = find.byKey(const Key('expense-list-create'));
+      expect(tester.getRect(create).top, greaterThan(400));
+      expect(tester.getRect(create).right, lessThanOrEqualTo(600));
+      if (filter == ExpenseFilter.draft) {
+        final group = find.ancestor(
+          of: create,
+          matching: find.byType(UtenFloatingActionGroup),
+        );
+        expect(
+          find.descendant(of: group, matching: find.text('删除所选草稿 (0)')),
+          findsOneWidget,
+          reason: '草稿新建与删除共享一个浮动组，不互相覆盖',
+        );
+      }
+      expect(tester.takeException(), isNull);
+    }
   });
 
   testWidgets('expense creation stays hidden without apply permission', (
@@ -167,19 +231,27 @@ void main() {
     await tester.pumpWidget(_expenseApp([_claim], canApply: false));
     await tester.pumpAndSettle();
     expect(find.text('新建报销'), findsNothing);
-    expect(find.byType(FloatingActionButton), findsNothing);
+    expect(find.byType(UtenFloatingActionGroup), findsNothing);
   });
 
-  testWidgets('suggestion empty state owns the only create action', (
-    tester,
-  ) async {
-    _useCompactViewport(tester);
-    await tester.pumpWidget(_suggestionApp(const []));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'suggestion empty state keeps the create action in the floating group',
+    (tester) async {
+      _useCompactViewport(tester);
+      await tester.pumpWidget(_suggestionApp(const []));
+      await tester.pumpAndSettle();
 
-    expect(find.text('提交建议'), findsOneWidget);
-    expect(find.byType(FloatingActionButton), findsNothing);
-  });
+      expect(find.text('提交建议'), findsNothing);
+      expect(find.text('提建议'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(UtenFloatingActionGroup),
+          matching: find.text('提建议'),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('suggestion non-empty state exposes create action as FAB', (
     tester,
@@ -189,6 +261,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('提建议'), findsOneWidget);
-    expect(find.byType(FloatingActionButton), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(UtenFloatingActionGroup),
+        matching: find.text('提建议'),
+      ),
+      findsOneWidget,
+    );
   });
 }

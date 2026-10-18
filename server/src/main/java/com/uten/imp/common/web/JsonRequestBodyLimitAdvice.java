@@ -53,14 +53,17 @@ public class JsonRequestBodyLimitAdvice extends RequestBodyAdviceAdapter {
             return inputMessage;
         }
 
+        JsonBodyLimit override = parameter == null ? null : parameter.getMethodAnnotation(JsonBodyLimit.class);
+        int limit = override == null ? maxBytes : override.value();
+        if (override != null && (limit < 1 || limit > 18 * 1024 * 1024)) throw new IllegalStateException("Invalid endpoint JSON body limit");
         long declaredLength = inputMessage.getHeaders().getContentLength();
-        if (declaredLength > maxBytes) {
-            throw new JsonBodyTooLargeException(maxBytes);
+        if (declaredLength > limit) {
+            throw new JsonBodyTooLargeException(limit);
         }
 
-        byte[] body = inputMessage.getBody().readNBytes(maxBytes + 1);
-        if (body.length > maxBytes) {
-            throw new JsonBodyTooLargeException(maxBytes);
+        byte[] body = inputMessage.getBody().readNBytes(limit + 1);
+        if (body.length > limit) {
+            throw new JsonBodyTooLargeException(limit);
         }
         return new BufferedHttpInputMessage(inputMessage, body);
     }

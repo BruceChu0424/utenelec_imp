@@ -432,13 +432,13 @@ public class SubcontractMaterialReturnService {
     private void canonicalizeMaker(SubcontractMaterialReturn materialReturn) {
         if (materialReturn.getMakerId() == null) return;
         materialReturn.setMakerLegacyId(null);
-        materialReturn.setMakerName(nameResolver.nameOf(materialReturn.getMakerId()));
+        materialReturn.setMakerName(nameResolver.nameWithCodeOf(materialReturn.getMakerId()));
     }
 
     private void canonicalizeApprover(SubcontractMaterialReturn materialReturn) {
         if (materialReturn.getApproverId() == null) return;
         materialReturn.setApproverLegacyId(null);
-        materialReturn.setApproverName(nameResolver.nameOf(materialReturn.getApproverId()));
+        materialReturn.setApproverName(nameResolver.nameWithCodeOf(materialReturn.getApproverId()));
     }
 
     private List<MaterialReturnItemDto> saveItems(SubcontractMaterialReturn r, List<MaterialReturnItemLine> lines) {
@@ -640,12 +640,14 @@ public class SubcontractMaterialReturnService {
                 ? items.stream().map(SubcontractMaterialReturnService::maskItemPrices).toList()
                 : items;
         return new MaterialReturnDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
-                r.getSupplierId(), r.getWarehouseId(), r.getWorkerId(), r.getMakerId(), r.getApproverId(),
+                r.getSupplierId(), r.getWarehouseId(), r.getWorkerId(),
+                nameResolver.nameWithCodeOf(r.getWorkerId()),
+                r.getMakerId(), r.getApproverId(),
                 r.getBStyle(), r.getRemark(), priceMasked ? null : r.getTotalOriginal(),
                 priceMasked ? null : r.getTotalLocal(), r.getStatus(),
                 r.isClosed(), r.getSourceDocNo(), safeItems, r.getOperatorLegacyId(), r.getOperatorName(),
                 r.getMakerLegacyId(),
-                (r.getMakerName() != null && !r.getMakerName().isBlank()) ? r.getMakerName() : nameResolver.nameOf(r.getMakerId()),
+                (r.getMakerName() != null && !r.getMakerName().isBlank()) ? r.getMakerName() : nameResolver.nameWithCodeOf(r.getMakerId()),
                 r.getApproverLegacyId(), r.getApproverName(), r.getCreatedAt(), priceMasked);
     }
 

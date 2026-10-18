@@ -29,6 +29,7 @@ public class EmployeeListQuery {
                 d.name AS department_name,
                 p.name AS position_name,
                 e.status,
+                COALESCE(account.status, 'notProvisioned') AS account_status,
                 e.employment_type,
                 e.hire_date,
                 p.level AS position_level,
@@ -45,6 +46,7 @@ public class EmployeeListQuery {
             FROM employees e
             JOIN departments d ON d.id = e.department_id
             LEFT JOIN positions p ON p.id = e.position_id
+            LEFT JOIN users account ON account.employee_id = e.id AND account.is_deleted = FALSE
             """;
 
     private static final String ORDER_BY = """
@@ -118,7 +120,7 @@ public class EmployeeListQuery {
                         rs.getBoolean("department_manager"),
                         rs.getInt("leader_rank"),
                         rs.getObject("department_id", UUID.class),
-                        rs.getString("matched_plates")),
+                        rs.getString("matched_plates"), rs.getString("account_status")),
                 pageParameters.toArray());
         int totalPages = total == 0 ? 0 : (int) Math.ceil((double) total / size);
         return new Result(items, safePage, size, total, totalPages);
@@ -234,7 +236,7 @@ public class EmployeeListQuery {
                         rs.getBoolean("department_manager"),
                         rs.getInt("leader_rank"),
                         rs.getObject("department_id", UUID.class),
-                        rs.getString("matched_plates")),
+                        rs.getString("matched_plates"), rs.getString("account_status")),
                 args.toArray());
     }
 

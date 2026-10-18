@@ -26,6 +26,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_segment_row.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -821,8 +822,37 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     ];
   }
 
+  List<Widget> _listActions() => [
+    if (_canShip && !_isDraftCategory)
+      UtenButton(
+        size: UtenButtonSize.large,
+        type: UtenButtonType.secondary,
+        icon: Icons.local_shipping_outlined,
+        onPressed: _batchShip,
+        child: const Text('批量发货'),
+      ),
+    if (_canConvertQuote && !_isDraftCategory)
+      UtenButton(
+        size: UtenButtonSize.large,
+        type: UtenButtonType.secondary,
+        icon: Icons.transform_outlined,
+        onPressed: _importFromQuote,
+        child: const Text('从报价引入'),
+      ),
+    if (_canCreate)
+      UtenButton(
+        key: const Key('sales-list-create'),
+        size: UtenButtonSize.large,
+        icon: Icons.add_rounded,
+        onPressed: () =>
+            context.push(SalesRoutePath.docNew(_cfg.type.pathSegment)),
+        child: const Text('新建'),
+      ),
+  ];
+
   @override
   Widget build(BuildContext context) {
+    ref.watch(currentPermissionsProvider);
     final theme = Theme.of(context);
     final names = ref.watch(salesMasterNameServiceProvider);
     // 返回即刷新(ADR-108): 回到本列表时, 只有本端写过数据或离开超过 30 秒才重拉,
@@ -867,19 +897,6 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
       child: ListenableBuilder(
         listenable: _list,
         builder: (context, _) {
-          final total = _list.total;
-          final draftScope = _isOrder
-              ? const DocumentStatusScope(DraftDocKind.salesOrder)
-              : _statusScope;
-          final hasLocalDrafts =
-              _isDraftCategory &&
-              draftScope != null &&
-              ref.watch(
-                    formDraftCategoryCountProvider(
-                      formDraftScopeForDocumentStatus(draftScope),
-                    ),
-                  ) >
-                  0;
           // 「顶部折叠 + 表格吸顶内滚」：分类工具条随上滑收起腾出空间，
           // 标题行钉在表格上方常驻，表格占满剩余空间内部滚动。
           return UtenCollapsingHeaderScrollView(
@@ -1078,62 +1095,6 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                           ),
                         ),
                       ],
-                      // 页面头：Icon + 标题 + 计数 + 动作按钮（2026-09-24 移入滚走区，
-                      // 对齐物料分析页：上滑后表格直抵页顶，页头不再钉在表格上方）。
-                      Padding(
-                        padding: const EdgeInsets.only(
-                          top: UtenSpacing.s8,
-                          bottom: UtenSpacing.s8,
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              _cfg.icon,
-                              size: 18,
-                              color: theme.colorScheme.primary,
-                            ),
-                            const SizedBox(width: UtenSpacing.s8),
-                            Text(
-                              hasLocalDrafts
-                                  ? _cfg.shortLabel
-                                  : '${_cfg.shortLabel} ($total)',
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const Spacer(),
-                            // 批量发货（SOP §一9，仅订货单）：面板勾选可发行 → 同客户合并出货草稿
-                            if (_canShip && !_isDraftCategory) ...[
-                              UtenButton(
-                                type: UtenButtonType.secondary,
-                                icon: Icons.local_shipping_outlined,
-                                onPressed: _batchShip,
-                                child: const Text('批量发货'),
-                              ),
-                              const SizedBox(width: UtenSpacing.s8),
-                            ],
-                            // 报价引入(SOP §三1，仅订货单)：弹窗选已核价报价 → 一键转订货草稿
-                            if (_canConvertQuote && !_isDraftCategory) ...[
-                              UtenButton(
-                                type: UtenButtonType.secondary,
-                                icon: Icons.transform_outlined,
-                                onPressed: _importFromQuote,
-                                child: const Text('从报价引入'),
-                              ),
-                              const SizedBox(width: UtenSpacing.s8),
-                            ],
-                            if (_canCreate && !_isDraftCategory)
-                              UtenButton(
-                                type: UtenButtonType.tonal,
-                                icon: Icons.add_rounded,
-                                onPressed: () => context.push(
-                                  SalesRoutePath.docNew(_cfg.type.pathSegment),
-                                ),
-                                child: const Text('新建'),
-                              ),
-                          ],
-                        ),
-                      ),
                     ],
                   ),
                 ),
@@ -1153,6 +1114,8 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                 : _withDraftCategory(
                     MasterDataTableView<SalesDocListItem>(
                       rowsController: _tableRows,
+                      bottomContentPadding:
+                          UtenFloatingActionGroup.scrollClearance,
                       tableKey: 'sales.${widget.docType.name}.list',
                       selectable: _canDeleteDrafts,
                       idOf: (row) =>
@@ -1168,6 +1131,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                           : selectDraftIds,
                       batchActionsBuilder: _canDeleteDrafts
                           ? (_, _) => [
+                              ..._listActions(),
                               buildDraftDeleteButton(
                                 documentLabel: _cfg.label,
                                 delete: _deleteDraft,
@@ -1219,7 +1183,23 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
       ),
     );
     // 嵌入态（销售任务中心大类正文）：宿主页负责 Scaffold/AppBar/搜索/容器。
-    if (widget.embedded) return bodyContent;
+    final actions = _canDeleteDrafts ? <Widget>[] : _listActions();
+    final floatingActions = actions.isEmpty
+        ? null
+        : UtenFloatingActionGroup(children: actions);
+    if (widget.embedded) {
+      return Stack(
+        children: [
+          Positioned.fill(child: bodyContent),
+          if (floatingActions != null)
+            Positioned(
+              right: UtenSpacing.s16,
+              bottom: UtenSpacing.s16,
+              child: floatingActions,
+            ),
+        ],
+      );
+    }
     return Scaffold(
       appBar: UtenAppBar(
         title: _cfg.label,
@@ -1237,6 +1217,9 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
           ),
         ],
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: floatingActions,
       body: SafeArea(child: UtenContentContainer.wide(child: bodyContent)),
     );
   }

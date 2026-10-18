@@ -20,6 +20,8 @@ public class MaterialIssueDetail extends com.uten.imp.common.history.DocumentHis
     private UUID supplierId;
     private UUID warehouseId;
     private UUID workerId;
+    /** 经办人「姓名(工号)」（服务端按 worker_id 解析；工号缺失退化为纯姓名）。 */
+    private String workerName;
     private UUID makerId;
     private UUID approverId;
     private LocalDate deliverDate;

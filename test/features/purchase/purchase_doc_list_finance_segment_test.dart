@@ -63,7 +63,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('新建'), findsNothing, reason: '草稿只处理已有单据');
+      expect(
+        find.byKey(const Key('purchase-list-create')),
+        findsOneWidget,
+        reason: '草稿保留唯一右下角新建入口',
+      );
 
       // 深链落在「草稿」段：列表请求带 NONE 切片（在审单与退回件不算草稿）。
       expect(

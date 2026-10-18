@@ -24,4 +24,14 @@ public class EmployeeListItem {
     private int leaderRank;
     private UUID departmentId;   // 所属部门 id（部门管理页"搜员工定位部门"用）
     private String matchedPlates; // 搜索命中车牌时返回（「、」分隔），否则 null —— ADR-021 按车牌找人
+    private String accountStatus; // notProvisioned / active / locked / disabled; null = not supplied
+
+    public EmployeeListItem(UUID id, String code, String fullName, String gender,
+                            String departmentName, String positionName, String status,
+                            String employmentType, LocalDate hireDate, String positionLevel,
+                            boolean departmentManager, int leaderRank, UUID departmentId,
+                            String matchedPlates) {
+        this(id, code, fullName, gender, departmentName, positionName, status, employmentType,
+                hireDate, positionLevel, departmentManager, leaderRank, departmentId, matchedPlates, null);
+    }
 }

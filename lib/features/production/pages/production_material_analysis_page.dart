@@ -2154,7 +2154,6 @@ class _ProductionMaterialAnalysisPageState
                 onPressed: _busy ? null : _openSummarySheet,
                 child: const Text('备料汇总预览'),
               ),
-              const SizedBox(width: UtenSpacing.s8),
             ],
             UtenButton(
               type: UtenButtonType.tonal,
@@ -2166,7 +2165,6 @@ class _ProductionMaterialAnalysisPageState
                     ),
               child: const Text('物料分析记录'),
             ),
-            const SizedBox(width: UtenSpacing.s8),
             UtenButton(
               type: UtenButtonType.tonal,
               icon: Icons.history_rounded,
@@ -2175,7 +2173,6 @@ class _ProductionMaterialAnalysisPageState
                   : () => context.push(RouteName.productionPlanList),
               child: const Text('生产计划历史'),
             ),
-            const SizedBox(width: UtenSpacing.s8),
           ],
           if (_analysis != null)
             if (_canCancelAnalysis)

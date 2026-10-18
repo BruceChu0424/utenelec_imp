@@ -1,13 +1,13 @@
 // UtenEmployeePicker - 抽屉式人员选择器（通用组件）
 //
 // 触发形态与 UtenDepartmentPicker 对齐：只读输入框样式 field
-//（显示选中人姓名(工号)），点击拉开部门树 + 人员列表抽屉：
+//（显示选中人姓名(工号)），点击拉开部门树 + 人员表格抽屉：
 // - compact：约 85% 屏高的底部抽屉；
 // - medium/expanded：与客户选择器同宽的右侧滑入面板。
 // 响应式展示壳统一复用 showUtenAdaptivePanel。
 //
 // 抽屉内：标题行 + 关闭、UtenSearchBar（内置 300ms 防抖）调 loader、
-// 可滚动结果列表（姓名(工号) + 部门副标题），点选后确认。
+// 可滚动结果表格（姓名、工号、部门和业务说明分列），点选后确认。
 // 数据由调用方通过 loader 提供，本组件不关心 token / 接口来源。
 import '../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
@@ -194,6 +194,8 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker>
               employeeCode: current!.employeeCode,
               departmentId: next.departmentId,
               departmentName: next.departmentName,
+              accountStatus: next.accountStatus,
+              employmentStatus: next.employmentStatus,
               subtitle: next.subtitle,
               enabled: next.enabled,
               disabledReason: next.disabledReason,

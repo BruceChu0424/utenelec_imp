@@ -129,6 +129,131 @@ void main() {
       isTrue,
     );
   });
+
+  for (final mode in UtenDepartmentPickerMode.values) {
+    testWidgets('直接部门滑窗入口 $mode 选中暂存、取消保留初值、确定返回', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final tree = _organizationTree();
+      final selections = buildDeptSelectionMap(tree);
+      final initial = [selections['department']!];
+      final results = <List<DeptSelection>?>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () async => results.add(
+                  await showUtenDepartmentPickerPanel(
+                    context,
+                    tree: tree,
+                    mode: mode,
+                    initialSelection: initial,
+                    initiallyExpandedIds: const {'decision', 'center'},
+                  ),
+                ),
+                child: const Text('打开部门'),
+              ),
+            ),
+          ),
+        ),
+      );
+      Future<void> selectCenter() async {
+        await tester.tap(find.text('打开部门'));
+        await tester.pumpAndSettle();
+        final treeView = find.byType(UtenDepartmentTreeView);
+        expect(tester.widget<UtenDepartmentTreeView>(treeView).selectedIds, {
+          'department',
+        });
+        await tester.tap(
+          find.descendant(of: treeView, matching: find.text('制造与研发管理中心')),
+        );
+        await tester.pump();
+        expect(tester.widget<UtenDepartmentTreeView>(treeView).selectedIds, {
+          if (mode == UtenDepartmentPickerMode.multi) 'department',
+          'center',
+        });
+      }
+
+      await selectCenter();
+      expect(results, isEmpty);
+      await tester.tap(find.widgetWithText(UtenButton, '取消'));
+      await tester.pumpAndSettle();
+      expect(results, [null]);
+      expect(initial.map((selection) => selection.id), ['department']);
+      await selectCenter();
+      expect(results, [null]);
+      await tester.tap(
+        find.widgetWithText(
+          UtenButton,
+          mode == UtenDepartmentPickerMode.multi ? '确定(2)' : '确定',
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(results.last!.map((selection) => selection.id), [
+        if (mode == UtenDepartmentPickerMode.multi) 'department',
+        'center',
+      ]);
+    });
+  }
+
+  testWidgets('部门初值必须仍存在并满足当前选择策略', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    List<DeptSelection>? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async =>
+                  result = await showUtenDepartmentPickerPanel(
+                    context,
+                    tree: _organizationTree(),
+                    selectablePredicate: isBusinessDepartmentNode,
+                    initiallyExpandedIds: const {'decision', 'center'},
+                    initialSelection: const [
+                      DeptSelection(
+                        id: 'missing',
+                        name: '已删',
+                        fullPath: '旧路径',
+                        level: '',
+                      ),
+                      DeptSelection(
+                        id: 'center',
+                        name: '不允许的中心',
+                        fullPath: '',
+                        level: '',
+                      ),
+                    ],
+                  ),
+              child: const Text('打开部门'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('打开部门'));
+    await tester.pumpAndSettle();
+    final treeView = find.byType(UtenDepartmentTreeView);
+    expect(
+      tester.widget<UtenDepartmentTreeView>(treeView).selectedIds,
+      isEmpty,
+    );
+    expect(
+      tester
+          .widget<UtenButton>(find.widgetWithText(UtenButton, '确定'))
+          .onPressed,
+      isNull,
+    );
+    await tester.tap(find.descendant(of: treeView, matching: find.text('生产部')));
+    await tester.pump();
+    expect(result, isNull);
+    await tester.tap(find.widgetWithText(UtenButton, '确定'));
+    await tester.pumpAndSettle();
+    expect(result!.single.id, 'department');
+    expect(result!.single.fullPath, '生产部');
+  });
 }
 
 List<DepartmentNode> _organizationTree() => [

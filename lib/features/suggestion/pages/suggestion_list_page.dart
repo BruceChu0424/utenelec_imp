@@ -2,7 +2,7 @@
 //
 // 2026-09-09 表格化改版：卡片网格 → MasterDataTableView（列对齐 + 分页）。
 // 列：标题/类别/状态/提交人/提交时间/回复数/点赞数（原卡片字段全部保留）。
-// 顶部 UtenSegmentedFilter 分段（建议广场/我的建议）保留在标题行；无多选
+// 分类工具栏（建议广场/我的建议）独立位于标题下方；无多选
 //（建议的处理动作是「官方回复+推进状态」，逐条语义，不做批量）；
 // 行双击进详情；原卡片点赞能力移入行右键/长按菜单（点赞/取消点赞）。
 // 2026-09-10 表头筛选：「状态」列筛选桶 = 四态（已提交/处理中/已采纳/未采纳），
@@ -27,9 +27,10 @@ import '../../../components/feedback/uten_list_create_action.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_segmented_filter.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/uten_notify.dart';
 import '../../../core/ui/human_error_message.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -48,12 +49,10 @@ class SuggestionListPage extends ConsumerWidget {
     final statusFilter = ref.watch(suggestionStatusFilterProvider);
     final categoryFilter = ref.watch(suggestionCategoryFilterProvider);
     final hasColumnFilters = statusFilter != null || categoryFilter != null;
-    final currentPage = list.valueOrNull;
     final createAction = UtenListCreateAction(
       emptyIcon: Icons.lightbulb_outline_rounded,
       emptyMessage: scope == SuggestionScope.mine ? '您还没有提交过建议' : '暂无建议',
       emptyDescription: '提交第一条建议，与同事一起推动改进',
-      emptyActionLabel: '提交建议',
       fabLabel: '提建议',
       actionIcon: Icons.edit_rounded,
       // push 进新建页（2026-09-24 起，原来 go 抹掉列表）：提交后新建页 replace 成
@@ -71,8 +70,8 @@ class SuggestionListPage extends ConsumerWidget {
         ),
         data: (page) {
           final suggestions = page.items;
-          // 无筛选时的空建议箱保持唯一提交空态；筛选后空结果仍留表头，
-          // 用户能清除状态/类别，提交入口仍由原 FAB 承担。
+          // 空态不另放提交按钮；所有列表状态均由右下角提供唯一新建入口。
+          // 筛选后空结果仍留表头，用户能清除状态/类别。
           if (suggestions.isEmpty && !hasColumnFilters) {
             return createAction.emptyState();
           }
@@ -116,34 +115,41 @@ class SuggestionListPage extends ConsumerWidget {
         },
       ),
     );
+    body = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+          child: UtenFilterToolbar<SuggestionScope>(
+            segmentsKey: const Key('suggestion-list-segments'),
+            autoSelectBadge: false,
+            selected: {scope},
+            onSelectionChanged: (value) =>
+                ref.read(suggestionScopeProvider.notifier).state = value,
+            segments: const [
+              UtenFilterSegment(value: SuggestionScope.square, label: '建议广场'),
+              UtenFilterSegment(value: SuggestionScope.mine, label: '我的建议'),
+            ],
+          ),
+        ),
+        Expanded(child: body),
+      ],
+    );
     // compact 下页面自带宽度收敛；medium+ 由 MainShell 的容器统一处理
     if (context.breakpoint.isCompact) {
       body = UtenContentContainer(child: body);
     }
 
     return Scaffold(
-      appBar: UtenAppBar(
+      appBar: const UtenAppBar(
         title: '建议箱',
         showBackButton: true,
-        centerWidget: UtenSegmentedFilter<SuggestionScope>(
-          selected: scope,
-          onChanged: (v) =>
-              ref.read(suggestionScopeProvider.notifier).state = v,
-          segments: const [
-            UtenSegment(value: SuggestionScope.square, label: '建议广场'),
-            UtenSegment(value: SuggestionScope.mine, label: '我的建议'),
-          ],
-        ),
         // 草稿入口走右上角按钮（2026-09-27），不再在左上角占一行分段栏。
-        actions: const [FormDraftsAppBarButton(categoryId: 'suggestion')],
+        actions: [FormDraftsAppBarButton(categoryId: 'suggestion')],
       ),
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: createAction.floatingActionButton(
-        context,
-        hasItems:
-            currentPage != null &&
-            (currentPage.items.isNotEmpty || hasColumnFilters),
-      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: createAction.floatingActionButton(context),
       body: body,
     );
   }

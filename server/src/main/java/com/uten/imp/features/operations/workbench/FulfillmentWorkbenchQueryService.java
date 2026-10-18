@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -653,6 +654,9 @@ public class FulfillmentWorkbenchQueryService {
      * 仅排除缺 BOM 的明细；同单仍有其他可处理明细时，该单据仍计一次待办。
      *
      * <p>口径依据 docs/00-项目准则/14-徽章与计数口径.md。
+     *
+     * <p>2026-10-17 权限口径：红数按「当前账号能动手的档」计数（申请待分解=生成订货单、
+     * 财务驳回=改单重提、回厂短交=短交判定）；仅持查看权限的账号恒 0，方法体内有完整判据。
      */
     @Transactional(readOnly = true)
     public long countPending(String department) {
@@ -670,6 +674,28 @@ public class FulfillmentWorkbenchQueryService {
             return 0;
         }
         boolean decomposition = usesDecompositionProjection(department);
+        boolean canOrder = false;
+        boolean canRework = false;
+        boolean canDecideShortDelivery = false;
+        if (decomposition) {
+            // 2026-10-17 口径：红数只数当前账号能动手的档——待办的资格是操作权限，
+            // 不是查看权限。仅持有 :view 的账号（如销售对委外单据只读）不再收到
+            // 「你有 N 项任务待处理」与模块角标；与领料红数 countDrawable（无 :draw 恒 0）、
+            // 通知发卡池（subcontractOrderKitRecipients 按 :decompose 发卡）同一原则。
+            // 档位与动手动作对齐：申请待分解=生成订货单（canCreate*Order），
+            // 财务驳回=修改重提交货单（*_ORDER 的 edit），回厂短交=短交判定（:decide）。
+            canOrder = "SUBCONTRACT".equals(department)
+                    ? accessPolicy.canCreateSubcontractOrder()
+                    : accessPolicy.canCreatePurchaseOrder();
+            canRework = "SUBCONTRACT".equals(department)
+                    ? accessPolicy.documentAccess("SUBCONTRACT", "SUBCONTRACT_ORDER").canEdit()
+                    : accessPolicy.documentAccess("PURCHASE", "PURCHASE_ORDER").canEdit();
+            canDecideShortDelivery = "SUBCONTRACT".equals(department)
+                    && accessPolicy.canDecideSubcontractShortDelivery();
+            if (!canOrder && !canRework && !canDecideShortDelivery) {
+                return 0;
+            }
+        }
         // 与列表同口径：采购/委外按单据归组计数（一张申请/订货单=一个待办）；
         // 仓库按单张领料单计数（一张 DRAW=一个待办，未挂单的行退回行级）。
         // 委外「可领料」的订货明细不在这里数: 它们是「领料」分段的红数, 由委外领料模块的
@@ -678,6 +704,22 @@ public class FulfillmentWorkbenchQueryService {
         String shortDelivery = " OR (decomposition.task_status = 'FINANCE_APPROVED'"
                 + " AND decomposition.action_doc_type = 'SUBCONTRACT_ORDER' AND "
                 + SHORT_DELIVERY_PENDING_EXISTS.formatted("decomposition.action_doc_id", "") + ")";
+        // 内层状态档按操作权限拼接：两档全开时与历史 SQL 完全同形
+        // （IN ('WAITING_ORDER', 'FINANCE_REJECTED') + 短交 OR 段）。
+        List<String> statusStages = new ArrayList<>();
+        if (canOrder) statusStages.add("'WAITING_ORDER'");
+        if (canRework) statusStages.add("'FINANCE_REJECTED'");
+        String stagePredicate = (statusStages.isEmpty() ? "FALSE" : "decomposition.task_status IN (" + String.join(", ", statusStages) + ")")
+                + (canDecideShortDelivery ? shortDelivery : "");
+        // 外层行门与档位对齐：待下单行看 open_qty，驳回行不看（历史谓词的档位投影）。
+        List<String> rowGates = new ArrayList<>();
+        if (canOrder || canDecideShortDelivery) rowGates.add("counted.open_qty > 0");
+        if (canRework) rowGates.add("counted.task_status = 'FINANCE_REJECTED'");
+        String rowGatePredicate = String.join(" OR ", rowGates);
+        // 采购分支两档的历史顺序：驳回在前、待下单在后。
+        List<String> purchaseStages = new ArrayList<>();
+        if (canRework) purchaseStages.add("decomposition.task_status = 'FINANCE_REJECTED'");
+        if (canOrder) purchaseStages.add("(decomposition.task_status = 'WAITING_ORDER' AND decomposition.open_qty > 0)");
         Query query = em.createNativeQuery("SUBCONTRACT".equals(department)
                 ? """
                     SELECT COUNT(*) FROM (
@@ -693,22 +735,21 @@ public class FulfillmentWorkbenchQueryService {
                                                  AND NOT EXISTS (SELECT 1 FROM fn_subcontract_draw_edges(gap_item.goods_id)))) AS bom_missing
                             FROM v_procurement_decomposition_tasks decomposition
                             WHERE decomposition.department = :department
-                              AND (decomposition.task_status IN ('WAITING_ORDER', 'FINANCE_REJECTED')%s)
+                              AND (%s)
                         ) counted
-                        WHERE (counted.open_qty > 0 OR counted.task_status = 'FINANCE_REJECTED')
+                        WHERE (%s)
                           AND NOT counted.bom_missing
                     ) documents
-                    """.formatted(shortDelivery)
+                    """.formatted(stagePredicate, rowGatePredicate)
                 : decomposition
                 ? """
                     SELECT COUNT(*) FROM (
                         SELECT DISTINCT decomposition.action_doc_id
                         FROM v_procurement_decomposition_tasks decomposition
                         WHERE decomposition.department = :department
-                          AND (decomposition.task_status = 'FINANCE_REJECTED'
-                               OR (decomposition.task_status = 'WAITING_ORDER' AND decomposition.open_qty > 0))
+                          AND (%s)
                     ) documents
-                    """
+                    """.formatted(String.join(" OR ", purchaseStages))
                 : """
                     SELECT COUNT(*) FROM %s documents
                     WHERE department = :department AND open_line_count > 0%s
@@ -732,6 +773,10 @@ public class FulfillmentWorkbenchQueryService {
      *
      * <p>仓库备料只有「待备料 / 部分领取」两档，都是等本部门动手的红色待办，没有在办态，
      * 故恒为 0 且不查库。
+     *
+     * <p>2026-10-17 口径：「我手上还有多少在跑」只对能动手的人成立——账号对采购/委外
+     * 单据仅持查看权限（无下单 / 改单 / 短交判定任何操作权）时黄数恒 0，与红数
+     * {@link #countPending} 的档位门禁同一原则。
      */
     @Transactional(readOnly = true)
     public long countInProgress(String department) {
@@ -739,6 +784,17 @@ public class FulfillmentWorkbenchQueryService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "工作台部门不正确");
         }
         if (!usesDecompositionProjection(department)) {
+            return 0;
+        }
+        boolean canOrder = "SUBCONTRACT".equals(department)
+                ? accessPolicy.canCreateSubcontractOrder()
+                : accessPolicy.canCreatePurchaseOrder();
+        boolean canRework = "SUBCONTRACT".equals(department)
+                ? accessPolicy.documentAccess("SUBCONTRACT", "SUBCONTRACT_ORDER").canEdit()
+                : accessPolicy.documentAccess("PURCHASE", "PURCHASE_ORDER").canEdit();
+        boolean canDecideShortDelivery = "SUBCONTRACT".equals(department)
+                && accessPolicy.canDecideSubcontractShortDelivery();
+        if (!canOrder && !canRework && !canDecideShortDelivery) {
             return 0;
         }
         Query query = em.createNativeQuery("""

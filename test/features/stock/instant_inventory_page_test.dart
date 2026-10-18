@@ -167,12 +167,18 @@ void main() {
     await tapInventoryHeader(tester, const Key('instant-inventory-warehouse'));
     await tester.tap(find.byKey(const Key('warehouse-picker-entry-w1')));
     await tester.pumpAndSettle();
+    expect(stock.lastWarehouseId, isNull);
+    await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
+    await tester.pumpAndSettle();
     expect(stock.lastWarehouseId, 'w1');
     expect(stock.lastIncludeLineSide, isFalse);
 
     // 回到「全部」后点开关 → 显式要线边仓才带 true，再点一次收回。
     await tapInventoryHeader(tester, const Key('instant-inventory-warehouse'));
     await tester.tap(find.byKey(const Key('warehouse-picker-all')));
+    await tester.pumpAndSettle();
+    expect(stock.lastWarehouseId, 'w1');
+    await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
     await tester.pumpAndSettle();
     await tapInventoryHeader(tester, const Key('instant-inventory-line-side'));
     expect(stock.lastIncludeLineSide, isTrue);
@@ -192,7 +198,7 @@ void main() {
         const Key('instant-inventory-warehouse'),
       );
       expect(find.byKey(const Key('warehouse-picker-all')), findsOneWidget);
-      // 查询口径不钻层：主仓与子仓同屏，主仓一点即选（= 子树聚合）。
+      // 查询口径不钻层：主仓与子仓同屏，主仓选中并确认后聚合子树。
       expect(
         find.byKey(const Key('warehouse-picker-entry-w1')),
         findsOneWidget,
@@ -204,6 +210,9 @@ void main() {
 
       await tester.tap(find.byKey(const Key('warehouse-picker-entry-w1')));
       await tester.pumpAndSettle();
+      expect(stock.lastWarehouseId, isNull);
+      await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
+      await tester.pumpAndSettle();
       expect(stock.lastWarehouseId, 'w1');
 
       await tapInventoryHeader(
@@ -211,6 +220,9 @@ void main() {
         const Key('instant-inventory-warehouse'),
       );
       await tester.tap(find.byKey(const Key('warehouse-picker-all')));
+      await tester.pumpAndSettle();
+      expect(stock.lastWarehouseId, 'w1');
+      await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
       await tester.pumpAndSettle();
       expect(stock.lastWarehouseId, isNull);
     },
@@ -587,6 +599,8 @@ void main() {
     // 左侧换分类只改变分类范围，不丢掉既有仓库和表头筛选。
     await tapInventoryHeader(tester, const Key('instant-inventory-warehouse'));
     await tester.tap(find.byKey(const Key('warehouse-picker-entry-w1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
     await tester.pumpAndSettle();
     await tester.tap(_categoryText('成品'));
     await tester.pumpAndSettle();

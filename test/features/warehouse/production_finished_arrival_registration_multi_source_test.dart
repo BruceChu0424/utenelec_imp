@@ -535,6 +535,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('备用成品仓').last);
     await tester.pumpAndSettle();
+    expect(api.suggestionBodies, hasLength(1));
+    await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
+    await tester.pumpAndSettle();
 
     expect(api.suggestionBodies, hasLength(2));
     expect(api.suggestionBodies.last, {
@@ -683,6 +686,8 @@ Future<void> _selectWarehouse(
   expect(option, findsOneWidget);
   expect(tester.widget<ListTile>(option).enabled, isTrue);
   await tester.tap(option);
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
   await tester.pumpAndSettle();
 }
 

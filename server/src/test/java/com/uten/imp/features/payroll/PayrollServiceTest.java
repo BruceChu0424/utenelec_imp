@@ -24,6 +24,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -33,6 +38,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.mock;
@@ -206,6 +212,109 @@ class PayrollServiceTest {
         assertEquals(501, result.getTotal());
         assertEquals(6, result.getTotalPages());
         assertEquals(slip.getId(), result.getItems().get(0).id());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void unreadAndReadPartitionPublishedOwnedSlipsBeforePagination() {
+        when(authUser.getPermissions()).thenReturn(Set.of("payroll:view:self"));
+        PayrollSlip unread = slip(employeeId, "PUBLISHED");
+        PayrollSlip viewed = slip(employeeId, "PUBLISHED");
+        viewed.setViewedAt(Instant.now());
+        PayrollSlip directDownload = slip(employeeId, "PUBLISHED");
+        directDownload.setDownloadedAt(Instant.now());
+        PayrollSlip viewedAndDownloaded = slip(employeeId, "PUBLISHED");
+        viewedAndDownloaded.setViewedAt(Instant.now());
+        viewedAndDownloaded.setDownloadedAt(Instant.now());
+        PayrollSlip inactive = slip(employeeId, "PUBLISHED");
+        inactive.setActive(false);
+        PayrollSlip unpublished = slip(employeeId, "PENDING");
+        unpublished.setViewedAt(Instant.now());
+        PayrollSlip otherEmployee = slip(UUID.randomUUID(), "PUBLISHED");
+        otherEmployee.setDownloadedAt(Instant.now());
+        List<PayrollSlip> fixtures = List.of(
+                unread, viewed, directDownload, viewedAndDownloaded,
+                inactive, unpublished, otherEmployee);
+        when(itemRepository.findBySlipIdInOrderBySlipIdAscLineNoAsc(anyCollection()))
+                .thenReturn(List.of());
+        when(slipRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenAnswer(invocation -> {
+                    Specification<PayrollSlip> specification = invocation.getArgument(0);
+                    Pageable pageable = invocation.getArgument(1);
+                    List<PayrollSlip> matching = fixtures.stream()
+                            .filter(slip -> matchesSlipSpecification(specification, slip))
+                            .toList();
+                    List<PayrollSlip> page = matching.stream()
+                            .skip(pageable.getOffset()).limit(pageable.getPageSize()).toList();
+                    return new PageImpl<>(page, pageable, matching.size());
+                });
+
+        Set<UUID> unreadIds = allSlipIds("UNVIEWED");
+        Set<UUID> readIds = allSlipIds("VIEWED");
+        assertEquals(Set.of(unread.getId()), unreadIds);
+        assertEquals(Set.of(viewed.getId(), directDownload.getId(), viewedAndDownloaded.getId()), readIds);
+        assertTrue(java.util.Collections.disjoint(unreadIds, readIds));
+        Set<UUID> categoryUnion = new HashSet<>(unreadIds);
+        categoryUnion.addAll(readIds);
+        assertEquals(allSlipIds("PUBLISHED"), categoryUnion);
+        assertEquals(Set.of(viewed.getId()), allSlipIds("VIEWED_ONLY"));
+        assertEquals(Set.of(directDownload.getId(), viewedAndDownloaded.getId()), allSlipIds("DOWNLOADED"));
+    }
+
+    private Set<UUID> allSlipIds(String state) {
+        Set<UUID> ids = new HashSet<>();
+        var firstPage = service.listSlips(state, null, null, null, 1, 2);
+        firstPage.getItems().forEach(item -> ids.add(item.id()));
+        for (int page = 2; page <= firstPage.getTotalPages(); page++) {
+            var nextPage = service.listSlips(state, null, null, null, page, 2);
+            assertEquals(firstPage.getTotal(), nextPage.getTotal());
+            nextPage.getItems().forEach(item -> ids.add(item.id()));
+        }
+        assertEquals(firstPage.getTotal(), ids.size());
+        return ids;
+    }
+
+    /** Evaluate the service's actual criteria tree against each fixture before taking a page. */
+    @SuppressWarnings("unchecked")
+    private static boolean matchesSlipSpecification(Specification<PayrollSlip> specification, PayrollSlip slip) {
+        Map<Object, Object> values = new HashMap<>();
+        Root<PayrollSlip> root = mock(Root.class, invocation -> {
+            if (!invocation.getMethod().getName().equals("get")) {
+                return org.mockito.Answers.RETURNS_DEFAULTS.answer(invocation);
+            }
+            Path<Object> path = mock(Path.class);
+            Object value = switch (invocation.<String>getArgument(0)) {
+                case "active" -> slip.isActive();
+                case "employeeId" -> slip.getEmployeeId();
+                case "status" -> slip.getStatus();
+                case "viewedAt" -> slip.getViewedAt();
+                case "downloadedAt" -> slip.getDownloadedAt();
+                default -> throw new AssertionError("Unexpected slip field");
+            };
+            values.put(path, value);
+            return path;
+        });
+        CriteriaBuilder builder = mock(CriteriaBuilder.class, invocation -> {
+            String operation = invocation.getMethod().getName();
+            List<Object> arguments = new ArrayList<>();
+            for (Object argument : invocation.getArguments()) {
+                if (argument instanceof Object[] array) arguments.addAll(Arrays.asList(array));
+                else arguments.add(argument);
+            }
+            boolean result = switch (operation) {
+                case "isTrue" -> Boolean.TRUE.equals(values.get(arguments.getFirst()));
+                case "equal" -> java.util.Objects.equals(values.get(arguments.getFirst()), arguments.get(1));
+                case "isNull" -> values.get(arguments.getFirst()) == null;
+                case "isNotNull" -> values.get(arguments.getFirst()) != null;
+                case "and" -> arguments.stream().allMatch(argument -> Boolean.TRUE.equals(values.get(argument)));
+                case "or" -> arguments.stream().anyMatch(argument -> Boolean.TRUE.equals(values.get(argument)));
+                default -> throw new AssertionError("Unexpected criteria operation: " + operation);
+            };
+            jakarta.persistence.criteria.Predicate predicate = mock(jakarta.persistence.criteria.Predicate.class);
+            values.put(predicate, result);
+            return predicate;
+        });
+        return Boolean.TRUE.equals(values.get(specification.toPredicate(root, mock(CriteriaQuery.class), builder)));
     }
 
     private static PayrollSlip slip(UUID employeeId, String status) {

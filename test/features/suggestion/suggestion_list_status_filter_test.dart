@@ -1,5 +1,6 @@
 // 建议箱列表（2026-09-10 状态表头筛选下推后端 status）。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -182,7 +183,7 @@ void main() {
       table().facets['status']!.map((bucket) => bucket.value),
       contains('reviewing'),
     );
-    expect(find.byType(FloatingActionButton), findsOneWidget);
+    expect(find.byType(UtenFloatingActionGroup), findsOneWidget);
     expect(find.text('提交建议'), findsNothing);
 
     table().onFilterChanged('status', null);
@@ -199,7 +200,7 @@ void main() {
       table().facets['category']!.map((bucket) => bucket.value),
       contains('process'),
     );
-    expect(find.byType(FloatingActionButton), findsOneWidget);
+    expect(find.byType(UtenFloatingActionGroup), findsOneWidget);
     table().onFilterChanged('category', null);
     await tester.pumpAndSettle();
     expect(api.queries.last.containsKey('category'), isFalse);
@@ -213,8 +214,9 @@ void main() {
     await container.read(suggestionListProvider.notifier).refresh();
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('suggestion-list-table')), findsNothing);
-    expect(find.text('提交建议'), findsOneWidget);
-    expect(find.byType(FloatingActionButton), findsNothing);
+    expect(find.text('提交建议'), findsNothing);
+    expect(find.text('提建议'), findsOneWidget);
+    expect(find.byType(UtenFloatingActionGroup), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });

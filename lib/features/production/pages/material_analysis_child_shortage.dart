@@ -869,6 +869,14 @@ class _ChildShortageRootSummary extends StatelessWidget {
   }
 }
 
+/// 供应方式标签与主表单元格共用分类色，避免同一路线在不同视图中变色。
+UtenStatusBadgeType _materialSupplyRouteBadgeType(MaterialSupplyRoute route) =>
+    switch (route) {
+      MaterialSupplyRoute.buy => UtenStatusBadgeType.info,
+      MaterialSupplyRoute.subcontract => UtenStatusBadgeType.fuchsia,
+      MaterialSupplyRoute.make => UtenStatusBadgeType.accent,
+    };
+
 /// 供应方式小标签（ADR-169 分类强调、非语义类别档）：采购蓝 / 委外品红 /
 /// 自制青绿——三个类别互可区分，也不与同页语义色（已下单绿 / 追加琥珀 /
 /// 待选红）撞色；没解析出路线的行显示待选（红=阻断：选不了路线下不了单）。
@@ -891,11 +899,7 @@ class _RouteChip extends StatelessWidget {
     return UtenStatusBadge(
       label: resolved.label,
       size: UtenStatusBadgeSize.small,
-      type: switch (resolved) {
-        MaterialSupplyRoute.buy => UtenStatusBadgeType.info,
-        MaterialSupplyRoute.subcontract => UtenStatusBadgeType.fuchsia,
-        MaterialSupplyRoute.make => UtenStatusBadgeType.accent,
-      },
+      type: _materialSupplyRouteBadgeType(resolved),
       icon: switch (resolved) {
         MaterialSupplyRoute.buy => Icons.shopping_cart_outlined,
         MaterialSupplyRoute.subcontract => Icons.local_shipping_outlined,

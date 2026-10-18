@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -125,13 +126,17 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('单选已选值和弹窗主行显示姓名(工号)，部门显示在下一行', (tester) async {
+  testWidgets('单选字段显示姓名(工号)，弹窗按姓名工号部门分列', (tester) async {
     UtenEmployeePickerItem? changed;
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [sharedPreferencesProvider.overrideWithValue(preferences)],
+        overrides: [
+          apiBaseUrlProvider.overrideWithValue('https://picker.test'),
+          employeePickerDepartmentTreeProvider.overrideWith((ref) async => []),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+        ],
         child: MaterialApp(
           home: Scaffold(
             body: UtenEmployeePicker(
@@ -151,12 +156,17 @@ void main() {
     await tester.tap(find.text('张三(E001)'));
     await tester.pumpAndSettle();
 
-    final tileFinder = find.widgetWithText(ListTile, '张三(E001)');
-    expect(tileFinder, findsOneWidget);
-    final tile = tester.widget<ListTile>(tileFinder);
-    expect((tile.subtitle! as Text).data, '销售部');
-
-    await tester.tap(tileFinder);
+    final row = find.byKey(const ValueKey('employee-picker-item-employee-1'));
+    expect(find.descendant(of: row, matching: find.text('张三')), findsOneWidget);
+    expect(
+      find.descendant(of: row, matching: find.text('E001')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: row, matching: find.text('销售部')),
+      findsOneWidget,
+    );
+    await tester.tap(row);
     await tester.pump();
     expect(find.text('已选择：张三(E001)'), findsOneWidget);
     await tester.tap(find.widgetWithText(UtenButton, '确定'));

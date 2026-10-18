@@ -12,6 +12,8 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/admin/models/audit_log_entry.dart';
 import 'package:uten_imp/features/admin/repositories/audit_log_repository.dart';
 import 'package:uten_imp/features/admin/widgets/audit_query_scope.dart';
+import 'package:uten_imp/features/department/models/department_node.dart';
+import 'package:uten_imp/features/employee/providers/employee_picker_department_tree_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -167,6 +169,34 @@ Future<ProviderContainer> _pump(
       overrides: [
         auditLogRepositoryProvider.overrideWith(
           (ref) => ref.watch(_repository) ?? repository,
+        ),
+        employeePickerDepartmentTreeProvider.overrideWith(
+          (ref) async => [
+            DepartmentNode(
+              id: 'company',
+              code: 'COMPANY',
+              name: '测试公司',
+              level: '公司',
+              children: [
+                DepartmentNode(
+                  id: 'sales',
+                  code: 'DEPT_SALES',
+                  name: '销售部',
+                  level: '一级部门',
+                  parentId: 'company',
+                  children: [],
+                ),
+                DepartmentNode(
+                  id: 'finance',
+                  code: 'DEPT_FIN',
+                  name: '财务部',
+                  level: '一级部门',
+                  parentId: 'company',
+                  children: [],
+                ),
+              ],
+            ),
+          ],
         ),
         sharedPreferencesProvider.overrideWithValue(preferences),
         apiBaseUrlProvider.overrideWith((ref) => ref.watch(_server)),

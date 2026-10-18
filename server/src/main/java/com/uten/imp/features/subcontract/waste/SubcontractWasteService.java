@@ -686,12 +686,14 @@ public class SubcontractWasteService {
                 ? items.stream().map(SubcontractWasteService::maskItemPrices).toList()
                 : items;
         return new WasteDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
-                r.getSupplierId(), r.getWarehouseId(), r.getWorkerId(), r.getMakerId(), r.getApproverId(),
+                r.getSupplierId(), r.getWarehouseId(), r.getWorkerId(),
+                nameResolver.nameWithCodeOf(r.getWorkerId()),
+                r.getMakerId(), r.getApproverId(),
                 r.getTotalWeight(), r.getRemark(), priceMasked ? null : r.getTotalOriginal(),
                 priceMasked ? null : r.getTotalLocal(), r.getStatus(),
                 r.isClosed(), r.getSourceDocNo(), priceMasked ? null : r.getDeductAmount(),
                 r.isDeductPosted(), safeItems,
-                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt(), priceMasked);
+                nameResolver.nameWithCodeOf(r.getMakerId()), r.getCreatedAt(), priceMasked);
     }
 
     private boolean subcontractPriceMasked() {

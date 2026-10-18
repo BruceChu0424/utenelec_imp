@@ -7,6 +7,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/department/models/department_node.dart';
 import 'package:uten_imp/features/department/widgets/department_edit_dialog.dart';
 import 'package:uten_imp/features/department/widgets/uten_department_tree_view.dart';
+import 'package:uten_imp/features/employee/providers/employee_picker_department_tree_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/widgets/uten_location_field.dart';
 
@@ -155,6 +156,8 @@ void main() {
       find.byWidgetPredicate(
         (widget) =>
             widget is SizedBox &&
+            // 2026-10-17 滑窗口径：browse 档 = max(720, 屏宽 × 75%)；
+            // setSurfaceSize 环境的逻辑宽约 800，比例 600 < 720 下限，仍取 720。
             widget.width == 720 &&
             widget.height == double.infinity,
       ),
@@ -256,7 +259,12 @@ Future<void> _pumpWideApp(
 
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [sharedPreferencesProvider.overrideWithValue(preferences)],
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(preferences),
+        employeePickerDepartmentTreeProvider.overrideWith(
+          (ref) async => tree ?? [_company()],
+        ),
+      ],
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,

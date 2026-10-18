@@ -237,6 +237,8 @@ void main() {
     expect(find.text('主仓'), findsOneWidget);
     await tester.tap(find.text('成品仓'));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
+    await tester.pumpAndSettle();
 
     expect(seen.last.$1, const WarehouseTaskScope.warehouse('fg'));
     expect(seen.last.$1.queryParameters, {'scopeWarehouseId': 'fg'});
@@ -274,6 +276,8 @@ void main() {
     expect(find.text('我负责的全部仓库'), findsWidgets);
     expect(find.text('主仓'), findsNothing);
     await tester.tap(find.text('五金仓'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
     await tester.pumpAndSettle();
     expect(seen.last.$1.queryParameters, {'scopeWarehouseId': 'hw'});
     await tester.pump(const Duration(seconds: 1));

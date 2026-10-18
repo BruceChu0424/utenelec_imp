@@ -907,6 +907,8 @@ void main() {
       find.byKey(const Key('warehouse-picker-entry-warehouse-2')),
     );
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
+    await tester.pumpAndSettle();
     expect(find.text('原料仓'), findsWidgets);
     expect(find.text('成品仓'), findsNothing);
 
@@ -1012,6 +1014,8 @@ void main() {
     await tester.tap(
       find.byKey(const Key('warehouse-picker-entry-warehouse-2')),
     );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
     await tester.pumpAndSettle();
     // 新一次到货同样先撞来源歧义 409，弹窗选「先补退货」后自动重提成功。
     await tester.tap(find.text('先质检后入库'));

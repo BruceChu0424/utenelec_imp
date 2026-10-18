@@ -85,6 +85,8 @@ Future<ImpersonationTarget?> showImpersonationTargetPicker(
             employeeCode: row.employeeCode,
             departmentId: row.departmentId,
             departmentName: row.departmentName,
+            accountStatus: row.accountStatus,
+            employmentStatus: row.employmentStatus,
             subtitle: [
               if (row.positionName?.isNotEmpty == true) row.positionName!,
               if (recentIds.contains(row.employeeId)) l10n.impersonationRecent,

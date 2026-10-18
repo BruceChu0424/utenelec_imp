@@ -6,7 +6,6 @@
 // /admin/users/provision-candidates(在册未开户员工，最小信息集、不含 PII 明文)；
 // 缺手机号的员工置灰并提示原因。证件号码有问题不影响开通，
 // 确认弹窗会提前提醒，开通后人事任务中心跟进核对。
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,7 +23,7 @@ Future<void> showProvisionAccountDialog(
 }) {
   return showUtenAdaptivePanel<void>(
     context: context,
-    drawerWidth: math.max(720, MediaQuery.sizeOf(context).width * 0.5),
+    drawerWidth: 720,
     builder: (dialogContext) => _ProvisionAccountDialog(
       // 凭据弹窗要在选择器关闭之后展示，必须用仍存活的外层上下文。
       parentContext: context,
@@ -68,6 +67,8 @@ class _ProvisionAccountDialogState
           employeeCode: row.code,
           departmentId: row.departmentId,
           departmentName: row.departmentName,
+          accountStatus: row.accountStatus,
+          employmentStatus: row.employmentStatus,
           enabled: row.provisionable,
           disabledReason: row.provisionable
               ? null

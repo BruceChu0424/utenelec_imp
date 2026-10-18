@@ -26,11 +26,19 @@ import '../providers/admin_providers.dart';
 import '../repositories/admin_repository.dart';
 import 'permission_catalog_browser.dart';
 import 'permission_action_badge.dart';
+import 'admin_permission_workspace.dart';
 
 class AdminDepartmentPermView extends ConsumerStatefulWidget {
-  const AdminDepartmentPermView({super.key, this.initialDepartmentId});
+  const AdminDepartmentPermView({
+    super.key,
+    this.initialDepartmentId,
+    this.leadingHeader = const SizedBox.shrink(),
+    this.onPermissionDirtyChanged,
+  });
 
   final String? initialDepartmentId;
+  final Widget leadingHeader;
+  final ValueChanged<bool>? onPermissionDirtyChanged;
 
   @override
   ConsumerState<AdminDepartmentPermView> createState() =>
@@ -43,6 +51,7 @@ class _AdminDepartmentPermViewState
   Set<String>? _localChecked;
   bool _saving = false;
   int _pickerVersion = 0;
+  bool? _lastReportedPending;
 
   @override
   void initState() {
@@ -266,6 +275,49 @@ class _AdminDepartmentPermViewState
 
   @override
   Widget build(BuildContext context) {
+    final pending = _isDirty || _saving;
+    if (_lastReportedPending != pending) {
+      _lastReportedPending = pending;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.onPermissionDirtyChanged?.call(pending);
+      });
+    }
+    return AdminPermissionWorkspace(
+      navigation: widget.leadingHeader,
+      leading: ListView(
+        padding: const EdgeInsets.only(bottom: UtenSpacing.s16),
+        children: [_departmentPicker(), _scopeNotice()],
+      ),
+      trailing: _details(includeSelector: false),
+      compact: _details(includeSelector: true),
+    );
+  }
+
+  Widget _departmentPicker() => Padding(
+    padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+    child: UtenDepartmentPicker(
+      key: ValueKey('${_dept?.id ?? 'none'}-$_pickerVersion'),
+      mode: UtenDepartmentPickerMode.single,
+      label: '选择部门',
+      initialSelection: [?_dept],
+      enabled: !_saving,
+      onChanged: _onDeptChanged,
+    ),
+  );
+
+  Widget _scopeNotice() => UtenCard(
+    margin: const EdgeInsets.only(top: UtenSpacing.s4),
+    child: Text(
+      '勾选的权限会授予该部门及其下级部门员工。'
+      '只能逐人授予的权限，请到「按员工」配置。',
+      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+        height: 1.5,
+      ),
+    ),
+  );
+
+  Widget _details({required bool includeSelector}) {
     final theme = Theme.of(context);
     final department = _dept;
     final showSaveBar =
@@ -288,44 +340,11 @@ class _AdminDepartmentPermViewState
               UtenSpacing.s32,
             ),
             children: [
-              UtenCard(
-                margin: const EdgeInsets.only(bottom: UtenSpacing.s12),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: UtenSpacing.s16,
-                  vertical: UtenSpacing.s12,
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      Icons.info_outline_rounded,
-                      size: 20,
-                      color: theme.colorScheme.primary,
-                    ),
-                    const SizedBox(width: UtenSpacing.s12),
-                    Expanded(
-                      child: Text(
-                        '勾选的权限会授予该部门及其下级部门员工。'
-                        '可搜索、按状态筛选，或从分组右侧菜单整组配置。'
-                        '只能逐人授予的高风险权限不在这里显示，'
-                        '请到「按员工」里点名配置。',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                          height: 1.5,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              UtenDepartmentPicker(
-                key: ValueKey('${department?.id ?? 'none'}-$_pickerVersion'),
-                mode: UtenDepartmentPickerMode.single,
-                label: '选择部门',
-                initialSelection: [?department],
-                onChanged: _onDeptChanged,
-              ),
-              const SizedBox(height: UtenSpacing.s16),
+              if (includeSelector) ...[
+                _departmentPicker(),
+                _scopeNotice(),
+                const SizedBox(height: UtenSpacing.s16),
+              ],
               if (department == null)
                 _emptyGuide(theme)
               else
@@ -385,7 +404,7 @@ class _AdminDepartmentPermViewState
             ),
             const SizedBox(height: UtenSpacing.s12),
             Text(
-              '先在上方选择一个部门，再为其配置权限点',
+              '先选择一个部门，再为其配置权限点',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -404,6 +423,7 @@ class _AdminDepartmentPermViewState
     final checked = _checked;
 
     return UtenCard(
+      key: const ValueKey('admin-department-permission-card'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

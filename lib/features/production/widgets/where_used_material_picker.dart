@@ -8,21 +8,37 @@ import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../basic_data/models/goods_node.dart';
 import '../../basic_data/models/product_category_node.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
 
 /// Reuses the sales picker shell and its staged single-selection contract.
 /// The read-only report API keeps historical, disabled and placeholder goods
 /// available without requiring goods:view or material_category:view.
 Future<GoodsListItem?> showWhereUsedMaterialPicker(
   BuildContext context,
-  WidgetRef ref,
-) => showUtenGoodsPicker(
+  WidgetRef ref, {
+  String initialKeyword = '',
+}) => showUtenGoodsPicker(
   context,
   ref,
   scope: UtenGoodsPickerScope.all,
   dataSource: _WhereUsedMaterialDataSource(ref.read(apiClientProvider)),
   title: '选择要反查的物料',
+  initialKeyword: initialKeyword,
   readBoundary: ref.read(sensitiveReadBoundaryProvider),
 );
+
+/// Inline discovery uses the same report-only scope and historical candidates
+/// as the full picker, without requiring master-data permissions.
+Future<List<GoodsListItem>> loadWhereUsedMaterialSuggestions(
+  ApiClient api,
+  String keyword,
+) async {
+  if (keyword.trim().isEmpty) return const [];
+  final result = await _WhereUsedMaterialDataSource(
+    api,
+  )._load(page: 1, keyword: keyword, size: 8);
+  return result.items;
+}
 
 class _WhereUsedMaterialDataSource extends UtenGoodsPickerDataSource {
   _WhereUsedMaterialDataSource(this.api);
@@ -76,6 +92,7 @@ class _WhereUsedMaterialDataSource extends UtenGoodsPickerDataSource {
 
   Future<PagedResult<GoodsListItem>> _load({
     required int page,
+    int size = 50,
     String? categoryId,
     String? keyword,
     bool includeRelated = false,
@@ -89,7 +106,7 @@ class _WhereUsedMaterialDataSource extends UtenGoodsPickerDataSource {
         if (includeRelated && keyword?.trim().isNotEmpty == true)
           'includeRelated': true,
         'page': page,
-        'size': 50,
+        'size': size,
       },
     );
     return PagedResult<GoodsListItem>.fromJson(json, (raw) {
@@ -125,66 +142,97 @@ class _WhereUsedMaterialDataSource extends UtenGoodsPickerDataSource {
   }
 
   @override
-  Widget? buildSubtitle(BuildContext context, GoodsListItem goods) {
+  List<MasterColumnDef<GoodsListItem>> get pickerColumns => [
+    MasterColumnDef(
+      key: 'name',
+      label: '物料名称',
+      width: 200,
+      value: (goods) => goods.name,
+      columnSearchEnabled: false,
+    ),
+    MasterColumnDef(
+      key: 'code',
+      label: '编号',
+      width: 130,
+      value: (goods) => goods.code,
+      columnSearchEnabled: false,
+    ),
+    MasterColumnDef(
+      key: 'category',
+      label: '分类',
+      width: 140,
+      value: (goods) => _evidence[goods]?.categoryName,
+      columnSearchEnabled: false,
+    ),
+    MasterColumnDef(
+      key: 'status',
+      label: '状态 / 提示',
+      width: 240,
+      value: (goods) {
+        final item = _evidence[goods];
+        if (item == null) return null;
+        return [
+          if (item.status.isNotEmpty) '状态：${item.status}',
+          if (item.bomIssue) 'BOM 异常',
+          if (item.autoCreated) '自动占位',
+          if (item.deleted) '已删除',
+        ].join(' · ');
+      },
+      cellBuilder: _statusCell,
+      columnSearchEnabled: false,
+    ),
+    MasterColumnDef(
+      key: 'evidence',
+      label: '关联依据',
+      width: 260,
+      value: _evidenceLabel,
+      columnSearchEnabled: false,
+    ),
+  ];
+
+  String? _evidenceLabel(GoodsListItem goods) {
     final item = _evidence[goods];
     if (item == null) return null;
-    // Current goods masters use 使用/禁用. Trace candidates may also carry
-    // historical labels; only known inactive states deserve an alert tone.
-    // Normal and unknown states stay explicit without guessing an exception.
+    final labels = [
+      if (item.currentBom) '当前 BOM',
+      if (item.productionHistory) '生产历史',
+      if (item.subcontractHistory) '委外历史',
+    ];
+    return labels.isEmpty
+        ? (item.bomIssue ? 'BOM 异常' : '暂无已知关系')
+        : labels.join(' · ');
+  }
+
+  Widget _statusCell(BuildContext context, GoodsListItem goods) {
+    final item = _evidence[goods];
+    if (item == null) return const Text('—');
     final inactive = const {
       '禁用',
       '停用',
       'DISABLED',
       'INACTIVE',
     }.contains(item.status.toUpperCase());
-    final details = [
-      if (item.code.isNotEmpty) item.code,
-      if (item.categoryName.isNotEmpty) item.categoryName,
-      if (item.status.isNotEmpty && !inactive) '状态：${item.status}',
-      if (goods.isRelatedSearchMatch) '相关结果',
-    ];
-    final hasEvidence =
-        item.currentBom ||
-        item.bomIssue ||
-        item.productionHistory ||
-        item.subcontractHistory;
-    final evidence = [
-      if (item.currentBom) '当前 BOM',
-      if (item.productionHistory) '生产历史',
-      if (item.subcontractHistory) '委外历史',
-      if (!hasEvidence) '暂无已知关系',
-    ];
-    final alerts = <Widget>[
-      if (item.bomIssue)
-        const _MaterialTag(label: 'BOM 异常', tone: _TagTone.error),
-      if (inactive)
-        _MaterialTag(label: '状态：${item.status}', tone: _TagTone.warning),
-      if (item.autoCreated)
-        const _MaterialTag(label: '自动占位', tone: _TagTone.warning),
-      if (item.deleted) const _MaterialTag(label: '已删除', tone: _TagTone.error),
-    ];
-    final theme = Theme.of(context);
-    final quiet = theme.textTheme.bodySmall?.copyWith(
-      color: theme.colorScheme.onSurfaceVariant,
-    );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Wrap(
+      spacing: UtenSpacing.s4,
+      runSpacing: UtenSpacing.s4,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        if (details.isNotEmpty) Text(details.join(' · '), style: quiet),
-        if (evidence.isNotEmpty)
-          Text(
-            evidence.join(' · '),
-            key: ValueKey('where-used-material-evidence-${goods.id}'),
-            style: quiet,
-          ),
-        if (alerts.isNotEmpty) ...[
-          const SizedBox(height: UtenSpacing.s4),
-          Wrap(
-            spacing: UtenSpacing.s4,
-            runSpacing: UtenSpacing.s4,
-            children: alerts,
-          ),
-        ],
+        if (item.status.isNotEmpty)
+          if (inactive)
+            _MaterialTag(label: '状态：${item.status}', tone: _TagTone.warning)
+          else
+            Text(
+              '状态：${item.status}',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+        if (item.bomIssue)
+          const _MaterialTag(label: 'BOM 异常', tone: _TagTone.error),
+        if (item.autoCreated)
+          const _MaterialTag(label: '自动占位', tone: _TagTone.warning),
+        if (item.deleted)
+          const _MaterialTag(label: '已删除', tone: _TagTone.error),
       ],
     );
   }

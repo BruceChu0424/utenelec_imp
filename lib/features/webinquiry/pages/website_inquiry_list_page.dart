@@ -15,7 +15,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_paged_grid.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
-import '../../../components/layout/uten_segmented_filter.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -34,7 +34,34 @@ class WebsiteInquiryListPage extends ConsumerWidget {
     final history = ref.watch(websiteInquiryHistoryProvider);
 
     Widget body = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+          child: UtenFilterToolbar<String>(
+            segmentsKey: const Key('website-inquiry-segments'),
+            autoSelectBadge: false,
+            selected: {
+              history
+                  ? 'HISTORY'
+                  : (status ?? WebsiteInquiryStatus.newOne).wireName,
+            },
+            onSelectionChanged: (value) {
+              ref.read(websiteInquiryHistoryProvider.notifier).state =
+                  value == 'HISTORY';
+              ref
+                  .read(websiteInquiryStatusFilterProvider.notifier)
+                  .state = value == 'HISTORY'
+                  ? null
+                  : WebsiteInquiryStatus.fromName(value);
+            },
+            segments: const [
+              UtenFilterSegment(value: 'new', label: '未处理'),
+              UtenFilterSegment(value: 'following', label: '跟进中'),
+              UtenFilterSegment(value: 'HISTORY', label: '历史单据'),
+            ],
+          ),
+        ),
         Expanded(
           child: RefreshIndicator(
             onRefresh: () =>
@@ -50,11 +77,7 @@ class WebsiteInquiryListPage extends ConsumerWidget {
                 if (inquiries.isEmpty) {
                   return UtenEmpty(
                     icon: Icons.mail_outline_rounded,
-                    message: history
-                        ? '暂无历史询盘'
-                        : status == null
-                        ? '暂无进行中的询盘'
-                        : '该状态下暂无询盘',
+                    message: history ? '暂无历史询盘' : '该状态下暂无询盘',
                     description: '客户在官网提交的留言会实时汇入这里',
                   );
                 }
@@ -110,28 +133,7 @@ class WebsiteInquiryListPage extends ConsumerWidget {
     }
 
     return Scaffold(
-      appBar: UtenAppBar(
-        title: '官网询盘',
-        showBackButton: true,
-        centerWidget: UtenSegmentedFilter<String>(
-          selected: history ? 'HISTORY' : status?.wireName ?? 'ACTIVE',
-          onChanged: (value) {
-            ref.read(websiteInquiryHistoryProvider.notifier).state =
-                value == 'HISTORY';
-            ref
-                .read(websiteInquiryStatusFilterProvider.notifier)
-                .state = value == 'ACTIVE' || value == 'HISTORY'
-                ? null
-                : WebsiteInquiryStatus.fromName(value);
-          },
-          segments: const [
-            UtenSegment(value: 'ACTIVE', label: '全部进行中'),
-            UtenSegment(value: 'new', label: '未处理'),
-            UtenSegment(value: 'following', label: '跟进中'),
-            UtenSegment(value: 'HISTORY', label: '历史单据'),
-          ],
-        ),
-      ),
+      appBar: const UtenAppBar(title: '官网询盘', showBackButton: true),
       body: body,
     );
   }

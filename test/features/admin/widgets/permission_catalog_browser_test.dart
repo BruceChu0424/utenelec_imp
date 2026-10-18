@@ -62,14 +62,17 @@ void main() {
     ),
   ];
 
-  Widget buildSubject({ValueChanged<PermissionBulkScope>? onGrantScope}) {
+  Widget buildSubject({
+    ValueChanged<PermissionBulkScope>? onGrantScope,
+    List<PermissionCatalogGroup>? catalog,
+  }) {
     return MaterialApp(
       home: Scaffold(
         body: SingleChildScrollView(
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: PermissionCatalogBrowser(
-              groups: groups,
+              groups: catalog ?? groups,
               isEnabled: (permission) => permission.code == 'sales:view',
               onGrantScope: onGrantScope,
               onDisableGroup: (_) {},
@@ -135,6 +138,80 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('销售管理'), findsOneWidget);
     expect(find.text('财税管理'), findsOneWidget);
+  });
+
+  testWidgets(
+    'expand all reveals every category and repairs partial expansion',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(buildSubject());
+
+      await tester.tap(find.text('全部展开'));
+      await tester.pumpAndSettle();
+      expect(find.text('查看销售单据'), findsOneWidget);
+      expect(find.text('导出报表'), findsOneWidget);
+
+      await tester.tap(find.text('销售订货'));
+      await tester.pumpAndSettle();
+      expect(find.text('查看销售单据'), findsNothing);
+      expect(find.text('导出报表'), findsOneWidget);
+      expect(find.text('全部展开'), findsOneWidget);
+
+      await tester.tap(find.text('全部展开'));
+      await tester.pumpAndSettle();
+      expect(find.text('查看销售单据'), findsOneWidget);
+      expect(find.text('导出报表'), findsOneWidget);
+      await tester.tap(find.text('全部折叠'));
+      await tester.pumpAndSettle();
+      expect(find.text('销售订货'), findsNothing);
+      expect(find.text('钱流报表'), findsNothing);
+    },
+  );
+
+  testWidgets('same category name in different modules expands independently', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      buildSubject(
+        catalog: [
+          for (final (module, code, name) in [
+            ('仓库管理', 'stock:count:warehouse_review', '仓库审核车间内料仓盘点'),
+            ('财税管理', 'stock:count:finance_review', '财务审核普通仓盘点'),
+          ])
+            PermissionCatalogGroup(
+              module: module,
+              category: '盘点审批',
+              permissions: [
+                AdminPermission(
+                  id: code,
+                  code: code,
+                  name: name,
+                  module: module,
+                  category: '盘点审批',
+                  actionType: PermissionActionType.approve,
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+    await tester.tap(find.text('仓库管理'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('财税管理'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey(('permission-category', '仓库管理', '盘点审批'))),
+        matching: find.text('盘点审批'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('仓库审核车间内料仓盘点'), findsOneWidget);
+    expect(find.text('财务审核普通仓盘点'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('filters by authoritative action type and searches description', (
@@ -237,7 +314,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final subcategoryCard = find.byKey(
-      const ValueKey('permission-category-销售订货'),
+      const ValueKey(('permission-category', '销售管理', '销售订货')),
     );
     await tester.tap(
       find.descendant(

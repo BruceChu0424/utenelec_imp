@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/admin/widgets/page_permission_drawer.dart';
 import 'package:uten_imp/shared/auth/page_permission_delegation_models.dart';
@@ -198,6 +199,7 @@ Future<_Harness> _mount(
         const AuthenticatedScope(userId: 'manager'),
       ),
       apiClientProvider.overrideWithValue(_NoNetworkApi()),
+      apiBaseUrlProvider.overrideWithValue('https://permission-test.invalid'),
     ],
   );
   addTearDown(container.dispose);

@@ -33,6 +33,7 @@ Future<bool> showAiBillingEditor(
   final saved = await showUtenAdaptivePanel<bool>(
     context: context,
     drawerWidth: 480,
+    widthFraction: UtenPanelWidth.form,
     // 正在编辑的计费设置不该被误点空白处丢掉; 关闭走右上角按钮。
     barrierDismissible: false,
     enableDrag: false,

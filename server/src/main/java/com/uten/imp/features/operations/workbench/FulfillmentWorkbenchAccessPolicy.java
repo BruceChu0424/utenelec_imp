@@ -91,6 +91,17 @@ public class FulfillmentWorkbenchAccessPolicy {
                 && hasAuthority("subcontract_order:decompose");
     }
 
+    /**
+     * 回厂短交待判定（ADR-098）的动手门槛：与
+     * {@code SubcontractShortDeliveryController.decide} 端点同码。
+     * 待办红数按它判定「短交档」是否数给当前账号（2026-10-17 口径：
+     * 仅持有查看权限的账号不再收到委外/采购任务待办）。
+     */
+    public boolean canDecideSubcontractShortDelivery() {
+        return hasAuthority("subcontract_order:view")
+                && hasAuthority("subcontract_short_delivery:decide");
+    }
+
     private boolean hasAuthority(String authority) {
         AuthUser user = currentUser.get().orElse(null);
         return user != null && (user.isSuperAdmin() || user.getAuthorities().stream()

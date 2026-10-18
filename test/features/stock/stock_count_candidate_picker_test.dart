@@ -10,6 +10,8 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/features/basic_data/widgets/uten_category_tree_view.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
+import 'package:uten_imp/features/basic_data/models/goods_node.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/stock/counts/models/stock_count_request.dart';
 import 'package:uten_imp/features/stock/counts/repositories/stock_count_request_repository.dart';
 import 'package:uten_imp/features/stock/counts/widgets/stock_count_candidate_picker.dart';
@@ -48,6 +50,7 @@ class _Repo extends StockCountRequestRepository {
   _Repo() : super(ApiClient(Dio()));
   Completer<PagedResult<CountStockRow>>? delayed;
   final requests = <String>[];
+  bool includeLocked = false;
 
   @override
   Future<List<ProductCategoryNode>> candidateCategories(
@@ -97,6 +100,7 @@ class _Repo extends StockCountRequestRepository {
     if (keyword == '慢') return delayed!.future;
     return PagedResult(
       items: [
+        if (includeLocked) row('锁定', editable: false),
         row(
           keyword?.isNotEmpty == true
               ? '红'
@@ -209,6 +213,47 @@ void main() {
     skip: !_capturePicker,
   );
 
+  testWidgets('盘点表格按颜色快照显示并让全选排除禁选行且保留跨搜索选择', (tester) async {
+    final repo = _Repo()..includeLocked = true;
+    final results = <List<CountStockRow>>[];
+    await _open(tester, repo, results);
+    final tableFinder = find.byKey(const Key('goods-picker-paged-list'));
+    final table = tester.widget<MasterDataTableView<GoodsListItem>>(
+      tableFinder,
+    );
+    expect(table.tableKey, isNull);
+    expect(table.columns.map((column) => column.label), [
+      '物料名称',
+      '编号',
+      '颜色',
+      '当前库存',
+      '重量',
+    ]);
+    expect(find.text('0 kg'), findsNWidgets(2));
+    expect(find.text('未称'), findsNWidgets(2));
+    await tester.tap(
+      find.descendant(of: tableFinder, matching: find.byType(Checkbox)).first,
+    );
+    await tester.pump();
+    expect(find.text('已选 1 项'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('goods-picker-item-pp|锁定')));
+    await tester.pump();
+    expect(find.text('已选 1 项'), findsOneWidget);
+    await tester.enterText(find.byType(EditableText).first, '红');
+    await tester.pump(const Duration(milliseconds: 301));
+    await tester.pumpAndSettle();
+    expect(find.text('已选 1 项'), findsOneWidget);
+    await tester.tap(
+      find.descendant(of: tableFinder, matching: find.byType(Checkbox)).first,
+    );
+    await tester.pump();
+    expect(find.text('已选 2 项'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('goods-picker-multi-confirm')));
+    await tester.pumpAndSettle();
+    expect(results.single.map((row) => row.key), ['pp|白', 'pp|红']);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('宽屏分页与已选清空确定共用底栏，页码垂直居中', (tester) async {
     final repo = _Repo();
     await _open(
@@ -246,18 +291,15 @@ void main() {
     final repo = _Repo();
     final results = <List<CountStockRow>>[];
     await _open(tester, repo, results);
-    await tester.tap(find.textContaining('G-PP · 白'));
+    await tester.tap(find.byKey(const ValueKey('goods-picker-item-pp|白')));
     await tester.pump();
-    final pickerList = find.byKey(const Key('goods-picker-paged-list'));
-    final list = find.descendant(
-      of: pickerList,
-      matching: find.byType(ListView),
+    final list = find.byWidget(
+      Scrollable.of(
+        tester.element(find.byKey(const ValueKey('goods-picker-item-pp|白'))),
+        axis: Axis.vertical,
+      ).widget,
     );
-    final scroll = tester
-        .state<ScrollableState>(
-          find.descendant(of: list, matching: find.byType(Scrollable)).first,
-        )
-        .position;
+    final scroll = tester.state<ScrollableState>(list).position;
     final before = repo.requests.length;
     scroll.jumpTo(scroll.maxScrollExtent);
     await tester.pump();
@@ -271,9 +313,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(repo.requests.length, before + 1);
     expect(repo.requests.last, endsWith('|2'));
-    expect(find.textContaining('G-PP · 白'), findsOneWidget);
-    await tester.ensureVisible(find.textContaining('G-PP · 黑'));
-    await tester.tap(find.textContaining('G-PP · 黑'));
+    expect(
+      find.byKey(const ValueKey('goods-picker-item-pp|白')),
+      findsOneWidget,
+    );
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('goods-picker-item-pp|黑')),
+    );
+    await tester.tap(find.byKey(const ValueKey('goods-picker-item-pp|黑')));
     await tester.pump();
     expect(find.text('已选 2 项'), findsOneWidget);
     await tester.tap(find.byKey(const Key('goods-picker-multi-confirm')));
@@ -289,21 +336,21 @@ void main() {
     await _open(tester, repo, results);
     await tester.tap(find.text('下一页'));
     await tester.pumpAndSettle();
-    await tester.tap(find.textContaining('G-PP · 黑'));
+    await tester.tap(find.byKey(const ValueKey('goods-picker-item-pp|黑')));
     await tester.pump();
-    final list = find.descendant(
-      of: find.byKey(const Key('goods-picker-paged-list')),
-      matching: find.byType(ListView),
+    final list = find.byWidget(
+      Scrollable.of(
+        tester.element(find.byKey(const ValueKey('goods-picker-item-pp|黑'))),
+        axis: Axis.vertical,
+      ).widget,
     );
-    final scroll = tester
-        .state<ScrollableState>(
-          find.descendant(of: list, matching: find.byType(Scrollable)).first,
-        )
-        .position;
+    final scroll = tester.state<ScrollableState>(list).position;
     scroll.jumpTo(scroll.minScrollExtent);
     await tester.pump();
     final before = repo.requests.length;
-    final previousTop = tester.getTopLeft(find.textContaining('G-PP · 黑')).dy;
+    final previousTop = tester
+        .getTopLeft(find.byKey(const ValueKey('goods-picker-item-pp|黑')))
+        .dy;
     await tester.sendEventToBinding(
       PointerScrollEvent(
         position: tester.getCenter(list),
@@ -314,12 +361,14 @@ void main() {
     expect(repo.requests.length, before + 1);
     expect(repo.requests.last, endsWith('|1'));
     expect(
-      tester.getTopLeft(find.textContaining('G-PP · 黑')).dy,
+      tester
+          .getTopLeft(find.byKey(const ValueKey('goods-picker-item-pp|黑')))
+          .dy,
       closeTo(previousTop, 1),
     );
     scroll.jumpTo(scroll.minScrollExtent);
     await tester.pumpAndSettle();
-    await tester.tap(find.textContaining('G-PP · 白'));
+    await tester.tap(find.byKey(const ValueKey('goods-picker-item-pp|白')));
     await tester.pump();
     await tester.tap(find.byKey(const Key('goods-picker-multi-confirm')));
     await tester.pumpAndSettle();
@@ -336,12 +385,7 @@ void main() {
       size: const Size(375, 750),
       textScale: 1.3,
     );
-    final candidate = find.byWidgetPredicate(
-      (widget) =>
-          widget.key is ValueKey &&
-          (widget.key! as ValueKey).value ==
-              ('pagination-row', ('data', 'pp|白')),
-    );
+    final candidate = find.byKey(const ValueKey('goods-picker-item-pp|白'));
     expect(candidate, findsOneWidget);
     await tester.tap(candidate);
     await tester.pump();
@@ -353,15 +397,15 @@ void main() {
   testWidgets('销售同款跨页跨搜索多选，保留同料不同颜色', (tester) async {
     final results = <List<CountStockRow>>[];
     await _open(tester, _Repo(), results);
-    await tester.tap(find.textContaining('G-PP · 白'));
+    await tester.tap(find.byKey(const ValueKey('goods-picker-item-pp|白')));
     await tester.tap(find.text('下一页'));
     await tester.pumpAndSettle();
-    await tester.tap(find.textContaining('G-PP · 黑'));
+    await tester.tap(find.byKey(const ValueKey('goods-picker-item-pp|黑')));
     await tester.enterText(find.byType(EditableText).first, '红');
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
     expect(find.text('已选 2 项'), findsOneWidget);
-    await tester.tap(find.textContaining('G-PP · 红'));
+    await tester.tap(find.byKey(const ValueKey('goods-picker-item-pp|红')));
     await tester.pump();
     await tester.tap(find.byKey(const Key('goods-picker-selected-summary')));
     await tester.pumpAndSettle();
@@ -380,7 +424,7 @@ void main() {
   testWidgets('清空后不能确认，取消不返回候选', (tester) async {
     final results = <List<CountStockRow>>[];
     await _open(tester, _Repo(), results);
-    await tester.tap(find.textContaining('G-PP · 白'));
+    await tester.tap(find.byKey(const ValueKey('goods-picker-item-pp|白')));
     await tester.pump();
     await tester.tap(find.text('清空'));
     await tester.pump();
@@ -401,7 +445,7 @@ void main() {
     final repo = _Repo()..delayed = Completer();
     final results = <List<CountStockRow>>[];
     await _open(tester, repo, results);
-    await tester.tap(find.textContaining('G-PP · 白'));
+    await tester.tap(find.byKey(const ValueKey('goods-picker-item-pp|白')));
     await tester.enterText(find.byType(EditableText).first, '慢');
     await tester.pump(const Duration(milliseconds: 301));
     await tester.enterText(find.byType(EditableText).first, '红');
@@ -411,7 +455,7 @@ void main() {
       PagedResult(items: [row('旧')], page: 1, size: 1, total: 1, totalPages: 1),
     );
     await tester.pumpAndSettle();
-    expect(find.textContaining('G-PP · 旧'), findsNothing);
+    expect(find.byKey(const ValueKey('goods-picker-item-pp|旧')), findsNothing);
     expect(find.text('已选 1 项'), findsOneWidget);
     await tester.tap(find.byKey(const Key('goods-picker-multi-confirm')));
     await tester.pumpAndSettle();

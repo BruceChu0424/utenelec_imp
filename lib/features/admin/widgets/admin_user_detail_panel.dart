@@ -33,8 +33,10 @@ import '../models/admin_models.dart';
 import '../pages/admin_permissions_page.dart' show AccountStatusBadge;
 import '../providers/admin_providers.dart';
 import '../repositories/admin_repository.dart';
+import '../repositories/permission_configuration_repository.dart';
 import '../../employee/widgets/employee_credential_dialog.dart';
 import 'admin_data_scope_section.dart';
+import 'admin_permission_transfer_actions.dart';
 import 'permission_catalog_browser.dart';
 import 'permission_action_badge.dart';
 import 'set_temporary_password_dialog.dart';
@@ -160,15 +162,11 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         ? ref.watch(adminEffectivePermissionsProvider(widget.user.id))
         : null;
     final data = effectiveAsync?.valueOrNull;
-    // 人员信息行的「全部收回」需要整个目录的权限码；与权限分区共用同一 provider 缓存。
-    final catalog = widget.canManageAuthorization
-        ? ref.watch(permissionCatalogProvider).valueOrNull
-        : null;
     final dirtyCount = data == null ? 0 : _dirtyCount(data);
     final legacyUnknownCount = data == null
         ? 0
         : {...data.legacyUnknownGrants, ...data.legacyUnknownRevokes}.length;
-    final permissionDirty = dirtyCount > 0;
+    final permissionDirty = dirtyCount > 0 || _savingOverrides || _acting;
     if (_lastReportedPermissionDirty != permissionDirty) {
       _lastReportedPermissionDirty = permissionDirty;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -215,7 +213,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                     label: const Text('返回列表'),
                   ),
                 ),
-              _userSummary(data, catalog),
+              _userSummary(data),
               if (!widget.user.currentEmployee) ...[
                 const SizedBox(height: UtenSpacing.s12),
                 _employmentRestrictionNotice(),
@@ -286,6 +284,10 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                     ref.watch(permissionCatalogProvider),
                   ),
                   _UserDetailSection.dataScope => AdminDataScopeSection(
+                    key: ValueKey((
+                      widget.user.id,
+                      ref.watch(permissionConfigurationRevisionProvider),
+                    )),
                     user: widget.user,
                     effectiveAsync: effectiveAsync!,
                     onAccountChanged: widget.onAccountChanged,
@@ -343,10 +345,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     setState(() => _section = section);
   }
 
-  Widget _userSummary(
-    EffectivePermissions? data,
-    List<PermissionCatalogGroup>? catalog,
-  ) {
+  Widget _userSummary(EffectivePermissions? data) {
     final theme = Theme.of(context);
     final user = widget.user;
     final displayName = user.employeeName ?? user.loginAccount;
@@ -362,50 +361,9 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
       if ((user.positionName ?? '').trim().isNotEmpty)
         user.positionName!.trim(),
     ].join(' · ');
-    // 「全部授权 / 全部收回」从权限目录顶部挪到人员信息行：可一键收回全部授权。
-    // 超管目标账号不可逐项调整，两个按钮随之隐藏。
-    final showBulkActions =
-        widget.canManageAuthorization && !(data?.superAdmin ?? false);
-    final bulkEnabled =
-        showBulkActions &&
-        data != null &&
-        catalog != null &&
-        user.authorizationGrantAllowed;
-    final explainDisabled =
-        !bulkEnabled && data != null && !user.authorizationGrantAllowed
-        ? _explainAuthorizationRestriction
-        : null;
-    final bulkButtons = [
-      UtenButton(
-        key: const ValueKey('admin-grant-all-permissions'),
-        type: UtenButtonType.secondary,
-        size: UtenButtonSize.small,
-        icon: Icons.done_all_rounded,
-        isLoading: _networkActing,
-        onPressed: bulkEnabled
-            ? () => _grantScope(data, PermissionBulkScope.everything)
-            : null,
-        onDisabledTap: explainDisabled,
-        child: const Text('全部授权'),
-      ),
-      const SizedBox(width: UtenSpacing.s8),
-      UtenButton(
-        key: const ValueKey('admin-revoke-all-permissions'),
-        type: UtenButtonType.danger,
-        size: UtenButtonSize.small,
-        icon: Icons.remove_done_outlined,
-        isLoading: _networkActing,
-        onPressed: bulkEnabled ? () => _confirmRevokeAll(data) : null,
-        onDisabledTap: explainDisabled,
-        child: const Text('全部收回'),
-      ),
-    ];
-    final accountActions = _accountHeaderActions(data);
-    final headerActions = [
-      ...accountActions,
-      if (showBulkActions) ...bulkButtons,
-    ];
+    final headerActions = _accountHeaderActions(data);
     return UtenCard(
+      key: const ValueKey('admin-user-summary-card'),
       padding: const EdgeInsets.all(UtenSpacing.s12),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -560,7 +518,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     return actions;
   }
 
-  /// 人员信息行「全部收回」：把整个目录的权限码全部标记为个人收回（本地暂存），
+  /// 权限明细「全部收回」：把整个目录的权限码全部标记为个人收回（本地暂存），
   /// 并跳回操作权限分区露出保存条；实际生效仍走「保存更改」。
   Future<void> _confirmRevokeAll(EffectivePermissions data) async {
     if (!widget.user.authorizationGrantAllowed) {
@@ -650,15 +608,11 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     final theme = Theme.of(context);
     final data = effectiveAsync.valueOrNull;
     return UtenCard(
+      key: const ValueKey('admin-user-permission-card'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '权限明细',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
+          _permissionHeading(data, catalogAsync.valueOrNull),
           if (!widget.user.authorizationGrantAllowed) ...[
             const SizedBox(height: UtenSpacing.s8),
             _authorizationRestrictionCard(data),
@@ -694,6 +648,95 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
           _permMatrix(effectiveAsync, catalogAsync),
         ],
       ),
+    );
+  }
+
+  Widget _permissionHeading(
+    EffectivePermissions? data,
+    List<PermissionCatalogGroup>? catalog,
+  ) {
+    final bulkEnabled =
+        data != null &&
+        catalog != null &&
+        !data.superAdmin &&
+        widget.user.authorizationGrantAllowed &&
+        !_savingOverrides &&
+        !_acting;
+    final actions = <Widget>[
+      AdminPermissionCopyActions(
+        user: widget.user,
+        enabled: bulkEnabled && _dirtyCount(data) == 0,
+        onApplied: () {
+          if (!mounted) return;
+          _discardPermissionDraftAfterAccountAction();
+          ref.invalidate(adminEffectivePermissionsProvider(widget.user.id));
+          widget.onAccountChanged();
+        },
+      ),
+      if (data?.superAdmin != true) ...[
+        UtenButton(
+          key: const ValueKey('admin-grant-all-permissions'),
+          type: UtenButtonType.secondary,
+          size: UtenButtonSize.small,
+          icon: Icons.done_all_rounded,
+          isLoading: _networkActing,
+          onPressed: bulkEnabled
+              ? () => _grantScope(data, PermissionBulkScope.everything)
+              : null,
+          onDisabledTap: widget.user.authorizationGrantAllowed
+              ? null
+              : _explainAuthorizationRestriction,
+          child: const Text('全部授权'),
+        ),
+        UtenButton(
+          key: const ValueKey('admin-revoke-all-permissions'),
+          type: UtenButtonType.danger,
+          size: UtenButtonSize.small,
+          icon: Icons.remove_done_outlined,
+          isLoading: _networkActing,
+          onPressed: bulkEnabled ? () => _confirmRevokeAll(data) : null,
+          onDisabledTap: widget.user.authorizationGrantAllowed
+              ? null
+              : _explainAuthorizationRestriction,
+          child: const Text('全部收回'),
+        ),
+      ],
+    ];
+    final title = Text(
+      '权限明细',
+      style: Theme.of(
+        context,
+      ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+    );
+    final actionBar = Wrap(
+      alignment: WrapAlignment.end,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: UtenSpacing.s8,
+      runSpacing: UtenSpacing.s8,
+      children: actions,
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth >=
+            MediaQuery.textScalerOf(context).scale(720)) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              title,
+              const SizedBox(width: UtenSpacing.s16),
+              Expanded(child: actionBar),
+            ],
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            title,
+            const SizedBox(height: UtenSpacing.s8),
+            actionBar,
+          ],
+        );
+      },
     );
   }
 
@@ -797,7 +840,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
       isChanged: (permission) =>
           grants.contains(permission.code) || revokes.contains(permission.code),
       changedFilterLabel: '个人覆盖',
-      // 全量「全部授权 / 全部收回」已挪到顶部人员信息行；目录里只保留模块/子类分组批量。
+      // 全量操作位于权限明细标题旁；目录里只保留模块/子类分组批量。
       showGlobalBulkActions: false,
       onGrantScope: canEdit ? (scope) => _grantScope(data, scope) : null,
       onDisableGroup: canEdit

@@ -41,6 +41,7 @@ Future<ClientAccessSettings?> showClientAccessPanel({
 }) => showUtenAdaptivePanel<ClientAccessSettings>(
   context: context,
   drawerWidth: 480,
+  widthFraction: UtenPanelWidth.content,
   barrierDismissible: false,
   showDragHandle: true,
   builder: (_) => ClientAccessPanel(
@@ -190,7 +191,8 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
             employeeCode: employee.code,
             departmentId: employee.departmentId,
             departmentName: employee.departmentName,
-            subtitle: _statusLabel(employee.status),
+            accountStatus: employee.accountStatus,
+            employmentStatus: employee.employmentStatus,
           ),
         )
         .toList(growable: false);
@@ -462,10 +464,3 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
 
 bool _sameIds(Set<String> left, Set<String> right) =>
     left.length == right.length && left.every(right.contains);
-
-String _statusLabel(String status) => switch (status) {
-  'active' => '在职',
-  'probation' => '试用',
-  'onLeave' => '休假',
-  _ => status,
-};

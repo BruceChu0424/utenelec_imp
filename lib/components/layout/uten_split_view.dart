@@ -12,9 +12,10 @@
 // - 视觉线 1px（outlineVariant），命中区 12px 宽，悬停出 resizeColumn 光标；
 // - 中央常驻握把（圆角小块 + 抓握纹）一眼可见可拖（触屏无 hover 也能看出）；
 //   悬停/拖动时线加粗染 primary、握把染主色并轻微放大；
-// - 拖动实时改左栏宽，clamp 在 [minLeadingWidth, maxLeadingWidth] 之间，
+// - 默认按分类自然宽排版；手动拖窄后允许名称省略，保留完整路径提示与行内操作；
+// - 拖动实时改左栏宽，clamp 在配置宽度与行内操作所需的安全范围之间，
 //   且永远给右栏留足 [minTrailingWidth]（窗口再小也不会把详情拖没）；
-// - 双击分割线复位到 [initialLeadingWidth]；
+// - 双击分割线清除手动宽度，按 [initialLeadingWidth] 与分类自然宽重新适配；
 // - 键盘：聚焦手柄后 ←/→ 每次 ±16px（无障碍 / 无鼠标场景）；
 // - RTL：拖动方向与箭头方向自动翻转（Directionality 驱动）。
 //
@@ -49,6 +50,7 @@ class UtenSplitView extends StatefulWidget {
     required this.leading,
     required this.trailing,
     this.initialLeadingWidth = 300,
+    this.controlledLeadingWidth,
     this.minLeadingWidth = 220,
     this.maxLeadingWidth = 520,
     this.minTrailingWidth = 360,
@@ -71,7 +73,11 @@ class UtenSplitView extends StatefulWidget {
   /// 初始（也是双击复位的）左栏宽，默认 300（对齐旧版固定宽）。
   final double initialLeadingWidth;
 
-  /// 左栏可拖到的最小宽。
+  /// 多个分栏共享同一宽度时传入；null 保持独立拖动和本地宽度恢复。
+  /// 变化仍通过 [onWidthChanged] 回传，内容与状态无需重新挂载。
+  final double? controlledLeadingWidth;
+
+  /// 左栏可拖到的最小宽；分类行操作和可读标题片段所需空间仍受保护。
   final double minLeadingWidth;
 
   /// 左栏可拖到的最大宽（另受「右栏至少留 [minTrailingWidth]」约束）。
@@ -107,7 +113,10 @@ class UtenSplitView extends StatefulWidget {
 }
 
 class _UtenSplitViewState extends State<UtenSplitView> {
-  late double _width = widget.initialLeadingWidth;
+  late double _width =
+      widget.controlledLeadingWidth ?? widget.initialLeadingWidth;
+  late bool _hasUserWidth = widget.controlledLeadingWidth != null;
+  int _widthRevision = 0;
   bool _hovering = false;
   bool _dragging = false;
   final FocusNode _handleFocus = FocusNode();
@@ -117,8 +126,17 @@ class _UtenSplitViewState extends State<UtenSplitView> {
   double _totalWidth = double.infinity;
 
   bool get _active => _hovering || _dragging;
-  double get _minimumWidth =>
-      math.max(widget.minLeadingWidth, _contentWidths.minimumWidth);
+  double get _minimumWidth {
+    if (!_hasUserWidth) {
+      return math.max(widget.minLeadingWidth, _contentWidths.minimumWidth);
+    }
+    final compactContentWidth = _contentWidths.minimumWidth == 0
+        ? 0.0
+        : _contentWidths.chromeWidth +
+              MediaQuery.textScalerOf(context).scale(64) +
+              12;
+    return math.max(widget.minLeadingWidth, compactContentWidth);
+  }
 
   @override
   void initState() {
@@ -134,25 +152,49 @@ class _UtenSplitViewState extends State<UtenSplitView> {
   @override
   void didUpdateWidget(UtenSplitView old) {
     super.didUpdateWidget(old);
-    if (old.persistenceKey != widget.persistenceKey) _restore();
+    if (old.persistenceKey != widget.persistenceKey) {
+      ++_widthRevision;
+      _width = widget.controlledLeadingWidth ?? widget.initialLeadingWidth;
+      _hasUserWidth = widget.controlledLeadingWidth != null;
+      _restore();
+    } else if (widget.controlledLeadingWidth != null &&
+        old.controlledLeadingWidth != widget.controlledLeadingWidth) {
+      ++_widthRevision;
+      _width = widget.controlledLeadingWidth!;
+      _hasUserWidth = true;
+    }
   }
 
   /// 从本地缓存恢复上次拖定的宽度（越界值在 build clamp 时自然收敛）。
   Future<void> _restore() async {
     final key = widget.persistenceKey;
-    if (key == null) return;
+    if (key == null || widget.controlledLeadingWidth != null) return;
+    final revision = _widthRevision;
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted || widget.controlledLeadingWidth != null) return;
     final saved = prefs.getDouble(UtenSplitView._storeKey(key));
-    if (saved != null && mounted && saved != _width) {
-      setState(() => _width = saved);
+    if (saved != null &&
+        saved.isFinite &&
+        mounted &&
+        key == widget.persistenceKey &&
+        revision == _widthRevision) {
+      setState(() {
+        _width = saved;
+        _hasUserWidth = true;
+      });
     }
   }
 
   Future<void> _persist() async {
     final key = widget.persistenceKey;
     if (key == null) return;
+    final savedWidth = _hasUserWidth ? _width : null;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(UtenSplitView._storeKey(key), _width);
+    if (savedWidth == null) {
+      await prefs.remove(UtenSplitView._storeKey(key));
+    } else {
+      await prefs.setDouble(UtenSplitView._storeKey(key), savedWidth);
+    }
   }
 
   double _clamp(double width) {
@@ -160,7 +202,13 @@ class _UtenSplitViewState extends State<UtenSplitView> {
         _totalWidth - UtenSplitView.gutterWidth - widget.minTrailingWidth;
     final upper = math.max(
       0.0,
-      math.min(math.max(widget.maxLeadingWidth, _minimumWidth), maxBySpace),
+      math.min(
+        math.max(
+          widget.maxLeadingWidth,
+          math.max(_contentWidths.minimumWidth, _minimumWidth),
+        ),
+        maxBySpace,
+      ),
     );
     // 计算始终合法；真正空间不足时build切为完整目录，不压窄左栏。
     final lower = math.min(_minimumWidth, upper);
@@ -168,8 +216,11 @@ class _UtenSplitViewState extends State<UtenSplitView> {
   }
 
   void _applyWidth(double next, {required bool persist}) {
+    final wasUserWidth = _hasUserWidth;
+    _hasUserWidth = true;
+    ++_widthRevision;
     final clamped = _clamp(next);
-    if (clamped == _width) return;
+    if (clamped == _width && wasUserWidth) return;
     setState(() => _width = clamped);
     widget.onWidthChanged?.call(clamped);
     if (persist) _persist();
@@ -185,7 +236,15 @@ class _UtenSplitViewState extends State<UtenSplitView> {
   void _nudge(double delta) =>
       _applyWidth(_clamp(_width) + delta * _dirSign, persist: true);
 
-  void _reset() => _applyWidth(widget.initialLeadingWidth, persist: true);
+  void _reset() {
+    setState(() {
+      ++_widthRevision;
+      _hasUserWidth = false;
+      _width = widget.initialLeadingWidth;
+    });
+    widget.onWidthChanged?.call(_clamp(_width));
+    _persist();
+  }
 
   @override
   void dispose() {

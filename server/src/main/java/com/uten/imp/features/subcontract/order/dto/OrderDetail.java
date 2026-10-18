@@ -24,6 +24,8 @@ public class OrderDetail extends com.uten.imp.common.pricing.ProcurementPriceAss
     private UUID settlementMethodId;
     private BigDecimal taxRate;
     private UUID purchaserId;
+    /** 采购员「姓名(工号)」（服务端按 purchaser_id 解析；工号缺失退化为纯姓名）。 */
+    private String purchaserName;
     private UUID makerId;
     private UUID approverId;
     private LocalDate deliverDate;
@@ -35,7 +37,7 @@ public class OrderDetail extends com.uten.imp.common.pricing.ProcurementPriceAss
     private boolean closed;
     private String sourceDocNo;
     private List<OrderItemDto> items;
-    /** 制单员姓名（服务端按 maker_id 解析：employees 直查 + users 历史数据兼容）。 */
+    /** 制单员「姓名(工号)」（服务端按 maker_id 解析：employees 直查 + users 历史数据兼容）。 */
     private String makerName;
     /** 制单时间（审计 created_at，创建后不可变）。 */
     private java.time.Instant createdAt;

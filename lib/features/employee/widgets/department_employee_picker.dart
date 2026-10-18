@@ -1,43 +1,34 @@
 // 部门树 + 员工选择器：先选部门（未展开的分类树），点部门列出该部门（含子部门）的人员，
-// 也可直接搜索姓名/工号跨部门找人。左树 + 右人员列表布局仿 uten_goods_picker.dart。
+// 也可直接搜索姓名/工号跨部门找人。左树 + 右重点字段表格。
 //
 // 问题 #6：模具「保管人」原来是纯搜索平铺列表，改成"先浏览部门再挑人"，更贴近老员工的
 // 使用习惯（不知道该搜什么名字时，按部门找人更直观）。
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import '../../../components/layout/uten_load_more_boundary.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/inputs/uten_employee_picker.dart'
     show UtenEmployeePickerItem;
+import '../../../components/inputs/uten_employee_picker_access.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../components/layout/uten_split_view.dart';
-import '../../../components/layout/uten_table_column_kit.dart'
-    show utenTableSelectedRowColor;
-import '../../../core/network/api_client.dart';
-import '../../../core/network/api_endpoints.dart';
 import '../../../shared/hierarchy/uten_tree_path.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/formatters/employee_display.dart';
 import '../../../shared/hierarchy/category_tree_search.dart';
 import '../../department/models/department_node.dart';
 import '../../department/widgets/uten_department_tree_view.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/employee_api_models.dart';
+import '../providers/employee_picker_department_tree_provider.dart';
 import '../repositories/employee_repository.dart';
 
-/// 员工选择器专用最小部门树：权限与员工摘要列表同为 employee:view。
-/// 不复用 departmentPickerTreeProvider，避免要求无关的 department:view。
-final employeePickerDepartmentTreeProvider =
-    FutureProvider.autoDispose<List<DepartmentNode>>((ref) async {
-      final rows = await ref
-          .watch(apiClientProvider)
-          .getList(ApiEndpoints.employeePickerDepartmentTree);
-      return rows.map(DepartmentNode.fromJson).toList();
-    });
+export '../providers/employee_picker_department_tree_provider.dart';
 
 /// 弹出「部门树 + 员工」选择器，返回所选员工；取消返回 null。
 Future<UtenEmployeePickerItem?> showUtenDepartmentEmployeePicker(
@@ -47,34 +38,49 @@ Future<UtenEmployeePickerItem?> showUtenDepartmentEmployeePicker(
   Set<String> statuses = const {'active', 'probation', 'onLeave'},
   Set<String> excludeEmployeeIds = const {},
 }) async {
-  List<DepartmentNode> tree;
+  final access = EmployeePickerAccess(
+    EmployeePickerAccess.containerOf(context),
+  );
+  final ticket = access.capture();
+  bool current() =>
+      context.mounted &&
+      ticket.isCurrent &&
+      identical(access.container, EmployeePickerAccess.containerOf(context));
   try {
-    tree = await ref.read(employeePickerDepartmentTreeProvider.future);
-  } catch (_) {
-    if (context.mounted) context.appError('部门树加载失败，请稍后重试');
-    return null;
+    List<DepartmentNode> tree;
+    try {
+      tree = await ref.read(employeePickerDepartmentTreeProvider.future);
+    } catch (_) {
+      if (context.mounted && current()) context.appError('部门树加载失败，请稍后重试');
+      return null;
+    }
+    if (!context.mounted || !current()) return null;
+    final result = await showUtenAdaptivePanel<UtenEmployeePickerItem>(
+      context: context,
+      drawerWidth: 720,
+      builder: (_) => _DeptEmployeePickerSheet(
+        openingTicket: ticket,
+        tree: tree,
+        title: title,
+        statuses: statuses,
+        excludeEmployeeIds: excludeEmployeeIds,
+      ),
+    );
+    return current() ? result : null;
+  } finally {
+    access.dispose();
   }
-  if (!context.mounted) return null;
-  final sheet = _DeptEmployeePickerSheet(
-    tree: tree,
-    title: title,
-    statuses: statuses,
-    excludeEmployeeIds: excludeEmployeeIds,
-  );
-  return showUtenAdaptivePanel<UtenEmployeePickerItem>(
-    context: context,
-    drawerWidth: math.max(720.0, MediaQuery.sizeOf(context).width * 0.5),
-    builder: (_) => sheet,
-  );
 }
 
 class _DeptEmployeePickerSheet extends ConsumerStatefulWidget {
   const _DeptEmployeePickerSheet({
+    required this.openingTicket,
     required this.tree,
     required this.title,
     required this.statuses,
     required this.excludeEmployeeIds,
   });
+  final EmployeePickerAccessTicket openingTicket;
   final List<DepartmentNode> tree;
   final String title;
   final Set<String> statuses;
@@ -86,7 +92,8 @@ class _DeptEmployeePickerSheet extends ConsumerStatefulWidget {
 }
 
 class _DeptEmployeePickerSheetState
-    extends ConsumerState<_DeptEmployeePickerSheet> {
+    extends ConsumerState<_DeptEmployeePickerSheet>
+    with EmployeePickerAccessState<_DeptEmployeePickerSheet> {
   static const _pageSize = 100;
 
   String? _selectedDeptId;
@@ -112,6 +119,57 @@ class _DeptEmployeePickerSheetState
   String? _loadMoreError;
   int _requestVersion = 0;
   bool _acceptPendingSearch = false;
+  bool _started = false;
+  bool _invalidated = false;
+  ModalRoute<Object?>? _route;
+  late final EmployeePickerAccessTicket _accessTicket;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _route = ModalRoute.of(context);
+    if (!_started) {
+      _started = true;
+      _accessTicket = pickerAccess.capture();
+      if (!widget.openingTicket.isCurrent) onPickerAccessInvalidated();
+    }
+  }
+
+  @override
+  void onPickerAccessInvalidated() {
+    _invalidated = true;
+    _requestVersion++;
+    _acceptPendingSearch = false;
+    _picked = null;
+    _items = const [];
+    _selectedDeptId = null;
+    _selectedDeptName = null;
+    _globalQuery = '';
+    _visibleFilterIds = null;
+    _categoryMatchDepartmentIds = {};
+    _contentMatchDepartmentIds = {};
+    _resetPageState();
+    final route = _route;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // A newer dialog may be above this selector; remove only our own route.
+      if (route is PopupRoute && route.isActive) {
+        route.navigator?.removeRoute(route);
+      } else {
+        setState(() {});
+      }
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  bool get _canUseCandidates =>
+      mounted &&
+      !_invalidated &&
+      widget.openingTicket.isCurrent &&
+      _accessTicket.isCurrent;
+
+  bool _isCurrent(int request) =>
+      _canUseCandidates && request == _requestVersion;
 
   @override
   void dispose() {
@@ -120,6 +178,7 @@ class _DeptEmployeePickerSheetState
   }
 
   void _onDeptTap(DepartmentNode node) {
+    if (!_canUseCandidates) return;
     _requestVersion++;
     _acceptPendingSearch = false;
     final contentBranch =
@@ -164,6 +223,7 @@ class _DeptEmployeePickerSheetState
   /// UtenSearchBar 的查询回调有防抖；每次键入先让旧请求失效，防止旧结果
   /// 在新查询发起前的 300ms 窗口回写。
   void _onSearchInput(String raw) {
+    if (!_canUseCandidates) return;
     _requestVersion++;
     final query = raw.trim();
     _acceptPendingSearch = true;
@@ -181,6 +241,7 @@ class _DeptEmployeePickerSheetState
   }
 
   Future<void> _applyGlobalSearch(String rawQuery) async {
+    if (!_canUseCandidates) return;
     final query = rawQuery.trim();
     if (!_acceptPendingSearch || query != _globalQuery) return;
     _acceptPendingSearch = false;
@@ -216,7 +277,7 @@ class _DeptEmployeePickerSheetState
         statuses: widget.statuses,
         includeSubtree: true,
       );
-      if (!mounted || request != _requestVersion) return;
+      if (!_isCurrent(request)) return;
       final provisional = resolveHierarchySearch(
         roots: widget.tree,
         query: query,
@@ -235,7 +296,7 @@ class _DeptEmployeePickerSheetState
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || request != _requestVersion) return;
+      if (!_isCurrent(request)) return;
       setState(() {
         _error = '员工搜索失败，请稍后重试';
         _loading = false;
@@ -257,10 +318,10 @@ class _DeptEmployeePickerSheetState
               includeSubtree: true,
             ),
             categoryIdOf: (item) => item.departmentId,
-            isCurrent: () => mounted && request == _requestVersion,
+            isCurrent: () => _isCurrent(request),
           );
     } catch (_) {
-      if (!mounted || request != _requestVersion) return;
+      if (!_isCurrent(request)) return;
       setState(() => _searchLocationError = '完整部门定位失败，请稍后重试');
       return;
     }
@@ -284,7 +345,7 @@ class _DeptEmployeePickerSheetState
           statuses: widget.statuses,
           includeSubtree: true,
         );
-        if (!mounted || request != _requestVersion) return;
+        if (!_isCurrent(request)) return;
         setState(() {
           _visibleFilterIds = resolution.visibleIds;
           _contentMatchDepartmentIds = resolution.contentCategoryIds;
@@ -295,13 +356,13 @@ class _DeptEmployeePickerSheetState
           _searchLocationError = null;
         });
       } catch (_) {
-        if (!mounted || request != _requestVersion) return;
+        if (!_isCurrent(request)) return;
         setState(() => _error = '加载人员失败，请稍后重试');
       }
       return;
     }
 
-    if (!mounted || request != _requestVersion) return;
+    if (!_isCurrent(request)) return;
     setState(() {
       _visibleFilterIds = resolution.visibleIds;
       _contentMatchDepartmentIds = resolution.contentCategoryIds;
@@ -312,6 +373,7 @@ class _DeptEmployeePickerSheetState
   }
 
   Future<void> _loadEmployees({String? departmentId, String? keyword}) async {
+    if (!_canUseCandidates) return;
     final request = ++_requestVersion;
     if (departmentId == null && (keyword == null || keyword.isEmpty)) {
       setState(() {
@@ -336,13 +398,13 @@ class _DeptEmployeePickerSheetState
             departmentId: departmentId,
             includeSubtree: true,
           );
-      if (!mounted || request != _requestVersion) return;
+      if (!_isCurrent(request)) return;
       setState(() {
         _replacePage(result, departmentId: departmentId, keyword: keyword);
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || request != _requestVersion) return;
+      if (!_isCurrent(request)) return;
       setState(() {
         _error = '加载人员失败，请稍后重试';
         _loading = false;
@@ -385,14 +447,14 @@ class _DeptEmployeePickerSheetState
         employeeCode: employee.code,
         departmentId: employee.departmentId,
         departmentName: employee.departmentName,
-        subtitle: [
-          if (employee.departmentName != null) employee.departmentName!,
-          if (employee.status != null) _employeeStatusLabel(employee.status!),
-        ].join(' · '),
+        accountStatus: employee.accountStatus,
+        employmentStatus: employee.status,
       );
 
   Future<void> _loadMoreEmployees() async {
-    if (_loadingMore || _itemPage >= _itemTotalPages) return;
+    if (!_canUseCandidates || _loadingMore || _itemPage >= _itemTotalPages) {
+      return;
+    }
     final request = _requestVersion;
     final nextPage = _itemPage + 1;
     setState(() {
@@ -410,7 +472,7 @@ class _DeptEmployeePickerSheetState
             departmentId: _pageDepartmentId,
             includeSubtree: true,
           );
-      if (!mounted || request != _requestVersion) return;
+      if (!_isCurrent(request)) return;
       setState(() {
         _items = [
           ..._items,
@@ -426,7 +488,7 @@ class _DeptEmployeePickerSheetState
         _loadingMore = false;
       });
     } catch (_) {
-      if (!mounted || request != _requestVersion) return;
+      if (!_isCurrent(request)) return;
       setState(() {
         _loadingMore = false;
         _loadMoreError = '加载更多失败，请重试';
@@ -445,6 +507,7 @@ class _DeptEmployeePickerSheetState
 
   @override
   Widget build(BuildContext context) {
+    if (_invalidated) return const SizedBox.shrink();
     final theme = Theme.of(context);
     final treePane = UtenDepartmentTreeView(
       nodes: widget.tree,
@@ -452,13 +515,20 @@ class _DeptEmployeePickerSheetState
       flatLevelColors: true,
       expandOnRowTap: true,
       showSearch: false,
-      header: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-        child: UtenSearchBar(
-          controller: _keywordCtl,
-          hint: '搜索部门/员工姓名或工号',
-          onInputChanged: _onSearchInput,
-          onChanged: _applyGlobalSearch,
+      header: LayoutBuilder(
+        builder: (context, constraints) => Padding(
+          padding: EdgeInsets.fromLTRB(
+            constraints.maxWidth < 240 ? 8 : 12,
+            12,
+            constraints.maxWidth < 240 ? 8 : 12,
+            8,
+          ),
+          child: UtenSearchBar(
+            controller: _keywordCtl,
+            hint: '搜索部门/员工姓名或工号',
+            onInputChanged: _onSearchInput,
+            onChanged: _applyGlobalSearch,
+          ),
         ),
       ),
       visibleFilterIds: _visibleFilterIds,
@@ -475,7 +545,7 @@ class _DeptEmployeePickerSheetState
     final body = UtenSplitView(
       persistenceKey: 'employeePicker.departmentTree',
       initialLeadingWidth: _treeNaturalWidth(theme),
-      minLeadingWidth: 200,
+      minLeadingWidth: 160,
       maxLeadingWidth: 560,
       leadingNoun: '部门',
       selectedLeadingLabel:
@@ -511,7 +581,15 @@ class _DeptEmployeePickerSheetState
         UtenPickerConfirmBar(
           selectedCount: _picked == null ? 0 : 1,
           selectedLabel: _picked?.displayName,
-          onConfirm: () => Navigator.of(context).pop(_picked),
+          confirmEnabled:
+              _canUseCandidates &&
+              !_loading &&
+              _error == null &&
+              _picked != null,
+          onConfirm: () {
+            if (!_canUseCandidates || _loading || _error != null) return;
+            Navigator.of(context).pop(_picked);
+          },
         ),
       ],
     );
@@ -537,7 +615,7 @@ class _DeptEmployeePickerSheetState
 
     measure(widget.tree);
     painter.dispose();
-    return (widest + 65).clamp(200, 560);
+    return (widest + 65).clamp(160, 560);
   }
 
   Widget _buildRightPane(ThemeData theme) {
@@ -563,12 +641,12 @@ class _DeptEmployeePickerSheetState
               ),
             ),
           ),
-        Expanded(child: _buildList(theme)),
+        Expanded(child: _buildTable(theme)),
       ],
     );
   }
 
-  Widget _buildList(ThemeData theme) {
+  Widget _buildTable(ThemeData theme) {
     if (_loading) {
       return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
     }
@@ -593,70 +671,101 @@ class _DeptEmployeePickerSheetState
     }
     final showFooter =
         _loadingMore || _loadMoreError != null || _itemPage < _itemTotalPages;
-    return UtenLoadMoreBoundary(
-      enabled:
-          !_loadingMore &&
-          _loadMoreError == null &&
-          _itemPage < _itemTotalPages,
-      scope: (_pageDepartmentId, _pageKeyword, _requestVersion),
-      onLoadMore: _loadMoreEmployees,
-      child: ListView.separated(
-        itemCount: _items.length + (showFooter ? 1 : 0),
-        separatorBuilder: (_, _) => const Divider(height: 1),
-        itemBuilder: (ctx, i) {
-          if (i == _items.length) {
-            if (_loadingMore) {
-              return const Padding(
-                padding: EdgeInsets.all(16),
-                child: Center(
-                  child: CircularProgressIndicator(strokeWidth: 2.5),
-                ),
-              );
-            }
-            return Padding(
-              padding: const EdgeInsets.all(12),
-              child: Center(
-                child: TextButton.icon(
-                  key: const ValueKey('department-employee-load-more'),
-                  onPressed: _loadMoreEmployees,
-                  icon: Icon(
-                    _loadMoreError == null
-                        ? Icons.expand_more_rounded
-                        : Icons.refresh_rounded,
-                  ),
-                  label: Text(_loadMoreError ?? '加载更多员工'),
-                ),
+    final requestVersion = _requestVersion;
+    return Column(
+      children: [
+        Expanded(
+          child: MasterDataTableView<UtenEmployeePickerItem>(
+            key: const ValueKey('department-employee-table'),
+            columns: [
+              MasterColumnDef(
+                key: 'name',
+                label: '姓名',
+                width: 140,
+                value: (employee) => employee.name,
+                columnSearchEnabled: false,
               ),
-            );
-          }
-          final e = _items[i];
-          final picked = e.id == _picked?.id;
-          return ListTile(
-            selected: picked,
-            selectedTileColor: utenTableSelectedRowColor(theme),
-            title: Text(e.displayName),
-            subtitle: e.subtitle == null ? null : Text(e.subtitle!),
-            trailing: picked
-                ? Icon(
-                    Icons.check_circle_rounded,
-                    size: 20,
-                    color: theme.colorScheme.primary,
-                  )
+              MasterColumnDef(
+                key: 'employeeCode',
+                label: '工号',
+                width: 120,
+                value: (employee) => employee.employeeCode,
+                columnSearchEnabled: false,
+              ),
+              MasterColumnDef(
+                key: 'department',
+                label: '部门',
+                width: 200,
+                value: (employee) => employee.departmentName,
+                columnSearchEnabled: false,
+              ),
+              MasterColumnDef(
+                key: 'accountStatus',
+                label: '账号状态',
+                width: 100,
+                value: (employee) =>
+                    employeeAccountStatusLabel(employee.accountStatus),
+                columnSearchEnabled: false,
+              ),
+              MasterColumnDef(
+                key: 'employmentStatus',
+                label: '在职状态',
+                width: 100,
+                value: (employee) =>
+                    employeeEmploymentStatusLabel(employee.employmentStatus),
+                columnSearchEnabled: false,
+              ),
+            ],
+            items: _items,
+            rowKeyOf: (employee) => employee.id,
+            singleTapRows: true,
+            isSelected: (employee) => employee.id == _picked?.id,
+            onRowTap: (employee) {
+              if (_loading || !_isCurrent(requestVersion)) return;
+              setState(() => _picked = employee);
+            },
+            facets: const {},
+            nullCounts: const {},
+            filters: const {},
+            onFilterChanged: (_, _) {},
+            paginationScope: (_pageDepartmentId, _pageKeyword, _requestVersion),
+            loadingMore: _loadingMore,
+            onLoadMore:
+                !_loadingMore &&
+                    _loadMoreError == null &&
+                    _itemPage < _itemTotalPages
+                ? _loadMoreEmployees
                 : null,
-            onTap: () => setState(() => _picked = e),
-          );
-        },
-      ),
+            showPaginationControls: false,
+            showFullscreenToggle: false,
+            showColumnChooser: false,
+            showSelectionSummary: false,
+            enableTextSelection: false,
+          ),
+        ),
+        if (showFooter)
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: _loadingMore
+                ? const SizedBox.square(
+                    dimension: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2.5),
+                  )
+                : TextButton.icon(
+                    key: const ValueKey('department-employee-load-more'),
+                    onPressed: _loadMoreEmployees,
+                    icon: Icon(
+                      _loadMoreError == null
+                          ? Icons.expand_more_rounded
+                          : Icons.refresh_rounded,
+                    ),
+                    label: Text(_loadMoreError ?? '加载更多员工'),
+                  ),
+          ),
+      ],
     );
   }
 }
-
-String _employeeStatusLabel(String status) => switch (status) {
-  'active' => '在职',
-  'probation' => '试用',
-  'onLeave' => '休假',
-  _ => status,
-};
 
 /// 只读展示 + 点击打开 [showUtenDepartmentEmployeePicker] 的表单字段
 /// （MasterFieldDef.customBuilder 场景，如模具「保管人」；只提交员工 id，

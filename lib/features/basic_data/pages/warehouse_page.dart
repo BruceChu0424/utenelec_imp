@@ -26,6 +26,7 @@ import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
@@ -674,8 +675,6 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
 
   Widget _buildDraftHost(BuildContext context) {
     ref.watch(currentPermissionsProvider);
-    final theme = Theme.of(context);
-    final total = _page?.total ?? 0;
     return Scaffold(
       appBar: UtenAppBar(
         title: '仓库资料',
@@ -690,6 +689,20 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
           ),
         ],
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: _canCreate
+          ? UtenFloatingActionGroup(
+              children: [
+                UtenButton(
+                  size: UtenButtonSize.large,
+                  icon: Icons.add_rounded,
+                  onPressed: _showCreate,
+                  child: const Text('添加仓库'),
+                ),
+              ],
+            )
+          : null,
       body: SafeArea(
         child: UtenContentContainer(
           child: Padding(
@@ -702,42 +715,17 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
                     left: UtenSpacing.s4,
                     right: UtenSpacing.s4,
                   ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.warehouse_outlined,
-                        size: 18,
-                        color: theme.colorScheme.primary,
-                      ),
-                      const SizedBox(width: UtenSpacing.s8),
-                      Text(
-                        '仓库 ($total)',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(width: UtenSpacing.s12),
-                      Expanded(
-                        child: UtenSearchBar(
-                          hint: '搜索仓库(名称/编号)',
-                          initialValue: _keyword,
-                          onChanged: _onKeywordChanged,
-                        ),
-                      ),
-                      if (_canCreate) ...[
-                        const SizedBox(width: UtenSpacing.s8),
-                        UtenButton(
-                          type: UtenButtonType.tonal,
-                          icon: Icons.add_rounded,
-                          onPressed: _showCreate,
-                          child: const Text('添加仓库'),
-                        ),
-                      ],
-                    ],
+                  child: UtenSearchBar(
+                    hint: '搜索仓库(名称/编号)',
+                    initialValue: _keyword,
+                    onChanged: _onKeywordChanged,
                   ),
                 ),
                 Expanded(
                   child: MasterDataTableView<WarehouseListItem>(
+                    bottomContentPadding: _canCreate
+                        ? UtenFloatingActionGroup.scrollClearance
+                        : 0,
                     columnEditingEnabled: _canEdit,
                     tableKey:
                         'features.basic_data.pages.warehouse_page.WarehousePageState._buildDraftHost.1',
@@ -897,6 +885,8 @@ class _WarehouseKeepersDialogState extends State<_WarehouseKeepersDialog> {
       employeeCode: keeper.code,
       departmentId: keeper.departmentId,
       departmentName: keeper.departmentName,
+      accountStatus: keeper.accountStatus,
+      employmentStatus: keeper.employmentStatus,
       subtitle: notes.isEmpty ? null : notes.join(' · '),
     );
   }

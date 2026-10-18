@@ -12,6 +12,7 @@ import '../../../shared/models/paged_result.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../components/buttons/uten_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -19,7 +20,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_segmented_filter.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -31,7 +32,7 @@ import '../widgets/visitor_status_ui.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 
 // 在办仅含申请中和已批准待来访；签到、拒绝和取消均进入历史单据。
-enum VisitorFilter { all, pending, approved, history }
+enum VisitorFilter { pending, approved, history }
 
 class VisitorHomePage extends ConsumerStatefulWidget {
   const VisitorHomePage({super.key});
@@ -41,12 +42,11 @@ class VisitorHomePage extends ConsumerStatefulWidget {
 }
 
 class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
-  VisitorFilter _filter = VisitorFilter.all;
+  VisitorFilter _filter = VisitorFilter.pending;
   int _page = 1;
   final _retainedPage = RetainedAsyncPage<PagedResult<VisitorApplication>>();
 
   String? get _status => switch (_filter) {
-    VisitorFilter.all => 'pending,hostReviewing,approved',
     VisitorFilter.pending => 'pending,hostReviewing',
     VisitorFilter.approved => 'approved',
     VisitorFilter.history => 'checkedIn,rejected,cancelled',
@@ -87,39 +87,42 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
         ],
       ),
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.go(RouteName.visitorApply),
-        backgroundColor: Theme.of(context).colorScheme.primary,
-        foregroundColor: Theme.of(context).colorScheme.onPrimary,
-        icon: const Icon(Icons.add_rounded),
-        label: Text(l10n.visitorApplyNew),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: UtenFloatingActionGroup(
+        children: [
+          UtenButton(
+            size: UtenButtonSize.large,
+            onPressed: () => context.go(RouteName.visitorApply),
+            icon: Icons.add_rounded,
+            child: Text(l10n.visitorApplyNew),
+          ),
+        ],
       ),
       // 全断点收敛：水平 gutter 由容器提供，页面自身水平 padding 让位
       body: UtenContentContainer(
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.only(
-                top: UtenSpacing.s12,
-                bottom: UtenSpacing.s8,
-              ),
-              child: UtenSegmentedFilter<VisitorFilter>(
-                selected: _filter,
-                onChanged: (v) => setState(() {
+              padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+              child: UtenFilterToolbar<VisitorFilter>(
+                segmentsKey: const Key('visitor-home-segments'),
+                autoSelectBadge: false,
+                selected: {_filter},
+                onSelectionChanged: (v) => setState(() {
                   _filter = v;
                   _page = 1;
                 }),
                 segments: [
-                  const UtenSegment(value: VisitorFilter.all, label: '全部在办'),
-                  UtenSegment(
+                  UtenFilterSegment(
                     value: VisitorFilter.pending,
                     label: l10n.visitorFilterPending,
                   ),
-                  UtenSegment(
+                  UtenFilterSegment(
                     value: VisitorFilter.approved,
                     label: l10n.visitorFilterApproved,
                   ),
-                  const UtenSegment(
+                  const UtenFilterSegment(
                     value: VisitorFilter.history,
                     label: '历史单据',
                   ),

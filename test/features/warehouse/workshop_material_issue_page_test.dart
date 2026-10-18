@@ -460,6 +460,8 @@ void main() {
     expect(find.text('可发 300 公斤'), findsOneWidget);
     await tester.tap(find.byKey(const Key('warehouse-picker-entry-leafB')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey('wm-line-bags-r2')), '2');
     await tester.pump();
     expect(_controller(tester, 'wm-line-qty-r2').text, '50');

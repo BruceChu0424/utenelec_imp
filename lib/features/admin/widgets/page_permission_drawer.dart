@@ -9,7 +9,6 @@
 //     保存仍走 CAS 批量端点(expectedVersion 冲突即刷新)。
 //
 // 数据契约：权限项零写死，全部来自服务端目录(page_permission_delegation_models)。
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,8 +25,6 @@ import '../../department/widgets/uten_department_tree_view.dart';
 import '../../../components/layout/uten_split_view.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
-import '../../../components/layout/uten_table_column_kit.dart'
-    show utenTableSelectedRowColor;
 import '../../../shared/hierarchy/uten_tree_path.dart';
 import '../../../shared/auth/session_snapshot_provider.dart';
 import '../models/managed_permission_department_forest.dart';
@@ -40,6 +37,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/formatters/employee_display.dart';
 import '../../employee/widgets/employee_account_provision_flow.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
 import 'perm_catalog_group_section.dart';
 import '../models/admin_models.dart';
 import '../repositories/admin_repository.dart';
@@ -194,10 +192,9 @@ Future<void> showPagePermissionDrawer(
     },
     pageBuilder: (context, _, _) {
       final media = MediaQuery.of(context);
-      final width = math.min(
-        media.size.width,
-        math.max(720.0, media.size.width * 0.5),
-      );
+      // 滑窗宽度口径 2026-10-17：与其他右滑面板同一口径（browse 档 75% 屏宽，
+      // 720 只作小屏下限），见 uten_adaptive_panel.dart 的 UtenPanelWidth。
+      final width = utenPanelWidth(media.size, 720, UtenPanelWidth.browse);
       return Align(
         alignment: Alignment.centerRight,
         child: SizedBox(
@@ -437,6 +434,8 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
             departmentManager: employee.departmentManager,
             hasAccount: true,
             accountActive: true,
+            accountStatus: 'active',
+            employmentStatus: employee.employmentStatus,
           );
     setState(() {
       _staff = _staff
@@ -886,7 +885,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
       selectedLeadingKey: _departmentId,
       compactHeader: tree.header,
       initialLeadingWidth: 240,
-      minLeadingWidth: 200,
+      minLeadingWidth: 160,
       maxLeadingWidth: 560,
       leading: tree,
       trailing: people,
@@ -916,12 +915,85 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
       );
     }
     final hasMore = _page < _totalPages;
-    return ListView.builder(
-      padding: const EdgeInsets.all(UtenSpacing.s8),
-      itemCount: _staff.length + (hasMore || _staffError != null ? 1 : 0),
-      itemBuilder: (context, index) {
-        if (index == _staff.length) {
-          return Padding(
+    final requestVersion = _staffRequest;
+    return Column(
+      children: [
+        Expanded(
+          child: MasterDataTableView<PagePermissionStaffSummary>(
+            key: const ValueKey('page-permission-staff-table'),
+            columns: [
+              MasterColumnDef(
+                key: 'name',
+                label: '姓名',
+                width: 140,
+                value: (employee) => employee.fullName ?? '未命名员工',
+                columnSearchEnabled: false,
+              ),
+              MasterColumnDef(
+                key: 'employeeCode',
+                label: '工号',
+                width: 120,
+                value: (employee) => employee.code,
+                columnSearchEnabled: false,
+              ),
+              MasterColumnDef(
+                key: 'department',
+                label: '部门',
+                width: 200,
+                value: (employee) => employee.departmentName,
+                columnSearchEnabled: false,
+              ),
+              MasterColumnDef(
+                key: 'position',
+                label: '岗位',
+                width: 140,
+                value: (employee) => employee.positionName,
+                columnSearchEnabled: false,
+              ),
+              MasterColumnDef(
+                key: 'accountStatus',
+                label: '账号状态',
+                width: 120,
+                value: _staffAccountStatusLabel,
+                cellBuilder: (context, employee) =>
+                    _staffAccountStatus(employee),
+                columnSearchEnabled: false,
+              ),
+              MasterColumnDef(
+                key: 'employmentStatus',
+                label: '在职状态',
+                width: 110,
+                value: (employee) =>
+                    employeeEmploymentStatusLabel(employee.employmentStatus),
+                columnSearchEnabled: false,
+              ),
+            ],
+            items: _staff,
+            rowKeyOf: (employee) => employee.employeeId,
+            rowWidgetKeyOf: (employee) =>
+                ValueKey('page-permission-staff-${employee.employeeId}'),
+            singleTapRows: true,
+            isSelected: (employee) =>
+                _pickedStaff?.employeeId == employee.employeeId,
+            onRowTap: (employee) {
+              if (_staffLoading || requestVersion != _staffRequest) return;
+              setState(() => _pickedStaff = employee);
+            },
+            facets: const {},
+            nullCounts: const {},
+            filters: const {},
+            onFilterChanged: (_, _) {},
+            paginationScope: (_departmentId, _search),
+            loadingMore: _loadingMore,
+            showPaginationControls: false,
+            showFullscreenToggle: false,
+            showColumnChooser: false,
+            showSelectionSummary: false,
+            enableTextSelection: false,
+          ),
+        ),
+        if (hasMore || _staffError != null)
+          Padding(
             padding: const EdgeInsets.all(UtenSpacing.s8),
             child: OutlinedButton(
               onPressed: _loadingMore ? null : () => _loadStaff(append: true),
@@ -932,55 +1004,25 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
                     )
                   : Text(_staffError ?? '加载更多'),
             ),
-          );
-        }
-        final employee = _staff[index];
-        return Card(
-          elevation: 0,
-          margin: const EdgeInsets.only(bottom: UtenSpacing.s8),
-          clipBehavior: Clip.antiAlias,
-          child: ListTile(
-            key: ValueKey('page-permission-staff-${employee.employeeId}'),
-            leading: CircleAvatar(child: Text(_initial(employee.fullName))),
-            title: Text(
-              formatEmployeeDisplayName(
-                employee.fullName ?? '未命名员工',
-                employee.code,
-              ),
-            ),
-            subtitle: Text(
-              [
-                if (employee.departmentName.trim().isNotEmpty)
-                  employee.departmentName,
-                if ((employee.positionName ?? '').isNotEmpty)
-                  employee.positionName!,
-              ].join(' · '),
-            ),
-            trailing: _pickedStaff?.employeeId == employee.employeeId
-                ? Icon(
-                    Icons.check_circle_rounded,
-                    color: Theme.of(context).colorScheme.primary,
-                  )
-                : _staffAccountStatus(employee),
-            selected: _pickedStaff?.employeeId == employee.employeeId,
-            selectedTileColor: utenTableSelectedRowColor(Theme.of(context)),
-            onTap: () => setState(() => _pickedStaff = employee),
           ),
-        );
-      },
+      ],
     );
+  }
+
+  String _staffAccountStatusLabel(PagePermissionStaffSummary employee) {
+    return employeeAccountStatusLabel(employee.accountStatus);
   }
 
   Widget _staffAccountStatus(PagePermissionStaffSummary employee) {
     if (employee.hasAccount && employee.accountActive) {
-      return const Icon(Icons.chevron_right_rounded);
+      return Text(
+        _staffAccountStatusLabel(employee),
+        key: ValueKey('page-permission-account-status-${employee.employeeId}'),
+      );
     }
     final theme = Theme.of(context);
-    final l10n = AppLocalizations.of(context);
     final hasDisabledAccount = employee.hasAccount;
-    final label = hasDisabledAccount
-        ? l10n.accountStatusInactive
-        : l10n.accountStatusNotProvisioned;
+    final label = _staffAccountStatusLabel(employee);
     final foreground = hasDisabledAccount
         ? theme.colorScheme.error
         : theme.colorScheme.onSurfaceVariant;

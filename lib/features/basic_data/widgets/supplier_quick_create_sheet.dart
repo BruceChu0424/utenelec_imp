@@ -14,6 +14,8 @@ import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/layout/uten_adaptive_panel.dart';
+import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/product_category_node.dart';
 import '../models/supplier_node.dart';
@@ -86,8 +88,8 @@ Future<SupplierDetail?> showSupplierQuickCreateSheet(
   ).then((_) => created);
 }
 
-/// 供应商分类树选择字段（quick-create 弹窗用）：点开底部抽屉按层级缩进选一个分类，
-/// 选中值经 [onChanged]（MasterFieldContext 回调）回写，buildBody 校验必填。
+/// 供应商分类树选择字段（quick-create 弹窗用）：点开抽屉按层级缩进暂存一个分类，
+/// 确定后经 [onChanged]（MasterFieldContext 回调）回写，buildBody 校验必填。
 class _SupplierCategoryPickerField extends ConsumerStatefulWidget {
   const _SupplierCategoryPickerField({
     this.initialValue,
@@ -108,11 +110,23 @@ class _SupplierCategoryPickerFieldState
   List<ProductCategoryNode>? _tree;
   String? _error;
   String? _selectedName;
+  String? _selectedId;
 
   @override
   void initState() {
     super.initState();
+    _selectedId = widget.initialValue;
     _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SupplierCategoryPickerField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialValue == widget.initialValue) return;
+    _selectedId = widget.initialValue;
+    _selectedName = _flatten(
+      _tree ?? const [],
+    ).where((entry) => entry.$1.id == _selectedId).firstOrNull?.$1.name;
   }
 
   Future<void> _load() async {
@@ -122,11 +136,9 @@ class _SupplierCategoryPickerFieldState
       setState(() {
         _tree = tree;
         _error = null;
-        _selectedName ??= _flatten(tree)
-            .where((entry) => entry.$1.id == widget.initialValue)
-            .firstOrNull
-            ?.$1
-            .name;
+        _selectedName ??= _flatten(
+          tree,
+        ).where((entry) => entry.$1.id == _selectedId).firstOrNull?.$1.name;
       });
     } catch (_) {
       if (!mounted) return;
@@ -154,44 +166,81 @@ class _SupplierCategoryPickerFieldState
       if (!mounted || _tree == null) return;
     }
     final flattened = _flatten(_tree!);
-    final node = await showModalBottomSheet<ProductCategoryNode>(
+    var pending = flattened
+        .where((entry) => entry.$1.id == _selectedId)
+        .firstOrNull
+        ?.$1;
+    final node = await showUtenAdaptivePanel<ProductCategoryNode>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(UtenRadius.lg),
-        ),
-      ),
-      builder: (sheetCtx) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.6,
-        builder: (_, scrollCtl) => ListView.builder(
-          controller: scrollCtl,
-          itemCount: flattened.length,
-          itemBuilder: (_, i) {
-            final (node, depth) = flattened[i];
-            return ListTile(
-              dense: true,
-              contentPadding: EdgeInsets.only(
-                left: UtenSpacing.s16 + depth * UtenSpacing.s16,
-                right: UtenSpacing.s16,
+      widthFraction: UtenPanelWidth.form,
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (context, setSheetState) => Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '选择供应商分类',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: '关闭',
+                    onPressed: () => Navigator.of(sheetCtx).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
               ),
-              leading: Icon(
-                depth == 0
-                    ? Icons.folder_outlined
-                    : Icons.subdirectory_arrow_right_rounded,
-                size: 18,
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: ListView.builder(
+                itemCount: flattened.length,
+                itemBuilder: (_, i) {
+                  final (node, depth) = flattened[i];
+                  final selected = pending?.id == node.id;
+                  return ListTile(
+                    key: ValueKey('supplier-category-option-${node.id}'),
+                    dense: true,
+                    selected: selected,
+                    selectedTileColor: Theme.of(
+                      context,
+                    ).colorScheme.primaryContainer,
+                    contentPadding: EdgeInsets.only(
+                      left: UtenSpacing.s16 + depth * UtenSpacing.s16,
+                      right: UtenSpacing.s16,
+                    ),
+                    leading: Icon(
+                      depth == 0
+                          ? Icons.folder_outlined
+                          : Icons.subdirectory_arrow_right_rounded,
+                      size: 18,
+                    ),
+                    title: Text(node.name),
+                    trailing: selected
+                        ? const Icon(Icons.check_circle_rounded)
+                        : null,
+                    onTap: () => setSheetState(() => pending = node),
+                  );
+                },
               ),
-              title: Text(node.name),
-              onTap: () => Navigator.of(sheetCtx).pop(node),
-            );
-          },
+            ),
+            UtenPickerConfirmBar(
+              selectedCount: pending == null ? 0 : 1,
+              selectedLabel: pending?.name,
+              onConfirm: () => Navigator.of(sheetCtx).pop(pending),
+            ),
+          ],
         ),
       ),
     );
-    if (node == null) return;
-    setState(() => _selectedName = node.name);
+    if (!mounted || node == null) return;
+    setState(() {
+      _selectedId = node.id;
+      _selectedName = node.name;
+    });
     widget.onChanged(node.id);
   }
 
@@ -201,6 +250,7 @@ class _SupplierCategoryPickerFieldState
     final empty = _selectedName == null || _selectedName!.isEmpty;
     final showRed = empty && _error == null;
     return InkWell(
+      key: const ValueKey('supplier-category-picker-field'),
       onTap: _pick,
       child: InputDecorator(
         decoration: applyRequiredEmpty(

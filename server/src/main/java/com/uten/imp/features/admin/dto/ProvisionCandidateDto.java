@@ -16,4 +16,11 @@ public record ProvisionCandidateDto(
         String code,
         String departmentName,
         boolean hasPhone,
-        UUID departmentId) {}
+        UUID departmentId,
+        String accountStatus,
+        String employmentStatus) {
+    public ProvisionCandidateDto(UUID employeeId, String name, String code, String departmentName,
+                                 boolean hasPhone, UUID departmentId) {
+        this(employeeId, name, code, departmentName, hasPhone, departmentId, null, null);
+    }
+}

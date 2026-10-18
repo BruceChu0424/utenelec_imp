@@ -8,14 +8,14 @@
 //
 // 交互契约：
 // - 顶部固定「全部」行 = 清空筛选（当前无选中时打勾）；
-// - 点分类行 = 选中并立即关闭（一次点击到位，不加确认按钮）；有子类的行左侧
-//   chevron 单独负责展开/收起，所以 expandOnRowTap 必须为 false，否则点一下
-//   既展开又关窗；
+// - 点分类行或「全部」只更新暂存选择，底部「确定」才返回；取消/关闭放弃暂存；
+// - 有子类的行左侧 chevron 单独负责展开/收起，行点击只选择；
 // - 零货品分类整支隐藏（goodsCount == 0；null = 后端未给计数，不隐藏），
 //   与旧下拉同口径——空分类只是噪音。
 import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_adaptive_panel.dart';
+import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/product_category_node.dart';
 import 'uten_category_tree_view.dart';
@@ -83,14 +83,23 @@ Future<ProductCategoryPickResult?> showUtenProductCategoryPickerPanel(
 }) {
   // 单根提升：整库只有一个「货品资料」包装根时不占一层，直接列其子类
   //（与货品选择滑窗同口径，2026-09-24）。
-  final visibleTree = hoistSingleRootTree(
-    hideEmptyCategories ? pruneCategoriesWithoutGoods(tree) : tree,
-  );
+  final selectableTree = hideEmptyCategories
+      ? pruneCategoriesWithoutGoods(tree)
+      : tree;
+  final visibleTree = hoistSingleRootTree(selectableTree);
+  // 提升只隐藏包装根的层级，不使其已有筛选失效；被剪枝/删除的初值不可确认。
+  final initialName = findCategoryName(selectableTree, selectedId);
+  final initialSelection = selectedId == null || selectedId.isEmpty
+      ? const ProductCategoryPickResult()
+      : initialName == null
+      ? null
+      : ProductCategoryPickResult(id: selectedId, name: initialName);
   return showUtenAdaptivePanel<ProductCategoryPickResult>(
     context: context,
+    widthFraction: UtenPanelWidth.form,
     builder: (_) => _ProductCategoryPickerSheet(
       tree: visibleTree,
-      selectedId: selectedId,
+      initialSelection: initialSelection,
       title: title,
       subtitle: subtitle,
       allLabel: allLabel,
@@ -98,25 +107,40 @@ Future<ProductCategoryPickResult?> showUtenProductCategoryPickerPanel(
   );
 }
 
-class _ProductCategoryPickerSheet extends StatelessWidget {
+class _ProductCategoryPickerSheet extends StatefulWidget {
   const _ProductCategoryPickerSheet({
     required this.tree,
     required this.title,
     required this.subtitle,
     required this.allLabel,
-    this.selectedId,
+    this.initialSelection,
   });
 
   final List<ProductCategoryNode> tree;
-  final String? selectedId;
+  final ProductCategoryPickResult? initialSelection;
   final String title;
   final String subtitle;
   final String allLabel;
 
   @override
+  State<_ProductCategoryPickerSheet> createState() =>
+      _ProductCategoryPickerSheetState();
+}
+
+class _ProductCategoryPickerSheetState
+    extends State<_ProductCategoryPickerSheet> {
+  ProductCategoryPickResult? _pendingSelection;
+
+  @override
+  void initState() {
+    super.initState();
+    _pendingSelection = widget.initialSelection;
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final allSelected = selectedId == null || selectedId!.isEmpty;
+    final allSelected = _pendingSelection?.isAll ?? false;
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
@@ -132,13 +156,13 @@ class _ProductCategoryPickerSheet extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          title,
+                          widget.title,
                           style: theme.textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w700,
                           ),
                         ),
                         Text(
-                          subtitle,
+                          widget.subtitle,
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
@@ -155,7 +179,7 @@ class _ProductCategoryPickerSheet extends StatelessWidget {
               ),
             ),
             const Divider(height: 1),
-            // 「全部」= 清空筛选；与树行同为「一次点击到位」。
+            // 「全部」同样先暂存，确定后才清空调用方的筛选。
             ListTile(
               key: const Key('category-picker-all'),
               selected: allSelected,
@@ -164,19 +188,20 @@ class _ProductCategoryPickerSheet extends StatelessWidget {
                 Icons.all_inbox_rounded,
                 color: theme.colorScheme.primary,
               ),
-              title: Text(allLabel),
+              title: Text(widget.allLabel),
               trailing: allSelected
                   ? Icon(
                       Icons.check_circle_rounded,
                       color: theme.colorScheme.primary,
                     )
                   : null,
-              onTap: () =>
-                  Navigator.of(context).pop(const ProductCategoryPickResult()),
+              onTap: () => setState(
+                () => _pendingSelection = const ProductCategoryPickResult(),
+              ),
             ),
             const Divider(height: 1),
             Expanded(
-              child: tree.isEmpty
+              child: widget.tree.isEmpty
                   ? Center(
                       child: Padding(
                         padding: const EdgeInsets.all(UtenSpacing.s24),
@@ -190,14 +215,10 @@ class _ProductCategoryPickerSheet extends StatelessWidget {
                     )
                   : UtenCategoryTreeView<ProductCategoryNode>(
                       key: const Key('category-picker-tree'),
-                      nodes: tree,
+                      nodes: widget.tree,
                       mode: UtenCategoryTreeMode.single,
-                      selectedIds: allSelected
-                          ? const <String>{}
-                          : <String>{selectedId!},
-                      // 行点击 = 选中并关闭；展开/收起交给左侧 chevron
-                      //（默认 expandOnRowTap=false，此处必须保持默认——
-                      //  开了会「点一下既展开又关窗」）。
+                      selectedIds: {?_pendingSelection?.id},
+                      // 行点击只暂存选择；展开/收起交给左侧 chevron。
                       // 左树默认全部收起（2026-09-24 用户口径，与货品选择滑窗同款）。
                       initiallyExpandDepth: 0,
                       initiallyCollapsedNames: const {'未分类'},
@@ -213,10 +234,20 @@ class _ProductCategoryPickerSheet extends StatelessWidget {
                                 color: theme.colorScheme.onSurfaceVariant,
                               ),
                             ),
-                      onToggleSelect: (node) => Navigator.of(context).pop(
-                        ProductCategoryPickResult(id: node.id, name: node.name),
+                      onToggleSelect: (node) => setState(
+                        () => _pendingSelection = ProductCategoryPickResult(
+                          id: node.id,
+                          name: node.name,
+                        ),
                       ),
                     ),
+            ),
+            UtenPickerConfirmBar(
+              selectedCount: _pendingSelection == null ? 0 : 1,
+              selectedLabel: allSelected
+                  ? widget.allLabel
+                  : _pendingSelection?.name,
+              onConfirm: () => Navigator.of(context).pop(_pendingSelection),
             ),
           ],
         ),

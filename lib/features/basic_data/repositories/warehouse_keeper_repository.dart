@@ -20,7 +20,12 @@ class WarehouseKeeper {
     this.hasAccount = true,
     this.warehouseMember = true,
     this.duplicateName = false,
+    this.accountStatus,
+    this.employmentStatus,
   });
+
+  final String? accountStatus;
+  final String? employmentStatus;
 
   final String employeeId;
   final String name;
@@ -47,6 +52,8 @@ class WarehouseKeeper {
 
   factory WarehouseKeeper.fromJson(Map<String, dynamic> json) =>
       WarehouseKeeper(
+        accountStatus: json['accountStatus'] as String?,
+        employmentStatus: json['employmentStatus'] as String?,
         employeeId: json['employeeId'].toString(),
         name: (json['name'] as String?) ?? '',
         code: json['code'] as String?,

@@ -23,6 +23,7 @@ import 'package:uten_imp/features/finance/config/finance_doc_config.dart';
 import 'package:uten_imp/features/finance/models/finance_doc.dart';
 import 'package:uten_imp/features/finance/pages/finance_doc_detail_page.dart';
 import 'package:uten_imp/features/finance/pages/finance_doc_edit_page.dart';
+import 'package:uten_imp/features/finance/providers/finance_name_provider.dart';
 import 'package:uten_imp/features/finance/widgets/finance_grid_columns.dart';
 import 'package:uten_imp/features/finance/widgets/finance_receipt_totals.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -299,7 +300,7 @@ void main() {
       expect(rateColumn.required, isFalse);
       // 2026-09-14：收款账户由平铺下拉改为侧滑选择面板（账户一多下拉难找）。
       // 契约不变：已选账户按「编号 · 名称 · 币种」回显，面板里只列「使用中」
-      // 的账户——这里全量字典只有一个合规账户，所以恰好一条。
+      // 的账户。当前面板是分列表格，选行后需确认；此字典只有一个合规账户。
       expect(find.text('ZH000001 · 人民币账户 · 人民币'), findsOneWidget);
       await Scrollable.ensureVisible(
         tester.element(find.text('ZH000001 · 人民币账户 · 人民币')),
@@ -308,9 +309,33 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('ZH000001 · 人民币账户 · 人民币'));
       await tester.pumpAndSettle();
-      expect(find.widgetWithText(ListTile, 'ZH000001 · 人民币账户'), findsOneWidget);
-      expect(find.byType(ListTile), findsOneWidget);
-      await tester.tap(find.widgetWithText(ListTile, 'ZH000001 · 人民币账户'));
+      final accountsTable = tester
+          .widget<MasterDataTableView<FinanceAccountReference>>(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is MasterDataTableView<FinanceAccountReference>,
+            ),
+          );
+      expect(accountsTable.items.map((account) => account.id), ['account-1']);
+      final accountRow = find.byKey(
+        const ValueKey('finance-account-picker-account-1'),
+      );
+      await tester.ensureVisible(accountRow);
+      expect(
+        find.descendant(of: accountRow, matching: find.text('人民币账户')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: accountRow, matching: find.text('ZH000001')),
+        findsOneWidget,
+      );
+      await tester.tap(accountRow);
+      await tester.pumpAndSettle();
+      final accountConfirm = find.byKey(
+        const Key('finance-account-picker-confirm'),
+      );
+      await tester.ensureVisible(accountConfirm);
+      await tester.tap(accountConfirm);
       await tester.pumpAndSettle();
       // 2026-09-14：手续费口径改为「费用结算方式」下拉三选（无 / 从本批扣除 /
       // 由其它真实账户另付），原来那句常驻说明「另付费用单独记录」并入选项文案。

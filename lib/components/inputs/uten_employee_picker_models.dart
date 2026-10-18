@@ -8,6 +8,8 @@ class UtenEmployeePickerItem {
     this.employeeCode,
     this.departmentId,
     this.departmentName,
+    this.accountStatus,
+    this.employmentStatus,
     this.subtitle,
     this.enabled = true,
     this.disabledReason,
@@ -20,6 +22,11 @@ class UtenEmployeePickerItem {
   /// Stable department identity. Names and subtitles never identify a group.
   final String? departmentId;
   final String? departmentName;
+
+  /// Explicit account fact: notProvisioned/active/locked/disabled. Null means
+  /// the source did not provide this information, never "not provisioned".
+  final String? accountStatus;
+  final String? employmentStatus;
 
   /// Business information such as employment status, role or responsibility.
   final String? subtitle;
@@ -37,6 +44,8 @@ class UtenEmployeePickerItem {
       employeeCode == other.employeeCode &&
       departmentId == other.departmentId &&
       departmentName == other.departmentName &&
+      accountStatus == other.accountStatus &&
+      employmentStatus == other.employmentStatus &&
       subtitle == other.subtitle &&
       enabled == other.enabled &&
       disabledReason == other.disabledReason;

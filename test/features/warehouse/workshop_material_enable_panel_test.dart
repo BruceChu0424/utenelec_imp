@@ -217,6 +217,8 @@ void main() {
       expect(defective.enabled, isFalse, reason: '不良品仓不能当发料来源仓');
       await tester.tap(find.byKey(const Key('warehouse-picker-entry-plastic')));
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
+      await tester.pumpAndSettle();
       expect(find.text('仓库(14年版)-塑胶仓库'), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('wm-bin-panel-submit')));

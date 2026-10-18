@@ -717,6 +717,7 @@ class _AdminAiUsageRecordsPageState
     await showUtenAdaptivePanel<void>(
       context: context,
       drawerWidth: 480,
+      widthFraction: UtenPanelWidth.form,
       builder: (_) => _RecordDetailPanel(record: record),
     );
   }

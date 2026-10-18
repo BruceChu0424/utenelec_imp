@@ -39,6 +39,8 @@ Map<String, dynamic> draftEmployee(UtenEmployeePickerItem employee) => {
   'employeeCode': employee.employeeCode,
   'departmentId': employee.departmentId,
   'departmentName': employee.departmentName,
+  'accountStatus': employee.accountStatus,
+  'employmentStatus': employee.employmentStatus,
   'subtitle': employee.subtitle,
 };
 
@@ -49,6 +51,8 @@ UtenEmployeePickerItem restoreDraftEmployee(Map<String, dynamic> data) =>
       employeeCode: data['employeeCode'] as String?,
       departmentId: data['departmentId'] as String?,
       departmentName: data['departmentName'] as String?,
+      accountStatus: data['accountStatus'] as String?,
+      employmentStatus: data['employmentStatus'] as String?,
       subtitle: data['subtitle'] as String?,
     );
 

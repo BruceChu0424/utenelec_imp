@@ -426,10 +426,13 @@ class PurchaseDocDetail {
     this.applicantId,
     this.applicantName,
     this.purchaserId,
+    this.purchaserName,
     this.settlementMethodId,
     this.settlementStyleLegacy,
     this.senderId,
+    this.senderName,
     this.receiverId,
+    this.receiverName,
     this.makerId,
     this.approverId,
     this.makerName,
@@ -476,14 +479,26 @@ class PurchaseDocDetail {
   final String? applicantId;
   final String? applicantName;
   final String? purchaserId;
+
+  /// 采购员「姓名(工号)」（服务端按 purchaserId 解析；旧后端未下发时退回本地字典）
+  final String? purchaserName;
+
   final String? settlementMethodId;
   final int? settlementStyleLegacy;
   final String? senderId;
+
+  /// 交货人「姓名(工号)」（服务端按 senderId 解析；旧后端未下发时退回本地字典）
+  final String? senderName;
+
   final String? receiverId;
+
+  /// 收货人「姓名(工号)」（服务端按 receiverId 解析；旧后端未下发时退回本地字典）
+  final String? receiverName;
+
   final String? makerId;
   final String? approverId;
 
-  /// 制单员姓名（服务端解析；只读展示，不可修改）
+  /// 制单员「姓名(工号)」（服务端解析；只读展示，不可修改）
   final String? makerName;
 
   /// 制单时间 ISO（审计 created_at，创建后不可变）
@@ -540,10 +555,13 @@ class PurchaseDocDetail {
         applicantId: json['applicantId'] as String?,
         applicantName: json['applicantName'] as String?,
         purchaserId: json['purchaserId'] as String?,
+        purchaserName: json['purchaserName'] as String?,
         settlementMethodId: json['settlementMethodId'] as String?,
         settlementStyleLegacy: (json['settlementStyleLegacy'] as num?)?.toInt(),
         senderId: json['senderId'] as String?,
+        senderName: json['senderName'] as String?,
         receiverId: json['receiverId'] as String?,
+        receiverName: json['receiverName'] as String?,
         makerId: json['makerId'] as String?,
         makerName: json['makerName'] as String?,
         createdAt: json['createdAt'] as String?,

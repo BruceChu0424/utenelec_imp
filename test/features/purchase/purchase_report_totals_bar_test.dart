@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart';
+import 'package:uten_imp/components/layout/uten_app_bar.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/purchase/config/purchase_report_config.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_report_table_page.dart';
@@ -19,6 +20,10 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 void main() {
   testWidgets('服务端分页：合计条显示服务端合计，而不是对当前页求和', (tester) async {
     await _pumpReport(tester, const Size(1500, 1000));
+
+    final appBar = tester.widget<UtenAppBar>(find.byType(UtenAppBar));
+    expect(find.text(appBar.title!), findsOneWidget);
+    expect(find.textContaining('共 137'), findsNothing);
 
     expect(find.byType(UtenTotalsSummaryBar), findsOneWidget);
 

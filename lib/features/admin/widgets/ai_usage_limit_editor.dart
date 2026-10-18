@@ -85,6 +85,7 @@ Future<bool> showAiUsageLimitEditor(
   final saved = await showUtenAdaptivePanel<bool>(
     context: context,
     drawerWidth: 480,
+    widthFraction: UtenPanelWidth.form,
     // 正在改的限额不该被误点空白处丢掉; 关闭走右上角按钮。
     barrierDismissible: false,
     enableDrag: false,

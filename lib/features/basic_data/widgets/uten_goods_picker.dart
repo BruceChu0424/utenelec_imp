@@ -17,7 +17,6 @@
 // 返回完整 GoodsListItem（含 colorId/unitId 及展示名称；legacy 字段仅供历史只读显示），供调用方
 // 自动回填颜色/单位。
 import '../../../core/theme/uten_tokens.dart';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,9 +25,6 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
-import '../../../components/layout/uten_paged_picker_list.dart';
-import '../../../components/layout/uten_table_column_kit.dart'
-    show utenTableSelectedRowColor;
 import '../../../components/layout/uten_picker_footer_layout.dart';
 import '../../../components/layout/uten_split_view.dart';
 import '../../../components/layout/uten_segment_row.dart';
@@ -308,13 +304,11 @@ Future<List<GoodsListItem>> loadUtenGoodsPickerSuggestions(
 
 /// 弹出货品选择器，返回所选货品（完整 GoodsListItem）；取消返回 null。
 ///
-/// [requireConfirm]：默认 true（全站滑窗统一二次操作契约：点行只高亮勾选，
-/// 底部「取消/确定」确认后才返回）。传 false 恢复点行即选中并关闭的历史行为。
+/// 全站选择滑窗统一二次操作：点行只高亮勾选，底部「确定」后才返回。
 Future<GoodsListItem?> showUtenGoodsPicker(
   BuildContext context,
   WidgetRef ref, {
   UtenGoodsPickerScope scope = UtenGoodsPickerScope.sellable,
-  bool requireConfirm = true,
   UtenGoodsPickerDataSource? dataSource,
   String title = '选择货品',
   SensitiveReadBoundary? readBoundary,
@@ -325,7 +319,6 @@ Future<GoodsListItem?> showUtenGoodsPicker(
     ref,
     scope,
     multiSelect: false,
-    requireConfirm: requireConfirm,
     dataSource: dataSource,
     title: title,
     readBoundary: readBoundary,
@@ -378,11 +371,10 @@ abstract class UtenGoodsPickerDataSource {
   }
 
   bool isSelectable(GoodsListItem goods) => true;
-  String? subtitleOf(GoodsListItem goods) => null;
 
-  /// Rich business evidence (for example read-only historical status tags).
-  /// The shared picker still owns row selection, confirmation and pagination.
-  Widget? buildSubtitle(BuildContext context, GoodsListItem goods) => null;
+  /// Source-specific fields keep stock snapshots and historical evidence in
+  /// explicit columns. Selection, confirmation and pagination remain shared.
+  List<MasterColumnDef<GoodsListItem>>? get pickerColumns => null;
 }
 
 String _pickerErrorMessage(Object error, String fallback) =>
@@ -417,7 +409,6 @@ Future<T?> _presentSheet<T>(
   WidgetRef ref,
   UtenGoodsPickerScope scope, {
   required bool multiSelect,
-  bool requireConfirm = false,
   UtenGoodsPickerDataSource? dataSource,
   String title = '选择货品',
   SensitiveReadBoundary? readBoundary,
@@ -467,17 +458,17 @@ Future<T?> _presentSheet<T>(
       scopeTree: scopeTree,
       scope: scope,
       multiSelect: multiSelect,
-      requireConfirm: requireConfirm,
       dataSource: dataSource,
       title: title,
       readBoundary: readBoundary,
       allTree: allTree,
       initialKeyword: initialKeyword,
     );
-    final screenWidth = MediaQuery.sizeOf(context).width;
+    // 滑窗宽度口径 2026-10-17：比例优先（browse 档 75% 屏宽），720 只作小屏下限——
+    // 旧口径 max(720, 50%) 在大屏上占比缩水，表格列挤成一团。
     final result = await showUtenAdaptivePanel<T>(
       context: context,
-      drawerWidth: math.max(720.0, screenWidth * 0.5),
+      drawerWidth: 720,
       builder: (_) => sheet,
     );
     return boundaryChanged ? null : result;
@@ -492,7 +483,6 @@ class _GoodsPickerSheet extends ConsumerStatefulWidget {
     required this.scopeTree,
     required this.scope,
     this.multiSelect = false,
-    this.requireConfirm = false,
     this.dataSource,
     this.title = '选择货品',
     this.readBoundary,
@@ -508,9 +498,6 @@ class _GoodsPickerSheet extends ConsumerStatefulWidget {
   final String title;
   final SensitiveReadBoundary? readBoundary;
   final String initialKeyword;
-
-  /// 单选模式下是否需要底部「确定」二次确认（而非点行即关闭）。多选模式恒需确认，此项无效。
-  final bool requireConfirm;
 
   @override
   ConsumerState<_GoodsPickerSheet> createState() => _GoodsPickerSheetState();
@@ -1126,8 +1113,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
             ),
             const Divider(height: 1),
             Expanded(child: body),
-            if (widget.multiSelect || widget.requireConfirm)
-              _buildConfirmBar(theme),
+            _buildConfirmBar(theme),
           ],
         ),
         // 多选：底部「已选 N 项」点开的已选清单滑层（盖住主体与底栏）。
@@ -1445,7 +1431,6 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
   }
 
   Widget _buildGoodsList(ThemeData theme) {
-    if (widget.dataSource != null) return _buildDedicatedGoodsList(theme);
     final requestVersion = _requestVersion;
     bool selectable(GoodsListItem goods) =>
         _canRead &&
@@ -1467,28 +1452,28 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
     );
     return MasterDataTableView<GoodsListItem>(
       key: const Key('goods-picker-paged-list'),
-      tableKey: 'goods.picker',
       singleTapRows: true,
       rowsController: _pickerRows,
-      showPaginationControls: !widget.multiSelect && !widget.requireConfirm,
+      showPaginationControls: false,
       columns: [
-        MasterColumnDef(
-          key: 'name',
-          label: '货品名称',
-          width: 190,
-          columnSearchEnabled: _supportsColumnSearch,
-          value: (goods) => goods.name,
-          cellBuilder: (_, goods) => Text(
-            goods.name ?? '—',
-            key: ValueKey('goods-picker-item-${goods.id}'),
+        if (widget.dataSource?.pickerColumns case final columns?)
+          ...columns
+        else ...[
+          MasterColumnDef(
+            key: 'name',
+            label: '货品名称',
+            width: 190,
+            columnSearchEnabled: _supportsColumnSearch,
+            value: (goods) => goods.name,
+            cellBuilder: (_, goods) => Text(goods.name ?? '—'),
           ),
-        ),
-        column('code', '编号', 130, (g) => g.code),
-        column('series', '系列', 100, (g) => g.series),
-        column('model', '型号', 110, (g) => g.model),
-        column('spec', '规格', 140, (g) => g.spec),
-        column('colorLegacyId', '主颜色', 100, (g) => g.colorName),
-        column('unitLegacyId', '单位', 70, (g) => g.unitName, search: false),
+          column('code', '编号', 130, (g) => g.code),
+          column('series', '系列', 100, (g) => g.series),
+          column('model', '型号', 110, (g) => g.model),
+          column('spec', '规格', 140, (g) => g.spec),
+          column('colorLegacyId', '主颜色', 100, (g) => g.colorName),
+          column('unitLegacyId', '单位', 70, (g) => g.unitName, search: false),
+        ],
         if (_includeRelated)
           MasterColumnDef(
             key: 'searchMatchKind',
@@ -1500,7 +1485,12 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       ],
       items: _paged?.items ?? const [],
       rowKeyOf: (goods) => goods.id,
+      rowWidgetKeyOf: (goods) => ValueKey('goods-picker-item-${goods.id}'),
       idOf: (goods) => selectable(goods) ? goods.id : null,
+      rowForegroundColor: (goods) =>
+          widget.dataSource?.isSelectable(goods) == false
+          ? theme.disabledColor
+          : null,
       selectable: widget.multiSelect,
       showSelectionSummary: false,
       selectedIds: _selected.keys.toSet(),
@@ -1531,15 +1521,11 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
               if (!selectable(goods) || requestVersion != _requestVersion) {
                 return;
               }
-              if (widget.requireConfirm) {
-                setState(() {
-                  _selected
-                    ..clear()
-                    ..[goods.id] = goods;
-                });
-              } else {
-                _confirm(goods, requestVersion: requestVersion);
-              }
+              setState(() {
+                _selected
+                  ..clear()
+                  ..[goods.id] = goods;
+              });
             },
       facets: const {},
       nullCounts: const {},
@@ -1575,113 +1561,6 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       showFullscreenToggle: false,
       showColumnChooser: false,
       enableTextSelection: false,
-    );
-  }
-
-  Widget _buildDedicatedGoodsList(ThemeData theme) {
-    final requestVersion = _requestVersion;
-    return UtenPagedPickerList<GoodsListItem>(
-      key: const Key('goods-picker-paged-list'),
-      rowsController: _pickerRows,
-      showPaginationControls: !widget.multiSelect && !widget.requireConfirm,
-      items: _paged?.items ?? const [],
-      idOf: (goods) => goods.id,
-      currentPage: _paged?.page ?? 1,
-      totalPages: _paged?.totalPages ?? 1,
-      paginationScope: (
-        widget.scope,
-        _query,
-        _includeRelated,
-        _expandedScope,
-        _showingGlobalResults,
-        _showingGlobalResults ? _searchCategoryId : _selectedCategoryId,
-      ),
-      onPageChange: (page) {
-        setState(() => _page = page);
-        return _reloadCurrentPage();
-      },
-      loading: _loading || _searchLoading,
-      error: _error,
-      onRetry: _reloadCurrentPage,
-      emptyMessage: _paged == null
-          ? (_tree.isEmpty ? '没有可选择的货品分类' : '请选择左侧分类或搜索货品')
-          : (_query.isEmpty ? '该分类暂无可选货品' : '未找到匹配「$_query」的货品'),
-      separatorBuilder: (_, _) => const Divider(height: 1),
-      itemBuilder: (ctx, g) {
-        final picked = _selected.containsKey(g.id);
-        final customSubtitle = widget.dataSource?.subtitleOf(g);
-        final showPicked =
-            (widget.multiSelect || widget.requireConfirm) && picked;
-        return ListTile(
-          key: ValueKey('goods-picker-item-${g.id}'),
-          enabled: widget.dataSource?.isSelectable(g) ?? true,
-          selected: showPicked,
-          // 选中行淡绿背景（全站表格统一口径 utenTableSelectedRowColor，
-          // 2026-09-13 起全站统一、2026-09-22 加深后的同一份色值）。
-          selectedTileColor: utenTableSelectedRowColor(theme),
-          // 2026-09-29 用户口径（与表格「名称列只放名称」同源）：选项主行
-          // 只显名称，副行显 编号 · 颜色；不带单位/规格/库位。
-          title: Text(
-            g.name ?? '—',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          subtitle:
-              widget.dataSource?.buildSubtitle(ctx, g) ??
-              (customSubtitle != null
-                  ? Text(
-                      customSubtitle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    )
-                  : [g.code, g.colorName]
-                        .where((v) => v != null && v.isNotEmpty)
-                        .join(' · ')
-                        .isEmpty
-                  ? null
-                  : Text(
-                      [
-                        g.code,
-                        g.colorName,
-                        if (g.isRelatedSearchMatch) '相关结果',
-                      ].where((v) => v != null && v.isNotEmpty).join(' · '),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    )),
-          trailing: showPicked
-              ? Icon(
-                  Icons.check_circle_rounded,
-                  color: theme.colorScheme.primary,
-                  size: 22,
-                )
-              : null,
-          onTap: () {
-            if (!_canRead ||
-                requestVersion != _requestVersion ||
-                _loading ||
-                _searchLoading) {
-              return;
-            }
-            if (widget.multiSelect) {
-              setState(() {
-                if (_selected.containsKey(g.id)) {
-                  _selected.remove(g.id);
-                } else {
-                  _selected[g.id] = g;
-                }
-              });
-            } else if (widget.requireConfirm) {
-              setState(() {
-                _selected
-                  ..clear()
-                  ..[g.id] = g;
-              });
-            } else {
-              _confirm(g, requestVersion: requestVersion);
-            }
-          },
-        );
-      },
     );
   }
 }

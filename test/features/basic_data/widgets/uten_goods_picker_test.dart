@@ -510,10 +510,11 @@ Future<void> _pumpMultiPicker(
   );
 }
 
+// 2026-10-17 滑窗口径：1800 屏 browse 档 = max(720, 1800 × 75%) = 1350。
 Finder _widePickerSheet() => find.byWidgetPredicate(
   (widget) =>
       widget is SizedBox &&
-      widget.width == 900 &&
+      widget.width == 1350 &&
       widget.height == double.infinity,
 );
 

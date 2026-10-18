@@ -39,6 +39,7 @@ Future<SupplierSettlementCreateDraft?> showSupplierSettlementCreatePanel({
 }) => showUtenAdaptivePanel<SupplierSettlementCreateDraft>(
   context: context,
   drawerWidth: 560,
+  widthFraction: UtenPanelWidth.form,
   compactHeightFactor: 0.92,
   barrierDismissible: false,
   panelElevation: 16,

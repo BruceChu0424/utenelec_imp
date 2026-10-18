@@ -9,6 +9,11 @@ public record DataHandoverCandidate(
         String name,
         UUID departmentId,
         String departmentName,
-        String status
+        String status,
+        String accountStatus
 ) {
+    public DataHandoverCandidate(UUID employeeId, String code, String name, UUID departmentId,
+                                String departmentName, String status) {
+        this(employeeId, code, name, departmentId, departmentName, status, null);
+    }
 }

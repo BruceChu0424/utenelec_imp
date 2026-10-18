@@ -1,3 +1,4 @@
+import 'package:uten_imp/features/employee/providers/employee_picker_department_tree_provider.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -215,6 +216,7 @@ Future<ProviderContainer> _pump(WidgetTester tester, Widget picker) async {
   addTearDown(tester.view.resetDevicePixelRatio);
   final container = ProviderContainer(
     overrides: [
+      employeePickerDepartmentTreeProvider.overrideWith((ref) async => []),
       authenticatedScopeProvider.overrideWith((ref) => ref.watch(_identity)),
       apiBaseUrlProvider.overrideWith((ref) => ref.watch(_server)),
       currentPermissionsProvider.overrideWith((ref) => ref.watch(_permissions)),

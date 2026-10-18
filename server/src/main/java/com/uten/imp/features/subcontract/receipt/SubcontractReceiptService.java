@@ -958,13 +958,13 @@ public class SubcontractReceiptService {
     private void canonicalizeMaker(SubcontractReceipt receipt) {
         if (receipt.getMakerId() == null) return;
         receipt.setMakerLegacyId(null);
-        receipt.setMakerName(nameResolver.nameOf(receipt.getMakerId()));
+        receipt.setMakerName(nameResolver.nameWithCodeOf(receipt.getMakerId()));
     }
 
     private void canonicalizeApprover(SubcontractReceipt receipt) {
         if (receipt.getApproverId() == null) return;
         receipt.setApproverLegacyId(null);
-        receipt.setApproverName(nameResolver.nameOf(receipt.getApproverId()));
+        receipt.setApproverName(nameResolver.nameWithCodeOf(receipt.getApproverId()));
     }
 
     private List<ReceiptItemDto> saveItems(SubcontractReceipt r, List<ReceiptItemLine> lines) {
@@ -1127,13 +1127,14 @@ public class SubcontractReceiptService {
         return new ReceiptDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getSupplierId(), r.getWarehouseId(), mask ? null : r.getCurrencyId(),
                 mask ? null : r.getExchangeRate(), mask ? null : r.getTaxRate(),
-                r.getSenderId(), r.getMakerId(), r.getApproverId(), r.getLastDate(), r.isApPosted(), r.getRemark(),
+                r.getSenderId(), nameResolver.nameWithCodeOf(r.getSenderId()),
+                r.getMakerId(), r.getApproverId(), r.getLastDate(), r.isApPosted(), r.getRemark(),
                 mask ? null : r.getTotalOriginal(), mask ? null : r.getTotalLocal(),
                 r.getStatus(), r.isClosed(), r.getSourceDocNo(), safeItems,
                 mask ? null : r.getSettlementStyleLegacy(), mask ? null : r.getSettlementMethodId(),
                 r.getReceiverLegacyId(), r.getReceiverName(),
                 r.getMakerLegacyId(),
-                (r.getMakerName() != null && !r.getMakerName().isBlank()) ? r.getMakerName() : nameResolver.nameOf(r.getMakerId()),
+                (r.getMakerName() != null && !r.getMakerName().isBlank()) ? r.getMakerName() : nameResolver.nameWithCodeOf(r.getMakerId()),
                 r.getApproverLegacyId(), r.getApproverName(), r.getCreatedAt(),
                 sourceOrder == null ? null : sourceOrder.id(),
                 sourceOrder == null ? null : sourceOrder.billNo(),

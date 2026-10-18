@@ -582,6 +582,8 @@ class _MaterialPriorityReplenishmentDialogState
                                             id: person.id,
                                             name: person.fullName,
                                             employeeCode: person.code,
+                                            accountStatus: person.accountStatus,
+                                            employmentStatus: person.status,
                                             departmentId: person.departmentId,
                                             departmentName:
                                                 person.departmentName,

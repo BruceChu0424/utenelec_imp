@@ -9,7 +9,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/data_display/doc_status_badge.dart';
 import '../../../shared/providers/document_status_counts_provider.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
@@ -18,7 +17,9 @@ import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_document_lifecycle_filter.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
+import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/network/api_exception.dart';
@@ -107,6 +108,14 @@ class _ProductionDailyReportListPageState
         ref.read(currentPermissionsProvider),
         DocumentPermissionAction.delete,
       );
+
+  Widget _createButton() => UtenButton(
+    key: const Key('production-daily-list-create'),
+    size: UtenButtonSize.large,
+    icon: Icons.add_rounded,
+    onPressed: () => context.push('/production/daily-reports/new'),
+    child: const Text('新建'),
+  );
 
   Future<void> _deleteDraft(String id) async {
     final scope = ref.read(authenticatedScopeProvider);
@@ -206,6 +215,13 @@ class _ProductionDailyReportListPageState
           setState(() => _historyTime = value);
           _reload(1);
         },
+        searchHint: '搜索单据号',
+        searchValue: _list.keyword,
+        onSearchChanged: (value) {
+          clearDraftSelection();
+          _list.keyword = value;
+          _reload(1);
+        },
       );
 
   /// 表头筛选回调：车间值并进 repository.list 的 departmentId，重拉回第 1 页。
@@ -274,7 +290,7 @@ class _ProductionDailyReportListPageState
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    ref.watch(currentPermissionsProvider);
     final names = ref.watch(masterNameServiceProvider);
     // 分段计数(一次请求带回草稿/已审/红冲三桶); 加载中或无权限为 null, 不渲染数字。
     final statusCounts = ref
@@ -298,6 +314,11 @@ class _ProductionDailyReportListPageState
           ),
         ],
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: _canCreate && !_canDeleteDrafts
+          ? UtenFloatingActionGroup(children: [_createButton()])
+          : null,
       body: SafeArea(
         child: UtenContentContainer(
           child: Padding(
@@ -305,116 +326,67 @@ class _ProductionDailyReportListPageState
             child: ListenableBuilder(
               listenable: _list,
               builder: (context, _) {
-                final total = _list.total;
-                return Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.edit_calendar_outlined,
-                            size: 18,
-                            color: theme.colorScheme.primary,
-                          ),
-                          const SizedBox(width: UtenSpacing.s8),
-                          Text(
-                            '日报 ($total)',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(width: UtenSpacing.s12),
-                          Expanded(
-                            child: UtenSearchBar(
-                              hint: '搜索单据号',
-                              initialValue: _list.keyword,
-                              onChanged: (v) {
-                                clearDraftSelection();
-                                _list.keyword = v;
-                                _reload(1);
-                              },
-                            ),
-                          ),
-                          if (_canCreate &&
-                              _statusFilter != kProductionStatusDraft) ...[
-                            const SizedBox(width: UtenSpacing.s8),
-                            UtenButton(
-                              type: UtenButtonType.tonal,
-                              icon: Icons.add_rounded,
-                              onPressed: () =>
-                                  context.push('/production/daily-reports/new'),
-                              child: const Text('新建'),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                      // 全平台统一筛选工具条：状态分段（搜索框在上方标题行，不在此收口）。
-                      child: _lifecycleFilters(statusCounts),
-                    ),
-                    Expanded(
-                      child: _withFormDraftRows(
-                        MasterDataTableView<ProductionDailyReportListItem>(
-                          rowsController: _tableRows,
-                          tableKey: 'production.daily.list',
-                          columns: _columns(names),
-                          items: _list.page?.items ?? const [],
-                          facets: {
-                            'workshop': masterDictionaryFacets(
-                              names.departmentEntries,
-                            ),
-                          },
-                          nullCounts: const {},
-                          filters: {'workshop': _workshopIdFilter},
-                          onFilterChanged: _onColumnFilterChanged,
-                          sortColumn: _list.sortKey,
-                          sortAscending: _list.sortAsc,
-                          onSortChange: _onSortChange,
-                          onRowTap: (it) => context.push(
-                            '/production/daily-reports/${it.id}',
-                          ),
-                          selectable: _canDeleteDrafts,
-                          idOf: (it) =>
-                              !draftDeleteBusy &&
-                                  !_list.loading &&
-                                  it.status == kProductionStatusDraft
-                              ? it.id
-                              : null,
-                          rowKeyOf: (it) => it.id,
-                          selectedIds: selectedDraftIds,
-                          onSelectedIdsChanged: draftDeleteBusy
-                              ? null
-                              : selectDraftIds,
-                          batchActionsBuilder: (_, _) => [
-                            buildDraftDeleteButton(
-                              documentLabel: '生产日报',
-                              delete: _deleteDraft,
-                              reload: () => _reload(1),
-                            ),
-                          ],
-                          isLoading: _list.isLoadingFirst,
-                          loadingMore: _list.isLoadingMore,
-                          error: _list.error,
-                          onRetry: () => _reload(),
-                          emptyMessage: '暂无日报数据',
-                          currentPage: _list.currentPage,
-                          totalPages: _list.totalPages,
-                          paginationRevision: _list.page,
-                          paginationScope: (
-                            _list.normalizedKeyword,
-                            _statusFilter,
-                            _historyMode,
-                            _historyTime,
-                            _workshopIdFilter,
-                          ),
-                          onPageChange: (p) => _reload(p),
+                return UtenListTwoPane(
+                  filterPane: _lifecycleFilters(statusCounts),
+                  tablePane: _withFormDraftRows(
+                    MasterDataTableView<ProductionDailyReportListItem>(
+                      rowsController: _tableRows,
+                      tableKey: 'production.daily.list',
+                      bottomContentPadding:
+                          UtenFloatingActionGroup.scrollClearance,
+                      columns: _columns(names),
+                      items: _list.page?.items ?? const [],
+                      facets: {
+                        'workshop': masterDictionaryFacets(
+                          names.departmentEntries,
                         ),
+                      },
+                      nullCounts: const {},
+                      filters: {'workshop': _workshopIdFilter},
+                      onFilterChanged: _onColumnFilterChanged,
+                      sortColumn: _list.sortKey,
+                      sortAscending: _list.sortAsc,
+                      onSortChange: _onSortChange,
+                      onRowTap: (it) =>
+                          context.push('/production/daily-reports/${it.id}'),
+                      selectable: _canDeleteDrafts,
+                      idOf: (it) =>
+                          !draftDeleteBusy &&
+                              !_list.loading &&
+                              it.status == kProductionStatusDraft
+                          ? it.id
+                          : null,
+                      rowKeyOf: (it) => it.id,
+                      selectedIds: selectedDraftIds,
+                      onSelectedIdsChanged: draftDeleteBusy
+                          ? null
+                          : selectDraftIds,
+                      batchActionsBuilder: (_, _) => [
+                        if (_canCreate) _createButton(),
+                        buildDraftDeleteButton(
+                          documentLabel: '生产日报',
+                          delete: _deleteDraft,
+                          reload: () => _reload(1),
+                        ),
+                      ],
+                      isLoading: _list.isLoadingFirst,
+                      loadingMore: _list.isLoadingMore,
+                      error: _list.error,
+                      onRetry: () => _reload(),
+                      emptyMessage: '暂无日报数据',
+                      currentPage: _list.currentPage,
+                      totalPages: _list.totalPages,
+                      paginationRevision: _list.page,
+                      paginationScope: (
+                        _list.normalizedKeyword,
+                        _statusFilter,
+                        _historyMode,
+                        _historyTime,
+                        _workshopIdFilter,
                       ),
+                      onPageChange: (p) => _reload(p),
                     ),
-                  ],
+                  ),
                 );
               },
             ),
@@ -422,7 +394,18 @@ class _ProductionDailyReportListPageState
         ),
       ),
     );
-    // 内嵌（生产任务中心「草稿」段）：剥掉 Scaffold/AppBar，只留筛选+表体。
-    return widget.embedded ? page.body! : page;
+    if (!widget.embedded) return page;
+    // 内嵌页仍不重复外层标题；没有草稿批量组时保留唯一的新建悬浮入口。
+    return Stack(
+      children: [
+        page.body!,
+        if (page.floatingActionButton != null)
+          Positioned(
+            right: UtenSpacing.s16,
+            bottom: UtenSpacing.s16,
+            child: page.floatingActionButton!,
+          ),
+      ],
+    );
   }
 }

@@ -1,5 +1,5 @@
 // 模具选择字段（货品编辑表单「生产」组）：分类树 + 分页明细的自适应侧窗，按编号/名称/位置/
-// 备注模糊搜模具主档，点行即选；表单值提交模具 UUID（mouldId），展示为「编号 名称」。
+// 备注模糊搜模具主档，点行暂选、确定后回填；表单值提交模具 UUID（mouldId），展示为「编号 名称」。
 //
 // 字段 State 分开保留已绑定记录的显示与尚未提交的查找文字；MasterEditForm 的当前值 /
 // 恢复快照负责正式 UUID，普通输入仅查找候选，选中真实记录后才回写，取消恢复绑定显示。
@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/inputs/uten_reference_picker_field.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
+import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../components/layout/uten_split_view.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
@@ -242,7 +243,7 @@ class _MouldPickerFieldState extends ConsumerState<MouldPickerField> {
     if (!_isCurrent(boundary, generation)) return;
     final picked = await showUtenAdaptivePanel<MouldListItem>(
       context: context,
-      drawerWidth: 1120,
+      drawerWidth: 960,
       builder: (ctx) => _MouldSearchSheet(
         initialKeyword: _queryDirty ? keyword : '',
         readBoundary: boundary,
@@ -310,7 +311,7 @@ class _MouldPickerFieldState extends ConsumerState<MouldPickerField> {
   }
 }
 
-/// 分类与可按列搜索的明细选择窗，单击真实记录回填模具 UUID。
+/// 分类与可按列搜索的明细选择窗，确认暂选记录后回填模具 UUID。
 class _MouldSearchSheet extends ConsumerStatefulWidget {
   const _MouldSearchSheet({
     this.initialKeyword = '',
@@ -328,6 +329,7 @@ class _MouldSearchSheet extends ConsumerStatefulWidget {
 class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet> {
   late final _searchCtl = TextEditingController(text: widget.initialKeyword);
   List<MouldListItem> _results = const [];
+  MouldListItem? _picked;
   bool _loading = false;
   String? _error;
   String _query = '';
@@ -381,6 +383,7 @@ class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet> {
           _boundaryChanged = true;
           _requestVersion++;
           _results = const [];
+          _picked = null;
           _tree = const [];
           _facets = null;
           _loading = false;
@@ -408,6 +411,7 @@ class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet> {
       _requestVersion++;
       _query = text.trim();
       _results = const [];
+      _picked = null;
       _page = 1;
       _requestedPage = 1;
       _totalPages = 1;
@@ -423,6 +427,7 @@ class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet> {
     setState(() {
       _query = query;
       _requestedPage = page;
+      _picked = null;
       _loading = true;
       _error = null;
     });
@@ -506,6 +511,12 @@ class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet> {
     });
     _search(_searchCtl.text);
     _loadFacets();
+  }
+
+  void _confirm() {
+    if (!_canRead || _loading || _error != null || _picked == null) return;
+    final current = _results.where((row) => row.id == _picked!.id).firstOrNull;
+    if (current != null) Navigator.pop(context, current);
   }
 
   Widget _categoryTree() => Column(
@@ -647,13 +658,18 @@ class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet> {
                           _search(_searchCtl.text);
                         },
                         idOf: (m) => m.id,
+                        rowKeyOf: (m) => m.id,
+                        isSelected: (m) => _picked?.id == m.id,
                         singleTapRows: true,
+                        showFullscreenToggle: false,
                         onRowTap: (m) {
                           if (!_canRead || _loading) return;
                           final current = _results
                               .where((row) => row.id == m.id)
                               .firstOrNull;
-                          if (current != null) Navigator.pop(context, current);
+                          if (current != null) {
+                            setState(() => _picked = current);
+                          }
                         },
                         currentPage: _page,
                         totalPages: _totalPages,
@@ -673,6 +689,15 @@ class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet> {
                 ),
               ),
             ),
+          ),
+          UtenPickerConfirmBar(
+            selectedCount: _picked == null ? 0 : 1,
+            selectedLabel: _picked == null
+                ? null
+                : _MouldPickerFieldState._mouldLabel(_picked!),
+            confirmEnabled:
+                _picked != null && !_loading && _error == null && _canRead,
+            onConfirm: _confirm,
           ),
         ],
       ),

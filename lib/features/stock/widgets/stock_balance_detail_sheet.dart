@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
@@ -47,13 +48,22 @@ Future<bool?> showStockBalanceDetailSheet({
     barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
     barrierColor: Colors.black54,
     transitionDuration: const Duration(milliseconds: 250),
-    pageBuilder: (dialogContext, _, _) => Align(
-      alignment: Alignment.centerRight,
-      child: Material(
-        color: Theme.of(dialogContext).colorScheme.surface,
-        child: SizedBox(width: 460, height: double.infinity, child: sheet),
-      ),
-    ),
+    pageBuilder: (dialogContext, _, _) {
+      // 滑窗宽度口径 2026-10-17：余额明细是表格浏览，browse 档（75% 屏宽，
+      // 460 只作小屏下限），与其他右滑面板同一口径（uten_adaptive_panel.dart）。
+      final width = utenPanelWidth(
+        MediaQuery.sizeOf(dialogContext),
+        460,
+        UtenPanelWidth.browse,
+      );
+      return Align(
+        alignment: Alignment.centerRight,
+        child: Material(
+          color: Theme.of(dialogContext).colorScheme.surface,
+          child: SizedBox(width: width, height: double.infinity, child: sheet),
+        ),
+      );
+    },
     transitionBuilder: (_, animation, _, child) => SlideTransition(
       position: Tween<Offset>(
         begin: const Offset(1, 0),

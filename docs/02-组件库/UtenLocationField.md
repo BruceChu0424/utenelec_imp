@@ -47,8 +47,8 @@
 ## 三、响应式行为
 
 - **compact（手机）**：`showModalBottomSheet`，约 85% 屏高，从底部滑入。
-- **medium / expanded（桌面）**：`showGeneralDialog` 右侧抽屉，420 宽，从右滑入。
-- 两种尺寸都使用固定底栏，取消与确定按钮不随树列表滚走，并遵循底部安全区。
+- **medium / expanded（桌面）**：`showGeneralDialog` 右侧抽屉，宽 = min(屏宽, max(420, 屏宽 × 35%))（2026-10-17 全站滑窗档位 `UtenPanelWidth.form`），从右滑入。
+- 两种尺寸都复用 `UtenPickerConfirmBar` 固定底栏，取消与确定按钮不随树列表滚走，并遵循底部安全区；「顶级」同样需要确认，自定义取消/确定文案继续生效。
 - 与 `UtenDepartmentPicker` 的响应式外壳同款，保证全站选择器手感一致。
 
 ## 四、性能档行为

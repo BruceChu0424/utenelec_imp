@@ -3,6 +3,8 @@ import '../../support/native_detail_reader_overrides.dart';
 //  - 明细表下渲染合计条；「合计数量」按 unitId 分组，不同单位绝不相加；
 //  - 「合计金额(币种)」标红，币种取表头币种名（不硬编码 ¥）；
 //  - 无商务金额权限 / 服务端脱敏时只剩数量项，金额项不渲染。
+//  - 人员字段（采购员等）显示服务端随单解析的「姓名(工号)」，不渲染裸 UUID
+//    （2026-10-17 口径；此前采购员直接显示 employees.id）。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -85,6 +87,22 @@ void main() {
     expect(find.textContaining('合计金额'), findsNothing);
     expect(find.text('合计(本币): '), findsNothing);
   });
+
+  testWidgets('采购员显示服务端解析的姓名(工号)，不渲染裸 UUID', (tester) async {
+    await _pumpDetail(
+      tester,
+      permissions: const {Perm.purchaseOrderPriceView},
+      priceMasked: true,
+      purchaserId: '1e52cda6-312a-41b3-9277-1960f66fe929',
+      purchaserName: '李采购(E1024)',
+    );
+
+    // 采购员在表头卡的「查看更多」折叠区，先展开再断言。
+    await tester.tap(find.byKey(const ValueKey('detail-summary-toggle')));
+    await tester.pumpAndSettle();
+    expect(find.text('李采购(E1024)'), findsOneWidget);
+    expect(find.textContaining('1e52cda6'), findsNothing);
+  });
 }
 
 Future<void> _pumpDetail(
@@ -92,6 +110,8 @@ Future<void> _pumpDetail(
   required Set<String> permissions,
   required bool priceMasked,
   bool totalPricing = false,
+  String? purchaserId,
+  String? purchaserName,
 }) async {
   tester.view.physicalSize = const Size(1400, 1600);
   tester.view.devicePixelRatio = 1;
@@ -100,7 +120,12 @@ Future<void> _pumpDetail(
 
   const docType = PurchaseDocType.order;
   const id = 'order-1';
-  final api = _TestApi(priceMasked: priceMasked, totalPricing: totalPricing);
+  final api = _TestApi(
+    priceMasked: priceMasked,
+    totalPricing: totalPricing,
+    purchaserId: purchaserId,
+    purchaserName: purchaserName,
+  );
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -122,11 +147,17 @@ Future<void> _pumpDetail(
 }
 
 class _TestApi extends ApiClient {
-  _TestApi({required this.priceMasked, this.totalPricing = false})
-    : super(Dio());
+  _TestApi({
+    required this.priceMasked,
+    this.totalPricing = false,
+    this.purchaserId,
+    this.purchaserName,
+  }) : super(Dio());
 
   final bool priceMasked;
   final bool totalPricing;
+  final String? purchaserId;
+  final String? purchaserName;
 
   @override
   Future<List<Map<String, dynamic>>> getList(
@@ -159,6 +190,8 @@ class _TestApi extends ApiClient {
         'billNo': 'PO-001',
         'billDate': '2026-09-01',
         'makerName': '采购员',
+        if (purchaserId != null) 'purchaserId': purchaserId,
+        if (purchaserName != null) 'purchaserName': purchaserName,
         'createdAt': '2026-09-01T10:00:00+08:00',
         'supplierId': 'supplier-1',
         'currencyId': 'usd',

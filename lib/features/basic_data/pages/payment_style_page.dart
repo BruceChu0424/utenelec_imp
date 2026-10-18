@@ -621,6 +621,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
               onPressed: () => showUtenAdaptivePanel<void>(
                 context: context,
                 drawerWidth: 520,
+                widthFraction: UtenPanelWidth.form,
                 builder: (_) => const PostingStyleRolePanel(),
               ),
             ),

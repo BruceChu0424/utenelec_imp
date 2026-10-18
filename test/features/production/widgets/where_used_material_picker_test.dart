@@ -9,13 +9,21 @@ import 'package:uten_imp/components/layout/uten_split_view.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/production/widgets/where_used_material_picker.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 
 const _base = '/production/reports/where-used';
 const _sheetKey = Key('goods-picker-sheet');
 const _searchKey = Key('uten-goods-picker-search');
+
+class _PickerSnapshot extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async => SessionSnapshot();
+}
+
 final _pickerPermissions = StateProvider<Set<String>>(
   (ref) => {Perm.productionWhereUsedView},
 );
@@ -140,6 +148,7 @@ Future<void> _pumpApp(
     ProviderScope(
       overrides: [
         apiClientProvider.overrideWithValue(api),
+        sessionSnapshotProvider.overrideWith(_PickerSnapshot.new),
         authenticatedScopeProvider.overrideWithValue(
           const AuthenticatedScope(userId: 'picker-viewer'),
         ),
@@ -175,7 +184,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(Dialog), findsNothing);
       expect(find.byType(UtenSplitView), findsOneWidget);
-      expect(tester.getTopLeft(find.byKey(_sheetKey)).dx, 480);
+      // 2026-10-17 滑窗口径：1200 屏 browse 档宽 = max(720, 900) = 900，
+      // 面板左缘 = 1200 - 900 = 300。
+      expect(tester.getTopLeft(find.byKey(_sheetKey)).dx, 300);
       expect(api.queries, isEmpty, reason: '沿用销售选择器懒加载');
       await tester.tap(find.text('原材料'));
       await tester.pumpAndSettle();
@@ -220,6 +231,17 @@ void main() {
       await tester.pumpAndSettle();
       await _search(tester, 'OLD-1');
       await tester.pumpAndSettle();
+      final table = tester.widget<MasterDataTableView<GoodsListItem>>(
+        find.byKey(const Key('goods-picker-paged-list')),
+      );
+      expect(table.columns.map((column) => column.label), [
+        '物料名称',
+        '编号',
+        '分类',
+        '状态 / 提示',
+        '关联依据',
+      ]);
+      expect(table.tableKey, isNull);
       expect(find.text('当前 BOM · 生产历史 · 委外历史'), findsOneWidget);
       for (final label in ['BOM 异常', '状态：禁用', '自动占位', '已删除']) {
         expect(find.text(label), findsOneWidget);
@@ -278,8 +300,8 @@ void main() {
             of: row,
             matching: find.text('状态：${statuses[index]}'),
           ),
-          findsNothing,
-          reason: '状态在中性摘要内显示，不能生成红色警告徽章',
+          findsOneWidget,
+          reason: '状态列只显示一份中性状态，不重复生成警告徽章',
         );
       }
       expect(tester.takeException(), isNull);

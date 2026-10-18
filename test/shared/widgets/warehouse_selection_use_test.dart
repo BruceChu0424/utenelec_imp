@@ -2,6 +2,7 @@
 // 良品用途下不良品仓照常列出但置灰带标签；普通调拨调入仓收窄到与调出仓同类。
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/widgets/warehouse_hierarchy_dropdown.dart';
@@ -160,14 +161,19 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('不良品仓, 这里不能选'), findsOneWidget);
-    final tile = tester.widget<ListTile>(
-      find.byKey(const Key('warehouse-picker-entry-bad')),
-    );
-    expect(tile.enabled, isFalse);
     await tester.tap(find.byKey(const Key('warehouse-picker-entry-bad')));
     await tester.pumpAndSettle();
     expect(picked, isNull, reason: '置灰的不良品仓点了不选中');
+    expect(
+      tester
+          .widget<UtenButton>(find.widgetWithText(UtenButton, '确定'))
+          .onPressed,
+      isNull,
+    );
     await tester.tap(find.byKey(const Key('warehouse-picker-entry-good')));
+    await tester.pumpAndSettle();
+    expect(picked, isNull);
+    await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
     await tester.pumpAndSettle();
     expect(picked?.id, 'good');
   });

@@ -25,6 +25,12 @@ public class ReceiptDetail extends com.uten.imp.common.history.DocumentHistoryMe
     private UUID senderId;
     private UUID receiverId;
     private UUID purchaserId;
+    /** 交货人「姓名(工号)」（服务端按 sender_id 解析；工号缺失退化为纯姓名）。 */
+    private String senderName;
+    /** 收货人「姓名(工号)」（服务端按 receiver_id 解析；工号缺失退化为纯姓名）。 */
+    private String receiverName;
+    /** 采购员「姓名(工号)」（服务端按 purchaser_id 解析；工号缺失退化为纯姓名）。 */
+    private String purchaserName;
     private UUID settlementMethodId;
     private Integer settlementStyleLegacy;
     private UUID makerId;
@@ -36,7 +42,7 @@ public class ReceiptDetail extends com.uten.imp.common.history.DocumentHistoryMe
     private boolean closed;
     private String sourceDocNo;
     private List<ReceiptItemDto> items;
-    /** 制单员姓名（服务端按 maker_id 解析：employees 直查 + users 历史数据兼容）。 */
+    /** 制单员「姓名(工号)」（服务端按 maker_id 解析：employees 直查 + users 历史数据兼容）。 */
     private String makerName;
     /** 制单时间（审计 created_at，创建后不可变）。 */
     private java.time.Instant createdAt;

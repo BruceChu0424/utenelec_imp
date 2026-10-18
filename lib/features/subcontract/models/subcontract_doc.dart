@@ -392,8 +392,11 @@ class SubcontractDocDetail {
     this.taxRateText,
     this.taxRate,
     this.purchaserId,
+    this.purchaserName,
     this.senderId,
+    this.senderName,
     this.workerId,
+    this.workerName,
     this.makerId,
     this.approverId,
     this.makerName,
@@ -446,12 +449,24 @@ class SubcontractDocDetail {
   final String? taxRateText;
   final double? taxRate;
   final String? purchaserId;
+
+  /// 采购员「姓名(工号)」（服务端按 purchaserId 解析；旧后端未下发时退回本地字典）
+  final String? purchaserName;
+
   final String? senderId;
+
+  /// 交货人「姓名(工号)」（服务端按 senderId 解析；旧后端未下发时退回本地字典）
+  final String? senderName;
+
   final String? workerId;
+
+  /// 经办人「姓名(工号)」（服务端按 workerId 解析；旧后端未下发时退回本地字典）
+  final String? workerName;
+
   final String? makerId;
   final String? approverId;
 
-  /// 制单员姓名（服务端解析；只读展示，不可修改）
+  /// 制单员「姓名(工号)」（服务端解析；只读展示，不可修改）
   final String? makerName;
 
   /// 制单时间 ISO（审计 created_at，创建后不可变）
@@ -519,8 +534,11 @@ class SubcontractDocDetail {
         taxRateText: receiptRecordedDecimal(json, 'taxRate'),
         taxRate: (json['taxRate'] as num?)?.toDouble(),
         purchaserId: json['purchaserId'] as String?,
+        purchaserName: json['purchaserName'] as String?,
         senderId: json['senderId'] as String?,
+        senderName: json['senderName'] as String?,
         workerId: json['workerId'] as String?,
+        workerName: json['workerName'] as String?,
         makerId: json['makerId'] as String?,
         makerName: json['makerName'] as String?,
         createdAt: json['createdAt'] as String?,

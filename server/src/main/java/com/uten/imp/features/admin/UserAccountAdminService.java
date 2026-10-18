@@ -184,7 +184,8 @@ public class UserAccountAdminService {
                             e.getCode(),
                             department == null ? null : department.getName(),
                             s != null && hasText(s.getPhoneEnc()),
-                            department == null ? null : department.getId());
+                            department == null ? null : department.getId(),
+                            "notProvisioned", e.getStatus());
                 })
                 .toList();
     }

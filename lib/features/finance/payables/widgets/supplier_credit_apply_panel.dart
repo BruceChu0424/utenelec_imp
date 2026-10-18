@@ -58,6 +58,7 @@ Future<SupplierCreditApplyDraft?> showSupplierCreditApplyPanel({
 }) => showUtenAdaptivePanel<SupplierCreditApplyDraft>(
   context: context,
   drawerWidth: 760,
+  widthFraction: UtenPanelWidth.content,
   compactHeightFactor: 0.94,
   barrierDismissible: false,
   panelElevation: 16,

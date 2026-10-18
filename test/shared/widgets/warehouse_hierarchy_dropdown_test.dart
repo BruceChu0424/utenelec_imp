@@ -6,6 +6,7 @@
 // - 历史已保存的值在两种口径下都能回显(value 匹配真实 id)。
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/widgets/warehouse_hierarchy_dropdown.dart';
 import 'package:uten_imp/shared/widgets/warehouse_picker_panel.dart';
@@ -71,6 +72,9 @@ void main() {
       await tester.tap(find.text('选仓'));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('warehouse-picker-entry-main')));
+      await tester.pumpAndSettle();
+      expect(picked, isNull);
+      await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
       await tester.pumpAndSettle();
       expect(picked?.id, 'main');
     },
@@ -290,6 +294,9 @@ void main() {
         find.byKey(const Key('warehouse-picker-entry-finished')),
       );
       await tester.pumpAndSettle();
+      expect(result, isNull);
+      await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
+      await tester.pumpAndSettle();
       expect(result?.id, 'finished');
     },
   );
@@ -483,6 +490,17 @@ void main() {
       // 主仓可选 = 自身 + 全部子仓聚合（运营口径下主仓只能钻层）。
       await tester.tap(find.byKey(const Key('warehouse-picker-entry-main')));
       await tester.pumpAndSettle();
+      expect(result, isNull);
+      expect(
+        tester
+            .widget<ListTile>(
+              find.byKey(const Key('warehouse-picker-entry-main')),
+            )
+            .selected,
+        isTrue,
+      );
+      await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
+      await tester.pumpAndSettle();
       expect(result?.id, 'main');
       expect(result?.isAll, isFalse);
     },
@@ -522,9 +540,58 @@ void main() {
 
     await tester.tap(find.byKey(const Key('warehouse-picker-all')));
     await tester.pumpAndSettle();
+    expect(result, isNull);
+    await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
+    await tester.pumpAndSettle();
     expect(result?.isAll, isTrue);
     expect(result?.id, isEmpty);
   });
+
+  for (final dismiss in ['取消', '关闭', '遮罩']) {
+    testWidgets(
+      'warehouse query draft and all selection are discarded on $dismiss',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1200, 800));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final results = <WarehousePickerResult?>[];
+        await pumpQueryPanel(
+          tester,
+          results.add,
+          initialWarehouseId: 'finished',
+        );
+        await tester.tap(find.byKey(const Key('warehouse-picker-entry-main')));
+        await tester.pump();
+        await tester.tap(find.byKey(const Key('warehouse-picker-all')));
+        await tester.pump();
+        expect(results, isEmpty);
+        switch (dismiss) {
+          case '取消':
+            await tester.tap(find.widgetWithText(UtenButton, '取消'));
+          case '关闭':
+            await tester.tap(find.byTooltip('关闭'));
+          case '遮罩':
+            await tester.tapAt(const Offset(20, 400));
+        }
+        await tester.pumpAndSettle();
+        expect(results, [null]);
+        await tester.tap(find.text('选择仓库'));
+        await tester.pumpAndSettle();
+        expect(
+          tester
+              .widget<ListTile>(
+                find.byKey(const Key('warehouse-picker-entry-finished')),
+              )
+              .selected,
+          isTrue,
+        );
+        await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
+        await tester.pumpAndSettle();
+        expect(results.last?.id, 'finished');
+        expect(results.last?.label, '仓库（14年版）-成品仓库');
+        expect(results.last?.parentId, 'main');
+      },
+    );
+  }
 
   testWidgets('query panel search narrows to matches plus ancestors', (
     tester,

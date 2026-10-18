@@ -10,7 +10,12 @@ class ImpersonationTarget {
     this.departmentId,
     this.departmentName,
     this.positionName,
+    this.accountStatus,
+    this.employmentStatus,
   });
+
+  final String? accountStatus;
+  final String? employmentStatus;
 
   final String employeeId;
   final String name;
@@ -21,6 +26,8 @@ class ImpersonationTarget {
 
   factory ImpersonationTarget.fromJson(Map<String, dynamic> json) =>
       ImpersonationTarget(
+        accountStatus: json['accountStatus'] as String?,
+        employmentStatus: json['employmentStatus'] as String?,
         employeeId: json['employeeId'] as String,
         name: (json['name'] as String?) ?? '',
         employeeCode: json['employeeCode'] as String?,

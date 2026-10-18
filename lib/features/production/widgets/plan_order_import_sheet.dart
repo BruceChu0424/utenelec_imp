@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/data_display/uten_table_surface.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_anim.dart';
@@ -49,8 +50,13 @@ Future<List<ScheduleOrderLine>?> showPlanOrderImportSheet(
     barrierColor: Colors.black54,
     transitionDuration: UtenAnim.normal,
     pageBuilder: (ctx, _, _) {
-      final viewportWidth = MediaQuery.sizeOf(ctx).width;
-      final panelWidth = viewportWidth < 920 ? viewportWidth * 0.92 : 840.0;
+      // 滑窗宽度口径 2026-10-17：与其他右滑面板同一口径（browse 档 75% 屏宽，
+      // 840 只作小屏下限），见 uten_adaptive_panel.dart 的 UtenPanelWidth。
+      final panelWidth = utenPanelWidth(
+        MediaQuery.sizeOf(ctx),
+        840,
+        UtenPanelWidth.browse,
+      );
       return Align(
         alignment: Alignment.centerRight,
         child: Material(

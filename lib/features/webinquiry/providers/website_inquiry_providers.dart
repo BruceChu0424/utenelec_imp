@@ -15,7 +15,7 @@ final websiteInquiryRepositoryProvider = Provider<WebsiteInquiryRepository>((
   return DioWebsiteInquiryRepository(ref.watch(apiClientProvider));
 });
 
-/// Null clears only the status within the current active/history scope.
+/// Null restores the default unread category or all historical inquiries.
 final websiteInquiryStatusFilterProvider = StateProvider<WebsiteInquiryStatus?>(
   (ref) => null,
 );
@@ -41,7 +41,7 @@ class WebsiteInquiryListNotifier
     return ref
         .watch(websiteInquiryRepositoryProvider)
         .list(
-          status: status?.wireName ?? (history ? 'HISTORY' : 'ACTIVE'),
+          status: status?.wireName ?? (history ? 'HISTORY' : 'new'),
           page: _page,
         );
   }
@@ -70,7 +70,10 @@ class WebsiteInquiryListNotifier
   void replaceIfPresent(WebsiteInquiry updated) {
     final current = state.valueOrNull;
     if (current == null) return;
-    final filter = ref.read(websiteInquiryStatusFilterProvider);
+    final history = ref.read(websiteInquiryHistoryProvider);
+    final filter =
+        ref.read(websiteInquiryStatusFilterProvider) ??
+        (history ? null : WebsiteInquiryStatus.newOne);
     final index = current.items.indexWhere((item) => item.id == updated.id);
     if (index < 0) return; // 不在当前页：翻页/刷新自然带上，不动。
     final terminal =

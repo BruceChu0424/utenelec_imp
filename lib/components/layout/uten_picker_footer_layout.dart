@@ -38,7 +38,11 @@ class UtenPickerFooterLayout extends StatelessWidget {
       return Row(
         children: [
           Expanded(
-            child: Align(alignment: Alignment.centerLeft, child: summary),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              heightFactor: 1,
+              child: summary,
+            ),
           ),
           const SizedBox(width: 12),
           if (pagination != null) ...[pagination!, const SizedBox(width: 24)],

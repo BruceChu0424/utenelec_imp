@@ -8,6 +8,93 @@ import 'package:uten_imp/shared/widgets/uten_location_field.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 
 void main() {
+  testWidgets('confirmation bar in Scaffold leaves the picker body usable', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(960, 700));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    var picked = false;
+    var confirmed = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StatefulBuilder(
+          builder: (context, setState) => Scaffold(
+            body: ListView(
+              children: [
+                ListTile(
+                  title: const Text('可选择记录'),
+                  onTap: () => setState(() => picked = true),
+                ),
+              ],
+            ),
+            bottomNavigationBar: UtenPickerConfirmBar(
+              selectedCount: picked ? 1 : 0,
+              onConfirm: () => confirmed = true,
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(
+      tester.getSize(find.byType(UtenPickerConfirmBar)).height,
+      lessThan(150),
+    );
+    expect(find.text('可选择记录').hitTestable(), findsOneWidget);
+    await tester.tap(find.text('可选择记录'));
+    await tester.pumpAndSettle();
+    expect(picked, isTrue);
+    expect(confirmed, isFalse);
+    await tester.tap(find.text('确定'));
+    expect(confirmed, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final scenario in [
+    (width: 960.0, scale: 1.0, platform: TargetPlatform.windows),
+    (width: 960.0, scale: 1.5, platform: TargetPlatform.windows),
+    (width: 390.0, scale: 1.3, platform: TargetPlatform.android),
+  ]) {
+    testWidgets(
+      'Scaffold picker footer wraps content and leaves body usable: ${scenario.width}/${scenario.scale}',
+      (tester) async {
+        await tester.binding.setSurfaceSize(Size(scenario.width, 700));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        var confirmed = false;
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: buildLightTheme().copyWith(platform: scenario.platform),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: TextScaler.linear(scenario.scale)),
+              child: child!,
+            ),
+            home: Scaffold(
+              body: const SizedBox.expand(key: Key('picker-body-viewport')),
+              bottomNavigationBar: UtenPickerConfirmBar(
+                selectedCount: 1,
+                selectedLabel: '带有颜色和仓库信息的待确认物料',
+                onConfirm: () => confirmed = true,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final body = tester.getRect(
+          find.byKey(const Key('picker-body-viewport')),
+        );
+        final footer = tester.getRect(find.byType(UtenPickerConfirmBar));
+        expect(body.height, greaterThan(350));
+        expect(footer.height, lessThan(350));
+        expect(body.bottom, closeTo(footer.top, 0.1));
+        expect(footer.bottom, closeTo(700, 0.1));
+        await tester.tap(find.widgetWithText(UtenButton, '确定'));
+        expect(confirmed, isTrue);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     'short selection summary cannot leave trailing space after actions',
     (tester) async {

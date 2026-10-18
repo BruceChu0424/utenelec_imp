@@ -3,12 +3,19 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/layout/uten_picker_confirm_bar.dart';
+import 'package:uten_imp/core/theme/dark_theme.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/basic_data/models/mould_node.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/repositories/mould_category_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/mould_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/mould_picker_field.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+
+import '../../../support/audit_screenshot_support.dart';
+
+final _captureBoundary = GlobalKey();
 
 void main() {
   testWidgets(
@@ -91,6 +98,10 @@ void main() {
     expect(repository.filtersSent.last, {'search.code': 'M3'});
     await tester.tap(find.text('分类模具'));
     await tester.pumpAndSettle();
+    expect(picked, isNull);
+    expect(find.text('选择模具'), findsOneWidget);
+    await tester.tap(find.text('确定'));
+    await tester.pumpAndSettle();
     expect(picked, 'mould-1');
     expect(tester.takeException(), isNull);
   });
@@ -143,6 +154,9 @@ void main() {
     expect(repository.requests, [('', 1), ('', 2)]);
     await tester.tap(find.text('第2页模具'));
     await tester.pumpAndSettle();
+    expect(picked, isNull);
+    await tester.tap(find.text('确定'));
+    await tester.pumpAndSettle();
     expect(picked, 'mould-2');
     expect(find.text('选择模具'), findsNothing);
     expect(tester.takeException(), isNull);
@@ -163,6 +177,97 @@ void main() {
     expect(repository.requests, [('', 1), ('', 2), ('', 2)]);
     expect(find.text('第2页模具'), findsOneWidget);
   });
+
+  for (final dismissal in ['取消', '关闭', '遮罩']) {
+    testWidgets('模具暂选后$dismissal不覆盖原绑定', (tester) async {
+      final changes = <dynamic>[];
+      await _open(
+        tester,
+        _Moulds(),
+        initialValue: 'old-id',
+        initialDisplay: 'OLD 旧模具',
+        onChanged: changes.add,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('第1页模具'));
+      await tester.pumpAndSettle();
+      expect(changes, isEmpty);
+      expect(find.text('已选择：M1 第1页模具'), findsOneWidget);
+      if (dismissal == '遮罩') {
+        await tester.tapAt(const Offset(10, 400));
+      } else if (dismissal == '关闭') {
+        await tester.tap(find.byTooltip('关闭'));
+      } else {
+        await tester.tap(find.text('取消'));
+      }
+      await tester.pumpAndSettle();
+      expect(changes, isEmpty);
+      expect(find.text('选择模具'), findsNothing);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        'OLD 旧模具',
+      );
+    });
+  }
+
+  testWidgets('搜索和翻页清除旧模具暂选，迟到确认不可提交', (tester) async {
+    final changes = <dynamic>[];
+    await _open(tester, _Moulds(), onChanged: changes.add);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('第1页模具'));
+    await tester.pumpAndSettle();
+    final oldConfirm = tester
+        .widget<UtenPickerConfirmBar>(find.byType(UtenPickerConfirmBar))
+        .onConfirm!;
+    await tester.enterText(_search(), '新关键词');
+    oldConfirm();
+    await tester.pumpAndSettle();
+    expect(changes, isEmpty);
+    expect(find.text('未选择'), findsOneWidget);
+    await tester.tap(find.text('第1页模具'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('下一页'));
+    await tester.pumpAndSettle();
+    expect(find.text('未选择'), findsOneWidget);
+    await tester.tap(find.text('确定'));
+    await tester.pumpAndSettle();
+    expect(changes, isEmpty);
+  });
+
+  testWidgets('模具确认栏在明暗桌面与紧凑屏均可操作', (tester) async {
+    await loadAuditScreenshotFonts(tester);
+    for (final config in [
+      (name: 'desktop', size: const Size(1440, 900), dark: false),
+      (name: 'compact-dark', size: const Size(390, 844), dark: true),
+    ]) {
+      await tester.pumpWidget(const SizedBox.shrink());
+      final changes = <dynamic>[];
+      await _open(
+        tester,
+        _Moulds(),
+        onChanged: changes.add,
+        size: config.size,
+        dark: config.dark,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('第1页模具'));
+      await tester.pumpAndSettle();
+      expect(changes, isEmpty);
+      expect(find.text('确定').hitTestable(), findsOneWidget);
+      expect(find.text('取消').hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      if (const bool.fromEnvironment('UTEN_CAPTURE_UI')) {
+        await saveAuditScreenshot(
+          tester,
+          _captureBoundary,
+          'mould-picker-confirm-${config.name}',
+        );
+      }
+      await tester.tap(find.text('确定'));
+      await tester.pumpAndSettle();
+      expect(changes, ['mould-1']);
+    }
+  });
 }
 
 Finder _search() => find.widgetWithText(TextField, '模具编号 / 名称 / 位置 / 制造商 / 备注');
@@ -174,8 +279,10 @@ Future<void> _open(
   bool openPicker = true,
   String? initialValue,
   String? initialDisplay,
+  Size size = const Size(1200, 900),
+  bool dark = false,
 }) async {
-  tester.view.physicalSize = const Size(1200, 900);
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -186,6 +293,11 @@ Future<void> _open(
         mouldCategoryRepositoryProvider.overrideWithValue(_Categories()),
       ],
       child: MaterialApp(
+        theme: auditScreenshotTheme(
+          dark ? buildDarkTheme() : buildLightTheme(),
+        ),
+        builder: (_, child) =>
+            RepaintBoundary(key: _captureBoundary, child: child),
         home: Scaffold(
           body: MouldPickerField(
             initialValue: initialValue,

@@ -8,11 +8,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
-import 'package:uten_imp/components/inputs/uten_filter_picker_field.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/inputs/uten_reference_picker_field.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
+import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/basic_data/pages/goods_detail_page.dart';
@@ -63,6 +67,7 @@ class _WhereUsedApi extends ApiClient {
   final bool richActual;
   final bool includeAlternativeMaterial;
   Completer<void>? reportGate;
+  final materialGates = <String, Completer<void>>{};
   final int unattributedDemandCount;
   final num unattributedDemandQty;
 
@@ -71,6 +76,7 @@ class _WhereUsedApi extends ApiClient {
   int traceCalls = 0;
   final traceQueries = <Map<String, dynamic>>[];
   final subjectQueries = <Map<String, dynamic>>[];
+  final materialQueries = <Map<String, dynamic>>[];
   Map<String, dynamic>? lastMaterialQuery;
   Map<String, dynamic>? lastQuery;
 
@@ -181,7 +187,9 @@ class _WhereUsedApi extends ApiClient {
     if (path == '/production/reports/where-used/materials') {
       materialCalls += 1;
       lastMaterialQuery = Map<String, dynamic>.of(query ?? const {});
+      materialQueries.add(Map<String, dynamic>.of(query ?? const {}));
       final keyword = (query?['keyword'] as String? ?? '').toLowerCase();
+      await materialGates[keyword]?.future;
       final candidates =
           [
             {
@@ -495,7 +503,7 @@ Future<void> _selectMaterial(
   String keyword = 'MAT-001',
   String materialId = _materialId,
 }) async {
-  await tester.tap(find.byKey(const Key('where-used-query-subject')));
+  await tester.tap(_subjectPickerButton());
   await tester.pumpAndSettle();
   final picker = find.byKey(const Key('goods-picker-sheet'));
   expect(picker, findsOneWidget);
@@ -506,8 +514,13 @@ Future<void> _selectMaterial(
   await tester.pump(const Duration(milliseconds: 300));
   await tester.pumpAndSettle();
   final material = find.byKey(ValueKey('goods-picker-item-$materialId'));
-  await tester.ensureVisible(material);
-  await tester.tap(material);
+  final materialCode = find.descendant(
+    of: material,
+    matching: find.text(keyword),
+  );
+  await tester.ensureVisible(materialCode);
+  expect(materialCode.hitTestable(), findsOneWidget);
+  await tester.tap(materialCode);
   await tester.pumpAndSettle();
   expect(picker, findsOneWidget, reason: '点行只暂选，确定后才返回查询页');
   await tester.tap(find.descendant(of: picker, matching: find.text('确定')));
@@ -518,7 +531,338 @@ Future<void> _selectMaterial(
   }
 }
 
+Finder _subjectField() => find.descendant(
+  of: find.byKey(const Key('where-used-query-subject')),
+  matching: find.byType(TextField),
+);
+
+Finder _subjectPickerButton() => find.descendant(
+  of: find.byKey(const Key('where-used-query-subject')),
+  matching: find.widgetWithText(TextButton, '选择'),
+);
+
+String _subjectText(WidgetTester tester) =>
+    tester.widget<TextField>(_subjectField()).controller!.text;
+
+void _changeEntry(WidgetTester tester, String kind) => tester
+    .widget<UtenDropdownField>(find.byKey(const Key('where-used-entry-kind')))
+    .onChanged(kind);
+
+Future<void> _enterSubject(WidgetTester tester, String keyword) async {
+  await tester.enterText(_subjectField(), keyword);
+  await tester.pump(const Duration(milliseconds: 301));
+  await tester.pumpAndSettle();
+}
+
+Finder _suggestion(String type, String id) =>
+    find.byKey(ValueKey(('where-used-suggestion', type, id)));
+
 void main() {
+  testWidgets(
+    'capture where-used lookup toolbar, suggestions and selection panel',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      await loadAuditScreenshotFonts(tester);
+      final api = _WhereUsedApi(includeAlternativeMaterial: true);
+      await _pumpSimplePage(
+        tester,
+        api,
+        size: const Size(1440, 900),
+        theme: auditScreenshotTheme(
+          buildLightTheme().copyWith(platform: TargetPlatform.windows),
+        ),
+      );
+      Future<void> capture(String suffix) => expectLater(
+        find.byKey(_captureBoundary),
+        matchesGoldenFile(
+          Directory.current.uri.resolve(
+            '.local-artifacts/where-used-lookup-$suffix.png',
+          ),
+        ),
+      );
+      await capture('empty');
+      await _enterSubject(tester, 'MAT');
+      expect(_suggestion('GOODS', _materialId), findsOneWidget);
+      expect(_suggestion('GOODS', _alternateMaterialId), findsOneWidget);
+      await capture('suggestions');
+      await tester.tap(_subjectPickerButton());
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('goods-picker-sheet')), findsOneWidget);
+      await capture('panel');
+      expect(tester.takeException(), isNull);
+    },
+    skip: !_captureUi,
+  );
+
+  for (final dark in [false, true]) {
+    testWidgets(
+      '${dark ? 'dark' : 'light'} desktop toolbar uses compact widths and equal control heights',
+      (tester) async {
+        await _pumpSimplePage(
+          tester,
+          _WhereUsedApi(),
+          size: const Size(1440, 900),
+          theme: (dark ? buildDarkTheme() : buildLightTheme()).copyWith(
+            platform: TargetPlatform.windows,
+          ),
+        );
+        final entry = tester.getRect(
+          find.byKey(const Key('where-used-entry-kind')),
+        );
+        final subject = tester.getRect(_subjectField());
+        final search = tester.getRect(
+          find.byKey(const Key('where-used-search')),
+        );
+        final filters = tester.getRect(
+          find.byKey(const Key('where-used-filters')),
+        );
+        expect(entry.width, closeTo(112, 0.5));
+        expect(subject.width, closeTo(360, 0.5));
+        expect(search.height, closeTo(40, 0.5));
+        for (final control in [entry, subject, filters]) {
+          expect(control.height, closeTo(search.height, 0.5));
+          expect(control.top, closeTo(search.top, 0.5));
+          expect(control.bottom, closeTo(search.bottom, 0.5));
+        }
+        expect(_subjectPickerButton(), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets('narrow toolbar wraps lookup with full touch height', (
+    tester,
+  ) async {
+    await _pumpSimplePage(
+      tester,
+      _WhereUsedApi(),
+      size: const Size(390, 844),
+      theme: buildLightTheme().copyWith(platform: TargetPlatform.android),
+    );
+    final entry = tester.getRect(
+      find.byKey(const Key('where-used-entry-kind')),
+    );
+    final subject = tester.getRect(_subjectField());
+    final search = tester.getRect(find.byKey(const Key('where-used-search')));
+    expect(entry.height, closeTo(48, 0.5));
+    expect(subject.height, closeTo(search.height, 0.5));
+    expect(search.height, closeTo(48, 0.5));
+    expect(subject.top, greaterThan(entry.bottom));
+    expect(subject.left, greaterThanOrEqualTo(0));
+    expect(subject.right, lessThanOrEqualTo(390));
+    expect(_subjectPickerButton().hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'typing finds report candidates but only choosing commits and queries',
+    (tester) async {
+      final api = _WhereUsedApi();
+      await _pumpSimplePage(tester, api, size: const Size(1400, 900));
+      await tester.enterText(_subjectField(), 'MAT-001');
+      await tester.pump(const Duration(milliseconds: 299));
+      expect(api.materialQueries, isEmpty, reason: '输入先防抖，不逐字请求');
+      expect(api.reportCalls, 0);
+      await tester.pump(const Duration(milliseconds: 2));
+      await tester.pumpAndSettle();
+      expect(api.materialQueries.single['keyword'], 'MAT-001');
+      expect(api.reportCalls, 0, reason: '查找文字不能成为正式货品 UUID');
+      expect(
+        tester
+            .widget<UtenButton>(find.byKey(const Key('where-used-search')))
+            .onPressed,
+        isNull,
+      );
+      expect(find.byKey(const Key('goods-picker-sheet')), findsNothing);
+      await tester.tap(_suggestion('GOODS', _materialId));
+      await tester.pumpAndSettle();
+      expect(api.reportCalls, 1);
+      expect(api.lastQuery?['materialGoodsId'], _materialId);
+      expect(_subjectText(tester), 'A 螺丝 · MAT-001');
+      expect(find.text('墙壁插座成品'), findsOneWidget);
+      expect(_suggestion('GOODS', _materialId), findsNothing);
+
+      final clear = find.descendant(
+        of: find.byKey(const Key('where-used-query-subject')),
+        matching: find.byIcon(Icons.close_rounded),
+      );
+      await tester.tap(clear);
+      await tester.pumpAndSettle();
+      expect(_subjectText(tester), isEmpty);
+      expect(find.text('墙壁插座成品'), findsNothing);
+      expect(api.reportCalls, 1);
+      expect(
+        tester
+            .widget<UtenButton>(find.byKey(const Key('where-used-search')))
+            .onPressed,
+        isNull,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'selection button carries uncommitted keyword and cancel restores binding',
+    (tester) async {
+      final api = _WhereUsedApi(includeAlternativeMaterial: true);
+      await _pumpSimplePage(tester, api, size: const Size(1400, 900));
+      await _selectMaterial(tester);
+      await _enterSubject(tester, 'MAT-002');
+      expect(_suggestion('GOODS', _alternateMaterialId), findsOneWidget);
+      expect(api.reportCalls, 1);
+      expect(api.lastQuery?['materialGoodsId'], _materialId);
+      await tester.tap(_subjectPickerButton());
+      await tester.pumpAndSettle();
+      final picker = find.byKey(const Key('goods-picker-sheet'));
+      expect(picker, findsOneWidget);
+      final search = tester.widget<TextField>(
+        find.descendant(
+          of: find.byKey(const Key('uten-goods-picker-search')),
+          matching: find.byType(TextField),
+        ),
+      );
+      expect(search.controller!.text, 'MAT-002');
+      expect(api.lastMaterialQuery?['keyword'], 'MAT-002');
+      await tester.tap(find.descendant(of: picker, matching: find.text('取消')));
+      await tester.pumpAndSettle();
+      expect(_subjectText(tester), 'A 螺丝 · MAT-001');
+      expect(api.reportCalls, 1);
+      expect(find.text('墙壁插座成品'), findsOneWidget);
+
+      await _enterSubject(tester, '不存在的物料');
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      expect(_subjectText(tester), 'A 螺丝 · MAT-001');
+      expect(api.reportCalls, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final scenario in [
+    (
+      kind: 'document',
+      keyword: 'DUP-001',
+      type: 'SUBCONTRACT_ORDER',
+      id: 'subcontract-order-1',
+    ),
+    (
+      kind: 'batch',
+      keyword: 'LOT-001',
+      type: 'PRODUCTION_OUTPUT_LOT',
+      id: 'production-lot-1',
+    ),
+  ]) {
+    testWidgets('${scenario.kind} suggestions preserve typed record identity', (
+      tester,
+    ) async {
+      final api = _WhereUsedApi();
+      await _pumpSimplePage(
+        tester,
+        api,
+        size: const Size(1400, 900),
+        permissions: _actualPermissions,
+      );
+      _changeEntry(tester, scenario.kind);
+      await tester.pumpAndSettle();
+      await _enterSubject(tester, scenario.keyword);
+      expect(api.subjectQueries.single['kind'], scenario.kind);
+      expect(api.subjectQueries.single['keyword'], scenario.keyword);
+      expect(api.traceCalls, 0);
+      expect(api.reportCalls, 0);
+      await tester.tap(_suggestion(scenario.type, scenario.id));
+      await tester.pumpAndSettle();
+      expect(api.traceQueries.last['subjectType'], scenario.type);
+      expect(api.traceQueries.last['subjectId'], scenario.id);
+      expect(api.reportCalls, 0);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('document selection panel starts with the uncommitted input', (
+    tester,
+  ) async {
+    final api = _WhereUsedApi();
+    await _pumpSimplePage(tester, api, size: const Size(1400, 900));
+    _changeEntry(tester, 'document');
+    await tester.pumpAndSettle();
+    await tester.enterText(_subjectField(), 'DUP-001');
+    await tester.tap(_subjectPickerButton());
+    await tester.pumpAndSettle();
+    final panelSearch = tester.widget<TextField>(
+      find.descendant(
+        of: find.byKey(const Key('material-trace-subject-search')),
+        matching: find.byType(TextField),
+      ),
+    );
+    expect(panelSearch.controller!.text, 'DUP-001');
+    expect(api.subjectQueries.last['keyword'], 'DUP-001');
+    expect(api.traceCalls, 0);
+    expect(_subjectText(tester), 'DUP-001');
+    await tester.tap(find.byTooltip('关闭').last);
+    await tester.pumpAndSettle();
+    expect(_subjectText(tester), isEmpty);
+    expect(api.traceCalls, 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final change in ['account', 'api', 'permission', 'entry']) {
+    testWidgets(
+      '$change prevents late suggestion results from rebinding a record',
+      (tester) async {
+        final gate = Completer<void>();
+        final api = _WhereUsedApi()..materialGates['mat-001'] = gate;
+        await _pumpSimplePage(tester, api, size: const Size(1400, 900));
+        await tester.enterText(_subjectField(), 'MAT-001');
+        await tester.pump(const Duration(milliseconds: 301));
+        expect(api.materialQueries.single['keyword'], 'MAT-001');
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(WhereUsedReportPage)),
+        );
+        switch (change) {
+          case 'account':
+            container.read(_liveIdentity.notifier).state =
+                const AuthenticatedScope(userId: 'other-viewer');
+          case 'api':
+            container.read(_liveApi.notifier).state = _WhereUsedApi();
+          case 'permission':
+            container.read(_livePermissions.notifier).state = {};
+          case 'entry':
+            _changeEntry(tester, 'document');
+        }
+        await tester.pump();
+        gate.complete();
+        await tester.pumpAndSettle();
+        expect(_subjectText(tester), isEmpty);
+        expect(_suggestion('GOODS', _materialId), findsNothing);
+        expect(api.reportCalls, 0);
+        expect(api.traceCalls, 0);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'later input replaces stale candidates even when old read finishes last',
+    (tester) async {
+      final old = Completer<void>();
+      final api = _WhereUsedApi(includeAlternativeMaterial: true)
+        ..materialGates['mat-001'] = old;
+      await _pumpSimplePage(tester, api, size: const Size(1400, 900));
+      await tester.enterText(_subjectField(), 'MAT-001');
+      await tester.pump(const Duration(milliseconds: 301));
+      await _enterSubject(tester, 'MAT-002');
+      expect(_suggestion('GOODS', _alternateMaterialId), findsOneWidget);
+      old.complete();
+      await tester.pumpAndSettle();
+      expect(_suggestion('GOODS', _materialId), findsNothing);
+      expect(_suggestion('GOODS', _alternateMaterialId), findsOneWidget);
+      await tester.tap(_suggestion('GOODS', _alternateMaterialId));
+      await tester.pumpAndSettle();
+      expect(api.lastQuery?['materialGoodsId'], _alternateMaterialId);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'desktop query controls share the first row and mode with direction share the second',
     (tester) async {
@@ -544,8 +888,13 @@ void main() {
         find.byKey(const Key('where-used-filters')),
       );
       expect(
-        tester.widget(find.byKey(const Key('where-used-query-subject'))),
-        isA<UtenFilterPickerField>(),
+        find.descendant(
+          of: find.byKey(const Key('where-used-query-subject')),
+          matching: find.byWidgetPredicate(
+            (widget) => widget is UtenReferencePickerField,
+          ),
+        ),
+        findsOneWidget,
       );
       for (final control in [subject, search, filters]) {
         expect(control.center.dy, closeTo(entry.center.dy, 0.5));
@@ -828,7 +1177,7 @@ void main() {
             )
             .onChanged(scenario.kind);
         await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const Key('where-used-query-subject')));
+        await tester.tap(_subjectPickerButton());
         await tester.pumpAndSettle();
         await tester.enterText(
           find.byKey(const Key('material-trace-subject-search')),
@@ -842,6 +1191,11 @@ void main() {
             ValueKey(('material-trace-subject', scenario.type, scenario.id)),
           ),
         );
+        await tester.pumpAndSettle();
+        expect(api.traceCalls, 0, reason: '点行只暂选，明确确认后才能绑定来源并追溯');
+        final confirm = find.byKey(const Key('material-trace-subject-confirm'));
+        await tester.ensureVisible(confirm);
+        await tester.tap(confirm);
         await tester.pumpAndSettle();
         expect(api.traceQueries.last['subjectType'], scenario.type);
         expect(api.traceQueries.last['subjectId'], scenario.id);
@@ -893,7 +1247,7 @@ void main() {
         await tester.pumpAndSettle();
         api.reportGate!.complete();
         await tester.pumpAndSettle();
-        expect(find.text('搜索并选择物料'), findsOneWidget);
+        expect(_subjectText(tester), isEmpty);
         expect(find.text('墙壁插座成品'), findsNothing);
         expect(find.byType(GoodsProductionTraceView), findsNothing);
         expect(tester.takeException(), isNull);
@@ -935,7 +1289,7 @@ void main() {
         find.byKey(const Key('where-used-product-detail-dialog')),
         findsNothing,
       );
-      expect(find.text('搜索并选择物料'), findsOneWidget);
+      expect(_subjectText(tester), isEmpty);
       expect(tester.takeException(), isNull);
     },
   );
@@ -1162,6 +1516,21 @@ void main() {
 
         expect(find.textContaining('另有 3 条旧版生产需求'), findsOneWidget);
         expect(find.text('BOM 与历史关系'), findsOneWidget);
+        if (scenario.size.height < 600) {
+          final outer = find
+              .descendant(
+                of: find.byType(UtenCollapsingHeaderScrollView),
+                matching: find.byType(Scrollable),
+              )
+              .first;
+          await tester.drag(outer, const Offset(0, -300));
+          await tester.pumpAndSettle();
+          expect(
+            tester.state<ScrollableState>(outer).position.pixels,
+            greaterThan(0),
+            reason: '横屏可上滑收起表头，显示关系工具栏和结果行',
+          );
+        }
         expect(find.text('全部已知关系'), findsOneWidget);
         expect(find.text('墙壁插座成品'), findsOneWidget);
         expect(tester.takeException(), isNull);

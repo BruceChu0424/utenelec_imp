@@ -1,5 +1,5 @@
 // 包装字段：点击后打开右滑窗（仅展示货品资料下「原材料」分类），选中需点击确认/取消
-// 才生效（showUtenGoodsPicker requireConfirm 模式），选中后把材料名称写入 pack 文本。
+// 才生效（showUtenGoodsPicker 统一确认），选中后把材料名称写入 pack 文本。
 //
 // StatefulWidget 持有本地值：MasterEditForm 的 customBuilder 每次 onChanged 后都会用同一份
 // 静态 ctx.initialValue 重新构建（详见 NumberUnitField 同类注释），必须靠自身 state 记账，

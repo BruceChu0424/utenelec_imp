@@ -103,6 +103,8 @@ class _ClientAccessBatchDialogState
             employeeCode: employee.code,
             departmentId: employee.departmentId,
             departmentName: employee.departmentName,
+            accountStatus: employee.accountStatus,
+            employmentStatus: employee.employmentStatus,
           ),
         )
         .toList(growable: false);

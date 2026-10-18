@@ -12,6 +12,7 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
@@ -739,6 +740,20 @@ class _AccountPageState extends ConsumerState<AccountPage> {
           ),
         ],
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: _canCreate
+          ? UtenFloatingActionGroup(
+              children: [
+                UtenButton(
+                  size: UtenButtonSize.large,
+                  icon: Icons.add_rounded,
+                  onPressed: _showCreate,
+                  child: const Text('添加账户'),
+                ),
+              ],
+            )
+          : null,
       body: SafeArea(
         child: UtenContentContainer.wide(
           child: Padding(
@@ -776,6 +791,9 @@ class _AccountPageState extends ConsumerState<AccountPage> {
                   _actionRow(),
                   Expanded(
                     child: MasterDataTableView<AccountListItem>(
+                      bottomContentPadding: _canCreate
+                          ? UtenFloatingActionGroup.scrollClearance
+                          : 0,
                       columnEditingEnabled: _canEdit,
                       tableKey:
                           'features.basic_data.pages.account_workspace_page.AccountPageState._buildDraftHost.1',
@@ -857,7 +875,6 @@ class _AccountPageState extends ConsumerState<AccountPage> {
   }
 
   Widget _actionRow() {
-    final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         UtenSpacing.s4,
@@ -868,23 +885,6 @@ class _AccountPageState extends ConsumerState<AccountPage> {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final compact = constraints.maxWidth < 760;
-          final heading = Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.account_balance_outlined,
-                size: 20,
-                color: theme.colorScheme.primary,
-              ),
-              const SizedBox(width: UtenSpacing.s8),
-              Text(
-                '账户（${_page?.total ?? 0}）',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          );
           final actions = Wrap(
             spacing: UtenSpacing.s8,
             runSpacing: UtenSpacing.s8,
@@ -904,13 +904,6 @@ class _AccountPageState extends ConsumerState<AccountPage> {
                   icon: Icons.fact_check_outlined,
                   onPressed: _openBalanceReconciliation,
                   child: const Text('余额核对'),
-                ),
-              if (_canCreate)
-                UtenButton(
-                  type: UtenButtonType.tonal,
-                  icon: Icons.add_rounded,
-                  onPressed: _showCreate,
-                  child: const Text('添加账户'),
                 ),
             ],
           );
@@ -939,19 +932,11 @@ class _AccountPageState extends ConsumerState<AccountPage> {
                         _openBalanceReconciliation(compactOverride: true),
                     icon: const Icon(Icons.fact_check_outlined),
                   ),
-                if (_canCreate)
-                  IconButton(
-                    tooltip: '添加账户',
-                    onPressed: _showCreate,
-                    icon: const Icon(Icons.add_rounded),
-                  ),
               ],
             );
           }
           return Row(
             children: [
-              heading,
-              const SizedBox(width: UtenSpacing.s12),
               Expanded(child: search),
               const SizedBox(width: UtenSpacing.s8),
               actions,

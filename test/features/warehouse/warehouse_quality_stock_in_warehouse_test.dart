@@ -517,6 +517,8 @@ Future<void> _pickFirstWarehouse(WidgetTester tester) async {
   );
   await tester.tap(find.byKey(const Key('warehouse-picker-entry-warehouse-a')));
   await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
+  await tester.pumpAndSettle();
 }
 
 Future<void> _pump(

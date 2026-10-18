@@ -8,7 +8,7 @@
 //
 // 默认人事规则：公司根节点不显示；决策层仅作展开骨架；管理中心和各级业务部门可选。
 // 专业业务场景可传 selectablePredicate 收窄范围。单选/多选统一二次操作：点行高亮，
-// 底部「取消/确定」确认（requireConfirm=false 可恢复单选点行即关的历史行为）。
+// 底部「取消/确定」确认；任何入口均不可跳过确认。
 // 路径显示：从第一个可选组织节点起用「-」连接。
 // 树渲染由全站共享的 UtenDepartmentTreeView 提供。
 import '../../../core/theme/uten_tokens.dart';
@@ -93,14 +93,12 @@ Map<String, DeptSelection> buildDeptSelectionMap(
 }
 
 /// 直接拉出部门选择面板（宽屏右侧滑入 / 窄屏底部抽屉），不经过表单字段壳。
-/// 供表格单元格等非表单场景点开即选；返回 null = 用户取消。
-/// [requireConfirm] 为 false 时单选点行即选定返回（与旧居中弹窗行为一致）。
+/// 供表格单元格等非表单场景使用；点击行仅暂存，确定后返回，null = 用户取消。
 Future<List<DeptSelection>?> showUtenDepartmentPickerPanel(
   BuildContext context, {
   required List<DepartmentNode> tree,
   UtenDepartmentPickerMode mode = UtenDepartmentPickerMode.single,
   List<DeptSelection> initialSelection = const [],
-  bool requireConfirm = false,
   bool expandOnRowTap = false,
   Set<String> initiallyExpandedIds = const {},
   DepartmentSelectionPredicate selectablePredicate =
@@ -108,11 +106,11 @@ Future<List<DeptSelection>?> showUtenDepartmentPickerPanel(
 }) {
   return showUtenAdaptivePanel<List<DeptSelection>>(
     context: context,
+    widthFraction: UtenPanelWidth.form,
     builder: (_) => _DepartmentPickerSheet(
       mode: mode,
       tree: tree,
       initialSelection: initialSelection,
-      requireConfirm: requireConfirm,
       expandOnRowTap: expandOnRowTap,
       initiallyExpandedIds: initiallyExpandedIds,
       selectablePredicate: selectablePredicate,
@@ -132,7 +130,6 @@ class UtenDepartmentPicker extends ConsumerStatefulWidget {
     this.validator,
     this.badgeCountFor,
     this.treeOverride,
-    this.requireConfirm = true,
     this.expandOnRowTap = false,
     this.initiallyExpandedIds = const {},
     this.selectablePredicate,
@@ -163,10 +160,6 @@ class UtenDepartmentPicker extends ConsumerStatefulWidget {
   /// 外部传入的树（如访客端目录）。非 null 时不再请求
   /// departmentPickerTreeProvider（员工 token 接口）。
   final List<DepartmentNode>? treeOverride;
-
-  /// 单选模式下是否需要底部「取消/确定」二次确认（而非点行即选中并关闭）。
-  /// 多选模式恒需确认，此项无效。默认 true（全站滑窗统一二次操作契约）。
-  final bool requireConfirm;
 
   /// 点击行文字是否同时展开/收起子部门（默认仅点左侧箭头展开，避免误触选中态收起）。
   final bool expandOnRowTap;
@@ -322,13 +315,13 @@ class _UtenDepartmentPickerState extends ConsumerState<UtenDepartmentPicker> {
       tree: tree,
       initialSelection: _selection,
       badgeCountFor: widget.badgeCountFor,
-      requireConfirm: widget.requireConfirm,
       expandOnRowTap: widget.expandOnRowTap,
       initiallyExpandedIds: widget.initiallyExpandedIds,
       selectablePredicate: _canSelect,
     );
     final result = await showUtenAdaptivePanel<List<DeptSelection>>(
       context: context,
+      widthFraction: UtenPanelWidth.form,
       builder: (_) => sheet,
     );
     final r = result;
@@ -516,14 +509,13 @@ InputDecoration utenPickerFieldDecoration(
   );
 }
 
-/// 抽屉内容：标题 + 共享组织树（UtenDepartmentTreeView）+ （多选）底部操作条。
+/// 抽屉内容：标题 + 共享组织树（UtenDepartmentTreeView）+ 统一底部确认栏。
 class _DepartmentPickerSheet extends StatefulWidget {
   const _DepartmentPickerSheet({
     required this.mode,
     required this.tree,
     required this.initialSelection,
     this.badgeCountFor,
-    this.requireConfirm = true,
     this.expandOnRowTap = false,
     this.initiallyExpandedIds = const {},
     required this.selectablePredicate,
@@ -533,7 +525,6 @@ class _DepartmentPickerSheet extends StatefulWidget {
   final List<DepartmentNode> tree;
   final List<DeptSelection> initialSelection;
   final int? Function(String departmentId)? badgeCountFor;
-  final bool requireConfirm;
   final bool expandOnRowTap;
   final Set<String> initiallyExpandedIds;
   final DepartmentSelectionPredicate selectablePredicate;
@@ -555,7 +546,13 @@ class _DepartmentPickerSheetState extends State<_DepartmentPickerSheet> {
       widget.tree,
       selectablePredicate: widget.selectablePredicate,
     );
-    _selected = {for (final s in widget.initialSelection) s.id: s};
+    _selected = {};
+    for (final initial in widget.initialSelection) {
+      final resolved = _selectionMap[initial.id];
+      if (resolved == null) continue;
+      _selected[resolved.id] = resolved;
+      if (!_isMulti) break;
+    }
   }
 
   void _onToggleSelect(DepartmentNode node) {
@@ -569,14 +566,12 @@ class _DepartmentPickerSheetState extends State<_DepartmentPickerSheet> {
           _selected[node.id] = sel;
         }
       });
-    } else if (widget.requireConfirm) {
+    } else {
       setState(() {
         _selected
           ..clear()
           ..[node.id] = sel;
       });
-    } else {
-      Navigator.of(context).pop([sel]);
     }
   }
 
@@ -639,18 +634,17 @@ class _DepartmentPickerSheetState extends State<_DepartmentPickerSheet> {
             nodeEnabledPredicate: widget.selectablePredicate,
           ),
         ),
-        if (_isMulti || widget.requireConfirm)
-          UtenPickerConfirmBar(
-            selectedCount: _selected.length,
-            selectedLabel: _isMulti || _selected.isEmpty
-                ? null
-                : _selected.values.first.name,
-            onClear: _isMulti ? () => setState(_selected.clear) : null,
-            confirmLabel: _isMulti ? '确定(${_selected.length})' : '确定',
-            onConfirm: () => Navigator.of(context).pop(
-              _isMulti ? _selected.values.toList() : [_selected.values.first],
-            ),
+        UtenPickerConfirmBar(
+          selectedCount: _selected.length,
+          selectedLabel: _isMulti || _selected.isEmpty
+              ? null
+              : _selected.values.first.name,
+          onClear: _isMulti ? () => setState(_selected.clear) : null,
+          confirmLabel: _isMulti ? '确定(${_selected.length})' : '确定',
+          onConfirm: () => Navigator.of(context).pop(
+            _isMulti ? _selected.values.toList() : [_selected.values.first],
           ),
+        ),
       ],
     );
   }

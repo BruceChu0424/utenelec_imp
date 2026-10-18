@@ -235,6 +235,7 @@ class _SubcontractDocDetailPageState
 
   /// 首屏之后并行补齐字典与明细货品名/编号/库位号(委外明细服务端暂未随单下发货品
   /// 展示字段，由一次批量货品查询补齐)，完成后重绘一次。
+  /// 人员姓名(工号)优先用服务端随单下发的解析值；旧后端未下发时按 id 补查本地字典。
   Future<void> _resolveDisplayNames(
     mn.MasterNameService names,
     SubcontractDocDetail d,
@@ -246,6 +247,12 @@ class _SubcontractDocDetailPageState
         names.loadGoodsDetails(
           d.items.map((e) => e.goodsId).whereType<String>(),
         ),
+        if (d.purchaserName == null || d.senderName == null || d.workerName == null)
+          names.loadEmployeeNames([
+            if (_cfg.hasPurchaser && d.purchaserName == null) d.purchaserId,
+            if (_cfg.hasSender && d.senderName == null) d.senderId,
+            if (_cfg.hasWorker && d.workerName == null) d.workerId,
+          ]),
       ]);
     } catch (_) {
       // 名称补齐失败只影响占位符，不影响正文。
@@ -864,10 +871,13 @@ class _SubcontractDocDetailPageState
       // 委外不展示汇率（固定 1 随单保存，进仓/退货与订单快照一致性由服务端校验）。
       if (canViewCommercialAmounts && _cfg.hasTaxRate && d.taxRate != null)
         _KV('税率', d.taxRate?.toString()),
-      // 人员字段展示 id（员工名解析未接入；与采购详情页同款已知限制，待统一 EmployeeNameService）。
-      if (_cfg.hasPurchaser) _KV('采购员', d.purchaserId ?? '—'),
-      if (_cfg.hasSender) _KV('交货人', d.senderId ?? '—'),
-      if (_cfg.hasWorker) _KV('经办人', d.workerId ?? '—'),
+      // 人员身份统一 姓名(工号)：优先服务端随单解析值，旧后端未下发时退回本地员工字典。
+      if (_cfg.hasPurchaser)
+        _KV('采购员', names.employeeOr(d.purchaserName, d.purchaserId)),
+      if (_cfg.hasSender)
+        _KV('交货人', names.employeeOr(d.senderName, d.senderId)),
+      if (_cfg.hasWorker)
+        _KV('经办人', names.employeeOr(d.workerName, d.workerId)),
       if (_cfg.hasDeliverDate) _KV('交货日', d.deliverDate),
       if (_cfg.hasLastDate) _KV('最后交货日', d.lastDate),
       if (_cfg.hasBStyle) _KV('bStyle', d.bStyle?.toString()),

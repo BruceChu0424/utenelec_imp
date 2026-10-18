@@ -82,7 +82,7 @@ class PermissionCatalogBrowser extends StatefulWidget {
 class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
   final _searchController = TextEditingController();
   final Set<String> _expandedModules = {};
-  final Set<String> _expandedCategories = {};
+  final Set<(String, String)> _expandedCategories = {};
   PermissionCatalogFilter _filter = PermissionCatalogFilter.all;
   PermissionActionType? _actionType;
   String _query = '';
@@ -169,16 +169,17 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
     });
   }
 
-  bool _isCategoryExpanded(String category) =>
-      _isFiltering ? true : _expandedCategories.contains(category);
+  bool _isCategoryExpanded(PermissionCatalogGroup group) => _isFiltering
+      ? true
+      : _expandedCategories.contains((group.module, group.category));
 
-  void _setCategoryExpanded(String category, bool expanded) {
+  void _setCategoryExpanded(PermissionCatalogGroup group, bool expanded) {
     if (_isFiltering) return;
     setState(() {
       if (expanded) {
-        _expandedCategories.add(category);
+        _expandedCategories.add((group.module, group.category));
       } else {
-        _expandedCategories.remove(category);
+        _expandedCategories.remove((group.module, group.category));
       }
     });
   }
@@ -203,11 +204,13 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
   }
 
   void _toggleAllModules(List<_VisibleModule> modules) {
-    final categories = <String>[];
-    final allExpanded = modules.every((m) {
-      categories.addAll(m.subcats.map((s) => s.full.category));
-      return _expandedModules.contains(m.module);
-    });
+    // Collect independently: every() stops at the first collapsed module.
+    final categories = {
+      for (final module in modules)
+        for (final subcat in module.subcats)
+          (subcat.full.module, subcat.full.category),
+    };
+    final allExpanded = _allModulesExpanded(modules);
     setState(() {
       if (allExpanded) {
         _expandedModules.clear();
@@ -382,7 +385,16 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
 
   bool _allModulesExpanded(List<_VisibleModule> modules) =>
       modules.isNotEmpty &&
-      modules.every((m) => _expandedModules.contains(m.module));
+      modules.every(
+        (module) =>
+            _expandedModules.contains(module.module) &&
+            module.subcats.every(
+              (subcat) => _expandedCategories.contains((
+                subcat.full.module,
+                subcat.full.category,
+              )),
+            ),
+      );
 
   ButtonSegment<PermissionCatalogFilter> _filterChip({
     required Key key,
@@ -503,12 +515,11 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
         widget.onGrantScope != null || widget.onDisableGroup != null;
 
     return PermCatalogGroupSection(
-      key: ValueKey('permission-category-${group.category}'),
+      key: ValueKey(('permission-category', group.module, group.category)),
       title: group.category,
       countLabel: countLabel,
-      expanded: _isCategoryExpanded(group.category),
-      onExpandedChanged: (expanded) =>
-          _setCategoryExpanded(group.category, expanded),
+      expanded: _isCategoryExpanded(group),
+      onExpandedChanged: (expanded) => _setCategoryExpanded(group, expanded),
       trailing: canBatch
           ? PopupMenuButton<_PermissionGroupAction>(
               tooltip: '批量设置${group.category}',

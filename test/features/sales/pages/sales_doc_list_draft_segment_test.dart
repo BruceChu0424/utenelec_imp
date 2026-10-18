@@ -253,7 +253,7 @@ void main() {
     expect(find.text('已审'), findsNothing);
     expect(find.text('历史记录'), findsOneWidget);
     expect(find.text('可发货置顶'), findsNothing);
-    expect(find.text('新建'), findsNothing);
+    expect(find.byKey(const Key('sales-list-create')), findsOneWidget);
     expect(find.text('从报价引入'), findsNothing);
     expect(find.text('批量发货'), findsNothing);
   });

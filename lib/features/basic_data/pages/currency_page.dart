@@ -1,7 +1,7 @@
 // 币种资料管理页（基础资料 · 扁平主档，无分类树）。
 //
 // 与颜色/单位同级扁平字典（编号/名称/参考汇率/状态）。复刻 color_page：
-// 标题行(Icon+Text+(N)+搜索+添加) + MasterDataTableView + showMasterEditDialog/DetailSheet。
+// 搜索栏 + MasterDataTableView + 右下角添加 + showMasterEditDialog/DetailSheet。
 // 查看全员可见（路由不设守卫），编辑按 currency:edit 显隐。
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
@@ -15,6 +15,7 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
@@ -397,8 +398,6 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
 
   Widget _buildDraftHost(BuildContext context) {
     ref.watch(currentPermissionsProvider);
-    final theme = Theme.of(context);
-    final total = _page?.total ?? 0;
     return Scaffold(
       appBar: UtenAppBar(
         title: '币种资料',
@@ -413,6 +412,20 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
           ),
         ],
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: _canCreate
+          ? UtenFloatingActionGroup(
+              children: [
+                UtenButton(
+                  size: UtenButtonSize.large,
+                  icon: Icons.add_rounded,
+                  onPressed: _showCreate,
+                  child: const Text('添加币种'),
+                ),
+              ],
+            )
+          : null,
       body: SafeArea(
         child: UtenContentContainer(
           child: Padding(
@@ -425,42 +438,17 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
                     left: UtenSpacing.s4,
                     right: UtenSpacing.s4,
                   ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.attach_money_rounded,
-                        size: 18,
-                        color: theme.colorScheme.primary,
-                      ),
-                      const SizedBox(width: UtenSpacing.s8),
-                      Text(
-                        '币种 ($total)',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(width: UtenSpacing.s12),
-                      Expanded(
-                        child: UtenSearchBar(
-                          hint: '搜索币种(名称/编号)',
-                          initialValue: _keyword,
-                          onChanged: _onKeywordChanged,
-                        ),
-                      ),
-                      if (_canCreate) ...[
-                        const SizedBox(width: UtenSpacing.s8),
-                        UtenButton(
-                          type: UtenButtonType.tonal,
-                          icon: Icons.add_rounded,
-                          onPressed: _showCreate,
-                          child: const Text('添加币种'),
-                        ),
-                      ],
-                    ],
+                  child: UtenSearchBar(
+                    hint: '搜索币种(名称/编号)',
+                    initialValue: _keyword,
+                    onChanged: _onKeywordChanged,
                   ),
                 ),
                 Expanded(
                   child: MasterDataTableView<CurrencyListItem>(
+                    bottomContentPadding: _canCreate
+                        ? UtenFloatingActionGroup.scrollClearance
+                        : 0,
                     columnEditingEnabled: _canEdit,
                     tableKey:
                         'features.basic_data.pages.currency_page.CurrencyPageState._buildDraftHost.1',

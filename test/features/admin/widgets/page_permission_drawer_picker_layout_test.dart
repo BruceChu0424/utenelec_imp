@@ -9,6 +9,7 @@ import 'package:uten_imp/features/admin/repositories/admin_repository.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/admin/widgets/page_permission_drawer.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/department/widgets/uten_department_tree_view.dart';
 import 'package:uten_imp/shared/auth/page_permission_delegation_models.dart';
 import 'package:uten_imp/shared/auth/page_permission_delegation_repository.dart';
@@ -16,6 +17,8 @@ import 'package:uten_imp/shared/auth/page_permission_scope.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
   for (final superAdmin in [true, false]) {
     testWidgets('页面客户范围入口保持独立授权 superAdmin=$superAdmin', (tester) async {
       await tester.binding.setSurfaceSize(const Size(1200, 900));
@@ -125,13 +128,13 @@ void main() {
       expect(find.byType(UtenDepartmentTreeView), findsOneWidget);
       await tester.tap(find.byTooltip('返回内容'));
       await tester.pumpAndSettle();
-      expect(find.text('胡钟炎(UT0006)'), findsOneWidget);
+      expect(find.text('胡钟炎'), findsOneWidget);
+      expect(find.text('UT0006'), findsOneWidget);
       expect(tester.takeException(), isNull);
-      await tester.tap(
-        find.byKey(const ValueKey('page-permission-staff-active')),
-      );
+      await tester.tap(find.text('胡钟炎'));
       await tester.pumpAndSettle();
       expect(repository.detailCalls, 0);
+      expect(find.text('已选择：胡钟炎(UT0006)'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }
@@ -162,6 +165,70 @@ void main() {
     expect(tree.nodeEnabledPredicate!(tree.nodes.single), isFalse);
     expect(tree.selectedIds, {'sales'});
   });
+
+  testWidgets('权限员工表展示重点信息，选中员工仍保留账号状态', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = _Repository();
+    await tester.pumpWidget(_app(repository));
+    await tester.pumpAndSettle();
+
+    final table = tester
+        .widget<MasterDataTableView<PagePermissionStaffSummary>>(
+          find.byKey(const ValueKey('page-permission-staff-table')),
+        );
+    expect(table.columns.map((column) => column.label), [
+      '姓名',
+      '工号',
+      '部门',
+      '岗位',
+      '账号状态',
+      '在职状态',
+    ]);
+    expect(find.text('胡钟炎'), findsOneWidget);
+    expect(find.text('UT0006'), findsOneWidget);
+    expect(find.text('销售员'), findsNWidgets(2));
+    final accountStatus = find.byKey(
+      const ValueKey('page-permission-account-status-unprovisioned'),
+    );
+    expect(accountStatus, findsOneWidget);
+    await tester.tap(find.text('员工乙'));
+    await tester.pumpAndSettle();
+    expect(accountStatus, findsOneWidget);
+    expect(repository.detailCalls, 0);
+    expect(find.text('已选择：员工乙(UT0007)'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('权限部门栏缩到160后搜索清除和层级操作保持可用', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = _Repository();
+    await tester.pumpWidget(_app(repository));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byTooltip('拖动调整宽度 · 双击复位'), const Offset(-1400, 0));
+    await tester.pumpAndSettle();
+    final tree = find.byType(UtenDepartmentTreeView);
+    expect(tester.getSize(tree).width, 160);
+    final search = find.descendant(of: tree, matching: find.byType(TextField));
+    expect(tester.getSize(search).width, 144);
+    await tester.enterText(search, 'UT0006');
+    await tester.pump(const Duration(milliseconds: 301));
+    await tester.pumpAndSettle();
+    expect(repository.searches.last, 'UT0006');
+    final clear = find.byTooltip('清除搜索');
+    expect(tester.getRect(tree).contains(tester.getRect(clear).center), isTrue);
+    await tester.tap(clear);
+    await tester.pumpAndSettle();
+    expect(repository.searches.last, '');
+    await tester.tap(find.text('可见管理中心'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: tree, matching: find.text('销售部')));
+    await tester.pumpAndSettle();
+    expect(repository.requestedDepartments.last, 'sales');
+    expect(tester.getSize(tree).width, 160);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 Widget _app(_Repository repository) => ProviderScope(
@@ -169,11 +236,12 @@ Widget _app(_Repository repository) => ProviderScope(
     pagePermissionDelegationRepositoryProvider.overrideWithValue(repository),
     currentPermissionsProvider.overrideWithValue(const {}),
   ],
-  child: const MaterialApp(
-    locale: Locale('zh'),
+  child: MaterialApp(
+    theme: ThemeData(platform: TargetPlatform.windows),
+    locale: const Locale('zh'),
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
-    home: PagePermissionDrawer(
+    home: const PagePermissionDrawer(
       scope: PagePermissionScope(surfaceKey: 'sales.order', title: '销售订货'),
     ),
   ),
@@ -183,6 +251,7 @@ class _Repository implements PagePermissionDelegationRepository {
   _Repository({this.withClientScope = false});
   final bool withClientScope;
   final requestedDepartments = <String?>[];
+  final searches = <String?>[];
   var detailCalls = 0;
 
   @override
@@ -212,6 +281,7 @@ class _Repository implements PagePermissionDelegationRepository {
     int size = 40,
   }) async {
     requestedDepartments.add(departmentId);
+    searches.add(search);
     return PagePermissionStaffPage(
       surfaceKey: surfaceKey,
       departmentId: departmentId,
@@ -224,9 +294,12 @@ class _Repository implements PagePermissionDelegationRepository {
             departmentName: '销售部',
             fullName: id == 'active' ? '胡钟炎' : '员工乙',
             code: id == 'active' ? 'UT0006' : 'UT0007',
+            positionName: '销售员',
             departmentManager: false,
             hasAccount: id == 'active',
             accountActive: id == 'active',
+            accountStatus: id == 'active' ? 'active' : 'notProvisioned',
+            employmentStatus: id == 'active' ? 'onLeave' : 'probation',
           ),
       ],
       page: page,

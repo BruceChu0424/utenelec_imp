@@ -21,6 +21,8 @@ public class ReturnDetail extends com.uten.imp.common.history.DocumentHistoryMet
     private BigDecimal exchangeRate;
     private BigDecimal taxRate;
     private UUID receiverId;
+    /** 收货人「姓名(工号)」（服务端按 receiver_id 解析；工号缺失退化为纯姓名）。 */
+    private String receiverName;
     private UUID settlementMethodId;
     private Integer settlementStyleLegacy;
     private UUID makerId;
@@ -32,7 +34,7 @@ public class ReturnDetail extends com.uten.imp.common.history.DocumentHistoryMet
     private boolean closed;
     private String sourceDocNo;
     private List<ReturnItemDto> items;
-    /** 制单员姓名（服务端按 maker_id 解析：employees 直查 + users 历史数据兼容）。 */
+    /** 制单员「姓名(工号)」（服务端按 maker_id 解析：employees 直查 + users 历史数据兼容）。 */
     private String makerName;
     /** 制单时间（审计 created_at，创建后不可变）。 */
     private java.time.Instant createdAt;

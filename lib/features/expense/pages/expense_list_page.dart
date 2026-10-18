@@ -3,8 +3,8 @@
 //
 // 2026-09-19 V608 全链路改版：对齐 purchase_doc_list_page 范式——
 // AppBar(标题+右上刷新) + UtenContentContainer.wide + UtenCollapsingHeaderScrollView
-// （折叠头=UtenFilterToolbar 分段，进页面默认不选，占位引导）+ 页面头行
-// （Icon + 标题(N) + 新建按钮）+ MasterDataTableView(primary:true)。
+// （折叠头=UtenFilterToolbar 分段）+ MasterDataTableView(primary:true)。
+// 标题只保留在 AppBar；新建报销统一在右下角，草稿分类与批量动作同组。
 // 列增「单号」（BX 单号，V608 创建即铸）、「进度」列带操作人姓名回显。
 // 历史：2026-09-09 卡片网格 → 表格化；2026-09-10 表头状态筛选；
 // 2026-09-16 类别筛选桶。
@@ -30,6 +30,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/network/api_exception.dart';
@@ -98,6 +99,16 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
         )
       : table;
 
+  Widget _createAction() => UtenButton(
+    key: const Key('expense-list-create'),
+    size: UtenButtonSize.large,
+    icon: Icons.add_rounded,
+    onPressed: draftDeleteBusy
+        ? null
+        : () => context.push(RouteName.expenseNew),
+    child: const Text('新建报销'),
+  );
+
   @override
   Widget build(BuildContext context) {
     ref.onPageResume(RouteName.expense, () {
@@ -144,7 +155,10 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
     );
     final list = _retainedPage.resolve(paginationScope, rawList);
     final mineFacets = ref.watch(expenseMineFacetsProvider);
-    final total = list.valueOrNull?.total ?? 0;
+    // 草稿表格已有右下角批量组，新建并入同组；其他分类和加载/错误态
+    // 由 Scaffold 提供唯一入口，避免页面浮动组遮住表格批量删除。
+    final createInDraftTable =
+        canApply && filter == ExpenseFilter.draft && list.hasValue;
 
     return Scaffold(
       appBar: UtenAppBar(
@@ -160,6 +174,11 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
           ),
         ],
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: canApply && !createInDraftTable
+          ? UtenFloatingActionGroup(children: [_createAction()])
+          : null,
       body: SafeArea(
         child: UtenContentContainer.wide(
           child: Padding(
@@ -216,39 +235,6 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
                           null;
                     },
                   ),
-                  // 页面头：Icon + 标题 + 计数 + 新建按钮（唯一新建入口，
-                  // 空态由表格内置空态提示，不再出 FAB；随页滚走）。
-                  Padding(
-                    padding: const EdgeInsets.only(
-                      top: UtenSpacing.s8,
-                      bottom: UtenSpacing.s8,
-                      left: UtenSpacing.s4,
-                      right: UtenSpacing.s4,
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.receipt_long_outlined,
-                          size: 18,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                        const SizedBox(width: UtenSpacing.s8),
-                        Text(
-                          '我的报销 ($total)',
-                          style: Theme.of(context).textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w600),
-                        ),
-                        const Spacer(),
-                        if (canApply && filter != ExpenseFilter.draft)
-                          UtenButton(
-                            type: UtenButtonType.tonal,
-                            icon: Icons.add_rounded,
-                            onPressed: () => context.push(RouteName.expenseNew),
-                            child: const Text('新建报销'),
-                          ),
-                      ],
-                    ),
-                  ),
                 ],
               ),
               body: list.when(
@@ -264,6 +250,9 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
                           tableKey:
                               'features.expense.pages.expense_list_page.ExpenseListPageState.build.1',
                           key: const Key('expense-list-table'),
+                          bottomContentPadding: canApply
+                              ? UtenFloatingActionGroup.scrollClearance
+                              : 0,
                           columns: _columns,
                           items: const [],
                           facets: const {},
@@ -279,6 +268,9 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
                     tableKey:
                         'features.expense.pages.expense_list_page.ExpenseListPageState.build.2',
                     key: const Key('expense-list-table'),
+                    bottomContentPadding: canApply
+                        ? UtenFloatingActionGroup.scrollClearance
+                        : 0,
                     columns: _columns,
                     items: const [],
                     facets: const {},
@@ -295,6 +287,9 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
                     tableKey:
                         'features.expense.pages.expense_list_page.ExpenseListPageState.build.3',
                     key: const Key('expense-list-table'),
+                    bottomContentPadding: canApply
+                        ? UtenFloatingActionGroup.scrollClearance
+                        : 0,
                     // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
                     primary: true,
                     columns: _columns,
@@ -357,6 +352,7 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
                         reload: () =>
                             ref.read(expenseListProvider.notifier).refresh(),
                       ),
+                      if (canApply) _createAction(),
                     ],
                     emptyMessage: '暂无报销单',
                     currentPage: page.page,

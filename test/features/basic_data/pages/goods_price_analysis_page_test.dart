@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/components/layout/uten_segmented_filter.dart';
+import 'package:uten_imp/components/layout/uten_picker_confirm_bar.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_price_facet_picker.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_subcontract_supplier_table.dart';
 import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
@@ -1584,6 +1585,21 @@ void main() {
       expect(repository.facetQueries.last['search'], '201');
       await tester.tap(find.text('第201条单据'));
       await tester.pumpAndSettle();
+      expect(find.byType(GoodsPriceFacetPicker), findsOneWidget);
+      expect(
+        tester
+            .widget<MasterDataTableView<PriceObservation>>(
+              find.byKey(const Key('goods-price-history-table')),
+            )
+            .filters['sourceNo'],
+        isNull,
+      );
+      final confirm = find.byKey(const Key('goods-price-facet-confirm'));
+      await tester.ensureVisible(confirm);
+      await tester.pumpAndSettle();
+      expect(confirm.hitTestable(), findsOneWidget);
+      await tester.tap(confirm);
+      await tester.pumpAndSettle();
       final table = tester.widget<MasterDataTableView<PriceObservation>>(
         find.byKey(const Key('goods-price-history-table')),
       );
@@ -1998,6 +2014,66 @@ void main() {
     ),
   );
 
+  for (final change in ['cancel', 'query', 'permission']) {
+    testWidgets('facet draft cannot commit after $change', (tester) async {
+      final repository = _Repository();
+      Object? returned;
+      final (container, _) = await pump(
+        tester,
+        repository,
+        child: panelHost(
+          const GoodsPriceFacetPicker(
+            goodsId: 'a',
+            query: {'kind': 'PURCHASE'},
+          ),
+          (value) => returned = value,
+        ),
+      );
+      await tester.tap(find.text('open-price-panel'));
+      await tester.pumpAndSettle();
+      final oldTable = tester.widget<MasterDataTableView<MasterFacetBucket>>(
+        find.byType(MasterDataTableView<MasterFacetBucket>),
+      );
+      await tester.tap(find.text('第201条单据'));
+      await tester.pumpAndSettle();
+      expect(returned, isNull);
+      final bar = tester.widget<UtenPickerConfirmBar>(
+        find.byType(UtenPickerConfirmBar),
+      );
+      expect(bar.selectedCount, 1);
+      final staleConfirm = bar.onConfirm!;
+      if (change == 'cancel') {
+        await tester.tap(find.text('取消'));
+        await tester.pumpAndSettle();
+        expect(find.byType(GoodsPriceFacetPicker), findsNothing);
+      } else {
+        if (change == 'query') {
+          await tester.enterText(
+            find.byWidgetPredicate(
+              (w) => w is TextField && w.decoration?.hintText == '搜索全部可见取值',
+            ),
+            '201',
+          );
+        } else {
+          container.read(_grants.notifier).state = {Perm.goodsView};
+        }
+        await tester.pump();
+        oldTable.onRowTap!(oldTable.items.single);
+        staleConfirm();
+        await tester.pumpAndSettle();
+        expect(find.byType(GoodsPriceFacetPicker), findsOneWidget);
+        expect(
+          tester
+              .widget<UtenPickerConfirmBar>(find.byType(UtenPickerConfirmBar))
+              .selectedCount,
+          0,
+        );
+      }
+      expect(returned, isNull);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   for (final size in [const Size(320, 800), const Size(640, 320)]) {
     testWidgets(
       'price panel pressure: facet field/search/selection stay exact at $size',
@@ -2114,6 +2190,13 @@ void main() {
           'price-facet-pressure-${size.width.toInt()}-${size.height.toInt()}',
         );
         await tester.tapAt(bucketPoint);
+        await tester.pumpAndSettle();
+        expect(returned, isNull);
+        final confirm = find.byKey(const Key('goods-price-facet-confirm'));
+        await tester.ensureVisible(confirm);
+        await tester.pumpAndSettle();
+        expectVisiblePriceTarget(tester, confirm, size);
+        await tester.tap(confirm);
         await tester.pumpAndSettle();
         expect(returned, isA<(String, MasterFacetBucket)>());
         final selection = returned! as (String, MasterFacetBucket);

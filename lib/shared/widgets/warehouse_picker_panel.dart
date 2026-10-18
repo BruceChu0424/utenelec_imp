@@ -3,22 +3,25 @@
 //
 // 两种口径，同一个面板(ADR-145 单主仓 / ADR-146 仓库用途)，由必填的 [use] 决定：
 // - 运营口径(良品入/良品出/转入不良/不良转出/处置出库/调拨/盘点，单据登记/货品所属仓库等
-//   「新选」入口)：先显示主仓，点主仓进入其子仓，选子仓后返回「主仓名-子仓名」显示名；只能选
+//   「新选」入口)：先显示主仓，点主仓进入其子仓，选子仓并确认后返回「主仓名-子仓名」显示名；只能选
 //   服务端算好的可选子仓(良品用途只认 selectableForNew，不良用途只认 selectableDefective)，
 //   主仓只导航不选定。不良品仓一律带「不良品」标签；良品用途下它们照常列出但置灰不可选。
 // - 查询口径(WarehouseUse.query，即时库存/货架目视化/流水等看盘入口)：
-//   不钻层，整棵层级按缩进一次铺开，任意层级一点即选——主仓 = 自身 + 全部子仓
+//   不钻层，整棵层级按缩进一次铺开，任意层级可选——主仓 = 自身 + 全部子仓
 //   聚合（服务端 WarehouseScopeService 展开）；[includeAll] 再补一行「全部」
 //   (= 参与核算仓库聚合，返回 [WarehousePickerResult.all])。已停用的仓默认不列
 //   (历史单据仍按字典显示名称)，当前选中值总能看到。
+// - 所有选项（包括「全部」）先暂存，点底部「确定」才返回；取消/关闭放弃暂存。
 import 'package:flutter/material.dart';
 
 import '../../components/inputs/uten_search_bar.dart';
 import '../../components/layout/uten_adaptive_panel.dart';
+import '../../components/layout/uten_picker_confirm_bar.dart';
 import '../providers/master_name_provider.dart';
 import '../../core/theme/uten_tokens.dart';
 import 'warehouse_defective_tag.dart';
 import 'warehouse_selection.dart';
+import '../../features/basic_data/widgets/master_data_table_view.dart';
 
 /// 面板选定结果：仓库 id + 「主仓名-子仓名」显示名（无父级时只有仓名）。
 /// 查询口径下选「全部」返回 [all]（id 为空串，[isAll] 为 true）。
@@ -101,6 +104,7 @@ Future<WarehousePickerResult?> showUtenWarehousePickerPanel(
 }) {
   return showUtenAdaptivePanel<WarehousePickerResult>(
     context: context,
+    widthFraction: UtenPanelWidth.form,
     builder: (_) => _WarehousePickerSheet(
       hierarchy: hierarchy,
       use: use,
@@ -150,6 +154,7 @@ class _WarehousePickerSheetState extends State<_WarehousePickerSheet> {
   String _query = '';
 
   late final WarehouseSelection _selection;
+  WarehousePickerResult? _pendingSelection;
 
   @override
   void initState() {
@@ -159,6 +164,19 @@ class _WarehousePickerSheetState extends State<_WarehousePickerSheet> {
       use: widget.use,
       sameClassAs: widget.sameClassAs,
     );
+    final initial = widget.initialWarehouseId;
+    if (initial == null || initial.isEmpty) {
+      if (widget.includeAll) _pendingSelection = WarehousePickerResult.all;
+    } else {
+      final entry = widget.hierarchy
+          .where((entry) => entry.id == initial)
+          .firstOrNull;
+      // 查询页保留历史筛选；运营场景的旧值不能绕过服务端可选仓规则。
+      if (entry != null &&
+          (widget.allowParent || _selection.selectableIds.contains(initial))) {
+        _pendingSelection = _resultFor(entry);
+      }
+    }
     // 拼音组合中（composing 非空）不过滤：半截拼音把仓列表闪成「未找到」；
     // 组合结束会再通知一次，届时按完整词过滤（2026-10-09 根因修复）。
     _searchCtl.addListener(() {
@@ -167,7 +185,6 @@ class _WarehousePickerSheetState extends State<_WarehousePickerSheet> {
     });
     if (widget.allowParent) return; // 查询口径不钻层，无需定位父层。
     // 带初始值时直接展开其父仓层，当前仓高亮，便于对照改选。
-    final initial = widget.initialWarehouseId;
     if (initial != null && _selection.selectableIds.contains(initial)) {
       final parent = widget.hierarchy
           .where((entry) => entry.id == initial)
@@ -253,23 +270,22 @@ class _WarehousePickerSheetState extends State<_WarehousePickerSheet> {
     ];
   }
 
-  void _pick(WarehouseDictEntry entry) {
-    Navigator.of(context).pop(
+  WarehousePickerResult _resultFor(WarehouseDictEntry entry) =>
       WarehousePickerResult(
         id: entry.id,
         label: warehouseFullLabel(widget.hierarchy, entry.id) ?? entry.name,
         parentId: entry.parentId,
-      ),
-    );
-  }
+      );
+
+  void _pick(WarehouseDictEntry entry) =>
+      setState(() => _pendingSelection = _resultFor(entry));
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final entries = _visibleEntries;
     final query = widget.allowParent;
-    final allSelected =
-        widget.initialWarehouseId == null || widget.initialWarehouseId!.isEmpty;
+    final allSelected = _pendingSelection?.isAll ?? false;
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
@@ -350,8 +366,9 @@ class _WarehousePickerSheetState extends State<_WarehousePickerSheet> {
                         color: theme.colorScheme.primary,
                       )
                     : null,
-                onTap: () =>
-                    Navigator.of(context).pop(WarehousePickerResult.all),
+                onTap: () => setState(
+                  () => _pendingSelection = WarehousePickerResult.all,
+                ),
               ),
               const Divider(height: 1),
             ],
@@ -370,86 +387,117 @@ class _WarehousePickerSheetState extends State<_WarehousePickerSheet> {
                         ),
                       ),
                     )
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: UtenSpacing.s8,
-                      ),
-                      itemCount: entries.length,
-                      itemBuilder: (context, index) {
-                        final entry = entries[index];
-                        final hasChildren = _hasChildren(entry.id);
-                        final isCurrent = entry.id == widget.initialWarehouseId;
-                        // ADR-146: 良品用途下不良品仓照常列出, 置灰不可选。
-                        final blocked =
-                            !query &&
-                            !hasChildren &&
-                            !_selection.selectableIds.contains(entry.id);
-                        return ListTile(
-                          key: Key('warehouse-picker-entry-${entry.id}'),
-                          enabled: !blocked,
-                          // 查询口径缩进表达层级（不钻层）；运营口径钻层不缩进。
-                          contentPadding: EdgeInsets.only(
-                            left:
-                                UtenSpacing.s16 +
-                                (query ? _depth(entry) * 20.0 : 0),
-                            right: UtenSpacing.s16,
-                          ),
-                          leading: Icon(
-                            hasChildren
-                                ? Icons.warehouse_outlined
-                                : Icons.inventory_2_outlined,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                          title: Row(
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  // 查询口径靠缩进表达层级，只显本级仓名(全路径太长)。
-                                  query
-                                      ? entry.name
-                                      : warehouseFullLabel(
-                                              widget.hierarchy,
-                                              entry.id,
-                                            ) ??
-                                            entry.name,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                  : MasterDataTableView<WarehouseDictEntry>(
+                      columns: [
+                        MasterColumnDef(
+                          key: 'name',
+                          label: '仓库名称',
+                          width: 230,
+                          value: (entry) => entry.name,
+                          columnSearchEnabled: false,
+                          cellBuilder: (_, entry) => Tooltip(
+                            message:
+                                warehouseFullLabel(
+                                  widget.hierarchy,
+                                  entry.id,
+                                ) ??
+                                entry.name,
+                            child: Padding(
+                              padding: EdgeInsets.only(
+                                left: query
+                                    ? (_depth(entry) * 16.0).clamp(0, 64)
+                                    : 0,
                               ),
-                              if (entry.isDefective) ...[
-                                const SizedBox(width: UtenSpacing.s8),
-                                WarehouseDefectiveTag(
+                              child: Text(entry.name),
+                            ),
+                          ),
+                        ),
+                        MasterColumnDef(
+                          key: 'code',
+                          label: '编号',
+                          width: 120,
+                          value: (entry) => entry.code,
+                          columnSearchEnabled: false,
+                        ),
+                        MasterColumnDef(
+                          key: 'use',
+                          label: '用途',
+                          width: 110,
+                          value: (entry) => entry.isDefective
+                              ? '不良品'
+                              : _hasChildren(entry.id)
+                              ? '主仓'
+                              : '良品仓',
+                          columnSearchEnabled: false,
+                          cellBuilder: (_, entry) => entry.isDefective
+                              ? WarehouseDefectiveTag(
                                   key: Key(
                                     'warehouse-picker-defective-${entry.id}',
                                   ),
-                                ),
-                              ],
-                            ],
+                                )
+                              : Text(_hasChildren(entry.id) ? '主仓' : '良品仓'),
+                        ),
+                        MasterColumnDef(
+                          key: 'availability',
+                          label: '操作 / 状态',
+                          width: 200,
+                          value: (entry) => _blocked(entry)
+                              ? (entry.isDefective
+                                    ? warehouseDefectiveBlockedHint(context)
+                                    : '不可选择')
+                              : !query && _hasChildren(entry.id)
+                              ? '展开子仓'
+                              : entry.status == '禁用'
+                              ? '已停用'
+                              : '可选择',
+                          columnSearchEnabled: false,
+                        ),
+                        if (widget.subtitleOf != null)
+                          MasterColumnDef(
+                            key: 'reference',
+                            label: '可用参考',
+                            width: 160,
+                            value: (entry) => widget.subtitleOf!(entry),
+                            columnSearchEnabled: false,
+                            cellBuilder: (_, entry) => Text(
+                              widget.subtitleOf!(entry) ?? '—',
+                              key: Key('warehouse-picker-subtitle-${entry.id}'),
+                            ),
                           ),
-                          subtitle: blocked && entry.isDefective
-                              ? Text(
-                                  warehouseDefectiveBlockedHint(context),
-                                  style: theme.textTheme.bodySmall,
-                                )
-                              : _subtitle(entry, theme),
-                          trailing: isCurrent
-                              ? Icon(
-                                  Icons.check_circle_rounded,
-                                  color: theme.colorScheme.primary,
-                                )
-                              : (!query && hasChildren)
-                              ? const Icon(Icons.chevron_right_rounded)
-                              : null,
-                          onTap: () {
-                            if (!query && hasChildren) {
-                              setState(() => _drilldown.add(entry.id));
-                              return;
-                            }
-                            _pick(entry);
-                          },
-                        );
+                      ],
+                      items: entries,
+                      rowKeyOf: (entry) => entry.id,
+                      rowWidgetKeyOf: (entry) =>
+                          Key('warehouse-picker-entry-${entry.id}'),
+                      singleTapRows: true,
+                      isSelected: (entry) => entry.id == _pendingSelection?.id,
+                      rowForegroundColor: (entry) =>
+                          _blocked(entry) ? theme.disabledColor : null,
+                      onRowTap: (entry) {
+                        if (_blocked(entry)) return;
+                        if (!query && _hasChildren(entry.id)) {
+                          setState(() => _drilldown.add(entry.id));
+                        } else {
+                          _pick(entry);
+                        }
                       },
+                      facets: const {},
+                      nullCounts: const {},
+                      filters: const {},
+                      onFilterChanged: (_, _) {},
+                      showFullscreenToggle: false,
+                      showColumnChooser: false,
+                      showPaginationControls: false,
+                      enableTextSelection: false,
                     ),
+            ),
+            UtenPickerConfirmBar(
+              confirmButtonKey: const Key('warehouse-picker-confirm'),
+              selectedCount: _pendingSelection == null ? 0 : 1,
+              selectedLabel: allSelected
+                  ? widget.allLabel ?? '全部'
+                  : _pendingSelection?.label,
+              onConfirm: () => Navigator.of(context).pop(_pendingSelection),
             ),
           ],
         ),
@@ -457,17 +505,10 @@ class _WarehousePickerSheetState extends State<_WarehousePickerSheet> {
     );
   }
 
-  Widget? _subtitle(WarehouseDictEntry entry, ThemeData theme) {
-    final text = widget.subtitleOf?.call(entry);
-    if (text == null || text.isEmpty) return null;
-    return Text(
-      text,
-      key: Key('warehouse-picker-subtitle-${entry.id}'),
-      style: theme.textTheme.bodySmall?.copyWith(
-        color: theme.colorScheme.onSurfaceVariant,
-      ),
-    );
-  }
+  bool _blocked(WarehouseDictEntry entry) =>
+      !widget.allowParent &&
+      !_hasChildren(entry.id) &&
+      !_selection.selectableIds.contains(entry.id);
 
   String _parentName(String id) =>
       widget.hierarchy

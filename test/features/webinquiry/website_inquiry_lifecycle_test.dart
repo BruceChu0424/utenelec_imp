@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/layout/uten_app_bar.dart';
+import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -48,9 +50,9 @@ void main() {
         expect(repaired.totalPages, 1);
         expect(repaired.total, 1);
         expect(repaired.items.single.id, 'first');
-        expect(repository.requests.last, ('ACTIVE', 1));
+        expect(repository.requests.last, ('new', 1));
         await container.read(websiteInquiryListProvider.notifier).refresh();
-        expect(repository.requests.last, ('ACTIVE', 1));
+        expect(repository.requests.last, ('new', 1));
       },
     );
   }
@@ -117,8 +119,25 @@ void main() {
       final container = ProviderScope.containerOf(
         tester.element(find.byType(WebsiteInquiryListPage)),
       );
-      expect(repository.requests.last, ('ACTIVE', 1));
+      expect(repository.requests.last, ('new', 1));
       expect(find.text('active-1'), findsOneWidget);
+      expect(find.text('全部进行中'), findsNothing);
+      expect(
+        tester.getTopLeft(find.byType(UtenFilterToolbar<String>)).dy,
+        greaterThanOrEqualTo(tester.getBottomLeft(find.byType(UtenAppBar)).dy),
+      );
+      await tester.tap(find.text('跟进中'));
+      await tester.pumpAndSettle();
+      expect(repository.requests.last, ('following', 1));
+      expect(
+        container
+            .read(websiteInquiryListProvider)
+            .requireValue
+            .items
+            .single
+            .status,
+        WebsiteInquiryStatus.following,
+      );
       await tester.tap(find.text('历史单据'));
       await tester.pumpAndSettle();
       expect(repository.requests.last, ('HISTORY', 1));
@@ -137,9 +156,9 @@ void main() {
       await container.read(websiteInquiryListProvider.notifier).refresh();
       await tester.pumpAndSettle();
       expect(repository.requests.last, ('HISTORY', 2));
-      await tester.tap(find.text('全部进行中'));
+      await tester.tap(find.text('未处理'));
       await tester.pumpAndSettle();
-      expect(repository.requests.last, ('ACTIVE', 1));
+      expect(repository.requests.last, ('new', 1));
       final current = container
           .read(websiteInquiryListProvider)
           .requireValue
@@ -180,7 +199,7 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       container.read(websiteInquiryHistoryProvider.notifier).state = true;
       await container.read(websiteInquiryListProvider.future);
-      repository.delayedActive!.complete(_page('ACTIVE', 2));
+      repository.delayedActive!.complete(_page('new', 2));
       await oldPage;
       expect(
         container
@@ -206,7 +225,7 @@ class _MutableRepository extends Fake implements WebsiteInquiryRepository {
           'second',
           history
               ? WebsiteInquiryStatus.converted
-              : WebsiteInquiryStatus.following,
+              : WebsiteInquiryStatus.newOne,
         ),
       ];
   final List<WebsiteInquiry> items;
@@ -228,7 +247,7 @@ class _MutableRepository extends Fake implements WebsiteInquiryRepository {
       final terminal =
           item.status == WebsiteInquiryStatus.closed ||
           item.status == WebsiteInquiryStatus.converted;
-      return status == 'HISTORY' ? terminal : !terminal;
+      return status == 'HISTORY' ? terminal : item.status.wireName == status;
     }).toList();
     return PagedResult(
       items: matches.skip(page - 1).take(1).toList(),
@@ -251,7 +270,7 @@ class _Repository extends Fake implements WebsiteInquiryRepository {
     int size = 20,
   }) async {
     requests.add((status, page));
-    if (status == 'ACTIVE' && page == 2 && delayedActive != null) {
+    if (status == 'new' && page == 2 && delayedActive != null) {
       return delayedActive!.future;
     }
     return _page(status!, page);
@@ -269,9 +288,9 @@ WebsiteInquiry _item(String name, WebsiteInquiryStatus status) =>
 PagedResult<WebsiteInquiry> _page(String scope, int page) => PagedResult(
   items: [
     _item(
-      '${scope == 'ACTIVE' ? 'active' : 'history'}-$page',
-      scope == 'ACTIVE'
-          ? WebsiteInquiryStatus.newOne
+      '${scope != 'HISTORY' ? 'active' : 'history'}-$page',
+      scope != 'HISTORY'
+          ? WebsiteInquiryStatus.fromName(scope)
           : page == 1
           ? WebsiteInquiryStatus.closed
           : WebsiteInquiryStatus.converted,

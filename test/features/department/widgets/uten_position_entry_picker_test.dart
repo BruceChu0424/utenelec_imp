@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/department/models/position.dart';
 import 'package:uten_imp/features/department/models/department_node.dart';
 import 'package:uten_imp/features/department/repositories/position_repository.dart';
@@ -132,6 +133,17 @@ void main() {
       onChanged: (_) {},
     );
     await _openSheet(tester);
+    final table = tester.widget<MasterDataTableView<Position>>(
+      find.byKey(const Key('position-entry-candidates-table')),
+    );
+    expect(table.columns.map((column) => column.label), ['岗位名称', '编号', '职级']);
+    expect(table.items.map((position) => position.id), [
+      'manager',
+      'assembler',
+      'quality',
+    ]);
+    expect(table.singleTapRows, isTrue);
+    expect(table.showPaginationControls, isFalse);
     await tester.enterText(
       find.byKey(const Key('uten-position-entry-search')),
       '装配 pos-assembler 员工',
@@ -240,6 +252,31 @@ void main() {
     expect(changedCalls, 4);
     expect(repository.requestedDepartments, everyElement('dept-a'));
   });
+
+  testWidgets('岗位表格在深色小屏放大后仍可选择确认', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    PositionEntryValue? selected;
+    await _pumpPicker(
+      tester,
+      repository: _FakePositionRepository(),
+      departmentId: 'dept-a',
+      theme: ThemeData.dark(),
+      textScale: 1.5,
+      onChanged: (value) => selected = value,
+    );
+    await _openSheet(tester);
+    expect(find.text('岗位名称'), findsOneWidget);
+    expect(find.text('职级'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.byKey(const Key('position-option-manager')));
+    await tester.pumpAndSettle();
+    expect(selected, isNull);
+    await tester.tap(find.byKey(const Key('uten-position-entry-confirm')));
+    await tester.pumpAndSettle();
+    expect(selected?.position?.id, 'manager');
+    expect(tester.takeException(), isNull);
+  });
 }
 
 Future<void> _pumpPicker(
@@ -247,11 +284,20 @@ Future<void> _pumpPicker(
   required PositionRepository repository,
   required String? departmentId,
   required ValueChanged<PositionEntryValue> onChanged,
+  ThemeData? theme,
+  double textScale = 1,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [positionRepositoryProvider.overrideWithValue(repository)],
       child: MaterialApp(
+        theme: theme,
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(textScale)),
+          child: child!,
+        ),
         locale: const Locale('zh'),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,

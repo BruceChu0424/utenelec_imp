@@ -30,6 +30,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/server_config.dart';
@@ -571,9 +572,18 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
     ];
   }
 
+  Widget _createButton() => UtenButton(
+    key: const Key('purchase-list-create'),
+    size: UtenButtonSize.large,
+    icon: Icons.add_rounded,
+    onPressed: () =>
+        context.push(RoutePath.purchaseDocNew(_cfg.type.pathSegment)),
+    child: const Text('新建'),
+  );
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    ref.watch(currentPermissionsProvider);
     final names = ref.watch(masterNameServiceProvider);
     // 分段计数(订货/收货/退货一次请求带回全部桶); 加载中或无权限为 null, 不渲染数字。
     final statusScope = _statusScope;
@@ -613,6 +623,11 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
           ),
         ],
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: _canCreate && !_draftDeleteEnabled
+          ? UtenFloatingActionGroup(children: [_createButton()])
+          : null,
       body: SafeArea(
         child: UtenContentContainer.wide(
           child: Padding(
@@ -620,16 +635,6 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
             child: ListenableBuilder(
               listenable: _list,
               builder: (context, _) {
-                final total = _list.total;
-                final hasLocalDrafts =
-                    _seg == _draftSeg &&
-                    statusScope != null &&
-                    ref.watch(
-                          formDraftCategoryCountProvider(
-                            formDraftScopeForDocumentStatus(statusScope),
-                          ),
-                        ) >
-                        0;
                 final canViewCommercialAmounts =
                     _cfg.canViewCommercial(
                       ref.watch(currentPermissionsProvider),
@@ -722,40 +727,6 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
                           _reload(1);
                         },
                       ),
-                      // 页面头：Icon + 标题 + 计数 + 新建按钮（随页滚走）。
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                        child: Row(
-                          children: [
-                            Icon(
-                              _cfg.icon,
-                              size: 18,
-                              color: theme.colorScheme.primary,
-                            ),
-                            const SizedBox(width: UtenSpacing.s8),
-                            Text(
-                              hasLocalDrafts
-                                  ? _cfg.shortLabel
-                                  : '${_cfg.shortLabel} ($total)',
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const Spacer(),
-                            if (_canCreate && _seg != _draftSeg)
-                              UtenButton(
-                                type: UtenButtonType.tonal,
-                                icon: Icons.add_rounded,
-                                onPressed: () => context.push(
-                                  RoutePath.purchaseDocNew(
-                                    _cfg.type.pathSegment,
-                                  ),
-                                ),
-                                child: const Text('新建'), // TODO(l10n): 补 arb
-                              ),
-                          ],
-                        ),
-                      ),
                       if (seg?.history == true) ...[
                         Padding(
                           padding: const EdgeInsets.only(
@@ -779,6 +750,9 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
                       : _withDraftCategory(
                           MasterDataTableView<PurchaseDocListItem>(
                             rowsController: _tableRows,
+                            bottomContentPadding: _canCreate
+                                ? UtenFloatingActionGroup.scrollClearance
+                                : 0,
                             tableKey: 'purchase.${widget.docType.name}.list',
                             // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
                             primary: true,
@@ -800,7 +774,10 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
                                 ? null
                                 : selectDraftIds,
                             batchActionsBuilder: _draftDeleteEnabled
-                                ? (_, _) => [_draftDeleteButton()]
+                                ? (_, _) => [
+                                    if (_canCreate) _createButton(),
+                                    _draftDeleteButton(),
+                                  ]
                                 : null,
                             facets: {
                               'billNo': _columnFilters.bucketOf('billNo'),
@@ -863,6 +840,18 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
         ),
       ),
     );
-    return widget.embedded ? page.body! : page;
+    if (!widget.embedded) return page;
+    // 嵌入宿主只去掉标题外壳；分类外的新建入口仍须在正文右下角可达。
+    return Stack(
+      children: [
+        Positioned.fill(child: page.body!),
+        if (page.floatingActionButton != null)
+          Positioned(
+            right: UtenSpacing.s16,
+            bottom: UtenSpacing.s16,
+            child: page.floatingActionButton!,
+          ),
+      ],
+    );
   }
 }

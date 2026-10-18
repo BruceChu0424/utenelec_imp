@@ -4,7 +4,7 @@
 > [`uten_employee_multi_picker.dart`](../../lib/components/inputs/uten_employee_multi_picker.dart)；
 > 部门树变体见 [UtenDepartmentEmployeePicker](UtenDepartmentEmployeePicker.md)；
 > 共用面板：[`uten_employee_selection_panel.dart`](../../lib/components/inputs/uten_employee_selection_panel.dart)；
-> 最后核对：2026-10-07。
+> 最后核对：2026-10-17。
 
 ## 一、适用范围
 
@@ -14,21 +14,21 @@
 
 业务页面不应重新拼一套员工弹窗。候选加载由调用方注入，公共组件只负责交互、状态和统一展示。
 
-单选和多选共用 `UtenEmployeeSelectionPanel`：宽屏右滑窗宽度为 `max(720, 屏宽 × 50%)`，
-左侧部门栏、右侧人员列表、深绿层级色、拖动分割线、选中行颜色与销售客户选择器一致；窄屏为底部双栏抽屉。
+单选和多选共用 `UtenEmployeeSelectionPanel`：宽屏右滑窗宽度为 `min(屏宽, max(720, 屏宽 × 75%))`
+（2026-10-17 全站滑窗档位 `UtenPanelWidth.browse`，720 只作小屏下限），
+左侧真实组织树、右侧人员表格、深绿层级色、拖动分割线、选中行颜色与销售客户选择器一致；窄屏为底部抽屉，部门通过全宽目录入口展开。
 搜索放左栏顶部，支持部门、姓名和工号。点选只更改抽屉中的选择，确定才回填，取消不更改原值。
 多选跨部门和搜索保留已选人员，清空后也可以确定返回空集合；负责人等单人字段继续单选。
 
-左栏只由当前业务接口已授权返回的候选生成，不额外调用人事目录。按 `departmentId` 分组，
-同名部门不合并；缺少部门 ID 的候选归入“未提供部门”，不从姓名或提示文字推测部门。
+左栏使用 `/api/org/departments/employee-picker-tree` 的最小组织层级，按当前业务接口已授权候选的 `departmentId` 裁剪，并保留公司、中心等真实祖先。点上级部门显示该子树内已授权的候选，不重新读取或扩大员工名册。同名部门按 ID 区分；缺少部门 ID 的候选归入“未提供部门”，树外的审计访客等保留在“其它候选”，不虚构公司归属。
 访客申请的接待人搜索保持隐私规则，通过 `showDepartmentFilter: false` 关闭部门目录。
 
 ## 二、身份展示契约
 
-1. 主行、确认栏、已选字段和多选 Chip 统一显示 `姓名(工号)`。
+1. 表格将姓名与工号分列；确认栏、已选字段和多选 Chip 继续显示 `姓名(工号)`。
 2. 括号固定使用 ASCII 半角 `()`，遵守
    [命名规范 §3.3](../00-项目准则/01-命名规范.md#33-文案与标点)。
-3. 部门显示在下一行，不得再写成 `姓名(部门)`。
+3. 部门独立成列，悬停可查看真实组织路径，不得写成 `姓名(部门)`。
 4. `UtenEmployeePickerItem.employeeCode` 必须传真实员工工号；不得用员工 UUID、登录账号或可变姓名代替。
 5. 历史详情只带 id/姓名时，单选组件会通过当前 loader 补查工号；补查失败保留姓名，不阻塞业务表单。
 6. 隐私受限或历史不可解析接口确实没有工号时才回退为姓名，不展示空括号。
@@ -41,11 +41,16 @@
 
 | 层级 | 内容 | 示例 |
 |---|---|---|
-| 主行 | 姓名 + 工号 | `张三(E001)` |
-| 副行 | 部门；必要时追加状态 | `销售部` |
+| 身份列 | 姓名、工号分别展示 | `张三`、`E001` |
+| 部门列 | 所属部门，完整祖先路径提示 | `销售部` |
+| 账号状态列 | 独立账号事实 | `已开通`、`未开通`、`锁定`、`停用` |
+| 在职状态列 | 员工档案状态 | `在职`、`试用`、`休假`、`离职` |
+| 说明列 | 额外业务信息；无内容时不增加空列 | `缺少手机号`、`负责18个客户` |
 | 选择状态 | 勾选图标、selected 语义和确认栏 | `已选择：张三(E001)` |
 
-状态、历史只读说明或归属数量可以放在副行后半段或独立标签，但不能塞进姓名括号。
+账号状态和在职状态分别由原候选接口投影，不能互相推断；特别是“没有启用账号”不等于“未开通”。接口未提供状态时显示“未提供”，历史审计已删除账号显示“已删除”，访客不适用员工在职状态。外部访客接待人选择不展示内部状态列，也不新增内部查询。
+
+历史只读说明、归属数量和禁选原因进入说明列；不能塞进姓名括号。右侧复用 `MasterDataTableView`，不绑定主档自定义列，统一搜索仍在左侧。单选点行暂选；多选保留复选框与当前结果全选，禁选项不加入选择。状态展示不改变原业务候选资格。
 
 ## 四、必填与错误反馈
 
@@ -86,7 +91,7 @@ UtenEmployeePickerItem(
   部门 UUID 分组、单选确认、多选跨部门、取消与清空、禁选、失败重试、异步竞态和窄屏大字。
 
 - [`uten_employee_picker_display_test.dart`](../../test/components/inputs/uten_employee_picker_display_test.dart)：
-  ASCII 括号、主行/副行、确认栏、历史补查和多选 Chip。
+  ASCII 括号、姓名/工号/部门分列、确认栏、历史补查和多选 Chip。
 - [`uten_employee_picker_race_test.dart`](../../test/components/inputs/uten_employee_picker_race_test.dart)：
   弱网旧请求不得覆盖新搜索。
 - [`uten_employee_picker_access_test.dart`](../../test/components/inputs/uten_employee_picker_access_test.dart)：
@@ -96,3 +101,5 @@ UtenEmployeePickerItem(
   同仓储完整分页、每页身份复核及真实审计页 pop 到回填之间的身份切换。
 - [`department_employee_picker_test.dart`](../../test/features/employee/department_employee_picker_test.dart)：
   部门定位、分页、竞态和姓名(工号)候选。
+
+2026-10-17：部门栏可手动收窄至 160dp，实际行操作与文字缩放仍决定安全下限；不足 240dp 时搜索边距收为 8dp。部门树加载失败单独提示重试，不伪造平铺公司层级；已授权人员候选继续由原业务接口决定。组织加载、人员搜索和确认均绑定同一访问代际。

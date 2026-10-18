@@ -1,7 +1,7 @@
 // 颜色资料管理页（基础资料 · 扁平主档，无分类树）。
 //
 // 与货品/模具/客户/供应商同级，但颜色是扁平字典（编号/名称/状态 3 字段），
-// 故无左树 + 右详情布局，直接：AppBar + 区段标题（含添加）+ 全屏主档表格。
+// 故无左树 + 右详情布局，直接：AppBar + 搜索栏 + 全屏主档表格；添加并入右下角悬浮组。
 // 复用 MasterDataTableView（搜索/autofilter/分页）+ showMasterEditDialog +
 // showMasterDetailSheet，CRUD/详情/并发防护流程与货品 _DetailPane 一致。
 // 查看全员可见（路由不设守卫），编辑按 color:edit 权限显隐。
@@ -389,14 +389,15 @@ class _ColorPageState extends ConsumerState<ColorPage> {
   }
 
   List<Widget> _colorBatchActions(BuildContext context, Set<String> ids) {
-    if (!_canStatus && !_canDelete) return const [];
     return [
       if (_canStatus)
         UtenButton(
           size: UtenButtonSize.small,
           type: UtenButtonType.tonal,
           icon: Icons.pause_circle_outline_rounded,
-          onPressed: _rowOpBusy ? null : () => _batchSetColorStatus(ids, '禁用'),
+          onPressed: _rowOpBusy || ids.isEmpty
+              ? null
+              : () => _batchSetColorStatus(ids, '禁用'),
           child: const Text('批量禁用'), // TODO(l10n): 补 arb
         ),
       if (_canDelete)
@@ -404,8 +405,17 @@ class _ColorPageState extends ConsumerState<ColorPage> {
           size: UtenButtonSize.small,
           type: UtenButtonType.danger,
           icon: Icons.delete_outline_rounded,
-          onPressed: _rowOpBusy ? null : () => _batchDeleteColors(ids),
+          onPressed: _rowOpBusy || ids.isEmpty
+              ? null
+              : () => _batchDeleteColors(ids),
           child: const Text('批量删除'), // TODO(l10n): 补 arb
+        ),
+      if (_canCreate)
+        UtenButton(
+          size: UtenButtonSize.large,
+          icon: Icons.add_rounded,
+          onPressed: _showCreate,
+          child: const Text('添加颜色'),
         ),
     ];
   }
@@ -554,8 +564,6 @@ class _ColorPageState extends ConsumerState<ColorPage> {
 
   Widget _buildDraftHost(BuildContext context) {
     ref.watch(currentPermissionsProvider);
-    final theme = Theme.of(context);
-    final total = _page?.total ?? 0;
     return Scaffold(
       appBar: UtenAppBar(
         title: '颜色资料', // TODO(l10n): 补 arb
@@ -582,38 +590,10 @@ class _ColorPageState extends ConsumerState<ColorPage> {
                     left: UtenSpacing.s4,
                     right: UtenSpacing.s4,
                   ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.palette_outlined,
-                        size: 18,
-                        color: theme.colorScheme.primary,
-                      ),
-                      const SizedBox(width: UtenSpacing.s8),
-                      Text(
-                        '颜色 ($total)', // TODO(l10n): 补 arb
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(width: UtenSpacing.s12),
-                      Expanded(
-                        child: UtenSearchBar(
-                          hint: '搜索颜色(名称/编号)', // TODO(l10n): 补 arb
-                          initialValue: _keyword,
-                          onChanged: _onKeywordChanged,
-                        ),
-                      ),
-                      if (_canCreate) ...[
-                        const SizedBox(width: UtenSpacing.s8),
-                        UtenButton(
-                          type: UtenButtonType.tonal,
-                          icon: Icons.add_rounded,
-                          onPressed: _showCreate,
-                          child: const Text('添加颜色'), // TODO(l10n): 补 arb
-                        ),
-                      ],
-                    ],
+                  child: UtenSearchBar(
+                    hint: '搜索颜色(名称/编号)', // TODO(l10n): 补 arb
+                    initialValue: _keyword,
+                    onChanged: _onKeywordChanged,
                   ),
                 ),
                 Expanded(

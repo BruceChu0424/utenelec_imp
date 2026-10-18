@@ -13,7 +13,6 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
@@ -408,9 +407,7 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final names = ref.watch(financeNameServiceProvider);
-    final total = _page?.total ?? 0;
     return Scaffold(
       appBar: UtenAppBar(
         title: '应收应付台账',
@@ -433,118 +430,92 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
         child: UtenContentContainer.wide(
           child: Padding(
             padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            // 「顶部折叠 + 表格吸顶内滚」：标题行随上滑收起腾出空间，
-            // 筛选/表格区占满剩余空间、表体内部滚动（与单据列表页统一）。
-            child: UtenCollapsingHeaderScrollView(
-              // 页面头：Icon + 标题 + 计数（搜索挪到下方筛选区/侧栏）
-              collapsingHeader: Padding(
-                padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                child: Row(
+            // 方向保留为主业务视图，清结状态由彩色状态列与表头承接。
+            child: UtenListTwoPane(
+              filterPane: Padding(
+                padding: EdgeInsets.zero,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      Icons.account_balance_wallet_outlined,
-                      size: 18,
-                      color: theme.colorScheme.primary,
-                    ),
-                    const SizedBox(width: UtenSpacing.s8),
-                    Text(
-                      '台账 ($total)',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
+                    SizedBox(
+                      width: double.infinity,
+                      child: UtenSearchBar(
+                        hint: '搜索单据号/来源单号',
+                        initialValue: _keyword,
+                        onChanged: (v) {
+                          setState(() => _keyword = v);
+                          _load(1);
+                        },
                       ),
+                    ),
+                    const SizedBox(height: UtenSpacing.s16),
+                    _filterLabel('方向'),
+                    // 全平台统一筛选工具条：方向分段（大类，纯分类无搜索）。
+                    // 进页面不预选。
+                    UtenFilterToolbar<String?>(
+                      segments: const [
+                        UtenFilterSegment<String?>(value: null, label: '全部'),
+                        UtenFilterSegment<String?>(value: 'AR', label: '应收'),
+                        UtenFilterSegment<String?>(value: 'AP', label: '应付'),
+                      ],
+                      selected: _directionSelected ? {_direction} : const {},
+                      onSelectionChanged: (v) {
+                        setState(() {
+                          _direction = v;
+                          _directionSelected = true;
+                          _partyId = null;
+                        });
+                        _load(1);
+                      },
                     ),
                   ],
                 ),
               ),
-              // 方向保留为主业务视图，清结状态由彩色状态列与表头承接。
-              body: UtenListTwoPane(
-                filterPane: Padding(
-                  padding: EdgeInsets.zero,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(
-                        width: double.infinity,
-                        child: UtenSearchBar(
-                          hint: '搜索单据号/来源单号',
-                          initialValue: _keyword,
-                          onChanged: (v) {
-                            setState(() => _keyword = v);
-                            _load(1);
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: UtenSpacing.s16),
-                      _filterLabel('方向'),
-                      // 全平台统一筛选工具条：方向分段（大类，纯分类无搜索）。
-                      // 进页面不预选。
-                      UtenFilterToolbar<String?>(
-                        segments: const [
-                          UtenFilterSegment<String?>(value: null, label: '全部'),
-                          UtenFilterSegment<String?>(value: 'AR', label: '应收'),
-                          UtenFilterSegment<String?>(value: 'AP', label: '应付'),
-                        ],
-                        selected: _directionSelected ? {_direction} : const {},
-                        onSelectionChanged: (v) {
-                          setState(() {
-                            _direction = v;
-                            _directionSelected = true;
-                            _partyId = null;
-                          });
-                          _load(1);
-                        },
-                      ),
-                    ],
+              tablePane: MasterDataTableView<ArApLedgerItem>(
+                tableKey:
+                    'features.finance.pages.finance_ar_ap_page.FinanceArApPageState.build.1',
+                columns: _columns(names),
+                items: _page?.items ?? const [],
+                facets: {
+                  // 单号桶与列表同一过滤口径（2026-09-25 单号列统一）。
+                  'billNo': _columnFilters.bucketOf('billNo'),
+                  'sourceDocNo': _columnFilters.bucketOf('sourceDocNo'),
+                  'direction': financeArApDirectionFacets,
+                  'sourceDocType': financeArApSourceTypeFacets,
+                  'party': financeDictionaryFacets(
+                    _direction == 'AP'
+                        ? names.supplierEntries
+                        : _direction == 'AR'
+                        ? names.clientEntries
+                        : {...names.clientEntries, ...names.supplierEntries},
                   ),
-                ),
-                tablePane: MasterDataTableView<ArApLedgerItem>(
-                  tableKey:
-                      'features.finance.pages.finance_ar_ap_page.FinanceArApPageState.build.1',
-                  // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
-                  primary: true,
-                  columns: _columns(names),
-                  items: _page?.items ?? const [],
-                  facets: {
-                    // 单号桶与列表同一过滤口径（2026-09-25 单号列统一）。
-                    'billNo': _columnFilters.bucketOf('billNo'),
-                    'sourceDocNo': _columnFilters.bucketOf('sourceDocNo'),
-                    'direction': financeArApDirectionFacets,
-                    'sourceDocType': financeArApSourceTypeFacets,
-                    'party': financeDictionaryFacets(
-                      _direction == 'AP'
-                          ? names.supplierEntries
-                          : _direction == 'AR'
-                          ? names.clientEntries
-                          : {...names.clientEntries, ...names.supplierEntries},
-                    ),
-                    'settled': financeArApSettledFacets,
-                    'currency': masterDictionaryFacets(names.currencyEntries),
-                  },
-                  nullCounts: const {},
-                  filters: {
-                    'billNo': _columnFilters['billNo'],
-                    'sourceDocNo': _columnFilters['sourceDocNo'],
-                    'salesOrderNos': _columnFilters['salesOrderNos'],
-                    'direction': _direction,
-                    'sourceDocType': _sourceDocType,
-                    'party': _partyId,
-                    'currency': _currencyId,
-                    'settled': _settled?.toString(),
-                  },
-                  onFilterChanged: _onColumnFilterChanged,
-                  sortColumn: _columnFilters.sortColumn,
-                  sortAscending: _columnFilters.sortAscending,
-                  onSortChange: _onSortChange,
-                  isLoading: _loading && _page == null,
-                  loadingMore: _loading && _page != null,
-                  error: _error,
-                  onRetry: () => _load(_pageNum),
-                  emptyMessage: '暂无台账记录',
-                  currentPage: _page?.page ?? 1,
-                  totalPages: _page?.totalPages ?? 1,
-                  paginationScope: _keyword,
-                  onPageChange: (p) => _load(p),
-                ),
+                  'settled': financeArApSettledFacets,
+                  'currency': masterDictionaryFacets(names.currencyEntries),
+                },
+                nullCounts: const {},
+                filters: {
+                  'billNo': _columnFilters['billNo'],
+                  'sourceDocNo': _columnFilters['sourceDocNo'],
+                  'salesOrderNos': _columnFilters['salesOrderNos'],
+                  'direction': _direction,
+                  'sourceDocType': _sourceDocType,
+                  'party': _partyId,
+                  'currency': _currencyId,
+                  'settled': _settled?.toString(),
+                },
+                onFilterChanged: _onColumnFilterChanged,
+                sortColumn: _columnFilters.sortColumn,
+                sortAscending: _columnFilters.sortAscending,
+                onSortChange: _onSortChange,
+                isLoading: _loading && _page == null,
+                loadingMore: _loading && _page != null,
+                error: _error,
+                onRetry: () => _load(_pageNum),
+                emptyMessage: '暂无台账记录',
+                currentPage: _page?.page ?? 1,
+                totalPages: _page?.totalPages ?? 1,
+                paginationScope: _keyword,
+                onPageChange: (p) => _load(p),
               ),
             ),
           ),

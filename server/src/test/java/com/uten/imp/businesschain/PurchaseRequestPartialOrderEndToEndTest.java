@@ -63,7 +63,8 @@ class PurchaseRequestPartialOrderEndToEndTest {
         Fixture f=fixture("partial-detail");
         var detail=requests.detail(f.request());
         assertThat(detail.getApplicantId()).isEqualTo(f.applicant());
-        assertThat(detail.getApplicantName()).isEqualTo("分批申请人-partial-detail");
+        // 2026-10-17 口径：详情人员身份统一「姓名(工号)」（EmployeeNameResolver.nameWithCodeOf）。
+        assertThat(detail.getApplicantName()).isEqualTo("分批申请人-partial-detail(APP-partial-detail)");
         assertThat(detail.getMakerId()).isEqualTo(f.world().employeeId()).isNotEqualTo(f.applicant());
         assertBalances(f,f.first(),"2","3","5");
         assertBalances(f,f.second(),"0","0","4");

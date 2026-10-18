@@ -27,7 +27,10 @@ public class DepartmentController {
     }
 
     @GetMapping("/employee-picker-tree")
-    @PreAuthorize("hasAuthority('employee:view')")
+    @PreAuthorize("isAuthenticated() and !principal.visitor and ("
+            + "hasAnyAuthority('employee:view', 'account:support', 'notice:publish', 'client:assign', "
+            + "'warehouse:edit', 'employee:handover', 'employee:offboard', 'audit_log:view') "
+            + "or (principal.superAdmin and hasAuthority('authorization:manage')))")
     public List<DepartmentPickerNode> employeePickerTree() {
         return service.employeePickerTree();
     }

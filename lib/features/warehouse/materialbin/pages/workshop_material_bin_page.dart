@@ -15,6 +15,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../components/buttons/uten_back_button.dart';
 import '../../../../components/buttons/uten_button.dart';
+import '../../../../components/data_display/uten_status_badge.dart';
 import '../../../../components/data_display/uten_status_cell_color.dart';
 import '../../../../components/feedback/uten_busy_overlay.dart';
 import '../../../../components/feedback/uten_context_menu.dart';
@@ -993,6 +994,7 @@ class _WorkshopMaterialBinPageState
       tableKey:
           'features.warehouse.materialbin.pages.workshop_material_bin_page.WorkshopMaterialBinPageState._stockTable.1',
       key: const Key('wm-bin-stock-table'),
+      requiredLeadingColumnKeys: const ['countReviewStatus'],
       columns: [
         // 送审后的「待审核」状态列(2026-10-10 用户口径)：刚提交的行盖待审核，
         // 其余行显「—」；账面/现存照旧可见——审核通过前服务端不动库存(V766)。
@@ -1002,6 +1004,11 @@ class _WorkshopMaterialBinPageState
             label: '状态',
             width: 90,
             value: (r) => _countEditor.rowSubmitted(_countKey(r)) ? '待审核' : '—',
+            cellColor: (_, r) => utenStatusBadgeCellColor(
+              _countEditor.rowSubmitted(_countKey(r))
+                  ? UtenStatusBadgeType.accent
+                  : UtenStatusBadgeType.neutral,
+            ),
           ),
         MasterColumnDef(
           key: 'goodsCode',

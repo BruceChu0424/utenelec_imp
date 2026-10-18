@@ -22,17 +22,7 @@ void restoreDraftTextValues(
 
 List<Map<String, dynamic>> draftEmployees(
   Map<String, UtenEmployeePickerItem> cache,
-) => [
-  for (final item in cache.values)
-    {
-      'id': item.id,
-      'name': item.name,
-      'employeeCode': item.employeeCode,
-      'departmentId': item.departmentId,
-      'departmentName': item.departmentName,
-      'subtitle': item.subtitle,
-    },
-];
+) => [for (final item in cache.values) draftEmployee(item)];
 
 void restoreDraftEmployees(
   Map<String, UtenEmployeePickerItem> cache,
@@ -40,14 +30,7 @@ void restoreDraftEmployees(
 ) {
   for (final item in draftMaps(value)) {
     if (item['id'] is! String) continue;
-    final employee = UtenEmployeePickerItem(
-      id: item['id'] as String,
-      name: item['name'] as String? ?? '',
-      employeeCode: item['employeeCode'] as String?,
-      departmentId: item['departmentId'] as String?,
-      departmentName: item['departmentName'] as String?,
-      subtitle: item['subtitle'] as String?,
-    );
+    final employee = restoreDraftEmployee(item);
     cache[employee.id] = employee;
   }
 }

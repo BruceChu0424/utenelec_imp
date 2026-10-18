@@ -248,11 +248,8 @@ class _EmployeeOffboardingWorkflowPageState
             employeeCode: employee.code,
             departmentId: employee.departmentId,
             departmentName: employee.departmentName,
-            subtitle: [
-              if (employee.departmentName?.isNotEmpty == true)
-                employee.departmentName!,
-              _employeeStatusLabel(employee.status),
-            ].join(' · '),
+            accountStatus: employee.accountStatus,
+            employmentStatus: employee.employmentStatus,
           ),
         )
         .toList(growable: false);
@@ -736,10 +733,3 @@ class _EmployeeOffboardingWorkflowPageState
     );
   }
 }
-
-String _employeeStatusLabel(String? status) => switch (status) {
-  'active' => '在职',
-  'probation' => '试用',
-  'onLeave' => '休假',
-  _ => status ?? '状态未知',
-};

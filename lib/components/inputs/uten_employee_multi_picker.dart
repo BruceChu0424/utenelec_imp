@@ -2,7 +2,7 @@
 //
 // 与 UtenEmployeePicker 共用候选模型与 loader：
 // - compact：85% 高底部抽屉；
-// - medium/expanded：与客户选择器同宽的部门树 + 人员列表；
+// - medium/expanded：与客户选择器同宽的部门树 + 人员表格；
 // - 搜索只允许最新请求回写，避免弱网下旧结果覆盖新关键词；
 // - 多选结果在点「确定」时一次提交，已选人员可在字段下方单独移除。
 import 'package:flutter/material.dart';

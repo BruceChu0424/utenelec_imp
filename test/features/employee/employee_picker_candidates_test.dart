@@ -5,6 +5,28 @@ import 'package:uten_imp/features/employee/repositories/employee_repository.dart
 import 'package:uten_imp/shared/models/paged_result.dart';
 
 void main() {
+  test('员工列表分别解析账号和在职状态，旧响应缺账号字段时保持未知', () {
+    for (final account in ['notProvisioned', 'active', 'locked', 'disabled']) {
+      final employee = EmployeeSummary.fromJson({
+        'id': 'employee-id',
+        'code': 'UT001',
+        'fullName': '张三',
+        'status': 'onLeave',
+        'accountStatus': account,
+      });
+      expect(employee.accountStatus, account);
+      expect(employee.status, 'onLeave');
+    }
+    final legacy = EmployeeSummary.fromJson({
+      'id': 'legacy-id',
+      'code': 'UT002',
+      'fullName': '李四',
+      'status': 'active',
+    });
+    expect(legacy.accountStatus, isNull);
+    expect(legacy.status, 'active');
+  });
+
   test('员工候选加载全部页并始终保留调用方的部门和状态范围', () async {
     final repository = _Repository();
     final employees = await repository.listPickerCandidates(
@@ -18,6 +40,16 @@ void main() {
     );
 
     expect(employees.map((employee) => employee.id), ['e1', 'e2', 'e3']);
+    expect(employees.map((employee) => employee.accountStatus), [
+      'active',
+      'locked',
+      'notProvisioned',
+    ]);
+    expect(employees.map((employee) => employee.status), [
+      'active',
+      'probation',
+      'onLeave',
+    ]);
     expect(repository.queries.map((query) => query['page']), [1, 2, 3]);
     for (final query in repository.queries) {
       expect(query['size'], 2);
@@ -96,6 +128,8 @@ class _Repository implements EmployeeRepository {
     code: 'E$index',
     departmentId: 'workshop',
     departmentName: '生产车间',
+    accountStatus: ['active', 'locked', 'notProvisioned'][index - 1],
+    status: ['active', 'probation', 'onLeave'][index - 1],
   );
 
   @override

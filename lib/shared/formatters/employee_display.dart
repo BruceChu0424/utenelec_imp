@@ -11,3 +11,28 @@ String formatEmployeeDisplayName(String name, String? employeeCode) {
       ? normalizedName
       : '$normalizedName$suffix';
 }
+
+/// Account and employment are independent facts. Missing fields from older or
+/// privacy-limited APIs must never be treated as an unprovisioned account.
+String employeeAccountStatusLabel(String? status) => switch (status?.trim()) {
+  'notProvisioned' => '未开通',
+  'active' => '已开通',
+  'locked' => '锁定',
+  'disabled' => '停用',
+  'deleted' => '已删除',
+  'blocked' => '已封禁',
+  'notApplicable' => '不适用',
+  null || '' => '未提供',
+  _ => '未知状态',
+};
+
+String employeeEmploymentStatusLabel(String? status) =>
+    switch (status?.trim()) {
+      'active' => '在职',
+      'probation' => '试用',
+      'onLeave' => '休假',
+      'resigned' => '离职',
+      'notApplicable' => '不适用',
+      null || '' => '未提供',
+      _ => '未知状态',
+    };

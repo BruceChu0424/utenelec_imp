@@ -21,9 +21,17 @@ import '../providers/admin_providers.dart';
 import '../repositories/admin_repository.dart';
 import 'permission_action_badge.dart';
 import 'permission_catalog_browser.dart';
+import 'admin_permission_workspace.dart';
 
 class AdminBaselinePermView extends ConsumerStatefulWidget {
-  const AdminBaselinePermView({super.key});
+  const AdminBaselinePermView({
+    super.key,
+    this.leadingHeader = const SizedBox.shrink(),
+    this.onPermissionDirtyChanged,
+  });
+
+  final Widget leadingHeader;
+  final ValueChanged<bool>? onPermissionDirtyChanged;
 
   @override
   ConsumerState<AdminBaselinePermView> createState() =>
@@ -33,6 +41,7 @@ class AdminBaselinePermView extends ConsumerStatefulWidget {
 class _AdminBaselinePermViewState extends ConsumerState<AdminBaselinePermView> {
   Set<String>? _localChecked;
   bool _saving = false;
+  bool? _lastReportedPending;
 
   Set<String>? get _serverChecked =>
       ref.read(adminPermissionBaselineProvider).valueOrNull?.toSet();
@@ -108,6 +117,52 @@ class _AdminBaselinePermViewState extends ConsumerState<AdminBaselinePermView> {
 
   @override
   Widget build(BuildContext context) {
+    final pending = _isDirty || _saving;
+    if (_lastReportedPending != pending) {
+      _lastReportedPending = pending;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.onPermissionDirtyChanged?.call(pending);
+      });
+    }
+    return AdminPermissionWorkspace(
+      navigation: widget.leadingHeader,
+      leading: ListView(
+        padding: const EdgeInsets.only(bottom: UtenSpacing.s16),
+        children: [
+          UtenCard(
+            key: const ValueKey('admin-baseline-scope-card'),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '全体在职员工',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: UtenSpacing.s8),
+                _scopeNotice(),
+              ],
+            ),
+          ),
+        ],
+      ),
+      trailing: _details(showNotice: false),
+      compact: _details(showNotice: true),
+    );
+  }
+
+  Widget _scopeNotice() => Text(
+    '基础包内的权限由每个在职员工默认拥有，只放大家都需要的自助类权限。'
+    '需要逐项授权的敏感权限请按部门或员工配置。'
+    '带锁的通知与员工自助权限不能移出，个别人需要关闭时请用个人收回。',
+    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
+      height: 1.5,
+    ),
+  );
+
+  Widget _details({required bool showNotice}) {
     final theme = Theme.of(context);
     final baselineAsync = ref.watch(adminPermissionBaselineProvider);
     final catalogAsync = ref.watch(permissionCatalogProvider);
@@ -129,29 +184,22 @@ class _AdminBaselinePermViewState extends ConsumerState<AdminBaselinePermView> {
               UtenSpacing.s32,
             ),
             children: [
-              UtenCard(
-                margin: const EdgeInsets.only(bottom: UtenSpacing.s12),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: UtenSpacing.s16,
-                  vertical: UtenSpacing.s12,
-                ),
-                child: Text(
-                  '基础包里的权限每个在职员工都默认拥有，不用再按部门或个人配置。'
-                  '只放大家都该有的自助类权限；需要逐项授予的敏感权限不能放进来。'
-                  '标有锁定图标的项是通知与员工自助服务的体系准入权限，已锁定不可移出'
-                  '（V832/ADR-170），个别人员如需收回请用个人收回。',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    height: 1.5,
+              if (showNotice)
+                UtenCard(
+                  margin: const EdgeInsets.only(bottom: UtenSpacing.s12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: UtenSpacing.s16,
+                    vertical: UtenSpacing.s12,
                   ),
+                  child: _scopeNotice(),
                 ),
-              ),
               UtenCard(
+                key: const ValueKey('admin-baseline-permission-card'),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '全员基础包',
+                      '权限明细',
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
@@ -159,8 +207,8 @@ class _AdminBaselinePermViewState extends ConsumerState<AdminBaselinePermView> {
                     const SizedBox(height: 2),
                     Text(
                       _isDirty
-                          ? '已包含 ${checked.length} 项 · $_dirtyCount 项未保存'
-                          : '已包含 ${checked.length} 项',
+                          ? '全员基础包 · 已包含 ${checked.length} 项 · $_dirtyCount 项未保存'
+                          : '全员基础包 · 已包含 ${checked.length} 项',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: _isDirty
                             ? UtenColors.warning

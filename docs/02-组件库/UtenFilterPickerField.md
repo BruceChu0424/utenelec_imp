@@ -53,12 +53,12 @@
 
 面板内直接复用货品资料那棵树（`UtenCategoryTreeView<ProductCategoryNode>`：
 可展开折叠、搜索、命中路径自动展开、选中高亮），外壳是 `showUtenAdaptivePanel`
-（宽屏右侧 420 滑入 / 窄屏 85% 底部弹层）。
+（宽屏右侧滑入，form 档 = min(屏宽, max(420, 屏宽 × 35%))，2026-10-17 全站滑窗档位；窄屏 85% 底部弹层）。
 
 - 顶部固定「全部」行 = 清空筛选（当前无选中时打勾）；
-- 点分类行 = **选中并立即关闭**（一次点击到位，不加确认按钮）；有子类的行左侧
-  chevron 单独负责展开/收起，因此 `expandOnRowTap` 必须保持默认 `false`，
-  开了会「点一下既展开又关窗」；
+- 点分类行或「全部」只更新面板内暂存与选中态，底部共享 `UtenPickerConfirmBar` 的
+  「确定」才返回并应用筛选；取消、关闭或遮罩放弃暂存。有子类的行左侧 chevron
+  单独负责展开/收起，`expandOnRowTap` 保持默认 `false`；
 - 每节点尾部显子树货品数（后端 `treeWithGoodsCounts` 给 `goodsCount` 时）；
 - 零货品分类整支隐藏（`pruneCategoriesWithoutGoods`：`goodsCount == 0` 剪掉，
   `null` = 后端未给计数，一律保留）；
@@ -73,7 +73,9 @@
 | 口径 | 参数 | 行为 |
 |---|---|---|
 | 运营(单据登记、货品所属仓库等「新选」) | `use: goodIn/goodOut/defectiveIn/defectiveOut/disposalOut/transfer/count`，普通调拨调入仓另传 `sameClassAs: 调出仓` | 先显主仓 → 点主仓钻到子仓 → 只能选服务端算好的可选子仓：良品用途认 `selectableForNew`(启用的良品子仓)，「转不良品仓」调入/「不良复判转回」调出认 `selectableDefective`(启用的不良品子仓)，处置出库/普通调拨/盘点两类都可；返回「主仓名-子仓名」；主仓只导航不选定。不良品仓一律带「不良品」标签，良品用途下照常列出但置灰不可选(附「不良品仓, 这里不能选」)。 |
-| 查询(页面筛选) | `use: WarehouseUse.query`，通常配 `includeAll: true` | **不钻层**，整棵层级按缩进一次铺开，任意层级一点即选；主仓 = 自身 + 全部子仓聚合(服务端 `WarehouseScopeService` 展开)；顶部「全部」行返回 `WarehousePickerResult.all`(`isAll`，id 为空串)供调用方置 `null`。带本地搜索框(名称/编号，命中保留祖先链)。 |
+| 查询(页面筛选) | `use: WarehouseUse.query`，通常配 `includeAll: true` | **不钻层**，整棵层级按缩进一次铺开，任意层级可暂存选择；主仓 = 自身 + 全部子仓聚合(服务端 `WarehouseScopeService` 展开)；顶部「全部」行确认后返回 `WarehousePickerResult.all`(`isAll`，id 为空串)供调用方置 `null`。带本地搜索框(名称/编号，命中保留祖先链)。 |
+
+两种口径都使用共享 `UtenPickerConfirmBar`：点仓或「全部」只改变面板内暂存，点「确定」才返回；取消、关闭、遮罩均返回 `null`。运营主仓点击仍只负责钻层，禁用候选仍不可选；无有效初值且尚未选择时确定禁用。
 
 查询口径(`WarehouseUse.query`)任意层级可选，但**默认不列已停用的仓**；当前选中值总能回显，历史单据仍按字典显示停用仓名称
 (2026-10-04 [ADR-145](../99-决策记录-ADR/ADR-145-仓库主档单主仓与禁用不可选.md) 撤销 2026-09-11「查询口径不做可选性裁剪、禁用仓也能单独看」)。
@@ -113,13 +115,13 @@
 - `test/components/inputs/uten_filter_picker_field_test.dart`：占位/当前值、点击回调、
   禁用不可点、圆角走 `UtenRadius.control`。
 - `test/features/basic_data/product_category_picker_panel_test.dart`：树渲染 +「全部」行 +
-  货品数、搜索收窄（保留祖先）、点分类返回 id 并关窗、「全部」返回 `isAll`、
+  货品数、搜索收窄（保留祖先）、点分类/全部暂存、确定返回、取消/关闭/遮罩放弃并保留初值、
   `pruneCategoriesWithoutGoods` 剪枝口径。
 - `test/shared/widgets/warehouse_hierarchy_dropdown_test.dart`：查询口径面板整棵铺开 +
-  主仓可选、「全部」清空、搜索收窄；运营口径钻层用例不变。
+  主仓可选、「全部」确认后清空、取消/关闭/遮罩放弃、搜索收窄；运营口径钻层和禁用仓规则保留。
 - `test/features/stock/instant_inventory_page_test.dart` /
-  `test/features/warehouse/pages/shelf_label_page_test.dart`：点字段拉面板 → 选节点 → 带
-  `categoryId` / `warehouseId` 重查。
+  `test/features/warehouse/pages/shelf_label_page_test.dart`：点字段拉面板 → 选节点 →
+  确定后才带 `categoryId` / `warehouseId` 重查。
 
 ## AI 助手读筛选条件(2026-10-04, ADR-150)
 

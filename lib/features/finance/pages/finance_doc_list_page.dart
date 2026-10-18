@@ -1,7 +1,6 @@
 // 钱流单据列表页（按 docType 参数化，5 单据通用）。
 //
-// 复刻采购单据列表：UtenAppBar(标题/返回/刷新) + UtenContentContainer > 标题行
-// (Icon+label+(N)+搜索+新建) + 状态筛选(UtenFilterToolbar 分段) + MasterDataTableView。
+// UtenAppBar 保留标题/返回/刷新；正文从分类和搜索开始，新建统一放右下悬浮区。
 // 名称解析（客户/供应商/账户）通过 FinanceNameService。
 import 'dart:async';
 
@@ -17,9 +16,9 @@ import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_document_lifecycle_filter.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
@@ -188,6 +187,14 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
     return permission != null &&
         ref.read(currentPermissionsProvider).contains(permission);
   }
+
+  Widget _createButton() => UtenButton(
+    key: const Key('finance-doc-list-create'),
+    size: UtenButtonSize.large,
+    icon: Icons.add_rounded,
+    onPressed: () => context.push('/finance/${_cfg.type.pathSegment}/new'),
+    child: const Text('新建'),
+  );
 
   /// 当前分段/表头筛选组装查询条件（_fetch 与单号桶共用；[withBillNo] = false
   /// 供桶拉取——桶不算单号列自身的值筛选，2026-09-25 单号列统一）。
@@ -473,7 +480,6 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final docType = widget.docType;
     ref.watch(currentPermissionsProvider);
     final names = ref.watch(financeNameServiceProvider);
@@ -504,6 +510,11 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
           ),
         ],
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: _canCreate && !_canSelectDrafts
+          ? UtenFloatingActionGroup(children: [_createButton()])
+          : null,
       body: SafeArea(
         child: UtenContentContainer.wide(
           child: Padding(
@@ -511,157 +522,122 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
             child: ListenableBuilder(
               listenable: _list,
               builder: (context, _) {
-                final total = _list.total;
-                // 「顶部折叠 + 表格吸顶内滚」：标题行随上滑收起腾出空间，
-                // 筛选/表格区占满剩余空间、表体内部滚动（与单据列表页统一）。
-                return UtenCollapsingHeaderScrollView(
-                  // 页面头：Icon + 标题 + 计数 + 新建按钮（搜索条挪到下方筛选区/侧栏）
-                  collapsingHeader: Padding(
-                    padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                    child: Row(
-                      children: [
-                        Icon(
-                          _cfg.icon,
-                          size: 18,
-                          color: theme.colorScheme.primary,
+                return UtenListTwoPane(
+                  filterPane: _lifecycleFilters(statusCounts),
+                  tablePane: _withFormDraftRows(
+                    MasterDataTableView<FinanceDocListItem>(
+                      rowsController: _tableRows,
+                      tableKey: 'finance.${widget.docType.name}.list',
+                      bottomContentPadding:
+                          UtenFloatingActionGroup.scrollClearance,
+                      selectable: _canSelectDrafts,
+                      idOf: (item) =>
+                          !draftDeleteBusy &&
+                              !_list.loading &&
+                              _isDeletableDraft(item)
+                          ? item.id
+                          : null,
+                      rowKeyOf: (item) => item.id,
+                      selectedIds: selectedDraftIds,
+                      onSelectedIdsChanged: draftDeleteBusy || _list.loading
+                          ? null
+                          : selectDraftIds,
+                      batchActionsBuilder: (_, _) => [
+                        if (_canCreate) _createButton(),
+                        buildDraftDeleteButton(
+                          documentLabel: _cfg.label,
+                          delete: (id) => _deleteDraft(id, docType),
+                          reload: () => _reload(),
                         ),
-                        const SizedBox(width: UtenSpacing.s8),
-                        Text(
-                          '${_cfg.shortLabel} ($total)',
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const Spacer(),
-                        if (_canCreate && _statusFilter != kFinanceStatusDraft)
-                          UtenButton(
-                            type: UtenButtonType.tonal,
-                            icon: Icons.add_rounded,
-                            onPressed: () => context.push(
-                              '/finance/${_cfg.type.pathSegment}/new',
-                            ),
-                            child: const Text('新建'),
-                          ),
                       ],
-                    ),
-                  ),
-                  // 桌面：左筛选侧栏（搜索 + 状态 Chip）+ 右表格；手机：垂直堆叠
-                  body: UtenListTwoPane(
-                    filterPane: _lifecycleFilters(statusCounts),
-                    tablePane: _withFormDraftRows(
-                      MasterDataTableView<FinanceDocListItem>(
-                        rowsController: _tableRows,
-                        tableKey: 'finance.${widget.docType.name}.list',
-                        // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
-                        primary: true,
-                        selectable: _canSelectDrafts,
-                        idOf: (item) =>
-                            !draftDeleteBusy &&
-                                !_list.loading &&
-                                _isDeletableDraft(item)
-                            ? item.id
-                            : null,
-                        rowKeyOf: (item) => item.id,
-                        selectedIds: selectedDraftIds,
-                        onSelectedIdsChanged: draftDeleteBusy || _list.loading
-                            ? null
-                            : selectDraftIds,
-                        batchActionsBuilder: (_, _) => [
-                          buildDraftDeleteButton(
-                            documentLabel: _cfg.label,
-                            delete: (id) => _deleteDraft(id, docType),
-                            reload: () => _reload(),
+                      columns: _columns(names),
+                      items: _list.page?.items ?? const [],
+                      facets: {
+                        // 单据号桶与列表同一过滤口径（2026-09-25 单号列统一）。
+                        'billNo': _columnFilters.bucketOf('billNo'),
+                        if (_cfg.type == FinanceDocType.receipt)
+                          'receiptKind': financeReceiptKindFacets,
+                        if (_cfg.hasParty)
+                          _cfg.isClient
+                              ? 'clientId'
+                              : 'supplierId': financeDictionaryFacets(
+                            _cfg.isClient
+                                ? names.clientEntries
+                                : names.supplierEntries,
+                          ),
+                        'accountId': financeDictionaryFacets(
+                          names.accountEntries,
+                        ),
+                        'recordOrigin': const [
+                          MasterFacetBucket(
+                            value: 'CURRENT',
+                            count: 0,
+                            label: '当前单据',
+                          ),
+                          MasterFacetBucket(
+                            value: 'LEGACY',
+                            count: 0,
+                            label: '历史记录（只读）',
                           ),
                         ],
-                        columns: _columns(names),
-                        items: _list.page?.items ?? const [],
-                        facets: {
-                          // 单据号桶与列表同一过滤口径（2026-09-25 单号列统一）。
-                          'billNo': _columnFilters.bucketOf('billNo'),
-                          if (_cfg.type == FinanceDocType.receipt)
-                            'receiptKind': financeReceiptKindFacets,
-                          if (_cfg.hasParty)
-                            _cfg.isClient
-                                ? 'clientId'
-                                : 'supplierId': financeDictionaryFacets(
-                              _cfg.isClient
-                                  ? names.clientEntries
-                                  : names.supplierEntries,
-                            ),
-                          'accountId': financeDictionaryFacets(
-                            names.accountEntries,
-                          ),
-                          'recordOrigin': const [
-                            MasterFacetBucket(
-                              value: 'CURRENT',
-                              count: 0,
-                              label: '当前单据',
-                            ),
-                            MasterFacetBucket(
-                              value: 'LEGACY',
-                              count: 0,
-                              label: '历史记录（只读）',
-                            ),
-                          ],
-                          'status': widget.docType == FinanceDocType.expense
-                              ? [
-                                  if (!_historyMode)
-                                    const MasterFacetBucket(
-                                      value: '0',
-                                      count: 0,
-                                      label: '草稿',
-                                    ),
-                                  MasterFacetBucket(
-                                    value: '1',
+                        'status': widget.docType == FinanceDocType.expense
+                            ? [
+                                if (!_historyMode)
+                                  const MasterFacetBucket(
+                                    value: '0',
                                     count: 0,
-                                    label: _historyMode ? '已审' : '待财务确认',
+                                    label: '草稿',
                                   ),
-                                  if (_historyMode)
-                                    const MasterFacetBucket(
-                                      value: '-1',
-                                      count: 0,
-                                      label: '已反审',
-                                    ),
-                                ]
-                              : financeDocumentStatusFacets,
-                        },
-                        nullCounts: const {},
-                        filters: {
-                          'billNo': _columnFilters['billNo'],
-                          if (_cfg.type == FinanceDocType.receipt)
-                            'receiptKind': _receiptKindFilter,
-                          if (_cfg.hasParty)
-                            _cfg.isClient ? 'clientId' : 'supplierId':
-                                _partyIdFilter,
-                          'accountId': _accountIdFilter,
-                          'recordOrigin': _recordOriginFilter?.wireValue,
-                          'status': _statusFilter?.toString(),
-                        },
-                        onFilterChanged: _onColumnFilterChanged,
-                        sortColumn: _list.sortKey,
-                        sortAscending: _list.sortAsc,
-                        onSortChange: _onSortChange,
-                        onRowTap: (it) => context.push(
-                          '/finance/${_cfg.type.pathSegment}/${it.id}',
-                        ),
-                        isLoading: _list.isLoadingFirst,
-                        loadingMore: _list.isLoadingMore,
-                        error: _list.error,
-                        onRetry: () => _reload(),
-                        emptyMessage: '暂无${_cfg.shortLabel}单',
-                        currentPage: _list.currentPage,
-                        totalPages: _list.totalPages,
-                        paginationRevision: _list.page,
-                        paginationScope: (
-                          widget.docType,
-                          _list.normalizedKeyword,
-                          _statusFilter,
-                          _historyMode,
-                          _historyTime,
-                          _recordOriginFilter,
-                        ),
-                        onPageChange: (p) => _reload(p),
+                                MasterFacetBucket(
+                                  value: '1',
+                                  count: 0,
+                                  label: _historyMode ? '已审' : '待财务确认',
+                                ),
+                                if (_historyMode)
+                                  const MasterFacetBucket(
+                                    value: '-1',
+                                    count: 0,
+                                    label: '已反审',
+                                  ),
+                              ]
+                            : financeDocumentStatusFacets,
+                      },
+                      nullCounts: const {},
+                      filters: {
+                        'billNo': _columnFilters['billNo'],
+                        if (_cfg.type == FinanceDocType.receipt)
+                          'receiptKind': _receiptKindFilter,
+                        if (_cfg.hasParty)
+                          _cfg.isClient ? 'clientId' : 'supplierId':
+                              _partyIdFilter,
+                        'accountId': _accountIdFilter,
+                        'recordOrigin': _recordOriginFilter?.wireValue,
+                        'status': _statusFilter?.toString(),
+                      },
+                      onFilterChanged: _onColumnFilterChanged,
+                      sortColumn: _list.sortKey,
+                      sortAscending: _list.sortAsc,
+                      onSortChange: _onSortChange,
+                      onRowTap: (it) => context.push(
+                        '/finance/${_cfg.type.pathSegment}/${it.id}',
                       ),
+                      isLoading: _list.isLoadingFirst,
+                      loadingMore: _list.isLoadingMore,
+                      error: _list.error,
+                      onRetry: () => _reload(),
+                      emptyMessage: '暂无${_cfg.shortLabel}单',
+                      currentPage: _list.currentPage,
+                      totalPages: _list.totalPages,
+                      paginationRevision: _list.page,
+                      paginationScope: (
+                        widget.docType,
+                        _list.normalizedKeyword,
+                        _statusFilter,
+                        _historyMode,
+                        _historyTime,
+                        _recordOriginFilter,
+                      ),
+                      onPageChange: (p) => _reload(p),
                     ),
                   ),
                 );

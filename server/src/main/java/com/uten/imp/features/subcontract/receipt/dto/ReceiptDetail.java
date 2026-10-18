@@ -23,6 +23,8 @@ public class ReceiptDetail extends com.uten.imp.common.history.DocumentHistoryMe
     private BigDecimal exchangeRate;
     private BigDecimal taxRate;
     private UUID senderId;
+    /** 交货人「姓名(工号)」（服务端按 sender_id 解析；工号缺失退化为纯姓名）。 */
+    private String senderName;
     private UUID makerId;
     private UUID approverId;
     private LocalDate lastDate;

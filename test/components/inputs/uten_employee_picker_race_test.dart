@@ -1,3 +1,5 @@
+import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/features/employee/providers/employee_picker_department_tree_provider.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -21,7 +23,11 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [sharedPreferencesProvider.overrideWithValue(preferences)],
+        overrides: [
+          apiBaseUrlProvider.overrideWithValue('https://picker.test'),
+          employeePickerDepartmentTreeProvider.overrideWith((ref) async => []),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+        ],
         child: MaterialApp(
           home: Scaffold(
             body: UtenEmployeePicker(

@@ -207,7 +207,8 @@ class AiChatPageSnapshotTest {
     /** A3 red team: letter case and doubled slashes got system administration pages past the protected list. */
     @Test void protectionIsDecidedOnTheCanonicalRoute() {
         for (String route : List.of("/ADMIN/system-settings", "/Admin/ai-settings", "/admin/ai-settings/", "/Security",
-                "/SETTINGS/device-receipts")) {
+                "/SETTINGS/device-receipts", "/settings/remote-mfa", "/settings/remote-mfa/setup",
+                "/SETTINGS/REMOTE-MFA", "/Settings/Remote-Mfa/setup/")) {
             assertThat(AiChatPageSnapshot.protectedPage(route)).as(route).isTrue();
             var request = new AiChatRequest("这个页面的保存按钮会做什么？", null, new AiChatRequest.PageContext(route, null,
                     parse(Map.of("fields", List.of(Map.of("label", "登录失败锁定次数", "value", "5"))))));
@@ -218,6 +219,7 @@ class AiChatPageSnapshotTest {
         assertThatThrownBy(() -> AiChatJobHandler.validated(doubled)).isInstanceOf(ApiException.class);
         // Ordinary routes keep their case-sensitive parameters (a receipt type) and stay readable.
         assertThat(AiChatPageSnapshot.protectedPage("/warehouse/inspections/PURCHASE/3f2a")).isFalse();
+        assertThat(AiChatPageSnapshot.protectedPage("/settings/remote-mfa-help")).isFalse();
     }
 
     /** A3 red team: spaced, full-width and synonym labels carried cost and margin values to the model. */

@@ -681,7 +681,8 @@ class AccountSupportBoundaryTest {
                 audit,
                 sessions,
                 settings,
-                accountNotice);
+                accountNotice,
+                mock(com.uten.imp.features.admin.remoteaccess.RemoteAccessSettingsService.class));
     }
 
     private AdminAccountLifecycleLock.LockedTarget lock(

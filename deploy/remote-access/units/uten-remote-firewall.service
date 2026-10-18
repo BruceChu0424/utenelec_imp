@@ -1,0 +1,25 @@
+[Unit]
+Description=Apply only the dedicated Uten tunnel firewall table atomically
+Before=wg-quick@wg-uten.service uten-remote-nginx.service
+After=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/python3 /usr/local/lib/uten-remote/apply_firewall.py
+ExecReload=/usr/bin/python3 /usr/local/lib/uten-remote/apply_firewall.py
+User=root
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+CapabilityBoundingSet=CAP_NET_ADMIN
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+
+[Install]
+WantedBy=multi-user.target

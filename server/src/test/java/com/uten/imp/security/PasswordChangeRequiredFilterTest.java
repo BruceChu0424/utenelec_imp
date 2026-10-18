@@ -61,6 +61,8 @@ class PasswordChangeRequiredFilterTest {
     @ParameterizedTest
     @CsvSource({
             "GET, /api/dashboard/overview",
+            "GET, /%61pi/dashboard/overview",
+            "GET, /api/%64ashboard/overview",
             "POST, /api/auth/step-up",
             "POST, /api/settings/public",
             "GET, /api/auth/change-password",

@@ -9,7 +9,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 运行期第三方凭据（AI 服务商、短信网关）的加密密钥(uten.crypto.secret-cipher-*, ADR-133)。
+ * 运行期凭据（AI 服务商、短信网关、员工 TOTP）的加密密钥(uten.crypto.secret-cipher-*, ADR-133)。
  *
  * <p>与 {@link com.uten.imp.config.props.CryptoProperties} 同前缀、不同字段: pgcrypto 主密钥只给
  * 员工 PII 用并以绑定参数进数据库, 这里的密钥只在 JVM 内做 AES-256-GCM, 两者互不复用。

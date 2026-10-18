@@ -242,6 +242,10 @@ class AuditTriggerCoverageMigrationContractTest {
 
     /** COLUMN_SCOPED: 只审计人为决定的列; 派生列的变化不留行审计。 */
     static final List<ScopedTable> COLUMN_SCOPED = List.of(
+            new ScopedTable("staff_mfa", "system", false, List.of("enabled_at"),
+                    "V873: audit enrollment state only; encrypted secrets, pending sessions, counters and INSERT/DELETE snapshots stay out of row audit"),
+            new ScopedTable("remote_access_policy", "system", false, List.of("enabled", "max_users", "version"),
+                    "V874: audit the administrator's global access policy and revision; no INSERT/DELETE snapshots"),
             new ScopedTable("platform_branding", "system", false,
                     List.of("company_name", "company_aliases", "platform_name", "tagline", "primary_color", "secondary_color", "login_notice",
                             "support_phone", "support_email", "website", "logo_sha256", "updated_by"),

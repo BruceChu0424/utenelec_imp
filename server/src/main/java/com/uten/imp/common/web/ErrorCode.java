@@ -13,6 +13,12 @@ public enum ErrorCode {
     FORBIDDEN(403, "当前账号无权执行此操作，请联系管理员核对操作权限和数据范围"),
     PASSWORD_CHANGE_REQUIRED(403, "首次登录必须修改密码后才能继续"),
     REMOTE_ACCESS_DENIED(403, "该账号未授权外网(云端)访问"),
+    MFA_REQUIRED(403, "外网访问需要验证动态验证码，请验证后自行继续原操作"),
+    MFA_ENROLLMENT_REQUIRED(403, "请先回公司内网绑定动态验证码，再使用外网访问"),
+    MFA_INVALID(422, "动态验证码错误、过期或已经使用，请使用新的验证码"),
+    MFA_LOCKED(429, "动态验证码错误次数过多，请十五分钟后再试"),
+    MFA_ENROLLMENT_EXPIRED(409, "本次绑定已过期或不属于当前会话，请重新开始绑定"),
+    MFA_UNAVAILABLE(503, "动态验证码服务暂不可用，请联系管理员"),
     /** 敏感操作需要先重新输入登录密码 (再认证凭证缺失、过期、已用过或不属于本会话)。 */
     REAUTH_REQUIRED(403, "这一步需要先重新输入登录密码确认"),
     /** 再认证 (或改密时的原密码) 输错; 不用 401, 避免前端当成登录过期去刷新重放。 */
@@ -32,6 +38,7 @@ public enum ErrorCode {
     PASSWORD_TOO_WEAK(422, "密码强度不足"),
     PASSWORD_REUSE(422, "不能与最近用过的密码相同"),
     RATE_LIMITED(429, "请求过于频繁，请稍后再试"),
+    REMOTE_CAPACITY_REJECTED(429, "当前外网操作较多，请稍后再试；未开始本次业务处理"),
     BUSINESS(400, "业务处理失败"),
     IS_EMPLOYEE(422, "该手机号为员工账号，请走员工通道登录"),
     SMS_CODE_INVALID(400, "验证码错误"),
@@ -43,7 +50,7 @@ public enum ErrorCode {
     VISITOR_NOT_FOUND(404, "访客申请不存在"),
     VISITOR_BLOCKED(403, "访客账号已被限制"),
     IMPERSONATION_READ_ONLY(403, "模拟身份为只读模式，不允许写 / 审 / 删 / 导出操作"),
-    PRIMARY_UNAVAILABLE(503, "云端暂不可写：本地主库不可达，恢复网络后重试"),
+    PRIMARY_UNAVAILABLE(503, "暂时无法连接公司业务服务器；已发送操作请先核对结果"),
     /** 同时校验密码的人太多 (密码哈希并发闸门已满), 稍后重试即可。 */
     AUTH_BUSY(503, "登录验证的人较多，请稍后几秒再试"),
     SERVER_OPERATIONS_UNAVAILABLE(503, "服务器运维助手暂不可用"),

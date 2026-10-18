@@ -1,0 +1,19 @@
+# Scope only the tunnel and the dedicated remote-proxy identity. Preserve LAN policy.
+table inet uten_remote {
+    chain input {
+        type filter hook input priority -10; policy accept;
+        iifname "wg-uten" ip saddr @@CLOUD_WIREGUARD_IPV4@@ ip daddr @@COMPANY_WIREGUARD_IPV4@@ tcp dport 8443 accept
+        iifname "wg-uten" drop
+    }
+    chain forward {
+        type filter hook forward priority -10; policy accept;
+        iifname "wg-uten" drop
+        oifname "wg-uten" drop
+    }
+    chain output {
+        type filter hook output priority -10; policy accept;
+        meta skuid "uten-remote" ct state established,related accept
+        meta skuid "uten-remote" ip daddr 127.0.0.1 tcp dport { 8082, 9443 } accept
+        meta skuid "uten-remote" drop
+    }
+}

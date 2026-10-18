@@ -11,6 +11,7 @@ import com.uten.imp.security.LoginRateLimiter;
 import com.uten.imp.security.RemoteAccessPolicy;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.time.OffsetDateTime;
 import java.util.Locale;
@@ -37,6 +38,7 @@ public class LoginService {
     private final LoginFailureRecorder failureRecorder;
     private final RemoteAccessPolicy remoteAccessPolicy;
     private final StaffLoginTransaction loginTransaction;
+    private final RemoteMfaService mfa;
 
     /** 启动时预计算，避免首次未知账号请求多做一次 Argon2 编码而形成可观测时序差。 */
     private final String dummyHash;
@@ -47,6 +49,14 @@ public class LoginService {
                         LoginFailureRecorder failureRecorder,
                         RemoteAccessPolicy remoteAccessPolicy,
                         StaffLoginTransaction loginTransaction) {
+        this(userRepo, passwordEncoder, rateLimiter, audit, failureRecorder, remoteAccessPolicy, loginTransaction, null);
+    }
+
+    @Autowired
+    public LoginService(UserAccountRepository userRepo, PasswordEncoder passwordEncoder,
+                        LoginRateLimiter rateLimiter, AuditService audit, LoginFailureRecorder failureRecorder,
+                        RemoteAccessPolicy remoteAccessPolicy, StaffLoginTransaction loginTransaction,
+                        RemoteMfaService mfa) {
         this.userRepo = userRepo;
         this.passwordEncoder = passwordEncoder;
         this.rateLimiter = rateLimiter;
@@ -54,6 +64,7 @@ public class LoginService {
         this.failureRecorder = failureRecorder;
         this.remoteAccessPolicy = remoteAccessPolicy;
         this.loginTransaction = loginTransaction;
+        this.mfa = mfa;
         this.dummyHash = passwordEncoder.encode("dummy-password-for-timing");
     }
 
@@ -103,6 +114,11 @@ public class LoginService {
         rejectUnusableAccount(user);
 
         // ③ 短写事务: 行锁复核 + 清失败计数 + 开会话签发令牌 + 登录审计
+        if (remoteAccessPolicy.isRemoteRequest()) {
+            if (mfa == null) throw new ApiException(ErrorCode.MFA_UNAVAILABLE);
+            return mfa.remoteLogin(user.getId(), req.otpCode(),
+                    () -> loginTransaction.completeRemote(user.getId(), user.getPasswordHash()));
+        }
         return loginTransaction.complete(user.getId(), user.getPasswordHash());
     }
 

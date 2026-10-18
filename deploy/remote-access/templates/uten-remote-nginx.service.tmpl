@@ -1,0 +1,64 @@
+[Unit]
+Description=Uten remote @@ROLE@@ TLS transport (independent of LAN entry)
+After=network-online.target uten-remote-firewall.service wg-quick@wg-uten.service
+Wants=network-online.target wg-quick@wg-uten.service
+Requires=uten-remote-firewall.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=uten-remote
+Group=uten-remote
+RuntimeDirectory=uten-remote
+RuntimeDirectoryMode=0750
+LogsDirectory=uten-remote
+LogsDirectoryMode=0750
+CacheDirectory=uten-remote
+CacheDirectoryMode=0700
+UMask=0077
+MemoryHigh=256M
+MemoryMax=512M
+CPUQuota=@@NGINX_CPU_QUOTA@@
+TasksMax=64
+LimitNOFILE=4096
+LimitCORE=0
+ExecStartPre=/usr/sbin/nginx -t -q -c /etc/uten-remote/nginx.conf
+ExecStart=/usr/sbin/nginx -c /etc/uten-remote/nginx.conf -g "daemon off;"
+ExecReload=/usr/sbin/nginx -t -q -c /etc/uten-remote/nginx.conf
+ExecReload=/bin/kill -HUP $MAINPID
+KillSignal=SIGQUIT
+TimeoutStopSec=30
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+CapabilityBoundingSet=@@NGINX_CAPABILITY@@
+AmbientCapabilities=@@NGINX_CAPABILITY@@
+ProtectSystem=strict
+ProtectHome=true
+ProtectProc=invisible
+RestrictNamespaces=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_UNIX AF_INET
+SystemCallArchitectures=native
+InaccessiblePaths=-/etc/uten-imp -/etc/uten-imp-postgres -/etc/uten-imp-migrator -/etc/uten-imp-updater
+InaccessiblePaths=-/var/lib/postgresql -/var/lib/uten-imp -/var/lib/uten-imp-media -/data -/srv/uten-backup -/opt/uten-imp/current/server
+InaccessiblePaths=-/run/postgresql -/run/docker.sock
+# WireGuard private key belongs to root/kernel only; Nginx does not need it.
+InaccessiblePaths=/etc/uten-remote/wireguard
+IPAddressDeny=any
+IPAddressAllow=localhost
+IPAddressAllow=@@NGINX_ALLOWED_IP@@/32
+# Public clients must reach the cloud listener; enforce process egress in nftables.
+@@CLOUD_IPADDRESS_ALLOW@@
+
+[Install]
+WantedBy=multi-user.target

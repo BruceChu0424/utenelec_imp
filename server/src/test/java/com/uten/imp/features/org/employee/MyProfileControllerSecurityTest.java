@@ -49,7 +49,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
                         ImpersonationWriteGuardFilter.class,
                         JwtAuthFilter.class,
                         LocalNetworkGuardFilter.class,
-                        RemoteAccessGuardFilter.class
+                        RemoteAccessGuardFilter.class,
+                        com.uten.imp.security.RemoteMfaGuardFilter.class,
+                        com.uten.imp.security.RemoteRequestBudgetFilter.class
                 }))
 @Import(MyProfileControllerSecurityTest.MethodSecurityConfiguration.class)
 class MyProfileControllerSecurityTest {

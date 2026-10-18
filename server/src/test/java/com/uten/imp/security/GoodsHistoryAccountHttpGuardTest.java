@@ -64,6 +64,20 @@ class GoodsHistoryAccountHttpGuardTest {
         }
     }
 
+    @Test
+    void encodedImpersonationRequestsKeepExactReadOnlyRecoveryAndNeverAllowBusinessWrites() throws Exception {
+        authenticate(new AuthUser(UUID.randomUUID(),UUID.randomUUID(),"simulated",Set.of(),false,true,false,false,UUID.randomUUID()));
+        var filter=new ImpersonationWriteGuardFilter(mapper,mock(AuditService.class));
+        var recovery=request("POST","/%61pi/production/daily-reports/%63reate-receipt");
+        var allowed=new MockFilterChain();
+        filter.doFilter(recovery,new MockHttpServletResponse(),allowed);
+        assertSame(recovery,allowed.getRequest());
+        var write=request("POST","/%61pi/master/goods/history/"+UUID.randomUUID()+"/undo");
+        var blocked=new MockFilterChain();var response=new MockHttpServletResponse();
+        filter.doFilter(write,response,blocked);
+        assertEquals(403,response.getStatus());assertNull(blocked.getRequest());
+    }
+
     private static void authenticate(AuthUser user) {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities()));

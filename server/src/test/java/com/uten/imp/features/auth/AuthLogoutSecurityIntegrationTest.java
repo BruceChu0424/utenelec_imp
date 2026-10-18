@@ -76,6 +76,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
                         JwtAuthFilter.class
                 }))
 @Import({
+        com.uten.imp.support.RemoteIngressSecurityTestConfiguration.class,
         SecurityConfig.class,
         SecurityProperties.class,
         DeploymentProperties.class,

@@ -21,6 +21,8 @@ import '../../features/admin/pages/admin_ai_usage_page.dart';
 import '../../features/admin/pages/admin_ai_usage_records_page.dart';
 import '../../features/admin/pages/admin_ai_usage_person_page.dart';
 import '../../features/admin/pages/admin_system_settings_page.dart';
+import '../../features/admin/pages/admin_remote_access_page.dart';
+import '../../features/auth/pages/remote_mfa_page.dart';
 import '../../features/admin/pages/admin_sms_settings_page.dart';
 import '../../features/admin/pages/admin_platform_settings_page.dart';
 import '../../features/admin/pages/server_status_page.dart';
@@ -491,6 +493,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               backRoute: RouteName.settings,
               initialOperationId: state.uri.queryParameters['operationId'],
             ),
+          ),
+          DraftAwareGoRoute(
+            path: RouteName.remoteMfa,
+            name: 'remote-mfa',
+            builder: (_, _) => const RemoteMfaPage(),
           ),
 
           // —— 工资 ——
@@ -2121,6 +2128,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.adminSmsSettings,
             name: 'admin-sms-settings',
             builder: (_, _) => const AdminSmsSettingsPage(),
+          ),
+          DraftAwareGoRoute(
+            path: RouteName.adminRemoteAccess,
+            name: 'admin-remote-access',
+            builder: (_, _) => const AdminRemoteAccessPage(),
           ),
           DraftAwareGoRoute(
             path: RouteName.adminPlatformSettings,

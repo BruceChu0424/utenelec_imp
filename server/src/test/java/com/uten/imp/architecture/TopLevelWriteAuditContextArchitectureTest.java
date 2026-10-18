@@ -160,17 +160,23 @@ class TopLevelWriteAuditContextArchitectureTest {
                 "employeeRepo.save(");
 
         // 失败计数的操作人绑定在 LoginFailureRecorder 自己的独立事务里 (见上方 LOGIN_FAILURE 断言);
-        // 登录编排 LoginService 不再持有事务, 成功态写入集中在 StaffLoginTransaction.complete。
-        assertBefore(LOGIN, "public TokenResponse complete(",
+        // Both entry points must delegate to the same audited write transaction;
+        // the remote entry adds only the already-verified MFA issuance branch.
+        assertTrue(methodBody(source(LOGIN), "public TokenResponse complete(")
+                .contains("return complete(userId, verifiedPasswordHash, false);"));
+        assertTrue(methodBody(source(LOGIN), "public TokenResponse completeRemote(")
+                .contains("return complete(userId, verifiedPasswordHash, true);"));
+        assertBefore(LOGIN, "private TokenResponse complete(",
                 "tx.bindActor(user.getId(), user.getLoginAccount());",
                 "userRepo.save(");
         String successfulLoginAudit =
                 "audit.logCommitted(user.getId(), user.getLoginAccount(),";
-        assertBefore(LOGIN, "public TokenResponse complete(",
-                "TokenResponse response = tokenIssuer.issueTokens(user);",
+        String issuance = "TokenResponse response = mfaVerified ? tokenIssuer.issueTokensWithMfa(user) : tokenIssuer.issueTokens(user);";
+        assertBefore(LOGIN, "private TokenResponse complete(",
+                issuance,
                 successfulLoginAudit);
-        assertBefore(LOGIN, "public TokenResponse complete(",
-                "TokenResponse response = tokenIssuer.issueTokens(user);",
+        assertBefore(LOGIN, "private TokenResponse complete(",
+                issuance,
                 "return response;");
 
         assertBefore(VISITOR_LOGIN,

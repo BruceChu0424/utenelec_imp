@@ -20,6 +20,8 @@ class PublicPlatformBrandingRequestTest {
     @Test void allowlistIsExactAndContextAwareAndReadOnly() {
         assertTrue(PublicPlatformBrandingRequest.matches(request("GET", "/api/platform/branding")));
         assertTrue(PublicPlatformBrandingRequest.matches(request("GET", "/api/platform/branding/logo")));
+        assertTrue(PublicPlatformBrandingRequest.matches(request("GET", "/%61pi/platform/branding/logo")));
+        assertTrue(PublicPlatformBrandingRequest.matches(request("GET", "/api/platform/%62randing")));
         var nested = request("GET", "/erp/api/platform/branding/logo"); nested.setContextPath("/erp");
         assertTrue(PublicPlatformBrandingRequest.matches(nested));
         for (String path : new String[]{"/api/platform/branding/", "/api/platform/branding/logo/extra", "/api/admin/platform-settings"})
@@ -31,7 +33,7 @@ class PublicPlatformBrandingRequestTest {
         var jwt = mock(JwtService.class); var sessions = mock(AuthSessionService.class);
         var resolver = mock(StaffAuthorityResolver.class); var audit = mock(AuditService.class);
         var filter = new JwtAuthFilter(jwt, sessions, resolver, new ObjectMapper(), audit);
-        var request = request("GET", "/api/platform/branding/logo"); request.addHeader("Authorization", "Bearer stale-or-foreign");
+        var request = request("GET", "/%61pi/platform/branding/logo"); request.addHeader("Authorization", "Bearer stale-or-foreign");
         boolean[] reached = {false};
         filter.doFilter(request, new MockHttpServletResponse(), (req, resp) -> reached[0] = true);
         assertTrue(reached[0]); verifyNoInteractions(jwt, sessions, resolver, audit);

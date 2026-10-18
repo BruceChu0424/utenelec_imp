@@ -152,8 +152,8 @@ public final class AuditRequestContext {
                 request.getMethod().toUpperCase(Locale.ROOT))) {
             return false;
         }
-        String path = request.getRequestURI();
-        return path != null && path.startsWith("/api/");
+        return com.uten.imp.security.SecurityRequestPath.isApi(
+                com.uten.imp.security.SecurityRequestPath.withinApplication(request));
     }
 
     static boolean isRead(HttpServletRequest request) {

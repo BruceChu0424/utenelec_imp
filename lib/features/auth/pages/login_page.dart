@@ -11,6 +11,7 @@
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -34,6 +35,7 @@ import '../../../shared/providers/shared_providers.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/repositories/account_history_store.dart';
 import '../widgets/account_field.dart';
+import '../remote_access_text.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key, this.returnTo});
@@ -53,6 +55,8 @@ class _LoginPageState extends ConsumerState<LoginPage>
   final _formKey = GlobalKey<FormState>();
   final _accountController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _otpController = TextEditingController();
+  bool _showOtp = false;
   bool _isLoading = false;
   bool _isRecoveringServer = false;
   String? _errorMessage;
@@ -60,6 +64,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
   @override
   void initState() {
     super.initState();
+    _accountController.addListener(_clearOtpForAccountChange);
     _controller = AnimationController(vsync: this, duration: UtenAnim.slow);
     _fadeAnimation = CurvedAnimation(
       parent: _controller,
@@ -77,7 +82,12 @@ class _LoginPageState extends ConsumerState<LoginPage>
     _controller.dispose();
     _accountController.dispose();
     _passwordController.dispose();
+    _otpController.dispose();
     super.dispose();
+  }
+
+  void _clearOtpForAccountChange() {
+    _otpController.clear();
   }
 
   Future<void> _handleLogin() async {
@@ -96,7 +106,11 @@ class _LoginPageState extends ConsumerState<LoginPage>
       final account = _accountController.text.trim();
       await ref
           .read(sessionProvider.notifier)
-          .login(account: account, password: _passwordController.text);
+          .login(
+            account: account,
+            password: _passwordController.text,
+            otpCode: _showOtp ? _otpController.text : null,
+          );
       // 登录成功：记住账号（只记账号不记密码）
       await ref.read(accountHistoryProvider).add(account);
 
@@ -106,7 +120,13 @@ class _LoginPageState extends ConsumerState<LoginPage>
       }
     } on ApiException catch (e) {
       if (mounted) {
-        setState(() => _errorMessage = e.message);
+        setState(() {
+          if (e.code == 'MFA_REQUIRED' || e.code == 'MFA_INVALID') {
+            _showOtp = true;
+          }
+          _errorMessage = remoteAccessError(context, e);
+          _otpController.clear();
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -130,7 +150,13 @@ class _LoginPageState extends ConsumerState<LoginPage>
       ref.invalidate(apiBaseUrlProvider);
       await ref.read(localServerReachableProvider.notifier).probe();
       ref.invalidate(apiBaseUrlProvider);
-      if (mounted) context.appSuccess(l10n.loginServerRecoverySuccess);
+      if (mounted) {
+        setState(() {
+          _showOtp = false;
+          _otpController.clear();
+        });
+        context.appSuccess(l10n.loginServerRecoverySuccess);
+      }
     } catch (_) {
       if (mounted) {
         setState(() => _errorMessage = l10n.loginServerRecoveryFailed);
@@ -281,6 +307,34 @@ class _LoginPageState extends ConsumerState<LoginPage>
           ),
           const SizedBox(height: UtenSpacing.s16),
           // 「记住此设备」开关已移除：安全考虑，每次登录必须输密码（不长期记住设备/免密）。
+          if (_showOtp) ...[
+            UtenInput(
+              key: const Key('login-otp'),
+              controller: _otpController,
+              label: remoteAccessText(context, 'otp'),
+              hint: remoteAccessText(context, 'otpHint'),
+              aiSensitive: true,
+              keyboardType: TextInputType.number,
+              enabled: !_isLoading && !_isRecoveringServer,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(6),
+              ],
+              autofillHints: const [AutofillHints.oneTimeCode],
+              validator: (value) => RegExp(r'^\d{6}$').hasMatch(value ?? '')
+                  ? null
+                  : remoteAccessText(context, 'otpInvalid'),
+              onFieldSubmitted: (_) => _handleLogin(),
+            ),
+            const SizedBox(height: UtenSpacing.s16),
+          ] else
+            TextButton(
+              key: const Key('login-show-otp'),
+              onPressed: _isLoading || _isRecoveringServer
+                  ? null
+                  : () => setState(() => _showOtp = true),
+              child: Text(remoteAccessText(context, 'loginOtp')),
+            ),
           // 账号历史单独记忆（AccountField 下拉，只记账号不记密码）。
           if (_errorMessage != null) ...[
             const SizedBox(height: UtenSpacing.s16),

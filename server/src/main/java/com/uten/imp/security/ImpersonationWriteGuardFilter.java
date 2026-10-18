@@ -54,9 +54,10 @@ public class ImpersonationWriteGuardFilter extends OncePerRequestFilter {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.getPrincipal() instanceof AuthUser user && user.getImpersonatedBy() != null) {
             String method = request.getMethod() == null ? "" : request.getMethod().toUpperCase(Locale.ROOT);
-            if (WRITE_METHODS.contains(method) && !WRITABLE_WHITELIST.contains(stripContextPath(request))
-                    && !readOnlyIqcReportReceipt(method, stripContextPath(request))
-                    && !readOnlyDailyCreateReceipt(method, stripContextPath(request))) {
+            String path = SecurityRequestPath.withinApplication(request);
+            if (WRITE_METHODS.contains(method) && !WRITABLE_WHITELIST.contains(path)
+                    && !readOnlyIqcReportReceipt(method, path)
+                    && !readOnlyDailyCreateReceipt(method, path)) {
                 blockWrite(request, response, user.getImpersonatedBy());
                 return;
             }
@@ -96,12 +97,4 @@ public class ImpersonationWriteGuardFilter extends OncePerRequestFilter {
         response.getWriter().write(objectMapper.writeValueAsString(body));
     }
 
-    private String stripContextPath(HttpServletRequest request) {
-        String path = request.getRequestURI();
-        String contextPath = request.getContextPath();
-        if (contextPath != null && !contextPath.isEmpty() && path.startsWith(contextPath)) {
-            path = path.substring(contextPath.length());
-        }
-        return path;
-    }
 }

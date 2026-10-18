@@ -439,7 +439,7 @@ class JwtAuthorizationVersionTest {
     }
 
     private MockHttpServletRequest bearerRequest(String token) {
-        MockHttpServletRequest request = new MockHttpServletRequest();
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/auth/me");
         request.addHeader("Authorization", "Bearer " + token);
         return request;
     }

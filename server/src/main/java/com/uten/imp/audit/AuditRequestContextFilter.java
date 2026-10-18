@@ -66,8 +66,8 @@ public class AuditRequestContextFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        String path = request.getRequestURI();
-        return path == null || !path.startsWith("/api/");
+        return !com.uten.imp.security.SecurityRequestPath.isApi(
+                com.uten.imp.security.SecurityRequestPath.withinApplication(request));
     }
 
     private void logFallback(

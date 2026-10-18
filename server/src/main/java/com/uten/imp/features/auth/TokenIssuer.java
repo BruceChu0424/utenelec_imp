@@ -174,8 +174,18 @@ public class TokenIssuer {
 
     /** Issue a fresh token pair after login or password change. */
     public TokenResponse issueTokens(UserAccount user) {
+        return issueTokens(user, null);
+    }
+
+    /** RemoteMfaService has already verified the factor in this transaction. */
+    public TokenResponse issueTokensWithMfa(UserAccount user) {
+        return issueTokens(user, sessions.now());
+    }
+
+    private TokenResponse issueTokens(UserAccount user, java.time.Instant mfaVerifiedAt) {
         RefreshTokenService.IssuedRefreshToken refresh =
                 refreshTokenService.issueNewSession(user.getId(), null);
+        if (mfaVerifiedAt != null) sessions.markMfaVerified(refresh.sessionId(), user.getId(), mfaVerifiedAt);
         AuditRequestContext.bindCurrentSessionId(refresh.sessionId());
         return responseFactory.build(
                 user, refresh.rawToken(), refresh.sessionId());
@@ -183,7 +193,13 @@ public class TokenIssuer {
 
     /** Starts the replacement session after a successful password change. */
     public TokenResponse issueTokensAfterPasswordChange(UserAccount user) {
-        TokenResponse response = issueTokens(user);
+        var authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        java.time.Instant previousMfa = authentication != null
+                && authentication.getPrincipal() instanceof com.uten.imp.security.AuthUser principal
+                && user.getId().equals(principal.getId()) && principal.getImpersonatedBy() == null
+                ? sessions.mfaAfterPasswordChange(principal.getSessionId(), user.getId()) : null;
+        // A password change preserves only the unexpired remainder, never grants another eight hours.
+        TokenResponse response = issueTokens(user, previousMfa);
         UUID sessionId = AuditRequestContext.currentSessionId();
         audit.logCommitted(
                 user.getId(),

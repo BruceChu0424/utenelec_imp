@@ -352,6 +352,19 @@ jobs:
           python3 -m unittest discover -s deploy/setup -p "test*.py" -v
           python3 -m unittest discover -s deploy/monitoring -p "test*.py" -v
           python3 -m unittest discover -s deploy/aliyun-oidc -p "test*.py" -v
+          python3 -m unittest discover -s deploy/remote-access -p "test*.py" -v
+      - name: Verify remote TLS and compromised-cloud isolation in disposable containers
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build -t uten-remote-contract:ci -f deploy/remote-access/tests/Dockerfile deploy/remote-access
+          docker run --rm --network none --cap-add NET_ADMIN \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/deploy/remote-access,target=/src,readonly" \
+            uten-remote-contract:ci python3 tests/integration_linux.py --firewall
+          docker run --rm --network none --cap-add NET_ADMIN --cap-add SYS_ADMIN \
+            --sysctl net.ipv4.ip_forward=1 \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/deploy/remote-access,target=/src,readonly" \
+            uten-remote-contract:ci python3 tests/network_isolation_linux.py
       - name: Test OCR transport and image limits without downloading models
         shell: bash
         run: |

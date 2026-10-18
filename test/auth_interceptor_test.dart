@@ -23,6 +23,52 @@ void main() {
       storage = SecureStorage(const FlutterSecureStorage());
     });
 
+    test(
+      'rejected access plus remote MFA refresh refusal requires a fresh login without replay',
+      () async {
+        await storage.saveTokens(
+          accessToken: 'expired-access',
+          refreshToken: 'refresh',
+        );
+        var operations = 0;
+        final dio = _staffDio(storage, (request) {
+          if (request.path == '/auth/refresh') {
+            return _jsonResponse(request, 403, {'code': 'MFA_REQUIRED'});
+          }
+          operations++;
+          return _jsonResponse(request, 401, {'code': 'UNAUTHORIZED'});
+        });
+        await expectLater(
+          dio.post<dynamic>('/stock/write', data: {'quantity': 1}),
+          throwsA(isA<DioException>()),
+        );
+        expect(await storage.getAccessToken(), isNull);
+        expect(operations, 1);
+      },
+    );
+
+    test(
+      'proactive refresh MFA refusal keeps a still-usable access token for verification',
+      () async {
+        final token = _jwt(iat: 1000, exp: 1030);
+        await storage.saveTokens(accessToken: token, refreshToken: 'refresh');
+        final dio = _staffDio(
+          storage,
+          (request) => request.path == '/auth/refresh'
+              ? _jsonResponse(request, 403, {'code': 'MFA_REQUIRED'})
+              : _jsonResponse(request, 200, {
+                  'verifiedUntil': '2026-10-17T20:00:00Z',
+                }),
+        );
+        final response = await dio.post<dynamic>(
+          '/auth/mfa/verify',
+          data: {'otpCode': '123456'},
+        );
+        expect(response.statusCode, 200);
+        expect(await storage.getAccessToken(), token);
+      },
+    );
+
     test('refresh 401 明确失效时清理令牌并只发布一次失效事件', () async {
       await storage.saveTokens(
         accessToken: 'old-access',

@@ -9,6 +9,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import '../../../core/l10n/remote_access_text.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
@@ -1270,7 +1271,10 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  remoteAccess ? '已授权云端访问' : '未授权云端访问',
+                  remoteAccessText(
+                    context,
+                    remoteAccess ? 'granted' : 'notGranted',
+                  ),
                   style: theme.textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -1278,9 +1282,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                 Text(
                   !remoteAccess && !grantAllowed
                       ? '${widget.user.authorizationRestrictionReason}，不能开放外网访问。'
-                      : remoteAccess
-                      ? '「$name」可在外网(云端)登录使用；居家/出差可用。'
-                      : '「$name」仅可在公司内网使用。授权云端后该账号需重新登录。',
+                      : '$name：${remoteAccessText(context, 'grantHint')}',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -1304,7 +1306,9 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
             onDisabledTap: _acting || grantAllowed
                 ? null
                 : _explainAuthorizationRestriction,
-            child: Text(remoteAccess ? '取消授权' : '授权云端'),
+            child: Text(
+              remoteAccessText(context, remoteAccess ? 'revoke' : 'grant'),
+            ),
           ),
         ],
       ),
@@ -1320,13 +1324,11 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     final name = widget.user.employeeName ?? widget.user.loginAccount;
     final confirmed = await UtenDialog.show(
       context,
-      title: next ? '授权云端访问' : '取消云端访问',
+      title: '$name：${remoteAccessText(context, next ? 'grant' : 'revoke')}',
       content: Text(
-        next
-            ? '授权「$name」在外网(云端)使用本平台？授权后该账号需重新登录。'
-            : '取消「$name」的云端访问授权？该账号在外网的会话将立即失效。',
+        remoteAccessText(context, next ? 'grantConfirm' : 'revokeConfirm'),
       ),
-      confirmLabel: next ? '授权' : '取消授权',
+      confirmLabel: remoteAccessText(context, next ? 'grant' : 'revoke'),
       danger: !next,
     );
     if (confirmed != true || !mounted) return;
@@ -1336,7 +1338,10 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
           .read(adminRepositoryProvider)
           .setRemoteAccess(widget.user.id, remoteAccess: next);
       if (!mounted) return;
-      UtenToast.success(context, next ? '已授权云端访问' : '已取消云端访问');
+      UtenToast.success(
+        context,
+        remoteAccessText(context, next ? 'granted' : 'notGranted'),
+      );
       widget.onAccountChanged();
     } on ApiException catch (e) {
       if (mounted) {

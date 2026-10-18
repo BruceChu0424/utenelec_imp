@@ -118,6 +118,22 @@
       "doc": "docs/03-页面/平台设置页.md"
     },
     {
+      "route": "/admin/remote-access",
+      "title": "外网访问与连接页",
+      "aliases": [],
+      "module": "系统管理",
+      "purpose": "",
+      "paths": [],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "authorization:manage"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/外网访问与连接页.md"
+    },
+    {
       "route": "/admin/server-operations",
       "title": "服务器更新",
       "aliases": [
@@ -3187,6 +3203,20 @@
       "allOf": [],
       "hubOf": [],
       "doc": "docs/03-页面/设置页.md"
+    },
+    {
+      "route": "/settings/remote-mfa",
+      "title": "远程身份验证页",
+      "aliases": [],
+      "module": "设置",
+      "purpose": "",
+      "paths": [],
+      "parent": "/settings",
+      "record": false,
+      "anyOf": null,
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/远程身份验证页.md"
     },
     {
       "route": "/stock/count-requests",

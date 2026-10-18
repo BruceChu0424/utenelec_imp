@@ -679,13 +679,28 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     try {
       return await send();
     } on ApiException catch (error) {
-      // Structured validation/constraint conflicts are transaction rejections,
-      // e.g. a duplicate master-data code. They must remain editable.
-      final rejected =
-          isDefiniteRejection?.call(error) ??
-          (error.httpStatus == 400 ||
-              error.httpStatus == 422 ||
-              (error.httpStatus == 409 && error.code == 'CONFLICT'));
+      // These structured remote admission refusals happen before a business
+      // controller runs. A fresh attempt remains editable even when a caller's
+      // command-specific classifier does not recognize admission errors.
+      // A later refused retry cannot prove that an earlier unknown attempt did
+      // not commit: preserve that original pending evidence regardless of the
+      // caller's classifier. No branch here sends a request automatically.
+      final remoteAdmissionRejected =
+          error.hasResponseCode &&
+          ((error.httpStatus == 403 &&
+                  const {
+                    'MFA_REQUIRED',
+                    'MFA_RETRY_REQUIRED',
+                    'REMOTE_ACCESS_DENIED',
+                  }.contains(error.code)) ||
+              (error.httpStatus == 429 &&
+                  error.code == 'REMOTE_CAPACITY_REJECTED'));
+      final rejected = remoteAdmissionRejected
+          ? !wasPending
+          : (isDefiniteRejection?.call(error) ??
+                (error.httpStatus == 400 ||
+                    error.httpStatus == 422 ||
+                    (error.httpStatus == 409 && error.code == 'CONFLICT')));
       if (rejected) {
         _draftSubmissionPending = false;
         // The server's definite rejection is what the user must see. A failing

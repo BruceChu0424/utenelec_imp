@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/admin/models/admin_models.dart';
 import 'package:uten_imp/features/admin/repositories/admin_repository.dart';
 import 'package:uten_imp/features/admin/widgets/admin_department_perm_view.dart';
@@ -243,6 +244,9 @@ Widget _departmentSubject(
     sharedPreferencesProvider.overrideWithValue(preferences),
   ],
   child: const MaterialApp(
+    locale: Locale('zh'),
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
     home: Scaffold(
       body: AdminDepartmentPermView(initialDepartmentId: 'dept-plan'),
     ),
@@ -258,6 +262,9 @@ Widget _userSubject(
     sharedPreferencesProvider.overrideWithValue(preferences),
   ],
   child: const MaterialApp(
+    locale: Locale('zh'),
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
     home: Scaffold(
       body: AdminUserDetailPanel(
         user: AdminUserSummary(

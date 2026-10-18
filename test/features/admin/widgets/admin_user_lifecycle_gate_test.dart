@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/admin/models/admin_models.dart';
 import 'package:uten_imp/features/admin/repositories/admin_repository.dart';
 import 'package:uten_imp/features/admin/widgets/admin_user_detail_panel.dart';
@@ -26,8 +27,8 @@ void main() {
       );
 
       expect(find.bySemanticsLabel(RegExp('已离职.*复职')), findsWidgets);
-      expect(_button(tester, '授权云端').onPressed, isNull);
-      expect(_button(tester, '授权云端').onDisabledTap, isNotNull);
+      expect(_button(tester, '授权外网').onPressed, isNull);
+      expect(_button(tester, '授权外网').onDisabledTap, isNotNull);
       expect(_button(tester, '设为超管').onPressed, isNull);
       await tester.enterText(
         find.byKey(const ValueKey('permission-catalog-search')),
@@ -116,6 +117,9 @@ Future<void> _pumpPanel(
         sharedPreferencesProvider.overrideWithValue(preferences),
       ],
       child: MaterialApp(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: AdminUserDetailPanel(
             user: user,

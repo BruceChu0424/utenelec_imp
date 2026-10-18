@@ -83,22 +83,12 @@ public final class PasswordChangeRequiredFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         if (PublicPlatformBrandingRequest.matches(request)) return true;
-        String path = pathWithinApplication(request);
-        return !(path.equals("/api") || path.startsWith("/api/"));
+        return !SecurityRequestPath.isApi(SecurityRequestPath.withinApplication(request));
     }
 
     private static boolean isAllowed(HttpServletRequest request) {
         return ALLOWLIST.contains(new AllowedRequest(
-                request.getMethod(), pathWithinApplication(request)));
-    }
-
-    private static String pathWithinApplication(HttpServletRequest request) {
-        String path = request.getRequestURI();
-        String contextPath = request.getContextPath();
-        if (contextPath != null && !contextPath.isEmpty() && path.startsWith(contextPath)) {
-            return path.substring(contextPath.length());
-        }
-        return path;
+                request.getMethod(), SecurityRequestPath.withinApplication(request)));
     }
 
     private record AllowedRequest(String method, String path) {

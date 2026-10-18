@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ApiError;
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -19,11 +20,11 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
 /**
- * 云端（外网）访问门禁：仅当部署在云端（uten.deployment.site=cloud）时生效。
- * 已认证员工主体若 remote_access=FALSE → 一律拒绝（403）。授权开关由超管通过
+ * 外网访问门禁：可信remote connector及历史cloud站点均执行。
+ * 员工未获个人授权或全局策略关闭时拒绝（403）。授权开关由超管通过
  * PUT /api/admin/users/{id}/remote-access 管理；变更即时 bump auth_version 失效旧 token。
  *
- * <p>注册顺序在 {@link JwtAuthFilter} 之后（主体已解析完毕）。local 站点为空操作。
+ * <p>注册顺序在 {@link JwtAuthFilter} 之后（主体与最新策略已解析），MFA门禁之前。
  */
 @Component
 @RequiredArgsConstructor
@@ -41,6 +42,14 @@ public class RemoteAccessGuardFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
+        String path = SecurityRequestPath.withinApplication(request);
+        if (remoteAccessPolicy.isRemoteRequest() && !remoteAccessPolicy.isCloud()
+                && (path.equals("/api/website-inquiries/ingest")
+                    || path.equals("/api/visitor") || path.startsWith("/api/visitor/")
+                    || path.equals("/api/system-test") || path.startsWith("/api/system-test/"))) {
+            block(request,response,null,new ApiException(ErrorCode.FORBIDDEN,"当前远程入口仅供获授权员工使用"));
+            return;
+        }
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.getPrincipal() instanceof AuthUser user) {
             try {
@@ -58,7 +67,7 @@ public class RemoteAccessGuardFilter extends OncePerRequestFilter {
             throws IOException {
         try {
             auditService.logSecurityEvent(
-                    request, user.getId(), null,
+                    request, user == null ? null : user.getId(), null,
                     "remote_access_denied", "forbidden", 403);
         } catch (RuntimeException ignored) {
             // 审计落库失败不得放行（fail-closed）。

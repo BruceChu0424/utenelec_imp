@@ -81,6 +81,16 @@ class AuditRequestContextFilterTest {
     }
 
     @Test
+    void encodedApiFailureIsStillAuditedAndRetainsTheOriginalUriAsEvidence() throws Exception {
+        var request=new MockHttpServletRequest("POST","/%61pi/auth/me");
+        request.setServletPath("/api");request.setPathInfo("/auth/me");
+        var response=new MockHttpServletResponse();
+        filter.doFilter(request,response,(req,res)->response.setStatus(403));
+        verify(auditService).logHttpOperation(isNull(),isNull(),eq("POST"),eq("/%61pi/auth/me"),
+                eq("%61pi/auth/me"),eq(403),longThat(value->value>=0));
+    }
+
+    @Test
     void recordsUnhandledPreMvcExceptionAsServerFailure() throws Exception {
         MockHttpServletRequest request =
                 new MockHttpServletRequest("POST", "/api/orders");

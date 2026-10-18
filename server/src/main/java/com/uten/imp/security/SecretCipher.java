@@ -21,8 +21,8 @@ import java.util.Objects;
 import java.util.regex.Pattern;
 
 /**
- * 运行期配置的第三方凭据加密(ADR-133)。只用于超管在系统设置里填写的服务商密钥这类
- * 「运行时配置的第三方凭据」; 员工 PII 仍走 {@link TxSessionVars}(ADR-037 的 KMS 决定之前不迁移)。
+ * 运行期凭据加密：第三方服务商密钥(ADR-133)及员工 TOTP 密钥；调用方使用不同表/列/行 AAD。
+ * 员工 PII 仍走 {@link TxSessionVars}(ADR-037 的 KMS 决定之前不迁移)。
  *
  * <p>算法: AES-256-GCM, 每次加密随机 12 字节 IV, 128 位认证标签。密文格式
  * {@code "g" + 版本 + ":" + base64url(iv || 密文+标签)}。附加认证数据(AAD)

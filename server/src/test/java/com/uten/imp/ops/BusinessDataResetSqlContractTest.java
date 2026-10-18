@@ -201,6 +201,8 @@ public class BusinessDataResetSqlContractTest {
      * 同样走「读取已安装函数定义 + 锚点替换插入」补丁；与 CLEAR 扩展分开登记。
      */
     private static final Map<String, Integer> PRESERVE_RESET_EXTENSIONS = Map.ofEntries(
+            Map.entry("staff_mfa", 873),
+            Map.entry("remote_access_policy", 874),
             Map.entry("goods_operation_history", 871),
             Map.entry("goods_operation_history_rows", 871),
             Map.entry("goods_operation_history_events", 871),

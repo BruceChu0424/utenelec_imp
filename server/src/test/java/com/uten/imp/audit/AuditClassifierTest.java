@@ -10,6 +10,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AuditClassifierTest {
 
     @Test
+    void remotePolicyAndMfaLifecycleAreClassifiedAsSecurityAdministration() {
+        assertEquals(new AuditClassifier.Classification("high", "system"),
+                classify("business", "remote_access_policy_update", "remote_access_policy", null, "success", null));
+        assertEquals(new AuditClassifier.Classification("high", "system"),
+                classify("business", "remote_access_settings.update", "remote_access_settings", null, "success", null));
+        for (String action : new String[]{"mfa_enrolled", "mfa_disabled", "mfa_admin_reset", "mfa_locked"}) {
+            assertEquals(new AuditClassifier.Classification("high", "authentication"),
+                    classify("business", action, "users", null, "success", null));
+        }
+        assertEquals(new AuditClassifier.Classification("medium", "authentication"),
+                classify("business", "mfa_failed", "users", null, "failure", null));
+        assertEquals("authentication", classify("business", "remote_mfa.verify", "users", null, "success", null).eventCategory());
+    }
+
+    @Test
     void piiRotationEvidenceIsSystemHistoryAndNotResettableBusinessHistory() {
         assertEquals(new AuditClassifier.Classification("high", "system"),
                 classify("business", "pii_key_rotation.batch", "pii_key_rotation_runs",

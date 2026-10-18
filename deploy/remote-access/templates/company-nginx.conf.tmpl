@@ -1,0 +1,166 @@
+# Complete dedicated process, independent of the existing company LAN Nginx.
+load_module /usr/lib/nginx/modules/ngx_stream_module.so;
+pid /run/uten-remote/nginx.pid;
+error_log stderr warn;
+worker_processes 2;
+events { worker_connections 1024; }
+stream {
+    log_format outer_transport '$time_iso8601 peer=$remote_addr status=$status duration=$session_time';
+    access_log /var/log/uten-remote/transport.log outer_transport;
+    limit_conn_zone $binary_remote_addr zone=remote_company_conn:1m;
+    server {
+        listen @@COMPANY_WIREGUARD_IPV4@@:8443 ssl;
+        limit_conn remote_company_conn 32;
+        allow @@CLOUD_WIREGUARD_IPV4@@;
+        deny all;
+        ssl_certificate /etc/uten-remote/tls/transport-server.crt;
+        ssl_certificate_key /etc/uten-remote/tls/transport-server.key;
+        ssl_client_certificate /etc/uten-remote/tls/cloud-client-ca.crt;
+        ssl_verify_client on;
+        ssl_verify_depth 1;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_session_tickets off;
+        ssl_session_cache shared:REMOTE_OUTER:2m;
+        ssl_handshake_timeout 5s;
+        proxy_pass 127.0.0.1:9443;
+        proxy_connect_timeout 3s;
+        proxy_timeout 600s;
+        proxy_next_upstream off;
+        proxy_socket_keepalive on;
+        tcp_nodelay on;
+    }
+}
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    server_tokens off;
+    client_body_temp_path /var/cache/uten-remote/body;
+    proxy_temp_path /var/cache/uten-remote/proxy;
+    fastcgi_temp_path /var/cache/uten-remote/fastcgi;
+    uwsgi_temp_path /var/cache/uten-remote/uwsgi;
+    scgi_temp_path /var/cache/uten-remote/scgi;
+    # Exclude URLs, cookies, tokens, query strings and request bodies from transport logs.
+    log_format remote_http '$time_iso8601 request_id=$request_id method=$request_method status=$status bytes=$body_bytes_sent request_s=$request_time upstream_s=$upstream_response_time';
+    access_log /var/log/uten-remote/http.log remote_http;
+    limit_req_zone $server_name zone=remote_health:1m rate=20r/s;
+    map $uri $remote_cache_control {
+        default "no-cache";
+        ~^/api(?:/|$) "private, no-store";
+        ~^/actuator(?:/|$) "private, no-store";
+        "~*^/(?!api/|actuator/).*\.[0-9a-f]{8,}\.(?:js|mjs|wasm|css|png|jpg|jpeg|gif|svg|webp|woff2?|ttf|otf)$" "public, max-age=31536000, immutable";
+    }
+    upstream remote_app {
+        server 127.0.0.1:@@REMOTE_BACKEND_PORT@@;
+        keepalive 8;
+    }
+    server {
+        # Only this process can reach this inner listener through outer mTLS.
+        listen 127.0.0.1:9443 ssl http2;
+        server_name @@PUBLIC_DOMAIN@@;
+        limit_req_status 429;
+        if ($host != "@@PUBLIC_DOMAIN@@") { return 444; }
+        ssl_certificate /etc/uten-remote/tls/employee-fullchain.crt;
+        ssl_certificate_key /etc/uten-remote/tls/employee.key;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_session_tickets off;
+        ssl_session_cache shared:REMOTE_INNER:5m;
+        ssl_session_timeout 1d;
+        root /opt/uten-imp/current/web;
+        index index.html;
+        client_max_body_size 2m;
+        client_body_timeout 60s;
+        client_header_timeout 10s;
+        client_header_buffer_size 4k;
+        large_client_header_buffers 2 8k;
+        keepalive_timeout 65s;
+        send_timeout 60s;
+        proxy_http_version 1.1;
+        proxy_connect_timeout 3s;
+        proxy_read_timeout 45s;
+        proxy_send_timeout 60s;
+        proxy_next_upstream off;
+        proxy_cache off;
+        proxy_store off;
+        proxy_hide_header Cache-Control;
+        proxy_hide_header Expires;
+        proxy_set_header Host "@@PUBLIC_DOMAIN@@";
+        proxy_set_header Connection "";
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host "@@PUBLIC_DOMAIN@@";
+        proxy_set_header X-Forwarded-Port 443;
+        # There is intentionally no PROXY protocol / real_ip trust of the cloud.
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header Forwarded "";
+        proxy_set_header X-Uten-Source "";
+        proxy_set_header X-Uten-Remote-Access "";
+        proxy_set_header X-Request-Id $request_id;
+        gzip on;
+        gzip_vary on;
+        gzip_comp_level 3;
+        gzip_min_length 1024;
+        gzip_types application/javascript application/manifest+json application/wasm image/svg+xml text/css text/plain;
+        add_header Strict-Transport-Security "max-age=300" always;
+        add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; frame-src 'self' blob:; img-src 'self' data: blob:; manifest-src 'self'; object-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:" always;
+        add_header Permissions-Policy "camera=(self), geolocation=(), microphone=(), payment=(), usb=()" always;
+        add_header Referrer-Policy no-referrer always;
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options DENY always;
+        add_header Cross-Origin-Opener-Policy same-origin always;
+        add_header Cache-Control $remote_cache_control always;
+        add_header X-Request-Id $request_id always;
+        location = /actuator/health { limit_req zone=remote_health burst=60 nodelay; proxy_pass http://remote_app; proxy_read_timeout 5s; gzip off; }
+        location ~ ^/actuator/health/(?:liveness|readiness)$ { limit_req zone=remote_health burst=60 nodelay; proxy_pass http://remote_app; proxy_read_timeout 5s; gzip off; }
+        location /actuator { return 404; }
+        location = /api/system-test { return 404; }
+        location ^~ /api/system-test/ { return 404; }
+        # Staff entry must not publish the separate anonymous website machine integration.
+        location = /api/website-inquiries/ingest { return 404; }
+        location = /api/visitor { return 404; }
+        location ^~ /api/visitor/ { return 404; }
+        location = /api/expense-claims/invoices/recognize {
+            client_max_body_size 9m;
+            proxy_request_buffering off;
+            proxy_read_timeout 130s;
+            proxy_send_timeout 130s;
+            proxy_pass http://remote_app;
+            gzip off;
+        }
+        location = /api/ai/jobs {
+            client_max_body_size 16m;
+            proxy_request_buffering off;
+            proxy_read_timeout 60s;
+            proxy_pass http://remote_app;
+            gzip off;
+        }
+        location ~ ^/api/master/goods/import/(?:detect|commit)$ {
+            client_max_body_size 10m;
+            proxy_request_buffering off;
+            proxy_read_timeout 180s;
+            proxy_send_timeout 180s;
+            proxy_pass http://remote_app;
+            gzip off;
+        }
+        location ~ ^/api/attachments/raw/[A-Za-z0-9._-]+$ {
+            client_max_body_size 25m;
+            proxy_request_buffering off;
+            proxy_read_timeout 120s;
+            proxy_send_timeout 120s;
+            proxy_pass http://remote_app;
+            gzip off;
+        }
+        location ~ ^/api/.*/export$ {
+            proxy_read_timeout 120s;
+            proxy_pass http://remote_app;
+            gzip off;
+        }
+        location /api/ { proxy_pass http://remote_app; gzip off; }
+        location = /api { return 404; }
+        location ~ /\. { return 404; }
+        # Missing asset files must never return a successful HTML app shell.
+        location ~* "\.(?:js|mjs|wasm|css|json|png|jpg|jpeg|gif|svg|webp|woff2?|ttf|otf)$" {
+            try_files $uri =404;
+        }
+        location / { try_files $uri $uri/ /index.html; }
+    }
+}

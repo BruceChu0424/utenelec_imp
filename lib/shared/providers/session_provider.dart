@@ -422,6 +422,7 @@ class SessionNotifier extends Notifier<SessionState> {
   Future<void> login({
     required String account,
     required String password,
+    String? otpCode,
   }) async {
     final operationEpoch = ++_sessionMutationEpoch;
     state = const SessionState();
@@ -444,7 +445,20 @@ class SessionNotifier extends Notifier<SessionState> {
     _rememberVisibleRecord(reservation.reserved);
     _localStorageFailClosed = false;
 
-    final result = await _auth.login(account, password);
+    final auth = _auth;
+    final AuthResult result;
+    if (otpCode != null && otpCode.isNotEmpty) {
+      if (auth is! OtpAuthRepository) {
+        throw StateError('Authenticator login is unavailable');
+      }
+      result = await (auth as OtpAuthRepository).loginWithOtp(
+        account,
+        password,
+        otpCode,
+      );
+    } else {
+      result = await auth.login(account, password);
+    }
     var committedLocally = false;
     await _serializeSessionCommit(() async {
       if (operationEpoch != _sessionMutationEpoch) {

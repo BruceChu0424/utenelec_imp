@@ -8,10 +8,7 @@ public final class PublicPlatformBrandingRequest {
 
     public static boolean matches(HttpServletRequest request) {
         if (!"GET".equals(request.getMethod())) return false;
-        String path = request.getRequestURI();
-        String contextPath = request.getContextPath();
-        if (contextPath != null && !contextPath.isEmpty() && path.startsWith(contextPath))
-            path = path.substring(contextPath.length());
+        String path = SecurityRequestPath.withinApplication(request);
         return "/api/platform/branding".equals(path) || "/api/platform/branding/logo".equals(path);
     }
 }

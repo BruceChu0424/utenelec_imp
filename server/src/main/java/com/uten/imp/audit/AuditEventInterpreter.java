@@ -310,6 +310,16 @@ public class AuditEventInterpreter {
         if ("super_admin_revoke".equals(action)) return "收回超级管理员";
         if ("remote_access_grant".equals(action)) return "开通外网访问";
         if ("remote_access_revoke".equals(action)) return "关闭外网访问";
+        if ("remote_access_policy_update".equals(action)) return "修改外网访问设置";
+        if ("mfa_enrollment_started".equals(action) || "remote_mfa.enrollment".equals(action)) return "开始绑定动态验证码";
+        if ("mfa_enrolled".equals(action) || "remote_mfa.confirm".equals(action)) return "绑定动态验证码";
+        if ("mfa_session_verified".equals(action) || "remote_mfa.verify".equals(action)) return "验证当前会话动态验证码";
+        if ("mfa_remote_login_verified".equals(action)) return "验证外网登录动态验证码";
+        if ("mfa_failed".equals(action)) return "动态验证码验证失败";
+        if ("mfa_locked".equals(action)) return "暂停动态验证码验证";
+        if ("mfa_disabled".equals(action) || "remote_mfa.disable".equals(action)) return "解除动态验证码绑定";
+        if ("mfa_admin_reset".equals(action) || "remote_mfa.reset".equals(action)) return "管理员重置动态验证码";
+        if ("remote_mfa_required".equals(action)) return "外网会话需要动态验证码";
         if ("impersonation_enter".equals(action)) return "开始模拟身份";
         if ("impersonation_switch".equals(action)) return "切换模拟身份";
         if ("impersonation_exit".equals(action)) return "结束模拟身份";
@@ -1012,6 +1022,9 @@ public class AuditEventInterpreter {
         values.put("audit_session", "登录会话审计");
         values.put("password_history", "密码历史");
         values.put("refresh_tokens", "员工登录会话");
+        values.put("staff_mfa", "员工动态验证码绑定");
+        values.put("remote_access_policy", "外网访问策略");
+        values.put("remote_access_settings", "外网访问设置");
         values.put("visitor_refresh_tokens", "访客登录会话");
         values.put("visitor_sms_codes", "访客短信验证码");
         values.put("visitor_accounts", "访客账号");

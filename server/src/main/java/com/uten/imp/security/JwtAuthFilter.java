@@ -144,11 +144,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        String path = request.getRequestURI();
-        String contextPath = request.getContextPath();
-        if (contextPath != null && !contextPath.isEmpty() && path.startsWith(contextPath)) {
-            path = path.substring(contextPath.length());
-        }
+        String path = SecurityRequestPath.withinApplication(request);
         return PublicPlatformBrandingRequest.matches(request)
                 || PUBLIC_STAFF_AUTH_PATHS.contains(path)
                 || path.startsWith("/api/visitor/auth/");
@@ -223,7 +219,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 user.superAdmin(),
                 user.remoteAccess(),
                 impersonatedBy,
-                sessionId));
+                sessionId,
+                user.session().mfaVerifiedAt(),
+                user.remotePolicyEnabled()));
     }
 
     /** Visitors are rejected when their current server-side account or session is not active. */

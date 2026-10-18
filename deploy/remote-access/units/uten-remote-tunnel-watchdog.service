@@ -1,0 +1,19 @@
+[Unit]
+Description=Recover a missing or stale Uten WireGuard interface without business replay
+After=network-online.target uten-remote-firewall.service
+Requires=uten-remote-firewall.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/lib/uten-remote/tunnel_watchdog.py
+User=root
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+CapabilityBoundingSet=CAP_NET_ADMIN
+RestrictAddressFamilies=AF_UNIX AF_NETLINK

@@ -35,6 +35,7 @@ import '../../../shared/providers/shared_providers.dart';
 import '../widgets/settings_section.dart';
 import '../widgets/app_version_tile.dart';
 import '../../../shared/widgets/server_switch_dialog.dart';
+import '../../../core/l10n/remote_access_text.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
@@ -171,6 +172,18 @@ class SettingsPage extends ConsumerWidget {
               SettingsSection(
                 title: '账号',
                 children: [
+                  ListTile(
+                    key: const Key('personal-remote-mfa-entry'),
+                    leading: const Icon(Icons.security_outlined, size: 20),
+                    title: Text(remoteAccessText(context, 'personal')),
+                    subtitle: Text(remoteAccessText(context, 'personalHint')),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => context.push(RouteName.remoteMfa),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: UtenSpacing.s8,
+                    ),
+                  ),
+                  const Divider(height: 1),
                   Material(
                     color: Colors.transparent,
                     child: ListTile(

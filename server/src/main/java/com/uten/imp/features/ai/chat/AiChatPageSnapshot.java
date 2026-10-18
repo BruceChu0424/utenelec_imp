@@ -65,11 +65,11 @@ public record AiChatPageSnapshot(Integer version, String title, List<Table> tabl
             "/change-password");
     /**
      * ADR-153 protected pages: system administration (system settings, AI service settings, permissions,
-     * audit logs, server status), page permissions, security and device receipts. Their content is never
+     * audit logs, server status), page permissions, security, device receipts and personal MFA. Their content is never
      * read and no page action is ever proposed there (the client registers nothing on them either).
      */
     static final List<String> PROTECTED_ROUTES = List.of("/admin", "/page-permissions", "/security",
-            "/settings/device-receipts");
+            "/settings/device-receipts", "/settings/remote-mfa");
     private static final ObjectMapper JSON = new ObjectMapper();
 
     /** True when the page at {@code route} is one whose content is never sent to a model (withheld or protected). */

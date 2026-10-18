@@ -323,31 +323,35 @@ void main() {
     expect(sent['snapshot'], isNull);
   });
 
-  testWidgets(
-    'system administration pages attach nothing and run no card (ADR-153)',
-    (tester) async {
+  for (final protectedRoute in const [
+    '/admin/ai-settings',
+    '/settings/remote-mfa',
+    '/SETTINGS/REMOTE-MFA/setup',
+  ]) {
+    testWidgets('$protectedRoute attaches nothing and runs no card (ADR-153)', (
+      tester,
+    ) async {
       final repository = _FakeChatRepository()
-        ..actions = [_card(route: '/admin/ai-settings')];
+        ..actions = [_card(route: protectedRoute)];
       final harness = await _pump(
         tester,
         repository: repository,
         page: const _OrderPage(),
       );
-      harness.container.read(harness.route.notifier).state =
-          '/admin/ai-settings';
+      harness.container.read(harness.route.notifier).state = protectedRoute;
       await tester.pumpAndSettle();
       await _open(tester);
       expect(find.text(_en.aiChatAttachProtected), findsOneWidget);
       await _send(tester, 'Save this page for me');
       await tester.pumpAndSettle();
       final sent = harness.repository.messages.single;
-      expect(sent['currentRoute'], '/admin/ai-settings');
+      expect(sent['currentRoute'], protectedRoute);
       expect(sent['snapshot'], isNull);
       await _tapCard(tester, 'ai-action-confirm-$_p1');
       expect(repository.actionCalls, isEmpty);
       expect(find.text(_en.aiChatCardProtectedPage), findsOneWidget);
-    },
-  );
+    });
+  }
 
   testWidgets('a card does not run on another instance of the same page', (
     tester,

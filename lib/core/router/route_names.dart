@@ -68,6 +68,7 @@ abstract final class RouteName {
   static const String notFound = '/not-found';
   static const String profile = '/profile';
   static const String settings = '/settings';
+  static const String remoteMfa = '/settings/remote-mfa';
   static const String deviceAuditReceipts = '/settings/device-receipts';
   static const String changePassword = '/change-password';
   static const String department = '/department';
@@ -177,6 +178,7 @@ abstract final class RouteName {
       '/admin/audit-logs/sessions/:sessionId';
   // 系统设置（安全/业务策略阈值；超管 authorization:manage，改设置二次密码确认）
   static const String adminSystemSettings = '/admin/system-settings';
+  static const String adminRemoteAccess = '/admin/remote-access';
   static const String adminSmsSettings = '/admin/sms-settings';
   // 公司品牌、服务器连接与配置入口；仅当前超级管理员可进入。
   static const String adminPlatformSettings = '/admin/platform-settings';

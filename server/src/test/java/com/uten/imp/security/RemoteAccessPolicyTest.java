@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class RemoteAccessPolicyTest {
 
@@ -76,5 +77,21 @@ class RemoteAccessPolicyTest {
         assertEquals(
                 ErrorCode.REMOTE_ACCESS_DENIED.name(),
                 objectMapper.readTree(response.getContentAsByteArray()).path("code").asText());
+    }
+
+    @Test
+    void newEmployeeEntryCannotPublishAnonymousMachineOrVisitorWriteExceptions() throws Exception {
+        RemoteAccessPolicy policy=mock(RemoteAccessPolicy.class);
+        when(policy.isRemoteRequest()).thenReturn(true);
+        when(policy.isCloud()).thenReturn(false);
+        var filter=new RemoteAccessGuardFilter(new ObjectMapper().findAndRegisterModules(),mock(AuditService.class),policy);
+        for(String path:java.util.List.of("/api/website-inquiries/ingest","/api/visitor/auth/send-code",
+                "/api/system-test/business-data/reset", "/%61pi/website-inquiries/ingest",
+                "/api/%76isitor/auth/send-code", "/%61pi/system-test/business-data/reset")) {
+            var response=new MockHttpServletResponse();
+            filter.doFilter(new MockHttpServletRequest("POST",path),response,
+                    (req,res)->org.junit.jupiter.api.Assertions.fail("Anonymous integration must not become a new remote ingress"));
+            assertEquals(403,response.getStatus(),path);
+        }
     }
 }

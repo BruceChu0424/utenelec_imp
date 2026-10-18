@@ -72,6 +72,7 @@ import static org.mockito.Mockito.when;
                         JwtAuthFilter.class
                 }))
 @Import({
+        com.uten.imp.support.RemoteIngressSecurityTestConfiguration.class,
         SecurityConfig.class,
         SecurityProperties.class,
         DeploymentProperties.class,
@@ -99,6 +100,12 @@ class SecurityCorsAuditIntegrationTest {
     @Autowired
     @Qualifier("passwordChangeRequiredFilterRegistration")
     private FilterRegistrationBean<?> passwordChangeRequiredRegistration;
+    @Autowired
+    @Qualifier("remoteMfaFilterRegistration")
+    private FilterRegistrationBean<?> remoteMfaRegistration;
+    @Autowired
+    @Qualifier("remoteBudgetFilterRegistration")
+    private FilterRegistrationBean<?> remoteBudgetRegistration;
 
     @MockitoBean
     private AuditService auditService;
@@ -125,6 +132,8 @@ class SecurityCorsAuditIntegrationTest {
         int localNetworkIndex = indexOf(filters, LocalNetworkGuardFilter.class);
         int jwtIndex = indexOf(filters, JwtAuthFilter.class);
         int remoteAccessIndex = indexOf(filters, RemoteAccessGuardFilter.class);
+        int remoteMfaIndex = indexOf(filters, com.uten.imp.security.RemoteMfaGuardFilter.class);
+        int remoteBudgetIndex = indexOf(filters, com.uten.imp.security.RemoteRequestBudgetFilter.class);
         int passwordChangeRequiredIndex =
                 indexOf(filters, PasswordChangeRequiredFilter.class);
         assertTrue(auditIndex >= 0);
@@ -133,11 +142,16 @@ class SecurityCorsAuditIntegrationTest {
         assertTrue(jwtIndex > localNetworkIndex);
         assertTrue(jwtIndex > corsIndex);
         assertTrue(remoteAccessIndex > jwtIndex);
-        assertTrue(passwordChangeRequiredIndex > remoteAccessIndex);
+        assertTrue(remoteBudgetIndex > localNetworkIndex);
+        assertTrue(jwtIndex > remoteBudgetIndex);
+        assertTrue(remoteMfaIndex > remoteAccessIndex);
+        assertTrue(passwordChangeRequiredIndex > remoteMfaIndex);
         assertFalse(localNetworkRegistration.isEnabled());
         assertFalse(jwtRegistration.isEnabled());
         assertFalse(remoteAccessRegistration.isEnabled());
         assertFalse(passwordChangeRequiredRegistration.isEnabled());
+        assertFalse(remoteMfaRegistration.isEnabled());
+        assertFalse(remoteBudgetRegistration.isEnabled());
 
         MockHttpServletRequest request = new MockHttpServletRequest(
                 "GET", "/api/cors-audit-probe");

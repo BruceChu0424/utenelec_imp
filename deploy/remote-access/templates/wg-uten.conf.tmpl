@@ -1,0 +1,12 @@
+# Root-owned /etc/wireguard/wg-uten.conf, mode 0600. No private key inline.
+[Interface]
+Address = @@OWN_WIREGUARD_IPV4@@/32
+ListenPort = 51820
+MTU = 1380
+SaveConfig = false
+PostUp = /usr/bin/wg set %i private-key /etc/uten-remote/wireguard/private.key
+
+[Peer]
+PublicKey = @@PEER_WIREGUARD_PUBLIC_KEY@@
+AllowedIPs = @@PEER_WIREGUARD_IPV4@@/32
+@@WIREGUARD_ENDPOINT@@

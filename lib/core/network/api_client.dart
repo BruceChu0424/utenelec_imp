@@ -21,6 +21,7 @@ import 'interceptors/automatic_request_interceptor.dart';
 import 'interceptors/device_audit_interceptor.dart';
 import 'interceptors/safe_request_retry_interceptor.dart';
 import 'interceptors/step_up_interceptor.dart';
+import 'interceptors/remote_mfa_interceptor.dart';
 import 'interceptors/write_deadline_interceptor.dart';
 import 'network_policy.dart';
 
@@ -485,6 +486,7 @@ final apiClientProvider = Provider<ApiClient>((ref) {
   );
   // 敏感操作被要求再认证 (403 REAUTH_REQUIRED) 时弹统一密码框、带凭证重发一次 (ADR-110)。
   dio.interceptors.add(StepUpInterceptor(dio));
+  dio.interceptors.add(RemoteMfaInterceptor());
   dio.interceptors.add(SafeRequestRetryInterceptor(dio, recovery: recovery));
   // 写请求成功推进本端写修订号: 「返回即刷新」据此判断数据变没变(ADR-108)。
   dio.interceptors.add(

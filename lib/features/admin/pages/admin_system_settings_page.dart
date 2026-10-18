@@ -43,6 +43,7 @@ import '../models/system_updater_status.dart';
 import '../repositories/system_setting_repository.dart';
 import '../widgets/ai_settings_entry_card.dart';
 import '../widgets/platform_settings_entry_card.dart';
+import '../widgets/remote_access_entry_card.dart';
 import '../widgets/system_updater_status_card.dart';
 
 class AdminSystemSettingsPage extends ConsumerWidget {
@@ -301,7 +302,11 @@ class _AdminSystemSettingsPageState
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [PlatformSettingsEntryCard(), AiSettingsEntryCard()],
+          children: [
+            PlatformSettingsEntryCard(),
+            RemoteAccessEntryCard(),
+            AiSettingsEntryCard(),
+          ],
         ),
       ),
       Expanded(child: child),
@@ -334,6 +339,7 @@ class _AdminSystemSettingsPageState
                         padding: const EdgeInsets.all(UtenSpacing.s16),
                         children: [
                           const PlatformSettingsEntryCard(),
+                          const RemoteAccessEntryCard(),
                           _warningBanner(theme),
                           // 分组卡片自适应瀑布流(UtenResponsiveGrid): 按容器宽度
                           // <500 一列 / 500-800 两列 / 800-1100 三列 / ≥1100 四列

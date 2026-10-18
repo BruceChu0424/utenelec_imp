@@ -8,7 +8,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -17,15 +17,14 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Restricts every local-site API endpoint, including login, to configured source CIDRs.
+ * Classifies every API request, including login, before authentication.
  *
- * <p>{@link HttpServletRequest#getRemoteAddr()} is intentionally the only address used.
- * Tomcat's RemoteIpValve may replace it, but only after the connector has verified the
- * immediate peer against {@code server.tomcat.remoteip.internal-proxies}. This filter
- * never trusts a caller-supplied Forwarded/X-Forwarded-For header directly.
+ * <p>The office connector uses the configured numeric source CIDRs. The loopback-only
+ * remote connector is identified by its real listener port and remains remote even
+ * when the proxy's apparent source is local. Forwarding headers never grant an
+ * origin directly; RemoteIpValve must retain the original local port.
  */
 @Component
-@RequiredArgsConstructor
 public class LocalNetworkGuardFilter extends OncePerRequestFilter {
 
     private static final String DENIED_MESSAGE = "当前网络不在公司局域网允许范围内";
@@ -33,14 +32,39 @@ public class LocalNetworkGuardFilter extends OncePerRequestFilter {
     private final ObjectMapper objectMapper;
     private final AuditService auditService;
     private final LocalNetworkAccessPolicy networkPolicy;
+    private final TrustedRequestOriginPolicy origins;
+
+    @Autowired
+    public LocalNetworkGuardFilter(ObjectMapper objectMapper, AuditService auditService,
+                                   LocalNetworkAccessPolicy networkPolicy, TrustedRequestOriginPolicy origins) {
+        this.objectMapper = objectMapper;
+        this.auditService = auditService;
+        this.networkPolicy = networkPolicy;
+        this.origins = origins;
+    }
+
+    public LocalNetworkGuardFilter(ObjectMapper objectMapper, AuditService auditService,
+                                   LocalNetworkAccessPolicy networkPolicy) {
+        this(objectMapper, auditService, networkPolicy, null);
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain chain)
             throws ServletException, IOException {
-        if (networkPolicy.isAllowed(request.getRemoteAddr())) {
-            chain.doFilter(request, response);
+        TrustedRequestOriginPolicy.Origin origin = origins == null
+                ? (networkPolicy.isAllowed(request.getRemoteAddr())
+                    ? TrustedRequestOriginPolicy.Origin.LOCAL : TrustedRequestOriginPolicy.Origin.UNKNOWN)
+                : origins.resolve(request);
+        request.setAttribute(TrustedRequestOriginPolicy.ATTRIBUTE, origin);
+        if (origin != TrustedRequestOriginPolicy.Origin.UNKNOWN) {
+            TrustedRequestOriginPolicy.bind(origin);
+            try {
+                chain.doFilter(request, response);
+            } finally {
+                TrustedRequestOriginPolicy.clear();
+            }
             return;
         }
         try {
@@ -59,12 +83,8 @@ public class LocalNetworkGuardFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        String path = request.getRequestURI();
-        String contextPath = request.getContextPath();
-        if (contextPath != null && !contextPath.isEmpty() && path.startsWith(contextPath)) {
-            path = path.substring(contextPath.length());
-        }
+        String path = SecurityRequestPath.withinApplication(request);
         // Actuator stays outside the /api boundary for local health monitoring.
-        return !(path.equals("/api") || path.startsWith("/api/"));
+        return !SecurityRequestPath.isApi(path);
     }
 }

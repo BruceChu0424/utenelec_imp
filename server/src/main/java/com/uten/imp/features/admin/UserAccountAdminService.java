@@ -71,6 +71,7 @@ public class UserAccountAdminService {
     private final AuthSessionService sessions;
     private final SystemSettingsService settings;
     private final AccountSecurityNoticePort accountNotice;
+    private final com.uten.imp.features.admin.remoteaccess.RemoteAccessSettingsService remoteAccessSettings;
 
     @PreAuthorize("hasAuthority('account:support')")
     @Transactional(readOnly = true)
@@ -426,6 +427,9 @@ public class UserAccountAdminService {
     @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
     @Transactional
     public void setRemoteAccess(UUID id, boolean remoteAccess) {
+        // This lock comes before the account lifecycle lock in every grant path,
+        // serializing concurrent grants with policy-limit changes.
+        if (remoteAccess) remoteAccessSettings.requireGrantCapacity(id);
         tx.bind();
         AdminAccountLifecycleLock.LockedTarget locked = accountLifecycle.lock(id);
         UserAccount user = locked.account();

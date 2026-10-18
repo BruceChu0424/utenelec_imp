@@ -32,13 +32,15 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(controllers = {PlatformSettingsController.class, PublicPlatformBrandingController.class},
-        properties = {"uten.security.cors-allowed-origins=https://erp.test", "uten.security.require-https=true"},
+        properties = {"uten.security.cors-allowed-origins=https://erp.test", "uten.security.require-https=true",
+                "uten.deployment.local-allowed-cidrs=127.0.0.0/8,::1/128"},
         excludeAutoConfiguration = UserDetailsServiceAutoConfiguration.class,
         excludeFilters = @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = {
                 WebMvcConfig.class, UserOperationAuditInterceptor.class, ExportRateLimitInterceptor.class,
                 JwtAuthFilter.class, LocalNetworkGuardFilter.class, RemoteAccessGuardFilter.class,
                 ImpersonationWriteGuardFilter.class, AuditRequestContextFilter.class}))
-@Import({SecurityConfig.class, SecurityProperties.class, StepUpAdvisorConfig.class})
+@Import({SecurityConfig.class, SecurityProperties.class, StepUpAdvisorConfig.class,
+        com.uten.imp.support.RemoteIngressSecurityTestConfiguration.class})
 class PlatformSettingsControllerSecurityTest {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;

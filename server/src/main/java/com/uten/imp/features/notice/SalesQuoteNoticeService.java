@@ -27,6 +27,8 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class SalesQuoteNoticeService implements SalesQuoteNoticePort {
+    @org.springframework.beans.factory.annotation.Autowired
+    private ReviewNoticeAudience actionAudience;
 
     public static final String EVENT_PENDING_REVIEW = "SALES_QUOTE_PENDING_FINANCE_REVIEW";
     public static final String EVENT_RETURNED = "SALES_QUOTE_FINANCE_RETURNED";
@@ -78,9 +80,9 @@ public class SalesQuoteNoticeService implements SalesQuoteNoticePort {
                 "客户 " + quote.clientName() + " 的报价单 " + quote.billNo() + " 被财务"
                         + (quote.returnedByName().isBlank() ? "" : " " + quote.returnedByName())
                         + " 退回。退回原因: " + reason + "。请修改后重新提交财务核价。",
-                TYPE_TASK, PUBLISHER,
+                ownerNoticeType(owner, EVENT_RETURNED), PUBLISHER,
                 "/sales/quotes/" + quoteId,
-                EVENT_RETURNED, "important", null);
+                EVENT_RETURNED, "important", quoteId);
     }
 
     @Override
@@ -95,9 +97,9 @@ public class SalesQuoteNoticeService implements SalesQuoteNoticePort {
                 "客户 " + quote.clientName() + " 的报价单 " + quote.billNo() + " 已由财务"
                         + (quote.confirmedByName().isBlank() ? "" : " " + quote.confirmedByName())
                         + " 核价确认。请与客户核对当前版本，在报价详情记录「客户已同意」后生成订货单；客户不同意时可重新议价或取消报价。",
-                TYPE_TASK, PUBLISHER,
+                ownerNoticeType(owner, EVENT_CONFIRMED), PUBLISHER,
                 "/sales/quotes/" + quoteId,
-                EVENT_CONFIRMED, "normal", null);
+                EVENT_CONFIRMED, "normal", quoteId);
     }
 
     @Override
@@ -111,7 +113,7 @@ public class SalesQuoteNoticeService implements SalesQuoteNoticePort {
                 "财务正在重新核价：" + quote.billNo(),
                 "客户 " + quote.clientName() + " 的报价单 " + quote.billNo()
                         + " 已被财务撤销确认, 正在重新核价; 核价完成前暂时不能转订货单。",
-                TYPE_TASK, PUBLISHER,
+                "workflow", PUBLISHER,
                 "/sales/quotes/" + quoteId,
                 EVENT_FINANCE_REOPENED, "normal", null);
     }
@@ -119,6 +121,10 @@ public class SalesQuoteNoticeService implements SalesQuoteNoticePort {
     @Override
     public void resolveReviewNotices(UUID quoteId, String reason) {
         noticeService.resolveReviewNotices(AGGREGATE_SALES_QUOTE, quoteId, reason);
+    }
+
+    private String ownerNoticeType(UUID owner,String event) {
+        return actionAudience == null || actionAudience.eligibleEventFor(owner,event) ? TYPE_TASK : "workflow";
     }
 
     private QuoteRef quote(UUID quoteId) {

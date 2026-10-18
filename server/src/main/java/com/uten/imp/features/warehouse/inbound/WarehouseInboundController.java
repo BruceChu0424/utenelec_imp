@@ -77,6 +77,8 @@ public class WarehouseInboundController {
      * 与仓库范围(ADR-149), 一条 SQL 按订货类型分组, 合计 = 两类之和; 不再另开 type-counts 端点。
      */
     @GetMapping("/expectations/count")
+    @com.uten.imp.security.BusinessTaskRead
+    @PreAuthorize("hasAuthority('warehouse_inbound:view') and hasAuthority('warehouse_inbound:stock_in')")
     public Map<String, Long> expectationCount(@RequestParam(required = false) UUID scopeWarehouseId) {
         Map<String, Long> byType = service.countExpectationsByType(warehouseScopes.current(scopeWarehouseId));
         long purchase = byType.getOrDefault(ProcurementArrivalControlPort.PURCHASE, 0L);
@@ -126,6 +128,8 @@ public class WarehouseInboundController {
 
     /** 到货异常待办数(徽章来源 warehouseArrivalException): 与列表同一仓库范围(ADR-149)。 */
     @GetMapping("/arrival-exceptions/count")
+    @com.uten.imp.security.BusinessTaskRead
+    @PreAuthorize("hasAuthority('warehouse_inbound:view') and hasAuthority('warehouse_inbound:stock_in')")
     public Map<String, Long> arrivalExceptionCount(@RequestParam(required = false) UUID scopeWarehouseId) {
         Map<String,Long> byType=service.countWarehouseExceptionsByType(warehouseScopes.current(scopeWarehouseId));
         long purchase=byType.getOrDefault(ProcurementArrivalControlPort.PURCHASE,0L);

@@ -160,9 +160,13 @@ class _StageApi extends ApiClient {
     if (path == '/documents/status-counts') {
       statusCountQueries.add(Map<String, dynamic>.from(query ?? const {}));
       return const {
+        'ACTIONABLE_DRAFT': 4,
         'DRAFT': 4,
+        'RESPONSIBLE_PENDING_FINANCE': 3,
         'PENDING_FINANCE': 3,
+        'ACTIONABLE_FINANCE_REJECTED': 2,
         'FINANCE_REJECTED': 2,
+        'RESPONSIBLE_FINANCE_APPROVED': 1,
         'FINANCE_APPROVED': 1,
         'SHIPPED': 9,
         'REVERSED': 0,

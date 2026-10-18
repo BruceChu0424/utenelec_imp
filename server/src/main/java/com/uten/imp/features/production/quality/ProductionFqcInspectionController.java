@@ -70,7 +70,8 @@ public class ProductionFqcInspectionController {
     }
 
     @GetMapping("/count")
-    @PreAuthorize("hasAuthority('production_quality_inspection:view')")
+    @com.uten.imp.security.BusinessTaskRead
+    @PreAuthorize("hasAuthority('production_quality_inspection:view') and hasAuthority('production_quality_inspection:approve')")
     public Map<String, Long> count() {
         return Map.of("count", service.countActive());
     }

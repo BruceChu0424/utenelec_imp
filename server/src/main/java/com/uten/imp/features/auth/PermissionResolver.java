@@ -218,6 +218,7 @@ public class PermissionResolver {
     }
 
     /** 按账号 id 解析真实授出权限（账号不存在/已删/停用返回空集）；供只持有 AuthUser 的读侧使用。 */
+    @Transactional(readOnly = true)
     public Set<String> grantedPermsOf(UUID userId) {
         return userAccountRepo.findById(userId)
                 .filter(account -> !account.isDeleted() && "active".equals(account.getStatus()))

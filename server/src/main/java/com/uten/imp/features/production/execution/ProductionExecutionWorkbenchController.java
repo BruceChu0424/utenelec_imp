@@ -56,7 +56,9 @@ public class ProductionExecutionWorkbenchController {
      * 与 {@link #list} 同一读取范围，不再靠 {@code ?size=1} 的分页 total 凑数。
      */
     @GetMapping("/count")
-    @PreAuthorize("hasAuthority('production_execution:overview')")
+    @com.uten.imp.security.BusinessTaskRead
+    @PreAuthorize("hasAuthority('production_execution:overview') and hasAnyAuthority('production_material_analysis:create',"
+            + "'production_material_analysis:edit','production_plan:edit','production_plan:approve')")
     public Map<String, Long> count() {
         return Map.of("count", service.inProgressRootCount());
     }

@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../drafts/form_draft_store.dart';
+import '../auth/permissions.dart';
 import '../drafts/form_draft_category.dart';
 import '../drafts/task_form_drafts.dart';
 import 'badge_registry.dart';
@@ -10,7 +11,13 @@ import 'badge_registry.dart';
 final effectiveBadgeSummaryProvider = Provider<BadgeSummary>((ref) {
   final server = ref.watch(badgeSummaryProvider);
   final drafts = ref.watch(formDraftsProvider);
-  return includeFormDraftBadges(server, drafts);
+  return includeFormDraftBadges(
+    server,
+    drafts,
+    permissions: drafts.any(formDraftNeedsTaskAuthority)
+        ? ref.watch(currentPermissionsProvider)
+        : const {},
+  );
 });
 
 final formDraftModuleCountProvider = Provider.family<int, BadgeModule>(
@@ -37,13 +44,15 @@ BadgeEntry? _draftEntry(FormDraft draft) => switch (draft.module) {
 /// 纯投影，不修改轮询快照；多次投影不会把本地数量回写成下次服务端基数。
 BadgeSummary includeFormDraftBadges(
   BadgeSummary server,
-  Iterable<FormDraft> drafts,
-) {
+  Iterable<FormDraft> drafts, {
+  Set<String> permissions = const {},
+}) {
   final unique = {
     for (final draft in drafts)
-      if (!formDraftHasFormalDraftCounter(draft) ||
-          formDraftConfirmedIds(draft).isEmpty)
-        if (!isTaskFormDraft(draft)) draft.id: draft,
+      if (formDraftCountsAsActionable(draft, permissions))
+        if (!formDraftHasFormalDraftCounter(draft) ||
+            formDraftConfirmedIds(draft).isEmpty)
+          if (!isTaskFormDraft(draft)) draft.id: draft,
   }.values;
   if (unique.isEmpty) return server;
   final entries = Map<String, BadgeCounts>.of(server.entries);

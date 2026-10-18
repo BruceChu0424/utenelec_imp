@@ -65,7 +65,8 @@ public class ProductionFinishedInboundTaskController {
 
     /** 产成品待点收待办数(徽章来源 finishedInbound): 与列表同一仓库范围(ADR-149)。 */
     @GetMapping("/tasks/count")
-    @PreAuthorize("hasAuthority('stock_doc:view')")
+    @com.uten.imp.security.BusinessTaskRead
+    @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:approve')")
     public Map<String, Long> count(@RequestParam(required = false) UUID scopeWarehouseId) {
         return Map.of("count", service.countPending(warehouseScopes.current(scopeWarehouseId)));
     }

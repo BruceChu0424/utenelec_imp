@@ -3,6 +3,7 @@ package com.uten.imp.features.operations.workbench;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.ProductionStockTaskAccessPolicy;
+import com.uten.imp.security.OwnerVisibility;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
@@ -88,6 +89,47 @@ class FulfillmentWorkbenchAccessPolicyTest {
         assertFalse(policy.documentAccess("PURCHASE", "UNKNOWN").canView());
     }
 
+    @Test
+    void shortDeliveryRequiresTheExactViewAndDecisionPermissions() {
+        assertFalse(policyWith("subcontract_order:view").canDecideSubcontractShortDelivery());
+        assertFalse(policyWith("subcontract_short_delivery:decide").canDecideSubcontractShortDelivery());
+        assertTrue(policyWith("subcontract_order:view", "subcontract_short_delivery:decide")
+                .canDecideSubcontractShortDelivery());
+    }
+
+    @Test
+    void warehouseTasksRequireTheActualBatchIssuePermissionsAndPhysicalResponsibility() {
+        var current = mock(SecurityContextCurrentUser.class);
+        var warehouse = mock(ProductionStockTaskAccessPolicy.class);
+        when(warehouse.canAccessWarehouseTasks()).thenReturn(true);
+        var policy = new FulfillmentWorkbenchAccessPolicy(current, warehouse, mock(OwnerVisibility.class));
+        for (Set<String> permissions : java.util.List.of(Set.of("stock_doc:view"),
+                Set.of("stock_doc:view", "stock_doc:issue"), Set.of("stock_doc:view", "stock_doc:approve"))) {
+            when(current.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(), UUID.randomUUID(),
+                    "warehouse", permissions, false, true, false)));
+            assertFalse(policy.canHandleWarehouseTasks());
+        }
+        when(current.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(), UUID.randomUUID(),
+                "warehouse", Set.of("stock_doc:view", "stock_doc:approve", "stock_doc:issue"), false, true, false)));
+        assertTrue(policy.canHandleWarehouseTasks());
+        when(warehouse.canAccessWarehouseTasks()).thenReturn(false);
+        assertFalse(policy.canHandleWarehouseTasks());
+    }
+
+    @Test
+    void taskScopeUsesTheModuleOwnerPolicyWithoutAnActionBypass() {
+        var owners = mock(OwnerVisibility.class);
+        UUID owner = UUID.randomUUID();
+        UUID readOnlyOwner = UUID.randomUUID();
+        when(owners.evaluate("subcontract", "subcontract:view:all"))
+                .thenReturn(new OwnerVisibility.OwnerScope(false, Set.of(owner, readOnlyOwner), Set.of(owner)));
+        var policy = new FulfillmentWorkbenchAccessPolicy(mock(SecurityContextCurrentUser.class),
+                mock(ProductionStockTaskAccessPolicy.class), owners);
+        var scope = policy.orderTaskScope("SUBCONTRACT", "task_order.maker_id", "owners");
+        org.junit.jupiter.api.Assertions.assertEquals("task_order.maker_id IN (:owners)", scope.predicate());
+        org.junit.jupiter.api.Assertions.assertEquals(Set.of(owner), scope.owners());
+    }
+
     private static FulfillmentWorkbenchAccessPolicy policyWith(String... permissions) {
         SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
         AuthUser user = new AuthUser(
@@ -100,6 +142,6 @@ class FulfillmentWorkbenchAccessPolicyTest {
                 false);
         when(currentUser.get()).thenReturn(Optional.of(user));
         return new FulfillmentWorkbenchAccessPolicy(
-                currentUser, mock(ProductionStockTaskAccessPolicy.class));
+                currentUser, mock(ProductionStockTaskAccessPolicy.class), mock(OwnerVisibility.class));
     }
 }

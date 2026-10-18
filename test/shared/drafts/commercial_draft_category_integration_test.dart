@@ -141,7 +141,7 @@ void main() {
               isSuperAdminProvider.overrideWithValue(false),
               formDraftsProvider.overrideWith(() => _Drafts([local, master])),
               documentStatusCountsProvider.overrideWith(
-                (ref, scope) async => {'DRAFT': 2},
+                (ref, scope) async => {'ACTIONABLE_DRAFT': 2, 'DRAFT': 2},
               ),
               fixedBadgeSummaryOverride(
                 badgeSummaryFixture(facts: {'drafts.$kind': 2}),
@@ -331,7 +331,7 @@ void main() {
                 () => _Drafts([local, unrelated]),
               ),
               documentStatusCountsProvider.overrideWith(
-                (ref, scope) async => {'DRAFT': 2},
+                (ref, scope) async => {'ACTIONABLE_DRAFT': 2, 'DRAFT': 2},
               ),
               fixedBadgeSummaryOverride(
                 badgeSummaryFixture(facts: {'drafts.${item.kind}': 2}),

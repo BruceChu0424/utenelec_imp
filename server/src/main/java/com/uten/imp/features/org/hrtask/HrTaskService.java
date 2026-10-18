@@ -67,6 +67,7 @@ public class HrTaskService {
     private final JdbcTemplate jdbc;
     private final HrTaskClaimService claimService;
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
+    private final com.uten.imp.application.port.TaskAudiencePort taskAudience;
 
     /**
      * 按「今天」内存重算人事提醒(转正/生日/周年/新入职/证件核对)，无任务表、不落库。
@@ -215,21 +216,32 @@ public class HrTaskService {
         }
 
         // 证件核对一律计红(轮到人事办；被认领的也照样计)，列表已按权限过滤。
-        long badge = confirmToday.size() + confirmOverdue.size()
-                + birthdayToday.stream().filter(it -> !it.blessed()).count()
-                + anniversaryToday.stream().filter(it -> !it.blessed()).count()
-                + identityReview.size();
+        long confirmationCount = confirmToday.size() + confirmOverdue.size();
+        long birthdayCount = birthdayToday.stream().filter(it -> !it.blessed()).count();
+        long anniversaryCount = anniversaryToday.stream().filter(it -> !it.blessed()).count();
+        long identityCount = identityReview.size();
+        Map<String, Long> taskCounts = taskAudience.read(() -> Map.of(
+                "confirm", hasAction("employee:confirm") ? confirmationCount : 0L,
+                "birthday", hasAction("notice:publish") && hasAction("employee:pii:view") ? birthdayCount : 0L,
+                "anniversary", hasAction("notice:publish") ? anniversaryCount : 0L,
+                "identity", hasAction(EmployeeSensitiveWritePolicy.PII_EDIT) ? identityCount : 0L));
+        long badge = taskCounts.values().stream().mapToLong(Long::longValue).sum();
 
         return new HrTaskSummary(
                 today, PROBATION_MONTHS,
                 confirmToday, confirmUpcoming, confirmOverdue, unconfirmedLegacy,
                 birthdayToday, birthdayUpcoming, anniversaryToday, newHires,
                 identityReview,
-                badge);
+                badge, taskCounts);
     }
 
     public long badgeCount() {
         return summary().badgeCount();
+    }
+
+    private boolean hasAction(String authority) {
+        return currentUser.get().map(user -> user.isSuperAdmin()
+                || user.getPermissions().contains(authority)).orElse(false);
     }
 
     /** 把本类型本年已祝福的员工对应条目标记 blessed（无命中则原样返回，避免无谓重建）。 */

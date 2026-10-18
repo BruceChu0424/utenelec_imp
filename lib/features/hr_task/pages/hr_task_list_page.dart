@@ -646,7 +646,11 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
   }) {
     final perms = ref.read(currentPermissionsProvider);
     final canConfirm = perms.contains(Perm.employeeConfirm);
-    final canTakeover = perms.contains(Perm.employeeTaskTakeover);
+    final isSuperAdmin = ref.read(isSuperAdminProvider);
+    final canHandle = hrTaskCanHandle(_type, perms, isSuperAdmin: isSuperAdmin);
+    final canTakeover =
+        canHandle &&
+        (isSuperAdmin || perms.contains(Perm.employeeTaskTakeover));
     final blocked = item.claimedByOther;
     final drafts = _type == HrTaskType.identity
         ? _draftsFor(item)
@@ -688,8 +692,8 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
             '&subject=${item.employeeId}',
           ),
         ),
-      const UtenMenuDivider(),
-      if (item.claimedByName == null)
+      if (canHandle || item.claimedByMe) const UtenMenuDivider(),
+      if (item.claimedByName == null && canHandle)
         UtenMenuItem(
           label: '认领(标记为我在处理)',
           icon: Icons.person_add_alt_1_outlined,

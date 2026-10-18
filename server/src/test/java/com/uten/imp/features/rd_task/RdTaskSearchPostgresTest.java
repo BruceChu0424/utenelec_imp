@@ -2,6 +2,7 @@ package com.uten.imp.features.rd_task;
 
 import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.TxSessionVars;
 import com.uten.imp.support.MigratedProjectionSchema;
 import com.uten.imp.support.MigratedSchemaBaseline;
@@ -12,9 +13,12 @@ import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
 import java.sql.Connection;
 import java.util.UUID;
+import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /** Real service SQL over rollback-only migrated column shapes, including its count and paging. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
@@ -23,6 +27,7 @@ class RdTaskSearchPostgresTest {
     private Connection connection;
     private JdbcTemplate db;
     private RdTaskService service;
+    private SecurityContextCurrentUser currentUser;
     private final UUID assignee=UUID.randomUUID();
 
     @BeforeAll static void baseline() throws Exception { database=MigratedSchemaBaseline.openDatabase("rd_task_search"); }
@@ -36,7 +41,8 @@ class RdTaskSearchPostgresTest {
         }
         MigratedProjectionSchema.copyEmptyTablesFromMigratedCatalog(connection,"rd_tasks","goods","colors","employees");
         db=new JdbcTemplate(new SingleConnectionDataSource(connection,true));
-        service=new RdTaskService(db,mock(BusinessEventPublisher.class),mock(SecurityContextCurrentUser.class),mock(TxSessionVars.class));
+        currentUser=mock(SecurityContextCurrentUser.class);
+        service=new RdTaskService(db,mock(BusinessEventPublisher.class),currentUser,mock(TxSessionVars.class));
     }
     @AfterEach void rollback() throws Exception { if(connection!=null) { connection.rollback();connection.close(); } }
 
@@ -67,6 +73,46 @@ class RdTaskSearchPostgresTest {
                 .extracting(RdTaskContracts.RdTaskRow::id).containsExactly(literal);
         assertThat(service.list("open",null,"LITERAL 张工程师 物料",null,1,20).getItems())
                 .extracting(RdTaskContracts.RdTaskRow::id).containsExactly(literal);
+    }
+
+    @Test void taskCountsUseExactActionsCategoryAndAssigneeWithoutNarrowingNormalBrowsing() {
+        task("RD-BOM-POOL","BP","pooled BOM","NORMAL","BOM",null);
+        task("RD-BOM-MINE","BM","my BOM","NORMAL","BOM",assignee);
+        task("RD-BOM-OTHER","BO","other BOM","NORMAL","BOM",UUID.randomUUID());
+        UUID running=task("RD-BOM-RUN","BR","running BOM","NORMAL","BOM",assignee);
+        db.update("UPDATE rd_tasks SET status='IN_PROGRESS' WHERE id=?",running);
+        task("RD-DRAW-MINE","DM","my drawing","NORMAL","DRAWING",assignee);
+        UUID noGoods=task("RD-NO-GOODS","NG","missing goods","NORMAL","BOM",assignee);
+        db.update("UPDATE rd_tasks SET goods_id=NULL WHERE id=?",noGoods);
+
+        actor(Set.of("rd_task:view"));
+        assertThat(service.counts()).isEqualTo(new RdTaskService.RdTaskCounts(0,0));
+        for(String action: java.util.List.of("goods:bom:create","goods:bom:edit")) {
+            actor(Set.of("rd_task:view","goods:view",action));
+            assertThat(service.counts()).isEqualTo(new RdTaskService.RdTaskCounts(2,1));
+            actor(Set.of("rd_task:view",action));
+            assertThat(service.counts()).isEqualTo(new RdTaskService.RdTaskCounts(0,0));
+        }
+        actor(Set.of("rd_task:view","goods:view","goods:bom:delete"));
+        assertThat(service.counts()).isEqualTo(new RdTaskService.RdTaskCounts(0,0));
+        actor(Set.of("rd_task:view","rd_task:resolve"));
+        assertThat(service.counts()).isEqualTo(new RdTaskService.RdTaskCounts(4,1));
+        assertThat(service.list("open",null,null,null,1,20).getTotal()).isEqualTo(6);
+    }
+
+    @Test void bomMaintainersDoNotAcquireManualResolveAuthority() {
+        UUID id=task("RD-BOM-EDIT","BE","BOM edit only","NORMAL","BOM",assignee);
+        actor(Set.of("rd_task:view","goods:view","goods:bom:edit"));
+        assertThat(service.get(id).allowedActions()).doesNotContain("RESOLVE");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.resolve(id,0,"done"))
+                .isInstanceOf(com.uten.imp.common.web.ApiException.class)
+                .hasMessageContaining("权限或责任范围");
+        assertThat(db.queryForObject("SELECT status FROM rd_tasks WHERE id=?",String.class,id)).isEqualTo("OPEN");
+    }
+
+    private void actor(Set<String> permissions) {
+        when(currentUser.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(),assignee,
+                "engineer",permissions,false,true,false)));
     }
 
     private UUID task(String number,String code,String name,String priority,String category,UUID employee) {

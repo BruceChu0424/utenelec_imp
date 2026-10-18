@@ -287,7 +287,9 @@ class _DraftApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path.endsWith('/status-counts')) return const {'DRAFT': 4};
+    if (path.endsWith('/status-counts')) {
+      return const {'ACTIONABLE_DRAFT': 4, 'DRAFT': 4};
+    }
     if (path.endsWith('/facets')) return const {'items': <Object>[]};
     if (path.endsWith(spec.path)) {
       return {'items': rows, 'page': 1, 'total': rows.length, 'totalPages': 1};

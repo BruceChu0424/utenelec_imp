@@ -56,6 +56,7 @@ public class SalesQuoteFinanceController {
 
     @GetMapping("/finance-review/count")
     @PreAuthorize("hasAuthority('sales_quote_finance:view')")
+    @com.uten.imp.security.BusinessTaskRead
     public Map<String, Long> pendingCount() {
         return service.pendingCount();
     }

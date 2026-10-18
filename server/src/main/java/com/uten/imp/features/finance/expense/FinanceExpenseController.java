@@ -50,6 +50,7 @@ public class FinanceExpenseController {
 
     @GetMapping("/gl-confirmation-count")
     @PreAuthorize("hasAuthority('finance_expense:view') and hasAuthority('finance_expense:gl_confirm')")
+    @com.uten.imp.security.BusinessTaskRead
     public java.util.Map<String, Long> confirmationCounts() {
         return service.confirmationCounts();
     }

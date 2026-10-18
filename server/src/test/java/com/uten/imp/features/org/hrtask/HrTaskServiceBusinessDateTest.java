@@ -27,7 +27,7 @@ import static org.mockito.Mockito.*;
 
 class HrTaskServiceBusinessDateTest {
 
-    private static final Set<String> PII = Set.of("employee:view", "employee:pii:view");
+    private static final Set<String> PII = Set.of("employee:view", "employee:pii:view", "employee:confirm", "notice:publish");
 
     @ParameterizedTest
     @CsvSource({
@@ -136,7 +136,7 @@ class HrTaskServiceBusinessDateTest {
         when(jdbc.query(anyString(), any(RowMapper.class))).thenAnswer(invocation ->
                 List.of(((RowMapper) invocation.getArgument(1)).mapRow(row, 0)));
         when(jdbc.queryForList(anyString(), anyInt())).thenReturn(List.of());
-        return new HrTaskService(jdbc, claims, current);
+        return new HrTaskService(jdbc, claims, current, com.uten.imp.testsupport.TaskAudienceTestSupport.direct());
     }
 
     private static HrTaskSummary summaryAt(HrTaskService service, Instant instant, String defaultZone) {

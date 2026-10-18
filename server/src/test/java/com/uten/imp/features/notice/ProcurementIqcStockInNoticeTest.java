@@ -83,11 +83,15 @@ class ProcurementIqcStockInNoticeTest {
         UserAccount eligible = activeUser(eligibleId);
         UserAccount noticeOnly = activeUser(noticeOnlyId);
         UserAccount viewOnly = activeUser(viewOnlyId);
+        when(users.findAll()).thenReturn(List.of(eligible, noticeOnly, viewOnly));
+        when(jdbc.queryForList(contains("active_action_recipients"), eq(UUID.class), anyString()))
+                .thenAnswer(invocation -> java.util.Arrays.stream(invocation.<String>getArgument(2).split(","))
+                        .map(UUID::fromString).toList());
         when(users.findById(eligibleId)).thenReturn(Optional.of(eligible));
         when(users.findById(noticeOnlyId)).thenReturn(Optional.of(noticeOnly));
         when(users.findById(viewOnlyId)).thenReturn(Optional.of(viewOnly));
         when(permissions.grantedPermsOf(eligible)).thenReturn(Set.of(
-                "notice:read", "warehouse_iqc_stock_in:view"));
+                "notice:read", "warehouse_iqc_stock_in:view", "warehouse_iqc_stock_in:confirm"));
         when(permissions.grantedPermsOf(noticeOnly)).thenReturn(Set.of("notice:read"));
         when(permissions.grantedPermsOf(viewOnly)).thenReturn(Set.of(
                 "warehouse_iqc_stock_in:view"));

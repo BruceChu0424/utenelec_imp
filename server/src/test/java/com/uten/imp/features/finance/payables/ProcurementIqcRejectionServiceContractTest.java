@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -211,6 +212,31 @@ class ProcurementIqcRejectionServiceContractTest {
     }
 
     @Test
+    void actionableCountsFollowEachStageActionAndNeverTheViewPermission() {
+        String view = "procurement_iqc_rejection:view";
+        for (String[] permissions : List.of(
+                new String[] {view},
+                new String[] {view, "procurement_iqc_rejection:record_return"},
+                new String[] {view, "procurement_iqc_rejection:confirm_credit"},
+                new String[] {view, "procurement_iqc_rejection:confirm_credit", "procurement_iqc_rejection:amount:view"},
+                new String[] {view, "procurement_iqc_rejection:close_no_credit"})) {
+            EntityManager em = mock(EntityManager.class);
+            List<NativeCall> calls = new ArrayList<>();
+            stubCountsQuery(em, calls);
+            service(em, mock(TxSessionVars.class), currentUser(UUID.randomUUID(), permissions),
+                    mock(BusinessEventPublisher.class)).counts(null, null);
+            var grants = Set.of(permissions);
+            NativeCall query = oneCall(calls, "count(*) filter");
+            assertThat(query.parameters()).containsEntry("taskRecordReturn", grants.contains("procurement_iqc_rejection:record_return"))
+                    .containsEntry("taskConfirmCredit", grants.contains("procurement_iqc_rejection:confirm_credit")
+                            && grants.contains("procurement_iqc_rejection:amount:view"))
+                    .containsEntry("taskCloseNoCredit", grants.contains("procurement_iqc_rejection:close_no_credit"));
+            assertThat(query.sql()).contains("inspection.status='resolved'", "rejection.return_recorded_at is null",
+                    "rejection.failed_amount_original=0 and rejection.failed_amount_local=0");
+        }
+    }
+
+    @Test
     void activeCasesAreFilteredBeforeDataPaginationAndCountAndTerminalHistoryIsSeparate() {
         EntityManager em = mock(EntityManager.class);
         List<NativeCall> calls = new ArrayList<>();
@@ -291,7 +317,7 @@ class ProcurementIqcRejectionServiceContractTest {
                         return query;
                     });
             when(query.getSingleResult()).thenReturn(new Object[]{
-                    7L, 1L, 2L, 1L, 1L, 1L, 1L
+                    7L, 1L, 2L, 1L, 1L, 1L, 1L, 0L, 0L, 0L
             });
             return query;
         });
@@ -329,7 +355,7 @@ class ProcurementIqcRejectionServiceContractTest {
             TxSessionVars tx,
             SecurityContextCurrentUser currentUser,
             BusinessEventPublisher events) {
-        return new ProcurementIqcRejectionService(
+        var service = new ProcurementIqcRejectionService(
                 em,
                 tx,
                 currentUser,
@@ -341,6 +367,11 @@ class ProcurementIqcRejectionServiceContractTest {
                 mock(com.uten.imp.common.finance.ProcurementReceiptConsiderationService.class),
                 mock(com.uten.imp.application.port.ProcurementCreditBookAllocationPort.class),
                 mock(com.uten.imp.application.port.ProcurementInventoryValuePort.class));
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "taskAudience",
+                new com.uten.imp.application.port.TaskAudiencePort() {
+                    @Override public <T> T read(java.util.function.Supplier<T> work) { return work.get(); }
+                });
+        return service;
     }
 
     private static SecurityContextCurrentUser currentUser(

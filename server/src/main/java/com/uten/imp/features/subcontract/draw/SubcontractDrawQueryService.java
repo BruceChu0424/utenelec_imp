@@ -140,7 +140,7 @@ public class SubcontractDrawQueryService {
      */
     @Transactional(readOnly = true)
     public long countDrawable() {
-        if (!access.hasAuthority(DRAW_AUTHORITY)) {
+        if (!access.hasAuthority("subcontract_order:view") || !access.hasAuthority(DRAW_AUTHORITY)) {
             return 0;
         }
         DocumentAccessPolicy.NativeReadScope scope = access.nativeReadScope("o.maker_id", "readOwners");
@@ -171,7 +171,7 @@ public class SubcontractDrawQueryService {
      */
     @Transactional(readOnly = true)
     public long countSubmitted() {
-        if (!access.hasAuthority(DRAW_AUTHORITY)) {
+        if (!access.hasAuthority("subcontract_order:view") || !access.hasAuthority(DRAW_AUTHORITY)) {
             return 0;
         }
         DocumentAccessPolicy.NativeReadScope scope = access.nativeReadScope("o.maker_id", "readOwners");

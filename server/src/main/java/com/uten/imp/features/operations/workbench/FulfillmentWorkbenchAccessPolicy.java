@@ -1,12 +1,15 @@
 package com.uten.imp.features.operations.workbench;
 
 import com.uten.imp.security.AuthUser;
+import com.uten.imp.security.DocumentAccessPolicy;
+import com.uten.imp.security.OwnerVisibility;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.ProductionStockTaskAccessPolicy;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Resolves the exact document permissions exposed by the fulfillment read side.
@@ -59,9 +62,16 @@ public class FulfillmentWorkbenchAccessPolicy {
 
     private final SecurityContextCurrentUser currentUser;
     private final ProductionStockTaskAccessPolicy productionStockTaskAccess;
+    private final OwnerVisibility ownerVisibility;
 
     public boolean canAccessWarehouseTasks() {
         return productionStockTaskAccess.canAccessWarehouseTasks();
+    }
+
+    /** The warehouse task center executes ProductionDrawDiscoveryBatchController.issue. */
+    public boolean canHandleWarehouseTasks() {
+        return canAccessWarehouseTasks() && hasAuthority("stock_doc:view")
+                && hasAuthority("stock_doc:approve") && hasAuthority("stock_doc:issue");
     }
 
     public DocumentAccess documentAccess(String department, String rawDocumentType) {
@@ -91,15 +101,24 @@ public class FulfillmentWorkbenchAccessPolicy {
                 && hasAuthority("subcontract_order:decompose");
     }
 
-    /**
-     * 回厂短交待判定（ADR-098）的动手门槛：与
-     * {@code SubcontractShortDeliveryController.decide} 端点同码。
-     * 待办红数按它判定「短交档」是否数给当前账号（2026-10-17 口径：
-     * 仅持有查看权限的账号不再收到委外/采购任务待办）。
-     */
     public boolean canDecideSubcontractShortDelivery() {
         return hasAuthority("subcontract_order:view")
                 && hasAuthority("subcontract_short_delivery:decide");
+    }
+
+    /** Task reads use the current granted-authority principal; action permission never widens owner scope. */
+    public DocumentAccessPolicy.NativeReadScope orderTaskScope(
+            String department, String ownerColumn, String parameterName) {
+        String module = switch (department) {
+            case "PURCHASE" -> "purchase";
+            case "SUBCONTRACT" -> "subcontract";
+            default -> throw new IllegalArgumentException("Unsupported order task department: " + department);
+        };
+        OwnerVisibility.OwnerScope scope = ownerVisibility.evaluate(module, module + ":view:all");
+        if (scope.seeAll()) return new DocumentAccessPolicy.NativeReadScope(ownerColumn + " IS NOT NULL", null, Set.of());
+        if (scope.writableOwners().isEmpty()) return new DocumentAccessPolicy.NativeReadScope("1=0", null, Set.of());
+        return new DocumentAccessPolicy.NativeReadScope(
+                ownerColumn + " IN (:" + parameterName + ")", parameterName, scope.writableOwners());
     }
 
     private boolean hasAuthority(String authority) {

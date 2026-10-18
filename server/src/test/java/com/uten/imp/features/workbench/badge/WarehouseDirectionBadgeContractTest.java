@@ -80,7 +80,7 @@ class WarehouseDirectionBadgeContractTest {
         WorkbenchBadgeSources contributor = () -> registered;
         WarehouseTaskScopePort scopes = mock(WarehouseTaskScopePort.class);
         when(scopes.withScopeCache(any())).thenAnswer(call -> ((Supplier<?>) call.getArgument(0)).get());
-        WorkbenchBadgeService service = new WorkbenchBadgeService(List.of(contributor), manager, scopes);
+        WorkbenchBadgeService service = new WorkbenchBadgeService(List.of(contributor), manager, scopes, com.uten.imp.testsupport.TaskAudienceTestSupport.direct());
         EntityManager em = mock(EntityManager.class);
         Session session = mock(Session.class);
         when(em.unwrap(Session.class)).thenReturn(session);

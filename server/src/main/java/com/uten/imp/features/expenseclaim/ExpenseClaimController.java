@@ -276,6 +276,7 @@ public class ExpenseClaimController {
     }
     @GetMapping("/counts")
     @PreAuthorize("hasAnyAuthority('expense:apply','expense:approve','expense:pay')")
+    @com.uten.imp.security.BusinessTaskRead
     public com.uten.imp.features.expenseclaim.dto.ExpenseClaimCountsDto counts() { return service.counts(); }
     @GetMapping("/settings")
     @PreAuthorize("hasAnyAuthority('expense:apply','expense:approve','expense:pay','expense:settings')")

@@ -47,6 +47,7 @@ class HrTaskClaimTakeoverAuditTest {
         user = mock(AuthUser.class);
         when(currentUser.requireEmployeeId()).thenReturn(me);
         when(currentUser.get()).thenReturn(Optional.of(user));
+        when(user.getPermissions()).thenReturn(Set.of("employee:view", "employee:confirm", "notice:publish", "employee:task_takeover"));
         when(user.getId()).thenReturn(UUID.randomUUID());
         when(user.getLoginAccount()).thenReturn("hr-auditor");
         when(repository.save(any(HrTaskClaim.class)))

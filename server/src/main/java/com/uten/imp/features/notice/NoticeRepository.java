@@ -15,6 +15,12 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
     // Applied inside every scoped list/count query, before pagination. The over-limit
     // event uses current plan-owner access; existing workshop/draw rules stay unchanged.
     String SCOPED_VISIBILITY = """
+              AND (n.resolvedAt IS NOT NULL OR n.type = 'workflow'
+                OR cast(function('fn_notice_business_action_visible', :userId,
+                    n.sourceEvent,n.aggregateKind,n.aggregateId,n.actionRoute,
+                    :#{#readScope.permissions}, :#{#readScope.actionEvents},
+                    :#{#readScope.registeredEvents()}, :#{#readScope.ownerScopes},
+                    :#{#readScope.warehousePools}) as Boolean) = true)
               AND (n.sourceEvent IS NULL OR n.sourceEvent <> 'SALES_ORDER_APPROVED'
                 OR n.resolvedAt IS NOT NULL
                 OR EXISTS (SELECT planningOrder.id FROM SalesOrder planningOrder
@@ -23,14 +29,16 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
                     AND planningOrder.financeRejected=false AND planningOrder.closed=false
                     AND planningOrder.stopped=false AND planningOrder.requotedToId IS NULL
                     AND (n.sourceRevision IS NULL OR n.sourceRevision=planningOrder.financeReviewRevision)))
-              AND cast(function('fn_notice_production_over_limit_visible',
+              AND (n.resolvedAt IS NOT NULL OR n.type = 'workflow' OR cast(function('fn_notice_production_over_limit_visible',
                   n.sourceEvent,n.aggregateKind,n.aggregateId,
                   :#{#readScope.overLimitAllowed}, :#{#readScope.overLimitSeeAll},
-                  :#{#readScope.overLimitOwners}) as Boolean) = true
+                  :#{#readScope.overLimitOwners}) as Boolean) = true)
               AND (n.sourceEvent IS NULL OR n.sourceEvent <> 'PRODUCTION_DRAW_PENDING'
+                OR n.resolvedAt IS NOT NULL OR n.type = 'workflow'
                 OR (n.aggregateKind = 'STOCK_DOCUMENT'
                   AND cast(function('fn_production_draw_requested', n.aggregateId) as Boolean) = true))
               AND (n.sourceEvent IS NULL OR n.sourceEvent <> 'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED'
+                OR n.resolvedAt IS NOT NULL OR n.type = 'workflow'
                 OR (:#{#readScope.workshop.allowed} = true
                   AND n.audienceUserId = :userId
                   AND n.aggregateKind = 'PRODUCTION_EXECUTION_SEGMENT'

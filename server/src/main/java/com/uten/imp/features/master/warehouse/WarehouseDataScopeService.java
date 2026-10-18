@@ -5,6 +5,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.warehouse.dto.MyWarehouseScope;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.BusinessTaskContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
@@ -54,7 +55,7 @@ public class WarehouseDataScopeService implements WarehouseTaskScopePort {
             // 系统上下文(定时任务、事件投递)没有登录主体: 不按人裁剪; HTTP 端点都要求登录。
             return new WarehouseAccess(Role.SUPERVISOR, List.of(), WarehouseTaskScope.ALL, false);
         }
-        return reuse("access:" + userId, WarehouseAccess.class, () -> resolve(userId));
+        return reuse("access:" + userId + ":tasks=" + BusinessTaskContext.active(), WarehouseAccess.class, () -> resolve(userId));
     }
 
     @Override
@@ -62,7 +63,8 @@ public class WarehouseDataScopeService implements WarehouseTaskScopePort {
         UUID requested = requestedWarehouseId != null ? requestedWarehouseId : REQUESTED.get();
         WarehouseAccess access = access();
         if (requested == null) return access.defaultScope();
-        String key = "scope:" + currentUser.id().map(UUID::toString).orElse("-") + ":" + requested;
+        String key = "scope:" + currentUser.id().map(UUID::toString).orElse("-") + ":" + requested
+                + ":tasks=" + BusinessTaskContext.active();
         return reuse(key, WarehouseTaskScope.class, () -> {
             if (!selectable(access, requested)) {
                 throw new ApiException(ErrorCode.FORBIDDEN, OUT_OF_SCOPE_MESSAGE);
@@ -206,9 +208,10 @@ public class WarehouseDataScopeService implements WarehouseTaskScopePort {
     private WarehouseAccess resolve(UUID userId) {
         return jdbc.sql("""
                         SELECT role, keeper_warehouse_ids, scope_warehouse_ids, includes_unassigned, warehouse_member
-                        FROM fn_user_warehouse_access(:userId)
+                        FROM fn_user_warehouse_access(:userId, :businessTasks)
                         """)
                 .param("userId", userId)
+                .param("businessTasks", BusinessTaskContext.active())
                 .query((rs, row) -> {
                     Role role = Role.valueOf(rs.getString("role"));
                     Array scope = rs.getArray("scope_warehouse_ids");

@@ -66,6 +66,7 @@ public class StockCountRequestController {
         return service.list(reviewRoute,status,warehouseId,page,size,warehouseScopes.current(null));
     }
     /** 待办计数; warehousePending(仓库审核红数, 徽章来源 stockCountWarehouse)与仓库审核列表同一仓库范围。 */
+    @com.uten.imp.security.BusinessTaskRead
     @GetMapping("/counts") public Map<String,Object> counts(@RequestParam(required=false) UUID scopeWarehouseId) {
         return service.counts(warehouseScopes.current(scopeWarehouseId));
     }

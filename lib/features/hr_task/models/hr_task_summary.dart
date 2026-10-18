@@ -74,6 +74,7 @@ class HrTaskSummary {
     required this.newHires,
     required this.identityReview,
     required this.badgeCount,
+    this.taskCounts = const {},
   });
 
   final String generatedAt;
@@ -91,6 +92,7 @@ class HrTaskSummary {
   /// (超管或 employee:pii:edit)，其他人收到空列表、也不计数。
   final List<HrTaskItem> identityReview;
   final int badgeCount;
+  final Map<String, int> taskCounts;
 
   static List<HrTaskItem> _items(Map<String, dynamic> json, String key) =>
       ((json[key] as List?) ?? const [])
@@ -111,5 +113,8 @@ class HrTaskSummary {
     newHires: _items(json, 'newHires'),
     identityReview: _items(json, 'identityReview'),
     badgeCount: (json['badgeCount'] as num?)?.toInt() ?? 0,
+    taskCounts: ((json['taskCounts'] as Map?) ?? const {}).map(
+      (key, value) => MapEntry(key.toString(), (value as num?)?.toInt() ?? 0),
+    ),
   );
 }

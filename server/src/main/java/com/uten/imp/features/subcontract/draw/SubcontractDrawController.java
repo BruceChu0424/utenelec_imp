@@ -11,6 +11,7 @@ import com.uten.imp.features.subcontract.draw.SubcontractDrawContracts.DrawTaskP
 import com.uten.imp.features.subcontract.draw.SubcontractDrawContracts.DrawWithdrawRequest;
 import com.uten.imp.features.subcontract.draw.SubcontractDrawContracts.DrawWithdrawResult;
 import lombok.RequiredArgsConstructor;
+import com.uten.imp.security.BusinessTaskRead;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -57,6 +58,7 @@ public class SubcontractDrawController {
      * {@code submitted} = 已提交领料、等仓库发出的行数(黄, ADR-171 修订二)。
      */
     @GetMapping("/count")
+    @BusinessTaskRead
     public Map<String, Long> count() {
         return Map.of("drawable", queries.countDrawable(),
                 "submitted", queries.countSubmitted());

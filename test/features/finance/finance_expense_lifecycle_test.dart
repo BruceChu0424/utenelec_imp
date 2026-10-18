@@ -295,7 +295,12 @@ class _ExpenseLifecycleApi extends ApiClient {
   }) async {
     final request = Map<String, dynamic>.from(query ?? const {});
     if (path == '/documents/status-counts') {
-      return {'DRAFT': 1, 'PENDING_GL_CONFIRMATION': 2};
+      return {
+        'ACTIONABLE_DRAFT': 1,
+        'DRAFT': 1,
+        'ACTIONABLE_PENDING_GL_CONFIRMATION': 2,
+        'PENDING_GL_CONFIRMATION': 2,
+      };
     }
     if (path.endsWith('/facets')) {
       facets.add(request);

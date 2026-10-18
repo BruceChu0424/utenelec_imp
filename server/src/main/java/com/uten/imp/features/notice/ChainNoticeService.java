@@ -48,6 +48,8 @@ import java.util.UUID;
  */
 @Service
 public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.imp.application.port.ProductionDrawInstructionNoticePort {
+    @org.springframework.beans.factory.annotation.Autowired
+    private ReviewNoticeAudience reviewAudience;
 
     /** 合法类型见 NoticeService.TYPES；此处固定用到的子集。 */
     public static final String TYPE_WORKFLOW = "workflow";
@@ -413,10 +415,14 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 warehouseIds);
     }
 
-    /** 仓库类通知池: 仓库部门(SUB_WH 子树)里持有全部所需权限的账号 + 部门外的人要满足的同样条件。 */
+    /** Actual task grants select the pool; warehouse responsibility selects its recipients. */
     private WarehouseNoticePool warehousePool(String... authorities) {
-        List<UUID> department = departmentUserIdsWithAuthorities("SUB_WH", authorities);
-        Set<String> required = Set.of(authorities);
+        Set<String> required = new LinkedHashSet<>(List.of(authorities));
+        required.add(NOTICE_READ_AUTHORITY);
+        if (required.contains("stock_doc:approve") || required.contains("stock_doc:issue")) required.add("stock_doc:view");
+        if (required.contains("warehouse_sales_outbound:execute")) required.add("warehouse_sales_outbound:view");
+        if (required.contains("warehouse_inbound:stock_in")) required.add("warehouse_inbound:view");
+        List<UUID> department = actionUserIdsWithAuthorities(required.toArray(String[]::new));
         if (permissionResolver.supportsGrantedPermissionBatch()) {
             return new WarehouseNoticePool(department,
                     userId -> !permissionResolver.usersGrantedAll(List.of(userId), required).isEmpty());
@@ -862,6 +868,19 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         return Boolean.TRUE.equals(readable);
     }
 
+    /** Manual read delegation is deliberately absent from action ownership. */
+    private boolean canWriteOwnedDocument(UUID userId, String scope, UUID ownerEmployeeId, String viewAllAuthority) {
+        if (ownerEmployeeId == null) return false;
+        if (userHasAllAuthorities(userId, viewAllAuthority)) return true;
+        UUID successor = handoverVisibility == null ? ownerEmployeeId
+                : handoverVisibility.currentResponsible(scope, ownerEmployeeId);
+        return userRepo.findById(userId)
+                .filter(account -> !account.isDeleted() && "active".equals(account.getStatus()))
+                .map(account -> Objects.equals(ownerEmployeeId, account.getEmployeeId())
+                        || Objects.equals(successor, account.getEmployeeId()))
+                .orElse(false);
+    }
+
     /** Same owner/hand-over/data-scope gate as canReadOwnedDocument, for a whole pool. */
     private Set<UUID> usersThatCanReadOwnedDocument(Collection<UUID> candidates, String scope, UUID ownerEmployeeId) {
         if (candidates.isEmpty()) return Set.of();
@@ -1074,13 +1093,13 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             if (!shortagePlans.isEmpty()) {
                 if (shortagePlans.size() == 1) {
                     PlanScheduled ps = shortagePlans.get(0);
-                    notifyDepartmentPool(PLAN_VIEW_AUTHORITY, List.of("SUB_PURCHASE", "SUB_PLAN"), TYPE_TASK,
+                    notifyDepartmentPool(PLAN_VIEW_AUTHORITY, List.of("SUB_PURCHASE", "SUB_PLAN"), TYPE_WORKFLOW,
                             "缺料提醒：" + planNoById.get(ps.planId()),
                             "计划单 " + planNoById.get(ps.planId())
                                     + " 审核后 BOM 净需求不足(订单行状态=待物料)，请采购/调度跟进备料。",
                             "/production/plans/" + ps.planId());
                 } else {
-                    notifyDepartmentPool(PLAN_VIEW_AUTHORITY, List.of("SUB_PURCHASE", "SUB_PLAN"), TYPE_TASK,
+                    notifyDepartmentPool(PLAN_VIEW_AUTHORITY, List.of("SUB_PURCHASE", "SUB_PLAN"), TYPE_WORKFLOW,
                             "缺料提醒：" + shortagePlans.size() + " 张计划单",
                             "计划单 " + planNoById.get(shortagePlans.get(0).planId()) + " 等 "
                                     + shortagePlans.size()
@@ -1409,7 +1428,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                         "待审核成品入库：" + billNo,
                         content,
                         "/warehouse/FINISHED_IN/" + stockDocId,
-                        EVENT_FINISHED_INBOUND_PENDING);
+                        EVENT_FINISHED_INBOUND_PENDING, null, stockDocId);
             }
         });
     }
@@ -1447,7 +1466,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                                 + " 已审核，请仓库核对实物并登记成品目标仓、库位，"
                                 + "然后送品质终检。通知不代替仓库任务队列、品质放行或库存事实。",
                         "/warehouse/production-finished-in/tasks",
-                        EVENT_PRODUCTION_FINISHED_ARRIVAL_PENDING);
+                        EVENT_PRODUCTION_FINISHED_ARRIVAL_PENDING, null, reportId);
             }
         });
     }
@@ -1955,7 +1974,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                         "货品已入库待检，请到库位检验：" + billNo,
                         content,
                         route,
-                        EVENT_IQC_PRE_STOCKED);
+                        EVENT_IQC_PRE_STOCKED, null, receiptId);
             }
         });
     }
@@ -2039,7 +2058,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     + "请核对实物数量和实际库位；确认前不会增加可用库存。";
             String route = "/warehouse/iqc-stock-ins/" + receiptType + '/' + receiptId;
             for (UUID warehouseUser : warehouseRecipients(warehousePool(NOTICE_READ_AUTHORITY,
-                    WAREHOUSE_IQC_STOCK_IN_VIEW_AUTHORITY), warehouseIdsOf(task.get("warehouse_id")))) {
+                    WAREHOUSE_IQC_STOCK_IN_VIEW_AUTHORITY, "warehouse_iqc_stock_in:confirm"), warehouseIdsOf(task.get("warehouse_id")))) {
                 // 2026-09-05 起升级为居中行动卡：aggregate 绑定
                 // (PROCUREMENT_INSPECTION_PASS, passEventId)，该切片全部
                 // 确认入库后按聚合办结撤回。
@@ -2948,7 +2967,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     /** 可下单卡的收件人：当前能读通知、查看委外申请并生成委外订货单的在职账号。 */
     private List<UUID> subcontractOrderKitRecipients() {
         return actionUserIdsWithAuthorities(NOTICE_READ_AUTHORITY, SUBCONTRACT_APPLICATION_VIEW_AUTHORITY,
-                SUBCONTRACT_ORDER_DECOMPOSE_AUTHORITY);
+                "subcontract_order:create", SUBCONTRACT_ORDER_DECOMPOSE_AUTHORITY);
     }
 
     /**
@@ -3286,7 +3305,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                             EVENT_SUBCONTRACT_OUTBOUND_COMPLETED);
                 }
                 if (returnable.isEmpty()) continue;
-                for (UUID warehouseUser : warehouseRecipients(warehousePool(NOTICE_READ_AUTHORITY, "warehouse_inbound:view"),
+                for (UUID warehouseUser : warehouseRecipients(warehousePool(NOTICE_READ_AUTHORITY, "warehouse_inbound:view", "warehouse_inbound:stock_in"),
                         subcontractOrderWarehouseIds(orderId))) {
                     sendToUser(
                             warehouseUser,
@@ -3297,7 +3316,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                                     + "。回厂时请在预计到货任务中心按委外件登记实际回厂，不要按物料登记；"
                                     + "通知不代表已经到货。",
                             "/warehouse/inbound/expectations",
-                            EVENT_SUBCONTRACT_OUTBOUND_COMPLETED);
+                            EVENT_SUBCONTRACT_OUTBOUND_COMPLETED, null, orderId);
                 }
             }
             for (Map<String, Object> analysis : jdbc.queryForList("""
@@ -3587,7 +3606,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     """, reportId)) {
                 OrderRef o = orderRef((UUID) r.get("order_id"));
                 if (o == null) continue;
-                notifyUser(o.ownerUserId(), TYPE_TASK,
+                notifyUser(o.ownerUserId(), TYPE_WORKFLOW,
                         "数量不足·已补产：" + o.billNo(),
                         "订单 " + o.billNo() + " 报工完结缺额 " + qty(bd(r.get("qty")))
                                 + "，已自动生成补产计划 " + str(r.get("plan_no")) + "(报工单 " + reportBillNo
@@ -5133,7 +5152,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                         "SELECT unnest(fn_inbound_expectation_warehouse_ids(id)) FROM inbound_expectations"
                                 + " WHERE approval_case_id = ?",
                         approvalCaseId);
-                for (UUID warehouseUser : warehouseRecipients(warehousePool(NOTICE_READ_AUTHORITY, "warehouse_inbound:view"),
+                for (UUID warehouseUser : warehouseRecipients(warehousePool(NOTICE_READ_AUTHORITY, "warehouse_inbound:view", "warehouse_inbound:stock_in"),
                         expectationWarehouses)) {
                     // 2026-09-05 起升级为居中行动卡：aggregate 绑定
                     // (PROCUREMENT_ORDER, orderId)，到货全部登记完
@@ -5174,7 +5193,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             Map<String, Object> shortCase = one("""
                     SELECT c.status, c.severity, c.order_bill_no_snapshot, c.receipt_bill_no_snapshot,
                            c.ordered_qty, c.allowed_loss_pct, c.floor_qty, c.delivered_qty, c.shortfall_qty,
-                           c.shortfall_pct, c.expected_complete_by, c.owner_user_id,
+                           c.shortfall_pct, c.expected_complete_by, c.owner_user_id, c.owner_employee_id,
                            COALESCE(c.goods_name_snapshot, goods.name) AS goods_name,
                            COALESCE(c.goods_code_snapshot, goods.code) AS goods_code,
                            color.name AS color_name, unit.name AS unit_name, supplier.name AS supplier_name,
@@ -5241,16 +5260,25 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             resolveReviewNotices(SUBCONTRACT_SHORT_DELIVERY_AGGREGATE, caseId, "SUPERSEDED");
             Set<UUID> notified = new LinkedHashSet<>();
             UUID owner = (UUID) shortCase.get("owner_user_id");
+            UUID ownerEmployee = (UUID) shortCase.get("owner_employee_id");
+            Set<UUID> actors = new LinkedHashSet<>();
+            for (UUID candidate : actionUserIdsWithAuthorities(SUBCONTRACT_SHORT_DELIVERY_DECIDE_AUTHORITY,
+                    SUBCONTRACT_ORDER_VIEW_AUTHORITY, NOTICE_READ_AUTHORITY)) {
+                if (canWriteOwnedDocument(candidate, SUBCONTRACT_OWNER_SCOPE, ownerEmployee, SUBCONTRACT_VIEW_ALL_AUTHORITY)) {
+                    actors.add(candidate);
+                }
+            }
             if (owner != null) {
-                sendToUser(owner, type, title, content, route, eventType, null, caseId);
+                sendToUser(owner, actors.contains(owner) ? type : TYPE_WORKFLOW, title, content, route, eventType, null,
+                        actors.contains(owner) ? caseId : null);
                 notified.add(owner);
             }
             UUID purchaser = userIdOfEmployee((UUID) shortCase.get("purchaser_id"));
             if (purchaser != null && notified.add(purchaser)) {
-                sendToUser(purchaser, type, title, content, route, eventType, "normal", caseId);
+                sendToUser(purchaser, actors.contains(purchaser) ? type : TYPE_WORKFLOW, title, content, route, eventType,
+                        "normal", actors.contains(purchaser) ? caseId : null);
             }
-            for (UUID follower : userIdsWithPermissions(
-                    SUBCONTRACT_SHORT_DELIVERY_DECIDE_AUTHORITY, NOTICE_READ_AUTHORITY)) {
+            for (UUID follower : actors) {
                 if (notified.add(follower)) {
                     sendToUser(follower, TYPE_TASK, title, content, route, eventType, "normal", caseId);
                 }
@@ -5371,23 +5399,23 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 Set<UUID> reviewers = new LinkedHashSet<>(financeReviewerUserIds());
                 if (assignee != null) {
                     sendToUser(assignee, TYPE_URGENT, title, content,
-                            "/finance/procurement-arrival-exceptions");
+                            "/finance/procurement-arrival-exceptions", eventType, null, exceptionId);
                     reviewers.remove(assignee);
                 }
                 for (UUID reviewer : reviewers) {
                     sendToUser(reviewer, TYPE_URGENT, title, content,
-                            "/finance/procurement-arrival-exceptions", null, "normal");
+                            "/finance/procurement-arrival-exceptions", eventType, "normal", exceptionId);
                 }
                 return;
             }
             if (EVENT_PROCUREMENT_RETURN_REQUIRED.equals(eventType)) {
                 String returnQty = str(arrival.get("return_qty"));
-                notifyUser(ownerUser, TYPE_TASK,
+                sendToUser(ownerUser, TYPE_TASK,
                         "供应商退回任务：" + orderNo,
                         orderLabel + " " + orderNo + " 的未接收数量 "
                                 + returnQty
                                 + " 已形成持久任务。请完成实物退回后在本人任务中确认；通知不能代替任务台账。",
-                        "/procurement/arrival-exceptions");
+                        "/procurement/arrival-exceptions", eventType, null, exceptionId);
                 broadcastToProcurementReturnFollowers(
                         str(arrival.get("order_type")), ownerUser,
                         TYPE_TASK, "供应商退回任务：" + orderNo,
@@ -5405,8 +5433,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                         + "，未接收 " + unacceptedQty
                         + " 待退回供应商/委外商。请尽快安排实物退回。";
                 // 原下单人须在本人任务确认退回；部门内其他人广播知会（去重避免重复通知）。
-                notifyUser(ownerUser, TYPE_TASK, "到货已入库，余量待退：" + orderNo,
-                        content, "/procurement/arrival-exceptions");
+                sendToUser(ownerUser, TYPE_TASK, "到货已入库，余量待退：" + orderNo,
+                        content, "/procurement/arrival-exceptions", eventType, null, exceptionId);
                 broadcastToProcurementReturnFollowers(
                         str(arrival.get("order_type")), ownerUser, TYPE_TASK,
                         "到货已入库，余量待退：" + orderNo, content,
@@ -5432,7 +5460,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                                     + "，批准额外超量 "
                                     + str(arrival.get("approved_excess_qty"))
                                     + "。收货草稿已由服务端调整，请重新核对并审核；不得按原申报量入库。",
-                            "/warehouse/inbound/arrival-exceptions");
+                            "/warehouse/inbound/arrival-exceptions", eventType, null, exceptionId);
                 } else {
                     sendToUser(warehouseUser, TYPE_WORKFLOW,
                             "到货超量已由财务拒绝：" + orderNo,
@@ -5454,13 +5482,11 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             String title,
             String content,
             String route) {
-        Set<UUID> targets = "SUBCONTRACT".equals(orderType)
-                ? userIdsWithPermissions(
-                        "supplier_return_task:view", NOTICE_READ_AUTHORITY)
-                : new LinkedHashSet<>(departmentUserIds("SUB_PURCHASE"));
+        Set<UUID> targets = userIdsWithPermissions("supplier_return_task:view", NOTICE_READ_AUTHORITY);
         for (UUID uid : targets) {
             if (excludeUser != null && excludeUser.equals(uid)) continue;
-            sendToUser(uid, type, title, content, route, null, "normal");
+            // Completing a supplier return is exact-owner work. Followers receive a receipt, not an action assignment.
+            sendToUser(uid, TYPE_WORKFLOW, title, content, route, null, "normal");
         }
     }
 
@@ -5540,14 +5566,15 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             String content;
             String type;
             if (EVENT_SUBCONTRACT_LOSS_OPENED.equals(eventType)) {
+                if (!"OPEN".equals(status)) return;
                 title = "委外超耗待财务决定：" + wasteNo;
                 content = "委外商 " + supplier + " 的损耗单 " + wasteNo
                         + " 已形成超耗责任单。请核对公司承担、索赔、合法抵销、现金或实物补偿；"
                         + "损耗事实本身不会自动冲应付。";
                 type = TYPE_APPROVAL;
                 for (UUID reviewer : userIdsWithPermissions(
-                        "subcontract_loss_claim:review", NOTICE_READ_AUTHORITY)) {
-                    sendToUser(reviewer, type, title, content, "/finance/payables");
+                        "subcontract_loss_claim:view", "subcontract_loss_claim:review", NOTICE_READ_AUTHORITY)) {
+                    sendToUser(reviewer, type, title, content, "/finance/payables", eventType, null, caseId);
                 }
                 return;
             }
@@ -5618,6 +5645,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                            rejection.receipt_bill_no,
                            rejection.order_bill_no,
                            rejection.status,
+                           rejection.failed_amount_original, rejection.failed_amount_local, rejection.return_recorded_at,
+                           inspection.status AS inspection_status,
                            rejection.owner_user_id,
                            rejection.failed_qty,
                            goods.code AS goods_code,
@@ -5758,7 +5787,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     eventType)
                     || EVENT_PROCUREMENT_IQC_REJECTION_RETURNED.equals(eventType);
             for (UUID recipient : recipients) {
-                if (actionable) {
+                boolean canAct = actionable && userRepo.findById(recipient)
+                        .map(permissionResolver::grantedPermsOf)
+                        .map(permissions -> canActIqcRejection(eventType, rejection, permissions)).orElse(false);
+                if (canAct) {
                     sendToUser(
                             recipient,
                             type,
@@ -5771,7 +5803,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 } else {
                     sendToUser(
                             recipient,
-                            type,
+                            actionable ? TYPE_WORKFLOW : type,
                             title,
                             content,
                             route,
@@ -5784,6 +5816,27 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 resolveReviewNotices("IQC_REJECTION_CASE", caseId, eventType);
             }
         });
+    }
+
+    /** Exact next action, matching the rejection workbench; viewing an exception is not responsibility for it. */
+    static boolean canActIqcRejection(String event, Map<String, Object> task, Set<String> permissions) {
+        if (!permissions.containsAll(Set.of(NOTICE_READ_AUTHORITY, IQC_REJECTION_VIEW_AUTHORITY))) return false;
+        String status = str(task.get("status"));
+        if (EVENT_PROCUREMENT_IQC_REJECTION_OPENED.equals(event)) {
+            return Set.of("PENDING_RETURN", "FINANCE_EXCEPTION").contains(status)
+                    && task.get("return_recorded_at") == null
+                    && "RESOLVED".equals(task.get("inspection_status"))
+                    && permissions.contains(IQC_REJECTION_RECORD_RETURN_AUTHORITY);
+        }
+        boolean credit = permissions.containsAll(Set.of(IQC_REJECTION_CONFIRM_CREDIT_AUTHORITY,
+                "procurement_iqc_rejection:amount:view"));
+        if ("FINANCE_EXCEPTION".equals(status)) return credit;
+        if (!"RETURN_RECORDED".equals(status)) return false;
+        Object original = task.get("failed_amount_original");
+        return (credit && (original == null || bd(original).signum() > 0))
+                || (permissions.contains(IQC_REJECTION_CLOSE_NO_CREDIT_AUTHORITY)
+                    && original != null && bd(original).signum() == 0
+                    && task.get("failed_amount_local") != null && bd(task.get("failed_amount_local")).signum() == 0);
     }
 
     private static String displayNo(String orderNo, String receiptNo) {
@@ -5925,7 +5978,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             case SUBCONTRACT_APPLICATION_VIEW_AUTHORITY -> SUBCONTRACT_ORDER_DECOMPOSE_AUTHORITY;
             default -> throw new IllegalArgumentException("Unsupported supply request authority: " + requiredViewAuthority);
         };
-        for (UUID userId : actionUserIdsWithAuthorities(NOTICE_READ_AUTHORITY, requiredViewAuthority, action)) {
+        String resource = action.substring(0, action.indexOf(':'));
+        for (UUID userId : actionUserIdsWithAuthorities(NOTICE_READ_AUTHORITY, requiredViewAuthority,
+                resource + ":create", action)) {
             sendToUser(userId, type, title, content, actionRoute);
         }
     }
@@ -6053,6 +6108,18 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         if (effectiveSourceEvent == null || effectiveSourceEvent.isBlank()) {
             effectiveSourceEvent = OUTBOX_EVENT.get();
         }
+        if (aggregateId == null && !TYPE_WORKFLOW.equals(type) && BusinessNoticeActionCatalog.contains(effectiveSourceEvent) && actionRoute != null) {
+            var anchor = java.util.regex.Pattern.compile("/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?:[?]|$)").matcher(actionRoute);
+            if (anchor.find()) aggregateId = UUID.fromString(anchor.group(1));
+        }
+        if (aggregateId != null && !TYPE_WORKFLOW.equals(type)
+                && (ReviewNoticeCatalog.isReviewEvent(effectiveSourceEvent) || BusinessNoticeActionCatalog.contains(effectiveSourceEvent))
+                && reviewAudience != null && !reviewAudience.eligibleEventFor(userId, effectiveSourceEvent)) {
+            if (Set.of("SALES_ORDER_FINANCE_REJECTED", "PROCUREMENT_FINANCE_REJECTED").contains(effectiveSourceEvent)) {
+                type=TYPE_WORKFLOW;
+                aggregateId=null;
+            } else return;
+        }
         if (aggregateId == null) {
             // 无聚合：保持历史调用形态（7/8 参重载），既有测试与语义零变化。
             if (explicitPriority == null) {
@@ -6120,7 +6187,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 if (waitsForAnalysisRefresh(waiter, refreshing)) continue;
                 UUID uid = userIdOfEmployee(waiter.employeeId());
                 if (uid != null) {
-                    sendToUser(uid, TYPE_TASK,
+                    sendToUser(uid, TYPE_WORKFLOW,
                             "BOM 已完善：" + goodsLabel,
                             bomReadyContent(goodsLabel, waiter.sourceDocType()),
                             bomWaiterRoute(waiter));
@@ -6186,7 +6253,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             for (UUID employeeId : waiting) {
                 UUID uid = userIdOfEmployee(employeeId);
                 if (uid != null) {
-                    sendToUser(uid, TYPE_TASK, "BOM 已完善：" + goodsLabel, content, route, EVENT_BOM_UPDATED);
+                    sendToUser(uid, TYPE_WORKFLOW, "BOM 已完善：" + goodsLabel, content, route, EVENT_BOM_UPDATED);
                 }
             }
         });
@@ -6256,9 +6323,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     public void notifyRdTaskForwarded(UUID taskId) {
         deliverAtomically(() -> {
             Map<String, Object> t = one("""
-                    SELECT r.source_doc_no, g.code AS goods_code, g.name AS goods_name
+                    SELECT r.source_doc_no, r.assignee_employee_id, g.code AS goods_code, g.name AS goods_name
                     FROM rd_tasks r LEFT JOIN goods g ON g.id = r.goods_id
-                    WHERE r.id = ? AND r.is_deleted = false AND r.status IN ('OPEN','IN_PROGRESS')
+                    WHERE r.id = ? AND r.is_deleted = false AND r.category='BOM' AND r.goods_id IS NOT NULL
+                      AND r.status IN ('OPEN','IN_PROGRESS')
                     """, taskId);
             if (t == null) return;
             String goodsLabel = com.uten.imp.application.port.RdBomGapPort.goodsLabel(
@@ -6266,8 +6334,13 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             String sourceNo = str(t.get("source_doc_no")).strip();
             String content = goodsLabel + " 是委外件，还没有维护直属物料，计划和委外都在等。"
                     + (sourceNo.isEmpty() ? "" : "来源 " + sourceNo);
-            for (UUID uid : actionUserIdsWithAuthorities(NOTICE_READ_AUTHORITY, "rd_task:view", "goods:bom:edit")) {
-                sendToUser(uid, TYPE_TASK, "请完善 BOM：" + goodsLabel, content, "/rd/tasks");
+            Set<UUID> maintainers = new LinkedHashSet<>();
+            for (String action : List.of("goods:bom:create", "goods:bom:edit")) maintainers.addAll(
+                    actionUserIdsWithAuthorities(NOTICE_READ_AUTHORITY, "rd_task:view", "goods:view", action));
+            for (UUID uid : maintainers) {
+                if (t.get("assignee_employee_id") instanceof UUID assignee
+                        && userRepo.findById(uid).map(account -> !assignee.equals(account.getEmployeeId())).orElse(true)) continue;
+                sendToUser(uid, TYPE_TASK, "请完善 BOM：" + goodsLabel, content, "/rd/tasks", EVENT_RD_TASK_FORWARDED, null, taskId);
             }
         });
     }
@@ -6287,7 +6360,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             if (uid == null) return;
             String goodsLabel = com.uten.imp.application.port.RdBomGapPort.goodsLabel(
                     str(t.get("goods_name")), str(t.get("goods_code")));
-            sendToUser(uid, TYPE_TASK,
+            sendToUser(uid, TYPE_WORKFLOW,
                     "研发任务已完成：" + goodsLabel,
                     "任务处理人已标记完成：" + str(t.get("title")) + "。",
                     bomWaiterRoute(new RdTaskService.BomTaskWaiter(reporter,

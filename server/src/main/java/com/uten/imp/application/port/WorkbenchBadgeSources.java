@@ -27,7 +27,16 @@ public interface WorkbenchBadgeSources {
      * @param key    来源键, 汇总里事实数的前缀(如 {@code workshopTask} → {@code workshopTask.preparing})
      * @param reader 按当前主体读一次; 返回 字段名 → 数
      */
-    record Source(String key, Supplier<Map<String, Long>> reader) {
+    record Source(String key, Supplier<Map<String, Long>> reader, boolean businessTask) {
+        public Source(String key, Supplier<Map<String, Long>> reader) {
+            this(key, reader, true);
+        }
+
+        /** Platform health/update obligations retain their administrator policy. */
+        public static Source platform(String key, Supplier<Map<String, Long>> reader) {
+            return new Source(key, reader, false);
+        }
+
         public Source {
             if (key == null || key.isBlank() || key.contains(".")) {
                 throw new IllegalArgumentException("徽章来源键不能为空且不能含点号: " + key);

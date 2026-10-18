@@ -51,7 +51,7 @@ class _DraftApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path.endsWith('/stage-counts')) return {'DRAFT': 2};
+    if (path.endsWith('/stage-counts')) return {'TASK_DRAFT': 2, 'DRAFT': 2};
     if (path.contains('facets') || path.endsWith('/stats')) return {};
     if (path.endsWith('/progress')) {
       return page([

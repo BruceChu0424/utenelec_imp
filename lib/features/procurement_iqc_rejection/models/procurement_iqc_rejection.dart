@@ -245,6 +245,9 @@ class ProcurementIqcRejectionCounts {
     required this.closedNoCredit,
     required this.financeException,
     required this.reversed,
+    this.actionablePendingReturn = 0,
+    this.actionableReturnRecorded = 0,
+    this.actionableFinanceException = 0,
   });
 
   final int total;
@@ -254,8 +257,14 @@ class ProcurementIqcRejectionCounts {
   final int closedNoCredit;
   final int financeException;
   final int reversed;
+  final int actionablePendingReturn;
+  final int actionableReturnRecorded;
+  final int actionableFinanceException;
 
-  int get open => pendingReturn + returnRecorded + financeException;
+  int get open =>
+      actionablePendingReturn +
+      actionableReturnRecorded +
+      actionableFinanceException;
   int get terminal => creditConfirmed + closedNoCredit + reversed;
 
   factory ProcurementIqcRejectionCounts.fromJson(Map<String, dynamic> json) =>
@@ -267,6 +276,11 @@ class ProcurementIqcRejectionCounts {
         closedNoCredit: _integer(json['closedNoCredit']),
         financeException: _integer(json['financeException']),
         reversed: _integer(json['reversed']),
+        actionablePendingReturn: _integer(json['actionablePendingReturn']),
+        actionableReturnRecorded: _integer(json['actionableReturnRecorded']),
+        actionableFinanceException: _integer(
+          json['actionableFinanceException'],
+        ),
       );
 }
 

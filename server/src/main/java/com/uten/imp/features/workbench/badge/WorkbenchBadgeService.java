@@ -1,6 +1,7 @@
 package com.uten.imp.features.workbench.badge;
 
 import com.uten.imp.application.port.WarehouseTaskScopePort;
+import com.uten.imp.application.port.TaskAudiencePort;
 import com.uten.imp.application.port.WorkbenchBadgeReadPort;
 import com.uten.imp.application.port.WorkbenchBadgeSources;
 import com.uten.imp.common.web.ApiException;
@@ -53,6 +54,7 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
     private final List<WorkbenchBadgeSources.Source> sources;
     private final TransactionTemplate readOnlyTransaction;
     private final WarehouseTaskScopePort warehouseScopes;
+    private final TaskAudiencePort taskAudience;
     private final WorkbenchBadgeSourceDiagnostics sourceDiagnostics;
 
     @PersistenceContext
@@ -61,7 +63,8 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
     public WorkbenchBadgeService(
             List<WorkbenchBadgeSources> contributors,
             PlatformTransactionManager transactionManager,
-            WarehouseTaskScopePort warehouseScopes) {
+            WarehouseTaskScopePort warehouseScopes,
+            TaskAudiencePort taskAudience) {
         List<WorkbenchBadgeSources.Source> all = new ArrayList<>();
         Set<String> keys = new HashSet<>();
         for (WorkbenchBadgeSources contributor : contributors) {
@@ -91,6 +94,7 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
         template.setName("workbench-badges");
         this.readOnlyTransaction = template;
         this.warehouseScopes = warehouseScopes;
+        this.taskAudience = taskAudience;
     }
 
     /** 当前主体的徽章汇总(全部来源、全部入口)。 */
@@ -144,11 +148,16 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
         Map<String, Long> facts = new TreeMap<>();
         Set<String> granted = new HashSet<>();
         Set<String> failed = new HashSet<>();
+        // One actual-grant snapshot for every business source, including its method
+        // security and ordinary owner/warehouse/workshop responsibility policies.
+        taskAudience.read(() -> {
+            for (WorkbenchBadgeSources.Source source : toRead) {
+                if (source.businessTask()) readFacts(source, facts, granted, failed);
+            }
+            return null;
+        });
         for (WorkbenchBadgeSources.Source source : toRead) {
-            Map<String, Long> values = readIsolated(source, failed);
-            if (values == null) continue;
-            granted.add(source.key());
-            values.forEach((field, value) -> facts.put(source.key() + "." + field, value));
+            if (!source.businessTask()) readFacts(source, facts, granted, failed);
         }
 
         Map<String, WorkbenchBadgeSummary.Counts> entries = new LinkedHashMap<>();
@@ -178,6 +187,14 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
         return new WorkbenchBadgeSummary(
                 Instant.now(), entries, modules, total, facts, List.copyOf(stale),
                 failed.stream().sorted().toList());
+    }
+
+    private void readFacts(WorkbenchBadgeSources.Source source, Map<String, Long> facts,
+                           Set<String> granted, Set<String> failed) {
+        Map<String, Long> values = readIsolated(source, failed);
+        if (values == null) return;
+        granted.add(source.key());
+        values.forEach((field, value) -> facts.put(source.key() + "." + field, value));
     }
 
     /**

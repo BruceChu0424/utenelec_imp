@@ -93,12 +93,25 @@ final effectiveDocumentStatusCountsProvider = Provider.autoDispose
       final local = ref.watch(
         formDraftCategoryCountProvider(formDraftScopeForDocumentStatus(scope)),
       );
-      if (local == 0) return server;
+      if (!server.hasValue && local == 0) return server;
       final counts = server.valueOrNull;
       return AsyncData({
         ...?counts,
-        DocumentStatusBucket.draft:
-            (counts?[DocumentStatusBucket.draft] ?? 0) + local,
+        for (final bucket in const [
+          DocumentStatusBucket.draft,
+          DocumentStatusBucket.financeRejected,
+          DocumentStatusBucket.pendingGlConfirmation,
+        ])
+          if (counts?.containsKey(bucket) ?? false)
+            bucket: counts?['ACTIONABLE_$bucket'] ?? 0,
+        for (final bucket in const [
+          DocumentStatusBucket.pendingFinance,
+          'FINANCE_APPROVED',
+          DocumentStatusBucket.executing,
+        ])
+          if (counts?.containsKey(bucket) ?? false)
+            bucket: counts?['RESPONSIBLE_$bucket'] ?? 0,
+        DocumentStatusBucket.draft: (counts?['ACTIONABLE_DRAFT'] ?? 0) + local,
       });
     });
 
@@ -108,8 +121,13 @@ final effectiveDocumentStatusCountsProvider = Provider.autoDispose
 final documentStatusCountsProvider = FutureProvider.autoDispose
     .family<Map<String, int>, DocumentStatusScope>((ref, scope) async {
       final permissions = ref.watch(currentPermissionsProvider);
+      final viewPermission =
+          scope.kind == DraftDocKind.salesShipment &&
+              scope.shipmentKind == 'DIRECT_CUSTOMER'
+          ? Perm.salesOtherShipmentView
+          : scope.kind.viewPerm;
       if (!ref.watch(isSuperAdminProvider) &&
-          !permissions.contains(scope.kind.viewPerm)) {
+          !permissions.contains(viewPermission)) {
         return const {};
       }
       final json = await ref

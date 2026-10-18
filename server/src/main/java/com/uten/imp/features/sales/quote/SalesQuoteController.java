@@ -74,6 +74,7 @@ public class SalesQuoteController {
     /** 工作台徽章「报价已核价待转订货」(本人负责范围)。 */
     @GetMapping("/counts")
     @PreAuthorize("hasAuthority('sales_quote:view')")
+    @com.uten.imp.security.BusinessTaskRead
     public SalesQuoteService.QuoteCounts counts() {
         return service.counts();
     }

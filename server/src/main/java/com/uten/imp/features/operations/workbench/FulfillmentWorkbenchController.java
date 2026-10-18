@@ -1,6 +1,7 @@
 package com.uten.imp.features.operations.workbench;
 
 import com.uten.imp.application.port.WarehouseTaskScopePort;
+import com.uten.imp.security.BusinessTaskRead;
 import java.time.LocalDate;
 import java.util.UUID;
 import java.util.Map;
@@ -48,13 +49,20 @@ public class FulfillmentWorkbenchController {
 
     /** 生产待领待办数(徽章来源 productionDraw): 与列表同一仓库范围(ADR-149, 发料仓)。 */
     @GetMapping("/warehouse/count")
+    @BusinessTaskRead
     @PreAuthorize("hasAuthority('stock_doc:view')")
     public Map<String, Long> warehouseCount(@RequestParam(required = false) UUID scopeWarehouseId) {
-        return counts("WAREHOUSE", warehouseScopes.current(scopeWarehouseId));
+        var stages = queryService.warehouseStatusBreakdown(warehouseScopes.current(scopeWarehouseId));
+        long pending = stages.getOrDefault("OPEN_ANY", 0L);
+        return Map.of("count", pending, "pending", pending, "inProgress", 0L,
+                "READY_TO_PICK", stages.getOrDefault("READY_TO_PICK", 0L),
+                "PARTIAL", stages.getOrDefault("PARTIAL", 0L),
+                "MATERIALS_TO_DEFINE", stages.getOrDefault("MATERIALS_TO_DEFINE", 0L));
     }
 
     /** 领料任务分状态计数（任务中心子分类徽章；待完成=READY+PARTIAL）。 */
     @GetMapping("/warehouse/status-breakdown")
+    @BusinessTaskRead
     @PreAuthorize("hasAuthority('stock_doc:view')")
     public Map<String, Long> warehouseStatusBreakdown(
             @RequestParam(required = false) UUID scopeWarehouseId) {
@@ -83,6 +91,7 @@ public class FulfillmentWorkbenchController {
     }
 
     @GetMapping("/purchase/count")
+    @BusinessTaskRead
     @PreAuthorize("hasAnyAuthority('purchase_request:view','purchase_order:view','purchase_receipt:view','purchase_return:view')")
     public Map<String, Long> purchaseCount() {
         return counts("PURCHASE", WarehouseTaskScopePort.WarehouseTaskScope.ALL);
@@ -110,6 +119,7 @@ public class FulfillmentWorkbenchController {
     }
 
     @GetMapping("/subcontract/count")
+    @BusinessTaskRead
     @PreAuthorize("hasAnyAuthority('subcontract_application:view','subcontract_order:view')")
     public Map<String, Long> subcontractCount() {
         return counts("SUBCONTRACT", WarehouseTaskScopePort.WarehouseTaskScope.ALL);
@@ -123,10 +133,13 @@ public class FulfillmentWorkbenchController {
      * 两个键同值，不是两个口径。
      */
     private Map<String, Long> counts(String department, WarehouseTaskScopePort.WarehouseTaskScope warehouseScope) {
-        long pending = queryService.countPending(department, warehouseScope);
+        var pending = queryService.pendingTaskCounts(department, warehouseScope);
         return Map.of(
-                "count", pending,
-                "pending", pending,
+                "count", pending.pending(),
+                "pending", pending.pending(),
+                "waitingOrder", pending.waitingOrder(),
+                "rework", pending.rework(),
+                "shortDelivery", pending.shortDelivery(),
                 "inProgress", queryService.countInProgress(department));
     }
 }

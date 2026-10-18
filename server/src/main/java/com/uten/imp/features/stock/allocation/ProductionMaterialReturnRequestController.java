@@ -37,7 +37,8 @@ public class ProductionMaterialReturnRequestController {
     }
     /** 车间退料待仓库实收数(徽章来源 productionReturn): 与库存单据列表同一仓库范围(ADR-149, 调入仓)。 */
     @GetMapping("/return-requests/warehouse/count")
-    @PreAuthorize("hasAuthority('stock_doc:view')")
+    @com.uten.imp.security.BusinessTaskRead
+    @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:approve')")
     public Map<String, Long> count(@RequestParam(required = false) UUID scopeWarehouseId) {
         return Map.of("count", service.warehousePendingCount(warehouseScopes.current(scopeWarehouseId)));
     }

@@ -485,6 +485,37 @@ public class WarehouseQualityResultService {
         return counts;
     }
 
+    /** Personal work has a separate projection from the ordinary browsable distribution. */
+    @com.uten.imp.security.BusinessTaskRead
+    @Transactional(readOnly = true)
+    public Map<String, Long> taskStatusCounts(String receiptType, String keyword, UUID selectedWarehouseId) {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        for (String status : STATUSES) counts.put(status, 0L);
+        boolean canStockIn = hasWarehouseWriteAuthority(ProcurementIqcStockInPermissions.VIEW,
+                ProcurementIqcStockInPermissions.CONFIRM);
+        boolean canReturn = hasWarehouseWriteAuthority(WarehouseQualityResultPermissions.RETURN_VIEW,
+                WarehouseQualityResultPermissions.RECORD_RETURN);
+        if (!canStockIn && !canReturn) return counts;
+        WarehouseTaskScope warehouseScope = warehouseScopes.current(selectedWarehouseId);
+        String taskStatus = STATUS_CASE
+                .replace("pending_release.pending_slice_count", "CASE WHEN :taskCanStockIn THEN pending_release.pending_slice_count ELSE 0 END")
+                .replace("pending_return.pending_return_count", "CASE WHEN :taskCanReturn THEN pending_return.pending_return_count ELSE 0 END");
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = (List<Object[]>) aggregateQuery(normalizeFilterType(receiptType), normalizeSearch(keyword), "",
+                warehouseScope, """
+                    SELECT (%s) AS work_status, COUNT(*)
+                    %s%s%s
+                    GROUP BY work_status
+                    """.formatted(taskStatus, AGGREGATE_FROM, KEYWORD_WHERE, scopeFilter(warehouseScope)))
+                .setParameter("taskCanStockIn", canStockIn)
+                .setParameter("taskCanReturn", canReturn)
+                .getResultList();
+        for (Object[] row : rows) {
+            if (!COMPLETED.equals(str(row[0]))) counts.put(str(row[0]), number(row[1]).longValue());
+        }
+        return counts;
+    }
+
     /**
      * 来源类型(大类)分段的两枚计数。
      * actionable = 轮到仓库动手(全部合格待入库 + 部分合格 + 全部不合格需退回);
@@ -508,6 +539,14 @@ public class WarehouseQualityResultService {
     @PreAuthorize("hasAuthority('" + WarehouseQualityResultPermissions.STOCK_IN_VIEW + "')"
             + " or hasAuthority('" + WarehouseQualityResultPermissions.RETURN_VIEW + "')")
     public TypeCounts typeCounts(WarehouseTaskScope warehouseScope) {
+        boolean canStockIn = hasWarehouseWriteAuthority(ProcurementIqcStockInPermissions.VIEW,
+                ProcurementIqcStockInPermissions.CONFIRM);
+        boolean canReturn = hasWarehouseWriteAuthority(WarehouseQualityResultPermissions.RETURN_VIEW,
+                WarehouseQualityResultPermissions.RECORD_RETURN);
+        if (!canStockIn && !canReturn) {
+            return new TypeCounts(Map.of(PURCHASE, 0L, SUBCONTRACT, 0L),
+                    Map.of(PURCHASE, 0L, SUBCONTRACT, 0L));
+        }
         @SuppressWarnings("unchecked")
         List<Object[]> rows = (List<Object[]>) aggregateQuery("ALL", "", "", warehouseScope, """
                 , badge_inspection AS (
@@ -515,8 +554,8 @@ public class WarehouseQualityResultService {
                            SUM(inspection.passed_line_count) AS passed_line_count,
                            SUM(inspection.failed_line_count) AS failed_line_count,
                            SUM(inspection.open_item_count) AS open_item_count,
-                           SUM(COALESCE(pending_release.pending_slice_count,0)) AS pending_slice_count,
-                           SUM(COALESCE(pending_return.pending_return_count,0)) AS pending_return_count
+                           SUM(CASE WHEN :taskCanStockIn THEN COALESCE(pending_release.pending_slice_count,0) ELSE 0 END) AS pending_slice_count,
+                           SUM(CASE WHEN :taskCanReturn THEN COALESCE(pending_return.pending_return_count,0) ELSE 0 END) AS pending_return_count
                     %s%s%s
                     GROUP BY scope.receipt_type,scope.receipt_id
                 )
@@ -524,6 +563,8 @@ public class WarehouseQualityResultService {
                 FROM badge_inspection inspection
                 GROUP BY inspection.receipt_type, (%s)
                 """.formatted(AGGREGATE_FROM,KEYWORD_WHERE,scopeFilter(warehouseScope),BADGE_STATUS_CASE,BADGE_STATUS_CASE))
+                .setParameter("taskCanStockIn", canStockIn)
+                .setParameter("taskCanReturn", canReturn)
                 .getResultList();
         Map<String, Long> actionable = new LinkedHashMap<>();
         Map<String, Long> inProgress = new LinkedHashMap<>();

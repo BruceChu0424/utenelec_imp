@@ -88,6 +88,23 @@ class WarehouseDataScopeResolutionTest {
     }
 
     @Test
+    void administrativeBrowseAndPersonalTaskScopeNeverShareACachedWarehouseExpansion() {
+        database.set(supervisor());
+        service.withScopeCache(() -> {
+            assertThat(service.access().role()).isEqualTo(Role.SUPERVISOR);
+            database.set(keeper(warehouse));
+            try (var ignored = com.uten.imp.security.BusinessTaskContext.open()) {
+                assertThat(service.access().role()).isEqualTo(Role.KEEPER);
+                assertThat(service.current(null).warehouseIds()).containsExactly(warehouse);
+            }
+            assertThat(service.access().role()).isEqualTo(Role.SUPERVISOR);
+            return null;
+        });
+        verify(jdbc, times(2)).sql(contains(ACCESS_SQL));
+        assertThat(com.uten.imp.security.BusinessTaskContext.active()).isFalse();
+    }
+
+    @Test
     void aSummaryWindowResolvesEachDistinctScopeOnceAndClosesAfterwards() {
         database.set(member());
         service.withScopeCache(() -> {

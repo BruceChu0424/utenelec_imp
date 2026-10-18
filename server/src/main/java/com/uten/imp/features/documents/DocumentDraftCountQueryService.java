@@ -29,7 +29,7 @@ import java.util.UUID;
  *
  * <p>两条额外规则：
  * <ul>
- *   <li><b>权限自卫</b>：没有该类型 {@code *:view} 权限（且非超管）时直接返回 0，不发 SQL。</li>
+ *   <li><b>权限自卫</b>：没有该类型查看及草稿办理权限时直接返回 0，不发 SQL。</li>
  *   <li><b>销售订货单去重</b>：额外要求 {@code finance_rejected = false}。财务驳回单同样是
  *       {@code status = 0}，但已计入销售关注徽章的 REJECTED 桶，若此处再数一次就会双计。
  *       故草稿计数的语义是「待自审的新建/修订草稿」，驳回件继续走驳回徽章。</li>
@@ -279,9 +279,10 @@ public class DocumentDraftCountQueryService {
      *   <li>21 条 count 合并成<b>一条</b> {@code SELECT (子查询), (子查询), ...}；
      *       每个子查询仍是走 {@code (status, is_deleted, 归属列)} 索引的廉价聚合。</li>
      * </ul>
-     * 权限自卫不变：没有该类型 {@code *:view} 的，位置上直接写字面量 0，不进 SQL。
+     * 无查看及草稿办理权限的类型直接写 0；手工只读数据范围不计入草稿待办。
      */
     @Transactional(readOnly = true)
+    @com.uten.imp.security.BusinessTaskRead
     public DraftCountsResponse counts() {
         AuthUser user = currentUser.get().orElse(null);
         long[] values = new long[SOURCES.size()];
@@ -292,7 +293,7 @@ public class DocumentDraftCountQueryService {
         com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope stockScope = null;
 
         for (DraftSource source : SOURCES) {
-            if (!canView(user, source.viewAuthority())) {
+            if (!canResume(user, source)) {
                 projections.add("0");
                 continue;
             }
@@ -300,12 +301,13 @@ public class DocumentDraftCountQueryService {
                 DocumentAccessPolicy policy = new DraftScopeAccessPolicy(
                         scopeName, source.viewAllAuthority(), ownerVisibility, currentUser);
                 return new ScopeBinding(
-                        policy, OWNER_PARAM + "_" + byScope.size(), policy.scope());
+                        policy, OWNER_PARAM + "_" + byScope.size(), writableScope(policy));
             });
             DocumentAccessPolicy.NativeReadScope readScope = binding.policy()
                     .nativeReadScope(
                             source.ownerColumn(), binding.parameterName(), binding.ownerScope());
-            String predicate = readScope.predicate();
+            String predicate = source.ownerColumn() + " IS NOT NULL AND " + readScope.predicate()
+                    + " AND " + actionPredicate(user, source);
             if (WAREHOUSE_SCOPED.contains(source)) {
                 if (stockScope == null) stockScope = warehouseScope(null);
                 if (stockScope.active()) predicate = predicate + " AND " + WAREHOUSE_SCOPE_PREDICATE;
@@ -353,6 +355,35 @@ public class DocumentDraftCountQueryService {
             DocumentAccessPolicy policy,
             String parameterName,
             OwnerVisibility.OwnerScope ownerScope) {}
+
+    /** Browsing a draft does not make it the viewer's unfinished work. */
+    static boolean canResume(AuthUser user, DraftSource source) {
+        return !"1=0".equals(actionPredicate(user, source));
+    }
+
+    static String actionPredicate(AuthUser user, DraftSource source) {
+        if (source == SALES_SHIPMENT) {
+            boolean orders = canAct(user, "sales_shipment");
+            boolean other = canAct(user, "sales_other_shipment");
+            if (orders && other) return "1=1";
+            if (orders) return "o.shipment_kind <> 'DIRECT_CUSTOMER'";
+            if (other) return "o.shipment_kind = 'DIRECT_CUSTOMER'";
+            return "1=0";
+        }
+        String family = source.viewAuthority().substring(0, source.viewAuthority().lastIndexOf(':'));
+        return canAct(user, family) ? "1=1" : "1=0";
+    }
+
+    static boolean canAct(AuthUser user, String family) {
+        return canView(user, family + ":view")
+                && (canView(user, family + ":edit") || canView(user, family + ":approve")
+                    || canView(user, family + ":submit_finance"));
+    }
+
+    static OwnerVisibility.OwnerScope writableScope(DocumentAccessPolicy policy) {
+        var scope = policy.scope();
+        return new OwnerVisibility.OwnerScope(scope.seeAll(), scope.writableOwners());
+    }
 
     static boolean canView(AuthUser user, String authority) {
         if (user == null) {

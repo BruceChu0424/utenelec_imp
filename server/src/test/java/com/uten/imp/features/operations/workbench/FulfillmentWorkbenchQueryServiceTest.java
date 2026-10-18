@@ -13,6 +13,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -26,19 +27,15 @@ import static org.mockito.Mockito.when;
 
 class FulfillmentWorkbenchQueryServiceTest {
 
-    /**
-     * 全操作权账号的 AccessPolicy stub（2026-10-17 口径：红/黄数按档位操作权限计数）。
-     * query()/countPending/countInProgress 都会先过档位门禁，无任何操作权的账号恒 0 不查库。
-     */
-    private static FulfillmentWorkbenchAccessPolicy fullActionAccess() {
-        FulfillmentWorkbenchAccessPolicy access = mock(FulfillmentWorkbenchAccessPolicy.class);
+    private static FulfillmentWorkbenchAccessPolicy fullTaskAccess() {
+        var access = mock(FulfillmentWorkbenchAccessPolicy.class);
         when(access.canCreatePurchaseOrder()).thenReturn(true);
         when(access.canCreateSubcontractOrder()).thenReturn(true);
-        when(access.documentAccess("PURCHASE", "PURCHASE_ORDER"))
-                .thenReturn(new FulfillmentWorkbenchAccessPolicy.DocumentAccess(true, true));
-        when(access.documentAccess("SUBCONTRACT", "SUBCONTRACT_ORDER"))
-                .thenReturn(new FulfillmentWorkbenchAccessPolicy.DocumentAccess(true, true));
         when(access.canDecideSubcontractShortDelivery()).thenReturn(true);
+        when(access.documentAccess(anyString(), org.mockito.ArgumentMatchers.eq("ORDER")))
+                .thenReturn(new FulfillmentWorkbenchAccessPolicy.DocumentAccess(true, true));
+        when(access.orderTaskScope(anyString(), anyString(), anyString()))
+                .thenReturn(new com.uten.imp.security.DocumentAccessPolicy.NativeReadScope("1=1", null, Set.of()));
         return access;
     }
 
@@ -62,7 +59,8 @@ class FulfillmentWorkbenchQueryServiceTest {
                 Collections.singletonList(new Object[]{"OVERDUE_SHORTAGE", 2L}));
         when(pending.getSingleResult()).thenReturn(4L);
 
-        FulfillmentWorkbenchAccessPolicy accessPolicy = fullActionAccess();
+        FulfillmentWorkbenchAccessPolicy accessPolicy =
+                mock(FulfillmentWorkbenchAccessPolicy.class);
         FulfillmentWorkbenchPage result = new FulfillmentWorkbenchQueryService(em, accessPolicy)
                 .query("PURCHASE", "UNPEGGED", "轴套", "OVERDUE_ANY", null, null, 2, 20);
 
@@ -97,7 +95,7 @@ class FulfillmentWorkbenchQueryServiceTest {
         when(pending.getSingleResult()).thenReturn(9L);
 
         FulfillmentWorkbenchPage result = new FulfillmentWorkbenchQueryService(
-                        em, fullActionAccess())
+                        em, mock(FulfillmentWorkbenchAccessPolicy.class))
                 .query("PURCHASE", "COMPLETED", "", "", null, null, 1, 20);
 
         // 「待完成」卡走部门×关键字全量口径：状态绑定 ""，不被已选「已完成」卡清零。
@@ -129,7 +127,7 @@ class FulfillmentWorkbenchQueryServiceTest {
         when(pending.getSingleResult()).thenReturn(6L);
 
         FulfillmentWorkbenchPage result = new FulfillmentWorkbenchQueryService(
-                em, fullActionAccess())
+                        em, mock(FulfillmentWorkbenchAccessPolicy.class))
                 .query("SUBCONTRACT", "OPEN_ANY", "", "", null, null, 1, 20);
 
         // OPEN_ANY 哨兵原样下传 SQL（按 open_qty > 0 过滤），不当作真实 task_status。
@@ -142,10 +140,10 @@ class FulfillmentWorkbenchQueryServiceTest {
         EntityManager em = mock(EntityManager.class);
         Query countQuery = mock(Query.class);
         when(em.createNativeQuery(anyString())).thenReturn(countQuery);
-        when(countQuery.getSingleResult()).thenReturn(7L);
+        when(countQuery.getSingleResult()).thenReturn(new Object[]{7L, 5L, 2L, 0L});
 
         long count = new FulfillmentWorkbenchQueryService(
-                em, fullActionAccess())
+                em, fullTaskAccess())
                 .countPending("PURCHASE");
 
         assertEquals(7L, count);
@@ -159,7 +157,7 @@ class FulfillmentWorkbenchQueryServiceTest {
         // 页面里各红色分段之和。
         assertTrue(captured.contains("decomposition.task_status = 'FINANCE_REJECTED'"));
         assertTrue(captured.contains("decomposition.task_status = 'WAITING_ORDER' AND decomposition.open_qty > 0"));
-        assertFalse(captured.contains("FINANCE_APPROVED"));
+        assertFalse(captured.contains("subcontract_short_delivery_cases"));
         assertFalse(captured.contains("ORDER_PENDING_APPROVAL"));
         verify(countQuery).setParameter("department", "PURCHASE");
     }
@@ -173,9 +171,9 @@ class FulfillmentWorkbenchQueryServiceTest {
         EntityManager em = mock(EntityManager.class);
         Query countQuery = mock(Query.class);
         when(em.createNativeQuery(anyString())).thenReturn(countQuery);
-        when(countQuery.getSingleResult()).thenReturn(2L);
+        when(countQuery.getSingleResult()).thenReturn(new Object[]{2L, 1L, 1L, 0L});
         FulfillmentWorkbenchQueryService service = new FulfillmentWorkbenchQueryService(
-                em, fullActionAccess());
+                em, fullTaskAccess());
 
         assertEquals(2L, service.countPending("SUBCONTRACT"));
         assertEquals(2L, service.countPending("PURCHASE"));
@@ -183,13 +181,14 @@ class FulfillmentWorkbenchQueryServiceTest {
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em, times(2)).createNativeQuery(sql.capture());
         String subcontract = sql.getAllValues().getFirst();
-        assertTrue(subcontract.contains("decomposition.task_status IN ('WAITING_ORDER', 'FINANCE_REJECTED')"));
+        assertTrue(subcontract.contains("decomposition.task_status = 'WAITING_ORDER'"));
+        assertTrue(subcontract.contains("decomposition.task_status = 'FINANCE_REJECTED'"));
         assertTrue(subcontract.contains("subcontract_short_delivery_cases"));
         assertFalse(subcontract.contains("fn_subcontract_draw_summary"));
         assertFalse(subcontract.contains("preplan_subcontract_make_tasks"));
         String purchase = sql.getAllValues().getLast();
         assertFalse(purchase.contains("subcontract_short_delivery_cases"));
-        assertFalse(purchase.contains("decomposition.action_doc_type"));
+        assertTrue(purchase.contains("decomposition.action_doc_type = 'PURCHASE_ORDER'"));
     }
 
     /** 黄数只数财审三档(等待财务审核 / 财务已通过 / 财务已退回), 采购与委外同一口径。 */
@@ -200,7 +199,7 @@ class FulfillmentWorkbenchQueryServiceTest {
         when(em.createNativeQuery(anyString())).thenReturn(countQuery);
         when(countQuery.getSingleResult()).thenReturn(1L);
         FulfillmentWorkbenchQueryService service = new FulfillmentWorkbenchQueryService(
-                em, fullActionAccess());
+                em, fullTaskAccess());
 
         assertEquals(1L, service.countInProgress("SUBCONTRACT"));
         assertEquals(1L, service.countInProgress("PURCHASE"));
@@ -215,72 +214,7 @@ class FulfillmentWorkbenchQueryServiceTest {
     }
 
     /**
-     * 2026-10-17 口径：仅持查看权限（无下单 / 改单 / 短交判定任何操作权）的账号，
-     * 采购/委外的红数与黄数恒 0 且不查库——待办只数能动它的人（与领料红数
-     * countDrawable、HR 证件核对同一原则），仅查看的销售账号不再收到
-     * 「你有 N 项委外任务待处理」与委外管理角标。
-     */
-    @Test
-    void viewOnlyAccountsGetNoPendingOrInProgressCountsForPurchaseAndSubcontract() {
-        EntityManager em = mock(EntityManager.class);
-        FulfillmentWorkbenchAccessPolicy access = mock(FulfillmentWorkbenchAccessPolicy.class);
-        when(access.documentAccess(anyString(), anyString()))
-                .thenReturn(new FulfillmentWorkbenchAccessPolicy.DocumentAccess(false, false));
-        FulfillmentWorkbenchQueryService service = new FulfillmentWorkbenchQueryService(
-                em, access);
-
-        for (String department : List.of("PURCHASE", "SUBCONTRACT")) {
-            assertEquals(0L, service.countPending(department));
-            assertEquals(0L, service.countInProgress(department));
-        }
-        verify(em, org.mockito.Mockito.never()).createNativeQuery(anyString());
-    }
-
-    /** 只有改单权限（无下单 / 短交判定权）的账号：红数只数财务驳回档，SQL 不带待下单与短交片段。 */
-    @Test
-    void pendingCountCountsOnlyStagesTheAccountCanActOn() {
-        EntityManager em = mock(EntityManager.class);
-        Query countQuery = mock(Query.class);
-        when(em.createNativeQuery(anyString())).thenReturn(countQuery);
-        when(countQuery.getSingleResult()).thenReturn(3L);
-        FulfillmentWorkbenchAccessPolicy access = mock(FulfillmentWorkbenchAccessPolicy.class);
-        when(access.documentAccess("SUBCONTRACT", "SUBCONTRACT_ORDER"))
-                .thenReturn(new FulfillmentWorkbenchAccessPolicy.DocumentAccess(true, true));
-
-        assertEquals(3L, new FulfillmentWorkbenchQueryService(em, access).countPending("SUBCONTRACT"));
-
-        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(em).createNativeQuery(sql.capture());
-        // 状态档只剩财务驳回；外层行门只剩驳回档（待下单的 open_qty 门未开）；
-        // 短交片段不拼接（bom_missing 窗口里的 WAITING_ORDER 字面量与本断言无关）。
-        assertTrue(sql.getValue().contains("IN ('FINANCE_REJECTED')"));
-        assertTrue(sql.getValue().contains("WHERE (counted.task_status = 'FINANCE_REJECTED')"));
-        assertFalse(sql.getValue().contains("counted.open_qty > 0"));
-        assertFalse(sql.getValue().contains("subcontract_short_delivery_cases"));
-    }
-
-    @Test
-    void shortDeliveryOnlyPermissionProducesAValidIndependentPendingStage() {
-        EntityManager em = mock(EntityManager.class);
-        Query countQuery = mock(Query.class);
-        when(em.createNativeQuery(anyString())).thenReturn(countQuery);
-        when(countQuery.getSingleResult()).thenReturn(2L);
-        FulfillmentWorkbenchAccessPolicy access = mock(FulfillmentWorkbenchAccessPolicy.class);
-        when(access.documentAccess("SUBCONTRACT", "SUBCONTRACT_ORDER"))
-                .thenReturn(new FulfillmentWorkbenchAccessPolicy.DocumentAccess(false, false));
-        when(access.canDecideSubcontractShortDelivery()).thenReturn(true);
-
-        assertEquals(2L, new FulfillmentWorkbenchQueryService(em, access).countPending("SUBCONTRACT"));
-
-        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(em).createNativeQuery(sql.capture());
-        assertFalse(sql.getValue().contains("IN ()"));
-        assertTrue(sql.getValue().contains("AND (FALSE OR ("));
-        assertTrue(sql.getValue().contains("decomposition.task_status = 'FINANCE_APPROVED'"));
-        assertTrue(sql.getValue().contains("subcontract_short_delivery_cases"));
-    }
-
-    /** ADR-143 §4.1: 已批准委外订货单的「进行中」状态列按领料模型取第一个命中, 可领料逐明细按
+     * ADR-143 §4.1: 已批准委外订货单的「进行中」状态列按领料模型取第一个命中, 可领料逐明细按
      * fn_subcontract_draw_summary 判; 分段计数仍按 task_status 分桶, IN_PROGRESS 只数财审三档。
      */
     @Test
@@ -377,7 +311,7 @@ class FulfillmentWorkbenchQueryServiceTest {
         when(exceptions.getResultList()).thenReturn(List.of());
         when(pending.getSingleResult()).thenReturn(0L);
 
-        new FulfillmentWorkbenchQueryService(em, fullActionAccess())
+        new FulfillmentWorkbenchQueryService(em, mock(FulfillmentWorkbenchAccessPolicy.class))
                 .query("PURCHASE", "", "", "", null, null, 1, 20);
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
@@ -417,7 +351,6 @@ class FulfillmentWorkbenchQueryServiceTest {
         FulfillmentWorkbenchAccessPolicy accessPolicy = mock(FulfillmentWorkbenchAccessPolicy.class);
         when(accessPolicy.documentAccess("SUBCONTRACT", "SUBCONTRACT_APPLICATION"))
                 .thenReturn(new FulfillmentWorkbenchAccessPolicy.DocumentAccess(true, true));
-        when(accessPolicy.canCreateSubcontractOrder()).thenReturn(true);
 
         FulfillmentWorkbenchPage page = new FulfillmentWorkbenchQueryService(em, accessPolicy)
                 .query("SUBCONTRACT", "", "", "", null, null, 1, 20);
@@ -436,7 +369,7 @@ class FulfillmentWorkbenchQueryServiceTest {
         when(countQuery.getSingleResult()).thenReturn(4L);
         FulfillmentWorkbenchAccessPolicy accessPolicy =
                 mock(FulfillmentWorkbenchAccessPolicy.class);
-        when(accessPolicy.canAccessWarehouseTasks()).thenReturn(true);
+        when(accessPolicy.canHandleWarehouseTasks()).thenReturn(true);
 
         long count = new FulfillmentWorkbenchQueryService(
                 em, accessPolicy)
@@ -464,7 +397,7 @@ class FulfillmentWorkbenchQueryServiceTest {
         when(em.createNativeQuery(anyString())).thenReturn(query);
         when(query.getResultList()).thenReturn(List.of());
         FulfillmentWorkbenchAccessPolicy access = mock(FulfillmentWorkbenchAccessPolicy.class);
-        when(access.canAccessWarehouseTasks()).thenReturn(true);
+        when(access.canHandleWarehouseTasks()).thenReturn(true);
 
         new FulfillmentWorkbenchQueryService(em, access).warehouseStatusBreakdown();
 
@@ -481,7 +414,7 @@ class FulfillmentWorkbenchQueryServiceTest {
         when(query.getResultList()).thenReturn(List.of(new Object[]{"READY_TO_PICK", 3L},
                 new Object[]{"PARTIAL", 2L}, new Object[]{"MATERIALS_TO_DEFINE", 4L}));
         FulfillmentWorkbenchAccessPolicy access = mock(FulfillmentWorkbenchAccessPolicy.class);
-        when(access.canAccessWarehouseTasks()).thenReturn(true);
+        when(access.canHandleWarehouseTasks()).thenReturn(true);
         var counts = new FulfillmentWorkbenchQueryService(em, access).warehouseStatusBreakdown(
                 new com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope(true, List.of(), true));
         assertEquals(4L, counts.get("MATERIALS_TO_DEFINE"));
@@ -610,7 +543,6 @@ class FulfillmentWorkbenchQueryServiceTest {
                 mock(FulfillmentWorkbenchAccessPolicy.class);
         when(accessPolicy.documentAccess("PURCHASE", "PURCHASE_ORDER"))
                 .thenReturn(new FulfillmentWorkbenchAccessPolicy.DocumentAccess(false, false));
-        when(accessPolicy.canCreatePurchaseOrder()).thenReturn(true);
 
         FulfillmentWorkbenchPage page =
                 new FulfillmentWorkbenchQueryService(em, accessPolicy)

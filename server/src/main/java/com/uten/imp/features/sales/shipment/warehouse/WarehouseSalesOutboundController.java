@@ -57,6 +57,8 @@ public class WarehouseSalesOutboundController {
 
     /** 待出库任务计数（出库任务中心/工作台角标：未交接出库的放行单）, 与列表同一仓库范围。 */
     @GetMapping("/count")
+    @com.uten.imp.security.BusinessTaskRead
+    @PreAuthorize("hasAuthority('warehouse_sales_outbound:view') and hasAuthority('warehouse_sales_outbound:execute')")
     public Map<String, Long> pendingCount(@RequestParam(required = false) UUID scopeWarehouseId) {
         return Map.of("count", service.pendingCount(warehouseScopes.current(scopeWarehouseId)));
     }
@@ -76,6 +78,8 @@ public class WarehouseSalesOutboundController {
     /** 仓库作业状态分组计数(出库任务中心「销售出库」小类行: 待出库红徽章 / 已出库中性计数), 键为 warehouse_work_status;
      *  徽章来源 warehouseSalesOutbound, 与列表同一仓库范围(ADR-149)。 */
     @GetMapping("/counts")
+    @com.uten.imp.security.BusinessTaskRead
+    @PreAuthorize("hasAuthority('warehouse_sales_outbound:view') and hasAuthority('warehouse_sales_outbound:execute')")
     public Map<String, Long> counts(@RequestParam(required = false) UUID scopeWarehouseId) {
         return service.counts(warehouseScopes.current(scopeWarehouseId));
     }

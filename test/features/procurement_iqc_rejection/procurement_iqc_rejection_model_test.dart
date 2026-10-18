@@ -3,6 +3,18 @@ import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/procurement_iqc_rejection/models/procurement_iqc_rejection.dart';
 
 void main() {
+  test('read-only IQC totals do not imply an actionable workload', () {
+    final counts = ProcurementIqcRejectionCounts.fromJson({
+      'total': 6,
+      'pendingReturn': 2,
+      'returnRecorded': 3,
+      'financeException': 1,
+    });
+    expect(counts.open, 0);
+    expect(counts.pendingReturn, 2);
+    expect(counts.returnRecorded, 3);
+  });
+
   test('stable list and detail routes preserve source hub', () {
     expect(
       RoutePath.procurementIqcRejections(source: 'warehouse'),
@@ -107,9 +119,12 @@ void main() {
       'closedNoCredit': 1,
       'financeException': 2,
       'reversed': 3,
+      'actionablePendingReturn': 1,
+      'actionableReturnRecorded': 0,
+      'actionableFinanceException': 1,
     });
 
-    expect(counts.open, 7);
+    expect(counts.open, 2);
     expect(counts.terminal, 8);
   });
 

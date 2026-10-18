@@ -478,7 +478,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
     if (counts == null) return null;
     var total = 0;
     for (final stage in _stageGroups[group]!) {
-      if (where(stage)) total += counts[stage] ?? 0;
+      if (where(stage)) total += counts['TASK_$stage'] ?? 0;
     }
     return total;
   }
@@ -588,7 +588,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
                       label: '草稿',
                       count: _stageCounts == null && localDraftCount == 0
                           ? null
-                          : (_stageCounts?[_kDraftStage] ?? 0) +
+                          : (_stageCounts?['TASK_$_kDraftStage'] ?? 0) +
                                 localDraftCount,
                       countForm: UtenSegmentCountForm.actionable,
                     ),

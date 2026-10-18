@@ -187,7 +187,9 @@ class _Api extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == '/documents/status-counts') return {'DRAFT': 1};
+    if (path == '/documents/status-counts') {
+      return {'ACTIONABLE_DRAFT': 1, 'DRAFT': 1};
+    }
     if (path == '/purchase/orders' ||
         path == '/purchase/receipts' ||
         path == '/subcontract/orders') {

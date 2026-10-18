@@ -37,6 +37,7 @@ import 'package:flutter/foundation.dart' show mapEquals, setEquals;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
+import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/auth/session_snapshot_provider.dart';
 import '../../../shared/drafts/form_draft_category.dart';
@@ -161,7 +162,6 @@ class _SubcontractDecompositionPageState
   static const _draftStage = '__DRAFTS__';
   static const _waitingOrderStage = 'WAITING_ORDER';
   static const _inProgressStage = 'IN_PROGRESS';
-  static const _financeRejectedStatus = 'FINANCE_REJECTED';
 
   /// 异常小类；null = 未选择（不附加过滤）。
   String? _exception;
@@ -710,6 +710,7 @@ class _SubcontractDecompositionPageState
   }
 
   void _refreshAll() {
+    refreshBadges(ref);
     _load(page: 1);
     _loadDrawCount();
     if (_pendingSeg) _loadDraw();
@@ -1064,15 +1065,33 @@ class _SubcontractDecompositionPageState
 
   /// 「待处理」红数 = 申请待下单行数 + 可领行数(两类都等本部门动手，与模块入口
   /// 角标同数)；两者都未知才算未知(加载中)。
-  int? _pendingCount(Map<String, int> statusCounts) {
-    final applications = statusCounts[_waitingOrderStage];
+  int? _pendingCount() {
+    final applications = ref.watch(
+      badgeFactOrNullProvider(BadgeFact.subcontractTaskWaitingOrder),
+    );
     final drawable = _drawVisible ? _drawCount : null;
     if (applications == null && drawable == null) return null;
     return (applications ?? 0) + (drawable ?? 0);
   }
 
+  int? _inProgressTaskCount() {
+    final rework = ref.watch(
+      badgeFactOrNullProvider(BadgeFact.subcontractTaskRework),
+    );
+    final shortDelivery = ref.watch(
+      badgeFactOrNullProvider(BadgeFact.subcontractTaskShortDelivery),
+    );
+    if (rework == null && shortDelivery == null) return null;
+    return (rework ?? 0) + (shortDelivery ?? 0);
+  }
+
   Widget _buildStageToolbar(Map<String, int> statusCounts) {
     final seg = _seg;
+    final pendingTasks = _pendingCount();
+    final inProgressTasks = _inProgressTaskCount();
+    final inProgress = ref.watch(
+      badgeFactOrNullProvider(BadgeFact.subcontractTaskInProgress),
+    );
     return UtenFilterToolbar<_DecompositionSeg>(
       segmentsKey: const Key('subcontract-decomposition-stages'),
       segments: [
@@ -1107,20 +1126,26 @@ class _SubcontractDecompositionPageState
         UtenFilterSegment(
           value: const _DecompositionSeg.stage(_waitingOrderStage),
           label: '待处理',
-          count: _pendingCount(statusCounts),
-          countForm: UtenSegmentCountForm.actionable,
+          count: (pendingTasks ?? 0) > 0
+              ? pendingTasks
+              : statusCounts[_waitingOrderStage],
+          countForm: (pendingTasks ?? 0) > 0
+              ? UtenSegmentCountForm.actionable
+              : UtenSegmentCountForm.browsing,
           inProgressCount: _drawVisible ? _submittedCount : null,
         ),
-        // 「进行中」大类挂两枚(准则 §四之七 第 1 条)：黄 = 本类在跑的全量(与列表行数
-        // 相等)，红 = 其中等委外动手的财务已退回单。两枚刻意重叠(退回件本来就在跑)，
-        // 跨色不算双计，别改成相减。回厂短交待判定是案件数、不是任务行数，量纲不同，
-        // 留在异常小类行里单独喊。
+        // 订单红数按单据归组：可修订的财务退回 + 可判定的短交订单。
+        // 黄数仅含当前真实授权且在本人责任范围内的在办订单。
         UtenFilterSegment(
           value: const _DecompositionSeg.stage(_inProgressStage),
           label: '进行中',
-          count: statusCounts[_financeRejectedStatus],
-          countForm: UtenSegmentCountForm.actionable,
-          inProgressCount: statusCounts[_inProgressStage],
+          count: (inProgressTasks ?? 0) > 0 || (inProgress ?? 0) > 0
+              ? inProgressTasks
+              : statusCounts[_inProgressStage],
+          countForm: (inProgressTasks ?? 0) > 0 || (inProgress ?? 0) > 0
+              ? UtenSegmentCountForm.actionable
+              : UtenSegmentCountForm.browsing,
+          inProgressCount: inProgress,
         ),
         const UtenFilterSegment(
           value: _DecompositionSeg.history(),
@@ -1224,7 +1249,7 @@ class _SubcontractDecompositionPageState
             (_drawData?.page.totalPages ?? 0) > 1)
           _buildDrawPager(),
         // 独立异常手动筛选：默认「全部」，财务退回只在状态列筛选。
-        // 每一项都是「不处理会出事」（逾期/缺料/延期/待挂接）→ 一律红徽章。
+        // 异常分布属于当前可浏览数据，不能代替本人的行动任务数。
         if (seg != null && !seg.history && exceptionOptions.isNotEmpty) ...[
           const SizedBox(height: UtenSpacing.s8),
           UtenFilterToolbar<String>(
@@ -1236,7 +1261,6 @@ class _SubcontractDecompositionPageState
                   value: option.value,
                   label: option.label,
                   count: exceptionCounts[option.value],
-                  countForm: UtenSegmentCountForm.actionable,
                 ),
             ],
             autoSelectBadge: false,

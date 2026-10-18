@@ -327,7 +327,11 @@ public class SalesShipmentService {
 
     @Transactional(readOnly=true)
     @PreAuthorize("hasAuthority('sales_shipment_finance:view')")
+    @com.uten.imp.security.BusinessTaskRead
     public long countPendingFinanceAudit() {
+        if (!accessPolicy.hasAuthority("sales_shipment_finance:view")
+                || (!accessPolicy.hasAuthority("sales_shipment_finance:approve")
+                    && !accessPolicy.hasAuthority("sales_shipment_finance:reject"))) return 0L;
         var scope=accessPolicy.scope(FINANCE_AUDIT_AUTHORITY);
         return shipmentRepo.count((root,q,cb)->cb.and(
                 accessPolicy.readablePredicate(root,cb,"ownerEmployeeId",scope),cb.isFalse(root.get("deleted")),
@@ -352,15 +356,21 @@ public class SalesShipmentService {
      */
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('warehouse_sales_outbound:view')")
+    @com.uten.imp.security.BusinessTaskRead
     public long countPendingWarehouseWork() {
+        if (!accessPolicy.hasAuthority(WAREHOUSE_VIEW_AUTHORITY)
+                || !accessPolicy.hasAuthority(WAREHOUSE_WORK_AUTHORITY)) return 0L;
         return countPendingWarehouseWork(com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL);
     }
 
     /** 同上, 按仓库数据范围(ADR-149)计数, 与仓库投影列表同一谓词。 */
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('warehouse_sales_outbound:view')")
+    @com.uten.imp.security.BusinessTaskRead
     public long countPendingWarehouseWork(
             com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope warehouseScope) {
+        if (!accessPolicy.hasAuthority(WAREHOUSE_VIEW_AUTHORITY)
+                || !accessPolicy.hasAuthority(WAREHOUSE_WORK_AUTHORITY)) return 0L;
         var readScope = accessPolicy.scope(
                 FINANCE_AUDIT_AUTHORITY, REJECT_AUTHORITY, WAREHOUSE_VIEW_AUTHORITY);
         Specification<SalesShipment> spec = (root, q, cb) -> {
@@ -416,15 +426,21 @@ public class SalesShipmentService {
      */
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('warehouse_sales_outbound:view')")
+    @com.uten.imp.security.BusinessTaskRead
     public Map<String, Long> countWarehouseWorkByStatus() {
+        if (!accessPolicy.hasAuthority(WAREHOUSE_VIEW_AUTHORITY)
+                || !accessPolicy.hasAuthority(WAREHOUSE_WORK_AUTHORITY)) return Map.of();
         return countWarehouseWorkByStatus(com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL);
     }
 
     /** 同上, 按仓库数据范围(ADR-149)分组计数, 与仓库投影列表同一谓词。 */
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('warehouse_sales_outbound:view')")
+    @com.uten.imp.security.BusinessTaskRead
     public Map<String, Long> countWarehouseWorkByStatus(
             com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope warehouseScope) {
+        if (!accessPolicy.hasAuthority(WAREHOUSE_VIEW_AUTHORITY)
+                || !accessPolicy.hasAuthority(WAREHOUSE_WORK_AUTHORITY)) return Map.of();
         var readScope = accessPolicy.scope(
                 FINANCE_AUDIT_AUTHORITY, REJECT_AUTHORITY, WAREHOUSE_VIEW_AUTHORITY);
         CriteriaBuilder cb = em.getCriteriaBuilder();

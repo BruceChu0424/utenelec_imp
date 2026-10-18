@@ -61,6 +61,7 @@ public class ProductionOverproductionRateController {
     }
 
     @GetMapping("/count")
+    @com.uten.imp.security.BusinessTaskRead
     @PreAuthorize("hasAuthority('production_plan:approve')")
     public Map<String,Long> count() { return Map.of("count",service.count()); }
 

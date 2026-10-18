@@ -132,7 +132,8 @@ class DashboardOverviewPostgresTest {
         JsonNode overview = overview(auth(admin));
 
         assertThat(names(overview)).isEqualTo(new TreeSet<>(OVERVIEW_FIELDS));
-        assertThat(metricIds(overview)).contains("notice-unread", "production-pending", "sales-active");
+        assertThat(metricIds(overview)).contains("notice-unread", "sales-active")
+                .doesNotContain("production-pending");
     }
 
     private JsonNode overview(Authentication actor) throws Exception {

@@ -21,6 +21,7 @@ public class ProductionOverLimitDispositionController {
     public PageResponse<View> list(@RequestParam(defaultValue="PENDING") String status,
             @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size){return service.list(status,page,size);}
     @GetMapping("/count")
+    @com.uten.imp.security.BusinessTaskRead
     @PreAuthorize("hasAuthority('production_plan:approve')")
     public Map<String,Long> count(){return Map.of("count",service.count());}
     @GetMapping("/{id}")

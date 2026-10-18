@@ -26,6 +26,7 @@ public class DocumentDraftCountController {
 
     @GetMapping("/drafts/count")
     @PreAuthorize("isAuthenticated()")
+    @com.uten.imp.security.BusinessTaskRead
     public DraftCountsResponse draftCounts() {
         return queryService.counts();
     }
@@ -49,6 +50,7 @@ public class DocumentDraftCountController {
     /** 销售出货 / 销售报价 / 采购订货 / 委外订货各自的「财务已退回」张数(hub 单据卡徽章 = 草稿 + 财务已退回). */
     @GetMapping("/finance-rejected/count")
     @PreAuthorize("isAuthenticated()")
+    @com.uten.imp.security.BusinessTaskRead
     public Map<String, Long> financeRejectedCounts() {
         return statusCounts.financeRejectedCounts();
     }

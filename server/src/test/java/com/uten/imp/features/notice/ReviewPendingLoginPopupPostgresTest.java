@@ -52,6 +52,9 @@ class ReviewPendingLoginPopupPostgresTest {
         DB.start();
         JdbcTemplate jdbc = new JdbcTemplate(
                 new DriverManagerDataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword()));
+        // This isolated schema proves popup acknowledgement/snooze ordering, not business source state.
+        // V876 is exercised against the full migrated schema by ProductionOverLimitNoticeScopeEndToEndTest.
+        jdbc.execute("CREATE FUNCTION fn_notice_business_action_visible(uuid,text,text,uuid,text,text,text,text,text,text) RETURNS boolean LANGUAGE sql AS 'SELECT TRUE'");
         // 仓库创建时整体校验所有 @Query：SCOPED_VISIBILITY 引用 SalesOrder（V825 计划
         // 提醒补投的 EXISTS 子句）与 fn_notice_production_over_limit_visible。
         factory = new Configuration()

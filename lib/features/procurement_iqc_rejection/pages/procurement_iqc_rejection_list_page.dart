@@ -348,8 +348,12 @@ class _ProcurementIqcRejectionListPageState
         UtenFilterSegment(
           value: 'PENDING_RETURN',
           label: '待退回',
-          count: counts.pendingReturn,
-          countForm: UtenSegmentCountForm.actionable,
+          count: counts.actionablePendingReturn > 0
+              ? counts.actionablePendingReturn
+              : counts.pendingReturn,
+          countForm: counts.actionablePendingReturn > 0
+              ? UtenSegmentCountForm.actionable
+              : UtenSegmentCountForm.browsing,
         ),
         // 2026-09-21 用户口径: 父分类有红徽章, 子分类也要有数。退回登记完、贷项
         // 还没落地的两段是「已经在办、球在财务手上、还没完」→ 黄色在办徽章
@@ -357,14 +361,22 @@ class _ProcurementIqcRejectionListPageState
         UtenFilterSegment(
           value: 'RETURN_RECORDED',
           label: '已退回待财务',
-          count: counts.returnRecorded,
-          countForm: UtenSegmentCountForm.inProgress,
+          count: counts.actionableReturnRecorded > 0
+              ? counts.actionableReturnRecorded
+              : counts.returnRecorded,
+          countForm: counts.actionableReturnRecorded > 0
+              ? UtenSegmentCountForm.actionable
+              : UtenSegmentCountForm.browsing,
         ),
         UtenFilterSegment(
           value: 'FINANCE_EXCEPTION',
           label: '财务异常',
-          count: counts.financeException,
-          countForm: UtenSegmentCountForm.inProgress,
+          count: counts.actionableFinanceException > 0
+              ? counts.actionableFinanceException
+              : counts.financeException,
+          countForm: counts.actionableFinanceException > 0
+              ? UtenSegmentCountForm.actionable
+              : UtenSegmentCountForm.browsing,
         ),
         const UtenFilterSegment(value: 'TERMINAL', label: '历史单据'),
       ],

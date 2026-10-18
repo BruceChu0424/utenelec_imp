@@ -3,6 +3,7 @@ package com.uten.imp.features.org.hrtask;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import java.util.Map;
 
 /**
  * HR 任务中心汇总读模型（全部按「今天」动态计算，不落库、无任务表）。
@@ -35,7 +36,17 @@ public record HrTaskSummary(
         List<Item> anniversaryToday,
         List<Item> newHires,
         List<Item> identityReview,
-        long badgeCount) {
+        long badgeCount,
+        Map<String, Long> taskCounts) {
+
+    public HrTaskSummary(LocalDate generatedAt, int probationMonths, List<Item> confirmToday,
+            List<Item> confirmUpcoming, List<Item> confirmOverdue, long unconfirmedLegacyCount,
+            List<Item> birthdayToday, List<Item> birthdayUpcoming, List<Item> anniversaryToday,
+            List<Item> newHires, List<Item> identityReview, long badgeCount) {
+        this(generatedAt, probationMonths, confirmToday, confirmUpcoming, confirmOverdue,
+                unconfirmedLegacyCount, birthdayToday, birthdayUpcoming, anniversaryToday,
+                newHires, identityReview, badgeCount, Map.of());
+    }
 
     /**
      * 单条提醒。

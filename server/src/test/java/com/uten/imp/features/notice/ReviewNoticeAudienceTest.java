@@ -50,15 +50,15 @@ class ReviewNoticeAudienceTest {
      * 否则发给他的待办只躺在通知列表里不弹卡。没登记负责人的部门外的人仍然不弹。
      */
     @Test
-    void outOfDepartmentWarehouseKeepersGetTheWarehouseActionCards() {
-        var permissions = Set.of("notice:read", "warehouse_sales_outbound:execute", "warehouse_iqc_stock_in:view",
+    void warehouseEventEligibilityFollowsActionsWhileObjectsUseTheirSeparateResponsibilityGate() {
+        var permissions = Set.of("notice:read", "warehouse_sales_outbound:view", "warehouse_sales_outbound:execute", "warehouse_iqc_stock_in:view",
                 "warehouse_iqc_stock_in:confirm", "stock_doc:view", "stock_doc:approve", "stock_doc:issue",
                 "warehouse_inbound:view", "warehouse_inbound:stock_in");
         var events = List.of("SALES_SHIPMENT_PENDING_PICK", "PROCUREMENT_IQC_STOCK_IN_PENDING", "PRODUCTION_DRAW_PENDING",
                 "PRODUCTION_MATERIAL_DISCOVERY_PENDING", "PROCUREMENT_FINANCE_APPROVED");
         for (String event : events) {
             assertThat(ReviewNoticeAudience.eligible(event, permissions, Set.of("DEPT_FIN"), true)).as(event).isTrue();
-            assertThat(ReviewNoticeAudience.eligible(event, permissions, Set.of("DEPT_FIN"), false)).as(event).isFalse();
+            assertThat(ReviewNoticeAudience.eligible(event, permissions, Set.of("DEPT_FIN"), false)).as(event).isTrue();
             assertThat(ReviewNoticeAudience.eligible(event, permissions, Set.of("SUB_WH"), false)).as(event).isTrue();
         }
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
@@ -71,7 +71,8 @@ class ReviewNoticeAudienceTest {
         assertThat(new ReviewNoticeAudience(jdbc, mock(com.uten.imp.security.OwnerVisibility.class), mock(com.uten.imp.features.auth.PermissionResolver.class)).eligibleEvents(keeper)).containsAll(events);
         when(jdbc.queryForObject(contains("fn_warehouse_responsible_user_ids"), eq(Boolean.class), eq(account)))
                 .thenReturn(false);
-        assertThat(new ReviewNoticeAudience(jdbc, mock(com.uten.imp.security.OwnerVisibility.class), mock(com.uten.imp.features.auth.PermissionResolver.class)).eligibleEvents(keeper)).doesNotContainAnyElementsOf(events);
+        assertThat(new ReviewNoticeAudience(jdbc, mock(com.uten.imp.security.OwnerVisibility.class), mock(com.uten.imp.features.auth.PermissionResolver.class)).eligibleEvents(keeper)).containsAll(events);
+        verifyNoInteractions(jdbc);
     }
 
     @Test
@@ -112,7 +113,7 @@ class ReviewNoticeAudienceTest {
         assertThat(ReviewNoticeAudience.eligible(report,
                 Set.of("notice:read", "production_daily_report:view", "production_daily_report:delete"), none)).isTrue();
         assertThat(ReviewNoticeAudience.eligible(report,
-                Set.of("notice:read", "production_daily_report:create"), none)).isTrue();
+                Set.of("notice:read", "production_daily_report:create"), none)).isFalse();
         assertThat(ReviewNoticeAudience.eligible(report,
                 Set.of("notice:read", "production_daily_report:view"), none)).isFalse();
         assertThat(ReviewNoticeAudience.eligible(report,
@@ -120,7 +121,7 @@ class ReviewNoticeAudienceTest {
         // 缺单个重量: BOM 维护人。
         String weight = "WORKSHOP_MATERIAL_CLOSE_BLOCKED_WEIGHT";
         assertThat(ReviewNoticeAudience.eligible(weight,
-                Set.of("notice:read", "goods:bom:edit"), none)).isTrue();
+                Set.of("notice:read", "goods:view", "goods:bom:edit"), none)).isTrue();
         assertThat(ReviewNoticeAudience.eligible(weight,
                 Set.of("notice:read", "goods:view", "goods:bom:view"), none)).isFalse();
         // 有理论没进过料: 仓库发料人或该车间的认料人；具体车间范围由发卡侧约束。
@@ -136,7 +137,7 @@ class ReviewNoticeAudienceTest {
         // 结算连续失败: 设置负责人。
         String failing = "WORKSHOP_MATERIAL_CLOSE_FAILING";
         assertThat(ReviewNoticeAudience.eligible(failing,
-                Set.of("notice:read", "workshop_material:setup"), none)).isTrue();
+                Set.of("notice:read", "workshop_material:view", "workshop_material:setup"), none)).isTrue();
         assertThat(ReviewNoticeAudience.eligible(failing,
                 Set.of("notice:read", "workshop_material:view", "workshop_material:count"), none)).isFalse();
     }
@@ -229,7 +230,7 @@ class ReviewNoticeAudienceTest {
     }
 
     @Test
-    void currentPrimaryAndSecondaryMembershipIsQueriedOnceForTheWholeEventCatalog() {
+    void functionAuthorityDoesNotRequireAnOrganizationLookup() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         UUID employeeId = UUID.randomUUID();
         Set<String> permissions = Set.of("notice:read", "finance_order_approval:view", "finance_order_approval:reject");
@@ -239,8 +240,35 @@ class ReviewNoticeAudienceTest {
                 .thenReturn(List.of("DEPT_FIN"));
         assertThat(new ReviewNoticeAudience(jdbc, mock(com.uten.imp.security.OwnerVisibility.class), mock(com.uten.imp.features.auth.PermissionResolver.class)).eligibleEvents(user)).containsExactlyInAnyOrder(
                 "PROCUREMENT_FINANCE_SUBMITTED", "PROCUREMENT_FINANCE_CHANGE_SUBMITTED");
-        verify(jdbc, times(1)).queryForList(argThat(sql -> sql.contains("employee_secondary_departments")
-                && sql.contains("employee.is_deleted = FALSE") && sql.contains("ancestry")),
-                eq(String.class), eq(employeeId), eq(employeeId));
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test
+    void decompositionRequiresCreatingTheTargetOrderAndShortDeliveryHasAnExplicitActionContract() {
+        var permissions = new java.util.HashSet<>(Set.of("notice:read", "subcontract_application:view",
+                "subcontract_order:decompose"));
+        assertThat(ReviewNoticeAudience.eligible("SUBCONTRACT_ORDER_KIT_READY", permissions, Set.of("DEPT_FIN"))).isFalse();
+        permissions.add("subcontract_order:create");
+        assertThat(ReviewNoticeAudience.eligible("SUBCONTRACT_ORDER_KIT_READY", permissions, Set.of("DEPT_FIN"))).isTrue();
+        for (String event : List.of("SUBCONTRACT_SHORT_DELIVERY_DETECTED", "SUBCONTRACT_SHORT_DELIVERY_WAIT_OVERDUE")) {
+            assertThat(ReviewNoticeAudience.eligible(event, Set.of("notice:read", "subcontract_order:view"), Set.of())).isFalse();
+            assertThat(ReviewNoticeAudience.eligible(event, Set.of("notice:read", "subcontract_order:view",
+                    "subcontract_short_delivery:decide"), Set.of())).isTrue();
+        }
+    }
+
+    @Test
+    void unassignedSuperAdminCannotBuildAnOverLimitOrWorkshopReadScopeFromItsMirror() {
+        var jdbc = mock(JdbcTemplate.class);
+        var owners = mock(com.uten.imp.security.OwnerVisibility.class);
+        var resolver = mock(com.uten.imp.features.auth.PermissionResolver.class);
+        var user = new AuthUser(UUID.randomUUID(), UUID.randomUUID(), "admin", Set.of("notice:read",
+                "production_plan:approve", "production_execution:view", "production_execution:start"), false, true, true);
+        when(resolver.grantedPermsOf(user.getId())).thenReturn(Set.of("notice:read"));
+        var scope = new ReviewNoticeAudience(jdbc, owners, resolver).readScope(user);
+        assertThat(scope.overLimitAllowed()).isFalse();
+        assertThat(scope.workshop().allowed()).isFalse();
+        assertThat(scope.actionEvents()).isEmpty();
+        verifyNoInteractions(owners, jdbc);
     }
 }

@@ -48,6 +48,9 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPort {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.application.port.TaskAudiencePort taskAudience;
+
     public static final String EVENT_OPENED = "PROCUREMENT_IQC_REJECTION_OPENED";
     public static final String EVENT_RETURNED = "PROCUREMENT_IQC_REJECTION_RETURNED";
     public static final String EVENT_CREDIT_CONFIRMED = "PROCUREMENT_IQC_CREDIT_CONFIRMED";
@@ -382,6 +385,11 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
             add(where, params, "rejection.owner_user_id=:currentUserId",
                     "currentUserId", currentUser.requireId());
         }
+        var taskPermissions = taskAudience.read(() -> new RejectionTaskPermissions(
+                has("procurement_iqc_rejection:view") && has("procurement_iqc_rejection:record_return"),
+                has("procurement_iqc_rejection:view") && has("procurement_iqc_rejection:confirm_credit")
+                        && has("procurement_iqc_rejection:amount:view"),
+                has("procurement_iqc_rejection:view") && has("procurement_iqc_rejection:close_no_credit")));
         Query query = em.createNativeQuery("""
                 SELECT COUNT(*),
                        COUNT(*) FILTER (WHERE rejection.status='PENDING_RETURN'),
@@ -389,14 +397,28 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                        COUNT(*) FILTER (WHERE rejection.status='CREDIT_CONFIRMED'),
                        COUNT(*) FILTER (WHERE rejection.status='CLOSED_NO_CREDIT'),
                        COUNT(*) FILTER (WHERE rejection.status='FINANCE_EXCEPTION'),
-                       COUNT(*) FILTER (WHERE rejection.status='REVERSED')
+                       COUNT(*) FILTER (WHERE rejection.status='REVERSED'),
+                       COUNT(*) FILTER (WHERE rejection.status='PENDING_RETURN'
+                           AND :taskRecordReturn AND inspection.status='RESOLVED'),
+                       COUNT(*) FILTER (WHERE rejection.status='RETURN_RECORDED' AND (
+                           (:taskConfirmCredit AND (rejection.failed_amount_original IS NULL OR rejection.failed_amount_original>0))
+                           OR (:taskCloseNoCredit AND rejection.failed_amount_original=0 AND rejection.failed_amount_local=0))),
+                       COUNT(*) FILTER (WHERE rejection.status='FINANCE_EXCEPTION' AND (
+                           :taskConfirmCredit OR (:taskRecordReturn AND rejection.return_recorded_at IS NULL
+                               AND inspection.status='RESOLVED')))
                 """ + from() + where);
         bind(query, params);
+        query.setParameter("taskRecordReturn", taskPermissions.recordReturn());
+        query.setParameter("taskConfirmCredit", taskPermissions.confirmCredit());
+        query.setParameter("taskCloseNoCredit", taskPermissions.closeNoCredit());
         Object[] row = (Object[]) query.getSingleResult();
         return new CaseCounts(
                 number(row[0]), number(row[1]), number(row[2]), number(row[3]),
-                number(row[4]), number(row[5]), number(row[6]));
+                number(row[4]), number(row[5]), number(row[6]),
+                number(row[7]), number(row[8]), number(row[9]));
     }
+
+    private record RejectionTaskPermissions(boolean recordReturn, boolean confirmCredit, boolean closeNoCredit) {}
 
     @Transactional(readOnly = true)
     public CaseDetail detail(UUID id) {

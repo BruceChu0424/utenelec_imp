@@ -220,6 +220,16 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
         }
     }
 
+    /** ADR-184: badge counts only leave zero for callers without real warehouse operations. */
+    private void loginWarehouseOperator() {
+        var actor=new AuthUser(UUID.randomUUID(),UUID.randomUUID(),"warehouse",Set.of(
+                ProcurementIqcStockInPermissions.VIEW,ProcurementIqcStockInPermissions.CONFIRM,
+                com.uten.imp.features.warehouse.inbound.WarehouseQualityResultPermissions.RETURN_VIEW,
+                com.uten.imp.features.warehouse.inbound.WarehouseQualityResultPermissions.RECORD_RETURN),false,true,false);
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(actor,"",actor.getAuthorities()));
+    }
+
     @Test void qualityResultGoodsSearchPagingAndCountsUseIndividualInspectionRows() {
         UUID receipt=UUID.randomUUID(),goods=UUID.randomUUID(),completedGoods=UUID.randomUUID();
         UUID warehouse=UUID.randomUUID(),outside=UUID.randomUUID();
@@ -237,6 +247,8 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
                 "id",UUID.randomUUID(),"receipt",receipt,"goods",completedGoods,"warehouse",outside);
         var quality=new com.uten.imp.features.warehouse.inbound.WarehouseQualityResultService(
                 executingEntityManager(),mock(SecurityContextCurrentUser.class));
+        loginWarehouseOperator();
+        try {
         var first=quality.list("Repeat goods","PURCHASE","",null,null,1,1,null,null,null,WarehouseTaskScope.ALL,TaskView.ACTIVE);
         var second=quality.list("Repeat goods","PURCHASE","",null,null,2,1,null,null,null,WarehouseTaskScope.ALL,TaskView.ACTIVE);
         assertThat(first.getTotal()).isEqualTo(2);
@@ -264,6 +276,7 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
         assertThat(quality.list("Completed outside goods","PURCHASE","",null,null,1,20,null,null,null,scoped,TaskView.HISTORY).getTotal()).isZero();
         assertThat(quality.statusCounts("PURCHASE","",scoped)).containsEntry("WAITING_INSPECTION",2L).containsEntry("COMPLETED",0L);
         assertThat(quality.facets("Completed outside goods","PURCHASE","",null,null,scoped,TaskView.HISTORY).get("billNo")).isEmpty();
+        } finally { org.springframework.security.core.context.SecurityContextHolder.clearContext(); }
     }
 
     @Test void qualityBadgesAggregateOnlyVisibleInspectionReleaseAndReturnFactsThenCountReceiptOnce() {
@@ -283,6 +296,8 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
                 executingEntityManager(),mock(SecurityContextCurrentUser.class));
         var scopeA=new WarehouseTaskScope(true,List.of(warehouseA),false);
         var scopeB=new WarehouseTaskScope(true,List.of(warehouseB),false);
+        loginWarehouseOperator();
+        try {
         assertThat(quality.list("","PURCHASE","",null,null,1,20,null,null,null,scopeA,TaskView.ACTIVE).getItems())
                 .singleElement().satisfies(row->assertThat(row.workStatus()).isEqualTo("WAITING_INSPECTION"));
         assertThat(quality.list("","PURCHASE","",null,null,1,20,null,null,null,scopeB,TaskView.ACTIVE).getItems())
@@ -304,6 +319,7 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
         assertThat(quality.typeCounts(scopeA).inProgress()).containsEntry("PURCHASE",1L);
         assertThat(quality.typeCounts(scopeA).actionable()).containsEntry("PURCHASE",0L);
         assertThat(quality.typeCounts(scopeB).actionable()).containsEntry("PURCHASE",1L);
+        } finally { org.springframework.security.core.context.SecurityContextHolder.clearContext(); }
     }
 
     @Test void qualityDetailAndBatchReadsKeepOnlyVisibleInspectionSlicesHistoryAndRejections() {

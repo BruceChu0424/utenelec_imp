@@ -71,6 +71,12 @@ class FinancialQueueSearchPostgresTest {
         iqc("RCA100X", "螺丝", owner, "REVERSED", "PURCHASE", false, 2026);
         var service = service(ProcurementIqcRejectionService.class);
         ReflectionTestUtils.setField(service, "currentUser", user());
+        // ADR-184: counts() 在 TaskAudiencePort 里复核真实动作权限后加 ACTIONABLE_* 桶；
+        // 本测试只验证 SQL/分词契约，直通保留当前身份即可（全部 task 开关为 false）。
+        ReflectionTestUtils.setField(service, "taskAudience",
+                new com.uten.imp.application.port.TaskAudiencePort() {
+                    @Override public <T> T read(java.util.function.Supplier<T> work) { return work.get(); }
+                });
         var expected = List.of(exact, prefix, contains, codeOnly);
         for (int page = 1; page <= 4; page++) {
             executions.clear();

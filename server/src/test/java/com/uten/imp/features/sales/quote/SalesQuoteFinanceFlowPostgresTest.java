@@ -956,11 +956,13 @@ class SalesQuoteFinanceFlowPostgresTest {
         var claim = claims.claim(CLAIM, id.toString());
         finance.returnToSales(id, new QuoteFinanceDecisionRequest(3, claim.claimId(), "客户要改数量"));
         assertThat(pendingQuoteCards(id, null)).isZero();
+        // ADR-184: 退回通知也绑定报价聚合(SALES_QUOTE_ACTION), 列表可见性按单据状态复核;
+        // 核价行动卡的撤卡(SALES_QUOTE 聚合)不会误撤发给销售的退回通知。
         assertThat(jdbc.queryForObject("""
                 SELECT COUNT(*) FROM notices
                 WHERE source_event = 'SALES_QUOTE_FINANCE_RETURNED' AND audience_user_id = ?
-                  AND aggregate_id IS NULL AND resolved_at IS NULL
-                """, Long.class, f.sales())).isEqualTo(1L);
+                  AND aggregate_id = ? AND resolved_at IS NULL
+                """, Long.class, f.sales(), id)).isEqualTo(1L);
 
         // 重新提交 → 新卡; 财务确认 → 撤卡。
         loginAs(f.sales());

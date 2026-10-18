@@ -96,8 +96,9 @@ class ChainNoticeWarehouseKeeperRoutingTest {
         // 委外预计回厂与撤回、采购预计到货、到货异常定案)。
         assertThat(routed).isEqualTo(14);
         assertThat(legacy).isZero();
-        // 「SUB_WH」部门池只在 warehousePool 里出现一次(仓库类通知不再各自拼部门池)。
-        assertThat(warehousePools).isEqualTo(1);
+        // ADR-184: 仓库通知池不再按「SUB_WH」部门硬门槛拼, 统一由 warehousePool() 按真实授出的
+        // 动作权限组池(跨部门办理人凭授权进池); 部门码不得再出现在通知拼池里。
+        assertThat(warehousePools).isZero();
         // 另两处仓库通知(车间内料仓、盘点审核)也只经同一个 router。
         for (String file : List.of("WorkshopMaterialNoticeService.java", "StockCountNoticeHandler.java")) {
             String other = Files.readString(Path.of("src/main/java/com/uten/imp/features/notice/" + file),

@@ -107,11 +107,12 @@ class BomUpdatedAnalysisRefreshNoticeTest {
         // 等要刷新那张分析的人留给刷新事件通知；其余马上通知，文案不说物料分析已更新。
         verify(notice, never()).publishForUser(eq(plannerUser), anyString(), anyString(), anyString(),
                 anyString(), anyString(), anyString());
+        // ADR-184: BOM 完善对等待人的通知是合法知会(workflow), 不再按任务卡(task)发布。
         verify(notice).publishForUser(eq(buyerUser), eq("BOM 已完善：外壳(WK-1)"),
-                eq("外壳(WK-1) 的 BOM 已完善，可以继续下达 / 下委外单。"), eq(ChainNoticeService.TYPE_TASK),
+                eq("外壳(WK-1) 的 BOM 已完善，可以继续下达 / 下委外单。"), eq(ChainNoticeService.TYPE_WORKFLOW),
                 anyString(), eq("/subcontract/orders/" + orderId), eq(ChainNoticeService.EVENT_BOM_UPDATED));
         verify(notice).publishForUser(eq(otherPlannerUser), eq("BOM 已完善：外壳(WK-1)"),
-                eq("外壳(WK-1) 的 BOM 已完善，打开物料分析刷新后即可下达。"), eq(ChainNoticeService.TYPE_TASK),
+                eq("外壳(WK-1) 的 BOM 已完善，打开物料分析刷新后即可下达。"), eq(ChainNoticeService.TYPE_WORKFLOW),
                 anyString(), eq("/production/material-analysis?analysisId=" + otherAnalysis),
                 eq(ChainNoticeService.EVENT_BOM_UPDATED));
     }
@@ -126,7 +127,7 @@ class BomUpdatedAnalysisRefreshNoticeTest {
 
         verify(refresher).refreshAnalysisAfterBomUpdated(refreshedAnalysis, goodsId);
         verify(notice).publishForUser(eq(plannerUser), eq("BOM 已完善：外壳(WK-1)"),
-                eq("外壳(WK-1) 的 BOM 已完善，物料分析已自动更新，可以下达。"), eq(ChainNoticeService.TYPE_TASK),
+                eq("外壳(WK-1) 的 BOM 已完善，物料分析已自动更新，可以下达。"), eq(ChainNoticeService.TYPE_WORKFLOW),
                 anyString(), eq("/production/material-analysis?analysisId=" + refreshedAnalysis),
                 eq(ChainNoticeService.EVENT_BOM_UPDATED));
     }
@@ -152,7 +153,7 @@ class BomUpdatedAnalysisRefreshNoticeTest {
                 refreshPayload());
 
         verify(notice).publishForUser(eq(plannerUser), eq("BOM 已完善：外壳(WK-1)"),
-                eq("外壳(WK-1) 的 BOM 已完善，打开物料分析刷新后即可下达。"), eq(ChainNoticeService.TYPE_TASK),
+                eq("外壳(WK-1) 的 BOM 已完善，打开物料分析刷新后即可下达。"), eq(ChainNoticeService.TYPE_WORKFLOW),
                 anyString(), eq("/production/material-analysis?analysisId=" + refreshedAnalysis),
                 eq(ChainNoticeService.EVENT_BOM_UPDATED));
     }

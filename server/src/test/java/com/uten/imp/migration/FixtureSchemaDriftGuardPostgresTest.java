@@ -202,7 +202,12 @@ class FixtureSchemaDriftGuardPostgresTest {
             "com/uten/imp/features/attachment/MasterStagingProtectionForwardPostgresTest.java#attachment_object_outbox.history_note",
             "com/uten/imp/features/attachment/MasterStagingProtectionForwardPostgresTest.java#attachment_object_outbox.owner_type",
             // Only this oracle's FK points to its private business_parent; proves metadata deletion versus RESTRICT.
-            "com/uten/imp/features/attachment/MasterStagingProtectionForwardPostgresTest.java#attachment_object_outbox.parent_id");
+            "com/uten/imp/features/attachment/MasterStagingProtectionForwardPostgresTest.java#attachment_object_outbox.parent_id",
+            // V876 notice-state oracle's own draw bookkeeping: requested/pending stand in for the
+            // production-draw state the miniature schema does not model; the real fn reads them via
+            // its own fn_production_draw_pending stub created alongside.
+            "com/uten/imp/features/notice/BusinessTaskNoticeStatePostgresTest.java#stock_documents.requested",
+            "com/uten/imp/features/notice/BusinessTaskNoticeStatePostgresTest.java#stock_documents.pending");
 
     @Test
     void handWrittenFixtureSchemasStayReconciledWithTheRealMigrationDirectory() throws Exception {

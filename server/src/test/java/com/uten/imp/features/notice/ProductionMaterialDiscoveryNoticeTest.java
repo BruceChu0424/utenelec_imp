@@ -55,8 +55,19 @@ class ProductionMaterialDiscoveryNoticeTest {
         Map<String,Object> row=new HashMap<>();row.put("status",status);row.put("active",active);row.put("warehouse_id",warehouse);row.put("segment_code","ZX-TEST");row.put("goods_name","外壳");
         when(jdbc.queryForList(contains("FROM production_material_discovery_requests"),eq(request))).thenReturn(List.of(row));
     }
+    // ADR-184: 通知池不再按「SUB_WH」部门拼, 而是真实授出所需动作权限(notice:read + stock_doc 查看/审批/发料)
+    // 的在职账号; findAll 候选过 grantedPermsOf, 再经 active_action_recipients 过滤在职员工账号。
     private void pool(){
-        when(jdbc.queryForList(contains("FROM users user_account"),eq(UUID.class),eq("SUB_WH"))).thenReturn(List.of(keeper,other));
-        for(UUID id:List.of(keeper,other)){UserAccount user=mock(UserAccount.class);when(user.getStatus()).thenReturn("active");when(accounts.findById(id)).thenReturn(Optional.of(user));when(permissions.grantedPermsOf(user)).thenReturn(Set.of("stock_doc:view","stock_doc:approve","stock_doc:issue","notice:read"));}
+        UserAccount keeperAccount=account(keeper),otherAccount=account(other);
+        when(accounts.findAll()).thenReturn(List.of(keeperAccount,otherAccount));
+        when(jdbc.queryForList(contains("active_action_recipients"),eq(UUID.class),anyString()))
+                .thenReturn(List.of(keeper,other));
+    }
+    private UserAccount account(UUID id){
+        UserAccount user=new UserAccount();
+        user.setId(id);user.setStatus("active");user.setDeleted(false);
+        when(accounts.findById(id)).thenReturn(Optional.of(user));
+        when(permissions.grantedPermsOf(user)).thenReturn(Set.of("stock_doc:view","stock_doc:approve","stock_doc:issue","notice:read"));
+        return user;
     }
 }

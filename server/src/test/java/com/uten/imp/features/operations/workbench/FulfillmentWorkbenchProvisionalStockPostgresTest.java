@@ -156,6 +156,8 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
         try (Connection connection = connection()) { data = fixture(connection); }
         FulfillmentWorkbenchAccessPolicy access = mock(FulfillmentWorkbenchAccessPolicy.class);
         when(access.canAccessWarehouseTasks()).thenReturn(true);
+        // ADR-184: 状态分段计数按「能动手」口径把关(领料任务中心执行发料), 与列表的门分开。
+        when(access.canHandleWarehouseTasks()).thenReturn(true);
         var service = new FulfillmentWorkbenchQueryService(entityManager, access);
         var page = transactions.execute(status -> service.query("WAREHOUSE", "OPEN_ANY", data.planNo(),
                 "", null, null, 1, 20));

@@ -487,6 +487,14 @@ class BusinessOutboxPostgresTest {
         context.registerBean(
                 com.uten.imp.application.port.SalesPlanningNoticeReadPort.class,
                 () -> mock(com.uten.imp.application.port.SalesPlanningNoticeReadPort.class));
+        // ADR-184 再加必选的 ReviewNoticeAudience（其自身还需 TaskAudiencePort）；
+        // 同样只为满足 mock 上的字段装配，不会真正参与 outbox 投递。
+        context.registerBean(
+                com.uten.imp.features.notice.ReviewNoticeAudience.class,
+                () -> mock(com.uten.imp.features.notice.ReviewNoticeAudience.class));
+        context.registerBean(
+                com.uten.imp.application.port.TaskAudiencePort.class,
+                () -> mock(com.uten.imp.application.port.TaskAudiencePort.class));
         context.registerBean(BusinessOutboxPublisher.class);
         context.registerBean(BusinessOutboxProcessor.class, () -> new BusinessOutboxProcessor(
                 jdbc, context.getBean(ObjectMapper.class), chainNotice));

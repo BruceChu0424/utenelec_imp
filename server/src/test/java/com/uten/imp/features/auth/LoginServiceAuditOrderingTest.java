@@ -51,13 +51,16 @@ class LoginServiceAuditOrderingTest {
     private LoginService service;
     private UserAccount user;
     private LoginRequest request;
+    private DeploymentProperties deployment;
 
     @BeforeEach
     void setUp() {
         when(passwordEncoder.encode("dummy-password-for-timing"))
                 .thenReturn("dummy-hash");
-        DeploymentProperties deployment = new DeploymentProperties();
-        deployment.setSite("cloud");
+        deployment = new DeploymentProperties();
+        // 站点默认内网: 本套件钉的是 ADR-110 非 MFA 路径的审计顺序;
+        // 云端登录必走动态验证码, 该路径由 RemoteMfaLoginTest 单独覆盖。
+        deployment.setSite("local");
         RemoteAccessPolicy remoteAccessPolicy = new RemoteAccessPolicy(deployment);
         service = new LoginService(
                 userRepo,
@@ -187,6 +190,8 @@ class LoginServiceAuditOrderingTest {
     void cloudDenialOccursAfterCredentialAndStatusChecksButBeforeIssuance() {
         passwordIsCorrect();
         user.setRemoteAccess(false);
+        // 仅本用例切到云端站点验证外网授权拒绝的时序与审计
+        deployment.setSite("cloud");
 
         ApiException denied = assertThrows(
                 ApiException.class,

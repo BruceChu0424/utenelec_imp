@@ -399,7 +399,7 @@ class WorkshopMaterialCountPostgresTest {
     void closeBlockedNoticesReachTheRightPeopleOnceAndResolveTogether() {
         Shop shop = shop("notice", BusinessTime.today());
         UUID bomKeeper = fixture.createUserWithPerms(shop.world(), "bom-" + UUID.randomUUID().toString().substring(0, 8),
-                "notice:read", "goods:bom:edit");
+                "notice:read", "goods:view", "goods:bom:edit");
         db.update("INSERT INTO warehouse_keepers(warehouse_id, employee_id) SELECT ?, employee_id FROM users WHERE id = ?",
                 shop.leaf(), shop.warehouseUser());
         UUID period = shop.firstPeriod();

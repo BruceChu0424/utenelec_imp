@@ -103,7 +103,8 @@ class ProductionWorkshopReportBadgeEndToEndTest {
   UUID other=c.fixture().createUserWithPerms(c.world(),"other-badge-"+UUID.randomUUID().toString().substring(0,8),"production_execution:view");
   c.fixture().loginAs(other);
   Authentication otherActor=SecurityContextHolder.getContext().getAuthentication();
-  assertEquals(0,getJson("/api/production/workshop-tasks/count",otherActor).path("count").asLong());
+  // ADR-184: workshop task counts need a real reporting/start operation; view-only actors no longer read them.
+  assertEquals(403,http.perform(get("/api/production/workshop-tasks/count").with(authentication(otherActor))).andReturn().getResponse().getStatus());
   assertEquals(0,getJson("/api/production/workshop-tasks?status=IN_PROGRESS",otherActor).path("total").asLong());
   assertEquals(0,getJson("/api/workbench/badges",otherActor).path("facts").path("workshopTask.count").asLong());
   c.fixture().loginAs(c.world().superAdminUserId());

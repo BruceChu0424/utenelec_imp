@@ -22,8 +22,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * 草稿计数端点（{@code GET /api/documents/drafts/count}）的真实库口径验证：
- * 对象级归属隔离、{@code *:view} 权限自卫、财务驳回草稿不双计，以及 21 条 count SQL
- * 能在真实迁移后的 schema 上跑通（表名/列名打错会立刻炸）。
+ * 对象级归属隔离、ADR-184 的「真实创建/编辑资格」自卫（只有 {@code *:view} 不计数、
+ * 只读恢复不冒红）、财务驳回草稿不双计，以及 21 条 count SQL 能在真实迁移后的
+ * schema 上跑通（表名/列名打错会立刻炸）。
  *
  * <p><b>CI 必须显式设置 {@code UTEN_RUN_DB_TESTS=true}</b>，否则本类 SKIP 且 surefire exit 0（假绿）。
  */
@@ -67,34 +68,42 @@ class DocumentDraftCountScopePostgresTest {
     }
 
     @Test
-    void draftsAreCountedPerOwnerAndOnlyForDocumentTypesTheUserCanView() {
+    void draftsAreCountedPerOwnerAndOnlyForTypesTheUserCanActuallyWork() {
         String tag = "DRAFTCNT" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(java.util.Locale.ROOT);
         int seq = 100000 + new java.util.Random().nextInt(800000);
         var world = fixture.seedWorld(tag);
 
+        // ADR-184: 草稿是「我能继续编辑/提交」的待办——只有 *:view 不再计数;
+        // 池内归属也收敛到可写责任(owner IS NOT NULL AND 可写 owners)。
         UUID sellerA = fixture.createUserWithPerms(world, "sa-" + tag,
-                "sales_order:view", "purchase_order:view");
-        UUID sellerB = fixture.createUserWithPerms(world, "sb-" + tag, "sales_order:view");
+                "sales_order:view", "sales_order:edit",
+                "purchase_order:view", "purchase_order:edit");
+        UUID sellerB = fixture.createUserWithPerms(world, "sb-" + tag,
+                "sales_order:view", "sales_order:edit");
+        UUID salesViewer = fixture.createUserWithPerms(world, "sv-" + tag, "sales_order:view");
         UUID employeeA = employeeOf(sellerA);
         UUID employeeB = employeeOf(sellerB);
 
-        // 本类不带 @Transactional，和同容器的其它用例共用一个库；而归属谓词是
-        // 「owner IS NULL OR owner IN (:owners)」——无归属单据对所有人可见（全平台读口径，
-        // 见 DocumentAccessPolicy.nativeReadScope）。别的用例留下的无主草稿会被合法地数进来，
+        // 本类不带 @Transactional，和同容器的其它用例共用一个库；归属谓词是
+        // 「owner IS NOT NULL AND owner IN (可写 owners)」——无归属/他人单据不进计数，
+        // 但可写 owner 集可能经交接继承扩大，别的用例留下的数据会被合法地数进来，
         // 所以这里断言**增量**而不是绝对值：增量才是「本人归属收敛」这条不变量本身。
         fixture.loginAs(sellerA);
         DraftCountsResponse baseA = drafts.counts();
         fixture.loginAs(sellerB);
         DraftCountsResponse baseB = drafts.counts();
+        fixture.loginAs(salesViewer);
+        DraftCountsResponse baseViewer = drafts.counts();
 
-        // A：2 张自审草稿 + 1 张财务驳回草稿 + 1 张已审；B：1 张草稿。
+        // A：2 张自审草稿 + 1 张财务驳回草稿 + 1 张已审；B：1 张草稿；只读者：1 张草稿。
         insertSalesOrder(docNo("XD", seq + 1), world.clientId(), employeeA, (short) 0, false);
         insertSalesOrder(docNo("XD", seq + 2), world.clientId(), employeeA, (short) 0, false);
         insertSalesOrder(docNo("XD", seq + 3), world.clientId(), employeeA, (short) 0, true);
         insertSalesOrder(docNo("XD", seq + 4), world.clientId(), employeeA, (short) 1, false);
         insertSalesOrder(docNo("XD", seq + 5), world.clientId(), employeeB, (short) 0, false);
+        insertSalesOrder(docNo("XD", seq + 6), world.clientId(), employeeOf(salesViewer), (short) 0, false);
         // 采购草稿归属 A（maker_id 归属列的另一种形状）。
-        insertPurchaseOrder(docNo("CD", seq + 6), employeeA, (short) 0);
+        insertPurchaseOrder(docNo("CD", seq + 7), employeeA, (short) 0);
 
         fixture.loginAs(sellerA);
         DraftCountsResponse forA = drafts.counts();
@@ -109,21 +118,51 @@ class DocumentDraftCountScopePostgresTest {
         DraftCountsResponse forB = drafts.counts();
         assertEquals(1, forB.salesOrder() - baseB.salesOrder(), "B 看不到 A 的 3 张草稿");
         assertEquals(0, forB.purchaseOrder(), "B 没有 purchase_order:view，权限自卫直接 0 不查库");
+
+        fixture.loginAs(salesViewer);
+        assertEquals(0, drafts.counts().salesOrder() - baseViewer.salesOrder(),
+                "ADR-184: 只有 sales_order:view 的只读账号，本人草稿也不冒红（浏览不产生待办）");
     }
 
-    /** 超管走 seeAll 分支（谓词 {@code 1=1}），一次把 21 条 count 都在真实 schema 上执行一遍。 */
+    /**
+     * ADR-184: 任务读取不再使用超管全目录扩张，所以用「真实授出全部 21 类 view+edit（及各 scope
+     * 的 view:all）」的账号走 seeAll 分支（谓词 {@code 1=1}），一次把 21 条 count 都在真实
+     * schema 上执行一遍——表名/列名打错会立刻炸。
+     */
     @Test
-    void superAdminExecutesEveryDeclaredCountAgainstTheMigratedSchema() {
+    void fullyGrantedUserExecutesEveryDeclaredCountAgainstTheMigratedSchema() {
         String tag = "DRAFTALL" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(java.util.Locale.ROOT);
         int seq = 100000 + new java.util.Random().nextInt(800000);
         var world = fixture.seedWorld(tag);
         insertSalesOrder(docNo("XD", seq + 7), world.clientId(), world.employeeId(), (short) 0, false);
 
-        fixture.loginAs(world.superAdminUserId());
+        fixture.loginAs(fixture.createUserWithPerms(world, "fa-" + tag,
+                "sales:view:all", "purchase:view:all", "subcontract:view:all",
+                "stock_doc:view:all", "production_plan:view:all", "finance:view:all",
+                "sales_order:view", "sales_order:edit",
+                "sales_shipment:view", "sales_shipment:edit",
+                "sales_other_shipment:view", "sales_other_shipment:edit",
+                "sales_return:view", "sales_return:edit",
+                "sales_quote:view", "sales_quote:edit",
+                "purchase_order:view", "purchase_order:edit",
+                "subcontract_order:view", "subcontract_order:edit",
+                "stock_doc:view", "stock_doc:edit",
+                "production_plan:view", "production_plan:edit",
+                "production_daily_report:view", "production_daily_report:edit",
+                "finance_receipt:view", "finance_receipt:edit",
+                "finance_payment:view", "finance_payment:edit",
+                "finance_expense:view", "finance_expense:edit",
+                "finance_other_income:view", "finance_other_income:edit",
+                "finance_bank_transfer:view", "finance_bank_transfer:edit",
+                "purchase_receipt:view", "purchase_receipt:edit",
+                "purchase_return:view", "purchase_return:edit",
+                "subcontract_return:view", "subcontract_return:edit",
+                "subcontract_material_return:view", "subcontract_material_return:edit",
+                "subcontract_waste:view", "subcontract_waste:edit"));
         DraftCountsResponse counts = drafts.counts();
 
-        // 超管不受归属限制，至少数到刚插入的这张草稿；其余各条只要能跑通且非负。
-        assertTrue(counts.salesOrder() >= 1, "超管应看到全量草稿");
+        // view:all 不受归属限制，至少数到刚插入的这张草稿；其余各条只要能跑通且非负。
+        assertTrue(counts.salesOrder() >= 1, "全授权账号应看到全量草稿");
         for (var component : DraftCountsResponse.class.getRecordComponents()) {
             assertTrue(readCount(counts, component.getName()) >= 0,
                     component.getName() + " 应返回非负计数");
@@ -141,7 +180,9 @@ class DocumentDraftCountScopePostgresTest {
         int seq = 100000 + new java.util.Random().nextInt(800000);
         var world = fixture.seedWorld(tag);
 
-        UUID keeper = fixture.createUserWithPerms(world, "wk-" + tag, "stock_doc:view");
+        // ADR-184: 仓库切片计数也要真实办理资格(view+edit)，只读查看不数草稿。
+        UUID keeper = fixture.createUserWithPerms(world, "wk-" + tag,
+                "stock_doc:view", "stock_doc:edit");
         UUID keeperEmployee = employeeOf(keeper);
 
         // 同上：共用库 + 无主单据全员可见，故切片计数也只断言增量。
@@ -176,7 +217,9 @@ class DocumentDraftCountScopePostgresTest {
         String tag = "DRAFTREJ" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(java.util.Locale.ROOT);
         int seq = 100000 + new java.util.Random().nextInt(800000);
         var world = fixture.seedWorld(tag);
-        UUID buyer = fixture.createUserWithPerms(world, "pb-" + tag, "purchase_order:view");
+        // ADR-184: 草稿与「财务已退回」都要真实办理资格——退回件要能改单(view+edit)才计入待办。
+        UUID buyer = fixture.createUserWithPerms(world, "pb-" + tag,
+                "purchase_order:view", "purchase_order:edit");
         UUID buyerEmployee = employeeOf(buyer);
         fixture.loginAs(buyer);
         DraftCountsResponse base = drafts.counts();

@@ -353,7 +353,7 @@ class WorkshopMaterialClosePostgresTest {
         UUID chosen = bench.granule("认料颗粒", "OWN");
         UUID other = bench.granule("另一种颗粒", "OWN");
         UUID bomKeeper = bench.fixture.createUserWithPerms(bench.world, "wm-close-bom-" + suffix(),
-                "notice:read", "goods:bom:edit");
+                "notice:read", "goods:view", "goods:bom:edit");
         bench.enable(List.of(new WorkshopMaterialChoicePort.ProductChoice(bench.world.goodsA(),
                 WorkshopMaterialChoicePort.KIND_MATERIAL, List.of(new WorkshopMaterialChoicePort.MaterialRef(chosen, null)),
                 false, null)));
@@ -367,7 +367,8 @@ class WorkshopMaterialClosePostgresTest {
         UUID maker = ReflectionTestUtils.invokeMethod(draft, "reporter");
         db.update("""
                 INSERT INTO user_permission_overrides(user_id, permission_id, effect)
-                SELECT ?, permission.id, 'grant' FROM permissions permission WHERE permission.code = 'notice:read'""",
+                SELECT ?, permission.id, 'grant' FROM permissions permission WHERE permission.code IN
+                    ('notice:read', 'production_daily_report:view', 'production_daily_report:edit')""",
                 maker);
         String draftNo = db.queryForObject("SELECT bill_no FROM production_daily_reports WHERE id = ?", String.class,
                 draftId);
@@ -579,7 +580,7 @@ class WorkshopMaterialClosePostgresTest {
         CloseBench bench = countedSingleMaterial("failing");
         UUID first = bench.firstPeriod;
         UUID setupHolder = bench.fixture.createUserWithPerms(bench.world, "wm-close-setup-" + suffix(),
-                "notice:read", "workshop_material:setup");
+                "notice:read", "workshop_material:view", "workshop_material:setup");
         // 操作人不是有效账号: 写结算结果时失败, 整体回滚后另起事务记失败
         UUID ghost = UUID.randomUUID();
         for (int attempt = 1; attempt <= 3; attempt++) {

@@ -157,11 +157,12 @@ class StandaloneStockDraftQueryPostgresTest {
         db.update("INSERT INTO user_data_scopes(user_id,scope,owner_employee_id) VALUES (?,'stock_doc',?)", keeper, otherEmployee);
         validateFixture();
         Set<UUID> expected = Set.of(ownA, ownB, grantedA, transferIntoA);
-        assertEquals(expected.size(), drafts.counts().stockDocument());
+        // ADR-184: 手工只读数据范围扩大浏览, 但草稿计数按可写责任(本人)计算, 只读代持不冒红。
+        assertEquals(2L, drafts.counts().stockDocument());
         assertEquals(expected, workspace(Map.of("standaloneDrafts", "true")));
         Map<String, String> selected = Map.of("standaloneDrafts", "true", "scopeWarehouseId", warehouseA.toString());
         assertEquals(Set.of(ownA, grantedA, transferIntoA), workspace(selected));
-        assertEquals(3L, scopes.withRequestedWarehouse(warehouseA, () -> drafts.counts().stockDocument()));
+        assertEquals(1L, scopes.withRequestedWarehouse(warehouseA, () -> drafts.counts().stockDocument()));
         for (String type : TYPES) assertFacetMatchesPage(type, selected, page(type, selected));
         read("/api/stock/docs", Map.of("docType", "OTHER_IN", "standaloneDrafts", "true",
                 "scopeWarehouseId", warehouseB.toString()), 403);

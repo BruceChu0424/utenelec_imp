@@ -276,8 +276,9 @@ class SubcontractKitLockEndToEndTest {
 
     /** 采购委外部门里能读通知、能看委外申请、能生成委外订货单的人(可下单卡的收件人)。 */
     private UUID subcontractBuyer(FullChainEndToEndTest.World w, String tag) {
+        // ADR-184: 可下单行动卡按真实办理资格发——能「生成订货单」= 查看申请 + create + decompose。
         UUID user = fixture.createUserWithPerms(w, tag + "-buyer", "notice:read", "subcontract_application:view",
-                "subcontract_order:decompose");
+                "subcontract_order:create", "subcontract_order:decompose");
         db.update("""
                 UPDATE employees SET department_id = (SELECT id FROM departments
                                                        WHERE code='SUB_PURCHASE' AND NOT is_deleted LIMIT 1)

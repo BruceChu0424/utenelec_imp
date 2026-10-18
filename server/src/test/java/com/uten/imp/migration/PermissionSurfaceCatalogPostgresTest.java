@@ -321,7 +321,8 @@ class PermissionSurfaceCatalogPostgresTest {
             assertEquals("使用 AI 助手（对话与文件识别）", scalarText(statement, """
                     select name from permissions where code = 'ai:use'
                     """));
-            assertEquals("系统管理", scalarText(statement, """
+            // V875 共享工具分类：ai:use 移至「通用 → AI 助手」，跨模块共享的日常工具。
+            assertEquals("通用", scalarText(statement, """
                     select module from permissions where code = 'ai:use'
                     """));
             assertEquals("ai:use", scalarText(statement, """

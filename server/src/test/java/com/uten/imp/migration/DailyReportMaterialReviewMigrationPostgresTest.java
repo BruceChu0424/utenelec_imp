@@ -83,6 +83,9 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertTrue(expectedTables.add("document_unapprovals"));
         assertTrue(expectedTables.add("purchase_request_qty_revisions"));
         assertTrue(expectedTables.add("sms_gateway_settings"));
+        // V873/V874 (ADR-183): 远程 TOTP 凭据与外网策略单例, 均随业务清空保留。
+        assertTrue(expectedTables.add("staff_mfa"));
+        assertTrue(expectedTables.add("remote_access_policy"));
         V871_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         assertEquals(expectedTables.stream().toList(),tables());
         TreeMap<String,String> expectedIndexes=catalogMap(indexesAfterV840);
@@ -92,6 +95,11 @@ class DailyReportMaterialReviewMigrationPostgresTest {
                 "A declared new index must not replace an existing index: "+name));
         assertNull(expectedIndexes.put("sms_gateway_settings_pkey",
                 "CREATE UNIQUE INDEX sms_gateway_settings_pkey ON public.sms_gateway_settings USING btree (id)"));
+        // V873/V874 (ADR-183): 两张新表的主键索引是各自的全部索引增量。
+        assertNull(expectedIndexes.put("staff_mfa_pkey",
+                "CREATE UNIQUE INDEX staff_mfa_pkey ON public.staff_mfa USING btree (user_id)"));
+        assertNull(expectedIndexes.put("remote_access_policy_pkey",
+                "CREATE UNIQUE INDEX remote_access_policy_pkey ON public.remote_access_policy USING btree (singleton_id)"));
         // V870 adds a nullable correction-source relationship to append-only
         // employment events; its one new partial index is an explicit delta.
         assertNull(expectedIndexes.put("idx_employment_history_correction_source",
@@ -103,6 +111,9 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertNull(expectedPolicy.put("document_unapprovals","CLEAR"));
         assertNull(expectedPolicy.put("purchase_request_qty_revisions","CLEAR"));
         assertNull(expectedPolicy.put("sms_gateway_settings","PRESERVE"));
+        // V873/V874 (ADR-183): 凭据与外网策略在业务清空时保留(见 BusinessDataResetSqlContractTest 同步点)。
+        assertNull(expectedPolicy.put("staff_mfa","PRESERVE"));
+        assertNull(expectedPolicy.put("remote_access_policy","PRESERVE"));
         V871_HISTORY_TABLES.forEach(table->assertNull(expectedPolicy.put(table,"PRESERVE")));
         assertEquals(expectedPolicy,catalogMap(resetPolicy()));
         assertEquals(MigrationRehearsalSupport.CURRENT_HEAD_VERSION,

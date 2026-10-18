@@ -298,6 +298,13 @@ class PurchaseRequestPartialOrderEndToEndTest {
     @Test
     void physicalClosureDoesNotHideOrAgeOutAnUnfinishedFinancialQuantityReview() {
         Fixture f=fixture("closed-review-display");UUID order=f.approvedOrder();
+        // ADR-184: 财务退回徽章经 @BusinessTaskRead 只认真实授出权限 + 可写责任范围。
+        // 给本单制单人补「查看+改」采购订货两码, 退回计数才会按新口径把本单算进来。
+        db.update("""
+                insert into user_permission_overrides(user_id, permission_id, effect)
+                select ?, p.id, 'grant' from permissions p
+                where p.code = any(array['purchase_order:view','purchase_order:edit'])
+                """, f.world().superAdminUserId());
         UUID item=orders.detail(order).getItems().getFirst().getId();
         UUID receipt=org.springframework.test.util.ReflectionTestUtils.invokeMethod(harness,"receiveIntoQuarantine",
                 f.world(),f.world().goodsD(),item,"1","NORMAL");

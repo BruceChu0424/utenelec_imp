@@ -318,10 +318,12 @@ class ProcurementArrivalWorkflowContractTest {
                 // 财务审核结果通知仓库：池仍是仓库部门(SUB_WH 子树)里同时持有通知查看 + 到货入库权限的人,
                 // 但 ADR-149 起所有仓库通知都经统一分发(WarehouseNoticeRouter：子仓负责人 → 主管 → 池)，
                 // 按这条到货异常的收货仓分发，不再直接群发整个仓库部门。
-                .contains("departmentUserIdsWithAuthorities(\"SUB_WH\", authorities)")
+                // ADR-184 起池由真实授出的动作权限(含 view 依赖补齐)选出, 不再按部门目录扩张。
+                .contains("required.add(NOTICE_READ_AUTHORITY)")
+                .contains("actionUserIdsWithAuthorities(required.toArray(String[]::new))")
                 .contains("warehouseRecipients(warehousePool(NOTICE_READ_AUTHORITY, \"warehouse_inbound:stock_in\"),\n"
                         + "                    warehouseIdsOf(arrival.get(\"warehouse_id\")))")
-                .contains("notifyUser(ownerUser, TYPE_TASK")
+                .contains("sendToUser(ownerUser, TYPE_TASK")
                 .doesNotContain("到货超量待决定")
                 .doesNotContain("原下单人已决定接收");
     }
@@ -330,7 +332,8 @@ class ProcurementArrivalWorkflowContractTest {
     void stockInNotifiesPurchaseDeptWhenReturnStillPending() throws Exception {
         // 修复：一键入库（recordApproval）原本不发 outbox 事件 → 采购/委外收不到「已入库、余量待退」。
         // 锁定补全：仅当本异常仍有待退（→RECEIPT_POSTED）时发 PROCUREMENT_ARRIVAL_RECEIPT_POSTED，
-        // 并由 ChainNoticeService 把入库/退货事件广播到采购部 SUB_PURCHASE（委外单也归采购部）。
+        // ADR-184 起由 ChainNoticeService 按真实授出的 supplier_return_task:view 权限广播
+        // （委外单也走同一动作池），不再按 SUB_PURCHASE 部门目录群发。
         String service = source(
                 "src/main/java/com/uten/imp/features/warehouse/inbound/"
                         + "ProcurementArrivalControlService.java");
@@ -346,7 +349,8 @@ class ProcurementArrivalWorkflowContractTest {
                 .contains("\"PROCUREMENT_ARRIVAL_RECEIPT_POSTED\"")
                 .contains("EVENT_PROCUREMENT_ARRIVAL_RECEIPT_POSTED ->")
                 .contains("broadcastToProcurementReturnFollowers")
-                .contains("departmentUserIds(\"SUB_PURCHASE\")")
+                .contains("userIdsWithPermissions(\"supplier_return_task:view\", NOTICE_READ_AUTHORITY)")
+                .doesNotContain("departmentUserIds(\"SUB_PURCHASE\")")
                 .contains("到货已入库，余量待退");
     }
 

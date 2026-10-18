@@ -74,6 +74,13 @@ class SubcontractShortDeliveryEndToEndTest {
 
     @Test void shortDeliveryIsConfirmedByWarehouseDecidedBySubcontractAndSettledWithLossRatio() {
         var w=fixture.seedWorld("sc-short-delivery");fixture.loginAs(w.superAdminUserId());
+        // ADR-184: 紧急短交判定卡只发给真实持有判定权限的人。给制单人补上「读通知 + 查看委外订货 +
+        // 短交判定」三码, 他作为本人单据的可写责任人才收到 urgent 行动卡(而不是降级的知会卡)。
+        db.update("""
+                insert into user_permission_overrides(user_id, permission_id, effect)
+                select ?, p.id, 'grant' from permissions p
+                where p.code = any(array['notice:read','subcontract_order:view','subcontract_short_delivery:decide'])
+                """, w.superAdminUserId());
         // ADR-143: 委外件 E 发外的是直属物料 M(按件用量 1), 现货 M 20(真实其它入库)。
         UUID material=fixture.ensureSubcontractDirectMaterial(w,w.goodsE());fixture.receiveSubcontractMaterial(w,material,"20");
 

@@ -277,15 +277,18 @@ class StockCountApprovalPostgresTest {
         controller.reject((UUID)rejected.get("id"),new StockCountDtos.Decision(0L,key(),"recheck"));
         // ADR-145: the counted warehouse still holds stock, so it cannot be retired; counts and
         // scoped lists are compared on the live warehouse.
-        for (UUID actor:List.of(maker,finance,warehouseReviewer,world.superAdminUserId())) {
+        for (UUID actor:List.of(maker,finance,warehouseReviewer)) {
             fixture.loginAs(actor);
             var actual=controller.counts(null);
-            boolean admin=actor.equals(world.superAdminUserId());
-            assertEquals(admin||actor.equals(finance)?controller.list("FINANCE","PENDING",null,1,1).getTotal():0L,actual.get("financePending"));
-            assertEquals(admin||actor.equals(warehouseReviewer)?controller.list("WAREHOUSE","PENDING",null,1,1).getTotal():0L,actual.get("warehousePending"));
-            assertEquals(admin||actor.equals(maker)?controller.list(null,"PENDING",null,1,1).getTotal():0L,actual.get("myPending"));
-            assertEquals(admin||actor.equals(maker)?controller.list(null,"REJECTED",null,1,1).getTotal():0L,actual.get("myRejected"));
+            assertEquals(actor.equals(finance)?controller.list("FINANCE","PENDING",null,1,1).getTotal():0L,actual.get("financePending"));
+            assertEquals(actor.equals(warehouseReviewer)?controller.list("WAREHOUSE","PENDING",null,1,1).getTotal():0L,actual.get("warehousePending"));
+            assertEquals(actor.equals(maker)?controller.list(null,"PENDING",null,1,1).getTotal():0L,actual.get("myPending"));
+            assertEquals(actor.equals(maker)?controller.list(null,"REJECTED",null,1,1).getTotal():0L,actual.get("myRejected"));
         }
+        // ADR-184: 业务待办按真实授出权限读取, 超管目录权限不再订阅盘点任务计数;
+        // 没有盘点权限的账号连读都被方法权限拒绝。
+        fixture.loginAs(world.superAdminUserId());
+        assertThrows(AccessDeniedException.class,()->controller.counts(null));
         fixture.loginAs(maker);
         assertEquals(1L,controller.counts(null).get("myPending"));
         assertEquals(1L,controller.counts(null).get("myRejected"));

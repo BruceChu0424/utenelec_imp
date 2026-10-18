@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/server_config.dart';
@@ -63,6 +64,7 @@ class _Snapshot extends SessionSnapshotNotifier {
 
 class _Repo implements PlatformSettingsRepository {
   PlatformBranding brand = _brand;
+  PlatformServerStatus reportedStatus = _status;
   Object? statusError;
   Object? saveError;
   Completer<PlatformServerStatus>? pendingStatus;
@@ -76,7 +78,7 @@ class _Repo implements PlatformSettingsRepository {
   Future<PlatformServerStatus> status() async {
     statusCalls++;
     if (statusError != null) throw statusError!;
-    return pendingStatus?.future ?? _status;
+    return pendingStatus?.future ?? reportedStatus;
   }
 
   @override
@@ -113,6 +115,7 @@ Future<ProviderContainer> _pump(
   double scale = 1,
   bool routed = false,
   PlatformBranding? cachedBrand,
+  String initialEndpoint = 'https://company-a.invalid/api',
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -121,10 +124,9 @@ Future<ProviderContainer> _pump(
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
   if (cachedBrand != null) {
-    const endpoint = 'https://company-a.invalid/api';
     await PlatformBrandingCache(prefs).saveBrand(
-      endpoint,
-      cachedBrand.forServer(endpoint),
+      initialEndpoint,
+      cachedBrand.forServer(initialEndpoint),
       isCurrent: () => true,
     );
   }
@@ -140,6 +142,10 @@ Future<ProviderContainer> _pump(
               path: RouteName.dashboard,
               builder: (_, _) => const Scaffold(body: Text('已返回工作台')),
             ),
+            DraftAwareGoRoute(
+              path: RouteName.adminServerStatus,
+              builder: (_, _) => const Scaffold(body: Text('服务器维护页面')),
+            ),
           ],
         )
       : null;
@@ -152,6 +158,7 @@ Future<ProviderContainer> _pump(
     ProviderScope(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(prefs),
+        _endpoint.overrideWith((ref) => initialEndpoint),
         apiBaseUrlProvider.overrideWith((ref) => ref.watch(_endpoint)),
         authenticatedScopeProvider.overrideWithValue(
           const AuthenticatedScope(userId: 'admin'),
@@ -172,6 +179,7 @@ Future<ProviderContainer> _pump(
         key: const Key('platform-capture'),
         child: router != null
             ? MaterialApp.router(
+                debugShowCheckedModeBanner: false,
                 locale: const Locale('zh'),
                 localizationsDelegates: AppLocalizations.localizationsDelegates,
                 supportedLocales: AppLocalizations.supportedLocales,
@@ -180,6 +188,7 @@ Future<ProviderContainer> _pump(
                 routerConfig: router,
               )
             : MaterialApp(
+                debugShowCheckedModeBanner: false,
                 locale: const Locale('zh'),
                 localizationsDelegates: AppLocalizations.localizationsDelegates,
                 supportedLocales: AppLocalizations.supportedLocales,
@@ -216,6 +225,48 @@ Future<void> _capture(WidgetTester tester, String name) async {
     await Directory(output).create(recursive: true);
     await File('$output/$name.png').writeAsBytes(data!.buffer.asUint8List());
   });
+}
+
+Future<void> _revealForTap(WidgetTester tester, Finder target) async {
+  await tester.scrollUntilVisible(
+    target,
+    300,
+    scrollable: find.byType(Scrollable).first,
+    maxScrolls: 20,
+  );
+  await tester.pumpAndSettle();
+  // A lazy section may change its scroll extent after the first reveal.
+  // Position the settled target inside the viewport before sending a tap.
+  await Scrollable.ensureVisible(tester.element(target), alignment: 0.5);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _openServerSection(WidgetTester tester) async {
+  final sections = find.byType(UtenSegmentRow<int>);
+  await _revealForTap(tester, sections);
+  final inlineTab = find.descendant(
+    of: sections,
+    matching: find.text('服务器与文件'),
+  );
+  if (inlineTab.evaluate().isNotEmpty) {
+    expect(inlineTab.hitTestable(), findsOneWidget);
+    await tester.tap(inlineTab.hitTestable());
+  } else {
+    final compactMenu = find.descendant(
+      of: sections,
+      matching: find.byType(OutlinedButton),
+    );
+    expect(compactMenu.hitTestable(), findsOneWidget);
+    await tester.tap(compactMenu.hitTestable());
+    await tester.pumpAndSettle();
+    expect(find.text('选择分类'), findsOneWidget);
+    final dialogTab = find.text('服务器与文件');
+    await Scrollable.ensureVisible(tester.element(dialogTab), alignment: 0.5);
+    await tester.pumpAndSettle();
+    expect(dialogTab.hitTestable(), findsOneWidget);
+    await tester.tap(dialogTab.hitTestable());
+  }
+  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -530,6 +581,217 @@ void main() {
       await _capture(tester, 'platform-configuration-groups');
     },
   );
+
+  testWidgets(
+    'failed server recheck clears previously confirmed storage availability',
+    (tester) async {
+      final repo = _Repo()
+        ..reportedStatus = const PlatformServerStatus(
+          databaseConnected: true,
+          attachmentStorageBackend: 'local',
+          attachmentUploadsEnabled: true,
+        );
+      await _pump(tester, repo);
+      await tester.pumpAndSettle();
+      await _openServerSection(tester);
+      final storage = find.byKey(const ValueKey('platform-storage-card'));
+      expect(
+        find.descendant(of: storage, matching: find.text('公司数据库')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: storage, matching: find.text('服务器本地目录')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: storage, matching: find.text('已配置开放')),
+        findsOneWidget,
+      );
+      await _capture(tester, 'platform-server-overview');
+
+      repo.statusError = NetworkException();
+      await tester.ensureVisible(find.text('重新检测'));
+      await tester.tap(find.text('重新检测'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(storage);
+      expect(find.text('尚未确认连接'), findsOneWidget);
+      expect(
+        find.descendant(of: storage, matching: find.text('等待验证')),
+        findsNWidgets(3),
+      );
+      expect(find.text('已配置开放'), findsNothing);
+      expect(find.text('服务器本地目录'), findsNothing);
+      expect(find.text('公司数据库'), findsNothing);
+
+      repo.statusError = null;
+      repo.reportedStatus = const PlatformServerStatus(
+        databaseConnected: true,
+        attachmentStorageBackend: 'oss',
+      );
+      await tester.ensureVisible(find.text('重新检测'));
+      await tester.tap(find.text('重新检测'));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(of: storage, matching: find.text('对象存储 (OSS)')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: storage, matching: find.text('未开放')),
+        findsOneWidget,
+      );
+      expect(find.text('等待验证'), findsNothing);
+      expect(repo.saveCalls, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'server maintenance navigation confirms unsaved branding before leaving',
+    (tester) async {
+      final repo = _Repo();
+      await _pump(tester, repo, routed: true);
+      await tester.pumpAndSettle();
+      final company = find.byKey(const ValueKey('platform-companyName'));
+      await tester.enterText(company, '尚未保存的公司名称');
+      await _openServerSection(tester);
+      final maintenance = find.text('服务器状态与备份');
+      await tester.ensureVisible(maintenance);
+      await tester.tap(maintenance);
+      await tester.pumpAndSettle();
+      expect(find.text('有尚未保存的修改'), findsOneWidget);
+      expect(find.text('服务器维护页面'), findsNothing);
+      await tester.tap(find.text('继续编辑'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('公司与品牌'));
+      await tester.tap(find.text('公司与品牌'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextFormField>(company).controller!.text,
+        '尚未保存的公司名称',
+      );
+
+      await _openServerSection(tester);
+      await tester.ensureVisible(maintenance);
+      await tester.tap(maintenance);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('丢弃修改'));
+      await tester.pumpAndSettle();
+      expect(find.text('服务器维护页面'), findsOneWidget);
+      expect(repo.saveCalls, 0);
+
+      GoRouter.of(tester.element(find.text('服务器维护页面'))).pop();
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('公司与品牌'));
+      await tester.tap(find.text('公司与品牌'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextFormField>(company).controller!.text,
+        _brand.companyName,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final (size, dark, scale, twoColumns, name) in [
+    (const Size(1440, 1000), false, 1.0, true, 'platform-server-light-wide'),
+    (const Size(1440, 1000), true, 1.0, true, 'platform-server-dark-wide'),
+    (const Size(760, 1000), false, 1.0, false, 'platform-server-tablet'),
+    (const Size(375, 1000), false, 1.0, false, 'platform-server-mobile'),
+    (
+      const Size(375, 1000),
+      false,
+      2.0,
+      false,
+      'platform-server-mobile-largest',
+    ),
+    (const Size(900, 450), true, 1.3, false, 'platform-server-landscape'),
+  ]) {
+    testWidgets('server layout $name aligns cards and remains usable', (
+      tester,
+    ) async {
+      final repo = _Repo()
+        ..reportedStatus = const PlatformServerStatus(
+          databaseConnected: true,
+          attachmentStorageBackend: 'local',
+          attachmentUploadsEnabled: true,
+        );
+      await _pump(
+        tester,
+        repo,
+        size: size,
+        dark: dark,
+        scale: scale,
+        initialEndpoint:
+            'https://company-a.invalid/company-platform/production/'
+            'long-deployment-identifier-for-current-company-server/api',
+      );
+      await tester.pumpAndSettle();
+      final connection = tester.getRect(
+        find.byKey(const ValueKey('platform-connection-summary')),
+      );
+      expect(connection.width, greaterThan(size.width * 0.85));
+      await _openServerSection(tester);
+      expect(tester.takeException(), isNull);
+      await _capture(tester, name);
+
+      final storageFinder = find.byKey(const ValueKey('platform-storage-card'));
+      await tester.scrollUntilVisible(
+        storageFinder,
+        300,
+        scrollable: find.byType(Scrollable).first,
+        maxScrolls: 20,
+      );
+      final storage = tester.getRect(storageFinder);
+      final maintenance = tester.getRect(
+        find.byKey(const ValueKey('platform-maintenance-card')),
+      );
+      final upgrade = tester.getRect(
+        find.byKey(const ValueKey('platform-upgrade-card')),
+      );
+      expect(storage.left, closeTo(connection.left, 0.1));
+      expect(upgrade.left, closeTo(connection.left, 0.1));
+      expect(upgrade.width, closeTo(connection.width, 0.1));
+      if (twoColumns) {
+        expect(maintenance.top, closeTo(storage.top, 0.1));
+        expect(maintenance.right, closeTo(connection.right, 0.1));
+        expect(storage.width / maintenance.width, closeTo(1.5, 0.02));
+        expect(storage.right, lessThan(maintenance.left));
+      } else {
+        expect(storage.width, closeTo(connection.width, 0.1));
+        expect(maintenance.width, closeTo(connection.width, 0.1));
+        expect(maintenance.left, closeTo(connection.left, 0.1));
+        expect(maintenance.top, greaterThanOrEqualTo(storage.bottom));
+      }
+      expect(upgrade.top, greaterThanOrEqualTo(maintenance.bottom));
+
+      final details = find.text('查看更新与部署说明');
+      final expandedExplanation = find.text(
+        '公司配置随数据库备份与还原，不随安装包替换。切换到另一家公司服务器时，会重新读取该公司的品牌。',
+      );
+      expect(expandedExplanation, findsNothing);
+      await _revealForTap(tester, details);
+      await tester.tap(details.hitTestable());
+      await tester.pumpAndSettle();
+      expect(expandedExplanation, findsOneWidget);
+      await Scrollable.ensureVisible(tester.element(details), alignment: 0.1);
+      await tester.pumpAndSettle();
+      expect(details.hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await _capture(tester, '$name-details');
+
+      final scrollable = find.byType(Scrollable).first;
+      for (var step = 0; step < 30; step++) {
+        final position = tester.state<ScrollableState>(scrollable).position;
+        if (position.pixels >= position.maxScrollExtent) break;
+        await tester.drag(scrollable, const Offset(0, -350));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      }
+      final position = tester.state<ScrollableState>(scrollable).position;
+      expect(position.pixels, closeTo(position.maxScrollExtent, 1));
+      await _capture(tester, '$name-bottom');
+    });
+  }
 
   testWidgets('preview switches full theme including text contrast', (
     tester,

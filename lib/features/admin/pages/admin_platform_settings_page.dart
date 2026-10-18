@@ -483,25 +483,30 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
               bottom: UtenFloatingActionGroup.scrollClearance,
             ),
             children: [
-              Text('让这套平台成为你们公司的工作空间', style: theme.textTheme.headlineSmall),
-              const SizedBox(height: 8),
-              Text(
-                '公司品牌保存在当前服务器，所有使用此服务器的员工共享。',
-                style: theme.textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 8),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(
-                    Icons.admin_panel_settings_outlined,
-                    size: 18,
-                    color: theme.colorScheme.primary,
-                  ),
-                  const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
-                      '仅超级管理员 · 公司统一设置',
-                      style: theme.textTheme.bodySmall,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('公司平台配置', style: theme.textTheme.titleLarge),
+                        const SizedBox(height: UtenSpacing.s4),
+                        Text(
+                          '管理公司品牌、服务器连接与配置入口。',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: UtenSpacing.s12),
+                  Tooltip(
+                    message: '仅超级管理员 · 公司统一设置',
+                    child: Icon(
+                      Icons.admin_panel_settings_outlined,
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ],
@@ -534,9 +539,11 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
                 selected: {_section},
                 onSelectionChanged: _busy
                     ? null
-                    : (next) => setState(
-                        () => _section = next.isEmpty ? _section : next.single,
-                      ),
+                    : (next) {
+                        if (next.isEmpty || next.single == _section) return;
+                        setState(() => _section = next.single);
+                        _scrollController.jumpTo(0);
+                      },
                 segments: [
                   for (final (index, label) in const [
                     '公司与品牌',
@@ -559,7 +566,7 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
               else if (_section == 0 && _original != null)
                 _brandEditor()
               else if (_section == 1)
-                _serverDetails(endpoint)
+                _serverDetails()
               else if (_section == 2)
                 _configurationLinks()
               else
@@ -571,66 +578,110 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
     );
   }
 
-  Widget _connectionSummary(String endpoint) => UtenCard(
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(
-              _loading
-                  ? Icons.sync
-                  : _verified
-                  ? Icons.check_circle_outline
-                  : Icons.cloud_off_outlined,
-              color: _verified
-                  ? Theme.of(context).colorScheme.primary
-                  : Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                _loading
-                    ? '正在验证服务器和数据库…'
-                    : _verified
-                    ? '已连接 · 数据库已就绪'
-                    : '尚未确认连接',
-                key: const ValueKey('platform-connection-state'),
+  Widget _connectionSummary(String endpoint) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final mode = kIsWeb
+        ? '当前网页入口'
+        : switch (readServerMode(ref.watch(sharedPreferencesProvider))) {
+            ServerMode.auto => '自动优先公司内网',
+            ServerMode.local => '仅公司内网',
+            ServerMode.cloud => '仅托管云端',
+          };
+    return UtenCard(
+      key: const ValueKey('platform-connection-summary'),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final details = Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(UtenSpacing.s12),
+                decoration: BoxDecoration(
+                  color: _verified
+                      ? cs.primaryContainer
+                      : cs.surfaceContainerHigh,
+                  borderRadius: UtenRadius.controlAll,
+                ),
+                child: Icon(
+                  _loading
+                      ? Icons.sync
+                      : _verified
+                      ? Icons.dns_outlined
+                      : Icons.cloud_off_outlined,
+                  color: _verified
+                      ? cs.onPrimaryContainer
+                      : cs.onSurfaceVariant,
+                ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        SelectableText(endpoint, style: Theme.of(context).textTheme.bodySmall),
-        const SizedBox(height: 8),
-        Text(
-          '连接方式：${kIsWeb ? '当前网页入口' : switch (readServerMode(ref.watch(sharedPreferencesProvider))) {
-                  ServerMode.auto => '自动优先公司内网',
-                  ServerMode.local => '仅公司内网',
-                  ServerMode.cloud => '仅托管云端',
-                }}',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            OutlinedButton.icon(
-              onPressed: _busy ? null : () => _load(connectionOnly: true),
-              icon: const Icon(Icons.refresh),
-              label: const Text('重新检测'),
-            ),
-            TextButton.icon(
-              onPressed: _busy ? null : _switchServer,
-              icon: const Icon(Icons.dns_outlined),
-              label: const Text('连接方式'),
-            ),
-          ],
-        ),
-      ],
-    ),
-  );
+              const SizedBox(width: UtenSpacing.s12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _loading
+                          ? '正在验证服务器和数据库…'
+                          : _verified
+                          ? '已连接 · 数据库已就绪'
+                          : '尚未确认连接',
+                      key: const ValueKey('platform-connection-state'),
+                      style: theme.textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: UtenSpacing.s4),
+                    SelectableText(endpoint, style: theme.textTheme.bodyMedium),
+                    const SizedBox(height: UtenSpacing.s4),
+                    Text(
+                      '连接方式：$mode',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+          final actions = Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: _busy ? null : () => _load(connectionOnly: true),
+                icon: const Icon(Icons.refresh),
+                label: const Text('重新检测'),
+              ),
+              TextButton.icon(
+                onPressed: _busy ? null : _switchServer,
+                icon: const Icon(Icons.dns_outlined),
+                label: const Text('连接方式'),
+              ),
+            ],
+          );
+          if (constraints.maxWidth >= 900 * _textScale) {
+            return Row(
+              children: [
+                Expanded(child: details),
+                const SizedBox(width: UtenSpacing.s24),
+                actions,
+              ],
+            );
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              details,
+              const SizedBox(height: UtenSpacing.s12),
+              actions,
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  double get _textScale =>
+      (MediaQuery.textScalerOf(context).scale(14) / 14).clamp(1.0, 3.0);
 
   Widget _notice(String text, {bool error = false}) {
     final cs = Theme.of(context).colorScheme;
@@ -650,7 +701,7 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
   Widget _brandEditor() => Form(
     key: _formKey,
     child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         LayoutBuilder(
           builder: (context, constraints) {
@@ -748,17 +799,18 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
                 ]),
               ],
             );
-            if (constraints.maxWidth >= 1100) {
+            if (constraints.maxWidth >= 1100 * _textScale) {
               return Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(child: fields),
+                  Expanded(flex: 7, child: fields),
                   const SizedBox(width: 20),
-                  SizedBox(width: 320, child: _preview()),
+                  Expanded(flex: 3, child: _preview()),
                 ],
               );
             }
             return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [fields, const SizedBox(height: 16), _preview()],
             );
           },
@@ -806,18 +858,27 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
     String subtitle,
     List<Widget> children, {
     BuildContext? localContext,
+    Key? key,
   }) => UtenCard(
+    key: key,
     child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
           title,
-          style: Theme.of(localContext ?? context).textTheme.titleMedium,
+          style: Theme.of(
+            localContext ?? context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 6),
         Text(
           subtitle,
-          style: Theme.of(localContext ?? context).textTheme.bodySmall,
+          style: Theme.of(localContext ?? context).textTheme.bodySmall
+              ?.copyWith(
+                color: Theme.of(
+                  localContext ?? context,
+                ).colorScheme.onSurfaceVariant,
+              ),
         ),
         const SizedBox(height: 16),
         ...children,
@@ -827,7 +888,7 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
 
   Widget _fields(List<String> keys) => LayoutBuilder(
     builder: (context, constraints) {
-      if (constraints.maxWidth < 520) {
+      if (constraints.maxWidth < 520 * _textScale) {
         return Column(children: [for (final key in keys) _field(key)]);
       }
       return Row(
@@ -949,7 +1010,7 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
         ? buildDarkTheme(branding: branding)
         : buildLightTheme(branding: branding);
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
           children: [
@@ -997,13 +1058,16 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
                 child: const Text('登录平台'),
               ),
               const SizedBox(height: 12),
-              Chip(
-                label: const Text('待办提醒'),
-                backgroundColor: Theme.of(
-                  context,
-                ).colorScheme.secondaryContainer,
-                labelStyle: TextStyle(
-                  color: Theme.of(context).colorScheme.onSecondaryContainer,
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Chip(
+                  label: const Text('待办提醒'),
+                  backgroundColor: Theme.of(
+                    context,
+                  ).colorScheme.secondaryContainer,
+                  labelStyle: TextStyle(
+                    color: Theme.of(context).colorScheme.onSecondaryContainer,
+                  ),
                 ),
               ),
             ], localContext: context),
@@ -1013,57 +1077,205 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
     );
   }
 
-  Widget _serverDetails(String endpoint) => Column(
-    children: [
-      _card('当前服务器', '平台名称、Logo 和颜色只保存到这里。切换到另一家公司服务器时会重新读取它的品牌。', [
-        SelectableText(endpoint),
-        const SizedBox(height: 12),
-        Text(_verified ? '服务器与数据库连接已确认' : '连接尚未确认，请重新检测'),
-        const SizedBox(height: 12),
-        OutlinedButton(
-          onPressed: _busy ? null : _switchServer,
-          child: const Text('查看 / 切换连接方式'),
-        ),
-      ]),
-      const SizedBox(height: 16),
-      _card('Logo 与附件存储', 'Logo 是小型品牌图片，保存在此服务器数据库中，随数据库备份与还原。业务附件使用独立的文件存储。', [
-        Text('Logo：${_verified ? '数据库存储已连接' : '等待验证'}'),
-        const SizedBox(height: 8),
-        Text('业务附件存储：${_status?.attachmentStorageBackend ?? '等待读取'}'),
-        const SizedBox(height: 8),
-        Text(
-          '业务附件上传：${_status == null
-              ? '等待读取'
-              : _status!.attachmentUploadsEnabled
+  Widget _serverDetails() {
+    final theme = Theme.of(context);
+    // A previous successful read is not evidence for the current connection.
+    final status = _verified ? _status : null;
+    final storageName = switch (status?.attachmentStorageBackend) {
+      null => '等待验证',
+      'local' => '服务器本地目录',
+      'oss' => '对象存储 (OSS)',
+      'disabled' => '未配置',
+      final name => name,
+    };
+    final storage = _card(
+      'Logo 与附件存储',
+      '公司品牌随数据库备份，业务附件由独立的文件存储管理。',
+      [
+        _settingRow('品牌 Logo', status == null ? '等待验证' : '公司数据库'),
+        const Divider(height: UtenSpacing.s24),
+        _settingRow('业务附件', storageName),
+        const Divider(height: UtenSpacing.s24),
+        _settingRow(
+          '附件上传',
+          status == null
+              ? '等待验证'
+              : status.attachmentUploadsEnabled
               ? '已配置开放'
-              : '未开放'}（实际可用性以附件上传校验为准）',
+              : '未开放',
+          icon: status == null
+              ? Icons.help_outline
+              : status.attachmentUploadsEnabled
+              ? Icons.check_circle_outline
+              : Icons.pause_circle_outline,
         ),
-      ]),
-      const SizedBox(height: 16),
-      _card('版本更新与设置保留', '正常更新网页、桌面或手机应用不会重置公司平台设置。', [
-        const Text(
-          '公司名称、Logo、配色和联系信息保存在公司服务器数据库中，不随安装包替换。新增版本只升级程序与必要的数据结构，保留已经保存的配置。',
+        const SizedBox(height: UtenSpacing.s16),
+        Text(
+          '上传状态反映服务器配置，实际可用性以附件上传校验为准。',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
-        const SizedBox(height: 10),
-        const Text(
-          '个人偏好保存在当前浏览器或设备中。同一访问入口、同一应用正常更新会继续使用；卸载并清除应用数据、清理浏览器数据属于另外的操作。',
+      ],
+      key: const ValueKey('platform-storage-card'),
+    );
+    final maintenance = _card('部署维护', '查看运行情况、数据库连接和备份记录。', [
+      Align(
+        alignment: Alignment.centerLeft,
+        child: OutlinedButton.icon(
+          onPressed: _busy
+              ? null
+              : () => _openConfiguration(RouteName.adminServerStatus),
+          icon: const Icon(Icons.dns_outlined),
+          label: const Text('服务器状态与备份'),
         ),
-      ]),
-      const SizedBox(height: 16),
-      _card(
-        '部署维护',
-        '数据库地址、服务器证书、文件目录、备份和加密密钥由服务器维护配置管理。更换公司部署时，需要先完成独立数据库与服务器初始化。',
-        [
-          const Text('本页可检查连接、调整客户端连接方式和品牌；数据库和密钥不通过客户端迁移或复制。'),
-          const SizedBox(height: 12),
-          OutlinedButton(
-            onPressed: () => context.push(RouteName.adminServerStatus),
-            child: const Text('服务器状态与备份'),
+      ),
+      const SizedBox(height: UtenSpacing.s20),
+      Text('由服务器维护人员管理', style: theme.textTheme.titleSmall),
+      const SizedBox(height: UtenSpacing.s8),
+      const Text('数据库地址、证书、文件目录、备份与加密密钥。'),
+      const SizedBox(height: UtenSpacing.s8),
+      Text(
+        '本页的连接方式只影响当前设备。',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+    ], key: const ValueKey('platform-maintenance-card'));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth >= 900 * _textScale) {
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(flex: 3, child: storage),
+                  const SizedBox(width: UtenSpacing.s16),
+                  Expanded(flex: 2, child: maintenance),
+                ],
+              );
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                storage,
+                const SizedBox(height: UtenSpacing.s16),
+                maintenance,
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: UtenSpacing.s16),
+        _card(
+          '版本更新与设置保留',
+          '正常更新网页、桌面或手机应用，会继续保留已有配置。',
+          [
+            UtenResponsiveGrid(
+              itemCount: 2,
+              maxColumns: 2,
+              minItemWidth: 360,
+              itemBuilder: (_, index, _) => _retentionSummary(
+                index == 0 ? Icons.business_outlined : Icons.devices_outlined,
+                index == 0 ? '公司设置 · 保存在服务器' : '个人偏好 · 保存在当前设备',
+                index == 0 ? '公司名称、Logo、配色和联系信息。' : '同一访问入口、同一应用更新后继续使用。',
+              ),
+            ),
+            const SizedBox(height: UtenSpacing.s12),
+            const Divider(height: 1),
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+              shape: const Border(),
+              collapsedShape: const Border(),
+              title: Text('查看更新与部署说明', style: theme.textTheme.bodyMedium),
+              expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  '公司配置随数据库备份与还原，不随安装包替换。切换到另一家公司服务器时，会重新读取该公司的品牌。',
+                  style: theme.textTheme.bodySmall,
+                ),
+                const SizedBox(height: UtenSpacing.s8),
+                Text(
+                  '卸载并清除应用数据、清理浏览器数据属于额外操作，可能清除个人偏好。更换公司部署须先完成独立数据库与服务器初始化，数据库和密钥不通过本页迁移或复制。',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ],
+          key: const ValueKey('platform-upgrade-card'),
+        ),
+      ],
+    );
+  }
+
+  Widget _settingRow(String label, String value, {IconData? icon}) =>
+      LayoutBuilder(
+        builder: (context, constraints) {
+          final theme = Theme.of(context);
+          final caption = Text(
+            label,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          );
+          final content = Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
+                const SizedBox(width: UtenSpacing.s8),
+              ],
+              Expanded(
+                child: Text(
+                  value,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          );
+          if (constraints.maxWidth < 400 * _textScale) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                caption,
+                const SizedBox(height: UtenSpacing.s6),
+                content,
+              ],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(width: 128 * _textScale, child: caption),
+              const SizedBox(width: UtenSpacing.s16),
+              Expanded(child: content),
+            ],
+          );
+        },
+      );
+
+  Widget _retentionSummary(IconData icon, String title, String description) =>
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: Theme.of(context).colorScheme.onSurfaceVariant),
+          const SizedBox(width: UtenSpacing.s12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: Theme.of(context).textTheme.titleSmall),
+                const SizedBox(height: UtenSpacing.s6),
+                Text(description, style: Theme.of(context).textTheme.bodySmall),
+              ],
+            ),
           ),
         ],
-      ),
-    ],
-  );
+      );
 
   Widget _configurationLinks() {
     final entries = platformSettingsEntriesFor(
@@ -1098,6 +1310,7 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
         UtenResponsiveGrid(
           itemCount: visible.length,
           maxColumns: 2,
+          minItemWidth: 400,
           itemBuilder: (_, index, _) {
             final group = visible[index];
             return _card(group.$1, group.$2, [
@@ -1139,13 +1352,12 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
         title: Text(title),
         subtitle: Text(subtitle),
         trailing: const Icon(Icons.chevron_right),
-        onTap: _busy
-            ? null
-            : () async {
-                if (await _confirmDiscard() && mounted && _current) {
-                  if (_dirty) setState(() => _accept(_original!));
-                  if (mounted) context.push(route);
-                }
-              },
+        onTap: _busy ? null : () => _openConfiguration(route),
       );
+
+  Future<void> _openConfiguration(String route) async {
+    if (_busy || !await _confirmDiscard() || !_current) return;
+    if (_dirty) setState(() => _accept(_original!));
+    if (mounted) context.push(route);
+  }
 }

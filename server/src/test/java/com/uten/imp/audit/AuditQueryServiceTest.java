@@ -1,5 +1,7 @@
 package com.uten.imp.audit;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -503,11 +505,14 @@ class AuditQueryServiceTest {
     @Test
     void listDetailAndExportNeverCarryAFullMobileNumber() {
         // security-10: 人员档案按 users.login_account(手机号)解析, 展示与导出只能带脱敏账号。
-        UUID actorId = UUID.randomUUID();
+        // Identifiers deliberately contain phone-shaped digits; masking must never rewrite UUID identity.
+        UUID actorId = UUID.fromString("ac8ebeb7-c30f-424b-b2c0-168716844985");
+        UUID targetId = UUID.fromString("273ef564-20f7-4507-bf25-138001380000");
+        String privateProfilePhone = "13900001111";
         AuditActorDirectory directory = mock(AuditActorDirectory.class);
         when(directory.resolve(any(), any())).thenReturn(new AuditActorDirectory.Resolution(
                 java.util.Map.of(actorId, new AuditActorDirectory.ActorProfile(
-                        "13900001111", "张三", "财务部", "会计")),
+                        privateProfilePhone, "张三", "财务部", "会计")),
                 java.util.Map.of()));
         AuditLogRepository repository = mock(AuditLogRepository.class);
         AuditQueryService service = new AuditQueryService(repository, new AuditEventInterpreter(), directory);
@@ -517,7 +522,7 @@ class AuditQueryServiceTest {
         log.setActorAccount("*******1111");
         log.setAction("sales_order.approve");
         log.setTargetType("sales_order");
-        log.setTargetId(UUID.randomUUID().toString());
+        log.setTargetId(targetId.toString());
         log.setResult("success");
         log.setEventSource("business");
         log.setRiskLevel("high");
@@ -532,14 +537,48 @@ class AuditQueryServiceTest {
         AuditLogRow row = service.query(criteria(null), 1, 20).getItems().getFirst();
         AuditLogDetail detail = service.detail(9L);
         ExportPayload payload = service.export(criteria(null), 100);
+        Map<String, Object> exported = payload.rows().getFirst();
 
         assertEquals("张三(*******1111)", row.getActorDisplay());
+        assertEquals("*******1111", row.getActorAccount());
         assertEquals("张三(*******1111)", detail.actorDisplay());
-        assertEquals("张三(*******1111)", payload.rows().getFirst().get("actor"));
+        assertEquals("*******1111", detail.actorAccount());
+        assertEquals("张三(*******1111)", exported.get("actor"));
+        assertEquals(actorId, row.getActorId());
+        assertEquals(actorId, detail.actorId());
+        assertEquals(targetId.toString(), row.getTargetId());
+        assertEquals(targetId.toString(), detail.targetId());
+        assertEquals(targetId.toString(), exported.get("targetId"));
+
+        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+        JsonNode rowJson = mapper.valueToTree(row);
+        JsonNode detailJson = mapper.valueToTree(detail);
+        JsonNode exportJson = mapper.valueToTree(payload);
+        for (JsonNode output : List.of(rowJson, detailJson, exportJson)) {
+            assertFalse(output.toString().contains(privateProfilePhone), output.toString());
+        }
+        for (JsonNode output : List.of(rowJson, detailJson)) {
+            assertEquals(actorId.toString(), output.path("actorId").asText());
+            assertEquals(targetId.toString(), output.path("targetId").asText());
+        }
+
         java.util.regex.Pattern mobile = java.util.regex.Pattern.compile("1[3-9]\\d{9}");
-        assertFalse(mobile.matcher(String.valueOf(row.getActorDisplay()) + row.getActorAccount()).find());
-        assertFalse(mobile.matcher(detail.toString()).find(), detail.toString());
-        assertFalse(mobile.matcher(payload.rows().toString()).find(), payload.rows().toString());
+        assertTrue(mobile.matcher(actorId.toString()).find(), "adversarial actor identity must exercise the old false positive");
+        assertTrue(mobile.matcher(targetId.toString()).find(), "adversarial target identity must exercise the old false positive");
+        for (JsonNode output : List.of(rowJson, detailJson)) {
+            for (String field : List.of("actorAccount", "actorName", "actorDepartment",
+                    "actorPosition", "actorDisplay", "actorType")) {
+                assertTrue(output.has(field) && output.get(field).isTextual(), field);
+                assertFalse(mobile.matcher(output.path(field).asText()).find(), field);
+            }
+        }
+        JsonNode exportedJson = exportJson.path("rows").get(0);
+        assertEquals(targetId.toString(), exportedJson.path("targetId").asText());
+        for (String field : List.of("actor", "actorName", "actorDepartment", "actorPosition",
+                "actorType", "department")) {
+            assertTrue(exportedJson.has(field) && exportedJson.get(field).isTextual(), field);
+            assertFalse(mobile.matcher(exportedJson.path(field).asText()).find(), field);
+        }
     }
 
     private AuditLog exportRow(String result, int statusCode) {

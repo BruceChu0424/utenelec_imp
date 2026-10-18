@@ -58,7 +58,7 @@ class ActionNoticePermissionAudienceTest {
         when(jdbc.queryForList(contains("active_action_recipients"), eq(UUID.class), anyString()))
                 .thenReturn(List.of(maintainer.getId()));
         when(users.findById(maintainer.getId())).thenReturn(java.util.Optional.of(maintainer));
-        when(permissions.grantedPermsOf(maintainer)).thenReturn(Set.of("notice:read", "rd_task:view", "goods:bom:edit"));
+        when(permissions.grantedPermsOf(maintainer)).thenReturn(Set.of("notice:read", "rd_task:view", "goods:view", "goods:bom:edit"));
         when(permissions.grantedPermsOf(viewer)).thenReturn(Set.of("notice:read", "rd_task:view"));
         when(jdbc.queryForList(contains("FROM rd_tasks r"), eq(taskId))).thenReturn(List.of(Map.of(
                 "goods_code", "PART-01", "goods_name", "委外件", "source_doc_no", "WO-01")));
@@ -67,9 +67,9 @@ class ActionNoticePermissionAudienceTest {
                 new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode());
 
         verify(notices).publishForUser(eq(maintainer.getId()), contains("请完善 BOM"), contains("直属物料"),
-                eq("task"), eq("系统"), eq("/rd/tasks"), eq(ChainNoticeService.EVENT_RD_TASK_FORWARDED));
+                eq("task"), eq("系统"), eq("/rd/tasks"), eq(ChainNoticeService.EVENT_RD_TASK_FORWARDED), isNull(), eq(taskId));
         verify(notices, never()).publishForUser(eq(viewer.getId()), anyString(), anyString(),
-                anyString(), anyString(), anyString(), any());
+                anyString(), anyString(), anyString(), any(), any(), any());
         verify(jdbc, never()).queryForList(contains("WITH RECURSIVE subtree"), eq(UUID.class), any());
     }
 

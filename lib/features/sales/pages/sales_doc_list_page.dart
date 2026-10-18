@@ -915,19 +915,16 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                               value: 'pending',
                               label: '待生产',
                               count: _stats?.pendingProduction,
-                              countForm: UtenSegmentCountForm.inProgress,
                             ),
                             UtenFilterSegment(
                               value: 'production',
                               label: '生产中',
                               count: _stats?.inProduction,
-                              countForm: UtenSegmentCountForm.inProgress,
                             ),
                             UtenFilterSegment(
                               value: 'shippable',
                               label: '待发货',
                               count: _stats?.shippable,
-                              countForm: UtenSegmentCountForm.actionable,
                             ),
                             // 第 5 段「草稿」：草稿的 chain_status 恒为 0，落不进
                             // 任何链路大类，此前在订货单列表里根本看不到。计数与

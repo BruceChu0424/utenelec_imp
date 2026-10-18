@@ -178,6 +178,17 @@ public class HrTaskClaimService {
 
     /** 证件核对与列表同一道权限：超管或 employee:pii:edit，否则不能认领 / 接管。 */
     private void requireCanHandle(String taskType) {
+        String action = switch (taskType) {
+            case "confirm" -> "employee:confirm";
+            case "birthday", "anniversary" -> "notice:publish";
+            case "newhire" -> "employee:edit";
+            case IDENTITY_TASK_TYPE -> EmployeeSensitiveWritePolicy.PII_EDIT;
+            default -> null;
+        };
+        if (action != null && !currentUser.get().map(user -> user.isSuperAdmin()
+                || user.getPermissions().contains(action)).orElse(false)) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "当前账号没有办理该事项的操作权限");
+        }
         if (!IDENTITY_TASK_TYPE.equals(taskType)) {
             return;
         }

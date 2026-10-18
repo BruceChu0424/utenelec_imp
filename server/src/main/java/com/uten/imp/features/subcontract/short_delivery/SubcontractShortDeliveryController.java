@@ -9,6 +9,7 @@ import com.uten.imp.features.subcontract.short_delivery.SubcontractShortDelivery
 import com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryContracts.SupplierLossSummary;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import com.uten.imp.security.BusinessTaskRead;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -77,6 +78,7 @@ public class SubcontractShortDeliveryController {
     }
 
     @GetMapping("/count")
+    @BusinessTaskRead
     @PreAuthorize("hasAuthority('subcontract_order:view')")
     public Counts count() {
         return service.counts();

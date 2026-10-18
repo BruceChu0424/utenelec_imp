@@ -256,6 +256,7 @@ class SubcontractChainNoticeTest {
         UserAccount allowed = activeUser(allowedId);
         UserAccount legacy = activeUser(legacyHandleId);
         UserAccount noticeRevoked = activeUser(noticeRevokedId);
+        taskCandidates(users, jdbc, allowed, legacy, noticeRevoked);
         when(users.findById(allowedId)).thenReturn(Optional.of(allowed));
         when(users.findById(legacyHandleId)).thenReturn(Optional.of(legacy));
         when(users.findById(noticeRevokedId)).thenReturn(Optional.of(noticeRevoked));
@@ -317,6 +318,7 @@ class SubcontractChainNoticeTest {
         when(users.findById(warehouseUserId)).thenReturn(Optional.of(warehouseUser));
         when(permissions.grantedPermsOf(warehouseUser)).thenReturn(Set.of(
                 "notice:read", "subcontract_outbound:view"));
+        taskCandidates(users, jdbc, warehouseUser);
         ChainNoticeService service = service(
                 notice, users, permissions, jdbc, mock(BusinessEventPublisher.class));
 
@@ -434,7 +436,8 @@ class SubcontractChainNoticeTest {
         when(users.findById(analysisMakerUserId)).thenReturn(Optional.of(analysisMaker));
         when(users.findById(warehouseUserId)).thenReturn(Optional.of(warehouseUser));
         when(permissions.grantedPermsOf(warehouseUser))
-                .thenReturn(Set.of("notice:read", "warehouse_inbound:view"));
+                .thenReturn(Set.of("notice:read", "warehouse_inbound:view", "warehouse_inbound:stock_in"));
+        taskCandidates(users, jdbc, warehouseUser);
         ChainNoticeService service = service(
                 notice, users, permissions, jdbc, mock(BusinessEventPublisher.class));
 
@@ -463,7 +466,7 @@ class SubcontractChainNoticeTest {
                 eq(ChainNoticeService.TYPE_TASK),
                 anyString(),
                 eq("/warehouse/inbound/expectations"),
-                eq(ChainNoticeService.EVENT_SUBCONTRACT_OUTBOUND_COMPLETED));
+                eq(ChainNoticeService.EVENT_SUBCONTRACT_OUTBOUND_COMPLETED), isNull(), eq(orderId));
         verify(notice).publishForUser(
                 eq(analysisMakerUserId),
                 eq("委外直属物料已发出：SO-OUT-001"),
@@ -558,6 +561,7 @@ class SubcontractChainNoticeTest {
         when(users.findById(warehouseUserId)).thenReturn(Optional.of(warehouse));
         when(permissions.grantedPermsOf(warehouse))
                 .thenReturn(Set.of("notice:read", "warehouse_inbound:view"));
+        taskCandidates(users, jdbc, warehouse);
         ChainNoticeService service = service(
                 notice, users, permissions, jdbc, mock(BusinessEventPublisher.class));
 
@@ -648,6 +652,7 @@ class SubcontractChainNoticeTest {
                 .thenReturn(Optional.of(analysisMaker));
         when(permissions.grantedPermsOf(warehouse)).thenReturn(Set.of(
                 "notice:read", "warehouse_iqc_stock_in:view"));
+        taskCandidates(users, jdbc, warehouse);
         ChainNoticeService service = service(
                 notice, users, permissions, jdbc,
                 mock(BusinessEventPublisher.class));
@@ -727,5 +732,12 @@ class SubcontractChainNoticeTest {
         user.setStatus("active");
         user.setDeleted(false);
         return user;
+    }
+
+    private static void taskCandidates(UserAccountRepository users, JdbcTemplate jdbc, UserAccount... accounts) {
+        when(users.findAll()).thenReturn(List.of(accounts));
+        when(jdbc.queryForList(contains("active_action_recipients"), eq(UUID.class), anyString()))
+                .thenAnswer(invocation -> java.util.Arrays.stream(invocation.<String>getArgument(2).split(","))
+                        .map(UUID::fromString).toList());
     }
 }

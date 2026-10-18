@@ -163,6 +163,7 @@ public class SalesQuoteFinanceService {
      */
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_quote_finance:view')")
+    @com.uten.imp.security.BusinessTaskRead
     public Map<String, Long> pendingCount() {
         if (!accessPolicy.hasAuthority(FINANCE_CONFIRM)
                 || !reviewers.isEligible(currentUser.get().map(AuthUser::getId).orElse(null))) {

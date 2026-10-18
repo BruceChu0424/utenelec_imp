@@ -220,8 +220,13 @@ abstract final class BadgeFact {
   static const rdInProgress = 'rdTask.inProgress';
 
   static const purchaseTaskPending = 'purchaseTask.pending';
+  static const purchaseTaskWaitingOrder = 'purchaseTask.waitingOrder';
+  static const purchaseTaskRework = 'purchaseTask.rework';
   static const purchaseTaskInProgress = 'purchaseTask.inProgress';
   static const subcontractTaskPending = 'subcontractTask.pending';
+  static const subcontractTaskWaitingOrder = 'subcontractTask.waitingOrder';
+  static const subcontractTaskRework = 'subcontractTask.rework';
+  static const subcontractTaskShortDelivery = 'subcontractTask.shortDelivery';
   static const subcontractTaskInProgress = 'subcontractTask.inProgress';
 
   /// 委外任务中心「待处理」领料行的可领任务数(ADR-143 §4.1 / ADR-171 修订二, 来源键
@@ -255,6 +260,10 @@ abstract final class BadgeFact {
       'warehouseArrivalException.SUBCONTRACT';
   static const finishedInbound = 'finishedInbound.count';
   static const productionDraw = 'productionDraw.count';
+  static const productionDrawReady = 'productionDraw.READY_TO_PICK';
+  static const productionDrawPartial = 'productionDraw.PARTIAL';
+  static const productionDrawMaterialsToDefine =
+      'productionDraw.MATERIALS_TO_DEFINE';
   static const productionReturn = 'productionReturn.count';
 
   /// 车间内料仓 (ADR-131): 待发料 / 待收退回 / 盘点中 (来源键 workshopMaterial)。

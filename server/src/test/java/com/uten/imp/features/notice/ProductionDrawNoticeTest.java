@@ -91,7 +91,8 @@ class ProductionDrawNoticeTest {
         when(jdbc.queryForObject(contains("FROM notices WHERE aggregate_kind='STOCK_DOCUMENT'"),eq(Boolean.class),eq(drawId),eq(warehouseUser),
                 eq(ChainNoticeService.EVENT_PRODUCTION_DRAW_PENDING))).thenReturn(existingPending);
         when(users.findById(warehouseUser)).thenReturn(Optional.of(user));
-        when(permissions.grantedPermsOf(user)).thenReturn(Set.of("stock_doc:view","stock_doc:approve","stock_doc:issue"));
+        when(permissions.grantedPermsOf(user)).thenReturn(Set.of("notice:read","stock_doc:view","stock_doc:approve","stock_doc:issue"));
+        taskCandidates(users, jdbc, user);
         ChainNoticeService service=service(notices,users,permissions,jdbc,outbox);
         service.deliverOutboxEvent(ChainNoticeService.EVENT_PRODUCTION_DRAW_ISSUE_REVERSED,drawId,new ObjectMapper().createObjectNode());
         verify(notices,org.mockito.Mockito.times(existingPending?0:1)).publishForUser(eq(warehouseUser),eq("待处理生产领料：SL-PARTIAL"),
@@ -200,8 +201,9 @@ class ProductionDrawNoticeTest {
         when(users.findById(revokedId)).thenReturn(Optional.of(revoked));
         when(users.findById(inactiveId)).thenReturn(Optional.of(inactive));
         when(permissions.grantedPermsOf(allowed)).thenReturn(Set.of(
-                "stock_doc:view", "stock_doc:approve", "stock_doc:issue"));
+                "notice:read", "stock_doc:view", "stock_doc:approve", "stock_doc:issue"));
         when(permissions.grantedPermsOf(revoked)).thenReturn(Set.of());
+        taskCandidates(users, jdbc, allowed, revoked, inactive);
 
         ChainNoticeService service = service(
                 notices, users, permissions, jdbc,
@@ -397,5 +399,12 @@ class ProductionDrawNoticeTest {
         account.setStatus("active");
         account.setDeleted(false);
         return account;
+    }
+
+    private static void taskCandidates(UserAccountRepository users, JdbcTemplate jdbc, UserAccount... accounts) {
+        when(users.findAll()).thenReturn(List.of(accounts));
+        when(jdbc.queryForList(contains("active_action_recipients"), eq(UUID.class), anyString()))
+                .thenAnswer(invocation -> java.util.Arrays.stream(invocation.<String>getArgument(2).split(","))
+                        .map(UUID::fromString).toList());
     }
 }

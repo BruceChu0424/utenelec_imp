@@ -64,7 +64,7 @@ void main() {
         .where((file) => file.path.endsWith('WorkbenchBadgeSources.java'));
     for (final file in sourceFiles) {
       for (final match in RegExp(
-        r'new (?:WorkbenchBadgeSources\.)?Source\(\s*"(\w+)"',
+        r'(?:new (?:WorkbenchBadgeSources\.)?Source|(?:WorkbenchBadgeSources\.)?Source\.platform)\(\s*"(\w+)"',
       ).allMatches(file.readAsStringSync())) {
         sourceKeys.add(match.group(1)!);
       }

@@ -37,6 +37,8 @@ public class FinanceProcurementArrivalExceptionController {
     }
 
     @GetMapping("/count")
+    @com.uten.imp.security.BusinessTaskRead
+    @PreAuthorize("hasAuthority('finance_order_approval:view') and hasAnyAuthority('finance_order_approval:approve','finance_order_approval:reject')")
     public Map<String, Long> count() {
         return Map.of("count", service.countFinanceTasks());
     }

@@ -51,6 +51,7 @@ public class RdTaskController {
      */
     @PreAuthorize("hasAuthority('rd_task:view')")
     @GetMapping("/count")
+    @com.uten.imp.security.BusinessTaskRead
     public Map<String, Long> count() {
         RdTaskService.RdTaskCounts counts = service.counts();
         return Map.of(

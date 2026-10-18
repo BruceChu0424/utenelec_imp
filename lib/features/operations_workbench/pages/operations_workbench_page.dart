@@ -38,6 +38,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
+import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/auth/session_snapshot_provider.dart';
@@ -146,22 +147,61 @@ class _OperationsWorkbenchPageState
   /// 合并后的大类码与它内部「等本部门动手」的那一档(服务端 statusCounts 两个键都在:
   /// 原始 task_status 逐个入表, IN_PROGRESS 是三档之和另加的派生键)。
   static const _inProgressStage = 'IN_PROGRESS';
-  static const _financeRejectedStatus = 'FINANCE_REJECTED';
 
-  /// 阶段计数的呈现形态(docs/00-项目准则/14-徽章与计数口径.md)；三形态见 ADR-100。
-  ///
-  /// 红徽章只给「等本部门动手」的阶段：申请待分解（采购/委外任务中心角标同源）、
-  /// 仓库的待备料/部分领取(要去出库)。
-  /// 进行中的单已经在财务/供应商手上滚着、没结束又不用本部门动手 -> 黄色在办徽章;
-  /// 其中真要动手的「财务驳回」仍通过主阶段红徽章与状态红格提醒。
-  UtenSegmentCountForm _stageCountForm(String code) => switch (code) {
-    'WAITING_ORDER' ||
-    'MATERIALS_TO_DEFINE' ||
-    'READY_TO_PICK' ||
-    'PARTIAL' => UtenSegmentCountForm.actionable,
-    'IN_PROGRESS' => UtenSegmentCountForm.inProgress,
-    _ => UtenSegmentCountForm.browsing,
-  };
+  int? _stageTaskCount(String code) {
+    if (widget.department == OperationsWorkbenchDepartment.warehouse) {
+      final fact = switch (code) {
+        'READY_TO_PICK' => BadgeFact.productionDrawReady,
+        'PARTIAL' => BadgeFact.productionDrawPartial,
+        'MATERIALS_TO_DEFINE' => BadgeFact.productionDrawMaterialsToDefine,
+        _ => null,
+      };
+      return fact == null ? null : ref.watch(badgeFactOrNullProvider(fact));
+    }
+    final subcontract =
+        widget.department == OperationsWorkbenchDepartment.subcontract;
+    final key = code == _inProgressStage
+        ? (subcontract
+              ? BadgeFact.subcontractTaskRework
+              : BadgeFact.purchaseTaskRework)
+        : (subcontract
+              ? BadgeFact.subcontractTaskWaitingOrder
+              : BadgeFact.purchaseTaskWaitingOrder);
+    final count = ref.watch(badgeFactOrNullProvider(key));
+    if (!subcontract || code != _inProgressStage) return count;
+    final shortDelivery = ref.watch(
+      badgeFactOrNullProvider(BadgeFact.subcontractTaskShortDelivery),
+    );
+    if (count == null && shortDelivery == null) return null;
+    return (count ?? 0) + (shortDelivery ?? 0);
+  }
+
+  UtenFilterSegment<_WorkbenchSeg> _stageSegment(
+    ({String code, String label}) stage,
+    Map<String, int> statusCounts,
+  ) {
+    final taskCount = _stageTaskCount(stage.code);
+    final inProgress = stage.code == _inProgressStage
+        ? ref.watch(
+            badgeFactOrNullProvider(
+              widget.department == OperationsWorkbenchDepartment.subcontract
+                  ? BadgeFact.subcontractTaskInProgress
+                  : BadgeFact.purchaseTaskInProgress,
+            ),
+          )
+        : null;
+    final hasTasks = (taskCount ?? 0) > 0 || (inProgress ?? 0) > 0;
+    return UtenFilterSegment(
+      value: _WorkbenchSeg.stage(stage.code),
+      label: stage.label,
+      // 可浏览数量用中性括号；只有真实任务事实才能显示红黄提醒。
+      count: hasTasks ? taskCount : statusCounts[stage.code],
+      countForm: hasTasks
+          ? UtenSegmentCountForm.actionable
+          : UtenSegmentCountForm.browsing,
+      inProgressCount: inProgress,
+    );
+  }
 
   /// 状态列文案(采购「进行中」段合并掉的三档, 用户原话就是这三个名字);
   /// 未知码回落通用阶段标签, 免得后端加档时界面显示成裸代码。
@@ -760,7 +800,12 @@ class _OperationsWorkbenchPageState
         actions: [
           IconButton(
             tooltip: '刷新',
-            onPressed: _loading ? null : () => _load(page: 1),
+            onPressed: _loading
+                ? null
+                : () {
+                    refreshBadges(ref);
+                    _load(page: 1);
+                  },
             icon: const Icon(Icons.refresh_rounded),
           ),
           const SizedBox(width: UtenSpacing.s8),
@@ -806,26 +851,7 @@ class _OperationsWorkbenchPageState
                 ),
             countForm: UtenSegmentCountForm.actionable,
           ),
-        for (final stage in _stages)
-          UtenFilterSegment(
-            value: _WorkbenchSeg.stage(stage.code),
-            label: stage.label,
-            // 「进行中」是大类，其中有要本部门动手的档(财务驳回)，
-            // 所以这一段挂两枚: 黄 = 本类在跑的全量(与列表行数相等), 红 = 其中
-            // 等我动手的那几张。准则 §四之七 第 1 条(2026-09-21 追加): 大类行
-            // 只挂一种颜色时, 另一色的数字点进去才看得到, 等于在大类行上蒸发。
-            // 两枚**刻意重叠**(被驳回的单本来就在跑) —— 跨色不算双计, 别改成相减,
-            // 相减会让黄数与「进行中」列表行数对不上。
-            count: stage.code == _inProgressStage
-                ? statusCounts[_financeRejectedStatus]
-                : statusCounts[stage.code],
-            countForm: stage.code == _inProgressStage
-                ? UtenSegmentCountForm.actionable
-                : _stageCountForm(stage.code),
-            inProgressCount: stage.code == _inProgressStage
-                ? statusCounts[_inProgressStage]
-                : null,
-          ),
+        for (final stage in _stages) _stageSegment(stage, statusCounts),
         const UtenFilterSegment(value: _WorkbenchSeg.history(), label: '历史记录'),
       ],
       selected: seg == null ? const {} : {seg},

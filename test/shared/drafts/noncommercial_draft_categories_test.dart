@@ -375,6 +375,7 @@ class _Api extends ApiClient {
   }) async {
     if (path == '/documents/status-counts') {
       return {
+        'ACTIONABLE_DRAFT': query?['kind'] == 'financeExpense' ? 1 : 0,
         'DRAFT': query?['kind'] == 'financeExpense' ? 1 : 0,
         'APPROVED': 0,
         'REVERSED': 0,

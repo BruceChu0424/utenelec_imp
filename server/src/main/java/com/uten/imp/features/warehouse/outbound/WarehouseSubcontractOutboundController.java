@@ -53,6 +53,8 @@ public class WarehouseSubcontractOutboundController {
 
     /** 委外出库红数: 待仓库发出的领料草稿张数(与待发料列表同一仓库数据范围谓词与口径, ADR-149)。 */
     @GetMapping("/tasks/count")
+    @com.uten.imp.security.BusinessTaskRead
+    @PreAuthorize("hasAuthority('subcontract_outbound:view') and hasAuthority('subcontract_outbound:execute')")
     public Map<String, Long> taskCount(@RequestParam(required = false) UUID scopeWarehouseId) {
         return Map.of("count", planService.countTasks(warehouseScopes.current(scopeWarehouseId)));
     }

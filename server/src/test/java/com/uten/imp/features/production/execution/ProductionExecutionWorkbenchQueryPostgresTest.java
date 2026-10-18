@@ -550,6 +550,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
     /** V477 读侧放行回归锁：超管在我的车间任务页看到全部车间的活跃段与角标。 */
     @Test
     void superAdminSeesAllWorkshopsOnReadSide() {
+        when(access.hasAuthority("production_execution:start")).thenReturn(true);
         com.uten.imp.security.AuthUser admin = mock(com.uten.imp.security.AuthUser.class);
         when(admin.isSuperAdmin()).thenReturn(true);
         when(currentUser.get()).thenReturn(Optional.of(admin));
@@ -571,6 +572,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
 
     @Test
     void defaultListAndBadgeIncludeWaitingWithTheSameAssignmentAndPaginationScope() {
+        when(access.hasAuthority("production_execution:start")).thenReturn(true);
         var first = service.workshopTasks(1, 2, null, null, null, null, null);
         var last = service.workshopTasks(99, 2, null, null, null, null, null);
         assertThat(first.getTotal()).isEqualTo(4);
@@ -604,6 +606,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
 
     @Test
     void reportInspectionSplitsFullyReportedSegmentsOutOfInProgress() {
+        when(access.hasAuthority("production_execution:start")).thenReturn(true);
         // 2026-10-10「报工送检」：IN_PROGRESS 按 remaining_qty 拆两段——还有可报量=生产中，
         // 已报完(<=0)=报工送检；两段互斥且并集=原 IN_PROGRESS，计数恒等式保持
         // preparing + inProgress + reportInspection = total。

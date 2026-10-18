@@ -70,8 +70,8 @@ class HrTaskServicePostgresTest {
         HrTaskClaimService claims = mock(HrTaskClaimService.class);
         when(claims.activeClaimsByTaskKey()).thenReturn(Map.of());
         currentUser = mock(SecurityContextCurrentUser.class);
-        actingAs(Set.of("employee:view", "employee:pii:view"));
-        service = new HrTaskService(jdbc, claims, currentUser);
+        actingAs(Set.of("employee:view", "employee:pii:view", "employee:confirm", "notice:publish"));
+        service = new HrTaskService(jdbc, claims, currentUser, com.uten.imp.testsupport.TaskAudienceTestSupport.direct());
     }
 
     @Test

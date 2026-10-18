@@ -542,6 +542,7 @@ public class ExpenseClaimService {
      * 没有权限的档在 SQL 里就短路成 0。
      */
     @Transactional(readOnly=true)
+    @com.uten.imp.security.BusinessTaskRead
     public com.uten.imp.features.expenseclaim.dto.ExpenseClaimCountsDto counts() {
         AuthUser user=requireStaff();
         boolean apply=has(user,"expense:apply");

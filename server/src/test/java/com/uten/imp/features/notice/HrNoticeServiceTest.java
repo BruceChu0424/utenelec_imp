@@ -77,10 +77,10 @@ class HrNoticeServiceTest {
         UUID applicantEmployee = UUID.randomUUID();
         UserAccount applicant = account(applicantEmployee, "active", false,
                 "notice:read", "expense:approve", "expense:pay", "payroll:publish",
-                "suggestion:reply");
+                "suggestion:submit", "suggestion:reply");
         UserAccount reviewer = account(UUID.randomUUID(), "active", false,
                 "notice:read", "expense:approve", "expense:pay", "payroll:publish",
-                "suggestion:reply");
+                "suggestion:submit", "suggestion:reply");
         when(users.findAll()).thenReturn(List.of(applicant, reviewer));
 
         // 报销提交 / 审批通过：申请人本人不收审批卡与打款卡
@@ -126,7 +126,7 @@ class HrNoticeServiceTest {
     @Test
     void anonymousSuggestionCardNeverExposesTheSubmitterName() {
         UserAccount replier = account(UUID.randomUUID(), "active", false,
-                "notice:read", "suggestion:reply");
+                "notice:read", "suggestion:submit", "suggestion:reply");
         when(users.findAll()).thenReturn(List.of(replier));
         UUID suggestionId = UUID.randomUUID();
 
@@ -242,7 +242,7 @@ class HrNoticeServiceTest {
         assertThat(ReviewNoticeAudience.eligible("PAYROLL_BATCH_PENDING_PUBLISH",
                 Set.of("notice:read", "payroll:publish"), Set.of())).isTrue();
         assertThat(ReviewNoticeAudience.eligible("SUGGESTION_SUBMITTED",
-                Set.of("notice:read", "suggestion:reply"), Set.of())).isTrue();
+                Set.of("notice:read", "suggestion:submit", "suggestion:reply"), Set.of())).isTrue();
         assertThat(ReviewNoticeAudience.eligible("SUGGESTION_SUBMITTED",
                 Set.of("notice:read", "suggestion:submit"), Set.of())).isFalse();
     }

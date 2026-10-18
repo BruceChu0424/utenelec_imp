@@ -82,7 +82,10 @@ public class ProductionWorkshopTaskController {
     }
 
     @GetMapping("/count")
-    @PreAuthorize("hasAuthority('production_execution:view')")
+    @com.uten.imp.security.BusinessTaskRead
+    @PreAuthorize("hasAuthority('production_execution:view') and (hasAuthority('production_execution:start')"
+            + " or (hasAuthority('production_daily_report:view') and hasAnyAuthority('production_daily_report:create',"
+            + "'production_daily_report:edit','production_daily_report:approve')))")
     public Map<String, Long> count() {
         ProductionExecutionWorkbenchService.WorkshopTaskCountBreakdown breakdown =
                 service.workshopTaskCountBreakdown();

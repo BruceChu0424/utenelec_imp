@@ -817,12 +817,15 @@ public class SubcontractShortDeliveryService
 
     @Transactional(readOnly = true)
     public Counts counts() {
-        if (!access.hasAuthority(VIEW_AUTHORITY)) return new Counts(0, 0, 0);
-        var scope = access.nativeReadScope("c.owner_employee_id", "owners", VIEW_AUTHORITY);
+        if (!access.hasAuthority(VIEW_AUTHORITY) || !access.hasAuthority(DECIDE_AUTHORITY)) return new Counts(0, 0, 0);
+        // Task badges follow the decision's owner boundary. Read permission is not an owner-scope bypass.
+        var owners = access.scope();
+        var scope = access.nativeReadScope("c.owner_employee_id", "owners",
+                new com.uten.imp.security.OwnerVisibility.OwnerScope(owners.seeAll(), owners.writableOwners()));
         Query query = em.createNativeQuery("""
                 SELECT COUNT(*) FILTER (WHERE %s), COUNT(*) FILTER (WHERE %s), COUNT(*) FILTER (WHERE %s)
                 FROM subcontract_short_delivery_cases c
-                WHERE c.status IN ('PENDING_OWNER', 'WAITING_MORE') AND %s
+                WHERE c.status IN ('PENDING_OWNER', 'WAITING_MORE') AND c.owner_employee_id IS NOT NULL AND %s
                 """.formatted(PENDING_PREDICATE, TOLERANT_PREDICATE, WAITING_PREDICATE, scope.predicate()));
         scope.bind(query);
         Object[] row = (Object[]) query.getSingleResult();

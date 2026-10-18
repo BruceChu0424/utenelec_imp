@@ -66,7 +66,9 @@ public class ProductionScheduleController {
 
     /** 待排产计数（生产部工作台徽标）：{"count": n, "urgent": m}。 */
     @GetMapping("/pending-count")
-    @PreAuthorize("hasAuthority('production_plan:view')")
+    @com.uten.imp.security.BusinessTaskRead
+    @PreAuthorize("hasAuthority('production_plan:view') and hasAuthority('production_material_analysis:view')"
+            + " and hasAuthority('production_material_analysis:create')")
     public Map<String, Long> pendingCount() {
         return service.pendingCount();
     }

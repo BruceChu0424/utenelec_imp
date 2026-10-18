@@ -141,7 +141,8 @@ public class ProcurementInspectionController {
     }
 
     @GetMapping("/pending-count")
-    @PreAuthorize("hasAuthority('procurement_inspection:view')")
+    @com.uten.imp.security.BusinessTaskRead
+    @PreAuthorize("hasAuthority('procurement_inspection:view') and hasAuthority('procurement_inspection:handle')")
     public Map<String, Long> pendingCount() {
         return Map.of("count", service.pendingReceiptCount());
     }

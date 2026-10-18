@@ -26,6 +26,7 @@ public class ProductionMaterialIncrementController {
     public PageResponse<RequestView> list(@RequestParam(defaultValue="PENDING") String status,
             @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size){return service.list(status,page,size);}
     @GetMapping("/count") @PreAuthorize("hasAuthority('production_plan:approve')")
+    @com.uten.imp.security.BusinessTaskRead
     public Map<String,Long> count(){return Map.of("count",service.count());}
     @GetMapping("/requests/{id}") @PreAuthorize("hasAnyAuthority('production_execution:view','production_plan:approve')")
     public RequestView detail(@PathVariable UUID id){

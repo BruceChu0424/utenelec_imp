@@ -6,12 +6,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/data_display/uten_status_badge.dart';
 import 'package:uten_imp/components/data_display/uten_status_cell_color.dart';
+import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
+import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
+import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/components/layout/uten_history_time_filter.dart';
 import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/operations_workbench/models/operations_workbench.dart';
 import 'package:uten_imp/features/operations_workbench/pages/operations_workbench_page.dart';
 import 'package:uten_imp/features/operations_workbench/repositories/operations_workbench_repository.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
+import '../../helpers/badge_summary_fixture.dart';
 import '../../support/filter_segment_tap.dart';
 
 /// 选中工具条分段：分段铺得开时直接点；小屏放不下时工具条收成「分类」下拉
@@ -35,7 +40,138 @@ Future<void> _tapRefresh(WidgetTester tester) async {
 MasterDataTableView<OperationsWorkbenchTask> _table(WidgetTester tester) =>
     tester.widget(find.byType(MasterDataTableView<OperationsWorkbenchTask>));
 
+// Existing presentation scenarios describe an authorized task worker. Supply a
+// separate task-response fixture; regressions below deliberately make it differ
+// from the browsable status distribution.
+Widget _taskScope({required Widget child, Map<String, int>? taskFacts}) {
+  final page = (child as MaterialApp).home! as OperationsWorkbenchPage;
+  final data = switch (page.repository) {
+    _FakeGateway(:final data) => data,
+    _RefreshBlockingGateway(:final data) => data,
+    _ => null,
+  };
+  final status = data?.summary.statusCounts ?? const <String, int>{};
+  final source = page.department == OperationsWorkbenchDepartment.subcontract
+      ? 'subcontractTask'
+      : 'purchaseTask';
+  return ProviderScope(
+    overrides: [
+      fixedBadgeSummaryOverride(
+        badgeSummaryFixture(
+          facts:
+              taskFacts ??
+              {
+                '$source.waitingOrder': status['WAITING_ORDER'] ?? 0,
+                '$source.rework': status['FINANCE_REJECTED'] ?? 0,
+                '$source.shortDelivery': 0,
+                '$source.inProgress': status['IN_PROGRESS'] ?? 0,
+                BadgeFact.productionDrawReady: status['READY_TO_PICK'] ?? 0,
+                BadgeFact.productionDrawPartial: status['PARTIAL'] ?? 0,
+                BadgeFact.productionDrawMaterialsToDefine:
+                    status['MATERIALS_TO_DEFINE'] ?? 0,
+              },
+        ),
+      ),
+    ],
+    child: child,
+  );
+}
+
 void main() {
+  testWidgets('read-only status counts never become personal task badges', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final gateway = _FakeGateway(
+      _emptyData(
+        department: OperationsWorkbenchDepartment.purchase,
+        statusCounts: const {
+          'WAITING_ORDER': 9,
+          'FINANCE_REJECTED': 4,
+          'IN_PROGRESS': 7,
+        },
+      ),
+    );
+    await tester.pumpWidget(
+      _taskScope(
+        taskFacts: const {
+          BadgeFact.purchaseTaskWaitingOrder: 0,
+          BadgeFact.purchaseTaskRework: 0,
+          BadgeFact.purchaseTaskInProgress: 0,
+        },
+        child: MaterialApp(
+          home: OperationsWorkbenchPage(
+            department: OperationsWorkbenchDepartment.purchase,
+            repository: gateway,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final toolbar = find.byKey(
+      const Key('operations-workbench-stages-purchase'),
+    );
+    expect(
+      find.descendant(
+        of: toolbar,
+        matching: find.byType(UtenNotificationBadge),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: toolbar, matching: find.byType(UtenInProgressBadge)),
+      findsNothing,
+    );
+    expect(gateway.statuses, [null]);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'task badge counts stay separate from larger browsable status totals',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final gateway = _FakeGateway(
+        _emptyData(
+          department: OperationsWorkbenchDepartment.purchase,
+          statusCounts: const {
+            'WAITING_ORDER': 99,
+            'FINANCE_REJECTED': 44,
+            'IN_PROGRESS': 77,
+          },
+        ),
+      );
+      await tester.pumpWidget(
+        _taskScope(
+          taskFacts: const {
+            BadgeFact.purchaseTaskWaitingOrder: 2,
+            BadgeFact.purchaseTaskRework: 1,
+            BadgeFact.purchaseTaskInProgress: 3,
+          },
+          child: MaterialApp(
+            home: OperationsWorkbenchPage(
+              department: OperationsWorkbenchDepartment.purchase,
+              repository: gateway,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final toolbar = tester.widget<UtenFilterToolbar<dynamic>>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is UtenFilterToolbar<dynamic> &&
+              widget.segmentsKey ==
+                  const Key('operations-workbench-stages-purchase'),
+        ),
+      );
+      expect(toolbar.segments.first.count, 2);
+      expect(toolbar.segments[1].count, 1);
+      expect(toolbar.segments[1].inProgressCount, 3);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'selected exception remains clearable when its latest count disappears',
     (tester) async {
@@ -53,7 +189,7 @@ void main() {
         ),
       );
       await tester.pumpWidget(
-        ProviderScope(
+        _taskScope(
           child: MaterialApp(
             home: OperationsWorkbenchPage(
               department: OperationsWorkbenchDepartment.purchase,
@@ -90,7 +226,7 @@ void main() {
         ),
       );
       await tester.pumpWidget(
-        ProviderScope(
+        _taskScope(
           child: MaterialApp(
             home: OperationsWorkbenchPage(
               department: OperationsWorkbenchDepartment.purchase,
@@ -121,7 +257,7 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(800, 1800));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
-        ProviderScope(
+        _taskScope(
           child: MaterialApp(
             home: OperationsWorkbenchPage(
               department: OperationsWorkbenchDepartment.purchase,
@@ -262,7 +398,7 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(1400, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
-        ProviderScope(
+        _taskScope(
           child: MaterialApp(
             home: OperationsWorkbenchPage(
               department: OperationsWorkbenchDepartment.purchase,
@@ -382,7 +518,7 @@ void main() {
         openLineCount: 8,
       );
       await tester.pumpWidget(
-        ProviderScope(
+        _taskScope(
           child: MaterialApp(
             home: OperationsWorkbenchPage(
               department: OperationsWorkbenchDepartment.purchase,
@@ -465,7 +601,7 @@ void main() {
     );
     final gateway = _RefreshBlockingGateway(data);
     await tester.pumpWidget(
-      ProviderScope(
+      _taskScope(
         child: MaterialApp(
           home: OperationsWorkbenchPage(
             department: OperationsWorkbenchDepartment.purchase,
@@ -539,7 +675,7 @@ void main() {
         ),
       );
       await tester.pumpWidget(
-        ProviderScope(
+        _taskScope(
           child: MaterialApp(
             home: OperationsWorkbenchPage(
               department: OperationsWorkbenchDepartment.purchase,
@@ -630,7 +766,7 @@ void main() {
         actionDocumentRestricted: true,
       );
       await tester.pumpWidget(
-        ProviderScope(
+        _taskScope(
           child: MaterialApp(
             home: OperationsWorkbenchPage(
               department: OperationsWorkbenchDepartment.purchase,
@@ -692,7 +828,7 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(375, 1800));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
-        ProviderScope(
+        _taskScope(
           child: MaterialApp(
             home: OperationsWorkbenchPage(
               department: OperationsWorkbenchDepartment.warehouse,
@@ -799,7 +935,7 @@ void main() {
           ),
         );
         await tester.pumpWidget(
-          ProviderScope(
+          _taskScope(
             child: MaterialApp(
               home: OperationsWorkbenchPage(
                 department: scenario.department,
@@ -849,7 +985,7 @@ void main() {
         ),
       );
       await tester.pumpWidget(
-        ProviderScope(
+        _taskScope(
           child: MaterialApp(
             home: OperationsWorkbenchPage(
               department: OperationsWorkbenchDepartment.purchase,
@@ -887,7 +1023,7 @@ void main() {
       ),
     );
     await tester.pumpWidget(
-      ProviderScope(
+      _taskScope(
         child: MaterialApp(
           home: OperationsWorkbenchPage(
             department: OperationsWorkbenchDepartment.purchase,
@@ -955,7 +1091,7 @@ void main() {
         ),
       );
       await tester.pumpWidget(
-        ProviderScope(
+        _taskScope(
           child: MaterialApp(
             home: OperationsWorkbenchPage(
               department: OperationsWorkbenchDepartment.warehouse,
@@ -1033,7 +1169,14 @@ void main() {
         ),
       );
       await tester.pumpWidget(
-        ProviderScope(
+        _taskScope(
+          // This scenario starts as browsing and explicitly selects a stage.
+          // A ready positive task fact correctly auto-selects before overview.
+          taskFacts: const {
+            BadgeFact.purchaseTaskWaitingOrder: 0,
+            BadgeFact.purchaseTaskRework: 0,
+            BadgeFact.purchaseTaskInProgress: 0,
+          },
           child: MaterialApp(
             home: OperationsWorkbenchPage(
               department: OperationsWorkbenchDepartment.purchase,
@@ -1043,6 +1186,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      expect(gateway.statuses, [null]);
 
       // 点「申请待分解」：此后该网关返回的概览不再带任何 statusCounts。
       await _selectSegment(tester, '申请待分解');

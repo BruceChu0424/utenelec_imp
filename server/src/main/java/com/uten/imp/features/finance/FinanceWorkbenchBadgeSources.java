@@ -40,7 +40,7 @@ class FinanceWorkbenchBadgeSources implements WorkbenchBadgeSources {
      */
     private static Map<String, Long> iqcRejectionFacts(ProcurementIqcRejectionContracts.CaseCounts counts) {
         Map<String, Long> facts = new LinkedHashMap<>(WorkbenchBadgeSources.numbers(counts));
-        facts.put("open", counts.pendingReturn() + counts.returnRecorded() + counts.financeException());
+        facts.put("open", counts.actionableOpen());
         return facts;
     }
 }

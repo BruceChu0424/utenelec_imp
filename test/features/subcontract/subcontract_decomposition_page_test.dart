@@ -31,7 +31,9 @@ import 'package:uten_imp/features/subcontract/pages/subcontract_decomposition_pa
 import 'package:uten_imp/features/subcontract/repositories/subcontract_kit_repository.dart';
 import 'package:uten_imp/features/subcontract/widgets/subcontract_application_kit_dialog.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/models/subcontract_task_source.dart';
+import '../../helpers/badge_summary_fixture.dart';
 
 const _decomposePermissions = {
   Perm.subcontractApplicationView,
@@ -41,6 +43,86 @@ const _decomposePermissions = {
 };
 
 void main() {
+  testWidgets(
+    'read-only subcontract browsing does not create operational red or yellow badges',
+    (tester) async {
+      _desktop(tester, const Size(1600, 1000));
+      final gateway = _Gateway(_data(capability: false));
+      await tester.pumpWidget(
+        _scope(
+          permissions: const {
+            Perm.subcontractApplicationView,
+            Perm.subcontractOrderView,
+          },
+          taskFacts: const {
+            BadgeFact.subcontractTaskWaitingOrder: 0,
+            BadgeFact.subcontractTaskRework: 0,
+            BadgeFact.subcontractTaskShortDelivery: 0,
+            BadgeFact.subcontractTaskInProgress: 0,
+          },
+          child: MaterialApp(
+            home: SubcontractDecompositionPage(
+              repository: gateway,
+              drawRepository: FakeSubcontractDrawGateway(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final stages = find.byKey(const Key('subcontract-decomposition-stages'));
+      expect(
+        find.descendant(
+          of: stages,
+          matching: find.byType(UtenNotificationBadge),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: stages, matching: find.byType(UtenInProgressBadge)),
+        findsNothing,
+      );
+      expect(gateway.statuses, [null]);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'subcontract stage badges use task facts rather than browsable status totals',
+    (tester) async {
+      _desktop(tester, const Size(1600, 1000));
+      final gateway = _Gateway(_data(capability: true));
+      await tester.pumpWidget(
+        _scope(
+          taskFacts: const {
+            BadgeFact.subcontractTaskWaitingOrder: 1,
+            BadgeFact.subcontractTaskRework: 4,
+            BadgeFact.subcontractTaskShortDelivery: 2,
+            BadgeFact.subcontractTaskInProgress: 5,
+          },
+          child: MaterialApp(
+            home: SubcontractDecompositionPage(
+              repository: gateway,
+              drawRepository: FakeSubcontractDrawGateway(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final toolbar = tester.widget<UtenFilterToolbar<dynamic>>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is UtenFilterToolbar<dynamic> &&
+              widget.segmentsKey ==
+                  const Key('subcontract-decomposition-stages'),
+        ),
+      );
+      expect(toolbar.segments[1].count, 1);
+      expect(toolbar.segments[2].count, 6);
+      expect(toolbar.segments[2].inProgressCount, 5);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'same application shows each goods line and scopes picking to its source item',
     (tester) async {
@@ -781,6 +863,12 @@ void main() {
       _desktop(tester, const Size(375, 1400));
       await tester.pumpWidget(
         _scope(
+          taskFacts: const {
+            BadgeFact.subcontractTaskWaitingOrder: 2,
+            BadgeFact.subcontractTaskRework: 0,
+            BadgeFact.subcontractTaskShortDelivery: 0,
+            BadgeFact.subcontractTaskInProgress: 3,
+          },
           child: MaterialApp(
             home: SubcontractDecompositionPage(
               repository: gateway,
@@ -797,9 +885,10 @@ void main() {
         find.byKey(const Key('subcontract-decomposition-pending-table')),
         findsOneWidget,
       );
-      // 进页面只拉一次 size=1 概览（阶段计数徽章），不带 status 过滤。
-      // 2026-10-04 起红数「待处理」段进页面自动选中：概览 + 列表两次请求。
-      expect(gateway.statuses, [null, 'WAITING_ORDER']);
+      // 真实任务事实在首帧已到：红数「待处理」立即自动选中，
+      // 初始化与选段加载都使用该任务阶段，不再等待浏览概览再推导红数。
+      expect(gateway.statuses, ['WAITING_ORDER', 'WAITING_ORDER']);
+      final requestsBeforeReselect = List<String?>.of(gateway.statuses);
       // 原「概览卡 + 阶段/异常下拉」已删除；占位态随自动选中消失。
       expect(find.text('在上方选择阶段后开始办理'), findsNothing);
       expect(find.byType(DropdownButtonFormField<String>), findsNothing);
@@ -822,7 +911,7 @@ void main() {
       // 再点已选中的「待处理」段（2026-10-04 起进页面自动选中）不重复发请求。
       await tester.tap(find.text('待处理').last);
       await tester.pumpAndSettle();
-      expect(gateway.statuses, [null, 'WAITING_ORDER']);
+      expect(gateway.statuses, requestsBeforeReselect);
       expect(find.text('计划申请已下达 / 待分解'), findsNWidgets(2));
 
       // 表头三态全选格在前：行勾选框从 at(1) 起。两击之间必须 pump——
@@ -2083,12 +2172,19 @@ void main() {
       _desktop(tester, const Size(1600, 1000));
       final draw = FakeSubcontractDrawGateway()
         ..countError = ApiException('FORBIDDEN', '无权限访问', httpStatus: 403);
+      final gateway = _Gateway(_data(capability: false));
       await tester.pumpWidget(
         _scope(
           permissions: const {Perm.subcontractApplicationView},
+          taskFacts: const {
+            BadgeFact.subcontractTaskWaitingOrder: 0,
+            BadgeFact.subcontractTaskRework: 0,
+            BadgeFact.subcontractTaskShortDelivery: 0,
+            BadgeFact.subcontractTaskInProgress: 0,
+          },
           child: MaterialApp(
             home: SubcontractDecompositionPage(
-              repository: _Gateway(_data(capability: true)),
+              repository: gateway,
               drawRepository: draw,
             ),
           ),
@@ -2096,10 +2192,29 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('待处理'), findsOneWidget);
+      // Only application viewing is granted. No personal task badge should
+      // select a stage automatically, but the application list stays browsable.
+      expect(gateway.statuses, [null]);
+      await selectFilterSegment(tester, '待处理');
+      await tester.pumpAndSettle();
+      expect(gateway.statuses, [null, 'WAITING_ORDER']);
       // 领料行整体静默隐藏：拍平表只剩申请行，待处理段不挂黄数，不向用户报错。
       expect(
         find.byKey(const Key('subcontract-decomposition-pending-table')),
         findsOneWidget,
+      );
+      final table = tester.widget<MasterDataTableView<SubcontractPendingRow>>(
+        find.byKey(const Key('subcontract-decomposition-pending-table')),
+      );
+      expect(table.items, hasLength(2));
+      expect(table.items, everyElement(isA<SubcontractApplicationRow>()));
+      expect(draw.listQueries, isEmpty);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('subcontract-decomposition-stages')),
+          matching: find.byType(UtenInProgressBadge),
+        ),
+        findsNothing,
       );
       expect(find.text('委外订货单号'), findsNothing);
       expect(find.text('委外任务加载失败'), findsNothing);
@@ -2150,14 +2265,43 @@ void _desktop(WidgetTester tester, Size size) {
 Widget _scope({
   required Widget child,
   Set<String> permissions = _decomposePermissions,
-}) => ProviderScope(
-  overrides: [
-    currentPermissionsProvider.overrideWithValue(permissions),
-    isSuperAdminProvider.overrideWithValue(false),
-    apiClientProvider.overrideWithValue(_api()),
-  ],
-  child: child,
-);
+  Map<String, int>? taskFacts,
+}) {
+  final home = child is MaterialApp ? child.home : null;
+  final repository = home is SubcontractDecompositionPage
+      ? home.repository
+      : null;
+  final status = repository is _Gateway
+      ? repository.data.summary.statusCounts
+      : const {'WAITING_ORDER': 2, 'IN_PROGRESS': 3};
+  final canOrder = _decomposePermissions.every(permissions.contains);
+  return ProviderScope(
+    overrides: [
+      currentPermissionsProvider.overrideWithValue(permissions),
+      isSuperAdminProvider.overrideWithValue(false),
+      apiClientProvider.overrideWithValue(_api()),
+      fixedBadgeSummaryOverride(
+        badgeSummaryFixture(
+          facts:
+              taskFacts ??
+              {
+                BadgeFact.subcontractTaskWaitingOrder: canOrder
+                    ? (status['WAITING_ORDER'] ?? 0)
+                    : 0,
+                BadgeFact.subcontractTaskRework: canOrder
+                    ? (status['FINANCE_REJECTED'] ?? 0)
+                    : 0,
+                BadgeFact.subcontractTaskShortDelivery: 0,
+                BadgeFact.subcontractTaskInProgress: canOrder
+                    ? (status['IN_PROGRESS'] ?? 0)
+                    : 0,
+              },
+        ),
+      ),
+    ],
+    child: child,
+  );
+}
 
 GoRouter _router({required Widget page, required List<List<String>> opened}) =>
     GoRouter(

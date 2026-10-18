@@ -81,6 +81,7 @@ public class SalesOrderFinanceConfirmController {
 
     @GetMapping("/finance-confirmation/count")
     @PreAuthorize("hasAuthority('sales_order_finance:view')")
+    @com.uten.imp.security.BusinessTaskRead
     public Map<String, Long> pendingCount(@RequestParam(required = false) Boolean changesOnly) {
         return service.pendingCount(changesOnly);
     }

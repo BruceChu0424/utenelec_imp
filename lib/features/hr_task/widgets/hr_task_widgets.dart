@@ -76,6 +76,24 @@ enum HrTaskType {
   }
 }
 
+/// Claiming or taking over a task requires the operation that can complete it.
+/// This is the same task-type contract as HrTaskClaimService.requireCanHandle.
+bool hrTaskCanHandle(
+  HrTaskType type,
+  Set<String> permissions, {
+  bool isSuperAdmin = false,
+}) {
+  if (isSuperAdmin) return true;
+  if (!permissions.contains(Perm.employeeView)) return false;
+  final action = switch (type) {
+    HrTaskType.confirm => Perm.employeeConfirm,
+    HrTaskType.birthday || HrTaskType.anniversary => Perm.noticePublish,
+    HrTaskType.newhire => Perm.employeeEdit,
+    HrTaskType.identity => Perm.employeePiiEdit,
+  };
+  return permissions.contains(action);
+}
+
 /// 从 summary 中取出某类型的全部条目（按 逾期→今日→临近 排序）。
 List<HrTaskItem> hrTaskItemsOf(HrTaskSummary s, HrTaskType type) {
   return switch (type) {
@@ -197,7 +215,11 @@ class HrTaskTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final perms = ref.watch(currentPermissionsProvider);
-    final canTakeover = perms.contains(Perm.employeeTaskTakeover);
+    final isSuperAdmin = ref.watch(isSuperAdminProvider);
+    final canHandle = hrTaskCanHandle(type, perms, isSuperAdmin: isSuperAdmin);
+    final canTakeover =
+        canHandle &&
+        (isSuperAdmin || perms.contains(Perm.employeeTaskTakeover));
     final canConfirm = perms.contains(Perm.employeeConfirm);
     final (chipLabel, chipTier) = hrTaskChipOf(type, item);
     // 证件核对的具体原因(服务端原话)单独成行、红字、不截断：它就是人事要据此
@@ -231,7 +253,14 @@ class HrTaskTile extends ConsumerWidget {
       chipTier: chipTier,
       subtitle: subtitle,
     );
-    final actions = _actions(context, ref, canTakeover, canConfirm, perms);
+    final actions = _actions(
+      context,
+      ref,
+      canTakeover,
+      canConfirm,
+      canHandle,
+      perms,
+    );
 
     return Padding(
       padding: const EdgeInsets.symmetric(
@@ -341,6 +370,7 @@ class HrTaskTile extends ConsumerWidget {
     WidgetRef ref,
     bool canTakeover,
     bool canConfirm,
+    bool canHandle,
     Set<String> perms,
   ) {
     final theme = Theme.of(context);
@@ -351,7 +381,7 @@ class HrTaskTile extends ConsumerWidget {
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         // 认领 / 释放 / 接管
-        if (item.claimedByName == null)
+        if (item.claimedByName == null && canHandle)
           IconButton(
             tooltip: '认领(标记为我在处理)',
             icon: const Icon(Icons.person_add_alt_1_outlined, size: 20),

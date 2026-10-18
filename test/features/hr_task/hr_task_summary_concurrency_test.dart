@@ -55,6 +55,7 @@ HrTaskSummary _summary(String name, {int count = 1}) => HrTaskSummary(
       ),
   ],
   badgeCount: count,
+  taskCounts: {'identity': count},
 );
 
 void main() {

@@ -6,6 +6,7 @@ import 'form_draft.dart';
 import 'form_draft_store.dart';
 import 'task_form_drafts.dart';
 import '../providers/draft_counts_provider.dart' show DraftDocKind;
+import '../auth/permissions.dart';
 
 export 'form_draft.dart';
 export 'form_draft_category_table.dart'
@@ -94,16 +95,51 @@ final formDraftCategoryProvider =
     });
 
 final formDraftCategoryCountProvider =
-    Provider.family<int, FormDraftCategoryScope>(
-      (ref, scope) => ref
-          .watch(formDraftCategoryProvider(scope))
+    Provider.family<int, FormDraftCategoryScope>((ref, scope) {
+      final drafts = ref.watch(formDraftCategoryProvider(scope));
+      final permissions = drafts.any(formDraftNeedsTaskAuthority)
+          ? ref.watch(currentPermissionsProvider)
+          : const <String>{};
+      return drafts
           .where(
             (draft) =>
-                !formDraftHasFormalDraftCounter(draft) ||
-                formDraftConfirmedIds(draft).isEmpty,
+                formDraftCountsAsActionable(draft, permissions) &&
+                (!formDraftHasFormalDraftCounter(draft) ||
+                    formDraftConfirmedIds(draft).isEmpty),
           )
-          .length,
-    );
+          .length;
+    });
+
+bool formDraftNeedsTaskAuthority(FormDraft draft) => const {
+  Perm.goodsCostView,
+  Perm.salesOrderFinanceView,
+  Perm.financeOrderApprovalView,
+  Perm.salesQuoteFinanceView,
+  Perm.salesShipmentFinanceView,
+}.contains(draft.permission);
+
+/// Read-only recovery stays visible, but it is not a business command to perform.
+/// Most drafts are already filtered by their action permission in the store;
+/// these editor descriptors intentionally retain a view-only recovery surface.
+bool formDraftCountsAsActionable(FormDraft draft, Set<String> permissions) {
+  if (draft.data[dailyReportReadRecoveryOnlyKey] == true) return false;
+  return switch (draft.permission) {
+    Perm.goodsCostView => permissions.contains(Perm.goodsCostEdit),
+    Perm.salesOrderFinanceView => permissions.contains(
+      Perm.salesOrderFinanceConfirm,
+    ),
+    Perm.financeOrderApprovalView =>
+      permissions.contains(Perm.financeOrderApprovalApprove) ||
+          permissions.contains(Perm.financeOrderApprovalReject),
+    Perm.salesQuoteFinanceView => permissions.contains(
+      Perm.salesQuoteFinanceConfirm,
+    ),
+    Perm.salesShipmentFinanceView =>
+      permissions.contains(Perm.salesShipmentFinanceApprove) ||
+          permissions.contains(Perm.salesShipmentFinanceReject),
+    _ => true,
+  };
+}
 
 String? formDraftBusinessKind(FormDraft draft) =>
     draft.draftKind ??

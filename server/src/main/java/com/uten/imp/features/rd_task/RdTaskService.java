@@ -138,12 +138,27 @@ public class RdTaskService {
      */
     @Transactional(readOnly = true)
     public RdTaskCounts counts() {
+        var actor = currentUser.get().orElse(null);
+        if (actor == null || actor.getEmployeeId() == null
+                || (!actor.isSuperAdmin() && !actor.getPermissions().contains("rd_task:view"))) {
+            return new RdTaskCounts(0, 0);
+        }
+        boolean canResolve = actor.isSuperAdmin() || actor.getPermissions().contains("rd_task:resolve");
+        // The task opens the ordinary goods detail/BOM tab. Its GET requires goods:view;
+        // adding a missing component and correcting a component use distinct create/edit actions.
+        boolean canMaintainBom = actor.isSuperAdmin() || (actor.getPermissions().contains("goods:view")
+                && (actor.getPermissions().contains("goods:bom:create")
+                    || actor.getPermissions().contains("goods:bom:edit")));
+        if (!canResolve && !canMaintainBom) return new RdTaskCounts(0, 0);
         RdTaskCounts counts = jdbc.queryForObject("""
                 SELECT COUNT(*) FILTER (WHERE status = 'OPEN'),
                        COUNT(*) FILTER (WHERE status = 'IN_PROGRESS')
                 FROM rd_tasks
                 WHERE is_deleted = false AND status IN ('OPEN','IN_PROGRESS')
-                """, (rs, rowNum) -> new RdTaskCounts(rs.getLong(1), rs.getLong(2)));
+                  AND (assignee_employee_id IS NULL OR assignee_employee_id = ?)
+                  AND (? OR (category = 'BOM' AND goods_id IS NOT NULL AND ?))
+                """, (rs, rowNum) -> new RdTaskCounts(rs.getLong(1), rs.getLong(2)),
+                actor.getEmployeeId(), canResolve, canMaintainBom);
         return counts == null ? new RdTaskCounts(0, 0) : counts;
     }
 
@@ -164,6 +179,10 @@ public class RdTaskService {
 
     @Transactional
     public RdTaskRow resolve(UUID id, long expectedVersion, String note) {
+        RdTaskRow task = get(id);
+        if (!canResolve(task.assigneeEmployeeId())) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "当前账号没有办理该研发任务的权限或责任范围");
+        }
         tx.bind();
         UUID actor = currentUser.requireId();
         int changed = jdbc.update("""
@@ -172,7 +191,9 @@ public class RdTaskService {
                     row_version = row_version + 1, updated_at = now(), updated_by = ?
                 WHERE id = ? AND is_deleted = false
                   AND status IN ('OPEN','IN_PROGRESS') AND row_version = ?
-                """, note, actor, id, expectedVersion);
+                  AND (assignee_employee_id IS NULL OR assignee_employee_id = ? OR ?)
+                """, note, actor, id, expectedVersion, currentUser.requireEmployeeId(),
+                currentUser.get().orElseThrow().isSuperAdmin());
         if (changed != 1) throw concurrentChange();
         events.publish(EVENT_RESOLVED, "RD_TASK", id, Map.of("resolverUserId", actor.toString()));
         return get(id);
@@ -231,7 +252,8 @@ public class RdTaskService {
     private RdTaskRow mapRow(ResultSet rs) throws SQLException {
         String status = rs.getString("status");
         List<String> actions = ("OPEN".equals(status) || "IN_PROGRESS".equals(status))
-                ? List.of("RESOLVE", "ASSIGN") : List.of();
+                && canResolve(rs.getObject("assignee_employee_id", UUID.class))
+                ? List.of("RESOLVE") : List.of();
         return new RdTaskRow(
                 rs.getObject("id", UUID.class),
                 rs.getString("task_no"),
@@ -258,6 +280,14 @@ public class RdTaskService {
                 rs.getLong("row_version"),
                 actions,
                 rs.getString("color_name"));
+    }
+
+    private boolean canResolve(UUID assigneeEmployeeId) {
+        return currentUser.get().map(actor -> actor.isSuperAdmin()
+                || (actor.getPermissions().contains("rd_task:resolve")
+                    && actor.getEmployeeId() != null
+                    && (assigneeEmployeeId == null || assigneeEmployeeId.equals(actor.getEmployeeId()))))
+                .orElse(false);
     }
 
     private ApiException concurrentChange() {

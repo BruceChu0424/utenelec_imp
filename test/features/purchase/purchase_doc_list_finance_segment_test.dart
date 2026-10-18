@@ -186,8 +186,11 @@ class _OrderListApi extends ApiClient {
     if (path == '/documents/status-counts') {
       statusCountQueries.add(Map<String, dynamic>.from(query ?? const {}));
       return const {
+        'ACTIONABLE_DRAFT': 5,
         'DRAFT': 5,
+        'RESPONSIBLE_PENDING_FINANCE': 3,
         'PENDING_FINANCE': 3,
+        'ACTIONABLE_FINANCE_REJECTED': 2,
         'FINANCE_REJECTED': 2,
         'APPROVED': 7,
         'REVERSED': 1,

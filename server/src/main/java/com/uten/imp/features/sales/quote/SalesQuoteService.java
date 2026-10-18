@@ -158,6 +158,7 @@ public class SalesQuoteService {
      */
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_quote:view')")
+    @com.uten.imp.security.BusinessTaskRead
     public QuoteCounts counts() {
         boolean canConvert = accessPolicy.hasAuthority("sales_quote:convert") && accessPolicy.hasAuthority("sales_order:create");
         boolean canConfirm = accessPolicy.hasAuthority("sales_quote:edit");

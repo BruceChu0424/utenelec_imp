@@ -66,6 +66,8 @@ class WorkshopNoticeScopePostgresTest {
     static void start() throws Exception {
         DB.start();
         jdbc=new JdbcTemplate(new DriverManagerDataSource(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword()));
+        // Isolate leadership/assignment and draw-request SQL; V876's live domain-state matrix runs on the migrated schema.
+        jdbc.execute("CREATE FUNCTION fn_notice_business_action_visible(uuid,text,text,uuid,text,text,text,text,text,text) RETURNS boolean LANGUAGE sql AS 'SELECT TRUE'");
         // NoticeAcknowledgment：findVisiblePendingManualNotices（人工通知登录弹窗）的 JPQL 引用，
         // 仓库创建时整体校验所有 @Query，故须一并注册。
         factory=new Configuration().addAnnotatedClass(Notice.class).addAnnotatedClass(NoticeUserState.class)

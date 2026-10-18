@@ -354,6 +354,9 @@ public class WorkshopMaterialPositionQueryService {
      */
     @Transactional(readOnly = true)
     public BadgeCounts badgeCounts(WarehouseTaskScopePort.WarehouseTaskScope warehouseScope) {
+        boolean canIssue = permissions.has(WorkshopMaterialPermissions.ISSUE);
+        boolean canCount = permissions.has(WorkshopMaterialPermissions.COUNT);
+        if (!canIssue && !canCount) return new BadgeCounts(0, 0, 0);
         MapSqlParameterSource params = new MapSqlParameterSource();
         String inScope = scope.predicate("workshop_department_id", params);
         String requisitionScope = scope.requisitionWarehouseFilter(warehouseScope, params);
@@ -375,8 +378,8 @@ public class WorkshopMaterialPositionQueryService {
                         """ + " AND " + inScope + periodFilter + """
                 ) AS counting
                 """, params);
-        return new BadgeCounts(WorkshopMaterialBinSupport.number(row.get("pending_issue")).longValue(),
-                WorkshopMaterialBinSupport.number(row.get("pending_return")).longValue(),
-                WorkshopMaterialBinSupport.number(row.get("counting")).longValue());
+        return new BadgeCounts(canIssue ? WorkshopMaterialBinSupport.number(row.get("pending_issue")).longValue() : 0,
+                canIssue ? WorkshopMaterialBinSupport.number(row.get("pending_return")).longValue() : 0,
+                canCount ? WorkshopMaterialBinSupport.number(row.get("counting")).longValue() : 0);
     }
 }

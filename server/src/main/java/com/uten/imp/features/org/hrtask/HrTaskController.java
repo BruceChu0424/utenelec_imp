@@ -42,6 +42,7 @@ public class HrTaskController {
     }
 
     @GetMapping("/count")
+    @com.uten.imp.security.BusinessTaskRead
     @PreAuthorize("hasAuthority('employee:view')")
     public Map<String, Long> count() {
         return Map.of("count", service.badgeCount());

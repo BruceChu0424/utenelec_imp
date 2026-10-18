@@ -349,13 +349,19 @@ public class SalesOrderFinanceConfirmService {
     /** 待确认计数（财务工作台徽标）：只数未驳回的可办件，已驳回等销售修正不占徽标。 */
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_order_finance:view')")
+    @com.uten.imp.security.BusinessTaskRead
     public Map<String, Long> pendingCount() {
         return pendingCount(null);
     }
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_order_finance:view')")
+    @com.uten.imp.security.BusinessTaskRead
     public Map<String, Long> pendingCount(Boolean changesOnly) {
+        var user = currentUser.get().orElse(null);
+        if (user == null || !user.getPermissions().contains("sales_order_finance:view")
+                || !user.getPermissions().contains("sales_order_finance:confirm")
+                || !confirmerEligibility.isEligible(user.getId())) return Map.of("count", 0L);
         String changesFilter = changesOnly == null ? ""
                 : " AND " + (changesOnly ? "" : "NOT ") + "(" + pendingChangesExpression() + ")";
         Number n = (Number) em.createNativeQuery("""

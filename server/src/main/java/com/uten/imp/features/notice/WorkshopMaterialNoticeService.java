@@ -188,10 +188,9 @@ public class WorkshopMaterialNoticeService implements WorkshopMaterialNoticePort
                 Set<UUID> approvers = usersWithNoticeAnd(Set.of(REPORT_APPROVE));
                 Set<UUID> members = workshopMembers(workshop);
                 for (UUID user : approvers) if (members.contains(user)) out.add(user);
-                if (out.isEmpty()) out.addAll(approvers);
                 // 审核人删不了别人的草稿: 另加这些草稿的制单人。
                 for (UUID maker : draftMakers(periodId)) {
-                    if (canReadNotices(maker)) out.add(maker);
+                    if (canCorrectDraft(maker)) out.add(maker);
                 }
             }
             case EVENT_CLOSE_BLOCKED_WEIGHT -> out.addAll(usersWithNoticeAnd(Set.of(BOM_EDIT)));
@@ -207,10 +206,13 @@ public class WorkshopMaterialNoticeService implements WorkshopMaterialNoticePort
         return out;
     }
 
-    private boolean canReadNotices(UUID userId) {
+    private boolean canCorrectDraft(UUID userId) {
         return userRepo.findById(userId)
                 .filter(user -> !user.isDeleted() && "active".equals(user.getStatus()) && user.getEmployeeId() != null)
-                .map(user -> permissionResolver.grantedPermsOf(user).contains(NOTICE_READ))
+                .map(permissionResolver::grantedPermsOf)
+                .map(permissions -> permissions.containsAll(Set.of(NOTICE_READ, "production_daily_report:view"))
+                        && (permissions.contains("production_daily_report:edit")
+                            || permissions.contains("production_daily_report:delete")))
                 .orElse(false);
     }
 
@@ -221,24 +223,25 @@ public class WorkshopMaterialNoticeService implements WorkshopMaterialNoticePort
                 : permissionCandidates.possibleUsers(anyPermission).map(userRepo::findAllById).orElseGet(userRepo::findAll);
         Set<UUID> out = new LinkedHashSet<>();
         // 2026-10-09(ADR-063 追加修订): 任务卡池按「真实授出权限」解析，超管全量镜像不算任务归属。
-        Set<String> adminGrantedPermissions = null;
         for (UserAccount user : candidates) {
             if (user == null || user.isDeleted() || !"active".equals(user.getStatus()) || user.getEmployeeId() == null) {
                 continue;
             }
-            Set<String> permissions;
-            if (user.isSuperAdmin()) {
-                if (adminGrantedPermissions == null) {
-                    adminGrantedPermissions = permissionResolver.grantedPermsOf(user);
-                }
-                permissions = adminGrantedPermissions;
-            } else {
-                permissions = permissionResolver.grantedPermsOf(user);
-            }
+            // Real grants are per account, including for two different super administrators.
+            Set<String> permissions = permissionResolver.grantedPermsOf(user);
             if (!permissions.contains(NOTICE_READ)) continue;
-            if (anyPermission.stream().anyMatch(permissions::contains)) out.add(user.getId());
+            if (anyPermission.stream().anyMatch(action -> permissions.contains(action)
+                    && permissions.contains(viewForAction(action)))) out.add(user.getId());
         }
         return out;
+    }
+
+    private static String viewForAction(String action) {
+        return switch (action) {
+            case REPORT_APPROVE -> "production_daily_report:view";
+            case BOM_EDIT -> "goods:view";
+            default -> "workshop_material:view";
+        };
     }
 
     /** 车间 (含下级班组) 的成员账号: 主部门、兼职部门或部门负责人。 */

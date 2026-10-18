@@ -359,7 +359,8 @@ public class HrNoticeService implements HrNoticePort {
             }
             Set<String> permissions = permissionResolver.grantedPermsOf(user);
             if (!permissions.contains(NOTICE_READ_AUTHORITY)) continue;
-            if (alternatives.stream().anyMatch(permissions::contains)) {
+            if (alternatives.stream().anyMatch(action -> permissions.contains(action)
+                    && (!"suggestion:reply".equals(action) || permissions.contains("suggestion:submit")))) {
                 result.add(user.getId());
             }
         }

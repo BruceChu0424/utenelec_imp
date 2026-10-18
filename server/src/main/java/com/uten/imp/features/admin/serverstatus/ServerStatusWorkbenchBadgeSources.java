@@ -25,7 +25,7 @@ class ServerStatusWorkbenchBadgeSources implements WorkbenchBadgeSources {
 
     @Override
     public List<Source> sources() {
-        return List.of(new Source("serverStatus", () -> Map.of(
+        return List.of(Source.platform("serverStatus", () -> Map.of(
                 "alerts",
                 controller.current().alerts().stream()
                         .filter(alert -> ACTIONABLE.contains(alert.status()))

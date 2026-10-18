@@ -49,6 +49,7 @@ public class MaterialAnalysisWorkshopUrgeController {
 
     /** 计划员徽章：本人可见的物料分析上仍在催的车间任务数。 */
     @GetMapping("/workshop-urges/count")
+    @com.uten.imp.security.BusinessTaskRead
     @PreAuthorize("hasAuthority('production_material_analysis:view') and "
             + "(hasAuthority('production_material_analysis:notify') or hasAuthority('production_material_analysis:generate'))")
     public Map<String, Long> workshopUrgeCount() {

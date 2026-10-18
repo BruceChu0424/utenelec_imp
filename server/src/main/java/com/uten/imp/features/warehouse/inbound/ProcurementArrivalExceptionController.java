@@ -47,6 +47,8 @@ public class ProcurementArrivalExceptionController {
     }
 
     @GetMapping("/count")
+    @com.uten.imp.security.BusinessTaskRead
+    @PreAuthorize("hasAuthority('supplier_return_task:view') and hasAuthority('supplier_return_task:complete')")
     public Map<String, Long> count(
             @RequestParam(required = false) String orderType) {
         return Map.of("count", service.countOwnerTasks(orderType));

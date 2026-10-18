@@ -64,6 +64,7 @@ HrTaskSummary _summary(List<HrTaskItem> identityReview) => HrTaskSummary(
   newHires: const [],
   identityReview: identityReview,
   badgeCount: identityReview.length,
+  taskCounts: {'identity': identityReview.length},
 );
 
 Future<void> _pump(
@@ -179,11 +180,22 @@ void main() {
       newHires: [_item('n1', ''), _item('n2', '')],
       identityReview: const [],
       badgeCount: 4,
+      taskCounts: const {
+        'confirm': 2,
+        'birthday': 1,
+        'anniversary': 1,
+        'identity': 0,
+      },
     );
     await _pump(
       tester,
       summary,
-      permissions: const {Perm.employeeView, Perm.employeePiiEdit},
+      permissions: const {
+        Perm.employeeView,
+        Perm.employeePiiEdit,
+        Perm.employeeConfirm,
+        Perm.noticePublish,
+      },
     );
 
     int badgeCount(String type) => tester
@@ -192,15 +204,74 @@ void main() {
         )
         .count;
     // 红数 = 今天要办的事：转正=逾期1+今日1(临近3不计)、生日=今日1(30天内12不计)、
-    // 周年=今日1、新入职=近30天全量(无「临近」概念，维持原样)。
+    // 周年=今日1；新入职仅为可浏览的近30天人数，使用中性数字。
     expect(badgeCount('confirm'), 2, reason: '临近转正不进红数');
     expect(badgeCount('birthday'), 1, reason: '30天内生日与今日已送祝福者不进红数');
     expect(badgeCount('anniversary'), 1, reason: '今日已送周年祝福者不进红数');
-    expect(badgeCount('newhire'), 2);
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const ValueKey('hr-workbench-entry-count-newhire')),
+          )
+          .data,
+      '2',
+    );
     // 临近/30 天内的量不丢：仍在卡片口径说明行里以文字体现。
     expect(find.text('逾期 1 · 今日 1 · 临近 3'), findsOneWidget);
     expect(find.text('今日 2 · 30 天内 12'), findsOneWidget);
   });
+
+  for (final explicitZero in [false, true]) {
+    testWidgets(
+      '${explicitZero ? '零' : '缺失'} taskCounts 不把可浏览人数或旧 badgeCount 当成红数',
+      (tester) async {
+        Map<String, dynamic> person(String id) => {
+          'employeeId': id,
+          'code': id,
+          'name': '可浏览员工$id',
+          'days': 0,
+        };
+        final summary = HrTaskSummary.fromJson({
+          'generatedAt': '2026-10-17T08:00:00+08:00',
+          'probationMonths': 3,
+          'confirmToday': [person('c1')],
+          'confirmOverdue': [person('c2')],
+          'confirmUpcoming': [person('c3')],
+          'birthdayToday': [person('b1')],
+          'birthdayUpcoming': [person('b2')],
+          'anniversaryToday': [person('a1')],
+          'identityReview': [person('i1')],
+          'badgeCount': 99,
+          if (explicitZero)
+            'taskCounts': {
+              'confirm': 0,
+              'birthday': 0,
+              'anniversary': 0,
+              'identity': 0,
+            },
+        });
+        await _pump(
+          tester,
+          summary,
+          permissions: const {
+            Perm.employeeView,
+            Perm.employeePiiEdit,
+            Perm.employeeConfirm,
+            Perm.noticePublish,
+          },
+        );
+        for (final type in ['confirm', 'birthday', 'anniversary', 'identity']) {
+          final count = find.byKey(ValueKey('hr-workbench-entry-count-$type'));
+          expect(tester.widget(count), isA<Text>(), reason: '$type 不回退成浏览数量');
+          expect(tester.widget<Text>(count).data, '0');
+        }
+        expect(find.text('逾期 1 · 今日 1 · 临近 1'), findsOneWidget);
+        expect(find.text('今日 1 · 30 天内 1'), findsOneWidget);
+        expect(summary.identityReview, hasLength(1), reason: '普通浏览事实保持可读');
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets('没有 pii:edit 不显示证件核对入口；无人待核对时徽章位显示灰 0', (tester) async {
     await _pump(tester, _summary(const []));

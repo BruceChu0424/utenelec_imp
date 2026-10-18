@@ -94,8 +94,11 @@ void main() {
           isSuperAdminProvider.overrideWithValue(false),
           documentStatusCountsProvider.overrideWith(
             (ref, scope) async => {
+              'ACTIONABLE_DRAFT': 3,
               'DRAFT': 3,
+              'ACTIONABLE_FINANCE_REJECTED': 1,
               'FINANCE_REJECTED': 1,
+              'RESPONSIBLE_PENDING_FINANCE': 2,
               'PENDING_FINANCE': 2,
               'APPROVED': 7,
               'REVERSED': 4,

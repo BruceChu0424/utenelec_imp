@@ -67,6 +67,7 @@ public class ProcurementFinanceApprovalController {
     }
 
     @GetMapping("/count")
+    @com.uten.imp.security.BusinessTaskRead
     public Map<String, Long> count() {
         return Map.of("count", service.countTasks());
     }

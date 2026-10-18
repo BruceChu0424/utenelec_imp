@@ -29,6 +29,7 @@ public class WorkshopMaterialBadgeController {
 
     /** 徽章来源 workshopMaterial: 与请领列表同一仓库数据范围(ADR-149, 预填叶仓; 盘点中按内料仓来源仓)。 */
     @GetMapping("/badge-counts")
+    @com.uten.imp.security.BusinessTaskRead
     @PreAuthorize("hasAuthority('workshop_material:view')")
     public BadgeCounts badgeCounts(@RequestParam(required = false) UUID scopeWarehouseId) {
         return positions.badgeCounts(warehouseScopes.current(scopeWarehouseId));

@@ -13,6 +13,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -25,6 +26,18 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class FulfillmentWorkbenchQueryServiceTest {
+
+    private static FulfillmentWorkbenchAccessPolicy fullTaskAccess() {
+        var access = mock(FulfillmentWorkbenchAccessPolicy.class);
+        when(access.canCreatePurchaseOrder()).thenReturn(true);
+        when(access.canCreateSubcontractOrder()).thenReturn(true);
+        when(access.canDecideSubcontractShortDelivery()).thenReturn(true);
+        when(access.documentAccess(anyString(), org.mockito.ArgumentMatchers.eq("ORDER")))
+                .thenReturn(new FulfillmentWorkbenchAccessPolicy.DocumentAccess(true, true));
+        when(access.orderTaskScope(anyString(), anyString(), anyString()))
+                .thenReturn(new com.uten.imp.security.DocumentAccessPolicy.NativeReadScope("1=1", null, Set.of()));
+        return access;
+    }
 
     @Test
     void exceptionFilterAndOptionsAreEvaluatedByTheDatabaseNotTheCurrentPage() {
@@ -127,10 +140,10 @@ class FulfillmentWorkbenchQueryServiceTest {
         EntityManager em = mock(EntityManager.class);
         Query countQuery = mock(Query.class);
         when(em.createNativeQuery(anyString())).thenReturn(countQuery);
-        when(countQuery.getSingleResult()).thenReturn(7L);
+        when(countQuery.getSingleResult()).thenReturn(new Object[]{7L, 5L, 2L, 0L});
 
         long count = new FulfillmentWorkbenchQueryService(
-                em, mock(FulfillmentWorkbenchAccessPolicy.class))
+                em, fullTaskAccess())
                 .countPending("PURCHASE");
 
         assertEquals(7L, count);
@@ -144,7 +157,7 @@ class FulfillmentWorkbenchQueryServiceTest {
         // 页面里各红色分段之和。
         assertTrue(captured.contains("decomposition.task_status = 'FINANCE_REJECTED'"));
         assertTrue(captured.contains("decomposition.task_status = 'WAITING_ORDER' AND decomposition.open_qty > 0"));
-        assertFalse(captured.contains("FINANCE_APPROVED"));
+        assertFalse(captured.contains("subcontract_short_delivery_cases"));
         assertFalse(captured.contains("ORDER_PENDING_APPROVAL"));
         verify(countQuery).setParameter("department", "PURCHASE");
     }
@@ -158,9 +171,9 @@ class FulfillmentWorkbenchQueryServiceTest {
         EntityManager em = mock(EntityManager.class);
         Query countQuery = mock(Query.class);
         when(em.createNativeQuery(anyString())).thenReturn(countQuery);
-        when(countQuery.getSingleResult()).thenReturn(2L);
+        when(countQuery.getSingleResult()).thenReturn(new Object[]{2L, 1L, 1L, 0L});
         FulfillmentWorkbenchQueryService service = new FulfillmentWorkbenchQueryService(
-                em, mock(FulfillmentWorkbenchAccessPolicy.class));
+                em, fullTaskAccess());
 
         assertEquals(2L, service.countPending("SUBCONTRACT"));
         assertEquals(2L, service.countPending("PURCHASE"));
@@ -168,13 +181,14 @@ class FulfillmentWorkbenchQueryServiceTest {
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em, times(2)).createNativeQuery(sql.capture());
         String subcontract = sql.getAllValues().getFirst();
-        assertTrue(subcontract.contains("decomposition.task_status IN ('WAITING_ORDER', 'FINANCE_REJECTED')"));
+        assertTrue(subcontract.contains("decomposition.task_status = 'WAITING_ORDER'"));
+        assertTrue(subcontract.contains("decomposition.task_status = 'FINANCE_REJECTED'"));
         assertTrue(subcontract.contains("subcontract_short_delivery_cases"));
         assertFalse(subcontract.contains("fn_subcontract_draw_summary"));
         assertFalse(subcontract.contains("preplan_subcontract_make_tasks"));
         String purchase = sql.getAllValues().getLast();
         assertFalse(purchase.contains("subcontract_short_delivery_cases"));
-        assertFalse(purchase.contains("decomposition.action_doc_type"));
+        assertTrue(purchase.contains("decomposition.action_doc_type = 'PURCHASE_ORDER'"));
     }
 
     /** 黄数只数财审三档(等待财务审核 / 财务已通过 / 财务已退回), 采购与委外同一口径。 */
@@ -185,7 +199,7 @@ class FulfillmentWorkbenchQueryServiceTest {
         when(em.createNativeQuery(anyString())).thenReturn(countQuery);
         when(countQuery.getSingleResult()).thenReturn(1L);
         FulfillmentWorkbenchQueryService service = new FulfillmentWorkbenchQueryService(
-                em, mock(FulfillmentWorkbenchAccessPolicy.class));
+                em, fullTaskAccess());
 
         assertEquals(1L, service.countInProgress("SUBCONTRACT"));
         assertEquals(1L, service.countInProgress("PURCHASE"));
@@ -355,7 +369,7 @@ class FulfillmentWorkbenchQueryServiceTest {
         when(countQuery.getSingleResult()).thenReturn(4L);
         FulfillmentWorkbenchAccessPolicy accessPolicy =
                 mock(FulfillmentWorkbenchAccessPolicy.class);
-        when(accessPolicy.canAccessWarehouseTasks()).thenReturn(true);
+        when(accessPolicy.canHandleWarehouseTasks()).thenReturn(true);
 
         long count = new FulfillmentWorkbenchQueryService(
                 em, accessPolicy)
@@ -383,7 +397,7 @@ class FulfillmentWorkbenchQueryServiceTest {
         when(em.createNativeQuery(anyString())).thenReturn(query);
         when(query.getResultList()).thenReturn(List.of());
         FulfillmentWorkbenchAccessPolicy access = mock(FulfillmentWorkbenchAccessPolicy.class);
-        when(access.canAccessWarehouseTasks()).thenReturn(true);
+        when(access.canHandleWarehouseTasks()).thenReturn(true);
 
         new FulfillmentWorkbenchQueryService(em, access).warehouseStatusBreakdown();
 
@@ -400,7 +414,7 @@ class FulfillmentWorkbenchQueryServiceTest {
         when(query.getResultList()).thenReturn(List.of(new Object[]{"READY_TO_PICK", 3L},
                 new Object[]{"PARTIAL", 2L}, new Object[]{"MATERIALS_TO_DEFINE", 4L}));
         FulfillmentWorkbenchAccessPolicy access = mock(FulfillmentWorkbenchAccessPolicy.class);
-        when(access.canAccessWarehouseTasks()).thenReturn(true);
+        when(access.canHandleWarehouseTasks()).thenReturn(true);
         var counts = new FulfillmentWorkbenchQueryService(em, access).warehouseStatusBreakdown(
                 new com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope(true, List.of(), true));
         assertEquals(4L, counts.get("MATERIALS_TO_DEFINE"));

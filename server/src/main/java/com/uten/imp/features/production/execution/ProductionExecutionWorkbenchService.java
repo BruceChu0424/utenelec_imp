@@ -144,12 +144,20 @@ public class ProductionExecutionWorkbenchService {
      * 那条请求要付一遍 ORDER BY 与整行投影的钱，只为读一个 total。
      */
     @Transactional(readOnly = true)
+    @com.uten.imp.security.BusinessTaskRead
     public long inProgressRootCount() {
+        if (!productionAccess.hasAuthority("production_execution:overview")
+                || !(productionAccess.hasAuthority("production_material_analysis:create")
+                    || productionAccess.hasAuthority("production_material_analysis:edit")
+                    || productionAccess.hasAuthority("production_plan:edit")
+                    || productionAccess.hasAuthority("production_plan:approve"))) return 0L;
+        var owners = productionAccess.scope();
         NativeReadScope scope = productionAccess.nativeReadScope(
-                "root.owner_employee_id", "rootOwners");
+                "root.owner_employee_id", "rootOwners",
+                new com.uten.imp.security.OwnerVisibility.OwnerScope(owners.seeAll(), owners.writableOwners()));
         Query count = em.createNativeQuery(
                 "SELECT COUNT(*) FROM v_production_execution_workbench_roots root"
-                        + " WHERE (" + scope.predicate() + ")");
+                        + " WHERE root.owner_employee_id IS NOT NULL AND (" + scope.predicate() + ")");
         scope.bind(count);
         return ((Number) count.getSingleResult()).longValue();
     }
@@ -629,13 +637,25 @@ public class ProductionExecutionWorkbenchService {
     }
 
     @Transactional(readOnly = true)
+    @com.uten.imp.security.BusinessTaskRead
     public long workshopTaskCount() {
         return workshopTaskCountBreakdown().total();
     }
 
     /** 顶部分类徽章与总数同源同范围：一次查询同时给出各状态计数。 */
     @Transactional(readOnly = true)
+    @com.uten.imp.security.BusinessTaskRead
     public WorkshopTaskCountBreakdown workshopTaskCountBreakdown() {
+        boolean canRead = productionAccess.hasAuthority("production_execution:view");
+        boolean preparing = canRead && productionAccess.hasAuthority("production_execution:start");
+        boolean reporting = canRead && productionAccess.hasAuthority("production_daily_report:view")
+                && (productionAccess.hasAuthority("production_daily_report:create")
+                    || productionAccess.hasAuthority("production_daily_report:edit")
+                    || productionAccess.hasAuthority("production_daily_report:approve"));
+        boolean ongoing = preparing || reporting;
+        if (!ongoing || !workshopMembership.isActiveOperator()) {
+            return new WorkshopTaskCountBreakdown(0, 0, 0, 0);
+        }
         UUID employeeId = currentUser.employeeId().orElse(null);
         boolean seeAll = currentUser.get().map(AuthUser::isSuperAdmin).orElse(false);
         if (employeeId == null && !seeAll) {
@@ -648,7 +668,7 @@ public class ProductionExecutionWorkbenchService {
         Query query = em.createNativeQuery("""
                         SELECT COUNT(*),
                                COUNT(*) FILTER (
-                                   WHERE task.segment_status <> 'IN_PROGRESS'),
+                                   WHERE task.segment_status <> 'IN_PROGRESS' AND :countPreparing),
                                COUNT(*) FILTER (
                                    WHERE task.segment_status = 'IN_PROGRESS'
                                    AND COALESCE(task.remaining_qty, 0) > 0),
@@ -663,12 +683,14 @@ public class ProductionExecutionWorkbenchService {
         if (!seeAll) {
             query.setParameter("employeeId", employeeId);
         }
+        query.setParameter("countPreparing", preparing);
         Object[] row = NativeQueryResults.objectArrayRows(query).getFirst();
+        long preparingCount = ((Number) row[1]).longValue();
+        long inProgressCount = ((Number) row[2]).longValue();
+        long reportInspectionCount = ((Number) row[3]).longValue();
         return new WorkshopTaskCountBreakdown(
-                ((Number) row[0]).longValue(),
-                ((Number) row[1]).longValue(),
-                ((Number) row[2]).longValue(),
-                ((Number) row[3]).longValue());
+                preparingCount + inProgressCount + reportInspectionCount,
+                preparingCount, inProgressCount, reportInspectionCount);
     }
 
     /** 车间任务分段计数（与列表筛选口径一一对应：等待物料 + 生产中 + 报工送检 = 总数）。 */

@@ -186,15 +186,15 @@ class ProcurementIqcRejectionNoticeTest {
                 returnOperator, Set.of(NOTICE_READ, VIEW, RECORD_RETURN),
                 ordinaryViewer, Set.of(NOTICE_READ, VIEW),
                 actionWithoutView, Set.of(NOTICE_READ, CONFIRM),
-                confirmWithoutNotice, Set.of(CONFIRM)));
+                confirmWithoutNotice, Set.of(CONFIRM)), "PENDING_RETURN");
 
         String opened = ChainNoticeService.EVENT_PROCUREMENT_IQC_REJECTION_OPENED;
         fixture.service().deliverOutboxEvent(opened, caseId, JSON.createObjectNode());
-        verifyRecipient(fixture.notice(), allCase, caseId, opened);
-        verifyRecipient(fixture.notice(), confirmer, caseId, opened);
-        verifyRecipient(fixture.notice(), closer, caseId, opened);
+        verifyWorkflowRecipient(fixture.notice(), allCase, caseId, opened);
+        verifyWorkflowRecipient(fixture.notice(), confirmer, caseId, opened);
+        verifyWorkflowRecipient(fixture.notice(), closer, caseId, opened);
         verifyRecipient(fixture.notice(), returnOperator, caseId, opened);
-        verifyRecipient(fixture.notice(), owner, caseId, opened);
+        verifyWorkflowRecipient(fixture.notice(), owner, caseId, opened);
 
         String financeException =
                 ChainNoticeService.EVENT_PROCUREMENT_IQC_REJECTION_FINANCE_EXCEPTION;
@@ -219,35 +219,27 @@ class ProcurementIqcRejectionNoticeTest {
         UUID closer = UUID.randomUUID();
         UUID allCaseWithoutDecision = UUID.randomUUID();
         UUID closerWithoutNotice = UUID.randomUUID();
-        Fixture fixture = fixture(caseId, owner, Map.of(
+        Map<UUID, Set<String>> audience = Map.of(
                 owner, Set.of(NOTICE_READ, VIEW),
-                confirmer, Set.of(NOTICE_READ, VIEW, CONFIRM),
+                confirmer, Set.of(NOTICE_READ, VIEW, CONFIRM, "procurement_iqc_rejection:amount:view"),
                 closer, Set.of(NOTICE_READ, VIEW, CLOSE),
                 allCaseWithoutDecision, Set.of(NOTICE_READ, VIEW_ALL),
-                closerWithoutNotice, Set.of(CLOSE)));
-
-        fixture.service().deliverOutboxEvent(
-                ChainNoticeService.EVENT_PROCUREMENT_IQC_REJECTION_RETURNED,
-                caseId,
-                JSON.createObjectNode());
-
-        verifyRecipient(
-                fixture.notice(),
-                confirmer,
-                caseId,
-                ChainNoticeService.EVENT_PROCUREMENT_IQC_REJECTION_RETURNED);
-        verifyRecipient(
-                fixture.notice(),
-                closer,
-                caseId,
-                ChainNoticeService.EVENT_PROCUREMENT_IQC_REJECTION_RETURNED);
-        verifyRecipient(
-                fixture.notice(),
-                owner,
-                caseId,
-                ChainNoticeService.EVENT_PROCUREMENT_IQC_REJECTION_RETURNED);
-        verifyNotRecipient(fixture.notice(), allCaseWithoutDecision);
-        verifyNotRecipient(fixture.notice(), closerWithoutNotice);
+                closerWithoutNotice, Set.of(CLOSE));
+        String event = ChainNoticeService.EVENT_PROCUREMENT_IQC_REJECTION_RETURNED;
+        for (BigDecimal amount : List.of(new BigDecimal("1200.00"), BigDecimal.ZERO)) {
+            Fixture fixture = fixture(caseId, owner, audience, "RETURN_RECORDED", amount);
+            fixture.service().deliverOutboxEvent(event, caseId, JSON.createObjectNode());
+            if (amount.signum() > 0) {
+                verifyRecipient(fixture.notice(), confirmer, caseId, event);
+                verifyWorkflowRecipient(fixture.notice(), closer, caseId, event);
+            } else {
+                verifyWorkflowRecipient(fixture.notice(), confirmer, caseId, event);
+                verifyRecipient(fixture.notice(), closer, caseId, event);
+            }
+            verifyWorkflowRecipient(fixture.notice(), owner, caseId, event);
+            verifyNotRecipient(fixture.notice(), allCaseWithoutDecision);
+            verifyNotRecipient(fixture.notice(), closerWithoutNotice);
+        }
     }
 
     @Test
@@ -308,13 +300,16 @@ class ProcurementIqcRejectionNoticeTest {
             UUID owner,
             Map<UUID, Set<String>> permissionsByUser,
             String status) {
+        return fixture(caseId, owner, permissionsByUser, status, new BigDecimal("1200.00"));
+    }
+
+    private static Fixture fixture(UUID caseId, UUID owner, Map<UUID, Set<String>> permissionsByUser,
+                                   String status, BigDecimal amount) {
         NoticeService notice = mock(NoticeService.class);
         UserAccountRepository users = mock(UserAccountRepository.class);
         PermissionResolver permissions = mock(PermissionResolver.class);
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        when(jdbc.queryForList(
-                contains("FROM procurement_iqc_rejection_cases rejection"),
-                eq(caseId))).thenReturn(List.of(Map.of(
+        Map<String, Object> rejection = new java.util.HashMap<>(Map.of(
                         "receipt_type", "PURCHASE",
                         "receipt_bill_no", "CR-IQC-001",
                         "order_bill_no", "CG-IQC-001",
@@ -323,7 +318,12 @@ class ProcurementIqcRejectionNoticeTest {
                         "failed_qty", new BigDecimal("2.5000"),
                         "goods_code", "WL-001",
                         "goods_name", "测试物料",
-                        "unit_name", "件")));
+                        "unit_name", "件"));
+        rejection.put("inspection_status", "RESOLVED");
+        rejection.put("failed_amount_original", amount);
+        rejection.put("failed_amount_local", amount);
+        when(jdbc.queryForList(contains("FROM procurement_iqc_rejection_cases rejection"), eq(caseId)))
+                .thenReturn(List.of(rejection));
 
         List<UserAccount> accounts = new ArrayList<>();
         for (Map.Entry<UUID, Set<String>> entry : permissionsByUser.entrySet()) {
@@ -370,12 +370,12 @@ class ProcurementIqcRejectionNoticeTest {
                     eq(userId),
                     anyString(),
                     iqcContentMatcher(),
-                    anyString(),
+                    eq(ChainNoticeService.EVENT_PROCUREMENT_IQC_REJECTION_OPENED.equals(event) ? "task" : "approval"),
                     anyString(),
                     eq("/procurement/iqc-rejections/" + caseId),
                     eq(event),
                     any(),
-                    any());
+                    eq(caseId));
         } else {
             verify(notice).publishForUser(
                     eq(userId),
@@ -396,6 +396,13 @@ class ProcurementIqcRejectionNoticeTest {
                 && !content.contains("1200.00")
                 && List.of("PENDING_RETURN", "RETURN_RECORDED", "CREDIT_CONFIRMED", "CLOSED_NO_CREDIT",
                         "FINANCE_EXCEPTION", "REVERSED").stream().noneMatch(content::contains));
+    }
+
+    private static void verifyWorkflowRecipient(NoticeService notice, UUID userId, UUID caseId, String event) {
+        verify(notice).publishForUser(eq(userId), anyString(), iqcContentMatcher(), eq("workflow"),
+                anyString(), eq("/procurement/iqc-rejections/" + caseId), eq(event));
+        verify(notice, never()).publishForUser(eq(userId), anyString(), anyString(), anyString(),
+                anyString(), anyString(), eq(event), any(), any());
     }
 
     private static void verifyNotRecipient(

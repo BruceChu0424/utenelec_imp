@@ -655,7 +655,9 @@ public class ProcurementFinanceApprovalService {
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('finance_order_approval:view')")
+    @com.uten.imp.security.BusinessTaskRead
     public long countTasks() {
+        if (currentReviewerActions().isEmpty()) return 0L;
         return countTasks("");
     }
 

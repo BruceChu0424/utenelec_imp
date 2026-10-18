@@ -2,11 +2,13 @@ package com.uten.imp.features.notice;
 
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.OwnerVisibility;
+import com.uten.imp.application.port.TaskAudiencePort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.Set;
+import java.util.List;
 import java.util.UUID;
 import java.util.LinkedHashSet;
 import java.util.stream.Collectors;
@@ -18,13 +20,17 @@ public class ReviewNoticeAudience {
     private final JdbcTemplate jdbc;
     private final OwnerVisibility ownerVisibility;
     private final com.uten.imp.features.auth.PermissionResolver permissionResolver;
+    @org.springframework.beans.factory.annotation.Autowired
+    private TaskAudiencePort taskAudience;
 
     static final String WORKSHOP_EVENT = "PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED";
     static final String OVER_LIMIT_EVENT = "PRODUCTION_OVER_LIMIT_PENDING";
-    /** 仓库类待办(销售待拣货、IQC 待入库、生产待领料/领料发现、采购财务通过)的动手权限。 */
-    private static final String[] WAREHOUSE_ACTION_PERMISSIONS = {
-            "warehouse_sales_outbound:execute", "warehouse_iqc_stock_in:confirm", "stock_doc:issue",
-            "warehouse_inbound:stock_in", "subcontract_outbound:execute"};
+    private static final Set<String> WAREHOUSE_EVENTS = Set.of("SALES_SHIPMENT_PENDING_PICK",
+            "PROCUREMENT_IQC_STOCK_IN_PENDING", "PRODUCTION_DRAW_PENDING", "PRODUCTION_MATERIAL_DISCOVERY_PENDING",
+            "PROCUREMENT_FINANCE_APPROVED", "SUBCONTRACT_OUTBOUND_READY", "STOCK_COUNT_PENDING_WAREHOUSE_REVIEW",
+            "WORKSHOP_MATERIAL_REQUISITION_PENDING", "WORKSHOP_MATERIAL_RETURN_PENDING",
+            "WORKSHOP_MATERIAL_CLOSE_BLOCKED_STOCK", "PRODUCTION_FINISHED_INBOUND_PENDING",
+            "PRODUCTION_FINISHED_ARRIVAL_PENDING", "SUBCONTRACT_OUTBOUND_COMPLETED", "PROCUREMENT_ARRIVAL_EXCEPTION_DECIDED");
     private static final UUID NO_EMPLOYEE = new UUID(0, 0);
 
     /** Bounded organization scope, never a list of all execution segments. */
@@ -37,21 +43,75 @@ public class ReviewNoticeAudience {
 
     /** Bounded department/owner scopes; never materialize all visible notice or disposition IDs. */
     public record ReadScope(WorkshopScope workshop, boolean overLimitAllowed,
-                            boolean overLimitSeeAll, String overLimitOwners) {
+                            boolean overLimitSeeAll, String overLimitOwners,
+                            String permissions, String actionEvents, String ownerScopes, String warehousePools) {
+        public ReadScope(WorkshopScope workshop, boolean overLimitAllowed,
+                         boolean overLimitSeeAll, String overLimitOwners) {
+            this(workshop, overLimitAllowed, overLimitSeeAll, overLimitOwners, "", "", "{}", "{}");
+        }
+        public String registeredEvents() { return java.util.stream.Stream.concat(ReviewNoticeCatalog.events().stream(),
+                BusinessNoticeActionCatalog.events().stream()).collect(Collectors.joining(",")); }
         static final ReadScope NONE = new ReadScope(WorkshopScope.NONE, false, false, "");
     }
 
     public ReadScope readScope(AuthUser user) {
+        return taskAudience == null ? taskReadScope(user) : taskAudience.read(() -> taskReadScope(user));
+    }
+
+    private ReadScope taskReadScope(AuthUser user) {
+        Set<String> permissions = taskPermissions(user);
+        Set<String> events = new java.util.HashSet<>(eligibleEvents(permissions));
+        BusinessNoticeActionCatalog.events().stream().filter(event -> BusinessNoticeActionCatalog.eligible(event, permissions)).forEach(events::add);
         WorkshopScope workshop = workshopScope(user);
-        if (user == null || user.isVisitor() || user.getEmployeeId() == null
-                || !user.getPermissions().contains("notice:read")
-                || !(user.isSuperAdmin() || user.getPermissions().contains("production_plan:approve"))) {
-            return new ReadScope(workshop, false, false, "");
-        }
-        // Same canonical owner scope as ProductionDocumentAccessPolicy, including handover and employment generations.
-        var owners = ownerVisibility.evaluate("production_plan", "production_plan:view:all");
-        return new ReadScope(workshop, true, owners.seeAll(), owners.visibleOwners().stream()
-                .map(UUID::toString).sorted().collect(Collectors.joining(",")));
+        boolean overLimitAllowed = events.contains(OVER_LIMIT_EVENT);
+        // TaskAudiencePort removes only implicit super-admin authority for this read.
+        // Canonical owner resolution still supplies handovers and separate read/write scopes.
+        boolean planScopeNeeded = overLimitAllowed || events.contains("PRODUCTION_PLANNING_URGED")
+                || events.contains("WORKSHOP_MATERIAL_CLOSE_BLOCKED_REPORT");
+        var owners = planScopeNeeded ? ownerVisibility.evaluate("production_plan", "production_plan:view:all")
+                : new OwnerVisibility.OwnerScope(false, Set.of());
+        String scopes = "{" + scopeJson("production_plan", owners)
+                + (events.stream().anyMatch(event -> event.startsWith("SUBCONTRACT_") || event.equals("PROCUREMENT_FINANCE_REJECTED"))
+                    ? "," + scopeJson("subcontract", ownerVisibility.evaluate("subcontract", "subcontract:view:all")) : "")
+                + (events.contains("PROCUREMENT_FINANCE_REJECTED")
+                    ? "," + scopeJson("purchase", ownerVisibility.evaluate("purchase", "purchase:view:all")) : "")
+                + (events.stream().anyMatch(event -> event.startsWith("SALES_") || event.equals("DIRECT_CUSTOMER_SHIPMENT_FINANCE_REJECTED"))
+                    ? "," + scopeJson("sales", ownerVisibility.evaluate("sales", "sales:view:all")) : "") + "}";
+        return new ReadScope(workshop, overLimitAllowed, owners.seeAll(), owners.visibleOwners().stream()
+                .map(UUID::toString).sorted().collect(Collectors.joining(",")),
+                String.join(",", permissions), String.join(",", events), scopes, warehousePools(permissions, events));
+    }
+
+    /** One live batch for every relevant warehouse pool; SQL then uses the canonical routing function per object. */
+    private String warehousePools(Set<String> permissions, Set<String> events) {
+        Set<String> warehouseEvents = new java.util.HashSet<>(events);
+        warehouseEvents.retainAll(WAREHOUSE_EVENTS);
+        if (warehouseEvents.isEmpty()) return "{}";
+        List<UUID> candidates = jdbc.queryForList("""
+                SELECT account.id FROM users account JOIN employees employee ON employee.id=account.employee_id
+                WHERE NOT account.is_deleted AND account.status='active' AND NOT employee.is_deleted
+                  AND employee.status IN ('active','probation','onLeave') ORDER BY account.id
+                """, UUID.class);
+        var grants = permissionResolver.grantedPermissionsFor(candidates, permissions);
+        return warehouseEvents.stream().sorted().map(event -> "\"" + event + "\":["
+                + uuidJson(grants.entrySet().stream()
+                        .filter(entry -> actionEligible(event, entry.getValue()))
+                        .map(java.util.Map.Entry::getKey).collect(Collectors.toSet())) + "]")
+                .collect(Collectors.joining(",", "{", "}"));
+    }
+
+    private static String scopeJson(String name, OwnerVisibility.OwnerScope owners) {
+        return "\"" + name + "\":{\"all\":" + owners.seeAll() + ",\"read\":["
+                + uuidJson(owners.visibleOwners()) + "],\"write\":[" + uuidJson(owners.writableOwners()) + "]}";
+    }
+
+    private static String uuidJson(Set<UUID> owners) {
+        return owners.stream().sorted().map(id -> "\"" + id + "\"").collect(Collectors.joining(","));
+    }
+
+    private Set<String> taskPermissions(AuthUser user) {
+        if (user == null || user.isVisitor() || user.getEmployeeId() == null) return Set.of();
+        return user.isSuperAdmin() ? permissionResolver.grantedPermsOf(user.getId()) : user.getPermissions();
     }
 
     static boolean canHandleWorkshop(Set<String> permissions) {
@@ -63,7 +123,7 @@ public class ReviewNoticeAudience {
     /** Reverse of the sender's current leadership scope; old member cards lose visibility too. */
     public WorkshopScope workshopScope(AuthUser user) {
         if (user == null || user.isVisitor() || user.getEmployeeId() == null
-                || !canHandleWorkshop(user.getPermissions())) return WorkshopScope.NONE;
+                || !canHandleWorkshop(taskPermissions(user))) return WorkshopScope.NONE;
         var rows = jdbc.queryForList("""
                 WITH RECURSIVE active_employee AS (
                     SELECT employee.id, employee.department_id FROM employees employee
@@ -91,44 +151,24 @@ public class ReviewNoticeAudience {
         return new WorkshopScope(true, user.getEmployeeId(), departments);
     }
 
-    /** One membership query per feed/status request, never one query per notice. */
+    /** Current actual grants determine event eligibility; object responsibility is checked separately. */
     public Set<String> eligibleEvents(AuthUser user) {
-        if (user == null || user.isVisitor() || user.getEmployeeId() == null
-                || !user.getPermissions().contains("notice:read")) return Set.of();
-        // 2026-10-09(ADR-063 追加修订)：弹卡资格按「真实授出权限」判定——超管的全量目录码
-        // 是操作授权面，不是任务归属（否则「通知设置」列表与到达流资格面会把超管放大成
-        // 全事件）。非超管会话权限即真实合成结果，不重复解析。
-        Set<String> permissions = user.isSuperAdmin()
-                ? permissionResolver.grantedPermsOf(user.getId())
-                : user.getPermissions();
-        Set<String> departments = Set.copyOf(jdbc.queryForList("""
-                WITH RECURSIVE memberships(id) AS (
-                    SELECT employee.department_id FROM employees employee
-                    WHERE employee.id = ? AND employee.is_deleted = FALSE
-                      AND employee.status IN ('active','probation','onLeave')
-                    UNION
-                    SELECT secondary.department_id
-                    FROM employee_secondary_departments secondary
-                    JOIN employees employee ON employee.id = secondary.employee_id
-                    WHERE employee.id = ? AND employee.is_deleted = FALSE
-                      AND employee.status IN ('active','probation','onLeave')
-                ), ancestry(id, parent_id, code) AS (
-                    SELECT d.id, d.parent_id, d.code FROM departments d
-                    JOIN memberships m ON m.id = d.id WHERE d.is_deleted = FALSE
-                    UNION
-                    SELECT d.id, d.parent_id, d.code FROM departments d
-                    JOIN ancestry a ON a.parent_id = d.id WHERE d.is_deleted = FALSE
-                ) SELECT DISTINCT code FROM ancestry
-                """, String.class, user.getEmployeeId(), user.getEmployeeId()));
-        // ADR-149: 部门外登记的仓库负责人与仓储部门负责人是仓库任务的参与者, 仓库类通知池按仓纳入了他们,
-        // 弹卡资格同口径(否则发给部门外负责人的待办只在通知列表里, 不弹卡)。只有部门外、又持有仓库待办动手权限的人
-        // 才需要多问这一次。
-        boolean warehouseParticipant = !departments.contains("SUB_WH")
-                && any(permissions, WAREHOUSE_ACTION_PERMISSIONS)
-                && Boolean.TRUE.equals(jdbc.queryForObject(
-                        "SELECT CAST(? AS uuid) = ANY(fn_warehouse_responsible_user_ids())", Boolean.class, user.getId()));
+        return eligibleEvents(taskPermissions(user));
+    }
+
+    /** Final delivery guard for direct/owner recipients as well as preselected pools. */
+    public boolean eligibleEventFor(UUID userId, String event) {
+        return userId != null && actionEligible(event, permissionResolver.grantedPermsOf(userId));
+    }
+
+    private static boolean actionEligible(String event,Set<String> permissions) {
+        return BusinessNoticeActionCatalog.contains(event) ? BusinessNoticeActionCatalog.eligible(event,permissions)
+                : eligible(event, permissions, Set.of());
+    }
+
+    private static Set<String> eligibleEvents(Set<String> permissions) {
         return ReviewNoticeCatalog.events().stream()
-                .filter(event -> eligible(event, permissions, departments, warehouseParticipant))
+                .filter(event -> eligible(event, permissions, Set.of(), false))
                 .collect(Collectors.toUnmodifiableSet());
     }
 
@@ -142,11 +182,10 @@ public class ReviewNoticeAudience {
     static boolean eligible(String event, Set<String> permissions, Set<String> departments,
                             boolean warehouseParticipant) {
         if (!permissions.contains("notice:read")) return false;
-        boolean warehouseSide = departments.contains("SUB_WH") || warehouseParticipant;
         return switch (event) {
             case "SALES_SHIPMENT_PENDING_FINANCE_AUDIT" -> permissions.contains("sales_shipment_finance:view")
                     && any(permissions, "sales_shipment_finance:approve", "sales_shipment_finance:reject");
-            case "SALES_SHIPMENT_PENDING_PICK" -> warehouseSide && permissions.contains("warehouse_sales_outbound:execute");
+            case "SALES_SHIPMENT_PENDING_PICK" -> permissions.containsAll(Set.of("warehouse_sales_outbound:view", "warehouse_sales_outbound:execute"));
             case "SALES_SHIPMENT_FINANCE_REJECTED" -> permissions.containsAll(Set.of("sales_shipment:view","sales_shipment:edit"));
             case "DIRECT_CUSTOMER_SHIPMENT_FINANCE_REJECTED" -> permissions.containsAll(Set.of("sales_other_shipment:view","sales_other_shipment:edit"));
             case "SALES_ORDER_PENDING_FINANCE_CONFIRM" ->
@@ -168,27 +207,26 @@ public class ReviewNoticeAudience {
                     permissions.containsAll(Set.of("subcontract_order:view", "subcontract_order:draw"));
             // 委外申请可下单：复核当前是否仍能查看申请并生成委外订货单。
             case "SUBCONTRACT_ORDER_KIT_READY" ->
-                    permissions.containsAll(Set.of("subcontract_application:view", "subcontract_order:decompose"));
+                    permissions.containsAll(Set.of("subcontract_application:view", "subcontract_order:create", "subcontract_order:decompose"));
+            case "SUBCONTRACT_SHORT_DELIVERY_DETECTED", "SUBCONTRACT_SHORT_DELIVERY_WAIT_OVERDUE" ->
+                    permissions.containsAll(Set.of("subcontract_order:view", "subcontract_short_delivery:decide"));
             // 委外领料草稿待发料：草稿所在仓库的仓管(发卡时已按仓分发; ADR-149 部门外登记的负责人同等弹卡)。
-            case "SUBCONTRACT_OUTBOUND_READY" -> warehouseSide
-                    && permissions.containsAll(Set.of("subcontract_outbound:view", "subcontract_outbound:execute"));
+            case "SUBCONTRACT_OUTBOUND_READY" -> permissions.containsAll(Set.of("subcontract_outbound:view", "subcontract_outbound:execute"));
             case WORKSHOP_EVENT -> canHandleWorkshop(permissions);
             // ADR-117 车间催计划：能在物料分析页下单的人(下达采购委外或下达车间)。收件人在发卡时已按
             // 当前动作权限 + 制单计划员 + 分析可见范围精确算好，这里只复核当前动作权限。
             case "PRODUCTION_PLANNING_URGED" -> permissions.contains("production_material_analysis:view")
                     && any(permissions, "production_material_analysis:notify", "production_material_analysis:generate");
-            case "PROCUREMENT_IQC_STOCK_IN_PENDING" -> warehouseSide
-                    && permissions.containsAll(Set.of("warehouse_iqc_stock_in:view", "warehouse_iqc_stock_in:confirm"));
-            case "PRODUCTION_DRAW_PENDING", "PRODUCTION_MATERIAL_DISCOVERY_PENDING" -> warehouseSide
-                    && permissions.containsAll(Set.of("stock_doc:view", "stock_doc:approve", "stock_doc:issue"));
-            case "PROCUREMENT_FINANCE_APPROVED" -> warehouseSide
-                    && permissions.containsAll(Set.of("warehouse_inbound:view", "warehouse_inbound:stock_in"));
+            case "PROCUREMENT_IQC_STOCK_IN_PENDING" -> permissions.containsAll(Set.of("warehouse_iqc_stock_in:view", "warehouse_iqc_stock_in:confirm"));
+            case "PRODUCTION_DRAW_PENDING", "PRODUCTION_MATERIAL_DISCOVERY_PENDING" -> permissions.containsAll(Set.of("stock_doc:view", "stock_doc:approve", "stock_doc:issue"));
+            case "PROCUREMENT_FINANCE_APPROVED" -> permissions.containsAll(Set.of("warehouse_inbound:view", "warehouse_inbound:stock_in"));
             case "SALES_ORDER_FULLY_PRODUCED_READY_TO_SHIP" ->
-                    permissions.containsAll(Set.of("sales_order:view", "sales_shipment:create"));
+                    permissions.containsAll(Set.of("sales_order:view", "sales_shipment:view", "sales_shipment:create"));
             case "PROCUREMENT_IQC_REJECTION_OPENED" ->
                     permissions.containsAll(Set.of("procurement_iqc_rejection:view", "procurement_iqc_rejection:record_return"));
             case "PROCUREMENT_IQC_REJECTION_RETURNED" -> permissions.contains("procurement_iqc_rejection:view")
-                    && any(permissions, "procurement_iqc_rejection:confirm_credit", "procurement_iqc_rejection:close_no_credit");
+                    && (permissions.containsAll(Set.of("procurement_iqc_rejection:confirm_credit", "procurement_iqc_rejection:amount:view"))
+                        || permissions.contains("procurement_iqc_rejection:close_no_credit"));
             // ===== 2026-09-09 人事域（HrNoticeService）：职能权限判定，不限定部门子树
             // （ADR-063 2026-09-10 修订明示的例外：HR/财务/回复职能可跨部门）=====
             case "PROFILE_CHANGE_SUBMITTED" -> permissions.contains("profile:review");
@@ -199,7 +237,7 @@ public class ReviewNoticeAudience {
             case "EXPENSE_CLAIM_REJECTED" -> permissions.contains("expense:apply");
             case "PAYROLL_BATCH_SUBMITTED" -> permissions.contains("payroll:review");
             case "PAYROLL_BATCH_PENDING_PUBLISH" -> permissions.contains("payroll:publish");
-            case "SUGGESTION_SUBMITTED" -> permissions.contains("suggestion:reply");
+            case "SUGGESTION_SUBMITTED" -> permissions.containsAll(Set.of("suggestion:submit", "suggestion:reply"));
             case "STOCK_COUNT_PENDING_FINANCE_REVIEW" -> permissions.contains("stock:count:finance_review");
             case "STOCK_COUNT_PENDING_WAREHOUSE_REVIEW" -> permissions.contains("stock:count:warehouse_review");
             // ===== ADR-131 车间内料仓 (WorkshopMaterialNoticeService): 收件人在发卡时已按对象范围精确算好
@@ -207,14 +245,14 @@ public class ReviewNoticeAudience {
             // 与本车间的认料人 / 设置负责人), 这里在弹卡时复核「现在还能不能动手」: 发卡时凭的那件事的动手权限
             // 要还在 (与发卡同一口径, 只看动手权限); 具体车间、仓库及制单人范围由发卡侧约束。=====
             case "WORKSHOP_MATERIAL_REQUISITION_PENDING", "WORKSHOP_MATERIAL_RETURN_PENDING" ->
-                    permissions.contains("workshop_material:issue");
+                    permissions.containsAll(Set.of("workshop_material:view", "workshop_material:issue"));
             // 审核人审; 制单人删掉或改好自己的草稿 (审核人删不了别人的草稿)。
-            case "WORKSHOP_MATERIAL_CLOSE_BLOCKED_REPORT" -> any(permissions, "production_daily_report:approve",
-                    "production_daily_report:create", "production_daily_report:edit", "production_daily_report:delete");
-            case "WORKSHOP_MATERIAL_CLOSE_BLOCKED_WEIGHT" -> permissions.contains("goods:bom:edit");
-            case "WORKSHOP_MATERIAL_CLOSE_BLOCKED_STOCK" -> permissions.contains("workshop_material:issue")
-                    || permissions.contains("workshop_material:choose");
-            case "WORKSHOP_MATERIAL_CLOSE_FAILING" -> permissions.contains("workshop_material:setup");
+            case "WORKSHOP_MATERIAL_CLOSE_BLOCKED_REPORT" -> permissions.contains("production_daily_report:view")
+                    && any(permissions, "production_daily_report:approve", "production_daily_report:edit", "production_daily_report:delete");
+            case "WORKSHOP_MATERIAL_CLOSE_BLOCKED_WEIGHT" -> permissions.containsAll(Set.of("goods:view", "goods:bom:edit"));
+            case "WORKSHOP_MATERIAL_CLOSE_BLOCKED_STOCK" -> permissions.contains("workshop_material:view")
+                    && any(permissions, "workshop_material:issue", "workshop_material:choose");
+            case "WORKSHOP_MATERIAL_CLOSE_FAILING" -> permissions.containsAll(Set.of("workshop_material:view", "workshop_material:setup"));
             default -> false;
         };
     }

@@ -81,6 +81,9 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class SalesOrderService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.application.port.TaskAudiencePort taskAudience;
+
     private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
     @org.springframework.beans.factory.annotation.Autowired
     public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
@@ -521,6 +524,7 @@ public class SalesOrderService {
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_order:view')")
     public Map<String, Long> progressStageCounts() {
+        if (com.uten.imp.security.BusinessTaskContext.active()) return taskStageCounts();
         var ownerScope = accessPolicy.nativeReadScope("o.owner_employee_id", "salesOwners");
         var q = em.createNativeQuery(
                 "SELECT (" + progressStageExpr() + "), COUNT(*) FROM ("
@@ -532,6 +536,42 @@ public class SalesOrderService {
         Map<String, Long> counts = new LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(q)) {
             counts.put((String) row[0], ((Number) row[1]).longValue());
+        }
+        counts.putAll(taskAudience.read(this::taskStageCounts));
+        return counts;
+    }
+
+    /** Responsible work and ordinary stage totals deliberately use distinct response keys. */
+    private Map<String, Long> taskStageCounts() {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        for (String stage : List.of("DRAFT", "REJECTED", "SHIPPABLE", "PENDING", "PRODUCING",
+                "SHIPMENT_PENDING", "WAREHOUSE_PENDING")) counts.put("TASK_" + stage, 0L);
+        if (!accessPolicy.hasAuthority("sales_order:view")) return counts;
+        boolean edit = accessPolicy.hasAuthority("sales_order:edit");
+        boolean draft = edit || accessPolicy.hasAuthority("sales_order:approve");
+        boolean ship = accessPolicy.hasAuthority("sales_shipment:view")
+                && accessPolicy.hasAuthority("sales_shipment:create");
+        if (!draft && !ship) return counts;
+        var owners = accessPolicy.scope();
+        var writable = accessPolicy.nativeReadScope("o.owner_employee_id", "salesTaskOwners",
+                new com.uten.imp.security.OwnerVisibility.OwnerScope(owners.seeAll(), owners.writableOwners()));
+        var scope = new NativeReadScope("o.owner_employee_id IS NOT NULL AND " + writable.predicate(),
+                writable.parameterName(), writable.owners());
+        String taskStage = "CASE WHEN NOT t.finance_confirmed AND (" + progressStageExpr()
+                + ") = 'SHIPPABLE' THEN 'PENDING' ELSE (" + progressStageExpr() + ") END";
+        var query = em.createNativeQuery("SELECT (" + taskStage + "), COUNT(*) FROM ("
+                + progressGroupedSql(scope, true) + ") t GROUP BY 1");
+        scope.bind(query);
+        query.setParameter("stage", "DRAFT");
+        for (Object[] row : NativeQueryResults.objectArrayRows(query)) {
+            String stage = (String) row[0];
+            boolean allowed = switch (stage) {
+                case "REJECTED" -> edit;
+                case "SHIPPABLE" -> ship;
+                case "DRAFT" -> draft;
+                default -> counts.containsKey("TASK_" + stage);
+            };
+            if (allowed) counts.put("TASK_" + stage, ((Number) row[1]).longValue());
         }
         return counts;
     }
@@ -569,6 +609,10 @@ public class SalesOrderService {
 
     /** 订单进度按单聚合子查询（progress 列表/计数与阶段计数共用，避免口径漂移）。 */
     static String progressGroupedSql(NativeReadScope ownerScope) {
+        return progressGroupedSql(ownerScope, false);
+    }
+
+    static String progressGroupedSql(NativeReadScope ownerScope, boolean taskResponsibility) {
         String base = """
                 FROM sales_orders o
                 LEFT JOIN clients c ON c.id = o.client_id
@@ -610,7 +654,7 @@ public class SalesOrderService {
                        CAST(o.bill_date AS text), CAST(o.deliver_date AS text),
                        c.name,
                        COALESCE(SUM(i.qty),0) AS order_qty, COALESCE(SUM(i.produced_qty),0) AS produced_qty,
-                       COALESCE(SUM(i.shipped_qty),0) AS shipped_qty, COALESCE(SUM(i.reserved_qty),0) AS reserved_qty,
+                       COALESCE(SUM(i.shipped_qty),0) AS shipped_qty, COALESCE(SUM(%s),0) AS reserved_qty,
                        COALESCE(SUM(i.planned_qty),0) AS planned_qty,
                        o.finance_confirmed, o.finance_rejected,
                        o.finance_rejected_reason,
@@ -623,7 +667,8 @@ public class SalesOrderService {
                        ship.finance_rejected_qty AS shipment_finance_rejected_qty,
                        ship.approved_qty AS shipment_approved_qty,
                        o.status AS bill_status
-                """.formatted(SalesOrderChainSql.unplannedQtySql("i")) + base + "\n" + """
+                """.formatted(taskResponsibility ? physicalShipmentReservationSql("i") : "i.reserved_qty",
+                        SalesOrderChainSql.unplannedQtySql("i")) + base + "\n" + """
                 GROUP BY o.id, o.bill_no, o.bill_date, o.deliver_date, c.name,
                          o.finance_confirmed, o.finance_rejected,
                          o.finance_rejected_reason, finance_reviewer.full_name,

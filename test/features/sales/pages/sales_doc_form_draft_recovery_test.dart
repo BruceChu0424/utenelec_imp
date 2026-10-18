@@ -671,7 +671,7 @@ class _Api extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     if (path == '/sales/orders/progress/stage-counts') {
-      return {'DRAFT': formalDrafts};
+      return {'TASK_DRAFT': formalDrafts, 'DRAFT': formalDrafts};
     }
     if (path == '/sales/orders/progress') {
       if (failProgress) throw StateError('simulated offline formal list');

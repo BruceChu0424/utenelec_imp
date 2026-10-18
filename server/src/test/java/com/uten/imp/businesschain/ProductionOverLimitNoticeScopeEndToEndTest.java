@@ -56,6 +56,55 @@ class ProductionOverLimitNoticeScopeEndToEndTest {
     @Autowired MockMvc mvc;
     @AfterEach void logout(){SecurityContextHolder.clearContext();}
 
+    @Test void everyRegisteredActionUsesAValidCurrentSchemaAndRejectsMissingBusinessObjects() {
+        UUID employee=UUID.randomUUID(),user=UUID.randomUUID();
+        db.update("""
+                INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)
+                SELECT ?,?,'通知范围契约测试','其他',id,CURRENT_DATE,'active','regular'
+                FROM departments WHERE code='DEPT_FIN'
+                """,employee,"NC-"+user.toString().substring(0,8));
+        db.update("INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,status) VALUES(?,?,?,?,false,'active')",
+                user,employee,"notice-contract-"+user,passwords.encode(PASSWORD));
+        var events=new java.util.HashSet<>(com.uten.imp.features.notice.ReviewNoticeCatalog.events());
+        events.addAll(com.uten.imp.features.notice.BusinessNoticeActionCatalog.events());
+        String catalog=String.join(",",events);
+        String permissions=String.join(",",db.queryForList("SELECT code FROM permissions",String.class));
+        for(String event:events) {
+            assertEquals(Boolean.FALSE,db.queryForObject("""
+                    SELECT fn_notice_business_action_visible(?,?,?,?,?,?,?,?,?,?)
+                    """,Boolean.class,user,event,
+                    com.uten.imp.features.notice.ReviewNoticeCatalog.of(event).map(com.uten.imp.features.notice.ReviewNoticeCatalog.Entry::aggregateKind)
+                        .orElseGet(()->com.uten.imp.features.notice.BusinessNoticeActionCatalog.kind(event)),
+                    UUID.randomUUID(),event.startsWith("PREPLAN_")?"/purchase/requests/"+UUID.randomUUID()
+                        :event.equals("PROCUREMENT_FINANCE_REJECTED")?"/purchase/orders/"+UUID.randomUUID()
+                        :"/workshop-material/bin?workshopId="+UUID.randomUUID(),
+                    permissions,catalog,catalog,"{}","{}"),event);
+        }
+        UUID batch=UUID.randomUUID();
+        db.update("""
+                INSERT INTO profile_change_requests(employee_id,batch_id,field_code,field_label,field_group,
+                    old_value_enc,new_value_enc,value_encoding,status,submitted_by,employee_version,idem_key)
+                VALUES (?,?,'fullName','姓名','identity','before','after','PLAIN','pending',?,0,?)
+                """,employee,batch,employee,UUID.randomUUID().toString());
+        String event="PROFILE_CHANGE_SUBMITTED";
+        assertTrue(db.queryForObject("SELECT fn_notice_business_action_visible(?,?,?,?,?,?,?,?,?,?)",Boolean.class,
+                user,event,"PROFILE_CHANGE",batch,"/hr/profile-changes",permissions,event,catalog,"{}","{}"));
+        assertFalse(db.queryForObject("SELECT fn_notice_business_action_visible(?,?,?,?,?,?,?,?,?,?)",Boolean.class,
+                user,event,"PROFILE_CHANGE",batch,"/hr/profile-changes","notice:read","",catalog,"{}","{}"),
+                "A delivered task loses visibility immediately after its action grant is revoked");
+        db.update("UPDATE profile_change_requests SET status='cancelled' WHERE batch_id=?",batch);
+        assertFalse(db.queryForObject("SELECT fn_notice_business_action_visible(?,?,?,?,?,?,?,?,?,?)",Boolean.class,
+                user,event,"PROFILE_CHANGE",batch,"/hr/profile-changes",permissions,event,catalog,"{}","{}"),
+                "Current source state wins even when an old notice has not yet been resolved");
+        String readOnlyOwner="{\"subcontract\":{\"all\":false,\"read\":[\""+employee+"\"],\"write\":[]}}";
+        assertTrue(db.queryForObject("SELECT fn_notice_task_owner(?::jsonb,'subcontract',?,false)",Boolean.class,readOnlyOwner,employee));
+        assertFalse(db.queryForObject("SELECT fn_notice_task_owner(?::jsonb,'subcontract',?,true)",Boolean.class,readOnlyOwner,employee),
+                "Manually delegated reading does not assign a correction/short-delivery action");
+        UUID period=UUID.randomUUID();
+        assertEquals(UUID.nameUUIDFromBytes((period+":REPORT").getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                db.queryForObject("SELECT fn_notice_workshop_period_key(?,'REPORT')",UUID.class,period));
+    }
+
     @Test void onlyTheNewEventNeedsARealSourceAndMalformedOrMissingAnchorsFailClosed() {
         assertEquals(Boolean.TRUE,db.queryForObject("""
                 SELECT fn_notice_production_over_limit_visible('UNRELATED_EVENT',NULL,NULL,FALSE,FALSE,'not-a-uuid')

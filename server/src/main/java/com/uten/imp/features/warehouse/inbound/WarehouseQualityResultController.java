@@ -77,7 +77,11 @@ public class WarehouseQualityResultController {
             @RequestParam(defaultValue = "ALL") String receiptType,
             @RequestParam(defaultValue = "") String keyword,
             @RequestParam(required = false) UUID scopeWarehouseId) {
-        return service.statusCounts(receiptType, keyword, warehouseScopes.current(scopeWarehouseId));
+        Map<String, Long> counts = new java.util.LinkedHashMap<>(
+                service.statusCounts(receiptType, keyword, warehouseScopes.current(scopeWarehouseId)));
+        service.taskStatusCounts(receiptType, keyword, scopeWarehouseId)
+                .forEach((status, count) -> counts.put("TASK_" + status, count));
+        return counts;
     }
 
     /**
@@ -85,6 +89,7 @@ public class WarehouseQualityResultController {
      * 黄 inProgress = 等待检查结果。页内三个数字只有这一个服务端来源, 两支不会各算各的。
      */
     @GetMapping("/type-counts")
+    @com.uten.imp.security.BusinessTaskRead
     public TypeCounts typeCounts(@RequestParam(required = false) UUID scopeWarehouseId) {
         return service.typeCounts(warehouseScopes.current(scopeWarehouseId));
     }

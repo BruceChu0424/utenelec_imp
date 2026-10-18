@@ -256,6 +256,7 @@ class WorkbenchBadgeSummaryPostgresTest {
     @Autowired JdbcTemplate db;
     @Autowired NoticeService notices;
     @Autowired WorkbenchBadgeReadPort badgePort;
+    @Autowired com.uten.imp.common.docnumber.DocNumberService docNumbers;
     @Autowired BrokenSourceConfiguration snapshotSource;
 
     /**
@@ -288,12 +289,13 @@ class WorkbenchBadgeSummaryPostgresTest {
     @Test
     void superAdminSummaryEqualsEveryOriginalEndpointAndLegacyFormula() throws Exception {
         var world = fixture.seedWorld("BADGE" + tag());
+        grantAllBusinessActions(world.superAdminUserId());
         Authentication admin = auth(world.superAdminUserId());
 
         JsonNode summary = getJson("/api/workbench/badges", admin);
         Map<String, Long> facts = facts(summary);
 
-        // 超管拥有全部权限: 每个来源都必须在汇总里, 且逐字段等于原端点。
+        // 明确授出全部业务动作的超管: 每个来源都与同一任务资格端点逐字段相等。
         for (Map.Entry<String, String> source : ORIGINAL_ENDPOINTS.entrySet()) {
             Map<String, Long> expected = endpointFacts(source.getKey(), source.getValue(), admin);
             assertThat(expected).as("超管访问原端点 %s", source.getValue()).isNotNull();
@@ -310,7 +312,7 @@ class WorkbenchBadgeSummaryPostgresTest {
 
         // 入口口径 = 迁移前前端注册表。
         JsonNode entries = summary.path("entries");
-        assertThat(names(entries)).as("超管看到全部入口").isEqualTo(new TreeSet<>(LEGACY_FORMULAS.keySet()));
+        assertThat(names(entries)).as("明确授出全部业务动作时看到全部入口").isEqualTo(new TreeSet<>(LEGACY_FORMULAS.keySet()));
         for (var formula : LEGACY_FORMULAS.entrySet()) {
             JsonNode counts = entries.path(formula.getKey());
             assertThat(counts.path("todo").asLong())
@@ -319,6 +321,38 @@ class WorkbenchBadgeSummaryPostgresTest {
                     .as("入口 %s 黄数", formula.getKey()).isEqualTo(sum(formula.getValue().get(1), facts));
         }
         assertRollups(summary);
+    }
+
+    @Test
+    void administratorCatalogAndReadOnlyPermissionsNeverSubscribeToUnassignedBusinessTasks() throws Exception {
+        var world = fixture.seedWorld("AUDIENCE" + tag());
+        UUID readOnly = fixture.createUserWithPerms(world, "reader-" + tag(),
+                "rd_task:view", "subcontract_order:view", "subcontract_application:view",
+                "purchase_request:view", "purchase_order:view", "employee:view", "production_plan:view");
+        UUID admin = fixture.createUserWithPerms(world, "finance-admin-" + tag(),
+                "rd_task:view", "subcontract_order:view", "subcontract_application:view",
+                "purchase_request:view", "purchase_order:view", "employee:view", "production_plan:view");
+        db.update("UPDATE users SET is_super_admin=TRUE WHERE id=?", admin);
+        UUID rdOperator = fixture.createUserWithPerms(world, "rd-operator-" + tag(), "rd_task:view", "rd_task:resolve");
+        db.update("""
+                INSERT INTO rd_tasks(id, task_no, title, category, status, priority, goods_id, reporter_employee_id)
+                VALUES (?, ?, '任务资格测试', 'BOM', 'OPEN', 'NORMAL', ?, ?)
+                """, UUID.randomUUID(), docNumbers.nextNumber(com.uten.imp.common.docnumber.DocNumberPrefix.RD_TASK), world.goodsA(), world.employeeId());
+        for (UUID observer : List.of(readOnly, admin)) {
+            JsonNode summary = getJson("/api/workbench/badges", auth(observer));
+            assertThat(summary.path("entries").path("rdTaskCenter").path("todo").asLong()).isZero();
+            assertThat(summary.path("entries").path("subcontractTaskCenter").path("todo").asLong()).isZero();
+            assertThat(summary.path("entries").path("purchaseTaskCenter").path("todo").asLong()).isZero();
+            assertThat(summary.path("entries").path("productionSchedule").path("todo").asLong()).isZero();
+        }
+        JsonNode operator = getJson("/api/workbench/badges", auth(rdOperator));
+        assertThat(operator.path("entries").path("rdTaskCenter").path("todo").asLong()).isPositive();
+        db.update("""
+                UPDATE user_permission_overrides SET effect='revoke'
+                WHERE user_id=? AND permission_id=(SELECT id FROM permissions WHERE code='rd_task:resolve')
+                """, rdOperator);
+        assertThat(getJson("/api/workbench/badges", auth(rdOperator))
+                .path("entries").path("rdTaskCenter").path("todo").asLong()).isZero();
     }
 
     @Test
@@ -503,6 +537,7 @@ class WorkbenchBadgeSummaryPostgresTest {
     @Test
     void readPortReturnsTheSummaryNumbersForTheRequestedEntriesOnly() throws Exception {
         var world = fixture.seedWorld("BADGEPORT" + tag());
+        grantAllBusinessActions(world.superAdminUserId());
         Authentication admin = auth(world.superAdminUserId());
         JsonNode summary = getJson("/api/workbench/badges", admin);
         Set<String> wanted = Set.of("expenseFinance", "productionSchedule", "purchaseTaskCenter", "visitorApproval");
@@ -544,6 +579,7 @@ class WorkbenchBadgeSummaryPostgresTest {
     @Test
     void oneSummaryReplacesTheOldPerEndpointPollingBudget() throws Exception {
         var world = fixture.seedWorld("BADGEBUDGET" + tag());
+        grantAllBusinessActions(world.superAdminUserId());
         Authentication admin = auth(world.superAdminUserId());
         getJson("/api/workbench/badges", admin); // 预热: 首次调用的元数据/计划缓存不计入
 
@@ -640,9 +676,12 @@ class WorkbenchBadgeSummaryPostgresTest {
             case "iqcRejection" -> {
                 out.putAll(WorkbenchBadgeSources.numbers(json.convertValue(body, Map.class)));
                 // 原前端模型 ProcurementIqcRejectionCounts.open 的口径, 现由服务端来源算一次。
-                out.put("open", body.path("pendingReturn").asLong() + body.path("returnRecorded").asLong()
-                        + body.path("financeException").asLong());
+                out.put("open", body.path("actionablePendingReturn").asLong() + body.path("actionableReturnRecorded").asLong()
+                        + body.path("actionableFinanceException").asLong());
             }
+            case "salesStage" -> body.properties().forEach(field -> {
+                if (field.getKey().startsWith("TASK_")) out.put(field.getKey().substring(5), field.getValue().asLong());
+            });
             default -> out.putAll(WorkbenchBadgeSources.numbers(json.convertValue(body, Map.class)));
         }
         return out;
@@ -710,6 +749,15 @@ class WorkbenchBadgeSummaryPostgresTest {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         SecurityContextHolder.clearContext();
         return authentication;
+    }
+
+    private void grantAllBusinessActions(UUID userId) {
+        db.update("""
+                INSERT INTO user_permission_overrides(user_id, permission_id, effect)
+                SELECT ?, permission.id, 'grant' FROM permissions permission
+                WHERE NOT ('SUPERADMIN_ONLY'=ANY(COALESCE(permission.grant_policy,ARRAY[]::text[])))
+                ON CONFLICT (user_id, permission_id) DO UPDATE SET effect='grant', active=TRUE
+                """, userId);
     }
 
     private static String tag() {

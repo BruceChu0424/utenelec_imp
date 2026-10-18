@@ -89,9 +89,9 @@ class ChainNoticeOutboxEventTest {
         when(users.findById(departmentBuyerId))
                 .thenReturn(Optional.of(departmentBuyer));
         when(permissions.grantedPermsOf(roleBuyer)).thenReturn(Set.of(
-                "notice:read", "purchase_request:view", "purchase_order:decompose"));
+                "notice:read", "purchase_request:view", "purchase_order:create", "purchase_order:decompose"));
         when(permissions.grantedPermsOf(departmentBuyer)).thenReturn(Set.of(
-                "notice:read", "purchase_request:view", "purchase_order:decompose"));
+                "notice:read", "purchase_request:view", "purchase_order:create", "purchase_order:decompose"));
         ChainNoticeService service = service(
                 notice, users, permissions, jdbc, outbox);
 
@@ -117,7 +117,7 @@ class ChainNoticeOutboxEventTest {
                 eq(ChainNoticeService.TYPE_TASK),
                 anyString(),
                 eq("/purchase/requests/" + requestId),
-                eq(ChainNoticeService.EVENT_PREPLAN_SUPPLY_ACTION_CREATED));
+                eq(ChainNoticeService.EVENT_PREPLAN_SUPPLY_ACTION_CREATED), isNull(), eq(requestId));
         verify(notice).publishForUser(
                 eq(departmentBuyerId),
                 eq("\u65b0\u91c7\u8d2d\u9700\u6c42\uff1aSQ-001"),
@@ -126,7 +126,7 @@ class ChainNoticeOutboxEventTest {
                 eq(ChainNoticeService.TYPE_TASK),
                 anyString(),
                 eq("/purchase/requests/" + requestId),
-                eq(ChainNoticeService.EVENT_PREPLAN_SUPPLY_ACTION_CREATED));
+                eq(ChainNoticeService.EVENT_PREPLAN_SUPPLY_ACTION_CREATED), isNull(), eq(requestId));
     }
 
     @Test
@@ -160,7 +160,7 @@ class ChainNoticeOutboxEventTest {
         when(users.findById(buyerId))
                 .thenReturn(Optional.of(buyer));
         when(permissions.grantedPermsOf(buyer)).thenReturn(Set.of(
-                "notice:read", "subcontract_application:view", "subcontract_order:decompose"));
+                "notice:read", "subcontract_application:view", "subcontract_order:create", "subcontract_order:decompose"));
         ChainNoticeService service = service(
                 notice,
                 users,
@@ -181,7 +181,7 @@ class ChainNoticeOutboxEventTest {
                 eq(ChainNoticeService.TYPE_TASK),
                 anyString(),
                 eq("/subcontract/applications/" + applicationId),
-                eq(ChainNoticeService.EVENT_PREPLAN_SUPPLY_ACTION_CREATED));
+                eq(ChainNoticeService.EVENT_PREPLAN_SUPPLY_ACTION_CREATED), isNull(), eq(applicationId));
 
         service.deliverOutboxEvent(
                 ChainNoticeService.EVENT_PREPLAN_SUPPLY_ACTION_CREATED,
@@ -430,12 +430,13 @@ class ChainNoticeOutboxEventTest {
                         warehouseUserId, revokedWarehouseUserId));
         UserAccount warehouseUser = activeUser(warehouseUserId);
         UserAccount revokedWarehouseUser = activeUser(revokedWarehouseUserId);
+        taskCandidates(users, jdbc, warehouseUser, revokedWarehouseUser);
         when(users.findById(warehouseUserId))
                 .thenReturn(Optional.of(warehouseUser));
         when(users.findById(revokedWarehouseUserId))
                 .thenReturn(Optional.of(revokedWarehouseUser));
         when(permissions.grantedPermsOf(warehouseUser))
-                .thenReturn(Set.of("notice:read", "warehouse_sales_outbound:execute"));
+                .thenReturn(Set.of("notice:read", "warehouse_sales_outbound:view", "warehouse_sales_outbound:execute"));
         when(permissions.grantedPermsOf(revokedWarehouseUser))
                 .thenReturn(Set.of("notice:read"));
         ChainNoticeService service = service(
@@ -477,10 +478,11 @@ class ChainNoticeOutboxEventTest {
                 .thenReturn(List.of(allowed, revoked));
         UserAccount allowedUser = activeUser(allowed);
         UserAccount revokedUser = activeUser(revoked);
+        taskCandidates(users, jdbc, allowedUser, revokedUser);
         when(users.findById(allowed)).thenReturn(Optional.of(allowedUser));
         when(users.findById(revoked)).thenReturn(Optional.of(revokedUser));
         when(permissions.grantedPermsOf(allowedUser)).thenReturn(
-                Set.of("notice:read", "warehouse_sales_outbound:execute"));
+                Set.of("notice:read", "warehouse_sales_outbound:view", "warehouse_sales_outbound:execute"));
         when(permissions.grantedPermsOf(revokedUser)).thenReturn(Set.of("notice:read"));
         ChainNoticeService service = service(
                 notice, users, permissions, jdbc, mock(BusinessEventPublisher.class));
@@ -512,6 +514,7 @@ class ChainNoticeOutboxEventTest {
         UserAccountRepository users = mock(UserAccountRepository.class);
         PermissionResolver permissions = mock(PermissionResolver.class);
         UserAccount warehouseUser = activeUser(warehouseUserId);
+        taskCandidates(users, jdbc, warehouseUser);
         when(jdbc.queryForList(
                 contains("FROM stock_documents stock"),
                 eq(stockDocId))).thenReturn(List.of(Map.of(
@@ -525,7 +528,7 @@ class ChainNoticeOutboxEventTest {
         when(users.findById(warehouseUserId))
                 .thenReturn(Optional.of(warehouseUser));
         when(permissions.grantedPermsOf(warehouseUser))
-                .thenReturn(Set.of("stock_doc:approve"));
+                .thenReturn(Set.of("notice:read", "stock_doc:view", "stock_doc:approve"));
         ChainNoticeService service = new ChainNoticeService(
                 notice,
                 users,
@@ -548,7 +551,7 @@ class ChainNoticeOutboxEventTest {
                 eq(ChainNoticeService.TYPE_TASK),
                 anyString(),
                 eq("/warehouse/FINISHED_IN/" + stockDocId),
-                eq(ChainNoticeService.EVENT_FINISHED_INBOUND_PENDING));
+                eq(ChainNoticeService.EVENT_FINISHED_INBOUND_PENDING), isNull(), eq(stockDocId));
     }
 
     @Test
@@ -597,16 +600,17 @@ class ChainNoticeOutboxEventTest {
         UserAccount allowedUser = activeUser(allowed);
         UserAccount approveOnlyUser = activeUser(approveOnly);
         UserAccount viewOnlyUser = activeUser(viewOnly);
+        taskCandidates(users, jdbc, allowedUser, approveOnlyUser, viewOnlyUser);
         when(users.findById(allowed)).thenReturn(Optional.of(allowedUser));
         when(users.findById(approveOnly))
                 .thenReturn(Optional.of(approveOnlyUser));
         when(users.findById(viewOnly)).thenReturn(Optional.of(viewOnlyUser));
         when(permissions.grantedPermsOf(allowedUser))
-                .thenReturn(Set.of("stock_doc:view", "stock_doc:approve"));
+                .thenReturn(Set.of("notice:read", "stock_doc:view", "stock_doc:approve"));
         when(permissions.grantedPermsOf(approveOnlyUser))
-                .thenReturn(Set.of("stock_doc:approve"));
+                .thenReturn(Set.of("notice:read", "stock_doc:approve"));
         when(permissions.grantedPermsOf(viewOnlyUser))
-                .thenReturn(Set.of("stock_doc:view"));
+                .thenReturn(Set.of("notice:read", "stock_doc:view"));
         ChainNoticeService service = new ChainNoticeService(
                 notice, users, permissions, jdbc, mock(BusinessEventPublisher.class),
                 mock(RdTaskService.class),
@@ -626,7 +630,7 @@ class ChainNoticeOutboxEventTest {
                 eq(ChainNoticeService.TYPE_TASK),
                 anyString(),
                 eq("/warehouse/production-finished-in/tasks"),
-                eq(ChainNoticeService.EVENT_PRODUCTION_FINISHED_ARRIVAL_PENDING));
+                eq(ChainNoticeService.EVENT_PRODUCTION_FINISHED_ARRIVAL_PENDING), isNull(), eq(reportId));
         verifyNoMoreInteractions(notice);
     }
 
@@ -835,7 +839,7 @@ class ChainNoticeOutboxEventTest {
                 eq(ChainNoticeService.TYPE_URGENT),
                 anyString(),
                 eq("/sales/orders/" + orderId),
-                eq(ChainNoticeService.EVENT_ORDER_FINANCE_REJECTED));
+                eq(ChainNoticeService.EVENT_ORDER_FINANCE_REJECTED), isNull(), eq(orderId));
     }
 
     @Test
@@ -874,7 +878,7 @@ class ChainNoticeOutboxEventTest {
                 eq(ChainNoticeService.TYPE_URGENT),
                 anyString(),
                 eq("/purchase/orders/" + orderId),
-                eq(ChainNoticeService.EVENT_PROCUREMENT_FINANCE_REJECTED));
+                eq(ChainNoticeService.EVENT_PROCUREMENT_FINANCE_REJECTED), isNull(), eq(orderId));
     }
 
     @Test
@@ -955,7 +959,7 @@ class ChainNoticeOutboxEventTest {
                 eq(followerUserId),
                 eq("供应商退回任务：WW-001"),
                 contains("委外订货单 WW-001"),
-                eq(ChainNoticeService.TYPE_TASK),
+                eq(ChainNoticeService.TYPE_WORKFLOW),
                 anyString(),
                 eq("/procurement/arrival-exceptions"),
                 eq(ChainNoticeService.EVENT_PROCUREMENT_RETURN_REQUIRED),
@@ -977,7 +981,7 @@ class ChainNoticeOutboxEventTest {
         when(users.findAll()).thenReturn(List.of(reviewer));
         when(users.findById(reviewerId)).thenReturn(Optional.of(reviewer));
         when(permissions.grantedPermsOf(reviewer)).thenReturn(
-                Set.of("subcontract_loss_claim:review", "notice:read"));
+                Set.of("subcontract_loss_claim:view", "subcontract_loss_claim:review", "notice:read"));
         when(jdbc.queryForList(
                 contains("FROM subcontract_loss_cases loss"),
                 eq(caseId))).thenReturn(List.of(Map.of(
@@ -999,7 +1003,7 @@ class ChainNoticeOutboxEventTest {
                 eq(ChainNoticeService.TYPE_APPROVAL),
                 anyString(),
                 eq("/finance/payables"),
-                eq(ChainNoticeService.EVENT_SUBCONTRACT_LOSS_OPENED));
+                eq(ChainNoticeService.EVENT_SUBCONTRACT_LOSS_OPENED), isNull(), eq(caseId));
     }
 
     @Test
@@ -1139,5 +1143,12 @@ class ChainNoticeOutboxEventTest {
         user.setStatus("active");
         user.setDeleted(false);
         return user;
+    }
+
+    private static void taskCandidates(UserAccountRepository users, JdbcTemplate jdbc, UserAccount... accounts) {
+        when(users.findAll()).thenReturn(List.of(accounts));
+        when(jdbc.queryForList(contains("active_action_recipients"), eq(UUID.class), anyString()))
+                .thenAnswer(invocation -> java.util.Arrays.stream(invocation.<String>getArgument(2).split(","))
+                        .map(UUID::fromString).toList());
     }
 }

@@ -1144,10 +1144,8 @@ public class NoticeService {
     }
 
     private static boolean requiresScopedNoticeVisibility(Notice notice) {
-        return "SALES_ORDER_APPROVED".equals(notice.getSourceEvent())
-                || ReviewNoticeAudience.WORKSHOP_EVENT.equals(notice.getSourceEvent())
-                || ReviewNoticeAudience.OVER_LIMIT_EVENT.equals(notice.getSourceEvent())
-                || ChainNoticeService.EVENT_PRODUCTION_DRAW_PENDING.equals(notice.getSourceEvent());
+        return !"workflow".equals(notice.getType()) && notice.getResolvedAt() == null
+                && (ReviewNoticeCatalog.isReviewEvent(notice.getSourceEvent()) || BusinessNoticeActionCatalog.contains(notice.getSourceEvent()));
     }
 
     /**
@@ -1247,6 +1245,10 @@ public class NoticeService {
         var entry = ReviewNoticeCatalog.of(sourceEvent);
         if (aggregateId != null && entry.isPresent()) {
             n.setAggregateKind(entry.get().aggregateKind());
+            n.setAggregateId(aggregateId);
+            noticeRepo.saveAndFlush(n);
+        } else if (aggregateId != null && BusinessNoticeActionCatalog.contains(sourceEvent)) {
+            n.setAggregateKind(BusinessNoticeActionCatalog.kind(sourceEvent));
             n.setAggregateId(aggregateId);
             noticeRepo.saveAndFlush(n);
         }
@@ -1711,7 +1713,7 @@ public class NoticeService {
         // 2026-09-09 用户口径：车间任务 normal（等料/等待中）也是「收到的任务」，
         // 与可开工（important）同样作为行动卡弹出——收到的车间任务全量可感知。
         return notice.getAggregateId() != null && notice.getAggregateKind() != null
-                && ReviewNoticeCatalog.isReviewEvent(notice.getSourceEvent());
+                && !"workflow".equals(notice.getType()) && ReviewNoticeCatalog.isReviewEvent(notice.getSourceEvent());
     }
 
     private NoticeDto toDto(

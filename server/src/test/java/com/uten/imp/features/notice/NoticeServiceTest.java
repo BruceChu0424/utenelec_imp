@@ -92,6 +92,9 @@ class NoticeServiceTest {
         reviewAudience = mock(ReviewNoticeAudience.class);
         when(reviewAudience.readScope(any())).thenReturn(ReviewNoticeAudience.ReadScope.NONE);
         when(reviewAudience.eligibleEvents(any())).thenReturn(ReviewNoticeCatalog.events());
+        // This service fixture isolates DTO/claim behavior. The live source-state/owner filter is covered by DB tests.
+        when(noticeRepository.findScopedVisibleNoticeIds(any(), any(), any()))
+                .thenAnswer(invocation -> List.copyOf(invocation.<Set<UUID>>getArgument(1)));
         nameLookup = mock(com.uten.imp.application.port.EmployeeNameLookupPort.class);
         claims=mock(com.uten.imp.features.common.taskclaim.TaskClaimRepository.class);
         when(nameLookup.findName(any())).thenReturn(Optional.of("张三"));
@@ -123,6 +126,27 @@ class NoticeServiceTest {
                 mock(com.uten.imp.audit.AuditService.class),
                 claims,
                 nameLookup, reviewAudience);
+    }
+
+    @Test
+    void anExistingSubcontractActionLosesDetailVisibilityButItsInformationalReceiptRemains() {
+        Notice notice = new Notice();
+        notice.setAudienceUserId(userId);
+        notice.setType("task");
+        notice.setKind("NORMAL");
+        notice.setSourceEvent("SUBCONTRACT_SHORT_DELIVERY_DETECTED");
+        notice.setAggregateKind("SUBCONTRACT_SHORT_DELIVERY_CASE");
+        notice.setAggregateId(UUID.randomUUID());
+        when(noticeRepository.findById(notice.getId())).thenReturn(Optional.of(notice));
+        org.mockito.Mockito.doReturn(List.of()).when(noticeRepository)
+                .findScopedVisibleNoticeIds(eq(userId), eq(Set.of(notice.getId())), any());
+        assertEquals(ErrorCode.NOT_FOUND, assertThrows(ApiException.class,
+                () -> service.getById(notice.getId())).getCode());
+        notice.setType("workflow");
+        assertFalse(service.getById(notice.getId()).interactive());
+        notice.setType("task");
+        notice.setResolvedAt(Instant.now());
+        assertNotNull(service.getById(notice.getId()));
     }
 
     @Test

@@ -73,7 +73,18 @@ public final class ProcurementIqcRejectionContracts {
             long creditConfirmed,
             long closedNoCredit,
             long financeException,
-            long reversed) {
+            long reversed,
+            long actionablePendingReturn,
+            long actionableReturnRecorded,
+            long actionableFinanceException) {
+        public CaseCounts(long total, long pendingReturn, long returnRecorded,
+                long creditConfirmed, long closedNoCredit, long financeException, long reversed) {
+            this(total, pendingReturn, returnRecorded, creditConfirmed, closedNoCredit,
+                    financeException, reversed, 0, 0, 0);
+        }
+        public long actionableOpen() {
+            return actionablePendingReturn + actionableReturnRecorded + actionableFinanceException;
+        }
     }
 
     public record CaseEventItem(

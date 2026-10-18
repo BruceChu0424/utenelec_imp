@@ -62,7 +62,7 @@ class HrTaskServiceIdentityReviewTest {
             }
             return mapped;
         });
-        service = new HrTaskService(jdbc, claims, current);
+        service = new HrTaskService(jdbc, claims, current, com.uten.imp.testsupport.TaskAudienceTestSupport.direct());
     }
 
     @Test

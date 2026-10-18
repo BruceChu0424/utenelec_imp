@@ -150,6 +150,8 @@ public class DocumentStatusCountQueryService {
     private final EntityManager em;
     private final OwnerVisibility ownerVisibility;
     private final SecurityContextCurrentUser currentUser;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.application.port.TaskAudiencePort taskAudience;
     /** ADR-149 仓库数据范围; 未注入(直接 new 的单测)时不按仓库裁剪。 */
     private com.uten.imp.application.port.WarehouseTaskScopePort warehouseScopes;
 
@@ -190,7 +192,9 @@ public class DocumentStatusCountQueryService {
         List<Bucket> buckets = bucketsOf(kindName, source);
         buckets.forEach(bucket -> result.put(bucket.key(), 0L));
         AuthUser user = currentUser.get().orElse(null);
-        if (!DocumentDraftCountQueryService.canView(user, source.viewAuthority())) return result;
+        String viewAuthority = source == DocumentDraftCountQueryService.SALES_SHIPMENT
+                && "DIRECT_CUSTOMER".equals(kindFilter) ? "sales_other_shipment:view" : source.viewAuthority();
+        if (!DocumentDraftCountQueryService.canView(user, viewAuthority)) return result;
         DocumentAccessPolicy policy = new DraftScopeAccessPolicy(
                 source.scope(), source.viewAllAuthority(), ownerVisibility, currentUser);
         DocumentAccessPolicy.NativeReadScope scope = policy.nativeReadScope(source.ownerColumn(), "statusOwners");
@@ -217,11 +221,97 @@ public class DocumentStatusCountQueryService {
         for (int i = 0; i < buckets.size() && i < cells.length; i++) {
             result.put(buckets.get(i).key(), cells[i] instanceof Number number ? number.longValue() : 0L);
         }
+        result.putAll(taskAudience.read(() -> actionableCounts(
+                kindName, source, kindFilter, typeFilter, scopeWarehouseId)));
         return result;
+    }
+
+    private Map<String, Long> actionableCounts(String kind, DraftSource source,
+            String shipmentKind, String docType, java.util.UUID requestedWarehouse) {
+        Map<String, Long> result = new LinkedHashMap<>();
+        var taskBuckets = bucketsOf(kind, source).stream().filter(bucket ->
+                List.of(DRAFT, FINANCE_REJECTED, PENDING_GL_CONFIRMATION,
+                        PENDING_FINANCE, FINANCE_APPROVED, EXECUTING).contains(bucket.key())).toList();
+        taskBuckets.forEach(bucket -> result.put(taskBucketKey(bucket.key()), 0L));
+        AuthUser user = currentUser.get().orElse(null);
+        boolean resume = DocumentDraftCountQueryService.canResume(user, source);
+        boolean rejected = canCorrectRejected(user, source);
+        boolean gl = "financeExpense".equals(kind)
+                && DocumentDraftCountQueryService.canView(user, "finance_expense:view")
+                && DocumentDraftCountQueryService.canView(user, "finance_expense:gl_confirm");
+        if (!resume && !rejected && !gl) return result;
+        DocumentAccessPolicy policy = new DraftScopeAccessPolicy(
+                source.scope(), source.viewAllAuthority(), ownerVisibility, currentUser);
+        var writeScope = policy.nativeReadScope(source.ownerColumn(), "taskStatusOwners",
+                DocumentDraftCountQueryService.writableScope(policy));
+        var readScope = policy.nativeReadScope(source.ownerColumn(), "taskStatusReadOwners");
+        List<String> projections = new ArrayList<>();
+        for (Bucket bucket : taskBuckets) {
+            boolean allowed = FINANCE_REJECTED.equals(bucket.key()) ? rejected
+                    : PENDING_GL_CONFIRMATION.equals(bucket.key()) ? gl : resume;
+            String owner = PENDING_GL_CONFIRMATION.equals(bucket.key()) ? readScope.predicate() : writeScope.predicate();
+            String actions = FINANCE_REJECTED.equals(bucket.key())
+                    ? correctionPredicate(user, source) : DocumentDraftCountQueryService.actionPredicate(user, source);
+            if (PENDING_GL_CONFIRMATION.equals(bucket.key())) actions = "1=1";
+            projections.add(allowed ? "COUNT(*) FILTER (WHERE " + bucket.predicate() + " AND " + owner
+                    + " AND " + source.ownerColumn() + " IS NOT NULL AND " + actions + ")" : "0");
+        }
+        var warehouse = DocumentDraftCountQueryService.WAREHOUSE_SCOPED.contains(source) && warehouseScopes != null
+                ? warehouseScopes.current(requestedWarehouse)
+                : com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL;
+        String sql = "SELECT " + String.join(", ", projections) + " FROM " + source.table()
+                + " o WHERE o.is_deleted = false"
+                + (shipmentKind == null ? "" : " AND o.shipment_kind=:shipmentKind")
+                + (docType == null ? "" : " AND o.doc_type=:docType")
+                + (warehouse.active() ? " AND " + DocumentDraftCountQueryService.WAREHOUSE_SCOPE_PREDICATE : "");
+        Query query = em.createNativeQuery(sql);
+        if (sql.contains(":taskStatusOwners")) writeScope.bind(query);
+        if (sql.contains(":taskStatusReadOwners")) readScope.bind(query);
+        if (shipmentKind != null) query.setParameter("shipmentKind", shipmentKind);
+        if (docType != null) query.setParameter("docType", docType);
+        if (warehouse.active()) DocumentDraftCountQueryService.bindWarehouseScope(query, warehouse,
+                requestedWarehouse == null && user != null && user.getEmployeeId() != null
+                        ? user.getEmployeeId().toString() : "");
+        Object raw = query.getSingleResult();
+        Object[] row = raw instanceof Object[] values ? values : new Object[] {raw};
+        int index = 0;
+        for (String key : result.keySet()) {
+            result.put(key, index < row.length && row[index] instanceof Number n ? n.longValue() : 0L);
+            index++;
+        }
+        return result;
+    }
+
+    private static String taskBucketKey(String bucket) {
+        return (List.of(PENDING_FINANCE, FINANCE_APPROVED, EXECUTING).contains(bucket)
+                ? "RESPONSIBLE_" : "ACTIONABLE_") + bucket;
+    }
+
+    static boolean canCorrectRejected(AuthUser user, DraftSource source) {
+        return !"1=0".equals(correctionPredicate(user, source));
+    }
+
+    static String correctionPredicate(AuthUser user, DraftSource source) {
+        if (source == DocumentDraftCountQueryService.SALES_SHIPMENT) {
+            boolean order = canEdit(user, "sales_shipment");
+            boolean direct = canEdit(user, "sales_other_shipment");
+            if (order && direct) return "1=1";
+            if (order) return "o.shipment_kind <> 'DIRECT_CUSTOMER'";
+            if (direct) return "o.shipment_kind = 'DIRECT_CUSTOMER'";
+            return "1=0";
+        }
+        String family = source.viewAuthority().substring(0, source.viewAuthority().lastIndexOf(':'));
+        return canEdit(user, family) ? "1=1" : "1=0";
+    }
+
+    private static boolean canEdit(AuthUser user, String family) {
+        return DocumentDraftCountQueryService.canView(user, family + ":view")
+                && DocumentDraftCountQueryService.canView(user, family + ":edit");
     }
 
     /** 各类单据的「财务已退回」张数, 一次往返; 无权限的键固定 0. 供 hub 卡徽章与销售待办累加. */
     @Transactional(readOnly = true)
+    @com.uten.imp.security.BusinessTaskRead
     public Map<String, Long> financeRejectedCounts() {
         AuthUser user = currentUser.get().orElse(null);
         Map<String, Long> result = new LinkedHashMap<>();
@@ -230,20 +320,22 @@ public class DocumentStatusCountQueryService {
         for (String kind : FINANCE_REJECTED_KINDS) {
             DraftSource source = KINDS.get(kind);
             result.put(kind, 0L);
-            if (!DocumentDraftCountQueryService.canView(user, source.viewAuthority())) {
+            if (!canCorrectRejected(user, source)) {
                 projections.add("0");
                 continue;
             }
             DocumentAccessPolicy policy = new DraftScopeAccessPolicy(
                     source.scope(), source.viewAllAuthority(), ownerVisibility, currentUser);
             DocumentAccessPolicy.NativeReadScope scope =
-                    policy.nativeReadScope(source.ownerColumn(), "owners_" + kind);
+                    policy.nativeReadScope(source.ownerColumn(), "owners_" + kind,
+                            DocumentDraftCountQueryService.writableScope(policy));
             scopes.add(scope);
             String rejected = bucketsOf(kind, source).stream()
                     .filter(bucket -> FINANCE_REJECTED.equals(bucket.key()))
                     .findFirst().orElseThrow().predicate();
             projections.add("(SELECT count(*) FROM " + source.table() + " o WHERE o.is_deleted = false AND "
-                    + rejected + " AND " + scope.predicate() + ")");
+                    + rejected + " AND " + source.ownerColumn() + " IS NOT NULL AND " + scope.predicate()
+                    + " AND " + correctionPredicate(user, source) + ")");
         }
         if (scopes.isEmpty()) return result;
         Query query = em.createNativeQuery("SELECT " + String.join(", ", projections));

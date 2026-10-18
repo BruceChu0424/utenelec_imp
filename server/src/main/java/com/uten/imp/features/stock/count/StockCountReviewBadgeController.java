@@ -17,11 +17,13 @@ public class StockCountReviewBadgeController {
     public StockCountReviewBadgeController(StockCountRequestController requests) { this.requests = requests; }
 
     @GetMapping("/finance")
+    @com.uten.imp.security.BusinessTaskRead
     @PreAuthorize("hasAuthority('stock:count:finance_review')")
     public Map<String, Long> finance() { return fact("financePending", null); }
 
     /** 仓库审核红数: 与仓库审核列表同一仓库数据范围(ADR-149)。 */
     @GetMapping("/warehouse")
+    @com.uten.imp.security.BusinessTaskRead
     @PreAuthorize("hasAuthority('stock:count:warehouse_review')")
     public Map<String, Long> warehouse(@RequestParam(required = false) UUID scopeWarehouseId) {
         return fact("warehousePending", scopeWarehouseId);

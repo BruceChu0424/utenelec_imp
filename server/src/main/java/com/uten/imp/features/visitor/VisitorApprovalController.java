@@ -75,6 +75,7 @@ public class VisitorApprovalController {
      * 与 ongoing(已批准、访客还没来核验，黄徽章)。
      */
     @GetMapping("/pending-count")
+    @com.uten.imp.security.BusinessTaskRead
     @PreAuthorize("hasAuthority('visitor:approve')")
     public Map<String, Long> pendingCount() {
         VisitorQueueCounts counts = hrApprovalService.counts();
@@ -90,6 +91,7 @@ public class VisitorApprovalController {
      * hrReviewing / awaitingVisit —— 「我的访客」页两个黄色分段各挂一个。
      */
     @GetMapping("/host-pending-count")
+    @com.uten.imp.security.BusinessTaskRead
     @PreAuthorize("hasAuthority('visitor:host_confirm')")
     public Map<String, Long> hostPendingCount() {
         VisitorHostQueueCounts counts = hostConfirmService.myAsHostCounts();

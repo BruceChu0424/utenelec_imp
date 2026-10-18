@@ -41,10 +41,10 @@ public class WorkshopMaterialScope {
     /** 通知候选人使用相同对象范围, 不切换请求中的登录主体。权限与账号有效性由通知接收人解析器判定。 */
     public boolean canSeeForUser(UUID workshopDepartmentId, UUID userId) {
         if (workshopDepartmentId == null || userId == null) return false;
-        var users=db.queryForList("SELECT employee_id,is_super_admin FROM users WHERE id=:user",Map.of("user",userId));
+        var users=db.queryForList("SELECT employee_id FROM users WHERE id=:user AND NOT is_deleted AND status='active'",Map.of("user",userId));
         if(users.size()!=1) return false;
         var user=users.getFirst();
-        if(Boolean.TRUE.equals(user.get("is_super_admin")) || user.get("employee_id")==null) return true;
+        if(user.get("employee_id")==null) return false;
         return restrictedWorkshopsForEmployee((UUID)user.get("employee_id"))
                 .map(workshops->workshops.contains(workshopDepartmentId)).orElse(true);
     }

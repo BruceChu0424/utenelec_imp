@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/badges/badge_scope.dart';
 import 'package:uten_imp/shared/badges/effective_badge_summary_provider.dart';
@@ -36,6 +37,129 @@ FormDraft _draft(
 
 void main() {
   test(
+    'read-only recovery and cost-view snapshots stay visible without task badges',
+    () {
+      final recovery = FormDraft(
+        id: 'recovery',
+        title: '提交待核对',
+        module: BadgeModule.workshop,
+        draftKind: 'productionDailyReport',
+        route: '/production/daily-reports/new',
+        permission: Perm.productionDailyReportCreate,
+        updatedAt: DateTime.utc(2026, 10, 17),
+        data: const {dailyReportReadRecoveryOnlyKey: true},
+      );
+      final cost = FormDraft(
+        id: 'cost',
+        title: '成本填写',
+        module: BadgeModule.finance,
+        draftKind: 'goods_cost',
+        route: '/basicinfo/goods/good-a?tab=cost',
+        permission: Perm.goodsCostView,
+        updatedAt: DateTime.utc(2026, 10, 17),
+        data: const {},
+      );
+      final container = ProviderContainer(
+        overrides: [
+          formDraftsProvider.overrideWith(() => _Drafts([recovery, cost])),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.productionDailyReportView,
+            Perm.goodsCostView,
+          }),
+          fixedBadgeSummaryOverride(badgeSummaryFixture()),
+        ],
+      );
+      addTearDown(container.dispose);
+      expect(
+        container.read(
+          formDraftCategoryProvider(
+            const FormDraftCategoryScope(module: BadgeModule.workshop),
+          ),
+        ),
+        hasLength(1),
+      );
+      expect(
+        container.read(
+          formDraftCategoryCountProvider(
+            const FormDraftCategoryScope(module: BadgeModule.workshop),
+          ),
+        ),
+        0,
+      );
+      expect(container.read(effectiveBadgeSummaryProvider).total.todo, 0);
+      expect(
+        includeFormDraftBadges(
+          BadgeSummary.empty,
+          [cost],
+          permissions: const {Perm.goodsCostEdit},
+        ).total.todo,
+        1,
+      );
+    },
+  );
+
+  test(
+    'read-only browse totals never turn into red or yellow work counts',
+    () async {
+      final container = ProviderContainer(
+        overrides: [
+          formDraftsProvider.overrideWith(() => _Drafts(const [])),
+          documentStatusCountsProvider.overrideWith(
+            (ref, scope) async => {
+              'DRAFT': 9,
+              'FINANCE_REJECTED': 4,
+              'PENDING_FINANCE': 6,
+              'ACTIONABLE_DRAFT': 0,
+              'ACTIONABLE_FINANCE_REJECTED': 0,
+              'RESPONSIBLE_PENDING_FINANCE': 0,
+            },
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      const scope = DocumentStatusScope(DraftDocKind.salesQuote);
+      await container.read(documentStatusCountsProvider(scope).future);
+      final tasks = container
+          .read(effectiveDocumentStatusCountsProvider(scope))
+          .value!;
+      expect(tasks['DRAFT'], 0);
+      expect(tasks['FINANCE_REJECTED'], 0);
+      expect(tasks['PENDING_FINANCE'], 0);
+      expect(
+        container.read(documentStatusCountsProvider(scope)).value!['DRAFT'],
+        9,
+      );
+    },
+  );
+
+  test(
+    'missing task fields fail closed instead of reusing browse totals',
+    () async {
+      final container = ProviderContainer(
+        overrides: [
+          formDraftsProvider.overrideWith(() => _Drafts(const [])),
+          documentStatusCountsProvider.overrideWith(
+            (ref, scope) async => {
+              'DRAFT': 9,
+              'FINANCE_REJECTED': 4,
+              'PENDING_FINANCE': 6,
+            },
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      const scope = DocumentStatusScope(DraftDocKind.salesQuote);
+      await container.read(documentStatusCountsProvider(scope).future);
+      final tasks = container
+          .read(effectiveDocumentStatusCountsProvider(scope))
+          .value!;
+      expect(tasks['DRAFT'], 0);
+      expect(tasks['FINANCE_REJECTED'], 0);
+      expect(tasks['PENDING_FINANCE'], 0);
+    },
+  );
+
+  test(
     'document buckets add local once and never mutate formal facts',
     () async {
       final drafts = [
@@ -58,7 +182,11 @@ void main() {
           ),
           formDraftsProvider.overrideWith(() => _Drafts(drafts)),
           documentStatusCountsProvider.overrideWith(
-            (ref, scope) async => {'DRAFT': 2, 'APPROVED': 7},
+            (ref, scope) async => {
+              'ACTIONABLE_DRAFT': 2,
+              'DRAFT': 2,
+              'APPROVED': 7,
+            },
           ),
         ],
       );
@@ -69,7 +197,7 @@ void main() {
         container
             .read(effectiveDocumentStatusCountsProvider(scope))
             .valueOrNull,
-        {'DRAFT': 3, 'APPROVED': 7},
+        {'ACTIONABLE_DRAFT': 2, 'DRAFT': 3, 'APPROVED': 7},
       );
       expect(container.read(draftCountsProvider).salesOrder, 3);
       expect(container.read(badgeModuleTodoProvider(BadgeModule.sales)), 3);
@@ -102,7 +230,7 @@ void main() {
             ]),
           ),
           documentStatusCountsProvider.overrideWith(
-            (ref, scope) async => {'DRAFT': 2},
+            (ref, scope) async => {'ACTIONABLE_DRAFT': 2, 'DRAFT': 2},
           ),
         ],
       );
@@ -167,7 +295,7 @@ void main() {
             ]),
           ),
           documentStatusCountsProvider.overrideWith(
-            (ref, scope) async => {'DRAFT': 2},
+            (ref, scope) async => {'ACTIONABLE_DRAFT': 2, 'DRAFT': 2},
           ),
         ],
       );

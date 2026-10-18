@@ -146,7 +146,10 @@ class WarehouseQualityResultRepository
     final raw = json;
     return {
       for (final status in WarehouseQualityWorkStatus.values)
-        status: _countOf(raw, status.apiValue),
+        status: _countOf(
+          raw,
+          status.isCompleted ? status.apiValue : 'TASK_${status.apiValue}',
+        ),
     };
   }
 

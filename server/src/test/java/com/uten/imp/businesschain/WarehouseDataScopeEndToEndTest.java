@@ -89,7 +89,11 @@ class WarehouseDataScopeEndToEndTest {
     private static final String[] TASK_PERMISSIONS = {
             "notice:read", "stock_doc:view", "stock_doc:view:all", "warehouse_inbound:view",
             "warehouse_sales_outbound:view", "subcontract_outbound:view", "warehouse_iqc_stock_in:view",
-            "workshop_material:view", "stock:count:warehouse_review", "stock_report:view"};
+            "workshop_material:view", "stock:count:warehouse_review", "stock_report:view",
+            "stock_doc:create", "stock_doc:edit", "stock_doc:approve", "stock_doc:issue",
+            "warehouse_inbound:stock_in", "warehouse_sales_outbound:execute", "subcontract_outbound:execute",
+            "warehouse_iqc_stock_in:confirm", "warehouse_iqc_return:view", "procurement_iqc_rejection:record_return",
+            "workshop_material:issue", "workshop_material:count"};
 
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
@@ -100,6 +104,7 @@ class WarehouseDataScopeEndToEndTest {
     @Autowired WarehouseNoticeRouter router;
     @Autowired ProductionStockTaskAccessPolicy productionTaskAccess;
     @Autowired WorkbenchBadgeController badges;
+    @Autowired com.uten.imp.application.port.TaskAudiencePort taskAudience;
     @Autowired StockDocController stockDocs;
     @Autowired StockDocService stock;
     @Autowired WarehouseInboundController inbound;
@@ -152,6 +157,13 @@ class WarehouseDataScopeEndToEndTest {
         String tag = UUID.randomUUID().toString().substring(0, 8);
         world = fixture.seedWorld("wh-scope-" + tag);
         admin = world.superAdminUserId();
+        for (String permission : TASK_PERMISSIONS) {
+            db.update("""
+                    INSERT INTO user_permission_overrides(user_id, permission_id, effect)
+                    SELECT ?, id, 'grant' FROM permissions WHERE code=?
+                    ON CONFLICT (user_id, permission_id) DO UPDATE SET effect='grant', active=TRUE
+                    """, admin, permission);
+        }
         List<UUID> roots = db.queryForList("SELECT id FROM warehouses WHERE code='001' AND NOT is_deleted", UUID.class);
         if (roots.isEmpty()) {
             root = UUID.randomUUID();
@@ -182,10 +194,21 @@ class WarehouseDataScopeEndToEndTest {
     @AfterEach void clear() {
         ProductionJdbcMeasurement.end();
         db.update("DELETE FROM warehouse_keepers WHERE warehouse_id IN (?,?,?) OR employee_id IN "
-                        + "(SELECT employee_id FROM users WHERE id IN (?,?,?,?,?))",
-                warehouseA, warehouseB, warehouseC, manager, mainKeeper, keeperA, keeperAB, member);
+                        + "(SELECT employee_id FROM users WHERE id IN (?,?,?,?,?,?))",
+                warehouseA, warehouseB, warehouseC, manager, mainKeeper, keeperA, keeperAB, member, admin);
         db.update("UPDATE departments SET manager_id=? WHERE id=?", previousManager, warehouseDepartment);
         SecurityContextHolder.clearContext();
+    }
+
+    @Test void administratorTasksUseRegisteredPhysicalResponsibilityWhileBrowsingRemainsAdministrative() {
+        fixture.loginAs(admin);
+        assertThat(scopes.access().role()).isEqualTo(Role.SUPERVISOR);
+        assertThat(taskAudience.read(scopes::access).role()).isEqualTo(Role.OTHER);
+        keepers.replaceKeepers(warehouseA, keepersOf(keeperA, keeperAB, admin));
+        WarehouseAccess tasks = taskAudience.read(scopes::access);
+        assertThat(tasks.role()).isEqualTo(Role.KEEPER);
+        assertThat(tasks.defaultScope().warehouseIds()).contains(warehouseA).doesNotContain(warehouseB);
+        assertThat(scopes.access().role()).isEqualTo(Role.SUPERVISOR);
     }
 
     @Test void sevenIdentitiesResolveRoleAndDefaultScopeInOnePlace() {
@@ -275,6 +298,9 @@ class WarehouseDataScopeEndToEndTest {
 
     @Test void everyWarehouseBadgeSourceEqualsTheListTotalOfTheSameIdentityAndScope() {
         fixture.loginAs(admin);
+        // This comparison intentionally covers a real full-scope task operator.
+        keepers.replaceKeepers(root, keepersOf(mainKeeper, admin));
+        fixture.loginAs(admin);
         UUID docA = otherOutDraft(warehouseA);
         UUID docB = otherOutDraft(warehouseB);
         UUID docC = otherOutDraft(warehouseC);
@@ -355,7 +381,7 @@ class WarehouseDataScopeEndToEndTest {
 
     /**
      * 授权与范围判断不靠请求边界: 整个测试方法是同一个 MOCK 请求, 中途撤掉负责登记、调离仓储部门,
-     * 下一次判定立即按新组织算。性能口径不退: 一次徽章汇总(十来个仓库来源)只解析一次范围(准则 14)。
+     * 下一次判定立即按新组织算。每个不同责任范围仅解析一次；选仓浏览准入与任务范围分开缓存。
      */
     @Test void organizationChangesApplyImmediatelyWhileOneBadgeSummaryResolvesTheScopeOnce() {
         fixture.loginAs(keeperA);
@@ -374,10 +400,10 @@ class WarehouseDataScopeEndToEndTest {
 
         fixture.loginAs(keeperAB);
         assertThat(scopeResolutions(() -> badges.badges(null))).isEqualTo(1);
-        assertThat(scopeResolutions(() -> badges.badges(warehouseB))).isEqualTo(1);
+        assertThat(scopeResolutions(() -> badges.badges(warehouseB))).as("选仓准入与业务任务各一个范围").isEqualTo(2);
         fixture.loginAs(manager);
         assertThat(scopeResolutions(() -> badges.badges(null))).isEqualTo(1);
-        assertThat(scopeResolutions(() -> badges.badges(warehouseC))).isEqualTo(1);
+        assertThat(scopeResolutions(() -> badges.badges(warehouseC))).as("选仓准入与业务任务各一个范围").isEqualTo(2);
         // 汇总结束窗口即关: 之后的判定照样实时。
         db.update("UPDATE departments SET manager_id=? WHERE id=?", previousManager, warehouseDepartment);
         assertThat(scopes.access().role()).isNotEqualTo(Role.SUPERVISOR);
@@ -431,6 +457,13 @@ class WarehouseDataScopeEndToEndTest {
     }
 
     private void assertBadgeEqualsLists(UUID user, UUID selected) {
+        taskAudience.read(() -> {
+            assertTaskBadgeEqualsLists(user, selected);
+            return null;
+        });
+    }
+
+    private void assertTaskBadgeEqualsLists(UUID user, UUID selected) {
         WorkbenchBadgeSummary summary = badges.badges(selected);
         String label = user + "@" + selected;
         assertThat(summary.staleSources()).as(label).isEmpty();
@@ -459,12 +492,13 @@ class WarehouseDataScopeEndToEndTest {
                 stockCounts.list("WAREHOUSE", "PENDING", null, selected, null, 1, 1).getTotal());
         // 品质检查结果: 红 + 黄 = 列表里没完结的张数; 每个状态段 = 带该状态筛选的列表 total。
         Map<String, Long> statuses = qualityResults.statusCounts("ALL", "", selected);
-        long open = statuses.entrySet().stream().filter(e -> !"COMPLETED".equals(e.getKey()))
+        long open = statuses.entrySet().stream().filter(e -> !e.getKey().startsWith("TASK_") && !"COMPLETED".equals(e.getKey()))
                 .mapToLong(Map.Entry::getValue).sum();
         long typed = facts.entrySet().stream().filter(e -> e.getKey().startsWith("qualityResult."))
                 .mapToLong(Map.Entry::getValue).sum();
         assertThat(typed).as(label + " quality result").isEqualTo(open);
         for (var status : statuses.entrySet()) {
+            if (status.getKey().startsWith("TASK_")) continue;
             assertThat(qualityResults.list("", "ALL", status.getKey(), "COMPLETED".equals(status.getKey()) ? "HISTORY" : "ACTIVE",
                     null, null, 1, 1, null, null, null, selected)
                     .getTotal()).as(label + " quality " + status.getKey()).isEqualTo(status.getValue());

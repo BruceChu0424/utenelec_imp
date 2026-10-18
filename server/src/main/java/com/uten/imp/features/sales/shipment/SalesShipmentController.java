@@ -45,6 +45,7 @@ public class SalesShipmentController {
 
     @GetMapping("/pending-finance-count")
     @PreAuthorize("hasAuthority('sales_shipment_finance:view')")
+    @com.uten.imp.security.BusinessTaskRead
     public java.util.Map<String,Long> pendingFinanceCount() { return java.util.Map.of("count",service.countPendingFinanceAudit()); }
 
     @GetMapping

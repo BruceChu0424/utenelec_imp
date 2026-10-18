@@ -250,6 +250,110 @@ UtenMenuItem _menuItem(WidgetTester tester, HrTaskItem item, String label) =>
     );
 
 void main() {
+  test('task claim eligibility follows the action for each task type', () {
+    const actions = {
+      HrTaskType.confirm: Perm.employeeConfirm,
+      HrTaskType.birthday: Perm.noticePublish,
+      HrTaskType.anniversary: Perm.noticePublish,
+      HrTaskType.newhire: Perm.employeeEdit,
+      HrTaskType.identity: Perm.employeePiiEdit,
+    };
+    for (final entry in actions.entries) {
+      expect(hrTaskCanHandle(entry.key, {Perm.employeeView}), isFalse);
+      expect(
+        hrTaskCanHandle(entry.key, {
+          Perm.employeeView,
+          Perm.employeeTaskTakeover,
+        }),
+        isFalse,
+      );
+      expect(
+        hrTaskCanHandle(entry.key, {Perm.employeeView, entry.value}),
+        isTrue,
+      );
+      expect(hrTaskCanHandle(entry.key, {}, isSuperAdmin: true), isTrue);
+    }
+  });
+
+  testWidgets(
+    'read-only HR menus hide claim and takeover but keep releasing my task',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final free = _item('free');
+      final mine = _item('mine', claimedByName: '我', claimedByMe: true);
+      final other = _item('other', claimedByName: '同事');
+      final hrTasks = _FakeHrTaskRepository(
+        _summary(confirmToday: [free, mine, other]),
+      );
+      await tester.binding.setSurfaceSize(const Size(1400, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        _app(
+          type: HrTaskType.confirm,
+          hrTasks: hrTasks,
+          preferences: preferences,
+          permissions: {Perm.employeeView, Perm.employeeTaskTakeover},
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(_menuLabels(tester, free), isNot(contains('认领(标记为我在处理)')));
+      expect(_menuLabels(tester, other), isNot(contains('接管(转由我处理)')));
+      expect(_menuLabels(tester, mine), contains('释放(不再由我处理)'));
+      expect(_menuLabels(tester, free), contains('查看档案'));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'compact HR task tiles hide unauthorized claim but preserve my release',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(600, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            currentPermissionsProvider.overrideWithValue({
+              Perm.employeeView,
+              Perm.employeeTaskTakeover,
+            }),
+            isSuperAdminProvider.overrideWithValue(false),
+          ],
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: Column(
+                children: [
+                  HrTaskTile(
+                    type: HrTaskType.confirm,
+                    item: _item('free'),
+                    compact: true,
+                  ),
+                  HrTaskTile(
+                    type: HrTaskType.confirm,
+                    item: _item('mine', claimedByName: '我', claimedByMe: true),
+                    compact: true,
+                  ),
+                  HrTaskTile(
+                    type: HrTaskType.confirm,
+                    item: _item('other', claimedByName: '同事'),
+                    compact: true,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('认领(标记为我在处理)'), findsNothing);
+      expect(find.byTooltip('接管(转由我处理)'), findsNothing);
+      expect(find.byTooltip('释放(不再由我处理)'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'celebration active rows exclude completed and archive pages contain no task actions',
     (tester) async {
@@ -367,7 +471,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          currentPermissionsProvider.overrideWithValue({Perm.employeeConfirm}),
+          currentPermissionsProvider.overrideWithValue({
+            Perm.employeeView,
+            Perm.employeeConfirm,
+          }),
           hrTaskRepositoryProvider.overrideWithValue(hrTasks),
           employeeRepositoryProvider.overrideWithValue(employees),
         ],

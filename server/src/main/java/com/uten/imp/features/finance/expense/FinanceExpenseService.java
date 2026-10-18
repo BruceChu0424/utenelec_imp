@@ -106,6 +106,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     /** Same lifecycle/read boundary as the list, then the glConfirm writable-owner guard. */
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('finance_expense:view') and hasAuthority('finance_expense:gl_confirm')")
+    @com.uten.imp.security.BusinessTaskRead
     public Map<String, Long> confirmationCounts() {
         Specification<FinanceExpense> pending = expenseSpec(new FinanceExpenseQueryFilter(
                 null, null, null, STATUS_APPROVED, null, null, null).withView("ACTIVE"));

@@ -102,12 +102,14 @@ public class ProfileChangeController {
     }
 
     @GetMapping("/api/hr/profile-changes/pending-count")
+    @com.uten.imp.security.BusinessTaskRead
     @PreAuthorize("hasAuthority('profile:review')")
     public Map<String, Long> pendingCount() {
         return Map.of("count", reviewService.pendingCount());
     }
 
     @GetMapping("/api/hr/profile-changes/pending-count/{employeeId}")
+    @com.uten.imp.security.BusinessTaskRead
     @PreAuthorize("hasAuthority('profile:review')")
     public Map<String, Long> pendingCountForEmployee(@PathVariable UUID employeeId) {
         return Map.of("count", reviewService.pendingCountForEmployee(employeeId));

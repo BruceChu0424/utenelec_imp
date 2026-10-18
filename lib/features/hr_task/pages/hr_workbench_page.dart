@@ -307,19 +307,19 @@ class HrWorkbenchPage extends ConsumerWidget {
     final entries = <(HrTaskType, int, String, Color)>[
       (
         HrTaskType.confirm,
-        s.confirmOverdue.length + s.confirmToday.length,
+        s.taskCounts['confirm'] ?? 0,
         '逾期 ${s.confirmOverdue.length} · 今日 ${s.confirmToday.length} · 临近 ${s.confirmUpcoming.length}',
         UtenColors.teal600,
       ),
       (
         HrTaskType.birthday,
-        s.birthdayToday.where((person) => !person.blessed).length,
+        s.taskCounts['birthday'] ?? 0,
         '今日 ${s.birthdayToday.length} · 30 天内 ${s.birthdayUpcoming.length}',
         UtenColors.catPink,
       ),
       (
         HrTaskType.anniversary,
-        s.anniversaryToday.where((person) => !person.blessed).length,
+        s.taskCounts['anniversary'] ?? 0,
         '入职满年纪念，及时送上祝福',
         UtenColors.catAmber,
       ),
@@ -332,7 +332,7 @@ class HrWorkbenchPage extends ConsumerWidget {
       if (canFixIdentity)
         (
           HrTaskType.identity,
-          s.identityReview.length,
+          s.taskCounts['identity'] ?? 0,
           '证件号缺失、填写有误或还没核对',
           theme.colorScheme.error,
         ),
@@ -468,7 +468,7 @@ class _EntryCard extends StatelessWidget {
                   child: Icon(type.icon, size: 20, color: accent),
                 ),
                 const Spacer(),
-                if (count > 0)
+                if (count > 0 && type != HrTaskType.newhire)
                   // 与工作台模块小卡同款 1.25 倍放大红徽章(hub 卡是 1.4)。
                   UtenBadgeScale(
                     scale: 1.25,
@@ -481,7 +481,7 @@ class _EntryCard extends StatelessWidget {
                   )
                 else
                   Text(
-                    '0',
+                    '$count',
                     key: ValueKey('hr-workbench-entry-count-${type.taskType}'),
                     style: theme.textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.w800,

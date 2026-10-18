@@ -485,6 +485,9 @@ class _ProgressApi extends ApiClient {
       // 「有数亮黄徽章」与「归零整枚缩回」两半口径。DRAFT = 草稿段红徽章
       // （progressStageCounts 随 :stage='DRAFT' 一并带回草稿桶）。
       return const {
+        'TASK_DRAFT': 2,
+        'TASK_REJECTED': 1,
+        'TASK_PRODUCING': 3,
         'DRAFT': 2,
         'REJECTED': 1,
         'PENDING': 0,

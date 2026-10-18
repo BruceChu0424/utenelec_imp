@@ -31,10 +31,18 @@ class SalesWorkbenchBadgeSources implements WorkbenchBadgeSources {
     private final SalesQuoteController quotes;
     private final SalesQuoteFinanceController quoteFinance;
 
+    private static java.util.Map<String, Long> salesTaskFacts(java.util.Map<String, Long> stages) {
+        java.util.Map<String, Long> tasks = new java.util.LinkedHashMap<>();
+        stages.forEach((key, count) -> {
+            if (key.startsWith("TASK_")) tasks.put(key.substring(5), count);
+        });
+        return tasks;
+    }
+
     @Override
     public List<Source> sources() {
         return List.of(
-                new Source("salesStage", () -> WorkbenchBadgeSources.numbers(orders.progressStageCounts())),
+                new Source("salesStage", () -> salesTaskFacts(orders.progressStageCounts())),
                 new Source("salesOrderFinance", () -> WorkbenchBadgeSources.numbers(financeConfirmation.pendingCount(null))),
                 new Source("shipmentFinance", () -> WorkbenchBadgeSources.numbers(shipments.pendingFinanceCount())),
                 new Source("warehouseSalesOutbound", () -> WorkbenchBadgeSources.numbers(warehouseOutbound.counts(null))),

@@ -261,7 +261,12 @@ $internalAttachmentLocations = [regex]::Matches($text.InternalTestNginx, '(?m)^\
 if ($internalAttachmentLocations.Count -ne 2) {
     throw 'Forbidden deployment contract: attachment intake must have exactly two reviewed Nginx locations'
 }
-if (([regex]::Matches($text.WebsiteInquiryController, '@(?:Get|Post|Put|Patch|Delete)Mapping')).Count -ne 6) {
+# 6 -> 8（2026-10-18）：GET /counts 与 POST /{id}/follow-ups（官网询盘并入）。
+# 已按本闸门的用意复核网关策略——counts 是极小的读（徽章三桶计数），
+# follow-ups 是写（保存本人跟进记录，服务端再核 webinquiry:claim 与认领归属），
+# 两者都落在通用 location /api/（不限方法、同一限流区），不是公网投递入口；
+# 上方「恰好一个已评审的 website ingest location」的计数保持 1 不变。
+if (([regex]::Matches($text.WebsiteInquiryController, '@(?:Get|Post|Put|Patch|Delete)Mapping')).Count -ne 8) {
     throw 'Forbidden deployment contract: website inquiry Controller route inventory changed without gateway review'
 }
 # 9 -> 11（2026-09-11）：GET /{id}/preview 与 PUT /{id}/category。已按本闸门的用意

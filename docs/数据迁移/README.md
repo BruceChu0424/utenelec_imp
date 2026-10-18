@@ -1,6 +1,8 @@
 # 数据库迁移与旧库导入索引
 
-> **当前源码目录：V878/804 (2026-10-18)**。源码目录与服务器安装分别核验，发布证据统一见[当前版本验证](../99-项目治理/当前版本验证.md)。本页不再把旧运行快照当作当前状态。
+> **当前源码目录：V879/805 (2026-10-18)**。源码目录与服务器安装分别核验，发布证据统一见[当前版本验证](../99-项目治理/当前版本验证.md)。本页不再把旧运行快照当作当前状态。
+
+V879 并入官网管理与询盘时间线（uimp/website-imp-integration）：新增 `website:view/content_edit/product_edit/media_manage/publish/rollback` 六个权限码与 `website.management` 权限面，登记 `website_inquiries/website_inquiry_events/website_bridge_status/website_management_settings` 四表审计范围，并把后三者列入业务清空保留清单（询盘事件随业务清空）；桥接默认关闭，不自动连接官网。原分支内编号 V873 因与员工远程 TOTP 迁移撞号，并入时重编号为 V879，未在任何环境应用过。
 
 V878 收口生产调度与进度的同页双路由：`production.schedule` 权限面补挂 `production_execution:overview` 并更名「生产调度与进度」，退役 `production.progress` 旧面（先删码关联再删面，历史委派行留作审计）；前端 `/production/progress` 同日起重定向到 `/production/schedule?tab=progress`，路由守卫合并为两码 any-of。纯权限目录迁移，不改业务数量。
 

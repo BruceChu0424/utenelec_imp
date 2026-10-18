@@ -83,7 +83,10 @@ public final class ScheduledTaskCatalog {
             Map.entry("AuditPartitionMaintainer.ensureUpcoming", new Entry("审计日志月分区预建",
                     "每天 01:07 预先建好当月和之后 3 个月的审计日志存放区, 保证新记录随时有地方写。")),
             Map.entry("PrimaryHealthIndicator.ping", new Entry("云端主库连通探测",
-                    "云端部署下每 10 秒探测主数据库是否可达, 不可达时自动降级为只读。"))
+                    "云端部署下每 10 秒探测主数据库是否可达, 不可达时自动降级为只读。")),
+            Map.entry("WebsiteInquiryBridgeScheduler.sync", new Entry("官网询盘拉取",
+                    "官网桥接启用后每 30 秒拉取官网持久保存的待投递询盘, 校验通过才入库;"
+                            + "未确认的记录由官网保留并自动重试, 未启用时不连接官网。"))
     );
 
     private ScheduledTaskCatalog() {}

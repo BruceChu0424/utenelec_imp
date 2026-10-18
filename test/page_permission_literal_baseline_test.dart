@@ -328,6 +328,29 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
       'Perm.noticePublish': 2,
     },
   ),
+  // 2026-10-18 官网管理/询盘并入（uimp/website-imp-integration）：管理页按 V879
+  // 新增的 website:* 权限逐动作预演入口（发布/回退为高危动作，服务端
+  // WebsiteManagementController 另按 @PreAuthorize + 门户会话租约裁决）；
+  // authorizationManage 预演仅控制桥接诊断入口的显隐，实际授权仍由服务端强制。
+  'lib/features/website_management/pages/website_management_page.dart': (
+    legacyCount: 0,
+    tokens: {
+      'Perm.authorizationManage': 2,
+      'Perm.webinquiryView': 1,
+      'Perm.websiteContentEdit': 3,
+      'Perm.websiteMediaManage': 1,
+      'Perm.websiteProductEdit': 1,
+      'Perm.websitePublish': 2,
+      'Perm.websiteRollback': 1,
+      'Perm.websiteView': 4,
+    },
+  ),
+  // 询盘跟进时间线：新增跟进记录按钮预演 webinquiry:claim，与
+  // WebsiteInquiryService 的认领归属复核同口径，第二人无法覆盖已认领人。
+  'lib/features/webinquiry/widgets/website_inquiry_source_timeline.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.webinquiryClaim': 1},
+  ),
 };
 
 Map<String, int> _permissionTokens(String source) {
@@ -426,7 +449,7 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
         (sum, entry) =>
             sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
       ),
-      88, // Previous 65 + 15 history guards; 2026-10-18 +8 for the V875 transfer UI and ADR-184 HR task cards.
+      104, // Previous 65 + 15 history guards; 2026-10-18 +8 for the V875 transfer UI and ADR-184 HR task cards, +16 for the website management page and inquiry source timeline (V879 website:* permissions).
     );
   });
 

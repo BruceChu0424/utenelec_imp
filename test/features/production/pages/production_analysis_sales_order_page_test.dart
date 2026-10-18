@@ -133,9 +133,16 @@ void main() {
               orderId: state.pathParameters['orderId']!,
             ),
           ),
+          // V878 双路由收口后回退目标是统一调度面（?tab=progress 预选进行中）。
           GoRoute(
-            path: '/production/progress',
-            builder: (_, _) => const Scaffold(body: Text('已回到进行中')),
+            path: '/production/schedule',
+            builder: (_, state) => Scaffold(
+              body: Text(
+                state.uri.queryParameters['tab'] == 'progress'
+                    ? '已回到进行中'
+                    : '调度面默认段',
+              ),
+            ),
           ),
           GoRoute(
             path: '/production/material-analysis',

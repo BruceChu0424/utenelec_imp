@@ -206,6 +206,9 @@ const _reviewedNewAnyGuardedRoutes = <String, List<String>>{
   '/warehouse/material-returns/batch-receive': [Perm.stockDocView],
   '/warehouse/sales-outbound/batch': [Perm.warehouseSalesOutboundView],
   '/warehouse/subcontract-outbound/batch': [Perm.subcontractOutboundView],
+  // 2026-10-18 官网管理页（uimp/website-imp-integration 并入）：按 website:view
+  // 收口进入，内容编辑/发布/回退等动作由管理端会话权限与服务端另行把关。
+  '/website-management': [Perm.websiteView],
 };
 
 String _samplePath(String pattern) => pattern

@@ -18,7 +18,13 @@ class MasterCategorySearchPostgresTest extends AuthSessionPostgresTestSupport {
         String token=adminToken(), marker="FACET-"+UUID.randomUUID();
         UUID owner=jdbc.queryForObject("SELECT id FROM employees WHERE NOT is_deleted ORDER BY id LIMIT 1",UUID.class);
         UUID left=category(null,"左分类"), right=category(null,"右分类");
+        // 每个_marker 名两行：全局 facets 只回 count 前 50 的桶（GoodsService.FACET_LIMIT，
+        // 按 count 降序+值升序），同 JVM 里 GoodsSearchPolicyPostgresTest 会留下 60 个
+        // count=2 的「高频货品」桶；marker 至少 count=2 才能在 ASCII<CJK 的字节序
+        // tie-break 下稳定留在榜单内，测试不再依赖类执行顺序。
         goods(left,"L-"+UUID.randomUUID(),marker+"-left",null,null);
+        goods(left,"L-"+UUID.randomUUID(),marker+"-left",null,null);
+        goods(right,"R-"+UUID.randomUUID(),marker+"-right",null,null);
         goods(right,"R-"+UUID.randomUUID(),marker+"-right",null,null);
         for (String domain : List.of("goods","mould","client","supplier")) {
             UUID scoped=left;

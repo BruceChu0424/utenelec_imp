@@ -4450,6 +4450,30 @@
       "doc": "docs/03-页面/官网询盘页.md"
     },
     {
+      "route": "/website-management",
+      "title": "官网管理",
+      "aliases": [
+        "官网管理页"
+      ],
+      "module": "官网运营",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "官网运营",
+          "官网管理"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "website:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/官网管理页.md"
+    },
+    {
       "route": "/workshop-material/bin",
       "title": "车间内料仓",
       "aliases": [

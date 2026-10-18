@@ -194,7 +194,9 @@ public class BusinessDataResetSqlContractTest {
             Map.entry("production_fqc_lot_decision_commands", 803),
             // V805 AI 助手确认卡一次性提案(ADR-150)：随 AI 任务一起清空。
             Map.entry("ai_chat_action_proposals", 805),
-            Map.entry("document_unapprovals", 851));
+            Map.entry("document_unapprovals", 851),
+            // V879 官网询盘事件时间线：询盘主档业务数据，随业务清空。
+            Map.entry("website_inquiry_events", 879));
 
     /**
      * V579 起 PRESERVE 语义的运行时扩展(基础资料子表随主档保留)。
@@ -203,6 +205,9 @@ public class BusinessDataResetSqlContractTest {
     private static final Map<String, Integer> PRESERVE_RESET_EXTENSIONS = Map.ofEntries(
             Map.entry("staff_mfa", 873),
             Map.entry("remote_access_policy", 874),
+            // V879 官网管理与桥接：连接配置与投递诊断跨业务清空保留。
+            Map.entry("website_management_settings", 879),
+            Map.entry("website_bridge_status", 879),
             Map.entry("goods_operation_history", 871),
             Map.entry("goods_operation_history_rows", 871),
             Map.entry("goods_operation_history_events", 871),

@@ -52,7 +52,7 @@ dependencies:
   desktop_drop: ^0.8.4
 
   # A4 预览与打印（货品配件清单等打印件：pdf 生成 + printing 系统打印对话框）
-  pdf: ^3.11.3
+  pdf: ^3.13.1
 
   # PDF 内嵌预览（PDFium 内核；Windows/Android/iOS/macOS/Web 全支持）
   pdfrx: ^1.0.107

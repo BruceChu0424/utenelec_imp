@@ -155,11 +155,6 @@ void main() {
         },
       ];
       final api = await _pumpEditor(tester, detail: detail);
-      // TEMP-DEBUG
-      // ignore: avoid_print
-      print(
-        'TEXTS: ${find.byType(Text).evaluate().map((e) => (e.widget as Text).data).whereType<String>().toSet().toList()}',
-      );
       final table = find.byWidgetPredicate(
         (w) => w is UtenEditableGrid<FinanceGridRow>,
       );

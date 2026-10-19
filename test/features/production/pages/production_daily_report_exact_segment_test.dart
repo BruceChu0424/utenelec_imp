@@ -229,9 +229,11 @@ void main() {
         addTearDown(router.dispose);
         final container = ProviderContainer(
           overrides: [
-            ...nativeDetailReaderOverrides(),
-            formDraftStorageProvider.overrideWithValue(
-              MemoryFormDraftStorage(),
+            // Riverpod 3 禁止同一容器重复 override 同一 provider（v2 为后者生效）：
+            // 显式覆盖了 session 与 apiBaseUrl，故关闭 spread 里同名的两项。
+            ...nativeDetailReaderOverrides(
+              includeSession: false,
+              includeServer: false,
             ),
             apiClientProvider.overrideWithValue(api),
             attachmentServiceProvider.overrideWithValue(attachments),
@@ -246,10 +248,6 @@ void main() {
               _FakeEmployeeRepository(),
             ),
             sharedPreferencesProvider.overrideWithValue(preferences),
-            currentPermissionsProvider.overrideWithValue({
-              Perm.productionDailyReportCreate,
-              Perm.productionDailyReportView,
-            }),
             formDraftStorageProvider.overrideWithValue(
               MemoryFormDraftStorage(),
             ),
@@ -510,10 +508,6 @@ void main() {
               _FakeEmployeeRepository(),
             ),
             sharedPreferencesProvider.overrideWithValue(preferences),
-            currentPermissionsProvider.overrideWithValue({
-              Perm.productionDailyReportCreate,
-              Perm.productionDailyReportView,
-            }),
             formDraftStorageProvider.overrideWithValue(
               MemoryFormDraftStorage(),
             ),
@@ -700,10 +694,6 @@ void main() {
                 _FakeEmployeeRepository(),
               ),
               sharedPreferencesProvider.overrideWithValue(preferences),
-              currentPermissionsProvider.overrideWithValue({
-                Perm.productionDailyReportCreate,
-                Perm.productionDailyReportView,
-              }),
               formDraftStorageProvider.overrideWithValue(
                 MemoryFormDraftStorage(),
               ),
@@ -848,10 +838,6 @@ void main() {
               _FakeEmployeeRepository(),
             ),
             sharedPreferencesProvider.overrideWithValue(preferences),
-            currentPermissionsProvider.overrideWithValue({
-              Perm.productionDailyReportCreate,
-              Perm.productionDailyReportView,
-            }),
             formDraftStorageProvider.overrideWithValue(
               MemoryFormDraftStorage(),
             ),
@@ -1316,10 +1302,6 @@ void main() {
               _FakeEmployeeRepository(),
             ),
             sharedPreferencesProvider.overrideWithValue(preferences),
-            currentPermissionsProvider.overrideWithValue({
-              Perm.productionDailyReportCreate,
-              Perm.productionDailyReportView,
-            }),
             formDraftStorageProvider.overrideWithValue(
               MemoryFormDraftStorage(),
             ),
@@ -1329,6 +1311,7 @@ void main() {
             ),
             sessionSnapshotProvider.overrideWith(_ExactSegmentSnapshot.new),
             apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
+            // Riverpod 3 禁止重复 override；本用例只有编辑权限（v2 后者生效口径）。
             currentPermissionsProvider.overrideWithValue({
               Perm.productionDailyReportEdit,
             }),
@@ -2571,10 +2554,6 @@ void main() {
                 _FakeEmployeeRepository(),
               ),
               sharedPreferencesProvider.overrideWithValue(preferences),
-              currentPermissionsProvider.overrideWithValue({
-                Perm.productionDailyReportCreate,
-                Perm.productionDailyReportView,
-              }),
               formDraftStorageProvider.overrideWithValue(
                 MemoryFormDraftStorage(),
               ),
@@ -2762,11 +2741,6 @@ Future<void> _pumpNewReport(
           ),
         employeeRepositoryProvider.overrideWithValue(_FakeEmployeeRepository()),
         sharedPreferencesProvider.overrideWithValue(preferences),
-        currentPermissionsProvider.overrideWithValue({
-          Perm.productionDailyReportCreate,
-          Perm.productionDailyReportView,
-          ...extraPermissions,
-        }),
         formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
         sessionProvider.overrideWith(_ExactSegmentSession.new),
         authenticatedScopeProvider.overrideWith(

@@ -4139,6 +4139,14 @@ void main() {
     await tester.enterText(_orderQty('m-root'), '3000');
     await tester.pump();
     await _settleRebuild(tester);
+    // ignore: avoid_print
+    print('DBG enabled=${tester.widget<TextField>(_orderQty("m-root")).enabled}');
+    // ignore: avoid_print
+    print('DBG text=${_qtyText(tester, _orderQty("m-root"))}');
+    // ignore: avoid_print
+    print('DBG root6=${_qtyText(tester, _orderQty("m-hv5g001"))}');
+    // ignore: avoid_print
+    print('DBG sel=${_nodeSelected(tester, "m-hv5g001")} ${_nodeSelected(tester, "m-root")}');
     expect(
       tester.widget<Checkbox>(_productCheckbox('product-1')).value,
       isTrue,

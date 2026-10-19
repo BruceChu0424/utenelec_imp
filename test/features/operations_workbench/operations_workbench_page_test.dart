@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,6 +12,7 @@ import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/components/layout/uten_history_time_filter.dart';
 import 'package:uten_imp/components/layout/uten_segment_row.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/operations_workbench/models/operations_workbench.dart';
 import 'package:uten_imp/features/operations_workbench/pages/operations_workbench_page.dart';
@@ -56,6 +58,10 @@ Widget _taskScope({required Widget child, Map<String, int>? taskFacts}) {
       : 'purchaseTask';
   return ProviderScope(
     overrides: [
+      // TEMP-DEBUG
+      apiClientProvider.overrideWithValue(
+        _NoNetworkApi(),
+      ),
       fixedBadgeSummaryOverride(
         badgeSummaryFixture(
           facts:
@@ -75,6 +81,22 @@ Widget _taskScope({required Widget child, Map<String, int>? taskFacts}) {
     ],
     child: child,
   );
+}
+
+class _NoNetworkApi extends ApiClient {
+  _NoNetworkApi() : super(Dio());
+  @override
+  Future<Map<String, dynamic>> get(String path, {Map<String, dynamic>? query}) async {
+    throw StateError('offline: $path');
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    throw StateError('offline: $path');
+  }
 }
 
 void main() {
@@ -108,7 +130,29 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(seconds: 1));
+    }
+    // TEMP-DEBUG
+    // ignore: avoid_print
+    print(
+      'TEXTS: ${find.byType(Text).evaluate().map((e) => (e.widget as Text).data).whereType<String>().toSet().toList()}',
+    );
+    // ignore: avoid_print
+    print('HAS-FRAME: ${tester.binding.hasScheduledFrame}');
+    // ignore: avoid_print
+    print('SPINNERS: ${find.byType(CircularProgressIndicator).evaluate().length}');
+    // TEMP-DEBUG: spinner ancestry
+    for (final spinner in find.byType(CircularProgressIndicator).evaluate()) {
+      final chain = <Type>[spinner.widget.runtimeType];
+      spinner.visitAncestorElements((e) {
+        chain.add(e.widget.runtimeType);
+        return chain.length < 30;
+      });
+      // ignore: avoid_print
+      print('ANCESTORS: ${chain.toList()}');
+    }
+    expect(gateway.statuses, [null]);
     final toolbar = find.byKey(
       const Key('operations-workbench-stages-purchase'),
     );

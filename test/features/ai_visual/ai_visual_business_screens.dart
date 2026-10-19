@@ -354,7 +354,12 @@ void businessScreenTests() {
         captureRouterApp(
           router: router,
           overrides: [
-            ...nativeDetailReaderOverrides(),
+            // session 由 _financeOverrides 的 VisualSession 覆写、徽章由下方
+            // fixedBadgeSummaryOverride(带 3 条待办) 覆写: 同一列表重复覆写会抛断言。
+            ...nativeDetailReaderOverrides(
+              includeSession: false,
+              includeBadge: false,
+            ),
             ...await baseOverrides(),
             ..._financeOverrides(FinanceClaimFixture()),
             fixedBadgeSummaryOverride(
@@ -396,7 +401,11 @@ void businessScreenTests() {
             dark: dark,
             router: router,
             overrides: [
-              ...nativeDetailReaderOverrides(),
+              // 同上: session/徽章由 _financeOverrides 与末尾的徽章覆写接管。
+              ...nativeDetailReaderOverrides(
+                includeSession: false,
+                includeBadge: false,
+              ),
               ...await baseOverrides(),
               ..._financeOverrides(FinanceClaimFixture()),
               fixedBadgeSummaryOverride(),
@@ -492,7 +501,8 @@ void businessScreenTests() {
           captureRouterApp(
             router: router,
             overrides: [
-              ...nativeDetailReaderOverrides(),
+              // 徽章由末尾的 fixedBadgeSummaryOverride() 覆写, 关掉助手自带的避免重复。
+              ...nativeDetailReaderOverrides(includeBadge: false),
               ...await baseOverrides(),
               apiClientProvider.overrideWithValue(api),
               salesMasterNameServiceProvider.overrideWithValue(

@@ -91,6 +91,14 @@ Future<bool> loadDocumentOwnerCanWrite(
   String? ownerEmployeeId,
 ) async {
   final ownerScope = ref.read(authenticatedScopeProvider);
+  // Riverpod 3 的 autoDispose 元素在没有监听者时会在 await 间隙被立即回收：
+  // 第一次 read 挂起的元素完成后已销毁，第二次 read 重建出 loading 态，
+  // 使有权限的用户被误判只读。短暂挂一个手动监听保住同一次加载；
+  // 「加载完成前后必须是同一份数据、且主体作用域未变」的竞态保护保持不变。
+  final keepAlive = ref.listenManual(documentScopeCapabilityProvider(scope), (
+    _,
+    _,
+  ) {});
   try {
     final capability = await ref.read(
       documentScopeCapabilityProvider(scope).future,
@@ -106,5 +114,7 @@ Future<bool> loadDocumentOwnerCanWrite(
         capability.canWrite(ownerEmployeeId);
   } catch (_) {
     return false;
+  } finally {
+    keepAlive.close();
   }
 }

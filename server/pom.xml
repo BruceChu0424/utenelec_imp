@@ -37,11 +37,14 @@
              Spring Boot 4 起属性改名：jackson 2.x 兼容线 = jackson-2-bom.version（jackson-bom.version 让给 tools.jackson 3.x），
              沿用旧名会把 2.21.7 错误注入 tools.jackson:jackson-bom（Central 上不存在 2.x）导致依赖解析直接失败。 -->
         <jackson-2-bom.version>2.21.7</jackson-2-bom.version>
+        <!-- Jackson 3 线（Web 层由 Jackson 2 兼容层接管，但 tools.jackson 仍在 classpath 供框架内部使用）：
+             Boot 4.1.1 托管 3.1.5 带 7 个 High/Medium（core/databind），固定到修复版 3.1.7，osv-scanner 门禁。 -->
+        <jackson-bom.version>3.1.7</jackson-bom.version>
         <!-- GHSA-qv9r-c865-cp47：log4j-api 2.24.3 → 2.25.5（Medium，osv-scanner 门禁） -->
         <log4j2.version>2.25.5</log4j2.version>
-        <!-- tomcat 钉版已退役：Spring Boot 4 托管 Tomcat 11（Servlet 6.1 / Jakarta EE 11 基线），
-             强钉 10.1.x 会拉低到不兼容的容器线。原 10.1.59 钉版针对的 GHSA-9xv2-5v5q-p794 等
-             Critical 在 11.x 线同样已修，由 Boot 4.1.1 托管版本兜底。 -->
+        <!-- tomcat 钉版：Spring Boot 4.1.1 托管 11.0.24，带 GHSA-9xv2-5v5q-p794 等 3 个 Critical
+             （即原 10.1.59 钉版针对的同批 CVE 在 11 线重现），固定到修复版 11.0.25，osv-scanner 门禁。 -->
+        <tomcat.version>11.0.25</tomcat.version>
         <opentelemetry.version>1.62.0</opentelemetry.version>
         <postgresql.version>42.7.12</postgresql.version>
         <!-- 短信 SDK 的传递依赖里有三个构件把 com.aliyun:tea 声明成版本**区间**:

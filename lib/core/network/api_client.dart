@@ -472,6 +472,12 @@ final apiClientProvider = Provider<ApiClient>((ref) {
   }
 
   final dio = Dio(buildApiBaseOptions(baseUrl));
+  // JSON 解码放后台 isolate（BackgroundTransformer，2026-10-19 用户口径「数据
+  // 加载不能影响前端」）：默认 SyncTransformer 在 UI isolate json.decode，大响应
+  // （货品页每次点分类要拉 2×500 条禁用/不明货品、大 facets）一次冻住几十到
+  // 上百毫秒——整窗掉帧、选中滑入动画被吃掉。后台解码后 UI 线程只拿现成 Map；
+  // Web 平台自动回退同步解码（compute 不可用），小响应开销可忽略。
+  dio.transformer = BackgroundTransformer();
   // 最先挂：后面的重试/刷新都复用同一份 RequestOptions，截止时间要先矫正好。
   dio.interceptors.add(const WriteDeadlineInterceptor());
   dio.interceptors.add(DeviceAuditInterceptor(deviceAuditStore));

@@ -26,6 +26,30 @@ import 'uten_hierarchy_search_header.dart';
 /// 树的选择语义。
 enum UtenTreeSelectMode { none, single, multi }
 
+/// 行级前景皮肤（2026-10-19 用户口径「深色行的增/改/删图标应反白，颜色逻辑
+/// 写在组件里，全站含收付款一致」）：树组件按行底明暗（flat 深绿一级行 vs
+/// 浅色档行）算好行内 trailing/leading 内容应使用的前景色，经 InheritedWidget
+/// 下发——宿主的行尾图标/文字（分类树增/改/删、锁提示、徽标等）在自己 build
+/// 里 `UtenHierarchyRowSkin.maybeOf(context)?.foreground` 取色即可，不必逐页
+/// 判层级；无皮肤上游（非树场景）回落宿主自带色。
+class UtenHierarchyRowSkin extends InheritedWidget {
+  const UtenHierarchyRowSkin({
+    super.key,
+    required this.foreground,
+    required super.child,
+  });
+
+  /// 该行 trailing/leading 图标与辅助文字的推荐前景色（深绿行 = 白）。
+  final Color foreground;
+
+  static UtenHierarchyRowSkin? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<UtenHierarchyRowSkin>();
+
+  @override
+  bool updateShouldNotify(UtenHierarchyRowSkin oldWidget) =>
+      foreground != oldWidget.foreground;
+}
+
 class UtenHierarchyTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
   const UtenHierarchyTreeView({
     super.key,
@@ -93,7 +117,9 @@ class UtenHierarchyTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
   /// 名称包含任一关键词的节点默认不展开(「未分类(历史孤儿)」这类大杂烩节点)。
   final Set<String> initiallyCollapsedNames;
 
-  /// 节点尾部操作插槽(在内置选择控件之前)。
+  /// 节点尾部操作插槽(在内置选择控件之前)。图标/文字颜色请读
+  /// [UtenHierarchyRowSkin.maybeOf] 的 foreground——深绿一级行会拿到白色，
+  /// 浅色行拿到 onSurfaceVariant，全站一致（2026-10-19 用户口径）。
   final Widget? Function(T node)? trailingBuilder;
 
   /// 节点文字左侧徽标(部门层级短标签)。
@@ -622,150 +648,157 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
                         ? UtenFilterRow.heightOf(context)
                         : UtenControlMetrics.controlHeight(context),
                   ),
-                  child: Stack(
-                    children: [
-                      if (flat)
-                        AnimatedPositioned(
-                          duration: animDuration,
-                          curve: Curves.easeOutCubic,
-                          top: 0,
-                          bottom: 0,
-                          // 选中切换的滑入/滑出（2026-10-19 用户口径「旧的向左滑
-                          // 出、新的向右进来」）：块体刚性平移——选中 left:0，
-                          // 未选中 left:-blockWidth（整块滑出左缘，Stack 裁剪不可
-                          // 见）。恒挂载保证行内容 element 稳定（选中切换不失焦
-                          // 不重挂）；宽度恒为盖名宽，只动位置。
-                          left: flatSelected ? 0 : -blockWidth,
-                          width: blockWidth,
-                          // 右侧上下两角用平台统一控件圆角（UtenRadius.control，
-                          // 2026-10-19 用户口径）：色块读作行首「页签」而不是
-                          // 贴片；左缘与行边齐平（首末行的卡片圆角由外层裁剪）。
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: blockColor,
-                              borderRadius: const BorderRadius.horizontal(
-                                right: Radius.circular(UtenRadius.control),
+                  child: UtenHierarchyRowSkin(
+                    // 行级前景皮肤：深绿一级行下发白色，浅色行下发
+                    // onSurfaceVariant——行尾图标/文字读它取色（含收付款全站）。
+                    foreground: onDarkRow
+                        ? Colors.white
+                        : theme.colorScheme.onSurfaceVariant,
+                    child: Stack(
+                      children: [
+                        if (flat)
+                          AnimatedPositioned(
+                            duration: animDuration,
+                            curve: Curves.easeOutCubic,
+                            top: 0,
+                            bottom: 0,
+                            // 选中切换的滑入/滑出（2026-10-19 用户口径「旧的向左滑
+                            // 出、新的向右进来」）：块体刚性平移——选中 left:0，
+                            // 未选中 left:-blockWidth（整块滑出左缘，Stack 裁剪不可
+                            // 见）。恒挂载保证行内容 element 稳定（选中切换不失焦
+                            // 不重挂）；宽度恒为盖名宽，只动位置。
+                            left: flatSelected ? 0 : -blockWidth,
+                            width: blockWidth,
+                            // 右侧上下两角用平台统一控件圆角（UtenRadius.control，
+                            // 2026-10-19 用户口径）：色块读作行首「页签」而不是
+                            // 贴片；左缘与行边齐平（首末行的卡片圆角由外层裁剪）。
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: blockColor,
+                                borderRadius: const BorderRadius.horizontal(
+                                  right: Radius.circular(UtenRadius.control),
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      Padding(
-                        padding: EdgeInsets.fromLTRB(
-                          8 + indent,
-                          flat
-                              ? (UtenControlMetrics.usesTouchTargets(context)
-                                    ? 0
-                                    : 2)
-                              : 6,
-                          8,
-                          flat
-                              ? (UtenControlMetrics.usesTouchTargets(context)
-                                    ? 0
-                                    : 2)
-                              : 6,
-                        ),
-                        child: Row(
-                          children: [
-                            // A leaf keeps the same expand slot as its siblings, so
-                            // selecting or expanding a row never shifts its title.
-                            SizedBox(
-                              width: hitExtent,
-                              height: hitExtent,
-                              child: node.hasChildren
-                                  ? IconButton(
-                                      tooltip: expanded
-                                          ? '收起$label'
-                                          : '展开$label',
-                                      constraints: BoxConstraints.tightFor(
-                                        width: hitExtent,
-                                        height: hitExtent,
-                                      ),
-                                      padding: EdgeInsets.zero,
-                                      onPressed: () => _toggleExpand(node),
-                                      icon: TweenAnimationBuilder<Color?>(
-                                        tween: ColorTween(end: toggleColor),
-                                        duration: animDuration,
-                                        curve: Curves.easeOutCubic,
-                                        builder: (context, color, _) => Icon(
-                                          expanded
-                                              ? Icons.expand_more_rounded
-                                              : Icons.chevron_right_rounded,
-                                          size: 20,
-                                          color: color ?? toggleColor,
+                        Padding(
+                          padding: EdgeInsets.fromLTRB(
+                            8 + indent,
+                            flat
+                                ? (UtenControlMetrics.usesTouchTargets(context)
+                                      ? 0
+                                      : 2)
+                                : 6,
+                            8,
+                            flat
+                                ? (UtenControlMetrics.usesTouchTargets(context)
+                                      ? 0
+                                      : 2)
+                                : 6,
+                          ),
+                          child: Row(
+                            children: [
+                              // A leaf keeps the same expand slot as its siblings, so
+                              // selecting or expanding a row never shifts its title.
+                              SizedBox(
+                                width: hitExtent,
+                                height: hitExtent,
+                                child: node.hasChildren
+                                    ? IconButton(
+                                        tooltip: expanded
+                                            ? '收起$label'
+                                            : '展开$label',
+                                        constraints: BoxConstraints.tightFor(
+                                          width: hitExtent,
+                                          height: hitExtent,
                                         ),
+                                        padding: EdgeInsets.zero,
+                                        onPressed: () => _toggleExpand(node),
+                                        icon: TweenAnimationBuilder<Color?>(
+                                          tween: ColorTween(end: toggleColor),
+                                          duration: animDuration,
+                                          curve: Curves.easeOutCubic,
+                                          builder: (context, color, _) => Icon(
+                                            expanded
+                                                ? Icons.expand_more_rounded
+                                                : Icons.chevron_right_rounded,
+                                            size: 20,
+                                            color: color ?? toggleColor,
+                                          ),
+                                        ),
+                                      )
+                                    : null,
+                              ),
+                              const SizedBox(width: 4),
+                              if (leading != null) ...[
+                                leading,
+                                const SizedBox(width: 8),
+                              ],
+                              Expanded(
+                                child: UtenHierarchyLabelWidth(
+                                  child: Tooltip(
+                                    message: [...ancestors, label].join(' / '),
+                                    // 文字颜色随色块同拍过渡（flat 选中 = 色块盖过
+                                    // 名字，前景反白/一级行反绿）。
+                                    child: AnimatedDefaultTextStyle(
+                                      duration: animDuration,
+                                      curve: Curves.easeOutCubic,
+                                      style:
+                                          (theme.textTheme.bodyMedium ??
+                                                  const TextStyle())
+                                              .copyWith(
+                                                // 选中加粗 w700（2026-10-19 用户
+                                                // 口径）；一级深绿行基线 w600。
+                                                fontWeight: isSelected
+                                                    ? FontWeight.w700
+                                                    : (onDarkRow
+                                                          ? FontWeight.w600
+                                                          : FontWeight.w400),
+                                                // 选中文字 = 色块的反色（浅色行深绿块
+                                                // → 白字；一级行白块 → 深绿字），
+                                                // 与箭头同拍过渡。
+                                                color: enabled
+                                                    ? (flat
+                                                          ? (flatSelected
+                                                                ? toggleColor
+                                                                : (onDarkRow
+                                                                      ? Colors
+                                                                            .white
+                                                                      : null))
+                                                          : (onDarkRow
+                                                                ? Colors.white
+                                                                : isSelected
+                                                                ? theme
+                                                                      .colorScheme
+                                                                      .primary
+                                                                : null))
+                                                    : theme
+                                                          .colorScheme
+                                                          .onSurfaceVariant,
+                                              ),
+                                      child: Text(
+                                        label,
+                                        maxLines: 1,
+                                        softWrap: false,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                    )
-                                  : null,
-                            ),
-                            const SizedBox(width: 4),
-                            if (leading != null) ...[
-                              leading,
-                              const SizedBox(width: 8),
-                            ],
-                            Expanded(
-                              child: UtenHierarchyLabelWidth(
-                                child: Tooltip(
-                                  message: [...ancestors, label].join(' / '),
-                                  // 文字颜色随色块同拍过渡（flat 选中 = 色块盖过
-                                  // 名字，前景反白/一级行反绿）。
-                                  child: AnimatedDefaultTextStyle(
-                                    duration: animDuration,
-                                    curve: Curves.easeOutCubic,
-                                    style:
-                                        (theme.textTheme.bodyMedium ??
-                                                const TextStyle())
-                                            .copyWith(
-                                              // 选中加粗 w700（2026-10-19 用户
-                                              // 口径）；一级深绿行基线 w600。
-                                              fontWeight: isSelected
-                                                  ? FontWeight.w700
-                                                  : (onDarkRow
-                                                        ? FontWeight.w600
-                                                        : FontWeight.w400),
-                                              // 选中文字 = 色块的反色（浅色行深绿块
-                                              // → 白字；一级行白块 → 深绿字），
-                                              // 与箭头同拍过渡。
-                                              color: enabled
-                                                  ? (flat
-                                                        ? (flatSelected
-                                                              ? toggleColor
-                                                              : (onDarkRow
-                                                                    ? Colors
-                                                                          .white
-                                                                    : null))
-                                                        : (onDarkRow
-                                                              ? Colors.white
-                                                              : isSelected
-                                                              ? theme
-                                                                    .colorScheme
-                                                                    .primary
-                                                              : null))
-                                                  : theme
-                                                        .colorScheme
-                                                        .onSurfaceVariant,
-                                            ),
-                                    child: Text(
-                                      label,
-                                      maxLines: 1,
-                                      softWrap: false,
-                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
                                 ),
                               ),
-                            ),
-                            if (trailing != null) ...[
-                              const SizedBox(width: 8),
-                              trailing,
+                              if (trailing != null) ...[
+                                const SizedBox(width: 8),
+                                trailing,
+                              ],
+                              if (selection != null) ...[
+                                const SizedBox(width: 8),
+                                selection,
+                              ],
                             ],
-                            if (selection != null) ...[
-                              const SizedBox(width: 8),
-                              selection,
-                            ],
-                          ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),

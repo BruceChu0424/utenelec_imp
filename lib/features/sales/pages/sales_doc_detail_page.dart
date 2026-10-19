@@ -169,7 +169,12 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
     _busy = false;
     _approveClaim?.releaseAll().ignore();
     _approveClaim = null;
-    _load();
+    // didUpdateWidget 仍处 build 期：_load 里的 ref.invalidate 会被 riverpod 3 的
+    // 调度器立即标脏 ProviderScope（祖先元素），触发「build 期 markNeedsBuild」
+    // 断言。与 initState 一致推到帧后再重载。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load();
+    });
   }
 
   @override

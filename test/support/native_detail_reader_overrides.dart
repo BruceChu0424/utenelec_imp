@@ -12,6 +12,7 @@ List<Override> nativeDetailReaderOverrides({
   bool includeSession = true,
   bool includeServer = true,
   bool includeSnapshot = true,
+  bool includeBadge = true,
 }) => [
   if (includeSession) sessionProvider.overrideWith(_NativeReaderSession.new),
   if (includeServer)
@@ -20,7 +21,7 @@ List<Override> nativeDetailReaderOverrides({
     sessionSnapshotProvider.overrideWith(_NativeReaderSnapshot.new),
   // Successful business writes still invoke refreshBadges. The page fixtures
   // check their writes/return behavior without starting an app-wide poll timer.
-  fixedBadgeSummaryOverride(),
+  if (includeBadge) fixedBadgeSummaryOverride(),
 ];
 
 class _NativeReaderSession extends SessionNotifier {

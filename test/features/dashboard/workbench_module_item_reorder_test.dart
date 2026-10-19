@@ -27,11 +27,6 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 
-class _StubSession extends SessionNotifier {
-  @override
-  SessionState build() => const SessionState();
-}
-
 class _TestSession extends SessionNotifier {
   @override
   SessionState build() => const SessionState(
@@ -51,8 +46,6 @@ void main() {
     final preferences = await SharedPreferences.getInstance();
     final container = ProviderContainer(
       overrides: [
-        sessionProvider.overrideWith(() => _StubSession()),
-        apiBaseUrlProvider.overrideWithValue('https://workbench.test/api'),
         sharedPreferencesProvider.overrideWithValue(preferences),
         formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
         sessionProvider.overrideWith(_TestSession.new),

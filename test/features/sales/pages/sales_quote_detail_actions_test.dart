@@ -166,12 +166,12 @@ Future<_QuoteApi> _pump(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(preferences),
         formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
-        sessionProvider.overrideWith(_TestSession.new),
         authenticatedScopeProvider.overrideWithValue(
           const AuthenticatedScope(userId: 'test-user'),
         ),
-        sessionSnapshotProvider.overrideWith(_TestSnapshot.new),
-        apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
+        // Riverpod 3 禁止同一容器重复 override 同一 provider。历史上这里是两套
+        // 重复条目、按后者生效，现按原生效语义保留一份（_AuthenticatedSession、
+        // _ConfirmedSnapshot、本地 base URL）。
         sessionProvider.overrideWith(_AuthenticatedSession.new),
         sessionSnapshotProvider.overrideWith(_ConfirmedSnapshot.new),
         apiBaseUrlProvider.overrideWithValue('http://localhost:8080/api'),
@@ -205,19 +205,6 @@ Future<void> _tapAndConfirm(WidgetTester tester, String buttonKey) async {
     find.descendant(of: dialog, matching: find.byType(UtenButton)).last,
   );
   await tester.pumpAndSettle();
-}
-
-class _TestSession extends SessionNotifier {
-  @override
-  SessionState build() => const SessionState(
-    status: AuthStatus.authenticated,
-    user: AppUser(id: 'test-user', code: 'E001', name: '测试员工'),
-  );
-}
-
-class _TestSnapshot extends SessionSnapshotNotifier {
-  @override
-  Future<SessionSnapshot?> build() async => SessionSnapshot();
 }
 
 void main() {

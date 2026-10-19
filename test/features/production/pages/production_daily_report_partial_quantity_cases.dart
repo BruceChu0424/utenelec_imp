@@ -33,7 +33,12 @@ void registerDailyReportPartialQuantityTests() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
-              ...nativeDetailReaderOverrides(),
+              // Riverpod 3 禁止重复 override；本用例自带 session 与 apiBaseUrl
+              // 覆盖（v2 后者生效口径），关闭 spread 里的同名两项。
+              ...nativeDetailReaderOverrides(
+                includeSession: false,
+                includeServer: false,
+              ),
               apiClientProvider.overrideWithValue(api),
               departmentRepositoryProvider.overrideWithValue(
                 _FakeDepartmentRepository(),

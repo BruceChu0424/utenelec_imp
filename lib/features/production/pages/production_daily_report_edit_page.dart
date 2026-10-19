@@ -3942,9 +3942,7 @@ class _ProductionDailyReportEditPageState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
-    final workforceTree = ref
-        .watch(productionWorkforceTreeProvider)
-        .value;
+    final workforceTree = ref.watch(productionWorkforceTreeProvider).value;
     return withFormDraft(
       Scaffold(
         appBar: UtenAppBar(

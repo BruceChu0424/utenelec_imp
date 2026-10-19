@@ -224,28 +224,36 @@ class UtenFloatingWindowState extends State<UtenFloatingWindow>
   // 锚定边缩放：拉底边时顶端固定、高度上限=到屏幕底；拉顶边时底端固定、
   // 上限=当前底边；左右同理。保证拉到极限只停不动，不会把窗口顶跑。
   void _resizeBottom(double dy) => setState(() {
-    final maxH = (_area.maxHeight - _areaMargin - _top)
-        .clamp(widget.minSize.height, _maxHeight);
+    final maxH = (_area.maxHeight - _areaMargin - _top).clamp(
+      widget.minSize.height,
+      _maxHeight,
+    );
     _height = (_height + dy).clamp(widget.minSize.height, maxH);
   });
 
   void _resizeTop(double dy) => setState(() {
-    final maxH = (_top + _height - _areaMargin)
-        .clamp(widget.minSize.height, _maxHeight);
+    final maxH = (_top + _height - _areaMargin).clamp(
+      widget.minSize.height,
+      _maxHeight,
+    );
     final next = (_height - dy).clamp(widget.minSize.height, maxH);
     _top += _height - next;
     _height = next;
   });
 
   void _resizeRight(double dx) => setState(() {
-    final maxW = (_area.maxWidth - _areaMargin - _left)
-        .clamp(widget.minSize.width, _maxWidth);
+    final maxW = (_area.maxWidth - _areaMargin - _left).clamp(
+      widget.minSize.width,
+      _maxWidth,
+    );
     _width = (_width + dx).clamp(widget.minSize.width, maxW);
   });
 
   void _resizeLeft(double dx) => setState(() {
-    final maxW = (_left + _width - _areaMargin)
-        .clamp(widget.minSize.width, _maxWidth);
+    final maxW = (_left + _width - _areaMargin).clamp(
+      widget.minSize.width,
+      _maxWidth,
+    );
     final next = (_width - dx).clamp(widget.minSize.width, maxW);
     _left += _width - next;
     _width = next;
@@ -256,7 +264,8 @@ class UtenFloatingWindowState extends State<UtenFloatingWindow>
     final theme = Theme.of(context);
     return LayoutBuilder(
       builder: (context, area) {
-        final areaChanged = _area.maxWidth != area.maxWidth ||
+        final areaChanged =
+            _area.maxWidth != area.maxWidth ||
             _area.maxHeight != area.maxHeight;
         _area = area;
         if (!_positioned) {
@@ -414,8 +423,10 @@ class UtenFloatingWindowState extends State<UtenFloatingWindow>
                     child: Opacity(
                       opacity: ballOpacity,
                       child: ScaleTransition(
-                        scale: Tween<double>(begin: 0.6, end: 1.0)
-                            .animate(_morphCurve),
+                        scale: Tween<double>(
+                          begin: 0.6,
+                          end: 1.0,
+                        ).animate(_morphCurve),
                         child: Icon(
                           widget.collapseIcon,
                           color: theme.colorScheme.onPrimary,
@@ -461,7 +472,10 @@ class UtenFloatingWindowState extends State<UtenFloatingWindow>
             behavior: HitTestBehavior.translucent,
             onPanStart: (_) => _beginGesture(),
             onPanUpdate: (details) => setState(() {
-              _ballRect = _ballRect.translate(details.delta.dx, details.delta.dy);
+              _ballRect = _ballRect.translate(
+                details.delta.dx,
+                details.delta.dy,
+              );
               _clampBallPosition();
             }),
           ),

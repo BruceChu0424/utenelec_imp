@@ -387,8 +387,7 @@ class _SubcontractDecompositionPageState
       if (previous?.value != null &&
           (next.isLoading ||
               next.hasError ||
-              previous?.value?.generation !=
-                  next.value?.generation)) {
+              previous?.value?.generation != next.value?.generation)) {
         _readerChanged();
       }
     });

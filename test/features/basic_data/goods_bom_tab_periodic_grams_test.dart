@@ -317,10 +317,7 @@ void main() {
       await tester.tap(find.text('5M开关'));
       await tester.pumpAndSettle();
       expect(find.text('已选组件 2'), findsOneWidget);
-      expect(
-        tester.widget<TextField>(quantity).controller!.text,
-        '5',
-      );
+      expect(tester.widget<TextField>(quantity).controller!.text, '5');
       expect(
         tester
             .widget<TextField>(

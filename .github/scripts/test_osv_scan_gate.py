@@ -120,7 +120,8 @@ class OsvScanGateTest(unittest.TestCase):
 class OsvWorkflowContractTest(unittest.TestCase):
     def test_original_scanner_and_reporter_use_supported_flags_in_the_input_workspace(self):
         workflow = (ROOT / ".github/workflows/osv-scanner.yml").read_text(encoding="utf-8")
-        revision = "8dc09193bb540e09b23da07ad7e30bd33bf87018"
+        # 与 osv-scanner.yml 的钉版 action 哈希同步更新（2026-10-19 v2.3.8）。
+        revision = "9a96bc4d2b09685b6142bcfe25a3dc17cb2d7347"
         self.assertIn("google/osv-scanner-action/osv-scanner-action@" + revision, workflow)
         self.assertIn("google/osv-scanner-action/osv-reporter-action@" + revision, workflow)
         self.assertIn("--output-file=results.json", workflow)

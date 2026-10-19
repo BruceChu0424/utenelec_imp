@@ -21,25 +21,26 @@ List<PaymentStyleNode> _nodes() => [
       ),
     ],
   ),
-  PaymentStyleNode(id: 'leaf', code: 'KF000003', name: '外贸刘', children: const []),
+  PaymentStyleNode(
+    id: 'leaf',
+    code: 'KF000003',
+    name: '外贸刘',
+    children: const [],
+  ),
 ];
 
-Widget _app(
-  Widget tree, {
-  double width = 240,
-}) => MaterialApp(
+Widget _app(Widget tree, {double width = 240}) => MaterialApp(
   home: Scaffold(
     body: SizedBox(width: width, height: 560, child: tree),
   ),
 );
 
 UtenContextMenuRegion _regionOf(WidgetTester tester, Finder row) =>
-    tester
-        .widget<UtenContextMenuRegion>(
-          find
-              .ancestor(of: row, matching: find.byType(UtenContextMenuRegion))
-              .first,
-        );
+    tester.widget<UtenContextMenuRegion>(
+      find
+          .ancestor(of: row, matching: find.byType(UtenContextMenuRegion))
+          .first,
+    );
 
 void main() {
   testWidgets('无宿主动作的树：父行菜单仍有展开/收起，叶子为空不弹', (tester) async {
@@ -91,10 +92,7 @@ void main() {
           showSearch: false,
           initiallyExpandDepth: 0,
           rowMenuBuilder: (node) => [
-            UtenMenuItem(
-              label: '宿主动作',
-              onTap: () => hostTapped = true,
-            ),
+            UtenMenuItem(label: '宿主动作', onTap: () => hostTapped = true),
           ],
         ),
       ),

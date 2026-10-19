@@ -22,8 +22,7 @@ class PermissionTransferPreviewDetails extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final catalog =
-        ref.watch(permissionCatalogProvider).value ?? const [];
+    final catalog = ref.watch(permissionCatalogProvider).value ?? const [];
     final names = {
       for (final group in catalog)
         for (final permission in group.permissions)

@@ -242,8 +242,7 @@ class _MyDepartmentPageState extends ConsumerState<MyDepartmentPage> {
     _searchRequest++;
     _acceptPendingSearch = false;
     final tree =
-        ref.read(myDepartmentTreeProvider).value ??
-        const <DepartmentNode>[];
+        ref.read(myDepartmentTreeProvider).value ?? const <DepartmentNode>[];
     final keepSearch =
         _searchQuery.isNotEmpty && (_visibleFilterIds?.contains(id) ?? false);
     final keepEmployeeKeyword =

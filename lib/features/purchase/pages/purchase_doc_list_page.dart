@@ -590,9 +590,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
     final staged = statusScope != null;
     final statusCounts = statusScope == null
         ? null
-        : ref
-              .watch(effectiveDocumentStatusCountsProvider(statusScope))
-              .value;
+        : ref.watch(effectiveDocumentStatusCountsProvider(statusScope)).value;
     // 条件表达式里直接写 `? statusCounts?[key]` 会被 Dart 解析器当成两个 `?`, 走局部函数。
     int? bucket(String key) => statusCounts?[key];
     // 返回即刷新(ADR-108): 回到本列表时, 只有本端写过数据或离开超过 30 秒才重拉,

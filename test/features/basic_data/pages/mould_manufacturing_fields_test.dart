@@ -284,6 +284,7 @@ class _Moulds implements MouldRepository {
     globalListCalls++;
     return list('__all__');
   }
+
   @override
   Future<MouldFacets> facets(String categoryId) async =>
       const MouldFacets(fields: {}, nullCounts: {});
@@ -292,6 +293,7 @@ class _Moulds implements MouldRepository {
     globalFacetsCalls++;
     return const MouldFacets(fields: {}, nullCounts: {});
   }
+
   @override
   Future<MouldDetail> detail(String id) async => record;
   @override

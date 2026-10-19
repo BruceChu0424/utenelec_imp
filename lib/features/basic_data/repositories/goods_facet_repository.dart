@@ -31,7 +31,8 @@ class GoodsFacetRepository {
         'page': page,
         'size': 50,
         'categoryId': ?categoryId,
-        if (categoryRootIds.isNotEmpty) 'categoryRootIds': categoryRootIds.toList(),
+        if (categoryRootIds.isNotEmpty)
+          'categoryRootIds': categoryRootIds.toList(),
         if (keyword?.trim().isNotEmpty == true) 'keyword': keyword!.trim(),
         if (includeRelated && keyword?.trim().isNotEmpty == true)
           'includeRelated': true,

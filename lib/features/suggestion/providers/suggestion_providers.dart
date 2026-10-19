@@ -46,8 +46,7 @@ final suggestionListProvider =
       PagedResult<Suggestion>
     >(SuggestionListNotifier.new);
 
-class SuggestionListNotifier
-    extends AsyncNotifier<PagedResult<Suggestion>> {
+class SuggestionListNotifier extends AsyncNotifier<PagedResult<Suggestion>> {
   final Set<String> _likeRequests = {};
 
   @override

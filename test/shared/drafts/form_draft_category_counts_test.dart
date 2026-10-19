@@ -194,9 +194,7 @@ void main() {
       const scope = DocumentStatusScope(DraftDocKind.salesOrder);
       await container.read(documentStatusCountsProvider(scope).future);
       expect(
-        container
-            .read(effectiveDocumentStatusCountsProvider(scope))
-            .value,
+        container.read(effectiveDocumentStatusCountsProvider(scope)).value,
         {'ACTIONABLE_DRAFT': 2, 'DRAFT': 3, 'APPROVED': 7},
       );
       expect(container.read(draftCountsProvider).salesOrder, 3);

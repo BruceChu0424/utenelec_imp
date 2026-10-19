@@ -722,8 +722,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
         context.appError('结算方式没有加载出来，请点击重试后再保存');
         return;
       }
-      final methods =
-          methodsState.value ?? const <ReferenceMethodOption>[];
+      final methods = methodsState.value ?? const <ReferenceMethodOption>[];
       if (_settlementMethodId == null ||
           !methods.any((method) => method.id == _settlementMethodId)) {
         setState(

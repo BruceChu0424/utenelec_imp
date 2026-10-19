@@ -99,8 +99,7 @@ final expenseListProvider =
       PagedResult<ExpenseClaim>
     >(ExpenseListNotifier.new);
 
-class ExpenseListNotifier
-    extends AsyncNotifier<PagedResult<ExpenseClaim>> {
+class ExpenseListNotifier extends AsyncNotifier<PagedResult<ExpenseClaim>> {
   int _page = 1;
   ExpenseFilter? _lastFilter;
   ExpenseClaimStatus? _lastStatus;

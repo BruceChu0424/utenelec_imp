@@ -46,8 +46,7 @@ final payrollListProvider =
       PagedResult<PayrollSlip>
     >(PayrollListNotifier.new);
 
-class PayrollListNotifier
-    extends AsyncNotifier<PagedResult<PayrollSlip>> {
+class PayrollListNotifier extends AsyncNotifier<PagedResult<PayrollSlip>> {
   int _page = 1;
   PayrollFilter? _lastFilter;
 

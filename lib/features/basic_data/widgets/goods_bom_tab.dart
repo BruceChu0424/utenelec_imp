@@ -1375,7 +1375,8 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
             child: _BomItemAddDialog(
               windowKey: _addComponentWindowKey,
               parentCandidates: candidates,
-              defaultParentGoodsId: _addComponentDefaultParent ?? widget.goodsId,
+              defaultParentGoodsId:
+                  _addComponentDefaultParent ?? widget.goodsId,
               existingPeriodicCount: _periodicEdgeCountByParent,
               onClose: _closeAddComponentWindow,
               onSaved: _onAddComponentSaved,
@@ -1892,12 +1893,12 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
                         Text(goods.name ?? goods.code ?? '货品'),
                         Text(
                           [
-                            goods.code,
-                            goods.series,
-                            goods.model,
-                            goods.spec,
-                            goods.colorName,
-                          ]
+                                goods.code,
+                                goods.series,
+                                goods.model,
+                                goods.spec,
+                                goods.colorName,
+                              ]
                               .whereType<String>()
                               .where((value) => value.isNotEmpty)
                               .join(' / '),
@@ -2034,7 +2035,10 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
                     ),
                   ),
                   const SizedBox(width: UtenSpacing.s8),
-                  SizedBox(width: _pickedQtyFieldWidth, child: _qtyCell(theme, p)),
+                  SizedBox(
+                    width: _pickedQtyFieldWidth,
+                    child: _qtyCell(theme, p),
+                  ),
                   SizedBox(
                     width: UtenSpacing.s24,
                     child: IconButton(

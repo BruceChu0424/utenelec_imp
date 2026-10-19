@@ -370,8 +370,7 @@ class _HrProfileChangesListPageState
         // 部门桶来自后端全量聚合；状态桶即三个队列分段。
         facets: {
           'departmentName':
-              facets.value?['departmentName'] ??
-              const <MasterFacetBucket>[],
+              facets.value?['departmentName'] ?? const <MasterFacetBucket>[],
           'status': _statusFacets(l10n),
         },
         nullCounts: const {},

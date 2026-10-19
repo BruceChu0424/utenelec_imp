@@ -188,8 +188,7 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
                           size: UtenActionButtonSize.small,
                           label: const Text('全选'),
                           onAction: () async {
-                            final notices =
-                                list.value ?? const <Notice>[];
+                            final notices = list.value ?? const <Notice>[];
                             setState(() {
                               _selected
                                 ..clear()

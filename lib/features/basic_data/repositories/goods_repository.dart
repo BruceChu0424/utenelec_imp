@@ -274,7 +274,8 @@ class DioGoodsRepository implements GoodsRepository, GoodsColumnSearchGateway {
       ApiEndpoints.goodsFacets,
       query: {
         'categoryId': ?categoryId,
-        if (categoryRootIds.isNotEmpty) 'categoryRootIds': categoryRootIds.toList(),
+        if (categoryRootIds.isNotEmpty)
+          'categoryRootIds': categoryRootIds.toList(),
         if (keyword?.trim().isNotEmpty == true) 'keyword': keyword!.trim(),
         if (includeRelated && keyword?.trim().isNotEmpty == true)
           'includeRelated': true,

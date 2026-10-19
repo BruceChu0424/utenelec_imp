@@ -37,9 +37,7 @@ final warehouseScopedBadgesProvider = Provider.autoDispose
     .family<BadgeSummary, WarehouseTaskScope>((ref, scope) {
       final warehouseId = scope.warehouseId;
       if (warehouseId == null) return ref.watch(effectiveBadgeSummaryProvider);
-      return ref
-              .watch(_selectedWarehouseBadgesProvider(warehouseId))
-              .value ??
+      return ref.watch(_selectedWarehouseBadgesProvider(warehouseId)).value ??
           BadgeSummary.empty;
     });
 

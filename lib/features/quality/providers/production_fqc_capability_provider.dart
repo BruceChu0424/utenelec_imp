@@ -20,6 +20,4 @@ final productionFqcDecisionCapabilityProvider =
     });
 
 bool productionFqcDecisionAllowed(AsyncValue<bool> capability) =>
-    !capability.isLoading &&
-    !capability.hasError &&
-    capability.value == true;
+    !capability.isLoading && !capability.hasError && capability.value == true;

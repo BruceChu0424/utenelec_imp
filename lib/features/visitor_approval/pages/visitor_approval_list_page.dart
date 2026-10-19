@@ -433,8 +433,7 @@ class _VisitorApprovalListPageState
                     facets.value?['status'] ?? const [],
                     l10n,
                   ),
-                  'hostDepartment':
-                      facets.value?['hostDepartment'] ?? const [],
+                  'hostDepartment': facets.value?['hostDepartment'] ?? const [],
                 },
                 nullCounts: const {},
                 filters: {

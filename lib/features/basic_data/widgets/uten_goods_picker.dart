@@ -1483,7 +1483,9 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       page: page,
       categoryId: _query.isEmpty ? _selectedCategoryId : _searchCategoryId,
       categoryRootIds:
-          _query.isEmpty || _searchCategoryId != null || _searchesAllSelectableGoods
+          _query.isEmpty ||
+              _searchCategoryId != null ||
+              _searchesAllSelectableGoods
           ? const {}
           : _scopeRootIds,
       keyword: _query.isEmpty ? null : _query,

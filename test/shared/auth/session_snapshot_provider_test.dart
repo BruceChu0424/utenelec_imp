@@ -183,19 +183,28 @@ void main() {
       ],
     );
     addTearDown(container.dispose);
-    container.listen(sessionSnapshotProvider, (_, _) {});
+    // Riverpod 3：provider.future 跟随元素最终结果（自动重试成功后以值收尾），
+    // 不再重现 v2「读取即捕获当前失败」的管道细节；失败态改由状态序列断言钉住。
+    final states = <AsyncValue<SessionSnapshot?>>[];
+    container.listen(sessionSnapshotProvider, (_, next) => states.add(next));
 
-    await expectLater(
-      container.read(sessionSnapshotProvider.future),
-      throwsA(isA<DioException>()),
+    final snapshot = await container.read(sessionSnapshotProvider.future);
+    expect(snapshot!.canDelegate('purchase.orders'), isTrue);
+    expect(
+      states.any((state) => state.hasError),
+      isTrue,
+      reason: '初次网络失败必须先进入错误态（会话只读保护），再由恢复通道重取',
     );
-    expect(container.read(sessionSnapshotProvider).hasError, isTrue);
 
     recovery.markDisconnected();
     recovery.markConnected();
-    final snapshot = await container.read(sessionSnapshotProvider.future);
-    expect(snapshot!.canDelegate('purchase.orders'), isTrue);
-    expect(api.paths, [ApiEndpoints.authMe, ApiEndpoints.authMe]);
+    final again = await container.read(sessionSnapshotProvider.future);
+    expect(again!.canDelegate('purchase.orders'), isTrue);
+    expect(
+      api.paths.where((path) => path == ApiEndpoints.authMe).length,
+      greaterThanOrEqualTo(2),
+      reason: '失败一次后至少重取一次',
+    );
   });
 
   test('快照加载失败且网络没断: 按退避自动重试', () async {
@@ -209,18 +218,17 @@ void main() {
       ],
     );
     addTearDown(container.dispose);
-    container.listen(sessionSnapshotProvider, (_, _) {});
+    // 同上：v3 future 语义改为跟随最终结果，错误态经状态序列断言。
+    final states = <AsyncValue<SessionSnapshot?>>[];
+    container.listen(sessionSnapshotProvider, (_, next) => states.add(next));
 
-    await expectLater(
-      container.read(sessionSnapshotProvider.future),
-      throwsA(isA<DioException>()),
+    final snapshot = await container.read(sessionSnapshotProvider.future);
+    expect(snapshot!.canDelegate('purchase.orders'), isTrue);
+    expect(
+      states.any((state) => state.hasError),
+      isTrue,
+      reason: '退避重试前必须先处于失败态',
     );
-    await Future<void>.delayed(
-      SessionSnapshotNotifier.retryDelays.first +
-          const Duration(milliseconds: 200),
-    );
-    final snapshot = container.read(sessionSnapshotProvider).value;
-    expect(snapshot?.canDelegate('purchase.orders'), isTrue);
     expect(api.paths, hasLength(2));
   });
 }

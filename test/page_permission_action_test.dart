@@ -22,11 +22,22 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Riverpod 3 将 copyWithPrevious 标记为 @internal；跨 family 实例手动保页/保旧值是既有架构，等上游公开等价 API 后再迁移。
 // ignore_for_file: invalid_use_of_internal_member
 
+/// Riverpod 3 同步挂载 apiBaseUrlProvider 时需要 SharedPreferences 实例
+/// （与应用 main.dart 相同的注入口径），setUpAll 统一准备。
+late final SharedPreferences mockSharedPreferences;
+
 void main() {
+  setUpAll(() async {
+    SharedPreferences.setMockInitialValues({});
+    mockSharedPreferences = await SharedPreferences.getInstance();
+  });
+
   testWidgets('AI permission shortcut opens the dedicated common drawer', (
     tester,
   ) async {
@@ -678,6 +689,9 @@ Widget _drawerApp(
     overrides: [
       // 开号流程使用真实会话/API边界；测试和应用启动一样先提供其依赖，
       // 而不是绕过敏感读取保护或走默认主机偏好与网络恢复服务。
+      // Riverpod 3 的 container.listen 会同步挂载 apiBaseUrlProvider 及其
+      // sharedPreferencesProvider 依赖，缺这个覆写会直接抛 UnimplementedError。
+      sharedPreferencesProvider.overrideWithValue(mockSharedPreferences),
       apiClientProvider.overrideWithValue(_DrawerApi()),
       sessionProvider.overrideWith(() => _DrawerSession(permissions)),
       pagePermissionDelegationRepositoryProvider.overrideWithValue(repository),

@@ -86,6 +86,10 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         // V873/V874 (ADR-183): 远程 TOTP 凭据与外网策略单例, 均随业务清空保留。
         assertTrue(expectedTables.add("staff_mfa"));
         assertTrue(expectedTables.add("remote_access_policy"));
+        // V879 官网管理与询盘并入: 询盘时间线(append-only)、连接配置单例与桥接诊断单例。
+        assertTrue(expectedTables.add("website_inquiry_events"));
+        assertTrue(expectedTables.add("website_management_settings"));
+        assertTrue(expectedTables.add("website_bridge_status"));
         V871_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         assertEquals(expectedTables.stream().toList(),tables());
         TreeMap<String,String> expectedIndexes=catalogMap(indexesAfterV840);
@@ -100,6 +104,15 @@ class DailyReportMaterialReviewMigrationPostgresTest {
                 "CREATE UNIQUE INDEX staff_mfa_pkey ON public.staff_mfa USING btree (user_id)"));
         assertNull(expectedIndexes.put("remote_access_policy_pkey",
                 "CREATE UNIQUE INDEX remote_access_policy_pkey ON public.remote_access_policy USING btree (singleton_id)"));
+        // V879: 三张新表的主键索引 + 询盘时间线的 (inquiry_id, created_at, id) 读取索引。
+        assertNull(expectedIndexes.put("website_inquiry_events_pkey",
+                "CREATE UNIQUE INDEX website_inquiry_events_pkey ON public.website_inquiry_events USING btree (id)"));
+        assertNull(expectedIndexes.put("idx_website_inquiry_events",
+                "CREATE INDEX idx_website_inquiry_events ON public.website_inquiry_events USING btree (inquiry_id, created_at, id)"));
+        assertNull(expectedIndexes.put("website_management_settings_pkey",
+                "CREATE UNIQUE INDEX website_management_settings_pkey ON public.website_management_settings USING btree (id)"));
+        assertNull(expectedIndexes.put("website_bridge_status_pkey",
+                "CREATE UNIQUE INDEX website_bridge_status_pkey ON public.website_bridge_status USING btree (id)"));
         // V870 adds a nullable correction-source relationship to append-only
         // employment events; its one new partial index is an explicit delta.
         assertNull(expectedIndexes.put("idx_employment_history_correction_source",
@@ -114,6 +127,10 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         // V873/V874 (ADR-183): 凭据与外网策略在业务清空时保留(见 BusinessDataResetSqlContractTest 同步点)。
         assertNull(expectedPolicy.put("staff_mfa","PRESERVE"));
         assertNull(expectedPolicy.put("remote_access_policy","PRESERVE"));
+        // V879: 连接配置与桥接诊断保留, 询盘时间线随业务清空(同一同步点)。
+        assertNull(expectedPolicy.put("website_management_settings","PRESERVE"));
+        assertNull(expectedPolicy.put("website_bridge_status","PRESERVE"));
+        assertNull(expectedPolicy.put("website_inquiry_events","CLEAR"));
         V871_HISTORY_TABLES.forEach(table->assertNull(expectedPolicy.put(table,"PRESERVE")));
         assertEquals(expectedPolicy,catalogMap(resetPolicy()));
         assertEquals(MigrationRehearsalSupport.CURRENT_HEAD_VERSION,

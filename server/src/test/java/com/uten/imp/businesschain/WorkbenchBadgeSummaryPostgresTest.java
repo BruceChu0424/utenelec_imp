@@ -168,6 +168,8 @@ class WorkbenchBadgeSummaryPostgresTest {
         ORIGINAL_ENDPOINTS.put("stockCountFinance", "/api/stock/count-review-badges/finance");
         ORIGINAL_ENDPOINTS.put("stockCountWarehouse", "/api/stock/count-review-badges/warehouse");
         ORIGINAL_ENDPOINTS.put("notices", "/api/notices/unread-index");
+        // 2026-10-18 官网询盘并入: 独立 websiteInquiry 容器, 原端点即新增的计数端点。
+        ORIGINAL_ENDPOINTS.put("websiteInquiry", "/api/website-inquiries/counts");
     }
 
     /**
@@ -244,6 +246,8 @@ class WorkbenchBadgeSummaryPostgresTest {
         legacy("serverStatusAlert", List.of("serverStatus.alerts"), List.of());
         // A new registered entry: its independent contract is the manual status endpoint above.
         legacy("serverUpdateAvailable", List.of("serverOperations.updates"), List.of());
+        // 2026-10-18 官网询盘并入(独立 websiteInquiry 容器): 红 = 未认领, 黄 = 本人跟进中。
+        legacy("websiteInquiry", List.of("websiteInquiry.unclaimed"), List.of("websiteInquiry.myFollowing"));
     }
 
     private static void legacy(String entry, List<String> todo, List<String> inProgress) {

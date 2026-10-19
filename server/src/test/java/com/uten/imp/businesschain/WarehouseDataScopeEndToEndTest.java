@@ -381,7 +381,8 @@ class WarehouseDataScopeEndToEndTest {
 
     /**
      * 授权与范围判断不靠请求边界: 整个测试方法是同一个 MOCK 请求, 中途撤掉负责登记、调离仓储部门,
-     * 下一次判定立即按新组织算。每个不同责任范围仅解析一次；选仓浏览准入与任务范围分开缓存。
+     * 下一次判定立即按新组织算。每个不同责任范围仅解析一次；2026-10-18 ADR-184 修订后
+     * 徽章只用浏览准入一个范围(fn_user_warehouse_access(user,false)), 不再为业务任务单解析任务范围。
      */
     @Test void organizationChangesApplyImmediatelyWhileOneBadgeSummaryResolvesTheScopeOnce() {
         fixture.loginAs(keeperA);
@@ -400,10 +401,10 @@ class WarehouseDataScopeEndToEndTest {
 
         fixture.loginAs(keeperAB);
         assertThat(scopeResolutions(() -> badges.badges(null))).isEqualTo(1);
-        assertThat(scopeResolutions(() -> badges.badges(warehouseB))).as("选仓准入与业务任务各一个范围").isEqualTo(2);
+        assertThat(scopeResolutions(() -> badges.badges(warehouseB))).as("徽章只解析选仓浏览准入一个范围").isEqualTo(1);
         fixture.loginAs(manager);
         assertThat(scopeResolutions(() -> badges.badges(null))).isEqualTo(1);
-        assertThat(scopeResolutions(() -> badges.badges(warehouseC))).as("选仓准入与业务任务各一个范围").isEqualTo(2);
+        assertThat(scopeResolutions(() -> badges.badges(warehouseC))).as("徽章只解析选仓浏览准入一个范围").isEqualTo(1);
         // 汇总结束窗口即关: 之后的判定照样实时。
         db.update("UPDATE departments SET manager_id=? WHERE id=?", previousManager, warehouseDepartment);
         assertThat(scopes.access().role()).isNotEqualTo(Role.SUPERVISOR);

@@ -132,8 +132,10 @@ class DashboardOverviewPostgresTest {
         JsonNode overview = overview(auth(admin));
 
         assertThat(names(overview)).isEqualTo(new TreeSet<>(OVERVIEW_FIELDS));
-        assertThat(metricIds(overview)).contains("notice-unread", "sales-active")
-                .doesNotContain("production-pending");
+        // 2026-10-18 ADR-184 修订: 概览的待排产卡直接吃徽章服务, 徽章展示层按会话主体
+        // 浏览口径读取(超管镜像生效), 因此超管即使挂在财务科室、不兼职生产部门,
+        // 待排产卡也恢复可见; 数量仍按徽章事实聚合, 不叠加部门条件。
+        assertThat(metricIds(overview)).contains("notice-unread", "sales-active", "production-pending");
     }
 
     private JsonNode overview(Authentication actor) throws Exception {

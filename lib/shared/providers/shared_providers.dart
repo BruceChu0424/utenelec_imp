@@ -17,15 +17,96 @@ import '../../core/performance/performance_tier.dart';
 
 /// SharedPreferences 实例
 ///
-/// 必须在 main.dart 通过 override 注入：
+/// 真实实例必须在 main.dart 通过 override 注入：
 /// ```dart
 /// ProviderScope(overrides: [sharedPreferencesProvider.overrideWithValue(prefs)])
 /// ```
+///
+/// 未注入时（测试容器/预览）返回全内存空实现而不是抛错：Riverpod 3 的
+/// container.listen 会同步挂载整条依赖链，抛错会把上千个未显式注入 prefs 的
+/// 测试连人带 widget 一起击穿；空实现读出全默认值、写入不持久化，语义等同
+/// v2 时代「测试里从未真正读到存储」的事实行为。
 final sharedPreferencesProvider = Provider<SharedPreferences>(
-  (ref) => throw UnimplementedError(
-    'sharedPreferencesProvider must be overridden in main.dart',
-  ),
+  (ref) => InMemorySharedPreferences(),
 );
+
+/// sharedPreferencesProvider 的未注入兜底：读写仅落在进程内存。
+class InMemorySharedPreferences implements SharedPreferences {
+  final Map<String, Object> _values = {};
+
+  @override
+  Set<String> getKeys() => _values.keys.toSet();
+
+  @override
+  Object? get(String key) => _values[key];
+
+  @override
+  bool? getBool(String key) => _values[key] as bool?;
+
+  @override
+  int? getInt(String key) => _values[key] as int?;
+
+  @override
+  double? getDouble(String key) => _values[key] as double?;
+
+  @override
+  String? getString(String key) => _values[key] as String?;
+
+  @override
+  bool containsKey(String key) => _values.containsKey(key);
+
+  @override
+  List<String>? getStringList(String key) =>
+      (_values[key] as List<Object?>?)?.cast<String>();
+
+  @override
+  Future<bool> setBool(String key, bool value) async {
+    _values[key] = value;
+    return true;
+  }
+
+  @override
+  Future<bool> setInt(String key, int value) async {
+    _values[key] = value;
+    return true;
+  }
+
+  @override
+  Future<bool> setDouble(String key, double value) async {
+    _values[key] = value;
+    return true;
+  }
+
+  @override
+  Future<bool> setString(String key, String value) async {
+    _values[key] = value;
+    return true;
+  }
+
+  @override
+  Future<bool> setStringList(String key, List<String> value) async {
+    _values[key] = value;
+    return true;
+  }
+
+  @override
+  Future<bool> remove(String key) async {
+    _values.remove(key);
+    return true;
+  }
+
+  @override
+  Future<bool> commit() async => true;
+
+  @override
+  Future<bool> clear() async {
+    _values.clear();
+    return true;
+  }
+
+  @override
+  Future<void> reload() async {}
+}
 
 /// 设备探测 + 打分器
 final deviceProbeProvider = Provider<DeviceProbe>((ref) => DeviceProbe());

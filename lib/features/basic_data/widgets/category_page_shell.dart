@@ -195,6 +195,9 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   final _treeRequests = LatestRequestGuard();
   List<ProductCategoryNode>? _tree;
   String? _selectedId;
+
+  /// 右栏当前跟随的分类 id（比 [_selectedId] 晚一帧，见 [_syncPaneSelectionNextFrame]）。
+  String? _paneSelectedId;
   bool _loading = true;
   String? _error;
 
@@ -239,6 +242,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     setState(() {
       _tree = null;
       _selectedId = null;
+      _paneSelectedId = null;
       _searchCategoryId = null;
       _visibleFilterIds = null;
       _searchLoading = false;
@@ -271,6 +275,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
       setState(() {
         _tree = const [];
         _selectedId = null;
+        _paneSelectedId = null;
         _searchCategoryId = null;
         _loading = false;
         _error = null;
@@ -434,6 +439,18 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
       _treeSearchKeyword = null;
       _searchLoading = false;
     });
+    _syncPaneSelectionNextFrame();
+  }
+
+  /// 右栏跟随选中但**延后一帧**换挂（2026-10-19 用户口径「点击前端不卡」）：
+  /// 点击帧只重建左树（选中高亮 + 色块滑入动画起步），右栏详情/列表下一帧再
+  /// 换挂并发起数据请求——「树重建 + 右栏重挂 + 折叠布局」不再挤同一帧把
+  /// 动画吃掉。选中本身（`_selectedId`）仍即时生效，树高亮不延迟。
+  void _syncPaneSelectionNextFrame() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _paneSelectedId == _selectedId) return;
+      setState(() => _paneSelectedId = _selectedId);
+    });
   }
 
   /// A deliberate scope or search-mode change invalidates the whole query,
@@ -584,6 +601,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
         _acceptPendingSearch = false;
         _selectedId = created.id;
       });
+      _syncPaneSelectionNextFrame();
       context.appSuccess('分类已创建');
       await shellReload();
       if (mounted) shellAfterCategorySaved();
@@ -643,7 +661,10 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
 
   /// 删除成功后的收尾：清掉指向已删分类的选中态（调用方随后 shellReload）。
   void shellAfterCategoryDeleted(String nodeId) {
-    if (_selectedId == nodeId) _selectedId = null;
+    if (_selectedId == nodeId) {
+      _selectedId = null;
+      _syncPaneSelectionNextFrame();
+    }
   }
 
   /// 顶部搜索命中内容时的右栏同步关键词（DetailPane externalKeyword 用）。
@@ -862,7 +883,11 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     final theme = Theme.of(context);
     final bp = context.breakpoint;
     final tree = _tree ?? const <ProductCategoryNode>[];
-    final selected = _selectedId == null ? null : _findById(tree, _selectedId!);
+    // 右栏跟随延后一帧的选中（[_syncPaneSelectionNextFrame]）：点击帧树高亮
+    // 与色块动画先上屏，右栏下一帧再换挂。
+    final selected = _paneSelectedId == null
+        ? null
+        : _findById(tree, _paneSelectedId!);
     final canCreate = shellCanCreate;
 
     Widget detailPaneOf(ProductCategoryNode selectedNode) => KeyedSubtree(

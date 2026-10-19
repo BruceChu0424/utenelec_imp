@@ -141,9 +141,10 @@ class UtenHierarchyTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
   /// 五档梯度（UtenColors.treeLevelRow）——一级深绿实底白字、往下逐档降饱和降
   /// 明度、四档起转中性灰，4 及更深固定第五档（至少 5 个层级色差、最深一层固定
   /// 一色、色差拉开且协调，2026-09-24 第二轮口径）；行距收紧、行间 1px 分隔线。
-  /// 选中 = 行首整高色块**从左滑入**盖过展开/收起箭头与名字（宽 = 箭头位 + 名字
+  /// 选中 = 行首整高色块盖过展开/收起箭头与名字（宽 = 箭头位 + 名字
   /// 自然宽 + 呼吸位，上限行宽 60% 的名字默认占比；右侧上下两角平台统一控件
-  /// 圆角），名字/箭头随色块同拍反白——一级深绿行本身即深绿，反其道用白块 +
+  /// 圆角）。切换选中 = 块体刚性平移：旧行**向左滑出**左缘、新行**向右滑入**
+  /// （2026-10-19 用户口径）。名字/箭头随色块同拍取反色——一级深绿行本身即深绿，反其道用白块 +
   /// 深绿前景；浏览态右缘对勾退役（2026-10-19 用户口径，色块盖名后冗余；同日
   /// 早前形态依次为左缘 3px 强调条 → 盖箭头短块）。
   /// 完整祖先路径由名称提示与外部选中路径表达；行内只保留单行节点标题。
@@ -543,28 +544,33 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
         );
         final label = widget.labelOf?.call(node) ?? node.name;
         // flat 选中色块（2026-10-19 用户口径「色块盖过名字+从左滑入」）：铺在行
-        // 内容之下、行首整高，宽度 = 箭头位 + 名字自然宽 + 呼吸位，上限为行宽
-        // 的 60%（名字默认占比，超长不吞行尾动作区），下限仍盖满展开位；标题
-        // 不位移。浅色档行用深绿块（与一级行同色）+ 名字/箭头反白；一级行本身
-        // 即深绿，反其道：白块 + 深绿前景——选中块与行底始终成对比。宽度经
+        // 内容之下、行首整高，宽度 = 箭头位 + 名字自然宽（w700 实测）+ 呼吸位，
+        // 上限为行宽的 60%（名字默认占比，超长不吞行尾动作区），下限仍盖满展开
+        // 位；标题不位移。浅色档行盖深绿块、名字/箭头**反白**；一级行本身即深绿
+        // 反其道盖白块、前景转**深绿**——选中文字永远落在与色块成对比的颜色上
+        // （2026-10-19 修正：此前误用色块同色导致字被块吞掉）。宽度经
         // AnimatedPositioned 0↔目标宽 生长/收回（左缘锚定 = 从左边滑入），文字
-        // 与箭头颜色同拍过渡；浏览态右缘对勾退役（色块盖名后冗余）。
+        // 与箭头颜色同拍过渡、选中加粗 w700；浏览态右缘对勾退役（盖名后冗余）。
         final flatSelected = flat && isSelected;
         final blockColor = onDarkRow
             ? Colors.white
             : _flatRowBackground(theme, 0);
+        // 选中前景 = 色块的反色：深绿块上白字、白块上深绿字。
+        final selectedForeColor = onDarkRow
+            ? _flatRowBackground(theme, 0)
+            : Colors.white;
         final toggleColor = flatSelected
-            ? (onDarkRow ? _flatRowBackground(theme, 0) : Colors.white)
+            ? selectedForeColor
             : (onDarkRow ? Colors.white : theme.colorScheme.onSurfaceVariant);
         final animDuration = MediaQuery.disableAnimationsOf(context)
             ? Duration.zero
-            : const Duration(milliseconds: 220);
+            : const Duration(milliseconds: 260);
         double blockWidth = 0;
         if (flat) {
           final scaler = MediaQuery.textScalerOf(context);
           final nameWidth = _labelWidth(
             label,
-            theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600) ??
+            theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700) ??
                 const TextStyle(),
             scaler,
           );
@@ -622,12 +628,15 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
                         AnimatedPositioned(
                           duration: animDuration,
                           curve: Curves.easeOutCubic,
-                          left: 0,
                           top: 0,
                           bottom: 0,
-                          // 选中 = 从左缘滑入（宽度自 0 生长盖过名字）；未选中收回。
-                          // 恒挂载保证行内容 element 稳定（选中切换不失焦不重挂）。
-                          width: flatSelected ? blockWidth : 0,
+                          // 选中切换的滑入/滑出（2026-10-19 用户口径「旧的向左滑
+                          // 出、新的向右进来」）：块体刚性平移——选中 left:0，
+                          // 未选中 left:-blockWidth（整块滑出左缘，Stack 裁剪不可
+                          // 见）。恒挂载保证行内容 element 稳定（选中切换不失焦
+                          // 不重挂）；宽度恒为盖名宽，只动位置。
+                          left: flatSelected ? 0 : -blockWidth,
+                          width: blockWidth,
                           // 右侧上下两角用平台统一控件圆角（UtenRadius.control，
                           // 2026-10-19 用户口径）：色块读作行首「页签」而不是
                           // 贴片；左缘与行边齐平（首末行的卡片圆角由外层裁剪）。
@@ -706,10 +715,13 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
                                         (theme.textTheme.bodyMedium ??
                                                 const TextStyle())
                                             .copyWith(
-                                              fontWeight:
-                                                  isSelected || onDarkRow
-                                                  ? FontWeight.w600
-                                                  : FontWeight.w400,
+                                              // 选中加粗 w700（2026-10-19 用户
+                                              // 口径）；一级深绿行基线 w600。
+                                              fontWeight: isSelected
+                                                  ? FontWeight.w700
+                                                  : (onDarkRow
+                                                        ? FontWeight.w600
+                                                        : FontWeight.w400),
                                               // 选中文字 = 色块的反色（浅色行深绿块
                                               // → 白字；一级行白块 → 深绿字），
                                               // 与箭头同拍过渡。

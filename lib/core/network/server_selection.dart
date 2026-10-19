@@ -15,7 +15,6 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/legacy.dart';
-import 'package:flutter_riverpod/misc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../shared/providers/shared_providers.dart';
@@ -205,13 +204,6 @@ Future<bool> _probeConfiguredLocalServer() =>
     probeHealth(healthProbeBaseUrl(localApiBaseUrl));
 
 final localServerReachableProvider =
-    StateNotifierProvider<LocalServerReachabilityNotifier, bool>((ref) {
-      // 同 apiBaseUrlProvider：未注入 prefs 的测试容器降级，不抛 UnimplementedError。
-      SharedPreferences? prefs;
-      try {
-        prefs = ref.watch(sharedPreferencesProvider);
-      } on ProviderException {
-        prefs = null;
-      }
-      return LocalServerReachabilityNotifier(prefs);
-    });
+    StateNotifierProvider<LocalServerReachabilityNotifier, bool>(
+      (ref) => LocalServerReachabilityNotifier(ref.watch(sharedPreferencesProvider)),
+    );

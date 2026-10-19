@@ -449,7 +449,9 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
                     items: items,
                     // 导出/打印（V717 settlement_method:export）：打印预览用本页列
                     // 渲染，导出列集服务端与表格对齐——「表格显示啥导出啥」。
-                    toolbarActions: [
+                    // 导出/打印进左簇（2026-10-18 用户口径）：与「表头设置 / 全屏」同排靠左，
+                    // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
+                    toolbarLeadingActions: [
                       UtenPrintPreviewButton(
                         title: '结算方式', // TODO(l10n): 补 arb
                         subtitle: '全部行', // TODO(l10n): 补 arb
@@ -462,6 +464,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
                         exportFilename: '结算方式', // TODO(l10n): 补 arb
                         type: UtenButtonType.primary,
                         size: UtenButtonSize.large,
+                        icon: null,
                       ),
                       UtenExportButton(
                         endpoint:
@@ -473,6 +476,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
                         label: '导出结算方式', // TODO(l10n): 补 arb
                         type: UtenButtonType.primary,
                         size: UtenButtonSize.large,
+                        icon: null,
                       ),
                     ],
                     facets: _labeledFacets,

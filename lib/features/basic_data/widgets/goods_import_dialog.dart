@@ -144,8 +144,9 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
           '可导入列：系列、型号、规格、材质、主颜色、单位、来源、价格、'
           '最小起订量、订货倍数、状态、后模镶件编号、备注。\n'
           '${basicDataL10n(context).goodsNameEnImportHint}\n'
-          '客户型号、模具编号、所属仓库、生产车间仅识别不导入。\n'
-          '此处仅新增货品。编号可留空自动生成，已有编号不能重复导入；修改已有货品请在货品详情中保存。\n'
+          '客户型号、模具编号、模具名称、所属仓库、生产车间仅识别不导入。\n'
+          '此处仅新增货品。编号可留空自动生成；编号与在用货品重复不能导入，'
+          '与已删除货品同编号会按清单内容恢复该货品；修改已有货品请在货品详情中保存。\n'
           '缺失的分类/颜色/单位会自动新建。\n'
           '如从「导出货品」取得文件，导出时请不要设置密码。',
           style: theme.textTheme.bodySmall?.copyWith(
@@ -198,6 +199,15 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
           _willCreate(theme, '将自动新建分类', r.willCreateCategories),
           _willCreate(theme, '将自动新建颜色', r.willCreateColors),
           _willCreate(theme, '将自动新建单位', r.willCreateUnits),
+          if (r.restorableRows > 0) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Text(
+              '其中 ${r.restorableRows} 条编号与已删除货品相同，导入时将按清单内容恢复这些货品。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.tertiary,
+              ),
+            ),
+          ],
           const SizedBox(height: UtenSpacing.s8),
           Text(
             '检测通过，可确认导入 ${r.readyToImport} 条。',

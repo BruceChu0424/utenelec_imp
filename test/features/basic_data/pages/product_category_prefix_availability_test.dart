@@ -48,7 +48,8 @@ void main() {
 
     await tester.tap(find.text('成品类'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('编辑'));
+    // 编辑入口是左树行内图标（2026-10-19 起分类 CRUD 在树行内，详情卡无按钮）。
+    await tester.tap(find.byTooltip('编辑成品类'));
     await tester.pumpAndSettle();
     expect(find.byType(CategoryEditDialog), findsOneWidget);
 
@@ -103,7 +104,8 @@ void main() {
       {'prefix': 'UGX'},
     ]);
     expect(server.prefix, 'UGX');
-    expect(server.detailReads, 2);
+    // detail 计数：选中分类 1 次 + 树行编辑图标拉详情 1 次 + 保存后重挂 1 次 = 3。
+    expect(server.detailReads, 3);
     expect(find.textContaining('编号前缀 UGX'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

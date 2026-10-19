@@ -1,10 +1,12 @@
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 // 组装信息「添加组件」(ADR-111 评审修复)：勾选多个组件后只发一次服务端追加命令，
 // 整批原子；服务端逐行拒绝的原因留在弹窗里给人改，不再逐个新建、失败只报「N 个跳过」。
+// 2026-10-19 起弹窗是可拖动缩放的无蒙版浮窗（UtenFloatingWindow），断言按浮窗类型找。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:dio/dio.dart';
+import 'package:uten_imp/components/feedback/uten_floating_window.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_error.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -161,7 +163,7 @@ void main() {
       'goods-y',
     ]);
     // 被拒：弹窗还在，整体原因 + 逐行原因都看得到。
-    expect(find.byType(Dialog), findsOneWidget);
+    expect(find.byType(UtenFloatingWindow), findsOneWidget);
     expect(find.byKey(const Key('goods-bom-add-error')), findsOneWidget);
     expect(find.textContaining('现有组件没有任何改动'), findsOneWidget);
     expect(
@@ -173,7 +175,7 @@ void main() {
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
     expect(repo.pasteCalls, hasLength(2));
-    expect(find.byType(Dialog), findsNothing, reason: '整批成功才关弹窗');
+    expect(find.byType(UtenFloatingWindow), findsNothing, reason: '整批成功才关弹窗');
     expect(repo.listCalls, greaterThan(reloadsBefore), reason: '成功后重载组装树');
   });
 
@@ -181,23 +183,17 @@ void main() {
     final repo = _RecordingBomRepo(rejectFirst: false);
     await _openAddDialog(tester, repo);
 
-    // Required labels and empty-field placeholders share their text; count the
-    // actual quantity controls by component identity instead of counting labels.
+    // 2026-10-19 二轮起已选区是紧凑表格：数量 key 直接挂在 TextField 上。
+    Finder qtyField(String goodsId) =>
+        find.byKey(ValueKey('goods-bom-add-qty-$goodsId'));
     for (final goodsId in ['goods-x', 'goods-y']) {
-      final quantity = find.descendant(
-        of: find.byKey(ValueKey('goods-bom-add-qty-$goodsId')),
-        matching: find.byType(TextField),
+      expect(qtyField(goodsId), findsOneWidget);
+      expect(
+        tester.widget<TextField>(qtyField(goodsId)).decoration!.hintText,
+        '设计使用数量',
       );
-      expect(quantity, findsOneWidget);
-      expect(tester.widget<TextField>(quantity).decoration!.hintText, '设计使用数量');
     }
-    await tester.enterText(
-      find.descendant(
-        of: find.byKey(const Key('goods-bom-add-qty-goods-x')),
-        matching: find.byType(TextField),
-      ),
-      '0',
-    );
+    await tester.enterText(qtyField('goods-x'), '0');
     await tester.pumpAndSettle();
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
@@ -209,14 +205,9 @@ void main() {
   testWidgets('设计使用数量清空即报错，不再静默按 1 提交', (tester) async {
     final repo = _RecordingBomRepo(rejectFirst: false);
     await _openAddDialog(tester, repo);
+    final qtyField = find.byKey(const ValueKey('goods-bom-add-qty-goods-y'));
 
-    await tester.enterText(
-      find.descendant(
-        of: find.byKey(const Key('goods-bom-add-qty-goods-y')),
-        matching: find.byType(TextField),
-      ),
-      '',
-    );
+    await tester.enterText(qtyField, '');
     await tester.pumpAndSettle();
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
@@ -224,16 +215,50 @@ void main() {
     expect(repo.pasteCalls, isEmpty);
     expect(find.text('「螺丝」请填写设计使用数量'), findsOneWidget);
 
-    await tester.enterText(
-      find.descendant(
-        of: find.byKey(const Key('goods-bom-add-qty-goods-y')),
-        matching: find.byType(TextField),
-      ),
-      '0.25',
-    );
+    await tester.enterText(qtyField, '0.25');
     await tester.pumpAndSettle();
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
     expect(repo.pasteCalls.single.items.map((i) => i['qty']), [1.0, 0.25]);
+  });
+
+  testWidgets('浮窗是页面内浮层：可缩成悬浮球再展开（现场不丢），关闭即清', (tester) async {
+    final repo = _RecordingBomRepo(rejectFirst: false);
+    await _openAddDialog(tester, repo);
+
+    // 2026-10-19 二轮：浮窗挂在页面 Stack 里（非路由弹窗、无蒙版 barrier），
+    // 底层组装表格照常可点可滚。
+    expect(find.byType(UtenFloatingWindow), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('goods-bom-add-qty-goods-x')),
+      '3',
+    );
+    await tester.pumpAndSettle();
+
+    // 缩小成悬浮球：窗口内容收起。
+    await tester.tap(find.byTooltip('缩小成悬浮球'));
+    await tester.pumpAndSettle();
+    expect(find.text('添加位置'), findsNothing);
+
+    // 点球展开：现场复原，已填数量不丢。
+    await tester.tap(find.byIcon(Icons.post_add_rounded));
+    await tester.pumpAndSettle();
+    expect(find.text('添加位置'), findsOneWidget);
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const ValueKey('goods-bom-add-qty-goods-x')),
+          )
+          .controller!
+          .text,
+      '3',
+    );
+
+    // 关闭按钮 → 会话关闭，浮窗从页面卸载。
+    await tester.tap(find.byTooltip('关闭'));
+    await tester.pumpAndSettle();
+    expect(find.byType(UtenFloatingWindow), findsNothing);
+    expect(repo.pasteCalls, isEmpty);
   });
 }

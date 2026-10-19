@@ -6,7 +6,10 @@
 //
 // 现在明细区只有这一份：
 // - 分类信息卡(标题=名称（备注）(数量: N)) + 本地搜索 + MasterDataTableView
-//   (表头筛选/排序/分页/多选)；
+//   (表头筛选/排序/分页/多选)；卡上无按钮——分类增/改/删在左树行内(图标+右键
+//   菜单，2026-10-19 用户口径)，系统根锁说明仍在卡上；
+// - 页面特有按钮(导入货品)与预览打印/导出进表格工具条左簇（「表头设置/全屏」
+//   右侧，纯文字无 icon，2026-10-19 用户口径）；
 // - 右下悬浮组只挂「已选 N 项 + 添加X」（2026-10-18 用户口径：添加按钮悬浮在
 //   右下角紧挨已选计数，原「X (N) + 添加X」标题行整行删除，数量移到分类卡片）；
 // - 行启停走单条窄命令(PATCH /status，带列表行版本，不再先拉详情)；
@@ -26,7 +29,6 @@ import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../core/network/api_exception.dart';
@@ -80,7 +82,9 @@ class MasterPaneFacets {
   final Map<String, int> nullCounts;
 }
 
-/// 打印/导出按钮配置；[inCard]=true 放分类信息卡(货品页)，否则放表格工具条。
+/// 打印/导出按钮配置：挂上后预览打印 + 加密导出进表格工具条左簇
+/// （「表头设置 / 全屏」右侧，纯文字无 icon，2026-10-19 起四页统一——
+/// 原货品页放分类信息卡的 inCard 口径退役）。
 class MasterPaneExport {
   const MasterPaneExport({
     required this.title,
@@ -89,7 +93,6 @@ class MasterPaneExport {
     required this.label,
     this.extraQuery = const {},
     this.queryParamsOf,
-    this.inCard = false,
     this.contactSensitiveInBody = false,
   });
 
@@ -99,7 +102,6 @@ class MasterPaneExport {
   final String label;
   final Map<String, dynamic> extraQuery;
   final Map<String, dynamic> Function(MasterPaneQuery query)? queryParamsOf;
-  final bool inCard;
 
   /// 客户/供应商(security-19, ADR-110)：搜索关键字(会匹配手机号)与手机/电话/银行账号的筛选值
   /// 只随导出请求体的 `sensitiveFilter` 发送，不进 URL 查询串(反向代理访问日志会整行记下查询串)。
@@ -145,8 +147,6 @@ class MasterEntityPaneConfig<TItem, TDetail> {
     required this.noun,
     required this.icon,
     required this.defaultCodePrefix,
-    required this.keyPrefix,
-    required this.searchHint,
     required this.columns,
     required this.idOf,
     required this.statusOf,
@@ -157,7 +157,6 @@ class MasterEntityPaneConfig<TItem, TDetail> {
     this.loadGlobalFacets,
     this.loadQueryFacets,
     this.loadFacetPage,
-    this.showLocalSearch = true,
     required this.batchEntityPath,
     required this.statusResourceOf,
     required this.canCreate,
@@ -180,7 +179,7 @@ class MasterEntityPaneConfig<TItem, TDetail> {
     this.rowMenuOverride,
     this.backgroundMenuBuilder,
     this.extraBatchMenuItems,
-    this.cardActions,
+    this.toolbarLeadingActions,
     this.loadLeadingGroups,
   });
 
@@ -188,11 +187,6 @@ class MasterEntityPaneConfig<TItem, TDetail> {
   final String noun;
   final IconData icon;
   final String defaultCodePrefix;
-
-  /// 搜索框 key 前缀(切分类/树搜索时按 key 重建搜索框)。
-  final String keyPrefix;
-  final String searchHint;
-  final bool showLocalSearch;
   final List<MasterColumnDef<TItem>> columns;
   final String Function(TItem row) idOf;
   final String? Function(TItem row) statusOf;
@@ -279,9 +273,10 @@ class MasterEntityPaneConfig<TItem, TDetail> {
   )?
   extraBatchMenuItems;
 
-  /// 分类信息卡上的额外按钮(货品页：导入货品)。
+  /// 表格工具条左簇的页面特有按钮（货品页：导入货品），排在预览打印/导出之前，
+  /// 与「表头设置 / 全屏」同一簇同一形态（纯文字无 icon）。
   final List<Widget> Function(MasterEntityPaneController<TItem, TDetail> pane)?
-  cardActions;
+  toolbarLeadingActions;
 
   /// 表头下前导分组(货品页：禁用货品 / 不明货品)，随列表一起重拉。
   final Future<List<MasterDataGroup<TItem>>> Function(
@@ -296,30 +291,18 @@ class MasterEntityDetailPane<TItem, TDetail> extends ConsumerStatefulWidget {
     super.key,
     required this.config,
     required this.categoryId,
-    required this.canEditCategory,
-    required this.canAddCategory,
-    required this.canDeleteCategory,
     required this.externalKeyword,
     this.externalSearchPending = false,
-    required this.onAddChild,
-    required this.onEditCategory,
-    required this.onDeleteCategory,
   });
 
   final MasterEntityPaneConfig<TItem, TDetail> config;
   final String? categoryId;
-  final bool canEditCategory;
-  final bool canAddCategory;
-  final bool canDeleteCategory;
 
   /// 顶部树搜索命中内容时传入的过滤词：采纳为本地列表搜索词，右侧只显示搜索结果。
   final String? externalKeyword;
 
   /// Invalidates old reads immediately while the shared search debounces.
   final bool externalSearchPending;
-  final VoidCallback onAddChild;
-  final void Function(ProductCategoryDetail detail) onEditCategory;
-  final VoidCallback onDeleteCategory;
 
   @override
   ConsumerState<MasterEntityDetailPane<TItem, TDetail>> createState() =>
@@ -353,12 +336,15 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   Map<String, String?> _filters = {};
   String _keyword = '';
   MasterPaneFacets? _facets;
-  int _kwSeed = 0;
   String? _sortKey;
   bool _sortAsc = true;
   Set<String> _selectedIds = {};
   bool _busy = false;
   int _scrollToEndRequest = 0;
+
+  /// 折叠滚动外层控制器：滚到底请求时联动收起分类卡（见
+  /// [_revealOuterScrollToEnd]）。
+  final ScrollController _outerScroll = ScrollController();
 
   MasterEntityPaneConfig<TItem, TDetail> get _c => widget.config;
 
@@ -370,6 +356,12 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     super.initState();
     _sortKey = _c.defaultSortKey;
     _load();
+  }
+
+  @override
+  void dispose() {
+    _outerScroll.dispose();
+    super.dispose();
   }
 
   @override
@@ -409,7 +401,6 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
         _sortKey = _c.defaultSortKey;
         _sortAsc = true;
         _selectedIds = {};
-        _kwSeed++;
         _keyword = widget.externalKeyword ?? '';
       });
       reload(page: 1);
@@ -448,6 +439,28 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       return;
     }
     setState(() => _scrollToEndRequest++);
+    _revealOuterScrollToEnd();
+  }
+
+  /// 滚到底时把折叠页外层（分类信息卡）一并推到底：表体内层由表格自行跳到底，
+  /// 但外层不收起时表体底缘仍在窗下、末行看不全。原底部翻页条曾在布局上垫高
+  /// 底缘隐式兜住这一点，2026-10-18 分页上移工具条后退役，改为显式联动。
+  void _revealOuterScrollToEnd([int attempt = 0]) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || attempt >= 8) return;
+      if (!_outerScroll.hasClients ||
+          !_outerScroll.position.hasContentDimensions) {
+        _revealOuterScrollToEnd(attempt + 1);
+        return;
+      }
+      final position = _outerScroll.position;
+      final target = position.maxScrollExtent;
+      if (target > 0 && position.pixels < target) {
+        position.jumpTo(target);
+        // 卡片收起会改表体高度（表格内层随后自跳到底），下一帧复核收敛。
+        _revealOuterScrollToEnd(attempt + 1);
+      }
+    });
   }
 
   @override
@@ -666,7 +679,6 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
         _groups = const [];
         _filters = {};
         _keyword = widget.externalKeyword ?? '';
-        _kwSeed++;
         _facets = null;
         _sortKey = _c.defaultSortKey;
         _sortAsc = true;
@@ -796,14 +808,6 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     reload(page: 1);
   }
 
-  void _onKeywordChanged(String keyword) {
-    if (_queryPending) return;
-    _queryVersion++;
-    _tableQueryVersion++;
-    setState(() => _keyword = keyword);
-    reload(page: 1);
-  }
-
   void _onSortChange(String? column, bool ascending) {
     if (_queryPending) return;
     _queryVersion++;
@@ -879,7 +883,10 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     );
   }
 
-  List<Widget> _exportButtons({required bool large}) {
+  /// 预览打印/导出（表格工具条左簇款）：primary/large 纯文字、无 icon——与
+  /// 「表头设置 / 全屏」同一形态（2026-10-08 工具条无 icon 口径 + 2026-10-19
+  /// 四页统一进工具条，卡内带 icon 的旧款随 inCard 退役）。
+  List<Widget> _exportButtons() {
     final export = _c.export;
     if (export == null) return const [];
     return [
@@ -894,8 +901,8 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
         exportQuery: _exportQuery,
         exportBody: _exportBody,
         exportFilename: export.title,
-        type: large ? UtenButtonType.primary : UtenButtonType.tonal,
-        size: large ? UtenButtonSize.large : UtenButtonSize.small,
+        type: UtenButtonType.primary,
+        size: UtenButtonSize.large,
       ),
       UtenExportButton(
         enabled: !_queryPending && !_loading && !_listLoading,
@@ -913,8 +920,8 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
         bodyParams: _exportBody,
         filename: export.title,
         label: export.label,
-        type: large ? UtenButtonType.primary : UtenButtonType.secondary,
-        size: large ? UtenButtonSize.large : UtenButtonSize.medium,
+        type: UtenButtonType.primary,
+        size: UtenButtonSize.large,
       ),
     ];
   }
@@ -1090,17 +1097,15 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     final isSystemRoot = isSystemUncategorizedCategory(
       systemManaged: d?.systemManaged ?? false,
     );
-    final canMutateCategory = canMutateMasterCategory(
-      hasEditPermission: widget.canEditCategory,
-      systemManaged: d?.systemManaged ?? false,
-    );
-    final exportInCard = d != null && (_c.export?.inCard ?? false);
     // compact：容器 gutter 已提供水平留白；medium+：明细区自带水平内边距。
     final hPad = context.breakpoint.isCompact ? 0.0 : UtenSpacing.s16;
     final content = Padding(
       padding: EdgeInsets.symmetric(horizontal: hPad),
       child: UtenCollapsingHeaderScrollView(
-        // 滚走区：分类信息卡——上滑即收起、腾出表格空间。
+        controller: _outerScroll,
+        // 滚走区：分类信息卡——上滑即收起、腾出表格空间。卡片只留标题/副标题与
+        // 系统根锁说明（2026-10-19 用户口径：分类增/改/删移到左树行内图标 +
+        // 右键菜单，导入/导出/预览打印进表格工具条，卡上不再有按钮）。
         collapsingHeader: d == null
             ? const SizedBox.shrink()
             : Padding(
@@ -1118,55 +1123,21 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                   icon: _c.icon,
                   subtitle:
                       '编号前缀 ${d.effectivePrefix ?? _c.defaultCodePrefix}${d.codePrefix == null ? '(继承)' : ''} · 层级 L${d.level}',
-                  // 卡片只留标题 + 操作：层级/父级/子项数左侧分类树里都能看出。
+                  // 卡片只留标题 + 说明：层级/父级/子项数左侧分类树里都能看出。
                   stats: const [],
-                  canEdit: canMutateCategory,
-                  canAddChild: widget.canAddCategory,
-                  canDelete: widget.canDeleteCategory && !isSystemRoot,
-                  onAddChild: widget.onAddChild,
-                  onEdit: () {
-                    final current = _category;
-                    if (current != null) widget.onEditCategory(current);
-                  },
-                  onDelete: widget.onDeleteCategory,
-                  deleteLabel: '删除分类', // TODO(l10n): 补 arb
-                  extraActions: [
-                    if (widget.canAddCategory && isSystemRoot)
-                      MasterDetailCardAction(
-                        icon: Icons.add_rounded,
-                        label: '新增子分类', // TODO(l10n): 补 arb
-                        onPressed: widget.onAddChild,
-                      ),
-                  ],
+                  canEdit: false,
                   secondaryActions: [
-                    if ((widget.canEditCategory || widget.canDeleteCategory) &&
-                        isSystemRoot)
+                    if (isSystemRoot)
                       const SystemMasterCategoryProtectionNotice(),
-                    ...?_c.cardActions?.call(this),
-                    if (exportInCard) ..._exportButtons(large: false),
                   ],
                 ),
               ),
-        // body：本地搜索(卡片收起后吸顶) + 表格(内滚)。原「X (N) + 添加X」标题行
-        // 已删（2026-10-18 用户口径）：数量进分类卡片标题，添加X悬浮右下角紧挨
-        // 已选计数（见 [_batchActions]）。
+        // body：表格(内滚)。本地搜索框已退役（2026-10-18 用户口径：右侧明细区
+        // 不再放搜索框——顶部全局搜索已覆盖分类+名称+编号检索，且支持「搜索范围：
+        // 所选分类」）；数量进分类卡片标题，添加X悬浮右下角紧挨已选计数（见
+        // [_batchActions]）。
         body: Column(
           children: [
-            if (_c.showLocalSearch &&
-                widget.categoryId != null &&
-                widget.externalKeyword == null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                child: UtenSearchBar(
-                  // key 含分类 + 种子：切分类 / 树搜索写入关键词时重建搜索框。
-                  key: ValueKey(
-                    '${_c.keyPrefix}-search-${widget.categoryId}-$_kwSeed',
-                  ),
-                  hint: _c.searchHint,
-                  initialValue: _keyword,
-                  onChanged: _onKeywordChanged,
-                ),
-              ),
             // primary:true → 表体参与「卡片折叠 → 表格内滚」联动。
             Expanded(
               child: MasterDataTableView<TItem>(
@@ -1202,9 +1173,16 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                     : () => _queryPending
                           ? const []
                           : _currentQueryMenu(_c.backgroundMenuBuilder!(this)),
-                toolbarActions: exportInCard || _c.export == null
-                    ? null
-                    : _exportButtons(large: true),
+                // 页面特有按钮（导入货品）+ 预览打印/导出进左簇（2026-10-19
+                // 用户口径：与「表头设置 / 全屏」同簇、紧随其后，纯文字无 icon，
+                // 工具条右侧留给分页）。
+                toolbarLeadingActions: () {
+                  final leading = [
+                    ...?_c.toolbarLeadingActions?.call(this),
+                    ..._exportButtons(),
+                  ];
+                  return leading.isEmpty ? null : leading;
+                }(),
                 leadingGroups: _groups,
                 facets: _columnFacets,
                 facetSearchScope: (

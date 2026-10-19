@@ -158,6 +158,10 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
   }
 
   @override
+  Future<ProductCategoryDetail> shellLoadCategoryDetail(String id) =>
+      ref.read(supplierCategoryRepositoryProvider).detail(id);
+
+  @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => shellReload());
@@ -195,28 +199,16 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
             key: ValueKey('global-search-$query-$_detailEpoch'),
             config: _paneConfig(),
             categoryId: shellSearchCategoryId,
-            canEditCategory: false,
-            canAddCategory: false,
-            canDeleteCategory: false,
             externalKeyword: query,
             externalSearchPending: shellSearchPending,
-            onAddChild: () {},
-            onEditCategory: (_) {},
-            onDeleteCategory: () {},
           ),
       detailPaneBuilder: (selected) =>
           MasterEntityDetailPane<SupplierListItem, SupplierDetail>(
             key: ValueKey('dp-${selected.id}-$_detailEpoch'),
             config: _paneConfig(),
             categoryId: selected.id,
-            canEditCategory: shellCanEdit,
-            canAddCategory: shellCanCreate,
-            canDeleteCategory: shellCanDelete,
             externalKeyword: shellTreeSearchKeyword,
             externalSearchPending: shellSearchPending,
-            onAddChild: () => shellShowCreateDialog(parent: selected),
-            onEditCategory: (detail) => shellShowEditDialog(detail),
-            onDeleteCategory: () => shellDeleteNode(selected),
           ),
     );
   }
@@ -229,8 +221,6 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
       noun: '供应商', // TODO(l10n): 补 arb
       icon: Icons.local_shipping_outlined,
       defaultCodePrefix: 'GY',
-      keyPrefix: 'supplier',
-      searchHint: '搜索供应商(简称/全称/联系人/法人/地区/手机)', // TODO(l10n): 补 arb
       columns: _supplierColumns,
       idOf: (s) => s.id,
       statusOf: (s) => s.status,

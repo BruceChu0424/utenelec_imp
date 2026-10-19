@@ -805,7 +805,10 @@ class _AccountPageState extends ConsumerState<AccountPage> {
                       columns: _columns,
                       items: _page?.items ?? const [],
                       leadingGroups: _leadingGroups,
-                      toolbarActions: MediaQuery.sizeOf(context).width < 600
+                      // 导出/打印进左簇（2026-10-18 用户口径）：与「表头设置 / 全屏」同排靠左，
+                      // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
+                      toolbarLeadingActions:
+                          MediaQuery.sizeOf(context).width < 600
                           ? null
                           : [
                               UtenPrintPreviewButton(
@@ -819,6 +822,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
                                 exportFilename: '账户资料',
                                 type: UtenButtonType.primary,
                                 size: UtenButtonSize.large,
+                                icon: null,
                               ),
                               UtenExportButton(
                                 endpoint: '/master/accounts/export',
@@ -829,6 +833,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
                                 label: '导出账户',
                                 type: UtenButtonType.primary,
                                 size: UtenButtonSize.large,
+                                icon: null,
                               ),
                             ],
                       facets: _labeledFacets,

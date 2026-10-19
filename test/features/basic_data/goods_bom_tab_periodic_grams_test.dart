@@ -317,21 +317,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('已选组件 2'), findsOneWidget);
       expect(
-        tester
-            .widget<TextField>(
-              find.descendant(of: quantity, matching: find.byType(TextField)),
-            )
-            .controller!
-            .text,
+        tester.widget<TextField>(quantity).controller!.text,
         '5',
       );
       expect(
         tester
             .widget<TextField>(
-              find.descendant(
-                of: find.byKey(const ValueKey('goods-bom-add-qty-suggested')),
-                matching: find.byType(TextField),
-              ),
+              find.byKey(const ValueKey('goods-bom-add-qty-suggested')),
             )
             .controller!
             .text,

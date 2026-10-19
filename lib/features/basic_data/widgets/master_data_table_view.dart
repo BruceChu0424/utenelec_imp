@@ -3768,11 +3768,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       final embeddedColumn = Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          _listPagerAbove(context),
           _buildTable(context),
           if (widget.summaryBar != null && !widget.summaryBarInline)
             _buildSummaryBar(context),
-          if (widget.showPaginationControls && widget.totalPages > 1)
-            _buildPager(context),
           if (_hasFloatingBatchActions)
             Padding(
               padding: const EdgeInsets.only(top: UtenSpacing.s8),
@@ -3803,17 +3802,31 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     ),
   );
 
+  /// 列表形态（picker 列表）没有表头工具条：分页单独钉在列表上方右角，
+  /// 与表格工具条右端的分页同一位次（2026-10-18 分页上移口径）。
+  /// 非列表形态/无分页时返回零尺寸占位，保持 Column children 恒非空。
+  Widget _listPagerAbove(BuildContext context) {
+    if (widget.listItemBuilder == null) return const SizedBox.shrink();
+    final pager = _buildToolbarPager(context);
+    if (pager == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+      child: Align(alignment: AlignmentDirectional.centerEnd, child: pager),
+    );
+  }
+
   Widget _buildBoundedPresentation(BuildContext context) {
     // Capture the stage once per table rebuild. Header scrolling only changes
     // height; recreating this stage from the outer LayoutBuilder discards the
     // body's width-only cache and rebuilds every visible cell on each wheel.
     final stage = _buildTableStage(context);
+    // 分页已在表头上方工具条右上角（_buildToolbarPager；列表形态经
+    // _listPagerAbove 钉在列表上方右角），表格下方不再渲染翻页条。
     final footer = [
       if (widget.summaryBar != null && !widget.summaryBarInline)
         _buildSummaryBar(context),
-      if (widget.showPaginationControls && widget.totalPages > 1)
-        _buildPager(context),
     ];
+    final listPager = _listPagerAbove(context);
     return _wrapPresentation(
       LayoutBuilder(
         builder: (context, constraints) {
@@ -3822,6 +3835,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             return _ShortTablePresentation(
               child: Column(
                 children: [
+                  listPager,
                   SizedBox(height: 168 * textScale, child: stage),
                   ...footer,
                 ],
@@ -3830,6 +3844,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           }
           return Column(
             children: [
+              listPager,
               Expanded(child: stage),
               ...footer,
             ],
@@ -4522,10 +4537,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // 视口的表格居中、左右留白）。仅作用于交叉轴（横向），不影响主轴 Flexible(loose)
     // 的「行少收缩、横滚条贴末行」行为。
     //
-    // 表头上方工具条：左侧「表头设置」列显隐选择 + 追加按钮（预览打印/下载
-    // 表格等）左对齐；右侧为调用方动作区（刷新等——全站口径：刷新按钮放
-    // 表格右上角）。宽度足够时动作区固定贴右；窄屏回退整条 Wrap 流式换行
-    //（动作不收缩，Row 会在窄约束溢出，故按可用宽度分流）。
+    // 表头上方工具条：左簇 =「表头设置」列显隐选择 + 全屏 + 前缀按钮（预览打印/
+    // 下载表格等，2026-10-18 用户口径：导出类动作靠左与全屏同排）；右簇贴边 =
+    // 调用方动作区（刷新等）+ 分页（恒排最右）。宽度足够时右簇固定贴右；窄屏回退
+    // 整条 Wrap 流式换行（动作不收缩，Row 会在窄约束溢出，故按可用宽度分流）。
     // 2026-09-25 用户口径：工具条与上方分区栏、下方表格的垂直间距对称
     //（此前只有 bottom 4、top 0，看着贴住上沿）。
     final Widget toolbar = Padding(
@@ -4570,14 +4585,18 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                 !_hasFloatingBatchActions)
               _buildBatchBar(theme),
           ];
-          final hasActions = widget.toolbarActions != null;
+          // 右侧贴边簇：调用方动作 + 分页。分页（上一页/下一页/页码/总页数）
+          // 上移工具条右上角、与「表头设置 / 全屏」同一行（2026-10-18 用户口径，
+          // 原表格下方翻页条退役），恒排最右；无动作也无分页时保持整条 Wrap 流式布局。
           final actions = _stableToolbarActions();
-          if (!hasActions || constraints.maxWidth < 720) {
+          final pager = _buildToolbarPager(context);
+          final trailing = [...actions, ?pager];
+          if (trailing.isEmpty || constraints.maxWidth < 720) {
             return Wrap(
               spacing: UtenSpacing.s8,
               runSpacing: UtenSpacing.s8,
               crossAxisAlignment: WrapCrossAlignment.center,
-              children: [...toolbarChildren, ...actions],
+              children: [...toolbarChildren, ...trailing],
             );
           }
           return Row(
@@ -4597,7 +4616,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                 spacing: UtenSpacing.s8,
                 runSpacing: UtenSpacing.s8,
                 crossAxisAlignment: WrapCrossAlignment.center,
-                children: actions,
+                children: trailing,
               ),
             ],
           );
@@ -5752,16 +5771,26 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     return interactive;
   }
 
-  Widget _buildPager(BuildContext context) {
+  /// 工具条右端的紧凑分页（2026-10-18 用户口径：翻页条从表格下方上移到表头
+  /// 上方工具条右上角，与「表头设置 / 全屏」同一行；页码输入框收窄）。窄宽下
+  /// 逐级降级：先收起跳页框改整段「当前页 / 总页数」，再叠成两行——保持完整
+  /// 命中目标，短窗滚动整条表格呈现而不是裁掉控件。
+  Widget? _buildToolbarPager(BuildContext context) {
+    if (!widget.showPaginationControls || widget.totalPages <= 1) return null;
     final theme = Theme.of(context);
     final canPrev = !_busy && _currentPage > 1;
     final canNext = !_busy && _currentPage < widget.totalPages;
-    // Preserve complete hit targets. When the counter and both controls cannot
-    // share a row, the counter gets its own line; short windows scroll the
-    // complete table presentation instead of clipping controls or row content.
-    final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
-    final hitExtent = UtenControlMetrics.minimumHitExtent(context);
-    final pageInputWidth = math.max(54.0, hitExtent);
+    // 桌面紧凑款：命中目标 32、页码框 40×28、数字 15px 半粗、翻页 icon 24；
+    // 触控保持完整 48 目标（缩放补偿）。数字与 icon 比正文更重（2026-10-18
+    // 用户口径「数字加粗大一点，特别是翻页 icon」）。
+    final touch = UtenControlMetrics.usesTouchTargets(context);
+    final hitExtent = UtenControlMetrics.minimumHitExtent(context, desktop: 32);
+    final inputExtent = touch ? hitExtent : 28.0;
+    final pageInputWidth = touch ? math.max(48.0, hitExtent) : 40.0;
+    final pageTextStyle = theme.textTheme.bodyMedium?.copyWith(
+      fontSize: 15,
+      fontWeight: FontWeight.w600,
+    );
     double widthOf(String text) {
       final painter = TextPainter(
         text: TextSpan(text: text, style: theme.textTheme.bodyMedium),
@@ -5773,205 +5802,152 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       return width;
     }
 
-    return Padding(
-      padding: const EdgeInsets.all(UtenSpacing.s8),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final centerWidth =
-              pageInputWidth + 16 + widthOf('/ ${widget.totalPages}');
-          final compact =
-              constraints.maxWidth <
-              math.max(
-                250 * textScale + 54,
-                2 * hitExtent + centerWidth + 80 * textScale,
-              );
-          void goto(int page) => _gotoPage(page);
-          // Split pickers can leave less than 190px for the right-hand list.
-          // Keep navigation usable there without forcing a fixed-width page
-          // input plus total into the same row.
-          if (constraints.maxWidth <
-              math.max(190 * textScale, 2 * hitExtent + centerWidth)) {
-            final previous = IconButton(
-              key: const ValueKey('master-table-page-previous'),
-              constraints: BoxConstraints.tightFor(
-                width: hitExtent,
-                height: hitExtent,
+    void goto(int page) => _gotoPage(page);
+    Widget chevron(bool forward) => IconButton(
+      key: ValueKey(
+        forward ? 'master-table-page-next' : 'master-table-page-previous',
+      ),
+      constraints: BoxConstraints.tightFor(width: hitExtent, height: hitExtent),
+      padding: EdgeInsets.zero,
+      onPressed: (forward ? canNext : canPrev) && widget.onPageChange != null
+          ? () => goto(_currentPage + (forward ? 1 : -1))
+          : null,
+      tooltip: forward ? '下一页' : '上一页', // TODO(l10n): 补 arb
+      icon: Icon(
+        forward ? Icons.chevron_right_rounded : Icons.chevron_left_rounded,
+        size: 24,
+      ),
+    );
+    // 页码框宽度随已输入位数自动加宽（2026-10-18 用户口径：数字长框变长）：
+    // 1 位 = 基础宽，每多一位 +9、封顶 +64；右簇贴右锚定，视觉上向左生长。
+    Widget pageField() => ValueListenableBuilder<TextEditingValue>(
+      valueListenable: _pageCtrl,
+      builder: (context, value, _) {
+        final digits = value.text.trim().length;
+        final width = math.min(
+          pageInputWidth + math.max(0, digits - 1) * 9.0,
+          pageInputWidth + 64,
+        );
+        return SizedBox(
+          width: width,
+          child: TextFormField(
+            errorBuilder: utenTextFieldErrorBuilder,
+            controller: _pageCtrl,
+            focusNode: _pageFocus,
+            enabled: !_busy,
+            keyboardType: TextInputType.number,
+            textAlign: TextAlign.center,
+            textAlignVertical: TextAlignVertical.center,
+            style: pageTextStyle,
+            decoration: UtenInputDecoration(
+              InputDecoration(
+                constraints: BoxConstraints(
+                  minHeight: inputExtent,
+                  maxHeight: inputExtent,
+                ),
+                isDense: true,
+                hintText: '页码', // TODO(l10n): 补 arb
+                hintStyle: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 4,
+                  vertical: 3,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(UtenRadius.control),
+                ),
               ),
-              padding: EdgeInsets.zero,
-              onPressed: canPrev && widget.onPageChange != null
-                  ? () => goto(_currentPage - 1)
-                  : null,
-              tooltip: '上一页',
-              icon: const Icon(Icons.chevron_left_rounded, size: 20),
-            );
-            final next = IconButton(
-              key: const ValueKey('master-table-page-next'),
-              constraints: BoxConstraints.tightFor(
-                width: hitExtent,
-                height: hitExtent,
-              ),
-              padding: EdgeInsets.zero,
-              onPressed: canNext && widget.onPageChange != null
-                  ? () => goto(_currentPage + 1)
-                  : null,
-              tooltip: '下一页',
-              icon: const Icon(Icons.chevron_right_rounded, size: 20),
-            );
-            final counter = Text(
-              '$_currentPage / ${widget.totalPages}',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium,
-            );
-            if (constraints.maxWidth >=
+            ),
+            // 填数字回车跳页：非法→回当前页；越界→钳制到 [1,totalPages] 并回填。
+            onFieldSubmitted: (v) {
+              final p = int.tryParse(v.trim());
+              final target = p == null
+                  ? _currentPage
+                  : p.clamp(1, widget.totalPages);
+              if (target != _currentPage) {
+                goto(target);
+              } else {
+                _pageCtrl.text = '$target';
+              }
+              _pageFocus.unfocus();
+            },
+          ),
+        );
+      },
+    );
+
+    final totalText = '/ ${widget.totalPages}'; // TODO(l10n): 补 arb
+    final counterText = '$_currentPage / ${widget.totalPages}';
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        if (!width.isFinite ||
+            width >=
                 2 * hitExtent +
-                    16 +
-                    widthOf('$_currentPage / ${widget.totalPages}')) {
-              return Row(
-                children: [
-                  previous,
-                  Expanded(child: counter),
-                  next,
-                ],
-              );
-            }
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                counter,
-                const SizedBox(height: UtenSpacing.s8),
-                if (constraints.maxWidth >= 2 * hitExtent)
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [previous, next],
-                  )
-                else
-                  Column(
-                    children: [
-                      previous,
-                      const SizedBox(height: UtenSpacing.s8),
-                      next,
-                    ],
-                  ),
-              ],
-            );
-          }
+                    pageInputWidth +
+                    widthOf(totalText) +
+                    3 * UtenSpacing.s4) {
           return Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              if (compact)
-                IconButton(
-                  key: const ValueKey('master-table-page-previous'),
-                  constraints: BoxConstraints.tightFor(
-                    width: hitExtent,
-                    height: hitExtent,
-                  ),
-                  padding: EdgeInsets.zero,
-                  onPressed: (canPrev && widget.onPageChange != null)
-                      ? () => goto(_currentPage - 1)
-                      : null,
-                  icon: const Icon(Icons.chevron_left_rounded, size: 20),
-                  tooltip: '上一页', // TODO(l10n): 补 arb
-                )
-              else
-                TextButton.icon(
-                  key: const ValueKey('master-table-page-previous'),
-                  style: TextButton.styleFrom(
-                    minimumSize: Size(hitExtent, hitExtent),
-                  ),
-                  onPressed: (canPrev && widget.onPageChange != null)
-                      ? () => goto(_currentPage - 1)
-                      : null,
-                  icon: const Icon(Icons.chevron_left_rounded, size: 20),
-                  label: const Text('上一页'), // TODO(l10n): 补 arb
-                ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(
-                      width: pageInputWidth,
-                      child: TextFormField(
-                        errorBuilder: utenTextFieldErrorBuilder,
-                        controller: _pageCtrl,
-                        focusNode: _pageFocus,
-                        enabled: !_busy,
-                        keyboardType: TextInputType.number,
-                        textAlign: TextAlign.center,
-                        textAlignVertical: TextAlignVertical.center,
-                        style: theme.textTheme.bodyMedium,
-                        decoration: UtenInputDecoration(
-                          InputDecoration(
-                            constraints: BoxConstraints(minHeight: hitExtent),
-                            isDense: true,
-                            hintText: '页码',
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 4,
-                              vertical: 8,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(
-                                UtenRadius.control,
-                              ),
-                            ),
-                          ),
-                        ),
-                        // 填数字回车跳页：非法→回当前页；越界→钳制到 [1,totalPages] 并回填。
-                        onFieldSubmitted: (v) {
-                          final p = int.tryParse(v.trim());
-                          final target = p == null
-                              ? _currentPage
-                              : p.clamp(1, widget.totalPages);
-                          if (target != _currentPage) {
-                            goto(target);
-                          } else {
-                            _pageCtrl.text = '$target';
-                          }
-                          _pageFocus.unfocus();
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: UtenSpacing.s8),
-                    Text(
-                      '/ ${widget.totalPages}', // TODO(l10n): 补 arb
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
+              chevron(false),
+              const SizedBox(width: UtenSpacing.s4),
+              pageField(),
+              const SizedBox(width: UtenSpacing.s4),
+              Text(
+                totalText,
+                style: pageTextStyle?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
-              if (compact)
-                IconButton(
-                  key: const ValueKey('master-table-page-next'),
-                  constraints: BoxConstraints.tightFor(
-                    width: hitExtent,
-                    height: hitExtent,
-                  ),
-                  padding: EdgeInsets.zero,
-                  onPressed: (canNext && widget.onPageChange != null)
-                      ? () => goto(_currentPage + 1)
-                      : null,
-                  icon: const Icon(Icons.chevron_right_rounded, size: 20),
-                  tooltip: '下一页', // TODO(l10n): 补 arb
-                )
-              else
-                TextButton.icon(
-                  key: const ValueKey('master-table-page-next'),
-                  style: TextButton.styleFrom(
-                    minimumSize: Size(hitExtent, hitExtent),
-                  ),
-                  onPressed: (canNext && widget.onPageChange != null)
-                      ? () => goto(_currentPage + 1)
-                      : null,
-                  icon: const Text('下一页'), // TODO(l10n): 补 arb
-                  label: const Icon(Icons.chevron_right_rounded, size: 20),
-                ),
+              const SizedBox(width: UtenSpacing.s4),
+              chevron(true),
             ],
           );
-        },
-      ),
+        }
+        if (width >=
+            2 * hitExtent + 2 * UtenSpacing.s8 + widthOf(counterText)) {
+          return Row(
+            children: [
+              chevron(false),
+              Expanded(
+                child: Text(
+                  counterText,
+                  textAlign: TextAlign.center,
+                  style: pageTextStyle,
+                ),
+              ),
+              chevron(true),
+            ],
+          );
+        }
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              counterText,
+              textAlign: TextAlign.center,
+              style: pageTextStyle,
+            ),
+            const SizedBox(height: UtenSpacing.s4),
+            if (width >= 2 * hitExtent + UtenSpacing.s8)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [chevron(false), chevron(true)],
+              )
+            else
+              Column(
+                children: [
+                  chevron(false),
+                  const SizedBox(height: UtenSpacing.s4),
+                  chevron(true),
+                ],
+              ),
+          ],
+        );
+      },
     );
   }
 }

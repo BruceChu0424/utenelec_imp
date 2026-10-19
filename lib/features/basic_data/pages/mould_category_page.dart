@@ -3,6 +3,8 @@
 // 顶层壳层（树加载/统一搜索/分类 CRUD/build 骨架）复用 CategoryPageShell，
 // 本页只声明文案/图标/权限/仓储钩子 + 模具领域差异：
 // - 右侧明细区复用 MasterEntityDetailPane(ADR-111)，本页给 mouldRepository 分类下分页闭包；
+// - 左树顶部挂「全部模具」虚拟总节点（所有层级之上），点进去走全局口径
+//   （categoryId=null → listGlobal/globalFacets/导出全部），不可编辑/删除；
 // - 删除分类带级联预览（后代分类数/模具数红框确认），覆盖 shellDeleteNode；
 // - 主档按 mould:view 查看；分类按 mould_category:view 独立显示，无权时使用主档全局列表。
 // - 右侧用通用 MasterDataTableView（Excel 风格：搜索 + 横排 autofilter + 列对齐 + 分页）。
@@ -24,6 +26,7 @@ import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../models/mould_node.dart';
 import '../models/product_category_node.dart';
+import '../models/goods_node.dart' show goodsQtyText;
 import '../repositories/mould_category_repository.dart';
 import '../repositories/mould_repository.dart';
 import '../repositories/master_status_repository.dart';
@@ -96,9 +99,29 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
   bool get shellCanReorder =>
       ref.read(currentPermissionsProvider).contains(Perm.mouldCategoryReorder);
 
+  /// 左树顶部「全部模具」虚拟总根（2026-10-19 需求）：唯一的第 0 层，真实分类
+  /// 整体下沉为第二层起步（点总根行收起/展开整棵树）。点总根本身右栏走全局口径
+  /// （categoryId=null → listGlobal/globalFacets/导出全部），后端零改动。
+  static const _allMouldsNodeId = '__all_moulds__';
+
+  /// 真实分类整体下沉一层（总根之下），初始展开深度同步 +1 保持原有视野。
   @override
-  Future<List<ProductCategoryNode>> shellLoadTree() =>
-      ref.read(mouldCategoryRepositoryProvider).tree();
+  int get shellInitiallyExpandDepth => 2;
+
+  @override
+  Future<List<ProductCategoryNode>> shellLoadTree() async {
+    final tree = await ref.read(mouldCategoryRepositoryProvider).tree();
+    return [
+      ProductCategoryNode(
+        id: _allMouldsNodeId,
+        code: 'ALL',
+        name: '全部模具',
+        level: 0,
+        children: tree,
+        systemManaged: true,
+      ),
+    ];
+  }
 
   @override
   Future<ProductCategoryDetail> shellCreateCategory(CategoryEditResult r) => ref
@@ -162,6 +185,15 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       isCurrent: isCurrent,
     );
   }
+
+  @override
+  Future<ProductCategoryDetail> shellLoadCategoryDetail(String id) =>
+      ref.read(mouldCategoryRepositoryProvider).detail(id);
+
+  /// 「全部模具」是系统视图不是真实分类：树行不挂增/改/删图标、不弹右键菜单。
+  @override
+  bool shellIsVirtualNode(ProductCategoryNode node) =>
+      node.id == _allMouldsNodeId;
 
   @override
   void initState() {
@@ -290,29 +322,23 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
             key: ValueKey('global-search-$query-$_detailEpoch'),
             config: _paneConfig(),
             categoryId: shellSearchCategoryId,
-            canEditCategory: false,
-            canAddCategory: false,
-            canDeleteCategory: false,
             externalKeyword: query,
             externalSearchPending: shellSearchPending,
-            onAddChild: () {},
-            onEditCategory: (_) {},
-            onDeleteCategory: () {},
           ),
-      detailPaneBuilder: (selected) =>
-          MasterEntityDetailPane<MouldListItem, MouldDetail>(
-            key: ValueKey('dp-${selected.id}-$_detailEpoch'),
-            config: _paneConfig(),
-            categoryId: selected.id,
-            canEditCategory: shellCanEdit,
-            canAddCategory: shellCanCreate,
-            canDeleteCategory: shellCanDelete,
-            externalKeyword: shellTreeSearchKeyword,
-            externalSearchPending: shellSearchPending,
-            onAddChild: () => shellShowCreateDialog(parent: selected),
-            onEditCategory: (detail) => shellShowEditDialog(detail),
-            onDeleteCategory: () => shellDeleteNode(selected),
+      // 「全部模具」虚拟节点：右栏走全局口径（categoryId=null → listGlobal/
+      // globalFacets/导出全部），真实分类走分类口径。
+      detailPaneBuilder: (selected) {
+        final isAllMoulds = selected.id == _allMouldsNodeId;
+        return MasterEntityDetailPane<MouldListItem, MouldDetail>(
+          key: ValueKey(
+            '${isAllMoulds ? 'all-moulds' : 'dp-${selected.id}'}-$_detailEpoch',
           ),
+          config: _paneConfig(),
+          categoryId: isAllMoulds ? null : selected.id,
+          externalKeyword: shellTreeSearchKeyword,
+          externalSearchPending: shellSearchPending,
+        );
+      },
     );
   }
 
@@ -327,8 +353,6 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       noun: '模具', // TODO(l10n): 补 arb
       icon: Icons.precision_manufacturing_outlined,
       defaultCodePrefix: 'MJ',
-      keyPrefix: 'mould',
-      searchHint: '搜索模具(名称/编号/位置/备注)', // TODO(l10n): 补 arb
       columns: _mouldColumns,
       idOf: (m) => m.id,
       statusOf: (m) => m.status,
@@ -425,10 +449,10 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
         required: true,
         group: '基础',
       ),
-      const MasterFieldDef(key: 'qty', label: '数量', group: '制造'),
+      const MasterFieldDef(key: 'qty', label: '模数', group: '制造'),
       const MasterFieldDef(
         key: 'tqty',
-        label: '总数量',
+        label: '套数',
         type: MasterFieldType.money,
         group: '制造',
       ),
@@ -677,8 +701,8 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
     MasterDetailRow('编号', d.code), // TODO(l10n): 补 arb
     MasterDetailRow('名称', d.name), // TODO(l10n): 补 arb
     MasterDetailRow('备用编号', d.mnumber), // TODO(l10n): 补 arb
-    MasterDetailRow('数量', d.qty), // TODO(l10n): 补 arb
-    MasterDetailRow('总数量', d.tqty?.toStringAsFixed(2)), // TODO(l10n): 补 arb
+    MasterDetailRow('模数', d.qty), // TODO(l10n): 补 arb
+    MasterDetailRow('套数', goodsQtyText(d.tqty)), // TODO(l10n): 补 arb
     MasterDetailRow('状态', d.status), // TODO(l10n): 补 arb
     MasterDetailRow('车间', d.place), // TODO(l10n): 补 arb
     MasterDetailRow('保管人', d.keeper), // TODO(l10n): 补 arb
@@ -694,11 +718,9 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
   /// 模具表格列：[MasterColumnDef.label]=列头、[MasterColumnDef.width]=固定列宽、
   /// [MasterColumnDef.value]=单元格取值；key 与后端 query 参数名一一对齐（autofilter）。
   ///
-  /// 列顺序按产品定义的 10 列。其中：
-  /// - 有数据列（key 与后端 query/facet 字段对齐）：模具编号/模具名称/存放位置/制造日期/制造商/备注/状态。
-  /// - 无数据列（表无对应字段；模数/套数语义与 qty/tqty 不符按需求当无数据处理）：
-  ///   模数/套数/模具类型——单元格取 null（表格显"—"），不进 FACET_COLUMNS 白名单
-  ///   （下拉只显示"所有"），后端忽略其 query 参数。
+  /// 模数/套数 = 老库 QTY/TQTY（2026-10-19 用户确认口径：QTY "1+1" 为模数、TQTY
+  /// 总数量为套数），模数参与 facet 筛选、套数为数值列只显示；模具类型仍无数据源
+  /// （单元格显"—"，不进 FACET_COLUMNS，后端忽略其 query 参数）。
   static final _mouldColumns = <MasterColumnDef<MouldListItem>>[
     MasterColumnDef(
       key: 'status',
@@ -718,19 +740,13 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       width: 180,
       value: (m) => m.name,
     ),
+    MasterColumnDef(key: 'qty', label: '模数', width: 80, value: (m) => m.qty),
     MasterColumnDef(
-      key: 'cavities',
-      label: '模数',
-      columnSearchEnabled: false,
-      width: 80,
-      value: (_) => null,
-    ),
-    MasterColumnDef(
-      key: 'sets',
+      key: 'tqty',
       label: '套数',
       width: 80,
       columnSearchEnabled: false,
-      value: (_) => null,
+      value: (m) => goodsQtyText(m.tqty),
     ),
     MasterColumnDef(
       key: 'mouldType',

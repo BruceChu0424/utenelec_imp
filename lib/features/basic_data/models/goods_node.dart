@@ -36,6 +36,7 @@ class GoodsListItem {
     this.cNumber,
     this.requireRemark,
     this.mouldCode,
+    this.mouldName,
     this.rearInsertCode,
     this.paper,
     this.colorId,
@@ -88,6 +89,7 @@ class GoodsListItem {
   final String? cNumber;
   final String? requireRemark; // 老库 Require 迁移残值（真实迁移恒空；显示走 paper）
   final String? mouldCode; // 模具编号（moulds.code；UUID 关系优先，历史缺失回落 legacy 快照）
+  final String? mouldName; // 模具名称（moulds.name；口径同 mouldCode，表格「模具名称」列）
   final String? rearInsertCode; // 后模镶件编号（V457）：生产该货品需使用的后模镶件标识
   final String? paper; // 备注（老库 B_Goods.Paper；列表「备注」列数据源）
   final String? colorId;
@@ -159,6 +161,7 @@ class GoodsListItem {
     cNumber: (json['cNumber'] ?? json['cnumber']) as String?,
     requireRemark: json['requireRemark'] as String?,
     mouldCode: json['mouldCode'] as String?,
+    mouldName: json['mouldName'] as String?,
     rearInsertCode: json['rearInsertCode'] as String?,
     paper: json['paper'] as String?,
     colorId: json['colorId'] as String?,

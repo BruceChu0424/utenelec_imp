@@ -2,8 +2,8 @@
 //
 // client/mould/product/supplier 四个 *_category_page 的顶层 State 曾逐字重复
 // 约 460 行编排：树加载、顶部统一搜索四件套（输入/提交/应用/选分类）、
-// 分类增改删（CategoryEditDialog + prefix 预览）、树渲染 trailing、
-// loading/error/empty 与按局部宽度切换的两栏/完整目录。
+// 分类增改删（CategoryEditDialog + prefix 预览）、树渲染（行内增/改/删图标与
+// 右键菜单）、loading/error/empty 与按局部宽度切换的两栏/完整目录。
 // 本 mixin 收敛这些编排；页面只声明配置钩子（文案/图标/权限/仓储调用）
 // 并提供右栏 DetailPane 构造。
 //
@@ -23,6 +23,7 @@ import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -115,6 +116,14 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     String q,
     bool Function() isCurrent,
   );
+
+  /// 拉分类详情：树行「编辑」动作用——编辑弹窗要 Detail（前缀/层级等），树节点
+  /// 只有名称/编码骨架。各页仓储的 detail(id) 即此（与明细区 loadCategory 同源）。
+  Future<ProductCategoryDetail> shellLoadCategoryDetail(String id);
+
+  /// 虚拟节点谓词：树里不对应真实分类的行（如模具页「全部模具」系统视图）。
+  /// 这类行不出现增/改/删图标、不挂锁提示，也不弹右键菜单。默认无虚拟节点。
+  bool shellIsVirtualNode(ProductCategoryNode node) => false;
 
   // ---- 可选钩子（默认值对应 client/supplier 行为） -------------------------
 
@@ -616,6 +625,22 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     return true;
   }
 
+  /// 树行「编辑」动作：先按 id 拉分类详情（编辑弹窗要 Detail，树节点没有），
+  /// 拉取失败走统一错误提示；成功后再开 [shellShowEditDialog]。
+  Future<void> _editCategoryNode(ProductCategoryNode node) async {
+    ProductCategoryDetail? loaded;
+    final ok = await context.guardRun(
+      () async {
+        loaded = await shellLoadCategoryDetail(node.id);
+      },
+      errorFallback: '加载分类详情失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    // 闭包里赋值的局部变量不做流提升，先落非空再传。
+    final detail = loaded;
+    if (!ok || detail == null || !mounted) return;
+    shellShowEditDialog(detail);
+  }
+
   /// 删除成功后的收尾：清掉指向已删分类的选中态（调用方随后 shellReload）。
   void shellAfterCategoryDeleted(String nodeId) {
     if (_selectedId == nodeId) _selectedId = null;
@@ -663,8 +688,6 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   }
 
   Widget _buildTree({required void Function(String id) onSelect}) {
-    final theme = Theme.of(context);
-    final canDelete = shellCanDelete;
     return UtenCategoryTreeView(
       // Management receives persisted UUID roots. A sole business root is still
       // a real category, so adding its peer must not change the existing depth.
@@ -674,6 +697,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
       selectedIds: {?(_globalQuery.isEmpty ? _selectedId : _searchCategoryId)},
       expandOnRowTap: true,
       showSearch: false,
+      initiallyExpandDepth: shellInitiallyExpandDepth,
       initiallyCollapsedNames: shellInitiallyCollapseUncategorized
           ? const {'未分类'}
           : const {},
@@ -683,57 +707,110 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
       externalSearchError: _searchError,
       header: _buildGlobalSearchBox(),
       onNodeTap: (node) => onSelect(node.id),
-      trailingBuilder: (node) {
-        final isSystemRoot = isSystemUncategorizedCategory(
-          systemManaged: node.systemManaged,
-        );
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (node.hasChildren)
-              Padding(
-                padding: const EdgeInsets.only(right: 4),
-                child: Text(
-                  '${node.children.length}',
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    fontWeight: FontWeight.w400,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            if (canDelete && isSystemRoot)
-              const SystemMasterCategoryProtectionNotice(compact: true),
-            if (canDelete && !isSystemRoot)
-              IconButton(
-                tooltip: '删除${node.name}',
-                constraints: BoxConstraints.tightFor(
-                  width: UtenControlMetrics.minimumHitExtent(
-                    context,
-                    desktop: 32,
-                  ),
-                  height: UtenControlMetrics.minimumHitExtent(
-                    context,
-                    desktop: 32,
-                  ),
-                ),
-                padding: EdgeInsets.zero,
-                onPressed: () => shellDeleteNode(node),
-                icon: Icon(
-                  Icons.delete_outline,
-                  size: 16,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-          ],
-        );
-      },
+      trailingBuilder: _treeRowActions,
+      rowMenuBuilder: _treeRowMenu,
     );
+  }
+
+  /// 左树初始展开深度（depth < 该值的节点展开）。默认 1；挂了虚拟总根的页
+  /// （如模具页「全部模具」）真实分类整体下沉一层，覆写为 2 保持原有初始视野。
+  int get shellInitiallyExpandDepth => 1;
+
+  // ---- 树行分类动作（2026-10-19 用户口径）-----------------------------------
+  //
+  // 右侧详情卡的「新增子分类/编辑/删除」三按钮退役：增/改/删改为左树行内图标
+  // （与原删除图标同规格常显）+ 行右键/长按菜单（UtenContextMenuRegion，与表格
+  // 行同一机制；右键先把该行置为选中再弹菜单，不触发展开/收起）。
+  // 系统根（未分类）保新增、禁改删、挂锁提示；虚拟节点（[shellIsVirtualNode]，
+  // 模具「全部模具」系统视图）无任何动作。
+
+  bool _isSystemRoot(ProductCategoryNode node) =>
+      isSystemUncategorizedCategory(systemManaged: node.systemManaged);
+
+  /// 行尾图标簇：新增子分类 / 编辑（系统根与虚拟节点除外）/ 删除或锁；
+  /// 子类计数退役（2026-10-19 用户口径：数值统计不显示，结构走展开箭头与子行）。
+  Widget _treeRowActions(ProductCategoryNode node) {
+    final theme = Theme.of(context);
+    final virtual = shellIsVirtualNode(node);
+    final systemRoot = _isSystemRoot(node);
+    final hitExtent = UtenControlMetrics.minimumHitExtent(context, desktop: 32);
+    Widget action(
+      Key key,
+      String tooltip,
+      IconData icon,
+      VoidCallback onPressed,
+    ) => IconButton(
+      key: key,
+      tooltip: tooltip,
+      constraints: BoxConstraints.tightFor(width: hitExtent, height: hitExtent),
+      padding: EdgeInsets.zero,
+      onPressed: onPressed,
+      icon: Icon(icon, size: 16, color: theme.colorScheme.onSurfaceVariant),
+    );
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (shellCanCreate && !virtual)
+          action(
+            const ValueKey('category-node-add'),
+            '新增${node.name}的子分类', // TODO(l10n): 补 arb
+            Icons.add_outlined,
+            () => shellShowCreateDialog(parent: node),
+          ),
+        if (shellCanEdit && !systemRoot && !virtual)
+          action(
+            const ValueKey('category-node-edit'),
+            '编辑${node.name}', // TODO(l10n): 补 arb
+            Icons.edit_outlined,
+            () => _editCategoryNode(node),
+          ),
+        if (shellCanDelete && systemRoot && !virtual)
+          const SystemMasterCategoryProtectionNotice(compact: true),
+        if (shellCanDelete && !systemRoot && !virtual)
+          action(
+            const ValueKey('category-node-delete'),
+            '删除${node.name}', // TODO(l10n): 补 arb
+            Icons.delete_outline,
+            () => shellDeleteNode(node),
+          ),
+      ],
+    );
+  }
+
+  /// 行右键/长按菜单：与图标簇同一套动作与门控；无可用动作时返回空（不弹）。
+  List<UtenContextMenuEntry> _treeRowMenu(ProductCategoryNode node) {
+    if (shellIsVirtualNode(node)) return const [];
+    final systemRoot = _isSystemRoot(node);
+    return [
+      if (shellCanCreate)
+        UtenMenuItem(
+          label: '新增子分类', // TODO(l10n): 补 arb
+          icon: Icons.add_outlined,
+          onTap: () => shellShowCreateDialog(parent: node),
+        ),
+      if (shellCanEdit && !systemRoot)
+        UtenMenuItem(
+          label: '编辑分类', // TODO(l10n): 补 arb
+          icon: Icons.edit_outlined,
+          onTap: () => _editCategoryNode(node),
+        ),
+      if (shellCanDelete && !systemRoot) ...[
+        const UtenMenuDivider(),
+        UtenMenuItem(
+          label: '删除分类', // TODO(l10n): 补 arb
+          icon: Icons.delete_outline,
+          destructive: true,
+          onTap: () => shellDeleteNode(node),
+        ),
+      ],
+    ];
   }
 
   // ---- build 骨架 ---------------------------------------------------------
 
   /// 页面 build 主体。[detailPaneBuilder] 构造选中分类的右栏（页面私有
-  /// DetailPane；onAddChild/onEdit/onDelete 已由壳层接好分类 CRUD）。
+  /// DetailPane）；分类增/改/删动作统一在左树行内（图标 + 右键菜单，见
+  /// [_treeRowActions]/[_treeRowMenu]），详情卡不再持有分类 CRUD 按钮。
   Widget buildShell(
     BuildContext context, {
     required Widget Function(ProductCategoryNode selected) detailPaneBuilder,

@@ -47,6 +47,7 @@
 // 组件在身份格带「系统学习」标记；编辑它只在改了设计使用数量时才提交数量
 // (改了即转为人工维护)，删除它后系统不再自动加回。
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
+import 'package:uten_imp/components/feedback/uten_floating_window.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -566,10 +567,26 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
 
   // ---- 增删改 -------------------------------------------------------------
   //
-  // 添加组件：选中某组件行 → 默认作为该组件的子组件；未选中 → 顶层。弹窗内父级可选。
+  // 添加组件：选中某组件行 → 默认作为该组件的子组件；未选中 → 顶层。浮窗内父级可选。
   // 保存 POST 到所选父级 goods 的 BOM（/master/goods/{parentGoodsId}/bom）。
+  //
+  // 2026-10-19 二轮口径：浮窗是页面内常驻浮层（不是路由弹窗）——底层组装表照常
+  // 可点可滚；跳去其它页面时随本页被盖住（回来现场还在，切页签靠 keep-alive
+  // 保活）；保存成功才关闭并清掉草稿。窗口本体可缩成悬浮球（见 UtenFloatingWindow）。
 
-  Future<void> _addItem() async {
+  /// 添加组件浮窗会话是否在进行（打开/缩小成球都算）。true 时 tab keep-alive，
+  /// 页签切走再回来现场不丢。
+  bool get _addComponentOpen => _addComponentCandidates != null;
+  List<_BomParentOption>? _addComponentCandidates;
+  String? _addComponentDefaultParent;
+  final _addComponentWindowKey = GlobalKey<UtenFloatingWindowState>();
+
+  void _addItem() {
+    // 已开着（含缩成球）：只把窗口展开回原位，保留正在核对的内容。
+    if (_addComponentOpen) {
+      _addComponentWindowKey.currentState?.expand();
+      return;
+    }
     final candidates = <_BomParentOption>[
       _BomParentOption(goodsId: widget.goodsId, label: '顶层(本货品)'),
       for (final r in _visibleRows)
@@ -581,25 +598,29 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
         ),
     ];
     // 只勾一条时默认加在它下面；勾了 0 条或多条都回落顶层(多选时「加在谁下面」
-    // 没有唯一答案，弹窗里再让用户自己选)。
-    final defaultParent =
-        _singleSelectedRow?.node.item.componentGoodsId ?? widget.goodsId;
-    final result = await showDialog<_AddResult>(
-      context: context,
-      builder: (_) => _BomItemAddDialog(
-        parentCandidates: candidates,
-        defaultParentGoodsId: defaultParent,
-        existingPeriodicCount: _periodicEdgeCountByParent,
-      ),
-    );
-    if (result?.saved == true) {
-      // 加为某组件的子组件：确保该父级展开，重载后子组件可见。
-      if (result!.parentGoodsId != widget.goodsId) {
-        _expandedIds.add(result.parentGoodsId);
-      }
-      widget.onDataChanged?.call();
-      await _load();
+    // 没有唯一答案，浮窗里再让用户自己选)。
+    setState(() {
+      _addComponentCandidates = candidates;
+      _addComponentDefaultParent =
+          _singleSelectedRow?.node.item.componentGoodsId ?? widget.goodsId;
+    });
+  }
+
+  void _closeAddComponentWindow() {
+    setState(() {
+      _addComponentCandidates = null;
+      _addComponentDefaultParent = null;
+    });
+  }
+
+  /// 浮窗内保存成功：确保目标父级展开（子组件重载后可见）→ 通知外层 → 重载 → 关窗。
+  Future<void> _onAddComponentSaved(String parentGoodsId) async {
+    if (parentGoodsId != widget.goodsId) {
+      _expandedIds.add(parentGoodsId);
     }
+    _closeAddComponentWindow();
+    widget.onDataChanged?.call();
+    await _load();
   }
 
   Future<void> _editSelected() async {
@@ -1347,6 +1368,19 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
             title: '正在删除组件',
             description: '正在把所选组件从组装清单中移除，请勿重复提交或关闭页面。',
           ),
+        // 添加组件浮窗（页面内浮层，2026-10-19 二轮）：无蒙版、底层表格照常可点；
+        // 跳页/切页签随本页隐藏，回来现场还在；保存成功才由会话关闭。
+        if (_addComponentCandidates case final candidates?)
+          Positioned.fill(
+            child: _BomItemAddDialog(
+              windowKey: _addComponentWindowKey,
+              parentCandidates: candidates,
+              defaultParentGoodsId: _addComponentDefaultParent ?? widget.goodsId,
+              existingPeriodicCount: _periodicEdgeCountByParent,
+              onClose: _closeAddComponentWindow,
+              onSaved: _onAddComponentSaved,
+            ),
+          ),
       ],
     );
   }
@@ -1508,28 +1542,34 @@ Map<String, dynamic> _periodicEdgeBody(
 double? _enteredGrams(double entered, String? unitName) =>
     periodicGramsPerBaseUnit(unitName) == null ? null : entered;
 
-/// 添加组件弹窗的返回：是否保存 + 实际写入的父级 goodsId（供父级恢复展开）。
-class _AddResult {
-  const _AddResult({required this.saved, required this.parentGoodsId});
-  final bool saved;
-  final String parentGoodsId;
-}
-
-/// 添加组件对话框（多选批量）：选父级 + 右滑窗勾选多个组件（component scope）+ 每个用量，
+/// 添加组件浮窗（多选批量）：选父级 + 右滑窗勾选多个组件（component scope）+ 每个用量，
 /// 一次添加多个组件到同一层级。组件属性只读、用量可改、单价取自组件。
 ///
+/// 2026-10-19 二轮起是页面内常驻浮层（宿主 [_GoodsBomTabState] 的会话）：关闭/保存
+/// 都经 [onClose]/[onSaved] 回调交给宿主，组件自身不再操作 Navigator。
+///
 /// 保存走服务端「追加组件」原子命令(ADR-111，与粘贴组件同一个接口)：一次请求、一个事务，
-/// 任何一行不合格(重复、成环、组件停用……)一条都不写，逐行原因留在弹窗里给用户改，
+/// 任何一行不合格(重复、成环、组件停用……)一条都不写，逐行原因留在浮窗里给用户改，
 /// 不再逐个新建、失败的只报「N 个跳过」。
 class _BomItemAddDialog extends ConsumerStatefulWidget {
   const _BomItemAddDialog({
+    required this.windowKey,
     required this.parentCandidates,
     required this.defaultParentGoodsId,
+    required this.onClose,
+    required this.onSaved,
     this.existingPeriodicCount = const {},
   });
 
+  /// 透传给内部 [UtenFloatingWindow] 的 key：宿主用它把缩成球的窗口展开
+  /// （见 [_GoodsBomTabState._addItem]）。
+  final GlobalKey<UtenFloatingWindowState>? windowKey;
   final List<_BomParentOption> parentCandidates;
   final String defaultParentGoodsId;
+  final VoidCallback onClose;
+
+  /// 保存成功（已落库）后回调，参数为实际写入的父级 goodsId。
+  final ValueChanged<String> onSaved;
 
   /// 各父件下已有的整批领料的料条数 (看得到的部分)：再加一种要确认 (双色 / 双料)。
   final Map<String, int> existingPeriodicCount;
@@ -1735,14 +1775,12 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
       // 服务端的提醒 (如与货品资料单重相差 20% 以上) 只提示、不拦截。
       if (result.warnings.isNotEmpty) {
         context.appWarning(
-          '已添加 ${result.added} 个组件；请核对：${result.warnings.join('；')}',
+          '已添加 ${result.added} 个组件；请核对：${result.warnings.join("；")}',
         );
       } else {
         context.appSuccess('已添加 ${result.added} 个组件'); // TODO(l10n): 补 arb
       }
-      Navigator.of(
-        context,
-      ).pop(_AddResult(saved: true, parentGoodsId: _parentGoodsId));
+      widget.onSaved(_parentGoodsId);
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -1770,249 +1808,310 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
     final lookupParent = _parentGoodsId;
     bool lookupCurrent() =>
         _lookupIsCurrent(lookupBoundary, lookupGeneration, lookupParent);
-    return UtenDialogFrame(
-      shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 560, maxHeight: 640),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // 批量添加组件网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
-              if (_saving)
-                const UtenBusyOverlay(
-                  title: '正在添加组件',
-                  description: '正在一次性保存全部组件，请勿重复提交或关闭弹窗。',
-                ),
-              _dialogHeader(context, theme, '添加组件'),
-              const Divider(height: 1),
-              Flexible(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(UtenSpacing.s16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '添加位置', // TODO(l10n): 补 arb
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const SizedBox(height: UtenSpacing.s4),
-                      UtenDropdownField(
-                        dense: true,
-                        value: _parentGoodsId,
-                        allowClear: false,
-                        items: [
-                          for (final p in widget.parentCandidates)
-                            UtenDropdownItem(value: p.goodsId, label: p.label),
-                        ],
-                        onChanged: (v) {
-                          if (v != null && v != _parentGoodsId) {
-                            setState(() {
-                              _parentGoodsId = v;
-                              _lookupGeneration++;
-                            });
-                          }
-                        },
-                      ),
-                      const SizedBox(height: UtenSpacing.s12),
-                      Text(
-                        '已选组件 ${_picked.length}', // TODO(l10n)
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const SizedBox(height: UtenSpacing.s8),
-                      UtenReferencePickerField<GoodsListItem>(
-                        key: const Key('bom-component-lookup'),
-                        controller: _componentSearchCtl,
-                        label: '组件',
-                        hint: '名称 / 编号 / 系列',
-                        pickerLabel: '选择组件',
-                        enabled: !_saving,
-                        suggestionScope: (
-                          lookupBoundary,
-                          lookupGeneration,
-                          lookupParent,
-                        ),
-                        isCurrent: lookupCurrent,
-                        loadSuggestions: (query) async {
-                          if (!lookupCurrent()) return const [];
-                          final result = await ref.read(
-                            bomComponentSuggestionsProvider,
-                          )(ref, query);
-                          return lookupCurrent() ? result : const [];
-                        },
-                        labelOf: (goods) => goods.name ?? goods.code ?? '货品',
-                        onInputChanged: (_) {},
-                        onSelected: (goods) {
-                          if (lookupCurrent()) _addComponents([goods]);
-                        },
-                        onOpenPicker: (query) async {
-                          if (lookupCurrent()) {
-                            await _pickComponents(initialKeyword: query);
-                          }
-                        },
-                        optionBuilder: (_, goods) => Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: UtenSpacing.s12,
-                            vertical: UtenSpacing.s8,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(goods.name ?? goods.code ?? '货品'),
-                              Text(
-                                [
-                                      goods.code,
-                                      goods.series,
-                                      goods.model,
-                                      goods.spec,
-                                      goods.colorName,
-                                    ]
-                                    .whereType<String>()
-                                    .where((value) => value.isNotEmpty)
-                                    .join(' / '),
-                                style: theme.textTheme.bodySmall,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      if (_picked.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: UtenSpacing.s8,
-                          ),
-                          child: Text(
-                            '点「选择组件」批量勾选原材料/半成品/辅料/OEM 系列',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        )
-                      else
-                        for (final p in _picked)
-                          Padding(
-                            padding: const EdgeInsets.only(
-                              bottom: UtenSpacing.s8,
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        '${p.goods.code ?? ''}  ${p.goods.name ?? ''}',
-                                        style: theme.textTheme.bodyMedium
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                      ),
-                                      Text(
-                                        [
-                                              p.goods.spec,
-                                              p.goods.material,
-                                              p.goods.sourceType,
-                                            ]
-                                            .where(
-                                              (s) => s != null && s.isNotEmpty,
-                                            )
-                                            .join(' · '),
-                                        style: theme.textTheme.bodySmall
-                                            ?.copyWith(
-                                              color: theme
-                                                  .colorScheme
-                                                  .onSurfaceVariant,
-                                            ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                SizedBox(
-                                  width: 132,
-                                  child: p.goods.isPeriodicIssue
-                                      ? TextField(
-                                          key: ValueKey(
-                                            'goods-bom-add-qty-${p.goods.id}',
-                                          ),
-                                          controller: p.qtyCtl,
-                                          keyboardType:
-                                              const TextInputType.numberWithOptions(
-                                                decimal: true,
-                                              ),
-                                          // 整批领料的料 (ADR-131)：按克填单个重量。
-                                          decoration: InputDecoration(
-                                            labelText: _periodicWeightLabel(
-                                              context,
-                                              p.goods.unitName,
-                                            ),
-                                            border: const OutlineInputBorder(),
-                                            isDense: true,
-                                          ),
-                                        )
-                                      : _DesignQtyField(
-                                          key: Key(
-                                            'goods-bom-add-qty-${p.goods.id}',
-                                          ),
-                                          controller: p.qtyCtl,
-                                        ),
-                                ),
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.close_rounded,
-                                    size: 18,
-                                  ),
-                                  onPressed: () => setState(() {
-                                    p.qtyCtl.dispose();
-                                    _picked.remove(p);
-                                  }),
-                                ),
-                              ],
-                            ),
-                          ),
-                      if (_error != null) ...[
-                        const SizedBox(height: UtenSpacing.s8),
-                        Text(
-                          _error!,
-                          key: const Key('goods-bom-add-error'),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.error,
-                          ),
-                        ),
-                        for (final problem in _problems)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 2),
-                            child: Text(
-                              '· $problem',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.error,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ],
+    return UtenFloatingWindow(
+      key: widget.windowKey,
+      title: '添加组件',
+      onClose: widget.onClose,
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            padding: const EdgeInsets.all(UtenSpacing.s16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '添加位置', // TODO(l10n): 补 arb
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
-              ),
-              const Divider(height: 1),
-              _dialogActions(
-                theme,
-                onCancel: () => Navigator.of(context).pop(),
-                onSave: _save,
-                saving: _saving,
-              ),
-            ],
+                const SizedBox(height: UtenSpacing.s4),
+                UtenDropdownField(
+                  dense: true,
+                  value: _parentGoodsId,
+                  allowClear: false,
+                  items: [
+                    for (final p in widget.parentCandidates)
+                      UtenDropdownItem(value: p.goodsId, label: p.label),
+                  ],
+                  onChanged: (v) {
+                    if (v != null && v != _parentGoodsId) {
+                      setState(() {
+                        _parentGoodsId = v;
+                        _lookupGeneration++;
+                      });
+                    }
+                  },
+                ),
+                const SizedBox(height: UtenSpacing.s12),
+                Text(
+                  '已选组件 ${_picked.length}', // TODO(l10n)
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: UtenSpacing.s8),
+                UtenReferencePickerField<GoodsListItem>(
+                  key: const Key('bom-component-lookup'),
+                  controller: _componentSearchCtl,
+                  label: '组件',
+                  hint: '名称 / 编号 / 系列',
+                  pickerLabel: '选择组件',
+                  enabled: !_saving,
+                  suggestionScope: (
+                    lookupBoundary,
+                    lookupGeneration,
+                    lookupParent,
+                  ),
+                  isCurrent: lookupCurrent,
+                  loadSuggestions: (query) async {
+                    if (!lookupCurrent()) return const [];
+                    final result = await ref.read(
+                      bomComponentSuggestionsProvider,
+                    )(ref, query);
+                    return lookupCurrent() ? result : const [];
+                  },
+                  labelOf: (goods) => goods.name ?? goods.code ?? '货品',
+                  onInputChanged: (_) {},
+                  onSelected: (goods) {
+                    if (lookupCurrent()) _addComponents([goods]);
+                  },
+                  onOpenPicker: (query) async {
+                    if (lookupCurrent()) {
+                      await _pickComponents(initialKeyword: query);
+                    }
+                  },
+                  optionBuilder: (_, goods) => Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: UtenSpacing.s12,
+                      vertical: UtenSpacing.s8,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(goods.name ?? goods.code ?? '货品'),
+                        Text(
+                          [
+                            goods.code,
+                            goods.series,
+                            goods.model,
+                            goods.spec,
+                            goods.colorName,
+                          ]
+                              .whereType<String>()
+                              .where((value) => value.isNotEmpty)
+                              .join(' / '),
+                          style: theme.textTheme.bodySmall,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                // 组件选择框与首条已选组件（或空提示）之间保持一行间距，
+                // 不让两个框贴着（2026-10-19 用户口径）。
+                const SizedBox(height: UtenSpacing.s12),
+                if (_picked.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: UtenSpacing.s8,
+                    ),
+                    child: Text(
+                      '点「选择组件」批量勾选原材料/半成品/辅料/OEM 系列',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  )
+                else
+                  _pickedTable(theme),
+                if (_error != null) ...[
+                  const SizedBox(height: UtenSpacing.s8),
+                  Text(
+                    _error!,
+                    key: const Key('goods-bom-add-error'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
+                  ),
+                  for (final problem in _problems)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        '· $problem',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.error,
+                        ),
+                      ),
+                    ),
+                ],
+              ],
+            ),
           ),
-        ),
+          // 批量添加组件网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
+          if (_saving)
+            const UtenBusyOverlay(
+              title: '正在添加组件',
+              description: '正在一次性保存全部组件，请勿重复提交或关闭弹窗。',
+            ),
+        ],
+      ),
+      actions: _dialogActions(
+        theme,
+        onCancel: widget.onClose,
+        onSave: _save,
+        saving: _saving,
       ),
     );
   }
+
+  /// 已选组件清单（2026-10-19 二轮 UI 口径）：单行紧凑表格——左列货品
+  /// （编号 名称 · 颜色，一行省略），右列窄数量框（dense、无浮动标签、右对齐，
+  /// 后缀带组件单位；整批领料按克填单重后缀显「克」），行尾移除按钮。
+  Widget _pickedTable(ThemeData theme) {
+    final outline = theme.colorScheme.outlineVariant;
+    Widget header(String label) => Text(
+      label,
+      style: theme.textTheme.labelSmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
+        fontWeight: FontWeight.w600,
+      ),
+    );
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: outline),
+        borderRadius: UtenRadius.mdAll,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: double.infinity,
+            color: theme.colorScheme.surfaceContainerHighest.withValues(
+              alpha: 0.5,
+            ),
+            padding: const EdgeInsets.symmetric(
+              horizontal: UtenSpacing.s12,
+              vertical: UtenSpacing.s6,
+            ),
+            child: Row(
+              children: [
+                Expanded(child: header('货品')),
+                SizedBox(width: _pickedQtyFieldWidth, child: header('数量')),
+                const SizedBox(width: UtenSpacing.s24),
+              ],
+            ),
+          ),
+          for (final (index, p) in _picked.indexed)
+            Container(
+              decoration: BoxDecoration(
+                border: index == 0
+                    ? null
+                    : Border(
+                        top: BorderSide(color: outline.withValues(alpha: 0.6)),
+                      ),
+              ),
+              padding: const EdgeInsets.fromLTRB(
+                UtenSpacing.s12,
+                UtenSpacing.s4,
+                UtenSpacing.s4,
+                UtenSpacing.s4,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      [
+                        '${p.goods.code ?? ''} ${p.goods.name ?? ''}'.trim(),
+                        if (p.goods.colorName?.isNotEmpty == true)
+                          p.goods.colorName!,
+                      ].where((s) => s.isNotEmpty).join(' · '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                  SizedBox(width: _pickedQtyFieldWidth, child: _qtyCell(theme, p)),
+                  SizedBox(
+                    width: UtenSpacing.s24,
+                    child: IconButton(
+                      tooltip: '移除',
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minHeight: UtenSpacing.s24,
+                        minWidth: UtenSpacing.s24,
+                      ),
+                      icon: Icon(
+                        Icons.close_rounded,
+                        size: 16,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                      onPressed: () => setState(() {
+                        p.qtyCtl.dispose();
+                        _picked.remove(p);
+                      }),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// 数量格：空/非正数红框即错（保存前的本地可视校验；提交校验仍走 [_save]）。
+  Widget _qtyCell(ThemeData theme, _PickedComponent p) {
+    final outline = theme.colorScheme.outlineVariant;
+    return ListenableBuilder(
+      listenable: p.qtyCtl,
+      builder: (context, _) {
+        final raw = p.qtyCtl.text.trim();
+        final parsed = double.tryParse(raw);
+        final invalid = raw.isEmpty || parsed == null || parsed <= 0;
+        final borderSide = BorderSide(
+          color: invalid ? theme.colorScheme.error : outline,
+        );
+        return TextField(
+          key: ValueKey('goods-bom-add-qty-${p.goods.id}'),
+          controller: p.qtyCtl,
+          textAlign: TextAlign.right,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          style: theme.textTheme.bodyMedium,
+          decoration: InputDecoration(
+            // 整批领料的料 (ADR-131)：按克（或组件基本单位）填单个重量；其余填设计使用数量。
+            hintText: p.goods.isPeriodicIssue
+                ? _periodicWeightLabel(context, p.goods.unitName)
+                : AppLocalizations.of(context).bomDesignQty,
+            suffixText: p.goods.isPeriodicIssue
+                ? null
+                : (p.goods.unitName ?? ''),
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: UtenSpacing.s8,
+              vertical: UtenSpacing.s8,
+            ),
+            border: OutlineInputBorder(borderSide: borderSide),
+            enabledBorder: OutlineInputBorder(borderSide: borderSide),
+            focusedBorder: OutlineInputBorder(
+              borderSide: BorderSide(
+                color: invalid
+                    ? theme.colorScheme.error
+                    : theme.colorScheme.primary,
+                width: 1.6,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  static const double _pickedQtyFieldWidth = 104;
 }
 
 /// 编辑组件对话框（单条）：组件与父级锁定（换组件/换父级走删除+新增），

@@ -110,8 +110,6 @@ Future<_Counters> _pump(
     noun: '货品',
     icon: Icons.inventory_2_outlined,
     defaultCodePrefix: 'HP',
-    keyPrefix: 'goods',
-    searchHint: '搜索',
     columns: [
       MasterColumnDef<_Row>(
         key: 'name',
@@ -167,13 +165,7 @@ Future<_Counters> _pump(
           body: MasterEntityDetailPane<_Row, _Row>(
             config: config,
             categoryId: 'cat-1',
-            canEditCategory: false,
-            canAddCategory: false,
-            canDeleteCategory: false,
             externalKeyword: null,
-            onAddChild: () {},
-            onEditCategory: (_) {},
-            onDeleteCategory: () {},
           ),
         ),
       ),

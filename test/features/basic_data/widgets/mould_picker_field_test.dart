@@ -149,7 +149,7 @@ void main() {
       onChanged: (value) => picked = value as String?,
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('下一页'));
+    await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
     await tester.pumpAndSettle();
     expect(repository.requests, [('', 1), ('', 2)]);
     await tester.tap(find.text('第2页模具'));
@@ -167,7 +167,7 @@ void main() {
     final failing = repository.hold('', 2);
     await _open(tester, repository);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('下一页'));
+    await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
     await tester.pump();
     failing.completeError(StateError('temporary failure'));
     await tester.pumpAndSettle();
@@ -226,7 +226,7 @@ void main() {
     expect(find.text('未选择'), findsOneWidget);
     await tester.tap(find.text('第1页模具'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('下一页'));
+    await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
     await tester.pumpAndSettle();
     expect(find.text('未选择'), findsOneWidget);
     await tester.tap(find.text('确定'));

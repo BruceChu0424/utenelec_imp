@@ -9,6 +9,7 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/core/theme/uten_colors.dart';
 import 'package:uten_imp/core/theme/uten_tokens.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
+import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/product_category_repository.dart';
@@ -103,6 +104,39 @@ void main() {
     expect(selected?.id, 'goods-a');
     expect(_widePickerSheet(), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('表头筛选下拉带候选桶：分类浏览与搜索态都按当前范围取 facets', (tester) async {
+    final repository = _FakeGoodsRepository();
+    await _pumpPicker(tester, repository);
+
+    await tester.tap(find.byKey(const Key('open-goods-picker')));
+    await tester.pumpAndSettle();
+
+    // 懒载：点分类才加载货品，同时拉该分类子树的候选桶。
+    await tester.tap(find.text('分区甲'));
+    await tester.pumpAndSettle();
+    expect(repository.facetsCalls, ['section-a']);
+
+    // 列头漏斗下拉给候选值，不再显示「无匹配项」。
+    await tester.tap(find.text('货品名称'));
+    await tester.pumpAndSettle();
+    expect(find.text('连接器甲 (3)'), findsOneWidget);
+    expect(find.text('无匹配项'), findsNothing);
+    await tester.tapAt(const Offset(10, 590));
+    await tester.pumpAndSettle();
+
+    // 搜索态：候选桶改走全局 facets，并带 picker 的业务范围根。
+    await tester.enterText(_searchEditable(), 'G-');
+    await tester.pump(const Duration(milliseconds: 301));
+    await tester.pumpAndSettle();
+    expect(repository.globalFacetScopes, [
+      {'finished-root'},
+    ]);
+    await tester.tap(find.text('货品名称'));
+    await tester.pumpAndSettle();
+    expect(find.text('连接器乙 (7)'), findsOneWidget);
+    expect(find.text('无匹配项'), findsNothing);
   });
 
   testWidgets('统一搜索受 picker scope 限定并定位所有命中分类', (tester) async {
@@ -623,6 +657,8 @@ class _FakeGoodsRepository extends Fake implements GoodsRepository {
   final searchCategoryIdQueries = <String>[];
   final listCalls = <(String, String?)>[];
   final listSortOrders = <(String?, String?)>[];
+  final facetsCalls = <String>[];
+  final globalFacetScopes = <Set<String>>[];
 
   void completeDelayedSearch(List<GoodsListItem> items) {
     _delayedSearch.complete(_page(items, page: 1, size: 100));
@@ -728,6 +764,42 @@ class _FakeGoodsRepository extends Fake implements GoodsRepository {
     listSortOrders.add((sort, order));
     final items = categoryId == 'section-b' ? const [_goodsB] : const [_goodsA];
     return _page(items, page: page, size: size);
+  }
+
+  @override
+  Future<GoodsFacets> facets(
+    String categoryId, {
+    String? keyword,
+    bool includeRelated = false,
+    Map<String, String?> filters = const {},
+    bool excludeDisabled = false,
+    bool excludeStub = false,
+  }) async {
+    facetsCalls.add(categoryId);
+    return const GoodsFacets(
+      fields: {
+        'name': [MasterFacetBucket(value: '连接器甲', count: 3)],
+      },
+      nullCounts: {},
+    );
+  }
+
+  @override
+  Future<GoodsFacets> globalFacets({
+    String? keyword,
+    bool includeRelated = false,
+    Map<String, String?> filters = const {},
+    bool excludeDisabled = false,
+    bool excludeStub = false,
+    Set<String> categoryRootIds = const {},
+  }) async {
+    globalFacetScopes.add({...categoryRootIds});
+    return const GoodsFacets(
+      fields: {
+        'name': [MasterFacetBucket(value: '连接器乙', count: 7)],
+      },
+      nullCounts: {},
+    );
   }
 }
 

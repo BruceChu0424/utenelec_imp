@@ -164,6 +164,10 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
   }
 
   @override
+  Future<ProductCategoryDetail> shellLoadCategoryDetail(String id) =>
+      ref.read(clientCategoryRepositoryProvider).detail(id);
+
+  @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => shellReload());
@@ -215,28 +219,16 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
             key: ValueKey('global-search-$query-$_detailEpoch'),
             config: _paneConfig(),
             categoryId: shellSearchCategoryId,
-            canEditCategory: false,
-            canAddCategory: false,
-            canDeleteCategory: false,
             externalKeyword: query,
             externalSearchPending: shellSearchPending,
-            onAddChild: () {},
-            onEditCategory: (_) {},
-            onDeleteCategory: () {},
           ),
       detailPaneBuilder: (selected) =>
           MasterEntityDetailPane<ClientListItem, ClientDetail>(
             key: ValueKey('dp-${selected.id}-$_detailEpoch'),
             config: _paneConfig(),
             categoryId: selected.id,
-            canEditCategory: shellCanEdit,
-            canAddCategory: shellCanCreate,
-            canDeleteCategory: shellCanDelete,
             externalKeyword: shellTreeSearchKeyword,
             externalSearchPending: shellSearchPending,
-            onAddChild: () => shellShowCreateDialog(parent: selected),
-            onEditCategory: (detail) => shellShowEditDialog(detail),
-            onDeleteCategory: () => shellDeleteNode(selected),
           ),
     );
   }
@@ -249,8 +241,6 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
       noun: '客户', // TODO(l10n): 补 arb
       icon: Icons.people_outline,
       defaultCodePrefix: 'KH',
-      keyPrefix: 'client',
-      searchHint: basicDataL10n(context).clientNameEnSearchHint,
       columns: _visibleClientColumns(basicDataL10n(context)),
       idOf: (c) => c.id,
       statusOf: (c) => c.status,

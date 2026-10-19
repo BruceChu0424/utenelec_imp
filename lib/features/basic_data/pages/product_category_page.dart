@@ -249,6 +249,10 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     return categoryIds;
   }
 
+  @override
+  Future<ProductCategoryDetail> shellLoadCategoryDetail(String id) =>
+      ref.read(productCategoryRepositoryProvider).detail(id);
+
   /// 级联删除：先拉子树规模预览（后代分类数 + 货品数）红框确认；
   /// 失败弹 AlertDialog 显示后端原因（不再静默/仅顶部 toast），成功给计数文案。
   @override
@@ -407,28 +411,16 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
               MasterEntityDetailPane<GoodsListItem, GoodsDetail>(
                 config: _paneConfig(),
                 categoryId: shellSearchCategoryId,
-                canEditCategory: false,
-                canAddCategory: false,
-                canDeleteCategory: false,
                 externalKeyword: query,
                 externalSearchPending: shellSearchPending,
-                onAddChild: () {},
-                onEditCategory: (_) {},
-                onDeleteCategory: () {},
               ),
           detailPaneBuilder: (selected) =>
               MasterEntityDetailPane<GoodsListItem, GoodsDetail>(
                 key: ValueKey('dp-${selected.id}-$_detailEpoch'),
                 config: _paneConfig(),
                 categoryId: selected.id,
-                canEditCategory: shellCanEdit,
-                canAddCategory: shellCanCreate,
-                canDeleteCategory: shellCanDelete,
                 externalKeyword: shellTreeSearchKeyword,
                 externalSearchPending: shellSearchPending,
-                onAddChild: () => shellShowCreateDialog(parent: selected),
-                onEditCategory: (detail) => shellShowEditDialog(detail),
-                onDeleteCategory: () => shellDeleteNode(selected),
               ),
         ),
         // 复制/粘贴货品的全程加载遮罩(root Overlay 传送门，不占布局)。
@@ -528,9 +520,6 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       noun: '货品', // TODO(l10n): 补 arb
       icon: Icons.inventory_2_outlined,
       defaultCodePrefix: 'HP',
-      keyPrefix: 'goods',
-      searchHint: basicDataL10n(context).goodsNameEnSearchHint,
-      showLocalSearch: false,
       columns: _visibleGoodsColumns,
       idOf: (g) => g.id,
       statusOf: (g) => g.status,
@@ -608,12 +597,18 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
           'excludeStub': true,
           if (includeRelated && query.hasKeyword) 'includeRelated': true,
         },
-        inCard: true,
       ),
-      cardActions: (pane) => [
+      // 导入货品进表格工具条左簇（2026-10-19 用户口径：与预览打印/导出同排在
+      // 「表头设置 / 全屏」右侧，纯文字无 icon；原分类信息卡带 icon 款退役）。
+      toolbarLeadingActions: (pane) => [
         if (_perms.contains(Perm.goodsImport))
           UtenButton(
-            icon: Icons.file_upload_outlined,
+            key: const ValueKey('goods-import'),
+            size: UtenButtonSize.large,
+            // 与同排「表头设置 / 全屏 / 预览打印 / 导出」同一高度（导出/打印组件
+            // 在内部把 large 档钉到 controlHeight，裸 UtenButton 必须显式带上，
+            // 2026-09-25 平台统一口径）。
+            height: UtenTableToolbar.controlHeight,
             onPressed: () => showGoodsImportDialog(
               context,
               ref,
@@ -1565,6 +1560,13 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       label: '模具编号',
       width: 130,
       value: (g) => g.mouldCode,
+    ),
+    MasterColumnDef(
+      key: 'mouldName',
+      label: '模具名称',
+      width: 170,
+      // 关系解析展示列（moulds.name；口径同模具编号列的 UUID 优先/legacy 回落）。
+      value: (g) => g.mouldName,
     ),
     MasterColumnDef(
       key: 'rearInsertCode',

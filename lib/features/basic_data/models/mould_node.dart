@@ -9,13 +9,15 @@ import 'master_facet.dart';
 
 /// 模具列表项；历史模具系列以真实模具分类名称回显，不另造 series。
 ///
-/// 表格里另有 3 列（模数/套数/模具类型）表无对应字段，由前端以 null
-/// 取值显示"—"，不参与后端筛选/facet，故无对应模型字段。
+/// 模数/套数即老库 QTY/TQTY（2026-10-19 用户确认口径），随列表带出；
+/// 表格「模具类型」列无数据源，由前端以 null 取值显示"—"。
 class MouldListItem {
   const MouldListItem({
     required this.id,
     this.code,
     this.name,
+    this.qty,
+    this.tqty,
     this.place,
     this.mstatus,
     this.manufacturer,
@@ -29,6 +31,8 @@ class MouldListItem {
   final String id;
   final String? code; // 模具编号（Number，如 C20-001【B3-12】）
   final String? name; // 模具名称（MouldName）
+  final String? qty; // 模数（老库 QTY，字符串如 "1+1"）
+  final double? tqty; // 套数（老库 TQTY 总数量）
   final String? place; // 存放位置（车间/位置）
   final String? mstatus; // 制造日期（源 MStatus，制造年月如 2018年7月）
   final String? manufacturer;
@@ -42,6 +46,8 @@ class MouldListItem {
     id: json['id'] as String,
     code: json['code'] as String?,
     name: json['name'] as String?,
+    qty: json['qty'] as String?,
+    tqty: (json['tqty'] as num?)?.toDouble(),
     place: json['place'] as String?,
     mstatus: json['mstatus'] as String?,
     manufacturer: json['manufacturer'] as String?,
@@ -90,8 +96,8 @@ class MouldDetail {
   final String? categoryId;
   final String? categoryName;
   final String? mnumber; // 备用编号
-  final String? qty; // 数量（如 1+1）
-  final double? tqty; // 总数量
+  final String? qty; // 模数（老库 QTY，如 1+1）
+  final double? tqty; // 套数（老库 TQTY 总数量）
   final String? mstatus; // 制造年月（如 2018年7月）
   final String? manufacturer;
   final String? remark; // 备注
@@ -125,8 +131,9 @@ class MouldDetail {
 
 /// 字段 facet 结果：各筛选字段的可选值桶 + 各字段空值计数。
 ///
-/// fields 以字段 key（与 query 参数名一致：code/name/place/mstatus/remark/status）索引，
-/// 便于 [MasterDataTableView] 通用查找。模数/套数/模具类型无 DB 列，不在此处。
+/// fields 以字段 key（与 query 参数名一致：code/name/qty/place/mstatus/remark/status）
+/// 索引，便于 [MasterDataTableView] 通用查找。套数为数值列不进 facet；
+/// 模具类型无数据源不在此处。
 class MouldFacets {
   const MouldFacets({required this.fields, required this.nullCounts});
 
@@ -136,6 +143,7 @@ class MouldFacets {
   static const _keys = [
     'code',
     'name',
+    'qty',
     'place',
     'mstatus',
     'manufacturer',

@@ -527,6 +527,7 @@ class _FakeGoodsRepository implements GoodsRepository {
     Map<String, String?> filters = const {},
     bool excludeDisabled = false,
     bool excludeStub = false,
+    Set<String> categoryRootIds = const {},
   }) async {
     globalFacetCalls++;
     return const GoodsFacets(

@@ -16,6 +16,8 @@
 // 与旧 sales_goods_picker / goods_picker_dialog（居中搜索框）的区别：带分类树浏览、
 // 返回完整 GoodsListItem（含 colorId/unitId 及展示名称；legacy 字段仅供历史只读显示），供调用方
 // 自动回填颜色/单位。
+import 'dart:async';
+
 import '../../../core/theme/uten_tokens.dart';
 
 import 'package:flutter/material.dart';
@@ -34,7 +36,9 @@ import '../../../shared/hierarchy/uten_tree_path.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/goods_node.dart';
+import '../models/master_facet.dart';
 import '../models/product_category_node.dart';
+import '../repositories/goods_facet_repository.dart';
 import '../repositories/goods_repository.dart';
 import '../repositories/product_category_repository.dart';
 import 'category_tree_search.dart';
@@ -531,6 +535,11 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
   /// 多选模式下已勾选的货品（id → 完整 item）。
   final Map<String, GoodsListItem> _selected = {};
 
+  /// 表头筛选下拉的候选桶：随当前查询上下文（所选分类 / 搜索范围 + 列筛选）
+  /// 重拉（2026-10-19「滑窗筛选无匹配项」修复——此前滑窗从未接入任何候选来源，
+  /// 漏斗下拉恒空）。facets 是可选增强：失败静默，列表与关键字搜索不受影响。
+  GoodsFacets? _facets;
+
   /// 多选模式：底部「已选 N 项」滑层是否展开。
   final _pickerRows = MasterDataTableRowsController<GoodsListItem>();
   final Map<String, String?> _columnFilters = {};
@@ -902,6 +911,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
         _paged = result;
         _loading = false;
       });
+      unawaited(_reloadFacets(requestVersion));
     } catch (error) {
       if (!mounted || !_canRead || requestVersion != _requestVersion) return;
       setState(() {
@@ -1014,6 +1024,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
         _loading = false;
         _searchLoading = false;
       });
+      unawaited(_reloadFacets(requestVersion));
     } catch (error) {
       if (!mounted || !_canRead || requestVersion != _requestVersion) return;
       setState(() {
@@ -1030,6 +1041,41 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       await _reloadGlobalSearch();
     } else {
       await _reloadCategory();
+    }
+  }
+
+  /// 按当前列表上下文拉表头筛选候选桶：分类浏览态用所选分类子树 facets；
+  /// 搜索态用全局 facets 并以业务范围根限定（显式扩全部可选货品时不限）。
+  Future<void> _reloadFacets(int requestVersion) async {
+    if (!_supportsColumnSearch || !_canRead) return;
+    try {
+      final repository = ref.read(goodsRepositoryProvider);
+      final GoodsFacets result;
+      if (_query.isEmpty) {
+        final categoryId = _selectedCategoryId;
+        if (categoryId == null) return;
+        result = await repository.facets(
+          categoryId,
+          filters: _columnFilters,
+          excludeDisabled: true,
+          excludeStub: true,
+        );
+      } else {
+        result = await repository.globalFacets(
+          keyword: _query,
+          includeRelated: _includeRelated,
+          filters: _columnFilters,
+          excludeDisabled: true,
+          excludeStub: true,
+          categoryRootIds: _searchesAllSelectableGoods
+              ? const {}
+              : _scopeRootIds,
+        );
+      }
+      if (!mounted || !_canRead || requestVersion != _requestVersion) return;
+      setState(() => _facets = result);
+    } catch (_) {
+      // 候选桶是可选增强：失败静默为空下拉，不阻塞列表。
     }
   }
 
@@ -1425,6 +1471,29 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
     _reloadCurrentPage();
   }
 
+  /// 漏斗下拉的远程候选搜索（列值过多时按关键词翻页取值）：与 [_reloadFacets]
+  /// 同一查询上下文——分类浏览态带所选分类，搜索态带搜索词与业务范围根。
+  MasterFacetPageLoader? get _facetPageLoader {
+    if (!_supportsColumnSearch) return null;
+    final facetRepository = ref.read(goodsFacetRepositoryProvider);
+    if (facetRepository == null) return null;
+    return (column, search, page) => facetRepository.values(
+      field: column,
+      search: search,
+      page: page,
+      categoryId: _query.isEmpty ? _selectedCategoryId : _searchCategoryId,
+      categoryRootIds:
+          _query.isEmpty || _searchCategoryId != null || _searchesAllSelectableGoods
+          ? const {}
+          : _scopeRootIds,
+      keyword: _query.isEmpty ? null : _query,
+      includeRelated: _includeRelated,
+      filters: _columnFilters,
+      excludeDisabled: true,
+      excludeStub: true,
+    );
+  }
+
   Widget _buildGoodsList(ThemeData theme) {
     final requestVersion = _requestVersion;
     bool selectable(GoodsListItem goods) =>
@@ -1467,7 +1536,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
           column('model', '型号', 110, (g) => g.model),
           column('spec', '规格', 140, (g) => g.spec),
           column('colorLegacyId', '主颜色', 100, (g) => g.colorName),
-          column('unitLegacyId', '单位', 70, (g) => g.unitName, search: false),
+          column('unitLegacyId', '单位', 70, (g) => g.unitName),
         ],
         if (_includeRelated)
           MasterColumnDef(
@@ -1522,11 +1591,12 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
                   ..[goods.id] = goods;
               });
             },
-      facets: const {},
-      nullCounts: const {},
+      facets: _facets?.fields ?? const {},
+      nullCounts: _facets?.nullCounts ?? const {},
       filters: _columnFilters,
       serverColumnSearch: true,
       onFilterChanged: _onColumnFilterChanged,
+      loadFacetPage: _facetPageLoader,
       currentPage: _paged?.page ?? 1,
       totalPages: _paged?.totalPages ?? 1,
       paginationScope: (

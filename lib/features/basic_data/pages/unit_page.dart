@@ -520,7 +520,9 @@ class _UnitPageState extends ConsumerState<UnitPage> {
                     items: _page?.items ?? const [],
                     // 导出/打印（V717 unit:export）：打印预览用本页列渲染，
                     // 导出列集服务端与表格对齐——「表格显示啥导出啥」。
-                    toolbarActions: [
+                    // 导出/打印进左簇（2026-10-18 用户口径）：与「表头设置 / 全屏」同排靠左，
+                    // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
+                    toolbarLeadingActions: [
                       UtenPrintPreviewButton(
                         title: '单位资料', // TODO(l10n): 补 arb
                         subtitle: '最多前 2000 行', // TODO(l10n): 补 arb
@@ -532,6 +534,7 @@ class _UnitPageState extends ConsumerState<UnitPage> {
                         exportFilename: '单位资料', // TODO(l10n): 补 arb
                         type: UtenButtonType.primary,
                         size: UtenButtonSize.large,
+                        icon: null,
                       ),
                       UtenExportButton(
                         endpoint: '/master/units/export',
@@ -542,6 +545,7 @@ class _UnitPageState extends ConsumerState<UnitPage> {
                         label: '导出单位', // TODO(l10n): 补 arb
                         type: UtenButtonType.primary,
                         size: UtenButtonSize.large,
+                        icon: null,
                       ),
                     ],
                     facets: _columnFacets,

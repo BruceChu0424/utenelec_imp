@@ -274,6 +274,10 @@ class _GoodsPriceFacetPickerState extends ConsumerState<GoodsPriceFacetPicker>
                                   label: priceText(context, 'value'),
                                   width: 310,
                                   aiSensitive: true,
+                                  // Server-paged facet list: the funnel would
+                                  // only cover the current page; the top search
+                                  // bar queries all values.
+                                  columnSearchEnabled: false,
                                   value: (row) => row.display,
                                 ),
                                 MasterColumnDef(

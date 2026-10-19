@@ -416,12 +416,14 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
         key: 'material',
         label: l10n.bomLearningMaterial,
         width: 190,
+        filterFromRows: true,
         value: (row) => row.componentName ?? row.componentCode,
       ),
       MasterColumnDef(
         key: 'code',
         label: l10n.materialDiscoveryCode,
         width: 90,
+        filterFromRows: true,
         value: (row) => row.componentCode,
       ),
       // 2026-10-10「数量+单位」全站口径：独立「单位」列退役，组件单位内联进
@@ -491,6 +493,7 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
         key: 'usageBasis',
         label: l10n.bomLearningBasis,
         width: 100,
+        filterFromRows: true,
         value: basisText,
         // BOM 外的料不参与计算(「—」)，说明挂在真实使用数量格上即可。
         cellBuilder: (context, row) =>

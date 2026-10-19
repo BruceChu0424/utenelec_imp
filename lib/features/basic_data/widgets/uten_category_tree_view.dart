@@ -9,6 +9,7 @@
 // 「未分类(历史孤儿)」这类大杂烩节点可默认收起。
 import 'package:flutter/material.dart';
 
+import '../../../components/feedback/uten_context_menu.dart';
 import '../../../shared/widgets/uten_hierarchy_tree_view.dart';
 import '../models/product_category_node.dart';
 import '../models/uten_tree_node.dart';
@@ -37,8 +38,8 @@ String categoryNodeLabel<T extends UtenTreeNode<T>>(T node) {
 }
 
 /// 量测分类树最长一行名称的自然文字宽（TextPainter 实测），
-/// 加行内装具余量（8 左缘 + 3 选中强调条 + 24 展开位 + 4 间隙 + 8 右缘 + 12 滚动
-/// 余量 + 一级加粗增量）后夹在 [min]–[max]。选择器滑窗把它作为 UtenSplitView 的
+/// 加行内装具余量（8 左缘 + 32 展开位 + 4 间隙 + 8 右缘 + 12 滚动余量 + 一级加粗
+/// 增量；选中色块铺在展开位之下不另占宽，2026-10-19）后夹在 [min]–[max]。选择器滑窗把它作为 UtenSplitView 的
 /// initialLeadingWidth，实现「默认划分 = 左边内容最宽那行的宽度」。
 double measureCategoryTreeNaturalWidth(
   List<ProductCategoryNode> nodes,
@@ -94,6 +95,7 @@ class UtenCategoryTreeView<T extends UtenTreeNode<T>> extends StatelessWidget {
     this.externalSearchError,
     this.sortByCode = true,
     this.flatLevelColors = false,
+    this.rowMenuBuilder,
   });
 
   /// 名称包含任一关键词的节点，默认不展开（即使深度在 [initiallyExpandDepth] 内）。
@@ -114,6 +116,10 @@ class UtenCategoryTreeView<T extends UtenTreeNode<T>> extends StatelessWidget {
 
   /// 无缩进层级色模式（透传 UtenHierarchyTreeView；选择器滑窗窄左栏用）。
   final bool flatLevelColors;
+
+  /// 行右键/长按菜单的宿主动作条目（透传 UtenHierarchyTreeView；菜单由树内置，
+  /// 宿主动作在前、「展开/收起」通用项在后，右键即默认选中）。
+  final List<UtenContextMenuEntry> Function(T node)? rowMenuBuilder;
 
   /// 点击节点文字行时是否同时展开/收起子类(查看类页面 true，管理页 false)。
   final bool expandOnRowTap;
@@ -168,5 +174,6 @@ class UtenCategoryTreeView<T extends UtenTreeNode<T>> extends StatelessWidget {
     externalSearchError: externalSearchError,
     sortByCode: sortByCode,
     flatLevelColors: flatLevelColors,
+    rowMenuBuilder: rowMenuBuilder,
   );
 }

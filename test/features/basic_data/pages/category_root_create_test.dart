@@ -139,8 +139,9 @@ void main() {
       );
       expect(tester.takeException(), isNull);
 
-      // The existing child action continues to use the selected real UUID.
-      await tester.tap(find.text('新增子分类'));
+      // 树行「新增子分类」图标继续用选中分类的真实 UUID（2026-10-19 起分类
+      // CRUD 在左树行内图标 + 右键菜单，详情卡不再有分类按钮）。
+      await tester.tap(find.byTooltip('新增新最外层分类的子分类'));
       await tester.pumpAndSettle();
       expect(
         tester

@@ -100,12 +100,15 @@ abstract interface class GoodsRepository {
     bool excludeStub = false,
   });
 
+  /// 全局（或 [categoryRootIds] 限定的多根范围）字段 facet；滑窗搜索态与
+  /// 列表口径共用，桶随当前查询上下文刷新。
   Future<GoodsFacets> globalFacets({
     String? keyword,
     bool includeRelated = false,
     Map<String, String?> filters = const {},
     bool excludeDisabled = false,
     bool excludeStub = false,
+    Set<String> categoryRootIds = const {},
   });
 
   /// 全局搜货品（组装信息「添加组件」选择器用；不限分类，按编号/名称/型号/规格/系列模糊）。
@@ -248,12 +251,14 @@ class DioGoodsRepository implements GoodsRepository, GoodsColumnSearchGateway {
     Map<String, String?> filters = const {},
     bool excludeDisabled = false,
     bool excludeStub = false,
+    Set<String> categoryRootIds = const {},
   }) => _facets(
     keyword: keyword,
     includeRelated: includeRelated,
     filters: filters,
     excludeDisabled: excludeDisabled,
     excludeStub: excludeStub,
+    categoryRootIds: categoryRootIds,
   );
 
   Future<GoodsFacets> _facets({
@@ -263,11 +268,13 @@ class DioGoodsRepository implements GoodsRepository, GoodsColumnSearchGateway {
     required Map<String, String?> filters,
     required bool excludeDisabled,
     required bool excludeStub,
+    Set<String> categoryRootIds = const {},
   }) async {
     final json = await api.get(
       ApiEndpoints.goodsFacets,
       query: {
         'categoryId': ?categoryId,
+        if (categoryRootIds.isNotEmpty) 'categoryRootIds': categoryRootIds.toList(),
         if (keyword?.trim().isNotEmpty == true) 'keyword': keyword!.trim(),
         if (includeRelated && keyword?.trim().isNotEmpty == true)
           'includeRelated': true,

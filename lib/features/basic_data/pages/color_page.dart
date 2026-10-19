@@ -615,7 +615,9 @@ class _ColorPageState extends ConsumerState<ColorPage> {
                     items: _page?.items ?? const [],
                     // 导出/打印（V717 color:export）：打印预览用本页列渲染，
                     // 导出列集服务端与表格对齐——「表格显示啥导出啥」。
-                    toolbarActions: [
+                    // 导出/打印进左簇（2026-10-18 用户口径）：与「表头设置 / 全屏」同排靠左，
+                    // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
+                    toolbarLeadingActions: [
                       UtenPrintPreviewButton(
                         title: '颜色资料', // TODO(l10n): 补 arb
                         subtitle: '最多前 2000 行', // TODO(l10n): 补 arb
@@ -627,6 +629,7 @@ class _ColorPageState extends ConsumerState<ColorPage> {
                         exportFilename: '颜色资料', // TODO(l10n): 补 arb
                         type: UtenButtonType.primary,
                         size: UtenButtonSize.large,
+                        icon: null,
                       ),
                       UtenExportButton(
                         endpoint: '/master/colors/export',
@@ -637,6 +640,7 @@ class _ColorPageState extends ConsumerState<ColorPage> {
                         label: '导出颜色', // TODO(l10n): 补 arb
                         type: UtenButtonType.primary,
                         size: UtenButtonSize.large,
+                        icon: null,
                       ),
                     ],
                     // 多选：最前列勾选框 + 表头三态全选；选中非空时工具条出批量操作区。

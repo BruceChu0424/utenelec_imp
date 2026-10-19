@@ -346,8 +346,9 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
         ),
         content: Text(
           '生效前缀将变为 ${preview.resultingEffectivePrefix}，'
-          '会修改 ${preview.affectedRecords} 条当前主档编号。'
-          '${preview.customOrLegacyRecords > 0 ? ' 其中 ${preview.customOrLegacyRecords} 条手工或历史编号也会纳入新的统一规则。' : ''}'
+          '该分类下 ${preview.affectedRecords} 条主档编号将全部重新来过：'
+          '统一按「${preview.resultingEffectivePrefix} + 序号（01、02…）」从头排。'
+          '${preview.customOrLegacyRecords > 0 ? ' 其中 ${preview.customOrLegacyRecords} 条手工或历史编号也会纳入。' : ''}'
           '${preview.descendantOverrides > 0 ? ' ${preview.descendantOverrides} 个下级分类有自己的前缀，不受影响。' : ''}\n\n'
           '订单等关联不受影响，仍按系统内部编号对应；已审核单据继续显示当时的编号。',
         ),
@@ -450,7 +451,9 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
             nodes: widget.tree,
             selectedIds: {pendingSelection?.node?.id ?? ''},
             nodeEnabledPredicate: (n) {
-              // 编辑态：禁用自身及其后代（选后代当父级会成环）。新建态全部可选。
+              // 系统根（未分类/虚拟总根）不可作上级：它们是收容/视图节点，
+              // 不是业务层级；编辑态另禁自身及其后代（防成环）。
+              if (n.systemManaged) return false;
               if (selfNode == null) return true;
               return !_isSelfOrDescendant(selfNode, n.id);
             },
@@ -522,9 +525,13 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
                       info:
                           '留空时沿用最近上级的前缀；前缀全系统唯一，'
                           '不区分大小写，一经使用会一直占用。'
+                          '设置前缀后，该分类下新建的主档编号自动按「前缀+序号」'
+                          '发号（如前缀 2080358 → 208035801、208035802…），'
+                          '自动跳过已占用的号，超过 99 自然进位到三位。'
+                          '修改前缀并确认后，该分类下全部编号会按新前缀从头重排。'
                           '输入时自动检查，被占用时请更换前缀后再保存。',
                     ),
-                    hintText: '例如 V6',
+                    hintText: '例如 2080358',
                     counterText: '',
                     error: utenFieldError(_prefixError),
                     errorStyle: TextStyle(color: theme.colorScheme.error),

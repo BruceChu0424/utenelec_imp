@@ -44,8 +44,9 @@ void main() {
     expect(clients.listCalls, greaterThan(0));
     expect(find.text('成品类'), findsWidgets);
 
-    // 打开编辑弹窗：改名 + 改前缀 → 保存。
-    await tester.tap(find.text('编辑'));
+    // 打开编辑弹窗：改名 + 改前缀 → 保存。编辑入口是左树行内图标（2026-10-19
+    // 起分类 CRUD 在树行内，详情卡无按钮）；点开先拉一次详情（编辑弹窗要 Detail）。
+    await tester.tap(find.byTooltip('编辑成品类'));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byWidgetPredicate(
@@ -56,9 +57,10 @@ void main() {
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
 
-    // 保存后：详情卡重拉（第 2 次 detail）显示新名称；内容列表也重拉
+    // 保存后：详情卡重拉显示新名称；内容列表也重拉
     // （前缀变更会影响客户编号）；分类树同步显示新名称。
-    expect(categories.detailCalls('finished'), 2);
+    // detail 计数：选中 1 次 + 树行编辑图标 1 次 + 保存后重挂 1 次 = 3。
+    expect(categories.detailCalls('finished'), 3);
     expect(find.text('成品类Pro'), findsWidgets);
     expect(clients.listCallsAfterSave, isTrue);
   });
@@ -150,9 +152,9 @@ void main() {
       );
     },
   );
-  // ADR-134: 外文名称 column right after 客户全称; the search hint names the
-  // new searchable fields (外文名称/邮箱).
-  testWidgets('外文名称列紧跟客户全称, 搜索提示包含外文名称与邮箱', (tester) async {
+  // ADR-134: 外文名称 column right after 客户全称. 2026-10-18 起右侧明细区本地
+  // 搜索框退役（顶部全局搜索覆盖），搜索提示断言随之移除。
+  testWidgets('外文名称列紧跟客户全称', (tester) async {
     final categories = _FakeClientCategoryRepository();
     final clients = _FakeClientRepository(includeLegacy: true);
     await _pumpPage(tester, categories, clients, locale: const Locale('zh'));
@@ -167,7 +169,6 @@ void main() {
     expect(keys.indexOf('nameEn'), keys.indexOf('fullName') + 1);
     expect(table.columns.firstWhere((c) => c.key == 'nameEn').label, '外文名称');
     expect(find.text('LEGACY TRADING LTD'), findsOneWidget);
-    expect(find.text('搜索客户(简称/编码/全称/外文名称/联系人/手机/邮箱)'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 

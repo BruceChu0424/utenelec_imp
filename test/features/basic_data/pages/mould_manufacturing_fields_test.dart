@@ -140,6 +140,69 @@ void main() {
     controller.setCustom('mstatus', '2009-03');
     expect(controller.recoveredCustomInitialValue('mstatus'), '2009-03');
   });
+
+  testWidgets('左树顶部「全部模具」总节点：走全局列表与全局 facets，不出分类维护操作', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1440, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = _Moulds();
+    final preferences = await SharedPreferences.getInstance();
+    await _pumpPage(tester, repository, preferences);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('全部模具'));
+    await tester.pumpAndSettle();
+    expect(repository.globalListCalls, 1);
+    expect(repository.globalFacetsCalls, 1);
+    expect(find.text('旧模具名称'), findsOneWidget);
+    expect(find.text('添加模具'), findsNothing, reason: '全部视图无所属分类，新增回具体分类做');
+    expect(find.text('添加子分类'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('表格模数/套数列显示老库 QTY/TQTY 口径的值', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1440, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = _Moulds();
+    final preferences = await SharedPreferences.getInstance();
+    await _pumpPage(tester, repository, preferences);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('历史模具'));
+    await tester.pumpAndSettle();
+    expect(find.text('1+1'), findsOneWidget, reason: '模数列取 qty');
+    expect(find.text('12'), findsOneWidget, reason: '套数列取 tqty（整数不带小数位）');
+    expect(tester.takeException(), isNull);
+  });
+}
+
+Future<void> _pumpPage(
+  WidgetTester tester,
+  MouldRepository repository,
+  SharedPreferences preferences,
+) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(preferences),
+        currentPermissionsProvider.overrideWithValue({
+          Perm.mouldView,
+          Perm.mouldCategoryView,
+          Perm.mouldEdit,
+          Perm.mouldCreate,
+        }),
+        mouldCategoryRepositoryProvider.overrideWithValue(_Categories()),
+        mouldRepositoryProvider.overrideWithValue(repository),
+        mouldWorkshopTreeProvider.overrideWith(
+          (ref) async => const MouldWorkshopTree(tree: [], prodDeptId: null),
+        ),
+      ],
+      child: const MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: MouldCategoryPage(),
+      ),
+    ),
+  );
 }
 
 class _Categories implements MouldCategoryRepository {
@@ -170,6 +233,8 @@ class _Categories implements MouldCategoryRepository {
 class _Moulds implements MouldRepository {
   Map<String, dynamic>? saved;
   Map<String, dynamic>? created;
+  int globalListCalls = 0;
+  int globalFacetsCalls = 0;
   MouldDetail get record => MouldDetail(
     id: 'mould',
     categoryId: 'cat',
@@ -195,6 +260,8 @@ class _Moulds implements MouldRepository {
         id: record.id,
         name: record.name,
         code: record.code,
+        qty: '1+1',
+        tqty: 12,
         status: record.status,
         mstatus: record.mstatus,
         manufacturer: record.manufacturer,
@@ -206,8 +273,25 @@ class _Moulds implements MouldRepository {
     totalPages: 1,
   );
   @override
+  Future<PagedResult<MouldListItem>> listGlobal({
+    int page = 1,
+    int size = 20,
+    String? keyword,
+    Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
+  }) async {
+    globalListCalls++;
+    return list('__all__');
+  }
+  @override
   Future<MouldFacets> facets(String categoryId) async =>
       const MouldFacets(fields: {}, nullCounts: {});
+  @override
+  Future<MouldFacets> globalFacets() async {
+    globalFacetsCalls++;
+    return const MouldFacets(fields: {}, nullCounts: {});
+  }
   @override
   Future<MouldDetail> detail(String id) async => record;
   @override

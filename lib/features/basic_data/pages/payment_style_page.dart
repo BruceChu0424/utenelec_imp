@@ -3,6 +3,7 @@
 // 这是纯分类主档，不套用“分类摘要卡 + 下方业务表格”的通用详情页模板：
 // 大屏采用可调宽目录树 + 页面级属性检查器，手机采用详情 + 分类抽屉。
 import 'package:flutter/material.dart';
+import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
@@ -174,14 +175,6 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
     return null;
   }
 
-  int _nodeCount(List<PaymentStyleNode> nodes) {
-    var count = 0;
-    for (final node in nodes) {
-      count += 1 + _nodeCount(node.children);
-    }
-    return count;
-  }
-
   void _invalidatePaymentStyleCaches() {
     final revision = ref.read(paymentStyleRevisionProvider);
     ref.read(paymentStyleRevisionProvider.notifier).state = revision + 1;
@@ -306,6 +299,22 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
     return true;
   }
 
+  /// 树行菜单动作要 Detail（编辑/停用启用的拦截口径都按 Detail 判），拉取失败
+  /// 统一错误提示、返回 null 不再继续。
+  Future<PaymentStyleDetail?> _loadDetailForMenu(PaymentStyleNode node) async {
+    try {
+      return await ref.read(paymentStyleRepositoryProvider).detail(node.id);
+    } on ApiException catch (e) {
+      if (mounted) context.appError(e.message);
+      return null;
+    } catch (_) {
+      if (mounted) {
+        context.appError('加载类别详情失败，请稍后重试'); // TODO(l10n): 补 arb
+      }
+      return null;
+    }
+  }
+
   Future<void> _toggleStatus(PaymentStyleDetail detail) async {
     final disabling = detail.status != '禁用';
     if (disabling) {
@@ -347,57 +356,17 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
 
   Widget _buildDirectory({bool closeOnSelect = false}) {
     final theme = Theme.of(context);
-    final count = _nodeCount(_tree);
     return Material(
       color: theme.colorScheme.surface,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            // 左缘贴 0（2026-10-18 全站分栏口径）：目录头/分段行/搜索与
-            // 分类页左栏、返回键图标共用 x=0 左缘。
+            // 左缘贴 0（2026-10-18 全站分栏口径）：分段行/搜索与货品资料等
+            // 分类页左栏、返回键图标共用 x=0 左缘；不再设目录标题行。
             padding: const EdgeInsets.fromLTRB(
               0,
               UtenSpacing.s16,
-              UtenSpacing.s8,
-              UtenSpacing.s8,
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.account_tree_outlined,
-                  size: 20,
-                  color: theme.colorScheme.primary,
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '类别目录',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      Text(
-                        _treeLoading && _tree.isEmpty
-                            ? '正在加载'
-                            : '${_category.label} · $count 项',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              0,
-              0,
               UtenSpacing.s12,
               UtenSpacing.s12,
             ),
@@ -423,27 +392,33 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
                 hint: '搜索类别名称或编号',
               ),
               trailing: _canCreate
-                  ? IconButton(
+                  ? IconButton.filledTonal(
                       key: const ValueKey('payment-style-add-root'),
                       tooltip: '新增最外层类别',
-                      constraints: BoxConstraints.tightFor(
-                        width: UtenControlMetrics.minimumHitExtent(
+                      constraints: BoxConstraints(
+                        minWidth: UtenControlMetrics.minimumHitExtent(
                           context,
                           desktop: 36,
                         ),
-                        height: UtenControlMetrics.minimumHitExtent(
+                        minHeight: UtenControlMetrics.minimumHitExtent(
                           context,
                           desktop: 36,
                         ),
                       ),
+                      style: IconButton.styleFrom(
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: UtenRadius.controlAll,
+                        ),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
                       padding: EdgeInsets.zero,
                       onPressed: _treeLoading ? null : () => _showCreate(),
-                      icon: const Icon(Icons.add_rounded, size: 20),
+                      icon: const Icon(Icons.create_new_folder_outlined),
                     )
                   : null,
             ),
           ),
-          Divider(height: 1, color: theme.colorScheme.outlineVariant),
           Expanded(child: _buildDirectoryContent(closeOnSelect)),
         ],
       ),
@@ -502,9 +477,70 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
                 selectedIds: {?_selectedId},
                 expandOnRowTap: true,
                 sortByCode: false,
+                // 铺色扁平树（与货品资料等分类页左栏同款，2026-10-19 口径对齐）。
+                flatLevelColors: true,
                 searchHint: '搜索类别名称或编号',
                 onNodeTap: (node) =>
                     _select(node.id, closeDrawer: closeOnSelect),
+                // 行右键/长按菜单（2026-10-19 全站树口径）：与右侧检查器同一套
+                // 动作与拦截口径；树自带「展开/收起」通用项自动追加在后面。
+                rowMenuBuilder: (node) => [
+                  if (_canCreate)
+                    UtenMenuItem(
+                      label: '新增子类别', // TODO(l10n): 补 arb
+                      icon: Icons.add_outlined,
+                      onTap: () async {
+                        final detail = await _loadDetailForMenu(node);
+                        if (detail == null || !mounted) return;
+                        final systemLocked = _isProtectedSystemDetail(detail);
+                        final protectedLeaf =
+                            systemLocked && detail.childCount == 0;
+                        if (detail.status == '禁用') {
+                          context.appWarning('已禁用类别不能新增子类别');
+                        } else if (protectedLeaf) {
+                          context.appWarning('该系统科目可直接记账，不能再挂下级分类');
+                        } else {
+                          await _showCreate(parent: node);
+                        }
+                      },
+                    ),
+                  if (_canManage)
+                    UtenMenuItem(
+                      label: '编辑类别', // TODO(l10n): 补 arb
+                      icon: Icons.edit_outlined,
+                      onTap: () async {
+                        final detail = await _loadDetailForMenu(node);
+                        if (detail == null || !mounted) return;
+                        _showEdit(detail);
+                      },
+                    ),
+                  if (_canStatus) ...[
+                    const UtenMenuDivider(),
+                    UtenMenuItem(
+                      label: node.status == '禁用'
+                          ? '启用'
+                          : '停用', // TODO(l10n): 补 arb
+                      icon: node.status == '禁用'
+                          ? Icons.play_circle_outline_rounded
+                          : Icons.pause_circle_outline_rounded,
+                      onTap: () async {
+                        final detail = await _loadDetailForMenu(node);
+                        if (detail == null || !mounted) return;
+                        if (detail.status != '禁用') {
+                          if (_isProtectedSystemDetail(detail)) {
+                            context.appWarning('关键财务科目必须保持使用状态');
+                            return;
+                          }
+                          if (_hasActiveDescendant(node)) {
+                            context.appWarning('请先停用或迁移使用中的子类别');
+                            return;
+                          }
+                        }
+                        await _toggleStatus(detail);
+                      },
+                    ),
+                  ],
+                ],
                 trailingBuilder: (node) => Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -517,13 +553,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
                           size: UtenStatusBadgeSize.small,
                         ),
                       ),
-                    if (node.hasChildren)
-                      Text(
-                        '${node.children.length}',
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
+                    // 子类计数退役（2026-10-19 用户口径，与四个分类页同款）。
                   ],
                 ),
               ),

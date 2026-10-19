@@ -454,7 +454,9 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
                         'features.basic_data.pages.currency_page.CurrencyPageState._buildDraftHost.1',
                     columns: _columns,
                     items: _page?.items ?? const [],
-                    toolbarActions: [
+                    // 导出/打印进左簇（2026-10-18 用户口径）：与「表头设置 / 全屏」同排靠左，
+                    // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
+                    toolbarLeadingActions: [
                       UtenPrintPreviewButton(
                         title: '币种资料',
                         subtitle: '最多前 2000 行',
@@ -466,6 +468,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
                         exportFilename: '币种资料',
                         type: UtenButtonType.primary,
                         size: UtenButtonSize.large,
+                        icon: null,
                       ),
                       UtenExportButton(
                         endpoint: '/master/currencies/export',
@@ -476,6 +479,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
                         label: '导出币种',
                         type: UtenButtonType.primary,
                         size: UtenButtonSize.large,
+                        icon: null,
                       ),
                     ],
                     facets: _facets?.fields ?? const {},

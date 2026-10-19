@@ -28,6 +28,7 @@ class GoodsImportReport {
     required this.willCreateColors,
     required this.willCreateUnits,
     required this.readyToImport,
+    required this.restorableRows,
     required this.planId,
   });
   final int totalRows;
@@ -37,6 +38,9 @@ class GoodsImportReport {
   final List<String> willCreateColors;
   final List<String> willCreateUnits;
   final int readyToImport;
+
+  /// 将恢复的已删除货品行数（同编号命中软删行，导入时原 UUID 原编号复活）。
+  final int restorableRows;
 
   /// 短期、单次使用的 detect -> commit 计划。服务重启或过期后须重新检测。
   final String? planId;
@@ -57,6 +61,7 @@ class GoodsImportReport {
         willCreateUnits: ((j['willCreateUnits'] as List?) ?? const [])
             .cast<String>(),
         readyToImport: (j['readyToImport'] as num?)?.toInt() ?? 0,
+        restorableRows: (j['restorableRows'] as num?)?.toInt() ?? 0,
         planId: j['planId'] as String?,
       );
 }

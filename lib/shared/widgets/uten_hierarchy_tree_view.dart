@@ -553,9 +553,6 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
         final blockColor = onDarkRow
             ? Colors.white
             : _flatRowBackground(theme, 0);
-        final foreColor = flatSelected
-            ? blockColor
-            : (onDarkRow ? Colors.white : theme.colorScheme.onSurfaceVariant);
         final toggleColor = flatSelected
             ? (onDarkRow ? _flatRowBackground(theme, 0) : Colors.white)
             : (onDarkRow ? Colors.white : theme.colorScheme.onSurfaceVariant);
@@ -567,9 +564,7 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
           final scaler = MediaQuery.textScalerOf(context);
           final nameWidth = _labelWidth(
             label,
-            theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ) ??
+            theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600) ??
                 const TextStyle(),
             scaler,
           );
@@ -707,31 +702,33 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
                                   child: AnimatedDefaultTextStyle(
                                     duration: animDuration,
                                     curve: Curves.easeOutCubic,
-                                    style: (theme.textTheme.bodyMedium ??
-                                            const TextStyle())
-                                        .copyWith(
-                                          fontWeight:
-                                              isSelected || onDarkRow
+                                    style:
+                                        (theme.textTheme.bodyMedium ??
+                                                const TextStyle())
+                                            .copyWith(
+                                              fontWeight:
+                                                  isSelected || onDarkRow
                                                   ? FontWeight.w600
                                                   : FontWeight.w400,
-                                          color: enabled
-                                              ? (flat
-                                                    ? (flatSelected
-                                                          ? blockColor
-                                                          : (onDarkRow
-                                                                ? Colors.white
-                                                                : null))
-                                                    : (onDarkRow
-                                                          ? Colors.white
-                                                          : isSelected
-                                                          ? theme
-                                                                .colorScheme
-                                                                .primary
-                                                          : null))
-                                              : theme
-                                                    .colorScheme
-                                                    .onSurfaceVariant,
-                                        ),
+                                              color: enabled
+                                                  ? (flat
+                                                        ? (flatSelected
+                                                              ? blockColor
+                                                              : (onDarkRow
+                                                                    ? Colors
+                                                                          .white
+                                                                    : null))
+                                                        : (onDarkRow
+                                                              ? Colors.white
+                                                              : isSelected
+                                                              ? theme
+                                                                    .colorScheme
+                                                                    .primary
+                                                              : null))
+                                                  : theme
+                                                        .colorScheme
+                                                        .onSurfaceVariant,
+                                            ),
                                     child: Text(
                                       label,
                                       maxLines: 1,

@@ -707,7 +707,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
       externalSearchError: _searchError,
       header: _buildGlobalSearchBox(),
       onNodeTap: (node) => onSelect(node.id),
-      trailingBuilder: _treeRowActions,
+      trailingBuilder: _treeRowActionsCached,
       rowMenuBuilder: _treeRowMenu,
     );
   }
@@ -726,6 +726,26 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
 
   bool _isSystemRoot(ProductCategoryNode node) =>
       isSystemUncategorizedCategory(systemManaged: node.systemManaged);
+
+  /// 行尾动作缓存（2026-10-19 点击跟手）：选中/展开等 shell setState 会整树
+  /// 重建，行尾三图标（IconButton+Tooltip 造价不低）按 (树快照, 明暗, 权限,
+  /// 节点) 复用同一 widget 实例——identical 子树让 element 直接短路跳过 update，
+  /// 点击帧不再重配全树图标；树重载/权限/主题变化时换键重配。
+  final _rowActionsCache = <String, Widget>{};
+  List<ProductCategoryNode>? _rowActionsTree;
+
+  Widget _treeRowActionsCached(ProductCategoryNode node) {
+    final tree = _tree;
+    if (tree == null) return _treeRowActions(node);
+    if (!identical(_rowActionsTree, tree)) {
+      _rowActionsTree = tree;
+      _rowActionsCache.clear();
+    }
+    final key =
+        '${Theme.of(context).brightness}'
+        '|$shellCanCreate|$shellCanEdit|$shellCanDelete|${node.id}';
+    return _rowActionsCache[key] ??= _treeRowActions(node);
+  }
 
   /// 行尾图标簇：新增子分类 / 编辑（系统根与虚拟节点除外）/ 删除或锁；
   /// 子类计数退役（2026-10-19 用户口径：数值统计不显示，结构走展开箭头与子行）。

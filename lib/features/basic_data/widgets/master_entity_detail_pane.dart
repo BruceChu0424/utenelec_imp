@@ -661,30 +661,46 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       _loading = true;
       _displayedQueryStale = false;
       _error = null;
+      // 切换分类：分页、筛选、facet、排序、特殊分组、勾选全部重置；
+      // 树搜索的关键词随分类切换一并带入(搜索定位时右侧只显示搜索结果)。
+      _page = null;
+      _pageNum = 1;
+      _listError = null;
+      _groups = const [];
+      _filters = {};
+      _keyword = widget.externalKeyword ?? '';
+      _facets = null;
+      _sortKey = _c.defaultSortKey;
+      _sortAsc = true;
+      _selectedIds = {};
     });
-    try {
-      final categoryId = widget.categoryId;
-      final category = categoryId == null
-          ? null
-          : await _c.loadCategory(categoryId);
+    // 详情/列表/筛选桶/前导分组四路并行（2026-10-19 用户口径「数据加载后端
+    // 并行」）：后三路只依赖 categoryId，不等分类详情先回来——首屏数据 = 最慢
+    // 一路，而非「详情→列表」两跳串行。列表/桶/分组失败各自内部消化
+    // （_listError / 静默降级），外层 catch 仍只由详情失败触达整 pane 错误态。
+    final categoryId = widget.categoryId;
+    Future<void> loadDetail() async {
+      if (categoryId == null) {
+        if (mounted && _categoryRequests.isCurrent(generation)) {
+          setState(() => _loading = false);
+        }
+        return;
+      }
+      final category = await _c.loadCategory(categoryId);
       if (!mounted || !_categoryRequests.isCurrent(generation)) return;
       setState(() {
         _category = category;
         _loading = false;
-        // 切换分类：分页、筛选、facet、排序、特殊分组、勾选全部重置；
-        // 树搜索的关键词随分类切换一并带入(搜索定位时右侧只显示搜索结果)。
-        _page = null;
-        _pageNum = 1;
-        _listError = null;
-        _groups = const [];
-        _filters = {};
-        _keyword = widget.externalKeyword ?? '';
-        _facets = null;
-        _sortKey = _c.defaultSortKey;
-        _sortAsc = true;
-        _selectedIds = {};
       });
-      await Future.wait([_loadList(1), _loadFacets(), _loadGroups()]);
+    }
+
+    try {
+      await Future.wait([
+        loadDetail(),
+        _loadList(1),
+        _loadFacets(),
+        _loadGroups(),
+      ]);
     } on ApiException catch (e) {
       if (!mounted || !_categoryRequests.isCurrent(generation)) return;
       setState(() {

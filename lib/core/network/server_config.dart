@@ -10,6 +10,8 @@
 // 故同一 token 可在两端校验通过）。
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../shared/providers/shared_providers.dart';
 import 'api_base_url.dart';
@@ -20,7 +22,15 @@ import 'server_selection.dart';
 /// - cloud → 云端地址（未配则回落本地）；
 /// - auto  → 本地可达用本地，否则用云端（未配云端则回落本地）。
 final apiBaseUrlProvider = Provider<String>((ref) {
-  final prefs = ref.watch(sharedPreferencesProvider);
+  // Riverpod 3 的 listen 会同步挂载整条依赖链；未注入 prefs 的容器（测试）
+  // 这里降级为本地默认而不是抛 UnimplementedError——与 v2 时代事实行为一致，
+  // 真实应用永远在 main.dart 注入 prefs，路径不变。
+  SharedPreferences? prefs;
+  try {
+    prefs = ref.watch(sharedPreferencesProvider);
+  } on ProviderException {
+    prefs = null;
+  }
   return effectiveServerUrl(
     mode: readServerMode(prefs),
     local: apiBaseUrl,

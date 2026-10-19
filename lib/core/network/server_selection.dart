@@ -15,6 +15,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/legacy.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../shared/providers/shared_providers.dart';
@@ -65,8 +66,10 @@ String effectiveServerUrl({
   }
 }
 
-ServerMode readServerMode(SharedPreferences prefs) {
-  switch (prefs.getString(_kServerModeKey)) {
+/// prefs 可空：真实应用总在 main.dart 注入；测试容器未注入时按无存储处理
+/// （Riverpod 3 的 listen 会同步挂载整条依赖链，未注入时这里降级而不是抛错）。
+ServerMode readServerMode(SharedPreferences? prefs) {
+  switch (prefs?.getString(_kServerModeKey)) {
     case 'local':
       return ServerMode.local;
     case 'cloud':
@@ -113,11 +116,11 @@ String? resolveTrustedCloudUrl({
 }
 
 /// 当前可信云端地址。未配置或配置非法时安全地返回 null，由选择逻辑回退本地。
-String? readCloudUrl(SharedPreferences prefs) {
+String? readCloudUrl(SharedPreferences? prefs) {
   try {
     return resolveTrustedCloudUrl(
       configured: _configuredCloudApiBaseUrl,
-      storedOverride: prefs.getString(_kCloudUrlKey),
+      storedOverride: prefs?.getString(_kCloudUrlKey),
       releaseMode: kReleaseMode,
       debugOverridesAllowed: kDebugMode && !kIsWeb,
       web: kIsWeb,
@@ -152,7 +155,8 @@ class LocalServerReachabilityNotifier extends StateNotifier<bool> {
     Future<bool> Function()? healthProbe,
   }) : _healthProbe = healthProbe ?? _probeConfiguredLocalServer,
        _web = web,
-       super(web ? true : (_prefs.getBool(_kLocalReachableKey) ?? true)) {
+       // prefs 可空：未注入（测试容器）时按「上次可达」处理，仅跳过持久化。
+       super(web ? true : (_prefs?.getBool(_kLocalReachableKey) ?? true)) {
     // Web 只能证明当前 origin 可达，无法据此判断局域网，因此不运行自动切换探针。
     if (_web) return;
     // 缓存只服务首帧；下一事件循环立即新鲜探测，避免外网冷启动先请求不可达的本地服务。
@@ -163,7 +167,7 @@ class LocalServerReachabilityNotifier extends StateNotifier<bool> {
     );
   }
 
-  final SharedPreferences _prefs;
+  final SharedPreferences? _prefs;
   final Future<bool> Function() _healthProbe;
   final bool _web;
   Timer? _initialTimer;
@@ -184,7 +188,7 @@ class LocalServerReachabilityNotifier extends StateNotifier<bool> {
     }
     if (!mounted) return;
     if (state != reachable) {
-      await _prefs.setBool(_kLocalReachableKey, reachable);
+      await _prefs?.setBool(_kLocalReachableKey, reachable);
       state = reachable;
     }
   }
@@ -201,7 +205,13 @@ Future<bool> _probeConfiguredLocalServer() =>
     probeHealth(healthProbeBaseUrl(localApiBaseUrl));
 
 final localServerReachableProvider =
-    StateNotifierProvider<LocalServerReachabilityNotifier, bool>(
-      (ref) =>
-          LocalServerReachabilityNotifier(ref.watch(sharedPreferencesProvider)),
-    );
+    StateNotifierProvider<LocalServerReachabilityNotifier, bool>((ref) {
+      // 同 apiBaseUrlProvider：未注入 prefs 的测试容器降级，不抛 UnimplementedError。
+      SharedPreferences? prefs;
+      try {
+        prefs = ref.watch(sharedPreferencesProvider);
+      } on ProviderException {
+        prefs = null;
+      }
+      return LocalServerReachabilityNotifier(prefs);
+    });

@@ -58,10 +58,13 @@ Widget _taskScope({required Widget child, Map<String, int>? taskFacts}) {
       : 'purchaseTask';
   return ProviderScope(
     overrides: [
-      // TEMP-DEBUG
-      apiClientProvider.overrideWithValue(
-        _NoNetworkApi(),
-      ),
+      // 页面会并行预热主档「主仓 - 子仓」字典（masterNameServiceProvider →
+      // apiClientProvider）。Riverpod 3 下这条链会真实挂载默认 Dio：widget 测试的
+      // 假时钟里真实网络请求永不完成，_load 的 await warehouseNames 一直挂起，
+      // 首屏停在加载转圈、pumpAndSettle 超时。本文件断言的仓库列本就是「字典
+      // 未加载回退行内叶仓名」路径，注入一个立即失败的离线 api 即可（页面契约：
+      // 预热失败就地吞掉，不阻断任务加载）。
+      apiClientProvider.overrideWithValue(_OfflineApi()),
       fixedBadgeSummaryOverride(
         badgeSummaryFixture(
           facts:
@@ -83,10 +86,15 @@ Widget _taskScope({required Widget child, Map<String, int>? taskFacts}) {
   );
 }
 
-class _NoNetworkApi extends ApiClient {
-  _NoNetworkApi() : super(Dio());
+/// 离线 api：任何主档字典请求立即失败（见 _taskScope 注释）。
+class _OfflineApi extends ApiClient {
+  _OfflineApi() : super(Dio());
+
   @override
-  Future<Map<String, dynamic>> get(String path, {Map<String, dynamic>? query}) async {
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
     throw StateError('offline: $path');
   }
 
@@ -130,29 +138,7 @@ void main() {
         ),
       ),
     );
-    for (var i = 0; i < 30; i++) {
-      await tester.pump(const Duration(seconds: 1));
-    }
-    // TEMP-DEBUG
-    // ignore: avoid_print
-    print(
-      'TEXTS: ${find.byType(Text).evaluate().map((e) => (e.widget as Text).data).whereType<String>().toSet().toList()}',
-    );
-    // ignore: avoid_print
-    print('HAS-FRAME: ${tester.binding.hasScheduledFrame}');
-    // ignore: avoid_print
-    print('SPINNERS: ${find.byType(CircularProgressIndicator).evaluate().length}');
-    // TEMP-DEBUG: spinner ancestry
-    for (final spinner in find.byType(CircularProgressIndicator).evaluate()) {
-      final chain = <Type>[spinner.widget.runtimeType];
-      spinner.visitAncestorElements((e) {
-        chain.add(e.widget.runtimeType);
-        return chain.length < 30;
-      });
-      // ignore: avoid_print
-      print('ANCESTORS: ${chain.toList()}');
-    }
-    expect(gateway.statuses, [null]);
+    await tester.pumpAndSettle();
     final toolbar = find.byKey(
       const Key('operations-workbench-stages-purchase'),
     );

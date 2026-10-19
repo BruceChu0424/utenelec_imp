@@ -8,8 +8,70 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/models/payment_style_node.dart';
 import 'package:uten_imp/features/basic_data/widgets/uten_category_tree_view.dart';
+import 'package:uten_imp/shared/widgets/uten_hierarchy_tree_view.dart';
 
 void main() {
+  testWidgets('行皮肤：深绿一级行的行尾图标反白、浅色行用辅助色', (tester) async {
+    Icon iconNear(String name) => tester.widget<Icon>(
+      find
+          .descendant(
+            of: find
+                .ancestor(of: find.text(name), matching: find.byType(InkWell))
+                .first,
+            matching: find.byIcon(Icons.star),
+          )
+          .first,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 240,
+            height: 560,
+            child: UtenCategoryTreeView<PaymentStyleNode>(
+              nodes: [
+                PaymentStyleNode(
+                  id: 'root',
+                  code: 'ROOT001',
+                  name: '原材料',
+                  children: [
+                    PaymentStyleNode(
+                      id: 'child',
+                      code: 'CHILD01',
+                      name: '五金件',
+                      children: const [],
+                    ),
+                  ],
+                ),
+              ],
+              flatLevelColors: true,
+              showSearch: false,
+              initiallyExpandDepth: 1,
+              trailingBuilder: (node) => Builder(
+                builder: (rowContext) => Icon(
+                  Icons.star,
+                  size: 16,
+                  color:
+                      UtenHierarchyRowSkin.maybeOf(rowContext)?.foreground ??
+                      const Color(0xFF123456),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 深绿一级行 → 白；浅色子行 → onSurfaceVariant（皮肤由树组件统一下发）。
+    expect(iconNear('原材料').color, Colors.white);
+    expect(
+      iconNear('五金件').color,
+      ThemeData().colorScheme.onSurfaceVariant,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('选中色块右滑入盖过名字、换选后旧行左滑出，浏览态无对勾', (tester) async {
     await tester.pumpWidget(const _TreeHost());
     await tester.pumpAndSettle();

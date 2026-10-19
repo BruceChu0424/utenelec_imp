@@ -13,6 +13,7 @@ import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/components/inputs/uten_filter_picker_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/stock/models/instant_inventory_scope.dart';
 import 'package:uten_imp/features/stock/models/stock_query.dart';
@@ -245,6 +246,14 @@ Future<({GoRouter router, ProviderContainer container})> _open(
       currentPermissionsProvider.overrideWithValue({Perm.stockView}),
       isSuperAdminProvider.overrideWithValue(false),
       warehouseWeightUnitsPrefsProvider.overrideWith(_Prefs.new),
+      // 详情页的 UtenAppBar 挂 PagePermissionAction → sessionSnapshot →
+      // sessionProvider → connectionRecovery → apiBaseUrl，Riverpod 3 的 listen
+      // 会同步建整条链，末端的本地可达性探针随即起一个 60s 周期定时器；测试的
+      // 假时钟下它永远走到不了销毁点，收尾的「无 pending timer」断言必炸。
+      // 按仓库既有口径用 web: true（Web 不跑探针、不起定时器）把它关掉。
+      localServerReachableProvider.overrideWith(
+        (ref) => LocalServerReachabilityNotifier(null, web: true),
+      ),
     ],
   );
   final router = GoRouter(

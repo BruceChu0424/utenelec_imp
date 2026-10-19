@@ -1,6 +1,9 @@
 import '../../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 
+import '../../../shared/widgets/uten_hierarchy_tree_view.dart'
+    show UtenHierarchyRowSkin;
+
 /// 由服务端 UUID 注册表派生 [systemManaged]；编号、名称与 legacyId
 /// 都只是展示/迁移快照，不得决定系统根保护。
 
@@ -28,7 +31,11 @@ class SystemMasterCategoryProtectionNotice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = theme.colorScheme.onSurfaceVariant;
+    // 树行内读行皮肤取色（深绿一级行反白，2026-10-19 用户口径）；详情卡等
+    // 无皮肤上游回落 onSurfaceVariant。
+    final color =
+        UtenHierarchyRowSkin.maybeOf(context)?.foreground ??
+        theme.colorScheme.onSurfaceVariant;
     final content = compact
         ? Padding(
             padding: const EdgeInsets.all(2),

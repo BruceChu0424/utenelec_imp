@@ -19,6 +19,7 @@ import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dar
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/features/department/repositories/department_repository.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
 import 'package:uten_imp/features/production/pages/production_material_analysis_page.dart';
 import 'package:uten_imp/features/production/providers/material_analysis_warehouse_prefs_provider.dart';
@@ -1016,6 +1017,13 @@ Future<void> _pump(
       masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
       materialAnalysisWarehousePrefsProvider.overrideWith(_WarehousePrefs.new),
       currentPermissionsProvider.overrideWithValue(_permissions),
+      // 部门仓库接到假后端(riverpod 3 起 apiClientProvider 在测试里可构造，不
+      // 覆写会让真实 Dio 的 /org/departments/tree 在假时钟下永不完成，车间/
+      // 负责人默认值那批附带读取永远挂着，提交前「必填车间」校验过不去)。
+      // 假后端对未知路径回空列表，与迁移前「取树失败 → 空树」的落点一致。
+      departmentRepositoryProvider.overrideWithValue(
+        DioDepartmentRepository(api),
+      ),
     ],
     child: MaterialApp(
       locale: const Locale('zh'),

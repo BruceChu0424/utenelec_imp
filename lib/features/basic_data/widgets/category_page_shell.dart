@@ -44,6 +44,8 @@ import '../models/product_category_node.dart';
 import '../widgets/category_edit_dialog.dart';
 import '../widgets/category_tree_search.dart';
 import '../widgets/system_master_category_guard.dart';
+import '../../../shared/widgets/uten_hierarchy_tree_view.dart'
+    show UtenHierarchyRowSkin;
 import '../widgets/uten_category_tree_view.dart';
 import 'basic_data_l10n.dart';
 
@@ -780,13 +782,27 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
       String tooltip,
       IconData icon,
       VoidCallback onPressed,
-    ) => IconButton(
-      key: key,
-      tooltip: tooltip,
-      constraints: BoxConstraints.tightFor(width: hitExtent, height: hitExtent),
-      padding: EdgeInsets.zero,
-      onPressed: onPressed,
-      icon: Icon(icon, size: 16, color: theme.colorScheme.onSurfaceVariant),
+    ) => Builder(
+      // 图标颜色读树组件的行皮肤（2026-10-19 用户口径「深色行图标应反白、
+      // 颜色写在组件里」）：深绿一级行拿白色、浅色行拿 onSurfaceVariant，
+      // Builder 挂进行子树里才能读到 InheritedWidget；无皮肤上游回落旧色。
+      builder: (rowContext) => IconButton(
+        key: key,
+        tooltip: tooltip,
+        constraints: BoxConstraints.tightFor(
+          width: hitExtent,
+          height: hitExtent,
+        ),
+        padding: EdgeInsets.zero,
+        onPressed: onPressed,
+        icon: Icon(
+          icon,
+          size: 16,
+          color:
+              UtenHierarchyRowSkin.maybeOf(rowContext)?.foreground ??
+              theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
     );
     return Row(
       mainAxisSize: MainAxisSize.min,

@@ -4139,14 +4139,6 @@ void main() {
     await tester.enterText(_orderQty('m-root'), '3000');
     await tester.pump();
     await _settleRebuild(tester);
-    // ignore: avoid_print
-    print('DBG enabled=${tester.widget<TextField>(_orderQty("m-root")).enabled}');
-    // ignore: avoid_print
-    print('DBG text=${_qtyText(tester, _orderQty("m-root"))}');
-    // ignore: avoid_print
-    print('DBG root6=${_qtyText(tester, _orderQty("m-hv5g001"))}');
-    // ignore: avoid_print
-    print('DBG sel=${_nodeSelected(tester, "m-hv5g001")} ${_nodeSelected(tester, "m-root")}');
     expect(
       tester.widget<Checkbox>(_productCheckbox('product-1')).value,
       isTrue,
@@ -7612,10 +7604,13 @@ Future<void> _pump(
         ),
         currentPermissionsProvider.overrideWithValue(permissions),
         if (session != null) sessionProvider.overrideWith(() => session),
-        if (departmentTree != null)
-          departmentRepositoryProvider.overrideWithValue(
-            DioDepartmentRepository(api),
-          ),
+        // 部门仓库一律接到假后端(riverpod 3 起 apiClientProvider 在测试里可构造，
+        // 不覆写会让真实 Dio 的 /org/departments/tree 在假时钟下永不完成，拖死
+        // 车间/负责人默认值那一批附带读取)。没给 departmentTree 时假后端按
+        // 未知路径回空列表——与迁移前「取树失败 → 空树」的落点一致。
+        departmentRepositoryProvider.overrideWithValue(
+          DioDepartmentRepository(api),
+        ),
       ],
       child: MaterialApp(
         locale: const Locale('zh'),

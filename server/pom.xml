@@ -27,7 +27,7 @@
         <uten.test.jvm.heap.args></uten.test.jvm.heap.args>
         <!-- Bound retained migrated Spring contexts in full-suite JVMs. -->
         <uten.test.context.cache.maxSize>8</uten.test.context.cache.maxSize>
-        <jjwt.version>0.12.6</jjwt.version>
+        <jjwt.version>0.13.0</jjwt.version>
         <bucket4j.version>8.10.1</bucket4j.version>
         <aliyun-sms.version>4.6.0</aliyun-sms.version>
         <aliyun-oss.version>3.18.5</aliyun-oss.version>

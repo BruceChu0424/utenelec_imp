@@ -710,10 +710,13 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
                                                   isSelected || onDarkRow
                                                   ? FontWeight.w600
                                                   : FontWeight.w400,
+                                              // 选中文字 = 色块的反色（浅色行深绿块
+                                              // → 白字；一级行白块 → 深绿字），
+                                              // 与箭头同拍过渡。
                                               color: enabled
                                                   ? (flat
                                                         ? (flatSelected
-                                                              ? blockColor
+                                                              ? toggleColor
                                                               : (onDarkRow
                                                                     ? Colors
                                                                           .white

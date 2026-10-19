@@ -137,10 +137,15 @@ void main() {
       expect(snapshot.companyName, '甲公司');
       expect(snapshot.primaryColor, '#123456');
       expect(snapshot.companyAliases, 'ACME ELECTRIC');
-      await expectLater(
-        updatedClient.read(platformBrandingProvider.future),
-        throwsA(isA<DioException>()),
+      // Riverpod 3：future 跟随元素最终结果，失败态改由状态序列断言钉住。
+      final states = <AsyncValue<PlatformBranding>>[];
+      updatedClient.listen(
+        platformBrandingProvider,
+        (_, next) => states.add(next),
       );
+      await pumpEventQueue();
+      expect(states.any((s) => s.hasError), isTrue, reason: '初次失败必须进入错误态');
+      expect(states.firstWhere((s) => s.hasError).error, isA<DioException>());
       expect(updatedClient.read(platformBrandingProvider).hasError, isTrue);
       final secondListen = updatedClient.listen(
         platformBrandingLogoProvider(7),
@@ -172,10 +177,13 @@ void main() {
           client.read(platformBrandingSnapshotProvider).companyName,
           '甲公司',
         );
-        await expectLater(
-          client.read(platformBrandingProvider.future),
-          throwsA(isA<DioException>()),
-        );
+        // Riverpod 3：future 跟随元素最终结果，失败态改由状态序列断言钉住。
+        final states = <AsyncValue<PlatformBranding>>[];
+        client.listen(platformBrandingProvider, (_, next) => states.add(next));
+        await pumpEventQueue();
+        expect(states.any((s) => s.hasError), isTrue, reason: '初次失败必须进入错误态');
+        expect(states.firstWhere((s) => s.hasError).error, isA<DioException>());
+        expect(client.read(platformBrandingProvider).hasError, isTrue);
         client.dispose();
       }
       expect(_allPrefs(preferences), before);
@@ -366,10 +374,13 @@ void main() {
           client.read(platformBrandingSnapshotProvider).companyName,
           '甲公司',
         );
-        await expectLater(
-          client.read(platformBrandingProvider.future),
-          throwsA(isA<DioException>()),
-        );
+        // Riverpod 3：future 跟随元素最终结果，失败态改由状态序列断言钉住。
+        final states = <AsyncValue<PlatformBranding>>[];
+        client.listen(platformBrandingProvider, (_, next) => states.add(next));
+        await pumpEventQueue();
+        expect(states.any((s) => s.hasError), isTrue, reason: '初次失败必须进入错误态');
+        expect(states.firstWhere((s) => s.hasError).error, isA<DioException>());
+        expect(client.read(platformBrandingProvider).hasError, isTrue);
         final listen = client.listen(
           platformBrandingLogoProvider(7),
           (_, _) {},
@@ -506,10 +517,13 @@ void main() {
       addTearDown(offline.dispose);
       expect(offline.read(platformBrandingSnapshotProvider).hasLogo, isFalse);
       expect(offline.read(platformBrandingSnapshotProvider).companyName, '甲公司');
-      await expectLater(
-        offline.read(platformBrandingProvider.future),
-        throwsA(isA<DioException>()),
-      );
+      // Riverpod 3：future 跟随元素最终结果，失败态改由状态序列断言钉住。
+      final states = <AsyncValue<PlatformBranding>>[];
+      offline.listen(platformBrandingProvider, (_, next) => states.add(next));
+      await pumpEventQueue();
+      expect(states.any((s) => s.hasError), isTrue, reason: '初次失败必须进入错误态');
+      expect(states.firstWhere((s) => s.hasError).error, isA<DioException>());
+      expect(offline.read(platformBrandingProvider).hasError, isTrue);
       expect(cache.readLogo(_a, 7), isNull);
     },
   );
@@ -580,10 +594,13 @@ void main() {
         client.read(platformBrandingSnapshotProvider),
         PlatformBranding.defaults,
       );
-      await expectLater(
-        client.read(platformBrandingProvider.future),
-        throwsA(isA<DioException>()),
-      );
+      // Riverpod 3：future 跟随元素最终结果，失败态改由状态序列断言钉住。
+      final states = <AsyncValue<PlatformBranding>>[];
+      client.listen(platformBrandingProvider, (_, next) => states.add(next));
+      await pumpEventQueue();
+      expect(states.any((s) => s.hasError), isTrue, reason: '初次失败必须进入错误态');
+      expect(states.firstWhere((s) => s.hasError).error, isA<DioException>());
+      expect(client.read(platformBrandingProvider).hasError, isTrue);
       expect(_allPrefs(preferences), before);
       await client
           .read(platformBrandingCacheProvider)

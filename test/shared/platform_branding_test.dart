@@ -322,10 +322,12 @@ void main() {
       );
       await container.read(platformBrandingProvider.future);
       container.invalidate(platformBrandingProvider);
-      await expectLater(
-        container.read(platformBrandingProvider.future),
-        throwsA(isA<DioException>()),
-      );
+      // Riverpod 3：future 跟随元素最终结果，失败态改由状态序列断言钉住。
+      final states = <AsyncValue<PlatformBranding>>[];
+      container.listen(platformBrandingProvider, (_, next) => states.add(next));
+      await pumpEventQueue();
+      expect(states.any((s) => s.hasError), isTrue, reason: '初次失败必须进入错误态');
+      expect(states.firstWhere((s) => s.hasError).error, isA<DioException>());
       expect(container.read(platformBrandingProvider).hasError, isTrue);
       expect(
         container.read(platformBrandingSnapshotProvider).companyName,

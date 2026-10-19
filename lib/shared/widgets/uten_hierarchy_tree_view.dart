@@ -140,10 +140,12 @@ class UtenHierarchyTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
   /// 时缩进吃掉宽度，名字几乎看不到）。行不按深度缩进，改为整行按深度铺色：
   /// 五档梯度（UtenColors.treeLevelRow）——一级深绿实底白字、往下逐档降饱和降
   /// 明度、四档起转中性灰，4 及更深固定第五档（至少 5 个层级色差、最深一层固定
-  /// 一色、色差拉开且协调，2026-09-24 第二轮口径）；行距收紧、行间 1px 分隔线；
-  /// 选中 = 行首整高深绿色块（盖过展开/收起箭头、箭头反白；一级深绿行本身即
-  /// 深绿，反其道用白块 + 深绿箭头）+ 加粗 + 勾选图标（深绿行上反白）。
-  /// 2026-10-19 用户口径「色块大点」：色块取代原左缘 3px 强调条。
+  /// 一色、色差拉开且协调，2026-09-24 第二轮口径）；行距收紧、行间 1px 分隔线。
+  /// 选中 = 行首整高色块**从左滑入**盖过展开/收起箭头与名字（宽 = 箭头位 + 名字
+  /// 自然宽 + 呼吸位，上限行宽 60% 的名字默认占比；右侧上下两角平台统一控件
+  /// 圆角），名字/箭头随色块同拍反白——一级深绿行本身即深绿，反其道用白块 +
+  /// 深绿前景；浏览态右缘对勾退役（2026-10-19 用户口径，色块盖名后冗余；同日
+  /// 早前形态依次为左缘 3px 强调条 → 盖箭头短块）。
   /// 完整祖先路径由名称提示与外部选中路径表达；行内只保留单行节点标题。
   /// 2026-10-18：整列视作一块卡片——首行上两角、末行下两角用系统圆角
   /// （UtenRadius.md），中间行保持方角相接。
@@ -168,6 +170,26 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
   int _fontRevision = 0;
 
   bool get _searching => _query.trim().isNotEmpty;
+
+  /// flat 选中色块要盖过名字（2026-10-19 用户口径）：按选中态文字样式量测每个
+  /// 标签的自然宽（TextPainter），同一 (字体版本, 缩放, 标签) 只量一次；系统
+  /// 字体热载时 [_onSystemFontsChanged] 会换代身键并清缓存。
+  final _labelWidthCache = <String, double>{};
+
+  double _labelWidth(String label, TextStyle style, TextScaler scaler) {
+    final key = '$_fontRevision:$scaler:$label';
+    return _labelWidthCache[key] ??= () {
+      final painter = TextPainter(
+        text: TextSpan(text: label, style: style),
+        textScaler: scaler,
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+      )..layout();
+      final width = painter.maxIntrinsicWidth;
+      painter.dispose();
+      return width;
+    }();
+  }
 
   bool _enabled(T node) => widget.nodeEnabledPredicate?.call(node) ?? true;
 
@@ -230,6 +252,7 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
   void _onSystemFontsChanged() {
     _fontRevision++;
     _forestWidthKey = null;
+    _labelWidthCache.clear();
     if (mounted) setState(() {});
   }
 
@@ -519,17 +542,42 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
           desktop: 32,
         );
         final label = widget.labelOf?.call(node) ?? node.name;
-        // flat 选中色块（2026-10-19 用户口径「色块大点」）：铺在行内容之下、行首
-        // 整高，宽度盖过展开/收起箭头（8 左缘 + 展开位 + 4 间隙，与标题起点齐平），
-        // 标题不位移。浅色档行用深绿块（与一级行同色）+ 箭头反白；一级行本身即
-        // 深绿，反其道：白块 + 深绿箭头——选中块与行底始终成对比。
+        // flat 选中色块（2026-10-19 用户口径「色块盖过名字+从左滑入」）：铺在行
+        // 内容之下、行首整高，宽度 = 箭头位 + 名字自然宽 + 呼吸位，上限为行宽
+        // 的 60%（名字默认占比，超长不吞行尾动作区），下限仍盖满展开位；标题
+        // 不位移。浅色档行用深绿块（与一级行同色）+ 名字/箭头反白；一级行本身
+        // 即深绿，反其道：白块 + 深绿前景——选中块与行底始终成对比。宽度经
+        // AnimatedPositioned 0↔目标宽 生长/收回（左缘锚定 = 从左边滑入），文字
+        // 与箭头颜色同拍过渡；浏览态右缘对勾退役（色块盖名后冗余）。
         final flatSelected = flat && isSelected;
-        final selectedBlockColor = flatSelected
-            ? (onDarkRow ? Colors.white : _flatRowBackground(theme, 0))
-            : null;
+        final blockColor = onDarkRow
+            ? Colors.white
+            : _flatRowBackground(theme, 0);
+        final foreColor = flatSelected
+            ? blockColor
+            : (onDarkRow ? Colors.white : theme.colorScheme.onSurfaceVariant);
         final toggleColor = flatSelected
             ? (onDarkRow ? _flatRowBackground(theme, 0) : Colors.white)
             : (onDarkRow ? Colors.white : theme.colorScheme.onSurfaceVariant);
+        final animDuration = MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 220);
+        double blockWidth = 0;
+        if (flat) {
+          final scaler = MediaQuery.textScalerOf(context);
+          final nameWidth = _labelWidth(
+            label,
+            theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ) ??
+                const TextStyle(),
+            scaler,
+          );
+          blockWidth = (8 + hitExtent + 4 + nameWidth + 8).clamp(
+            hitExtent + 12.0,
+            constraints.maxWidth * 0.6,
+          );
+        }
         final Widget? selection;
         if (enabled && widget.mode == UtenTreeSelectMode.multi) {
           selection = Checkbox(
@@ -543,15 +591,6 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
           selection = isSelected
               ? Icon(Icons.check_circle_rounded, size: 18, color: rowAccent)
               : const SizedBox(width: 18, height: 18);
-        } else if (flat && isSelected) {
-          // 浏览态(flat)的选中勾（2026-10-18 全站统一口径）：此前浅色档行上
-          // 只有左缘强调条+加粗，选中态在低对比档位不够显眼、页与页之间观感
-          // 不一致；勾选图标在深绿行反白、浅色行用主色，与单选模式同一形态。
-          selection = Icon(
-            Icons.check_circle_rounded,
-            size: 18,
-            color: rowAccent,
-          );
         } else {
           selection = null;
         }
@@ -584,18 +623,22 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
                   ),
                   child: Stack(
                     children: [
-                      if (selectedBlockColor != null)
-                        Positioned(
+                      if (flat)
+                        AnimatedPositioned(
+                          duration: animDuration,
+                          curve: Curves.easeOutCubic,
                           left: 0,
                           top: 0,
                           bottom: 0,
-                          width: hitExtent + 12,
+                          // 选中 = 从左缘滑入（宽度自 0 生长盖过名字）；未选中收回。
+                          // 恒挂载保证行内容 element 稳定（选中切换不失焦不重挂）。
+                          width: flatSelected ? blockWidth : 0,
                           // 右侧上下两角用平台统一控件圆角（UtenRadius.control，
                           // 2026-10-19 用户口径）：色块读作行首「页签」而不是
                           // 贴片；左缘与行边齐平（首末行的卡片圆角由外层裁剪）。
                           child: DecoratedBox(
                             decoration: BoxDecoration(
-                              color: selectedBlockColor,
+                              color: blockColor,
                               borderRadius: const BorderRadius.horizontal(
                                 right: Radius.circular(UtenRadius.control),
                               ),
@@ -635,12 +678,17 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
                                       ),
                                       padding: EdgeInsets.zero,
                                       onPressed: () => _toggleExpand(node),
-                                      icon: Icon(
-                                        expanded
-                                            ? Icons.expand_more_rounded
-                                            : Icons.chevron_right_rounded,
-                                        size: 20,
-                                        color: toggleColor,
+                                      icon: TweenAnimationBuilder<Color?>(
+                                        tween: ColorTween(end: toggleColor),
+                                        duration: animDuration,
+                                        curve: Curves.easeOutCubic,
+                                        builder: (context, color, _) => Icon(
+                                          expanded
+                                              ? Icons.expand_more_rounded
+                                              : Icons.chevron_right_rounded,
+                                          size: 20,
+                                          color: color ?? toggleColor,
+                                        ),
                                       ),
                                     )
                                   : null,
@@ -654,22 +702,41 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
                               child: UtenHierarchyLabelWidth(
                                 child: Tooltip(
                                   message: [...ancestors, label].join(' / '),
-                                  child: Text(
-                                    label,
-                                    maxLines: 1,
-                                    softWrap: false,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.bodyMedium?.copyWith(
-                                      fontWeight: isSelected || onDarkRow
-                                          ? FontWeight.w600
-                                          : FontWeight.w400,
-                                      color: enabled
-                                          ? (onDarkRow
-                                                ? Colors.white
-                                                : isSelected
-                                                ? theme.colorScheme.primary
-                                                : null)
-                                          : theme.colorScheme.onSurfaceVariant,
+                                  // 文字颜色随色块同拍过渡（flat 选中 = 色块盖过
+                                  // 名字，前景反白/一级行反绿）。
+                                  child: AnimatedDefaultTextStyle(
+                                    duration: animDuration,
+                                    curve: Curves.easeOutCubic,
+                                    style: (theme.textTheme.bodyMedium ??
+                                            const TextStyle())
+                                        .copyWith(
+                                          fontWeight:
+                                              isSelected || onDarkRow
+                                                  ? FontWeight.w600
+                                                  : FontWeight.w400,
+                                          color: enabled
+                                              ? (flat
+                                                    ? (flatSelected
+                                                          ? blockColor
+                                                          : (onDarkRow
+                                                                ? Colors.white
+                                                                : null))
+                                                    : (onDarkRow
+                                                          ? Colors.white
+                                                          : isSelected
+                                                          ? theme
+                                                                .colorScheme
+                                                                .primary
+                                                          : null))
+                                              : theme
+                                                    .colorScheme
+                                                    .onSurfaceVariant,
+                                        ),
+                                    child: Text(
+                                      label,
+                                      maxLines: 1,
+                                      softWrap: false,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
                                 ),

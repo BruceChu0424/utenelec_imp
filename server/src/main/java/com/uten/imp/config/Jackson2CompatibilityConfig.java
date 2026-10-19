@@ -34,9 +34,15 @@ public class Jackson2CompatibilityConfig {
 
     @Bean
     JsonMapper jackson2DomainObjectMapper() {
+        // 对齐 Boot 3 自动装配 ObjectMapper 的三件事：注册 classpath 上的模块
+        // （jsr310 日期/时长等，漏了会 500：OffsetDateTime not supported）、
+        // 关 DEFAULT_VIEW_INCLUSION 与 FAIL_ON_UNKNOWN_PROPERTIES（Boot 3 默认）、
+        // 关 WRITE_DATES_AS_TIMESTAMPS（Boot 3 默认日期输出 ISO-8601 字符串）。
         return JsonMapper.builder()
+                .findAndAddModules()
                 .disable(MapperFeature.DEFAULT_VIEW_INCLUSION)
                 .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                .disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
                 .build();
     }
 

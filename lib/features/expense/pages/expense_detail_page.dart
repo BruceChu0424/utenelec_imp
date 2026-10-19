@@ -71,7 +71,7 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
   }
 
   ExpenseClaim? get _claim =>
-      ref.read(expenseDetailProvider(widget.claimId)).valueOrNull;
+      ref.read(expenseDetailProvider(widget.claimId)).value;
 
   bool get _isOwner {
     final claim = _claim;

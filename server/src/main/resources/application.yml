@@ -73,7 +73,8 @@ spring:
   jackson:
     time-zone: UTC
     serialization:
-      write-durations-as-timestamps: false
+      # write-durations-as-timestamps 已删除：Jackson 3 将该开关移入 DateTimeFeature 且默认即为
+      # false（时长输出 ISO-8601 字符串），与原配置意图一致，无需再显式关闭。
       fail-on-empty-beans: false
 
 server:

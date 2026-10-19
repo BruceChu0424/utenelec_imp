@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -284,7 +285,7 @@ void main() {
           );
         }
         await Future<void>.delayed(Duration.zero);
-        expect(container.read(hrTaskSummaryProvider).valueOrNull, isNull);
+        expect(container.read(hrTaskSummaryProvider).value, isNull);
         repository.requests[2].complete(_summary('current employee', count: 0));
         await container.read(hrTaskSummaryProvider.future);
         repository.requests[1].complete(_summary('old employee', count: 9));

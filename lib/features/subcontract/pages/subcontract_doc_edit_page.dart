@@ -723,7 +723,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
         return;
       }
       final methods =
-          methodsState.valueOrNull ?? const <ReferenceMethodOption>[];
+          methodsState.value ?? const <ReferenceMethodOption>[];
       if (_settlementMethodId == null ||
           !methods.any((method) => method.id == _settlementMethodId)) {
         setState(
@@ -1205,7 +1205,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
   Widget _headerCard(ThemeData theme) {
     final names = ref.watch(mn.masterNameServiceProvider);
     final settlementMethods =
-        ref.watch(settlementMethodOptionsProvider).valueOrNull ??
+        ref.watch(settlementMethodOptionsProvider).value ??
         const <ReferenceMethodOption>[];
     final settlementEntries = <String, String>{
       for (final method in settlementMethods)
@@ -1448,7 +1448,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
       initial: currentId == null ? null : _empCache[currentId],
       loader: (kw) async {
         final deptId = (kw == null || kw.isEmpty) && defaultDeptCode != null
-            ? (ref.read(departmentCodeIdMapProvider).valueOrNull ??
+            ? (ref.read(departmentCodeIdMapProvider).value ??
                   const {})[defaultDeptCode]
             : null;
         final res = await ref

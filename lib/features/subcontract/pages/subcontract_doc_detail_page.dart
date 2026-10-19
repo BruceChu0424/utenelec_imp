@@ -830,7 +830,7 @@ class _SubcontractDocDetailPageState
     final canViewCommercialAmounts = _canViewCommercialAmounts;
     final names = ref.watch(mn.masterNameServiceProvider);
     final settlementMethodsState = ref.watch(settlementMethodOptionsProvider);
-    final settlementMethods = settlementMethodsState.valueOrNull;
+    final settlementMethods = settlementMethodsState.value;
     final matchingSettlementMethods = settlementMethods
         ?.where((method) => method.id == d.settlementMethodId)
         .toList(growable: false);
@@ -1339,7 +1339,7 @@ class _SubcontractDocDetailPageState
                           width: 150,
                           value: (_) {
                             for (final method
-                                in settlementOptions.valueOrNull ??
+                                in settlementOptions.value ??
                                     const <ReferenceMethodOption>[]) {
                               if (method.id == d.settlementMethodId) {
                                 return method.name;

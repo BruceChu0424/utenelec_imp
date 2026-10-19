@@ -1,6 +1,9 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+// Riverpod 3 将 copyWithPrevious 标记为 @internal；跨 family 实例手动保页/保旧值是既有架构，等上游公开等价 API 后再迁移。
+// ignore_for_file: invalid_use_of_internal_member
+
 /// Keeps the last successful page mounted while a page-family request changes.
 /// The scope excludes the page number and includes every query/session identity.
 /// A different scope never receives rows from the previous query.
@@ -13,7 +16,7 @@ class RetainedAsyncPage<T> {
   /// and issue the same page request twice.
   Future<void> waitFor(
     WidgetRef ref,
-    AutoDisposeFutureProvider<T> provider,
+    FutureProvider<T> provider,
     Future<T> Function() read,
   ) async {
     final subscription = ref.listenManual(provider, (_, _) {});

@@ -24,7 +24,7 @@ class CelebrationTodayCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(myCelebrationTodayProvider);
-    final items = async.valueOrNull;
+    final items = async.value;
     // 加载中或无庆典：不占位、不闪（骨架层另有占位）。
     if (items == null || items.isEmpty) return const SizedBox.shrink();
 

@@ -80,7 +80,7 @@ class _ExpenseApprovalDetailPageState
   }
 
   ExpenseClaim? get _claim =>
-      ref.read(expenseDetailProvider(widget.claimId)).valueOrNull;
+      ref.read(expenseDetailProvider(widget.claimId)).value;
 
   bool get _canApprove {
     final claim = _claim;
@@ -552,7 +552,7 @@ class _ExpensePaymentDialogState extends ConsumerState<_ExpensePaymentDialog> {
   @override
   Widget build(BuildContext context) {
     final optionsAsync = ref.watch(expensePaymentOptionsProvider);
-    final options = optionsAsync.valueOrNull;
+    final options = optionsAsync.value;
     final hasOptions =
         options != null &&
         options.accounts.isNotEmpty &&

@@ -138,7 +138,7 @@ class _ExpenseApprovalListPageState
     final canApprove = permissions.contains(Perm.expenseApprove);
     final canPay = permissions.contains(Perm.expensePay);
     final isPendingQueue = queue == ApprovalQueue.pending;
-    final summary = summaryAsync.valueOrNull;
+    final summary = summaryAsync.value;
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
 
@@ -172,7 +172,7 @@ class _ExpenseApprovalListPageState
                   value: ApprovalQueue.history,
                   label: l10n.expenseFlowHistory,
                   count: queue == ApprovalQueue.history
-                      ? listAsync.valueOrNull?.total
+                      ? listAsync.value?.total
                       : null,
                 ),
               ],
@@ -248,7 +248,7 @@ class _ExpenseApprovalListPageState
             items: page.items,
             // 部门 / 年月筛选桶来自后端聚合；未加载完成前列头暂无筛选项。
             // 2026-09-25 单号列统一：facets 响应含报销单号桶（claimNo）。
-            facets: facets.valueOrNull ?? const {},
+            facets: facets.value ?? const {},
             nullCounts: const {},
             filters: filters.asTableFilters,
             onFilterChanged: _onFilterChanged,

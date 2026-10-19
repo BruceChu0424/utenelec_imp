@@ -83,7 +83,7 @@ Future<String?> showSettlementAddSheet(BuildContext context, WidgetRef ref) {
     title: '添加结账方式',
     draftSpec: FormDraftCatalog.settlement.spec(title: '添加结账方式'),
     exists: (name) =>
-        (ref.read(settlementMethodOptionsProvider).valueOrNull ??
+        (ref.read(settlementMethodOptionsProvider).value ??
                 const <ReferenceMethodOption>[])
             .any((m) => m.name.toLowerCase() == name.toLowerCase()),
     create: (name) async {

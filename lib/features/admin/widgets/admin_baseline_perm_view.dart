@@ -44,12 +44,12 @@ class _AdminBaselinePermViewState extends ConsumerState<AdminBaselinePermView> {
   bool? _lastReportedPending;
 
   Set<String>? get _serverChecked =>
-      ref.read(adminPermissionBaselineProvider).valueOrNull?.toSet();
+      ref.read(adminPermissionBaselineProvider).value?.toSet();
 
   /// 基础包钉死码(V832/ADR-170)：体系准入权限，任何移出操作都跳过。
   Set<String> get _pinnedCodes => {
     for (final group
-        in ref.read(permissionCatalogProvider).valueOrNull ??
+        in ref.read(permissionCatalogProvider).value ??
             const <PermissionCatalogGroup>[])
       for (final permission in group.permissions)
         if (permission.baselinePinned) permission.code,
@@ -274,7 +274,7 @@ class _AdminBaselinePermViewState extends ConsumerState<AdminBaselinePermView> {
           ..invalidate(permissionCatalogProvider),
       );
     }
-    final rawGroups = catalogAsync.valueOrNull;
+    final rawGroups = catalogAsync.value;
     if (rawGroups == null || baselineAsync.isLoading) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: UtenSpacing.s24),

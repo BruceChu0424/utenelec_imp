@@ -384,11 +384,11 @@ class _SubcontractDecompositionPageState
       if (!setEquals(previous, next)) _readerChanged();
     });
     ref.listenManual(sessionSnapshotProvider, (previous, next) {
-      if (previous?.valueOrNull != null &&
+      if (previous?.value != null &&
           (next.isLoading ||
               next.hasError ||
-              previous?.valueOrNull?.generation !=
-                  next.valueOrNull?.generation)) {
+              previous?.value?.generation !=
+                  next.value?.generation)) {
         _readerChanged();
       }
     });

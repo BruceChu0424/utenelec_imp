@@ -1048,7 +1048,7 @@ class _WarehouseSubcontractOutboundBatchPageState
 
   Future<List<UtenEmployeePickerItem>> _loadEmployees(String? keyword) async {
     final departmentId = keyword == null || keyword.isEmpty
-        ? (ref.read(departmentCodeIdMapProvider).valueOrNull ??
+        ? (ref.read(departmentCodeIdMapProvider).value ??
               const {})['SUB_WH']
         : null;
     final result = await ref

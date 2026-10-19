@@ -2,7 +2,7 @@ import '../../support/native_detail_reader_overrides.dart';
 // AI 程序业务界面截图: 识别核对面板 / 编辑页导入后 / 报价核价队列与详情 / 报价详情状态 /
 // 客户货品对照 / 货品英文名称。由 ai_program_visual_review_test.dart 调用。
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';

@@ -2824,7 +2824,7 @@ class _ProductionWorkshopTasksPageState
     // 「历史任务」是终态，按全站口径不挂徽章。
     final counts = ref.watch(productionWorkshopTaskCountProvider);
     final workshops =
-        ref.watch(productionWorkshopTreeProvider).valueOrNull ?? const [];
+        ref.watch(productionWorkshopTreeProvider).value ?? const [];
     // 顶栏「车间内料仓」与路由守卫同一份契约(不在页面里拼权限码)。
     final canOpenMaterialBin = locationAllowedFor(
       ref.watch(currentPermissionsProvider),

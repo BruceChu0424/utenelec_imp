@@ -23,6 +23,9 @@ import '../providers/authenticated_scope_provider.dart';
 import '../providers/session_provider.dart';
 import 'document_scope_capability.dart';
 
+// Riverpod 3 将 copyWithPrevious 标记为 @internal；跨 family 实例手动保页/保旧值是既有架构，等上游公开等价 API 后再迁移。
+// ignore_for_file: invalid_use_of_internal_member
+
 /// 会话快照内容, 见文件头。
 @immutable
 class SessionSnapshot {
@@ -92,7 +95,7 @@ final sessionSnapshotProvider =
     );
 
 SessionSnapshot? confirmedSessionSnapshot(AsyncValue<SessionSnapshot?> value) =>
-    value.isLoading || value.hasError ? null : value.valueOrNull;
+    value.isLoading || value.hasError ? null : value.value;
 
 class SessionSnapshotNotifier extends AsyncNotifier<SessionSnapshot?> {
   /// 失败后自动重试的退避间隔(用完即止, 之后只等断网恢复或下次授权变化)。

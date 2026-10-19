@@ -2,6 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/shared/auth/document_scope_capability.dart';
 
+// Riverpod 3 将 copyWithPrevious 标记为 @internal；跨 family 实例手动保页/保旧值是既有架构，等上游公开等价 API 后再迁移。
+// ignore_for_file: invalid_use_of_internal_member
+
 void main() {
   test(
     'manual visible owners remain read-only while handover owners can write',
@@ -62,7 +65,7 @@ void main() {
       StateError('revoked'),
       StackTrace.current,
     ).copyWithPrevious(previous);
-    expect(refreshing.valueOrNull?.writeAll, isTrue);
+    expect(refreshing.value?.writeAll, isTrue);
     expect(documentOwnerCanWrite(refreshing, 'owner'), isFalse);
     expect(documentOwnerCanWrite(failed, 'owner'), isFalse);
   });

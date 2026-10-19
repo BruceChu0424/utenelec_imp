@@ -189,7 +189,7 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
                           label: const Text('全选'),
                           onAction: () async {
                             final notices =
-                                list.valueOrNull ?? const <Notice>[];
+                                list.value ?? const <Notice>[];
                             setState(() {
                               _selected
                                 ..clear()

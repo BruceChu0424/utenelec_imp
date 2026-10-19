@@ -221,7 +221,7 @@ class _SupplierSettlementCreatePanelState
   Widget build(BuildContext context) {
     final names = ref.watch(financeNameServiceProvider);
     final methods =
-        ref.watch(settlementMethodOptionsProvider).valueOrNull ??
+        ref.watch(settlementMethodOptionsProvider).value ??
         const <ReferenceMethodOption>[];
     return Scaffold(
       appBar: AppBar(

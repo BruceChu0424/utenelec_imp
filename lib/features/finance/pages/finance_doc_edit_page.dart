@@ -737,7 +737,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
         : 'PAYMENT';
     final options = ref
         .read(financePaymentMethodOptionsProvider(direction))
-        .valueOrNull;
+        .value;
     return options != null && options.isNotEmpty;
   }
 
@@ -2257,7 +2257,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
         ? const []
         : ref
                   .watch(financePaymentMethodOptionsProvider(methodDirection))
-                  .valueOrNull ??
+                  .value ??
               const [];
     final isReceipt = _cfg.type == FinanceDocType.receipt;
     final compact = context.breakpoint.isCompact;
@@ -2861,7 +2861,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
       initial: currentId == null ? null : _empCache[currentId],
       loader: (kw) async {
         final deptId = (kw == null || kw.isEmpty) && defaultDeptCode != null
-            ? (ref.read(departmentCodeIdMapProvider).valueOrNull ??
+            ? (ref.read(departmentCodeIdMapProvider).value ??
                   const {})[defaultDeptCode]
             : null;
         final res = await ref

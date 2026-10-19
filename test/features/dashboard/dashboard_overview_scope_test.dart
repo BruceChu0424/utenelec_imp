@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/dashboard/models/dashboard_overview.dart';
 import 'package:uten_imp/features/dashboard/providers/dashboard_overview_provider.dart';
@@ -79,7 +80,7 @@ void main() {
     );
     container.read(_scope.notifier).state = null;
     await container.pump();
-    expect(container.read(dashboardOverviewProvider).valueOrNull, isNull);
+    expect(container.read(dashboardOverviewProvider).value, isNull);
     expect(repository.pending, hasLength(3), reason: '登出不读取业务概览');
   });
 }

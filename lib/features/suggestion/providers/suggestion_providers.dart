@@ -1,11 +1,15 @@
 // 建议 Provider
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/suggestion.dart';
 import '../repositories/suggestion_repository.dart';
+
+// Riverpod 3 将 copyWithPrevious 标记为 @internal；跨 family 实例手动保页/保旧值是既有架构，等上游公开等价 API 后再迁移。
+// ignore_for_file: invalid_use_of_internal_member
 
 final suggestionRepositoryProvider = Provider<SuggestionRepository>((ref) {
   return DioSuggestionRepository(ref.watch(apiClientProvider));
@@ -43,7 +47,7 @@ final suggestionListProvider =
     >(SuggestionListNotifier.new);
 
 class SuggestionListNotifier
-    extends AutoDisposeAsyncNotifier<PagedResult<Suggestion>> {
+    extends AsyncNotifier<PagedResult<Suggestion>> {
   final Set<String> _likeRequests = {};
 
   @override
@@ -56,24 +60,24 @@ class SuggestionListNotifier
   }
 
   Future<void> refresh() async {
-    await _goTo(state.valueOrNull?.page ?? 1, keepPrevious: false);
+    await _goTo(state.value?.page ?? 1, keepPrevious: false);
   }
 
   Future<void> previousPage() async {
-    final current = state.valueOrNull;
+    final current = state.value;
     if (current == null || current.page <= 1) return;
     await _goTo(current.page - 1);
   }
 
   Future<void> nextPage() async {
-    final current = state.valueOrNull;
+    final current = state.value;
     if (current == null || current.page >= current.totalPages) return;
     await _goTo(current.page + 1);
   }
 
   /// 直接拉目标页（2026-09-09 建议箱列表表格化：表格内置翻页条含跳页输入）。
   Future<void> goToPage(int page) async {
-    final current = state.valueOrNull;
+    final current = state.value;
     if (current == null) return;
     if (page < 1 || page == current.page || page > current.totalPages) return;
     await _goTo(page);
@@ -95,7 +99,7 @@ class SuggestionListNotifier
 
   /// 回复等详情页写操作完成后，把服务端回执同步到当前页并保留页码。
   void replaceIfPresent(Suggestion updated) {
-    final current = state.valueOrNull;
+    final current = state.value;
     if (current == null ||
         !current.items.any((item) => item.id == updated.id)) {
       return;

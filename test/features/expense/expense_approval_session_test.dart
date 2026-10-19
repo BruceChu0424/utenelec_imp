@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/expense/models/expense_claim.dart';
 import 'package:uten_imp/features/expense/providers/expense_providers.dart';
@@ -61,7 +62,7 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       container.read(identity.notifier).state = 'B';
       await Future<void>.delayed(Duration.zero);
-      expect(container.read(expenseApprovalListProvider).valueOrNull, isNull);
+      expect(container.read(expenseApprovalListProvider).value, isNull);
       repo.requests[2].complete(_page(22));
       expect(
         (await container.read(expenseApprovalListProvider.future)).total,

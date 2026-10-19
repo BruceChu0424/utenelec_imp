@@ -13,6 +13,7 @@
 // key 由各模块约定（如 'purchase:order'、'goods'），列表页与其详情/编辑页必须用同一 key。
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 
 import '../../core/network/data_write_revision.dart';
 import '../badges/badge_registry.dart';

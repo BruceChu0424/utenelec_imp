@@ -442,7 +442,7 @@ class _ProductionPlanListPageState
     // 分段计数(一次请求带回草稿/已审/红冲三桶); 加载中或无权限为 null, 不渲染数字。
     final statusCounts = ref
         .watch(effectiveDocumentStatusCountsProvider(_statusScope))
-        .valueOrNull;
+        .value;
     // 返回即刷新：从详情/编辑页（保存/审核/删除后）回到本列表时静默重拉当前页，
     // 不再停留在进入子页前的老数据。
     _myLocation ??= GoRouterState.of(context).matchedLocation;

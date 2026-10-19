@@ -94,7 +94,7 @@ final effectiveDocumentStatusCountsProvider = Provider.autoDispose
         formDraftCategoryCountProvider(formDraftScopeForDocumentStatus(scope)),
       );
       if (!server.hasValue && local == 0) return server;
-      final counts = server.valueOrNull;
+      final counts = server.value;
       return AsyncData({
         ...?counts,
         for (final bucket in const [

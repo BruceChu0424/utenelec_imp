@@ -3,7 +3,7 @@
 // - 单重参数不走网络: [FakeWeightRepository] 按货品返回预置参数并记下每次请求;
 // - 单位 -> 重量单位字典直接给值 (默认没有重量单位);
 // - 录入/显示单位偏好放内存 (不推服务端、不碰本地缓存)。
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/shared/measurement/weight_mass_units.dart';
 import 'package:uten_imp/shared/measurement/weight_params.dart';

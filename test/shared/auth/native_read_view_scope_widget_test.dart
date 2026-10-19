@@ -4,6 +4,7 @@ import 'dart:collection';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
@@ -29,6 +30,9 @@ import 'package:uten_imp/shared/models/user.dart';
 
 import '../../support/document_scope_capability_overrides.dart';
 import '../../helpers/badge_summary_fixture.dart';
+
+// Riverpod 3 将 copyWithPrevious 标记为 @internal；跨 family 实例手动保页/保旧值是既有架构，等上游公开等价 API 后再迁移。
+// ignore_for_file: invalid_use_of_internal_member
 
 const _id = 'record-1';
 const _a = AuthenticatedScope(userId: 'a');

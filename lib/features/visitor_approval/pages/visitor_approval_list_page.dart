@@ -430,11 +430,11 @@ class _VisitorApprovalListPageState
                 rowsController: _tableRows,
                 facets: {
                   'status': _statusBuckets(
-                    facets.valueOrNull?['status'] ?? const [],
+                    facets.value?['status'] ?? const [],
                     l10n,
                   ),
                   'hostDepartment':
-                      facets.valueOrNull?['hostDepartment'] ?? const [],
+                      facets.value?['hostDepartment'] ?? const [],
                 },
                 nullCounts: const {},
                 filters: {

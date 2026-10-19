@@ -82,7 +82,7 @@ platformBrandingProvider = FutureProvider<PlatformBranding>((ref) async {
 final platformBrandingSnapshotProvider = Provider<PlatformBranding>((ref) {
   final value = ref.watch(platformBrandingProvider);
   final endpoint = ref.watch(apiBaseUrlProvider);
-  final brand = value.valueOrNull;
+  final brand = value.value;
   // Keep the last read through temporary errors on the same server, but never
   // display another endpoint's retained AsyncLoading/AsyncError value.
   if (brand != null &&

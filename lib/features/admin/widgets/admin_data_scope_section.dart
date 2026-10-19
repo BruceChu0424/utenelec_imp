@@ -327,7 +327,7 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
 
   @override
   Widget build(BuildContext context) {
-    final permissions = widget.effectiveAsync.valueOrNull;
+    final permissions = widget.effectiveAsync.value;
     if (widget.effectiveAsync.hasError) {
       return UtenCard(child: UtenEmpty.error(message: '账号权限状态加载失败'));
     }

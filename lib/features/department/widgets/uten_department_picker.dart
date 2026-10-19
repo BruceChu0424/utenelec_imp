@@ -349,7 +349,7 @@ class _UtenDepartmentPickerState extends ConsumerState<UtenDepartmentPicker> {
   Widget build(BuildContext context) {
     // treeOverride 场景：树由外部传入，不监听员工端部门树 Provider。
     if (widget.treeOverride == null) {
-      final tree = ref.watch(departmentPickerTreeProvider).valueOrNull;
+      final tree = ref.watch(departmentPickerTreeProvider).value;
       if (tree != null) {
         _latestTree = tree;
         if (_resolvedSelection(tree) != null) {

@@ -581,10 +581,10 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
     final detail = _isEdit
         ? ref.watch(expenseDetailProvider(widget.claimId!))
         : null;
-    _prefillOnce(detail?.valueOrNull);
+    _prefillOnce(detail?.value);
     final me = ref.watch(sessionProvider).user;
     final permissions = ref.watch(currentPermissionsProvider);
-    final claim = detail?.valueOrNull;
+    final claim = detail?.value;
     final canEdit =
         !_isEdit ||
         (claim != null &&

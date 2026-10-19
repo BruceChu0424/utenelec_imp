@@ -1,6 +1,7 @@
 // 通知 Provider
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/router/route_names.dart';
@@ -36,7 +37,7 @@ final noticeListProvider =
       NoticeListNotifier.new,
     );
 
-class NoticeListNotifier extends AutoDisposeAsyncNotifier<List<Notice>> {
+class NoticeListNotifier extends AsyncNotifier<List<Notice>> {
   @override
   Future<List<Notice>> build() async {
     final filter = ref.watch(noticeFilterProvider);
@@ -80,7 +81,7 @@ final celebrationSettingsProvider =
     >(CelebrationSettingsNotifier.new);
 
 class CelebrationSettingsNotifier
-    extends AutoDisposeAsyncNotifier<NoticeCelebrationSettings> {
+    extends AsyncNotifier<NoticeCelebrationSettings> {
   @override
   Future<NoticeCelebrationSettings> build() {
     return ref.watch(noticeRepositoryProvider).getCelebrationSettings();

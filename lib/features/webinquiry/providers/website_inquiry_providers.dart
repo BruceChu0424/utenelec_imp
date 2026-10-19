@@ -1,6 +1,7 @@
 // 官网询盘 Provider
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../shared/auth/permissions.dart';
@@ -10,6 +11,9 @@ import '../../../shared/providers/master_name_provider.dart'
     show masterDataSessionKeyProvider;
 import '../models/website_inquiry.dart';
 import '../repositories/website_inquiry_repository.dart';
+
+// Riverpod 3 将 copyWithPrevious 标记为 @internal；跨 family 实例手动保页/保旧值是既有架构，等上游公开等价 API 后再迁移。
+// ignore_for_file: invalid_use_of_internal_member
 
 final websiteInquiryRepositoryProvider = Provider<WebsiteInquiryRepository>((
   ref,
@@ -30,7 +34,7 @@ final websiteInquiryListProvider =
     >(WebsiteInquiryListNotifier.new);
 
 class WebsiteInquiryListNotifier
-    extends AutoDisposeAsyncNotifier<PagedResult<WebsiteInquiry>> {
+    extends AsyncNotifier<PagedResult<WebsiteInquiry>> {
   int _page = 1;
   Object? _lastScope;
   @override
@@ -49,17 +53,17 @@ class WebsiteInquiryListNotifier
   }
 
   Future<void> refresh() async {
-    await _goTo(state.valueOrNull?.page ?? 1, keepPrevious: false);
+    await _goTo(state.value?.page ?? 1, keepPrevious: false);
   }
 
   Future<void> previousPage() async {
-    final current = state.valueOrNull;
+    final current = state.value;
     if (current == null || current.page <= 1) return;
     await _goTo(current.page - 1);
   }
 
   Future<void> nextPage() async {
-    final current = state.valueOrNull;
+    final current = state.value;
     if (current == null || current.page >= current.totalPages) return;
     await _goTo(current.page + 1);
   }
@@ -70,7 +74,7 @@ class WebsiteInquiryListNotifier
   /// 点了开始跟进/转客户），要从当前页移除——原来一律原位替换，过滤后的列表
   /// 一直挂着已离开该状态的旧行，返回列表要手动刷新才消失。
   void replaceIfPresent(WebsiteInquiry updated) {
-    final current = state.valueOrNull;
+    final current = state.value;
     if (current == null) return;
     final history = ref.read(websiteInquiryHistoryProvider);
     final filter =

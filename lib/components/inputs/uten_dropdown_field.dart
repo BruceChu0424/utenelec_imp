@@ -489,15 +489,16 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
         ),
       ),
     );
-    final scope =
-        context
-                .getElementForInheritedWidgetOfExactType<
-                  UncontrolledProviderScope
-                >()
-                ?.widget
-            as UncontrolledProviderScope?;
-    if (scope != null) {
-      menu = UncontrolledProviderScope(container: scope.container, child: menu);
+    // Riverpod 3：UncontrolledProviderScope 不再是 InheritedWidget，
+    // 取祖先容器改用 ProviderScope.containerOf；无 ProviderScope（测试/预览）时不包。
+    ProviderContainer? scopeContainer;
+    try {
+      scopeContainer = ProviderScope.containerOf(context, listen: false);
+    } on StateError {
+      scopeContainer = null;
+    }
+    if (scopeContainer != null) {
+      menu = UncontrolledProviderScope(container: scopeContainer, child: menu);
     }
     return themes.wrap(menu);
   }

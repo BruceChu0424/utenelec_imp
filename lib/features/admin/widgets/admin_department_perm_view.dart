@@ -79,7 +79,7 @@ class _AdminDepartmentPermViewState
     if (department == null) return null;
     return ref
         .read(adminDepartmentPermissionsProvider(department.id))
-        .valueOrNull
+        .value
         ?.toSet();
   }
 
@@ -91,7 +91,7 @@ class _AdminDepartmentPermViewState
     if (department == null) return null;
     final response = ref
         .read(adminDepartmentPermissionsProvider(department.id))
-        .valueOrNull;
+        .value;
     return response is DepartmentPermissionCodes ? response : null;
   }
 
@@ -188,7 +188,7 @@ class _AdminDepartmentPermViewState
   }
 
   Set<String> _repairableReads() {
-    final catalog = ref.read(permissionCatalogProvider).valueOrNull;
+    final catalog = ref.read(permissionCatalogProvider).value;
     if (catalog == null) return const {};
     final byCode = {
       for (final group in catalog)
@@ -470,7 +470,7 @@ class _AdminDepartmentPermViewState
         },
       );
     }
-    final rawGroups = catalogAsync.valueOrNull;
+    final rawGroups = catalogAsync.value;
     if (rawGroups == null || permissionsAsync.isLoading) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: UtenSpacing.s24),

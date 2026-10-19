@@ -5,6 +5,7 @@
 // 拉取失败时的兜底默认值，不再各自写死规则。
 // 管理类设置走 SystemSettingRepository（authorization:manage + superAdmin）；本仓库对全体登录用户只读。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';

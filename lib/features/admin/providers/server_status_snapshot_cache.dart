@@ -20,7 +20,7 @@
 //    「已过期」的旧读数。也就是说缓存命中是**尽力而为**，不是保证。
 //
 // 常驻不 autoDispose：它就是一份「最后已知值」，被清掉等于回到原样。
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 
 import '../../../core/network/server_config.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';

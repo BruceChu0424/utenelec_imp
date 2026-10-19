@@ -38,7 +38,7 @@ class _CelebrationPopupGateState extends ConsumerState<CelebrationPopupGate> {
         .read(opportunisticDialogCoordinatorProvider)
         .prioritize();
     try {
-      final cached = ref.read(myCelebrationTodayProvider).valueOrNull;
+      final cached = ref.read(myCelebrationTodayProvider).value;
       final List<MyCelebrationToday> list;
       if (cached != null) {
         list = cached;

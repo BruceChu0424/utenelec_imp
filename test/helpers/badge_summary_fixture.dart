@@ -2,7 +2,7 @@
 //
 // 容器与总数按入口求和 —— 模拟服务端 WorkbenchBadgeService 的算法, 页面测试只关心
 // 「显示哪个数」; 口径与求和本身由服务端 WorkbenchBadgeSummaryPostgresTest 锁定。
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 
 /// 固定汇总的徽章 notifier: [refresh] 只计次数, [emit] 手动推下一份。

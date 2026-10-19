@@ -196,7 +196,7 @@ void main() {
       expect(
         container
             .read(effectiveDocumentStatusCountsProvider(scope))
-            .valueOrNull,
+            .value,
         {'ACTIONABLE_DRAFT': 2, 'DRAFT': 3, 'APPROVED': 7},
       );
       expect(container.read(draftCountsProvider).salesOrder, 3);
@@ -246,13 +246,13 @@ void main() {
       expect(
         container
             .read(effectiveDocumentStatusCountsProvider(normal))
-            .valueOrNull?['DRAFT'],
+            .value?['DRAFT'],
         4,
       );
       expect(
         container
             .read(effectiveDocumentStatusCountsProvider(customer))
-            .valueOrNull?['DRAFT'],
+            .value?['DRAFT'],
         3,
       );
     },
@@ -312,7 +312,7 @@ void main() {
       expect(
         container
             .read(effectiveDocumentStatusCountsProvider(transfer))
-            .valueOrNull?['DRAFT'],
+            .value?['DRAFT'],
         3,
       );
     },

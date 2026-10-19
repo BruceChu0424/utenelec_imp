@@ -39,7 +39,7 @@ final warehouseScopedBadgesProvider = Provider.autoDispose
       if (warehouseId == null) return ref.watch(effectiveBadgeSummaryProvider);
       return ref
               .watch(_selectedWarehouseBadgesProvider(warehouseId))
-              .valueOrNull ??
+              .value ??
           BadgeSummary.empty;
     });
 

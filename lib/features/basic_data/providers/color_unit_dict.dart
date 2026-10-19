@@ -44,7 +44,7 @@ Future<String?> showColorAddSheet(BuildContext context, WidgetRef ref) {
     exists: (name) =>
         ref
             .read(colorDictProvider)
-            .valueOrNull
+            .value
             ?.any((c) => (c.name ?? '').toLowerCase() == name.toLowerCase()) ??
         false,
     create: (name) async {
@@ -67,7 +67,7 @@ Future<String?> showUnitAddSheet(BuildContext context, WidgetRef ref) {
     exists: (name) =>
         ref
             .read(unitDictProvider)
-            .valueOrNull
+            .value
             ?.any((u) => (u.name ?? '').toLowerCase() == name.toLowerCase()) ??
         false,
     create: (name) async {

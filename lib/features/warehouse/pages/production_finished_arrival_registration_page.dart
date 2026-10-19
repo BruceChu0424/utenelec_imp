@@ -288,7 +288,7 @@ class _ProductionFinishedArrivalRegistrationPageState
 
   /// 单位 -> 重量单位(报工单位本身按重量计时精确换算)。
   Map<String, WeightUnit> get _massUnits =>
-      ref.read(warehouseUnitMassUnitsProvider).valueOrNull ?? const {};
+      ref.read(warehouseUnitMassUnitsProvider).value ?? const {};
 
   /// 已登记行也取参数：按重量计的货品显示「=N kg」，登记重量照样核对。
   void _ensureWeightParams() {

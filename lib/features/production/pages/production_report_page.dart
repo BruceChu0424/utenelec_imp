@@ -314,7 +314,7 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
     // 不渲染数字——与生产计划单列表同款。
     final statusCounts = ref
         .watch(effectiveDocumentStatusCountsProvider(_statusScope))
-        .valueOrNull;
+        .value;
     return Padding(
       padding: EdgeInsets.zero,
       child: Column(

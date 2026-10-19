@@ -1846,7 +1846,7 @@ class _SubcontractOrderEditPageState
                                             .watch(
                                               settlementMethodOptionsProvider,
                                             )
-                                            .valueOrNull
+                                            .value
                                             ?.asEntries() ??
                                         const {},
                                     onPickCurrency: (row) =>
@@ -2055,7 +2055,7 @@ class _SubcontractOrderEditPageState
       initial: currentId == null ? null : _empCache[currentId],
       loader: (kw) async {
         final deptId = (kw == null || kw.isEmpty) && defaultDeptCode != null
-            ? (ref.read(departmentCodeIdMapProvider).valueOrNull ??
+            ? (ref.read(departmentCodeIdMapProvider).value ??
                   const {})[defaultDeptCode]
             : null;
         final res = await ref

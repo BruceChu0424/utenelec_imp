@@ -1,6 +1,6 @@
 // 出库类页面测试共用的单重参数假仓储 (ADR-135): 不走网络, 按货品给固定单重参数。
 import 'package:dio/dio.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/shared/measurement/weight_params.dart';
 import 'package:uten_imp/shared/measurement/weight_predictor.dart';

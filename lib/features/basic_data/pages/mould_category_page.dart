@@ -414,7 +414,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
   ///
   /// [workshop] 由调用方（_showMouldCreate/_showMouldEdit）提前 await 拿到，避免在这里
   /// 用 .read 读到还没 resolve 的 FutureProvider（autoDispose 首次打开必是 loading，
-  /// .valueOrNull 永远 null，车间选择器会静默退化成全公司组织树——问题 #5 根因之一）。
+  /// .value 永远 null，车间选择器会静默退化成全公司组织树——问题 #5 根因之一）。
   List<MasterFieldDef> _buildMouldFields(
     Map<String, String> iv,
     MouldWorkshopTree workshop,

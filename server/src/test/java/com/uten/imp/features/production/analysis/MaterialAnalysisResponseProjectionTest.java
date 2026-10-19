@@ -6,10 +6,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.features.production.mrp.ProductionGoodsWorkshopPreferenceService;
 import org.junit.jupiter.api.Test;
-import org.springframework.http.converter.json.JacksonJsonHttpMessageConverter;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import tools.jackson.databind.json.JsonMapper;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -26,11 +25,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+@SuppressWarnings("removal")
 class MaterialAnalysisResponseProjectionTest {
     private final ObjectMapper json = new ObjectMapper().findAndRegisterModules()
             .enable(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
             .disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-    private final JsonMapper wire = JsonMapper.builder().findAndAddModules().disable(tools.jackson.databind.cfg.DateTimeFeature.WRITE_DATES_AS_TIMESTAMPS).build();
     private final UUID analysisId = UUID.randomUUID();
     private final UUID warehouse = UUID.randomUUID();
     private final String materialKey = UUID.randomUUID() + "|NONE|" + UUID.randomUUID();
@@ -280,7 +279,7 @@ class MaterialAnalysisResponseProjectionTest {
         when(writer.submit(eq(analysisId), any())).thenReturn(submitted);
         MockMvc mvc = MockMvcBuilders.standaloneSetup(new AggregateMaterialOrderController(previews, writer))
                 .setControllerAdvice(new MaterialAnalysisResponseProjection())
-                .setMessageConverters(new JacksonJsonHttpMessageConverter(wire)).build();
+                .setMessageConverters(new MappingJackson2HttpMessageConverter(json)).build();
         ObjectNode request = json.createObjectNode();
         request.put("version", view.version()).put("fingerprint", view.fingerprint())
                 .put("idempotencyKey", "original-command").put("warehouseId", warehouse.toString())
@@ -338,7 +337,7 @@ class MaterialAnalysisResponseProjectionTest {
                         mock(AnalysisLinkedSalesOrderService.class),
                         mock(AuditDetailViewRecorder.class), null, mock(MaterialAnalysisPlanWithdrawalService.class)))
                 .setControllerAdvice(new MaterialAnalysisResponseProjection())
-                .setMessageConverters(new JacksonJsonHttpMessageConverter(wire)).build();
+                .setMessageConverters(new MappingJackson2HttpMessageConverter(json)).build();
     }
 
     private AnalysisView view(List<MaterialView> materials) {

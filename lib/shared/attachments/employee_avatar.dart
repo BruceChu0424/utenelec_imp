@@ -74,7 +74,7 @@ class EmployeeAvatar extends ConsumerWidget {
     // Never retain an old account's image while a new authorization is pending
     // or denied, even when the employee and revision happen to match.
     final bytes = session.isLoggedIn && !result.isLoading && !result.hasError
-        ? result.valueOrNull
+        ? result.value
         : null;
     return UtenUserAvatar(
       key: ValueKey(request),

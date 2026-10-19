@@ -310,7 +310,7 @@ class _InboundArrivalRegistrationPageState
 
   /// 单位 -> 重量单位(行单位本身按重量计时精确换算)。
   Map<String, WeightUnit> get _massUnits =>
-      ref.read(warehouseUnitMassUnitsProvider).valueOrNull ?? const {};
+      ref.read(warehouseUnitMassUnitsProvider).value ?? const {};
 
   WeightParams? _paramsOf(_BatchArrivalLine line) => _weightCache.of(
     line.goodsId,
@@ -1644,7 +1644,7 @@ class _InboundArrivalRegistrationPageState
       initial: currentId == null ? null : _empCache[currentId],
       loader: (kw) async {
         final deptId = (kw == null || kw.isEmpty)
-            ? (ref.read(departmentCodeIdMapProvider).valueOrNull ??
+            ? (ref.read(departmentCodeIdMapProvider).value ??
                   const {})[kDeptCodeWarehouse]
             : null;
         final res = await ref

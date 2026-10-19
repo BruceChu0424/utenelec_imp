@@ -56,14 +56,14 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
   Widget build(BuildContext context) {
     final scope = ref.watch(payrollBatchScopeProvider);
     final batchesAsync = ref.watch(payrollBatchListProvider);
-    final batches = batchesAsync.valueOrNull?.items ?? const <PayrollBatch>[];
+    final batches = batchesAsync.value?.items ?? const <PayrollBatch>[];
     final selectedId = batches.any((batch) => batch.id == _selectedId)
         ? _selectedId
         : (batches.isEmpty ? null : batches.first.id);
     final detailAsync = selectedId == null
         ? null
         : ref.watch(payrollBatchDetailProvider(selectedId));
-    final selectedBatch = detailAsync?.valueOrNull;
+    final selectedBatch = detailAsync?.value;
     final permissions = ref.watch(currentPermissionsProvider);
 
     Widget body = batchesAsync.when(

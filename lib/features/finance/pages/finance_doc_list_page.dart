@@ -486,7 +486,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
     // 分段计数(一次请求带回草稿/已审/红冲三桶); 加载中或无权限为 null, 不渲染数字。
     final statusCounts = ref
         .watch(effectiveDocumentStatusCountsProvider(_statusScope))
-        .valueOrNull;
+        .value;
     // 返回即刷新(ADR-108): 回到本列表时, 只有本端写过数据或离开超过 30 秒才重拉,
     // 且推迟到返回转场结束; 详情/编辑页保存成功 bump 的 tick 在本页就在栈顶时立即重拉,
     // 被详情页盖着时只记下、返回再拉——此前 tick 与返回各拉一次, 一次保存重拉两遍。

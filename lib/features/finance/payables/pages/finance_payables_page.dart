@@ -802,7 +802,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
     final theme = Theme.of(context);
     final names = ref.watch(financeNameServiceProvider);
     final settlementMethods =
-        ref.watch(settlementMethodOptionsProvider).valueOrNull ?? const [];
+        ref.watch(settlementMethodOptionsProvider).value ?? const [];
     final canCreatePayment = _canCreatePayment;
     final canApplyOffset = _canApplyOffset;
     final isExpanded = context.breakpoint.isExpanded;

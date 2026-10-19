@@ -3466,7 +3466,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     final names = ref.watch(salesMasterNameServiceProvider);
     final compact = MediaQuery.sizeOf(context).width < 600;
     final List<ReferenceMethodOption> settlementMethods =
-        ref.watch(settlementMethodOptionsProvider).valueOrNull ??
+        ref.watch(settlementMethodOptionsProvider).value ??
         const <ReferenceMethodOption>[];
     final settlementEntries = <String, String>{
       for (final item in settlementMethods)
@@ -4618,7 +4618,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       initial: currentId == null ? null : _empCache[currentId],
       loader: (kw) async {
         final deptId = (kw == null || kw.isEmpty) && defaultDeptCode != null
-            ? (ref.read(departmentCodeIdMapProvider).valueOrNull ??
+            ? (ref.read(departmentCodeIdMapProvider).value ??
                   const {})[defaultDeptCode]
             : null;
         final res = await ref

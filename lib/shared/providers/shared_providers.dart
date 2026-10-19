@@ -42,7 +42,7 @@ final deviceCapabilityProvider = FutureProvider<DeviceCapability>((ref) async {
 
 /// 设备推荐档位（基于检测结果）
 final recommendedTierProvider = Provider<PerformanceTier?>((ref) {
-  final cap = ref.watch(deviceCapabilityProvider).valueOrNull;
+  final cap = ref.watch(deviceCapabilityProvider).value;
   if (cap == null) return null;
   return ref.watch(deviceScorerProvider).score(cap);
 });

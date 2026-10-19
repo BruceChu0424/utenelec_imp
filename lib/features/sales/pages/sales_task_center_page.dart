@@ -101,21 +101,21 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
             const DocumentStatusScope(DraftDocKind.salesShipment),
           ),
         )
-        .valueOrNull;
+        .value;
     final quoteCounts = ref
         .watch(
           effectiveDocumentStatusCountsProvider(
             const DocumentStatusScope(DraftDocKind.salesQuote),
           ),
         )
-        .valueOrNull;
+        .value;
     final returnCounts = ref
         .watch(
           effectiveDocumentStatusCountsProvider(
             const DocumentStatusScope(DraftDocKind.salesReturn),
           ),
         )
-        .valueOrNull;
+        .value;
     final quoteToConvert = ref.watch(
       badgeEntryTodoProvider(BadgeEntry.salesQuoteAwaitingConversion),
     );

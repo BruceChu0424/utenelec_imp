@@ -3944,7 +3944,7 @@ class _ProductionDailyReportEditPageState
     final names = ref.watch(masterNameServiceProvider);
     final workforceTree = ref
         .watch(productionWorkforceTreeProvider)
-        .valueOrNull;
+        .value;
     return withFormDraft(
       Scaffold(
         appBar: UtenAppBar(

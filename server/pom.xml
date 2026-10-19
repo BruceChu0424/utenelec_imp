@@ -170,11 +170,12 @@
             <version>${bucket4j.version}</version>
         </dependency>
 
-        <!-- OpenAPI 文档（内部） -->
+        <!-- OpenAPI 文档（内部）；3.x 线适配 Spring Boot 4（2.x 引用已搬家的
+             org.springframework.boot.autoconfigure.web.servlet.WebMvcProperties，Boot 4 下启动即炸） -->
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-            <version>2.8.17</version>
+            <version>3.1.1</version>
         </dependency>
 
         <!-- 阿里云国内短信 V2 SDK；网关实例复用且禁自动重试，避免验证码重复计费发送。 -->

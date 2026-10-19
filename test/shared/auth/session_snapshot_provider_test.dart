@@ -219,7 +219,7 @@ void main() {
       SessionSnapshotNotifier.retryDelays.first +
           const Duration(milliseconds: 200),
     );
-    final snapshot = container.read(sessionSnapshotProvider).valueOrNull;
+    final snapshot = container.read(sessionSnapshotProvider).value;
     expect(snapshot?.canDelegate('purchase.orders'), isTrue);
     expect(api.paths, hasLength(2));
   });

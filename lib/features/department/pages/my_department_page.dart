@@ -62,7 +62,7 @@ class _MyDepartmentPageState extends ConsumerState<MyDepartmentPage> {
   void _onSearchInput(String raw) {
     _searchRequest++;
     _acceptPendingSearch = true;
-    final tree = ref.read(myDepartmentTreeProvider).valueOrNull;
+    final tree = ref.read(myDepartmentTreeProvider).value;
     if (!mounted || tree == null || tree.isEmpty) return;
     final query = raw.trim();
     setState(() {
@@ -85,7 +85,7 @@ class _MyDepartmentPageState extends ConsumerState<MyDepartmentPage> {
   Future<void> _applyGlobalSearch(String rawQuery) async {
     final query = rawQuery.trim();
     final request = ++_searchRequest;
-    final tree = ref.read(myDepartmentTreeProvider).valueOrNull;
+    final tree = ref.read(myDepartmentTreeProvider).value;
     if (tree == null || tree.isEmpty) return;
 
     if (query.isEmpty) {
@@ -170,7 +170,7 @@ class _MyDepartmentPageState extends ConsumerState<MyDepartmentPage> {
   @override
   Widget build(BuildContext context) {
     final treeAsync = ref.watch(myDepartmentTreeProvider);
-    final tree = treeAsync.valueOrNull ?? const <DepartmentNode>[];
+    final tree = treeAsync.value ?? const <DepartmentNode>[];
     final selectedId = tree.isNotEmpty ? (_selectedId ?? tree.first.id) : null;
 
     final Widget body = treeAsync.when(
@@ -242,7 +242,7 @@ class _MyDepartmentPageState extends ConsumerState<MyDepartmentPage> {
     _searchRequest++;
     _acceptPendingSearch = false;
     final tree =
-        ref.read(myDepartmentTreeProvider).valueOrNull ??
+        ref.read(myDepartmentTreeProvider).value ??
         const <DepartmentNode>[];
     final keepSearch =
         _searchQuery.isNotEmpty && (_visibleFilterIds?.contains(id) ?? false);

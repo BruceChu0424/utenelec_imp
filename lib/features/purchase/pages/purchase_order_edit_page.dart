@@ -1989,7 +1989,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
                                             .watch(
                                               settlementMethodOptionsProvider,
                                             )
-                                            .valueOrNull
+                                            .value
                                             ?.asEntries() ??
                                         const {},
                                     onPickCurrency: (row) =>
@@ -2183,7 +2183,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       initial: currentId == null ? null : _empCache[currentId],
       loader: (kw) async {
         final deptId = (kw == null || kw.isEmpty) && defaultDeptCode != null
-            ? (ref.read(departmentCodeIdMapProvider).valueOrNull ??
+            ? (ref.read(departmentCodeIdMapProvider).value ??
                   const {})[defaultDeptCode]
             : null;
         final res = await ref

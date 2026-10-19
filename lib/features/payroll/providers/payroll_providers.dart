@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/master_name_provider.dart'
@@ -8,6 +9,9 @@ import '../../../shared/providers/master_name_provider.dart'
 import '../models/payroll_batch.dart';
 import '../models/payroll_slip.dart';
 import '../repositories/payroll_repository.dart';
+
+// Riverpod 3 将 copyWithPrevious 标记为 @internal；跨 family 实例手动保页/保旧值是既有架构，等上游公开等价 API 后再迁移。
+// ignore_for_file: invalid_use_of_internal_member
 
 enum PayrollFilter { published, viewed, viewedOnly, downloaded }
 
@@ -43,7 +47,7 @@ final payrollListProvider =
     >(PayrollListNotifier.new);
 
 class PayrollListNotifier
-    extends AutoDisposeAsyncNotifier<PagedResult<PayrollSlip>> {
+    extends AsyncNotifier<PagedResult<PayrollSlip>> {
   int _page = 1;
   PayrollFilter? _lastFilter;
 
@@ -66,20 +70,20 @@ class PayrollListNotifier
   Future<void> refresh() => _reloadPage(1);
 
   Future<void> previousPage() async {
-    final current = state.valueOrNull;
+    final current = state.value;
     if (current == null || current.page <= 1) return;
     await _goTo(current.page - 1);
   }
 
   Future<void> nextPage() async {
-    final current = state.valueOrNull;
+    final current = state.value;
     if (current == null || current.page >= current.totalPages) return;
     await _goTo(current.page + 1);
   }
 
   /// 直接拉目标页（2026-09-09 工资条列表表格化：表格内置翻页条含跳页输入）。
   Future<void> goToPage(int page) async {
-    final current = state.valueOrNull;
+    final current = state.value;
     if (current == null) return;
     if (page < 1 || page == current.page || page > current.totalPages) return;
     await _goTo(page);
@@ -143,7 +147,7 @@ final payrollBatchListProvider =
     >(PayrollBatchListNotifier.new);
 
 class PayrollBatchListNotifier
-    extends AutoDisposeAsyncNotifier<PagedResult<PayrollBatch>> {
+    extends AsyncNotifier<PagedResult<PayrollBatch>> {
   int _page = 1;
   PayrollBatchScope? _lastScope;
 
@@ -169,13 +173,13 @@ class PayrollBatchListNotifier
   Future<void> refresh() => _reloadPage(1);
 
   Future<void> previousPage() async {
-    final current = state.valueOrNull;
+    final current = state.value;
     if (current == null || current.page <= 1) return;
     await _goTo(current.page - 1);
   }
 
   Future<void> nextPage() async {
-    final current = state.valueOrNull;
+    final current = state.value;
     if (current == null || current.page >= current.totalPages) return;
     await _goTo(current.page + 1);
   }

@@ -37,7 +37,7 @@ class ProfileChangePendingSection extends ConsumerWidget {
     if (items.isEmpty) return const SizedBox.shrink();
 
     final preview = items.take(3).toList();
-    final total = async.valueOrNull?.total ?? 0;
+    final total = async.value?.total ?? 0;
     final more = total - preview.length;
 
     return Padding(

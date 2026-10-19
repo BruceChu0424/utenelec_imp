@@ -888,7 +888,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
         ? null
         : ref
               .watch(effectiveDocumentStatusCountsProvider(statusScope))
-              .valueOrNull;
+              .value;
     // 正文（分段工具条 + 表格）：独立列表页与任务中心嵌入态共用一份。
     // 嵌入态不再自套 SafeArea/容器：宿主页已有容器，再套一层会把小类行
     // 推离父分类行与左缘（2026-09-24 用户走查修正，对齐仓库任务中心口径）。

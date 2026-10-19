@@ -194,8 +194,8 @@ class _AuthorizedAuditDeviceTab extends ConsumerWidget {
     final receiptAsync = eventId == null
         ? null
         : ref.watch(localAuditReceiptProvider(eventId));
-    final current = currentAsync.valueOrNull;
-    final receipt = receiptAsync?.valueOrNull;
+    final current = currentAsync.value;
+    final receipt = receiptAsync?.value;
     final assessment = _assessDeviceEvidence(
       detail: detail,
       current: current,

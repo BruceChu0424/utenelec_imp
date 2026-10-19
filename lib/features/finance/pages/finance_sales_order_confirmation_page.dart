@@ -1087,9 +1087,9 @@ class _FinanceSalesOrderConfirmationPageState
             changedCount.isLoading ||
             changedCount.hasError
         ? null
-        : count.valueOrNull == null || changedCount.valueOrNull == null
+        : count.value == null || changedCount.value == null
         ? null
-        : count.valueOrNull! + changedCount.valueOrNull!;
+        : count.value! + changedCount.value!;
     // 全平台统一筛选工具条：分段 + 胶囊搜索框（窄屏自动换行）。
     // 整批提交期间不响应分段切换（原 onSelectionChanged 置空的语义收进回调守卫）。
     return UtenFilterToolbar<String>(

@@ -736,7 +736,7 @@ class _ProductionPlanEditPageState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
-    final workshopTree = ref.watch(productionWorkshopTreeProvider).valueOrNull;
+    final workshopTree = ref.watch(productionWorkshopTreeProvider).value;
     return Scaffold(
       appBar: UtenAppBar(
         title: widget.id == null ? '新建生产计划单' : '编辑生产计划单',

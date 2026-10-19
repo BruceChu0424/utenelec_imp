@@ -560,7 +560,7 @@ class _WarehouseStockDocSegmentState
             ),
           ),
         )
-        .valueOrNull?[DocumentStatusBucket.draft];
+        .value?[DocumentStatusBucket.draft];
     final seg = _seg;
     final showIssueStatus =
         widget.docType == StockDocType.draw && seg != null && !seg.history;

@@ -120,7 +120,7 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
     ref.listen(expenseListProvider, (previous, next) {
       if (next.isLoading || !next.hasValue) return;
       if (next.requireValue.page > 1 &&
-          next.requireValue.page != previous?.valueOrNull?.page) {
+          next.requireValue.page != previous?.value?.page) {
         return;
       }
       retainDraftSelection([
@@ -305,7 +305,7 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
                       // 类别是固定枚举（明细项级别），前端硬编码桶；value=类别码。
                       'category': _categoryFacets(),
                       // 报销单号桶来自服务端（facets?queue=mine，2026-09-25 单号列统一）。
-                      'claimNo': mineFacets.valueOrNull?['claimNo'] ?? const [],
+                      'claimNo': mineFacets.value?['claimNo'] ?? const [],
                     },
                     nullCounts: const {},
                     filters: {

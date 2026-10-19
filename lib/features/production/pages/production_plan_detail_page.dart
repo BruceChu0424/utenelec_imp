@@ -1245,7 +1245,7 @@ class _ProductionPlanDetailPageState
                   id: detail.id,
                 )),
               )
-              .valueOrNull
+              .value
               ?.length
         : null;
     final traceCount =

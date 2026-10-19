@@ -5,7 +5,7 @@ import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.HttpMessageConverter;
-import org.springframework.http.converter.json.JacksonJsonHttpMessageConverter;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -27,13 +27,14 @@ import static com.uten.imp.features.production.analysis.MaterialAnalysisContract
  * command fingerprints, idempotent results and old clients retain their DTOs.
  */
 @RestControllerAdvice(assignableTypes = {MaterialAnalysisController.class, AggregateMaterialOrderController.class})
+@SuppressWarnings("removal")
 public class MaterialAnalysisResponseProjection implements ResponseBodyAdvice<Object> {
     public static final String VERSION = "shared-warehouses-v1";
     public static final String VERSION_V2 = MaterialAnalysisSparseProjection.VERSION;
 
     @Override
     public boolean supports(MethodParameter method, Class<? extends HttpMessageConverter<?>> converter) {
-        return JacksonJsonHttpMessageConverter.class.isAssignableFrom(converter)
+        return MappingJackson2HttpMessageConverter.class.isAssignableFrom(converter)
                 && (method.getParameterType() == AnalysisView.class || method.getParameterType() == GenerateResult.class
                     || method.getParameterType() == AggregateMaterialOrderContracts.Preview.class
                     || method.getParameterType() == AggregateMaterialOrderContracts.SubmitResult.class);

@@ -217,7 +217,7 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage>
                               label: l10n.payrollDeptAll,
                             ),
                             for (final department
-                                in departments.valueOrNull ??
+                                in departments.value ??
                                     const <PayrollDepartmentOption>[])
                               UtenDropdownItem(
                                 value: department.id,

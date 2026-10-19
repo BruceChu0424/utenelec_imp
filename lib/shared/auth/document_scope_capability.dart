@@ -81,7 +81,7 @@ bool documentOwnerCanWrite(
 ) =>
     !capability.isLoading &&
     !capability.hasError &&
-    (capability.valueOrNull?.canWrite(ownerEmployeeId) ?? false);
+    (capability.value?.canWrite(ownerEmployeeId) ?? false);
 
 /// Direct edit routes must not render an editable fallback while capability is
 /// loading or unavailable. A failed capability request is therefore read-only.
@@ -99,7 +99,7 @@ Future<bool> loadDocumentOwnerCanWrite(
     if (ref.read(authenticatedScopeProvider) != ownerScope ||
         current.isLoading ||
         current.hasError ||
-        !identical(current.valueOrNull, capability)) {
+        !identical(current.value, capability)) {
       return false;
     }
     return documentOwnerCanWrite(current, ownerEmployeeId) &&

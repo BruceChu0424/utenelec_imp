@@ -6,6 +6,7 @@
 // 调用方记没记得通知, 只看网络层有没有成功写过。
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 
 /// 单调递增的本端写修订号。
 final dataWriteRevisionProvider = StateProvider<int>((ref) => 0);

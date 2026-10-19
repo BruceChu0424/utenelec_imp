@@ -1105,7 +1105,7 @@ class _WarehouseSubcontractOutboundEditPageState
               initial: _workerId == null ? null : _empCache[_workerId],
               loader: (kw) async {
                 final deptId = (kw == null || kw.isEmpty)
-                    ? (ref.read(departmentCodeIdMapProvider).valueOrNull ??
+                    ? (ref.read(departmentCodeIdMapProvider).value ??
                           const {})['SUB_WH']
                     : null;
                 final res = await ref

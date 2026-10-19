@@ -20,6 +20,9 @@ import 'package:uten_imp/features/warehouse/widgets/warehouse_task_center_scaffo
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 
+// Riverpod 3 将 copyWithPrevious 标记为 @internal；跨 family 实例手动保页/保旧值是既有架构，等上游公开等价 API 后再迁移。
+// ignore_for_file: invalid_use_of_internal_member
+
 late SharedPreferences _preferences;
 
 /// 不走真实网络：偏好推送等后台请求一律回空。

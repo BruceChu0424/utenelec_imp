@@ -298,7 +298,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
   /// 所有主档关系以 UUID 作为表单值；legacy 仅在详情没有 UUID 时做回显兼容。
   /// 新建记录即使尚未分配 legacy_id，也必须能立即被主关系选中。
   List<MasterSelectOption> get _colorIdOptions {
-    final list = ref.watch(colorDictProvider).valueOrNull ?? const [];
+    final list = ref.watch(colorDictProvider).value ?? const [];
     return [
       for (final c in list)
         MasterSelectOption(
@@ -311,7 +311,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
   }
 
   List<MasterSelectOption> get _unitIdOptions {
-    final list = ref.watch(unitDictProvider).valueOrNull ?? const [];
+    final list = ref.watch(unitDictProvider).value ?? const [];
     return [
       for (final u in list)
         MasterSelectOption(
@@ -325,7 +325,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
 
   String? _unitIdFromLegacy(int? legacyId) {
     if (legacyId == null) return null;
-    final list = ref.watch(unitDictProvider).valueOrNull ?? const [];
+    final list = ref.watch(unitDictProvider).value ?? const [];
     for (final unit in list) {
       if (unit.legacyId == legacyId) return unit.id;
     }
@@ -1012,7 +1012,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
     // 因首帧 options 为空被误判成“未选择”，随后保存时把既有关系清空。
     final colors = ref.watch(colorDictProvider);
     final units = ref.watch(unitDictProvider);
-    if (colors.valueOrNull == null || units.valueOrNull == null) {
+    if (colors.value == null || units.value == null) {
       if (colors.hasError || units.hasError) {
         return Center(
           child: Column(

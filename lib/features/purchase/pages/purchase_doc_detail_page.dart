@@ -1843,7 +1843,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                       width: 150,
                       value: (_) {
                         for (final method
-                            in settlementOptions.valueOrNull ??
+                            in settlementOptions.value ??
                                 const <ReferenceMethodOption>[]) {
                           if (method.id == d.settlementMethodId) {
                             return method.name;

@@ -76,6 +76,9 @@ class RequestHeaderBudgetIntegrationTest {
             HibernateJpaAutoConfiguration.class,
             FlywayAutoConfiguration.class,
             SecurityAutoConfiguration.class,
+            // Boot 4 把 Servlet 默认安全链拆成独立的 ServletWebSecurityAutoConfiguration，
+            // 不排掉它会对裸请求返回 401，探针拿不到头部预算的真实行为。
+            org.springframework.boot.security.autoconfigure.web.servlet.ServletWebSecurityAutoConfiguration.class,
             UserDetailsServiceAutoConfiguration.class,
             ManagementWebSecurityAutoConfiguration.class
     })

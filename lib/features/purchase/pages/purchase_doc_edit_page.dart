@@ -973,7 +973,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
   Widget _buildDraftPage(BuildContext context) {
     final names = ref.watch(masterNameServiceProvider);
     final List<ReferenceMethodOption> settlementMethods =
-        ref.watch(settlementMethodOptionsProvider).valueOrNull ??
+        ref.watch(settlementMethodOptionsProvider).value ??
         const <ReferenceMethodOption>[];
     final settlementEntries = <String, String>{
       for (final method in settlementMethods)
@@ -1428,7 +1428,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
       initial: currentId == null ? null : _empCache[currentId],
       loader: (kw) async {
         final deptId = (kw == null || kw.isEmpty) && defaultDeptCode != null
-            ? (ref.read(departmentCodeIdMapProvider).valueOrNull ??
+            ? (ref.read(departmentCodeIdMapProvider).value ??
                   const {})[defaultDeptCode]
             : null;
         final res = await ref

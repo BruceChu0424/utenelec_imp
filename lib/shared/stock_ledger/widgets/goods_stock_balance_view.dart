@@ -221,7 +221,7 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView> {
     final display = ref.read(warehouseWeightUnitsPrefsProvider).display;
     final unitName = _unitName();
     final channels =
-        ref.read(defectiveMoveOptionsProvider).valueOrNull ?? const <String>{};
+        ref.read(defectiveMoveOptionsProvider).value ?? const <String>{};
     final l10n = warehouseL10n(context);
     bool defective(BalanceRow row) =>
         names.warehouseEntry(row.warehouseId)?.isDefective ?? false;

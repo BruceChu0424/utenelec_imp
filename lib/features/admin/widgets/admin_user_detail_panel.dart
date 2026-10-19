@@ -161,7 +161,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     final effectiveAsync = widget.canManageAuthorization
         ? ref.watch(adminEffectivePermissionsProvider(widget.user.id))
         : null;
-    final data = effectiveAsync?.valueOrNull;
+    final data = effectiveAsync?.value;
     final dirtyCount = data == null ? 0 : _dirtyCount(data);
     final legacyUnknownCount = data == null
         ? 0
@@ -525,7 +525,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
       _explainAuthorizationRestriction();
       return;
     }
-    final catalog = ref.read(permissionCatalogProvider).valueOrNull;
+    final catalog = ref.read(permissionCatalogProvider).value;
     final codes = [
       for (final group in catalog ?? const <PermissionCatalogGroup>[])
         for (final permission in group.permissions) permission.code,
@@ -606,13 +606,13 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     AsyncValue<List<PermissionCatalogGroup>> catalogAsync,
   ) {
     final theme = Theme.of(context);
-    final data = effectiveAsync.valueOrNull;
+    final data = effectiveAsync.value;
     return UtenCard(
       key: const ValueKey('admin-user-permission-card'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _permissionHeading(data, catalogAsync.valueOrNull),
+          _permissionHeading(data, catalogAsync.value),
           if (!widget.user.authorizationGrantAllowed) ...[
             const SizedBox(height: UtenSpacing.s8),
             _authorizationRestrictionCard(data),
@@ -815,8 +815,8 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         },
       );
     }
-    final data = effectiveAsync.valueOrNull;
-    final groups = catalogAsync.valueOrNull;
+    final data = effectiveAsync.value;
+    final groups = catalogAsync.value;
     if (data == null || groups == null) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: UtenSpacing.s24),
@@ -870,7 +870,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
   }
 
   Set<String> _repairableReads(EffectivePermissions data) {
-    final catalog = ref.read(permissionCatalogProvider).valueOrNull;
+    final catalog = ref.read(permissionCatalogProvider).value;
     if (catalog == null) return const {};
     final byCode = {
       for (final group in catalog)
@@ -1759,7 +1759,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
   }
 
   EffectivePermissions? get _currentEffective => widget.canManageAuthorization
-      ? ref.read(adminEffectivePermissionsProvider(widget.user.id)).valueOrNull
+      ? ref.read(adminEffectivePermissionsProvider(widget.user.id)).value
       : null;
 
   bool _accountActionCurrent(

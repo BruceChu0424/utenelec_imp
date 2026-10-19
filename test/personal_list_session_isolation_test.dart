@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/expense/models/expense_claim.dart';
 import 'package:uten_imp/features/expense/providers/expense_providers.dart';
@@ -100,8 +101,8 @@ class _Harness {
       ? (await container.read(payrollListProvider.future)).total
       : (await container.read(expenseListProvider.future)).total;
   PagedResult<Object?>? value() => payroll
-      ? container.read(payrollListProvider).valueOrNull
-      : container.read(expenseListProvider).valueOrNull;
+      ? container.read(payrollListProvider).value
+      : container.read(expenseListProvider).value;
   Future<void> refresh() => payroll
       ? container.read(payrollListProvider.notifier).refresh()
       : container.read(expenseListProvider.notifier).refresh();

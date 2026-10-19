@@ -354,7 +354,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
   double? _exactKg(StockGridRow row) => warehouseExactLineKg(
     lineQty: double.tryParse(row.activeQty.text.trim()),
     lineMassUnit:
-        (ref.read(warehouseUnitMassUnitsProvider).valueOrNull ??
+        (ref.read(warehouseUnitMassUnitsProvider).value ??
         const {})[row.unitId],
     unitRate: row.isCheck ? 1 : row.unitRate,
     params: _paramsOf(row),

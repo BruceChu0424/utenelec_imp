@@ -3,6 +3,7 @@
 // 仿 DioProductCategoryRepository，端点 /api/master/payment-styles。
 // tree 支持按 category 大类过滤（如 category=EXPENSE 只返回费用子树）。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 
 import '../../../core/network/api_client.dart';
 import '../models/payment_style_node.dart';

@@ -2,6 +2,7 @@
 // 实例保持不变(此前 apiClientProvider watch recoveryEpoch, 恢复时约 90 个 provider 整体重建,
 // 字典缓存全丢再重拉)。恢复后的补拉由各页面「返回即刷新」与徽章汇总各自负责。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';

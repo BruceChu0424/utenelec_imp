@@ -122,7 +122,7 @@ class _HrProfileChangeDetailPageState
           ref.read(isSuperAdminProvider),
           RouteName.hrProfileChanges,
         ) &&
-        ref.read(hrProfileChangeDetailProvider(batchId)).valueOrNull?.status ==
+        ref.read(hrProfileChangeDetailProvider(batchId)).value?.status ==
             ProfileChangeStatus.pending;
     final scope = await ref
         .read(apiClientProvider)

@@ -1,6 +1,12 @@
 spring:
   application:
     name: uten-imp-server
+  config:
+    # server/.env（开发便利，已 gitignore；KEY=VALUE 即 properties 格式，走 config-data 导入，
+    # 因此 spring.profiles.active 的 ${UTEN_PROFILE:prod} 也能取到 .env 值）。
+    # 生产/CI 无该文件时 optional 前缀保证不炸。替代 spring-dotenv 4.x（其 RunListener
+    # 注册在 Boot 4 下失效，.env 被静默跳过）。
+    import: 'optional:file:.env[.properties]'
   lifecycle:
     timeout-per-shutdown-phase: 30s
   task:

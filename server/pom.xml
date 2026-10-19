@@ -201,12 +201,9 @@
             </exclusions>
         </dependency>
 
-        <!-- 加载 server/.env（仅开发便利；生产用环境变量/密钥管理，.env 不进 git） -->
-        <dependency>
-            <groupId>me.paulschwarz</groupId>
-            <artifactId>spring-dotenv</artifactId>
-            <version>4.0.0</version>
-        </dependency>
+        <!-- spring-dotenv 已退役：Boot 4 下其 4.x RunListener 注册失效（.env 被静默跳过），
+             5.x 又无自动注册；改用零依赖的 spring.config.import=optional:file:.env[.properties]。
+             生产用环境变量/密钥管理，.env 不进 git。 -->
 
         <!-- 配置元数据（application.yml 提示） -->
         <dependency>

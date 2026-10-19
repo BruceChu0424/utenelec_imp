@@ -18,20 +18,39 @@ import java.util.regex.Pattern;
 /**
  * Allocates mutable display codes while every relationship continues to use UUIDs.
  *
- * <p>The numeric suffix is global inside one master type.  A single sequence row
- * serializes create, update, move and category-wide prefix changes, so a prefix
- * change can preserve each record's suffix without colliding with another managed
- * record.  The nearest explicit category prefix wins; an empty prefix inherits.
- * V279 additionally reserves every normalized full identifier across all business
- * families for life, including deleted and historical values.</p>
+ * <p>Two managed numbering shapes coexist (2026-10-19, per user convention
+ * "prefix + last two digits"):
+ * <ul>
+ *   <li><b>Short-managed</b> — a category with an explicit prefix numbers its
+ *       records {@code prefix + 01..99, 100…}: the first free short suffix under
+ *       the prefix is scanned (suffixes grow naturally past 99, matching the bulk
+ *       renumber shape). The suffix lives in the code text only;
+ *       {@code code_sequence} stays the globally unique identity counter. Editing
+ *       the prefix renumbers the whole subtree from scratch in current code
+ *       order (2026-10-19 用户口径「改前缀=全部重新来过」).</li>
+ *   <li><b>Long-managed</b> — the fallback prefix (no explicit prefix up the
+ *       tree) keeps the historical V258 shape: a single global sequence row per
+ *       master type renders {@code prefix + %06d}, and the suffix value equals
+ *       {@code code_sequence}.</li>
+ * </ul>
+ * A single sequence row still serializes create, update, move and category-wide
+ * prefix changes.  The nearest explicit category prefix wins; an empty prefix
+ * inherits.  V279 additionally reserves every normalized full identifier across
+ * all business families for life, including deleted and historical values.</p>
  */
 @Service
 @RequiredArgsConstructor
 public class CategoryDrivenCodeService {
 
     private static final Pattern PREFIX = Pattern.compile("^[A-Z0-9]{1,8}$");
-    private static final Pattern NUMERIC_SUFFIX = Pattern.compile("^[0-9]{6,18}$");
+    private static final Pattern NUMERIC_SUFFIX = Pattern.compile("^[0-9]{2,18}$");
     private static final int MAX_GLOBAL_COLLISION_RETRIES = 1024;
+    /** Short-managed allocation: two-digit suffixes 01..99, growing naturally to 100+. */
+    private static final int SHORT_SUFFIX_WIDTH = 2;
+    /** Short-managed allocation scan ceiling; renumbering may hand out more. */
+    private static final int SHORT_SUFFIX_LIMIT = 9999;
+    /** Suffixes at least this wide keep the V258 long-managed semantics (value == code_sequence). */
+    private static final int LONG_SUFFIX_MIN_WIDTH = 6;
 
     private final EntityManager em;
 
@@ -73,9 +92,24 @@ public class CategoryDrivenCodeService {
 
         String requested = normalizeCode(requestedCode);
         if (requested == null) {
+            if (effective.ownerCategoryId() != null) {
+                // 显式前缀：短位受管——扫描首个可用短号（终身保留表兜底防重）；
+                // 超过 99 自然进位到三位（与批量重排的增长口径一致）。
+                for (int suffix = 1; suffix <= SHORT_SUFFIX_LIMIT; suffix++) {
+                    String code = format(effective.prefix(), suffix, SHORT_SUFFIX_WIDTH);
+                    if (!codeUnavailable(type, code, null)) {
+                        return new CategoryCodeAllocation(
+                                code, nextSequenceLocked(type), effective.ownerCategoryId(), true);
+                    }
+                }
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "前缀 " + effective.prefix() + " 下可用的短编号已全部占用，"
+                                + "请更换前缀或使用自定义编号");
+            }
             for (int attempt = 0; attempt < MAX_GLOBAL_COLLISION_RETRIES; attempt++) {
                 long sequence = nextSequenceLocked(type);
-                String code = format(effective.prefix(), sequence);
+                String code = format(effective.prefix(), sequence, 6);
                 if (!codeUnavailable(type, code, null)) {
                     return new CategoryCodeAllocation(
                             code, sequence, effective.ownerCategoryId(), true);
@@ -86,13 +120,19 @@ public class CategoryDrivenCodeService {
                     "连续编号已被历史全局编号占用，请检查编号冲突清单");
         }
 
-        Long managedSequence = parseManagedSequence(effective.prefix(), requested);
-        if (managedSequence != null) {
-            requireSequenceAvailable(type, managedSequence, null);
+        ManagedSuffix managed = parseManagedSuffix(effective.prefix(), requested);
+        if (managed != null) {
+            if (managed.width() >= LONG_SUFFIX_MIN_WIDTH) {
+                requireSequenceAvailable(type, managed.value(), null);
+                requireCodeAvailable(type, requested, null);
+                reserveSequenceLocked(type, managed.value());
+                return new CategoryCodeAllocation(
+                        requested, managed.value(), effective.ownerCategoryId(), true);
+            }
+            // 短位受管（前缀+2~5 位数字）：序号即编号文本后缀，身份序号另取全局值。
             requireCodeAvailable(type, requested, null);
-            reserveSequenceLocked(type, managedSequence);
             return new CategoryCodeAllocation(
-                    requested, managedSequence, effective.ownerCategoryId(), true);
+                    requested, nextSequenceLocked(type), effective.ownerCategoryId(), true);
         }
 
         requireCodeAvailable(type, requested, null);
@@ -104,8 +144,10 @@ public class CategoryDrivenCodeService {
      * Safely derives update metadata from the current persisted allocation.
      *
      * <ul>
-     *   <li>A managed record with an unchanged/omitted code keeps its numeric suffix;
-     *       moving category only recomputes the effective prefix and owner.</li>
+     *   <li>A managed record with an unchanged/omitted code keeps its suffix
+     *       (width preserved from the code text); moving category only recomputes
+     *       the effective prefix and owner.  Pure-digit codes (numeric prefix +
+     *       two-digit suffix) keep their text verbatim on a move.</li>
      *   <li>An unmanaged record with an unchanged/omitted code keeps its custom code
      *       and stable internal sequence.</li>
      *   <li>An explicitly empty code opts into category-managed numbering while
@@ -139,26 +181,31 @@ public class CategoryDrivenCodeService {
                 requireCodeAvailable(type, current.code(), entityId);
                 return current;
             }
-            String code = format(effective.prefix(), current.sequence());
+            String code = renderManaged(effective.prefix(), current.code(), current.sequence(), true);
             requireCodeAvailable(type, code, entityId);
             return new CategoryCodeAllocation(
                     code, current.sequence(), effective.ownerCategoryId(), true);
         }
 
         if (explicitlyBlank) {
-            String code = format(effective.prefix(), current.sequence());
+            String code = renderManaged(effective.prefix(), current.code(), current.sequence(), false);
             requireCodeAvailable(type, code, entityId);
             return new CategoryCodeAllocation(
                     code, current.sequence(), effective.ownerCategoryId(), true);
         }
 
-        Long managedSequence = parseManagedSequence(effective.prefix(), requested);
-        if (managedSequence != null) {
-            requireSequenceAvailable(type, managedSequence, entityId);
+        ManagedSuffix managed = parseManagedSuffix(effective.prefix(), requested);
+        if (managed != null) {
+            if (managed.width() >= LONG_SUFFIX_MIN_WIDTH) {
+                requireSequenceAvailable(type, managed.value(), entityId);
+                requireCodeAvailable(type, requested, entityId);
+                reserveSequenceLocked(type, managed.value());
+                return new CategoryCodeAllocation(
+                        requested, managed.value(), effective.ownerCategoryId(), true);
+            }
             requireCodeAvailable(type, requested, entityId);
-            reserveSequenceLocked(type, managedSequence);
             return new CategoryCodeAllocation(
-                    requested, managedSequence, effective.ownerCategoryId(), true);
+                    requested, current.sequence(), effective.ownerCategoryId(), true);
         }
 
         requireCodeAvailable(type, requested, entityId);
@@ -295,6 +342,13 @@ public class CategoryDrivenCodeService {
      * explicit prefix.  {@code oldEffectivePrefix} is the effective prefix captured
      * before that category mutation; {@code newExplicitPrefix} is nullable and means
      * inheritance.  Descendant categories with their own prefix are never rewritten.
+     *
+     * <p>Renumber shape (2026-10-19 用户口径「改前缀=全部重新来过」): when the resulting
+     * effective prefix is <b>explicit</b>, every record in scope is renumbered from
+     * scratch — {@code prefix + 01, 02, …} in current code order (suffixes grow
+     * naturally past 99: 100, 101…); historical/custom codes are included.  When the
+     * result falls back to the domain prefix (no explicit prefix anywhere), the
+     * historical V258 shape is kept: {@code prefix + %06d(code_sequence)}.</p>
      *
      * <p>The active code uniqueness indexes are immediate, therefore a swap such as
      * A000001 -&gt; B000001 while B000001 is also moving is executed in two phases:
@@ -666,24 +720,36 @@ public class CategoryDrivenCodeService {
                            master.code_prefix_category_id,
                            scoped.effective_prefix,
                            scoped.effective_owner,
-                           scoped.effective_prefix
-                               || repeat(
-                                      '0',
-                                      greatest(
-                                          6 - length(master.code_sequence::text),
-                                          0))
-                               || master.code_sequence::text AS target_code
+                           CASE
+                               WHEN scoped.effective_owner IS NOT NULL
+                                   THEN scoped.effective_prefix
+                                        || lpad((row_number() OVER (
+                                                     ORDER BY master.code, master.id))::text, 2, '0')
+                               ELSE scoped.effective_prefix
+                                    || repeat(
+                                           '0',
+                                           greatest(
+                                               6 - length(master.code_sequence::text),
+                                               0))
+                                    || master.code_sequence::text
+                           END AS target_code
                     FROM %s master
                     JOIN scoped ON scoped.id = master.category_id
                     JOIN candidate_ids ON candidate_ids.id = master.id
                     WHERE master.code IS DISTINCT FROM
-                              scoped.effective_prefix
-                                  || repeat(
-                                         '0',
-                                         greatest(
-                                             6 - length(master.code_sequence::text),
-                                             0))
-                                  || master.code_sequence::text
+                              CASE
+                                  WHEN scoped.effective_owner IS NOT NULL
+                                      THEN scoped.effective_prefix
+                                           || lpad((row_number() OVER (
+                                                        ORDER BY master.code, master.id))::text, 2, '0')
+                                  ELSE scoped.effective_prefix
+                                       || repeat(
+                                              '0',
+                                              greatest(
+                                                  6 - length(master.code_sequence::text),
+                                                  0))
+                                       || master.code_sequence::text
+                              END
                        OR master.code_managed = false
                        OR master.code_prefix_category_id
                               IS DISTINCT FROM scoped.effective_owner
@@ -945,7 +1011,10 @@ public class CategoryDrivenCodeService {
         }
     }
 
-    private static Long parseManagedSequence(String effectivePrefix, String code) {
+    /** A managed code's numeric suffix: value plus the width it was rendered with. */
+    private record ManagedSuffix(long value, int width) {}
+
+    private static ManagedSuffix parseManagedSuffix(String effectivePrefix, String code) {
         if (code == null || !code.startsWith(effectivePrefix)) {
             return null;
         }
@@ -955,9 +1024,53 @@ public class CategoryDrivenCodeService {
         }
         try {
             long value = Long.parseLong(suffix);
-            return value > 0 ? value : null;
+            return value > 0 ? new ManagedSuffix(value, suffix.length()) : null;
         } catch (NumberFormatException exception) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "编号数字部分超出支持范围");
+        }
+    }
+
+    /**
+     * Re-renders a managed code under [prefix], preserving the current code's own
+     * suffix width.  Pure-digit codes (numeric prefix + short suffix) have no
+     * splittable head: [keepPureDigits] keeps their text verbatim (an unchanged
+     * code on a category move), while a blank opt-in re-renders them as
+     * {@code prefix + %06d(sequence)}.  Codes without any 2-18 digit tail fall
+     * back to the same long-managed rendering.
+     */
+    private static String renderManaged(String prefix, String currentCode, long sequence, boolean keepPureDigits) {
+        ManagedSuffix exact = parseManagedSuffix(prefix, currentCode);
+        if (exact != null) {
+            return currentCode;
+        }
+        ManagedSuffix trailing = trailingManagedSuffix(currentCode);
+        if (trailing != null) {
+            return format(prefix, trailing.value(), trailing.width());
+        }
+        if (keepPureDigits && currentCode != null && currentCode.matches("[0-9]{2,18}")) {
+            return currentCode;
+        }
+        return format(prefix, sequence, 6);
+    }
+
+    /** Greedy trailing 2-18 digit split with a non-empty non-digit head, else null. */
+    private static ManagedSuffix trailingManagedSuffix(String code) {
+        if (code == null) {
+            return null;
+        }
+        int end = code.length();
+        while (end > 0 && code.charAt(end - 1) >= '0' && code.charAt(end - 1) <= '9') {
+            end--;
+        }
+        int width = code.length() - end;
+        if (end == 0 || width < 2 || width > 18) {
+            return null;
+        }
+        try {
+            long value = Long.parseLong(code.substring(end));
+            return value > 0 ? new ManagedSuffix(value, width) : null;
+        } catch (NumberFormatException exception) {
+            return null;
         }
     }
 
@@ -981,11 +1094,15 @@ public class CategoryDrivenCodeService {
         return raw.strip().toUpperCase(Locale.ROOT);
     }
 
-    public static String format(String prefix, long sequence) {
+    public static String format(String prefix, long sequence, int width) {
         if (prefix == null || sequence <= 0) {
             throw new IllegalArgumentException("prefix and positive sequence are required");
         }
-        return prefix + String.format(Locale.ROOT, "%06d", sequence);
+        String digits = Long.toString(sequence);
+        if (digits.length() < width) {
+            digits = "0".repeat(width - digits.length()) + digits;
+        }
+        return prefix + digits;
     }
 
     private static void requireType(MasterType type) {

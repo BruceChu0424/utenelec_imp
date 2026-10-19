@@ -97,10 +97,12 @@ class CategoryDrivenCodeServiceContractTest {
     @Test
     void prefixNormalizationSupportsDigitBearingBusinessPrefix() {
         assertEquals("V6", CategoryDrivenCodeService.normalizePrefix(" v6 "));
-        assertEquals("V6000123", CategoryDrivenCodeService.format("V6", 123));
+        assertEquals("V6000123", CategoryDrivenCodeService.format("V6", 123, 6));
         assertEquals("1M", CategoryDrivenCodeService.normalizePrefix(" 1m "));
         assertEquals("28", CategoryDrivenCodeService.normalizePrefix("28"));
-        assertEquals("28000123", CategoryDrivenCodeService.format("28", 123));
+        assertEquals("28000123", CategoryDrivenCodeService.format("28", 123, 6));
+        assertEquals("208035801", CategoryDrivenCodeService.format("2080358", 1, 2));
+        assertEquals("2080358100", CategoryDrivenCodeService.format("2080358", 100, 2));
     }
 
     @Test
@@ -192,6 +194,91 @@ class CategoryDrivenCodeServiceContractTest {
 
         assertEquals("V6000007", allocation.code());
         assertEquals(newOwnerId, allocation.prefixCategoryId());
+        assertTrue(allocation.managed());
+    }
+
+    @Test
+    void explicitPrefixAutoAllocationRendersATwoDigitSuffixWithFreshIdentitySequence() {
+        EntityManager entityManager = mock(EntityManager.class);
+        Query lock = fluentQuery();
+        Query effectivePrefix = fluentQuery();
+        Query duplicateCheck = fluentQuery();
+        Query increment = fluentQuery();
+        UUID categoryId = UUID.randomUUID();
+
+        when(entityManager.createNativeQuery(anyString()))
+                .thenReturn(lock, effectivePrefix, duplicateCheck, increment);
+        when(lock.getResultList()).thenReturn(List.of(40L));
+        when(effectivePrefix.getSingleResult())
+                .thenReturn(new Object[]{true, categoryId, "2080358"});
+        when(duplicateCheck.getSingleResult()).thenReturn(false);
+        when(increment.getSingleResult()).thenReturn(41L);
+
+        CategoryCodeAllocation allocation =
+                new CategoryDrivenCodeService(entityManager).allocate(CLIENT, categoryId, null);
+
+        assertEquals("208035801", allocation.code());
+        assertEquals(41L, allocation.sequence());
+        assertEquals(categoryId, allocation.prefixCategoryId());
+        assertTrue(allocation.managed());
+        verify(duplicateCheck).setParameter("code", "208035801");
+    }
+
+    @Test
+    void pureDigitManagedCodeKeepsItsTextWhenMovedToAnotherPrefix() {
+        EntityManager entityManager = mock(EntityManager.class);
+        Query lock = fluentQuery();
+        Query effectivePrefix = fluentQuery();
+        Query duplicateCheck = fluentQuery();
+        UUID entityId = UUID.randomUUID();
+        UUID categoryId = UUID.randomUUID();
+        UUID oldOwnerId = UUID.randomUUID();
+        UUID newOwnerId = UUID.randomUUID();
+
+        when(entityManager.createNativeQuery(anyString()))
+                .thenReturn(lock, effectivePrefix, duplicateCheck);
+        when(lock.getResultList()).thenReturn(List.of(99L));
+        when(effectivePrefix.getSingleResult())
+                .thenReturn(new Object[]{true, newOwnerId, "8104207"});
+        when(duplicateCheck.getSingleResult()).thenReturn(false);
+
+        CategoryCodeAllocation allocation = new CategoryDrivenCodeService(entityManager)
+                .allocateForUpdate(
+                        CLIENT,
+                        entityId,
+                        categoryId,
+                        "208035801",
+                        new CategoryCodeAllocation("208035801", 4532L, oldOwnerId, true));
+
+        assertEquals("208035801", allocation.code());
+        assertEquals(4532L, allocation.sequence());
+        assertEquals(newOwnerId, allocation.prefixCategoryId());
+        assertTrue(allocation.managed());
+    }
+
+    @Test
+    void shortSuffixRequestedCodeBecomesManagedWithoutTouchingTheGlobalSequence() {
+        EntityManager entityManager = mock(EntityManager.class);
+        Query lock = fluentQuery();
+        Query effectivePrefix = fluentQuery();
+        Query duplicateCheck = fluentQuery();
+        Query increment = fluentQuery();
+        UUID categoryId = UUID.randomUUID();
+
+        when(entityManager.createNativeQuery(anyString()))
+                .thenReturn(lock, effectivePrefix, duplicateCheck, increment);
+        when(lock.getResultList()).thenReturn(List.of(40L));
+        when(effectivePrefix.getSingleResult())
+                .thenReturn(new Object[]{true, categoryId, "2080358"});
+        when(duplicateCheck.getSingleResult()).thenReturn(false);
+        when(increment.getSingleResult()).thenReturn(41L);
+
+        CategoryCodeAllocation allocation = new CategoryDrivenCodeService(entityManager)
+                .allocate(CLIENT, categoryId, "208035825");
+
+        assertEquals("208035825", allocation.code());
+        assertEquals(41L, allocation.sequence());
+        assertEquals(categoryId, allocation.prefixCategoryId());
         assertTrue(allocation.managed());
     }
 

@@ -33,6 +33,7 @@ public class GoodsListItem {
     private String cNumber;
     private String requireRemark;
     private String mouldCode;       // 模具编号（moulds.code；UUID 关系优先，历史缺失回落 legacy 快照解析）
+    private String mouldName;       // 模具名称（moulds.name；口径同 mouldCode，列表「模具名称」列数据源）
     private String rearInsertCode;  // 后模镶件编号（V457）：生产该货品需使用的后模镶件标识
     private String paper;           // 备注（老库 B_Goods.Paper；列表「备注」列数据源）
     private UUID colorId;
@@ -93,7 +94,7 @@ public class GoodsListItem {
             String spec, String model, BigDecimal price,
             BigDecimal discount, String status, Integer legacyId,
             String series, String material, String cNumber,
-            String requireRemark, String mouldCode, String rearInsertCode,
+            String requireRemark, String mouldCode, String mouldName, String rearInsertCode,
             String paper, UUID colorId, UUID unitId,
             Integer colorLegacyId, Integer unitLegacyId, String colorName,
             String unitName, String sourceType, UUID categoryId,
@@ -104,7 +105,7 @@ public class GoodsListItem {
             BigDecimal bulkPackageQty, boolean recycledMaterial, String nameEn,
             String nameEnSource) {
         this(id, code, name, spec, model, price, discount,
-                status, legacyId, series, material, cNumber, requireRemark, mouldCode,
+                status, legacyId, series, material, cNumber, requireRemark, mouldCode, mouldName,
                 rearInsertCode, paper, colorId, unitId, colorLegacyId, unitLegacyId, colorName,
                 unitName, sourceType, categoryId, autoCreated, stockQty, stockPlace, minOrderQty,
                 orderMultipleQty, owningWarehouseId, owningWarehouseName, owningWorkshopId, owningWorkshopName, version, issueMethod,

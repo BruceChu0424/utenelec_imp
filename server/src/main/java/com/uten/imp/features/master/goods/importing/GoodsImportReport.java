@@ -14,6 +14,7 @@ import java.util.UUID;
  * @param willCreateColors     将自动新建的颜色名。
  * @param willCreateUnits      将自动新建的单位名。
  * @param readyToImport        dataRows - errorRows；为 0 或 errors 非空时前端禁用「确认导入」。
+ * @param restorableRows       将恢复的已删除货品行数（同编号命中软删行，导入时原 UUID 原编号复活）。
  */
 public record GoodsImportReport(
         int totalRows,
@@ -23,4 +24,5 @@ public record GoodsImportReport(
         List<String> willCreateColors,
         List<String> willCreateUnits,
         int readyToImport,
+        int restorableRows,
         UUID planId) {}

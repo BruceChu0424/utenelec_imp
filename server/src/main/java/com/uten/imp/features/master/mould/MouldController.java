@@ -69,6 +69,7 @@ public class MouldController {
             @RequestParam(required = false) Set<String> nullFields,
             @RequestParam(required = false) String code,
             @RequestParam(required = false) String name,
+            @RequestParam(required = false) String qty,
             @RequestParam(required = false) String place,
             @RequestParam(required = false) String mstatus,
             @RequestParam(required = false) String remark,
@@ -77,7 +78,7 @@ public class MouldController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
         return service.list(new MouldQueryFilter(categoryId, keyword, nullFields,
-                code, name, place, mstatus, remark, status, manufacturer).withColumnSearch(
+                code, name, qty, place, mstatus, remark, status, manufacturer).withColumnSearch(
                         com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)), page, size);
     }
 
@@ -91,6 +92,7 @@ public class MouldController {
             @RequestParam(required = false) Set<String> nullFields,
             @RequestParam(required = false) String code,
             @RequestParam(required = false) String name,
+            @RequestParam(required = false) String qty,
             @RequestParam(required = false) String place,
             @RequestParam(required = false) String mstatus,
             @RequestParam(required = false) String remark,
@@ -98,7 +100,7 @@ public class MouldController {
             @RequestParam(required = false) String manufacturer,
             @Valid @RequestBody ExportPasswordRequest body) {
         ExportPayload payload = service.export(new MouldQueryFilter(categoryId, keyword,
-                nullFields, code, name, place, mstatus, remark, status, manufacturer).withColumnSearch(
+                nullFields, code, name, qty, place, mstatus, remark, status, manufacturer).withColumnSearch(
                         com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)),
                 exportLimits.exportMaxRows());
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "master_mould");

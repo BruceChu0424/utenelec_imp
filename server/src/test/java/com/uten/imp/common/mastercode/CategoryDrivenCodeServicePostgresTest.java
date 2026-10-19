@@ -104,7 +104,7 @@ class CategoryDrivenCodeServicePostgresTest {
                 org.mockito.Mockito.mock(com.uten.imp.common.util.DepartmentNameResolver.class),
                 org.mockito.Mockito.mock(com.uten.imp.common.util.EmployeeNameResolver.class));
         var filter = new com.uten.imp.features.master.mould.dto.MouldQueryFilter(root, null, java.util.Set.of(),
-                null, "双联开关模具", null, null, null, "使用", null)
+                null, "双联开关模具", null, null, null, null, "使用", null)
                 .withColumnSearch(java.util.Map.of("categoryName", "Q7", "name", "开关"));
         var pageOne = mouldService.list(filter, 1, 1);
         var pageTwo = mouldService.list(filter, 2, 1);
@@ -119,7 +119,7 @@ class CategoryDrivenCodeServicePostgresTest {
         assertEquals(java.util.Set.of("Q7系列", "Q7开关子系列"), exported.rows().stream()
                 .map(row -> row.get("categoryName")).collect(java.util.stream.Collectors.toSet()));
         var global = mouldService.list(new com.uten.imp.features.master.mould.dto.MouldQueryFilter(null, "Q7", null,
-                null, null, null, null, null, null, null), 1, 20);
+                null, null, null, null, null, null, null, null), 1, 20);
         assertEquals(java.util.Set.of(first, second, outsideMould, unrelated), global.getItems().stream()
                 .map(item -> item.getId()).collect(java.util.stream.Collectors.toSet()));
     }
@@ -266,8 +266,11 @@ class CategoryDrivenCodeServicePostgresTest {
         insertGoods(existingGoods, category, "LEGACY-DIGIT", 1, null, false, false);
         jdbc.update("UPDATE category_master_code_sequences SET last_seq = 1 WHERE master_type = 'GOODS'");
 
+        // 显式前缀走「前缀+两位序号」受管发号（2026-10-19 用户口径：2080358 → 208035801…99）；
+        // code_sequence 仍是全局身份计数（此处 2），不再渲染进编号文本。
         var allocation = service.allocate(GOODS, category, null);
-        assertEquals("28000002", allocation.code());
+        assertEquals("2801", allocation.code());
+        assertEquals(2L, allocation.sequence());
         assertEquals(category, allocation.prefixCategoryId());
         assertTrue(allocation.managed());
         assertCode(existingGoods, "LEGACY-DIGIT", false, null);
@@ -279,6 +282,48 @@ class CategoryDrivenCodeServicePostgresTest {
                     + " (id, code, name, code_prefix, is_deleted) VALUES (?, ?, ?, ?, false)",
                     UUID.randomUUID(), "DIGIT-CAT-" + i, "数字分类", (i + 3) + "A");
         }
+    }
+
+    @Test
+    void explicitPrefixAllocationScansShortSuffixesAndGrowsPast99() {
+        UUID category = UUID.randomUUID();
+        insertCategory(category, "SHORT-PREFIX", "短编号分类", null, "2080358");
+        jdbc.update("UPDATE category_master_code_sequences SET last_seq = 10 WHERE master_type = 'GOODS'");
+
+        // 占掉 01 与 02（终身保留表），下一次自动发号应跳到 208035803。
+        jdbc.update("""
+                INSERT INTO master_code_reservations (master_domain, normalized_code)
+                VALUES ('GOODS', '208035801'), ('GOODS', '208035802')
+                ON CONFLICT DO NOTHING
+                """);
+        jdbc.update("""
+                INSERT INTO master_code_reservation_members (
+                    master_domain, normalized_code, entity_id)
+                SELECT 'GOODS', v, gen_random_uuid()
+                FROM (VALUES ('208035801'), ('208035802')) AS v
+                """);
+
+        var allocation = service.allocate(GOODS, category, null);
+        assertEquals("208035803", allocation.code());
+        assertEquals(11L, allocation.sequence());
+        assertTrue(allocation.managed());
+        assertEquals(category, allocation.prefixCategoryId());
+
+        // 01..99 全被占用：短号自然进位到三位（100），不再停在 99 报错。
+        jdbc.update("""
+                INSERT INTO master_code_reservations (master_domain, normalized_code)
+                SELECT 'GOODS', '2080358' || to_char(n, 'FM00')
+                FROM generate_series(3, 99) AS n
+                ON CONFLICT DO NOTHING
+                """);
+        jdbc.update("""
+                INSERT INTO master_code_reservation_members (
+                    master_domain, normalized_code, entity_id)
+                SELECT 'GOODS', '2080358' || to_char(n, 'FM00'), gen_random_uuid()
+                FROM generate_series(3, 99) AS n
+                """);
+        var past99 = service.allocate(GOODS, category, null);
+        assertEquals("2080358100", past99.code());
     }
 
     @Test
@@ -317,6 +362,8 @@ class CategoryDrivenCodeServicePostgresTest {
         assertEquals(1L, preview.descendantOverrides());
         assertEquals(0L, preview.conflicts());
 
+        // 2026-10-19 口径「改前缀=全部重新来过」：显式前缀下子树按现有编号顺序
+        // 从头重排（V601、V602…），不再沿用旧后缀；历史/手工编号一并纳入。
         Integer affected = transaction.execute(status -> {
             jdbc.update(
                     "UPDATE material_categories SET code_prefix = 'V6' WHERE id = ?",
@@ -325,9 +372,9 @@ class CategoryDrivenCodeServicePostgresTest {
         });
         assertEquals(3, affected);
 
-        assertCode(rootGoods, "V6000001", true, root);
-        assertCode(inheritedGoods, "V6000002", true, root);
-        assertCode(customGoods, "V6000004", true, root);
+        assertCode(rootGoods, "V601", true, root);
+        assertCode(inheritedGoods, "V602", true, root);
+        assertCode(customGoods, "V603", true, root);
         assertCode(overrideGoods, "BB000003", true, overrideChild);
         assertEquals(3L, longValue("""
                 SELECT count(*) FROM master_code_history
@@ -336,12 +383,12 @@ class CategoryDrivenCodeServicePostgresTest {
         assertEquals(3L, longValue("""
                 SELECT count(*) FROM audit_log
                 WHERE target_type = 'goods' AND action = 'update'
-                  AND "after" ->> 'code' IN ('V6000001', 'V6000002', 'V6000004')
+                  AND "after" ->> 'code' IN ('V601', 'V602', 'V603')
                 """));
         assertFalse(Boolean.TRUE.equals(jdbc.queryForObject("""
                 SELECT bool_or("after" ? 'ground_graph') FROM audit_log
                 WHERE target_type = 'goods' AND action = 'update'
-                  AND "after" ->> 'code' IN ('V6000001', 'V6000002', 'V6000004')
+                  AND "after" ->> 'code' IN ('V601', 'V602', 'V603')
                 """, Boolean.class)));
 
         assertThrows(ApiException.class, () -> transaction.execute(status ->
@@ -365,7 +412,9 @@ class CategoryDrivenCodeServicePostgresTest {
                 GOODS, child, "", newRoot);
 
         assertEquals("AA", current.resultingEffectivePrefix());
-        assertEquals(0L, current.affectedRecords());
+        // 显式前缀下重排是「从头编号」口径：即使有效前缀不变，旧六位号也规划为
+        // 重排成短号（AA01），与真正执行的 reconcileSubtree 同一套目标计算。
+        assertEquals(1L, current.affectedRecords());
         assertEquals("V6", moved.resultingEffectivePrefix());
         assertEquals(1L, moved.affectedRecords());
         assertEquals(0L, moved.conflicts());

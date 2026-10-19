@@ -27,6 +27,9 @@ public interface GoodsRepository extends JpaRepository<Goods, UUID>, JpaSpecific
     /** 按编号取货品（仅未软删）—— 组装信息导入按物料编号定位组件用（2026-09-25）。 */
     Optional<Goods> findByCodeAndDeletedFalse(String code);
 
+    /** 按编号取已软删货品——清单导入同编号命中时恢复原行（同 UUID 同编号复活）用。 */
+    Optional<Goods> findFirstByCodeAndDeletedTrueOrderByIdAsc(String code);
+
     /** 编号查重排除自身（编辑改码用）。 */
     boolean existsByCodeAndDeletedFalseAndIdNot(String code, UUID id);
 

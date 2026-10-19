@@ -56,21 +56,23 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class MouldService {
 
-    /** nullFields 白名单（实体属性名），防 JPA 任意属性路径。仅含有数据的 7 列。 */
+    /** nullFields 白名单（实体属性名），防 JPA 任意属性路径。含有数据的字符串 8 列。 */
     private static final Set<String> ALLOWED_NULL_FIELDS = Set.of(
-            "code", "name", "place", "mstatus", "remark", "status", "manufacturer");
+            "code", "name", "qty", "place", "mstatus", "remark", "status", "manufacturer");
 
     /** facet 截断阈值（高基数列如 name/remark 取前 N）。 */
     private static final int FACET_LIMIT = 50;
 
     /**
      * facet 字段→物理列名白名单（列名硬编码、非用户输入，可安全拼入 SQL）。
-     * 仅含表中"有数据"的 7 列；模数/套数/模具类型无对应列，不参与 facet。
+     * 模数（qty，老库 QTY "1+1"）是低基数字符串进 facet；套数（tqty）为数值列
+     * 不进（同货品库存量口径）；模具类型无数据源不参与。
      */
     private static final LinkedHashMap<String, String> FACET_COLUMNS = new LinkedHashMap<>();
     static {
         FACET_COLUMNS.put("code", "code");
         FACET_COLUMNS.put("name", "name");
+        FACET_COLUMNS.put("qty", "qty");
         FACET_COLUMNS.put("place", "place");
         FACET_COLUMNS.put("mstatus", "mstatus");
         FACET_COLUMNS.put("remark", "remark");
@@ -119,6 +121,7 @@ public class MouldService {
             }
             addEq(ps, cb, root, "code", f.code());
             addEq(ps, cb, root, "name", f.name());
+            addEq(ps, cb, root, "qty", f.qty());
             addEq(ps, cb, root, "place", f.place());
             addEq(ps, cb, root, "mstatus", f.mstatus());
             addEq(ps, cb, root, "manufacturer", f.manufacturer());
@@ -158,14 +161,16 @@ public class MouldService {
 
     /**
      * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限防 OOM。
-     * 列集与前端模具表格一致——模数/套数/模具类型三列在表格里是老库占位
-     * （无 DB 列、恒空），导出不带；实际字段及真实系列分类名称同源导出。
+     * 列集与前端模具表格一致——模数/套数（老库 QTY/TQTY）随行导出；
+     * 模具类型无数据源（表格恒"—"）不带；实际字段及真实系列分类名称同源导出。
      */
     @Transactional(readOnly = true)
     public ExportPayload export(MouldQueryFilter f, int maxRows) {
         List<ExportColumn> cols = List.of(
                 new ExportColumn("code", "模具编号", ExportColumn.TEXT),
                 new ExportColumn("name", "模具名称", ExportColumn.TEXT),
+                new ExportColumn("qty", "模数", ExportColumn.TEXT),
+                new ExportColumn("tqty", "套数", ExportColumn.TEXT),
                 new ExportColumn("categoryName", "系列 / 分类", ExportColumn.TEXT),
                 new ExportColumn("place", "存放位置", ExportColumn.TEXT),
                 new ExportColumn("mstatus", "制造日期", ExportColumn.TEXT),
@@ -179,6 +184,8 @@ public class MouldService {
                     row.put("_platformRecordId", m.getId());
                     row.put("code", m.getCode());
                     row.put("name", m.getName());
+                    row.put("qty", m.getQty());
+                    row.put("tqty", m.getTqty() == null ? null : m.getTqty().stripTrailingZeros().toPlainString());
                     row.put("categoryName", m.getCategoryName());
                     row.put("place", m.getPlace());
                     row.put("mstatus", m.getMstatus());
@@ -221,7 +228,7 @@ public class MouldService {
             nullCounts.put(field, nc);
         }
         return new MouldFacets(
-                buckets.get("code"), buckets.get("name"), buckets.get("place"),
+                buckets.get("code"), buckets.get("name"), buckets.get("qty"), buckets.get("place"),
                 buckets.get("mstatus"), buckets.get("remark"), buckets.get("status"),
                 buckets.get("manufacturer"),
                 nullCounts);
@@ -346,7 +353,7 @@ public class MouldService {
 
     private MouldListItem toList(Mould m) {
         return new MouldListItem(
-                m.getId(), m.getCode(), m.getName(), m.getPlace(), m.getMstatus(),
+                m.getId(), m.getCode(), m.getName(), m.getQty(), m.getTqty(), m.getPlace(), m.getMstatus(),
                 m.getStatus(), m.getRemark(), m.getLegacyId(),
                 m.getCategory() == null ? null : m.getCategory().getId(), m.getManufacturer(),
                 m.getCategory() == null || m.getCategory().isDeleted() ? null : m.getCategory().getName());

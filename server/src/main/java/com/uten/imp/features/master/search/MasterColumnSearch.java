@@ -54,6 +54,7 @@ public final class MasterColumnSearch {
                 fields.put("unitLegacyId", legacyReference("units", "unit_id", "unit_legacy_id", "name", true));
                 fields.put("unitName", fields.get("unitLegacyId"));
                 fields.put("mouldCode", legacyReference("moulds", "mould_id", "mould_legacy_id", "code", false));
+                fields.put("mouldName", legacyReference("moulds", "mould_id", "mould_legacy_id", "name", false));
                 fields.put("owningWarehouse", "(SELECT name FROM warehouses WHERE id = master.owning_warehouse_id AND NOT is_deleted)");
                 fields.put("owningWarehouseName", fields.get("owningWarehouse"));
                 fields.put("owningWorkshop", "(SELECT name FROM departments WHERE id = master.owning_workshop_department_id AND NOT is_deleted)");
@@ -69,7 +70,7 @@ public final class MasterColumnSearch {
                 owner(fields);
             }
             case MOULD -> {
-                direct(fields, "code", "name", "place", "manufacturer", "remark");
+                direct(fields, "code", "name", "place", "manufacturer", "remark", "qty");
                 fields.put("categoryName", "(SELECT name FROM mould_categories WHERE id = master.category_id AND NOT is_deleted)");
             }
         }

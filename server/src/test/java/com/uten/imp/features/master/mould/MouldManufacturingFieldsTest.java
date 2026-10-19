@@ -67,15 +67,23 @@ class MouldManufacturingFieldsTest {
         request.setMstatus("2009-03-31"); // 兼容旧客户端，但业务仍按月份保存。
         service.update(mould.getId(), request);
         assertThat(mould.getMstatus()).isEqualTo("2009-03");
+        mould.setQty("1+1");
+        mould.setTqty(new java.math.BigDecimal("2"));
         when(repository.findAll(org.mockito.ArgumentMatchers.<Specification<Mould>>any(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(mould)));
-        var filter = new MouldQueryFilter(null, null, Set.of(), null, null, null, null, null, null, null);
+        var filter = new MouldQueryFilter(null, null, Set.of(), null, null, null, null, null, null, null, null);
         assertThat(service.list(filter, 1, 20).getItems().getFirst().getManufacturer()).isEqualTo("模具制造商");
+        assertThat(service.list(filter, 1, 20).getItems().getFirst().getQty()).isEqualTo("1+1");
+        assertThat(service.list(filter, 1, 20).getItems().getFirst().getTqty()).isEqualByComparingTo("2");
         assertThat(service.list(filter, 1, 20).getItems().getFirst().getCategoryName()).isEqualTo("Q7系列");
         var export = service.export(filter, 100);
         assertThat(export.columns()).anyMatch(column -> "manufacturer".equals(column.key()));
+        assertThat(export.columns()).anyMatch(column -> "qty".equals(column.key()) && "模数".equals(column.label()));
+        assertThat(export.columns()).anyMatch(column -> "tqty".equals(column.key()) && "套数".equals(column.label()));
         assertThat(export.rows().getFirst()).containsEntry("manufacturer", "模具制造商")
                 .containsEntry("mstatus", "2009-03")
+                .containsEntry("qty", "1+1")
+                .containsEntry("tqty", "2")
                 .containsEntry("categoryName", "Q7系列");
         assertThat(export.columns()).anyMatch(column -> "categoryName".equals(column.key()) && "系列 / 分类".equals(column.label()));
     }

@@ -145,14 +145,15 @@ public class GoodsImportService {
         for (String a : new String[]{"备注", "纸样"}) putAlias(a, "paper");
         // 导出有但 DTO 未开放编辑——识别但忽略其值（不报「无法识别」）。
         //
-        // 所属仓库 (V587) / 生产车间 (V590, 2026-09-29 前表头叫「归属车间」) / 模具编号 / 客户型号：导出写这些列，
+        // 所属仓库 (V587) / 生产车间 (V590, 2026-09-29 前表头叫「归属车间」) / 模具编号、模具名称
+        // (2026-10-19 起导出携带模具名称列) / 客户型号：导出写这些列，
         // 但导入侧只拿得到「名称/编号」，而在线关系只认 UUID（本文件的 UUID-only 契约），
         // 按名反查会重蹈按名猜关系的老路，故登记为 ignored 只识别不落值——导出改完再导入，
         // 这些列的值不会写进新货品。必须登记：把「刻意丢弃」写成明账，避免后来人把它
         // 当成又一个 V457 式的漏登记去补，也避免别处误把它接成别的字段。真要支持编辑，
         // 得先给导入一条 UUID 口径的选择通道。
         for (String a : new String[]{"客户型号", "所属仓库", "归属仓库", "归属车间", "生产车间", "车间",
-                "模具编号", "模具"}) putAlias(a, "ignored");
+                "模具编号", "模具名称", "模具"}) putAlias(a, "ignored");
     }
 
     private static void putAlias(String alias, String key) {
@@ -180,7 +181,7 @@ public class GoodsImportService {
         List<GoodsImportError> errors = new ArrayList<>(parsed.headerErrors);
         if (!parsed.headerErrors.isEmpty()) {
             return new GoodsImportReport(
-                    parsed.totalRows, 0, errors, List.of(), List.of(), List.of(), 0, null);
+                    parsed.totalRows, 0, errors, List.of(), List.of(), List.of(), 0, 0, null);
         }
 
         MasterSnapshot masters = loadMasterSnapshot();
@@ -195,14 +196,24 @@ public class GoodsImportService {
         Set<String> seenCodes = new HashSet<>();
         List<PlannedRow> plannedRows = new ArrayList<>();
         int dataRows = 0;
+        int restorableRows = 0;
 
         for (ParsedRow r : parsed.rows) {
             dataRows++;
+            UUID restoreGoodsId = null;
             if (r.code != null && !r.code.isEmpty()) {
                 if (!seenCodes.add(r.code)) {
                     errors.add(new GoodsImportError(r.rowNum, "编号", "编号「" + r.code + "」在本文件内重复"));
                 } else if (goodsRepo.existsByCodeAndDeletedFalse(r.code)) {
                     errors.add(new GoodsImportError(r.rowNum, "编号", "编号「" + r.code + "」在系统中已存在"));
+                } else {
+                    // 同编号命中已软删行：不再当冲突拦下，导入时以原 UUID 原编号恢复该行
+                    //（2026-10-19「删除后同编号不能导入」根因修复，见 [commit]）。
+                    var deleted = goodsRepo.findFirstByCodeAndDeletedTrueOrderByIdAsc(r.code);
+                    if (deleted.isPresent()) {
+                        restoreGoodsId = deleted.get().getId();
+                        restorableRows++;
+                    }
                 }
             }
             if (r.name == null || r.name.isEmpty()) {
@@ -241,7 +252,7 @@ public class GoodsImportService {
                     r.rowNum, "主颜色", r.colorName, colorIndex, willCreateColor, errors);
             PlannedMasterReference unit = planNamedMaster(
                     r.rowNum, "单位", r.unitName, unitIndex, willCreateUnit, errors);
-            plannedRows.add(new PlannedRow(r.rowNum, category, color, unit));
+            plannedRows.add(new PlannedRow(r.rowNum, category, color, unit, restoreGoodsId));
         }
         int errorRows = (int) errors.stream().map(GoodsImportError::rowNum).distinct().count();
         UUID planId = null;
@@ -251,7 +262,8 @@ public class GoodsImportService {
         }
         return new GoodsImportReport(parsed.totalRows, dataRows, errors,
                 new ArrayList<>(willCreateCat), new ArrayList<>(willCreateColor),
-                new ArrayList<>(willCreateUnit), Math.max(0, dataRows - errorRows), planId);
+                new ArrayList<>(willCreateUnit), Math.max(0, dataRows - errorRows),
+                restorableRows, planId);
     }
 
     // ============================================================
@@ -330,7 +342,9 @@ public class GoodsImportService {
             // resolve or write an imported goods relationship.
             if (colorId != null) req.setColorId(colorId);
             if (unitId != null) req.setUnitId(unitId);
-            UUID goodsId = goodsService.saveImported(req);
+            UUID goodsId = planned.restoreGoodsId() != null
+                    ? goodsService.restoreImported(planned.restoreGoodsId(), req)
+                    : goodsService.saveImported(req);
             recordCreation(batchId, "GOODS", goodsId);
         }
 
@@ -941,7 +955,8 @@ public class GoodsImportService {
             int rowNum,
             CategoryPathPlan category,
             PlannedMasterReference color,
-            PlannedMasterReference unit) {}
+            PlannedMasterReference unit,
+            UUID restoreGoodsId) {}
 
     private record CategoryPathPlan(List<PlannedCategorySegment> segments) {}
 

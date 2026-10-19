@@ -609,6 +609,7 @@ public class GoodsService {
         cols.add(new ExportColumn("paper", "备注", ExportColumn.TEXT));
         cols.add(new ExportColumn("cNumber", "客户型号", ExportColumn.TEXT));
         cols.add(new ExportColumn("mouldCode", "模具编号", ExportColumn.TEXT));
+        cols.add(new ExportColumn("mouldName", "模具名称", ExportColumn.TEXT));
         cols.add(new ExportColumn("rearInsertCode", "后模镶件编号", ExportColumn.TEXT));
         cols.add(new ExportColumn("unitName", "单位", ExportColumn.TEXT));
         cols.add(new ExportColumn("material", "材质", ExportColumn.TEXT));
@@ -637,6 +638,7 @@ public class GoodsService {
                     row.put("paper", g.getPaper());
                     row.put("cNumber", g.getCNumber());
                     row.put("mouldCode", g.getMouldCode());
+                    row.put("mouldName", g.getMouldName());
                     row.put("rearInsertCode", g.getRearInsertCode());
                     row.put("unitName", g.getUnitName());
                     row.put("material", g.getMaterial());
@@ -914,6 +916,29 @@ public class GoodsService {
                 CategoryDrivenCodeService.MasterType.GOODS,
                 g.getCategory().getId(), req.getCode()));
         if (g.getStatus() == null) g.setStatus("使用");
+        repo.save(g);
+        return g.getId();
+    }
+
+    /**
+     * 导入恢复软删货品（2026-10-19）：清单里同编号命中已删除行时，以原 UUID、原编号
+     * 复活并按导入行覆写业务字段。编号四件套（code/code_sequence/code_prefix_category_id/
+     * code_managed）保持删除时的值不动——同 UUID 同编号的 UPDATE 不触碰 V276/V279 终身
+     * 保留触发器；要改号或换前缀走正常的编辑/分类改号流程。调用方须在导入事务内调用
+     * （MANDATORY 加入导入事务），与 [saveImported] 同一把 goods:import 特权口径。
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public UUID restoreImported(UUID id, GoodsSaveRequest req) {
+        Goods g = repo.findById(id)
+                .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT, "编号对应的已删除货品不存在，请重新检测文件"));
+        if (!g.isDeleted()) {
+            throw new ApiException(ErrorCode.CONFLICT, "编号对应的货品已恢复，请重新检测文件");
+        }
+        GoodsCostValuePolicy.validateRequest(req);
+        GoodsQuantityUnitPolicy.requireUnchangedIfUsed(g, req, repo.quantityUnitInUse(g.getId()));
+        apply(req, g, true, repo.quantityUnitInUse(g.getId()));
+        g.setDeleted(false);
+        g.setDeletedAt(null);
         repo.save(g);
         return g.getId();
     }
@@ -1463,6 +1488,7 @@ public class GoodsService {
                 canViewDiscount() ? g.getDiscount() : null, g.getStatus(), g.getLegacyId(),
                 g.getSeries(), g.getMaterial(), g.getCNumber(), g.getRequireRemark(),
                 mouldCodeOf(g, mouldsByLegacy),
+                mouldNameOf(g, mouldsByLegacy),
                 g.getRearInsertCode(),
                 g.getPaper(),
                 g.getColor() == null ? null : g.getColor().getId(),

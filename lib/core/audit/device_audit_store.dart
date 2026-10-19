@@ -350,9 +350,7 @@ class DefaultDeviceAuditStore implements DeviceAuditStore {
     Uuid? uuid,
     DeviceAuditReceiptStorage? receiptStorage,
   }) : _deviceInfo = deviceInfo ?? DeviceInfoPlugin(),
-       _preferences = preferences == null
-           ? SharedPreferences.getInstance()
-           : Future<SharedPreferences>.value(preferences),
+       _explicitPreferences = preferences,
        _uuid = uuid ?? const Uuid(),
        _receiptStorage = receiptStorage ?? createDeviceAuditReceiptStorage();
 
@@ -368,7 +366,14 @@ class DefaultDeviceAuditStore implements DeviceAuditStore {
 
   final SecureStorage _storage;
   final DeviceInfoPlugin _deviceInfo;
-  final Future<SharedPreferences> _preferences;
+
+  /// 惰性：构造不触发 SharedPreferences.getInstance()（依赖平台 binding）。
+  /// Riverpod 3 会同步挂载整条 provider 依赖链，构造期副作用会让无 binding 的
+  /// 纯 Dart 测试直接炸（ServicesBinding 未初始化）；首次真正用到才解析。
+  final SharedPreferences? _explicitPreferences;
+  late final Future<SharedPreferences> _preferences = _explicitPreferences == null
+      ? SharedPreferences.getInstance()
+      : Future<SharedPreferences>.value(_explicitPreferences);
   final Uuid _uuid;
   final DeviceAuditReceiptStorage _receiptStorage;
 

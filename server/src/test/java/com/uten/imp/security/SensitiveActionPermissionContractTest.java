@@ -15,7 +15,7 @@ import org.aopalliance.intercept.MethodInvocation;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authentication.TestingAuthenticationToken;
-import org.springframework.security.authorization.AuthorizationDecision;
+import org.springframework.security.authorization.AuthorizationResult;
 import org.springframework.security.authorization.method.PreAuthorizeAuthorizationManager;
 
 import java.lang.reflect.Method;
@@ -184,7 +184,7 @@ class SensitiveActionPermissionContractTest {
         assertThat(gate.value()).isEqualTo("hasAuthority('" + permission + "')");
     }
 
-    private static AuthorizationDecision authorize(
+    private static AuthorizationResult authorize(
             Method method, StatusUpdateRequest request, String... authorities) {
         TestingAuthenticationToken authentication =
                 new TestingAuthenticationToken("permission-user", null, authorities);
@@ -195,6 +195,6 @@ class SensitiveActionPermissionContractTest {
         when(invocation.getArguments())
                 .thenReturn(new Object[]{UUID.randomUUID(), request});
         return new PreAuthorizeAuthorizationManager()
-                .check(() -> authentication, invocation);
+                .authorize(() -> authentication, invocation);
     }
 }

@@ -4,7 +4,7 @@ import com.uten.imp.config.props.DeploymentProperties;
 import org.apache.catalina.connector.Connector;
 import org.apache.coyote.http11.Http11NioProtocol;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.web.embedded.tomcat.TomcatServletWebServerFactory;
+import org.springframework.boot.tomcat.servlet.TomcatServletWebServerFactory;
 import org.springframework.boot.web.server.WebServerFactoryCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -57,7 +57,7 @@ public class RemoteIngressConnectorConfiguration {
                 protocol.setCompressibleMimeType("application/json");
                 protocol.setCompressionMinSize(4096);
             }
-            factory.addAdditionalTomcatConnectors(remote);
+            factory.addAdditionalConnectors(remote);
         };
     }
 }

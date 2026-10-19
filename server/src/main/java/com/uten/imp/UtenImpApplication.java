@@ -2,12 +2,12 @@ package com.uten.imp;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration;
+import org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration;
 
 /**
  * Uten IMP 后端入口。
  *
- * <p>人事 / 鉴权 / 组织模块。技术栈：Spring Boot 3 + Spring Security 6 (stateless JWT) +
+ * <p>人事 / 鉴权 / 组织模块。技术栈：Spring Boot 4 + Spring Security 7 (stateless JWT) +
  * Spring Data JPA + Flyway + PostgreSQL (pgcrypto)。
  *
  * <p>启动后由 Flyway 自动执行 {@code db/migration} 下的迁移建表与种子。

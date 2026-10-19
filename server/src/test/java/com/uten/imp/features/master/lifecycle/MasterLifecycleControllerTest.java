@@ -43,12 +43,12 @@ class MasterLifecycleControllerTest {
         mvc.perform(post("/api/master/goods/batch-delete")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"items\":[" + items + "]}"))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value(ErrorCode.VALIDATION_FAILED.name()));
         mvc.perform(post("/api/master/clients/batch-status")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"禁用\",\"items\":[]}"))
-                .andExpect(status().isUnprocessableEntity());
+                .andExpect(status().isUnprocessableContent());
         verifyNoInteractions(service);
     }
 

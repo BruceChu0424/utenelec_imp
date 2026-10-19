@@ -67,7 +67,7 @@ class FulfillmentHttpDeadlineContractTest {
     }
     @Test void filterWrapsSecurityAndResetsItsScopeEvenOnRejectedOrFailedRequests() throws Exception {
         var registration=new FulfillmentHttpDeadlineConfig().fulfillmentHttpDeadline("40s");
-        assertTrue(registration.getOrder()<org.springframework.boot.autoconfigure.security.SecurityProperties.DEFAULT_FILTER_ORDER);
+        assertTrue(registration.getOrder()<org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilterProperties.DEFAULT_FILTER_ORDER);
         var request=new MockHttpServletRequest("POST","/erp/api/stock/docs/issue-batch");request.setContextPath("/erp");
         assertThrows(jakarta.servlet.ServletException.class,()->registration.getFilter().doFilter(request,new MockHttpServletResponse(),
                 (req,res)->{assertNotNull(FulfillmentCommandDeadline.current());throw new jakarta.servlet.ServletException("rejected");}));

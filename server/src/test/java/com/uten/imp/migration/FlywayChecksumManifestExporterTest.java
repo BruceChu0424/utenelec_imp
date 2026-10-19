@@ -66,7 +66,7 @@ class FlywayChecksumManifestExporterTest {
                 int version = Integer.parseInt(matcher.group("version"));
                 assertTrue(versions.add(version), () -> "duplicate Flyway version: " + version);
                 LoadableResource migration = new ClassPathResource(
-                        new Location("classpath:db/migration"),
+                        Location.fromPath("classpath:", "db/migration"),
                         "db/migration/" + filename,
                         classLoader,
                         StandardCharsets.UTF_8);

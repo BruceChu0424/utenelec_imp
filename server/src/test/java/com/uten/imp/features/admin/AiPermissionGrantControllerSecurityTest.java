@@ -151,7 +151,7 @@ class AiPermissionGrantControllerSecurityTest {
         login(staff(true, null));
         mvc.perform(post(URL).header(StepUpInterceptor.HEADER, "unused-token")
                         .contentType(MediaType.APPLICATION_JSON).content("{\"proposalId\":\"\"}"))
-                .andExpect(status().isUnprocessableEntity());
+                .andExpect(status().isUnprocessableContent());
         verifyNoInteractions(business, sessions);
     }
 }

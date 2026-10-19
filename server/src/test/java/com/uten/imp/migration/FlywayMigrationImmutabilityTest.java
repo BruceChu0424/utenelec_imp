@@ -51,7 +51,7 @@ class FlywayMigrationImmutabilityTest {
     @Test
     void v148RetainsTheChecksumAlreadyRecordedByDeployedDatabases() {
         LoadableResource migration = new ClassPathResource(
-                new Location("classpath:db/migration"),
+                Location.fromPath("classpath:", "db/migration"),
                 "db/migration/V148__repair_finance_stub_party_text.sql",
                 getClass().getClassLoader(),
                 StandardCharsets.UTF_8);
@@ -65,7 +65,7 @@ class FlywayMigrationImmutabilityTest {
     @Test
     void v169RetainsTheChecksumOfTheFullAuditCoverageSweep() {
         LoadableResource migration = new ClassPathResource(
-                new Location("classpath:db/migration"),
+                Location.fromPath("classpath:", "db/migration"),
                 "db/migration/V169__audit_center_risk_and_full_operation_coverage.sql",
                 getClass().getClassLoader(),
                 StandardCharsets.UTF_8);
@@ -80,7 +80,7 @@ class FlywayMigrationImmutabilityTest {
     @Test
     void v219RetainsTheChecksumAlreadyRecordedByLocalDatabases() {
         LoadableResource migration = new ClassPathResource(
-                new Location("classpath:db/migration"),
+                Location.fromPath("classpath:", "db/migration"),
                 "db/migration/V219__finance_object_scope.sql",
                 getClass().getClassLoader(),
                 StandardCharsets.UTF_8);
@@ -94,7 +94,7 @@ class FlywayMigrationImmutabilityTest {
     @Test
     void v236RetainsTheChecksumAlreadyRecordedByLocalDatabases() {
         LoadableResource migration = new ClassPathResource(
-                new Location("classpath:db/migration"),
+                Location.fromPath("classpath:", "db/migration"),
                 "db/migration/V236__receivable_settlement_metadata.sql",
                 getClass().getClassLoader(),
                 StandardCharsets.UTF_8);
@@ -121,7 +121,7 @@ class FlywayMigrationImmutabilityTest {
 
     private void assertAppliedChecksum(String filename, int expectedChecksum) {
         LoadableResource migration = new ClassPathResource(
-                new Location("classpath:db/migration"),
+                Location.fromPath("classpath:", "db/migration"),
                 "db/migration/" + filename,
                 getClass().getClassLoader(),
                 StandardCharsets.UTF_8);

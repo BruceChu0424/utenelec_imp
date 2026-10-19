@@ -2,7 +2,7 @@ package com.uten.imp.common.web;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
-import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+import org.springframework.http.converter.json.JacksonJsonHttpMessageConverter;
 import org.springframework.mock.http.MockHttpInputMessage;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -33,7 +33,7 @@ class JsonRequestBodyLimitAdviceTest {
                         input,
                         null,
                         Object.class,
-                        MappingJackson2HttpMessageConverter.class));
+                        JacksonJsonHttpMessageConverter.class));
     }
 
     @Test
@@ -44,7 +44,7 @@ class JsonRequestBodyLimitAdviceTest {
                 json,
                 null,
                 Object.class,
-                MappingJackson2HttpMessageConverter.class);
+                JacksonJsonHttpMessageConverter.class);
         assertArrayEquals(
                 "12345678".getBytes(StandardCharsets.UTF_8),
                 buffered.getBody().readAllBytes());
@@ -57,7 +57,7 @@ class JsonRequestBodyLimitAdviceTest {
                         binary,
                         null,
                         Object.class,
-                        MappingJackson2HttpMessageConverter.class));
+                        JacksonJsonHttpMessageConverter.class));
     }
 
     @Test
@@ -72,7 +72,7 @@ class JsonRequestBodyLimitAdviceTest {
                         input,
                         null,
                         Object.class,
-                        MappingJackson2HttpMessageConverter.class));
+                        JacksonJsonHttpMessageConverter.class));
     }
 
     @Test
@@ -86,7 +86,7 @@ class JsonRequestBodyLimitAdviceTest {
         mvc.perform(post("/body")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"value\":\"12345678901234567890\"}"))
-                .andExpect(status().isPayloadTooLarge())
+                .andExpect(status().isContentTooLarge())
                 .andExpect(jsonPath("$.code").value(ErrorCode.PAYLOAD_TOO_LARGE.name()));
     }
 
@@ -96,9 +96,9 @@ class JsonRequestBodyLimitAdviceTest {
                 .setControllerAdvice(new JsonRequestBodyLimitAdvice(16), new GlobalExceptionHandler()).build();
         String body = "{\"value\":\"12345678901234567890\"}";
         mvc.perform(post("/configuration").contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isOk());
-        mvc.perform(post("/body").contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isPayloadTooLarge());
+        mvc.perform(post("/body").contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isContentTooLarge());
         mvc.perform(post("/configuration").contentType(MediaType.APPLICATION_JSON).content("{\"value\":\""+"x".repeat(70)+"\"}"))
-                .andExpect(status().isPayloadTooLarge());
+                .andExpect(status().isContentTooLarge());
     }
 
     private static MockHttpInputMessage input(String body, MediaType contentType) {

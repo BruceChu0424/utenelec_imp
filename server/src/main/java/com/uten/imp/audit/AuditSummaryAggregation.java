@@ -60,12 +60,12 @@ public class AuditSummaryAggregation {
         CriteriaQuery<Object[]> query = cb.createQuery(Object[].class);
         Root<AuditLog> root = query.from(AuditLog.class);
         Predicate basePredicate = predicate(base, root, query, cb);
-        query.multiselect(
+        query.select(cb.array(
                 cb.count(root),
                 conditionalCount(cb, predicate(risky, root, query, cb)),
                 conditionalCount(cb, predicate(critical, root, query, cb)),
                 conditionalCount(cb, predicate(failed, root, query, cb)),
-                conditionalCount(cb, predicate(dataChange, root, query, cb)))
+                conditionalCount(cb, predicate(dataChange, root, query, cb))))
                 .where(basePredicate);
         return entityManager.createQuery(query).getSingleResult();
     }
@@ -85,10 +85,10 @@ public class AuditSummaryAggregation {
                 root.get("createdAt"));
         Expression<LocalDate> businessDate = cb.function(
                 "date", LocalDate.class, beijingTimestamp);
-        query.multiselect(
+        query.select(cb.array(
                 businessDate,
                 cb.count(root),
-                conditionalCount(cb, predicate(risky, root, query, cb)))
+                conditionalCount(cb, predicate(risky, root, query, cb))))
                 .where(predicate(base, root, query, cb))
                 .groupBy(businessDate)
                 .orderBy(cb.asc(businessDate));

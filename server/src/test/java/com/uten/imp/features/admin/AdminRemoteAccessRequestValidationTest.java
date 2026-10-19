@@ -45,7 +45,7 @@ class AdminRemoteAccessRequestValidationTest {
         mvc.perform(put(path())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value(ErrorCode.VALIDATION_FAILED.name()))
                 .andExpect(jsonPath("$.fieldErrors[0].field").value("remoteAccess"));
 
@@ -57,7 +57,7 @@ class AdminRemoteAccessRequestValidationTest {
         mvc.perform(put(path())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"remoteAccess\":null}"))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value(ErrorCode.VALIDATION_FAILED.name()));
 
         verifyNoInteractions(accounts);

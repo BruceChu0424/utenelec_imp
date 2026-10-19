@@ -6,7 +6,7 @@ import org.aopalliance.intercept.MethodInvocation;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authentication.TestingAuthenticationToken;
-import org.springframework.security.authorization.AuthorizationDecision;
+import org.springframework.security.authorization.AuthorizationResult;
 import org.springframework.security.authorization.method.PreAuthorizeAuthorizationManager;
 
 import java.lang.reflect.Method;
@@ -45,7 +45,7 @@ class SalesReturnQualitySecurityContractTest {
 
     @Test
     void disposeOnlyCannotAuthorizeServiceDisposition() throws Exception {
-        AuthorizationDecision decision = authorize(
+        AuthorizationResult decision = authorize(
                 dispositionServiceMethod(),
                 "sales_return_quality:dispose");
 
@@ -55,7 +55,7 @@ class SalesReturnQualitySecurityContractTest {
 
     @Test
     void viewAndDisposeAuthorizeServiceDisposition() throws Exception {
-        AuthorizationDecision decision = authorize(
+        AuthorizationResult decision = authorize(
                 dispositionServiceMethod(),
                 "sales_return_quality:view",
                 "sales_return_quality:dispose");
@@ -106,7 +106,7 @@ class SalesReturnQualitySecurityContractTest {
         assertEquals(expected, annotation.value());
     }
 
-    private static AuthorizationDecision authorize(
+    private static AuthorizationResult authorize(
             Method method, String... authorities) {
         TestingAuthenticationToken authentication =
                 new TestingAuthenticationToken("quality-user", null, authorities);
@@ -123,6 +123,6 @@ class SalesReturnQualitySecurityContractTest {
 
         PreAuthorizeAuthorizationManager manager =
                 new PreAuthorizeAuthorizationManager();
-        return manager.check(() -> authentication, invocation);
+        return manager.authorize(() -> authentication, invocation);
     }
 }

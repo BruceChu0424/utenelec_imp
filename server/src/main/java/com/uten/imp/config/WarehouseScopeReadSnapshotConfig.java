@@ -15,7 +15,7 @@ public class WarehouseScopeReadSnapshotConfig {
         var registration = new FilterRegistrationBean<>(new WarehouseScopeReadSnapshotFilter(scopes));
         // 紧跟 Spring Security 过滤链(-100)之后: 主体已解析, 未认证/被拒的请求不开窗口。
         registration.setOrder(
-                org.springframework.boot.autoconfigure.security.SecurityProperties.DEFAULT_FILTER_ORDER + 1);
+                org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilterProperties.DEFAULT_FILTER_ORDER + 1);
         registration.addUrlPatterns("/api/*");
         registration.setName("warehouseScopeReadSnapshotFilter");
         return registration;

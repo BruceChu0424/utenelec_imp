@@ -302,7 +302,7 @@ class RequestBoundaryValidationTest {
         mvc.perform(post("/api/notices/batch-delete")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"ids\":" + uuidArrayJson(RequestLimits.BATCH_IDS + 1) + "}"))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value(ErrorCode.VALIDATION_FAILED.name()));
         verifyNoInteractions(service);
     }
@@ -324,7 +324,7 @@ class RequestBoundaryValidationTest {
                         .content("{\"ownerEmployeeIds\":"
                                 + uuidArrayJson(RequestLimits.ADMIN_SCOPE_OWNERS + 1)
                                 + "}"))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value(ErrorCode.VALIDATION_FAILED.name()));
         verifyNoInteractions(dataScopeService);
     }
@@ -350,7 +350,7 @@ class RequestBoundaryValidationTest {
         mvc.perform(post("/api/profile/me/changes")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"changes\":" + changes + ",\"idemKey\":\"idem\"}"))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value(ErrorCode.VALIDATION_FAILED.name()));
         verifyNoInteractions(submitService);
     }

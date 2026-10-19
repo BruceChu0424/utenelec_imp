@@ -315,7 +315,7 @@ class ProductionDailyReportCommandTest {
     /// 服务端自用的同名字段不从 JSON 读取，写快照时也不带旧字段。
     @Test
     void staleSingleDestinationShapeIsRejectedAtSaveEntries() throws Exception {
-        var mapper = org.springframework.http.converter.json.Jackson2ObjectMapperBuilder.json().build();
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules();
         UUID goodsId = UUID.randomUUID();
         UUID demand = UUID.randomUUID();
         DailyReportSaveRequest legacy = mapper.readValue("""

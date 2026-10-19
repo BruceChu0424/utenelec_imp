@@ -678,8 +678,8 @@ public class GoodsService {
         jakarta.persistence.criteria.Expression<?> value = reference ? root.get(field).get("id") : root.get(field);
         jakarta.persistence.criteria.Expression<String> label = reference ? root.get(field).get("name") : null;
         var count = cb.count(root);
-        if (reference) query.multiselect(value, count, label).groupBy(value, label);
-        else query.multiselect(value, count).groupBy(value);
+        if (reference) query.select(cb.array(value, count, label)).groupBy(value, label);
+        else query.select(cb.array(value, count)).groupBy(value);
         List<Predicate> predicates = new ArrayList<>();
         predicates.add(goodsPredicate(facetFilter, ids, scope, root, cb, keyword));
         predicates.add(com.uten.imp.features.master.search.MasterColumnSearch.predicate(cb, root.get("id"),
@@ -749,8 +749,8 @@ public class GoodsService {
                     ? root.get(field).get("id") : root.get(field);
             jakarta.persistence.criteria.Expression<String> label = reference ? root.get(field).get("name") : null;
             var count = cb.count(root);
-            if (reference) query.multiselect(value, count, label).groupBy(value, label);
-            else query.multiselect(value, count).groupBy(value);
+            if (reference) query.select(cb.array(value, count, label)).groupBy(value, label);
+            else query.select(cb.array(value, count)).groupBy(value);
             query.where(cb.and(goodsPredicate(facetFilter, ids, scope, root, cb, keyword), cb.isNotNull(value),
                     com.uten.imp.features.master.search.MasterColumnSearch.predicate(cb, root.get("id"),
                             com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS, filter.columnSearch())));

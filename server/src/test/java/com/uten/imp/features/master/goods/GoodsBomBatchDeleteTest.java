@@ -254,7 +254,7 @@ class GoodsBomBatchDeleteTest {
         mvc.perform(post("/api/master/goods/{id}/bom/batch-delete", UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"itemIds\":[]}"))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value(ErrorCode.VALIDATION_FAILED.name()));
         verifyNoInteractions(serviceMock);
     }

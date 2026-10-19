@@ -5,7 +5,7 @@ import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.HttpMessageConverter;
-import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+import org.springframework.http.converter.json.JacksonJsonHttpMessageConverter;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -33,7 +33,7 @@ public class MaterialAnalysisResponseProjection implements ResponseBodyAdvice<Ob
 
     @Override
     public boolean supports(MethodParameter method, Class<? extends HttpMessageConverter<?>> converter) {
-        return MappingJackson2HttpMessageConverter.class.isAssignableFrom(converter)
+        return JacksonJsonHttpMessageConverter.class.isAssignableFrom(converter)
                 && (method.getParameterType() == AnalysisView.class || method.getParameterType() == GenerateResult.class
                     || method.getParameterType() == AggregateMaterialOrderContracts.Preview.class
                     || method.getParameterType() == AggregateMaterialOrderContracts.SubmitResult.class);

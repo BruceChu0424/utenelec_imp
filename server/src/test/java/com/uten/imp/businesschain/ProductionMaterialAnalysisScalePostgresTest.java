@@ -29,7 +29,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -49,7 +49,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
         "uten.concurrency.verify-nested-footprint=false"})
 // Default failure-only printing still eagerly formats and retains every large
 // successful response. Measure real MockMvc bytes without that test-only copy.
-@AutoConfigureMockMvc(print = org.springframework.boot.test.autoconfigure.web.servlet.MockMvcPrint.NONE)
+@AutoConfigureMockMvc(print = org.springframework.boot.webmvc.test.autoconfigure.MockMvcPrint.NONE)
 @Import(ProductionJdbcMeasurement.Configuration.class)
 class ProductionMaterialAnalysisScalePostgresTest {
     private static final PostgreSQLContainer<?> POSTGRES = configuredDatabase();

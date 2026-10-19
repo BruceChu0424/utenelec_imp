@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Answers;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authentication.TestingAuthenticationToken;
-import org.springframework.security.authorization.AuthorizationDecision;
+import org.springframework.security.authorization.AuthorizationResult;
 import org.springframework.security.authorization.method.PreAuthorizeAuthorizationManager;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -482,7 +482,7 @@ class DocumentActionPermissionContractTest {
         }
     }
 
-    private static AuthorizationDecision authorize(
+    private static AuthorizationResult authorize(
             Method method, String... authorities) {
         TestingAuthenticationToken authentication =
                 new TestingAuthenticationToken("permission-user", null, authorities);
@@ -492,7 +492,7 @@ class DocumentActionPermissionContractTest {
         when(invocation.getThis()).thenReturn(mock(method.getDeclaringClass()));
         when(invocation.getArguments()).thenReturn(new Object[]{mock(method.getParameterTypes()[0])});
         return new PreAuthorizeAuthorizationManager()
-                .check(() -> authentication, invocation);
+                .authorize(() -> authentication, invocation);
     }
 
     private static StandardDocument doc(

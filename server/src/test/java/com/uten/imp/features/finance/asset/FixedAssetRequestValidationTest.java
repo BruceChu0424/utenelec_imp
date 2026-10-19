@@ -103,19 +103,19 @@ class FixedAssetRequestValidationTest {
                                 {"name":"A","originalValue":0,
                                  "usefulMonths":0,"startPeriod":"2026-13"}
                                 """))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value(ErrorCode.VALIDATION_FAILED.name()));
         mvc.perform(put("/api/finance/fixed-assets/{id}", UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"A\",\"originalValue\":1,\"usefulMonths\":12,\"startPeriod\":\"bad\"}"))
-                .andExpect(status().isUnprocessableEntity());
+                .andExpect(status().isUnprocessableContent());
         mvc.perform(put("/api/finance/fixed-assets/{id}", UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name":"A","originalValue":1,
                                  "usefulMonths":12,"startPeriod":"2026-08"}
                                 """))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.message").value(
                         org.hamcrest.Matchers.containsString("刷新页面拿到最新数据")));
         mvc.perform(post("/api/finance/deferred-expenses")
@@ -124,7 +124,7 @@ class FixedAssetRequestValidationTest {
                                 {"name":"D","totalAmount":-1,
                                  "usefulMonths":12,"startPeriod":"2026-08"}
                                 """))
-                .andExpect(status().isUnprocessableEntity());
+                .andExpect(status().isUnprocessableContent());
         mvc.perform(post("/api/finance/fixed-assets")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""

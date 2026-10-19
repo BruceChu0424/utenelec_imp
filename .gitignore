@@ -154,3 +154,6 @@ server/legacy_migration/users_names.txt
 
 # Codex 等工具在 server/ 下生成的临时编译参数文件
 server/.codex-*
+
+# 本地会话分析产物（output/ 目录）
+output/

@@ -112,7 +112,7 @@ class LegacyBootstrapCoordinatorPostgresTest {
         for (Path file : migrations) {
             String name = file.getFileName().toString();
             put(ROOT + "/server/src/main/resources/db/migration/" + name, Files.readAllBytes(file));
-            var resource = new FileSystemResource(new Location("filesystem:" + migrationDirectory),
+            var resource = new FileSystemResource(Location.fromPath("filesystem:", migrationDirectory.toString()),
                     file.toString(), StandardCharsets.UTF_8, false);
             manifest.append(version(file)).append('\t').append(name).append('\t')
                     .append(ChecksumCalculator.calculate(resource)).append('\n');

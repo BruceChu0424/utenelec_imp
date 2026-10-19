@@ -3,7 +3,7 @@ package com.uten.imp.config;
 import com.uten.imp.config.props.DeploymentProperties;
 import org.apache.coyote.http11.Http11NioProtocol;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.web.embedded.tomcat.TomcatServletWebServerFactory;
+import org.springframework.boot.tomcat.servlet.TomcatServletWebServerFactory;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -15,15 +15,15 @@ class RemoteIngressConnectorConfigurationTest {
         var properties = new DeploymentProperties();
         var factory = new TomcatServletWebServerFactory();
         configuration.remoteIngressConnector(properties,8080,20).customize(factory);
-        assertTrue(factory.getAdditionalTomcatConnectors().isEmpty());
+        assertTrue(factory.getAdditionalConnectors().isEmpty());
         properties.setRemoteIngressEnabled(true);
         var forwarded = new org.apache.catalina.valves.RemoteIpValve();
         forwarded.setChangeLocalPort(true);
         factory.addEngineValves(forwarded);
         configuration.remoteIngressConnector(properties,8080,20).customize(factory);
         assertFalse(forwarded.isChangeLocalPort(),"Proxy metadata must never rewrite connector identity");
-        assertEquals(1,factory.getAdditionalTomcatConnectors().size());
-        var connector = factory.getAdditionalTomcatConnectors().iterator().next();
+        assertEquals(1,factory.getAdditionalConnectors().size());
+        var connector = factory.getAdditionalConnectors().iterator().next();
         assertEquals(8082,connector.getPort());
         assertEquals("127.0.0.1",((Http11NioProtocol)connector.getProtocolHandler()).getAddress().getHostAddress());
         assertTrue(connector.getSecure());

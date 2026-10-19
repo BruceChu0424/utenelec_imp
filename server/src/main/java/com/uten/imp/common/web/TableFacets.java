@@ -39,7 +39,7 @@ public final class TableFacets {
         Root<T> root = query.from(entity);
         Predicate predicate = spec == null
                 ? cb.conjunction() : spec.toPredicate(root, query, cb);
-        query.multiselect(root.get(property), cb.count(root))
+        query.select(cb.array(root.get(property), cb.count(root)))
                 .where(predicate)
                 .groupBy(root.get(property))
                 .orderBy(cb.asc(root.get(property)));

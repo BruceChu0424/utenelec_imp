@@ -542,7 +542,7 @@ class EmployeeReconcilePostgresTest extends AuthSessionPostgresTestSupport {
                 other.accessToken())).andExpect(status().isNotFound());
         mvc.perform(withStepUp(json(post("/api/org/employee-reconcile/plans/" + planId + "/apply"),
                 applyBody(first.path("planVersion").asInt(), "new-round-same-item", rowOf(view, employee).path("rowNo").asInt())),
-                hr.accessToken())).andExpect(status().isUnprocessableEntity());
+                hr.accessToken())).andExpect(status().isUnprocessableContent());
         assertEquals("APPLIED", jdbc.queryForObject("""
                 SELECT outcome FROM employee_reconcile_plan_items WHERE plan_id = ? AND row_no = ?
                 """, String.class, planId, rowOf(view, employee).path("rowNo").asInt()));

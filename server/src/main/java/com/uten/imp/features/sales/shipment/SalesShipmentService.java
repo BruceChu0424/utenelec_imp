@@ -455,7 +455,7 @@ public class SalesShipmentService {
         if (warehouseScope != null && warehouseScope.active()) {
             where.add(warehouseScopePredicate(root, query, cb, warehouseScope));
         }
-        query.multiselect(root.get("warehouseWorkStatus"), cb.count(root))
+        query.select(cb.array(root.get("warehouseWorkStatus"), cb.count(root)))
                 .where(where.toArray(Predicate[]::new))
                 .groupBy(root.get("warehouseWorkStatus"));
         Map<String, Long> counts = new java.util.LinkedHashMap<>();

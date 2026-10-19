@@ -33,13 +33,15 @@
         <aliyun-oss.version>3.18.5</aliyun-oss.version>
         <!-- Security patch floors; keep managed dependency families aligned via their BOMs. -->
         <commons-lang3.version>3.18.0</commons-lang3.version>
-        <!-- GHSA-cxp5-3px4-pw24 / GHSA-wv8q-qhhj-9h54：jackson-databind 2.21.6 → 2.21.7（High ×2）；BOM 保持 Jackson 家族版本一致。 -->
-        <jackson-bom.version>2.21.7</jackson-bom.version>
+        <!-- GHSA-cxp5-3px4-pw24 / GHSA-wv8q-qhhj-9h54：jackson-databind 2.21.6 → 2.21.7（High ×2）；BOM 保持 Jackson 家族版本一致。
+             Spring Boot 4 起属性改名：jackson 2.x 兼容线 = jackson-2-bom.version（jackson-bom.version 让给 tools.jackson 3.x），
+             沿用旧名会把 2.21.7 错误注入 tools.jackson:jackson-bom（Central 上不存在 2.x）导致依赖解析直接失败。 -->
+        <jackson-2-bom.version>2.21.7</jackson-2-bom.version>
         <!-- GHSA-qv9r-c865-cp47：log4j-api 2.24.3 → 2.25.5（Medium，osv-scanner 门禁） -->
         <log4j2.version>2.25.5</log4j2.version>
-        <!-- GHSA-9xv2-5v5q-p794 / GHSA-gcx9-497g-6cp6 / GHSA-h3x4-894j-xpx5：tomcat-embed-core 10.1.55 → 10.1.59（Critical ×3，osv-scanner 门禁）。
-             修复线为 10.1.58，但该版本从未发布到 Maven Central（被跳过），实际可用的首个修复版是 10.1.59。 -->
-        <tomcat.version>10.1.59</tomcat.version>
+        <!-- tomcat 钉版已退役：Spring Boot 4 托管 Tomcat 11（Servlet 6.1 / Jakarta EE 11 基线），
+             强钉 10.1.x 会拉低到不兼容的容器线。原 10.1.59 钉版针对的 GHSA-9xv2-5v5q-p794 等
+             Critical 在 11.x 线同样已修，由 Boot 4.1.1 托管版本兜底。 -->
         <opentelemetry.version>1.62.0</opentelemetry.version>
         <postgresql.version>42.7.12</postgresql.version>
         <!-- 短信 SDK 的传递依赖里有三个构件把 com.aliyun:tea 声明成版本**区间**:
@@ -62,6 +64,15 @@
                 <groupId>com.aliyun</groupId>
                 <artifactId>tea</artifactId>
                 <version>${aliyun-tea.version}</version>
+            </dependency>
+            <!-- Spring Boot 4 的 spring-boot-dependencies 不再托管 testcontainers 版本，
+                 这里自行导入其 BOM；钉 1.x 末位（1.21.4）保持既有构件名，避免 2.x 的模块重组迁移。 -->
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>1.21.4</version>
+                <type>pom</type>
+                <scope>import</scope>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -219,6 +230,35 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Spring Boot 4 拆分测试注解到各技术模块（spring-boot-starter-test 不再携带）：
+             AutoConfigureMockMvc/WebMvcTest → webmvc-test；DataJpaTest → data-jpa-test；
+             AutoConfigureTestDatabase → jdbc-test；TestRestTemplate → resttestclient。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-webmvc-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-data-jpa-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-jdbc-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-resttestclient</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- FlywayDataSource/FlywayAutoConfiguration（Boot 4 移入 spring-boot-flyway 模块，测试直接引用） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-flyway</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>

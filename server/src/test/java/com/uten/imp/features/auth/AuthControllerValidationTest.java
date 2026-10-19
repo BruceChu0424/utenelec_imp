@@ -38,7 +38,7 @@ class AuthControllerValidationTest {
         mvc.perform(post("/api/auth/logout")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"refreshToken\":\"" + "x".repeat(513) + "\"}"))
-                .andExpect(status().isUnprocessableEntity())
+                .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value(ErrorCode.VALIDATION_FAILED.name()));
 
         verifyNoInteractions(tokenIssuer);

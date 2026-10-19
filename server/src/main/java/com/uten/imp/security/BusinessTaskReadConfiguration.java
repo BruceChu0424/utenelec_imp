@@ -14,9 +14,10 @@ import org.springframework.beans.factory.ObjectProvider;
 /** Task identity must be selected before the @PreAuthorize advisor (order 200). */
 @Configuration(proxyBeanMethods = false)
 public class BusinessTaskReadConfiguration {
+    /** static：Advisor 属基础设施，避免配置类本体在 BeanPostProcessor 阶段被提前实例化。 */
     @Bean
     @Role(BeanDefinition.ROLE_INFRASTRUCTURE)
-    public Advisor businessTaskReadAdvisor(ObjectProvider<TaskAudiencePort> audience) {
+    public static Advisor businessTaskReadAdvisor(ObjectProvider<TaskAudiencePort> audience) {
         MethodInterceptor interceptor = invocation -> {
             try {
                 return audience.getObject().read(() -> {

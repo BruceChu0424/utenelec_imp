@@ -285,6 +285,7 @@ class UtenPrintPreviewButton extends StatelessWidget {
     this.label = '预览打印',
     this.type = UtenButtonType.tonal,
     this.size = UtenButtonSize.small,
+    this.icon = Icons.print_outlined,
   });
 
   final String title;
@@ -306,9 +307,13 @@ class UtenPrintPreviewButton extends StatelessWidget {
   final String label;
 
   /// 按钮样式/尺寸：默认 tonal/small（AppBar 紧凑款）；
-  /// 表格工具条场景传 primary/large（实心深绿 + 白字白 icon 大按钮）。
+  /// 表格工具条场景传 primary/large（与「表头设置 / 全屏」同款纯文字，
+  /// 传 icon: null——2026-10-08 工具条无 icon 口径）。
   final UtenButtonType type;
   final UtenButtonSize size;
+
+  /// 按钮图标；null = 纯文字（工具条口径）。
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
@@ -320,7 +325,7 @@ class UtenPrintPreviewButton extends StatelessWidget {
       height: size == UtenButtonSize.large
           ? UtenTableToolbar.controlHeight
           : null,
-      icon: Icons.print_outlined,
+      icon: icon,
       onPressed: !enabled
           ? null
           : () => showUtenPrintPreview(

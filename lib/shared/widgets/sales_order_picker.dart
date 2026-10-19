@@ -349,6 +349,7 @@ class _SalesOrderPickerSheetState
 
   /// 生产视角列：单据号 / 日期 / 交货日期 / 销售员 / 状态。
   /// 不含客户、不含金额。销售员姓名由后端按 seller_id 解析下发。
+  /// 服务端分页且无 facets 端点：文本列关闭列头搜索，漏斗不再出空下拉。
   List<MasterColumnDef<SalesDocListItem>> _columns() => [
     MasterColumnDef(
       key: 'status',
@@ -360,6 +361,7 @@ class _SalesOrderPickerSheetState
       key: 'billNo',
       label: '单据号',
       width: 150,
+      columnSearchEnabled: false,
       value: (d) => d.billNo,
     ),
     MasterColumnDef(
@@ -382,6 +384,7 @@ class _SalesOrderPickerSheetState
       key: 'seller',
       label: '销售员',
       width: 130,
+      columnSearchEnabled: false,
       value: (d) => (d.sellerName != null && d.sellerName!.isNotEmpty)
           ? d.sellerName!
           : '—',

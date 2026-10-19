@@ -47,9 +47,9 @@ class MasterDetailCard extends StatelessWidget {
     required this.canEdit,
     this.canAddChild,
     this.canDelete,
-    required this.onAddChild,
-    required this.onEdit,
-    required this.onDelete,
+    this.onAddChild,
+    this.onEdit,
+    this.onDelete,
     this.addChildLabel = '新增子分类', // TODO(l10n): 补 arb
     this.deleteLabel = '删除', // TODO(l10n): 补 arb
     this.path,
@@ -80,8 +80,10 @@ class MasterDetailCard extends StatelessWidget {
   bool get _canAddChild => canAddChild ?? canEdit;
   bool get _canDelete => canDelete ?? canEdit;
 
-  /// 「新增子项」回调（分类=新增子分类；部门=新增子部门）。
-  final VoidCallback onAddChild;
+  /// 「新增子项」回调（分类=新增子分类；部门=新增子部门）。null = 不渲染该按钮
+  /// （2026-10-19 起基础资料分类卡的 CRUD 移到左树行内，卡片只留标题/说明，
+  /// 部门/账户页继续传回调）。
+  final VoidCallback? onAddChild;
 
   /// 「新增子项」按钮文案。
   final String addChildLabel;
@@ -89,8 +91,8 @@ class MasterDetailCard extends StatelessWidget {
   /// 「删除」按钮文案（分类详情 = 删除分类；部门 = 删除等，由调用方按领域给出）。
   final String deleteLabel;
 
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
 
   /// 额外操作（追加在三按钮之后）。
   final List<MasterDetailCardAction> extraActions;
@@ -111,12 +113,9 @@ class MasterDetailCard extends StatelessWidget {
           _titleRow(theme, context),
           // 统一操作条：管理类（新增/编辑/删除 + 扩展）与数据类（导入/导出/预览）按钮
           // 合并到同一组，取代原先「主操作挂标题右侧、secondaryActions 单独左对齐一行」
-          // 的割裂布局；大屏右对齐、窄屏居中，自动换行适配。
-          if (canEdit ||
-              _canAddChild ||
-              _canDelete ||
-              extraActions.isNotEmpty ||
-              secondaryActions.isNotEmpty) ...[
+          // 的割裂布局；大屏右对齐、窄屏居中，自动换行适配。三管理回调全 null 且无
+          // 扩展/次级动作时整条不渲染（2026-10-19 起基础资料分类卡即此形态）。
+          if (_buildButtons().isNotEmpty || secondaryActions.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s12),
             _actionBar(theme, context),
           ],
@@ -200,29 +199,29 @@ class MasterDetailCard extends StatelessWidget {
     );
   }
 
-  /// 三按钮 + 额外操作，按顺序排列。
+  /// 三按钮 + 额外操作，按顺序排列；回调为 null 的按钮不渲染。
   List<Widget> _buildButtons() {
     return [
-      if (_canAddChild)
+      if (_canAddChild && onAddChild != null)
         _action(
           icon: Icons.add_rounded,
           label: addChildLabel,
           type: UtenButtonType.tonal,
-          onPressed: onAddChild,
+          onPressed: onAddChild!,
         ),
-      if (canEdit)
+      if (canEdit && onEdit != null)
         _action(
           icon: Icons.edit_outlined,
           label: '编辑', // TODO(l10n): 补 arb
           type: UtenButtonType.tonal,
-          onPressed: onEdit,
+          onPressed: onEdit!,
         ),
-      if (_canDelete)
+      if (_canDelete && onDelete != null)
         _action(
           icon: Icons.delete_outline,
           label: deleteLabel,
           type: UtenButtonType.danger,
-          onPressed: onDelete,
+          onPressed: onDelete!,
         ),
       for (final e in extraActions)
         _action(

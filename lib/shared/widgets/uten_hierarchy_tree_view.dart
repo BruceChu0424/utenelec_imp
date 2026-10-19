@@ -6,11 +6,13 @@
 // 单/多选/无选择语义、选中高亮、trailing 插槽。现在只有这一份，两者只是它的薄封装，
 // 差异经参数给出：节点左侧徽标([leadingBuilder]，部门层级短标签)、行文字([labelOf]，
 // 分类正文只显示业务名称)、透传节点([passThrough]，部门选择器隐藏公司根、直接列其子级)、
-// 同级是否按编码排序、默认展开/收起规则与可选谓词。
+// 同级是否按编码排序、默认展开/收起规则、可选谓词与行右键/长按菜单
+// ([rowMenuBuilder]，与表格行同一机制、右键即选中)。
 //
 // 放在 shared：部门与基础资料两个 feature 都用它，谁都不反向依赖谁(节点契约同理在 shared)。
 import 'package:flutter/material.dart';
 
+import '../../components/feedback/uten_context_menu.dart';
 import '../../components/inputs/uten_search_bar.dart';
 import '../../components/layout/uten_adaptive_hierarchy_pane.dart';
 import '../../components/layout/uten_hierarchy_content_width.dart';
@@ -55,6 +57,7 @@ class UtenHierarchyTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
     this.externalSearchError,
     this.sortByCode = false,
     this.flatLevelColors = false,
+    this.rowMenuBuilder,
   });
 
   /// 树数据(调用方给，组件不自己拉)。
@@ -126,12 +129,21 @@ class UtenHierarchyTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
   /// 是否在组件内按编码重排同级节点。
   final bool sortByCode;
 
+  /// 行右键(桌面)/长按(触屏)菜单的**宿主动作**条目（2026-10-19 用户口径：全站
+  /// 所有树、所有节点都可右键，与表格行 [MasterDataTableView.rowMenuBuilder]
+  /// 同一机制）。菜单本身由树内置：宿主动作在前，树自带的「展开/收起」在后
+  /// （有子级且非搜索态时）；弹出前先把该行置为选中（表格同款「右键即默认
+  /// 选中」），但不展开/收起子级。宿主条目与通用项全空则不弹菜单。
+  final List<UtenContextMenuEntry> Function(T node)? rowMenuBuilder;
+
   /// 无缩进层级色模式（选择器滑窗窄左栏用，2026-09-24 用户口径：层级多或名字长
   /// 时缩进吃掉宽度，名字几乎看不到）。行不按深度缩进，改为整行按深度铺色：
   /// 五档梯度（UtenColors.treeLevelRow）——一级深绿实底白字、往下逐档降饱和降
   /// 明度、四档起转中性灰，4 及更深固定第五档（至少 5 个层级色差、最深一层固定
   /// 一色、色差拉开且协调，2026-09-24 第二轮口径）；行距收紧、行间 1px 分隔线；
-  /// 选中 = 左缘 3px 强调条 + 加粗 + 勾选图标（深绿行上反白）。
+  /// 选中 = 行首整高深绿色块（盖过展开/收起箭头、箭头反白；一级深绿行本身即
+  /// 深绿，反其道用白块 + 深绿箭头）+ 加粗 + 勾选图标（深绿行上反白）。
+  /// 2026-10-19 用户口径「色块大点」：色块取代原左缘 3px 强调条。
   /// 完整祖先路径由名称提示与外部选中路径表达；行内只保留单行节点标题。
   /// 2026-10-18：整列视作一块卡片——首行上两角、末行下两角用系统圆角
   /// （UtenRadius.md），中间行保持方角相接。
@@ -407,6 +419,47 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
     }
   }
 
+  /// 行右键/长按菜单弹开前的选中（表格同款「右键即默认选中」）：走点行的选中
+  /// 语义但不展开/收起子级；single/multi 下已是选中态不再切换——那里的回调是
+  /// toggle 语义，右键不该把已选中行反选掉。
+  void _onRowMenuOpening(T node) {
+    if (!_enabled(node)) return;
+    switch (widget.mode) {
+      case UtenTreeSelectMode.none:
+        widget.onNodeTap?.call(node);
+      case UtenTreeSelectMode.single:
+      case UtenTreeSelectMode.multi:
+        if (!widget.selectedIds.contains(node.id)) {
+          widget.onToggleSelect?.call(node);
+        }
+    }
+    if (widget.onNodeTap != null || widget.onToggleSelect != null) {
+      UtenHierarchyPanelScope.maybeOf(context)?.onSelection?.call();
+    }
+  }
+
+  /// 行菜单条目（2026-10-19 用户口径「所有树所有节点」）：宿主动作
+  /// （[UtenHierarchyTreeView.rowMenuBuilder]，如分类树的增/改/删）在前，树自带
+  /// 通用项「展开/收起」在后（有子级且非搜索态）；两组之间竖线分组，全空则
+  /// 不弹（UtenContextMenuRegion 对空条目不弹菜单）。
+  List<UtenContextMenuEntry> _rowMenuEntries(T node) {
+    final entries = [...?widget.rowMenuBuilder?.call(node)];
+    final expanded = _rowExpanded(node);
+    if (node.hasChildren && !_searching) {
+      if (entries.isNotEmpty) entries.add(const UtenMenuDivider());
+      entries.add(
+        UtenMenuItem(
+          icon: expanded
+              ? Icons.unfold_less_rounded
+              : Icons.unfold_more_rounded,
+          label: expanded ? '收起' : '展开', // TODO(l10n): 补 arb
+          onTap: () => _toggleExpand(node),
+        ),
+      );
+    }
+    return entries;
+  }
+
   Widget _buildNode(
     T node,
     int depth,
@@ -466,6 +519,17 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
           desktop: 32,
         );
         final label = widget.labelOf?.call(node) ?? node.name;
+        // flat 选中色块（2026-10-19 用户口径「色块大点」）：铺在行内容之下、行首
+        // 整高，宽度盖过展开/收起箭头（8 左缘 + 展开位 + 4 间隙，与标题起点齐平），
+        // 标题不位移。浅色档行用深绿块（与一级行同色）+ 箭头反白；一级行本身即
+        // 深绿，反其道：白块 + 深绿箭头——选中块与行底始终成对比。
+        final flatSelected = flat && isSelected;
+        final selectedBlockColor = flatSelected
+            ? (onDarkRow ? Colors.white : _flatRowBackground(theme, 0))
+            : null;
+        final toggleColor = flatSelected
+            ? (onDarkRow ? _flatRowBackground(theme, 0) : Colors.white)
+            : (onDarkRow ? Colors.white : theme.colorScheme.onSurfaceVariant);
         final Widget? selection;
         if (enabled && widget.mode == UtenTreeSelectMode.multi) {
           selection = Checkbox(
@@ -491,135 +555,155 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
         } else {
           selection = null;
         }
-        return UtenHierarchyRowWidth(
-          child: Semantics(
-            selected: isSelected,
-            expanded: node.hasChildren ? expanded : null,
-            child: Material(
-              color: rowBg,
-              borderRadius: rowRadius,
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onTap: enabled || node.hasChildren
-                    ? () => _onRowTap(node)
-                    : null,
-                child: DecoratedBox(
-                  decoration: flat
-                      ? BoxDecoration(
-                          border: Border(
-                            left: BorderSide(
-                              width: 3,
-                              color: isSelected
-                                  ? rowAccent
-                                  : Colors.transparent,
-                            ),
-                            bottom: BorderSide(
-                              color: onDarkRow
-                                  ? theme.colorScheme.surface
-                                  : theme.colorScheme.outlineVariant,
+        final content = Semantics(
+          selected: isSelected,
+          expanded: node.hasChildren ? expanded : null,
+          child: Material(
+            color: rowBg,
+            borderRadius: rowRadius,
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: enabled || node.hasChildren ? () => _onRowTap(node) : null,
+              child: DecoratedBox(
+                decoration: flat
+                    ? BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(
+                            color: onDarkRow
+                                ? theme.colorScheme.surface
+                                : theme.colorScheme.outlineVariant,
+                          ),
+                        ),
+                      )
+                    : const BoxDecoration(),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: flat
+                        ? UtenFilterRow.heightOf(context)
+                        : UtenControlMetrics.controlHeight(context),
+                  ),
+                  child: Stack(
+                    children: [
+                      if (selectedBlockColor != null)
+                        Positioned(
+                          left: 0,
+                          top: 0,
+                          bottom: 0,
+                          width: hitExtent + 12,
+                          // 右侧上下两角用平台统一控件圆角（UtenRadius.control，
+                          // 2026-10-19 用户口径）：色块读作行首「页签」而不是
+                          // 贴片；左缘与行边齐平（首末行的卡片圆角由外层裁剪）。
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: selectedBlockColor,
+                              borderRadius: const BorderRadius.horizontal(
+                                right: Radius.circular(UtenRadius.control),
+                              ),
                             ),
                           ),
-                        )
-                      : const BoxDecoration(),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      minHeight: flat
-                          ? UtenFilterRow.heightOf(context)
-                          : UtenControlMetrics.controlHeight(context),
-                    ),
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        8 + indent,
-                        flat
-                            ? (UtenControlMetrics.usesTouchTargets(context)
-                                  ? 0
-                                  : 2)
-                            : 6,
-                        8,
-                        flat
-                            ? (UtenControlMetrics.usesTouchTargets(context)
-                                  ? 0
-                                  : 2)
-                            : 6,
-                      ),
-                      child: Row(
-                        children: [
-                          // A leaf keeps the same expand slot as its siblings, so
-                          // selecting or expanding a row never shifts its title.
-                          SizedBox(
-                            width: hitExtent,
-                            height: hitExtent,
-                            child: node.hasChildren
-                                ? IconButton(
-                                    tooltip: expanded ? '收起$label' : '展开$label',
-                                    constraints: BoxConstraints.tightFor(
-                                      width: hitExtent,
-                                      height: hitExtent,
-                                    ),
-                                    padding: EdgeInsets.zero,
-                                    onPressed: () => _toggleExpand(node),
-                                    icon: Icon(
-                                      expanded
-                                          ? Icons.expand_more_rounded
-                                          : Icons.chevron_right_rounded,
-                                      size: 20,
-                                      color: onDarkRow
-                                          ? Colors.white
+                        ),
+                      Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          8 + indent,
+                          flat
+                              ? (UtenControlMetrics.usesTouchTargets(context)
+                                    ? 0
+                                    : 2)
+                              : 6,
+                          8,
+                          flat
+                              ? (UtenControlMetrics.usesTouchTargets(context)
+                                    ? 0
+                                    : 2)
+                              : 6,
+                        ),
+                        child: Row(
+                          children: [
+                            // A leaf keeps the same expand slot as its siblings, so
+                            // selecting or expanding a row never shifts its title.
+                            SizedBox(
+                              width: hitExtent,
+                              height: hitExtent,
+                              child: node.hasChildren
+                                  ? IconButton(
+                                      tooltip: expanded
+                                          ? '收起$label'
+                                          : '展开$label',
+                                      constraints: BoxConstraints.tightFor(
+                                        width: hitExtent,
+                                        height: hitExtent,
+                                      ),
+                                      padding: EdgeInsets.zero,
+                                      onPressed: () => _toggleExpand(node),
+                                      icon: Icon(
+                                        expanded
+                                            ? Icons.expand_more_rounded
+                                            : Icons.chevron_right_rounded,
+                                        size: 20,
+                                        color: toggleColor,
+                                      ),
+                                    )
+                                  : null,
+                            ),
+                            const SizedBox(width: 4),
+                            if (leading != null) ...[
+                              leading,
+                              const SizedBox(width: 8),
+                            ],
+                            Expanded(
+                              child: UtenHierarchyLabelWidth(
+                                child: Tooltip(
+                                  message: [...ancestors, label].join(' / '),
+                                  child: Text(
+                                    label,
+                                    maxLines: 1,
+                                    softWrap: false,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      fontWeight: isSelected || onDarkRow
+                                          ? FontWeight.w600
+                                          : FontWeight.w400,
+                                      color: enabled
+                                          ? (onDarkRow
+                                                ? Colors.white
+                                                : isSelected
+                                                ? theme.colorScheme.primary
+                                                : null)
                                           : theme.colorScheme.onSurfaceVariant,
                                     ),
-                                  )
-                                : null,
-                          ),
-                          const SizedBox(width: 4),
-                          if (leading != null) ...[
-                            leading,
-                            const SizedBox(width: 8),
-                          ],
-                          Expanded(
-                            child: UtenHierarchyLabelWidth(
-                              child: Tooltip(
-                                message: [...ancestors, label].join(' / '),
-                                child: Text(
-                                  label,
-                                  maxLines: 1,
-                                  softWrap: false,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    fontWeight: isSelected || onDarkRow
-                                        ? FontWeight.w600
-                                        : FontWeight.w400,
-                                    color: enabled
-                                        ? (onDarkRow
-                                              ? Colors.white
-                                              : isSelected
-                                              ? theme.colorScheme.primary
-                                              : null)
-                                        : theme.colorScheme.onSurfaceVariant,
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                          if (trailing != null) ...[
-                            const SizedBox(width: 8),
-                            trailing,
+                            if (trailing != null) ...[
+                              const SizedBox(width: 8),
+                              trailing,
+                            ],
+                            if (selection != null) ...[
+                              const SizedBox(width: 8),
+                              selection,
+                            ],
                           ],
-                          if (selection != null) ...[
-                            const SizedBox(width: 8),
-                            selection,
-                          ],
-                        ],
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
               ),
             ),
           ),
         );
+        return UtenHierarchyRowWidth(
+          // 每行都挂右键/长按菜单（2026-10-19 用户口径「所有树所有节点」）：
+          // 条目见 [_rowMenuEntries]，全空时自动不弹。
+          child: UtenContextMenuRegion(
+            entriesBuilder: () => _rowMenuEntries(node),
+            onMenuOpening: () => _onRowMenuOpening(node),
+            child: content,
+          ),
+        );
       },
     );
-
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [

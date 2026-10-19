@@ -407,7 +407,9 @@ void main() {
     await _loadThreePages(tester, host);
     await _lookAtPage(tester, 2, forward: true);
     _expectPage(tester, 2);
-    await tester.tap(find.text('上一页'));
+    // 2026-10-18 分页上移工具条右上角后为紧凑图标按钮（chevron + tooltip），
+    // 按稳定 ValueKey 定位；行为断言不变。
+    await tester.tap(find.byKey(const ValueKey('master-table-page-previous')));
     await tester.pumpAndSettle();
     expect(host.requests, [2, 3, 1]);
     expect(host.rows.items, _rowsFor('A', 1));
@@ -416,7 +418,7 @@ void main() {
     await _loadThreePagesAfterReset(tester, host);
     await _lookAtPage(tester, 1, forward: true);
     _expectPage(tester, 1);
-    await tester.tap(find.text('下一页'));
+    await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
     await tester.pumpAndSettle();
     expect(host.requests.last, 2, reason: 'next follows visible page 1');
     expect(host.rows.items, _rowsFor('A', 2));

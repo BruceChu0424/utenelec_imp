@@ -8117,7 +8117,7 @@ void main() {
       tester.widget<TextField>(find.byType(TextField)).controller?.text,
       '1',
     );
-    await tester.tap(find.text('下一页'));
+    await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
     await tester.pumpAndSettle();
     expect(
       tester.widget<TextField>(find.byType(TextField)).controller?.text,

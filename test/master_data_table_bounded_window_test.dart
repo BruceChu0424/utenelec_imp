@@ -142,8 +142,18 @@ void main() {
       await tester.pumpWidget(_Harness(key: key, bigPages: true));
       await tester.pumpAndSettle();
       for (var iteration = 0; iteration < 6; iteration++) {
-        _body(tester).position.jumpTo(_body(tester).position.maxScrollExtent);
-        await tester.pumpAndSettle();
+        // 惰性列表的 maxScrollExtent 起初是低估（按已铺行的均值外推），跳一次
+        // 只落到估计极值；循环跳到极值不再增长，才真正触底（2026-10-18 分页
+        // 上移工具条后视口高 56px，单次跳不再触发铺行→校正的级联）。
+        var lastMax = -1.0;
+        for (var hop = 0; hop < 40; hop++) {
+          final position = _body(tester).position;
+          position.jumpTo(position.maxScrollExtent);
+          await tester.pumpAndSettle();
+          final max = _body(tester).position.maxScrollExtent;
+          if ((max - lastMax).abs() < 0.5) break;
+          lastMax = max;
+        }
         await key.currentState!.rows.loadNextPage();
         await tester.pumpAndSettle();
         expect(key.currentState!.rows.items.length, lessThanOrEqualTo(1000));

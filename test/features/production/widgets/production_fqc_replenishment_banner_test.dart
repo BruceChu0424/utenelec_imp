@@ -99,7 +99,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('PLAN-1'), findsOneWidget);
 
-    await tester.tap(find.text('下一页'));
+    await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
     await tester.pumpAndSettle();
 
     expect(api.requestedPages, containsAllInOrder([1, 2]));

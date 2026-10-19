@@ -722,7 +722,7 @@ void main() {
     await _pump(tester, repo, _approverIssuer);
     await tester.tap(_rowCheckbox(0));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('下一页'));
+    await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
     await tester.pumpAndSettle();
     await tester.tap(_rowCheckbox(0));
     await tester.pumpAndSettle();
@@ -860,7 +860,7 @@ void main() {
       // 第 1 页表头全选，翻到第 2 页再勾一张：三张跨页保留。
       await tester.tap(find.byType(Checkbox).first);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('下一页'));
+      await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
       await tester.pumpAndSettle();
       await tester.tap(_rowCheckbox(0));
       await tester.pumpAndSettle();

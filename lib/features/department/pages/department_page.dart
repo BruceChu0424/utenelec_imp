@@ -4,6 +4,7 @@
 //   宽度收敛由 MainShell 统一处理
 // 文档：docs/03-页面/部门管理页.md
 import 'package:flutter/material.dart';
+import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import '../widgets/position_manager_sheet.dart';
@@ -62,6 +63,20 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
 
   bool _hasPermission(String permission) =>
       ref.read(currentPermissionsProvider).contains(permission);
+
+  /// 树行「编辑部门」：先拉部门详情（编辑弹窗要 DepartmentInfo，树节点没有），
+  /// 失败走页面统一错误 toast。
+  Future<void> _editNodeFromTree(DepartmentNode node) async {
+    try {
+      final info = await ref.read(departmentRepositoryProvider).detail(node.id);
+      if (!mounted) return;
+      _showEditDialog(info);
+    } on ApiException catch (e) {
+      _toastError(e.message);
+    } catch (_) {
+      _toastError('加载部门详情失败，请稍后重试'); // TODO(l10n): 补 arb
+    }
+  }
 
   @override
   void initState() {
@@ -451,6 +466,8 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
   Widget _buildTree(
     AppLocalizations l10n, {
     required void Function(String id) onSelect,
+    required bool canCreate,
+    required bool canManage,
     required bool canDelete,
   }) {
     return UtenDepartmentTreeView(
@@ -466,6 +483,32 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
       externalSearchError: _searchError,
       header: _buildGlobalSearchBox(),
       onNodeTap: (node) => onSelect(node.id),
+      // 行右键/长按菜单（2026-10-19 全站树口径）：与右侧概览面板同一套动作
+      /// （权限布尔由调用点传入，不新增本地 Perm 字面量——权限基线守卫口径）；
+      // 树自带「展开/收起」通用项自动追加在后面。
+      rowMenuBuilder: (node) => [
+        if (canCreate)
+          UtenMenuItem(
+            label: '新增子部门', // TODO(l10n): 补 arb
+            icon: Icons.add_outlined,
+            onTap: () => _showCreateDialog(parent: node),
+          ),
+        if (canManage)
+          UtenMenuItem(
+            label: '编辑部门', // TODO(l10n): 补 arb
+            icon: Icons.edit_outlined,
+            onTap: () => _editNodeFromTree(node),
+          ),
+        if (canDelete && !isCompanyExecutiveOfficeCode(node.code)) ...[
+          const UtenMenuDivider(),
+          UtenMenuItem(
+            label: '删除部门', // TODO(l10n): 补 arb
+            icon: Icons.delete_outline,
+            destructive: true,
+            onTap: () => _delete(node),
+          ),
+        ],
+      ],
       trailingBuilder: (node) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -598,6 +641,8 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
         compactHeader: _buildGlobalSearchBox(),
         leading: _buildTree(
           l10n,
+          canCreate: canCreate,
+          canManage: canManage,
           canDelete: canDelete,
           onSelect: _selectDepartment,
         ),

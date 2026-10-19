@@ -131,10 +131,12 @@
   且挡住页面级 SelectionArea 渗入。含输入格、多选、自动刷新或分页的大表同样保留复制，
   输入控件使用原生选择；保持选择区挂载和稳定行键，不靠禁用复制规避生命周期问题。
   Ctrl+C / Cmd+C 复制所选文字；有行菜单时另有“复制所选文字”，与复制货品/整行业务动作独立。
-- **分页**：上一页/下一页 + 跳页输入框；翻页后表体竖向回顶。窄屏与大字号下按钮使用
-  纯图标，仍保留桌面至少 40、触屏至少 48 个显示逻辑像素的完整命中区；85% 缩小时补足尺寸。
-  计数与两个按钮放不下一行时，完整页数独占一行，按钮另行排列；再窄时两个按钮纵向排列。
-  短窗口会滚动完整表格工作区，保留工具栏、可用行区、完整合计与分页操作，滚动工作区不会触发追加分页。
+- **分页（2026-10-18 起位于表头上方工具条右上角）**：紧凑形态「‹ [页码框] / 总页数 ›」，
+  与「表头设置 / 全屏」同一行、恒排工具条最右（原表格下方翻页条退役）；列表形态（picker
+  列表，无表头工具条）把同一分页钉在列表上方右角。跳页框桌面 40 宽；按钮桌面 32、触屏
+  仍保留至少 48 个显示逻辑像素的完整命中区（85% 缩小时补足）。翻页后表体竖向回顶；
+  计数与两个按钮放不下时，完整页数「N / 总页数」替代跳页框，再窄时叠成两行、按钮纵向排列。
+  短窗口会滚动完整表格工作区，保留工具栏、可用行区与完整合计，滚动工作区不会触发追加分页。
 - **列级呈现下限**：`MasterColumnDef.minimumWidthOf(context)` 可按设备与缩放指定本列
   最小宽度；`cellHorizontalPaddingOf(context)` 可指定本列正文左右内边距。未设置时仍为
   最小列宽 48、正文左右各 12。度量、手动拖宽、布局恢复及设备切换都使用同一下限；表头保留
@@ -159,7 +161,7 @@
 - **`onLoadMore`（2026-09-10 新增，滚动自动加载）**：表体竖向滚动临近底部（距底约 200px
   预取窗）时回调，配合 `loadingMore:true`（末尾追加转圈行，组件内同时防重入）实现
   「滑到底自动加载下一页」。组件不判断是否还有更多页——增量加载式页面不传
-  `currentPage/totalPages`（传了会渲染翻页条），由调用方在回调里守卫（`page >= totalPages`
+  `currentPage/totalPages`（传了会在工具条渲染分页），由调用方在回调里守卫（`page >= totalPages`
   即 no-op）；典型接入见员工列表页。
 - **空/错/加载态 = 同一张表的行区提示（2026-10-09 用户口径「搜索无结果表格骨架也要在，
   页面不许跳」）**：loading（含首屏 `isLoading` 且无数据）、错误（重试）、空结果（`emptyMessage`，
@@ -245,7 +247,7 @@ MasterDataTableView<T>(
   loadingMore: false,        // true 时表体末尾追加转圈行（配合 onLoadMore 自动加载）
   onLoadMore: () {},         // 竖向滚动临近底部回调；更多页判断在调用方
   currentPage / totalPages / onPageChange,
-  summaryBar: UtenTotalsSummaryBar(compact: true, entries: [...]),  // 表体与翻页条之间的合计条
+  summaryBar: UtenTotalsSummaryBar(compact: true, entries: [...]),  // 表体下方的合计条
   primary: false,            // 联动折叠：包在 UtenCollapsingHeaderScrollView 的 body 里时传 true，
                              // 表体拾取注入的 PrimaryScrollController 参与「顶部折叠 → 表格内滚」联动；
                              // 不能与 embedded 同用。详见 UtenCollapsingHeaderScrollView.md

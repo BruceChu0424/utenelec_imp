@@ -925,6 +925,7 @@ class _QualityInspectionRecordDetailPanelState
           key: 'item',
           label: '检测项',
           width: 110,
+          filterFromRows: true,
           value: (row) => row.item,
         ),
         // 「数量+单位」内联口径（2026-10-10）：单位直接跟在数字后，独立「单位」列撤掉。
@@ -1050,12 +1051,14 @@ class _DetailFieldTable extends StatelessWidget {
         key: 'label',
         label: '项目',
         width: 120,
+        filterFromRows: true,
         value: (field) => field.label,
       ),
       MasterColumnDef(
         key: 'value',
         label: '内容',
         width: 320,
+        filterFromRows: true,
         value: (field) => field.value.isEmpty ? '—' : field.value,
       ),
     ],

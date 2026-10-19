@@ -45,7 +45,7 @@ void main() {
 
       // Exercise the real report's pagination callback while its response is
       // pending, then change its real server-side header filter.
-      await tester.tap(find.text('下一页'));
+      await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
       await tester.pump();
       expect(api.queries.last['page'], 2);
       expect(table().isLoading, isTrue);

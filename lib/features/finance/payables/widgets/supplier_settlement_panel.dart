@@ -139,6 +139,7 @@ class _SupplierSettlementPanelState
     // 详情面板内每个写动作成功都经 onChanged 重拉过；纯查看关闭不再多拉一次。
   }
 
+  /// 服务端分页且无 facets 端点：文本列关闭列头搜索，漏斗不再出空下拉。
   List<MasterColumnDef<SupplierSettlementSummary>> get _columns => [
     MasterColumnDef(
       key: 'status',
@@ -162,12 +163,14 @@ class _SupplierSettlementPanelState
       key: 'batchNo',
       label: '批次号',
       width: 170,
+      columnSearchEnabled: false,
       value: (item) => item.batchNo,
     ),
     MasterColumnDef(
       key: 'supplierName',
       label: '供应商',
       width: 210,
+      columnSearchEnabled: false,
       value: (item) => [
         item.supplierCode,
         item.supplierName,
@@ -576,6 +579,7 @@ class _SupplierSettlementDetailPanelState
                 key: 'sourceDocNo',
                 label: '来源单',
                 width: 170,
+                filterFromRows: true,
                 value: (row) => row.sourceDocNo,
               ),
               MasterColumnDef(

@@ -119,14 +119,14 @@
 return Padding(
   padding: EdgeInsets.symmetric(horizontal: hPad),
   child: UtenCollapsingHeaderScrollView(
-    // 滚走区：分类信息卡（编辑 / 导入 / 导出 / 打印）。上滑即收起、腾出表格空间。
+    // 滚走区：分类信息卡（标题/前缀/层级；分类动作在左树行内）。上滑即收起、腾出表格空间。
     collapsingHeader: Padding(
       padding: const EdgeInsets.fromLTRB(0, UtenSpacing.s16, 0, UtenSpacing.s12),
       child: MasterDetailCard(
         title: d.name,
         icon: Icons.inventory_2_outlined,
         subtitle: '编码 ${d.code} · 层级 L${d.level}',
-        // ... 编辑 / 加子级 / 删除 / 导入 / 导出 / 打印
+        // ... 系统根锁定说明（secondaryActions）；导入/导出/打印在表格工具条
       ),
     ),
     // body：搜索 + 添加（卡片收起后吸顶）+ 表格（内滚）。

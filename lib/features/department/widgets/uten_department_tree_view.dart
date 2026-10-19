@@ -8,6 +8,7 @@
 // 两个使用场景：
 // - 选择器抽屉：mode=single/multi + showCompanyRoot=false + 默认可选层级谓词
 // - 部门管理页：mode=none + showCompanyRoot=true + 全部可点 + trailingBuilder
+import '../../../components/feedback/uten_context_menu.dart';
 import '../../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 
@@ -52,6 +53,7 @@ class UtenDepartmentTreeView extends StatelessWidget {
     this.externalSearchError,
     this.initiallyExpandedIds = const {},
     this.flatLevelColors = false,
+    this.rowMenuBuilder,
   });
 
   /// 额外强制默认展开的节点 id 集合（与 [initiallyExpandDepth] 叠加，不互斥）。
@@ -60,6 +62,12 @@ class UtenDepartmentTreeView extends StatelessWidget {
 
   /// 选择滑窗与客户分类树一致的无缩进层级色；管理页面保持默认样式。
   final bool flatLevelColors;
+
+  /// 行右键/长按菜单的宿主动作条目（透传 UtenHierarchyTreeView；菜单由树内置，
+  /// 宿主动作在前、「展开/收起」通用项在后，右键即默认选中）。
+  /// 部门管理页放 新增子部门/编辑/删除；选择器不传（只有通用项）。
+  final List<UtenContextMenuEntry> Function(DepartmentNode node)?
+  rowMenuBuilder;
 
   /// 点击节点文字行时是否同时展开/收起子部门(查看类页面如部门管理设 true)。
   final bool expandOnRowTap;
@@ -128,6 +136,7 @@ class UtenDepartmentTreeView extends StatelessWidget {
     externalSearchLoading: externalSearchLoading,
     externalSearchError: externalSearchError,
     flatLevelColors: flatLevelColors,
+    rowMenuBuilder: rowMenuBuilder,
   );
 }
 

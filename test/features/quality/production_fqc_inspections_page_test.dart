@@ -499,7 +499,7 @@ void main() {
     expect(_taskTable(tester).currentPage, 1);
     expect(_taskTable(tester).totalPages, 2);
     expect(find.text('/ 2'), findsOneWidget);
-    await tester.tap(find.text('下一页'));
+    await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
     await tester.pumpAndSettle();
     expect(api.requestedPage, 2);
     expect(_taskTable(tester).currentPage, 2);
@@ -519,7 +519,7 @@ void main() {
       },
     );
 
-    await tester.tap(find.text('下一页'));
+    await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
     await tester.pumpAndSettle();
     await tester.tap(find.text(_reportNo));
     await tester.pump();
@@ -559,7 +559,7 @@ void main() {
       },
     );
 
-    await tester.tap(find.text('下一页'));
+    await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
     await tester.pumpAndSettle();
     await tester.tap(find.text(_reportNo));
     await tester.pump();

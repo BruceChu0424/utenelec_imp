@@ -216,6 +216,8 @@ Future<SalesLinkPickResult?> showSalesDocLinkPicker(
   );
 }
 
+/// Step1 单据表列。面板服务端分页且无 facets 端点：文本列关闭列头搜索，
+/// 漏斗不再出空下拉（顶部关键字搜索走服务端）。
 List<MasterColumnDef<SalesDocListItem>> _docColumns(
   SalesMasterNameService names,
   SalesDocType upstream,
@@ -230,6 +232,7 @@ List<MasterColumnDef<SalesDocListItem>> _docColumns(
     key: 'billNo',
     label: '单据号',
     width: 140,
+    columnSearchEnabled: false,
     value: (d) => d.billNo,
   ),
   MasterColumnDef(
@@ -244,6 +247,7 @@ List<MasterColumnDef<SalesDocListItem>> _docColumns(
     key: 'client',
     label: '客户',
     width: 200,
+    columnSearchEnabled: false,
     value: (d) => names.client(d.clientId),
   ),
   if (upstream == SalesDocType.order)

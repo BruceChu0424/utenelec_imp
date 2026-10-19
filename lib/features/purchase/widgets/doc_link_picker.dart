@@ -310,6 +310,8 @@ Future<PurchaseLinkPickResult?> showDocLinkPicker(
   );
 }
 
+/// Step1 单据表列。面板服务端分页且无 facets 端点：文本列关闭列头搜索，
+/// 漏斗不再出空下拉（顶部关键字搜索走服务端）。
 List<MasterColumnDef<PurchaseDocListItem>> _docColumns(
   MasterNameService names,
 ) => [
@@ -323,6 +325,7 @@ List<MasterColumnDef<PurchaseDocListItem>> _docColumns(
     key: 'billNo',
     label: '单据号',
     width: 140,
+    columnSearchEnabled: false,
     value: (d) => d.billNo,
   ),
   MasterColumnDef(
@@ -337,6 +340,7 @@ List<MasterColumnDef<PurchaseDocListItem>> _docColumns(
     key: 'supplier',
     label: '供应商',
     width: 200,
+    columnSearchEnabled: false,
     value: (d) => names.supplier(d.supplierId),
   ),
   MasterColumnDef(

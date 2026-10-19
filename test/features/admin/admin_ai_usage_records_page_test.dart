@@ -212,7 +212,7 @@ void main() {
     (tester) async {
       final repository = _Repository()..data = _data(total: 41);
       await _pump(tester, repository);
-      final next = find.text('下一页');
+      final next = find.byKey(const ValueKey('master-table-page-next'));
       await tester.ensureVisible(next);
       await tester.tap(next);
       await tester.pumpAndSettle();

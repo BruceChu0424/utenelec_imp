@@ -334,7 +334,7 @@ void main() {
       await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
       await _wheel(tester, dy: -20);
       expect(host.requests, isEmpty);
-      await tester.tap(find.text('下一页'));
+      await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
       await tester.pump();
       host.responses.single.complete(['page-two']);
       await tester.pumpAndSettle();

@@ -326,10 +326,13 @@ class _ReportablePlanLineSheetState
               );
             },
           ),
+          // 服务端分页且无 facets 端点：以下文本列关闭列头搜索，漏斗不再出空下拉
+          // （顶部关键字搜索走服务端）。
           MasterColumnDef(
             key: 'planNo',
             label: '计划 / 执行子计划',
             width: 180,
+            columnSearchEnabled: false,
             value: (item) => [
               item.planNo,
               item.executionSegmentCode,
@@ -352,6 +355,7 @@ class _ReportablePlanLineSheetState
             key: 'goods',
             label: '产品名称',
             width: 200,
+            columnSearchEnabled: false,
             value: (item) => item.goodsName ?? item.goodsCode ?? '未命名',
             cellBuilderHandlesSemantics: true,
             cellBuilder: (_, item) => UtenGoodsIdentityCell(
@@ -363,6 +367,7 @@ class _ReportablePlanLineSheetState
             key: 'goodsCode',
             label: '编号',
             width: 130,
+            columnSearchEnabled: false,
             value: (item) => UtenGoodsAttributeCell.text(item.goodsCode),
             cellBuilder: (_, item) => UtenGoodsAttributeCell(item.goodsCode),
           ),
@@ -370,14 +375,16 @@ class _ReportablePlanLineSheetState
             key: 'colorName',
             label: '颜色',
             width: 96,
+            columnSearchEnabled: false,
             value: (item) => UtenGoodsAttributeCell.text(item.colorName),
             cellBuilder: (_, item) => UtenGoodsAttributeCell(item.colorName),
           ),
           MasterColumnDef(
-            // 2026-09-25 单号列统一：取件器列表就地排序+按值筛选。
+            // 2026-09-25 单号列统一：取件器列表就地排序（服务端分页下本地值桶
+            // 不生效，列筛选关闭避免空下拉误导）。
             key: 'order',
             sortable: true,
-            filterFromRows: true,
+            columnSearchEnabled: false,
             label: '销售订单/客户',
             width: 170,
             value: (item) => item.orderNo == null
@@ -388,6 +395,7 @@ class _ReportablePlanLineSheetState
             key: 'workshop',
             label: '车间',
             width: 100,
+            columnSearchEnabled: false,
             value: (item) => item.workshopName ?? '未分配',
           ),
           MasterColumnDef(
@@ -412,6 +420,7 @@ class _ReportablePlanLineSheetState
             key: 'actualProduction',
             label: '报工规则',
             width: 150,
+            columnSearchEnabled: false,
             value: (item) =>
                 item.allowActualOverproduction && !item.isFqcRecovery
                 ? '按有效超产比例核对'

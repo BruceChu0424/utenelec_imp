@@ -11605,4 +11605,16 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get whereUsedCloseAndVerify => '닫고 새로 고쳐 확인';
+
+  @override
+  String get bomEditPreparing => '편집 준비 중';
+
+  @override
+  String get bomEditChecking => '변경 및 공유 영향 확인 중';
+
+  @override
+  String get bomEditRefreshing => '조립 정보 새로 고치는 중';
+
+  @override
+  String get bomEditPrepareFailed => '편집을 준비하지 못했습니다. 다시 시도해 주세요.';
 }

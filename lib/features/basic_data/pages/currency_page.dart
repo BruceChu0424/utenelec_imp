@@ -24,12 +24,16 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/currency_node.dart';
 import '../models/master_facet.dart';
 import '../repositories/currency_repository.dart';
 import '../repositories/master_status_repository.dart';
 import '../widgets/master_data_table_view.dart';
+import '../widgets/master_inline_edit.dart';
+import '../widgets/master_inline_page_mixin.dart';
+import '../widgets/master_operation_history_panel.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
 
@@ -40,7 +44,54 @@ class CurrencyPage extends ConsumerStatefulWidget {
   ConsumerState<CurrencyPage> createState() => _CurrencyPageState();
 }
 
-class _CurrencyPageState extends ConsumerState<CurrencyPage> {
+class _CurrencyPageState extends ConsumerState<CurrencyPage>
+    with MasterInlinePageMixin<CurrencyPage, CurrencyListItem> {
+  @override
+  String get inlineEntityType => 'currencies';
+  @override
+  bool get inlineCanEdit => _canEdit;
+  @override
+  bool get inlineReadReady => !_loading && _error == null;
+  @override
+  String inlineIdOf(CurrencyListItem row) => row.id;
+  @override
+  Future<void> inlineReload() => _loadCurrencies(_pageNum);
+  @override
+  Future<void> inlineReloadAfterBoundary() => _refresh();
+  @override
+  void inlineClearView() {
+    _page = null;
+    _facets = null;
+    _error = null;
+  }
+
+  @override
+  Map<String, MasterInlineField<CurrencyListItem>> get inlineFields => {
+    'name': MasterInlineField(
+      key: 'name',
+      read: (row) => row.name,
+      required: true,
+    ),
+    if (_canStatus)
+      'status': MasterInlineField(
+        key: 'status',
+        read: (row) => row.status,
+        type: MasterFieldType.select,
+        options: kMasterStatusOptions,
+        required: true,
+        enabledOf: (row) => !row.baseCurrency,
+      ),
+    'exchangeRate': MasterInlineField(
+      key: 'exchangeRate',
+      read: (row) => row.exchangeRateText ?? row.exchangeRate,
+      type: MasterFieldType.money,
+      enabledOf: (row) => !row.baseCurrency,
+      validate: (value) =>
+          value != null && (num.tryParse(value.toString()) ?? 0) <= 0
+          ? '汇率必须大于 0'
+          : null,
+    ),
+  };
   PagedResult<CurrencyListItem>? _page;
   int _pageNum = 1;
   bool _loading = false;
@@ -78,6 +129,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
       ref.read(currentPermissionsProvider).contains(Perm.currencyStatus);
 
   Future<void> _loadCurrencies(int page) async {
+    final inlineReadBoundary = ref.read(sensitiveReadBoundaryProvider);
     final generation = _loadRequests.begin();
     setState(() {
       _loading = true;
@@ -94,19 +146,31 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
-      if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (!mounted ||
+          !inlineAcceptsRead(inlineReadBoundary) ||
+          !_loadRequests.isCurrent(generation)) {
+        return;
+      }
       setState(() {
         _page = result;
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (!mounted ||
+          !inlineAcceptsRead(inlineReadBoundary) ||
+          !_loadRequests.isCurrent(generation)) {
+        return;
+      }
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (!mounted ||
+          !inlineAcceptsRead(inlineReadBoundary) ||
+          !_loadRequests.isCurrent(generation)) {
+        return;
+      }
       setState(() {
         _error = '加载币种列表失败';
         _loading = false;
@@ -115,9 +179,10 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
   }
 
   Future<void> _loadFacets() async {
+    final inlineReadBoundary = ref.read(sensitiveReadBoundaryProvider);
     try {
       final f = await ref.read(currencyRepositoryProvider).facets();
-      if (!mounted) return;
+      if (!mounted || !inlineAcceptsRead(inlineReadBoundary)) return;
       setState(() => _facets = f);
     } catch (_) {
       // Facets are optional; the primary list remains usable.
@@ -398,110 +463,123 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
 
   Widget _buildDraftHost(BuildContext context) {
     ref.watch(currentPermissionsProvider);
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: '币种资料',
-        leading: UtenBackButton(
-          onPressed: () => backTo(context, defaultPath: RouteName.basicinfo),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新',
-            onPressed: _refresh,
+    return inlineGuard(
+      Scaffold(
+        appBar: UtenAppBar(
+          title: '币种资料',
+          leading: UtenBackButton(
+            onPressed: () => inlineNavigate(
+              () => backTo(context, defaultPath: RouteName.basicinfo),
+            ),
           ),
-        ],
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: _canCreate
-          ? UtenFloatingActionGroup(
-              children: [
-                UtenButton(
-                  size: UtenButtonSize.large,
-                  icon: Icons.add_rounded,
-                  onPressed: _showCreate,
-                  child: const Text('添加币种'),
-                ),
-              ],
-            )
-          : null,
-      body: SafeArea(
-        child: UtenContentContainer(
-          child: Padding(
-            padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(
-                    bottom: UtenSpacing.s8,
-                    left: UtenSpacing.s4,
-                    right: UtenSpacing.s4,
+          actions: [
+            MasterOperationHistoryActions(
+              entityType: 'currencies',
+              onChanged: _refresh,
+            ),
+            IconButton(
+              icon: const Icon(Icons.refresh_rounded),
+              tooltip: '刷新',
+              onPressed: () => inlineNavigate(_refresh),
+            ),
+          ],
+        ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+        floatingActionButton: inlineFloatingActions(
+          additionalActions: [
+            if (_canCreate)
+              UtenButton(
+                size: UtenButtonSize.large,
+                icon: Icons.add_rounded,
+                onPressed: _showCreate,
+                child: const Text('添加币种'),
+              ),
+          ],
+        ),
+        body: SafeArea(
+          child: UtenContentContainer(
+            child: Padding(
+              padding: const EdgeInsets.only(top: UtenSpacing.s8),
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(
+                      bottom: UtenSpacing.s8,
+                      left: UtenSpacing.s4,
+                      right: UtenSpacing.s4,
+                    ),
+                    child: UtenSearchBar(
+                      hint: '搜索币种(名称/编号)',
+                      initialValue: _keyword,
+                      onChanged: (value) =>
+                          inlineNavigate(() => _onKeywordChanged(value)),
+                    ),
                   ),
-                  child: UtenSearchBar(
-                    hint: '搜索币种(名称/编号)',
-                    initialValue: _keyword,
-                    onChanged: _onKeywordChanged,
+                  Expanded(
+                    child: MasterDataTableView<CurrencyListItem>(
+                      bottomContentPadding: (_canCreate || _canEdit)
+                          ? UtenFloatingActionGroup.scrollClearance
+                          : 0,
+                      columnEditingEnabled: _canEdit,
+                      tableKey:
+                          'features.basic_data.pages.currency_page.CurrencyPageState._buildDraftHost.1',
+                      columns: inlineColumns(_columns),
+                      items: _page?.items ?? const [],
+                      // 导出/打印进左簇（2026-10-18 用户口径）：与「表头设置 / 全屏」同排靠左，
+                      // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
+                      toolbarLeadingActions: [
+                        UtenPrintPreviewButton(
+                          title: '币种资料',
+                          subtitle: '最多前 2000 行',
+                          loader: _printLoader,
+                          exportEndpoint: '/master/currencies/export',
+                          exportPermission: Perm.currencyExport,
+                          exportReport: '',
+                          exportQuery: _exportQuery,
+                          exportFilename: '币种资料',
+                          type: UtenButtonType.primary,
+                          size: UtenButtonSize.large,
+                          icon: null,
+                        ),
+                        UtenExportButton(
+                          endpoint: '/master/currencies/export',
+                          requiredPermission: Perm.currencyExport,
+                          report: '',
+                          queryParams: _exportQuery,
+                          filename: '币种资料',
+                          label: '导出币种',
+                          type: UtenButtonType.primary,
+                          size: UtenButtonSize.large,
+                          icon: null,
+                        ),
+                      ],
+                      facets: _facets?.fields ?? const {},
+                      nullCounts: _facets?.nullCounts ?? const {},
+                      filters: _filters,
+                      onFilterChanged: (key, value) =>
+                          inlineNavigate(() => _onFilterChanged(key, value)),
+                      onRowTap: inlineEdit.active
+                          ? null
+                          : (c) => _showDetail(c.id),
+                      sortColumn: _sortKey,
+                      sortAscending: _sortAsc,
+                      onSortChange: (key, ascending) =>
+                          inlineNavigate(() => _onSortChange(key, ascending)),
+                      isLoading: _loading && _page == null,
+                      loadingMore: _loading && _page != null,
+                      error: _error,
+                      onRetry: () => _loadCurrencies(_pageNum),
+                      emptyMessage: '暂无币种',
+                      currentPage: _page?.page ?? 1,
+                      totalPages: _page?.totalPages ?? 1,
+                      paginationScope: _keyword,
+                      onPageChange: (p) =>
+                          inlineNavigate(() => _loadCurrencies(p)),
+                    ),
                   ),
-                ),
-                Expanded(
-                  child: MasterDataTableView<CurrencyListItem>(
-                    bottomContentPadding: _canCreate
-                        ? UtenFloatingActionGroup.scrollClearance
-                        : 0,
-                    columnEditingEnabled: _canEdit,
-                    tableKey:
-                        'features.basic_data.pages.currency_page.CurrencyPageState._buildDraftHost.1',
-                    columns: _columns,
-                    items: _page?.items ?? const [],
-                    // 导出/打印进左簇（2026-10-18 用户口径）：与「表头设置 / 全屏」同排靠左，
-                    // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
-                    toolbarLeadingActions: [
-                      UtenPrintPreviewButton(
-                        title: '币种资料',
-                        subtitle: '最多前 2000 行',
-                        loader: _printLoader,
-                        exportEndpoint: '/master/currencies/export',
-                        exportPermission: Perm.currencyExport,
-                        exportReport: '',
-                        exportQuery: _exportQuery,
-                        exportFilename: '币种资料',
-                        type: UtenButtonType.primary,
-                        size: UtenButtonSize.large,
-                        icon: null,
-                      ),
-                      UtenExportButton(
-                        endpoint: '/master/currencies/export',
-                        requiredPermission: Perm.currencyExport,
-                        report: '',
-                        queryParams: _exportQuery,
-                        filename: '币种资料',
-                        label: '导出币种',
-                        type: UtenButtonType.primary,
-                        size: UtenButtonSize.large,
-                        icon: null,
-                      ),
-                    ],
-                    facets: _facets?.fields ?? const {},
-                    nullCounts: _facets?.nullCounts ?? const {},
-                    filters: _filters,
-                    onFilterChanged: _onFilterChanged,
-                    onRowTap: (c) => _showDetail(c.id),
-                    sortColumn: _sortKey,
-                    sortAscending: _sortAsc,
-                    onSortChange: _onSortChange,
-                    isLoading: _loading && _page == null,
-                    loadingMore: _loading && _page != null,
-                    error: _error,
-                    onRetry: () => _loadCurrencies(_pageNum),
-                    emptyMessage: '暂无币种',
-                    currentPage: _page?.page ?? 1,
-                    totalPages: _page?.totalPages ?? 1,
-                    paginationScope: _keyword,
-                    onPageChange: (p) => _loadCurrencies(p),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

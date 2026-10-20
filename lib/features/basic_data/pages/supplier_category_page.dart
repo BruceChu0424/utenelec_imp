@@ -18,6 +18,7 @@ import '../../../core/network/api_endpoints.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../models/product_category_node.dart';
 import '../models/supplier_node.dart';
 import '../repositories/supplier_category_repository.dart';
@@ -25,6 +26,8 @@ import '../repositories/supplier_repository.dart';
 import '../widgets/category_edit_dialog.dart';
 import '../widgets/category_page_shell.dart';
 import '../widgets/master_data_table_view.dart';
+import '../widgets/master_inline_edit.dart';
+import '../repositories/master_inline_edit_repository.dart';
 import '../widgets/master_entity_detail_pane.dart';
 import '../widgets/master_edit_dialog.dart';
 import '../widgets/supplier_master_edit.dart';
@@ -216,12 +219,105 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
   /// 供应商明细区配置：列、仓储闭包、权限；新建/编辑走共享 supplier_master_edit。
   MasterEntityPaneConfig<SupplierListItem, SupplierDetail> _paneConfig() {
     final perms = ref.read(currentPermissionsProvider);
-    final suppliers = ref.read(supplierRepositoryProvider);
+    final suppliers = ref.watch(supplierRepositoryProvider);
     return MasterEntityPaneConfig<SupplierListItem, SupplierDetail>(
       noun: '供应商', // TODO(l10n): 补 arb
       icon: Icons.local_shipping_outlined,
       defaultCodePrefix: 'GY',
       columns: _supplierColumns,
+      inlineFields: {
+        'name': MasterInlineField<SupplierListItem>(
+          key: 'name',
+          read: (row) => row.name,
+          required: true,
+        ),
+        'description': MasterInlineField<SupplierListItem>(
+          key: 'description',
+          read: (row) => row.description,
+        ),
+        'place': MasterInlineField<SupplierListItem>(
+          key: 'place',
+          read: (row) => row.place,
+        ),
+        'legalPerson': MasterInlineField<SupplierListItem>(
+          key: 'legalPerson',
+          read: (row) => row.legalPerson,
+        ),
+        'linkman': MasterInlineField<SupplierListItem>(
+          key: 'linkman',
+          read: (row) => row.linkman,
+          required: true,
+        ),
+        'mobile': MasterInlineField<SupplierListItem>(
+          key: 'mobile',
+          read: (row) => row.mobile,
+        ),
+        'phone': MasterInlineField<SupplierListItem>(
+          key: 'phone',
+          read: (row) => row.phone,
+        ),
+        'phone2': MasterInlineField<SupplierListItem>(
+          key: 'phone2',
+          read: (row) => row.phone2,
+        ),
+        'fax': MasterInlineField<SupplierListItem>(
+          key: 'fax',
+          read: (row) => row.fax,
+        ),
+        'postcode': MasterInlineField<SupplierListItem>(
+          key: 'postcode',
+          read: (row) => row.postcode,
+        ),
+        'address': MasterInlineField<SupplierListItem>(
+          key: 'address',
+          read: (row) => row.address,
+        ),
+        'bank': MasterInlineField<SupplierListItem>(
+          key: 'bank',
+          read: (row) => row.bank,
+        ),
+        'bankAccount': MasterInlineField<SupplierListItem>(
+          key: 'bankAccount',
+          read: (row) => row.bankAccount,
+        ),
+        'taxId': MasterInlineField<SupplierListItem>(
+          key: 'taxId',
+          read: (row) => row.taxId,
+        ),
+        'website': MasterInlineField<SupplierListItem>(
+          key: 'website',
+          read: (row) => row.website,
+        ),
+        'shipVia': MasterInlineField<SupplierListItem>(
+          key: 'shipVia',
+          read: (row) => row.shipVia,
+        ),
+        'shipAddress': MasterInlineField<SupplierListItem>(
+          key: 'shipAddress',
+          read: (row) => row.shipAddress,
+        ),
+        'tday': MasterInlineField<SupplierListItem>(
+          key: 'tday',
+          read: (row) => row.tday,
+          type: MasterFieldType.integer,
+          validate: (value) => value is int && value < 0 ? '天数不能为负数' : null,
+        ),
+      },
+      onInlineSave: (id, patch, original) {
+        final boundary = ref.read(sensitiveReadBoundaryProvider);
+        return ref
+            .read(masterInlineEditRepositoryProvider)
+            .saveParty(
+              'suppliers',
+              id,
+              patch,
+              expectedVersion: original.version,
+              isCurrent: () =>
+                  mounted &&
+                  ref.read(sensitiveReadBoundaryProvider) == boundary,
+            );
+      },
+
       idOf: (s) => s.id,
       statusOf: (s) => s.status,
       versionOf: (s) => s.version,

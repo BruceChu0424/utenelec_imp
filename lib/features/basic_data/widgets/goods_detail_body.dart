@@ -26,6 +26,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/network/api_exception.dart';
@@ -57,6 +58,7 @@ import 'goods_bom_tab.dart';
 import 'goods_cost_tab.dart';
 import 'goods_issue_method_dialog.dart';
 import 'goods_name_en_field.dart';
+import 'goods_operation_history_panel.dart';
 import 'goods_purchase_receipt_policy_field.dart';
 import 'goods_quote_history_tab.dart';
 import 'master_detail_sheet.dart';
@@ -149,6 +151,7 @@ class GoodsDetailBody extends ConsumerStatefulWidget {
     required this.onDataChanged,
     this.onSaved,
     this.readBoundary,
+    this.busy = false,
   });
 
   final GoodsDetail? initialDetail;
@@ -166,9 +169,10 @@ class GoodsDetailBody extends ConsumerStatefulWidget {
   final VoidCallback? onDelete;
   final VoidCallback? onDataChanged;
 
-  /// Full-page hosts close to their actual source only after a successful save.
+  /// 新增成功后由整页宿主返回来源；已有货品保存后留在详情供继续核对或撤回。
   final VoidCallback? onSaved;
   final SensitiveReadBoundary? readBoundary;
+  final bool busy;
 
   @override
   ConsumerState<GoodsDetailBody> createState() => _GoodsDetailBodyState();
@@ -218,9 +222,23 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
 
   GlobalKey<MasterEditFormState>? _formKey;
   bool _savingBasic = false;
-  final _bomKey = GlobalKey<GoodsBomTabState>();
+  bool _historyOpen = false;
+  bool _refreshingHistory = false;
+  bool _bomInteracting = false;
+  int _historyRefreshEpoch = 0;
+  String? _historyRefreshError;
+  GlobalKey<GoodsBomTabState> _bomKey = GlobalKey<GoodsBomTabState>();
   bool _bomEditing = false;
   bool _leavingBom = false;
+
+  bool get _historyBlocked =>
+      widget.busy ||
+      _savingBasic ||
+      _refreshingHistory ||
+      _historyOpen ||
+      _bomEditing ||
+      _bomInteracting ||
+      _mode != _GoodsDetailMode.view;
 
   Future<void> _finishBomBeforeLeaving(Object? result) async {
     if (_leavingBom) return;
@@ -273,6 +291,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         latest.id == _goodsId &&
         latest != oldWidget.initialDetail) {
       _scopeWritable = latest.writable;
+      if (_mode == _GoodsDetailMode.view) _detail = latest;
     }
   }
 
@@ -803,16 +822,10 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       } else {
         await repo.update(_goodsId!, body);
         if (!mounted) return;
-        if (widget.onSaved != null) {
-          context.appSuccess('已保存');
-          widget.onDataChanged?.call();
-          widget.onSaved!();
-          return;
-        }
-        // 刷新 detail（成本/sourceE 可能他处变动），保留表单编辑态。
+        // 已有货品保存后留在详情，立即可在右上角撤回本次修改。
         final fresh = await repo.detail(_goodsId!);
         if (!mounted) return;
-        setState(() => _detail = fresh);
+        _enterView(fresh);
         context.appSuccess('已保存');
         widget.onDataChanged?.call();
       }
@@ -859,8 +872,60 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
     try {
       final fresh = await ref.read(goodsRepositoryProvider).detail(_goodsId!);
       if (!mounted) return;
-      setState(() => _detail = fresh);
+      setState(() {
+        _detail = fresh;
+        _scopeWritable = fresh.writable;
+      });
     } catch (_) {}
+  }
+
+  Future<void> _openOperationHistory({bool preferRedo = false}) async {
+    if (_historyBlocked) return;
+    setState(() => _historyOpen = true);
+    try {
+      await showGoodsOperationHistory(
+        context,
+        preferRedo: preferRedo,
+        onChanged: _refreshAfterHistory,
+      );
+    } finally {
+      if (mounted) setState(() => _historyOpen = false);
+    }
+  }
+
+  Future<void> _refreshAfterHistory() async {
+    final goodsId = _goodsId;
+    if (goodsId == null) return;
+    final boundary = widget.readBoundary;
+    final epoch = ++_historyRefreshEpoch;
+    bool current() =>
+        mounted &&
+        _goodsId == goodsId &&
+        widget.readBoundary == boundary &&
+        epoch == _historyRefreshEpoch;
+    setState(() {
+      _refreshingHistory = true;
+      _historyRefreshError = null;
+      _bomInteracting = false;
+      _bomEditing = false;
+      _bomKey = GlobalKey<GoodsBomTabState>();
+      _stockPanelGeneration++;
+    });
+    widget.onDataChanged?.call();
+    try {
+      final fresh = await ref.read(goodsRepositoryProvider).detail(goodsId);
+      if (!current()) return;
+      _enterView(fresh);
+    } catch (error) {
+      if (!current()) return;
+      setState(
+        () => _historyRefreshError = error is ApiException
+            ? error.message
+            : '刷新货品详情失败，请重试',
+      );
+    } finally {
+      if (current()) setState(() => _refreshingHistory = false);
+    }
   }
 
   @override
@@ -898,26 +963,38 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
               ),
             _header(theme, title),
             const Divider(height: 1),
-            // 基础资料详情共用分类栏，保持 TabController 与正文同步。
-            buildUtenDetailTabBar(context, tabs: tabs),
-            const Divider(height: 1),
-            Flexible(
-              child: TabBarView(
-                children: [
-                  for (final t in visible)
-                    switch (t) {
-                      GoodsDetailTab.basic => _buildBasicTab(theme),
-                      GoodsDetailTab.bom => _buildBomTab(),
-                      GoodsDetailTab.cost => _buildCostTab(theme),
-                      GoodsDetailTab.files => _buildFilesTab(),
-                      GoodsDetailTab.stock => _buildStockTab(),
-                      GoodsDetailTab.quotes => GoodsQuoteHistoryTab(
-                        goodsId: _goodsId!,
-                      ),
-                    },
-                ],
+            if (_refreshingHistory)
+              const Expanded(child: Center(child: CircularProgressIndicator()))
+            else if (_historyRefreshError != null)
+              Expanded(
+                child: UtenEmpty.error(
+                  message: _historyRefreshError,
+                  actionLabel: '重新加载',
+                  onAction: _refreshAfterHistory,
+                ),
+              )
+            else ...[
+              // 基础资料详情共用分类栏，保持 TabController 与正文同步。
+              buildUtenDetailTabBar(context, tabs: tabs),
+              const Divider(height: 1),
+              Flexible(
+                child: TabBarView(
+                  children: [
+                    for (final t in visible)
+                      switch (t) {
+                        GoodsDetailTab.basic => _buildBasicTab(theme),
+                        GoodsDetailTab.bom => _buildBomTab(),
+                        GoodsDetailTab.cost => _buildCostTab(theme),
+                        GoodsDetailTab.files => _buildFilesTab(),
+                        GoodsDetailTab.stock => _buildStockTab(),
+                        GoodsDetailTab.quotes => GoodsQuoteHistoryTab(
+                          goodsId: _goodsId!,
+                        ),
+                      },
+                  ],
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),
@@ -1017,6 +1094,27 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       showBackButton: true,
       showBottomBorder: false,
       actions: [
+        if (_goodsId != null &&
+            canOpenGoodsOperationHistory(
+              ref.watch(currentPermissionsProvider),
+            )) ...[
+          UtenAppBarActionButton(
+            key: const Key('goods-detail-history-undo'),
+            label: _l10nOrNull()?.goodsHistoryUndo ?? '撤回',
+            tooltip:
+                _mode != _GoodsDetailMode.view || _bomEditing || _bomInteracting
+                ? '请先保存或取消正在编辑的内容'
+                : null,
+            onPressed: _historyBlocked ? null : () => _openOperationHistory(),
+          ),
+          UtenAppBarActionButton(
+            key: const Key('goods-detail-history-redo'),
+            label: _l10nOrNull()?.goodsHistoryRedo ?? '取消撤回',
+            onPressed: _historyBlocked
+                ? null
+                : () => _openOperationHistory(preferRedo: true),
+          ),
+        ],
         if (_goodsId != null)
           UtenAppBarActionButton(
             key: const Key('goods-bom-refresh'),
@@ -1095,6 +1193,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         ref.watch(currentPermissionsProvider).contains(Perm.goodsPriceView) ||
         canEditPrice;
     final readOnlyKeys = <String>{
+      if (_mode == _GoodsDetailMode.edit) 'code',
       // 价格字段仅可查看者才在表里；可见但无编辑权 → 锁定。
       if (!canEditPrice && canViewPrice) 'price',
       if (!canEditPrice && canViewDiscount) 'discount',
@@ -1132,10 +1231,17 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
             children: [
               UtenButton(
                 type: UtenButtonType.secondary,
+                key: const Key('goods-detail-cancel-edit'),
                 onPressed: _savingBasic
                     ? null
-                    : () => Navigator.of(context).pop(),
-                child: Text(_mode == _GoodsDetailMode.create ? '取消' : '关闭'),
+                    : () {
+                        if (_mode == _GoodsDetailMode.edit && _detail != null) {
+                          _enterView(_detail!);
+                        } else {
+                          Navigator.of(context).pop();
+                        }
+                      },
+                child: Text(_mode == _GoodsDetailMode.create ? '取消' : '取消编辑'),
               ),
               const SizedBox(width: UtenSpacing.s12),
               UtenButton(
@@ -1554,6 +1660,11 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       canDelete: widget.canBomDelete,
       onEditModeChanged: (editing) {
         if (mounted) setState(() => _bomEditing = editing);
+      },
+      onInteractionChanged: (busy) {
+        if (mounted && busy != _bomInteracting) {
+          setState(() => _bomInteracting = busy);
+        }
       },
       productCode: _detail?.code,
       productName: _detail?.name,

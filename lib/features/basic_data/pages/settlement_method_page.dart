@@ -31,10 +31,14 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../models/master_facet.dart';
 import '../models/settlement_method_admin.dart';
 import '../repositories/reference_method_repository.dart';
 import '../widgets/master_data_table_view.dart';
+import '../widgets/master_inline_edit.dart';
+import '../widgets/master_inline_page_mixin.dart';
+import '../widgets/master_operation_history_panel.dart';
 import '../widgets/master_edit_dialog.dart';
 
 class SettlementMethodPage extends ConsumerStatefulWidget {
@@ -45,7 +49,80 @@ class SettlementMethodPage extends ConsumerStatefulWidget {
       _SettlementMethodPageState();
 }
 
-class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
+class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
+    with
+        MasterInlinePageMixin<SettlementMethodPage, SettlementMethodAdminItem> {
+  @override
+  String get inlineEntityType => 'reference-methods';
+  @override
+  bool get inlineCanEdit => _canEdit;
+  @override
+  bool get inlineReadReady => !_loading && _error == null;
+  @override
+  String inlineIdOf(SettlementMethodAdminItem row) => row.id;
+  @override
+  Future<void> inlineReload() => _load();
+  @override
+  Future<void> inlineReloadAfterBoundary() => _refresh();
+  @override
+  void inlineClearView() {
+    _items = null;
+    _facets = null;
+    _error = null;
+  }
+
+  @override
+  Map<String, MasterInlineField<SettlementMethodAdminItem>> get inlineFields =>
+      {
+        'name': MasterInlineField(
+          key: 'name',
+          read: (row) => row.name,
+          required: true,
+          enabledOf: (row) => !row.lockedBySystemRole,
+        ),
+        'termsBase': MasterInlineField(
+          key: 'termsBase',
+          read: (row) => row.termsBase,
+          type: MasterFieldType.select,
+          required: true,
+          options: [
+            for (final value in settlementTermsBaseLabels.entries)
+              MasterSelectOption(value: value.key, label: value.value),
+          ],
+          enabledOf: (row) => !row.lockedBySystemRole,
+        ),
+        'dueRule': MasterInlineField(
+          key: 'dueRule',
+          read: (row) => row.dueRule,
+          type: MasterFieldType.select,
+          required: true,
+          options: [
+            for (final value in settlementDueRuleLabels.entries)
+              MasterSelectOption(value: value.key, label: value.value),
+          ],
+          enabledOf: (row) => !row.lockedBySystemRole,
+        ),
+        'defaultDueDays': MasterInlineField(
+          key: 'defaultDueDays',
+          read: (row) => row.defaultDueDays,
+          type: MasterFieldType.integer,
+          required: true,
+          enabledOf: (row) => !row.lockedBySystemRole,
+        ),
+        'fixedDayOfMonth': MasterInlineField(
+          key: 'fixedDayOfMonth',
+          read: (row) => row.fixedDayOfMonth,
+          type: MasterFieldType.integer,
+          enabledOf: (row) => !row.lockedBySystemRole,
+        ),
+        'monthsAhead': MasterInlineField(
+          key: 'monthsAhead',
+          read: (row) => row.monthsAhead,
+          type: MasterFieldType.integer,
+          required: true,
+          enabledOf: (row) => !row.lockedBySystemRole,
+        ),
+      };
   List<SettlementMethodAdminItem>? _items;
   bool _loading = false;
   String? _error;
@@ -73,6 +150,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
   }
 
   Future<void> _load() async {
+    final inlineReadBoundary = ref.read(sensitiveReadBoundaryProvider);
     final generation = _loadRequests.begin();
     setState(() {
       _loading = true;
@@ -82,19 +160,31 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
       final items = await ref
           .read(referenceMethodRepositoryProvider)
           .settlementAdminList(filters: _filters);
-      if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (!mounted ||
+          !inlineAcceptsRead(inlineReadBoundary) ||
+          !_loadRequests.isCurrent(generation)) {
+        return;
+      }
       setState(() {
         _items = items;
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (!mounted ||
+          !inlineAcceptsRead(inlineReadBoundary) ||
+          !_loadRequests.isCurrent(generation)) {
+        return;
+      }
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (!mounted ||
+          !inlineAcceptsRead(inlineReadBoundary) ||
+          !_loadRequests.isCurrent(generation)) {
+        return;
+      }
       setState(() {
         _error = '加载结算方式失败';
         _loading = false;
@@ -104,11 +194,12 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
 
   /// 拉字段 facet（表头筛选下拉选项）。失败静默降级为空下拉，不阻塞列表。
   Future<void> _loadFacets() async {
+    final inlineReadBoundary = ref.read(sensitiveReadBoundaryProvider);
     try {
       final f = await ref
           .read(referenceMethodRepositoryProvider)
           .settlementAdminFacets();
-      if (!mounted) return;
+      if (!mounted || !inlineAcceptsRead(inlineReadBoundary)) return;
       setState(() => _facets = f);
     } catch (_) {
       // Facets are optional; the primary list remains usable.
@@ -349,6 +440,27 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
       width: 140,
       value: (m) => settlementDueRuleLabel(m.dueRule),
     ),
+    MasterColumnDef(
+      key: 'defaultDueDays',
+      label: '默认天数',
+      width: 110,
+      type: 'number',
+      value: (row) => row.defaultDueDays.toString(),
+    ),
+    MasterColumnDef(
+      key: 'fixedDayOfMonth',
+      label: '固定日',
+      width: 90,
+      type: 'number',
+      value: (row) => row.fixedDayOfMonth?.toString(),
+    ),
+    MasterColumnDef(
+      key: 'monthsAhead',
+      label: '跨月数',
+      width: 90,
+      type: 'number',
+      value: (row) => row.monthsAhead.toString(),
+    ),
     const MasterColumnDef(
       key: 'terms',
       label: '账期口径',
@@ -390,119 +502,130 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
   Widget _buildDraftHost(BuildContext context) {
     ref.watch(currentPermissionsProvider);
     final items = _filtered;
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: '结算方式',
-        leading: UtenBackButton(
-          onPressed: () => backTo(context, defaultPath: RouteName.basicinfo),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新',
-            onPressed: _refresh,
+    return inlineGuard(
+      Scaffold(
+        appBar: UtenAppBar(
+          title: '结算方式',
+          leading: UtenBackButton(
+            onPressed: () => inlineNavigate(
+              () => backTo(context, defaultPath: RouteName.basicinfo),
+            ),
           ),
-        ],
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: _canCreate
-          ? UtenFloatingActionGroup(
-              children: [
-                UtenButton(
-                  size: UtenButtonSize.large,
-                  icon: Icons.add_rounded,
-                  onPressed: _showCreate,
-                  child: const Text('添加结算方式'),
-                ),
-              ],
-            )
-          : null,
-      body: SafeArea(
-        child: UtenContentContainer(
-          child: Padding(
-            padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(
-                    bottom: UtenSpacing.s8,
-                    left: UtenSpacing.s4,
-                    right: UtenSpacing.s4,
+          actions: [
+            MasterOperationHistoryActions(
+              entityType: 'reference-methods',
+              onChanged: _refresh,
+            ),
+            IconButton(
+              icon: const Icon(Icons.refresh_rounded),
+              tooltip: '刷新',
+              onPressed: () => inlineNavigate(_refresh),
+            ),
+          ],
+        ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+        floatingActionButton: inlineFloatingActions(
+          additionalActions: [
+            if (_canCreate)
+              UtenButton(
+                size: UtenButtonSize.large,
+                icon: Icons.add_rounded,
+                onPressed: _showCreate,
+                child: const Text('添加结算方式'),
+              ),
+          ],
+        ),
+        body: SafeArea(
+          child: UtenContentContainer(
+            child: Padding(
+              padding: const EdgeInsets.only(top: UtenSpacing.s8),
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(
+                      bottom: UtenSpacing.s8,
+                      left: UtenSpacing.s4,
+                      right: UtenSpacing.s4,
+                    ),
+                    child: UtenSearchBar(
+                      hint: '搜索结算方式(名称/编号)',
+                      initialValue: _keyword,
+                      onChanged: (kw) => inlineNavigate(
+                        () => setState(() => _keyword = kw),
+                      ), // 本地过滤，小字典
+                    ),
                   ),
-                  child: UtenSearchBar(
-                    hint: '搜索结算方式(名称/编号)',
-                    initialValue: _keyword,
-                    onChanged: (kw) =>
-                        setState(() => _keyword = kw), // 本地过滤，小字典
+                  Expanded(
+                    child: MasterDataTableView<SettlementMethodAdminItem>(
+                      bottomContentPadding: (_canCreate || _canEdit)
+                          ? UtenFloatingActionGroup.scrollClearance
+                          : 0,
+                      columnEditingEnabled: _canEdit,
+                      tableKey:
+                          'features.basic_data.pages.settlement_method_page.SettlementMethodPageState._buildDraftHost.1',
+                      columns: inlineColumns(_columns),
+                      items: items,
+                      // 导出/打印（V717 settlement_method:export）：打印预览用本页列
+                      // 渲染，导出列集服务端与表格对齐——「表格显示啥导出啥」。
+                      // 导出/打印进左簇（2026-10-18 用户口径）：与「表头设置 / 全屏」同排靠左，
+                      // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
+                      toolbarLeadingActions: [
+                        UtenPrintPreviewButton(
+                          title: '结算方式', // TODO(l10n): 补 arb
+                          subtitle: '全部行', // TODO(l10n): 补 arb
+                          loader: _printLoader,
+                          exportEndpoint:
+                              '/master/reference-methods/settlement-admin/export',
+                          exportPermission: Perm.settlementMethodExport,
+                          exportReport: '',
+                          exportQuery: _exportQuery,
+                          exportFilename: '结算方式', // TODO(l10n): 补 arb
+                          type: UtenButtonType.primary,
+                          size: UtenButtonSize.large,
+                          icon: null,
+                        ),
+                        UtenExportButton(
+                          endpoint:
+                              '/master/reference-methods/settlement-admin/export',
+                          requiredPermission: Perm.settlementMethodExport,
+                          report: '',
+                          queryParams: _exportQuery,
+                          filename: '结算方式', // TODO(l10n): 补 arb
+                          label: '导出结算方式', // TODO(l10n): 补 arb
+                          type: UtenButtonType.primary,
+                          size: UtenButtonSize.large,
+                          icon: null,
+                        ),
+                      ],
+                      facets: _labeledFacets,
+                      nullCounts: _facets?.nullCounts ?? const {},
+                      filters: _filters,
+                      onFilterChanged: (key, value) =>
+                          inlineNavigate(() => _onFilterChanged(key, value)),
+                      // 行底色按状态（ADR-169 收编，同 color_page）：使用=蓝档
+                      // 淡底（裸色收编）/ 禁用=灰档淡底（停用归中性终态，
+                      // 原浅红把「停用」当异常——停用不是错误）。
+                      rowColor: (m) => switch (m.status) {
+                        '使用' => UtenColors.info.withValues(alpha: 0.13),
+                        '禁用' => UtenColors.statusNeutral.withValues(
+                          alpha: 0.10,
+                        ),
+                        _ => null,
+                      },
+                      // 点行 = 维护账期/查看口径（系统角色锁定时仅提示）。
+                      onRowTap: inlineEdit.active ? null : _showEditTerms,
+                      isLoading: _loading && _items == null,
+                      loadingMore: _loading && _items != null,
+                      error: _error,
+                      onRetry: _load,
+                      emptyMessage: _keyword.trim().isEmpty
+                          ? '暂无结算方式'
+                          : '没有匹配的结算方式', // TODO(l10n): 补 arb
+                    ),
                   ),
-                ),
-                Expanded(
-                  child: MasterDataTableView<SettlementMethodAdminItem>(
-                    bottomContentPadding: _canCreate
-                        ? UtenFloatingActionGroup.scrollClearance
-                        : 0,
-                    columnEditingEnabled: _canEdit,
-                    tableKey:
-                        'features.basic_data.pages.settlement_method_page.SettlementMethodPageState._buildDraftHost.1',
-                    columns: _columns,
-                    items: items,
-                    // 导出/打印（V717 settlement_method:export）：打印预览用本页列
-                    // 渲染，导出列集服务端与表格对齐——「表格显示啥导出啥」。
-                    // 导出/打印进左簇（2026-10-18 用户口径）：与「表头设置 / 全屏」同排靠左，
-                    // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
-                    toolbarLeadingActions: [
-                      UtenPrintPreviewButton(
-                        title: '结算方式', // TODO(l10n): 补 arb
-                        subtitle: '全部行', // TODO(l10n): 补 arb
-                        loader: _printLoader,
-                        exportEndpoint:
-                            '/master/reference-methods/settlement-admin/export',
-                        exportPermission: Perm.settlementMethodExport,
-                        exportReport: '',
-                        exportQuery: _exportQuery,
-                        exportFilename: '结算方式', // TODO(l10n): 补 arb
-                        type: UtenButtonType.primary,
-                        size: UtenButtonSize.large,
-                        icon: null,
-                      ),
-                      UtenExportButton(
-                        endpoint:
-                            '/master/reference-methods/settlement-admin/export',
-                        requiredPermission: Perm.settlementMethodExport,
-                        report: '',
-                        queryParams: _exportQuery,
-                        filename: '结算方式', // TODO(l10n): 补 arb
-                        label: '导出结算方式', // TODO(l10n): 补 arb
-                        type: UtenButtonType.primary,
-                        size: UtenButtonSize.large,
-                        icon: null,
-                      ),
-                    ],
-                    facets: _labeledFacets,
-                    nullCounts: _facets?.nullCounts ?? const {},
-                    filters: _filters,
-                    onFilterChanged: _onFilterChanged,
-                    // 行底色按状态（ADR-169 收编，同 color_page）：使用=蓝档
-                    // 淡底（裸色收编）/ 禁用=灰档淡底（停用归中性终态，
-                    // 原浅红把「停用」当异常——停用不是错误）。
-                    rowColor: (m) => switch (m.status) {
-                      '使用' => UtenColors.info.withValues(alpha: 0.13),
-                      '禁用' => UtenColors.statusNeutral.withValues(alpha: 0.10),
-                      _ => null,
-                    },
-                    // 点行 = 维护账期/查看口径（系统角色锁定时仅提示）。
-                    onRowTap: _showEditTerms,
-                    isLoading: _loading && _items == null,
-                    loadingMore: _loading && _items != null,
-                    error: _error,
-                    onRetry: _load,
-                    emptyMessage: _keyword.trim().isEmpty
-                        ? '暂无结算方式'
-                        : '没有匹配的结算方式', // TODO(l10n): 补 arb
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

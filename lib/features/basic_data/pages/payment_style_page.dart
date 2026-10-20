@@ -1,8 +1,9 @@
 // 收付款类别管理页（基础资料 · 邻接树 + 物化路径）。
 //
-// 纯分类主档沿用基础资料的分栏、分类摘要卡、树工具栏和行菜单；
-// 右侧展示本类别的业务属性，手机使用同一分栏组件提供分类抽屉。
+// 这是纯分类主档，不套用“分类摘要卡 + 下方业务表格”的通用详情页模板：
+// 大屏采用可调宽目录树 + 页面级属性检查器，手机采用详情 + 分类抽屉。
 import 'package:flutter/material.dart';
+import '../widgets/master_operation_history_panel.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
@@ -718,6 +719,10 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
           onPressed: () => backTo(context, defaultPath: RouteName.basicinfo),
         ),
         actions: [
+          MasterOperationHistoryActions(
+            entityType: 'payment-styles',
+            onChanged: _load,
+          ),
           if (ref.watch(postingStyleRoleVisibilityProvider).asData?.value ==
               true)
             IconButton(
@@ -836,9 +841,9 @@ class _PaymentStyleInspectorState
       children: [
         SingleChildScrollView(
           padding: EdgeInsets.fromLTRB(
-            context.breakpoint.isCompact ? 0 : UtenSpacing.s16,
-            UtenSpacing.s16,
-            context.breakpoint.isCompact ? 0 : UtenSpacing.s16,
+            context.breakpoint.isCompact ? 0 : UtenSpacing.s24,
+            UtenSpacing.s20,
+            context.breakpoint.isCompact ? 0 : UtenSpacing.s24,
             UtenSpacing.s32,
           ),
           child: Column(

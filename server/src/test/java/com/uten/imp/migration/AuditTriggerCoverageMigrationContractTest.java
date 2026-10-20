@@ -116,6 +116,7 @@ class AuditTriggerCoverageMigrationContractTest {
                         "goods_weight_profiles",
                         "goods_import_batches", "goods_import_creations",
                         "goods_operation_history", "goods_operation_history_rows", "goods_operation_history_events",
+                        "master_operation_history", "master_operation_history_rows", "master_operation_history_events",
                         "master_code_change_batches", "material_categories", "mould_categories",
                         "moulds", "party_activity_records",
                         "party_addresses", "party_contact_methods", "payment_styles",

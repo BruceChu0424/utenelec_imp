@@ -42,6 +42,7 @@ import '../widgets/account_balance_reconciliation_dialog.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
+import '../widgets/master_operation_history_panel.dart';
 
 class AccountDetailPage extends ConsumerStatefulWidget {
   const AccountDetailPage({
@@ -65,6 +66,8 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
   Future<bool>? _referenceOptionsFuture;
   bool _loading = true;
   bool _detailBusy = false;
+  bool _editing = false;
+  int _detailLoadEpoch = 0;
   String? _error;
 
   AccountStatementPage? _statement;
@@ -117,16 +120,25 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
       '${value.year}-${value.month.toString().padLeft(2, '0')}-'
       '${value.day.toString().padLeft(2, '0')}';
 
-  Future<void> _load({bool initial = false}) async {
+  Future<void> _load({bool initial = false, bool clearCurrent = false}) async {
+    final epoch = ++_detailLoadEpoch;
+    bool current() => mounted && epoch == _detailLoadEpoch;
     setState(() {
       _loading = true;
       _error = null;
+      if (clearCurrent) {
+        _detail = null;
+        _statement = null;
+        _flowError = null;
+        _flowRequests.begin();
+        _columnFilters.reset();
+      }
     });
     try {
       final detail = await ref
           .read(accountRepositoryProvider)
           .detail(widget.accountId);
-      if (!mounted) return;
+      if (!current()) return;
       setState(() {
         _detail = detail;
         _loading = false;
@@ -138,19 +150,25 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
         });
       }
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!current()) return;
       setState(() {
+        _detail = null;
+        _statement = null;
         _error = error.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!current()) return;
       setState(() {
+        _detail = null;
+        _statement = null;
         _error = '加载账户详情失败';
         _loading = false;
       });
     }
   }
+
+  Future<void> _reloadAfterHistory() => _load(clearCurrent: true);
 
   Future<bool> _ensureReferenceOptions() {
     if (_currencies.isNotEmpty &&
@@ -340,6 +358,16 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
   ];
 
   Future<void> _showEdit() async {
+    if (_editing || _detailBusy || _detail == null || !_canEdit) return;
+    setState(() => _editing = true);
+    try {
+      await _openEditor();
+    } finally {
+      if (mounted) setState(() => _editing = false);
+    }
+  }
+
+  Future<void> _openEditor() async {
     if (_detail == null || !_canEdit) return;
     final referencesReady = await _ensureReferenceOptions();
     if (!mounted) return;
@@ -381,7 +409,19 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
     );
   }
 
-  Future<void> _showWarningEditor() async {
+  Future<void> _duringChange(Future<void> Function() action) async {
+    if (_detailBusy || _editing) return;
+    setState(() => _detailBusy = true);
+    try {
+      await action();
+    } finally {
+      if (mounted) setState(() => _detailBusy = false);
+    }
+  }
+
+  Future<void> _showWarningEditor() => _duringChange(_editWarning);
+
+  Future<void> _editWarning() async {
     if (!_canManageWarning) return;
     if (!_warningGuardStarted) {
       _warningGuardStarted = true;
@@ -486,7 +526,9 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
     if (ok && requestScope.isCurrent) await _load();
   }
 
-  Future<void> _toggleStatus() async {
+  Future<void> _toggleStatus() => _duringChange(_changeStatus);
+
+  Future<void> _changeStatus() async {
     final detail = _detail;
     if (detail == null || !_canStatus) return;
     final next = detail.status == '使用' ? '禁用' : '使用';
@@ -500,7 +542,9 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
     if (ok && mounted) await _load();
   }
 
-  Future<void> _adjustBalance() async {
+  Future<void> _adjustBalance() => _duringChange(_reconcileBalance);
+
+  Future<void> _reconcileBalance() async {
     if (!_canAdjustBalance) return;
     final result = await showAccountBalanceReconciliationDialog(
       context,
@@ -514,7 +558,9 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
     await _load();
   }
 
-  Future<void> _delete() async {
+  Future<void> _delete() => _duringChange(_deleteAccount);
+
+  Future<void> _deleteAccount() async {
     final detail = _detail;
     if (detail == null || !_canDelete) return;
     final confirmed = await showDialog<bool>(
@@ -550,10 +596,13 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
   }
 
   Future<void> _refresh() async {
-    if (_detailBusy) return;
-    _detailBusy = true;
-    await _load();
-    _detailBusy = false;
+    if (_detailBusy || _editing) return;
+    setState(() => _detailBusy = true);
+    try {
+      await _load();
+    } finally {
+      if (mounted) setState(() => _detailBusy = false);
+    }
   }
 
   List<MasterDetailStat> _cardStats(AccountDetail detail) {
@@ -698,6 +747,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
   @override
   Widget build(BuildContext context) {
     ref.watch(currentPermissionsProvider);
+    ref.watch(isSuperAdminProvider);
     final detail = _detail;
     final title = detail?.name?.isNotEmpty == true
         ? detail!.name!
@@ -710,9 +760,14 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
               popOrBackTo(context, defaultPath: RouteName.basicinfoAccount),
         ),
         actions: [
+          MasterOperationHistoryActions(
+            entityType: 'accounts',
+            enabled: !_loading && !_detailBusy && !_editing,
+            onChanged: _reloadAfterHistory,
+          ),
           IconButton(
             tooltip: '刷新',
-            onPressed: _loading ? null : _refresh,
+            onPressed: _loading || _detailBusy || _editing ? null : _refresh,
             icon: const Icon(Icons.refresh_rounded),
           ),
         ],

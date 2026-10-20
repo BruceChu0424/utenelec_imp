@@ -19,6 +19,7 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
@@ -28,6 +29,7 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/color_node.dart';
 import '../models/master_facet.dart';
@@ -37,6 +39,9 @@ import '../repositories/master_batch_repository.dart';
 import '../repositories/master_status_repository.dart';
 import '../widgets/master_batch_feedback.dart';
 import '../widgets/master_data_table_view.dart';
+import '../widgets/master_inline_edit.dart';
+import '../widgets/master_inline_page_mixin.dart';
+import '../widgets/master_operation_history_panel.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
 
@@ -47,7 +52,44 @@ class ColorPage extends ConsumerStatefulWidget {
   ConsumerState<ColorPage> createState() => _ColorPageState();
 }
 
-class _ColorPageState extends ConsumerState<ColorPage> {
+class _ColorPageState extends ConsumerState<ColorPage>
+    with MasterInlinePageMixin<ColorPage, ColorListItem> {
+  @override
+  String get inlineEntityType => 'colors';
+  @override
+  bool get inlineCanEdit => _canEdit;
+  @override
+  bool get inlineReadReady => !_loading && _error == null;
+  @override
+  String inlineIdOf(ColorListItem row) => row.id;
+  @override
+  Future<void> inlineReload() => _loadColors(_pageNum);
+  @override
+  Future<void> inlineReloadAfterBoundary() => _refresh();
+  @override
+  void inlineClearView() {
+    _page = null;
+    _facets = null;
+    _error = null;
+    _selectedColorIds = {};
+  }
+
+  @override
+  Map<String, MasterInlineField<ColorListItem>> get inlineFields => {
+    'name': MasterInlineField(
+      key: 'name',
+      read: (row) => row.name,
+      required: true,
+    ),
+    if (_canStatus)
+      'status': MasterInlineField(
+        key: 'status',
+        read: (row) => row.status,
+        type: MasterFieldType.select,
+        options: kMasterStatusOptions,
+        required: true,
+      ),
+  };
   PagedResult<ColorListItem>? _page;
   int _pageNum = 1;
   bool _loading = false;
@@ -91,6 +133,7 @@ class _ColorPageState extends ConsumerState<ColorPage> {
   // ---- 分页 -------------------------------------------------------------
 
   Future<void> _loadColors(int page) async {
+    final inlineReadBoundary = ref.read(sensitiveReadBoundaryProvider);
     final generation = _loadRequests.begin();
     setState(() {
       _loading = true;
@@ -105,19 +148,31 @@ class _ColorPageState extends ConsumerState<ColorPage> {
             keyword: _keyword.trim().isEmpty ? null : _keyword,
             filters: _filters,
           );
-      if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (!mounted ||
+          !inlineAcceptsRead(inlineReadBoundary) ||
+          !_loadRequests.isCurrent(generation)) {
+        return;
+      }
       setState(() {
         _page = result;
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (!mounted ||
+          !inlineAcceptsRead(inlineReadBoundary) ||
+          !_loadRequests.isCurrent(generation)) {
+        return;
+      }
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (!mounted ||
+          !inlineAcceptsRead(inlineReadBoundary) ||
+          !_loadRequests.isCurrent(generation)) {
+        return;
+      }
       setState(() {
         _error = '加载颜色列表失败'; // TODO(l10n): 补 arb
         _loading = false;
@@ -127,9 +182,10 @@ class _ColorPageState extends ConsumerState<ColorPage> {
 
   /// 拉字段 facet（筛选栏下拉选项）。失败静默降级为空下拉，不阻塞列表。
   Future<void> _loadFacets() async {
+    final inlineReadBoundary = ref.read(sensitiveReadBoundaryProvider);
     try {
       final f = await ref.read(colorRepositoryProvider).facets();
-      if (!mounted) return;
+      if (!mounted || !inlineAcceptsRead(inlineReadBoundary)) return;
       setState(() => _facets = f);
     } catch (_) {
       // Facets are optional; the primary list remains usable.
@@ -574,108 +630,142 @@ class _ColorPageState extends ConsumerState<ColorPage> {
 
   Widget _buildDraftHost(BuildContext context) {
     ref.watch(currentPermissionsProvider);
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: '颜色资料', // TODO(l10n): 补 arb
-        leading: UtenBackButton(
-          onPressed: () => backTo(context, defaultPath: RouteName.basicinfo),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新', // TODO(l10n): 补 arb
-            onPressed: _refresh,
+    return inlineGuard(
+      Scaffold(
+        appBar: UtenAppBar(
+          title: '颜色资料', // TODO(l10n): 补 arb
+          leading: UtenBackButton(
+            onPressed: () => inlineNavigate(
+              () => backTo(context, defaultPath: RouteName.basicinfo),
+            ),
           ),
-        ],
-      ),
-      body: SafeArea(
-        child: UtenContentContainer(
-          child: Padding(
-            padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(
-                    bottom: UtenSpacing.s8,
-                    left: UtenSpacing.s4,
-                    right: UtenSpacing.s4,
+          actions: [
+            MasterOperationHistoryActions(
+              entityType: 'colors',
+              onChanged: _refresh,
+            ),
+            IconButton(
+              icon: const Icon(Icons.refresh_rounded),
+              tooltip: '刷新', // TODO(l10n): 补 arb
+              onPressed: () => inlineNavigate(_refresh),
+            ),
+          ],
+        ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+        floatingActionButton: inlineFloatingActions(
+          additionalActions: [
+            if (_canCreate)
+              UtenButton(
+                size: UtenButtonSize.large,
+                icon: Icons.add_rounded,
+                onPressed: _showCreate,
+                child: const Text('添加颜色'),
+              ),
+          ],
+        ),
+        body: SafeArea(
+          child: UtenContentContainer(
+            child: Padding(
+              padding: const EdgeInsets.only(top: UtenSpacing.s8),
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(
+                      bottom: UtenSpacing.s8,
+                      left: UtenSpacing.s4,
+                      right: UtenSpacing.s4,
+                    ),
+                    child: UtenSearchBar(
+                      hint: '搜索颜色(名称/编号)', // TODO(l10n): 补 arb
+                      initialValue: _keyword,
+                      onChanged: (value) =>
+                          inlineNavigate(() => _onKeywordChanged(value)),
+                    ),
                   ),
-                  child: UtenSearchBar(
-                    hint: '搜索颜色(名称/编号)', // TODO(l10n): 补 arb
-                    initialValue: _keyword,
-                    onChanged: _onKeywordChanged,
+                  Expanded(
+                    child: MasterDataTableView<ColorListItem>(
+                      bottomContentPadding: (_canCreate || _canEdit)
+                          ? UtenFloatingActionGroup.scrollClearance
+                          : 0,
+                      columnEditingEnabled: _canEdit,
+                      tableKey:
+                          'features.basic_data.pages.color_page.ColorPageState._buildDraftHost.1',
+                      columns: inlineColumns(_columns),
+                      items: _page?.items ?? const [],
+                      // 导出/打印（V717 color:export）：打印预览用本页列渲染，
+                      // 导出列集服务端与表格对齐——「表格显示啥导出啥」。
+                      // 导出/打印进左簇（2026-10-18 用户口径）：与「表头设置 / 全屏」同排靠左，
+                      // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
+                      toolbarLeadingActions: [
+                        UtenPrintPreviewButton(
+                          title: '颜色资料', // TODO(l10n): 补 arb
+                          subtitle: '最多前 2000 行', // TODO(l10n): 补 arb
+                          loader: _printLoader,
+                          exportEndpoint: '/master/colors/export',
+                          exportPermission: Perm.colorExport,
+                          exportReport: '',
+                          exportQuery: _exportQuery,
+                          exportFilename: '颜色资料', // TODO(l10n): 补 arb
+                          type: UtenButtonType.primary,
+                          size: UtenButtonSize.large,
+                          icon: null,
+                        ),
+                        UtenExportButton(
+                          endpoint: '/master/colors/export',
+                          requiredPermission: Perm.colorExport,
+                          report: '',
+                          queryParams: _exportQuery,
+                          filename: '颜色资料', // TODO(l10n): 补 arb
+                          label: '导出颜色', // TODO(l10n): 补 arb
+                          type: UtenButtonType.primary,
+                          size: UtenButtonSize.large,
+                          icon: null,
+                        ),
+                      ],
+                      // 多选：最前列勾选框 + 表头三态全选；选中非空时工具条出批量操作区。
+                      selectable: true,
+                      idOf: (c) => c.id,
+                      selectedIds: _selectedColorIds,
+                      onSelectedIdsChanged: (s) =>
+                          setState(() => _selectedColorIds = s),
+                      batchActionsBuilder: inlineEdit.active
+                          ? null
+                          : _colorBatchActions,
+                      // 行菜单（右击/长按）：查看/启用/禁用/编辑/删除。
+                      rowMenuBuilder: inlineEdit.active
+                          ? null
+                          : _colorMenuItems,
+                      facets: _facets?.fields ?? const {},
+                      nullCounts: _facets?.nullCounts ?? const {},
+                      filters: _filters,
+                      onFilterChanged: (key, value) =>
+                          inlineNavigate(() => _onFilterChanged(key, value)),
+                      // 行底色按状态（ADR-169 收编）：使用=蓝档淡底（裸色收编）/
+                      // 禁用=灰档淡底（停用归中性终态，原浅红把「停用」当异常）。
+                      rowColor: (c) => switch (c.status) {
+                        '使用' => UtenColors.info.withValues(alpha: 0.13),
+                        '禁用' => UtenColors.statusNeutral.withValues(
+                          alpha: 0.10,
+                        ),
+                        _ => null,
+                      },
+                      onRowTap: inlineEdit.active
+                          ? null
+                          : (c) => _showDetail(c.id),
+                      isLoading: _loading && _page == null,
+                      loadingMore: _loading && _page != null,
+                      error: _error,
+                      onRetry: () => _loadColors(_pageNum),
+                      emptyMessage: '暂无颜色', // TODO(l10n): 补 arb
+                      currentPage: _page?.page ?? 1,
+                      totalPages: _page?.totalPages ?? 1,
+                      paginationScope: _keyword,
+                      onPageChange: (p) => inlineNavigate(() => _loadColors(p)),
+                    ),
                   ),
-                ),
-                Expanded(
-                  child: MasterDataTableView<ColorListItem>(
-                    columnEditingEnabled: _canEdit,
-                    tableKey:
-                        'features.basic_data.pages.color_page.ColorPageState._buildDraftHost.1',
-                    columns: _columns,
-                    items: _page?.items ?? const [],
-                    // 导出/打印（V717 color:export）：打印预览用本页列渲染，
-                    // 导出列集服务端与表格对齐——「表格显示啥导出啥」。
-                    // 导出/打印进左簇（2026-10-18 用户口径）：与「表头设置 / 全屏」同排靠左，
-                    // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
-                    toolbarLeadingActions: [
-                      UtenPrintPreviewButton(
-                        title: '颜色资料', // TODO(l10n): 补 arb
-                        subtitle: '最多前 2000 行', // TODO(l10n): 补 arb
-                        loader: _printLoader,
-                        exportEndpoint: '/master/colors/export',
-                        exportPermission: Perm.colorExport,
-                        exportReport: '',
-                        exportQuery: _exportQuery,
-                        exportFilename: '颜色资料', // TODO(l10n): 补 arb
-                        type: UtenButtonType.primary,
-                        size: UtenButtonSize.large,
-                        icon: null,
-                      ),
-                      UtenExportButton(
-                        endpoint: '/master/colors/export',
-                        requiredPermission: Perm.colorExport,
-                        report: '',
-                        queryParams: _exportQuery,
-                        filename: '颜色资料', // TODO(l10n): 补 arb
-                        label: '导出颜色', // TODO(l10n): 补 arb
-                        type: UtenButtonType.primary,
-                        size: UtenButtonSize.large,
-                        icon: null,
-                      ),
-                    ],
-                    // 多选：最前列勾选框 + 表头三态全选；选中非空时工具条出批量操作区。
-                    selectable: true,
-                    idOf: (c) => c.id,
-                    selectedIds: _selectedColorIds,
-                    onSelectedIdsChanged: (s) =>
-                        setState(() => _selectedColorIds = s),
-                    batchActionsBuilder: _colorBatchActions,
-                    // 行菜单（右击/长按）：查看/启用/禁用/编辑/删除。
-                    rowMenuBuilder: _colorMenuItems,
-                    facets: _facets?.fields ?? const {},
-                    nullCounts: _facets?.nullCounts ?? const {},
-                    filters: _filters,
-                    onFilterChanged: _onFilterChanged,
-                    // 行底色按状态（ADR-169 收编）：使用=蓝档淡底（裸色收编）/
-                    // 禁用=灰档淡底（停用归中性终态，原浅红把「停用」当异常）。
-                    rowColor: (c) => switch (c.status) {
-                      '使用' => UtenColors.info.withValues(alpha: 0.13),
-                      '禁用' => UtenColors.statusNeutral.withValues(alpha: 0.10),
-                      _ => null,
-                    },
-                    onRowTap: (c) => _showDetail(c.id),
-                    isLoading: _loading && _page == null,
-                    loadingMore: _loading && _page != null,
-                    error: _error,
-                    onRetry: () => _loadColors(_pageNum),
-                    emptyMessage: '暂无颜色', // TODO(l10n): 补 arb
-                    currentPage: _page?.page ?? 1,
-                    totalPages: _page?.totalPages ?? 1,
-                    paginationScope: _keyword,
-                    onPageChange: (p) => _loadColors(p),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -6,7 +7,6 @@ import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/api_client.dart';
-import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/basic_data/models/color_node.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
@@ -23,6 +23,7 @@ import 'package:uten_imp/features/basic_data/widgets/mould_picker_field.dart';
 import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_edit_dialog.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/shared/drafts/form_draft_navigation.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
@@ -68,27 +69,19 @@ class _Goods extends Fake implements GoodsRepository {
   Future<void> update(String id, Map<String, dynamic> body) async {
     this.body = Map.of(body);
     if (reject) throw ApiException('CONFLICT', '模拟保存失败', httpStatus: 409);
+    value = GoodsDetail.fromJson({
+      ...body,
+      'id': id,
+      'writable': true,
+      'version': (value.version ?? 0) + 1,
+      'colorName': body['colorId'] == 'grey' ? '灰色' : '蓝色',
+    });
   }
 }
 
 class _Bom extends Fake implements GoodsBomRepository {
   @override
   Future<List<GoodsBomItem>> list(String goodsId) async => const [];
-}
-
-class _NavigationBomApi extends GoodsBomEditTestApi {
-  _NavigationBomApi(super.repository);
-
-  @override
-  Future<Map<String, dynamic>> get(
-    String path, {
-    Map<String, dynamic>? query,
-  }) async {
-    if (path == ApiEndpoints.authMe) {
-      return {'id': 'goods-editor', 'session': <String, dynamic>{}};
-    }
-    return super.get(path, query: query);
-  }
 }
 
 class _Moulds extends Fake implements MouldRepository {
@@ -98,6 +91,11 @@ class _Moulds extends Fake implements MouldRepository {
     requests.add(id);
     return MouldDetail(id: id, code: 'RESTORED', name: '草稿关联模具');
   }
+}
+
+class _Snapshots extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async => SessionSnapshot();
 }
 
 Finder _field(WidgetTester tester, String key) {
@@ -120,15 +118,12 @@ Future<({ProviderContainer container, GoRouter router})> _pump(
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
-  final bom = _Bom();
-  final api = _NavigationBomApi(bom);
   final container = ProviderContainer(
     overrides: [
-      apiClientProvider.overrideWithValue(api),
       sensitiveReadBoundaryProvider.overrideWith(
         (ref) => SensitiveReadBoundary(
           identity: ref.watch(authenticatedScopeProvider),
-          api: api,
+          api: ApiClient(Dio()),
           permissions: ref.watch(currentPermissionsProvider),
           superAdmin: false,
         ),
@@ -138,6 +133,7 @@ Future<({ProviderContainer container, GoRouter router})> _pump(
       ),
       apiBaseUrlProvider.overrideWithValue('https://test.example/api'),
       formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+      sessionSnapshotProvider.overrideWith(_Snapshots.new),
       currentPermissionsProvider.overrideWithValue({
         Perm.goodsView,
         Perm.materialCategoryView,
@@ -151,7 +147,8 @@ Future<({ProviderContainer container, GoRouter router})> _pump(
       isSuperAdminProvider.overrideWithValue(false),
       goodsRepositoryProvider.overrideWithValue(goods),
       if (moulds != null) mouldRepositoryProvider.overrideWithValue(moulds),
-      goodsBomRepositoryProvider.overrideWithValue(bom),
+      goodsBomRepositoryProvider.overrideWithValue(_Bom()),
+      apiClientProvider.overrideWithValue(GoodsBomEditTestApi(_Bom())),
       colorDictProvider.overrideWith(
         (ref) async => const [
           ColorListItem(id: 'blue', name: '蓝色'),
@@ -326,7 +323,6 @@ void main() {
       await tester.tap(find.text('继续维护组装'));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('goods-bom-add-component')), findsNothing);
-      expect(find.byKey(const Key('goods-bom-edit-mode')), findsOneWidget);
       await enterBomEdit(tester);
       expect(find.byKey(const Key('goods-bom-add-component')), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -335,10 +331,10 @@ void main() {
 
   for (final deep in [false, true]) {
     testWidgets(
-      'edit preserves separate own/customer models and returns via ${deep ? 'returnTo' : 'push source'}',
+      'edit stays in the refreshed detail for undo, then explicit back uses ${deep ? 'returnTo' : 'push source'}',
       (tester) async {
         final goods = _Goods();
-        await _pump(tester, goods, deepLink: deep);
+        final host = await _pump(tester, goods, deepLink: deep);
         expect(
           tester.widget<TextField>(_field(tester, 'cNumber')).controller!.text,
           'CUSTOMER-OLD',
@@ -350,7 +346,17 @@ void main() {
         expect(goods.body?['model'], '货品自身型号');
         expect(goods.body?['colorId'], 'grey');
         expect(goods.body?['version'], 4);
-        expect(goods.reads, 1);
+        expect(goods.reads, greaterThanOrEqualTo(2));
+        expect(host.router.state.uri.path, '/basicinfo/goods/g1');
+        expect(find.byType(MasterEditForm), findsNothing);
+        expect(find.text('CUSTOMER-NEW'), findsOneWidget);
+        expect(
+          find.byKey(const Key('goods-detail-history-undo')),
+          findsOneWidget,
+        );
+        expect(find.text('来源列表'), findsNothing);
+        await tester.tap(find.byTooltip('返回'));
+        await tester.pumpAndSettle();
         expect(find.text('来源列表'), findsOneWidget);
         expect(tester.takeException(), isNull);
       },

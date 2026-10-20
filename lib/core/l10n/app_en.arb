@@ -4985,5 +4985,9 @@
   "whereUsedExportFilename": "where_used_filtered_results",
   "whereUsedReplacementCommitUncertain": "The submission result is not confirmed. Retry this same submission to retrieve its result; keep the selected component unchanged.",
   "whereUsedRetryReplacementCommit": "Retry this submission",
-  "whereUsedCloseAndVerify": "Close and refresh to verify"
+  "whereUsedCloseAndVerify": "Close and refresh to verify",
+  "bomEditPreparing": "Preparing to edit",
+  "bomEditChecking": "Checking changes and shared usage",
+  "bomEditRefreshing": "Refreshing assembly information",
+  "bomEditPrepareFailed": "Could not prepare editing. Please try again."
 }

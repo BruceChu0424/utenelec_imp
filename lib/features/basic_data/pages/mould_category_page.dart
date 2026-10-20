@@ -33,6 +33,8 @@ import '../repositories/master_status_repository.dart';
 import '../widgets/category_edit_dialog.dart';
 import '../widgets/category_page_shell.dart';
 import '../widgets/master_data_table_view.dart';
+import '../widgets/master_inline_edit.dart';
+import '../repositories/master_inline_edit_repository.dart';
 import '../widgets/master_entity_detail_pane.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
@@ -349,12 +351,25 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
   /// 模具明细区配置：列、仓储闭包、权限；新建/编辑带车间树，单击行开详情弹层。
   MasterEntityPaneConfig<MouldListItem, MouldDetail> _paneConfig() {
     final perms = ref.read(currentPermissionsProvider);
-    final moulds = ref.read(mouldRepositoryProvider);
+    final moulds = ref.watch(mouldRepositoryProvider);
     return MasterEntityPaneConfig<MouldListItem, MouldDetail>(
       noun: '模具', // TODO(l10n): 补 arb
       icon: Icons.precision_manufacturing_outlined,
       defaultCodePrefix: 'MJ',
       columns: _mouldColumns,
+      inlineFields: _mouldInlineFields,
+      onInlineSave: (id, patch, original) => ref
+          .read(masterInlineEditRepositoryProvider)
+          .save(
+            'moulds',
+            id,
+            changes: patch,
+            expected: {
+              for (final field in _mouldInlineFields.values)
+                if (patch.containsKey(field.key))
+                  field.key: field.read(original),
+            },
+          ),
       idOf: (m) => m.id,
       statusOf: (m) => m.status,
       labelOf: (m) => m.name?.isNotEmpty == true ? m.name! : (m.code ?? '该模具'),
@@ -406,6 +421,53 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       onEdit: _showMouldEdit,
     );
   }
+
+  Map<String, MasterInlineField<MouldListItem>> get _mouldInlineFields => {
+    'name': MasterInlineField(
+      key: 'name',
+      read: (row) => row.name,
+      required: true,
+    ),
+    'qty': MasterInlineField(key: 'qty', read: (row) => row.qty),
+    'tqty': MasterInlineField(
+      key: 'tqty',
+      read: (row) => row.tqtyText ?? row.tqty,
+      type: MasterFieldType.money,
+      validate: (value) =>
+          value != null && (num.tryParse(value.toString()) ?? 0) < 0
+          ? '套数不能为负数'
+          : null,
+    ),
+    'manufacturer': MasterInlineField(
+      key: 'manufacturer',
+      read: (row) => row.manufacturer,
+    ),
+    'remark': MasterInlineField(key: 'remark', read: (row) => row.remark),
+    'mstatus': MasterInlineField(
+      key: 'mstatus',
+      read: (row) => row.mstatus,
+      type: MasterFieldType.custom,
+      validate: (value) =>
+          value != null &&
+              value.toString().isNotEmpty &&
+              UtenMonthField.parse(value.toString()) == null
+          ? '请选择有效年月'
+          : null,
+      customBuilder: (field) => UtenMonthField(
+        label: '制造年月',
+        value: field.initialValue,
+        onChanged: field.onChanged,
+      ),
+    ),
+    if (_canStatusMaster)
+      'status': MasterInlineField(
+        key: 'status',
+        read: (row) => row.status,
+        type: MasterFieldType.select,
+        required: true,
+        options: kMasterStatusOptions,
+      ),
+  };
 
   /// 模具主档可编辑字段（与后端 MouldSaveRequest 对齐）。
   ///

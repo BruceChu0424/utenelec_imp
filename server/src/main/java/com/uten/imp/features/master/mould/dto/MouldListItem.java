@@ -31,4 +31,7 @@ public class MouldListItem {
     private UUID categoryId;    // 所属分类 id（模具资料页"搜模具定位分类"用）
     private String manufacturer;
     private String categoryName; // 真正所属的模具系列/分类名称，仅作显示，关系仍用 categoryId
+
+    /** Exact CAS baseline for the inline editor; JSON numbers may lose decimal precision in browsers. */
+    public String getTqtyText() { return tqty==null?null:tqty.toPlainString(); }
 }

@@ -372,6 +372,7 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.summaryBarInline = true,
     this.toolbarActions,
     this.toolbarLeadingActions,
+    this.bodyPresentationBuilder,
     this.embedded = false,
     this.primary = false,
     this.virtualized = false,
@@ -647,6 +648,12 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 不重建、焦点与输入法组合不丢；loading/错误态也保留前缀按钮（业务写动作
   /// 仍只在数据态/空态出现）。
   final List<Widget>? toolbarLeadingActions;
+
+  /// Optional presentation around the existing body. Keep [child] mounted when
+  /// showing local progress; the toolbar and the single selection area retain
+  /// their identity. Does not change rows, selection, filtering or measurement.
+  final Widget Function(BuildContext context, Widget child)?
+  bodyPresentationBuilder;
 
   /// 嵌入模式：用于详情页 ListView 等无界高度场景（单据明细只读表）。
   /// 不渲染翻页条、不用 Expanded 撑满，表体按内容收缩。
@@ -4627,6 +4634,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     );
   }
 
+  Widget _presentBody(Widget child) =>
+      widget.bodyPresentationBuilder?.call(context, child) ?? child;
+
   Widget _buildProjectedTable(BuildContext context) {
     final columnKeys = _columns.map((column) => column.key).toSet();
     _selectedFacetBuckets.removeWhere(
@@ -5059,17 +5069,20 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 表体选择区保持稳定，切分类时不撤掉 ListView 的 SelectionRegistrar。
   /// SDK 的行保活节点在祖先 registrar 变 null 后仍可能收到旧文本的 remove，
   /// 此时内部强制解引用会崩溃。禁用文字选择必须放在行保活节点下面。
-  Widget _maybeSelectionArea(Widget child) => UtenSelectionArea(
-    selectionKey: _textSelection.areaKey,
-    onSelectionChanged: _textSelection.onSelectionChanged,
-    // 2026-09-15 用户口径：表格自带右键行菜单时，只显示自家菜单。右键点到
-    // 可选文字上 SelectionArea 会弹框架默认「全选/复制」工具条与行菜单撞车
-    //（文字拖选/键盘复制不受影响，只静音右键工具条）。
-    contextMenuBuilder: widget.rowMenuBuilder == null
-        ? null
-        : (_, _) => const SizedBox.shrink(),
-    child: child,
-  );
+  Widget _maybeSelectionArea(Widget child) {
+    final area = UtenSelectionArea(
+      selectionKey: _textSelection.areaKey,
+      onSelectionChanged: _textSelection.onSelectionChanged,
+      // 2026-09-15 用户口径：表格自带右键行菜单时，只显示自家菜单。右键点到
+      // 可选文字上 SelectionArea 会弹框架默认「全选/复制」工具条与行菜单撞车
+      //（文字拖选/键盘复制不受影响，只静音右键工具条）。
+      contextMenuBuilder: widget.rowMenuBuilder == null
+          ? null
+          : (_, _) => const SizedBox.shrink(),
+      child: child,
+    );
+    return _presentBody(area);
+  }
 
   /// 显式退出文字选择时只隔离行内容，不改变 ListView 自动创建的
   /// SelectionKeepAlive 的祖先 registrar；行勾选不影响文字选择。

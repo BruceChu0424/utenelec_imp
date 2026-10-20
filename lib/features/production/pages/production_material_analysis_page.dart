@@ -16,6 +16,7 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_motion.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_search_bar.dart';
@@ -701,6 +702,8 @@ abstract class _MaterialAnalysisPageBase
   /// true = 按物料汇总缺料（跨产品聚合同一物料，展开看每条 BOM 路径）。
   /// 只是展示投影：勾选与下达仍落到各自的逐路径节点任务，不合并任务身份。
   bool _bomAggregateByMaterial = false;
+  final _bomLayoutPending = ValueNotifier<bool?>(null);
+  int _bomLayoutTransitionEpoch = 0;
   final Set<String> _expandedMaterialAggregates = {};
 
   /// 汇总视图 materialLineId → 所属聚合组（路径行取组内整分份额用）。
@@ -1325,6 +1328,8 @@ abstract class _MaterialAnalysisPageBase
 
   @override
   void dispose() {
+    _bomLayoutTransitionEpoch++;
+    _bomLayoutPending.dispose();
     for (final controller in _overproductionPercentInputs.values) {
       controller.dispose();
     }

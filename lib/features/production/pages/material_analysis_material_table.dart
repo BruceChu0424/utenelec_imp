@@ -1122,6 +1122,7 @@ abstract class _MaterialAnalysisMaterialTableState
         tableKey:
             'features.production.pages.material_analysis_material_table.MaterialAnalysisMaterialTableState._materialAnalysisTable.2',
         key: const Key('material-analysis-material-table'),
+        bodyPresentationBuilder: _materialViewTransitionBody,
         columns: _materialTableColumns(
           theme,
           identityMaxDepth: identityMaxDepth,

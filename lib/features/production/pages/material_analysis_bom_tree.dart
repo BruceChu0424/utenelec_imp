@@ -255,38 +255,36 @@ abstract class _MaterialAnalysisBomTreeState
       ),
       const SizedBox(width: UtenFilterRow.rowGap),
       Flexible(
-        child: UtenSegmentRow<bool>(
-          key: const Key('material-bom-layout-segments'),
-          showSelectedIcon: false,
-          emptySelectionAllowed: true,
-          segments: [
-            ButtonSegment(
-              value: false,
-              label: Text(
-                _l10n.materialByProduct,
-                key: const ValueKey('material-bom-layout-product'),
+        child: ValueListenableBuilder<bool?>(
+          valueListenable: _bomLayoutPending,
+          builder: (context, pending, _) => UtenSegmentRow<bool>(
+            key: const Key('material-bom-layout-segments'),
+            showSelectedIcon: false,
+            emptySelectionAllowed: true,
+            segments: [
+              ButtonSegment(
+                value: false,
+                label: Text(
+                  _l10n.materialByProduct,
+                  key: const ValueKey('material-bom-layout-product'),
+                ),
               ),
-            ),
-            ButtonSegment(
-              value: true,
-              label: Text(
-                _l10n.materialByMaterial,
-                key: const ValueKey('material-bom-layout-material'),
+              ButtonSegment(
+                value: true,
+                label: Text(
+                  _l10n.materialByMaterial,
+                  key: const ValueKey('material-bom-layout-material'),
+                ),
               ),
-            ),
-          ],
-          selected: {_bomAggregateByMaterial},
-          onSelectionChanged: (values) {
-            final aggregate = values.isEmpty
-                ? _bomAggregateByMaterial
-                : values.single;
-            // 汇总视图的进度桶是「已覆盖/部分覆盖/未覆盖」三档，与产品视图不同；
-            // 路线桶两边同键（BUY/SUBCONTRACT/MAKE/MIXED）可跨视图保留。
-            setState(() {
-              _bomAggregateByMaterial = aggregate;
-              _pruneMaterialTableFilters();
-            });
-          },
+            ],
+            selected: {pending ?? _bomAggregateByMaterial},
+            onSelectionChanged: (values) {
+              final aggregate = values.isEmpty
+                  ? _bomAggregateByMaterial
+                  : values.single;
+              unawaited(_switchBomLayout(aggregate));
+            },
+          ),
         ),
       ),
       const SizedBox(width: UtenFilterRow.rowGap),
@@ -296,6 +294,101 @@ abstract class _MaterialAnalysisBomTreeState
       ),
     ],
   );
+
+  Future<void> _switchBomLayout(bool aggregate) async {
+    if (_bomLayoutPending.value == null &&
+        aggregate == _bomAggregateByMaterial) {
+      return;
+    }
+    final epoch = ++_bomLayoutTransitionEpoch;
+    final analysis = _analysis;
+    final scope = _sessionScopeKey();
+    bool current() => mounted && epoch == _bomLayoutTransitionEpoch;
+    final fade = utenMotionDurationOf(
+      context,
+      const Duration(milliseconds: 120),
+    );
+    // Only this notifier changes initially: paint feedback without rebuilding
+    // the analysis projection or mounting another table/selection registrar.
+    _bomLayoutPending.value = aggregate;
+    try {
+      for (var frame = 0; frame < 2; frame++) {
+        WidgetsBinding.instance.scheduleFrame();
+        await WidgetsBinding.instance.endOfFrame;
+        if (!current()) return;
+      }
+      if (fade != Duration.zero) await Future<void>.delayed(fade);
+      if (!current() ||
+          !identical(analysis, _analysis) ||
+          scope != _sessionScopeKey()) {
+        return;
+      }
+      if (_bomAggregateByMaterial != aggregate) {
+        setState(() {
+          _bomAggregateByMaterial = aggregate;
+          // Preserve compatible filters while retiring this layout's buckets.
+          _pruneMaterialTableFilters();
+        });
+      }
+      // The replacement lays out under the painted local progress surface.
+      WidgetsBinding.instance.scheduleFrame();
+      await WidgetsBinding.instance.endOfFrame;
+    } finally {
+      if (current()) _bomLayoutPending.value = null;
+    }
+  }
+
+  Widget _materialViewTransitionBody(BuildContext context, Widget body) =>
+      ValueListenableBuilder<bool?>(
+        valueListenable: _bomLayoutPending,
+        child: body,
+        builder: (context, pending, child) => UtenMotion(
+          duration: Duration(milliseconds: pending == null ? 150 : 120),
+          builder: (context, duration) => Stack(
+            children: [
+              IgnorePointer(
+                ignoring: pending != null,
+                child: AnimatedOpacity(
+                  key: const Key('material-view-switch-opacity'),
+                  opacity: pending == null ? 1 : 0,
+                  duration: duration,
+                  curve: Curves.easeOut,
+                  child: child,
+                ),
+              ),
+              if (pending != null)
+                Positioned.fill(
+                  child: Center(
+                    child: Semantics(
+                      key: const Key('material-view-switch-progress'),
+                      liveRegion: true,
+                      child: Material(
+                        color: Theme.of(context).colorScheme.surfaceContainer,
+                        borderRadius: BorderRadius.circular(UtenRadius.control),
+                        child: Padding(
+                          padding: const EdgeInsets.all(UtenSpacing.s16),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const SizedBox.square(
+                                dimension: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                              const SizedBox(width: UtenSpacing.s12),
+                              Text(_l10n.commonLoading),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
 
   Widget _bomToolbarGroupDivider(ThemeData theme, {Key? key}) => Container(
     key: key,

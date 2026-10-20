@@ -1,5 +1,11 @@
 part of 'production_material_analysis_page.dart';
 
+/// Assertion-only counters for bounded presentation-work regressions.
+@visibleForTesting
+int debugMaterialTableEligibilityEvaluations = 0;
+@visibleForTesting
+int debugMaterialIdentityTextMeasures = 0;
+
 enum _MaterialTableRowKind {
   product,
   material,
@@ -317,6 +323,36 @@ abstract class _MaterialAnalysisMaterialTableState
   @override
   bool _preparationCanAppend(_MaterialGroup group) =>
       _tableGroupIssued(group) && _preparationCanIssue(group);
+
+  /// Only the three read-only bucket totals use this cache scope. Every local
+  /// quantity/selection estimate, aggregate draft, assignment, route edit and
+  /// authorization change invalidates it; layout and expansion do not. Submit
+  /// and row-action guards do not read these totals or their cache.
+  @override
+  Object get _preparationPresentationScope {
+    final permissions = _permissions.toList()..sort();
+    final routes = [
+      for (final entry in _routeDraft.entries)
+        '${entry.key}:${entry.value.wireName}',
+    ]..sort();
+    final dirty = _dirtyRouteGroups.toList()..sort();
+    return (
+      _analysis,
+      _analysis?.allowedActions.join(','),
+      _sessionScopeKey(),
+      permissions.join(','),
+      _tableCascadePreview,
+      _tableEstimateTick.value,
+      _tableAssignmentTick.value,
+      _draftBudget._revision,
+      _aggregateTable._revision,
+      _materialTableLocalFacetRevision(),
+      routes.join(','),
+      dirty.join(','),
+      _preparationUseAvailableQty,
+      _preparationApproveChoice,
+    );
+  }
 
   @override
   bool _materialAggregateOwnsProductLine(String lineId) {
@@ -836,8 +872,13 @@ abstract class _MaterialAnalysisMaterialTableState
 
   /// 勾选只表示下单/追加意图；供应方式另行自动保存。
   /// 汇总和原行共用办理资格，缺少可编辑指派不隐藏选择入口。
-  List<_MaterialGroup> _materialRowSelectableGroups(_MaterialTableRow row) =>
-      _aggregateTable.selectableGroups(row);
+  List<_MaterialGroup> _materialRowSelectableGroups(_MaterialTableRow row) {
+    assert(() {
+      debugMaterialTableEligibilityEvaluations++;
+      return true;
+    }());
+    return _aggregateTable.selectableGroups(row);
+  }
 
   /// 勾选框本身的权限门：四把锁的并集，缺哪一把只是少一个可做的动作，
   /// 不该整列没有勾选框。
@@ -855,13 +896,6 @@ abstract class _MaterialAnalysisMaterialTableState
       if (reason != null) return reason;
     }
     return '只读上下文行，不参与下单';
-  }
-
-  bool _materialRowSelected(_MaterialTableRow row) {
-    if (!_canSelectMaterialRows) return false;
-    final groups = _materialRowSelectableGroups(row);
-    return groups.isNotEmpty &&
-        groups.every((group) => _selectedMaterialGroupKeys.contains(group.key));
   }
 
   void _changeMaterialTableSelection(
@@ -1021,6 +1055,63 @@ abstract class _MaterialAnalysisMaterialTableState
     // 整棵行集直接交给表体(ListView.builder 懒建，滚到哪建到哪)，客户端分页
     // 与翻页条退役——上百上千行也只有一条连续滚动。
     final rows = _materialTableRows(analysis);
+    final identityMaxDepth = rows.fold<int>(
+      0,
+      (depth, row) => math.max(depth, row.depth),
+    );
+    // A table widget is one presentation snapshot. Width growth and viewport
+    // layout rebuild its header repeatedly without changing these facts. Share
+    // eligibility between header tri-state, row checkboxes and selected IDs;
+    // command handlers still evaluate their live guards directly.
+    final eligibility = Map<_MaterialTableRow, List<_MaterialGroup>>.identity();
+    Object? eligibilityScope;
+    Object currentEligibilityScope() {
+      final session = ref.read(sessionProvider);
+      return (
+        _analysis,
+        _tableCascadePreview,
+        _tableEstimateTick.value,
+        _tableAssignmentTick.value,
+        _aggregateTable._revision,
+        session.status,
+        session.user?.id,
+        session.actor?.id,
+        session.impersonationReadOnly,
+        session.user?.businessResetGeneration,
+        _canRoute,
+        _canNotify,
+        _canGenerate,
+        _canCrossReallocate,
+        _canOverSupply,
+      );
+    }
+
+    List<_MaterialGroup> selectableGroups(_MaterialTableRow row) {
+      final scope = currentEligibilityScope();
+      if (eligibilityScope != scope) {
+        eligibilityScope = scope;
+        eligibility.clear();
+      }
+      if (!_canSelectMaterialRows) return const [];
+      return eligibility.putIfAbsent(
+        row,
+        () => _materialRowSelectableGroups(row),
+      );
+    }
+
+    bool? selectionState(_MaterialTableRow row) {
+      final groups = selectableGroups(row);
+      if (groups.isEmpty) return false;
+      final selected = groups
+          .where((group) => _selectedMaterialGroupKeys.contains(group.key))
+          .length;
+      return selected == 0
+          ? false
+          : selected == groups.length
+          ? true
+          : null;
+    }
+
     return KeyedSubtree(
       key: const Key('material-analysis-material-table-region'),
       child: MasterDataTableView<_MaterialTableRow>(
@@ -1031,7 +1122,10 @@ abstract class _MaterialAnalysisMaterialTableState
         tableKey:
             'features.production.pages.material_analysis_material_table.MaterialAnalysisMaterialTableState._materialAnalysisTable.2',
         key: const Key('material-analysis-material-table'),
-        columns: _materialTableColumns(theme),
+        columns: _materialTableColumns(
+          theme,
+          identityMaxDepth: identityMaxDepth,
+        ),
         // 视图与结果入口位于表头，批量下单位于悬浮操作区。
         onFullscreenChanged: (fullscreen) =>
             setState(() => _bomTableFullscreen = fullscreen),
@@ -1042,13 +1136,9 @@ abstract class _MaterialAnalysisMaterialTableState
         ],
         selectable: true,
         preserveSelectionOnContextMenu: true,
-        selectionStateOf: _aggregateTable.selectionState,
+        selectionStateOf: selectionState,
         // 只对具备下单/追加能力的原行或汇总行开放勾选。
-        idOf: (row) =>
-            _canSelectMaterialRows &&
-                _materialRowSelectableGroups(row).isNotEmpty
-            ? row.key
-            : null,
+        idOf: (row) => selectableGroups(row).isNotEmpty ? row.key : null,
         // idOf 为 null 的行组件默认渲染灰勾选框：已确认未改动的行明确「无勾选框」
         // （勾了也不计数），其余不可勾选行（产品行/只读上下文/不可改路线）保持既有灰框，
         // 并把「为什么勾不了」的人话原因挂到灰框悬浮——零解释的灰框只会让人反复点、
@@ -1098,8 +1188,9 @@ abstract class _MaterialAnalysisMaterialTableState
         },
         selectedIds: {
           ..._selectedMaterialGroupKeys,
-          for (final row in rows)
-            if (_materialRowSelected(row)) row.key,
+          if (_selectedMaterialGroupKeys.isNotEmpty)
+            for (final row in rows)
+              if (selectionState(row) == true) row.key,
         },
         onSelectedIdsChanged: (selected) =>
             _changeMaterialTableSelection(rows, selected),
@@ -1604,6 +1695,7 @@ abstract class _MaterialAnalysisMaterialTableState
   List<MasterColumnDef<_MaterialTableRow>> _materialTableColumns(
     ThemeData theme, {
     bool revealAssignmentKeys = true,
+    int identityMaxDepth = 0,
   }) => [
     // 2026-10-08 用户口径「状态或进度列默认放最前」：进度 / 待办 列移到首位
     //（推翻 2026-10-06 批次「工序长文本进度列不动」的判定）。
@@ -1653,8 +1745,24 @@ abstract class _MaterialAnalysisMaterialTableState
           ? _l10n.materialIdentityByMaterial
           : _l10n.materialIdentityByProduct,
       width: 360 + UtenTreeTableCell.toggleExtentOf(context) - 48,
-      minimumWidthOf: _materialTableIdentityMinimumWidth,
+      minimumWidthOf: (context) => math.max(
+        72,
+        UtenTreeTableCell.prefixWidthOf(
+              context,
+              depth: identityMaxDepth,
+              indent: 24,
+            ) +
+            UtenSpacing.s24 +
+            UtenSpacing.s24,
+      ),
       value: _materialTableIdentityText,
+      measureValueOf: (row) =>
+          '${row.depth}|${_materialTableIdentityText(row) ?? ''}',
+      measureWidthOf: _materialTableIdentityMeasureWidth,
+      measureWidthScope: (
+        Directionality.of(context),
+        UtenTreeTableCell.toggleExtentOf(context),
+      ),
       cellBuilderHandlesSemantics: true,
       // 树列自己吃满整行高度：同一行里只要别的列换了两行，这一格若被竖向
       // 居中收缩，层级竖线就接不到上下行（2026-09-15）。
@@ -2026,56 +2134,35 @@ abstract class _MaterialAnalysisMaterialTableState
     return breakdown == null ? name : '$name · $breakdown';
   }
 
-  Object? _identityWidthScope;
-  List<_MaterialTableRow>? _identityWidthRows;
-  double _identityWidth = 72;
-  final Map<String, double> _identityTextWidths = {};
-
-  double _materialTableIdentityMinimumWidth(BuildContext context) {
-    final analysis = _analysis;
-    if (analysis == null) return 72;
+  /// Rich tree cells use the shared table's bounded measurement batches. A
+  /// minimum-width callback must never synchronously shape the entire BOM.
+  double _materialTableIdentityMeasureWidth(
+    BuildContext context,
+    _MaterialTableRow row,
+    TextScaler scaler,
+  ) {
     final style = Theme.of(
       context,
     ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700);
-    final scaler = MediaQuery.textScalerOf(context);
     final direction = Directionality.of(context);
-    final scope = (
-      analysis.analysisId,
-      _sessionScopeKey(),
-      style,
-      scaler,
-      direction,
-    );
-    final rows = _materialTableRows(analysis);
-    if (_identityWidthScope == scope && identical(_identityWidthRows, rows)) {
-      return _identityWidth;
-    }
-    if (_identityWidthScope != scope) {
-      _identityTextWidths.clear();
-    }
-    _identityWidthScope = scope;
-    _identityWidthRows = rows;
-    var widest = 72.0;
     final painter = TextPainter(textDirection: direction, textScaler: scaler);
-    for (final row in rows) {
-      final text = _materialTableIdentityText(row) ?? '';
-      final textWidth = _identityTextWidths.putIfAbsent(text, () {
-        painter.text = TextSpan(text: text, style: style);
-        painter.layout();
-        return painter.width;
-      });
-      final prefix = UtenTreeTableCell.prefixWidthOf(
-        context,
-        depth: row.depth,
-        indent: 24,
-      );
-      widest = math.max(
-        widest,
-        textWidth + prefix + UtenSpacing.s24 + UtenSpacing.s8,
-      );
-    }
+    assert(() {
+      debugMaterialIdentityTextMeasures++;
+      return true;
+    }());
+    painter.text = TextSpan(
+      text: _materialTableIdentityText(row),
+      style: style,
+    );
+    painter.layout();
+    final width =
+        painter.width +
+        UtenTreeTableCell.prefixWidthOf(context, depth: row.depth, indent: 24) +
+        UtenSpacing.s8;
     painter.dispose();
-    return _identityWidth = math.min(widest, 480);
+    // The shared fitter adds the ordinary cell insets and applies the same
+    // 480px cap. Long names retain the complete tree-cell tooltip/semantics.
+    return width;
   }
 
   // 取值优先级沿用 2026-09-14 身份格副行的口径：编号/颜色以产品行自身为准

@@ -91,6 +91,8 @@ class MasterColumnDef<T> {
     required this.width,
     required this.value,
     this.measureValueOf,
+    this.measureWidthOf,
+    this.measureWidthScope,
     this.minimumWidthOf,
     this.cellHorizontalPaddingOf,
     this.type = 'text',
@@ -154,6 +156,16 @@ class MasterColumnDef<T> {
   /// Uses the existing per-frame measurement budget; value/exactValueOf remain
   /// authoritative for filtering, sorting, semantics and export.
   final String? Function(T item)? measureValueOf;
+
+  /// Optional rich-cell geometry, evaluated within the same bounded width
+  /// batch as plain text. [measureValueOf] is its stable presentation cache key;
+  /// business values, filtering, exact quantities and export never call this.
+  final double Function(BuildContext context, T item, TextScaler textScaler)?
+  measureWidthOf;
+
+  /// Font, direction or control geometry used by [measureWidthOf]. Replace
+  /// this value when its inherited geometry changes, even for the same rows.
+  final Object? measureWidthScope;
 
   /// 表头说明（2026-09-06）：非空时列头标签后渲染 ⓘ——桌面悬停出 Tooltip、
   /// 点击（含手机）弹出说明小窗。用于业务口径晦涩的列（如物料分析的数量列）
@@ -2275,6 +2287,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 保证字号变大列也跟着变宽（与 floating_capsule_nav_bar 同款 textScaler 处理）。
   TextScaler? _lastScale;
   List<double> _lastColumnMinimums = const [];
+  List<Object> _lastRichWidthScopes = const [];
+  TextStyle? _lastRichWidthStyle;
+  int _richWidthStyleRevision = 0;
   List<double> _lastColumnPadding = const [];
 
   /// 当前选中（单击高亮）的行：滚动不刷新数据故高亮常驻，翻页/重查换对象后自然失效。
@@ -3291,6 +3306,40 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // 必须显式带上同一 textScaler 才量得准（否则按 1.0 量偏窄，大字号下要拖才显示全）。
     final textScaler = MediaQuery.textScalerOf(context);
     final scale = textScaler;
+    final hasRichWidth = _columns.any(
+      (column) => column.measureWidthOf != null,
+    );
+    if (hasRichWidth) {
+      final style = Theme.of(context).textTheme.bodyMedium;
+      if (style != _lastRichWidthStyle &&
+          (style == null ||
+              _lastRichWidthStyle == null ||
+              _lastRichWidthStyle!.compareTo(style) ==
+                  RenderComparison.layout)) {
+        _richWidthStyleRevision++;
+      }
+      _lastRichWidthStyle = style;
+    }
+    final richContext = hasRichWidth
+        ? (
+            _richWidthStyleRevision,
+            Directionality.of(context),
+            UtenControlMetrics.minimumHitExtent(context, desktop: 48),
+          )
+        : null;
+    final richScopes = [
+      for (final column in _columns)
+        (
+          column.measureWidthOf,
+          column.measureWidthScope,
+          column.measureWidthOf == null ? null : richContext,
+        ),
+    ];
+    if (!listEquals(richScopes, _lastRichWidthScopes)) {
+      _lastRichWidthScopes = richScopes;
+      _widthsDirty = true;
+      _textMeasures.clear();
+    }
     final minimums = [
       for (final column in _columns) _minimumColumnWidth(context, column),
     ];
@@ -3384,7 +3433,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     for (var r = 0; r < pool.length; r++) {
       final text = (def.measureValueOf ?? def.value)(pool[r]) ?? '';
       if (text.isEmpty || !measure.seen.add(text)) continue;
-      final width = _measureText(text, measureStyle, textScaler);
+      final width =
+          def.measureWidthOf?.call(context, pool[r], textScaler) ??
+          _measureText(text, measureStyle, textScaler);
       if (width > measure.body) measure.body = width;
     }
     return measure;

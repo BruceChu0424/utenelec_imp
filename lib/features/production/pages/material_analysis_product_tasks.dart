@@ -1,6 +1,9 @@
 part of 'production_material_analysis_page.dart';
 
 @visibleForTesting
+int debugMaterialBucketSummaryEvaluations = 0;
+
+@visibleForTesting
 class MaterialAnalysisMakeChildDetails extends StatelessWidget {
   const MaterialAnalysisMakeChildDetails({
     super.key,
@@ -170,6 +173,7 @@ abstract class _MaterialAnalysisProductTasksState
   );
   bool _preparationCanAppend(_MaterialGroup group);
   bool _preparationCanIssue(_MaterialGroup group);
+  Object get _preparationPresentationScope;
   Future<void> _submitPreparationGroups(
     List<_MaterialGroup> groups, {
     required bool append,
@@ -690,6 +694,7 @@ abstract class _MaterialAnalysisProductTasksState
     final byId = {
       for (final product in analysis.products) product.analysisLineId: product,
     };
+    final summaryScope = _preparationPresentationScope;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -748,7 +753,10 @@ abstract class _MaterialAnalysisProductTasksState
               runSpacing: UtenSpacing.s12,
               children: [
                 for (final bucket in _AnalysisBucket.values)
-                  SizedBox(width: cardWidth, child: _bucketEntryTile(bucket)),
+                  SizedBox(
+                    width: cardWidth,
+                    child: _bucketEntryTile(bucket, summaryScope),
+                  ),
               ],
             );
           },
@@ -758,15 +766,46 @@ abstract class _MaterialAnalysisProductTasksState
   }
 
   /// 进行中与未下达分别计数；部分下达任务可同时出现在两侧。
-  Widget _bucketEntryTile(_AnalysisBucket bucket) {
+  final _bucketSummaries =
+      <
+        _AnalysisBucket,
+        ({
+          Object scope,
+          List<_BucketRow> rows,
+          int issued,
+          int inProgress,
+          int pending,
+        })
+      >{};
+
+  Widget _bucketEntryTile(_AnalysisBucket bucket, Object summaryScope) {
     final rows = _bucketRows(bucket);
-    final issued = rows.where((row) => _bucketRowHasIssued(row, bucket)).length;
-    final inProgress = rows
-        .where((row) => _bucketRowInProgress(row, bucket))
-        .length;
-    final pending = rows
-        .where((row) => _bucketRowHasPending(row, bucket))
-        .length;
+    var summary = _bucketSummaries[bucket];
+    if (summary == null ||
+        summary.scope != summaryScope ||
+        !identical(summary.rows, rows)) {
+      assert(() {
+        debugMaterialBucketSummaryEvaluations += rows.length;
+        return true;
+      }());
+      var issued = 0, inProgress = 0, pending = 0;
+      for (final row in rows) {
+        if (_bucketRowHasIssued(row, bucket)) issued++;
+        if (_bucketRowInProgress(row, bucket)) inProgress++;
+        if (_bucketRowHasPending(row, bucket)) pending++;
+      }
+      summary = (
+        scope: summaryScope,
+        rows: rows,
+        issued: issued,
+        inProgress: inProgress,
+        pending: pending,
+      );
+      _bucketSummaries[bucket] = summary;
+    }
+    final issued = summary.issued;
+    final inProgress = summary.inProgress;
+    final pending = summary.pending;
     return MaterialPreparationRouteCard(
       routeId: bucket.name,
       title: bucket.countLabel(_l10n),

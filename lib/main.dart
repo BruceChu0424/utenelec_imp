@@ -25,9 +25,16 @@ void _warmUpPrimaryFont() {
   unawaited(loader.load());
 }
 
-Future<void> main() async {
+Future<void> main() => bootstrapUtenApp();
+
+/// Shares the exact app startup with local diagnostic entrypoints.
+/// Normal startup keeps the production pointer-aware binding.
+@visibleForTesting
+Future<void> bootstrapUtenApp({
+  WidgetsFlutterBinding Function()? bindingFactory,
+}) async {
   // 在任何插件/默认 binding 初始化之前启用整体缩放的滚轮坐标换算。
-  UtenWidgetsFlutterBinding();
+  (bindingFactory ?? UtenWidgetsFlutterBinding.new)();
   _warmUpPrimaryFont();
 
   // Web 端屏蔽浏览器自带右键菜单：表格行右击要弹 App 自绘的上下文菜单

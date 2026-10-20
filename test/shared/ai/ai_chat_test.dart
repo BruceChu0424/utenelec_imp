@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:dio/dio.dart';
 import 'package:crypto/crypto.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
@@ -45,6 +47,9 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 import '../../support/filter_segment_tap.dart';
+import '../../support/semantics_wire_graph.dart';
+
+part 'ai_launcher_semantics_cases.dart';
 
 const _p1 = '39a3c832-b0e5-4fe2-8040-7cb4247741b9';
 const _p2 = '5f0c7a3e-2b1d-4c8e-9a6f-0d1e2f3a4b5c';
@@ -57,7 +62,9 @@ final _en = AppLocalizationsEn();
 final _serverCards = <String, Map<String, dynamic>>{};
 
 void main() {
+  SemanticsWireTestBinding();
   setUp(_serverCards.clear);
+  launcherSemanticsCases();
 
   test(
     'cards fail closed: unknown types, ids, handlers and routes are dropped',

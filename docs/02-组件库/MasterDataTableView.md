@@ -50,7 +50,7 @@
   [UtenCollapsingHeaderScrollView](UtenCollapsingHeaderScrollView.md) 内（联动折叠页）按
   `UtenInnerScrollActiveScope` 门控——外层收头部阶段（表格未置顶）隐藏，进入表体内滚后
   显示（thumb 与表体内容对应）；独立表格（不在该容器内）查不到 scope，维持常显。
-- **列宽自动适配**（默认）：每列默认宽度 = 该列最宽数据（表头 + 单元格 TextPainter 测量，取样前 100 行 + 内边距/图标富余），进表即撑满、不被截断；超长文本（如备注）封顶 480px + 省略号，可再拖宽。
+- **列宽自动适配**（默认）：测量表头与已加载行的内容宽度，加上内边距和图标空间；按每批 256 个单元格的预算在帧间推进，最终覆盖完整已加载行集，不固定截取前 30/100 行。超长文本（如备注）封顶 480px + 省略号，可再拖宽。
 - **列宽手动拖拽**：拖任一列右边界 8px 命中区改宽/改窄（桌面悬停显 resize 光标）；已手动拖过的列在数据刷新时保留用户宽度，其余列按新数据重新适配。
 - **表头设置 + 拖出隐藏 + 长按排序（共用 UtenTableColumnKit，2026-09-05 起）**：「表头设置 x/y」深绿
   实心按钮点开**按钮处锚定的浮层勾选列表**（全选行/勾选显隐/拖拽排序把手，点弹层外关闭）；按住表头纵向
@@ -460,13 +460,28 @@ return MasterDataTableView<Map<String, dynamic>>(
 豁免只影响按钮与空态说明里的「N 个表头筛选生效」计数，不影响过滤本身。
 回归用例：`test/features/basic_data/master_table_external_filter_keys_test.dart`。
 
-## 列宽量宽缓存(2026-09-23，ADR-108)
+## 列宽量宽缓存(2026-09-23，ADR-108；2026-10-20 补充富内容预算)
 
-- 自动列宽按**列 key** 缓存量宽结果: 表头只量一次, 单元格值按字符串去重, 只量前 30 行(原 100 行)。
+- 自动列宽按**列 key** 缓存量宽结果：表头只量一次，单元格值按字符串去重。
+  首批依据列数分配 256 个单元格预算，后续批次在帧间继续，最终测量完整已加载行集。
+  行本身仍由 `ListView.builder` 懒建，完整量宽不要求一次性挂载全部行。
+- `MasterColumnDef.measureValueOf(row)` 只提供呈现量宽文本。富内容还可传
+  `measureWidthOf(context, row, textScaler)`，返回内容的实际宽度（如加粗树名称与缩进/展开按钮的合计），
+  表格继续添加通用单元格内边距；该回调与普通文本共用上述 256 单元格预算。
+  `measureValueOf` 此时也作为去重键，应包含影响行几何的事实，例如树深度和完整名称。
+  `minimumWidthOf` 仅提供控件的最低可用宽度，不得在其中对整份数据同步逐项 `TextPainter.layout`。
+- `measureWidthScope` 标识富内容依赖的额外排版几何；值变化或替换 `measureWidthOf` 回调时，旧量宽缓存失效。
+  组件同时跟踪实际正文 `TextStyle` 的布局变化、文字缩放、方向与触控目标尺寸，
+  包括 Theme 字体动画期间的中间排版；单纯颜色等 paint 变化不重新量宽。
+  调用方的 scope 也应只包含几何事实，不应把颜色动画作为字体版本。
+- 两个测宽回调与 `measureWidthScope` 均只用于呈现。`value`、`exactValueOf` 仍是文本和精确数值来源，
+  筛选、排序、复制、语义与导出不调用富内容量宽回调，也不使用其去重文本代替业务值。
 - 数据刷新(翻页/筛选/排序/静默重拉, 包括同一份数据换了新的 List 实例)**不在当帧重量**: 帧后只补量新出现的值,
   超出当前宽度才加宽, **列宽只增不减**(静默刷新时列宽不跳); 手工拖过的列不动。
-- 换一套列(列 key 序列变化)或字号档变化时才全量重算。`shrinkWrap` 设计不变。
-- 测试钩子 `debugMasterTableMeasureTextCount`; 回归: `test/master_data_table_view_width_cache_test.dart`。
+- 换一套列（列 key 序列变化）、字号、呈现下限或富内容几何变化时按上述批次重算。`shrinkWrap` 设计不变。
+- 测试钩子 `debugMasterTableMeasureTextCount`；回归：`test/master_data_table_view_width_cache_test.dart`、
+  `test/master_data_table_view_rich_width_budget_test.dart`；物料页 500 产品/2000 行与 1.0/1.6 缩放见
+  `test/features/production/pages/material_analysis_presentation_work_cases.dart`。
 
 ## 2026-09-25 单号列统一三件套
 

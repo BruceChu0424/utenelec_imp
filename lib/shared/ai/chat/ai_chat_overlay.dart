@@ -1725,94 +1725,101 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                 curve: Curves.easeOutCubic,
                 left: launcherCenter.dx - launcherHalf,
                 top: launcherCenter.dy - launcherHalf,
-                child: Semantics(
-                  label: _t('open'),
-                  customSemanticsActions: {
-                    CustomSemanticsAction(label: _t('moveUp')): () => move(72),
-                    CustomSemanticsAction(label: _t('moveDown')): () =>
-                        move(-72),
-                  },
-                  child: GestureDetector(
-                    onPanStart: (details) => setState(() {
-                      _launcherDragging = true;
-                      _launcherCenter ??= defaultLauncherCenter;
-                    }),
-                    onPanUpdate: (details) => setState(() {
-                      _launcherDockEdge = 0;
-                      _launcherCenter = clampLauncherCenter(
-                        (_launcherCenter ?? defaultLauncherCenter) +
-                            details.delta,
-                      );
-                    }),
-                    onPanEnd: (_) => setState(() {
-                      _launcherDragging = false;
-                      final center = _launcherCenter ?? defaultLauncherCenter;
-                      final nearRight =
-                          constraints.maxWidth - center.dx <= launcherDockRange;
-                      final nearLeft = center.dx <= launcherDockRange;
-                      if (nearRight || nearLeft) {
-                        _launcherDockEdge = nearRight ? 1 : -1;
-                      } else {
+                // The draggable launcher is one control. Keep its native FAB
+                // role/tap/focus and movement actions on one emitted node;
+                // separate parent/child semantics can expose a transient child
+                // id while the underlying selected page is being replaced.
+                child: MergeSemantics(
+                  child: Semantics(
+                    customSemanticsActions: {
+                      CustomSemanticsAction(label: _t('moveUp')): () =>
+                          move(-72),
+                      CustomSemanticsAction(label: _t('moveDown')): () =>
+                          move(72),
+                    },
+                    child: GestureDetector(
+                      onPanStart: (details) => setState(() {
+                        _launcherDragging = true;
+                        _launcherCenter ??= defaultLauncherCenter;
+                      }),
+                      onPanUpdate: (details) => setState(() {
+                        _launcherDockEdge = 0;
                         _launcherCenter = clampLauncherCenter(
-                          Offset(
-                            center.dx.clamp(
-                              launcherHalf,
-                              constraints.maxWidth - launcherHalf,
-                            ),
-                            center.dy,
-                          ),
+                          (_launcherCenter ?? defaultLauncherCenter) +
+                              details.delta,
                         );
-                      }
-                    }),
-                    onPanCancel: () =>
-                        setState(() => _launcherDragging = false),
-                    child: AnimatedOpacity(
-                      duration: const Duration(milliseconds: 150),
-                      opacity: docked ? 0.55 : 1.0,
-                      child: SizedBox.square(
-                        dimension: launcherSize,
-                        child: FloatingActionButton(
-                          key: const ValueKey('ai-chat-launcher'),
-                          heroTag: null,
-                          tooltip: _t('open'),
-                          shape: const CircleBorder(),
-                          // Deep teal with a white icon in light mode; the
-                          // former primaryContainer teal100 circle was too
-                          // faint.
-                          backgroundColor: colors.primary,
-                          foregroundColor: colors.onPrimary,
-                          onPressed: () {
-                            if (_launcherDockEdge != 0) {
-                              // Docked: tap pulls the circle back inside first,
-                              // then the chat opens as usual.
-                              final edge = _launcherDockEdge;
-                              setState(() {
-                                _launcherDockEdge = 0;
-                                _launcherCenter = settleLauncherCenter(
-                                  Offset(
-                                    edge > 0
-                                        ? constraints.maxWidth -
-                                              launcherMargin -
-                                              launcherHalf
-                                        : launcherMargin + launcherHalf,
-                                    (_launcherCenter ?? defaultLauncherCenter)
-                                        .dy,
-                                  ),
-                                );
-                              });
-                            }
-                            setState(() => _open = true);
-                            if (_capabilities?.usable == true) {
-                              unawaited(_restoreConversation());
-                            }
-                            _loadPageSuggestions();
-                            // ADR-163: the recent-operations list follows the
-                            // panel, like the page suggestions.
-                            _loadMemorySuggestions();
-                            _scheduleAttachPreview();
-                            _scrollToEnd();
-                          },
-                          child: const Icon(Icons.auto_awesome_outlined),
+                      }),
+                      onPanEnd: (_) => setState(() {
+                        _launcherDragging = false;
+                        final center = _launcherCenter ?? defaultLauncherCenter;
+                        final nearRight =
+                            constraints.maxWidth - center.dx <=
+                            launcherDockRange;
+                        final nearLeft = center.dx <= launcherDockRange;
+                        if (nearRight || nearLeft) {
+                          _launcherDockEdge = nearRight ? 1 : -1;
+                        } else {
+                          _launcherCenter = clampLauncherCenter(
+                            Offset(
+                              center.dx.clamp(
+                                launcherHalf,
+                                constraints.maxWidth - launcherHalf,
+                              ),
+                              center.dy,
+                            ),
+                          );
+                        }
+                      }),
+                      onPanCancel: () =>
+                          setState(() => _launcherDragging = false),
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 150),
+                        opacity: docked ? 0.55 : 1.0,
+                        child: SizedBox.square(
+                          dimension: launcherSize,
+                          child: FloatingActionButton(
+                            key: const ValueKey('ai-chat-launcher'),
+                            heroTag: null,
+                            tooltip: _t('open'),
+                            shape: const CircleBorder(),
+                            // Deep teal with a white icon in light mode; the
+                            // former primaryContainer teal100 circle was too
+                            // faint.
+                            backgroundColor: colors.primary,
+                            foregroundColor: colors.onPrimary,
+                            onPressed: () {
+                              if (_launcherDockEdge != 0) {
+                                // Docked: tap pulls the circle back inside first,
+                                // then the chat opens as usual.
+                                final edge = _launcherDockEdge;
+                                setState(() {
+                                  _launcherDockEdge = 0;
+                                  _launcherCenter = settleLauncherCenter(
+                                    Offset(
+                                      edge > 0
+                                          ? constraints.maxWidth -
+                                                launcherMargin -
+                                                launcherHalf
+                                          : launcherMargin + launcherHalf,
+                                      (_launcherCenter ?? defaultLauncherCenter)
+                                          .dy,
+                                    ),
+                                  );
+                                });
+                              }
+                              setState(() => _open = true);
+                              if (_capabilities?.usable == true) {
+                                unawaited(_restoreConversation());
+                              }
+                              _loadPageSuggestions();
+                              // ADR-163: the recent-operations list follows the
+                              // panel, like the page suggestions.
+                              _loadMemorySuggestions();
+                              _scheduleAttachPreview();
+                              _scrollToEnd();
+                            },
+                            child: const Icon(Icons.auto_awesome_outlined),
+                          ),
                         ),
                       ),
                     ),

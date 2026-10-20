@@ -42,6 +42,7 @@ part 'material_analysis_quantity_presentation_cases.dart';
 part 'material_analysis_shared_source_cases.dart';
 part 'material_analysis_order_authority_cases.dart';
 part 'material_analysis_unified_handling_cases.dart';
+part 'material_analysis_presentation_work_cases.dart';
 
 const _permissions = {
   Perm.productionMaterialAnalysisView,
@@ -258,6 +259,7 @@ bool _framedRed(WidgetTester tester, Finder field) {
 }
 
 void main() {
+  materialAnalysisPresentationWorkCases();
   materialSharedSourceCases();
   materialUnifiedHandlingCases();
   materialOrderAuthorityCases();

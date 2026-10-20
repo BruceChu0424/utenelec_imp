@@ -189,6 +189,10 @@ class _PreparationOrderPageState extends State<_PreparationOrderPage> {
                   columns: _host._materialTableColumns(
                     theme,
                     revealAssignmentKeys: false,
+                    identityMaxDepth: shown.fold<int>(
+                      0,
+                      (depth, row) => math.max(depth, row.depth),
+                    ),
                   ),
                   items: shown,
                   facets: const {},

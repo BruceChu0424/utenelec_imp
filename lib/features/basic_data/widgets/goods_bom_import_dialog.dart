@@ -28,11 +28,17 @@ Future<void> showGoodsBomImport(
   WidgetRef ref, {
   required String goodsId,
   required VoidCallback onImported,
+  bool Function()? canWrite,
+  bool Function()? canReplace,
 }) {
   return showDialog<void>(
     context: context,
-    builder: (_) =>
-        _GoodsBomImportDialog(goodsId: goodsId, onImported: onImported),
+    builder: (_) => _GoodsBomImportDialog(
+      goodsId: goodsId,
+      onImported: onImported,
+      canWrite: canWrite,
+      canReplace: canReplace,
+    ),
   );
 }
 
@@ -40,10 +46,14 @@ class _GoodsBomImportDialog extends ConsumerStatefulWidget {
   const _GoodsBomImportDialog({
     required this.goodsId,
     required this.onImported,
+    this.canWrite,
+    this.canReplace,
   });
 
   final String goodsId;
   final VoidCallback onImported;
+  final bool Function()? canWrite;
+  final bool Function()? canReplace;
 
   @override
   ConsumerState<_GoodsBomImportDialog> createState() =>
@@ -60,6 +70,12 @@ class _GoodsBomImportDialogState extends ConsumerState<_GoodsBomImportDialog> {
   bool _commitUncertain = false;
 
   BomImportMode _mode = BomImportMode.replace;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.canReplace?.call() == false) _mode = BomImportMode.append;
+  }
 
   void _beginDetection() {
     setState(() {
@@ -127,6 +143,11 @@ class _GoodsBomImportDialogState extends ConsumerState<_GoodsBomImportDialog> {
   }
 
   Future<void> _commit() async {
+    if (widget.canWrite?.call() == false ||
+        (_mode == BomImportMode.replace &&
+            widget.canReplace?.call() == false)) {
+      return;
+    }
     final bytes = _bytes;
     final fingerprint = _report?.stateFingerprint;
     if (_detecting ||
@@ -374,18 +395,21 @@ class _GoodsBomImportDialogState extends ConsumerState<_GoodsBomImportDialog> {
           RadioGroup<BomImportMode>(
             groupValue: _mode,
             onChanged: (v) {
-              if (!_commitUncertain) {
+              if (!_commitUncertain &&
+                  (v != BomImportMode.replace ||
+                      widget.canReplace?.call() != false)) {
                 setState(() => _mode = v ?? BomImportMode.replace);
               }
             },
-            child: const Column(
+            child: Column(
               children: [
-                RadioListTile<BomImportMode>(
-                  value: BomImportMode.replace,
-                  title: Text('按文件为准（替换各级现有组件）'), // TODO(l10n): 补 arb
-                  dense: true,
-                ),
-                RadioListTile<BomImportMode>(
+                if (widget.canReplace?.call() != false)
+                  const RadioListTile<BomImportMode>(
+                    value: BomImportMode.replace,
+                    title: Text('按文件为准（替换各级现有组件）'), // TODO(l10n): 补 arb
+                    dense: true,
+                  ),
+                const RadioListTile<BomImportMode>(
                   value: BomImportMode.append,
                   title: Text('在现有组件后追加'), // TODO(l10n): 补 arb
                   dense: true,

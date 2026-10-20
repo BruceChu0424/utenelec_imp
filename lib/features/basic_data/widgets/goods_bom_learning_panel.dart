@@ -46,6 +46,8 @@ Future<void> showGoodsBomLearning(
   String goodsId, {
   VoidCallback? onRelearned,
   bool showMaterialEvidence = false,
+  bool Function()? canWrite,
+  Future<bool> Function()? beforeRelearn,
 }) => showUtenAdaptivePanel<void>(
   context: context,
   // 设计/真实/实产单耗与累计、不良列一屏放下(基准画布 1920)，不用横向滚动。
@@ -54,6 +56,8 @@ Future<void> showGoodsBomLearning(
     goodsId: goodsId,
     onRelearned: onRelearned,
     showMaterialEvidence: showMaterialEvidence,
+    canWrite: canWrite,
+    beforeRelearn: beforeRelearn,
   ),
 );
 
@@ -122,6 +126,8 @@ class GoodsBomLearningPanel extends ConsumerStatefulWidget {
     required this.goodsId,
     this.onRelearned,
     this.showMaterialEvidence = false,
+    this.canWrite,
+    this.beforeRelearn,
   });
 
   final String goodsId;
@@ -129,6 +135,8 @@ class GoodsBomLearningPanel extends ConsumerStatefulWidget {
   /// 重学成功后通知调用方(组装信息页签据此重读真实使用数量)。
   final VoidCallback? onRelearned;
   final bool showMaterialEvidence;
+  final bool Function()? canWrite;
+  final Future<bool> Function()? beforeRelearn;
 
   @override
   ConsumerState<GoodsBomLearningPanel> createState() =>
@@ -159,6 +167,9 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
   }
 
   Future<void> _relearn(GoodsBomLearningComponent row) async {
+    if (widget.canWrite?.call() == false) return;
+    if (widget.beforeRelearn != null && !await widget.beforeRelearn!()) return;
+    if (!mounted || widget.canWrite?.call() == false) return;
     final l10n = AppLocalizations.of(context);
     final name = row.componentName ?? row.componentCode ?? '';
     final ok = await UtenDialog.show(
@@ -168,7 +179,7 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
       confirmLabel: l10n.commonConfirm,
       cancelLabel: l10n.commonCancel,
     );
-    if (ok != true || !mounted) return;
+    if (ok != true || !mounted || widget.canWrite?.call() == false) return;
     setState(() => _relearning = row.componentGoodsId);
     try {
       final latest = await context.guardAction(
@@ -332,7 +343,8 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
               columns: _columns(
                 l10n,
                 outputUnit: outputUnit,
-                canRelearn: summary.canRelearn,
+                canRelearn:
+                    summary.canRelearn && widget.canWrite?.call() != false,
               ),
             ),
           ),

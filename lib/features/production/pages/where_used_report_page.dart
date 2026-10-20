@@ -10,6 +10,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_export_button.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_reference_picker_field.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -18,6 +20,7 @@ import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_segment_row.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -39,6 +42,7 @@ import '../../report/shared/report_date_range.dart';
 import '../../report/shared/report_sort.dart';
 import '../widgets/where_used_material_picker.dart';
 import '../widgets/where_used_product_detail_dialog.dart';
+import '../widgets/where_used_replacement_dialog.dart';
 
 enum _WhereUsedSource {
   all('all', '全部已知关系', '当前 BOM 与所有历史证据'),
@@ -129,6 +133,8 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
   int _loadGeneration = 0;
   bool _loading = false;
   bool _openingDetail = false;
+  bool _replacing = false;
+  Set<String> _selectedProductIds = {};
   String? _loadError;
   ModalRoute<dynamic>? _filterRoute;
   ModalRoute<dynamic>? _basisRoute;
@@ -241,6 +247,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
     _loadedQuery = null;
     _loadError = null;
     _loading = false;
+    _selectedProductIds = {};
   }
 
   static _TraceCandidate _materialCandidate(GoodsListItem material) => (
@@ -1218,7 +1225,88 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
     });
   }
 
+  Map<String, dynamic> _exportQuery(_WhereUsedQuerySnapshot query) => {
+    'materialGoodsId': query.material.id,
+    'source': query.source.apiValue,
+    if (query.from != null) 'dateFrom': _formatDate(query.from!),
+    if (query.to != null) 'dateTo': _formatDate(query.to!),
+    ...sortQueryParams(query.sortKey, query.sortAscending),
+  };
+
+  Future<UtenExportSelection?> _selectExportFormat() async {
+    final query = _loadedQuery;
+    if (query == null) return null;
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final l10n = AppLocalizations.of(context);
+    final format = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => UtenAlertDialog(
+        title: Text(l10n.whereUsedExportFiltered),
+        content: Text(l10n.whereUsedExportDescription),
+        actions: [
+          UtenButton(
+            type: UtenButtonType.ghost,
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(l10n.commonCancel),
+          ),
+          UtenButton(
+            onPressed: () => Navigator.of(dialogContext).pop('xlsx'),
+            child: Text(l10n.whereUsedExportExcel),
+          ),
+          UtenButton(
+            onPressed: () => Navigator.of(dialogContext).pop('pdf'),
+            child: Text(l10n.whereUsedExportPdf),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || format == null) return null;
+    return UtenExportSelection(
+      bodyParams: {'format': format},
+      extension: format,
+      stillCurrent: () =>
+          mounted &&
+          identical(query, _loadedQuery) &&
+          boundary == ref.read(sensitiveReadBoundaryProvider),
+    );
+  }
+
+  Future<void> _replaceSelected() async {
+    final query = _loadedQuery;
+    if (_replacing ||
+        _loading ||
+        query == null ||
+        _selectedProductIds.isEmpty ||
+        !ref.read(currentPermissionsProvider).contains(Perm.goodsBomEdit)) {
+      return;
+    }
+    final epoch = _readEpoch;
+    setState(() => _replacing = true);
+    try {
+      final applied = await showWhereUsedReplacementDialog(
+        context: context,
+        material: query.material,
+        productIds: _selectedProductIds,
+      );
+      if (!mounted || epoch != _readEpoch) return;
+      if (applied == null) {
+        setState(() => _selectedProductIds = {});
+        await _load();
+        return;
+      }
+      if (!applied) return;
+      setState(() => _selectedProductIds = {});
+      context.appSuccess(
+        AppLocalizations.of(context).whereUsedReplacementSuccess,
+      );
+      await _load();
+    } finally {
+      if (mounted) setState(() => _replacing = false);
+    }
+  }
+
   Widget _buildTable(ReportData data) {
+    final l10n = AppLocalizations.of(context);
     final columns = data.columns
         .map(
           (column) => MasterColumnDef<Map<String, dynamic>>(
@@ -1229,41 +1317,12 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
             sortable: isSortableReportType(column.type),
             value: (row) => formatReportCell(column, row),
             defaultVisible: !const {
-              'goodsCode',
-              'colorName',
               'categoryName',
               'executionSegmentCount',
               'legacyPlanCount',
               'subcontractOrderCount',
               'subcontractIssueCount',
             }.contains(column.key),
-            cellBuilder: column.key == 'goodsName'
-                ? (context, row) => Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: UtenSpacing.s4,
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(formatReportCell(column, row) ?? '—'),
-                        Text(
-                          [row['goodsCode'], row['colorName']]
-                              .where(
-                                (value) => value != null && '$value'.isNotEmpty,
-                              )
-                              .join(' · '),
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSurfaceVariant,
-                              ),
-                        ),
-                      ],
-                    ),
-                  )
-                : null,
           ),
         )
         .toList();
@@ -1276,10 +1335,42 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
       primary: true,
       columns: columns,
+      requiredLeadingColumnKeys: const ['goodsName', 'goodsCode', 'colorName'],
+      selectable: true,
+      idOf: (row) =>
+          row['__currentBom'] == true ? row['__productId']?.toString() : null,
+      selectedIds: _selectedProductIds,
+      onSelectedIdsChanged: (ids) => setState(() => _selectedProductIds = ids),
+      unselectableLeadingBuilder: (context, row) => Tooltip(
+        message: l10n.whereUsedHistoryNotReplaceable,
+        child: const Icon(Icons.history_rounded, size: 18),
+      ),
+      batchActionsBuilder: (context, ids) => [
+        if (ref.watch(currentPermissionsProvider).contains(Perm.goodsBomEdit))
+          UtenButton(
+            key: const Key('where-used-replace'),
+            onPressed: ids.isEmpty || _loading || _replacing
+                ? null
+                : _replaceSelected,
+            child: Text(l10n.whereUsedReplaceAction),
+          ),
+      ],
       toolbarLeadingActions: [
         Text(_source.label, style: Theme.of(context).textTheme.bodySmall),
       ],
       toolbarActions: [
+        if (_loadedQuery != null)
+          UtenExportButton(
+            key: const Key('where-used-export'),
+            endpoint: '/production/reports/where-used/export',
+            report: 'where-used',
+            queryParams: _exportQuery(_loadedQuery!),
+            requiredPermission: Perm.productionWhereUsedExport,
+            enabled: !_loading,
+            label: l10n.whereUsedExportFiltered,
+            filename: l10n.whereUsedExportFilename,
+            prepareExport: _selectExportFormat,
+          ),
         Text(
           '共 ${data.total} 个成品/半成品',
           style: Theme.of(context).textTheme.bodySmall,

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
@@ -67,6 +69,7 @@ void main() {
       ProviderScope(
         key: UniqueKey(),
         overrides: [
+          apiClientProvider.overrideWithValue(ApiClient(Dio())),
           sessionProvider.overrideWith(_Reviewer.new),
           performanceProvider.overrideWith(_Lite.new),
           currentPermissionsProvider.overrideWithValue({}),

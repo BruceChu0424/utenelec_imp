@@ -35,6 +35,33 @@ Future<void> _open(WidgetTester tester) async {
 void main() {
   const label = 'context region';
 
+  testWidgets('$label selects the row before computing action availability', (
+    tester,
+  ) async {
+    var selected = false;
+    var copied = false;
+    await tester.pumpWidget(
+      _app(
+        UtenContextMenuRegion(
+          onMenuOpening: () => selected = true,
+          entriesBuilder: () => [
+            UtenMenuItem(
+              label: 'Copy selected row',
+              enabled: selected,
+              onTap: () => copied = true,
+            ),
+          ],
+          child: const Center(child: Text('Source row')),
+        ),
+      ),
+    );
+    await _open(tester);
+    await tester.tap(find.text('Copy selected row'));
+    await tester.pumpAndSettle();
+    expect(selected, isTrue);
+    expect(copied, isTrue);
+  });
+
   testWidgets('$label cleans exactly once after asynchronous action', (
     tester,
   ) async {

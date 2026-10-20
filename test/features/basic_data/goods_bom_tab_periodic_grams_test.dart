@@ -14,12 +14,13 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_reference_picker_field.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_error.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
+import '../../support/goods_bom_edit_test_api.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
@@ -134,9 +135,16 @@ Future<void> _pumpTab(
 }) async {
   await tester.binding.setSurfaceSize(const Size(1600, 900));
   addTearDown(() => tester.binding.setSurfaceSize(null));
+  final api = GoodsBomEditTestApi(repo)
+    ..previewFailureOnce = repo.updateFailureOnce;
+  repo.updateFailureOnce = null;
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        apiClientProvider.overrideWithValue(api),
+        localServerReachableProvider.overrideWith(
+          (ref) => LocalServerReachabilityNotifier(null, web: true),
+        ),
         sensitiveReadBoundaryProvider.overrideWith(
           (ref) => boundarySource == null
               ? _bomBoundary()
@@ -174,6 +182,7 @@ Future<void> _pumpTab(
     ),
   );
   await tester.pumpAndSettle();
+  await enterBomEdit(tester);
 }
 
 SensitiveReadBoundary _bomBoundary({
@@ -188,7 +197,7 @@ SensitiveReadBoundary _bomBoundary({
 Future<void> _openEditForPc(WidgetTester tester) async {
   await tester.tap(find.text('PC E-15'));
   await tester.pump();
-  await tester.tap(find.widgetWithText(UtenButton, '编辑'));
+  await tester.tap(find.text('PC E-15'));
   await tester.pumpAndSettle();
 }
 
@@ -233,7 +242,7 @@ void main() {
       expect(old.isCurrent!(), isFalse);
       old.onSelected(staleCandidate);
       await tester.pumpAndSettle();
-      expect(find.text('已选组件 0'), findsOneWidget);
+      expect(find.byKey(const Key('bom-component-lookup')), findsNothing);
       expect(find.text('旧边界组件'), findsNothing);
       expect(repo.pastes, isEmpty);
     });
@@ -284,7 +293,7 @@ void main() {
     held.complete([staleCandidate]);
     await tester.pumpAndSettle();
     expect(find.text('旧边界组件'), findsNothing);
-    expect(find.text('已选组件 0'), findsOneWidget);
+    expect(find.byKey(const Key('bom-component-lookup')), findsNothing);
     expect(repo.pastes, isEmpty);
   });
 
@@ -407,6 +416,7 @@ void main() {
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
 
+    await saveBomEdit(tester);
     expect(repo.updates, hasLength(1));
     final body = repo.updates.single;
     expect(body['unitWeightGrams'], 11);
@@ -439,6 +449,7 @@ void main() {
     await tester.tap(find.byKey(const Key('goods-bom-unusual-weight-confirm')));
     await tester.pumpAndSettle();
 
+    await saveBomEdit(tester);
     expect(repo.updates, hasLength(1));
     expect(repo.updates.single['unitWeightGrams'], 0.05);
     expect(repo.updates.single['confirmUnusualWeight'], isTrue);
@@ -483,6 +494,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await saveBomEdit(tester);
     expect(repo.pastes, hasLength(1));
     final item = repo.pastes.single.single;
     expect(item['componentGoodsId'], 'abs');
@@ -545,11 +557,15 @@ void main() {
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
 
+    await tester.tap(find.byKey(const Key('goods-bom-edit-mode')));
+    await tester.pumpAndSettle();
     expect(repo.updates, isEmpty);
     expect(find.textContaining('要同时用两种料吗 (双色 / 双料)'), findsOneWidget);
     await tester.tap(find.byKey(const Key('periodic-bom-confirm')));
     await tester.pumpAndSettle();
 
+    await tester.tap(find.byKey(const Key('goods-bom-save-confirm')));
+    await tester.pumpAndSettle();
     expect(repo.updates, hasLength(1));
     expect(repo.updates.single['confirmSecondPeriodicMaterial'], isTrue);
     expect(repo.updates.single['unitWeightGrams'], 11);
@@ -561,7 +577,7 @@ void main() {
     await _pumpTab(tester, repo);
     await tester.tap(find.text('吨包树脂'));
     await tester.pump();
-    await tester.tap(find.widgetWithText(UtenButton, '编辑'));
+    await tester.tap(find.text('吨包树脂'));
     await tester.pumpAndSettle();
 
     expect(find.widgetWithText(TextField, '单个重量 (吨)'), findsOneWidget);
@@ -580,6 +596,7 @@ void main() {
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
 
+    await saveBomEdit(tester);
     expect(repo.updates, hasLength(1));
     final body = repo.updates.single;
     expect(body['qty'], closeTo(0.00003, 1e-12));

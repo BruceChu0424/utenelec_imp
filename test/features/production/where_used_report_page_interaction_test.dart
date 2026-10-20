@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'dart:io' show Directory;
 
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -20,6 +21,7 @@ import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/basic_data/pages/goods_detail_page.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_repository.dart';
@@ -27,6 +29,7 @@ import 'package:uten_imp/features/production/pages/where_used_report_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/platform_tables/platform_table_layout.dart';
 import 'package:uten_imp/shared/stock_ledger/widgets/goods_production_trace_view.dart';
 import '../../support/filter_segment_tap.dart';
 import '../../support/audit_screenshot_support.dart';
@@ -37,6 +40,22 @@ const _materialCategoryId = '44444444-4444-4444-8444-444444444444';
 const _productId = '22222222-2222-4222-8222-222222222222';
 const _captureUi = bool.fromEnvironment('UTEN_CAPTURE_UI');
 const _captureBoundary = Key('where-used-capture');
+const _reportTableKey =
+    'features.production.pages.where_used_report_page.WhereUsedReportPageState._buildTable.1';
+
+class _SeedReportLayout extends PlatformTableLayoutNotifier {
+  _SeedReportLayout(super.tableKey, this.seed);
+  final PlatformTableLayout seed;
+  @override
+  PlatformTableLayout build() {
+    super.build();
+    return seed;
+  }
+
+  @override
+  void persist() {}
+}
+
 const _actualPermissions = {
   Perm.productionWhereUsedView,
   Perm.stockView,
@@ -67,6 +86,10 @@ class _WhereUsedApi extends ApiClient {
   final Object? traceError;
   final bool richActual;
   final bool includeAlternativeMaterial;
+  final replacementRequests = <({String path, Map<String, dynamic> body})>[];
+  int exportCalls = 0;
+  Completer<void>? replacementPreviewGate;
+  bool loseFirstReplacementCommitResponse = false;
   Completer<void>? reportGate;
   final materialGates = <String, Completer<void>>{};
   final int unattributedDemandCount;
@@ -80,6 +103,63 @@ class _WhereUsedApi extends ApiClient {
   final materialQueries = <Map<String, dynamic>>[];
   Map<String, dynamic>? lastMaterialQuery;
   Map<String, dynamic>? lastQuery;
+
+  @override
+  Future<Uint8List> downloadBytes(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? query,
+  }) async {
+    exportCalls++;
+    throw StateError('unexpected export before confirmation');
+  }
+
+  @override
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? query,
+  }) async {
+    replacementRequests.add((
+      path: path,
+      body: Map<String, dynamic>.from(body! as Map),
+    ));
+    if (path.endsWith('/replacement/preview')) {
+      await replacementPreviewGate?.future;
+      return {
+        'previewToken': 'replacement-preview',
+        'edges': [
+          {'id': 'edge-1'},
+        ],
+        'affectedProducts': [
+          {
+            'id': _productId,
+            'code': 'CP-001',
+            'name': '墙壁插座成品',
+            'selected': true,
+          },
+          {
+            'id': 'shared-product',
+            'code': 'CP-002',
+            'name': '共用组件的其他产品',
+            'selected': false,
+          },
+        ],
+      };
+    }
+    if (path.endsWith('/replacement/commit')) {
+      if (loseFirstReplacementCommitResponse &&
+          replacementRequests
+                  .where((request) => request.path.endsWith('/commit'))
+                  .length ==
+              1) {
+        throw NetworkTimeoutException();
+      }
+      return {'replacedEdges': 1, 'affectedProducts': 2};
+    }
+    throw StateError('unexpected POST $path');
+  }
 
   @override
   Future<Map<String, dynamic>> get(
@@ -253,6 +333,7 @@ class _WhereUsedApi extends ApiClient {
       'columns': const [
         {'key': 'goodsCode', 'label': '产成品编号', 'type': 'text', 'width': 130},
         {'key': 'goodsName', 'label': '产成品名称', 'type': 'text', 'width': 200},
+        {'key': 'colorName', 'label': '颜色', 'type': 'text', 'width': 100},
         {'key': 'spec', 'label': '规格', 'type': 'text', 'width': 130},
         {'key': 'categoryName', 'label': '分类', 'type': 'text', 'width': 110},
         {'key': 'sources', 'label': '关系来源', 'type': 'text', 'width': 230},
@@ -267,6 +348,7 @@ class _WhereUsedApi extends ApiClient {
           '__goodsStatus': '启用',
           'goodsCode': 'CP-001',
           'goodsName': alternateMaterial ? '新物料关联产品' : '墙壁插座成品',
+          'colorName': '白色',
           'spec': '10A',
           'categoryName': '插座',
           'sources': '当前 BOM · 新生产需求 · 旧生产快照 · 委外历史证据',
@@ -455,11 +537,16 @@ Future<void> _pumpSimplePage(
   double textScale = 1,
   Set<String>? permissions,
   ThemeData? theme,
+  PlatformTableLayout? tableLayout,
 }) async {
   _configureView(tester, size);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        if (tableLayout != null)
+          platformTableLayoutProvider(
+            _reportTableKey,
+          ).overrideWith(() => _SeedReportLayout(_reportTableKey, tableLayout)),
         apiClientProvider.overrideWith((ref) => ref.watch(_liveApi) ?? api),
         if (permissions != null)
           _livePermissions.overrideWith((ref) => permissions),
@@ -537,6 +624,25 @@ Finder _subjectField() => find.descendant(
   matching: find.byType(TextField),
 );
 
+Future<void> _chooseReplacement(WidgetTester tester) async {
+  await tester.tap(find.byKey(const Key('where-used-replacement-picker')));
+  await tester.pumpAndSettle();
+  await tester.enterText(
+    find.byKey(const Key('uten-goods-picker-search')),
+    'MAT-002',
+  );
+  await tester.pump(const Duration(milliseconds: 301));
+  await tester.pumpAndSettle();
+  final picker = find.byKey(const Key('goods-picker-sheet'));
+  final row = find.byKey(
+    const ValueKey('goods-picker-item-$_alternateMaterialId'),
+  );
+  await tester.tap(find.descendant(of: row, matching: find.text('MAT-002')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.descendant(of: picker, matching: find.text('确定')));
+  await tester.pumpAndSettle();
+}
+
 Finder _subjectPickerButton() => find.descendant(
   of: find.byKey(const Key('where-used-query-subject')),
   matching: find.widgetWithText(TextButton, '选择'),
@@ -559,6 +665,304 @@ Finder _suggestion(String type, String id) =>
     find.byKey(ValueKey(('where-used-suggestion', type, id)));
 
 void main() {
+  testWidgets(
+    'lost replacement commit response retries the same token without another preview',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final api = _WhereUsedApi(includeAlternativeMaterial: true)
+        ..loseFirstReplacementCommitResponse = true;
+      await _pumpSimplePage(
+        tester,
+        api,
+        size: const Size(1440, 900),
+        permissions: {Perm.productionWhereUsedView, Perm.goodsBomEdit},
+      );
+      await _selectMaterial(tester);
+      await tester.tap(find.text('墙壁插座成品'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('where-used-replace')));
+      await tester.pumpAndSettle();
+      await _chooseReplacement(tester);
+      await tester.tap(find.byKey(const Key('where-used-replacement-confirm')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('where-used-replacement-confirm')));
+      await tester.pumpAndSettle();
+      expect(find.text('重试本次提交'), findsOneWidget);
+      expect(find.textContaining('提交结果暂未确认'), findsOneWidget);
+      expect(
+        tester
+            .widget<UtenButton>(
+              find.byKey(const Key('where-used-replacement-picker')),
+            )
+            .onPressed,
+        isNull,
+      );
+      expect(api.replacementRequests, hasLength(2));
+      final submitted = api.replacementRequests.last.body;
+      await tester.tap(find.text('重试本次提交'));
+      await tester.pumpAndSettle();
+      expect(
+        api.replacementRequests
+            .map((request) => request.path.split('/').last)
+            .toList(),
+        ['preview', 'commit', 'commit'],
+      );
+      expect(api.replacementRequests.last.body, submitted);
+      expect(
+        find.byKey(const Key('where-used-replacement-dialog')),
+        findsNothing,
+      );
+      expect(api.reportCalls, 2);
+    },
+  );
+
+  testWidgets(
+    'filter export offers Excel or PDF and cancellation never downloads',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final api = _WhereUsedApi();
+      await _pumpSimplePage(
+        tester,
+        api,
+        size: const Size(1440, 900),
+        permissions: {
+          Perm.productionWhereUsedView,
+          Perm.productionWhereUsedExport,
+        },
+      );
+      await _selectMaterial(tester);
+      await tester.tap(find.text('导出筛选结果'));
+      await tester.pumpAndSettle();
+      expect(find.text('Excel'), findsOneWidget);
+      expect(find.text('PDF'), findsOneWidget);
+      expect(find.textContaining('组件、筛选条件、操作员、导出时间'), findsOneWidget);
+      await tester.tap(find.text('PDF'));
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsNWidgets(2));
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(api.exportCalls, 0);
+      expect(api.replacementRequests, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'result identity has separate columns and edit and export permissions are independent',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final api = _WhereUsedApi();
+      await _pumpSimplePage(
+        tester,
+        api,
+        size: const Size(1440, 900),
+        tableLayout: const PlatformTableLayout(
+          order: [
+            'spec',
+            'goodsName',
+            'goodsCode',
+            'colorName',
+            'categoryName',
+            'sources',
+            'bomRelation',
+          ],
+          hidden: {'goodsCode', 'colorName', 'categoryName'},
+          widths: {'spec': 188},
+        ),
+      );
+      await _selectMaterial(tester);
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        find.byType(MasterDataTableView<Map<String, dynamic>>),
+      );
+      expect(table.requiredLeadingColumnKeys, [
+        'goodsName',
+        'goodsCode',
+        'colorName',
+      ]);
+      for (final key in table.requiredLeadingColumnKeys) {
+        final column = table.columns.singleWhere((column) => column.key == key);
+        expect(column.defaultVisible, isTrue);
+        expect(
+          column.cellBuilder,
+          isNull,
+          reason: 'one information item per column',
+        );
+      }
+      expect(table.selectable, isTrue);
+      expect(find.text('产成品编号').hitTestable(), findsOneWidget);
+      expect(find.text('颜色').hitTestable(), findsOneWidget);
+      expect(
+        find.text('分类'),
+        findsNothing,
+        reason: 'other personal hidden columns stay hidden',
+      );
+      final owner = ProviderScope.containerOf(
+        tester.element(find.byType(WhereUsedReportPage)),
+      );
+      expect(
+        owner.read(platformTableLayoutProvider(_reportTableKey)).widths['spec'],
+        188,
+      );
+      expect(
+        table.idOf!({'__productId': 'history', '__currentBom': false}),
+        isNull,
+      );
+      await tester.tap(find.text('墙壁插座成品'));
+      await tester.pumpAndSettle();
+      expect(find.text('已选 1 项'), findsOneWidget);
+      expect(find.byKey(const Key('where-used-replace')), findsNothing);
+      expect(find.text('导出筛选结果'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'replacement previews shared impact and writes only after the second confirmation',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final api = _WhereUsedApi(includeAlternativeMaterial: true);
+      await _pumpSimplePage(
+        tester,
+        api,
+        size: const Size(1440, 900),
+        permissions: {Perm.productionWhereUsedView, Perm.goodsBomEdit},
+      );
+      await _selectMaterial(tester);
+      await tester.tap(find.text('墙壁插座成品'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('where-used-replace')));
+      await tester.pumpAndSettle();
+      await _chooseReplacement(tester);
+      await tester.tap(find.byKey(const Key('where-used-replacement-confirm')));
+      await tester.pumpAndSettle();
+      expect(api.replacementRequests, hasLength(1));
+      expect(
+        api.replacementRequests.single.body,
+        containsPair('materialGoodsId', _materialId),
+      );
+      expect(
+        api.replacementRequests.single.body,
+        containsPair('replacementGoodsId', _alternateMaterialId),
+      );
+      expect(
+        api.replacementRequests.single.body,
+        containsPair('productIds', [_productId]),
+      );
+      expect(find.textContaining('其中 1 个为共用组件关联的其他产品'), findsOneWidget);
+      expect(find.textContaining('共用组件的其他产品 / CP-002'), findsOneWidget);
+      expect(find.text('确认替换并同步'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('where-used-replacement-confirm')));
+      await tester.pumpAndSettle();
+      expect(api.replacementRequests, hasLength(2));
+      expect(api.replacementRequests.last.body, {
+        'previewToken': 'replacement-preview',
+      });
+      expect(
+        find.byKey(const Key('where-used-replacement-dialog')),
+        findsNothing,
+      );
+      expect(api.reportCalls, 2);
+    },
+  );
+
+  testWidgets(
+    'permission change closes a pending replacement and discards its late preview',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final api = _WhereUsedApi(includeAlternativeMaterial: true);
+      api.replacementPreviewGate = Completer<void>();
+      await _pumpSimplePage(tester, api, size: const Size(1440, 900));
+      final owner = ProviderScope.containerOf(
+        tester.element(find.byType(WhereUsedReportPage)),
+      );
+      owner.read(_livePermissions.notifier).state = {
+        Perm.productionWhereUsedView,
+        Perm.goodsBomEdit,
+      };
+      await tester.pumpAndSettle();
+      await _selectMaterial(tester);
+      await tester.tap(find.text('墙壁插座成品'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('where-used-replace')));
+      await tester.pumpAndSettle();
+      await _chooseReplacement(tester);
+      await tester.tap(find.byKey(const Key('where-used-replacement-confirm')));
+      await tester.pump();
+      owner.read(_livePermissions.notifier).state = {
+        Perm.productionWhereUsedView,
+      };
+      await tester.pumpAndSettle();
+      api.replacementPreviewGate!.complete();
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('where-used-replacement-dialog')),
+        findsNothing,
+      );
+      expect(api.replacementRequests, hasLength(1));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final scenario in [
+    (size: const Size(390, 844), scale: 2.0, dark: false),
+    (size: const Size(844, 390), scale: 1.5, dark: true),
+    (size: const Size(1440, 900), scale: 1.0, dark: true),
+  ]) {
+    testWidgets(
+      'replacement remains usable at ${scenario.size} scale ${scenario.scale}',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        if (_captureUi) await loadAuditScreenshotFonts(tester);
+        final api = _WhereUsedApi(includeAlternativeMaterial: true);
+        await _pumpSimplePage(
+          tester,
+          api,
+          size: scenario.size,
+          textScale: scenario.scale,
+          theme: scenario.dark ? buildDarkTheme() : buildLightTheme(),
+          permissions: {Perm.productionWhereUsedView, Perm.goodsBomEdit},
+        );
+        await _selectMaterial(tester);
+        final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+          find.byType(MasterDataTableView<Map<String, dynamic>>),
+        );
+        table.onSelectedIdsChanged!({_productId});
+        await tester.pumpAndSettle();
+        if (scenario.size.width < 900) {
+          final outer = find
+              .descendant(
+                of: find.byType(UtenCollapsingHeaderScrollView),
+                matching: find.byType(Scrollable),
+              )
+              .first;
+          final position = tester.state<ScrollableState>(outer).position;
+          position.jumpTo(position.maxScrollExtent);
+          await tester.pumpAndSettle();
+        }
+        await tester.tap(find.byKey(const Key('where-used-replace')));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('where-used-replacement-dialog')),
+          findsOneWidget,
+        );
+        expect(find.text('当前组件'), findsOneWidget);
+        expect(find.text('替换成'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        if (_captureUi) {
+          await expectLater(
+            find.byKey(_captureBoundary),
+            matchesGoldenFile(
+              Directory.current.uri.resolve(
+                '.local-artifacts/where-used-replacement-${scenario.size.width.toInt()}x${scenario.size.height.toInt()}.png',
+              ),
+            ),
+          );
+        }
+        await tester.tap(find.text('取消'));
+        await tester.pumpAndSettle();
+        expect(api.replacementRequests, isEmpty);
+      },
+    );
+  }
+
   testWidgets(
     'capture where-used lookup toolbar, suggestions and selection panel',
     (tester) async {
@@ -1435,7 +1839,7 @@ void main() {
       await tester.tap(find.byKey(const Key('where-used-open-bom')));
       await tester.pumpAndSettle();
       // 整页详情 (tab=bom 组装信息)：BOM 表拉取并显示空态。
-      expect(find.text('暂无组装信息，点右下「添加组件」录入'), findsOneWidget);
+      expect(find.text('暂无组装信息'), findsOneWidget);
       expect(bom.listCalls, [_productId]);
 
       // 返回反查页（等价于详情页返回键 pop）。

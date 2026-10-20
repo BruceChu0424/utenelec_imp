@@ -24,7 +24,7 @@ import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.SharedEntityManagerCreator;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
@@ -37,7 +37,7 @@ import static org.assertj.core.api.Assertions.*;
 /** Exact value-engine contract tests. Approval evidence and physical writes are explicit test adapters. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class InventoryPositionPostgresTest {
-    private static final PostgreSQLContainer<?> DB=new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer DB=new PostgreSQLContainer("postgres:16-alpine");
     private static final UUID USER=UUID.randomUUID(),EMPLOYEE=UUID.randomUUID(),WAREHOUSE=UUID.randomUUID();
     private static JdbcTemplate db;
     private static EntityManagerFactory emf;

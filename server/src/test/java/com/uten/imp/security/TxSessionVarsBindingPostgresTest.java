@@ -15,7 +15,7 @@ import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.Map;
 import java.util.Optional;
@@ -28,7 +28,7 @@ import static org.mockito.Mockito.*;
 /** Real driver/ORM proof: audit fields share one statement and remain transaction local. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class TxSessionVarsBindingPostgresTest {
-    private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
+    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine")
             .withDatabaseName("audit_binding").withUsername("test").withPassword(UUID.randomUUID().toString());
     private static EntityManagerFactory factory;
 

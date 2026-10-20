@@ -9,7 +9,7 @@ import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class PreplanFutureTransferForwardMigrationPostgresTest {
     @Test void oldCancellationKeepsItsWholeRestorationAndNewWritesRequireAnExplicitSplit() {
-        try(var postgres=new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try(var postgres=new PostgreSQLContainer("postgres:16-alpine")) {
             postgres.start();
             var config=Flyway.configure().dataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword())
                     .locations("classpath:db/migration");

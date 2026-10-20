@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.nio.file.Files;
@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Independent old-SQL oracle, including unusual intermediate states seen by deferred guards. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class ExecutionMaterialCoverageEquivalencePostgresTest {
-    private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine");
     private static JdbcTemplate jdbc;
     private static String coverageSql;
     private final UUID segment = UUID.randomUUID();

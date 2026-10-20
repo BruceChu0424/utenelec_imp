@@ -13,7 +13,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -30,7 +30,7 @@ import static org.mockito.Mockito.when;
 /** Executes real report SQL using complete migrated table shapes, not business-guard substitutes. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class FinanceLegacyOpeningStatementPostgresTest {
-    static final PostgreSQLContainer<?> PG=new PostgreSQLContainer<>("postgres:16-alpine");
+    static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine");
     static final String[] TABLES={"currencies","clients","suppliers","ar_ap_ledger","legacy_finance_import_sources",
             "finance_receipts","finance_receipt_lines","finance_payments","finance_payment_lines",
             "customer_open_item_offset_batches","customer_open_item_offsets","supplier_open_item_offsets"};

@@ -15,7 +15,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -34,7 +34,7 @@ import static org.mockito.Mockito.*;
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class WorkshopArrivalWatermarkPostgresTest {
-    private static final PostgreSQLContainer<?> DB = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer DB = new PostgreSQLContainer("postgres:16-alpine");
     private static JdbcTemplate jdbc;
     private static TransactionTemplate tx;
 

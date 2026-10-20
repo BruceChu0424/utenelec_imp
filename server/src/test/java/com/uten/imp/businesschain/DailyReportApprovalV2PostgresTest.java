@@ -33,7 +33,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.sql.Connection;
@@ -67,7 +67,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
         "uten.bootstrap.admin-password=HarnessAdminPass-1!"})
 @AutoConfigureMockMvc(print = MockMvcPrint.NONE)
 class DailyReportApprovalV2PostgresTest {
-    private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
+    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine")
             .withDatabaseName("uten_review_v2").withUsername("uten").withPassword("uten");
     private static final UUID LEGACY_ACTOR = UUID.randomUUID(), LEGACY_REPORT = UUID.randomUUID();
     private static String legacyXmin;

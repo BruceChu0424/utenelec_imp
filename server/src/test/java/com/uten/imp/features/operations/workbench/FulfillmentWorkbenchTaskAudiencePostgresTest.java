@@ -12,7 +12,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.HashMap;
 import java.util.List;
@@ -28,7 +28,7 @@ import static org.mockito.Mockito.*;
 /** Executes the task count SQL against PostgreSQL, including the decision-only branch and owner filtering. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class FulfillmentWorkbenchTaskAudiencePostgresTest {
-    private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine");
     private static JdbcTemplate jdbc;
     private static NamedParameterJdbcTemplate named;
     private final UUID own = UUID.randomUUID(), handover = UUID.randomUUID(), readOnly = UUID.randomUUID();

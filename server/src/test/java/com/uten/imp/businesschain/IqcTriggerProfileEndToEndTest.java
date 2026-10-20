@@ -25,7 +25,7 @@ import org.springframework.test.context.TestExecutionListeners;
 import org.springframework.test.context.support.AbstractTestExecutionListener;
 import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
 import org.springframework.transaction.PlatformTransactionManager;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -57,7 +57,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @TestExecutionListeners(listeners = IqcTriggerProfileEndToEndTest.Cleanup.class,
         mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class IqcTriggerProfileEndToEndTest {
-    private static final PostgreSQLContainer<?> DATABASE = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer DATABASE = new PostgreSQLContainer("postgres:16-alpine");
     private static final String SECRET = UUID.randomUUID() + "-" + UUID.randomUUID();
     private static final int LINES = 7;
     private static final BigDecimal PASSED = new BigDecimal("0.75");

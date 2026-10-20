@@ -9,7 +9,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.mockito.ArgumentCaptor;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.sql.Connection;
@@ -34,7 +34,7 @@ import static org.mockito.Mockito.when;
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class SubcontractComponentCustodyProjectionPostgresTest {
-    private static final PostgreSQLContainer<?> DB = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer DB = new PostgreSQLContainer("postgres:16-alpine");
     private static final BigDecimal EPSILON = new BigDecimal("0.00001");
 
     private Connection connection;

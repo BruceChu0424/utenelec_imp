@@ -3,7 +3,7 @@ package com.uten.imp.migration;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -250,7 +250,7 @@ class FixtureSchemaDriftGuardPostgresTest {
     // ------------------------------------------------------------------
 
     private static Map<String, Map<String, String>> migrateAndReadRealColumns() throws Exception {
-        try (PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try (PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:16-alpine")) {
             postgres.start();
             Flyway.configure()
                     .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())

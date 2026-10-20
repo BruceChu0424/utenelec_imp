@@ -10,7 +10,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.data.domain.*;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.support.SimpleJpaRepository;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -22,7 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Real JPA predicates, referenced names, count and relevance before pagination. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class NameRefKeywordPostgresTest {
-    private static final PostgreSQLContainer<?> DATABASE = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer DATABASE = new PostgreSQLContainer("postgres:16-alpine");
     private static SessionFactory factory;
     private EntityManager em;
     private UUID owner;

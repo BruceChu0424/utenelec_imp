@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -28,7 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Testcontainers
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class PermissionDependencyBatchPostgresTest {
-    @Container static final PostgreSQLContainer<?> DB = new PostgreSQLContainer<>("postgres:16-alpine");
+    @Container static final PostgreSQLContainer DB = new PostgreSQLContainer("postgres:16-alpine");
     private BatchPermissionFixture data;
     private JdbcTemplate jdbc;
     private ObservedSqlDataSource source;

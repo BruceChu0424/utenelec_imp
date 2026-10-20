@@ -9,7 +9,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -50,8 +50,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
         })
 class SalesClientLastTermsPostgresTest {
 
-    private static final PostgreSQLContainer<?> POSTGRES =
-            new PostgreSQLContainer<>("postgres:16-alpine")
+    private static final PostgreSQLContainer POSTGRES =
+            new PostgreSQLContainer("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
                     .withUsername("uten")
                     .withPassword("uten");

@@ -27,7 +27,7 @@ import org.springframework.test.context.support.AbstractTestExecutionListener;
 import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
 import org.springframework.test.util.AopTestUtils;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.util.*;
@@ -61,7 +61,7 @@ class ProductionFqcPreStockBatchEndToEndTest {
     private static final int POSTED_BATCH_SQL = 234;
     private static final int DRAFT_BATCH_SQL = 57;
     private static final int SQL_HEADROOM = 12;
-    private static final PostgreSQLContainer<?> DATABASE = new PostgreSQLContainer<>("postgres:16-alpine")
+    private static final PostgreSQLContainer DATABASE = new PostgreSQLContainer("postgres:16-alpine")
             .withCommand("postgres", "-c", "fsync=on", "-c", "synchronous_commit=on", "-c", "full_page_writes=on");
     private static final String SECRET = UUID.randomUUID() + "-" + UUID.randomUUID();
 

@@ -11,7 +11,7 @@ import org.springframework.boot.flyway.autoconfigure.FlywayDataSource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import javax.sql.DataSource;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -24,7 +24,7 @@ class PlatformColumnHistoryHttpPostgresTest extends AiPlatformPostgresTestSuppor
     private static final AtomicInteger NUMBER=new AtomicInteger(870000);
     private static final UUID LEGACY_ORDER=UUID.randomUUID(),LEGACY_ITEM=UUID.randomUUID();
 
-    private static final PostgreSQLContainer<?> LEGACY_DATABASE = new PostgreSQLContainer<>("postgres:16-alpine")
+    private static final PostgreSQLContainer LEGACY_DATABASE = new PostgreSQLContainer("postgres:16-alpine")
             .withDatabaseName("platform_history_legacy").withUsername("uten").withPassword("uten");
 
     @TestConfiguration(proxyBeanMethods=false)

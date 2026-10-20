@@ -19,7 +19,7 @@ import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.support.JdbcTransactionManager;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.sql.SQLException;
 import java.sql.Savepoint;
@@ -56,8 +56,8 @@ class EmployeeIdentityCheckRunnerPostgresTest {
     private static final String BAD_CHECK_DIGIT = "110105194912310021";
     private static final String SHORT_ID = "11010519491231002";
 
-    private static final PostgreSQLContainer<?> POSTGRES =
-            new PostgreSQLContainer<>("postgres:16-alpine")
+    private static final PostgreSQLContainer POSTGRES =
+            new PostgreSQLContainer("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
                     .withUsername("uten")
                     .withPassword("uten");

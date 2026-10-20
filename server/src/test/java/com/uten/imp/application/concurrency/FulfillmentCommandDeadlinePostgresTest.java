@@ -12,7 +12,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.sql.SQLException;
 import java.time.Duration;
@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Isolated PostgreSQL mechanics: business SQL/rollback plus the unbounded deferred-COMMIT boundary. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class FulfillmentCommandDeadlinePostgresTest {
-    private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine");
     private static DriverManagerDataSource dataSource;
     private static JdbcTemplate jdbc;
 

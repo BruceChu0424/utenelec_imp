@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -37,7 +37,7 @@ import static org.mockito.Mockito.when;
 class PermissionCatalogSharedToolsMigrationPostgresTest {
     @Test
     void regroupingPreservesConfiguredAndEffectivePermissionsWhileAuthorityChangesStillInvalidate() throws Exception {
-        try (var database = new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try (var database = new PostgreSQLContainer("postgres:16-alpine")) {
             database.start();
             var source = new DriverManagerDataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword());
             Flyway.configure().dataSource(source).target("874").load().migrate();

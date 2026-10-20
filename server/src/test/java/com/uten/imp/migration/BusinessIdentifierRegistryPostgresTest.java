@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -38,8 +38,8 @@ class BusinessIdentifierRegistryPostgresTest {
 
     private static final long VISITOR_ACCOUNT_LOCK_NAMESPACE = 0x5554454E5649534CL;
 
-    private static final PostgreSQLContainer<?> POSTGRES =
-            new PostgreSQLContainer<>("postgres:16-alpine")
+    private static final PostgreSQLContainer POSTGRES =
+            new PostgreSQLContainer("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
                     .withUsername("uten")
                     .withPassword("uten");

@@ -2,7 +2,7 @@ package com.uten.imp.common.finance;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.sql.DriverManager;
@@ -24,7 +24,7 @@ class ProcurementCaseBookAllocationPostgresTest {
                 id,1,BigDecimal.ONE,BigDecimal.ONE)).toList();
         var allocated=ProcurementReceiptConsiderationService.caseBookAllocations(
                 new BigDecimal("3"),new BigDecimal("100"),inputs);
-        try(var database=new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try(var database=new PostgreSQLContainer("postgres:16-alpine")) {
             database.start();
             try(var connection=DriverManager.getConnection(database.getJdbcUrl(),database.getUsername(),database.getPassword());
                 var query=connection.prepareStatement("SELECT id FROM unnest(?::uuid[]) AS ids(id) ORDER BY id")) {

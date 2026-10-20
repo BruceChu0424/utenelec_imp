@@ -23,7 +23,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import javax.sql.DataSource;
 import java.math.BigDecimal;
@@ -49,12 +49,12 @@ class WarehouseInsightPostgresTest {
 
     private static final LocalDate AS_OF = LocalDate.of(2026, 9, 28);
 
-    private static PostgreSQLContainer<?> container;
+    private static PostgreSQLContainer container;
     static DataSource dataSource;
 
     @BeforeAll
     static void start() {
-        container = new PostgreSQLContainer<>("postgres:16-alpine");
+        container = new PostgreSQLContainer("postgres:16-alpine");
         container.start();
         Flyway.configure()
                 .dataSource(container.getJdbcUrl(), container.getUsername(), container.getPassword())

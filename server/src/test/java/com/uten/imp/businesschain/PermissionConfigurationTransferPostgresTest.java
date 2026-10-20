@@ -22,7 +22,7 @@ import org.springframework.test.context.TestContext;
 import org.springframework.test.context.TestExecutionListeners;
 import org.springframework.test.context.support.AbstractTestExecutionListener;
 import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.sql.Connection;
 import java.util.*;
 import static org.assertj.core.api.Assertions.*;
@@ -36,7 +36,7 @@ import static org.assertj.core.api.Assertions.*;
 @TestExecutionListeners(listeners=PermissionConfigurationTransferPostgresTest.Cleanup.class,
         mergeMode=TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class PermissionConfigurationTransferPostgresTest {
-    private static final PostgreSQLContainer<?> DATABASE=new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer DATABASE=new PostgreSQLContainer("postgres:16-alpine");
     private static final String SECRET=UUID.randomUUID()+"-"+UUID.randomUUID();
     @DynamicPropertySource static void database(DynamicPropertyRegistry p) {
         DATABASE.start();

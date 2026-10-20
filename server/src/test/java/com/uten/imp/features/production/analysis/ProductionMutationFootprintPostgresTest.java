@@ -13,7 +13,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.List;
 import java.util.Properties;
@@ -26,7 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Real Hibernate SQL and directed-source evidence, separate from transaction/write-chain tests. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS", matches="(?i)true")
 class ProductionMutationFootprintPostgresTest {
-    private static final PostgreSQLContainer<?> DATABASE = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer DATABASE = new PostgreSQLContainer("postgres:16-alpine");
     private static final AtomicInteger DOCUMENT_NUMBER = new AtomicInteger(810000);
     private static JdbcTemplate jdbc;
     private static EntityManagerFactory factory;

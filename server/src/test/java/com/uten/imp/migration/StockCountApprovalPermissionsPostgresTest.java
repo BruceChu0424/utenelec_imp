@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.*;
 /** 以真实 V677 授权守卫执行 V767，确认新模式默认不授及各授权通道约束。 */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class StockCountApprovalPermissionsPostgresTest {
-    private static final PostgreSQLContainer<?> PG = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer PG = new PostgreSQLContainer("postgres:16-alpine");
     private static JdbcTemplate db;
 
     @BeforeAll static void setup() throws Exception {

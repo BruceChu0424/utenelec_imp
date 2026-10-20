@@ -10,7 +10,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.LocalDate;
 import java.nio.charset.StandardCharsets;
@@ -22,7 +22,7 @@ import static org.mockito.Mockito.*;
 /** 真实 PostgreSQL 查询回归；只搭建只读投影所需的表形状，不执行库存写命令或全链迁移。 */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class WorkshopMaterialReportCountBasisPostgresTest {
-    private static final PostgreSQLContainer<?> PG = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer PG = new PostgreSQLContainer("postgres:16-alpine");
     private static JdbcTemplate db;
     private static NamedParameterJdbcTemplate named;
     private final UUID bin = UUID.randomUUID(), workshop = UUID.randomUUID(), goods = UUID.randomUUID();

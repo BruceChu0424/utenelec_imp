@@ -32,7 +32,7 @@ import org.springframework.test.context.TestContext;
 import org.springframework.test.context.TestExecutionListeners;
 import org.springframework.test.context.support.AbstractTestExecutionListener;
 import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -60,7 +60,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @TestExecutionListeners(listeners=InternalAttachmentLifecyclePostgresTest.Cleanup.class,
         mergeMode=TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class InternalAttachmentLifecyclePostgresTest {
-    private static final PostgreSQLContainer<?> POSTGRES=new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer POSTGRES=new PostgreSQLContainer("postgres:16-alpine");
     private static final Path ROOT=temporaryRoot();
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry) {
         POSTGRES.start();registry.add("spring.datasource.url",POSTGRES::getJdbcUrl);

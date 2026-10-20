@@ -5,7 +5,7 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import static org.assertj.core.api.Assertions.*;
@@ -13,7 +13,7 @@ import static org.assertj.core.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class AiInputOriginalRollingMigrationPostgresTest {
     @Test void upgradePreservesPendingRunningLostAndConflictingHistoryThenFencesOldTerminalWriters() {
-        try(var database=new PostgreSQLContainer<>("postgres:16-alpine").withDatabaseName("ai_original_pre773")) {
+        try(var database=new PostgreSQLContainer("postgres:16-alpine").withDatabaseName("ai_original_pre773")) {
             database.start();Flyway.configure().dataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword()).target("772").load().migrate();
             var jdbc=new JdbcTemplate(new DriverManagerDataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword()));
             UUID actor=UUID.randomUUID(),employee=UUID.randomUUID();

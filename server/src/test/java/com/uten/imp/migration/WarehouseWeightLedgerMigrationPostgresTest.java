@@ -3,7 +3,7 @@ package com.uten.imp.migration;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.nio.file.Files;
@@ -50,7 +50,7 @@ class WarehouseWeightLedgerMigrationPostgresTest {
     @Test
     void upgradeNormalizesStockWeightsAndInstallsTheWarehouseWeightLedger() throws Exception {
         int[] versions = weightLedgerVersionAndPredecessor();
-        try (PostgreSQLContainer<?> db = new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try (PostgreSQLContainer db = new PostgreSQLContainer("postgres:16-alpine")) {
             db.start();
             migrate(db, versions[1]);
             try (Connection connection = connect(db)) {
@@ -224,7 +224,7 @@ class WarehouseWeightLedgerMigrationPostgresTest {
         return new int[]{ledgerVersion, predecessor};
     }
 
-    private static void migrate(PostgreSQLContainer<?> db, int target) {
+    private static void migrate(PostgreSQLContainer db, int target) {
         Flyway.configure()
                 .dataSource(db.getJdbcUrl(), db.getUsername(), db.getPassword())
                 .locations("classpath:db/migration")
@@ -233,7 +233,7 @@ class WarehouseWeightLedgerMigrationPostgresTest {
                 .migrate();
     }
 
-    private static Connection connect(PostgreSQLContainer<?> db) throws SQLException {
+    private static Connection connect(PostgreSQLContainer db) throws SQLException {
         return DriverManager.getConnection(db.getJdbcUrl(), db.getUsername(), db.getPassword());
     }
 

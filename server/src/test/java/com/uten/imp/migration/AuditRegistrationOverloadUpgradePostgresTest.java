@@ -8,7 +8,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.io.TempDir;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.MountableFile;
 
 import java.nio.charset.StandardCharsets;
@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class AuditRegistrationOverloadUpgradePostgresTest {
     private static final String SIX = "public.fn_audit_track_table(text,text,text,boolean,text[],boolean)";
     private static final String SEVEN = "public.fn_audit_track_table(text,text,text,boolean,text[],boolean,text)";
-    private static final PostgreSQLContainer<?> DB = new PostgreSQLContainer<>("postgres:16-alpine")
+    private static final PostgreSQLContainer DB = new PostgreSQLContainer("postgres:16-alpine")
             .withDatabaseName("audit_overload_845").withUsername("uten").withPassword("uten-test-only")
             .withCommand("postgres", "-c", "max_locks_per_transaction=512");
     @TempDir Path failedMigrations;

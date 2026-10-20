@@ -12,7 +12,7 @@ import jakarta.persistence.Query;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.sql.Connection;
@@ -36,7 +36,7 @@ import static org.mockito.Mockito.when;
  */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class GoodsBomLearningQueryPostgresTest {
-    static final PostgreSQLContainer<?> DATABASE=new PostgreSQLContainer<>("postgres:16-alpine");
+    static final PostgreSQLContainer DATABASE=new PostgreSQLContainer("postgres:16-alpine");
     static String actualUsageView,usageView;
     Connection db;
     UUID unit;

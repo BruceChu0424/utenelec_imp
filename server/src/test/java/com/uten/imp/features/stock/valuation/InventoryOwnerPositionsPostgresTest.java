@@ -13,13 +13,13 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Read/index contract; the complete immutable value graph is covered by InventoryPositionPostgresTest. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class InventoryOwnerPositionsPostgresTest {
-    private static final PostgreSQLContainer<?> PG=new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine");
     private static JdbcTemplate db;
     private static NamedParameterJdbcTemplate named;
 

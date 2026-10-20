@@ -24,7 +24,7 @@ import org.springframework.test.context.support.DirtiesContextTestExecutionListe
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import javax.sql.DataSource;
 import java.lang.reflect.InvocationTargetException;
@@ -50,7 +50,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @TestExecutionListeners(listeners=ProductionFqcBatchViewEndToEndTest.Cleanup.class,
         mergeMode=TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class ProductionFqcBatchViewEndToEndTest {
-    private static final PostgreSQLContainer<?> DATABASE=new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer DATABASE=new PostgreSQLContainer("postgres:16-alpine");
     private static final String SECRET=UUID.randomUUID()+"-"+UUID.randomUUID();
     private static final ThreadLocal<AtomicInteger> VIEW_QUERIES=new ThreadLocal<>();
     @DynamicPropertySource static void database(DynamicPropertyRegistry properties) {

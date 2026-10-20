@@ -8,7 +8,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Actual V765 trigger: an unconfigured request is intent, not permission to post stock. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class WorkshopMaterialRequestBeforeSetupPostgresTest {
-    private static final PostgreSQLContainer<?> PG = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer PG = new PostgreSQLContainer("postgres:16-alpine");
     private static JdbcTemplate db;
     private UUID unit, goods;
 

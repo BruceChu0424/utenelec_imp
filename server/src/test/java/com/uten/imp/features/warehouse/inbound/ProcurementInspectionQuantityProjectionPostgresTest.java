@@ -13,7 +13,7 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.SharedEntityManagerCreator;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.Properties;
 import java.util.UUID;
@@ -24,7 +24,7 @@ import static org.mockito.Mockito.mock;
 /** Runs the real read query and DTO mapping; source packages are not IQC units. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class ProcurementInspectionQuantityProjectionPostgresTest {
-    private static final PostgreSQLContainer<?> DB = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer DB = new PostgreSQLContainer("postgres:16-alpine");
     private static EntityManagerFactory emf;
     private static ProcurementInspectionController controller;
     private static JdbcTemplate jdbc;

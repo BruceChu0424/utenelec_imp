@@ -8,7 +8,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class MaterialRouteAuditNarrowParityPostgresTest {
 
-    private static final PostgreSQLContainer<?> DB = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer DB = new PostgreSQLContainer("postgres:16-alpine");
     private static JdbcTemplate db;
     private static final UUID ACTOR = UUID.randomUUID();
     private static final UUID CONFIRMER = UUID.randomUUID();

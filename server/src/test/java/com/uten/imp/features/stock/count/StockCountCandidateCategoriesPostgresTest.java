@@ -17,7 +17,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -29,7 +29,7 @@ import static org.mockito.Mockito.*;
 /** Real PostgreSQL candidate/category SQL with the operational-warehouse function; never uses the business database. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class StockCountCandidateCategoriesPostgresTest {
-    private static final PostgreSQLContainer<?> PG=new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine");
     private static JdbcTemplate db;
     private StockCountRequestService service;
     private SecurityContextCurrentUser user;

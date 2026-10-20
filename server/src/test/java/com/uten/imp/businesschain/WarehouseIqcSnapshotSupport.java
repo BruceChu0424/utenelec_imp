@@ -3,7 +3,7 @@ package com.uten.imp.businesschain;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.BatchConfirmRequest;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.MountableFile;
 
 import java.io.OutputStream;
@@ -31,7 +31,7 @@ final class WarehouseIqcSnapshotSupport {
     }
     record Restored(WarehouseIqcScaleFixture.Scenario scenario,BatchConfirmRequest request,int receipts,int lines,String sha256) {}
     /** Restore only an explicitly selected synthetic checkpoint into this new, empty test container. */
-    static Restored restore(PostgreSQLContainer<?> database)throws Exception {
+    static Restored restore(PostgreSQLContainer database)throws Exception {
         String configured=System.getProperty("uten.warehouse.scale.restoreCheckpoint");
         if(configured==null||configured.isBlank())return null;
         Path metadata=Path.of(configured).toAbsolutePath().normalize();
@@ -65,7 +65,7 @@ final class WarehouseIqcSnapshotSupport {
                 mapper.treeToValue(saved.path("request"),BatchConfirmRequest.class),saved.path("receiptCount").asInt(),
                 saved.path("itemsPerReceipt").asInt(),actual);
     }
-    static void checkpoint(PostgreSQLContainer<?> database,ObjectMapper json,
+    static void checkpoint(PostgreSQLContainer database,ObjectMapper json,
                            WarehouseIqcScaleFixture.Scenario scenario,BatchConfirmRequest request,
                            int receipts,int lines,int run,String phase) throws Exception {
         Path directory=directory();if(directory==null)return;

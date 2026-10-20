@@ -25,7 +25,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -33,7 +33,7 @@ import static org.mockito.Mockito.*;
 /** Query projections retain decimal facts and distinguish document, ledger and account currencies. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class FinanceReportUnitsPostgresTest {
-    private static final PostgreSQLContainer<?> PG=new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine");
     private static final UUID CLIENT=UUID.randomUUID(),SUPPLIER=UUID.randomUUID(),CURRENCY=UUID.randomUUID(),ACCOUNT=UUID.randomUUID();
     private static final LocalDate DATE=LocalDate.of(2026,10,12);
     private static JdbcTemplate db;

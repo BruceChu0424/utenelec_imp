@@ -7,7 +7,7 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.util.ReflectionTestUtils;
 import com.uten.imp.features.sales.report.SalesReportService;
 import com.uten.imp.features.stock.report.StockReportService;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.util.HashMap;
@@ -17,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class ReportKeywordSearchPostgresTest {
-    private static final PostgreSQLContainer<?> DATABASE = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer DATABASE = new PostgreSQLContainer("postgres:16-alpine");
     private static NamedParameterJdbcTemplate jdbc;
     private static final String DATA = """
             WITH doc(id,bill_no,goods_name,goods_code,owner_key,qty,year) AS (VALUES

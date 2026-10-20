@@ -24,7 +24,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.repository.support.JpaRepositoryFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -43,7 +43,7 @@ import static org.mockito.Mockito.*;
  * against the migrated domain in WorkshopNoticeDeliveryEndToEndTest. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS", matches="(?i)true")
 class WorkshopNoticeScopePostgresTest {
-    private static final PostgreSQLContainer<?> DB = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer DB = new PostgreSQLContainer("postgres:16-alpine");
     private static final String EVENT = ReviewNoticeAudience.WORKSHOP_EVENT;
     private static final UUID ROOT=id(1), A=id(2), CHILD=id(3), B=id(4), OFFICE=id(5);
     private static final UUID TASK_A=id(10), TASK_B=id(11);

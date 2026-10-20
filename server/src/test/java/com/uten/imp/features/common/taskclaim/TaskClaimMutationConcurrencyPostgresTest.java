@@ -19,7 +19,7 @@ import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.sql.Connection;
 import java.time.OffsetDateTime;
@@ -37,7 +37,7 @@ import static org.mockito.Mockito.*;
 /** Real row-lock races; database wait state establishes operation ordering. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class TaskClaimMutationConcurrencyPostgresTest {
-    private static final PostgreSQLContainer<?> DB = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer DB = new PostgreSQLContainer("postgres:16-alpine");
     private static final List<String> TYPES = List.of("EXPENSE_APPROVE", "SALES_ORDER_FINANCE_CONFIRM");
     private static EntityManagerFactory emf;
     private static EntityManager em;

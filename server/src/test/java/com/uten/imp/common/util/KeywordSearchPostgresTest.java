@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.HashMap;
 import java.util.List;
@@ -21,7 +21,7 @@ import static org.mockito.Mockito.when;
 
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class KeywordSearchPostgresTest {
-    static final PostgreSQLContainer<?> DATABASE = new PostgreSQLContainer<>("postgres:16-alpine");
+    static final PostgreSQLContainer DATABASE = new PostgreSQLContainer("postgres:16-alpine");
 
     @BeforeAll static void start() { DATABASE.start(); }
     @AfterAll static void stop() { DATABASE.stop(); }

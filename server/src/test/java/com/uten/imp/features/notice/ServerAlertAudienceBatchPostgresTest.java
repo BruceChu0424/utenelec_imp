@@ -9,7 +9,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import static org.assertj.core.api.Assertions.*;
@@ -18,7 +18,7 @@ import static org.mockito.Mockito.*;
 @Testcontainers
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class ServerAlertAudienceBatchPostgresTest {
-    @Container static final PostgreSQLContainer<?> DB=new PostgreSQLContainer<>("postgres:16-alpine")
+    @Container static final PostgreSQLContainer DB=new PostgreSQLContainer("postgres:16-alpine")
             .withLabel("uten.test","server-alert-audience-batch");
 
     @Test void fourHundredFiftyOneActualRecipientsKeepRevokeActiveAndPageGatesWithoutDetachedProxyReads() {

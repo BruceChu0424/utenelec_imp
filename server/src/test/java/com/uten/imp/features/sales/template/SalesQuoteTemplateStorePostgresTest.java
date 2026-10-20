@@ -20,7 +20,7 @@ import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.file.Path;
 import java.time.Duration;
@@ -32,7 +32,7 @@ import static org.mockito.Mockito.*;
 
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class SalesQuoteTemplateStorePostgresTest {
-    private static final PostgreSQLContainer<?> DB = MigratedSchemaBaseline.startMigratedContainer("quote_template_store");
+    private static final PostgreSQLContainer DB = MigratedSchemaBaseline.startMigratedContainer("quote_template_store");
     @TempDir Path files;
     private JdbcTemplate jdbc;
     private TransactionTemplate tx;

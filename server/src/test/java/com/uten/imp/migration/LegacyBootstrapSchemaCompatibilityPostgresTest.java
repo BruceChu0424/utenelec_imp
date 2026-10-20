@@ -6,7 +6,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.images.builder.Transferable;
 
 import java.nio.charset.StandardCharsets;
@@ -46,8 +46,8 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
     private static final Pattern BOOTSTRAP_CALL = Pattern.compile(
             "(?m)^\\s*(migrate_[a-z0-9_]+)\\s*$");
 
-    private static final PostgreSQLContainer<?> POSTGRES =
-            new PostgreSQLContainer<>("postgres:16-alpine")
+    private static final PostgreSQLContainer POSTGRES =
+            new PostgreSQLContainer("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
                     .withUsername("uten")
                     .withPassword("uten-test-only")

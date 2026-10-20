@@ -2,7 +2,7 @@ package com.uten.imp.support;
 
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.Container;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.sql.SQLException;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -132,8 +132,8 @@ class MigratedSchemaBaselineTest {
         });
     }
 
-    private static PostgreSQLContainer<?> postgres() throws Exception {
-        PostgreSQLContainer<?> postgres = mock(PostgreSQLContainer.class);
+    private static PostgreSQLContainer postgres() throws Exception {
+        PostgreSQLContainer postgres = mock(PostgreSQLContainer.class);
         when(postgres.getDatabaseName()).thenReturn("template");
         when(postgres.getJdbcUrl()).thenReturn("jdbc:postgresql://localhost:54321/template?loggerLevel=OFF");
         when(postgres.getUsername()).thenReturn("test");

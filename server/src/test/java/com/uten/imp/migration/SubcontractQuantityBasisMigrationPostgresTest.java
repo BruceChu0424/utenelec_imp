@@ -3,7 +3,7 @@ package com.uten.imp.migration;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.sql.*;
 import java.util.UUID;
 import java.math.BigDecimal;
@@ -15,7 +15,7 @@ class SubcontractQuantityBasisMigrationPostgresTest {
     private static final java.util.concurrent.atomic.AtomicInteger SEQUENCE=new java.util.concurrent.atomic.AtomicInteger();
     @Test
     void unexecutedExactPatternIsCorrectedWhileReversedAndLegacyHistoryStayUntouched() throws Exception {
-        try(var pg=new PostgreSQLContainer<>("postgres:16-alpine").withDatabaseName("sc_unit_basis")
+        try(var pg=new PostgreSQLContainer("postgres:16-alpine").withDatabaseName("sc_unit_basis")
                 .withUsername("uten").withPassword("uten-test-only")) {
             pg.start();
             migrate(pg,"501");
@@ -55,7 +55,7 @@ class SubcontractQuantityBasisMigrationPostgresTest {
         }
     }
 
-    private static void migrate(PostgreSQLContainer<?> pg,String version) {
+    private static void migrate(PostgreSQLContainer pg,String version) {
         Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword())
                 .locations("classpath:db/migration").target(version).load().migrate();
     }

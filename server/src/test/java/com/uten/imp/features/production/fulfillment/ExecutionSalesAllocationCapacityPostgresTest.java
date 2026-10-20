@@ -5,7 +5,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.postgresql.util.PSQLException;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Focused real PostgreSQL trigger/isolation mechanics; FullChain verifies the actual package lifecycle. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class ExecutionSalesAllocationCapacityPostgresTest {
-    static final PostgreSQLContainer<?> DB=new PostgreSQLContainer<>("postgres:16-alpine");
+    static final PostgreSQLContainer DB=new PostgreSQLContainer("postgres:16-alpine");
     @BeforeAll static void start() throws Exception {
         DB.start();
         try(var c=connection()) {

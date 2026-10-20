@@ -14,7 +14,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.math.BigDecimal;
 import java.util.*;
 import static org.assertj.core.api.Assertions.*;
@@ -31,7 +31,7 @@ import static org.assertj.core.api.Assertions.*;
     "uten.bootstrap.admin-login=expense-harness-admin",
     "uten.bootstrap.admin-password=ExpenseHarnessAdmin-1!"})
 class ExpenseClaimChainPostgresTest {
-    static final PostgreSQLContainer<?> PG=new PostgreSQLContainer<>("postgres:16-alpine")
+    static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine")
         .withDatabaseName("expense_chain").withUsername("uten").withPassword("uten");
     @DynamicPropertySource static void database(DynamicPropertyRegistry r) {
         PG.start();r.add("spring.datasource.url",PG::getJdbcUrl);

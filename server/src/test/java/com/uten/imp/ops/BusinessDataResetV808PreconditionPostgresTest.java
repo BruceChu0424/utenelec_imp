@@ -8,7 +8,7 @@ import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -26,7 +26,7 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class BusinessDataResetV808PreconditionPostgresTest {
-    private PostgreSQLContainer<?> postgres;
+    private PostgreSQLContainer postgres;
     private String previous;
     private String current;
     private int clones;
@@ -36,7 +36,7 @@ class BusinessDataResetV808PreconditionPostgresTest {
         int[] versions = TestResetCurrentOwnerPostgresTest.singleObjectRuleVersions();
         previous = Integer.toString(versions[0]);
         current = Integer.toString(versions[1]);
-        postgres = new PostgreSQLContainer<>("postgres:16-alpine").withDatabaseName("precondition_base");
+        postgres = new PostgreSQLContainer("postgres:16-alpine").withDatabaseName("precondition_base");
         postgres.start();
         Flyway.configure().dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                 .locations("classpath:db/migration").target(previous).load().migrate();

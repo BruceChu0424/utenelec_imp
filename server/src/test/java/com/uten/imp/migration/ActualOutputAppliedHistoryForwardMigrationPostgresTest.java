@@ -5,7 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ActualOutputAppliedHistoryForwardMigrationPostgresTest {
     @Test
     void upgradesAppliedV701WithoutChangingReportMaterialOrStockFacts() {
-        try (var database = new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try (var database = new PostgreSQLContainer("postgres:16-alpine")) {
             database.start();
             migration(database, "701").migrate();
             var jdbc = jdbc(database);
@@ -56,7 +56,7 @@ class ActualOutputAppliedHistoryForwardMigrationPostgresTest {
 
     @Test
     void cleanDatabaseAndRepeatedMigrateHaveTheSameForwardGuards() {
-        try (var database = new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try (var database = new PostgreSQLContainer("postgres:16-alpine")) {
             database.start();
             var migration = migration(database, "707");
             assertThat(migration.migrate().targetSchemaVersion).isEqualTo("707");
@@ -138,11 +138,11 @@ class ActualOutputAppliedHistoryForwardMigrationPostgresTest {
                 .isEqualTo(1);
     }
 
-    private static JdbcTemplate jdbc(PostgreSQLContainer<?> database) {
+    private static JdbcTemplate jdbc(PostgreSQLContainer database) {
         return new JdbcTemplate(new DriverManagerDataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword()));
     }
 
-    private static Flyway migration(PostgreSQLContainer<?> database, String target) {
+    private static Flyway migration(PostgreSQLContainer database, String target) {
         return Flyway.configure().dataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword())
                 .locations("classpath:db/migration").target(target).load();
     }

@@ -33,7 +33,7 @@ import org.springframework.test.context.TestExecutionListeners;
 import org.springframework.test.context.support.AbstractTestExecutionListener;
 import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
@@ -62,7 +62,7 @@ class SubcontractLossValueEndToEndTest {
     // Period regeneration is a whole-ledger operation. A confirmed expense left
     // by another E2E class in the shared database must not contaminate this world;
     // the production protection for that expense remains fully enforced.
-    private static final PostgreSQLContainer<?> DATABASE=new PostgreSQLContainer<>("postgres:16-alpine")
+    private static final PostgreSQLContainer DATABASE=new PostgreSQLContainer("postgres:16-alpine")
             .withDatabaseName("uten_imp");
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry){
         DATABASE.start();

@@ -4,7 +4,7 @@ import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.postgresql.util.PSQLException;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.sql.*;
@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Real forward migration and database backstops; full report/FQC workflow is covered by E2E. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS", matches="(?i)true")
 class ActualProductionSurplusStockCostMigrationPostgresTest {
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine");
     Connection db;
     UUID segment, planItem, goods, unit;
 

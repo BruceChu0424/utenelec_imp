@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.testcontainers.containers.BindMode;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.images.builder.ImageFromDockerfile;
 import org.testcontainers.images.builder.Transferable;
 import org.testcontainers.utility.DockerImageName;
@@ -31,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** Runs the actual shell coordinator, Docker CLI, COPY, provenance and reconciliation gates. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class LegacyBootstrapCoordinatorPostgresTest {
-    private static PostgreSQLContainer<?> postgres;
+    private static PostgreSQLContainer postgres;
     private static String clusterId;
     private static String activeDatabase;
     private static String sourceBackupDigest;
@@ -81,7 +81,7 @@ class LegacyBootstrapCoordinatorPostgresTest {
                 .withDockerfileFromBuilder(builder -> builder.from("postgres:16-alpine")
                         .run("apk add --no-cache bash python3 git coreutils docker-cli")
                         .build());
-        postgres = new PostgreSQLContainer<>(DockerImageName.parse(image.get()).asCompatibleSubstituteFor("postgres"))
+        postgres = new PostgreSQLContainer(DockerImageName.parse(image.get()).asCompatibleSubstituteFor("postgres"))
                 .withDatabaseName("legacy_bootstrap_rehearsal")
                 .withUsername("uten").withPassword("synthetic-test-only")
                 .withFileSystemBind("/var/run/docker.sock", "/var/run/docker.sock", BindMode.READ_WRITE)

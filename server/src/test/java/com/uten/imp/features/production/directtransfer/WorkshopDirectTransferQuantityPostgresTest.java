@@ -5,7 +5,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class WorkshopDirectTransferQuantityPostgresTest {
     @Test
     void baseUnitsMixedStorageAndSplitSiblingsShareOneCoverageRule() throws Exception {
-        try (var db = new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try (var db = new PostgreSQLContainer("postgres:16-alpine")) {
             db.start();
             var source = new SingleConnectionDataSource(db.getJdbcUrl(), db.getUsername(), db.getPassword(), true);
             try {

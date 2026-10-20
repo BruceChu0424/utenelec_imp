@@ -11,7 +11,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -37,7 +37,7 @@ import static org.mockito.Mockito.mock;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class AuditRetentionPostgresTest {
 
-    private static final PostgreSQLContainer<?> DB = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer DB = new PostgreSQLContainer("postgres:16-alpine");
     private static final ZoneId SHANGHAI = ZoneId.of("Asia/Shanghai");
     private static final String RUNTIME_ROLE = "uten";
     private static final String RUNTIME_PASSWORD = "runtime-test-only";

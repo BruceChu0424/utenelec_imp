@@ -19,7 +19,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -34,7 +34,7 @@ import static org.mockito.Mockito.*;
  */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class StockCountReviewWarehouseScopePostgresTest {
-    private static final PostgreSQLContainer<?> PG=new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine");
     private static JdbcTemplate db;
     private static DriverManagerDataSource source;
     private final UUID actorA=UUID.randomUUID(),actorB=UUID.randomUUID(),employeeA=UUID.randomUUID(),employeeB=UUID.randomUUID();

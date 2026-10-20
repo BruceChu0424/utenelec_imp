@@ -28,7 +28,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -60,7 +60,7 @@ import static org.mockito.Mockito.*;
 class SalesPlanningNoticeCatchUpEndToEndTest {
     // This suite deliberately controls outbox ordering and injects a failed delivery.
     // Other cached Spring contexts must never consume its events or add unrelated global candidates.
-    private static final PostgreSQLContainer<?> DATABASE = new PostgreSQLContainer<>("postgres:16-alpine")
+    private static final PostgreSQLContainer DATABASE = new PostgreSQLContainer("postgres:16-alpine")
             .withDatabaseName("planning_catch_up").withUsername("uten").withPassword("uten");
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry) {
         DATABASE.start();

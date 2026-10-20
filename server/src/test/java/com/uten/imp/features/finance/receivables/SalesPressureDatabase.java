@@ -2,7 +2,7 @@ package com.uten.imp.features.finance.receivables;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.test.context.DynamicPropertyRegistry;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -11,7 +11,7 @@ import java.util.Map;
 
 /** Dedicated synthetic fixture only. A private identity marker prevents targeting an ERP database. */
 final class SalesPressureDatabase {
-    private static final PostgreSQLContainer<?> EPHEMERAL = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer EPHEMERAL = new PostgreSQLContainer("postgres:16-alpine");
     private static String url;
     private static String username;
     private static String password;

@@ -5,7 +5,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 @Testcontainers(disabledWithoutDocker = true)
 class BusinessDataResetSparsePostgresTest {
     @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16.15-alpine")
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16.15-alpine")
             .withDatabaseName("uten_sparse_reset").withUsername("uten").withPassword("uten");
 
     private Connection connection;

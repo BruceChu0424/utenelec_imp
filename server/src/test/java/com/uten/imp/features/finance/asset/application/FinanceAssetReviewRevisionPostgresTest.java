@@ -17,7 +17,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.time.YearMonth;
@@ -37,7 +37,7 @@ import static org.assertj.core.api.Assertions.*;
         "uten.bootstrap.admin-login=asset-review-harness-admin",
         "uten.bootstrap.admin-password=AssetReviewHarnessAdmin-1!"})
 class FinanceAssetReviewRevisionPostgresTest {
-    private static final PostgreSQLContainer<?> PG = new PostgreSQLContainer<>("postgres:16-alpine")
+    private static final PostgreSQLContainer PG = new PostgreSQLContainer("postgres:16-alpine")
             .withDatabaseName("asset_review").withUsername("uten").withPassword("uten");
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry) {
         PG.start(); registry.add("spring.datasource.url", PG::getJdbcUrl);

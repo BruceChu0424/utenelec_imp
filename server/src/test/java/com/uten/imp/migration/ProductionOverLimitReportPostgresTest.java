@@ -5,7 +5,7 @@ import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.postgresql.util.PSQLException;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.sql.*;
@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Real upgrade plus isolated database authorization oracles; downstream FQC is covered by the business chain. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class ProductionOverLimitReportPostgresTest {
-    static final PostgreSQLContainer<?> POSTGRES=new PostgreSQLContainer<>("postgres:16-alpine");
+    static final PostgreSQLContainer POSTGRES=new PostgreSQLContainer("postgres:16-alpine");
     Connection db;
     String schema;
     UUID segment,planItem,report,batch;

@@ -9,7 +9,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.support.JdbcTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,8 +21,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** Non-C database evidence for the collation inherited by trigger arguments. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class BusinessIdentifierCollationLookupPostgresTest {
-    private static final PostgreSQLContainer<?> DATABASE =
-            new PostgreSQLContainer<>("postgres:16-alpine")
+    private static final PostgreSQLContainer DATABASE =
+            new PostgreSQLContainer("postgres:16-alpine")
                     .withEnv("POSTGRES_INITDB_ARGS", "--locale=en_US.utf8");
     private static JdbcTemplate jdbc;
     private static TransactionTemplate transactions;

@@ -12,7 +12,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -27,7 +27,7 @@ import static org.mockito.Mockito.*;
 /** 用真实叶仓函数与 PostgreSQL 验证申请候选，无全 Spring 启动或业务库写入。 */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class WorkshopMaterialRequestCandidatesPostgresTest {
-    private static final PostgreSQLContainer<?> PG = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer PG = new PostgreSQLContainer("postgres:16-alpine");
     private static JdbcTemplate db;
     private static NamedParameterJdbcTemplate named;
     private final UUID workshop = UUID.randomUUID(), bin = UUID.randomUUID(), otherBin = UUID.randomUUID();

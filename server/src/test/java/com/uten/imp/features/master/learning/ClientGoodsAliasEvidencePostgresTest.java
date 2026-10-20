@@ -13,7 +13,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.*;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.sql.Connection;
 import java.util.*;
 import java.util.concurrent.*;
@@ -24,7 +24,7 @@ import static org.mockito.Mockito.*;
 /** Executes the production ledger SQL on a real, fully migrated PostgreSQL schema. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class ClientGoodsAliasEvidencePostgresTest {
-    private static PostgreSQLContainer<?> postgres;
+    private static PostgreSQLContainer postgres;
     private static UUID legacyClient,legacyGoods,legacyDoc;
     private Connection connection;
     private JdbcTemplate sql;
@@ -33,7 +33,7 @@ class ClientGoodsAliasEvidencePostgresTest {
     private UUID client,goods,otherGoods,actor;
 
     @BeforeAll static void migrateLegacyThenForward() {
-        postgres=new PostgreSQLContainer<>("postgres:16-alpine").withDatabaseName("alias_evidence_template");postgres.start();
+        postgres=new PostgreSQLContainer("postgres:16-alpine").withDatabaseName("alias_evidence_template");postgres.start();
         Flyway.configure().dataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword())
                 .locations("classpath:db/migration").target(MigrationVersion.fromVersion("751")).load().migrate();
         JdbcTemplate sql=new JdbcTemplate(new DriverManagerDataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword()));

@@ -30,7 +30,7 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterUtils;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -44,7 +44,7 @@ import static org.mockito.Mockito.*;
 @Testcontainers(disabledWithoutDocker = true)
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class MaterialAnalysisWarehouseBreakdownPostgresTest {
-    @Container static final PostgreSQLContainer<?> PG=new PostgreSQLContainer<>("postgres:16-alpine");
+    @Container static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine");
     private static final UUID ANALYSIS=id("analysis"),OTHER_ANALYSIS=id("other-analysis");
     private static final UUID G=id("goods"),G2=id("goods-2"),G3=id("excluded-goods"),BLUE=id("blue");
     private static final UUID UNIT=id("unit"),OTHER_UNIT=id("other-unit");

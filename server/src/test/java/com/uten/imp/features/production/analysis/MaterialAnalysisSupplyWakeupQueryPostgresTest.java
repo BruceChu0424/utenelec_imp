@@ -15,7 +15,7 @@ import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -34,7 +34,7 @@ import static org.mockito.Mockito.*;
 /** Real current-schema query equivalence. Source facts commit with every database guard enabled. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class MaterialAnalysisSupplyWakeupQueryPostgresTest {
-    private static final PostgreSQLContainer<?> DB=new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer DB=new PostgreSQLContainer("postgres:16-alpine");
     private static final AtomicInteger NUMBERS=new AtomicInteger(860000);
     private static JdbcTemplate db;
     private static EntityManagerFactory factory;

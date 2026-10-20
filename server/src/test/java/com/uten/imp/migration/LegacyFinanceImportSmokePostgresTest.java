@@ -8,7 +8,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -29,7 +29,7 @@ import static com.uten.imp.support.LegacyFinanceImportFixture.*;
 /** Real-schema smoke for the exact synthetic source used by the shell coordinator. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class LegacyFinanceImportSmokePostgresTest {
-    static final PostgreSQLContainer<?> PG=new PostgreSQLContainer<>("postgres:16-alpine");
+    static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine");
     static JdbcTemplate db;
 
     @BeforeAll static void start() {

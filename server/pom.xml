@@ -68,12 +68,12 @@
                 <artifactId>tea</artifactId>
                 <version>${aliyun-tea.version}</version>
             </dependency>
-            <!-- Spring Boot 4 的 spring-boot-dependencies 不再托管 testcontainers 版本，
-                 这里自行导入其 BOM；钉 1.x 末位（1.21.4）保持既有构件名，避免 2.x 的模块重组迁移。 -->
+            <!-- Keep the entire Testcontainers family aligned. The 2.x Jupiter extension
+                 implements AutoCloseable for JUnit's resource lifecycle (upstream #10529). -->
             <dependency>
                 <groupId>org.testcontainers</groupId>
                 <artifactId>testcontainers-bom</artifactId>
-                <version>1.21.4</version>
+                <version>2.0.5</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -290,12 +290,12 @@
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
-            <artifactId>junit-jupiter</artifactId>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
-            <artifactId>postgresql</artifactId>
+            <artifactId>testcontainers-postgresql</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

@@ -17,7 +17,7 @@ import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.SharedEntityManagerCreator;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
@@ -27,7 +27,7 @@ import static org.assertj.core.api.Assertions.*;
 /** Executes the actual new migration and read/projection SQL in its own disposable PostgreSQL. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class InventoryCostPostingBridgePostgresTest {
-    private static final PostgreSQLContainer<?> DB=new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer DB=new PostgreSQLContainer("postgres:16-alpine");
     private static JdbcTemplate db;
     private static EntityManagerFactory factory;
     private static EntityManager em;

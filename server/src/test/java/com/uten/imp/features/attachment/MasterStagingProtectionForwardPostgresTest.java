@@ -1,7 +1,7 @@
 package com.uten.imp.features.attachment;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.sql.DriverManager;
 import java.nio.charset.StandardCharsets;
 import static org.assertj.core.api.Assertions.*;
@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class MasterStagingProtectionForwardPostgresTest {
     @Test void allMasterFamiliesProtectStagingDifferentVersionsButFinalStillRequiresItsOwnIdentity()throws Exception {
-        try(var database=new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try(var database=new PostgreSQLContainer("postgres:16-alpine")) {
             database.start();try(var connection=DriverManager.getConnection(database.getJdbcUrl(),database.getUsername(),database.getPassword());var sql=connection.createStatement()) {
                 setup(sql);old(sql);
                 sql.execute("INSERT INTO attachments(owner_type,storage_provider,storage_key,storage_version) VALUES('GOODS','internal','goods-key','final-g'),('EMPLOYEE','internal','person-key','final-e'),('EMPLOYEE_CONTRACT','internal','contract-key','final-c'); INSERT INTO sales_quote_template_versions(storage_provider,storage_key,storage_version) VALUES('internal','template-key','final-t'); INSERT INTO goods_cost_imports(storage_provider,storage_key,storage_version) VALUES('internal','cost-key','final-cost')");
@@ -29,7 +29,7 @@ class MasterStagingProtectionForwardPostgresTest {
         }
     }
     @Test void completedMasterStagingFactIsPreservedAndUnknownSuccessfulTaskIsNotExempted()throws Exception {
-        try(var database=new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try(var database=new PostgreSQLContainer("postgres:16-alpine")) {
             database.start();try(var connection=DriverManager.getConnection(database.getJdbcUrl(),database.getUsername(),database.getPassword());var sql=connection.createStatement()) {
                 setup(sql);old(sql);
                 sql.execute("INSERT INTO goods_cost_imports(storage_provider,storage_key,storage_version) VALUES('local','master-original',NULL); INSERT INTO attachment_object_outbox(id,operation,storage_provider,storage_key,storage_version,status,history_note,owner_type,parent_id) VALUES('11111111-1111-1111-1111-111111111111','DELETE_STAGING','local','master-original',NULL,'SUCCEEDED','permanent-master-fact','UNKNOWN',NULL),('22222222-2222-2222-2222-222222222222','DELETE_STAGING','local','unknown-key',NULL,'SUCCEEDED','unknown-fact','UNKNOWN',NULL)");
@@ -43,7 +43,7 @@ class MasterStagingProtectionForwardPostgresTest {
         }
     }
     @Test void knownBusinessQueueMetadataRetiresWithoutRestrictFailureWhileSharedMasterIsProtected()throws Exception {
-        try(var database=new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try(var database=new PostgreSQLContainer("postgres:16-alpine")) {
             database.start();try(var connection=DriverManager.getConnection(database.getJdbcUrl(),database.getUsername(),database.getPassword());var sql=connection.createStatement()) {
                 setup(sql);old(sql);forward(sql);
                 sql.execute("INSERT INTO goods_cost_imports(storage_provider,storage_key,storage_version) VALUES('local','shared-master',NULL); INSERT INTO business_parent VALUES('33333333-3333-3333-3333-333333333333'); INSERT INTO attachment_object_outbox(id,operation,storage_provider,storage_key,storage_version,status,history_note,owner_type,parent_id) VALUES('44444444-4444-4444-4444-444444444444','DELETE_STAGING','local','shared-master',NULL,'SUCCEEDED','business-task','SALES_QUOTE','33333333-3333-3333-3333-333333333333')");

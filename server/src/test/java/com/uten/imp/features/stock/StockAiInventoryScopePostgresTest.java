@@ -14,7 +14,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import javax.sql.DataSource;
 import java.math.BigDecimal;
@@ -40,7 +40,7 @@ import static org.junit.jupiter.api.Assertions.*;
         "uten.bootstrap.admin-password=InventoryAiPg-1!"
 })
 class StockAiInventoryScopePostgresTest {
-    private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
+    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine")
             .withDatabaseName("uten_ai_inventory_scope").withUsername("uten").withPassword("uten");
 
     @DynamicPropertySource static void database(DynamicPropertyRegistry properties) {

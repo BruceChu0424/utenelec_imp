@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -23,7 +23,7 @@ import static org.mockito.Mockito.mock;
 /** Real current DDL plus Hibernate-native SQL: legacy is a writer boundary, never a reporting filter. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class GlPostingLegacyCashScopePostgresTest {
-    private static final PostgreSQLContainer<?> DATABASE=new PostgreSQLContainer<>("postgres:16-alpine")
+    private static final PostgreSQLContainer DATABASE=new PostgreSQLContainer("postgres:16-alpine")
             .withUsername("uten").withPassword("synthetic-gl-boundary-only");
     private static final LocalDate DATE=LocalDate.of(2025,1,2);
     private static final UUID OLD_EXPENSE=UUID.randomUUID(), NEW_EXPENSE=UUID.randomUUID(), OLD_VOUCHER=UUID.randomUUID();

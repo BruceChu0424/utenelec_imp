@@ -6,7 +6,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -27,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class SubcontractComponentEntitledLotsPostgresTest {
-    private static final PostgreSQLContainer<?> DB = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer DB = new PostgreSQLContainer("postgres:16-alpine");
     private static final UUID ANALYSIS = id(1), PARENT_GOODS = id(2), CHILD_GOODS = id(3), SECOND_CHILD_GOODS = id(9);
     private static final UUID WAREHOUSE = id(4), ORDER_ITEM = id(6), PLAN_HEADER = id(7), PLAN = id(8), SECOND_PLAN = id(10);
     private Connection connection;

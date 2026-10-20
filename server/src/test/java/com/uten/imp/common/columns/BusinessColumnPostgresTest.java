@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.support.MigratedSchemaBaseline;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.math.BigDecimal;
 import java.sql.*;
 import java.util.*;
@@ -13,7 +13,7 @@ import static org.assertj.core.api.Assertions.*;
 /** Real migrated schema; fixture seeding alone bypasses unrelated document lifecycle triggers. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class BusinessColumnPostgresTest {
-    private static PostgreSQLContainer<?> postgres;
+    private static PostgreSQLContainer postgres;
     private static final ObjectMapper JSON = new ObjectMapper();
     @BeforeAll static void migrate() { postgres = MigratedSchemaBaseline.startMigratedContainer("business_columns"); }
     @AfterAll static void stop() { if (postgres != null) postgres.stop(); }

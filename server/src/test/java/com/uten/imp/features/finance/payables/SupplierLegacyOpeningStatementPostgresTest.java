@@ -9,7 +9,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -22,7 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Executes the production dated projection; never invents historical payment lines. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class SupplierLegacyOpeningStatementPostgresTest {
-    private static final PostgreSQLContainer<?> PG = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer PG = new PostgreSQLContainer("postgres:16-alpine");
     private static NamedParameterJdbcTemplate db;
     private static java.sql.Connection connection;
     private UUID supplier, currency, ledger;

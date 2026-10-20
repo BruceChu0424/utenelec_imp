@@ -6,7 +6,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.List;
 import java.util.UUID;
@@ -29,7 +29,7 @@ class WorkshopBinOpeningMigrationPostgresTest {
 
     @Test
     void backfillsUsedBinsAsOpenedDropsUnusedOnesAndGuardsTheSingleSource() {
-        try (var db = new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try (var db = new PostgreSQLContainer("postgres:16-alpine")) {
             db.start();
             migrate(db, "801");
             JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(
@@ -157,7 +157,7 @@ class WorkshopBinOpeningMigrationPostgresTest {
         }
     }
 
-    private static void migrate(PostgreSQLContainer<?> db, String target) {
+    private static void migrate(PostgreSQLContainer db, String target) {
         var flyway = Flyway.configure().dataSource(db.getJdbcUrl(), db.getUsername(), db.getPassword())
                 .locations("classpath:db/migration");
         if (target != null) flyway.target(target);

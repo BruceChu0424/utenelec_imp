@@ -3,7 +3,7 @@ package com.uten.imp.migration;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class ProcurementInspectionBatchIdentityMigrationPostgresTest {
     @Test void v557PreservesHistoricalRowsAndOnlyAllowsImmutableLowerHexHashes()throws Exception {
-        try(var database=new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try(var database=new PostgreSQLContainer("postgres:16-alpine")) {
             database.start();flyway(database,"556").migrate();
             try(Connection connection=DriverManager.getConnection(database.getJdbcUrl(),database.getUsername(),database.getPassword())) {
                 UUID goods=UUID.randomUUID(),warehouse=UUID.randomUUID(),inspection=UUID.randomUUID(),event=UUID.randomUUID();
@@ -64,7 +64,7 @@ class ProcurementInspectionBatchIdentityMigrationPostgresTest {
     private static String digest(Connection connection,boolean migrated)throws SQLException {
         return scalar(connection,"SELECT md5(string_agg((to_jsonb(event)"+(migrated?"-'batch_request_hash'":"")+")::text,E'\n' ORDER BY id)) FROM procurement_inspection_events event");
     }
-    private static Flyway flyway(PostgreSQLContainer<?> database,String version){return Flyway.configure().dataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword()).locations("classpath:db/migration").target(version).cleanDisabled(true).load();}
+    private static Flyway flyway(PostgreSQLContainer database,String version){return Flyway.configure().dataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword()).locations("classpath:db/migration").target(version).cleanDisabled(true).load();}
     private static void execute(Connection connection,String sql)throws SQLException{try(var statement=connection.createStatement()){statement.execute(sql);}}
     private static String scalar(Connection connection,String sql)throws SQLException{try(var statement=connection.createStatement();var result=statement.executeQuery(sql)){assertTrue(result.next());return result.getString(1);}}
 }

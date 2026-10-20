@@ -4,7 +4,7 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.nio.file.Files;
@@ -16,7 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Runs the final shared SQL budget; full origin/receipt guards have separate end-to-end coverage. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class PreplanMakeAdmittedBudgetPostgresTest {
-    private static final PostgreSQLContainer<?> PG=new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine");
     private static JdbcTemplate db;
     private final UUID analysis=UUID.randomUUID(),material=UUID.randomUUID(),child=UUID.randomUUID();
 

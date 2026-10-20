@@ -18,7 +18,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.*;
@@ -26,7 +26,7 @@ import static org.mockito.Mockito.*;
 
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class SalesLearningReceiptPostgresTest {
-    private static final PostgreSQLContainer<?> DB=MigratedSchemaBaseline.startMigratedContainer("sales_learning_receipts");
+    private static final PostgreSQLContainer DB=MigratedSchemaBaseline.startMigratedContainer("sales_learning_receipts");
     private JdbcTemplate jdbc;
     private TransactionTemplate tx;
     private SalesLearningReceiptService receipts;

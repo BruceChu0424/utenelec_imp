@@ -3,7 +3,7 @@ package com.uten.imp.migration;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
@@ -310,19 +310,19 @@ class ExpenseClaimFullchainMigrationPostgresTest {
             )
             """;
 
-    private static PostgreSQLContainer<?> database() {
-        return new PostgreSQLContainer<>("postgres:16-alpine")
+    private static PostgreSQLContainer database() {
+        return new PostgreSQLContainer("postgres:16-alpine")
                 .withDatabaseName("expense_migration").withUsername("uten").withPassword("uten");
     }
 
-    private static void migrate(PostgreSQLContainer<?> postgres, String target) {
+    private static void migrate(PostgreSQLContainer postgres, String target) {
         var config = Flyway.configure().dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                 .locations("classpath:db/migration");
         if (target != null) config.target(target);
         config.load().migrate();
     }
 
-    private static Connection connection(PostgreSQLContainer<?> postgres) throws SQLException {
+    private static Connection connection(PostgreSQLContainer postgres) throws SQLException {
         return DriverManager.getConnection(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
     }
 

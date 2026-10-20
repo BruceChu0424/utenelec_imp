@@ -17,7 +17,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.sql.ResultSet;
@@ -34,7 +34,7 @@ import static org.mockito.Mockito.*;
  * DTO enrichment and command mutations are intentionally outside this search-query oracle. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class FinancialQueueSearchPostgresTest {
-    private static final PostgreSQLContainer<?> PG = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer PG = new PostgreSQLContainer("postgres:16-alpine");
     private static final String[] TABLES = {"suppliers", "goods", "units", "currencies", "colors",
             "settlement_methods", "ar_ap_ledger", "subcontract_loss_cases", "v_subcontract_loss_case_value",
             "supplier_settlement_batches", "procurement_iqc_rejection_cases", "procurement_inspection_items",

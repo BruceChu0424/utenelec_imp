@@ -21,7 +21,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.util.*;
@@ -41,7 +41,7 @@ import static org.junit.jupiter.api.Assertions.*;
         "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only", "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test",
         "uten.bootstrap.admin-password=HarnessAdminPass-1!"})
 class ScopedMakePublicSupplyReaderPostgresTest {
-    private static final PostgreSQLContainer<?> DATABASE = new PostgreSQLContainer<>("postgres:16-alpine")
+    private static final PostgreSQLContainer DATABASE = new PostgreSQLContainer("postgres:16-alpine")
             .withDatabaseName("scoped_make_public_sources").withUsername("uten").withPassword("uten");
     private static String legacyDefinition;
     private static List<Map<String, Object>> legacyColumns;

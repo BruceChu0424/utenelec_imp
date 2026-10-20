@@ -6,7 +6,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.UUID;
 
@@ -24,7 +24,7 @@ class WarehouseSingleMainMasterMigrationPostgresTest {
 
     @Test
     void convergesLegacyMastersIntoOneMainAndGuardsTheShape() {
-        try (var db = new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try (var db = new PostgreSQLContainer("postgres:16-alpine")) {
             db.start();
             migrate(db, "797");
             JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(
@@ -180,7 +180,7 @@ class WarehouseSingleMainMasterMigrationPostgresTest {
 
     @Test
     void emptyCatalogOnlyInstallsFunctions() {
-        try (var db = new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try (var db = new PostgreSQLContainer("postgres:16-alpine")) {
             db.start();
             migrate(db, "800");
             JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(
@@ -193,7 +193,7 @@ class WarehouseSingleMainMasterMigrationPostgresTest {
         }
     }
 
-    private static void migrate(PostgreSQLContainer<?> db, String target) {
+    private static void migrate(PostgreSQLContainer db, String target) {
         Flyway.configure().dataSource(db.getJdbcUrl(), db.getUsername(), db.getPassword())
                 .locations("classpath:db/migration").target(target).load().migrate();
     }

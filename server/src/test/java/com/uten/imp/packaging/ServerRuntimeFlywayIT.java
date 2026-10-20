@@ -3,7 +3,7 @@ package com.uten.imp.packaging;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.io.TempDir;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -25,7 +25,7 @@ class ServerRuntimeFlywayIT {
     @Test
     void devRuntimeMigratesAnEmptyPrivateDatabaseBeforeBecomingReady() throws Exception {
         MigrationInventory expected = migrationInventory();
-        try (var postgres = new PostgreSQLContainer<>("postgres:16-alpine").withReuse(false)) {
+        try (var postgres = new PostgreSQLContainer("postgres:16-alpine").withReuse(false)) {
             postgres.start();
             Path output = directory.resolve("runtime-startup.log");
             Process process = start(postgres, output, List.of());
@@ -59,7 +59,7 @@ class ServerRuntimeFlywayIT {
         Path migrations = Files.createDirectory(directory.resolve("invalid-migration"));
         Files.writeString(migrations.resolve("V1__intentional_failure.sql"),
                 "SELECT runtime_migration_regression_function_that_does_not_exist();\n");
-        try (var postgres = new PostgreSQLContainer<>("postgres:16-alpine").withReuse(false)) {
+        try (var postgres = new PostgreSQLContainer("postgres:16-alpine").withReuse(false)) {
             postgres.start();
             Path output = directory.resolve("runtime-migration-failure.log");
             Process process = start(postgres, output,
@@ -77,7 +77,7 @@ class ServerRuntimeFlywayIT {
         }
     }
 
-    private Process start(PostgreSQLContainer<?> postgres, Path output, List<String> overrides) throws Exception {
+    private Process start(PostgreSQLContainer postgres, Path output, List<String> overrides) throws Exception {
         Path jar = applicationJar();
         assertThat(jar).isRegularFile();
         List<String> command = new ArrayList<>(List.of(

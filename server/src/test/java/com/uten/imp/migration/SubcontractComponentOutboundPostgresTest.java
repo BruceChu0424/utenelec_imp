@@ -3,7 +3,7 @@ package com.uten.imp.migration;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -31,7 +31,7 @@ class SubcontractComponentOutboundPostgresTest {
 
     @Test
     void soleLeafComponentIsRecognisedAndMalformedComponentRowsAreRejected() throws Exception {
-        try (var pg = new PostgreSQLContainer<>("postgres:16-alpine")
+        try (var pg = new PostgreSQLContainer("postgres:16-alpine")
                 .withDatabaseName("sc_component_outbound")
                 .withUsername("uten").withPassword("uten-test-only")) {
             pg.start();

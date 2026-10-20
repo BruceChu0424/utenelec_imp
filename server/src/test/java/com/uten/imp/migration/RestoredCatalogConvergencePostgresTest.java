@@ -4,7 +4,7 @@ import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.postgresql.util.PSQLException;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
@@ -30,7 +30,7 @@ class RestoredCatalogConvergencePostgresTest {
 
     @Test
     void convergesKnownDriftPreservesEvidenceAndRefusesUnknownObjects() throws Exception {
-        try (var database = new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try (var database = new PostgreSQLContainer("postgres:16-alpine")) {
             database.start();
             Flyway.configure().dataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword())
                     .locations("classpath:db/migration").target("476").load().migrate();

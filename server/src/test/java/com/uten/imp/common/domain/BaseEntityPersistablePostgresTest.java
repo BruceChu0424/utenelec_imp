@@ -17,7 +17,7 @@ import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.SharedEntityManagerCreator;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
@@ -35,7 +35,7 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class BaseEntityPersistablePostgresTest {
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine");
     static final List<String> STATEMENTS = Collections.synchronizedList(new ArrayList<>());
     static EntityManagerFactory factory;
     static PersistableProbeRepository repository;

@@ -2,7 +2,7 @@ package com.uten.imp.features.production.analysis;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class ProductionFootprintRowVersionPostgresTest {
     @Test
     void everyUpdateChangesTheRowVersionWhileRowLocksDoNot() throws Exception {
-        try (var postgres = new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try (var postgres = new PostgreSQLContainer("postgres:16-alpine")) {
             postgres.start();
             try (var setup = connect(postgres); var statement = setup.createStatement()) {
                 statement.execute("CREATE TABLE version_probe(id int PRIMARY KEY, qty numeric(18,4), note text)");
@@ -53,7 +53,7 @@ class ProductionFootprintRowVersionPostgresTest {
         }
     }
 
-    private static Connection connect(PostgreSQLContainer<?> postgres) throws Exception {
+    private static Connection connect(PostgreSQLContainer postgres) throws Exception {
         return DriverManager.getConnection(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
     }
 

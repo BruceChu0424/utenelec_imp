@@ -17,7 +17,7 @@ import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.SharedEntityManagerCreator;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.OffsetDateTime;
 import java.util.*;
@@ -33,7 +33,7 @@ import static org.mockito.Mockito.*;
  * durable effects here. Actual monetary/replay integration also runs in SubcontractLossValueEndToEndTest. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class InventoryValueWorkConcurrencyPostgresTest {
-    private static final PostgreSQLContainer<?> PG=new PostgreSQLContainer<>("postgres:16-alpine")
+    private static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine")
             .withCommand("postgres","-c","statement_timeout=10s","-c","lock_timeout=5s");
     private static EntityManagerFactory factory;
     private static JpaTransactionManager manager;

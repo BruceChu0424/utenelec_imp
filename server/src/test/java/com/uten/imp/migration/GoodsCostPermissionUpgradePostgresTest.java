@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -14,7 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class GoodsCostPermissionUpgradePostgresTest {
     @Test
     void viewOnlyUsersAndDepartmentsDoNotAcquireCostWriteApprovalExportOrTemplateWhenUpgrading() {
-        try (var postgres = new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try (var postgres = new PostgreSQLContainer("postgres:16-alpine")) {
             postgres.start();
             migrate(postgres, "752");
             var sql = new JdbcTemplate(new DriverManagerDataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword()));
@@ -38,7 +38,7 @@ class GoodsCostPermissionUpgradePostgresTest {
         }
     }
 
-    private static void migrate(PostgreSQLContainer<?> postgres, String version) {
+    private static void migrate(PostgreSQLContainer postgres, String version) {
         Flyway.configure().dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                 .locations("classpath:db/migration").initSql("SET client_min_messages = WARNING").target(version).load().migrate();
     }

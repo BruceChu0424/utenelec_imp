@@ -11,7 +11,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -22,7 +22,7 @@ import static org.mockito.Mockito.*;
 /** Runs the real V860 views and actual reader against isolated PostgreSQL, not SQL string mocks. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class GoodsPriceSourcePostgresTest {
-    private static final PostgreSQLContainer<?> PG=new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine");
     private static JdbcTemplate db;
     private final ObjectMapper json=new ObjectMapper().findAndRegisterModules();
     private GoodsPriceSourceReader reader;

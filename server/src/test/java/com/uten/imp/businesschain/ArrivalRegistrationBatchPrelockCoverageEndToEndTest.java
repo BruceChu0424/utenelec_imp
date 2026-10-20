@@ -30,7 +30,7 @@ import org.springframework.test.context.TestExecutionListeners;
 import org.springframework.test.context.support.AbstractTestExecutionListener;
 import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -80,7 +80,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 @TestExecutionListeners(listeners = ArrivalRegistrationBatchPrelockCoverageEndToEndTest.Cleanup.class,
         mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class ArrivalRegistrationBatchPrelockCoverageEndToEndTest {
-    private static final PostgreSQLContainer<?> DATABASE = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer DATABASE = new PostgreSQLContainer("postgres:16-alpine");
     private static final String SECRET = UUID.randomUUID() + "-" + UUID.randomUUID();
     private static final String INSPECTED = "SUBMITTED_FOR_INSPECTION";
     private static final String PRE_STOCKED = "STOCKED_PENDING_INSPECTION";

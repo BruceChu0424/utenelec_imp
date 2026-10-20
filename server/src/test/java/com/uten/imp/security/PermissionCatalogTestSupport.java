@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.io.IOException;
 import java.lang.reflect.Method;
@@ -43,7 +43,7 @@ final class PermissionCatalogTestSupport {
     private static final Pattern JAVA_LITERAL = Pattern.compile("\"([a-z][a-z_]*(?::[a-z][a-z_]*){1,2})\"");
     private static final Pattern DART_CONST = Pattern.compile("static const \\w+\\s*=\\s*'([^']+)';");
 
-    private static PostgreSQLContainer<?> postgres;
+    private static PostgreSQLContainer postgres;
     private static JdbcTemplate jdbc;
 
     private PermissionCatalogTestSupport() {
@@ -51,7 +51,7 @@ final class PermissionCatalogTestSupport {
 
     static synchronized JdbcTemplate database() {
         if (jdbc == null) {
-            postgres = new PostgreSQLContainer<>("postgres:16-alpine")
+            postgres = new PostgreSQLContainer("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
                     .withUsername("uten")
                     .withPassword("uten-test-only");

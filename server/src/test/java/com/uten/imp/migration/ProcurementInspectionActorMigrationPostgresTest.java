@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class ProcurementInspectionActorMigrationPostgresTest {
     @Test void forwardMigrationKeepsHistoricalEventExactlyAndUserNullEvenWhenAnEmployeeIsRecorded()throws Exception {
-        try(var postgres=new PostgreSQLContainer<>("postgres:16-alpine")){
+        try(var postgres=new PostgreSQLContainer("postgres:16-alpine")){
             postgres.start();var ds=new DriverManagerDataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword());
             Flyway.configure().dataSource(ds).locations("classpath:db/migration").target("772").load().migrate();
             UUID event=UUID.randomUUID(),linkedUser=UUID.randomUUID();

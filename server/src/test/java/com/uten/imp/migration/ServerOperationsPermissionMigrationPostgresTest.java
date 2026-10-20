@@ -21,7 +21,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
@@ -117,7 +117,7 @@ class ServerOperationsPermissionMigrationPostgresTest {
     }
 
     @Test void exactV864UpgradeAppliesOnlyThreeForwardMigrationsWithoutReplacingSettingsOrExistingGrants() {
-        try(var upgrade=new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try(var upgrade=new PostgreSQLContainer("postgres:16-alpine")) {
             upgrade.start();
             var source=new DriverManagerDataSource(upgrade.getJdbcUrl(),upgrade.getUsername(),upgrade.getPassword());
             Flyway.configure().dataSource(source).locations("classpath:db/migration").target("864").load().migrate();
@@ -154,7 +154,7 @@ class ServerOperationsPermissionMigrationPostgresTest {
     }
 
     @Test void exactV864UpgradeAppliesFourForwardMigrationsIncludingSharedKitAuthorityWithoutChangingPriorHistory() {
-        try(var upgrade=new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try(var upgrade=new PostgreSQLContainer("postgres:16-alpine")) {
             upgrade.start();
             var source=new DriverManagerDataSource(upgrade.getJdbcUrl(),upgrade.getUsername(),upgrade.getPassword());
             Flyway.configure().dataSource(source).locations("classpath:db/migration").target("864").load().migrate();

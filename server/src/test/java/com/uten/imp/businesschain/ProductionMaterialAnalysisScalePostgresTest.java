@@ -37,7 +37,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /** Real service correctness by default when DB tests are enabled; large timing requires a second opt-in. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
@@ -52,11 +52,11 @@ import org.testcontainers.containers.PostgreSQLContainer;
 @AutoConfigureMockMvc(print = org.springframework.boot.webmvc.test.autoconfigure.MockMvcPrint.NONE)
 @Import(ProductionJdbcMeasurement.Configuration.class)
 class ProductionMaterialAnalysisScalePostgresTest {
-    private static final PostgreSQLContainer<?> POSTGRES = configuredDatabase();
+    private static final PostgreSQLContainer POSTGRES = configuredDatabase();
     private static final String TEST_SECRET = UUID.randomUUID() + "-" + UUID.randomUUID();
 
-    private static PostgreSQLContainer<?> configuredDatabase() {
-        var database = new PostgreSQLContainer<>("postgres:16-alpine")
+    private static PostgreSQLContainer configuredDatabase() {
+        var database = new PostgreSQLContainer("postgres:16-alpine")
                 .withDatabaseName("uten_production_scale").withUsername("uten_test").withPassword(UUID.randomUUID().toString());
         if ("company".equals(System.getenv("UTEN_PRODUCTION_STRESS_DATABASE_PROFILE"))) {
             // Explicit isolated capacity profile; ordinary CI keeps its small

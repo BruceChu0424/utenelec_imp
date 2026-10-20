@@ -11,7 +11,7 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.lang.reflect.Method;
 import java.time.LocalDate;
@@ -23,7 +23,7 @@ import static org.mockito.Mockito.*;
 /** Executes the real shared report executors and asset filter against PostgreSQL. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class FinanceNativeSearchPostgresTest {
-    static final PostgreSQLContainer<?> PG=new PostgreSQLContainer<>("postgres:16-alpine");
+    static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine");
     static NamedParameterJdbcTemplate db;
     static final LocalDate DATE=LocalDate.of(2026,10,16);
     static final List<ReportColumn> COLS=List.of(ReportColumn.text("goodsName","货品"),ReportColumn.text("goodsCode","编号"),

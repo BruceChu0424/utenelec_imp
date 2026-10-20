@@ -30,7 +30,7 @@ import org.springframework.context.annotation.Import;
 import com.uten.imp.config.JpaAuditingConfig;
 import org.springframework.test.context.support.AbstractTestExecutionListener;
 import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -60,7 +60,7 @@ import static org.mockito.Mockito.*;
 @Import({JpaAuditingConfig.class, com.uten.imp.security.SecurityContextCurrentUser.class})
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 class ProfileChangeBatchPaginationPostgresTest {
-    private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
+    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine")
             .withDatabaseName("profile_batch_pages").withUsername("uten").withPassword("uten");
 
     @DynamicPropertySource

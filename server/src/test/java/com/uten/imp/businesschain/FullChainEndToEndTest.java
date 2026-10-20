@@ -75,7 +75,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -147,8 +147,8 @@ class FullChainEndToEndTest {
     // 73 个 E2E 类经 registerDataSource 共享本容器, 各自的 Spring 上下文(缓存上限 32)
     // 各持一个 Hikari 池同连此库——默认 max_connections=100 会被瞬时冲爆
     // (CI 全链 job 实测 FATAL: too many clients), 提容到 400 并配测试侧小池。
-    private static final PostgreSQLContainer<?> POSTGRES =
-            new PostgreSQLContainer<>("postgres:16-alpine")
+    private static final PostgreSQLContainer POSTGRES =
+            new PostgreSQLContainer("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
                     .withUsername("uten")
                     .withPassword("uten")

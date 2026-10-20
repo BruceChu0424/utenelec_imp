@@ -16,7 +16,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.postgresql.util.PSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.List;
 import java.util.Map;
@@ -35,8 +35,8 @@ import static org.mockito.Mockito.when;
 /** V476 historical-data upgrade plus actual route confirmation/refresh on PostgreSQL. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class MaterialAnalysisOptionalRouteReasonPostgresTest {
-    private static final PostgreSQLContainer<?> POSTGRES =
-            new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer POSTGRES =
+            new PostgreSQLContainer("postgres:16-alpine");
     private static final UUID UNIT = UUID.randomUUID();
     private static final UUID WAREHOUSE = UUID.randomUUID();
     private static final UUID PRODUCT = UUID.randomUUID();

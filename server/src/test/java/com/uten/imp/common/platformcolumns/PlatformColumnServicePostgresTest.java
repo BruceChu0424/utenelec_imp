@@ -14,7 +14,7 @@ import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.math.BigDecimal;
 import java.sql.Connection;
 import java.util.*;
@@ -26,7 +26,7 @@ import static org.mockito.Mockito.*;
 
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class PlatformColumnServicePostgresTest {
-    private static PostgreSQLContainer<?> postgres;
+    private static PostgreSQLContainer postgres;
     private Connection connection;
     private JdbcTemplate sql;
     private TransactionTemplate transaction;

@@ -29,7 +29,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.io.ByteArrayInputStream;
 import java.nio.file.Files;
@@ -60,7 +60,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @AutoConfigureMockMvc(print=MockMvcPrint.NONE)
 class GoodsCostHttpSmokeEndToEndTest {
     private static final String ROOT="/api/master/goods/cost-sheets";
-    private static final PostgreSQLContainer<?> POSTGRES=new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer POSTGRES=new PostgreSQLContainer("postgres:16-alpine");
     private static Path attachmentDirectory;
     @DynamicPropertySource static void database(DynamicPropertyRegistry properties) throws Exception {
         POSTGRES.start();attachmentDirectory=Files.createTempDirectory("uten-cost-http-smoke-");

@@ -6,14 +6,14 @@ import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import org.flywaydb.core.Flyway;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class FinancialExactAmountMigrationHelperPostgresTest {
     static final String ALIAS="[{'table':'financial_exact_fixture','column':'amount'}]".replace('\'', '"');
     @org.junit.jupiter.api.Test
     void preservesExactAmountsAndDependentViewAuthority() throws Exception {
-        try(var pg=new PostgreSQLContainer<>("postgres:16-alpine")
+        try(var pg=new PostgreSQLContainer("postgres:16-alpine")
                 .withDatabaseName("financial_exact_helper").withUsername("uten").withPassword("test-only")) {
             pg.start();
             Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword())

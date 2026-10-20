@@ -2,7 +2,7 @@ package com.uten.imp.migration;
 
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -19,8 +19,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class MaterialAnalysisParticipatingWarehousesPostgresTest {
 
     @Container
-    static final PostgreSQLContainer<?> POSTGRES =
-            new PostgreSQLContainer<>("postgres:16.15-alpine")
+    static final PostgreSQLContainer POSTGRES =
+            new PostgreSQLContainer("postgres:16.15-alpine")
                     .withDatabaseName("material_analysis_warehouses_v471")
                     .withUsername("uten")
                     .withPassword("uten");

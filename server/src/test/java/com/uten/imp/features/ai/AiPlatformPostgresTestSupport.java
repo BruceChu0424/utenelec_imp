@@ -25,7 +25,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
@@ -75,7 +75,7 @@ public abstract class AiPlatformPostgresTestSupport {
 
     private static final AtomicInteger EMPLOYEE_SEQUENCE = new AtomicInteger();
 
-    protected static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
+    protected static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine")
             .withDatabaseName("uten_imp")
             .withUsername("uten")
             .withPassword("uten");

@@ -15,7 +15,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.math.BigDecimal;
 import java.util.*;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -25,7 +25,7 @@ import static org.mockito.Mockito.*;
 /** Executes production evidence and paging SQL on PostgreSQL; this is a focused query fixture, not migration acceptance. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS", matches="(?i)true")
 class WorkshopArrivalEvidencePostgresTest {
-    static final PostgreSQLContainer<?> DB=new PostgreSQLContainer<>("postgres:16-alpine");
+    static final PostgreSQLContainer DB=new PostgreSQLContainer("postgres:16-alpine");
     static JdbcTemplate db;
     @BeforeAll static void start() {
         DB.start(); db=new JdbcTemplate(new DriverManagerDataSource(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword()));

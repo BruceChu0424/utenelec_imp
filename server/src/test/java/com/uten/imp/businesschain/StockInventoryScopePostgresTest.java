@@ -23,7 +23,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import javax.sql.DataSource;
 import java.math.BigDecimal;
@@ -58,7 +58,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @AutoConfigureMockMvc(print=MockMvcPrint.NONE)
 @Import(StockInventoryScopePostgresTest.ProbeConfiguration.class)
 class StockInventoryScopePostgresTest {
-    private static final PostgreSQLContainer<?> POSTGRES=new PostgreSQLContainer<>("postgres:16-alpine")
+    private static final PostgreSQLContainer POSTGRES=new PostgreSQLContainer("postgres:16-alpine")
             .withDatabaseName("uten_inventory_scope").withUsername("uten").withPassword("uten");
     private static final ThreadLocal<List<String>> SQL=new ThreadLocal<>();
     @TestConfiguration static class ProbeConfiguration {

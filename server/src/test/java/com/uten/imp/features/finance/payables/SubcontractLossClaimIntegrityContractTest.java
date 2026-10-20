@@ -6,7 +6,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.persistence.EntityManager;
@@ -110,7 +110,7 @@ class SubcontractLossClaimIntegrityContractTest {
     void outputCompensationRequiresExplicitZeroInBothCurrenciesAndTheExactApprovedSource() throws Exception {
         // Focused PostgreSQL regression for the service's actual fulfillment SQL;
         // these isolated tables exercise its predicate and write ordering, not migration guards.
-        try (var postgres = new PostgreSQLContainer<>("postgres:16-alpine")
+        try (var postgres = new PostgreSQLContainer("postgres:16-alpine")
                 .withDatabaseName("loss_fulfillment_amount_predicate")
                 .withUsername("uten").withPassword("uten-test-only")) {
             postgres.start();

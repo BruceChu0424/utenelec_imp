@@ -3,7 +3,7 @@ package com.uten.imp.common.finance;
 import com.uten.imp.support.MigratedSchemaBaseline;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.math.BigDecimal;
 import java.sql.*;
 import java.util.*;
@@ -12,7 +12,7 @@ import static org.assertj.core.api.Assertions.*;
 /** Full forward migrations and real finance/snapshot/quantity mutation guards. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class ProcurementTotalAmountPostgresTest {
-    private static PostgreSQLContainer<?> postgres;
+    private static PostgreSQLContainer postgres;
     @BeforeAll static void migrate() { postgres = MigratedSchemaBaseline.startMigratedContainer("total_amount"); }
     @AfterAll static void stop() { if (postgres != null) postgres.stop(); }
 

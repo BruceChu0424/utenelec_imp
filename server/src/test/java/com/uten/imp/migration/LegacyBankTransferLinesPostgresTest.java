@@ -8,7 +8,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.sql.SQLException;
@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 /** Existing bank history remains immutable even though the bootstrap rejects new nonempty M_Bank imports. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class LegacyBankTransferLinesPostgresTest {
-    private static final PostgreSQLContainer<?> PG=new PostgreSQLContainer<>("postgres:16-alpine")
+    private static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine")
             .withUsername("uten").withPassword("synthetic-bank-history-only");
     private static final UUID HISTORY=UUID.randomUUID(),NATIVE=UUID.randomUUID(),OLD_LINE=UUID.randomUUID();
     private static JdbcTemplate jdbc;

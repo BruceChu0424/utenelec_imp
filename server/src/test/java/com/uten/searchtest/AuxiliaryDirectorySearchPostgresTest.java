@@ -15,7 +15,7 @@ import org.springframework.data.jpa.repository.support.JpaRepositoryFactory;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.OffsetDateTime;
 import java.util.*;
@@ -25,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Real Spring Data default repository methods and real notice candidate JDBC; sends no notices. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class AuxiliaryDirectorySearchPostgresTest {
-    static final PostgreSQLContainer<?> PG = new PostgreSQLContainer<>("postgres:16-alpine");
+    static final PostgreSQLContainer PG = new PostgreSQLContainer("postgres:16-alpine");
     static SessionFactory factory;
     static NamedParameterJdbcTemplate db;
     static NoticeAudienceService audience;

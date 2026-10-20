@@ -33,7 +33,7 @@ import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -54,7 +54,7 @@ import static org.mockito.Mockito.*;
 @Testcontainers
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS", matches="(?i)true")
 class SalesFinanceNoticeClaimConcurrencyPostgresTest {
-    @Container static final PostgreSQLContainer<?> DB = new PostgreSQLContainer<>("postgres:16-alpine")
+    @Container static final PostgreSQLContainer DB = new PostgreSQLContainer("postgres:16-alpine")
             .withLabel("uten.test", "sales-finance-notice-claim");
     private ObservedSqlDataSource source;
     private JdbcTemplate jdbc;

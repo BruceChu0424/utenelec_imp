@@ -14,7 +14,7 @@ import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.SharedEntityManagerCreator;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
@@ -25,7 +25,7 @@ import static org.assertj.core.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class InventoryDerivedNodeLegacyPostgresTest {
     @Test void legacyParentKeepsUnknownBoundAcrossNonzeroAndZeroWidthDerivedEdges()throws Exception{
-        try(var pg=new PostgreSQLContainer<>("postgres:16-alpine")){
+        try(var pg=new PostgreSQLContainer("postgres:16-alpine")){
             pg.start();var ds=new DriverManagerDataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword());
             var db=new JdbcTemplate(ds);UUID user=UUID.randomUUID(),employee=UUID.randomUUID(),warehouse=UUID.randomUUID(),goods=UUID.randomUUID();
             for(String table:List.of("users","employees","warehouses","goods","colors"))db.execute("CREATE TABLE "+table+"(id uuid PRIMARY KEY)");

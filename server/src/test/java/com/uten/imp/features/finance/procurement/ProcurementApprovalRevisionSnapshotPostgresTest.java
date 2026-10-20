@@ -10,7 +10,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -24,7 +24,7 @@ import static org.mockito.Mockito.mock;
 class ProcurementApprovalRevisionSnapshotPostgresTest {
     @Test
     void bothOrderTypesKeepDeletedRowsAndExactAmountsBoundToEachSubmission() {
-        try (PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine")
+        try (PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:16-alpine")
                 .withDatabaseName("procurement_revision_review")
                 .withUsername("uten").withPassword("uten-test-only")) {
             postgres.start();

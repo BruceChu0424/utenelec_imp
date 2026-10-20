@@ -1,7 +1,7 @@
 package com.uten.imp.support;
 
 import org.flywaydb.core.Flyway;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.io.IOException;
 import java.sql.Connection;
@@ -29,7 +29,7 @@ public final class MigratedSchemaBaseline {
 
     private static final class Shared {
         private static final TemplatePool POOL = new TemplatePool(
-                () -> new PostgreSQLContainer<>("postgres:16-alpine")
+                () -> new PostgreSQLContainer("postgres:16-alpine")
                         .withDatabaseName("uten_migrated_template")
                         .withReuse(false),
                 MigratedSchemaBaseline::migrate);
@@ -57,7 +57,7 @@ public final class MigratedSchemaBaseline {
         private final String password;
         private boolean closed;
 
-        private ScopedDatabase(TemplatePool owner, PostgreSQLContainer<?> template, String name) {
+        private ScopedDatabase(TemplatePool owner, PostgreSQLContainer template, String name) {
             this.owner = owner;
             this.name = name;
             this.jdbcUrl = jdbcUrlFor(template, name);
@@ -90,14 +90,14 @@ public final class MigratedSchemaBaseline {
 
     /** Package visibility allows lifecycle/failure tests without exposing ownership to consumers. */
     static final class TemplatePool implements AutoCloseable {
-        private final Supplier<PostgreSQLContainer<?>> factory;
-        private final Consumer<PostgreSQLContainer<?>> migration;
+        private final Supplier<PostgreSQLContainer> factory;
+        private final Consumer<PostgreSQLContainer> migration;
         private final Set<ScopedDatabase> leases = new HashSet<>();
-        private PostgreSQLContainer<?> template;
+        private PostgreSQLContainer template;
         private boolean closed;
         private int migrations;
 
-        TemplatePool(Supplier<PostgreSQLContainer<?>> factory, Consumer<PostgreSQLContainer<?>> migration) {
+        TemplatePool(Supplier<PostgreSQLContainer> factory, Consumer<PostgreSQLContainer> migration) {
             this.factory = factory;
             this.migration = migration;
         }
@@ -106,7 +106,7 @@ public final class MigratedSchemaBaseline {
             validateLabel(label);
             if (closed) throw new IllegalStateException("Migrated template pool is closed");
             if (template == null) {
-                PostgreSQLContainer<?> candidate = factory.get();
+                PostgreSQLContainer candidate = factory.get();
                 try {
                     candidate.start();
                     migration.accept(candidate);
@@ -161,7 +161,7 @@ public final class MigratedSchemaBaseline {
         }
     }
 
-    private static void migrate(PostgreSQLContainer<?> postgres) {
+    private static void migrate(PostgreSQLContainer postgres) {
         Flyway.configure()
                 .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                 .locations("classpath:db/migration")
@@ -170,9 +170,9 @@ public final class MigratedSchemaBaseline {
     }
 
     /** Compatibility API: the caller owns this dedicated container and must stop it. */
-    public static PostgreSQLContainer<?> startMigratedContainer(String databaseName) {
+    public static PostgreSQLContainer startMigratedContainer(String databaseName) {
         validateDatabaseName(databaseName);
-        PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine")
+        PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:16-alpine")
                 .withDatabaseName(databaseName).withReuse(false);
         try {
             postgres.start();
@@ -186,7 +186,7 @@ public final class MigratedSchemaBaseline {
 
     /** Compatibility API for migration-specific templates; the caller owns the container/clones. */
     public static Connection cloneConnection(
-            PostgreSQLContainer<?> template, String cloneDatabaseName) throws SQLException {
+            PostgreSQLContainer template, String cloneDatabaseName) throws SQLException {
         createClone(template, cloneDatabaseName);
         try {
             return DriverManager.getConnection(jdbcUrlFor(template, cloneDatabaseName),
@@ -201,17 +201,17 @@ public final class MigratedSchemaBaseline {
         }
     }
 
-    private static void createClone(PostgreSQLContainer<?> template, String name) throws SQLException {
+    private static void createClone(PostgreSQLContainer template, String name) throws SQLException {
         validateDatabaseName(name);
         if (name.equals(template.getDatabaseName())) throw new IllegalArgumentException("Cannot clone over the template");
         execute(template, "createdb", "-U", template.getUsername(), "-T", template.getDatabaseName(), name);
     }
 
-    private static void dropClone(PostgreSQLContainer<?> template, String name) throws SQLException {
+    private static void dropClone(PostgreSQLContainer template, String name) throws SQLException {
         execute(template, "dropdb", "-U", template.getUsername(), "--if-exists", "--force", name);
     }
 
-    private static void execute(PostgreSQLContainer<?> template, String... command) throws SQLException {
+    private static void execute(PostgreSQLContainer template, String... command) throws SQLException {
         try {
             var result = template.execInContainer(command);
             if (result.getExitCode() != 0) {
@@ -225,7 +225,7 @@ public final class MigratedSchemaBaseline {
         }
     }
 
-    private static void stopAfterFailure(PostgreSQLContainer<?> postgres, Throwable failure) {
+    private static void stopAfterFailure(PostgreSQLContainer postgres, Throwable failure) {
         try {
             postgres.stop();
         } catch (RuntimeException | Error cleanupFailure) {
@@ -234,7 +234,7 @@ public final class MigratedSchemaBaseline {
     }
 
     /** Same server and JDBC parameters, with a different database name. */
-    public static String jdbcUrlFor(PostgreSQLContainer<?> container, String databaseName) {
+    public static String jdbcUrlFor(PostgreSQLContainer container, String databaseName) {
         validateDatabaseName(databaseName);
         String url = container.getJdbcUrl();
         int queryStart = url.indexOf('?');

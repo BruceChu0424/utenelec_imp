@@ -3,7 +3,7 @@ package com.uten.imp.migration;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.math.BigDecimal;
 import java.sql.*;
 import java.time.OffsetDateTime;
@@ -16,7 +16,7 @@ import static com.uten.imp.migration.FinancialActualBankReceiptPostgresTest.*;
 class FinancialActualBankPaymentPostgresTest {
     private static final AtomicInteger SEQUENCE=new AtomicInteger();
     @Test void actualDebitFeeBookFxAndMultiplePayablesAreConservedAndAppendExactReversals() throws Exception {
-        try(var pg=new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try(var pg=new PostgreSQLContainer("postgres:16-alpine")) {
             pg.start();migrate(pg,"508");Fixture f;
             try(var c=connect(pg)){f=seedPayables(c);}
             migrate(pg,"523");
@@ -195,6 +195,6 @@ class FinancialActualBankPaymentPostgresTest {
     private record Fixture(UUID supplier,UUID currency,UUID base,UUID maker,UUID approver,List<UUID> sources){}
     private record Part(UUID source,BigDecimal amount){}
     private record Planned(Part part,BigDecimal beforeA,BigDecimal beforeB,BigDecimal cash,BigDecimal sourceA,BigDecimal sourceB,BigDecimal book){}
-    private static Connection connect(PostgreSQLContainer<?> pg)throws SQLException{return DriverManager.getConnection(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword());}
-    private static void migrate(PostgreSQLContainer<?> pg,String target){Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()).locations("classpath:db/migration").target(target).load().migrate();}
+    private static Connection connect(PostgreSQLContainer pg)throws SQLException{return DriverManager.getConnection(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword());}
+    private static void migrate(PostgreSQLContainer pg,String target){Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()).locations("classpath:db/migration").target(target).load().migrate();}
 }

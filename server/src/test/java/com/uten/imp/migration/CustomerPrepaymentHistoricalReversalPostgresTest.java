@@ -3,7 +3,7 @@ package com.uten.imp.migration;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class CustomerPrepaymentHistoricalReversalPostgresTest {
     @Test
     void nonemptyUpgradePreservesHistoricalMoneyAndAllowsOnlyHistoricalClosedOrderUpdates() throws Exception {
-        try(var postgres=new PostgreSQLContainer<>("postgres:16.15-alpine")
+        try(var postgres=new PostgreSQLContainer("postgres:16.15-alpine")
                 .withDatabaseName("uten_advance_reversal").withUsername("uten").withPassword("uten")) {
             postgres.start();
             // Genuine V0 history predates immutable receipt GL ownership in V407.
@@ -118,10 +118,10 @@ class CustomerPrepaymentHistoricalReversalPostgresTest {
             try(var result=s.executeQuery()){assertThat(result.next()).isTrue();return result.getString(1);}
         }
     }
-    private static Connection connection(PostgreSQLContainer<?> postgres)throws SQLException {
+    private static Connection connection(PostgreSQLContainer postgres)throws SQLException {
         return DriverManager.getConnection(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword());
     }
-    private static void migrate(PostgreSQLContainer<?> postgres,String target) {
+    private static void migrate(PostgreSQLContainer postgres,String target) {
         Flyway.configure().dataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword())
                 .locations("classpath:db/migration").target(target).load().migrate();
     }

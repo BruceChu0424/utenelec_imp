@@ -24,7 +24,7 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.Duration;
 import java.util.List;
@@ -41,7 +41,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Real transaction/lock mechanics; business value-chain assertions remain in FullChainEndToEndTest. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class FulfillmentMutationLocksPostgresTest {
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine");
     static JdbcTemplate jdbc;
     static EntityManagerFactory factory;
     static EntityManager em;

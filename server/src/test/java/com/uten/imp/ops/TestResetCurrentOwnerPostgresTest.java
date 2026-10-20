@@ -10,7 +10,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.io.IOException;
 import java.net.URISyntaxException;
@@ -46,7 +46,7 @@ class TestResetCurrentOwnerPostgresTest {
         int[] versions = singleObjectRuleVersions();
         String previous = Integer.toString(versions[0]), current = Integer.toString(versions[1]);
         String password=UUID.randomUUID().toString();
-        try(var pg=new PostgreSQLContainer<>("postgres:16-alpine").withDatabaseName("reset_current_owner").withUsername("fixture_admin")) {
+        try(var pg=new PostgreSQLContainer("postgres:16-alpine").withDatabaseName("reset_current_owner").withUsername("fixture_admin")) {
             pg.start();
             var admin=new JdbcTemplate(new DriverManagerDataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()));
             admin.execute("CREATE ROLE uten_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE");

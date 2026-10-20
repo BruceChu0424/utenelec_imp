@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -46,7 +46,7 @@ class ProcurementFinanceApprovalExchangeRatePostgresTest {
 
     @Test
     void historicalUndecidedTaxNeverInheritsAnotherRoundsDecision() throws Exception {
-        try(var postgres=new PostgreSQLContainer<>("postgres:16-alpine")
+        try(var postgres=new PostgreSQLContainer("postgres:16-alpine")
                 .withDatabaseName("procurement_tax_history").withUsername("uten").withPassword("uten-test-only")) {
             postgres.start();
             var jdbc=new JdbcTemplate(new DriverManagerDataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword()));
@@ -83,7 +83,7 @@ class ProcurementFinanceApprovalExchangeRatePostgresTest {
     @Test
     void approvedHistoryQueriesUseDecisionRateAndFrozenSupplier() throws Exception {
         // Real SQL must keep approved snapshots independent from current master-data renames.
-        try (var postgres = new PostgreSQLContainer<>("postgres:16-alpine")
+        try (var postgres = new PostgreSQLContainer("postgres:16-alpine")
                 .withDatabaseName("procurement_finance_history")
                 .withUsername("uten").withPassword("uten-test-only")) {
             postgres.start();
@@ -118,7 +118,7 @@ class ProcurementFinanceApprovalExchangeRatePostgresTest {
 
     @Test
     void approveRecordsFinanceRateOnTheCaseWithoutTouchingSubmissionFacts() throws Exception {
-        try (var postgres = new PostgreSQLContainer<>("postgres:16-alpine")
+        try (var postgres = new PostgreSQLContainer("postgres:16-alpine")
                 .withDatabaseName("procurement_finance_rate")
                 .withUsername("uten").withPassword("uten-test-only")) {
             postgres.start();
@@ -195,7 +195,7 @@ class ProcurementFinanceApprovalExchangeRatePostgresTest {
 
     @Test
     void reconfirmationWithoutExplicitRateCarriesOverPriorFinanceRate() throws Exception {
-        try (var postgres = new PostgreSQLContainer<>("postgres:16-alpine")
+        try (var postgres = new PostgreSQLContainer("postgres:16-alpine")
                 .withDatabaseName("procurement_finance_rate_reconfirm")
                 .withUsername("uten").withPassword("uten-test-only")) {
             postgres.start();
@@ -235,7 +235,7 @@ class ProcurementFinanceApprovalExchangeRatePostgresTest {
 
     @Test
     void omittedRateDefaultsToOneAndRejectionNeverWritesFinanceColumns() throws Exception {
-        try (var postgres = new PostgreSQLContainer<>("postgres:16-alpine")
+        try (var postgres = new PostgreSQLContainer("postgres:16-alpine")
                 .withDatabaseName("procurement_finance_rate_default")
                 .withUsername("uten").withPassword("uten-test-only")) {
             postgres.start();

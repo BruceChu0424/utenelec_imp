@@ -17,7 +17,7 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.*;
@@ -30,7 +30,7 @@ import static org.mockito.Mockito.*;
 
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class GoodsCostImportRemappingPostgresTest {
-    static final PostgreSQLContainer<?> POSTGRES=new PostgreSQLContainer<>("postgres:16-alpine");
+    static final PostgreSQLContainer POSTGRES=new PostgreSQLContainer("postgres:16-alpine");
     static DriverManagerDataSource dataSource;static JdbcTemplate sql;
     final ObjectMapper json=new ObjectMapper().findAndRegisterModules();
     final UUID goods=UUID.randomUUID(),actor=UUID.randomUUID();

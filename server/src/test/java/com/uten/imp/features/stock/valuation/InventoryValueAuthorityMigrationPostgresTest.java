@@ -5,7 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.util.*;
 import static org.assertj.core.api.Assertions.*;
 
@@ -13,7 +13,7 @@ import static org.assertj.core.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class InventoryValueAuthorityMigrationPostgresTest {
     @Test void exactValueExtensionPreservesOldRowsAndKeepsLegacyAmountsUnverified()throws Exception{
-        try(var pg=new PostgreSQLContainer<>("postgres:16-alpine")){
+        try(var pg=new PostgreSQLContainer("postgres:16-alpine")){
             pg.start();var ds=new DriverManagerDataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword());
             Flyway.configure().dataSource(ds).locations("classpath:db/migration").target("516").load().migrate();var db=new JdbcTemplate(ds);
             db.update("INSERT INTO units(id,code,name) VALUES ('00500509-0000-0000-0000-000000000001','VALUE-UNIT','value unit')");

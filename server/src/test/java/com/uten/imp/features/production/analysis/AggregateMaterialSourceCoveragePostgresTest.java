@@ -3,7 +3,7 @@ package com.uten.imp.features.production.analysis;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.sql.*;
@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * aggregate order E2E suite exercises authorized writes and actual inventory. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class AggregateMaterialSourceCoveragePostgresTest {
-    static final PostgreSQLContainer<?> DATABASE=new PostgreSQLContainer<>("postgres:16-alpine");
+    static final PostgreSQLContainer DATABASE=new PostgreSQLContainer("postgres:16-alpine");
     Connection db;
     String schema;
     UUID analysis,unit,warehouse,component,parentGoods,anchor,batch,action,canonical,edge;

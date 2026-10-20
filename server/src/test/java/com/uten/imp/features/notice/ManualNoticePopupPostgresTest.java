@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.repository.support.JpaRepositoryFactory;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -33,7 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class ManualNoticePopupPostgresTest {
-    private static final PostgreSQLContainer<?> DB = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer DB = new PostgreSQLContainer("postgres:16-alpine");
     private static final UUID ME = new UUID(0, 1001);
     private static final UUID OTHER = new UUID(0, 1002);
     private static final Instant NONE_SINCE = Instant.now().minus(14, ChronoUnit.DAYS);

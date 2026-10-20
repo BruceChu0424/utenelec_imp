@@ -8,7 +8,7 @@ import com.uten.imp.features.purchase.common.PurchaseLineUnitPolicy;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
@@ -28,7 +28,7 @@ import static org.assertj.core.api.Assertions.*;
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class GoodsQuantityUnitLifecyclePostgresTest {
-    private static final PostgreSQLContainer<?> DB = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer DB = new PostgreSQLContainer("postgres:16-alpine");
     private static final UUID PIECE = UUID.randomUUID(), BOX = UUID.randomUUID();
     private static final UUID HISTORICAL = UUID.randomUUID(), LEGACY = UUID.randomUUID();
     private static final UUID BOM_PARENT = UUID.randomUUID(), BOM_CHILD = UUID.randomUUID();

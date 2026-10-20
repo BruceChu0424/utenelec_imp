@@ -17,7 +17,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
@@ -58,8 +58,8 @@ import static org.mockito.Mockito.mock;
         matches = "(?i)true")
 class SecurityPermissionMigrationTest {
 
-    private static final PostgreSQLContainer<?> POSTGRES =
-            new PostgreSQLContainer<>("postgres:16-alpine")
+    private static final PostgreSQLContainer POSTGRES =
+            new PostgreSQLContainer("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
                     .withUsername("uten")
                     .withPassword("uten");

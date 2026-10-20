@@ -3,7 +3,7 @@ package com.uten.imp.migration;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.sql.*;
@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class FinancialBookAllocationPostgresTest {
     @Test void completeMigrationAndFiniteActualBookAllocation() throws Exception {
-        try(var pg=new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try(var pg=new PostgreSQLContainer("postgres:16-alpine")) {
             pg.start();
             UUID supplier=UUID.randomUUID(),currency=UUID.randomUUID();
             UUID[] receipts={UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID()};

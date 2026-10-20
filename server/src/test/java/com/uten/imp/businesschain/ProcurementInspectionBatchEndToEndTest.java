@@ -23,7 +23,7 @@ import org.springframework.test.context.support.AbstractTestExecutionListener;
 import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -46,7 +46,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @TestExecutionListeners(listeners=ProcurementInspectionBatchEndToEndTest.Cleanup.class,
         mergeMode=TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class ProcurementInspectionBatchEndToEndTest {
-    private static final PostgreSQLContainer<?> DATABASE=new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer DATABASE=new PostgreSQLContainer("postgres:16-alpine");
     private static final String SECRET=UUID.randomUUID()+"-"+UUID.randomUUID();
     private static final BigDecimal RECEIVED=new BigDecimal("1.2500");
     private static final String REASON="真实批量品质报告";

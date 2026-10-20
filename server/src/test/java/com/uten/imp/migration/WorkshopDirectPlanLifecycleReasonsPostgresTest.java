@@ -8,7 +8,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 @Testcontainers(disabledWithoutDocker = true)
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class WorkshopDirectPlanLifecycleReasonsPostgresTest {
-    @Container private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
+    @Container private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine");
     private static final UUID SOURCE_PLAN = id(1), TARGET_PLAN = id(2), SOURCE = id(3), TARGET = id(4);
     private static final UUID DEMAND = id(5), PACKAGE = id(6), GOODS = id(7), ANALYSIS_ITEM = id(8);
     private static JdbcTemplate jdbc;

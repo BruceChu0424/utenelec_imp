@@ -3,7 +3,7 @@ package com.uten.imp.migration;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -23,7 +23,7 @@ class AccountBalanceNativeCurrencyUpgradePostgresTest {
     @Test
     void v401ClassifiesExistingV400RowsWithoutRewritingTheirFrozenEvidence()
             throws Exception {
-        try (PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine")
+        try (PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:16-alpine")
                 .withDatabaseName("uten_imp")
                 .withUsername("uten")
                 .withPassword("uten")) {

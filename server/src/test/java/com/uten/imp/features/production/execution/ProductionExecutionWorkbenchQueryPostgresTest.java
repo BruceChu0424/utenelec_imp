@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.time.LocalDate;
 import java.util.Optional;
 import java.util.List;
@@ -39,7 +39,7 @@ import static org.mockito.Mockito.when;
  * Migration tests separately verify the full production view definitions. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class ProductionExecutionWorkbenchQueryPostgresTest {
-    private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine");
     private static final UUID EMPLOYEE = UUID.randomUUID();
     private static final UUID WORKSHOP = UUID.randomUUID();
     private static final UUID OTHER_WORKSHOP = UUID.randomUUID();

@@ -3,13 +3,13 @@ package com.uten.imp.migration;
 import java.sql.DriverManager;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import static org.junit.jupiter.api.Assertions.*;
 
 @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class ProcurementConsiderationMigrationPostgresTest {
     @Test void upgradesTheCompleteCandidateWithoutRoundingInternalMoney() throws Exception {
-        try(var pg=new PostgreSQLContainer<>("postgres:16-alpine")
+        try(var pg=new PostgreSQLContainer("postgres:16-alpine")
                 .withDatabaseName("iqc_consideration").withUsername("uten").withPassword("test-only")){
             pg.start();
             Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword())

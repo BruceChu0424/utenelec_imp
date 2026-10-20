@@ -16,7 +16,7 @@ import org.springframework.test.context.TestContext;
 import org.springframework.test.context.TestExecutionListeners;
 import org.springframework.test.context.support.AbstractTestExecutionListener;
 import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.List;
 import java.util.UUID;
@@ -35,7 +35,7 @@ import static com.uten.imp.migration.MigrationRehearsalSupport.migrationFileCoun
 @TestExecutionListeners(listeners=RootSupplyActualWarehouseForwardMigrationEndToEndTest.Cleanup.class,
         mergeMode=TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
-    private static final PostgreSQLContainer<?> DATABASE=new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer DATABASE=new PostgreSQLContainer("postgres:16-alpine");
     private static final String SECRET=UUID.randomUUID()+"-"+UUID.randomUUID();
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry) {
         DATABASE.start();registry.add("spring.datasource.url",DATABASE::getJdbcUrl);

@@ -14,7 +14,7 @@ import org.springframework.jdbc.datasource.DelegatingDataSource;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
@@ -27,7 +27,7 @@ import static org.mockito.Mockito.mock;
 /** Actual Hibernate bindings and PostgreSQL reads; fixture columns come from the current migrated catalog. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class EmployeeNameResolverBatchPostgresTest {
-    private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine");
     private static final List<String> STATEMENTS = Collections.synchronizedList(new ArrayList<>());
     private static EntityManagerFactory factory;
     private static JdbcTemplate db;

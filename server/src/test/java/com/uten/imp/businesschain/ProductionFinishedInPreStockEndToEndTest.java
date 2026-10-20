@@ -27,7 +27,7 @@ import org.springframework.test.context.TestExecutionListeners;
 import org.springframework.test.context.support.AbstractTestExecutionListener;
 import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -60,7 +60,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @TestExecutionListeners(listeners = ProductionFinishedInPreStockEndToEndTest.Cleanup.class,
         mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class ProductionFinishedInPreStockEndToEndTest {
-    private static final PostgreSQLContainer<?> DATABASE = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer DATABASE = new PostgreSQLContainer("postgres:16-alpine");
     private static final String SECRET = UUID.randomUUID() + "-" + UUID.randomUUID();
 
     @DynamicPropertySource

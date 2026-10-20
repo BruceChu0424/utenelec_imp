@@ -7,7 +7,7 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class LegacySubcontractSettlementProvenancePostgresTest {
-    static final PostgreSQLContainer<?> PG=new PostgreSQLContainer<>("postgres:16-alpine");
+    static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine");
     static final String FILE="db/migration/V624__legacy_subcontract_settlement_provenance.sql";
     static final String PASSWORD=UUID.randomUUID().toString();
     static JdbcTemplate admin;

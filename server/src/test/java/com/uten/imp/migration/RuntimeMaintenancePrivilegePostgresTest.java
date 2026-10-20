@@ -6,7 +6,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Real, separate non-superuser logins. No runtime owner/migrator membership. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class RuntimeMaintenancePrivilegePostgresTest {
-    static final PostgreSQLContainer<?> PG=new PostgreSQLContainer<>("postgres:16-alpine")
+    static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine")
             .withDatabaseName("runtime_maintenance").withUsername("fixture_admin");
     static final String PASSWORD=UUID.randomUUID().toString();
     static final List<String> VIEWS=List.of("finance_ar_ap_mv","production_monthly_mv","purchase_monthly_mv",

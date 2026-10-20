@@ -33,7 +33,7 @@ import org.springframework.test.context.TestExecutionListeners;
 import org.springframework.test.context.TestContext;
 import org.springframework.test.context.support.AbstractTestExecutionListener;
 import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.math.BigDecimal;
 import java.nio.file.*;
 import java.util.*;
@@ -57,7 +57,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 @TestExecutionListeners(listeners=ProductionWorkshopReportBadgeEndToEndTest.Cleanup.class,
  mergeMode=TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class ProductionWorkshopReportBadgeEndToEndTest {
- private static final PostgreSQLContainer<?> DATABASE=new PostgreSQLContainer<>("postgres:16-alpine");
+ private static final PostgreSQLContainer DATABASE=new PostgreSQLContainer("postgres:16-alpine");
  @DynamicPropertySource static void database(DynamicPropertyRegistry registry){
   DATABASE.start();registry.add("spring.datasource.url",DATABASE::getJdbcUrl);
   registry.add("spring.datasource.username",DATABASE::getUsername);registry.add("spring.datasource.password",DATABASE::getPassword);

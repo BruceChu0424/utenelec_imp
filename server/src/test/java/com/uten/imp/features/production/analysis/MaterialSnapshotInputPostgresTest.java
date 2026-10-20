@@ -18,7 +18,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -29,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @Testcontainers(disabledWithoutDocker=true)
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class MaterialSnapshotInputPostgresTest {
-    @Container static final PostgreSQLContainer<?> PG=new PostgreSQLContainer<>("postgres:16-alpine");
+    @Container static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine");
 
     @ParameterizedTest @ValueSource(strings={"NODE_INPUT","NODE_ALLOCATION_INPUT"})
     void typedJsonRetainsTheEntireScalarContractAndArrayOrder(String name)throws Exception {

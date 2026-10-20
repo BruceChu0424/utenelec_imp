@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.sql.Connection;
@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Executes the production planned-output expression; business helper outcomes are explicit adapters. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class SubcontractPlannedOutputQuantityPostgresTest {
-    private static final PostgreSQLContainer<?> DB=new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer DB=new PostgreSQLContainer("postgres:16-alpine");
     private static Connection connection;
     private static JdbcTemplate db;
     private static final UUID GOODS=UUID.randomUUID();

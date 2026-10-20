@@ -10,7 +10,7 @@ import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -21,12 +21,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** Actual V614 schema with all guards enabled; V615 must only add proven source metadata. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class WorkshopDirectSourceHistoryPostgresTest {
-    private static PostgreSQLContainer<?> postgres;
+    private static PostgreSQLContainer postgres;
     private static String templateUrl;
     private static String username;
     private static String password;
     @BeforeAll static void prepareTemplate() {
-        postgres=new PostgreSQLContainer<>("postgres:16-alpine").withDatabaseName("history_template");
+        postgres=new PostgreSQLContainer("postgres:16-alpine").withDatabaseName("history_template");
         postgres.start();
         templateUrl=postgres.getJdbcUrl();
         username=postgres.getUsername();

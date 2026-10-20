@@ -32,7 +32,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.support.AbstractTestExecutionListener;
 import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
 import org.springframework.test.web.servlet.MockMvc;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -85,8 +85,8 @@ class WorkbenchBadgeSummaryPostgresTest {
     // The comparisons deliberately make separate HTTP reads. Other cached Spring
     // contexts must not publish into this database between those reads: mocking
     // this context's scheduler alone cannot stop a scheduler in another context.
-    private static final PostgreSQLContainer<?> DATABASE =
-            new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer DATABASE =
+            new PostgreSQLContainer("postgres:16-alpine");
 
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {

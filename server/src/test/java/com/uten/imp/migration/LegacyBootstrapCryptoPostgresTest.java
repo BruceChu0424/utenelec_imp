@@ -8,7 +8,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.containers.BindMode;
 import org.testcontainers.containers.Container;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.images.builder.ImageFromDockerfile;
 import org.testcontainers.images.builder.Transferable;
 import org.testcontainers.utility.DockerImageName;
@@ -33,7 +33,7 @@ class LegacyBootstrapCryptoPostgresTest {
     private static final String HMAC="SYNTHETIC_PRIVATE_HMAC_CANARY_0123456789\\n'字节'";
     private static final String PII="SYNTHETIC_PRIVATE_PII_CANARY_012345";
     private static final String PARAMETERS="log_min_messages,log_min_error_statement,log_statement,log_parameter_max_length";
-    private static PostgreSQLContainer<?> postgres;
+    private static PostgreSQLContainer postgres;
     private static JdbcTemplate jdbc;
     private static String options,preflight;
 
@@ -46,7 +46,7 @@ class LegacyBootstrapCryptoPostgresTest {
         assertTrue(start>=0&&end>start);preflight=script.substring(start,end+3);
         var image=new ImageFromDockerfile().withDockerfileFromBuilder(builder->builder.from("postgres:16-alpine")
                 .run("apk add --no-cache bash python3 git coreutils docker-cli").build());
-        postgres=new PostgreSQLContainer<>(DockerImageName.parse(image.get()).asCompatibleSubstituteFor("postgres"))
+        postgres=new PostgreSQLContainer(DockerImageName.parse(image.get()).asCompatibleSubstituteFor("postgres"))
                 .withFileSystemBind("/var/run/docker.sock","/var/run/docker.sock",BindMode.READ_WRITE)
                 .withCommand("postgres","-c","log_statement=all","-c","log_min_duration_statement=0",
                         "-c","log_duration=on","-c","log_parameter_max_length=-1","-c","log_parameter_max_length_on_error=-1");

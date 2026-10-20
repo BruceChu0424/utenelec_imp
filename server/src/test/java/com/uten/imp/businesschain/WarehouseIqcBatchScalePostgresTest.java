@@ -18,7 +18,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.*;
 import org.springframework.test.context.support.AbstractTestExecutionListener;
 import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.nio.file.Files;
@@ -43,11 +43,11 @@ import static org.junit.jupiter.api.Assertions.*;
 @TestExecutionListeners(listeners = WarehouseIqcBatchScalePostgresTest.Cleanup.class,
         mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class WarehouseIqcBatchScalePostgresTest {
-    private static final PostgreSQLContainer<?> POSTGRES = database();
+    private static final PostgreSQLContainer POSTGRES = database();
     private static WarehouseIqcSnapshotSupport.Restored restored;
     private static final String SECRET = UUID.randomUUID()+"-"+UUID.randomUUID();
-    private static PostgreSQLContainer<?> database() {
-        var database = new PostgreSQLContainer<>("postgres:16-alpine")
+    private static PostgreSQLContainer database() {
+        var database = new PostgreSQLContainer("postgres:16-alpine")
                 .withDatabaseName("uten_warehouse_iqc_scale").withUsername("uten_test").withPassword(UUID.randomUUID().toString());
         boolean company = "company".equals(System.getProperty("uten.warehouse.scale.databaseProfile"));
         database.withSharedMemorySize(1024L*1024*1024).withCommand("postgres",

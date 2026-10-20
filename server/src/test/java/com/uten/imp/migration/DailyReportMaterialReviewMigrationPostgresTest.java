@@ -5,7 +5,7 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /** V840 preserves legacy commands; later table/index/reset-policy deltas are explicit and bounded. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class DailyReportMaterialReviewMigrationPostgresTest {
-    private static final PostgreSQLContainer<?> pg=new PostgreSQLContainer<>("postgres:16-alpine").withDatabaseName("material_review_upgrade");
+    private static final PostgreSQLContainer pg=new PostgreSQLContainer("postgres:16-alpine").withDatabaseName("material_review_upgrade");
     private static JdbcTemplate db;
     private static UUID actor;
     private static Map<String,Object> old;

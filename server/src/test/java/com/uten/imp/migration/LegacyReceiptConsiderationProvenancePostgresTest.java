@@ -10,7 +10,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Exact old receipt facts enter the historical lane without inventing modern posting chains. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class LegacyReceiptConsiderationProvenancePostgresTest {
-    static final PostgreSQLContainer<?> PG=new PostgreSQLContainer<>("postgres:16-alpine");
+    static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine");
     static final String PASSWORD=UUID.randomUUID().toString();
     static final UUID OLD_HEADER=UUID.randomUUID(),OLD_ITEM=UUID.randomUUID(),OLD_MIXED_ITEM=UUID.randomUUID();
     static JdbcTemplate admin;

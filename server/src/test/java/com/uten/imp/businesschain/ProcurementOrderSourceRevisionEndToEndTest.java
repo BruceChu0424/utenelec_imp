@@ -28,7 +28,7 @@ import org.springframework.test.context.support.AbstractTestExecutionListener;
 import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.nio.file.Files;
@@ -57,7 +57,7 @@ import static org.assertj.core.api.Assertions.*;
         "uten.bootstrap.admin-login=source-revision-bootstrap-test","uten.bootstrap.admin-password=HarnessAdminPass-1!"
 })
 class ProcurementOrderSourceRevisionEndToEndTest {
-    private static final PostgreSQLContainer<?> DB=new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer DB=new PostgreSQLContainer("postgres:16-alpine");
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry) throws Exception {
         DB.start();
         registry.add("spring.datasource.url",DB::getJdbcUrl);registry.add("spring.datasource.username",DB::getUsername);

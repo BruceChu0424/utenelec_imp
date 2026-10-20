@@ -5,7 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -16,7 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class PreplanFutureSupplyMigrationPostgresTest {
     @Test void currentHeadCompilesPublicExpectedSupplyAndClosedPendingEta() {
-        try(var database=new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try(var database=new PostgreSQLContainer("postgres:16-alpine")) {
             database.start();
             var result=Flyway.configure().dataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword())
                     .locations("classpath:db/migration").load().migrate();

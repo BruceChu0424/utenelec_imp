@@ -22,7 +22,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @Testcontainers(disabledWithoutDocker=true)
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class MaterialAnalysisRouteBatchWriterPostgresTest {
-    @Container static final PostgreSQLContainer<?> PG=new PostgreSQLContainer<>("postgres:16-alpine");
+    @Container static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine");
     private static final MaterialSnapshotInput ROUTES=new MaterialSnapshotInput(
             "material_id uuid","group_key varchar","route varchar","reason varchar","suggestion varchar");
     private static final String LEGACY_GUARD=resource("guard").formatted(ROUTES.recordset("selected"),

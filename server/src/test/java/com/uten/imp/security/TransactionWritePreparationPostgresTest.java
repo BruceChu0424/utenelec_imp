@@ -22,7 +22,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
@@ -42,7 +42,7 @@ import static org.mockito.Mockito.when;
 /** Exercises the real transaction-start listener, SPI and shipped lock function. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class TransactionWritePreparationPostgresTest {
-    private static final PostgreSQLContainer<?> DB = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer DB = new PostgreSQLContainer("postgres:16-alpine");
     private static final AtomicReference<AuthUser> PRINCIPAL = new AtomicReference<>();
     private static final AtomicInteger PREPARATIONS = new AtomicInteger();
     private static EntityManagerFactory factory;

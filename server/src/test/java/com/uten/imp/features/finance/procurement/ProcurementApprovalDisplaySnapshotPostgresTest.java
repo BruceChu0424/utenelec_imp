@@ -18,7 +18,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -39,7 +39,7 @@ class ProcurementApprovalDisplaySnapshotPostgresTest {
 
     @Test
     void bothSubmittersFreezeExtrasAndSourcesWithoutChangingCanonicalHash() throws Exception {
-        try (var postgres = new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try (var postgres = new PostgreSQLContainer("postgres:16-alpine")) {
             postgres.start();
             JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(
                     postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword()));

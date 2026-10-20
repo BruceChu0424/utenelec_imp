@@ -4,7 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.math.BigDecimal;
 import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class ApprovedCountLedgerSummaryPostgresTest {
     @Test void approvedPositiveAndNegativeDeltasAppearOnTheirOwnSideWithoutBeingReversals() {
-        try(var pg=new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try(var pg=new PostgreSQLContainer("postgres:16-alpine")) {
             pg.start();var db=new NamedParameterJdbcTemplate(new DriverManagerDataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()));
             com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(db.getJdbcTemplate(),
                     "stock_balances", "stock_movements", "stock_weight_adjustments");

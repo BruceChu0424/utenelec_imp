@@ -12,7 +12,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -34,7 +34,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 @Timeout(value = 2, unit = TimeUnit.MINUTES)
 class AggregateAllocationConstraintSchedulingPostgresTest {
-    private static final PostgreSQLContainer<?> DATABASE = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer DATABASE = new PostgreSQLContainer("postgres:16-alpine");
     private static final String ALLOCATION = "trg_check_preplan_supply_action_allocation";
     private static final String HEADER = "trg_check_preplan_supply_action_header_total";
     private static final String MARKER = "-- Aggregate allocation checks: statement-scoped scheduling";

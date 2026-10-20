@@ -12,7 +12,7 @@ import jakarta.persistence.Query;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.sql.*;
 import java.util.*;
@@ -26,7 +26,7 @@ import static org.mockito.Mockito.*;
 /** Production fingerprint SQL and parent-lock race against real migrated PostgreSQL column shapes. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class GoodsBomImportStatePostgresTest {
-    static final PostgreSQLContainer<?> DATABASE = new PostgreSQLContainer<>("postgres:16-alpine");
+    static final PostgreSQLContainer DATABASE = new PostgreSQLContainer("postgres:16-alpine");
     Connection db;
     String schema;
     UUID root, child, material, unit, red;

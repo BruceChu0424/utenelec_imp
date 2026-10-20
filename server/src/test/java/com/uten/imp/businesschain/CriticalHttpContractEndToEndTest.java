@@ -19,7 +19,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.io.ByteArrayInputStream;
 import java.net.URI;
@@ -98,8 +98,8 @@ class CriticalHttpContractEndToEndTest {
     private static final Duration HTTP_REQUEST_TIMEOUT = Duration.ofSeconds(15);
     private static final Duration OPENAPI_GENERATION_TIMEOUT = Duration.ofSeconds(45);
 
-    private static final PostgreSQLContainer<?> POSTGRES =
-            new PostgreSQLContainer<>("postgres:16-alpine")
+    private static final PostgreSQLContainer POSTGRES =
+            new PostgreSQLContainer("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
                     .withUsername("uten")
                     .withPassword("uten");

@@ -3,7 +3,7 @@ package com.uten.imp.migration;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * service full-chain tests. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class ProductionBomLearningPostgresTest {
-    static final PostgreSQLContainer<?> DATABASE=new PostgreSQLContainer<>("postgres:16-alpine");
+    static final PostgreSQLContainer DATABASE=new PostgreSQLContainer("postgres:16-alpine");
     static String actualUsageView,usageView;
     Connection db;
     String schema;

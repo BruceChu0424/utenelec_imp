@@ -3,7 +3,7 @@ package com.uten.imp.migration;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class ArApDualCurrencySettlementPostgresTest {
     @Test void nonemptyUpgradeCorrectsOnlyDerivedStateAndKeepsBothCurrencyGuardsInReplicaMode() throws Exception {
-        try(var database=new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try(var database=new PostgreSQLContainer("postgres:16-alpine")) {
             database.start();
             // V512 was an unpublished prototype; V511 is the preceding formal schema.
             migrate(database,System.getProperty("uten.test.dualCurrencyBefore","511"));
@@ -86,13 +86,13 @@ class ArApDualCurrencySettlementPostgresTest {
     private static String moneySnapshot(Connection connection,UUID id)throws SQLException {
         return value(connection,"SELECT (to_jsonb(ledger)-ARRAY['is_settled','settled_date','open_item_kind','updated_at','updated_by'])::text FROM ar_ap_ledger ledger WHERE id=?",id);
     }
-    private static void migrate(PostgreSQLContainer<?> database,String target) {
+    private static void migrate(PostgreSQLContainer database,String target) {
         String extra=System.getProperty("uten.test.extraMigrationLocation","");
         String[] locations=extra.isBlank()?new String[]{"classpath:db/migration"}:new String[]{"classpath:db/migration",extra};
         Flyway.configure().dataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword())
                 .locations(locations).target(target).load().migrate();
     }
-    private static Connection connect(PostgreSQLContainer<?> database)throws SQLException { return DriverManager.getConnection(database.getJdbcUrl(),database.getUsername(),database.getPassword()); }
+    private static Connection connect(PostgreSQLContainer database)throws SQLException { return DriverManager.getConnection(database.getJdbcUrl(),database.getUsername(),database.getPassword()); }
     private static void execute(Connection connection,String sql,Object...args)throws SQLException {
         try(var statement=connection.prepareStatement(sql)){for(int i=0;i<args.length;i++) { statement.setObject(i+1,args[i]); }statement.execute();}
     }

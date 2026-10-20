@@ -7,7 +7,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @Testcontainers
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS", matches="true")
 class NoticePermissionCandidatePostgresTest {
-    @Container static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
+    @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine")
             .withLabel("uten.test", "notice-permission-candidate");
     private JdbcTemplate jdbc;
     private NoticePermissionCandidateQuery query;

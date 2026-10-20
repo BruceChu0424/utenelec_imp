@@ -5,7 +5,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 import java.sql.Connection;
@@ -32,7 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class IntakeNormalizerSqlParityPostgresTest {
 
-    private static PostgreSQLContainer<?> postgres;
+    private static PostgreSQLContainer postgres;
 
     /** 必须完全一致的样本(用转义写出, 避免源码里出现看不见的字符)。 */
     static final List<String> SAMPLES = List.of(
@@ -96,7 +96,7 @@ class IntakeNormalizerSqlParityPostgresTest {
 
     @BeforeAll
     static void start() {
-        postgres = new PostgreSQLContainer<>(
+        postgres = new PostgreSQLContainer(
                 DockerImageName.parse("postgres:16").asCompatibleSubstituteFor("postgres"))
                 .withDatabaseName("uten_parity");
         postgres.start();

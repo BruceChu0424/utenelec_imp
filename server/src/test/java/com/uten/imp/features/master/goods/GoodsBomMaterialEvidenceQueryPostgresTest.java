@@ -6,7 +6,7 @@ import jakarta.persistence.Query;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -21,7 +21,7 @@ import static org.mockito.Mockito.*;
 /** Executes the production query against migrated column shapes in a disposable PostgreSQL database. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class GoodsBomMaterialEvidenceQueryPostgresTest {
-    static final PostgreSQLContainer<?> DATABASE = new PostgreSQLContainer<>("postgres:16-alpine");
+    static final PostgreSQLContainer DATABASE = new PostgreSQLContainer("postgres:16-alpine");
     Connection db;
     UUID parent, material, unit, color, owner;
 

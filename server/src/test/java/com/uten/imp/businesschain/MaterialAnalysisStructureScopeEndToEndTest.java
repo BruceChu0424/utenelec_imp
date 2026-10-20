@@ -32,7 +32,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.UnexpectedRollbackException;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.nio.file.Files;
@@ -64,7 +64,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 @TestExecutionListeners(listeners = MaterialAnalysisStructureScopeEndToEndTest.Cleanup.class,
         mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class MaterialAnalysisStructureScopeEndToEndTest {
-    private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
+    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine")
             .withDatabaseName("uten_structure_scope").withUsername("uten_test").withPassword(UUID.randomUUID().toString());
     private static final String SECRET = UUID.randomUUID() + "-" + UUID.randomUUID();
     @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) throws Exception {

@@ -15,7 +15,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.config.YamlPropertiesFactoryBean;
 import org.springframework.core.io.ClassPathResource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -44,7 +44,7 @@ class FlywayConnectionNoticePolicyPostgresTest {
         var events = new ListAppender<ILoggingEvent>();
         events.start();
         logger.addAppender(events);
-        try (var postgres = new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try (var postgres = new PostgreSQLContainer("postgres:16-alpine")) {
             postgres.start();
             Flyway.configure().dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                     .locations("filesystem:" + migrations).initSql(initSql).load().migrate();

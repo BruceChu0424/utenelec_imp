@@ -8,7 +8,7 @@ import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class WorkshopMaterialCustodyPostgresTest {
     @Test
     void actualUnissuedTransferReleaseAndReverseCannotResurrectTechnicalOrDestinationStockRights() {
-        try(var pg=new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try(var pg=new PostgreSQLContainer("postgres:16-alpine")) {
             pg.start();
             migrate(pg,"614");
             var source=new DriverManagerDataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword());
@@ -101,7 +101,7 @@ class WorkshopMaterialCustodyPostgresTest {
         }
     }
 
-    private static void migrate(PostgreSQLContainer<?> pg,String target) {
+    private static void migrate(PostgreSQLContainer pg,String target) {
         Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()).locations("classpath:db/migration").target(target).load().migrate();
     }
     private static void actor(JdbcTemplate db,UUID actor){db.queryForObject("SELECT set_config('app.actor_id',?,true)",String.class,actor.toString());}

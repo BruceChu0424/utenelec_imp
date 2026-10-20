@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.charset.StandardCharsets;
 import java.sql.DriverManager;
@@ -33,7 +33,7 @@ class GoodsCostPermissionSurfaceMigrationPostgresTest {
 
     @Test
     void freshHeadOffersCostActionsOnTheGoodsPageButNotInBulkGrants() {
-        try (var postgres = new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try (var postgres = new PostgreSQLContainer("postgres:16-alpine")) {
             postgres.start();
             flyway(postgres, null).migrate();
             JdbcTemplate db = database(postgres);
@@ -48,7 +48,7 @@ class GoodsCostPermissionSurfaceMigrationPostgresTest {
 
     @Test
     void v758UpgradePreservesIdentitiesPoliciesAndViewOnlyGrantsAndCanReplay() throws Exception {
-        try (var postgres = new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try (var postgres = new PostgreSQLContainer("postgres:16-alpine")) {
             postgres.start();
             flyway(postgres, "758").migrate();
             JdbcTemplate db = database(postgres);
@@ -188,11 +188,11 @@ class GoodsCostPermissionSurfaceMigrationPostgresTest {
         }
     }
 
-    private static JdbcTemplate database(PostgreSQLContainer<?> postgres) {
+    private static JdbcTemplate database(PostgreSQLContainer postgres) {
         return new JdbcTemplate(new DriverManagerDataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword()));
     }
 
-    private static Flyway flyway(PostgreSQLContainer<?> postgres, String target) {
+    private static Flyway flyway(PostgreSQLContainer postgres, String target) {
         var config = Flyway.configure().dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                 .locations("classpath:db/migration").initSql("SET client_min_messages = WARNING");
         if (target != null) config.target(target);

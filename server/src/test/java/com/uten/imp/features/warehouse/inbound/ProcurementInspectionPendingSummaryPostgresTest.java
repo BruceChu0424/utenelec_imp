@@ -14,7 +14,7 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.SharedEntityManagerCreator;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -35,7 +35,7 @@ import static org.mockito.Mockito.mock;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class ProcurementInspectionPendingSummaryPostgresTest {
     /** 本类独享的全量迁移容器；兼容 API 由本类负责停止。 */
-    private static final PostgreSQLContainer<?> DB =
+    private static final PostgreSQLContainer DB =
             MigratedSchemaBaseline.startMigratedContainer("iqc_pending_summary");
     private static EntityManagerFactory emf;
     private static ProcurementInspectionController controller;

@@ -12,7 +12,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -40,7 +40,7 @@ class FrozenAnalysisLabelMigrationPostgresTest {
 
     @Test
     void immutableBackfillsKeepApprovedRowsAndRestoreAllGuards() throws Exception {
-        try (var database = new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try (var database = new PostgreSQLContainer("postgres:16-alpine")) {
             database.start();
             List<Seed> seeds = new ArrayList<>();
             try (var connection = connection(database)) {
@@ -161,7 +161,7 @@ class FrozenAnalysisLabelMigrationPostgresTest {
         return context;
     }
 
-    private Flyway flyway(PostgreSQLContainer<?> database, boolean compatible) {
+    private Flyway flyway(PostgreSQLContainer database, boolean compatible) {
         var configuration = Flyway.configure()
                 .dataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword())
                 .locations("filesystem:" + migrations.toAbsolutePath())
@@ -269,7 +269,7 @@ class FrozenAnalysisLabelMigrationPostgresTest {
         }
     }
 
-    private static Connection connection(PostgreSQLContainer<?> database) throws Exception {
+    private static Connection connection(PostgreSQLContainer database) throws Exception {
         return DriverManager.getConnection(database.getJdbcUrl(), database.getUsername(), database.getPassword());
     }
 

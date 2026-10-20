@@ -34,7 +34,7 @@ import org.springframework.test.context.TestExecutionListeners;
 import org.springframework.test.context.support.AbstractTestExecutionListener;
 import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.nio.file.Files;
@@ -70,7 +70,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @TestExecutionListeners(listeners = QualityAndDailyReportPerformancePostgresTest.Cleanup.class,
         mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class QualityAndDailyReportPerformancePostgresTest {
-    private static final PostgreSQLContainer<?> DATABASE = new PostgreSQLContainer<>("postgres:16-alpine")
+    private static final PostgreSQLContainer DATABASE = new PostgreSQLContainer("postgres:16-alpine")
             .withCommand("postgres", "-c", "fsync=on", "-c", "synchronous_commit=on", "-c", "full_page_writes=on");
     private static final String SECRET = UUID.randomUUID() + "-" + UUID.randomUUID();
     private static final int REPORT_LINES = 10;

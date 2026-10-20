@@ -3,7 +3,7 @@ package com.uten.imp.migration;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.math.BigDecimal;
 import java.sql.*;
 import java.util.*;
@@ -13,7 +13,7 @@ import static com.uten.imp.migration.FinancialActualBankReceiptPostgresTest.*;
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class FinancialPrepaymentBookPostgresTest {
     @Test void actualBankPrepaymentKeepsEverySourceBookRemainderAcrossThreeApplicationsAndReversal() throws Exception {
-        try(var pg=new PostgreSQLContainer<>("postgres:16-alpine")) {
+        try(var pg=new PostgreSQLContainer("postgres:16-alpine")) {
             pg.start();migrate(pg,"508");
             Fixture f;
             try(var c=connect(pg)){f=historicalShippedOrder(c);}
@@ -105,6 +105,6 @@ class FinancialPrepaymentBookPostgresTest {
         return new Fixture(client,currency,base,maker,approver,actor,order,target,ref);
     }
     private record Fixture(UUID client,UUID currency,UUID base,UUID maker,UUID approver,UUID actor,UUID order,UUID target,UUID ref){}
-    private static Connection connect(PostgreSQLContainer<?> pg)throws SQLException{return DriverManager.getConnection(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword());}
-    private static void migrate(PostgreSQLContainer<?> pg,String target){Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()).locations("classpath:db/migration").target(target).load().migrate();}
+    private static Connection connect(PostgreSQLContainer pg)throws SQLException{return DriverManager.getConnection(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword());}
+    private static void migrate(PostgreSQLContainer pg,String target){Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()).locations("classpath:db/migration").target(target).load().migrate();}
 }

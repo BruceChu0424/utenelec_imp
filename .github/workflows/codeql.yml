@@ -39,6 +39,7 @@ jobs:
           # Keep the existing pinned Action's CLI/query bundle for comparable findings.
           tools: linked
           languages: java-kotlin
+          db-location: ${{ runner.temp }}/uten-codeql-databases
           build-mode: manual
           queries: security-and-quality
 
@@ -60,7 +61,9 @@ jobs:
           upload-database: false
 
       - name: Require zero CodeQL findings
-        run: python3 .github/scripts/check_codeql_sarif.py "${{ steps.analyze.outputs.sarif-output }}"
+        run: >-
+          python3 .github/scripts/check_codeql_sarif.py "${{ steps.analyze.outputs.sarif-output }}"
+          --analysis-log-directory "${{ runner.temp }}/uten-codeql-databases/java/log"
 
       - name: Preserve CodeQL SARIF artifact
         if: ${{ always() && steps.analyze.outputs.sarif-output != '' }}

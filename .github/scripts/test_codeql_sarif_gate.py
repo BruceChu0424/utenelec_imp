@@ -87,6 +87,32 @@ class CodeqlSarifGateTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             inspect_sarif(self.write(run))
 
+    def test_interpretation_log_must_exist_when_requested(self):
+        with self.assertRaisesRegex(ValueError, "interpretation log is missing"):
+            inspect_sarif(self.write(self.run_with([])), self.root)
+
+    def test_dropped_result_export_error_cannot_pass_as_zero_sarif(self):
+        (self.root / "database-interpret-results-20261020.log").write_text(
+            "[2026-10-20 17:35:59] [ERROR] database interpret-results> "
+            "While processing path-problem rule java/csrf-unprotected-request-type, "
+            "got start node that does not appear in graph: query.\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "does not appear in graph"):
+            inspect_sarif(self.write(self.run_with([])), self.root)
+
+    def test_complete_zero_result_and_clean_interpretation_log_pass(self):
+        (self.root / "database-interpret-results-20261020.log").write_text(
+            "[2026-10-20 17:36:00] [PROGRESS] Exported results to SARIF.\n", encoding="utf-8")
+        summary = inspect_sarif(self.write(self.run_with([])), self.root)
+        self.assertEqual(summary["findings"], 0)
+        self.assertEqual(summary["interpretationLogs"], 1)
+
+    def test_analysis_warning_diagnostic_cannot_pass_as_zero_results(self):
+        run = self.run_with([])
+        run["invocations"] = [{"executionSuccessful": True,
+                               "toolExecutionNotifications": [{"level": "warning"}]}]
+        with self.assertRaisesRegex(ValueError, "reported a diagnostic"):
+            inspect_sarif(self.write(run))
+
 
 if __name__ == "__main__":
     unittest.main()

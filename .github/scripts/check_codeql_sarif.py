@@ -5,6 +5,7 @@ import argparse
 from collections import Counter
 import json
 from pathlib import Path
+import re
 import sys
 
 
@@ -37,7 +38,23 @@ def _rule(run, result):
     return matches[0] if len(matches) == 1 else {}
 
 
-def inspect_sarif(path):
+def inspect_analysis_logs(directory):
+    """The CLI can exit successfully while discarding malformed result paths."""
+    files = sorted(Path(directory).glob("database-interpret-results-*.log"))
+    if not files:
+        raise ValueError("CodeQL result interpretation log is missing")
+    for filename in files:
+        try:
+            with filename.open(encoding="utf-8") as lines:
+                for line in lines:
+                    if re.search(r"\[(?:ERROR|WARN|WARNING)\]", line):
+                        raise ValueError(f"CodeQL result interpretation diagnostic: {line.strip()}")
+        except OSError as failure:
+            raise ValueError(f"Unreadable CodeQL interpretation log: {filename}") from failure
+    return len(files)
+
+
+def inspect_sarif(path, analysis_log_directory=None):
     path = Path(path)
     files = [path] if path.is_file() else sorted(path.rglob("*.sarif")) if path.is_dir() else []
     if not files:
@@ -57,6 +74,11 @@ def inspect_sarif(path):
                 raise ValueError(f"Unexpected SARIF producer: {filename}")
             if any(invocation.get("executionSuccessful") is False for invocation in run.get("invocations", [])):
                 raise ValueError(f"CodeQL analysis did not complete successfully: {filename}")
+            for invocation in run.get("invocations", []):
+                for group in ("toolExecutionNotifications", "toolConfigurationNotifications"):
+                    if any(notification.get("level") in ("warning", "error")
+                           for notification in invocation.get(group, [])):
+                        raise ValueError(f"CodeQL analysis reported a diagnostic: {filename}")
             results = run.get("results")
             if not isinstance(results, list):
                 raise ValueError(f"CodeQL SARIF has no results array: {filename}")
@@ -66,16 +88,20 @@ def inspect_sarif(path):
                     raise ValueError(f"Invalid CodeQL result: {filename}")
                 level = result.get("level") or _rule(run, result).get("defaultConfiguration", {}).get("level", "warning")
                 levels[level] += 1
-    return {"files": len(files), "runs": run_count,
-            "findings": sum(levels.values()), "levels": dict(sorted(levels.items()))}
+    summary = {"files": len(files), "runs": run_count,
+               "findings": sum(levels.values()), "levels": dict(sorted(levels.items()))}
+    if analysis_log_directory is not None:
+        summary["interpretationLogs"] = inspect_analysis_logs(analysis_log_directory)
+    return summary
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("path", help="CodeQL SARIF file or output directory")
+    parser.add_argument("--analysis-log-directory", help="CodeQL database log directory; required by CI")
     arguments = parser.parse_args(argv)
     try:
-        summary = inspect_sarif(arguments.path)
+        summary = inspect_sarif(arguments.path, arguments.analysis_log_directory)
     except ValueError as failure:
         print(json.dumps({"error": str(failure)}), file=sys.stderr)
         return 2

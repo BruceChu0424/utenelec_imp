@@ -15,12 +15,10 @@ class StockInstantExportColumnsTest {
 
     @Test
     void qualifiedPendingStockInColumnSitsRightAfterPendingQtyLikeThePage() {
-        List<String> keys = StockReportService.instantExportColumns(WeightUnit.KG, false)
-                .stream().map(c -> c.key()).toList();
+        var columns = StockReportService.instantExportColumns(WeightUnit.KG, false);
+        List<String> keys = columns.stream().map(c -> c.key()).toList();
         int pending = keys.indexOf("pendingQty");
         assertEquals("pendingStockInQty", keys.get(pending + 1), "合格待入库必须紧跟待检量（与页面列序一致）");
-        assertEquals("多排数量",
-                StockReportService.instantExportColumns(WeightUnit.KG, false)
-                        .get(keys.indexOf("pendingStockInQty")).label());
+        assertEquals("合格待入库", columns.get(pending + 1).label());
     }
 }

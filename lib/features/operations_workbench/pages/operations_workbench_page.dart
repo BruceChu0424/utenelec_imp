@@ -13,6 +13,11 @@
 // 「状态」列，颜色刻意拉开。「财务驳回」通过状态格和状态表头区分，继续计入
 // 主阶段和采购任务中心卡面红数(后端 countPending 的 FINANCE_REJECTED)。
 // 仓库部门两段(待备料/待领取、部分领取)不在合并范围，原样保留。
+//
+// 2026-10-19「进行中」段新增批量导出单据：表格多选 + 右下悬浮「导出单据」，
+// 批量导出所选任务关联的采购订货单 PDF（与详情页「打印单据」同一份文件），
+// 单份存 PDF、多份自动打包 zip；能力由 app_router 注入，未关联订货单的行
+// 勾选位换锁图标。「申请待分解」段的「生成采购订货单」批量链路保持不变。
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show mapEquals, setEquals;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -30,6 +35,7 @@ import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
+import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/connection_recovery.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -64,16 +70,35 @@ class _WorkbenchSeg {
   int get hashCode => Object.hash(code, history);
 }
 
+/// 「进行中」段批量导出单据能力（2026-10-19）：由 app_router 注入 purchase 侧
+/// 实现（逐单取 print-data 在前端生成与详情页打印一致的采购单 PDF；单份存
+/// PDF、多份打包 zip）。共享工作台页不依赖 purchase feature，与
+/// [OperationsWorkbenchPage.draftCategoryBuilder] 同一解耦模式；测试注入
+/// fake 闭包即可。
+typedef OperationsWorkbenchBatchDocExport =
+    Future<void> Function(
+      BuildContext context, {
+      required ApiClient apiClient,
+      required List<({String id, String number})> documents,
+      void Function(int done, int total)? onProgress,
+      bool Function()? stillCurrent,
+    });
+
 class OperationsWorkbenchPage extends ConsumerStatefulWidget {
   const OperationsWorkbenchPage({
     super.key,
     required this.department,
     this.repository,
     this.draftCategoryBuilder,
+    this.purchaseOrderBatchExport,
   });
 
   final OperationsWorkbenchDepartment department;
   final OperationsWorkbenchGateway? repository;
+
+  /// 「进行中」段批量导出单据（采购侧）。null = 该段不提供勾选与导出按钮
+  /// （委外/仓库部门恒不注入）。见 [OperationsWorkbenchBatchDocExport]。
+  final OperationsWorkbenchBatchDocExport? purchaseOrderBatchExport;
 
   /// The application router composes department-owned draft content here.
   /// The shared workbench does not depend on the purchase feature's UI.
@@ -121,6 +146,14 @@ class _OperationsWorkbenchPageState
 
   final _tableRows = MasterDataTableRowsController<OperationsWorkbenchTask>();
   final Set<String> _selectedIds = {};
+
+  /// 批量导出单据的进度（done/total）；null = 不在导出中。导出期间按钮转
+  /// 加载态并显示「导出单据(n/N)」。
+  ({int done, int total})? _docExportProgress;
+
+  /// 批量导出单据一次的上限：print-data 逐单请求 + 前端 PDF 生成都是串行
+  /// 重操作，不设上限时一次勾选过百会让按钮长时间转圈且无从 cancel。
+  static const _maxExportDocs = 100;
 
   OperationsWorkbenchGateway get _repository =>
       widget.repository ?? ref.read(operationsWorkbenchRepositoryProvider);
@@ -691,22 +724,49 @@ class _OperationsWorkbenchPageState
     final selected = _selectedTasks;
     switch (widget.department) {
       case OperationsWorkbenchDepartment.purchase:
-        if (!data.capabilities.canCreatePurchaseOrder) return null;
         // 批量生成订货单只对「申请待分解」段有意义：其余阶段的行=已生成的
         // 订货单/收货单（V466 收口后补货走原订单），在这些段提供勾选只会
         // 制造永远点不动的批量按钮（用户感知为「按钮坏了」）。
-        if (_seg?.code != 'WAITING_ORDER') return null;
-        final issue = _loading
-            ? '正在刷新采购任务，请稍候'
-            : _purchaseSelectionIssue(selected);
-        return _SelectionPrimaryAction(
-          buttonKey: const Key('operations-workbench-purchase-batch'),
-          label: selected.isEmpty ? '生成采购订货单' : '生成采购订货单(${selected.length})',
-          icon: Icons.add_shopping_cart_rounded,
-          readyTooltip: '把已选采购申请明细带入采购订货单',
-          unavailableReason: issue,
-          route: issue == null ? _purchaseOrderRoute(selected) : null,
-        );
+        if (_seg?.code == 'WAITING_ORDER') {
+          if (!data.capabilities.canCreatePurchaseOrder) return null;
+          final issue = _loading
+              ? '正在刷新采购任务，请稍候'
+              : _purchaseSelectionIssue(selected);
+          return _SelectionPrimaryAction(
+            buttonKey: const Key('operations-workbench-purchase-batch'),
+            label: selected.isEmpty ? '生成采购订货单' : '生成采购订货单(${selected.length})',
+            icon: Icons.add_shopping_cart_rounded,
+            readyTooltip: '把已选采购申请明细带入采购订货单',
+            unavailableReason: issue,
+            route: issue == null ? _purchaseOrderRoute(selected) : null,
+          );
+        }
+        // 「进行中」段的行都是已生成的订货单：批量导出与详情页「打印单据」
+        // 同一条链路的采购单 PDF（2026-10-19 用户需求）。能力未注入（非
+        // app_router 构建或测试注入 null）时该段维持只读。
+        if (_seg?.code == _inProgressStage &&
+            widget.purchaseOrderBatchExport != null) {
+          final progress = _docExportProgress;
+          final issue = progress != null
+              ? null
+              : _loading
+              ? '正在刷新采购任务，请稍候'
+              : _purchaseExportIssue(selected);
+          return _SelectionPrimaryAction(
+            buttonKey: const Key('operations-workbench-purchase-export-docs'),
+            label: progress == null
+                ? (selected.isEmpty ? '导出单据' : '导出单据(${selected.length})')
+                : '导出单据(${progress.done}/${progress.total})',
+            icon: Icons.print_outlined,
+            readyTooltip: '把已选任务的采购单导出为 PDF 文件（多份自动打包 zip）',
+            unavailableReason: issue,
+            type: UtenButtonType.primary,
+            route: null,
+            onRun: issue == null ? _exportSelectedOrderDocs : null,
+            busy: progress != null,
+          );
+        }
+        return null;
       case OperationsWorkbenchDepartment.subcontract:
         // 委外批量分解在专属 SubcontractDecompositionPage（含四权限门禁），
         // 本页不再维护第二份委外选择逻辑。
@@ -753,6 +813,61 @@ class _OperationsWorkbenchPageState
     return '/purchase/orders/new?requestItemIds=$ids';
   }
 
+  /// 「进行中」段可导出的行 = 关联了可查看的采购订货单（与详情页「打印
+  /// 单据」同一数据源）。申请/收货阶段的行导不出采购单，勾选位换锁图标。
+  ({String id, String number})? _exportableOrderDocOf(
+    OperationsWorkbenchTask task,
+  ) {
+    final document = task.actionDocument;
+    if (document == null || !document.canView) return null;
+    final type = document.docType.toUpperCase();
+    if (type != 'ORDER' && type != 'PURCHASE_ORDER') return null;
+    return (id: document.id, number: document.number);
+  }
+
+  String? _purchaseExportIssue(List<OperationsWorkbenchTask> selected) {
+    if (selected.isEmpty) return '请先选择采购任务';
+    if (selected.length > _maxExportDocs) {
+      return '一次最多导出 $_maxExportDocs 份单据，请分批选择';
+    }
+    // 跨页保留的勾选可能落在刷新后不可导出的行上（锁行勾不进去，但旧
+    // 选择还在集合里），此时给出明确原因而不是让按钮无声失效。
+    if (selected.any((task) => _exportableOrderDocOf(task) == null)) {
+      return '所选任务包含不可导出的行，请重新选择';
+    }
+    return null;
+  }
+
+  Future<void> _exportSelectedOrderDocs() async {
+    if (_docExportProgress != null) return;
+    final export = widget.purchaseOrderBatchExport;
+    if (export == null) return;
+    // 同一张订货单可能被多行任务引用（归组行一行一单，防御性按单据 id
+    // 去重，重复单只导出一份）。
+    final documents = <String, ({String id, String number})>{};
+    for (final task in _selectedTasks) {
+      final document = _exportableOrderDocOf(task);
+      if (document != null) documents.putIfAbsent(document.id, () => document);
+    }
+    if (documents.isEmpty) return;
+    final generation = _readerGeneration;
+    try {
+      await export(
+        context,
+        apiClient: ref.read(apiClientProvider),
+        documents: documents.values.toList(growable: false),
+        onProgress: (done, total) {
+          if (mounted) {
+            setState(() => _docExportProgress = (done: done, total: total));
+          }
+        },
+        stillCurrent: () => mounted && generation == _readerGeneration,
+      );
+    } finally {
+      if (mounted) setState(() => _docExportProgress = null);
+    }
+  }
+
   void _openAction(OperationsWorkbenchTask task) {
     final document = task.actionDocument;
     if (document == null || !document.canView) return;
@@ -766,9 +881,12 @@ class _OperationsWorkbenchPageState
       child: UtenButton(
         key: action.buttonKey,
         size: UtenButtonSize.large,
-        type: UtenButtonType.danger,
+        type: action.type,
         icon: action.icon,
-        onPressed: action.enabled ? () => goFrom(context, action.route!) : null,
+        isLoading: action.busy,
+        onPressed: action.enabled
+            ? (action.onRun ?? () => goFrom(context, action.route!))
+            : null,
         onDisabledTap: action.enabled
             ? null
             : () => context.appWarning(disabledReason),
@@ -1001,6 +1119,13 @@ class _OperationsWorkbenchPageState
                           : (_, _) => [
                               _buildFloatingSelectionAction(selectionAction),
                             ],
+                      selectableIdOf:
+                          _seg?.code == _inProgressStage &&
+                              widget.purchaseOrderBatchExport != null
+                          ? (task) => _exportableOrderDocOf(task) != null
+                                ? task.id
+                                : null
+                          : null,
                     ),
                   ),
               ],
@@ -1028,6 +1153,9 @@ class _SelectionPrimaryAction {
     required this.readyTooltip,
     required this.unavailableReason,
     required this.route,
+    this.type = UtenButtonType.danger,
+    this.onRun,
+    this.busy = false,
   });
 
   final Key buttonKey;
@@ -1037,7 +1165,17 @@ class _SelectionPrimaryAction {
   final String? unavailableReason;
   final String? route;
 
-  bool get enabled => route != null;
+  /// 悬浮按钮样式：批量下单沿用 danger（既有口径）；批量导出是输出动作，
+  /// 用 primary 与工具条「导出表格」同色系，不制造破坏性操作的错觉。
+  final UtenButtonType type;
+
+  /// 回调型动作（批量导出单据）；与 [route]（跳转型动作）二选一。
+  final Future<void> Function()? onRun;
+
+  /// 动作执行中（按钮转加载态，label 由调用方带进度更新）。
+  final bool busy;
+
+  bool get enabled => route != null || onRun != null;
 }
 
 class _DesktopTaskTable extends StatelessWidget {
@@ -1064,6 +1202,7 @@ class _DesktopTaskTable extends StatelessWidget {
     this.sortAscending = true,
     this.onSortChange,
     this.batchActions,
+    this.selectableIdOf,
     required this.warehouseLabelOf,
     required this.exportQuery,
   });
@@ -1093,6 +1232,10 @@ class _DesktopTaskTable extends StatelessWidget {
   final void Function(String? column, bool ascending)? onSortChange;
   final List<Widget> Function(BuildContext, Set<String>)? batchActions;
 
+  /// 「进行中」段批量导出的行级勾选门控：null 时全部行可勾选（申请待分解
+  /// 段的既有口径）；非 null 时返回 null 的行不可勾选，勾选位换锁图标。
+  final String? Function(OperationsWorkbenchTask task)? selectableIdOf;
+
   /// 仓库列文案（2026-10-10）：主档字典的「主仓 - 子仓」组合名，未命中回退
   /// 行内叶仓名。由页面侧闭包提供（要读 masterNameServiceProvider）。
   final String Function(OperationsWorkbenchTask task) warehouseLabelOf;
@@ -1111,7 +1254,20 @@ class _DesktopTaskTable extends StatelessWidget {
       primary: true,
       // 大小屏共用一张表：窄屏同样横向滚动（2026-10-09 卡片形态退役）。
       selectable: selectable,
-      idOf: (item) => item.id,
+      idOf: selectableIdOf ?? (item) => item.id,
+      // 勾选门控会让部分行的 idOf 返回 null，行键不能跟着回落下标
+      // （筛选/刷新后行复用会错位），恒用任务 id 做行键。
+      rowKeyOf: (item) => item.taskId,
+      unselectableLeadingBuilder: selectableIdOf == null
+          ? null
+          : (context, item) => Tooltip(
+              message: '该任务未关联可导出的采购订货单',
+              child: Icon(
+                Icons.lock_outline_rounded,
+                size: 20,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
       selectedIds: selectable ? selectedIds : const <String>{},
       onSelectedIdsChanged: selectable ? onSelectedIdsChanged : null,
       columns: [

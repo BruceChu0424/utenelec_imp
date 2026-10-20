@@ -371,7 +371,8 @@ class DefaultDeviceAuditStore implements DeviceAuditStore {
   /// Riverpod 3 会同步挂载整条 provider 依赖链，构造期副作用会让无 binding 的
   /// 纯 Dart 测试直接炸（ServicesBinding 未初始化）；首次真正用到才解析。
   final SharedPreferences? _explicitPreferences;
-  late final Future<SharedPreferences> _preferences = _explicitPreferences == null
+  late final Future<SharedPreferences> _preferences =
+      _explicitPreferences == null
       ? SharedPreferences.getInstance()
       : Future<SharedPreferences>.value(_explicitPreferences);
   final Uuid _uuid;

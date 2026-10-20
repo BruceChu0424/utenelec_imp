@@ -2311,6 +2311,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   String? _dragAutoExpandedKey;
   bool _dragKeyHandlerInstalled = false;
 
+  /// 本轮拖拽由哪条手势拾起（长按 / 鼠标纵向拖）：判负一方的 cancel 回调
+  /// 只准清自己启动的拖拽，防止竞技场收尾时误撕另一方的现场。
+  _RowDragSource? _dragSource;
+
   bool get _dragActive => _dragRows != null;
 
   /// 行 → 拖拽行键（与行 RepaintBoundary 同口径：rowKeyOf 优先、idOf 兜底；
@@ -3775,12 +3779,16 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     Widget cell = widget.selectable
         ? Align(alignment: Alignment.centerLeft, child: text)
         : text;
-    // 框选开启时，有内容的格 hover 显 I 型文本光标（2026-10-19 用户口径：
-    // 单元格有内容 = 可框选，光标要示意「这里能拖选文字」）。空白格不换光标，
-    // 仍由行 InkWell 的可点击态接管。嵌套在内层的 MouseRegion（按钮/链接）
-    // 更深、依然优先于这层包裹。
     if (widget.enableTextSelection && value.trim().isNotEmpty) {
-      cell = MouseRegion(cursor: SystemMouseCursors.text, child: cell);
+      // 光标口径（2026-10-19 二轮）：SelectionArea 里的 Text 自带最内层光标
+      // 区域，取最近的 DefaultSelectionStyle.mouseCursor；行 InkWell 会给子树
+      // 注入 basic（Windows 上 InkWell 默认箭头），外层包 MouseRegion 赢不了它。
+      // 就近注入 text → I 型光标只出现在字体本体上（Text 自带区域就那么大），
+      // 单元格空白处仍是行的可点击光标、点击照常选中行。
+      cell = DefaultSelectionStyle(
+        mouseCursor: SystemMouseCursors.text,
+        child: cell,
+      );
     }
     return cell;
   }
@@ -3821,12 +3829,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final aligned = widget.selectable && !column.fillsCellHeight
         ? Align(alignment: Alignment.centerLeft, child: custom)
         : custom;
-    // 自定义格同口径：格里有文本内容（value 非空）且框选开启时 hover 显 I 型
-    // 文本光标；格内自带 MouseRegion 的控件（按钮/链接）更深、不受影响。
-    final Widget cursorWrapped = widget.enableTextSelection &&
-            value != null &&
-            value.isNotEmpty
-        ? MouseRegion(cursor: SystemMouseCursors.text, child: aligned)
+    // 自定义格同口径：格里有文本内容（value 非空）且框选开启时，就近注入
+    // DefaultSelectionStyle(mouseCursor: text)——格内所有 Text 的自带光标区域
+    // 都变成 I 型（只在字体本体上），压过行 InkWell 注入的 basic。
+    final Widget cursorWrapped =
+        widget.enableTextSelection && value != null && value.isNotEmpty
+        ? DefaultSelectionStyle(
+            mouseCursor: SystemMouseCursors.text,
+            child: aligned,
+          )
         : aligned;
     if (column.cellBuilderHandlesSemantics) return cursorWrapped;
     return Semantics(
@@ -3972,6 +3983,24 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
               ValueKey(('pagination-row', planId(i))): i,
           }
         : null;
+    // 拖拽表的槽位 key → 下标：拖拽中宿主展开/收起会插入/移除行，ListView 若按下标
+    // 复用会整体重建行元素，进行中的长按/纵向识别器连同 State 一起销毁——指针
+    // up 从此无人接收，幽灵卡的全屏层永久遮挡（2026-10-19 用户实测「展开后整页
+    // 卡死」）。给到 key→下标映射后元素随 key 平移，识别器存活、拖拽正常收尾。
+    final dragSlotIndexes = widget.rowDrag == null
+        ? null
+        : <ValueKey<String>, int>{
+            for (var i = 0; i < plan.length; i++)
+              if (plan[i].item case final rowItem?)
+                if (widget.rowKeyOf?.call(rowItem) ?? widget.idOf?.call(rowItem)
+                    case final dragKey?)
+                  if (dragKey.isNotEmpty) ValueKey('row-drag-slot:$dragKey'): i,
+          };
+    int? childIndex(Key key) {
+      if (key is! ValueKey) return null;
+      return indexes?[key] ?? dragSlotIndexes?[key];
+    }
+
     final list = ListView.builder(
       controller: _usesPrimaryScroll ? null : _bodyV,
       // primary 模式：交还给祖先 NestedScrollView 注入的 PrimaryScrollController
@@ -3989,7 +4018,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             ? const AlwaysScrollableScrollPhysics()
             : const ClampingScrollPhysics(),
       ),
-      findChildIndexCallback: indexes == null ? null : (key) => indexes[key],
+      findChildIndexCallback: (indexes == null && dragSlotIndexes == null)
+          ? null
+          : childIndex,
       // 留白只参与竖向滚动范围，覆盖层横滚条始终以真实末行为锚点。
       padding: EdgeInsets.only(bottom: _bodyBottomPad + _prependBottomSpace),
       itemCount: summaryIndex + (summaryInline ? 1 : 0),
@@ -4073,26 +4104,23 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             ? KeyedSubtree(key: _lastRowKey, child: rowWidget)
             : rowWidget;
         // 行拖拽三件套（rowDrag 非空才有）：槽登记 + 长按拾起手势 + 被拖行淡出。
-        // **外层结构必须恒定**：淡出用常驻 AnimatedOpacity 的 opacity 值切换，
-        // 不能条件性包一层新 widget——拖拽开始的 setState 若改变 itemBuilder
-        // 顶层类型，行元素会被重建，进行中的长按识别器连同 State 一起销毁，
-        // 之后的 move/up 事件全部丢失（2026-10-19 实测教训）。
-        Widget draggable = _wrapRowDragSlot(
-          item,
-          _wrapRowDragAffordance(item, wrapped),
-        );
+        // **最外层必须是带 key 的槽**（配合上面的 dragSlotIndexes/findChildIndexCallback）：
+        // 展开插行时元素随 key 平移而非按下标重建，进行中的识别器存活。
+        // 淡出用常驻 AnimatedOpacity 的 opacity 值切换——条件性包新 widget 同样会
+        // 改变结构类型，不允许。
+        Widget dragChild = _wrapRowDragAffordance(item, wrapped);
         if (widget.rowDrag != null) {
           final dragKey = _dragKeyOf(item);
-          draggable = AnimatedOpacity(
-            opacity: _dragActive &&
-                    dragKey != null &&
-                    _dragRowKeys.contains(dragKey)
+          dragChild = AnimatedOpacity(
+            opacity:
+                _dragActive && dragKey != null && _dragRowKeys.contains(dragKey)
                 ? 0.35
                 : 1.0,
             duration: const Duration(milliseconds: 150),
-            child: draggable,
+            child: dragChild,
           );
         }
+        final draggable = _wrapRowDragSlot(item, dragChild);
         return _trackPaginationRow(
           planId(i),
           row.group == null &&
@@ -4946,19 +4974,70 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   // ===== 行拖拽实现（配置见 UtenTableRowDrag） =====
 
-  /// 给数据行挂长按拾起手势。按住不动约 500ms（LongPress 默认时限）拾起；
-  /// 按下就拖仍是 SelectionArea 的文字框选，两种手势不抢——先动的一方赢。
+  /// 给数据行挂拾起手势。两条路（2026-10-19 二轮用户口径「长按也触发、
+  /// 按住上下移动了就触发」）：
+  /// 1) 按住不动约 250ms 拾起（官方默认 500ms 太钝，显式收紧）；
+  /// 2) 鼠标按住并纵向移出 slop 立即拾起——横向移动仍归 SelectionArea 的
+  ///    文字框选，两个方向两种语义互不抢。
+  /// 纵向识别器只挂鼠标：触屏纵向拖是列表滚动的本能手势，不能抢。
   Widget _wrapRowDragAffordance(T item, Widget child) {
     final drag = widget.rowDrag;
     if (drag == null || !drag.canDragRow(item)) return child;
-    return GestureDetector(
+    return RawGestureDetector(
       behavior: HitTestBehavior.opaque,
-      onLongPressStart: (details) =>
-          _startRowDrag(item, details.globalPosition),
-      onLongPressMoveUpdate: (details) =>
-          _updateRowDrag(details.globalPosition),
-      onLongPressEnd: (details) => _finishRowDrag(details.globalPosition),
-      onLongPressCancel: _cancelRowDrag,
+      gestures: {
+        LongPressGestureRecognizer:
+            GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
+              () => LongPressGestureRecognizer(
+                duration: const Duration(milliseconds: 250),
+              ),
+              (instance) {
+                instance
+                  ..onLongPressStart = (details) {
+                    _dragSource = _RowDragSource.longPress;
+                    _startRowDrag(item, details.globalPosition);
+                  }
+                  ..onLongPressMoveUpdate = (details) {
+                    _updateRowDrag(details.globalPosition);
+                  }
+                  ..onLongPressEnd = (details) {
+                    _finishRowDrag(details.globalPosition);
+                  }
+                  // 纵向识别器赢下竞技场时长按被判负，cancel 只清自己启动的拖拽，
+                  // 不能把纵向刚拾起的拖拽一并撕掉。
+                  ..onLongPressCancel = () {
+                    if (_dragSource == _RowDragSource.longPress) {
+                      _cancelRowDrag();
+                    }
+                  };
+              },
+            ),
+        VerticalDragGestureRecognizer:
+            GestureRecognizerFactoryWithHandlers<VerticalDragGestureRecognizer>(
+              () => VerticalDragGestureRecognizer(
+                supportedDevices: const {PointerDeviceKind.mouse},
+              ),
+              (instance) {
+                instance
+                  ..dragStartBehavior = DragStartBehavior.down
+                  ..onStart = (details) {
+                    _dragSource = _RowDragSource.vertical;
+                    _startRowDrag(item, details.globalPosition);
+                  }
+                  ..onUpdate = (details) {
+                    _updateRowDrag(details.globalPosition);
+                  }
+                  ..onEnd = (details) {
+                    _finishRowDrag(details.globalPosition);
+                  }
+                  ..onCancel = () {
+                    if (_dragSource == _RowDragSource.vertical) {
+                      _cancelRowDrag();
+                    }
+                  };
+              },
+            ),
+      },
       child: child,
     );
   }
@@ -5044,13 +5123,18 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         final t = box.globalToLocal(global).dy / box.size.height;
         final into = drag.canDropInto;
         final intoAllowed =
-            t >= 0.25 && t < 0.75 && into != null && into(entry.item, _dragRows!);
+            t >= 0.25 &&
+            t < 0.75 &&
+            into != null &&
+            into(entry.item, _dragRows!);
         if (intoAllowed) {
           mode = UtenTableRowDropMode.into;
         } else {
           final upper = intoAllowed ? 0.25 : 0.5;
           final above = t < upper;
-          mode = above ? UtenTableRowDropMode.above : UtenTableRowDropMode.below;
+          mode = above
+              ? UtenTableRowDropMode.above
+              : UtenTableRowDropMode.below;
           if (!drag.canDrop(entry.item, _dragRows!)) mode = null;
         }
       }
@@ -5139,7 +5223,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     ScrollController? controller() {
       if (_bodyV.hasClients && _bodyV.positions.isNotEmpty) return _bodyV;
       final primary = PrimaryScrollController.maybeOf(context);
-      if (primary != null && primary.hasClients && primary.positions.isNotEmpty) {
+      if (primary != null &&
+          primary.hasClients &&
+          primary.positions.isNotEmpty) {
         return primary;
       }
       return null;
@@ -5185,27 +5271,36 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     _dragGhost = OverlayEntry(
       builder: (overlayContext) {
         final theme = Theme.of(overlayContext);
-        return Stack(children: [
-          // 拖拽期间整屏 grabbing 光标；指针事件早已绑定在长按手势上，
-          // 这里只接管鼠标光标与点击兜底（拖拽中不容许点到别处）。
-          const Positioned.fill(
-            child: MouseRegion(
-              cursor: SystemMouseCursors.grabbing,
-              child: SizedBox.expand(),
+        return Stack(
+          children: [
+            // 拖拽期间整屏 grabbing 光标；指针事件早已绑定在拾起手势上，这里只
+            // 接管鼠标光标与点击兜底。**兜底是硬要求**：拖拽中若宿主重建把行
+            // 元素打散、识别器被销毁，指针 up 会无人接收——全屏层若只吞点击，
+            // 页面就永久锁死（2026-10-19 用户实测「展开后整页卡死」）。任何一次
+            // 按下都就地取消拖拽，保证这条路径永远可解锁；ESC 同效。
+            Positioned.fill(
+              child: Listener(
+                behavior: HitTestBehavior.opaque,
+                onPointerDown: (_) => _cancelRowDrag(),
+                child: const MouseRegion(
+                  cursor: SystemMouseCursors.grabbing,
+                  child: SizedBox.expand(),
+                ),
+              ),
             ),
-          ),
-          ValueListenableBuilder<Offset?>(
-            valueListenable: _dragPointerPos,
-            builder: (_, pos, _) {
-              if (pos == null) return const SizedBox.shrink();
-              return Positioned(
-                left: math.max(8, pos.dx + 18),
-                top: math.max(8, pos.dy + 14),
-                child: _buildRowDragGhostCard(theme),
-              );
-            },
-          ),
-        ]);
+            ValueListenableBuilder<Offset?>(
+              valueListenable: _dragPointerPos,
+              builder: (_, pos, _) {
+                if (pos == null) return const SizedBox.shrink();
+                return Positioned(
+                  left: math.max(8, pos.dx + 18),
+                  top: math.max(8, pos.dy + 14),
+                  child: _buildRowDragGhostCard(theme),
+                );
+              },
+            ),
+          ],
+        );
       },
     );
     overlay.insert(_dragGhost!);
@@ -5311,6 +5406,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     _dragTargetKey = null;
     _dragMode = null;
     _dragAutoExpandedKey = null;
+    _dragSource = null;
     setState(() {
       _dragRows = null;
       _dragRowKeys = const <String>{};
@@ -7485,7 +7581,11 @@ class _ColumnTextMeasure {
 /// 一个可见数据行的拖拽槽条目：行键、当前行对象与该行的 BuildContext
 /// （context.findRenderObject() 即行 RenderBox，拖动中做光标→行的反查）。
 class _RowDragSlotEntry<T> {
-  _RowDragSlotEntry({required this.key, required this.item, required this.context});
+  _RowDragSlotEntry({
+    required this.key,
+    required this.item,
+    required this.context,
+  });
 
   final String key;
   T item;
@@ -7571,3 +7671,6 @@ class _RowDragIndicatorGeometry {
   final UtenTableRowDropMode mode;
   final String? label;
 }
+
+/// 拖拽拾起的手势来源（判负一方的 cancel 不能误撕另一方的现场）。
+enum _RowDragSource { longPress, vertical }

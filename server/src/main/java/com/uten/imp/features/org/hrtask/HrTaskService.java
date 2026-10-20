@@ -220,7 +220,10 @@ public class HrTaskService {
         long birthdayCount = birthdayToday.stream().filter(it -> !it.blessed()).count();
         long anniversaryCount = anniversaryToday.stream().filter(it -> !it.blessed()).count();
         long identityCount = identityReview.size();
-        Map<String, Long> taskCounts = taskAudience.read(() -> Map.of(
+        // 事务卡红数按会话主体直通（browsingRead）判定 hasAction：本接口直连 HR 工作台
+        // 页面，卡片红数须与列表内容、工作台徽章汇总同一口径；read() 会剥掉超管镜像
+        // 权限，超管打开页面时四张卡红数全为 0（2026-10-19 与 WorkbenchBadgeService 同修）。
+        Map<String, Long> taskCounts = taskAudience.browsingRead(() -> Map.of(
                 "confirm", hasAction("employee:confirm") ? confirmationCount : 0L,
                 "birthday", hasAction("notice:publish") && hasAction("employee:pii:view") ? birthdayCount : 0L,
                 "anniversary", hasAction("notice:publish") ? anniversaryCount : 0L,

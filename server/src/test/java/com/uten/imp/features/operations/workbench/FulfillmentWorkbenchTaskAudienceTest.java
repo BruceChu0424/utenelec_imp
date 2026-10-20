@@ -101,11 +101,11 @@ class FulfillmentWorkbenchTaskAudienceTest {
     }
 
     @Test
-    void taskEndpointsUseTheBusinessAudienceWhileBrowsingRetainsItsOwnAuthority() throws Exception {
-        assertNotNull(FulfillmentWorkbenchController.class.getMethod("purchaseCount").getAnnotation(BusinessTaskRead.class));
-        assertNotNull(FulfillmentWorkbenchController.class.getMethod("subcontractCount").getAnnotation(BusinessTaskRead.class));
+    void countEndpointsBrowseUnderTheSessionPrincipalLikeTheirLists() throws Exception {
+        // 2026-10-19 ADR-184 修订二: 任务中心分段徽章是展示层数字, 须与旁边列表、
+        // 工作台徽章汇总同一可见口径——计数端点不再挂 @BusinessTaskRead 任务改写
+        // (read 会剥超管镜像权限, 超管打开任务中心时子分类徽章全为 0/403)。
         assertTrue(java.util.Arrays.stream(FulfillmentWorkbenchController.class.getMethods())
-                .filter(method -> Set.of("purchase", "subcontract").contains(method.getName()))
                 .noneMatch(method -> method.isAnnotationPresent(BusinessTaskRead.class)));
     }
 }

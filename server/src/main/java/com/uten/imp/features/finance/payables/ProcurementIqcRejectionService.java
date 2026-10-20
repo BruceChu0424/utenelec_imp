@@ -385,7 +385,10 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
             add(where, params, "rejection.owner_user_id=:currentUserId",
                     "currentUserId", currentUser.requireId());
         }
-        var taskPermissions = taskAudience.read(() -> new RejectionTaskPermissions(
+        // 可办桶（待退回/待确认贷项等 FILTER 计数）按会话主体直通（browsingRead）判定：
+        // 本计数直连页面分段徽章，须与列表、工作台徽章汇总同一口径；read() 会剥掉
+        // 超管镜像权限，把超管看到的可办分段数全算成 0（2026-10-19 同修）。
+        var taskPermissions = taskAudience.browsingRead(() -> new RejectionTaskPermissions(
                 has("procurement_iqc_rejection:view") && has("procurement_iqc_rejection:record_return"),
                 has("procurement_iqc_rejection:view") && has("procurement_iqc_rejection:confirm_credit")
                         && has("procurement_iqc_rejection:amount:view"),

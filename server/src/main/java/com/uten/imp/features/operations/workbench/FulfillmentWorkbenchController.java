@@ -1,7 +1,6 @@
 package com.uten.imp.features.operations.workbench;
 
 import com.uten.imp.application.port.WarehouseTaskScopePort;
-import com.uten.imp.security.BusinessTaskRead;
 import java.time.LocalDate;
 import java.util.UUID;
 import java.util.Map;
@@ -13,7 +12,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 履约工作台接口（/api/operations/workbench）：仓库备料 / 采购 / 委外任务聚合视图。 */
+/** 履约工作台接口（/api/operations/workbench）：仓库备料 / 采购 / 委外任务聚合视图。
+ *
+ * 计数端点与列表端点同按会话主体浏览（2026-10-19 起，原 @BusinessTaskRead 任务改写
+ * 退役）：分段徽章数字须与旁边列表、工作台徽章汇总同一可见口径——任务改写会剥掉
+ * 超管镜像权限，超管打开任务中心时子分类徽章全为 0/403（ADR-184 修订二）。 */
 @RestController
 @RequestMapping("/api/operations/workbench")
 @RequiredArgsConstructor
@@ -49,7 +52,6 @@ public class FulfillmentWorkbenchController {
 
     /** 生产待领待办数(徽章来源 productionDraw): 与列表同一仓库范围(ADR-149, 发料仓)。 */
     @GetMapping("/warehouse/count")
-    @BusinessTaskRead
     @PreAuthorize("hasAuthority('stock_doc:view')")
     public Map<String, Long> warehouseCount(@RequestParam(required = false) UUID scopeWarehouseId) {
         var stages = queryService.warehouseStatusBreakdown(warehouseScopes.current(scopeWarehouseId));
@@ -62,7 +64,6 @@ public class FulfillmentWorkbenchController {
 
     /** 领料任务分状态计数（任务中心子分类徽章；待完成=READY+PARTIAL）。 */
     @GetMapping("/warehouse/status-breakdown")
-    @BusinessTaskRead
     @PreAuthorize("hasAuthority('stock_doc:view')")
     public Map<String, Long> warehouseStatusBreakdown(
             @RequestParam(required = false) UUID scopeWarehouseId) {
@@ -91,7 +92,6 @@ public class FulfillmentWorkbenchController {
     }
 
     @GetMapping("/purchase/count")
-    @BusinessTaskRead
     @PreAuthorize("hasAnyAuthority('purchase_request:view','purchase_order:view','purchase_receipt:view','purchase_return:view')")
     public Map<String, Long> purchaseCount() {
         return counts("PURCHASE", WarehouseTaskScopePort.WarehouseTaskScope.ALL);
@@ -119,7 +119,6 @@ public class FulfillmentWorkbenchController {
     }
 
     @GetMapping("/subcontract/count")
-    @BusinessTaskRead
     @PreAuthorize("hasAnyAuthority('subcontract_application:view','subcontract_order:view')")
     public Map<String, Long> subcontractCount() {
         return counts("SUBCONTRACT", WarehouseTaskScopePort.WarehouseTaskScope.ALL);

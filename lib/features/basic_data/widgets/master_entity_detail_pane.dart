@@ -698,11 +698,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     }
 
     try {
-      await Future.wait([
-        loadDetail(),
-        _loadList(1),
-        _loadFacets(),
-      ]);
+      await Future.wait([loadDetail(), _loadList(1), _loadFacets()]);
     } on ApiException catch (e) {
       if (!mounted || !_categoryRequests.isCurrent(generation)) return;
       setState(() {

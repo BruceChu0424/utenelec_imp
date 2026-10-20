@@ -19,8 +19,10 @@ enum UtenTableRowDropMode {
 /// 需要人工排层的表（如货品「组装信息」BOM）才接）。
 ///
 /// 交互契约：
-/// - 鼠标/手指按住不动约 500ms 拾起该行（先按下再立刻拖 = 既有文字框选，
-///   两种手势不打架）；
+/// - 拾起有两条路（2026-10-19 二轮用户口径「长按也触发、按住上下移动了就触发」）：
+///   按住不动约 250ms（官方默认 500ms 太钝）拾起，或鼠标按住纵向移出 slop 立即
+///   拾起——横向移动仍归文字框选，两个方向两种语义互不抢；触屏纵向拖保留给
+///   列表滚动，只有长按路径对触屏开放；
 /// - 拾起时若该行已在多选勾选集中，则整批勾选行一起拖（批量移动）；
 /// - 拾起即把该行纳入勾选（用户口径「长按首先是选中这一行」）；
 /// - 拖动中按 ESC 取消；
@@ -57,7 +59,11 @@ class UtenTableRowDrag<T> {
 
   /// 松手落点。宿主负责校验后的持久化（服务端是成环/重复的最终权威）、
   /// busy 遮罩与成功/失败反馈、数据重载。
-  final Future<void> Function(List<T> dragged, T target, UtenTableRowDropMode mode)
+  final Future<void> Function(
+    List<T> dragged,
+    T target,
+    UtenTableRowDropMode mode,
+  )
   onDrop;
 
   /// 悬停目标行一小段时间后的回调（每次拖拽对每个目标行至多触发一次）。

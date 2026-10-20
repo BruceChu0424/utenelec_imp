@@ -221,7 +221,11 @@ public class DocumentStatusCountQueryService {
         for (int i = 0; i < buckets.size() && i < cells.length; i++) {
             result.put(buckets.get(i).key(), cells[i] instanceof Number number ? number.longValue() : 0L);
         }
-        result.putAll(taskAudience.read(() -> actionableCounts(
+        // ACTIONABLE_*/RESPONSIBLE_* 桶按会话主体直通（browsingRead）算：本端点直连
+        // 各单据列表/任务中心的分段徽章，须与列表本身、工作台徽章汇总同一可见口径；
+        // read() 会剥掉超管镜像权限，把页面上的草稿/退回/待审分段徽章全算成 0
+        //（2026-10-19 与 WorkbenchBadgeService 同修）。
+        result.putAll(taskAudience.browsingRead(() -> actionableCounts(
                 kindName, source, kindFilter, typeFilter, scopeWarehouseId)));
         return result;
     }

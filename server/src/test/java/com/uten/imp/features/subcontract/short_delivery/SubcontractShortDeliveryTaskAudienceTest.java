@@ -48,8 +48,11 @@ class SubcontractShortDeliveryTaskAudienceTest {
     }
 
     @Test
-    void onlyTheTaskCountEndpointUsesTheTaskPrincipal() throws Exception {
-        assertNotNull(SubcontractShortDeliveryController.class.getMethod("count").getAnnotation(BusinessTaskRead.class));
+    void everyEndpointBrowsesUnderTheSessionPrincipal() throws Exception {
+        // 2026-10-19 ADR-184 修订二: 分段计数是展示层数字, 须与列表、工作台徽章汇总
+        // 同一口径——/count 不再挂 @BusinessTaskRead(任务改写会剥超管镜像, 超管打开
+        // 页面时可办分段数全为 0/403)。
+        assertNull(SubcontractShortDeliveryController.class.getMethod("count").getAnnotation(BusinessTaskRead.class));
         assertNull(SubcontractShortDeliveryController.class.getMethod("detail", UUID.class).getAnnotation(BusinessTaskRead.class));
     }
 

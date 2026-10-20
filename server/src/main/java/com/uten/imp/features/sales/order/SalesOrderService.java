@@ -537,7 +537,10 @@ public class SalesOrderService {
         for (Object[] row : NativeQueryResults.objectArrayRows(q)) {
             counts.put((String) row[0], ((Number) row[1]).longValue());
         }
-        counts.putAll(taskAudience.read(this::taskStageCounts));
+        // TASK_* 桶按会话主体直通（browsingRead）算：本端点直连页面，分段徽章须与
+        // 旁边列表、工作台徽章汇总同一可见口径；read() 会剥掉超管镜像权限，把
+        // 页面上的红/黄分段徽章全部算成 0（2026-10-19 与 WorkbenchBadgeService 同修）。
+        counts.putAll(taskAudience.browsingRead(this::taskStageCounts));
         return counts;
     }
 

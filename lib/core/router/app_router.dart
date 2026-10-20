@@ -104,6 +104,7 @@ import '../../features/purchase/pages/purchase_order_edit_page.dart';
 import '../../features/purchase/pages/purchase_report_page.dart';
 import '../../features/purchase/pages/purchase_report_table_page.dart';
 import '../../features/purchase/widgets/purchase_draft_task_category.dart';
+import '../../features/purchase/widgets/purchase_order_batch_export.dart';
 import '../../features/purchase/config/purchase_report_config.dart';
 import '../../features/purchase/models/purchase_doc.dart';
 import '../../features/stock/pages/instant_inventory_page.dart';
@@ -829,6 +830,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'operations-workbench-purchase',
             builder: (_, _) => OperationsWorkbenchPage(
               department: OperationsWorkbenchDepartment.purchase,
+              purchaseOrderBatchExport: exportPurchaseOrderDocumentsBatch,
               draftCategoryBuilder:
                   (_, {required search, required externalHeader}) =>
                       PurchaseDraftTaskCategory(

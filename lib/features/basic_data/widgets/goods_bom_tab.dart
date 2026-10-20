@@ -953,6 +953,38 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
     return [pressed];
   }
 
+  /// 落点是否「整块已在目标位置」：同层、连续、且整块已紧贴锚点的对应一侧——
+  /// 放置结果与现状完全一致。跳过网络请求、直接说明，避免「提示成功但看着
+  /// 没变化」的困惑（2026-10-19 用户反馈；服务端语义本身正确）。
+  bool _dropIsNoOp(
+    List<_BomRow> dragged,
+    _BomRow target,
+    UtenTableRowDropMode mode,
+  ) {
+    if (mode == UtenTableRowDropMode.into) return false;
+    if (dragged.any((r) => r.parentGoodsId != target.parentGoodsId))
+      return false;
+    final draggedIds = dragged.map((r) => r.node.item.id).toSet();
+    // 可见平铺里同层的行序即层内顺序（目标行可见 = 该层可见）。
+    final levelRows = _visibleRows
+        .where((r) => r.parentGoodsId == target.parentGoodsId)
+        .toList();
+    final indices = <int>[];
+    for (var i = 0; i < levelRows.length; i++) {
+      if (draggedIds.contains(levelRows[i].node.item.id)) indices.add(i);
+    }
+    if (indices.length != dragged.length) return false;
+    indices.sort();
+    if (indices.last - indices.first != indices.length - 1) return false;
+    final anchorIndex = levelRows.indexWhere(
+      (r) => r.node.item.id == target.node.item.id,
+    );
+    if (anchorIndex < 0) return false;
+    return mode == UtenTableRowDropMode.above
+        ? anchorIndex == indices.last + 1
+        : anchorIndex == indices.first - 1;
+  }
+
   /// 落点持久化：above = 逐条插到目标前（保序）；below = 逆序插到目标后
   /// （服务端逐条「插参照后」，逆序提交恰好正序落位）；into = 追加到目标层末尾。
   /// 成功后把移入的层级展开（移动结果立即可见）并整树重载。
@@ -963,6 +995,10 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
   ) async {
     if (_moving || _deleting || _loading || dragged.isEmpty) return;
     if (_isInDraggedSubtree(target, dragged)) return;
+    if (_dropIsNoOp(dragged, target, mode)) {
+      context.appSuccess('已在当前位置，未移动'); // TODO(l10n): 补 arb
+      return;
+    }
 
     final targetParent = mode == UtenTableRowDropMode.into
         ? target.node.item.componentGoodsId
@@ -1016,11 +1052,8 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
               widget.canEdit && !_loading && !_deleting && !_moving,
           dragRowsOf: _dragPayloadOf,
           dragLabelOf: (r) =>
-              r.node.item.componentName ??
-              r.node.item.componentCode ??
-              '组件',
-          canDrop: (target, dragged) =>
-              !_isInDraggedSubtree(target, dragged),
+              r.node.item.componentName ?? r.node.item.componentCode ?? '组件',
+          canDrop: (target, dragged) => !_isInDraggedSubtree(target, dragged),
           // 任何可见节点都能接收子级（叶子挂上组件后自然成父件）；
           // 成环与重复的权威校验在服务端。
           canDropInto: (target, dragged) =>
@@ -1480,6 +1513,9 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                   isLoading: _loading && _roots == null,
                   error: _error,
                   onRetry: _load,
+                  // 双击行 = 展开/收起该行子级（2026-10-19 用户口径；表格组件的
+                  // onRowTap 只在手动双击判定里触发，单击仍是选中，语义不打架）。
+                  onRowTap: (r) => _toggle(r.node),
                   // 长按拖拽（goods:bom:edit 才挂）：单行换位 / 多选批量 / 悬停
                   // 展开下探移入任意层级；普通列表页与只读账号不受影响。
                   rowDrag: _rowDrag,

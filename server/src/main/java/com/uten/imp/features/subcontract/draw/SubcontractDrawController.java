@@ -11,7 +11,6 @@ import com.uten.imp.features.subcontract.draw.SubcontractDrawContracts.DrawTaskP
 import com.uten.imp.features.subcontract.draw.SubcontractDrawContracts.DrawWithdrawRequest;
 import com.uten.imp.features.subcontract.draw.SubcontractDrawContracts.DrawWithdrawResult;
 import lombok.RequiredArgsConstructor;
-import com.uten.imp.security.BusinessTaskRead;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -56,9 +55,10 @@ public class SubcontractDrawController {
     /**
      * 领料计数: {@code drawable} = 可领且调用者能动手的行数(红, 无委外领料权限恒为 0);
      * {@code submitted} = 已提交领料、等仓库发出的行数(黄, ADR-171 修订二)。
+     * 按会话主体浏览（2026-10-19 起摘 @BusinessTaskRead）: 分段徽章须与任务列表、
+     * 工作台徽章汇总同一口径，任务改写会剥超管镜像把徽章算成 0。
      */
     @GetMapping("/count")
-    @BusinessTaskRead
     public Map<String, Long> count() {
         return Map.of("drawable", queries.countDrawable(),
                 "submitted", queries.countSubmitted());

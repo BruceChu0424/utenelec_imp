@@ -131,13 +131,18 @@
   且挡住页面级 SelectionArea 渗入。含输入格、多选、自动刷新或分页的大表同样保留复制，
   输入控件使用原生选择；保持选择区挂载和稳定行键，不靠禁用复制规避生命周期问题。
   Ctrl+C / Cmd+C 复制所选文字；有行菜单时另有“复制所选文字”，与复制货品/整行业务动作独立。
-  **框选光标与点击口径（2026-10-19）**：有内容的格 hover 显 I 型文本光标
-  （`MouseRegion(text)`；空白格与 `enableTextSelection=false` 不换，格内按钮/链接
-  自带光标不受影响）；存在框选时左键单击只取消框选、不切换行选中（Excel/浏览器
-  口径，清完后再点恢复选行）。测试：
+  **框选光标与点击口径（2026-10-19 二轮）**：SelectionArea 里的 Text 自带最内层
+  光标区域、取最近的 `DefaultSelectionStyle.mouseCursor`，行 InkWell 会给子树注入
+  basic（Windows 默认箭头）——所以外层包 MouseRegion 赢不了；正确做法是**在有内容
+  的格就近注入 `DefaultSelectionStyle(mouseCursor: text)`**：I 型光标只出现在字体
+  本体上，格内空白处仍是行的可点击光标、点击照常选中行（`enableTextSelection=false`
+  不注入）。存在框选时左键单击只取消框选、不切换行选中（Excel/浏览器口径，清完
+  后再点恢复选行）。测试走 mouseCursor 通道端到端断言：
   `test/master_data_table_view_text_cursor_and_click_clear_test.dart`。
-- **行拖拽（2026-10-19，opt-in）**：传 `rowDrag: UtenTableRowDrag<T>` 才启用——
-  长按(约 500ms)拾起行，跟随光标幽灵卡(名称 + N 行徽记)、被拖行淡出、ESC 取消；
+- **行拖拽（2026-10-19 二轮，opt-in）**：传 `rowDrag: UtenTableRowDrag<T>` 才启用——
+  拾起两条路：按住不动约 **250ms**（官方 500ms 太钝），或**鼠标按住纵向移出 slop
+  立即拾起**（横向移动仍归文字框选；触屏纵向拖保留给列表滚动）。跟随光标幽灵卡
+  (名称 + N 行徽记)、被拖行淡出、ESC 取消；
   落点按目标行内位置分三档：上缘带=同层上方插入、下缘带=同层下方插入、中部=移入
   子级(`canDropInto` 放行时，指示框+「移入「名称」」标签)；悬停约 700ms 触发一次
   `onHoverAutoExpand`（树表悬停自动展开/懒加载由宿主管）；拖到视口上下缘自动滚动。

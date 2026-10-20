@@ -54,6 +54,9 @@ dependencies:
   # A4 预览与打印（货品配件清单等打印件：pdf 生成 + printing 系统打印对话框）
   pdf: ^3.13.1
 
+  # zip 打包（采购任务工作台批量导出采购单：多份 PDF 打成一个 zip 下载）
+  archive: ^4.5.2
+
   # PDF 内嵌预览（PDFium 内核；Windows/Android/iOS/macOS/Web 全支持）
   pdfrx: ^1.0.107
   printing: ^5.14.2

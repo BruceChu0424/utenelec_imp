@@ -291,16 +291,22 @@ class CategoryDrivenCodeServicePostgresTest {
         jdbc.update("UPDATE category_master_code_sequences SET last_seq = 10 WHERE master_type = 'GOODS'");
 
         // 占掉 01 与 02（终身保留表），下一次自动发号应跳到 208035803。
+        // 保留行与成员行同语句写入（CTE 回流），规避切片环境下跨语句可见性差异。
         jdbc.update("""
-                INSERT INTO master_code_reservations (master_domain, normalized_code)
-                VALUES ('GOODS', '208035801'), ('GOODS', '208035802')
+                WITH seeded AS (
+                    INSERT INTO master_code_reservations (master_domain, normalized_code, first_code_snapshot, first_entity_id)
+                    VALUES ('GOODS', '208035801', '208035801', gen_random_uuid()),
+                            ('GOODS', '208035802', '208035802', gen_random_uuid())
+                    ON CONFLICT DO NOTHING
+                    RETURNING master_domain, normalized_code
+                ), reserved AS (
+                    SELECT master_domain, normalized_code FROM seeded
+                    UNION SELECT 'GOODS', v.code FROM (VALUES ('208035801'), ('208035802')) AS v(code)
+                )
+                INSERT INTO master_code_reservation_members (master_domain, normalized_code, entity_id, code_snapshot)
+                SELECT DISTINCT master_domain, normalized_code, gen_random_uuid(), normalized_code
+                FROM reserved
                 ON CONFLICT DO NOTHING
-                """);
-        jdbc.update("""
-                INSERT INTO master_code_reservation_members (
-                    master_domain, normalized_code, entity_id)
-                SELECT 'GOODS', v, gen_random_uuid()
-                FROM (VALUES ('208035801'), ('208035802')) AS v
                 """);
 
         var allocation = service.allocate(GOODS, category, null);
@@ -311,16 +317,20 @@ class CategoryDrivenCodeServicePostgresTest {
 
         // 01..99 全被占用：短号自然进位到三位（100），不再停在 99 报错。
         jdbc.update("""
-                INSERT INTO master_code_reservations (master_domain, normalized_code)
-                SELECT 'GOODS', '2080358' || to_char(n, 'FM00')
-                FROM generate_series(3, 99) AS n
+                WITH seeded AS (
+                    INSERT INTO master_code_reservations (master_domain, normalized_code, first_code_snapshot, first_entity_id)
+                    SELECT 'GOODS', '2080358' || to_char(n, 'FM00'), '2080358' || to_char(n, 'FM00'), gen_random_uuid()
+                    FROM generate_series(3, 99) AS n
+                    ON CONFLICT DO NOTHING
+                    RETURNING master_domain, normalized_code
+                ), reserved AS (
+                    SELECT master_domain, normalized_code FROM seeded
+                    UNION SELECT 'GOODS', '2080358' || to_char(n, 'FM00') FROM generate_series(3, 99) AS n
+                )
+                INSERT INTO master_code_reservation_members (master_domain, normalized_code, entity_id, code_snapshot)
+                SELECT DISTINCT master_domain, normalized_code, gen_random_uuid(), normalized_code
+                FROM reserved
                 ON CONFLICT DO NOTHING
-                """);
-        jdbc.update("""
-                INSERT INTO master_code_reservation_members (
-                    master_domain, normalized_code, entity_id)
-                SELECT 'GOODS', '2080358' || to_char(n, 'FM00'), gen_random_uuid()
-                FROM generate_series(3, 99) AS n
                 """);
         var past99 = service.allocate(GOODS, category, null);
         assertEquals("2080358100", past99.code());

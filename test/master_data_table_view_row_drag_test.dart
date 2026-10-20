@@ -19,11 +19,7 @@ class _Row {
   final String name;
 }
 
-const _items = [
-  _Row('r1', '第一条'),
-  _Row('r2', '第二条'),
-  _Row('r3', '第三条'),
-];
+const _items = [_Row('r1', '第一条'), _Row('r2', '第二条'), _Row('r3', '第三条')];
 
 class _Harness extends StatefulWidget {
   const _Harness({this.onDrop});
@@ -63,10 +59,9 @@ class _HarnessState extends State<_Harness> {
             onSelectedIdsChanged: (next) => setState(() => selected = next),
             rowDrag: UtenTableRowDrag<_Row>(
               canDragRow: (_) => true,
-              dragRowsOf: (pressed) =>
-                  selected.contains(pressed.id)
-                      ? _items.where((r) => selected.contains(r.id)).toList()
-                      : [pressed],
+              dragRowsOf: (pressed) => selected.contains(pressed.id)
+                  ? _items.where((r) => selected.contains(r.id)).toList()
+                  : [pressed],
               dragLabelOf: (r) => r.name,
               canDrop: (target, dragged) =>
                   !dragged.any((d) => d.id == target.id),
@@ -102,9 +97,7 @@ Future<TestGesture> _pickUp(
 Finder _slotOf(String id) => find.byKey(ValueKey('row-drag-slot:$id'));
 
 void main() {
-  testWidgets('长按拾起：行淡出 + 幽灵卡；松手在目标行上缘 = above 并回调', (
-    tester,
-  ) async {
+  testWidgets('长按拾起：行淡出 + 幽灵卡；松手在目标行上缘 = above 并回调', (tester) async {
     final drops = <(List<String>, String, UtenTableRowDropMode)>[];
     await tester.pumpWidget(
       _Harness(
@@ -201,9 +194,7 @@ void main() {
 
   testWidgets('ESC 取消：不回调、拖拽视觉清空', (tester) async {
     var drops = 0;
-    await tester.pumpWidget(
-      _Harness(onDrop: (_, _, _) => drops++),
-    );
+    await tester.pumpWidget(_Harness(onDrop: (_, _, _) => drops++));
     await tester.pumpAndSettle();
 
     final gesture = await _pickUp(tester, find.text('第一条'), pointer: 10);
@@ -214,6 +205,38 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(drops, 0);
+  });
+
+  testWidgets('按住并纵向移动立即拾起（不必等长按时限）', (tester) async {
+    final drops = <(List<String>, String, UtenTableRowDropMode)>[];
+    await tester.pumpWidget(
+      _Harness(
+        onDrop: (dragged, target, mode) =>
+            drops.add((dragged.map((d) => d.id).toList(), target.id, mode)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 按下后立刻向下拖（不按住等待），纵向识别器在 slop 后立即拾起。
+    final start = tester.getCenter(find.text('第一条'));
+    final gesture = await tester.startGesture(
+      start,
+      pointer: 12,
+      kind: PointerDeviceKind.mouse,
+    );
+    await gesture.moveTo(Offset(start.dx, start.dy + 60));
+    await tester.pumpAndSettle();
+
+    final rect = tester.getRect(_slotOf('r3'));
+    await gesture.moveTo(Offset(rect.center.dx, rect.top + rect.height * 0.1));
+    await tester.pumpAndSettle();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(drops, hasLength(1));
+    expect(drops.single.$1, ['r1']);
+    expect(drops.single.$2, 'r3');
+    expect(drops.single.$3, UtenTableRowDropMode.above);
   });
 
   testWidgets('拖到没有有效目标的位置松手：不回调', (tester) async {

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.MediaType;
 import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.converter.json.JacksonJsonHttpMessageConverter;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
@@ -32,23 +33,11 @@ import java.util.List;
 @SuppressWarnings("removal")
 public class Jackson2CompatibilityConfig {
 
-    @Bean
-    JsonMapper jackson2DomainObjectMapper() {
-        // 对齐 Boot 3 自动装配 ObjectMapper 的三件事：注册 classpath 上的模块
-        // （jsr310 日期/时长等，漏了会 500：OffsetDateTime not supported）、
-        // 关 DEFAULT_VIEW_INCLUSION 与 FAIL_ON_UNKNOWN_PROPERTIES（Boot 3 默认）、
-        // 关 WRITE_DATES_AS_TIMESTAMPS（Boot 3 默认日期输出 ISO-8601 字符串）。
-        return JsonMapper.builder()
-                .findAndAddModules()
-                .disable(MapperFeature.DEFAULT_VIEW_INCLUSION)
-                .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
-                .disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
-                .build();
-    }
-
     /**
      * MVC 消息转换器：摘掉 Boot 4 装配的 Jackson 3 转换器，把 Jackson 2 转换器放到
      * 队首。@JsonSerialize 自定义序列化器与既有线上 JSON 格式全部保持原样。
+     * ObjectMapper bean 由 {@link Jackson2ObjectMapperAutoConfiguration} 以自动
+     * 配置形态提供（@WebMvcTest 切片同样可用）。
      */
     @Bean
     WebMvcConfigurer jackson2WebMessageConverters(ObjectMapper jackson2DomainObjectMapper) {
@@ -56,7 +45,22 @@ public class Jackson2CompatibilityConfig {
             @Override
             public void extendMessageConverters(List<HttpMessageConverter<?>> converters) {
                 converters.removeIf(JacksonJsonHttpMessageConverter.class::isInstance);
-                converters.add(0, new MappingJackson2HttpMessageConverter(jackson2DomainObjectMapper));
+                converters.add(0, new MappingJackson2HttpMessageConverter(jackson2DomainObjectMapper) {
+                    // springdoc 3 的 /v3/api-docs 返回预序列化的 byte[]（Jackson 3 产物）；
+                    // 队首的 Jackson 2 转换器会把 byte[] 当普通对象编码成 base64 字符串。
+                    // 拒收 byte[]，让其落回 ByteArrayHttpMessageConverter 原样输出。
+                    @Override
+                    public boolean canWrite(Class<?> clazz, MediaType mediaType) {
+                        return !byte[].class.isAssignableFrom(clazz)
+                                && super.canWrite(clazz, mediaType);
+                    }
+
+                    @Override
+                    public boolean canWrite(java.lang.reflect.Type type, Class<?> clazz, MediaType mediaType) {
+                        return !(type instanceof Class<?> concrete && byte[].class.isAssignableFrom(concrete))
+                                && super.canWrite(type, clazz, mediaType);
+                    }
+                });
             }
         };
     }

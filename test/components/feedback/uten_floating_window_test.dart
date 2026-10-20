@@ -43,9 +43,7 @@ RenderBox? _morphBox(WidgetTester tester) {
 }
 
 void main() {
-  testWidgets('缩起从当前可见大小起跳、展开落回同一矩形（外壳填满窗口矩形）', (
-    tester,
-  ) async {
+  testWidgets('缩起从当前可见大小起跳、展开落回同一矩形（外壳填满窗口矩形）', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     // body 只有 236 高：修复前外壳会被内容带短，morph 仍按 640 起跳。

@@ -9,7 +9,6 @@ import com.uten.imp.features.subcontract.short_delivery.SubcontractShortDelivery
 import com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryContracts.SupplierLossSummary;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import com.uten.imp.security.BusinessTaskRead;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -77,8 +76,9 @@ public class SubcontractShortDeliveryController {
         return service.facets(segment, keyword, supplierId, orderId, dateFrom, dateTo);
     }
 
+    // 按会话主体浏览（2026-10-19 起摘 @BusinessTaskRead）：分段计数须与列表、工作台
+    // 徽章汇总同一口径；任务改写会剥超管镜像，把超管看到的可办分段数全算成 0。
     @GetMapping("/count")
-    @BusinessTaskRead
     @PreAuthorize("hasAuthority('subcontract_order:view')")
     public Counts count() {
         return service.counts();

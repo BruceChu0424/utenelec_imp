@@ -33,7 +33,7 @@ class GoodsBomExportProjectionTest {
         var empty = new TableColumnProjection("t", null, List.of());
         assertSame(empty, GoodsBomExportProjection.forImportTemplate(empty));
         var withNullColumn = new TableColumnProjection("t", null,
-                new ArrayList<>(List.of(col("qty", "数量"), null)));
+                new ArrayList<>(java.util.Arrays.<TableColumnProjection.Column>asList(col("qty", "数量"), null)));
         assertSame(withNullColumn, GoodsBomExportProjection.forImportTemplate(withNullColumn));
     }
 
@@ -62,8 +62,10 @@ class GoodsBomExportProjectionTest {
     void presentColumnsAreNeitherDuplicatedNorReordered() {
         var projected = GoodsBomExportProjection.forImportTemplate(new TableColumnProjection(
                 "t", null, List.of(col("name", "品名"), col("qty", "数量"), col("seq", "序号"))));
-        assertEquals(List.of("name", "qty", "seq"),
+        // 只有 code 缺失：补在最前，用户的三列原序原样跟在后面，不重复。
+        assertEquals(List.of("code", "name", "qty", "seq"),
                 projected.columns().stream().map(TableColumnProjection.Column::key).toList());
+        assertEquals("品名", projected.columns().get(1).label());
     }
 
     @Test

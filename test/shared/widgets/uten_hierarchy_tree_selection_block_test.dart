@@ -65,10 +65,7 @@ void main() {
 
     // 深绿一级行 → 白；浅色子行 → onSurfaceVariant（皮肤由树组件统一下发）。
     expect(iconNear('原材料').color, Colors.white);
-    expect(
-      iconNear('五金件').color,
-      ThemeData().colorScheme.onSurfaceVariant,
-    );
+    expect(iconNear('五金件').color, ThemeData().colorScheme.onSurfaceVariant);
     expect(tester.takeException(), isNull);
   });
 
@@ -77,11 +74,10 @@ void main() {
     await tester.pumpAndSettle();
 
     // 行序：0=原材料(父) 1=五金件(子)。选中前块体整块停在左缘外（不可见）。
-    Finder blockOf(int row) => find
-        .descendant(
-          of: find.byType(AnimatedPositioned).at(row),
-          matching: find.byType(DecoratedBox),
-        );
+    Finder blockOf(int row) => find.descendant(
+      of: find.byType(AnimatedPositioned).at(row),
+      matching: find.byType(DecoratedBox),
+    );
     // 块体在 240 宽行内的可见部分（滑入/滑出的观感度量）。
     double visibleOf(Finder block) {
       final r = tester.getRect(block);

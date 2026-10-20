@@ -238,13 +238,16 @@ class PurchaseOrderPrintPaper extends StatelessWidget {
 String _shown(String value) => value.isEmpty ? '—' : value;
 
 Future<Uint8List> buildPurchaseOrderPdf(
-  PurchaseOrderPrintDocument document,
-) async {
-  final font = pw.Font.ttf(
-    await rootBundle.load('assets/fonts/NotoSansSCFull.ttf'),
-  );
+  PurchaseOrderPrintDocument document, {
+  pw.Font? font,
+}) async {
+  // 批量导出场景传入复用字体：NotoSansSCFull 有 17MB，逐份重复
+  // rootBundle.load + TTF 解析会让几十份的批量导出线性变慢。
+  final typeface =
+      font ??
+      pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansSCFull.ttf'));
   final pdf = pw.Document(
-    theme: pw.ThemeData.withFont(base: font, bold: font),
+    theme: pw.ThemeData.withFont(base: typeface, bold: typeface),
   );
   final d = document;
   pw.Widget text(String value, {double size = 9, bool bold = false}) => pw.Text(

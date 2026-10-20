@@ -19,6 +19,7 @@ import java.sql.Array;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Connection;
 import java.sql.Savepoint;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -60,12 +61,13 @@ public class TxSessionVars {
     private final SecurityContextCurrentUser currentUser;
     private final AuditDeviceContext auditDeviceContext;
     private final ObjectProvider<TransactionWritePreparationPort> writePreparations;
+    private final ObjectProvider<javax.sql.DataSource> dataSource;
 
     public TxSessionVars(
             CryptoProperties crypto,
             SecurityContextCurrentUser currentUser,
             AuditDeviceContext auditDeviceContext) {
-        this(crypto, currentUser, auditDeviceContext, null);
+        this(crypto, currentUser, auditDeviceContext, null, null);
     }
 
     @Autowired
@@ -73,11 +75,13 @@ public class TxSessionVars {
             CryptoProperties crypto,
             SecurityContextCurrentUser currentUser,
             AuditDeviceContext auditDeviceContext,
-            ObjectProvider<TransactionWritePreparationPort> writePreparations) {
+            ObjectProvider<TransactionWritePreparationPort> writePreparations,
+            ObjectProvider<javax.sql.DataSource> dataSource) {
         this.crypto = crypto;
         this.currentUser = currentUser;
         this.auditDeviceContext = auditDeviceContext;
         this.writePreparations = writePreparations;
+        this.dataSource = dataSource;
     }
 
     /**
@@ -401,22 +405,24 @@ public class TxSessionVars {
         }
 
         Map<String, String> decrypted = new HashMap<>();
-        Session session = em.unwrap(Session.class);
+        // 解密是纯函数（密钥来自 Java 侧配置、SQL 以参数传值，不读事务内状态）。
+        // Hibernate 7 起任何 doWork 上的 SQLException——即使已回滚到保存点——都会被
+        // 事务协调器标 rollback-only，令调用方「捕获兜底」失效、提交时炸
+        // UnexpectedRollbackException。改用独立短连接执行：坏密文只作废这一次
+        // 批量语句，调用方逐条兜底照常进行。
         for (Map.Entry<String, List<CipherPart>> entry : byVersion.entrySet()) {
             String key = keyring().get(entry.getKey());
             if (key == null) {
                 throw new IllegalStateException("密文所需的历史密钥未配置，请核对历史密钥配置");
             }
             List<CipherPart> parts = entry.getValue();
-            session.doWork(connection -> {
+            try (Connection connection = dataSource == null || dataSource.getIfAvailable() == null
+                    ? em.unwrap(Session.class).doReturningWork(rs -> rs)
+                    : dataSource.getObject().getConnection()) {
                 String[] raw = parts.stream().map(CipherPart::raw).toArray(String[]::new);
                 String[] bodies = parts.stream().map(CipherPart::body).toArray(String[]::new);
                 Array rawArray = connection.createArrayOf("text", raw);
                 Array bodyArray = connection.createArrayOf("text", bodies);
-                // 批里混进解不开的密文 (数据损坏、换密钥后没配旧密钥) 时，PostgreSQL 会把整个
-                // 事务作废——调用方的逐条兜底 (tryDecrypt) 连保存点都建不起来。整批语句套一层
-                // 保存点，失败回滚到保存点再抛错：异常语义不变，事务本身保住。
-                Savepoint savepoint = connection.getAutoCommit() ? null : connection.setSavepoint();
                 try (PreparedStatement statement = connection.prepareStatement("""
                              SELECT input.raw,
                                     pgp_sym_decrypt(decode(input.body, 'base64'), ?)
@@ -430,19 +436,13 @@ public class TxSessionVars {
                             decrypted.put(rows.getString(1), rows.getString(2));
                         }
                     }
-                    if (savepoint != null) {
-                        connection.releaseSavepoint(savepoint);
-                    }
-                } catch (SQLException unreadable) {
-                    if (savepoint != null) {
-                        connection.rollback(savepoint);
-                    }
-                    throw unreadable;
                 } finally {
                     rawArray.free();
                     bodyArray.free();
                 }
-            });
+            } catch (SQLException unreadable) {
+                throw new IllegalStateException("批量解密语句失败", unreadable);
+            }
         }
         return Map.copyOf(decrypted);
     }

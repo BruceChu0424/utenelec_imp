@@ -14,11 +14,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /** Actual JSON binding + Bean Validation; method-security/step-up gates are separately proxied tests. */
 class ServerOperationsSourceHttpContractTest {
+    @SuppressWarnings("removal")
     @Test void bucketRootPrefixIsAcceptedByHttpAndCredentialsBindOnlyIntoTheWriteCommand() throws Exception {
         var service=mock(ServerOperationsService.class);
         when(service.saveSource(any())).thenReturn(new ServerOperationsDto.SourceView("rev2","oss-cn-hangzhou.aliyuncs.com",
                 "bucket","",true,"key…id",null,null,null,true));
-        var mvc=MockMvcBuilders.standaloneSetup(new ServerOperationsController(service)).build();
+        // standalone MockMvc 不吃 Spring 容器里的兼容 ObjectMapper；databind 2.21 起
+        // 缺失的构造参 null→boolean 默认翻严，这里显式挂与生产同调校的转换器。
+        var mvc=MockMvcBuilders.standaloneSetup(new ServerOperationsController(service))
+                .setMessageConverters(new org.springframework.http.converter.json.MappingJackson2HttpMessageConverter(
+                        com.uten.imp.config.Jackson2ObjectMapperAutoConfiguration.domainObjectMapper()))
+                .build();
         var body=Map.of("requestId",UUID.randomUUID().toString(),"expectedRevision","rev1",
                 "endpoint","oss-cn-hangzhou.aliyuncs.com","bucket","bucket","objectPrefix","",
                 "accessKeyId","test-id","accessKeySecret","test-secret");

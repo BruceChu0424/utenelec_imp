@@ -47,8 +47,11 @@ class SubcontractDrawTaskAudienceTest {
     }
 
     @Test
-    void countEndpointUsesTheActualTaskAudience() throws Exception {
-        assertNotNull(SubcontractDrawController.class.getMethod("count").getAnnotation(BusinessTaskRead.class));
+    void countEndpointBrowsesUnderTheSessionPrincipalLikeItsList() throws Exception {
+        // 2026-10-19 ADR-184 修订二: 分段徽章是展示层数字, 须与任务列表、工作台徽章
+        // 汇总同一口径——/count 不再挂 @BusinessTaskRead(任务改写会剥超管镜像,
+        // 超管打开任务中心时红黄分段数全为 0/403)。
+        assertNull(SubcontractDrawController.class.getMethod("count").getAnnotation(BusinessTaskRead.class));
     }
 
     private static SubcontractDrawQueryService service(EntityManager em, Set<String> permissions, Set<UUID> visible) {

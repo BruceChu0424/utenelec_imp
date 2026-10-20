@@ -29,8 +29,10 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -98,9 +100,12 @@ class GoodsBomMoveTest {
         verify(events, times(1)).publish("GOODS_BOM_UPDATED", "GOODS_BOM", root.getId(), Map.of());
     }
 
-    /** 跨层移动：换 goods 引用到目标父件，追加到该层末尾。 */
+    /**
+     * 跨层移动(V775 留痕契约)：旧行软删、父件不变；新身份插入目标父件下、
+     * 内容字段复制；legacy_id 与审计标记不带（新关系需重新核对）。
+     */
     @Test
-    void crossLevelMoveReparentsAndAppendsToTheTargetLevel() {
+    void crossLevelMoveSoftDeletesOldRowAndCreatesNewIdentityUnderTarget() {
         Goods root = goods("P-1");
         Goods child = goods("C-1");
         GoodsBomItem nested = bomRow(child, goods("X-1"));
@@ -113,11 +118,23 @@ class GoodsBomMoveTest {
                 move(moved.getId(), child.getId(), null, false)));
 
         assertEquals(1, count);
-        assertSame(child, moved.getGoods());
-        // 目标层的清单里，被移行追加在末尾。
-        List<GoodsBomItem> childRows = rowsByParent.get(child.getId());
-        assertSame(nested, childRows.get(0));
-        assertSame(moved, childRows.get(1));
+        // 旧行：软删、父件不变（保留身份不许 UPDATE 换父）。
+        assertTrue(moved.isDeleted());
+        assertSame(root, moved.getGoods());
+        // 新身份：挂到目标父件，组件与用量同源。
+        org.mockito.ArgumentCaptor<GoodsBomItem> saved =
+                org.mockito.ArgumentCaptor.forClass(GoodsBomItem.class);
+        verify(bomRepo, times(2)).save(saved.capture());
+        GoodsBomItem fresh = saved.getAllValues().get(1);
+        assertNotEquals(moved.getId(), fresh.getId());
+        assertSame(child, fresh.getGoods());
+        assertSame(moved.getComponent(), fresh.getComponent());
+        assertEquals(moved.getQty(), fresh.getQty());
+        assertNull(fresh.getLegacyId());
+        assertNull(fresh.getAuditedAt());
+        // 目标层顺序号：原有行在前、新行追加在后。
+        assertEquals(0, nested.getSortOrder());
+        assertEquals(1, fresh.getSortOrder());
         verify(references).requireVisibleGoods(child.getId());
     }
 

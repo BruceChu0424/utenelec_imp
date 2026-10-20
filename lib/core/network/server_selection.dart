@@ -205,5 +205,6 @@ Future<bool> _probeConfiguredLocalServer() =>
 
 final localServerReachableProvider =
     StateNotifierProvider<LocalServerReachabilityNotifier, bool>(
-      (ref) => LocalServerReachabilityNotifier(ref.watch(sharedPreferencesProvider)),
+      (ref) =>
+          LocalServerReachabilityNotifier(ref.watch(sharedPreferencesProvider)),
     );

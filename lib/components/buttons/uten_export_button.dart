@@ -213,8 +213,7 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
           body: {
             ...widget.bodyParams,
             ...selection.bodyParams,
-            if (exportProjection != null &&
-                exportProjection.columns.isNotEmpty)
+            if (exportProjection != null && exportProjection.columns.isNotEmpty)
               'columnProjection': exportProjection.toJson(),
             'password': password,
           },

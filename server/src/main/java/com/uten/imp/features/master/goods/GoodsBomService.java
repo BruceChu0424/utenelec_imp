@@ -398,22 +398,49 @@ public class GoodsBomService {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "不能把组件移到它自己的下级");
             }
         }
-        // 目标父件实体只取一次，跨层移动直接换引用。
+        // 目标父件实体只取一次，跨层移动给新身份挂引用。
         Map<UUID, Goods> parentEntities = new HashMap<>();
         for (Goods g : goodsRepo.findAllById(targetParents)) parentEntities.put(g.getId(), g);
 
         for (BomMoveRequest.Move m : distinct.values()) {
             GoodsBomItem r = byId.get(m.getItemId());
             UUID target = m.getTargetParentGoodsId();
+            GoodsBomItem effective = r;
             if (!r.getGoods().getId().equals(target)) {
                 bomRepo.findByGoods_IdAndComponent_IdAndDeletedFalse(target, r.getComponent().getId())
                         .ifPresent(existing -> {
                             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                                     "目标层级下已存在同一组件「" + componentLabel(existing) + "」");
                         });
-                r.setGoods(parentEntities.get(target));
+                // V775 永久留痕契约：保留身份不许 UPDATE 换父（触发器一律拦截
+                // fn_guard_business_record_parent），换层 = 软删旧行 + 新身份插入，
+                // 内容字段全量复制；legacy_id 属于旧行（全表唯一）不带过来，
+                // 审计标记也不带（新关系需重新核对）。
+                GoodsBomItem fresh = new GoodsBomItem();
+                fresh.setGoods(parentEntities.get(target));
+                fresh.setComponent(r.getComponent());
+                fresh.setQty(r.getQty());
+                fresh.setPrice(r.getPrice());
+                fresh.setTotal(r.getTotal());
+                fresh.setSummary(r.getSummary());
+                fresh.setControlStage(r.getControlStage());
+                fresh.setConsumptionBasis(r.getConsumptionBasis());
+                fresh.setBasisOutputQty(r.getBasisOutputQty());
+                fresh.setAllowPartialPackage(r.isAllowPartialPackage());
+                fresh.setHardGate(r.isHardGate());
+                fresh.setColor(r.getColor());
+                fresh.setColorLegacyId(r.getColorLegacyId());
+                fresh.setDefaultSupplier(r.getDefaultSupplier());
+                fresh.setVendLegacyId(r.getVendLegacyId());
+                fresh.setBomStatus(r.getBomStatus());
+                fresh.setSstatus(r.getSstatus());
+                r.setDeleted(true);
+                r.setDeletedAt(OffsetDateTime.now());
+                bomRepo.save(r);
+                bomRepo.save(fresh);
+                effective = fresh;
             }
-            reorderSiblings(target, r, m.getAnchorItemId(), m.isAfterAnchor());
+            reorderSiblings(target, effective, m.getAnchorItemId(), m.isAfterAnchor());
         }
         Set<UUID> affected = new java.util.LinkedHashSet<>(currentParents);
         affected.addAll(targetParents);

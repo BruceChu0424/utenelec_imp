@@ -713,46 +713,40 @@ public class CategoryDrivenCodeService {
                     WHERE master.is_deleted = false
                       AND scoped.blocked_by_descendant_override = false
                 ), candidate AS (
-                    SELECT master.id,
-                           master.code,
-                           master.code_managed,
-                           master.code_sequence,
-                           master.code_prefix_category_id,
-                           scoped.effective_prefix,
-                           scoped.effective_owner,
-                           CASE
-                               WHEN scoped.effective_owner IS NOT NULL
-                                   THEN scoped.effective_prefix
-                                        || lpad((row_number() OVER (
-                                                     ORDER BY master.code, master.id))::text, 2, '0')
-                               ELSE scoped.effective_prefix
-                                    || repeat(
-                                           '0',
-                                           greatest(
-                                               6 - length(master.code_sequence::text),
-                                               0))
-                                    || master.code_sequence::text
-                           END AS target_code
-                    FROM %s master
-                    JOIN scoped ON scoped.id = master.category_id
-                    JOIN candidate_ids ON candidate_ids.id = master.id
-                    WHERE master.code IS DISTINCT FROM
-                              CASE
-                                  WHEN scoped.effective_owner IS NOT NULL
-                                      THEN scoped.effective_prefix
-                                           || lpad((row_number() OVER (
-                                                        ORDER BY master.code, master.id))::text, 2, '0')
-                                  ELSE scoped.effective_prefix
-                                       || repeat(
-                                              '0',
-                                              greatest(
-                                                  6 - length(master.code_sequence::text),
-                                                  0))
-                                       || master.code_sequence::text
-                              END
+                    -- 窗口函数不许出现在 WHERE：先在内层算出 target_code，外层再比对。
+                    SELECT master.id, master.code, master.code_managed,
+                           master.code_sequence, master.code_prefix_category_id,
+                           master.effective_prefix, master.effective_owner,
+                           master.target_code
+                    FROM (
+                        SELECT master.id,
+                               master.code,
+                               master.code_managed,
+                               master.code_sequence,
+                               master.code_prefix_category_id,
+                               scoped.effective_prefix,
+                               scoped.effective_owner,
+                               CASE
+                                   WHEN scoped.effective_owner IS NOT NULL
+                                       THEN scoped.effective_prefix
+                                            || lpad((row_number() OVER (
+                                                         ORDER BY master.code, master.id))::text, 2, '0')
+                                   ELSE scoped.effective_prefix
+                                        || repeat(
+                                               '0',
+                                               greatest(
+                                                   6 - length(master.code_sequence::text),
+                                                   0))
+                                        || master.code_sequence::text
+                               END AS target_code
+                        FROM %s master
+                        JOIN scoped ON scoped.id = master.category_id
+                        JOIN candidate_ids ON candidate_ids.id = master.id
+                    ) master
+                    WHERE master.code IS DISTINCT FROM master.target_code
                        OR master.code_managed = false
                        OR master.code_prefix_category_id
-                              IS DISTINCT FROM scoped.effective_owner
+                              IS DISTINCT FROM master.effective_owner
                 )
                 """.formatted(
                 type.categoryTable, type.categoryTable, type.table, type.table);
@@ -826,7 +820,7 @@ public class CategoryDrivenCodeService {
                 type,
                 """
                 UPDATE %s master
-                SET code = '__MCB_' || CAST(:batchId AS text) || '_' || CAST(candidate.id AS text)
+                SET code = '__MCB_' || CAST(:batchId AS text) || '_' || master.code || '_' || CAST(master.id AS text)
                 FROM candidate
                 WHERE master.id = candidate.id
                 """.formatted(type.table),

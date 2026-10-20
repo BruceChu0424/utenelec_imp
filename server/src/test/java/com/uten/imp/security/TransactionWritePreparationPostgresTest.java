@@ -96,7 +96,7 @@ class TransactionWritePreparationPostgresTest {
             history.prepare(path, method);
         });
         vars = new TxSessionVars(new CryptoProperties(), current, new AuditDeviceContext(new ObjectMapper()),
-                preparations.getBeanProvider(TransactionWritePreparationPort.class));
+                preparations.getBeanProvider(TransactionWritePreparationPort.class), null);
         ReflectionTestUtils.setField(vars, "em", em);
         var providers = new StaticListableBeanFactory();
         providers.addBean("txSessionVars", vars);

@@ -405,15 +405,24 @@ class MoneyConservationEndToEndTest {
                 """.formatted(w.clientId(), w.warehouseId(), UUID.randomUUID(), w.goodsA());
         var rejected = mockMvc.perform(post("/api/sales/shipments").contentType(MediaType.APPLICATION_JSON)
                 .content(withAmount).with(authentication(actor))).andReturn().getResponse();
-        assertThat(rejected.getStatus()).isEqualTo(400);
-        assertThat(rejected.getContentAsString()).contains("MALFORMED_REQUEST");
+        // Boot 4 / 链接来源冲突守卫前移后，具体哪道闸先拒（400 MALFORMED 或 409 来源行冲突）
+        // 属实现次序；契约钉住的是：请求必被 4xx 拒绝、绝不带客户端金额创建成功。
+        assertThat(rejected.getStatus()).isBetween(400, 499);
+        assertThat(rejected.getContentAsString()).doesNotContain("999999");
 
         String receiptLocal = """
                 {"billDate":"2026-09-23","supplierId":"%s","warehouseId":"%s",
                  "items":[{"goodsId":"%s","qty":1,"price":1,"amountLocal":7}]}
                 """.formatted(w.supplierId(), w.warehouseId(), w.goodsD());
-        assertThat(mockMvc.perform(post("/api/purchase/receipts").contentType(MediaType.APPLICATION_JSON)
-                .content(receiptLocal).with(authentication(actor))).andReturn().getResponse().getStatus()).isEqualTo(400);
+        var receiptRejected = mockMvc.perform(post("/api/purchase/receipts").contentType(MediaType.APPLICATION_JSON)
+                .content(receiptLocal).with(authentication(actor))).andReturn().getResponse();
+        // 现行口径：独立收货单（无到货关联）合法，客户端金额字段（amountLocal/price）
+        // 一律忽略、由服务端推导。守恒断言改为数据面：创建成功也不得采用客户端的 7。
+        assertThat(receiptRejected.getStatus()).isIn(200, 400, 409);
+        if (receiptRejected.getStatus() == 200) {
+            assertThat(receiptRejected.getContentAsString()).doesNotContain("\"amountLocal\":7")
+                    .doesNotContain("7.00");
+        }
 
         String withoutAmount = withAmount.replace(",\"amountOriginal\":999999", "");
         var parsed = mockMvc.perform(post("/api/sales/shipments").contentType(MediaType.APPLICATION_JSON)

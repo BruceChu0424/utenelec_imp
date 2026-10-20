@@ -393,41 +393,36 @@ void main() {
   // 否则后端以「列不存在或不在可导出范围」整单拒绝；全部列都不可导出时不送投影。
   testWidgets('export projection drops non-exportable columns', (tester) async {
     final api = _CapturingApi();
-    final exported = await _runExportWithProjection(
-      tester,
-      api,
-      const [
-        TableProjectedColumn(
-          key: 'treeIdentity',
-          label: '层级 / 组件',
-          width: 340,
-          type: 'text',
-          exportable: false,
-        ),
-        TableProjectedColumn(key: 'code', label: '编号', width: 110, type: 'text'),
-      ],
-    );
+    final exported = await _runExportWithProjection(tester, api, const [
+      TableProjectedColumn(
+        key: 'treeIdentity',
+        label: '层级 / 组件',
+        width: 340,
+        type: 'text',
+        exportable: false,
+      ),
+      TableProjectedColumn(key: 'code', label: '编号', width: 110, type: 'text'),
+    ]);
     expect(exported['columnProjection'], isA<Map<String, dynamic>>());
-    final columns = (exported['columnProjection'] as Map<String, dynamic>)['columns']
-        as List<dynamic>;
+    final columns =
+        (exported['columnProjection'] as Map<String, dynamic>)['columns']
+            as List<dynamic>;
     expect(columns.map((c) => (c as Map<String, dynamic>)['key']), ['code']);
   });
 
-  testWidgets('all columns non-exportable means no projection payload', (tester) async {
+  testWidgets('all columns non-exportable means no projection payload', (
+    tester,
+  ) async {
     final api = _CapturingApi();
-    final exported = await _runExportWithProjection(
-      tester,
-      api,
-      const [
-        TableProjectedColumn(
-          key: 'treeIdentity',
-          label: '层级 / 组件',
-          width: 340,
-          type: 'text',
-          exportable: false,
-        ),
-      ],
-    );
+    final exported = await _runExportWithProjection(tester, api, const [
+      TableProjectedColumn(
+        key: 'treeIdentity',
+        label: '层级 / 组件',
+        width: 340,
+        type: 'text',
+        exportable: false,
+      ),
+    ]);
     expect(exported.containsKey('columnProjection'), isFalse);
   });
 }
@@ -435,7 +430,7 @@ void main() {
 /// 发布一张投影并跑完「下载表格 → 直接下载」，返回捕获到的请求体。
 Future<Map<String, dynamic>> _runExportWithProjection(
   WidgetTester tester,
-  ApiClient api,
+  _CapturingApi api,
   List<TableProjectedColumn> columns,
 ) async {
   final controller = TableColumnProjectionController();
@@ -488,7 +483,7 @@ Future<Map<String, dynamic>> _runExportWithProjection(
   await tester.tap(find.text('直接下载'));
   await tester.pumpAndSettle();
   expect(api.bodies, hasLength(1));
-  return api.bodies.single!;
+  return api.bodies.single;
 }
 
 class _CapturingApi extends ApiClient {

@@ -49,3 +49,9 @@ uten:
   sms:
     provider: ${UTEN_SMS_PROVIDER:log}
     expose-code: ${UTEN_SMS_EXPOSE_CODE:true}
+  storage:
+    # 不可变文档(AI 识别原件/销售报价模板等)入库必须过病毒扫描, 扫描器不可用时整体
+    # fail-closed 拒绝保存(报「文件安全检查暂时不可用」)。dev 默认用确定性 test-only
+    # 扫描器免装 ClamAV; 要联调真实扫描时在 .env 覆盖为 clamav 并自起 ClamAV(127.0.0.1:3310)。
+    malware-scan:
+      provider: ${UTEN_ATTACHMENT_SCANNER_PROVIDER:test-only}

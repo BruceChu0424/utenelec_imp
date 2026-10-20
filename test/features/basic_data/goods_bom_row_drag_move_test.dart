@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_bom_tab.dart';
@@ -179,8 +180,12 @@ Future<TestGesture> _pickUp(
   return gesture;
 }
 
-Future<void> _dropAt(WidgetTester tester, TestGesture gesture, String rowKey,
-    double band) async {
+Future<void> _dropAt(
+  WidgetTester tester,
+  TestGesture gesture,
+  String rowKey,
+  double band,
+) async {
   final rect = tester.getRect(find.byKey(ValueKey(rowKey)));
   await gesture.moveTo(Offset(rect.center.dx, rect.top + rect.height * band));
   await tester.pumpAndSettle();
@@ -191,6 +196,47 @@ Future<void> _dropAt(WidgetTester tester, TestGesture gesture, String rowKey,
 }
 
 void main() {
+  testWidgets(
+    '悬停自动展开子级后拖拽仍存活：可继续下探到子级行落点（不卡死）',
+    (tester) async {
+      final repo = _FakeBomRepo();
+      await _pumpTab(tester, repo);
+
+      final gesture = await _pickUp(tester, find.text('外壳'));
+      // 悬停「螺丝」中部超过自动展开时限 → 懒加载出「垫片」。
+      final screw = tester.getRect(
+        find.byKey(const ValueKey('row-drag-slot:goods-a/row-a2')),
+      );
+      await gesture.moveTo(Offset(screw.center.dx, screw.top + screw.height * 0.5));
+      await tester.pump(const Duration(milliseconds: 800));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pumpAndSettle();
+      expect(find.text('垫片'), findsOneWidget, reason: '悬停应自动展开螺丝');
+
+      // 展开插入行后元素随 key 平移，识别器必须存活：继续拖到「垫片」下缘松手。
+      // 子行的槽位键是完整出现路径（occurrenceKey 递归拼接）。
+      final washer = tester.getRect(
+        find.byKey(
+          const ValueKey('row-drag-slot:goods-a/row-a2/row-y1'),
+        ),
+      );
+      await gesture.moveTo(
+        Offset(washer.center.dx, washer.bottom - washer.height * 0.1),
+      );
+      await tester.pumpAndSettle();
+      await gesture.up();
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(seconds: 2));
+
+      expect(repo.moveCalls, hasLength(1), reason: '展开后的指针 up 必须仍被接收');
+      final move = repo.moveCalls.single.$2.single;
+      expect(move.itemId, 'row-a1');
+      expect(move.targetParentGoodsId, 'goods-y');
+      expect(move.anchorItemId, 'row-y1');
+      expect(move.afterAnchor, isTrue);
+    },
+  );
+
   testWidgets('长按拖到另一行下缘 = 同层下移（锚定目标行 after）', (tester) async {
     final repo = _FakeBomRepo();
     await _pumpTab(tester, repo);
@@ -207,10 +253,11 @@ void main() {
     expect(moves.single.anchorItemId, 'row-a3');
     expect(moves.single.afterAnchor, isTrue);
     // 伪仓库同语义应用后顺序变为：螺丝、线材、外壳。
-    expect(
-      repo._tree['goods-a']!.map((r) => r.id).toList(),
-      ['row-a2', 'row-a3', 'row-a1'],
-    );
+    expect(repo._tree['goods-a']!.map((r) => r.id).toList(), [
+      'row-a2',
+      'row-a3',
+      'row-a1',
+    ]);
   });
 
   testWidgets('拖到行中部 = 移入其子级，且移动后目标层级自动展开', (tester) async {
@@ -258,9 +305,35 @@ void main() {
       ),
       isTrue,
     );
+    expect(repo._tree['goods-a']!.map((r) => r.id).toList(), [
+      'row-a3',
+      'row-a1',
+      'row-a2',
+    ]);
+  });
+
+  testWidgets('整块已在目标位置 = 跳过网络，提示「已在当前位置」', (tester) async {
+    final repo = _FakeBomRepo();
+    await _pumpTab(tester, repo);
+
+    // 勾选前两行（外壳、螺丝），拖到紧随其后的「线材」上方：结果与现状一致。
+    await tester.tap(find.text('外壳'));
+    await tester.pump();
+    await tester.tap(find.text('螺丝'));
+    await tester.pump();
+
+    final gesture = await _pickUp(tester, find.text('螺丝'));
+    await _dropAt(tester, gesture, 'row-drag-slot:goods-a/row-a3', 0.1);
+
+    expect(repo.moveCalls, isEmpty, reason: '原地放置不发请求');
+    // toast 经全局通知池渲染，宿主没挂可见层，从 provider 侧断言。
+    final container = ProviderScope.containerOf(
+      tester.element(find.text('线材')),
+    );
+    final notes = container.read(appNotificationProvider);
     expect(
-      repo._tree['goods-a']!.map((r) => r.id).toList(),
-      ['row-a3', 'row-a1', 'row-a2'],
+      notes.any((n) => n.message.contains('已在当前位置')),
+      isTrue,
     );
   });
 

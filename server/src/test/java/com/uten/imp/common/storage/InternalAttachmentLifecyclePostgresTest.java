@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
@@ -75,7 +76,9 @@ class InternalAttachmentLifecyclePostgresTest {
             return new InternalStorageService(properties,path->{});
         }
     }
-    @Autowired TestRestTemplate http;
+    // Boot 4 移除了 RANDOM_PORT 上下文的 TestRestTemplate 自动注册；按本地端口自建。
+    @LocalServerPort int localPort;
+    TestRestTemplate http;
     @Autowired JdbcTemplate jdbc;
     @Autowired AttachmentObjectOutboxProcessor outbox;
     @Autowired AttachmentReconciliationService reconciliation;
@@ -86,7 +89,43 @@ class InternalAttachmentLifecyclePostgresTest {
 
     // This class shares one real browser session. Re-authenticating for every
     // file scenario plus the reset recovery exhausts the real login limiter.
-    @BeforeAll void initializeSession() { login(); }
+    // Boot 4 的 TestRestTemplate 默认挂 Jackson 3 转换器，反序列化 databind-2 的
+    // JsonNode 会炸；在生产默认转换器集合之前插入同调校的 Jackson 2 转换器。
+    @SuppressWarnings("removal")
+    @BeforeAll void initializeSession() {
+        // Boot 4 的 TestRestTemplate 默认挂 Jackson 3 转换器，反序列化 databind-2 的
+        // JsonNode 会炸；在生产默认转换器集合之前插入同调校的 Jackson 2 转换器。
+        http = new TestRestTemplate(new org.springframework.boot.restclient.RestTemplateBuilder()
+                .rootUri("http://127.0.0.1:" + localPort)
+                .customizers(template -> {
+                    // Jackson 3 转换器造不出 databind-2 的 JsonNode，直接移除；
+                    // byte[]（下载/上传）由 ByteArray 转换器处理，Jackson 转换器会把
+                    // JSON 读成 base64（同服务端 api-docs 的坑），拒收。
+                    template.getMessageConverters()
+                            .removeIf(org.springframework.http.converter.json.JacksonJsonHttpMessageConverter.class::isInstance);
+                    template.getMessageConverters().add(0,
+                        new org.springframework.http.converter.json.MappingJackson2HttpMessageConverter(
+                                com.uten.imp.config.Jackson2ObjectMapperAutoConfiguration.domainObjectMapper()) {
+                            @Override
+                            public boolean canRead(Class<?> clazz, org.springframework.http.MediaType mediaType) {
+                                return !byte[].class.isAssignableFrom(clazz) && super.canRead(clazz, mediaType);
+                            }
+
+                            @Override
+                            public boolean canRead(java.lang.reflect.Type type, Class<?> contextType,
+                                    org.springframework.http.MediaType mediaType) {
+                                return !(type instanceof Class<?> clazz && byte[].class.isAssignableFrom(clazz))
+                                        && super.canRead(type, contextType, mediaType);
+                            }
+
+                            @Override
+                            public boolean canWrite(Class<?> clazz, org.springframework.http.MediaType mediaType) {
+                                return !byte[].class.isAssignableFrom(clazz) && super.canWrite(clazz, mediaType);
+                            }
+                        });
+                }));
+        login();
+    }
 
     private void login() {
         var response=http.postForEntity("/api/auth/login",Map.of("loginAccount","internal-attachment-test","password",password),JsonNode.class);

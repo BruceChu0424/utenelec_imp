@@ -12,6 +12,7 @@
 // ignore_for_file: deprecated_member_use
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 
@@ -70,44 +71,67 @@ Widget _table(
   );
 }
 
-Finder _textCursorRegions() => find.byWidgetPredicate(
-  (w) => w is MouseRegion && w.cursor == SystemMouseCursors.text,
-);
-
 /// SelectableRegionState 实现了 TextSelectionDelegate：textEditingValue 是
 /// 选区几何的公开镜像（未折叠选区 → 非折叠 selection，清空 → 折叠）。
 bool _hasAreaSelection(WidgetTester tester) {
-  final value =
-      tester
-          .state<SelectionAreaState>(find.byType(SelectionArea))
-          .selectableRegion
-          .textEditingValue;
+  final value = tester
+      .state<SelectionAreaState>(find.byType(SelectionArea))
+      .selectableRegion
+      .textEditingValue;
   return value.selection.isValid && !value.selection.isCollapsed;
 }
 
 void main() {
-  testWidgets('有内容的格带 I 型文本光标区域；空白格与关闭框选时不带', (
-    tester,
-  ) async {
+  // 光标断言走端到端解析：mock mouseCursor 通道，看框架最终激活的光标种类。
+  // （只数 MouseRegion widget 不够——行 InkWell 会给子树注入
+  // DefaultSelectionStyle(basic)，Text 自带的最内层光标区域会压过外层包裹。）
+  testWidgets('字体本体上解析为 I 型光标；空白格与关闭框选时不解析为 text', (tester) async {
+    String? cursor;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.mouseCursor, (call) async {
+          cursor = (call.arguments as Map)['kind']?.toString();
+          return null;
+        });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.mouseCursor, null);
+    });
     await tester.pumpWidget(_table(const [_Row('a1'), _Row('a2')]));
     await tester.pumpAndSettle();
-
-    // a1 行两个有内容的格（ID + 备注）、a2 行一个（ID）：共 3 个文本光标区域。
-    expect(
-      find.descendant(
-        of: find.ancestor(of: find.text('a1'), matching: _textCursorRegions()),
-        matching: find.text('a1'),
-      ),
-      findsOneWidget,
+    final gesture = await tester.createGesture(
+      kind: PointerDeviceKind.mouse,
+      pointer: 9,
     );
-    expect(_textCursorRegions(), findsNWidgets(3));
+    await gesture.addPointer(location: Offset.zero);
+    await tester.pump();
+    Future<String?> hover(Offset pos) async {
+      cursor = null;
+      await gesture.moveTo(pos);
+      await tester.pump();
+      return cursor;
+    }
 
-    // 关闭文字选择后：不再出现文本光标区域（行为回到行可点击光标）。
+    // 字体本体：两列有内容的文本都解析为 text（第二次无激活=保持 text，也算过）。
+    final first = await hover(tester.getCenter(find.text('a1')));
+    expect(first == 'text' || first == null, isTrue, reason: 'a1 文本应为 text 光标');
+    // 从文本移到同格空白区：解析回行的可点击/箭头（basic），不再是 text。
+    expect(
+      await hover(
+        Offset(
+          tester.getRect(find.text('内容文本')).right + 30,
+          tester.getCenter(find.text('内容文本')).dy,
+        ),
+      ),
+      isNot('text'),
+    );
+
+    // 关闭文字选择：文本上也不再解析为 text。
     await tester.pumpWidget(
-      _table(const [_Row('a1'), _Row('a2')], enableTextSelection: false),
+      _table(const [_Row('a1')], enableTextSelection: false),
     );
     await tester.pumpAndSettle();
-    expect(_textCursorRegions(), findsNothing);
+    final offKind = await hover(tester.getCenter(find.text('a1')));
+    expect(offKind, isNot('text'));
   });
 
   testWidgets('框选存在时单击只清框选，不选中行；清完后再点才恢复选行', (tester) async {

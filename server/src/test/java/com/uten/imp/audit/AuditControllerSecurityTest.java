@@ -72,7 +72,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
                         LocalNetworkGuardFilter.class,
                         RemoteAccessGuardFilter.class,
                         com.uten.imp.security.RemoteMfaGuardFilter.class,
-                        com.uten.imp.security.RemoteRequestBudgetFilter.class
+                        com.uten.imp.security.RemoteRequestBudgetFilter.class,
+                        // Boot 4 切片不再提供 databind-2 ObjectMapper，含该依赖的过滤器一并排除。
+                        com.uten.imp.security.ImpersonationWriteGuardFilter.class
                 }))
 @Import(AuditControllerSecurityTest.MethodSecurityConfiguration.class)
 class AuditControllerSecurityTest {

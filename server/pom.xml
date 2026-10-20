@@ -270,6 +270,12 @@
             <artifactId>spring-boot-security-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- TestRestTemplate(host, port) 构造依赖 RestTemplateBuilder（spring-boot-restclient）。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-restclient</artifactId>
+            <scope>test</scope>
+        </dependency>
         <!-- FlywayDataSource/FlywayAutoConfiguration（Boot 4 移入 spring-boot-flyway 模块，测试直接引用） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

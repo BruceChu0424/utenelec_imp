@@ -1,0 +1,76 @@
+{
+  "source": "assets/fonts/NotoSansSCFull.ttf",
+  "sourceSha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
+  "profile": "NotoSansSCFullPdf.ttf",
+  "profileSha256": "9b8c800a3327f95133d67303017ae242c02097648c9cc73832a2b7d60cd16bc0",
+  "bytes": 17772300,
+  "glyphs": 31036,
+  "baseUnicodeCharacters": 30890,
+  "baseUnicodeMappingSha256": "da88432a2876cdf1c3f60904c434f64e3aea782aeb7b09beac29d65919598485",
+  "preservedCmapRecords": [
+    {
+      "platform": 0,
+      "encoding": 3,
+      "format": 4,
+      "sha256": "7aa6c0049d27795b667b88d1a6dc05e51ca6f784eaa2078ac7cb0e98806a7865"
+    },
+    {
+      "platform": 0,
+      "encoding": 4,
+      "format": 12,
+      "sha256": "34045f6be7630365a652a7f960700949a2b28504d43038c46f7645dc45a9589b"
+    },
+    {
+      "platform": 1,
+      "encoding": 25,
+      "format": 6,
+      "sha256": "ba840cc4eb804cad4819e440175677bb6dc49d8de425a70bf1ff8194add76ee8"
+    },
+    {
+      "platform": 3,
+      "encoding": 1,
+      "format": 4,
+      "sha256": "7aa6c0049d27795b667b88d1a6dc05e51ca6f784eaa2078ac7cb0e98806a7865"
+    },
+    {
+      "platform": 3,
+      "encoding": 10,
+      "format": 12,
+      "sha256": "34045f6be7630365a652a7f960700949a2b28504d43038c46f7645dc45a9589b"
+    }
+  ],
+  "removedCmapRecords": [
+    {
+      "platform": 0,
+      "encoding": 5,
+      "format": 14,
+      "bytes": 147,
+      "variationSelectorRecords": 2
+    }
+  ],
+  "preservedTableSha256": {
+    "BASE": "8fc4a94e4a39c46aead8cf703a69e79975ce4d28190680a1fa095981712d4491",
+    "GDEF": "1c17da5a0a6aa544e03f64dfb0a0e7961a98ef64c4c459c22627ead11fad7773",
+    "GPOS": "23a7c471d180877cac8e98910edefaa5d3812b9cd59a95e56103cd4ca35a4d3d",
+    "GSUB": "c031a50c42a0af12273902921fef89660288cbb999e5c90aa855a9ba8301dc53",
+    "HVAR": "e1700d32d0ce8533e6fa2e2df4f87128ee23ef782fc6322c030a08379eacad02",
+    "OS/2": "4582f9be2161dca9aa07851869335489db6b50fa8f3081ea5669ea542324a4bf",
+    "STAT": "4b71b740ee7f91d2b9d0c918563712bc6f502d9129d36d59742989e9b2cfdba6",
+    "avar": "5a3bf1be101a7743210674df106310d8fa6a77afb966496b15ac45a10ed2775e",
+    "fvar": "7d1ae6f1706522015c44fd4623046e775b47f3778a7fc13738d076428ce6d6db",
+    "gasp": "4ca731f86ad506ac0e320283dc9461926346de3c4d91d539ea7f6620d3826940",
+    "glyf": "7699771be825799d5fe602c82e796024ae1ec14b91f64027979aee8b55e3571c",
+    "gvar": "5de4494f3572945b2164c7c8e708a90fb6374fc515ebeba26a4f4397a7975370",
+    "hhea": "a8be165a813df1a51789b4389589c6a56d7258a996d3bcadb8384844ad862b28",
+    "hmtx": "489f7cd722559cc8bf55f76652e470d2aa1b1d56fdbe05a5f25f74f4645745e3",
+    "loca": "ea661eba762d48f89a51e3a27fd98539b572cfc0c4a2eb39d48c1ff52b3e6955",
+    "maxp": "df83df26265079d6e65838554123f95ce225c868aa2418d5b25775fe98600139",
+    "name": "ba1f6a673d4d75734d51d569d2815b9f028d9a0f4760f322b677d7468ecb1d17",
+    "post": "22dd499f08932214bde96943f3882f3619324478217095c049b68a57c6c10693",
+    "prep": "907c4106ff9989c1805827d5581bdf107a253b098cb71eb374f5e47c35604452",
+    "vhea": "b4a6eb6359a07b4c42b63a75f16772705089cb513bb553636cf3be5433d805da",
+    "vmtx": "afb2e1c2877365f5c5de30ebd32284b52f7fc8f02c0e50518a8afa43ac5fe0dd"
+  },
+  "license": "SIL Open Font License 1.1; /fonts/OFL.txt; source name/copyright/license tables unchanged",
+  "variationSequenceSemantics": "No UVS selection support is added or removed from the existing FontBox PDF renderer, which ignores format 14. Full original source remains unchanged for future UVS support."
+}

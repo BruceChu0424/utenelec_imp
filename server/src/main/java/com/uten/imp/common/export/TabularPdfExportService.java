@@ -37,7 +37,7 @@ public class TabularPdfExportService {
         if (cells > 60_000) throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,
                 "PDF 明细较多，请缩小范围或下载 Excel");
         try (PDDocument pdf = new PDDocument();
-             var fontFile = getClass().getResourceAsStream("/fonts/NotoSansSCFull.ttf");
+             var fontFile = TabularPdfExportService.class.getResourceAsStream("/fonts/NotoSansSCFullPdf.ttf");
              ByteArrayOutputStream bytes = new ByteArrayOutputStream()) {
             if (fontFile == null) throw new IllegalStateException("导出中文字体资源缺失");
             PDType0Font font = PDType0Font.load(pdf, fontFile, true);

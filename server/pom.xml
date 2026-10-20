@@ -313,7 +313,9 @@
             <resource>
                 <directory>../assets/fonts</directory>
                 <targetPath>fonts</targetPath>
-                <includes><include>NotoSansSCFull.ttf</include><include>OFL.txt</include></includes>
+                <!-- The PDF-only full-glyph profile lives in src/main/resources/fonts.
+                     Keep its original license without packaging the shared Flutter font twice. -->
+                <includes><include>OFL.txt</include></includes>
             </resource>
             <!-- ADR-153: read-only platform design documents the AI assistant may cite (AiDocKnowledgePolicy keeps
                  the same lists; AiDocKnowledgePolicyTest compares them). Never source code, never deployment,

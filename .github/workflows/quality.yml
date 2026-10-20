@@ -58,6 +58,8 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
+      - name: Verify reproducible complete PDF font profile
+        run: python3 scripts/build_pdf_font_profile.py --check
       - name: Unit, architecture, and contract tests (DB-gated tests skip by design)
         working-directory: server
         # Exercise build-directory independence in the early lane too.

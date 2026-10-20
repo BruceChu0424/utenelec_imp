@@ -27,10 +27,10 @@ public class OrderItemDto extends com.uten.imp.common.finance.OrderAmountInputRe
     private UUID colorId;
     private UUID unitId;
     private BigDecimal unitRate;
-    private BigDecimal qty;
-    private BigDecimal price;
-    private BigDecimal amountOriginal;
-    private BigDecimal amountLocal;
+    @lombok.Getter(onMethod_ = @Override) private BigDecimal qty;
+    @lombok.Getter(onMethod_ = @Override) private BigDecimal price;
+    @lombok.Getter(onMethod_ = @Override) private BigDecimal amountOriginal;
+    @lombok.Getter(onMethod_ = @Override) private BigDecimal amountLocal;
     private BigDecimal receivedQty;
     private BigDecimal returnedQty;
     private BigDecimal issuedQty;

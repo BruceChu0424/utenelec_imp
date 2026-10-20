@@ -710,10 +710,10 @@ public class InventoryPositionService extends InventoryValueLedger implements In
         throw conflict("必须引用准确的原价值位置UUID");}
     private static void owner(Owner owner,UUID id){if(owner==null)throw invalid("价值位置类型不能为空");required(id,"价值位置归属UUID");}
     private static List<Slice> slices(List<Slice> raw,boolean emptyAllowed){
-        if(raw==null)raw=List.of();if(raw.size()>100||(!emptyAllowed&&raw.isEmpty()))throw invalid("每次价值携转须有1到100个明确来源切片");
+        if(raw==null){ raw=List.of(); }if(raw.size()>100||(!emptyAllowed&&raw.isEmpty())){ throw invalid("每次价值携转须有1到100个明确来源切片"); }
         Set<UUID> roots=new HashSet<>(),facts=new HashSet<>();List<Slice> result=new ArrayList<>();
-        for(Slice s:raw){if(s==null)throw invalid("价值来源切片不能为空");required(s.positionRootId(),"原价值位置UUID");required(s.sourceSliceId(),"业务来源切片UUID");
-            if(!roots.add(s.positionRootId())||!facts.add(s.sourceSliceId()))throw invalid("同一原位置或业务切片不能在一次操作中重复，请先按来源归并");
+        for(Slice s:raw){if(s==null){ throw invalid("价值来源切片不能为空"); }required(s.positionRootId(),"原价值位置UUID");required(s.sourceSliceId(),"业务来源切片UUID");
+            if(!roots.add(s.positionRootId())||!facts.add(s.sourceSliceId())){ throw invalid("同一原位置或业务切片不能在一次操作中重复，请先按来源归并"); }
             result.add(new Slice(s.positionRootId(),positive(s.qtyBase(),"本次来源基本数量"),s.sourceSliceId()));}
         result.sort(Comparator.comparing(s->s.positionRootId().toString()));return List.copyOf(result);
     }

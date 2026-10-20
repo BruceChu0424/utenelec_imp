@@ -76,7 +76,7 @@ class FulfillmentMutationLocksPostgresTest {
         locks = new FulfillmentMutationLocks(em,new FulfillmentInventoryMutationAdapter(inventory));
         sales = new SalesMutationFootprintService(em,locks);
     }
-    @AfterAll static void stop() { if(factory!=null)factory.close(); POSTGRES.stop(); }
+    @AfterAll static void stop() { if(factory!=null){ factory.close(); } POSTGRES.stop(); }
 
     @Test void salesThenWarehouseAndWarehouseThenSalesBothSerializeWithoutGlobalMutex() {
         assertTimeoutPreemptively(Duration.ofSeconds(20), () -> {

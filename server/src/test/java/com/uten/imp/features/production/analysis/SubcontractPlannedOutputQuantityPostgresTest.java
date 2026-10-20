@@ -44,8 +44,8 @@ class SubcontractPlannedOutputQuantityPostgresTest {
                 CREATE FUNCTION fn_subcontract_order_source_share(uuid,uuid,numeric) RETURNS numeric LANGUAGE sql AS $$ SELECT $3 $$;
                 """);
     }
-    @AfterAll static void stop()throws Exception{if(connection!=null)connection.close();DB.stop();}
-    @BeforeEach void clear(){for(String table:TABLES)db.execute("TRUNCATE "+table);db.execute("TRUNCATE subcontract_draw_adapter");}
+    @AfterAll static void stop()throws Exception{if(connection!=null){ connection.close(); }DB.stop();}
+    @BeforeEach void clear(){for(String table:TABLES){ db.execute("TRUNCATE "+table); }db.execute("TRUNCATE subcontract_draw_adapter");}
 
     @Test void hundredOfOneHundredTenDoesNotInventAFourthDecimalBomRequirement(){
         UUID action=action("110","0");application(action,"110",true);

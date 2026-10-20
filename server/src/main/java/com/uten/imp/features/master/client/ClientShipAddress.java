@@ -46,8 +46,10 @@ public class ClientShipAddress extends SoftDeletableEntity {
     private OffsetDateTime lastUsedAt;
 
     @Column(name = "created_by")
+    @Setter(onMethod_ = @Override)
     private UUID createdBy;
 
     @Column(name = "updated_by")
+    @Setter(onMethod_ = @Override)
     private UUID updatedBy;
 }

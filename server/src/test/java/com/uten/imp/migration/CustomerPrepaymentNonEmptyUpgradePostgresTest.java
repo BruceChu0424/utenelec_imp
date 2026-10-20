@@ -180,12 +180,12 @@ class CustomerPrepaymentNonEmptyUpgradePostgresTest {
                 .extracting(error->((SQLException)error).getSQLState()).isEqualTo(state);c.rollback();}
         finally{c.setAutoCommit(true);}
     }
-    private static void execute(Connection c,String sql,Object...args)throws SQLException{try(PreparedStatement s=c.prepareStatement(sql)){for(int i=0;i<args.length;i++)s.setObject(i+1,args[i]);s.executeUpdate();}}
+    private static void execute(Connection c,String sql,Object...args)throws SQLException{try(PreparedStatement s=c.prepareStatement(sql)){for(int i=0;i<args.length;i++){ s.setObject(i+1,args[i]); }s.executeUpdate();}}
     private static String text(Connection c,String sql,Object...args)throws SQLException{return String.valueOf(value(c,sql,args));}
     private static long number(Connection c,String sql,Object...args)throws SQLException{return ((Number)value(c,sql,args)).longValue();}
-    private static Object value(Connection c,String sql,Object...args)throws SQLException{try(PreparedStatement s=c.prepareStatement(sql)){for(int i=0;i<args.length;i++)s.setObject(i+1,args[i]);try(ResultSet r=s.executeQuery()){assertThat(r.next()).isTrue();return r.getObject(1);}}}
+    private static Object value(Connection c,String sql,Object...args)throws SQLException{try(PreparedStatement s=c.prepareStatement(sql)){for(int i=0;i<args.length;i++){ s.setObject(i+1,args[i]); }try(ResultSet r=s.executeQuery()){assertThat(r.next()).isTrue();return r.getObject(1);}}}
     private static Connection connection()throws SQLException{return DriverManager.getConnection(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword());}
-    private static Flyway flyway(String target){var config=Flyway.configure().dataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword()).locations("classpath:db/migration");if(target!=null)config.target(target);return config.load();}
+    private static Flyway flyway(String target){var config=Flyway.configure().dataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword()).locations("classpath:db/migration");if(target!=null){ config.target(target); }return config.load();}
     private record Fixture(UUID orderOne,UUID singleLedger,UUID multiLedger,UUID directLedger,
                            UUID singleReceipt,UUID multiReceipt,UUID directReceipt,UUID singleLine,UUID multiLine){}
 }

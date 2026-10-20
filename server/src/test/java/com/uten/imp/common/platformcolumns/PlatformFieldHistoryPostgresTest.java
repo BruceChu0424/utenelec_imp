@@ -83,8 +83,8 @@ class PlatformFieldHistoryPostgresTest {
     static class TestAdapter implements PlatformColumnResourceAdapter {
         UUID record;boolean allowed=true,price;
         TestAdapter(UUID record){this.record=record;}
-        public String scope(){return "history_fixture";}public String label(){return "历史测试";}
-        public void requireDefinitionAccess(boolean write){}public boolean canWrite(){return false;}public boolean canViewPrice(){return price;}
-        public Map<UUID,RecordAccess> authorize(Set<UUID> ids,boolean write){return allowed&&ids.equals(Set.of(record))?Map.of(record,new RecordAccess(false,price,Map.of("qty",java.math.BigDecimal.valueOf(999)))):Map.of();}
+        @Override public String scope(){return "history_fixture";}@Override public String label(){return "历史测试";}
+        @Override public void requireDefinitionAccess(boolean write){}@Override public boolean canWrite(){return false;}@Override public boolean canViewPrice(){return price;}
+        @Override public Map<UUID,RecordAccess> authorize(Set<UUID> ids,boolean write){return allowed&&ids.equals(Set.of(record))?Map.of(record,new RecordAccess(false,price,Map.of("qty",java.math.BigDecimal.valueOf(999)))):Map.of();}
     }
 }

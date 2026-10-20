@@ -14,7 +14,7 @@ import java.util.UUID;
 public class ReceiptDetail extends com.uten.imp.common.history.DocumentHistoryMetadata
         implements com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities {
     private UUID id;
-    private Integer legacyId;
+    @lombok.Getter(onMethod_ = @Override) private Integer legacyId;
     private String billNo;
     private LocalDate billDate;
     private UUID supplierId;
@@ -38,7 +38,7 @@ public class ReceiptDetail extends com.uten.imp.common.history.DocumentHistoryMe
     private String remark;
     private BigDecimal totalOriginal;
     private BigDecimal totalLocal;
-    private Short status;
+    @lombok.Getter(onMethod_ = @Override) private Short status;
     private boolean closed;
     private String sourceDocNo;
     private List<ReceiptItemDto> items;

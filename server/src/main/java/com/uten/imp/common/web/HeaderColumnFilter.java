@@ -45,7 +45,7 @@ public record HeaderColumnFilter(Map<String, String> values) {
 
     public boolean hasAmount() { return has("amountMin", "amountMax", "amountNull"); }
     public boolean hasAmountRange() { return has("amountMin", "amountMax"); }
-    private boolean has(String... keys) { for (String key : keys) if (values.containsKey(key)) return true; return false; }
+    private boolean has(String... keys) { for (String key : keys) { if (values.containsKey(key)) { return true; } } return false; }
 
     /** Reject before parsing/probing values or constructing a protected predicate. */
     public void requireAmountVisible(boolean visible) {

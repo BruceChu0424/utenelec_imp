@@ -569,8 +569,8 @@ public class InternalStorageService implements StorageService, BlobStore {
         @Override public boolean markSupported() { return false; }
         @Override public synchronized void reset() throws IOException { throw new IOException("Object stream cannot reset"); }
         @Override public void close() throws IOException {
-            if(closed)return;closed=true;
-            try { super.close(); } finally { if(temporary!=null)deleteQuietly(temporary);lease.close(); }
+            if(closed){ return; }closed=true;
+            try { super.close(); } finally { if(temporary!=null){ deleteQuietly(temporary); }lease.close(); }
         }
     }
     private static MessageDigest sha256() {

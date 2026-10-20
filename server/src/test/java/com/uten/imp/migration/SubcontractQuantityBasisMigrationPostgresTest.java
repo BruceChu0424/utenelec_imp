@@ -96,7 +96,7 @@ class SubcontractQuantityBasisMigrationPostgresTest {
         return new Fixture(line,issueItem,goods);
     }
     private static void execute(Connection c,String sql,Object...args) throws SQLException {
-        try(var s=c.prepareStatement(sql)) { for(int n=0;n<args.length;n++)s.setObject(n+1,args[n]);s.executeUpdate(); }
+        try(var s=c.prepareStatement(sql)) { for(int n=0;n<args.length;n++){ s.setObject(n+1,args[n]); }s.executeUpdate(); }
     }
     private static int count(Connection c,String sql,UUID id) throws SQLException {
         try(var s=c.prepareStatement(sql)) {s.setObject(1,id);try(var r=s.executeQuery()){r.next();return r.getInt(1);}}

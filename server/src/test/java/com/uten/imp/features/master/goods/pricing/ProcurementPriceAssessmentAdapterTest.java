@@ -25,7 +25,7 @@ class ProcurementPriceAssessmentAdapterTest {
     }
     @Test void aDuplicateAcrossBatchBoundaryIsRejectedBeforeAnyPartialChecks(){
         var prices=mock(GoodsPriceAnalysisService.class);when(prices.available(Kind.PURCHASE)).thenReturn(true);
-        List<ProcurementPriceAssessmentPort.Line> lines=new ArrayList<>();for(int i=0;i<100;i++)lines.add(line(Integer.toString(i)));lines.add(line("0"));
+        List<ProcurementPriceAssessmentPort.Line> lines=new ArrayList<>();for(int i=0;i<100;i++){ lines.add(line(Integer.toString(i))); }lines.add(line("0"));
         assertThatThrownBy(()->new ProcurementPriceAssessmentAdapter(prices).assess(new ProcurementPriceAssessmentPort.Request("PURCHASE",null,lines))).hasMessageContaining("唯一行标识");
         verify(prices,never()).check(any());
     }

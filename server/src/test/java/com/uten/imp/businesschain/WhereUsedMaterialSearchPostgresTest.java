@@ -73,7 +73,7 @@ class WhereUsedMaterialSearchPostgresTest extends AuthSessionPostgresTestSupport
 
     private JsonNode search(String token,String keyword,String category,boolean related,int page,int size)throws Exception{
         var builder=get("/api/production/reports/where-used/materials").param("keyword",keyword).param("includeRelated",Boolean.toString(related)).param("page",Integer.toString(page)).param("size",Integer.toString(size));
-        if(category!=null)builder.param("categoryId",category);return request(token,builder);
+        if(category!=null){ builder.param("categoryId",category); }return request(token,builder);
     }
     private JsonNode request(String token,MockHttpServletRequestBuilder request)throws Exception{MvcResult result=mvc.perform(request.header("Authorization","Bearer "+token)).andReturn();assertEquals(200,result.getResponse().getStatus(),body(result));return json(result);}
     private UUID category(UUID parent,String name){UUID id=UUID.randomUUID();jdbc.update("INSERT INTO material_categories(id,code,name,parent_id) VALUES(?,?,?,?)",id,"WU-"+id,name,parent);return id;}

@@ -154,8 +154,8 @@ class ClientGoodsAliasEvidencePostgresTest {
             String sql=call.getArgument(0);Map<String,Object> parameters=new HashMap<>();Query query=mock(Query.class);
             when(query.setParameter(anyString(),any())).thenAnswer(p->{parameters.put(p.getArgument(0),p.getArgument(1));return query;});
             java.util.function.Supplier<List<Object>> rows=()->jdbc.query(sql,parameters,(rs,n)->{
-                int columns=rs.getMetaData().getColumnCount();if(columns==1)return rs.getObject(1);
-                Object[] values=new Object[columns];for(int i=0;i<columns;i++)values[i]=rs.getObject(i+1);return values;
+                int columns=rs.getMetaData().getColumnCount();if(columns==1){ return rs.getObject(1); }
+                Object[] values=new Object[columns];for(int i=0;i<columns;i++){ values[i]=rs.getObject(i+1); }return values;
             });
             when(query.getResultList()).thenAnswer(q->rows.get());when(query.getSingleResult()).thenAnswer(q->rows.get().getFirst());
             when(query.executeUpdate()).thenAnswer(q->jdbc.update(sql,parameters));return query;

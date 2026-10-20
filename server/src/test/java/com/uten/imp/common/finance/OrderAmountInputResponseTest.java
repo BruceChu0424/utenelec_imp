@@ -8,10 +8,10 @@ import static org.assertj.core.api.Assertions.*;
 class OrderAmountInputResponseTest {
     @Test void exactCompanionsPreserveNumbersBeyondJavascriptPrecision() throws Exception {
         var response = new OrderAmountInputResponse() {
-            public BigDecimal getQty() { return new BigDecimal("3000"); }
-            public BigDecimal getPrice() { return new BigDecimal("0.0333333333"); }
-            public BigDecimal getAmountOriginal() { return new BigDecimal("100.000000000000000000000001"); }
-            public BigDecimal getAmountLocal() { return null; }
+            @Override public BigDecimal getQty() { return new BigDecimal("3000"); }
+            @Override public BigDecimal getPrice() { return new BigDecimal("0.0333333333"); }
+            @Override public BigDecimal getAmountOriginal() { return new BigDecimal("100.000000000000000000000001"); }
+            @Override public BigDecimal getAmountLocal() { return null; }
         };
         response.setTotalAmountInput(response.getAmountOriginal());
         var json = new ObjectMapper().valueToTree(response);

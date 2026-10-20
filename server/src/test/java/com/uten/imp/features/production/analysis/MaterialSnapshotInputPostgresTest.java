@@ -110,6 +110,6 @@ class MaterialSnapshotInputPostgresTest {
     }
 
     private static List<Object> row(ResultSet result,int columns)throws Exception {
-        List<Object> row=new ArrayList<>();for(int index=1;index<=columns;index++)row.add(result.getObject(index));return row;
+        List<Object> row=new ArrayList<>();for(int index=1;index<=columns;index++){ row.add(result.getObject(index)); }return row;
     }
 }

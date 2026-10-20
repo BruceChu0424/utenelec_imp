@@ -159,5 +159,5 @@ class ProductionMaterialRequestNumberPostgresTest {
               'items',(SELECT jsonb_agg(to_jsonb(value) ORDER BY id) FROM stock_document_items value),
               'events',(SELECT jsonb_agg(to_jsonb(value) ORDER BY id) FROM production_execution_segment_events value))::text
             """,String.class);}
-    private String causes(Throwable failure){StringBuilder result=new StringBuilder();for(Throwable value=failure;value!=null;value=value.getCause())result.append(value).append('\n');return result.toString();}
+    private String causes(Throwable failure){StringBuilder result=new StringBuilder();for(Throwable value=failure;value!=null;value=value.getCause()){ result.append(value).append('\n'); }return result.toString();}
 }

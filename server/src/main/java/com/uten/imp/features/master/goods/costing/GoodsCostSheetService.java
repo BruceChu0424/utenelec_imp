@@ -217,12 +217,12 @@ public class GoodsCostSheetService {
         return snapshot;
     }
     public List<Template> templates(UUID goodsId,UUID clientId) {
-        require(VIEW);if(goodsId!=null)references.requireVisibleGoods(goodsId);requireClient(clientId);
+        require(VIEW);if(goodsId!=null){ references.requireVisibleGoods(goodsId); }requireClient(clientId);
         List<Template> result=new ArrayList<>();
         for(var row:db.queryForList("""
                 SELECT * FROM goods_cost_templates WHERE (goods_id IS NULL OR goods_id=CAST(:goods AS uuid))
                   AND (client_id IS NULL OR client_id=CAST(:client AS uuid)) ORDER BY name,id LIMIT 250
-                """,new MapSqlParameterSource().addValue("goods",goodsId).addValue("client",clientId))) result.add(template(row));
+                """,new MapSqlParameterSource().addValue("goods",goodsId).addValue("client",clientId))) { result.add(template(row)); }
         return List.copyOf(result);
     }
     @Transactional
@@ -444,7 +444,7 @@ public class GoodsCostSheetService {
         scope(input.goodsId(),input.clientId());
     }
     private boolean has(String permission) {return current.get().map(u->u.getPermissions().contains(permission)).orElse(false);}
-    private void scope(UUID goodsId,UUID clientId) {if(goodsId!=null)references.requireVisibleGoods(goodsId);requireClient(clientId);}
+    private void scope(UUID goodsId,UUID clientId) {if(goodsId!=null){ references.requireVisibleGoods(goodsId); }requireClient(clientId);}
     private void requireClient(UUID id) {if(!canClient(id))throw new ApiException(ErrorCode.FORBIDDEN,"无权查看成本单关联客户");}
     private boolean canClient(UUID id) {
         if(id==null)return true;

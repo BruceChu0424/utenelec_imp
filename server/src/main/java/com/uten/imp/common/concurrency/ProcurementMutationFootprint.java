@@ -236,11 +236,11 @@ public class ProcurementMutationFootprint {
         Set<UUID> orderItems=new LinkedHashSet<>(); requestedOrderItems.stream().filter(Objects::nonNull).forEach(orderItems::add);
         List<UUID> original=originalItemIds.stream().filter(Objects::nonNull).distinct().toList();
         var parts=new ArrayList<String>();
-        if(!original.isEmpty())for(Object[] row:rows("SELECT id,order_item_id,item.xmin::text FROM "
+        if(!original.isEmpty()){ for(Object[] row:rows("SELECT id,order_item_id,item.xmin::text FROM "
                 +(materials?"subcontract_material_issue_items":prefix(type)+"_receipt_items")
                 +" item WHERE id IN (:ids) ORDER BY id",Map.of("ids",original))) {
-            if(row[1]!=null)orderItems.add((UUID)row[1]);parts.add(Arrays.toString(row));
-        }
+            if(row[1]!=null){ orderItems.add((UUID)row[1]); }parts.add(Arrays.toString(row));
+        } }
         var previous=id==null?new FulfillmentMutationLockPlan(Set.of(),Set.of(),Set.of(),Set.of(),"new-return")
                 :materials?materialReturn(id):productReturn(type,id);
         var merged=withInputs(previous,type.equals("PURCHASE")?CommercialType.PURCHASE_ORDER:CommercialType.SUBCONTRACT_ORDER,

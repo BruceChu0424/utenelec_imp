@@ -156,10 +156,10 @@ class GoodsBomLearningQueryPostgresTest {
             while(named.find()){args.add(params.get(named.group(1)));named.appendReplacement(jdbc,"?");}
             named.appendTail(jdbc);
             try(var statement=db.prepareStatement(jdbc.toString())) {
-                for(int i=0;i<args.size();i++)statement.setObject(i+1,args.get(i));
+                for(int i=0;i<args.size();i++){ statement.setObject(i+1,args.get(i)); }
                 try(var rows=statement.executeQuery()) {
                     List<Object[]> result=new ArrayList<>();int width=rows.getMetaData().getColumnCount();
-                    while(rows.next()){Object[] row=new Object[width];for(int i=0;i<width;i++)row[i]=rows.getObject(i+1);result.add(row);}
+                    while(rows.next()){Object[] row=new Object[width];for(int i=0;i<width;i++){ row[i]=rows.getObject(i+1); }result.add(row);}
                     return result;
                 }
             } catch(SQLException e) {throw new IllegalStateException(e);}
@@ -187,7 +187,7 @@ class GoodsBomLearningQueryPostgresTest {
     private static Set<String> keys(JsonNode node){Set<String> keys=new TreeSet<>();node.fieldNames().forEachRemaining(keys::add);return keys;}
     private static Connection connection()throws SQLException{return DriverManager.getConnection(DATABASE.getJdbcUrl(),DATABASE.getUsername(),DATABASE.getPassword());}
     private void sql(String sql,Object...args)throws SQLException {
-        try(var statement=db.prepareStatement(sql)){for(int i=0;i<args.length;i++)statement.setObject(i+1,args[i]);statement.execute();}
+        try(var statement=db.prepareStatement(sql)){for(int i=0;i<args.length;i++){ statement.setObject(i+1,args[i]); }statement.execute();}
     }
     private static void amount(String expected,BigDecimal actual){assertNotNull(actual);assertEquals(0,new BigDecimal(expected).compareTo(actual),actual::toPlainString);}
 }

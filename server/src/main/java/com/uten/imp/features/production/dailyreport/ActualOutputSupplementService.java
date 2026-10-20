@@ -514,7 +514,7 @@ public class ActualOutputSupplementService {
     private Map<String,Object> one(String sql,Map<String,Object> params){var rows=db.queryForList(sql,params);if(rows.size()!=1)throw conflict("追加计划或原生产来源不存在、已失效，请刷新后核对");return rows.getFirst();}
     private static UUID uuid(Map<String,Object> row,String key){return (UUID)row.get(key);}
     private static BigDecimal number(Map<String,Object> row,String key){Object value=row.get(key);return value==null?BigDecimal.ZERO:new BigDecimal(value.toString());}
-    private static Map<String,Object> args(Object... values){Map<String,Object> result=new HashMap<>();for(int i=0;i<values.length;i+=2)result.put((String)values[i],values[i+1]);return result;}
+    private static Map<String,Object> args(Object... values){Map<String,Object> result=new HashMap<>();for(int i=0;i<values.length;i+=2){ result.put((String)values[i],values[i+1]); }return result;}
     private static String hash(String source){try{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(source.getBytes(StandardCharsets.UTF_8)));}catch(Exception error){throw new IllegalStateException(error);}}
     private String json(Object value){if(value==null)return null;try{return mapper.writeValueAsString(value);}catch(Exception error){throw new IllegalStateException(error);}}
     private com.uten.imp.features.production.dailyreport.dto.DailyReportSaveRequest readContext(String value){try{return mapper.readValue(value,com.uten.imp.features.production.dailyreport.dto.DailyReportSaveRequest.class);}catch(Exception error){throw conflict("追加计划的原批次快照损坏，请核对原申请");}}

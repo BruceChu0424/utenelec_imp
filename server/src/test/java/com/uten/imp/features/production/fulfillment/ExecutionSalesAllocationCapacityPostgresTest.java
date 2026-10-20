@@ -129,7 +129,7 @@ class ExecutionSalesAllocationCapacityPostgresTest {
         }
     }
     static void sql(Connection c,String sql,Object...values) throws Exception {
-        try(var s=c.prepareStatement(sql)){for(int i=0;i<values.length;i++)s.setObject(i+1,values[i]);s.execute();}
+        try(var s=c.prepareStatement(sql)){for(int i=0;i<values.length;i++){ s.setObject(i+1,values[i]); }s.execute();}
     }
     static Connection connection() throws Exception {return DriverManager.getConnection(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword());}
     static String resource(String name) throws Exception {

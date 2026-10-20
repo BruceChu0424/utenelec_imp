@@ -148,6 +148,6 @@ class PlatformColumnHistoryHttpPostgresTest extends AiPlatformPostgresTestSuppor
         assertThat(rows.get(0).path("row").path("canWrite").asBoolean()).isFalse();
         assertThat(rows.get(0).path("row").path("cells").get(0).path("value").asText()).isEqualTo("old-original-value");
     }
-    private JsonNode cell(JsonNode cells,UUID id){for(var cell:cells)if(cell.path("columnId").asText().equals(id.toString()))return cell;throw new AssertionError("Missing retained field");}
+    private JsonNode cell(JsonNode cells,UUID id){for(var cell:cells){ if(cell.path("columnId").asText().equals(id.toString())){ return cell; } }throw new AssertionError("Missing retained field");}
     private record Fixture(Staff seller,UUID order,UUID item,UUID note,UUID secret){}
 }

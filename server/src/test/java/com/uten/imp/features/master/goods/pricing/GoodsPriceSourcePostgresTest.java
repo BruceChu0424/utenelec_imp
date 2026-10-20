@@ -257,6 +257,6 @@ class GoodsPriceSourcePostgresTest {
         snapshot.put("supplierId",supplier);snapshot.put("currencyId",currency);snapshot.put("taxRate","0");snapshot.put("exchangeRate","1");snapshot.put("makerEmployeeId",owner);snapshot.put("items",List.of(item));
         Map<String,Object> display=new HashMap<>(item);display.put("goodsCode","APPROVED");display.put("goodsName","Approved name");display.put("unitName","件");
         UUID id=UUID.randomUUID();db.update("INSERT INTO procurement_order_approval_cases(id,order_type,order_id,status,attempt,finance_exchange_rate,finance_total_local,submission_snapshot,display_snapshot) VALUES(?,'PURCHASE',?,?,?,7,70,?::jsonb,?::jsonb)",id,ids[0],state,attempt,json.writeValueAsString(snapshot),json.writeValueAsString(Map.of("items",List.of(display),"currencyName","CNY","supplierName","Approved supplier")));
-        if(state.equals("APPROVED"))db.update("INSERT INTO procurement_order_approval_events(case_id,event_type) VALUES(?,'APPROVED')",id);return id;
+        if(state.equals("APPROVED")){ db.update("INSERT INTO procurement_order_approval_events(case_id,event_type) VALUES(?,'APPROVED')",id); }return id;
     }
 }

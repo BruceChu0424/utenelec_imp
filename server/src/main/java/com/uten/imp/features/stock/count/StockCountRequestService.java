@@ -412,7 +412,7 @@ public class StockCountRequestService {
             String[][] names={{"id","id"},{"goodsId","goods_id"},{"goodsCode","goods_code"},{"goodsName","goods_name"},
                     {"colorId","color_id"},{"colorName","color_name"},{"unitId","unit_id"},{"unitName","unit_name"},
                     {"materialSetupBasis","material_setup_basis"},{"goodsVersion","goods_version"}};
-            for(var name:names)line.put(name[0],row.get(name[1]));
+            for(var name:names){ line.put(name[0],row.get(name[1])); }
             line.put("beforeQty",exact(row.get("expected_qty")));line.put("beforeWeightKg",exact(row.get("expected_weight_kg")));
             line.put("targetQty",exact(row.get("target_qty")));line.put("targetWeightKg",exact(row.get("target_weight_kg")));
             // Review shows the effective posting difference, including quantity-zero's derived weight-zero.
@@ -436,8 +436,8 @@ public class StockCountRequestService {
         }
         var actions=new ArrayList<String>();
         if("PENDING".equals(h.get("status"))) {
-            if(reviewAllowed(h)){if(!stale)actions.add("APPROVE");actions.add("REJECT");}
-            if(has(SUBMIT)&&user.requireId().equals(h.get("submitted_by")))actions.add("CANCEL");
+            if(reviewAllowed(h)){if(!stale){ actions.add("APPROVE"); }actions.add("REJECT");}
+            if(has(SUBMIT)&&user.requireId().equals(h.get("submitted_by"))){ actions.add("CANCEL"); }
         }
         out.put("lines",lines);out.put("allowedActions",actions);return out;
     }

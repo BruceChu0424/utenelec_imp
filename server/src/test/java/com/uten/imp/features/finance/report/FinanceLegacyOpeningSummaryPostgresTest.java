@@ -57,7 +57,7 @@ class FinanceLegacyOpeningSummaryPostgresTest {
                 .setProperty("hibernate.connection.username",PG.getUsername()).setProperty("hibernate.connection.password",PG.getPassword())
                 .setProperty("hibernate.hbm2ddl.auto","none").buildSessionFactory();
     }
-    @AfterAll static void stop(){if(sessions!=null)sessions.close();PG.stop();}
+    @AfterAll static void stop(){if(sessions!=null){ sessions.close(); }PG.stop();}
     @BeforeEach void clear() {
         jdbc.execute("TRUNCATE clients,suppliers,ar_ap_ledger,legacy_finance_import_sources,finance_receipts,finance_receipt_lines,finance_payments,finance_payment_lines");
         party=UUID.randomUUID();ledger=UUID.randomUUID();run=UUID.randomUUID();currency=UUID.randomUUID();

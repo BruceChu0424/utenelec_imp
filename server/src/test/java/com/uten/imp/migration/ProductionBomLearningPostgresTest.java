@@ -788,7 +788,7 @@ class ProductionBomLearningPostgresTest {
     private static Connection connection()throws SQLException{return DriverManager.getConnection(DATABASE.getJdbcUrl(),DATABASE.getUsername(),DATABASE.getPassword());}
     private void sql(String sql,Object...args)throws SQLException{execute(db,sql,args);}
     private static void execute(Connection connection,String sql,Object...args)throws SQLException {
-        try(var statement=connection.prepareStatement(sql)){for(int i=0;i<args.length;i++)statement.setObject(i+1,args[i]);statement.execute();}
+        try(var statement=connection.prepareStatement(sql)){for(int i=0;i<args.length;i++){ statement.setObject(i+1,args[i]); }statement.execute();}
     }
     private String scalar(String sql,Object...args)throws SQLException {
         try(var statement=db.prepareStatement(sql)){for(int i=0;i<args.length;i++)statement.setObject(i+1,args[i]);

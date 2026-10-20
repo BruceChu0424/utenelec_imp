@@ -351,7 +351,7 @@ public class GoodsProductionTraceQueryService {
     private static BigDecimal number(Map<String,Object> row,String key) {return (BigDecimal)row.get(key);}
     private static BigDecimal zero(BigDecimal value) {return value==null?BigDecimal.ZERO:value;}
     private static Map<UUID,Map<String,Object>> keyed(List<Map<String,Object>> rows,String key) {
-        Map<UUID,Map<String,Object>> result=new HashMap<>();for(var row:rows)result.put(id(row,key),row);return result;
+        Map<UUID,Map<String,Object>> result=new HashMap<>();for(var row:rows){ result.put(id(row,key),row); }return result;
     }
     private static LocalDate date(Object value) {return value instanceof java.sql.Date date?date.toLocalDate():(LocalDate)value;}
 }

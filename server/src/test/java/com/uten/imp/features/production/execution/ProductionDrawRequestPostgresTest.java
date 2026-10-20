@@ -314,5 +314,5 @@ class ProductionDrawRequestPostgresTest {
     }
 
     @AfterEach void closeSession() { if (em != null) em.close(); }
-    @AfterAll static void close() { if (factory != null) factory.close(); PG.stop(); }
+    @AfterAll static void close() { if (factory != null) { factory.close(); } PG.stop(); }
 }

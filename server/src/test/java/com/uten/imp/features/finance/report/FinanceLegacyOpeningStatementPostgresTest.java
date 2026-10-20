@@ -46,7 +46,7 @@ class FinanceLegacyOpeningStatementPostgresTest {
                 .setProperty("hibernate.connection.username",PG.getUsername()).setProperty("hibernate.connection.password",PG.getPassword())
                 .setProperty("hibernate.hbm2ddl.auto","none").buildSessionFactory();
     }
-    @AfterAll static void stop(){if(sessions!=null)sessions.close();PG.stop();}
+    @AfterAll static void stop(){if(sessions!=null){ sessions.close(); }PG.stop();}
     @BeforeEach void clear() {
         jdbc.execute("TRUNCATE "+String.join(",",TABLES));
         party=UUID.randomUUID();currency=UUID.randomUUID();ledger=UUID.randomUUID();run=UUID.randomUUID();

@@ -28,7 +28,7 @@ public class WasteDetail extends com.uten.imp.common.history.DocumentHistoryMeta
     private String remark;
     private BigDecimal totalOriginal;
     private BigDecimal totalLocal;
-    private Short status;
+    @lombok.Getter(onMethod_ = @Override) private Short status;
     private boolean closed;
     private String sourceDocNo;
     /** V304 历史/建议索赔金额；非现行会计事实。 */

@@ -76,7 +76,7 @@ class SalesReportUnitsPostgresTest {
         when(query.getResultList()).thenAnswer(call->named.query(sql,parameters,(rs,index)->{
             Object[] row=new Object[rs.getMetaData().getColumnCount()];var aliases=new java.util.ArrayList<String>();
             for(int i=0;i<row.length;i++){row[i]=rs.getObject(i+1);aliases.add(rs.getMetaData().getColumnLabel(i+1));}
-            if(sql.contains("LIMIT :__limit OFFSET :__offset"))dataColumns=List.copyOf(aliases);return row;
+            if(sql.contains("LIMIT :__limit OFFSET :__offset")){ dataColumns=List.copyOf(aliases); }return row;
         }));
         when(query.getSingleResult()).thenAnswer(call->named.queryForObject(sql,parameters,Long.class));return query;
     }

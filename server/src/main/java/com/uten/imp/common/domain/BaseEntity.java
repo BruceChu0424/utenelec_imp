@@ -30,6 +30,7 @@ public abstract class BaseEntity extends AuditableEntity implements Persistable<
 
     @Id
     @Column(updatable = false, nullable = false)
+    @Getter(onMethod_ = @Override)
     private UUID id = UUID.randomUUID();
 
     @Transient

@@ -421,7 +421,7 @@ class ProductionMaterialAnalysisScalePostgresTest {
 
     private Map<String,Long> nodeProfileRoles(UUID analysisId) {
         return jdbc.query("SELECT node_role,count(*) FROM production_material_analysis_materials WHERE analysis_id=? GROUP BY node_role",
-                rs->{Map<String,Long> roles=new java.util.TreeMap<>();while(rs.next())roles.put(rs.getString(1),rs.getLong(2));return roles;},analysisId);
+                rs->{Map<String,Long> roles=new java.util.TreeMap<>();while(rs.next()){ roles.put(rs.getString(1),rs.getLong(2)); }return roles;},analysisId);
     }
 
     private Map<String,Object> nodeProfileAudit(UUID analysisId) {

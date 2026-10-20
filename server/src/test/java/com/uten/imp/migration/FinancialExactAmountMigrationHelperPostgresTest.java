@@ -100,7 +100,7 @@ class FinancialExactAmountMigrationHelperPostgresTest {
             return new String(stream.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);
         }
     }
-    static void target(StringBuilder json,String table,String column){if(json.length()>1)json.append(',');json.append("{\"table\":\"").append(table).append("\",\"column\":\"").append(column).append("\"}");}
+    static void target(StringBuilder json,String table,String column){if(json.length()>1){ json.append(','); }json.append("{\"table\":\"").append(table).append("\",\"column\":\"").append(column).append("\"}");}
     static String migrate(Connection c,String targets)throws Exception{try(var s=c.prepareStatement("SELECT fn_migrate_financial_amount_columns(CAST(? AS jsonb))::text")){s.setString(1,targets);try(var r=s.executeQuery()){r.next();return r.getString(1);}}}
     static void execute(Connection c,String sql)throws Exception{try(var s=c.createStatement()){s.execute(sql);}}
     static String scalar(Connection c,String sql)throws Exception{try(var s=c.createStatement();var r=s.executeQuery(sql)){r.next();return r.getString(1);}}

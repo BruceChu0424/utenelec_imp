@@ -454,25 +454,25 @@ class PlatformColumnServicePostgresTest {
         final Set<UUID> allowed=new HashSet<>(Set.of(record));
         final Map<UUID,UUID> parents=new HashMap<>(Map.of(record,documentId));
         TestAdapter(String scope,boolean preserve,boolean personal){this.scope=scope;this.preserve=preserve;this.personal=personal;}
-        public String scope(){return scope;}public String label(){return scope;}
-        public void requireDefinitionAccess(boolean write){if(write&&!canDefine)throw new ApiException(ErrorCode.FORBIDDEN,"没有编辑权限");}
-        public boolean canWrite(){return writable&&!personal;}public boolean canViewPrice(){return priceVisible;}
-        public boolean canCreate(){return !personal;}
-        public void requireDocumentSaveAccess(boolean create){if(!create)requireDefinitionAccess(true);else if(personal)throw new ApiException(ErrorCode.FORBIDDEN);}
-        public Map<UUID,RecordAccess> authorizeCreated(Set<UUID> ids){if(ids.stream().anyMatch(id->!PlatformColumnSaveLineage.wasPersisted(id)))throw new ApiException(ErrorCode.CONFLICT);return authorize(ids,false);}
-        public boolean supportsValues(){return !personal||projectionRecords;}public boolean personalDefinitions(){return personal;}public boolean preserveValuesOnReset(){return preserve;}
-        public List<FactDefinition> facts(){return List.of(new FactDefinition("qty","数量",false),new FactDefinition("price","单价",true));}
-        public List<RelationDefinition> relations(){return targetVisible?List.of(new RelationDefinition("mouldName","模具名称")):List.of();}
-        public boolean canDefineRelatedColumns(){return targetVisible;}
-        public Map<UUID,Map<String,String>> relatedValues(Set<UUID> ids,Set<String> keys){
+        @Override public String scope(){return scope;}@Override public String label(){return scope;}
+        @Override public void requireDefinitionAccess(boolean write){if(write&&!canDefine)throw new ApiException(ErrorCode.FORBIDDEN,"没有编辑权限");}
+        @Override public boolean canWrite(){return writable&&!personal;}@Override public boolean canViewPrice(){return priceVisible;}
+        @Override public boolean canCreate(){return !personal;}
+        @Override public void requireDocumentSaveAccess(boolean create){if(!create)requireDefinitionAccess(true);else if(personal)throw new ApiException(ErrorCode.FORBIDDEN);}
+        @Override public Map<UUID,RecordAccess> authorizeCreated(Set<UUID> ids){if(ids.stream().anyMatch(id->!PlatformColumnSaveLineage.wasPersisted(id)))throw new ApiException(ErrorCode.CONFLICT);return authorize(ids,false);}
+        @Override public boolean supportsValues(){return !personal||projectionRecords;}@Override public boolean personalDefinitions(){return personal;}@Override public boolean preserveValuesOnReset(){return preserve;}
+        @Override public List<FactDefinition> facts(){return List.of(new FactDefinition("qty","数量",false),new FactDefinition("price","单价",true));}
+        @Override public List<RelationDefinition> relations(){return targetVisible?List.of(new RelationDefinition("mouldName","模具名称")):List.of();}
+        @Override public boolean canDefineRelatedColumns(){return targetVisible;}
+        @Override public Map<UUID,Map<String,String>> relatedValues(Set<UUID> ids,Set<String> keys){
             Map<UUID,Map<String,String>> values=new HashMap<>();
             for(UUID id:ids)values.put(id,relatedValue==null?Map.of():Map.of("mouldName",relatedValue));
             return values;
         }
-        public Set<UUID> recordIdsForDocument(UUID id){if(!documentId.equals(id))throw new ApiException(ErrorCode.NOT_FOUND);authorize(Set.of(record),false);return Set.of(record);}
-        public void requireDocumentFieldWrite(UUID id){recordIdsForDocument(id);requireDocumentSaveAccess(false);if(!writable)throw new ApiException(ErrorCode.CONFLICT,"当前单据不允许修改扩展字段");}
-        public Map<UUID,UUID> parentDocuments(Set<UUID> ids){Map<UUID,UUID> result=new HashMap<>();ids.forEach(id->result.put(id,parents.get(id)));return result;}
-        public Map<UUID,RecordAccess> authorize(Set<UUID> ids,boolean write){
+        @Override public Set<UUID> recordIdsForDocument(UUID id){if(!documentId.equals(id))throw new ApiException(ErrorCode.NOT_FOUND);authorize(Set.of(record),false);return Set.of(record);}
+        @Override public void requireDocumentFieldWrite(UUID id){recordIdsForDocument(id);requireDocumentSaveAccess(false);if(!writable)throw new ApiException(ErrorCode.CONFLICT,"当前单据不允许修改扩展字段");}
+        @Override public Map<UUID,UUID> parentDocuments(Set<UUID> ids){Map<UUID,UUID> result=new HashMap<>();ids.forEach(id->result.put(id,parents.get(id)));return result;}
+        @Override public Map<UUID,RecordAccess> authorize(Set<UUID> ids,boolean write){
             if(!allowed.containsAll(ids))throw new ApiException(ErrorCode.FORBIDDEN,"记录不可见");
             Map<UUID,RecordAccess> access=new HashMap<>();ids.forEach(id->access.put(id,new RecordAccess(canWrite(),priceVisible,Map.of("qty",new BigDecimal("3"),"price",new BigDecimal("7")))));return access;
         }

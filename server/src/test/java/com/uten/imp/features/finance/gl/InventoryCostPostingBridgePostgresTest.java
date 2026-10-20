@@ -41,7 +41,7 @@ class InventoryCostPostingBridgePostgresTest {
         bean.setPackagesToScan("com.uten.imp.features.common.taskclaim");var props=new Properties();props.put("hibernate.hbm2ddl.auto","none");bean.setJpaProperties(props);bean.afterPropertiesSet();
         factory=bean.getObject();em=SharedEntityManagerCreator.createSharedEntityManager(factory);tx=new TransactionTemplate(new JpaTransactionManager(factory));
     }
-    @AfterAll static void stop(){if(factory!=null)factory.close();DB.stop();}
+    @AfterAll static void stop(){if(factory!=null){ factory.close(); }DB.stop();}
     @BeforeEach void schema() throws Exception {
         db.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public");
         db.execute(resource("/db/inventory-cost-bridge-fixture.sql"));

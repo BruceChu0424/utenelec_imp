@@ -57,7 +57,7 @@ final class ControlledLoadWindowMetrics {
         return Outcome.OUTCOME_UNKNOWN;
     }
     private static EnumMap<Phase, Counters> newCounters() {
-        var result = new EnumMap<Phase, Counters>(Phase.class); for (Phase phase : Phase.values()) result.put(phase, new Counters()); return result;
+        var result = new EnumMap<Phase, Counters>(Phase.class); for (Phase phase : Phase.values()) { result.put(phase, new Counters()); } return result;
     }
     private static Phase phase() {
         if (CURRENT.get() != null) return CURRENT.get().phase;
@@ -95,20 +95,20 @@ final class ControlledLoadWindowMetrics {
         return (Connection) Proxy.newProxyInstance(Connection.class.getClassLoader(), new Class<?>[]{Connection.class}, (proxy, method, args) -> {
             String name = method.getName(); boolean commit = name.equals("commit");
             boolean rollback = name.equals("rollback") && (args == null || args.length == 0);
-            if (commit) add(c -> c.commitAttempts.increment());
+            if (commit) { add(c -> c.commitAttempts.increment()); }
             long start = System.nanoTime();
             try {
                 Object result = invoke(target, method, args);
-                if (commit) add(c -> c.commitConfirmed.increment());
-                if (rollback) add(c -> c.rollbackConfirmed.increment());
-                if (name.equals("rollback") && !rollback) add(c -> c.savepointRollbacks.increment());
-                if (result instanceof Statement statement && (name.startsWith("prepare") || name.equals("createStatement"))) return statement(statement);
+                if (commit) { add(c -> c.commitConfirmed.increment()); }
+                if (rollback) { add(c -> c.rollbackConfirmed.increment()); }
+                if (name.equals("rollback") && !rollback) { add(c -> c.savepointRollbacks.increment()); }
+                if (result instanceof Statement statement && (name.startsWith("prepare") || name.equals("createStatement"))) { return statement(statement); }
                 return result;
-            } catch (Throwable failure) { if (commit) add(c -> c.commitUncertain.increment()); throw failure; }
+            } catch (Throwable failure) { if (commit) { add(c -> c.commitUncertain.increment()); } throw failure; }
             finally {
                 long elapsed = System.nanoTime() - start;
-                if (commit) add(c -> c.commitNanos.add(elapsed));
-                if (rollback) add(c -> c.rollbackNanos.add(elapsed));
+                if (commit) { add(c -> c.commitNanos.add(elapsed)); }
+                if (rollback) { add(c -> c.rollbackNanos.add(elapsed)); }
             }
         });
     }
@@ -118,14 +118,14 @@ final class ControlledLoadWindowMetrics {
         int[] queued = {0};
         return (Statement) Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[]{type}, (proxy, method, args) -> {
             String name = method.getName();
-            if (name.equals("addBatch")) queued[0]++;
-            if (name.equals("clearBatch")) queued[0] = 0;
-            if (!name.startsWith("execute")) return invoke(target, method, args);
+            if (name.equals("addBatch")) { queued[0]++; }
+            if (name.equals("clearBatch")) { queued[0] = 0; }
+            if (!name.startsWith("execute")) { return invoke(target, method, args); }
             boolean batch = name.equals("executeBatch") || name.equals("executeLargeBatch");
             int count = batch ? queued[0] : 1; add(c -> c.sql.add(count)); long start = System.nanoTime();
             try { return invoke(target, method, args); }
             catch (Throwable failure) { add(c -> c.sqlFailures.increment()); throw failure; }
-            finally { if (batch) queued[0] = 0; long elapsed = System.nanoTime() - start; add(c -> c.sqlNanos.add(elapsed)); }
+            finally { if (batch) { queued[0] = 0; } long elapsed = System.nanoTime() - start; add(c -> c.sqlNanos.add(elapsed)); }
         });
     }
     private static Object invoke(Object target, Method method, Object[] arguments) throws Throwable {

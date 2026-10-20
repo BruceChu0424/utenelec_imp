@@ -105,7 +105,7 @@ abstract class InventoryValueLedger {
                 hasColumn(r,"bound_revision")?r.getObject("bound_revision",Long.class):null);
     }
     private static boolean hasColumn(ResultSet r,String name)throws SQLException{
-        var metadata=r.getMetaData();for(int i=1;i<=metadata.getColumnCount();i++)if(name.equals(metadata.getColumnLabel(i)))return true;return false;
+        var metadata=r.getMetaData();for(int i=1;i<=metadata.getColumnCount();i++){ if(name.equals(metadata.getColumnLabel(i))){ return true; } }return false;
     }
 
     /** A SOURCE starts with its own separately validated acquisition amount, not input edges. */
@@ -522,7 +522,7 @@ abstract class InventoryValueLedger {
     protected static String keyText(PoolKey k){return k.warehouseId()+"/"+k.goodsId()+"/"+Objects.toString(k.colorId(),"null");}
     protected static String colorCondition(String column,PoolKey k){return column+(k.colorId()==null?" IS NULL":"=:color");}
     protected static Map<String,Object> poolArgs(PoolKey k,Object...extra){Map<String,Object> p=args(extra);p.put("warehouse",k.warehouseId());p.put("goods",k.goodsId());p.put("color",k.colorId());return p;}
-    protected static Map<String,Object> args(Object...values){Map<String,Object> p=new HashMap<>();for(int i=0;i<values.length;i+=2)p.put((String)values[i],values[i+1]);return p;}
+    protected static Map<String,Object> args(Object...values){Map<String,Object> p=new HashMap<>();for(int i=0;i<values.length;i+=2){ p.put((String)values[i],values[i+1]); }return p;}
     protected static UUID uuid(ResultSet row,String column)throws SQLException{return row.getObject(column,UUID.class);}
     protected static Request request(String operation,EventContext c,Map<String,Object> body){
         Map<String,Object> canonical=new TreeMap<>(body);

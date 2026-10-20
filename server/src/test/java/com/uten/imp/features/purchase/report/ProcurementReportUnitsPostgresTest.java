@@ -59,7 +59,7 @@ class ProcurementReportUnitsPostgresTest {
         db.update("INSERT INTO colors(id,name) VALUES (?,'对应颜色')",ALIAS_COLOR);
         db.update("INSERT INTO suppliers(id,name) VALUES (?,'对应供应商')",ALIAS_SUPPLIER);
     }
-    @AfterAll static void stop()throws Exception{if(connection!=null)connection.close();DB.stop();}
+    @AfterAll static void stop()throws Exception{if(connection!=null){ connection.close(); }DB.stop();}
     @BeforeEach void reset(){
         db.execute("TRUNCATE purchase_requests,purchase_request_items,purchase_orders,purchase_order_items,purchase_receipts,purchase_receipt_items,purchase_returns,purchase_return_items,subcontract_receipts,subcontract_receipt_items,subcontract_returns,subcontract_return_items,subcontract_orders,subcontract_order_items,subcontract_material_issues,subcontract_material_issue_items,subcontract_material_returns,subcontract_material_return_items,subcontract_wastes,subcontract_waste_items");
         dataColumns=List.of();
@@ -70,7 +70,7 @@ class ProcurementReportUnitsPostgresTest {
         when(q.getResultList()).thenAnswer(call->named.query(sql,values,(rs,index)->{
             Object[] row=new Object[rs.getMetaData().getColumnCount()];var aliases=new java.util.ArrayList<String>();
             for(int i=0;i<row.length;i++){row[i]=rs.getObject(i+1);aliases.add(rs.getMetaData().getColumnLabel(i+1));}
-            if(sql.contains("LIMIT :__limit OFFSET :__offset"))dataColumns=List.copyOf(aliases);return row;
+            if(sql.contains("LIMIT :__limit OFFSET :__offset")){ dataColumns=List.copyOf(aliases); }return row;
         }));
         when(q.getSingleResult()).thenAnswer(call->named.queryForObject(sql,values,Long.class));return q;
     }

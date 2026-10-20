@@ -214,14 +214,14 @@ class MasterReferenceCatalogCoverageTest {
                         insert.setObject(1,request);insert.setObject(2,target);insert.setString(3,status);insert.executeUpdate();
                     }
                     try (var insert = connection.prepareStatement("INSERT INTO stock_count_request_lines(id,request_id,goods_id,color_id,unit_id) VALUES(gen_random_uuid(),?,?,?,?)")) {
-                        insert.setObject(1,request);for(int n=2;n<=4;n++)insert.setObject(n,target);insert.executeUpdate();
+                        insert.setObject(1,request);for(int n=2;n<=4;n++){ insert.setObject(n,target); }insert.executeUpdate();
                     }
                 }
                 try (var insert = connection.prepareStatement("INSERT INTO stock_count_requests(id,warehouse_id,status) VALUES(?,?,'PENDING')")) {
                     insert.setObject(1,unrelated);insert.setObject(2,unrelated);insert.executeUpdate();
                 }
                 try (var insert = connection.prepareStatement("INSERT INTO stock_count_request_lines(id,request_id,goods_id,color_id,unit_id) VALUES(gen_random_uuid(),?,?,?,?)")) {
-                    for(int n=1;n<=4;n++)insert.setObject(n,unrelated);insert.executeUpdate();
+                    for(int n=1;n<=4;n++){ insert.setObject(n,unrelated); }insert.executeUpdate();
                 }
                 for (var reference : references) {
                     try (var query=connection.prepareStatement("WITH targets AS (SELECT unnest(CAST(? AS uuid[])) AS id) "+reference.sql())) {

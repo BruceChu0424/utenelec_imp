@@ -18,7 +18,7 @@ public class VisitorPlatformColumnAdapters {
     @Bean public PlatformColumnResourceAdapter visitorApplicationPlatformColumns() {
         return new ReadOnlyPlatformColumnAdapter("visitor_application","访客申请",current,json,Set.of("visitor:approve","visitor:host_confirm"),Set.of(),
                 id->{var visit=visitors.getDetailForStaff(id);var facts=new HashMap<String,Object>();facts.put("id",visit.id());
-                    if(visit.plannedVisitAt()!=null&&visit.plannedLeaveAt()!=null)facts.put("plannedDurationSeconds",java.time.Duration.between(visit.plannedVisitAt(),visit.plannedLeaveAt()).getSeconds());return facts;},
+                    if(visit.plannedVisitAt()!=null&&visit.plannedLeaveAt()!=null){ facts.put("plannedDurationSeconds",java.time.Duration.between(visit.plannedVisitAt(),visit.plannedLeaveAt()).getSeconds()); }return facts;},
                 List.of(new FactDefinition("plannedDurationSeconds","预约时长（秒）",false)));
     }
 }

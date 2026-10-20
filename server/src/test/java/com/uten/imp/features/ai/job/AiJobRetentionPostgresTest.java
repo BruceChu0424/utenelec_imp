@@ -40,7 +40,7 @@ class AiJobRetentionPostgresTest {
     }
 
     @BeforeEach void emptyPrivateFixture() throws SQLException {
-        if(database!=null)database.close();open();
+        if(database!=null){ database.close(); }open();
     }
 
     @ParameterizedTest

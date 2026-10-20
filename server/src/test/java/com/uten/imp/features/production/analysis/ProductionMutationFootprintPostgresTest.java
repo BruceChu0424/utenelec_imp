@@ -51,7 +51,7 @@ class ProductionMutationFootprintPostgresTest {
     }
 
     @AfterAll
-    static void stop() { if(em!=null)em.close();if(factory!=null)factory.close();DATABASE.stop(); }
+    static void stop() { if(em!=null){ em.close(); }if(factory!=null){ factory.close(); }DATABASE.stop(); }
 
     @Test
     void actualSupplyDimensionExpandsOnlyItsTargetsNotEveryNewLockDimension() {

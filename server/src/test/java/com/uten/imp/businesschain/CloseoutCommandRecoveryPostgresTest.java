@@ -204,9 +204,9 @@ class CloseoutCommandRecoveryPostgresTest {
     }
 
     private Setup draws(int count,boolean full){var fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);var world=fixture.seedWorld("closeout-cmd-"+UUID.randomUUID());fixture.loginAs(world.superAdminUserId());
-        for(UUID goods:List.of(world.goodsB(),world.goodsE()))db.update("INSERT INTO stock_balances(warehouse_id,goods_id,color_id,qty) VALUES(?,?,NULL,100000)",world.warehouseId(),goods);
-        List<UUID> ids=new ArrayList<>();for(int i=0;i<count;i++)ids.add(ReflectionTestUtils.invokeMethod(fixture,"generateSingleWarehouseDraw",world,"closeout-draw-"+UUID.randomUUID()));
-        ids.sort(java.util.Comparator.comparing(UUID::toString));if(full)fixture.requestWorkshopDraws("closeout-request-"+UUID.randomUUID(),ids);return new Setup(fixture,world,List.copyOf(ids));}
+        for(UUID goods:List.of(world.goodsB(),world.goodsE())){ db.update("INSERT INTO stock_balances(warehouse_id,goods_id,color_id,qty) VALUES(?,?,NULL,100000)",world.warehouseId(),goods); }
+        List<UUID> ids=new ArrayList<>();for(int i=0;i<count;i++){ ids.add(ReflectionTestUtils.invokeMethod(fixture,"generateSingleWarehouseDraw",world,"closeout-draw-"+UUID.randomUUID())); }
+        ids.sort(java.util.Comparator.comparing(UUID::toString));if(full){ fixture.requestWorkshopDraws("closeout-request-"+UUID.randomUUID(),ids); }return new Setup(fixture,world,List.copyOf(ids));}
     private StockDocIssueBatchRequest reviewed(List<UUID> ids){var request=new StockDocIssueBatchRequest();request.setIdempotencyKey("closeout-issue-"+UUID.randomUUID());request.setDocIds(ids);request.setProtocolVersion(2);
         request.setReviews(stock.issueBatchReview(ids).documents().stream().map(row->new StockDocIssueBatchRequest.DocumentReview(row.docId(),row.reviewToken())).toList());return request;}
     private void submitRemaining(UUID document,boolean half){UUID segment=db.queryForObject("SELECT execution_segment_id FROM production_planning_package_documents WHERE document_id=? AND document_type='DRAW'",UUID.class,document);

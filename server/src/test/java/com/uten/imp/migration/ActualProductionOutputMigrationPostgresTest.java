@@ -125,7 +125,7 @@ class ActualProductionOutputMigrationPostgresTest {
         return report;
     }
     void sql(String text,Object...args)throws SQLException{
-        try(PreparedStatement statement=db.prepareStatement(text)){for(int i=0;i<args.length;i++)statement.setObject(i+1,args[i]);statement.execute();}
+        try(PreparedStatement statement=db.prepareStatement(text)){for(int i=0;i<args.length;i++){ statement.setObject(i+1,args[i]); }statement.execute();}
     }
     String scalar(String text,Object...args)throws SQLException{
         try(PreparedStatement statement=db.prepareStatement(text)){for(int i=0;i<args.length;i++)statement.setObject(i+1,args[i]);

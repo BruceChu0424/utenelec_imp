@@ -29,7 +29,7 @@ public class ReturnDetail extends com.uten.imp.common.history.DocumentHistoryMet
     private String remark;
     private BigDecimal totalOriginal;
     private BigDecimal totalLocal;
-    private Short status;
+    @lombok.Getter(onMethod_ = @Override) private Short status;
     private boolean closed;
     private String sourceDocNo;
     private List<ReturnItemDto> items;

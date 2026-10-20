@@ -70,7 +70,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
      * V463：合并订货行按来源分配行（order_item × request_item，预算 = alloc_qty）
      * 逐来源转移，transfer 子账本本就逐申请行记录，回放按来源过滤。
      */
-    @Transactional(propagation = Propagation.MANDATORY)
+    @Override @Transactional(propagation = Propagation.MANDATORY)
     public void onPurchaseOrderApproved(UUID orderId) {
         UUID actorId = currentUser.requireId();
         Set<UUID> touched = new LinkedHashSet<>();
@@ -230,7 +230,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
      * already rejects an order with receipts; this method independently
      * verifies that no target peg has been received.
      */
-    @Transactional(propagation = Propagation.MANDATORY)
+    @Override @Transactional(propagation = Propagation.MANDATORY)
     public void onPurchaseOrderReversed(UUID orderId) {
         UUID actorId = currentUser.requireId();
         Set<UUID> touched = new LinkedHashSet<>();
@@ -319,7 +319,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
      * inventory-dimension advisory lock touched by the receipt, including all
      * materials of a pegged execution segment, in the canonical sorted order.
      */
-    @Transactional(propagation = Propagation.MANDATORY)
+    @Override @Transactional(propagation = Propagation.MANDATORY)
     public void lockPurchaseReceiptMutationDimensions(UUID receiptId) {
         List<UUID> warehouses = NativeQueryResults.typedRows(
                 em.createNativeQuery("""
@@ -341,7 +341,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
      * With canonical advisory locks already held, acquires the production
      * demand/peg rows before stock balances are mutated.
      */
-    @Transactional(propagation = Propagation.MANDATORY)
+    @Override @Transactional(propagation = Propagation.MANDATORY)
     public void lockReceiptProductionDemands(
             UUID receiptId, UUID warehouseId) {
         if (receiptId == null || warehouseId == null) {
@@ -382,7 +382,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
      * An order line may serve several warehouses, so a receipt for warehouse A
      * deliberately leaves warehouse B's future peg untouched.
      */
-    @Transactional(propagation = Propagation.MANDATORY)
+    @Override @Transactional(propagation = Propagation.MANDATORY)
     public void onPurchaseReceiptApproved(UUID receiptId) {
         advancePurchaseReceipt(receiptId, null);
     }
@@ -724,7 +724,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
      * Reverses receipt-created reservations and DRAW items before physical
      * stock is removed. Any issued downstream DRAW item blocks the reversal.
      */
-    @Transactional(propagation = Propagation.MANDATORY)
+    @Override @Transactional(propagation = Propagation.MANDATORY)
     public void beforePurchaseReceiptReversed(UUID receiptId) {
         executionReadiness.beforePurchaseReceiptReversed(receiptId);
         UUID actorId = currentUser.requireId();

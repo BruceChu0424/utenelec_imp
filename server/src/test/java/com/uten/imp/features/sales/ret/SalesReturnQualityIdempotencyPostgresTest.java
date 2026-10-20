@@ -263,9 +263,9 @@ class SalesReturnQualityIdempotencyPostgresTest {
                         return java.util.List.of();
                     }
                     return java.util.List.of(new StockBalanceRepository.PhysicalSnapshot(){
-                        public BigDecimal getQty(){return rows.getFirst();}
-                        public BigDecimal getWeight(){return null;}
-                        public Boolean getWeightEstimated(){return false;}
+                        @Override public BigDecimal getQty(){return rows.getFirst();}
+                        @Override public BigDecimal getWeight(){return null;}
+                        @Override public Boolean getWeightEstimated(){return false;}
                     });
                 });
 

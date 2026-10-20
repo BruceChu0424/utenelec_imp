@@ -43,7 +43,7 @@ public class LegacyV854PurchaseReceiptAmountAuthority extends PurchaseReceiptAmo
         this.replacementAllocation = replacementAllocation;
     }
 
-    @Transactional(propagation = Propagation.MANDATORY)
+    @Override @Transactional(propagation = Propagation.MANDATORY)
     public void apply(PurchaseReceipt receipt, List<PurchaseReceiptItem> items) {
         List<UUID> sourceIds = items.stream().map(PurchaseReceiptItem::getOrderItemId).toList();
         requireDistinctOrderItems(sourceIds);

@@ -320,7 +320,7 @@ public class MaterialTraceabilityQueryService implements MaterialTraceabilityRea
     private String subcontractIssueScope(String alias,String name,Context c) {return bind(subcontractDocuments.materialIssueReadScope(alias,name),c);}
     private String reportScope(String alias,String name,Context c) {return bind(productionDocuments.nativeReadScope(alias+".maker_id",name,"production_daily_report:approve","production_daily_report:reverse"),c);}
     private String planScope(String alias,String name,Context c) {return bind(productionDocuments.nativeReadScope(alias+".maker_id",name,"production_plan:approve"),c);}
-    private String bind(NativeReadScope scope,Context c) {if(scope.parameterName()!=null)c.params.put(scope.parameterName(),scope.owners());return scope.predicate();}
+    private String bind(NativeReadScope scope,Context c) {if(scope.parameterName()!=null){ c.params.put(scope.parameterName(),scope.owners()); }return scope.predicate();}
     private Subject subject(Map<String,Object> r) {
         boolean actual=canTrace();
         return new Subject((String)r.get("type"),id(r,"id"),(String)r.get("code"),(String)r.get("label"),date(r.get("document_date")),

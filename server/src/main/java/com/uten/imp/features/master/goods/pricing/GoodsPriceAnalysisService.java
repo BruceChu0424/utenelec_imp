@@ -115,14 +115,14 @@ public class GoodsPriceAnalysisService {
         if(token==null||!token.equals(analysis(query).evidenceToken()))throw new ApiException(ErrorCode.CONFLICT,"价格依据已变化，请重新查询");
     }
     public CheckResult check(CheckRequest request) {
-        if(request==null||request.items()==null||request.items().isEmpty()||request.items().size()>100)throw invalid("每次价格核对须为 1 至 100 行");
+        if(request==null||request.items()==null||request.items().isEmpty()||request.items().size()>100){ throw invalid("每次价格核对须为 1 至 100 行"); }
         access.require(request.kind());
         Set<String> keys=new HashSet<>();List<CheckRow> rows=new ArrayList<>();
         ReadSession session=new ReadSession();
         // Duplicate contexts share one source query; the current document never becomes its own baseline.
         Map<Query,Analysis> cache=new HashMap<>();
         for(CheckItem item:request.items()) {
-            if(item==null||item.goodsId()==null||item.rowKey()==null||item.rowKey().isBlank()||!keys.add(item.rowKey()))throw invalid("核对行必须包含唯一行标识和货品");
+            if(item==null||item.goodsId()==null||item.rowKey()==null||item.rowKey().isBlank()||!keys.add(item.rowKey())){ throw invalid("核对行必须包含唯一行标识和货品"); }
             validateGoods(item.goodsId(),session);
             if(item.giftQuantity()!=null&&decimal(item.giftQuantity(),"赠品数量",false).signum()>0){
                 rows.add(unavailable(item,"GIFT_COMPONENT","本行包含赠品，不能直接与无赠品单价相比；请核对整体商业条款"));continue;
@@ -162,7 +162,7 @@ public class GoodsPriceAnalysisService {
                 }
             }
             String direction=high?"高于":low?"低于":"位于";
-            List<String> alerts=new ArrayList<>();if(high)alerts.add("PRICE_ABOVE_REFERENCE");if(low)alerts.add("PRICE_BELOW_REFERENCE");if(peerHigh)alerts.add("PEER_PRICE_ABOVE_REFERENCE");if(fallback)alerts.add("SUPPLIER_SCOPE_FALLBACK");
+            List<String> alerts=new ArrayList<>();if(high){ alerts.add("PRICE_ABOVE_REFERENCE"); }if(low){ alerts.add("PRICE_BELOW_REFERENCE"); }if(peerHigh){ alerts.add("PEER_PRICE_ABOVE_REFERENCE"); }if(fallback){ alerts.add("SUPPLIER_SCOPE_FALLBACK"); }
             rows.add(new CheckRow(item.rowKey(),item.goodsId(),"READY",high||low||peerHigh?"WARNING":"NONE",decimalText(price),a.referencePrice(),a.weightedAveragePrice(),
                     decimalText(deviation.setScale(2,RoundingMode.HALF_UP)),decimalText(impact),List.copyOf(alerts),
                     (fallback?"当前供应商证据不足，采用同条件授权范围内供应商历史。":"")+"本次单价"+direction+"历史参考区间；近期参考 "+a.referencePrice()+"，加权均价 "+a.weightedAveragePrice()+"，共 "+a.independentOrderCount()+" 张独立订单。"

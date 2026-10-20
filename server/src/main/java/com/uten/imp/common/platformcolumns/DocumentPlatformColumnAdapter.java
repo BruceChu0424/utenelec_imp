@@ -137,7 +137,7 @@ public final class DocumentPlatformColumnAdapter implements PlatformColumnResour
         return authorizeRecords(ids, true, true);
     }
 
-    public Set<UUID> recordIdsForDocument(UUID documentId) {
+    @Override public Set<UUID> recordIdsForDocument(UUID documentId) {
         if (documentRowsLookup == null) throw new IllegalStateException("Document row lookup not registered for " + scope);
         JsonNode header = lockedDocument(documentId);
         @SuppressWarnings("unchecked") List<UUID> rows = em.createNativeQuery(documentRowsLookup)

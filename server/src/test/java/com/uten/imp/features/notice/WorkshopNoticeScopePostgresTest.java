@@ -171,7 +171,7 @@ class WorkshopNoticeScopePostgresTest {
                 mock(com.uten.imp.features.auth.PermissionResolver.class));
     }
     @AfterEach void close() { if(em!=null)em.close(); }
-    @AfterAll static void stop() { if(factory!=null)factory.close(); DB.stop(); }
+    @AfterAll static void stop() { if(factory!=null){ factory.close(); } DB.stop(); }
 
     @Test
     void pendingDrawNoticesUseTheRequestGateBeforeListCountAndPopupPagination() {

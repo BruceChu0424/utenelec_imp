@@ -315,7 +315,7 @@ class CustomerPrepaymentMigrationPostgresTest {
     }
 
     private static void execute(Connection c,String sql,Object...args)throws SQLException{
-        try(PreparedStatement statement=c.prepareStatement(sql)){for(int i=0;i<args.length;i++)statement.setObject(i+1,args[i]);statement.executeUpdate();}
+        try(PreparedStatement statement=c.prepareStatement(sql)){for(int i=0;i<args.length;i++){ statement.setObject(i+1,args[i]); }statement.executeUpdate();}
     }
     private static Object single(Connection c,String sql)throws SQLException{try(PreparedStatement s=c.prepareStatement(sql);ResultSet r=s.executeQuery()){assertThat(r.next()).isTrue();return r.getObject(1);}}
     private static long singleLong(Connection c,String sql)throws SQLException{return ((Number)single(c,sql)).longValue();}

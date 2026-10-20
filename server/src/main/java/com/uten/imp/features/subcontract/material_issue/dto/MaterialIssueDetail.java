@@ -28,7 +28,7 @@ public class MaterialIssueDetail extends com.uten.imp.common.history.DocumentHis
     private String remark;
     private BigDecimal totalOriginal;
     private BigDecimal totalLocal;
-    private Short status;
+    @lombok.Getter(onMethod_ = @Override) private Short status;
     private boolean closed;
     private String sourceDocNo;
     private List<MaterialIssueItemDto> items;

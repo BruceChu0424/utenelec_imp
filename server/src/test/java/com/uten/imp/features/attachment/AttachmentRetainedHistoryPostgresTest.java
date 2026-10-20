@@ -69,7 +69,7 @@ class AttachmentRetainedHistoryPostgresTest {
         root=Files.createTempDirectory("uten-attachment-retained-proof-");
     }
     @AfterAll static void stop() throws Exception {
-        if(factory!=null)factory.close();if(database!=null)database.close();
+        if(factory!=null){ factory.close(); }if(database!=null){ database.close(); }
         if(root!=null){assertThat(root.getFileName().toString()).startsWith("uten-attachment-retained-proof-");
             org.springframework.util.FileSystemUtils.deleteRecursively(root);}
     }
@@ -246,11 +246,11 @@ class AttachmentRetainedHistoryPostgresTest {
     }
     static class HistoryPolicy implements AttachmentOwnerAccessPolicy {
         boolean parentDeleted,historyDenied,sensitiveDenied;
-        public String ownerType(){return "SALES_QUOTE";}
-        public void requireCanView(UUID id,AuthUser user){if(parentDeleted)throw new ApiException(ErrorCode.NOT_FOUND);}
-        public void requireCanManage(UUID id,AuthUser user){requireCanView(id,user);}
-        public void requireCanViewHistory(UUID id,AuthUser user){if(historyDenied)throw new ApiException(ErrorCode.FORBIDDEN);}
-        public void requireCanViewSensitiveOriginal(UUID id,AuthUser user){if(sensitiveDenied)throw new ApiException(ErrorCode.FORBIDDEN);requireCanView(id,user);}
-        public void requireCanViewSensitiveOriginalHistory(UUID id,AuthUser user){requireCanViewHistory(id,user);if(sensitiveDenied)throw new ApiException(ErrorCode.FORBIDDEN);}
+        @Override public String ownerType(){return "SALES_QUOTE";}
+        @Override public void requireCanView(UUID id,AuthUser user){if(parentDeleted)throw new ApiException(ErrorCode.NOT_FOUND);}
+        @Override public void requireCanManage(UUID id,AuthUser user){requireCanView(id,user);}
+        @Override public void requireCanViewHistory(UUID id,AuthUser user){if(historyDenied)throw new ApiException(ErrorCode.FORBIDDEN);}
+        @Override public void requireCanViewSensitiveOriginal(UUID id,AuthUser user){if(sensitiveDenied)throw new ApiException(ErrorCode.FORBIDDEN);requireCanView(id,user);}
+        @Override public void requireCanViewSensitiveOriginalHistory(UUID id,AuthUser user){requireCanViewHistory(id,user);if(sensitiveDenied)throw new ApiException(ErrorCode.FORBIDDEN);}
     }
 }

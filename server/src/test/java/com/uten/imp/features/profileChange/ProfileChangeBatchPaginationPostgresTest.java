@@ -119,7 +119,7 @@ class ProfileChangeBatchPaginationPostgresTest {
         when(applier.readCurrentValue(any(), eq("seatNo"))).thenAnswer(call -> ((com.uten.imp.features.org.employee.Employee) call.getArgument(0)).getSeatNo());
         doAnswer(call -> { ((com.uten.imp.features.org.employee.Employee) call.getArgument(0)).setSeatNo(call.getArgument(2)); return null; })
                 .when(applier).applyDirectEdit(any(), eq("seatNo"), anyString());
-        doAnswer(call -> { var row = (ProfileChangeRequest) call.getArgument(1); if ("fullName".equals(row.getFieldCode())) ((com.uten.imp.features.org.employee.Employee) call.getArgument(0)).setFullName(row.getNewValueEnc()); return null; })
+        doAnswer(call -> { var row = (ProfileChangeRequest) call.getArgument(1); if ("fullName".equals(row.getFieldCode())) { ((com.uten.imp.features.org.employee.Employee) call.getArgument(0)).setFullName(row.getNewValueEnc()); } return null; })
                 .when(applier).applyReviewedChange(any(), any());
         queries = new ProfileChangeQueryService(repository, mapper, codec, access, tx, notices);
         UserAccountRepository accounts = mock(UserAccountRepository.class);

@@ -116,7 +116,7 @@ class ProcurementWithdrawalSourceFinalityEndToEndTest {
     }
     private String facts(){
         String[] tables={"stock_value_jobs","stock_value_tasks","stock_value_node_revisions","stock_value_production_cost_dirty","stock_balances","stock_movements","stock_value_pools","stock_value_nodes","stock_value_events","stock_value_postings","ar_ap_ledger","gl_vouchers","gl_entries","purchase_receipts","purchase_receipt_items","purchase_returns","purchase_return_items","purchase_order_items","subcontract_receipts","subcontract_receipt_items","subcontract_returns","subcontract_return_items","subcontract_order_items","subcontract_material_issue_items","subcontract_receipt_material_consumptions","procurement_inspection_items","procurement_iqc_rejection_cases","procurement_receipt_consideration_parts","procurement_iqc_consideration_reversals","document_unapprovals","stock_value_production_cost_objects","stock_value_production_cost_shares","stock_value_production_cost_tasks"};
-        var facts=new ArrayList<String>();for(String table:tables)facts.add(db.queryForObject("SELECT COALESCE(jsonb_agg(to_jsonb(row) ORDER BY to_jsonb(row)::text),'[]'::jsonb)::text FROM "+table+" row",String.class));return String.join("\n",facts);
+        var facts=new ArrayList<String>();for(String table:tables){ facts.add(db.queryForObject("SELECT COALESCE(jsonb_agg(to_jsonb(row) ORDER BY to_jsonb(row)::text),'[]'::jsonb)::text FROM "+table+" row",String.class)); }return String.join("\n",facts);
     }
 
     private F fixture(){return fixture(false);}

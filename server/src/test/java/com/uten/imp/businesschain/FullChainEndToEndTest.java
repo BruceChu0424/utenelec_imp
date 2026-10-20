@@ -6992,7 +6992,7 @@ class FullChainEndToEndTest {
             var leader=workers.submit(()->{loginAs(w.superAdminUserId());try {
                 return new org.springframework.transaction.support.TransactionTemplate(transactionManager).execute(tx->{
                     var value=shipmentService.transitionWarehouseWork(first,pick);held.countDown();
-                    try {if(!release.await(10,java.util.concurrent.TimeUnit.SECONDS))throw new AssertionError("direct pick test timeout");}
+                    try {if(!release.await(10,java.util.concurrent.TimeUnit.SECONDS)){ throw new AssertionError("direct pick test timeout"); }}
                     catch(InterruptedException e){Thread.currentThread().interrupt();throw new AssertionError(e);}return value;
                 });}finally{SecurityContextHolder.clearContext();}});
             assertTrue(held.await(10,java.util.concurrent.TimeUnit.SECONDS));
@@ -7001,7 +7001,7 @@ class FullChainEndToEndTest {
                     waiterPid.set(jdbc.queryForObject("SELECT pg_backend_pid()",Integer.class));return shipmentService.transitionWarehouseWork(second,pick);
                 }));}finally{SecurityContextHolder.clearContext();}});
             long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(8);boolean waiting=false;
-            while(System.nanoTime()<deadline&&!waiting){if(waiterPid.get()!=0)waiting=Boolean.TRUE.equals(jdbc.queryForObject("SELECT wait_event_type='Lock' FROM pg_stat_activity WHERE pid=?",Boolean.class,waiterPid.get()));if(!waiting)Thread.sleep(20);}
+            while(System.nanoTime()<deadline&&!waiting){if(waiterPid.get()!=0){ waiting=Boolean.TRUE.equals(jdbc.queryForObject("SELECT wait_event_type='Lock' FROM pg_stat_activity WHERE pid=?",Boolean.class,waiterPid.get())); }if(!waiting){ Thread.sleep(20); }}
             assertTrue(waiting,"the second dispatch must wait on the same real inventory mutex");release.countDown();leader.get(15,java.util.concurrent.TimeUnit.SECONDS);
             assertEquals(ErrorCode.CONFLICT,contender.get(15,java.util.concurrent.TimeUnit.SECONDS).getCode());
         }finally{release.countDown();}

@@ -38,7 +38,7 @@ class SupplierLegacyOpeningStatementPostgresTest {
                 "finance_payment_lines",
                 "supplier_open_item_offsets");
     }
-    @AfterAll static void stop() throws Exception { if(connection!=null)connection.close(); PG.stop(); }
+    @AfterAll static void stop() throws Exception { if(connection!=null){ connection.close(); } PG.stop(); }
     @BeforeEach void clean() {
         db.getJdbcTemplate().execute("DELETE FROM finance_payment_lines; DELETE FROM finance_payments; DELETE FROM supplier_open_item_offsets; DELETE FROM legacy_finance_import_sources; DELETE FROM ar_ap_ledger");
         supplier=UUID.randomUUID(); currency=UUID.randomUUID(); ledger=UUID.randomUUID();

@@ -18,7 +18,7 @@ public class RdTaskPlatformColumnAdapters {
     @Bean public PlatformColumnResourceAdapter rdTaskPlatformColumns() {
         return new ReadOnlyPlatformColumnAdapter("rd_task","研发任务",current,json,Set.of("rd_task:view"),Set.of(),
                 id->{var task=tasks.get(id);var facts=new HashMap<String,Object>();facts.put("id",task.id());facts.put("rowVersion",task.rowVersion());
-                    if(task.dueDate()!=null)facts.put("daysUntilDue",java.time.temporal.ChronoUnit.DAYS.between(com.uten.imp.common.time.BusinessTime.today(),task.dueDate()));return facts;},
+                    if(task.dueDate()!=null){ facts.put("daysUntilDue",java.time.temporal.ChronoUnit.DAYS.between(com.uten.imp.common.time.BusinessTime.today(),task.dueDate())); }return facts;},
                 List.of(new FactDefinition("daysUntilDue","距离到期天数",false),new FactDefinition("rowVersion","记录版本",false)));
     }
 }

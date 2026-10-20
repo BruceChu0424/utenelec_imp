@@ -64,7 +64,7 @@ class StockInventoryScopePostgresTest {
     @TestConfiguration static class ProbeConfiguration {
         @Bean HibernatePropertiesCustomizer inventoryScopeSqlProbe() {
             return properties -> properties.put("hibernate.session_factory.statement_inspector", (StatementInspector) sql -> {
-                var capture=SQL.get(); if(capture!=null) capture.add(sql); return sql;
+                var capture=SQL.get(); if(capture!=null) { capture.add(sql); } return sql;
             });
         }
     }
@@ -298,8 +298,8 @@ class StockInventoryScopePostgresTest {
         JsonNode ledger=read(ledger(w.goods()),viewer,options,200);decimal(ledger.path("summary").path("closingQty"),expected);
     }
     private static Map<String,String> scope(UUID warehouse,UUID color,boolean colorNull,boolean inventoryOnly,boolean defective,boolean lineSide){
-        Map<String,String> values=new HashMap<>();if(warehouse!=null)values.put("warehouseId",warehouse.toString());
-        if(color!=null)values.put("colorId",color.toString());values.put("colorNull",String.valueOf(colorNull));
+        Map<String,String> values=new HashMap<>();if(warehouse!=null){ values.put("warehouseId",warehouse.toString()); }
+        if(color!=null){ values.put("colorId",color.toString()); }values.put("colorNull",String.valueOf(colorNull));
         values.put("inventoryOnly",String.valueOf(inventoryOnly));values.put("includeDefective",String.valueOf(defective));
         values.put("includeLineSide",String.valueOf(lineSide));return values;
     }
@@ -342,8 +342,8 @@ class StockInventoryScopePostgresTest {
     }
     private static String context(UUID goods){return "/api/stock/goods/"+goods+"/inventory-context";}
     private static String ledger(UUID goods){return "/api/stock/goods/"+goods+"/ledger";}
-    private static BigDecimal sum(JsonNode rows,String field){BigDecimal sum=BigDecimal.ZERO;for(JsonNode row:rows)sum=sum.add(row.path(field).decimalValue());return sum;}
-    private static BigDecimal total(JsonNode page,String key){for(JsonNode total:page.path("totals"))if(total.path("key").asText().equals(key)){BigDecimal value=BigDecimal.ZERO;for(JsonNode group:total.path("groups"))value=value.add(group.path("value").decimalValue());return value;}fail("Missing total "+key);return null;}
+    private static BigDecimal sum(JsonNode rows,String field){BigDecimal sum=BigDecimal.ZERO;for(JsonNode row:rows){ sum=sum.add(row.path(field).decimalValue()); }return sum;}
+    private static BigDecimal total(JsonNode page,String key){for(JsonNode total:page.path("totals")){ if(total.path("key").asText().equals(key)){BigDecimal value=BigDecimal.ZERO;for(JsonNode group:total.path("groups")){ value=value.add(group.path("value").decimalValue()); }return value;} }fail("Missing total "+key);return null;}
     private static void decimal(JsonNode actual,String expected){assertFalse(actual.isMissingNode());assertFalse(actual.isNull());decimal(actual.decimalValue(),expected);}
     private static void decimal(BigDecimal actual,String expected){assertEquals(0,actual.compareTo(new BigDecimal(expected)),actual+" != "+expected);}
 }

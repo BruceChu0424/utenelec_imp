@@ -252,7 +252,7 @@ class AggregateMaterialSourceCoveragePostgresTest {
         UUID id=UUID.randomUUID();sql("INSERT INTO preplan_make_entitlement_delegations(id,analysis_id,supply_action_id,aggregate_alias_id,source_analysis_material_id,target_analysis_material_id,qty) VALUES(?,?,?,?,?,?,CAST(? AS numeric))",id,analysis,action,source.alias,source.material,canonical,qty);return id;
     }
     private void balance(UUID material,String qty)throws Exception {sql("INSERT INTO v_preplan_stock_entitlement_beneficiary_balance(beneficiary_analysis_id,beneficiary_analysis_material_id,effective_qty) VALUES(?,?,CAST(? AS numeric))",analysis,material,qty);}
-    private void sql(String command,Object...args)throws SQLException {try(var statement=db.prepareStatement(command)){for(int i=0;i<args.length;i++)statement.setObject(i+1,args[i]);statement.execute();}}
-    private String value(String command,Object...args)throws SQLException {try(var statement=db.prepareStatement(command)){for(int i=0;i<args.length;i++)statement.setObject(i+1,args[i]);try(var rows=statement.executeQuery()){return rows.next()?rows.getString(1):null;}}}
+    private void sql(String command,Object...args)throws SQLException {try(var statement=db.prepareStatement(command)){for(int i=0;i<args.length;i++){ statement.setObject(i+1,args[i]); }statement.execute();}}
+    private String value(String command,Object...args)throws SQLException {try(var statement=db.prepareStatement(command)){for(int i=0;i<args.length;i++){ statement.setObject(i+1,args[i]); }try(var rows=statement.executeQuery()){return rows.next()?rows.getString(1):null;}}}
     private static void amount(String expected,String actual){assertNotNull(actual);assertEquals(0,new BigDecimal(expected).compareTo(new BigDecimal(actual)),actual);}
 }

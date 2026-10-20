@@ -248,9 +248,9 @@ class MaterialAnalysisWarehouseBreakdownPostgresTest {
     }
     private static double actionReads(JsonNode node) {
         double sum=0;if(node.isObject()) {
-            if("preplan_supply_actions".equals(node.path("Relation Name").asText()))sum=(node.path("Actual Rows").asDouble()+node.path("Rows Removed by Filter").asDouble())*node.path("Actual Loops").asDouble(1);
-            var fields=node.elements();while(fields.hasNext())sum+=actionReads(fields.next());
-        } else if(node.isArray())for(JsonNode child:node)sum+=actionReads(child);return sum;
+            if("preplan_supply_actions".equals(node.path("Relation Name").asText())){ sum=(node.path("Actual Rows").asDouble()+node.path("Rows Removed by Filter").asDouble())*node.path("Actual Loops").asDouble(1); }
+            var fields=node.elements();while(fields.hasNext()){ sum+=actionReads(fields.next()); }
+        } else { if(node.isArray()){ for(JsonNode child:node){ sum+=actionReads(child); } } }return sum;
     }
     private static List<Object> row(Map<String,List<Object>> rows,UUID goods,UUID color,UUID unit,UUID warehouse){return rows.get(key(goods,color,unit,warehouse));}
     private static String key(UUID goods,UUID color,UUID unit,UUID warehouse){return goods+"|"+color+"|"+unit+"|"+warehouse;}
@@ -264,7 +264,7 @@ class MaterialAnalysisWarehouseBreakdownPostgresTest {
         jdbc.update("INSERT INTO purchase_request_items(id,request_id,qty,ordered_qty,unit_rate,is_deleted) VALUES (?,?,?,0,1,FALSE)",item,request,new BigDecimal(quantity));
         jdbc.update("INSERT INTO preplan_supply_actions VALUES (?,'BUY',?,?,?,?,?,?,?,?)",action,status,warehouse,goods,color,
                 safetySlice?BigDecimal.ZERO:new BigDecimal(quantity),new BigDecimal(safety),safetySlice?item:null,request);
-        if(!safetySlice)jdbc.update("INSERT INTO preplan_supply_action_allocations VALUES (?,?)",action,item);return new Action(action,item);
+        if(!safetySlice){ jdbc.update("INSERT INTO preplan_supply_action_allocations VALUES (?,?)",action,item); }return new Action(action,item);
     }
     private static UUID orderedReceipt(String seed,String quantity,String received,String qualified,String failed,String returnedFailure) {
         UUID order=id(seed+"-order"),item=id(seed+"-order-item"),receipt=id(seed+"-receipt"),receiptItem=id(seed+"-receipt-item");

@@ -186,7 +186,7 @@ class GoodsBomImportStatePostgresTest {
     private static Connection connect() throws SQLException { return DriverManager.getConnection(DATABASE.getJdbcUrl(), DATABASE.getUsername(), DATABASE.getPassword()); }
     private static void sql(Connection connection, String sql, Object... args) throws SQLException {
         try (var statement = connection.prepareStatement(sql)) {
-            for (int i = 0; i < args.length; i++) statement.setObject(i + 1, args[i]); statement.execute();
+            for (int i = 0; i < args.length; i++) { statement.setObject(i + 1, args[i]); } statement.execute();
         }
     }
 }

@@ -90,7 +90,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         return analysis.detailInternal(analysisId,false);
     }
 
-    @Transactional public SubmitResult submit(UUID analysisId,SubmitRequest request) {
+    @Override @Transactional public SubmitResult submit(UUID analysisId,SubmitRequest request) {
         validateRequest(request);tx.bind();
         var guard=commands.lockAnalysisWithClaimableShared(analysisId);
         var header=analysis.headerAfterPrelock(analysisId);
@@ -889,7 +889,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
     }
 
     private void installAliases(Batch batch,GroupPreview group,Map<UUID,CapacitySnapshot> snapshots,String commandKey,AliasReadSnapshot read) {
-        if(read==null)throw conflict("共享别名缺少本阶段读取快照");
+        if(read==null){ throw conflict("共享别名缺少本阶段读取快照"); }
         BigDecimal output=group.requestedQty().add(read.existingOutput());
         List<Object[]> children=read.children();
         Map<UUID,Map<String,List<Original>>> originalsByParent=read.originals();
@@ -898,45 +898,45 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         List<NewAlias> inserts=new ArrayList<>();
         Map<String,BigDecimal> targetOutputs=new HashMap<>();
         for(Object[] child:children) {
-            if(Boolean.TRUE.equals(child[10]))throw conflict("共享BOM路径存在循环或层级超过256");
+            if(Boolean.TRUE.equals(child[10])){ throw conflict("共享BOM路径存在循环或层级超过256"); }
             UUID target=(UUID)child[0];String edge=(String)child[1];
             BigDecimal parentOutput=edge.indexOf('/')<0?output:targetOutputs.get((String)child[8]);
-            if(parentOutput==null)throw conflict("共享BOM路径缺少真实父层");
+            if(parentOutput==null){ throw conflict("共享BOM路径缺少真实父层"); }
             BigDecimal required=childQuantity(parentOutput,decimal(child[2]),(String)child[3],decimal(child[4]),Boolean.TRUE.equals(child[5]));
             targetOutputs.put((String)child[9],required);
             BigDecimal already=decimal(child[6]);
             BigDecimal previousCapacity=decimal(child[7]);
-            if(previousCapacity.signum()>0&&required.compareTo(previousCapacity)>0)canonicalCaps.put(target,required.subtract(previousCapacity));
+            if(previousCapacity.signum()>0&&required.compareTo(previousCapacity)>0){ canonicalCaps.put(target,required.subtract(previousCapacity)); }
             BigDecimal capacity=required.subtract(already).max(BigDecimal.ZERO);
             record Candidate(SourcePreview parent,UUID material,UUID alias,BigDecimal available,BigDecimal oldSourceCap,BigDecimal retained,BigDecimal owned){}
             List<Candidate> candidates=new ArrayList<>();
-            for(SourcePreview source:group.sources())if(source.allocatedQty().signum()>0) {
+            for(SourcePreview source:group.sources()){ if(source.allocatedQty().signum()>0) {
                 List<Original> originals=originalsByParent.getOrDefault(source.materialLineId(),Map.of()).getOrDefault(edge,List.of());
-                if(originals.size()>1)throw conflict("共享BOM路径存在歧义，请刷新结构");
-                if(!originals.isEmpty()){Original original=originals.getFirst();CapacitySnapshot snapshot=snapshots.get(original.material());if(snapshot==null)continue;
+                if(originals.size()>1){ throw conflict("共享BOM路径存在歧义，请刷新结构"); }
+                if(!originals.isEmpty()){Original original=originals.getFirst();CapacitySnapshot snapshot=snapshots.get(original.material());if(snapshot==null){ continue; }
                     BigDecimal released=snapshot.required().subtract(original.required()).max(BigDecimal.ZERO).max(snapshot.parentReleased());
                     BigDecimal retained=original.required().max(snapshot.parentRetained());
                     BigDecimal available=snapshot.capacity().subtract(original.delegated()).subtract(retained).max(BigDecimal.ZERO).min(released);
                     candidates.add(new Candidate(source,original.material(),original.alias(),available,original.sourceCap(),
                             retained.add(original.delegated()),snapshot.owned().max(original.historicCap())));}
-            }
+            } }
             BigDecimal available=candidates.stream().map(Candidate::available).reduce(BigDecimal.ZERO,BigDecimal::add);BigDecimal transfer=capacity.min(available);
-            if(candidates.isEmpty())continue;
+            if(candidates.isEmpty()){ continue; }
             var split=AggregateQuantityAllocator.allocate(transfer,candidates.stream().map(candidate->new AggregateQuantityAllocator.SourceCapacity(candidate.material(),candidate.parent().allocationPriority(),candidate.parent().needDate(),candidate.available())).toList(),false);
             Map<UUID,BigDecimal> amounts=split.allocations().stream().collect(Collectors.toMap(AggregateQuantityAllocator.Allocation::sourceId,AggregateQuantityAllocator.Allocation::qty));
             for(Candidate candidate:candidates) {BigDecimal amount=amounts.getOrDefault(candidate.material(),BigDecimal.ZERO);
                 BigDecimal newSourceCapacity=candidate.retained().add(amount).max(candidate.owned());
-                if(candidate.alias()!=null){if(amount.signum()>0)increases.put(candidate.alias(),amount);
+                if(candidate.alias()!=null){if(amount.signum()>0){ increases.put(candidate.alias(),amount); }
                     BigDecimal old=candidate.oldSourceCap();
-                    if(newSourceCapacity.compareTo(old)>0)sourceCaps.put(candidate.alias(),newSourceCapacity.subtract(old));continue;}
+                    if(newSourceCapacity.compareTo(old)>0){ sourceCaps.put(candidate.alias(),newSourceCapacity.subtract(old)); }continue;}
                 // Released, unarranged demand is not private stock. Preserve actual
                 // old supply and immutable earlier responsibility, not vanished pre-merge rounding.
                 inserts.add(new NewAlias(candidate.parent().materialLineId(),candidate.material(),target,edge,amount,newSourceCapacity,required));
             }
         }
-        if(!increases.isEmpty()||!sourceCaps.isEmpty()||!canonicalCaps.isEmpty())em.createNativeQuery("SELECT fn_complete_aggregate_alias_deltas(:batch,:key,CAST(:deltas AS jsonb),CAST(:source AS jsonb),CAST(:canonical AS jsonb))")
+        if(!increases.isEmpty()||!sourceCaps.isEmpty()||!canonicalCaps.isEmpty()){ em.createNativeQuery("SELECT fn_complete_aggregate_alias_deltas(:batch,:key,CAST(:deltas AS jsonb),CAST(:source AS jsonb),CAST(:canonical AS jsonb))")
                 .setParameter("batch",batch.id()).setParameter("key",commandKey).setParameter("deltas",mapper.valueToTree(increases).toString())
-                .setParameter("source",mapper.valueToTree(sourceCaps).toString()).setParameter("canonical",mapper.valueToTree(canonicalCaps).toString()).getSingleResult();
+                .setParameter("source",mapper.valueToTree(sourceCaps).toString()).setParameter("canonical",mapper.valueToTree(canonicalCaps).toString()).getSingleResult(); }
         if(!inserts.isEmpty()){
         var insertRows=mapper.createArrayNode();for(NewAlias alias:inserts){var row=insertRows.addObject();row.put("parent_id",alias.parent().toString());row.put("source_id",alias.source().toString());row.put("target_id",alias.target().toString());row.put("edge_path",alias.path());row.put("qty",alias.qty());row.put("source_capacity",alias.sourceCap());row.put("canonical_capacity",alias.canonicalCap());}
         em.createNativeQuery("""
@@ -1046,7 +1046,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                 """).setParameter("actor",user.requireId()).setParameter("updates",updates.toString()).executeUpdate();
     }
     private List<MaterialIdentityBridge> materialBridges(List<UUID> batches) {
-        if(batches.isEmpty())return List.of();
+        if(batches.isEmpty()){ return List.of(); }
         List<Object[]> rows=NativeQueryResults.objectArrayRows(em.createNativeQuery(EXACT_BOM_DESCENDANTS_SQL + """
                 SELECT target.id,source.id,original.required_qty,canonical.required_qty,array_to_string(target.path,'/')
                 FROM target_paths target JOIN source_paths source ON source.batch_id=target.batch_id AND source.path=target.path
@@ -1057,7 +1057,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                 ORDER BY 1,2
                 """).setParameter("batches",batches));
         Map<UUID,List<UUID>> origins=new LinkedHashMap<>();Map<UUID,BigDecimal> quantities=new HashMap<>();Map<UUID,String> paths=new HashMap<>();
-        for(Object[] row:rows){if(row[0]==null)throw conflict("共享BOM路径存在循环或层级超过256，不能提交身份映射");UUID target=(UUID)row[0];origins.computeIfAbsent(target,ignored->new ArrayList<>());if(decimal(row[2]).signum()==0&&!origins.get(target).contains((UUID)row[1]))origins.get(target).add((UUID)row[1]);quantities.put(target,decimal(row[3]));paths.put(target,(String)row[4]);}
+        for(Object[] row:rows){if(row[0]==null){ throw conflict("共享BOM路径存在循环或层级超过256，不能提交身份映射"); }UUID target=(UUID)row[0];origins.computeIfAbsent(target,ignored->new ArrayList<>());if(decimal(row[2]).signum()==0&&!origins.get(target).contains((UUID)row[1])){ origins.get(target).add((UUID)row[1]); }quantities.put(target,decimal(row[3]));paths.put(target,(String)row[4]);}
         return origins.entrySet().stream().map(entry->new MaterialIdentityBridge(entry.getValue(),entry.getKey(),paths.get(entry.getKey()),quantities.get(entry.getKey()))).toList();
     }
     /** ADR-143：只有自制建共享制造批次；委外批次永远是外部批次(无锚点)，成员 P 节点各自展开直属物料。 */

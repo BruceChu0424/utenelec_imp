@@ -86,7 +86,7 @@ public class HrNoticeService implements HrNoticePort {
     // ========================= 信息变更（HR 审核） =========================
 
     /** 员工提交需审核字段的修改 → 通知全体持 profile:review 的 HR（含提交人本人）。 */
-    public void notifyProfileChangeSubmitted(UUID batchId, String submitterName,
+    @Override public void notifyProfileChangeSubmitted(UUID batchId, String submitterName,
                                              List<String> fieldLabels, UUID submitterEmployeeId) {
         // 2026-09-29 不再跳过提交人本人：自审已放开（ProfileChangeReviewService），
         // 持 profile:review 的 HR 自己提交的修改正等着他本人审批，这张行动卡必须发给他。
@@ -103,7 +103,7 @@ public class HrNoticeService implements HrNoticePort {
     }
 
     /** HR 批准/驳回完成、或员工撤销批次 → 办结撤卡（幂等）。 */
-    public void resolveProfileChangeBatch(UUID batchId, String reason) {
+    @Override public void resolveProfileChangeBatch(UUID batchId, String reason) {
         sameTransaction(() -> noticeService.resolveReviewNotices(
                 AGGREGATE_PROFILE_CHANGE, batchId, reason));
     }
@@ -111,7 +111,7 @@ public class HrNoticeService implements HrNoticePort {
     // ========================= 访客（HR 审批 + 被访人确认） =========================
 
     /** 访客提交来访申请 → 通知全体持 visitor:approve 的 HR。 */
-    public void notifyVisitorApplySubmitted(UUID applicationId, String visitorName,
+    @Override public void notifyVisitorApplySubmitted(UUID applicationId, String visitorName,
                                             String hostName, String visitPurpose) {
         for (UUID target : userIdsWithNoticeAndAnyPermission("visitor:approve")) {
             sameTransaction(() -> noticeService.publishForUser(
@@ -127,7 +127,7 @@ public class HrNoticeService implements HrNoticePort {
      * 聚合 VISITOR_HOST_CONFIRM 与 HR 审批卡分离：接待人确认后申请回到 HR 批准，
      * HR 的 VISITOR_APPLICATION 卡不能被接待卡的办结误撤。
      */
-    public void notifyVisitorHostReviewRequired(UUID applicationId, String visitorName,
+    @Override public void notifyVisitorHostReviewRequired(UUID applicationId, String visitorName,
                                                 UUID hostEmployeeId, String hostName) {
         if (hostEmployeeId == null) return;
         boolean dispatched = false;
@@ -148,13 +148,13 @@ public class HrNoticeService implements HrNoticePort {
     }
 
     /** 访客申请终态（HR 批准/驳回、接待人拒绝）→ 办结 HR 审批卡（幂等）。 */
-    public void resolveVisitorApplication(UUID applicationId, String reason) {
+    @Override public void resolveVisitorApplication(UUID applicationId, String reason) {
         sameTransaction(() -> noticeService.resolveReviewNotices(
                 AGGREGATE_VISITOR_APPLICATION, applicationId, reason));
     }
 
     /** 接待人确认/拒绝、或 HR 直接批准/驳回 → 办结「待你确认接待」卡（幂等）。 */
-    public void resolveVisitorHostConfirm(UUID applicationId, String reason) {
+    @Override public void resolveVisitorHostConfirm(UUID applicationId, String reason) {
         sameTransaction(() -> noticeService.resolveReviewNotices(
                 AGGREGATE_VISITOR_HOST_CONFIRM, applicationId, reason));
     }
@@ -162,7 +162,7 @@ public class HrNoticeService implements HrNoticePort {
     // ========================= 报销（审批 → 打款） =========================
 
     /** 员工提交报销单 → 通知全体持 expense:approve 的审批人（申请人本人除外）。 */
-    public void notifyExpenseClaimSubmitted(UUID claimId, String applicantName,
+    @Override public void notifyExpenseClaimSubmitted(UUID claimId, String applicantName,
                                             String amountLabel, UUID applicantEmployeeId) {
         for (UUID target : userIdsWithNoticeAndAnyPermission("expense:approve")) {
             if (applicantEmployeeId != null && belongsToEmployee(target, applicantEmployeeId)) {
@@ -177,7 +177,7 @@ public class HrNoticeService implements HrNoticePort {
     }
 
     /** 审批通过 → 打款人接棒（待打款行动卡，申请人本人除外）+ 申请人回执。 */
-    public void notifyExpenseClaimApproved(UUID claimId, String applicantName,
+    @Override public void notifyExpenseClaimApproved(UUID claimId, String applicantName,
                                            String amountLabel, UUID applicantUserId,
                                            UUID applicantEmployeeId, UUID approverEmployeeId) {
         for (UUID target : userIdsWithNoticeAndAnyPermission("expense:pay")) {
@@ -200,7 +200,7 @@ public class HrNoticeService implements HrNoticePort {
     }
 
     /** 驳回 → 申请人回执（含原因）。 */
-    public void notifyExpenseClaimRejected(UUID claimId, String applicantName,
+    @Override public void notifyExpenseClaimRejected(UUID claimId, String applicantName,
                                            String reason, UUID applicantUserId) {
         if (applicantUserId == null) return;
         sameTransaction(() -> noticeService.publishForUser(
@@ -211,7 +211,7 @@ public class HrNoticeService implements HrNoticePort {
     }
 
     /** 打款完成 → 申请人回执 + 办结全部报销弹卡。 */
-    public void notifyExpenseClaimPaid(UUID claimId, String applicantName,
+    @Override public void notifyExpenseClaimPaid(UUID claimId, String applicantName,
                                        String amountLabel, UUID applicantUserId) {
         if (applicantUserId != null) {
             sameTransaction(() -> noticeService.publishForUser(
@@ -224,7 +224,7 @@ public class HrNoticeService implements HrNoticePort {
     }
 
     /** 撤回/删除/审批终态 → 办结撤卡（审批人一侧不再可办）。 */
-    public void resolveExpenseClaim(UUID claimId, String reason) {
+    @Override public void resolveExpenseClaim(UUID claimId, String reason) {
         sameTransaction(() -> noticeService.resolveReviewNotices(
                 AGGREGATE_EXPENSE_CLAIM, claimId, reason));
     }
@@ -232,7 +232,7 @@ public class HrNoticeService implements HrNoticePort {
     // ========================= 工资批次（审核 → 发布） =========================
 
     /** 制单人提交工资批次 → 通知全体持 payroll:review 的审核人（制单人本人除外）。 */
-    public void notifyPayrollBatchSubmitted(UUID batchId, String periodLabel,
+    @Override public void notifyPayrollBatchSubmitted(UUID batchId, String periodLabel,
                                             String generatorName, UUID generatorEmployeeId) {
         for (UUID target : userIdsWithNoticeAndAnyPermission("payroll:review")) {
             if (generatorEmployeeId != null && belongsToEmployee(target, generatorEmployeeId)) {
@@ -251,7 +251,7 @@ public class HrNoticeService implements HrNoticePort {
      * 调用方须先 {@link #resolvePayrollBatch} 办结「待审核」卡再调本方法——两卡同聚合
      * (PAYROLL_BATCH, batchId)，先办结后发布才不会把新卡一起撤掉。
      */
-    public void notifyPayrollBatchApproved(UUID batchId, String periodLabel,
+    @Override public void notifyPayrollBatchApproved(UUID batchId, String periodLabel,
                                            UUID approverEmployeeId) {
         for (UUID target : userIdsWithNoticeAndAnyPermission("payroll:publish")) {
             if (approverEmployeeId != null && belongsToEmployee(target, approverEmployeeId)) {
@@ -266,7 +266,7 @@ public class HrNoticeService implements HrNoticePort {
     }
 
     /** 驳回 → 回执制单人；办结审核弹卡。 */
-    public void notifyPayrollBatchRejected(UUID batchId, String periodLabel,
+    @Override public void notifyPayrollBatchRejected(UUID batchId, String periodLabel,
                                            String reason, UUID generatorUserId) {
         if (generatorUserId != null) {
             sameTransaction(() -> noticeService.publishForUser(
@@ -280,13 +280,13 @@ public class HrNoticeService implements HrNoticePort {
     }
 
     /** 审核通过 / 发布 → 按批次办结当前全部工资批次弹卡（待审核卡或待发布卡）。 */
-    public void resolvePayrollBatch(UUID batchId, String reason) {
+    @Override public void resolvePayrollBatch(UUID batchId, String reason) {
         sameTransaction(() -> noticeService.resolveReviewNotices(
                 AGGREGATE_PAYROLL_BATCH, batchId, reason));
     }
 
     /** 发布 → 持条员工逐人「工资条已发布」通知（普通，不弹卡）。 */
-    public void notifyPayrollPublished(UUID batchId, String periodLabel, List<UUID> employeeIdsWithSlip) {
+    @Override public void notifyPayrollPublished(UUID batchId, String periodLabel, List<UUID> employeeIdsWithSlip) {
         for (UUID employeeId : employeeIdsWithSlip) {
             for (UUID target : userRepo.findByEmployeeId(employeeId).stream()
                     .filter(u -> !u.isDeleted() && "active".equals(u.getStatus()))
@@ -305,7 +305,7 @@ public class HrNoticeService implements HrNoticePort {
      * 员工提交建议 → 通知全体持 suggestion:reply 的回复人（提交人本人除外）。
      * 匿名建议的行动卡不带提交人姓名（回复人在详情页按权限可见真名，通知正文不外露）。
      */
-    public void notifySuggestionSubmitted(UUID suggestionId, UUID submitterUserId,
+    @Override public void notifySuggestionSubmitted(UUID suggestionId, UUID submitterUserId,
                                           String submitterName, String title, boolean anonymous) {
         String who = anonymous ? "一位员工（匿名）" : submitterName;
         for (UUID target : userIdsWithNoticeAndAnyPermission("suggestion:reply")) {
@@ -322,7 +322,7 @@ public class HrNoticeService implements HrNoticePort {
      * 官方回复推进到终态（resolved / rejected）→ 办结回复人弹卡 + 提交人回执
      * （普通通知，仅提交人本人；匿名建议同样只发给本人，正文不含姓名）。
      */
-    public void notifySuggestionClosed(UUID suggestionId, UUID submitterUserId,
+    @Override public void notifySuggestionClosed(UUID suggestionId, UUID submitterUserId,
                                        String title, String status) {
         String normalized = status == null ? "" : status.strip().toLowerCase(Locale.ROOT);
         sameTransaction(() -> noticeService.resolveReviewNotices(

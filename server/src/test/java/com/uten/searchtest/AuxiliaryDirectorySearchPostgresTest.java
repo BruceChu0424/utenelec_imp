@@ -47,7 +47,7 @@ class AuxiliaryDirectorySearchPostgresTest {
                 "departments", "employees", "users");
         audience = new NoticeAudienceService(JdbcClient.create(source));
     }
-    @AfterAll static void stop() { if(factory!=null)factory.close(); PG.stop(); }
+    @AfterAll static void stop() { if(factory!=null){ factory.close(); } PG.stop(); }
     @BeforeEach void setup() {
         for(String table:List.of("website_inquiries","users","employees","departments"))db.getJdbcTemplate().update("DELETE FROM "+table);
         em=factory.createEntityManager(); inquiries=new JpaRepositoryFactory(em).getRepository(WebsiteInquiryRepository.class);

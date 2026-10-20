@@ -114,7 +114,7 @@ class InventoryPositionPostgresTest {
         productionCosts=new InventoryProductionCostService(named,mutex,values);
         authorityValues=new InventoryValueAuthorityService(named);
     }
-    @AfterAll static void stop(){if(emf!=null)emf.close();DB.stop();}
+    @AfterAll static void stop(){if(emf!=null){ emf.close(); }DB.stop();}
 
     private static List<Integer> readinessRowCounts(){
         return List.of("stock_value_pools","stock_value_nodes","stock_value_events","stock_value_position_transfers","stock_value_postings","stock_movements")
@@ -644,11 +644,11 @@ class InventoryPositionPostgresTest {
                 ap,ap,bd("1"),new BigDecimal("0.00005"),bd("0.5"),new BigDecimal("0.00005"),bd("0.5"));
         var quality=new ProcurementReceiptConsiderationPort.QualityPart(qualityId,partId,UUID.randomUUID(),UUID.randomUUID(),"FAIL",bd("1"));
         ProcurementReceiptConsiderationPort quotes=new ProcurementReceiptConsiderationPort(){
-            public List<Part> receipt(String type,UUID id){return List.of(part);}
-            public List<Part> failure(UUID id){return caseId.equals(id)?List.of(part):List.of();}
-            public Optional<QualityPart> failureQuality(UUID id,UUID slice){return caseId.equals(id)&&funding.equals(slice)?Optional.of(quality):Optional.empty();}
-            public List<QualityPart> quality(UUID event){return List.of(quality);}
-            public List<StockPart> stock(UUID stock){return List.of();}
+            @Override public List<Part> receipt(String type,UUID id){return List.of(part);}
+            @Override public List<Part> failure(UUID id){return caseId.equals(id)?List.of(part):List.of();}
+            @Override public Optional<QualityPart> failureQuality(UUID id,UUID slice){return caseId.equals(id)&&funding.equals(slice)?Optional.of(quality):Optional.empty();}
+            @Override public List<QualityPart> quality(UUID event){return List.of(quality);}
+            @Override public List<StockPart> stock(UUID stock){return List.of();}
         };
         var resolver=new InventoryProcurementValueService(new NamedParameterJdbcTemplate(Objects.requireNonNull(db.getDataSource())),Optional.of(quotes),positions);
         FailureReference ref=new FailureReference(caseId,qualityId,funding,ap);
@@ -924,7 +924,7 @@ class InventoryPositionPostgresTest {
     private static void balance(PoolKey k,String qty,String value){money(qty(k),qty);money(sum("SELECT coalesce(sum(amount_local),0) FROM stock_balances WHERE goods_id=?",k.goodsId()),value);}
     private static BigDecimal bd(String n){return new BigDecimal(n).setScale(4);}
     private static void money(BigDecimal n,String expected){assertThat(n).isEqualByComparingTo(expected);}
-    private static void drain(){for(int i=0;i<500;i++){List<PropagationWork> work=values.pendingWork(100);if(work.isEmpty())return;boolean progress=false;for(PropagationWork w:work)progress|=locked(w.lockKey(),()->values.propagate(w.taskId())).applied();assertThat(progress).isTrue();}fail("Propagation did not finish");}
+    private static void drain(){for(int i=0;i<500;i++){List<PropagationWork> work=values.pendingWork(100);if(work.isEmpty()){ return; }boolean progress=false;for(PropagationWork w:work){ progress|=locked(w.lockKey(),()->values.propagate(w.taskId())).applied(); }assertThat(progress).isTrue();}fail("Propagation did not finish");}
     private static void await(CountDownLatch latch){try{if(!latch.await(15,TimeUnit.SECONDS))throw new IllegalStateException("barrier timeout");}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException(e);}}
 
     @org.junit.jupiter.params.ParameterizedTest

@@ -28,19 +28,19 @@ final class GoodsRelatedColumnAdapter implements PlatformColumnResourceAdapter {
     GoodsRelatedColumnAdapter(PlatformColumnResourceAdapter delegate,SecurityContextCurrentUser current,NamedParameterJdbcTemplate jdbc) {
         this.delegate=delegate;this.current=current;this.jdbc=jdbc;
     }
-    public String scope(){return delegate.scope();} public String label(){return delegate.label();}
-    public void requireDefinitionAccess(boolean write){delegate.requireDefinitionAccess(write);}
-    public boolean canWrite(){return delegate.canWrite();} public boolean canViewPrice(){return delegate.canViewPrice();}
-    public boolean canCreate(){return delegate.canCreate();} public boolean preserveValuesOnReset(){return delegate.preserveValuesOnReset();}
-    public List<FactDefinition> facts(){return delegate.facts();}
-    public Map<UUID,RecordAccess> authorize(Set<UUID> ids,boolean write){return delegate.authorize(ids,write);}
-    public List<RelationDefinition> relations(){return canViewMoulds()?RELATIONS:List.of();}
-    public boolean canDefineRelatedColumns(){return canViewMoulds()&&current.get()
+    @Override public String scope(){return delegate.scope();} @Override public String label(){return delegate.label();}
+    @Override public void requireDefinitionAccess(boolean write){delegate.requireDefinitionAccess(write);}
+    @Override public boolean canWrite(){return delegate.canWrite();} @Override public boolean canViewPrice(){return delegate.canViewPrice();}
+    @Override public boolean canCreate(){return delegate.canCreate();} @Override public boolean preserveValuesOnReset(){return delegate.preserveValuesOnReset();}
+    @Override public List<FactDefinition> facts(){return delegate.facts();}
+    @Override public Map<UUID,RecordAccess> authorize(Set<UUID> ids,boolean write){return delegate.authorize(ids,write);}
+    @Override public List<RelationDefinition> relations(){return canViewMoulds()?RELATIONS:List.of();}
+    @Override public boolean canDefineRelatedColumns(){return canViewMoulds()&&current.get()
         .filter(user->!user.isVisitor()&&user.getImpersonatedBy()==null)
         .map(user->user.getPermissions().contains("goods:view")).orElse(false);}
     private boolean canViewMoulds(){return current.get().filter(user->!user.isVisitor()).map(user->user.getAuthorities().stream()
         .anyMatch(authority->"mould:view".equals(authority.getAuthority()))).orElse(false);}
-    public Map<UUID,Map<String,String>> relatedValues(Set<UUID> ids,Set<String> keys) {
+    @Override public Map<UUID,Map<String,String>> relatedValues(Set<UUID> ids,Set<String> keys) {
         if(keys.isEmpty()||ids.isEmpty())return Map.of();
         delegate.requireDefinitionAccess(false);
         if(!canViewMoulds())throw new ApiException(ErrorCode.FORBIDDEN,"没有模具资料查看权限");

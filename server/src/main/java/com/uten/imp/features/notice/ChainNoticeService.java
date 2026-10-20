@@ -1685,7 +1685,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     }
 
     /** A return may remove every pending line; delivery must also retire that old card. */
-    public void notifyProductionDrawInstructionsChanged(UUID stockDocId, UUID confirmationId, boolean reverse) {
+    @Override public void notifyProductionDrawInstructionsChanged(UUID stockDocId, UUID confirmationId, boolean reverse) {
         outbox.publishOnce(EVENT_PRODUCTION_DRAW_PENDING,"STOCK_DOCUMENT",stockDocId,Map.of(),
                 EVENT_PRODUCTION_DRAW_PENDING+":RETURN_INSTRUCTIONS:"+confirmationId+":"+(reverse?"RESTORE":"REDUCE")+":"+stockDocId);
     }

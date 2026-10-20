@@ -37,7 +37,7 @@ class MasterOperationHistoryPostgresTest {
         bean.setJpaVendorAdapter(new HibernateJpaVendorAdapter());bean.setPackagesToScan("com.uten.imp.security");
         bean.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto","none"));bean.afterPropertiesSet();factory=bean.getObject();
     }
-    @AfterAll static void stop() throws Exception {if(factory!=null)factory.close();if(database!=null)database.close();}
+    @AfterAll static void stop() throws Exception {if(factory!=null){ factory.close(); }if(database!=null){ database.close(); }}
     @BeforeEach void prepare() {
         actor=UUID.randomUUID();em=factory.createEntityManager();current=mock(SecurityContextCurrentUser.class);login(Set.of(),true);
         var tx=mock(TxSessionVars.class);doAnswer(call->{set("app.actor_id",actor.toString());set("app.audit_request_path","/api/master/operation-history");return null;}).when(tx).bind();
@@ -47,7 +47,7 @@ class MasterOperationHistoryPostgresTest {
         when(clientPolicy.canWriteOwner(nullable(UUID.class),any())).thenReturn(true);
         service=new MasterOperationHistoryService(em,new ObjectMapper(),current,tx,clientPolicy,new MasterReferenceGuard(em,access),new WarehouseMasterRules(em));
     }
-    @AfterEach void close() {if(em.getTransaction().isActive())em.getTransaction().rollback();em.close();}
+    @AfterEach void close() {if(em.getTransaction().isActive()){ em.getTransaction().rollback(); }em.close();}
 
     @Test void selectedIndependentEditUndoRedoIsDurableAndActorScoped() {
         UUID a=color("original A"),b=color("original B");UUID first=edit(a,"changed A"),second=edit(b,"changed B");
@@ -227,5 +227,5 @@ class MasterOperationHistoryPostgresTest {
     private void provenance(String path,String method) {set("app.actor_id",actor.toString());set("app.audit_request_id",UUID.randomUUID().toString());set("app.audit_request_path",path);set("app.audit_request_method",method);}
     private void set(String key,String value) {em.createNativeQuery("SELECT set_config(:key,:value,true)").setParameter("key",key).setParameter("value",value).getSingleResult();}
     private String value(String sql,UUID id) {return Objects.toString(em.createNativeQuery(sql).setParameter("id",id).getSingleResult(),null);}
-    private <T>T inTx(Supplier<T> action) {em.getTransaction().begin();try {T result=action.get();em.getTransaction().commit();return result;}catch(RuntimeException|Error failure){if(em.getTransaction().isActive())em.getTransaction().rollback();throw failure;}}
+    private <T>T inTx(Supplier<T> action) {em.getTransaction().begin();try {T result=action.get();em.getTransaction().commit();return result;}catch(RuntimeException|Error failure){if(em.getTransaction().isActive()){ em.getTransaction().rollback(); }throw failure;}}
 }

@@ -212,7 +212,7 @@ class StockDraftReviewEndToEndTest {
  private UUID movement(StockDocDetail doc,int direction){return db.queryForObject("SELECT id FROM stock_movements WHERE source_doc_id=? AND direction=?",UUID.class,doc.getId(),direction);}
  private FullChainEndToEndTest.World world(){var w=harness.seedWorld("stock-review-"+UUID.randomUUID());harness.loginAs(w.superAdminUserId());return w;}
  private UUID reviewer(FullChainEndToEndTest.World w,boolean finance,boolean edit){
-  List<String> permissions=new ArrayList<>(List.of("stock_doc:view","stock_doc:approve"));if(finance)permissions.add("stock:count:finance_review");if(edit)permissions.add("stock_doc:edit");
+  List<String> permissions=new ArrayList<>(List.of("stock_doc:view","stock_doc:approve"));if(finance){ permissions.add("stock:count:finance_review"); }if(edit){ permissions.add("stock_doc:edit"); }
   UUID user=harness.createUserWithPerms(w,"stock-reviewer-"+UUID.randomUUID(),permissions.toArray(String[]::new));
   db.update("INSERT INTO user_data_scopes(user_id,scope,owner_employee_id) VALUES(?,'stock_doc',?)",user,w.employeeId());return user;
  }
@@ -231,7 +231,7 @@ class StockDraftReviewEndToEndTest {
   request.setToWarehouseId(original.getToWarehouseId());request.setSupplierId(original.getSupplierId());request.setClientId(original.getClientId());request.setWorkerId(original.getWorkerId());
   request.setDepartmentId(original.getDepartmentId());request.setAssTeam(original.getAssTeam());request.setPlanNo(original.getPlanNo());request.setRemark("审核实物核改");
   var source=original.getItems().getFirst();var line=new StockDocItemLine();line.setGoodsId(source.getGoodsId());line.setColorId(source.getColorId());line.setUnitId(source.getUnitId());line.setUnitRate(source.getUnitRate());
-  line.setQty(new BigDecimal(quantity));if(count!=null)line.setCountQty(new BigDecimal(count));request.setItems(List.of(line));return request;
+  line.setQty(new BigDecimal(quantity));if(count!=null){ line.setCountQty(new BigDecimal(count)); }request.setItems(List.of(line));return request;
  }
  private void conflict(org.assertj.core.api.ThrowableAssert.ThrowingCallable command){assertThatThrownBy(command).isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT));}
  private BigDecimal number(String sql,Object...args){return db.queryForObject(sql,BigDecimal.class,args);}

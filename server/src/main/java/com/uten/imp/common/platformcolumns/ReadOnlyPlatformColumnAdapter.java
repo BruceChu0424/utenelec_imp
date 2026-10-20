@@ -22,15 +22,15 @@ public final class ReadOnlyPlatformColumnAdapter implements PlatformColumnResour
         this.scope=scope;this.label=label;this.current=current;this.json=json;this.readers=Set.copyOf(readers);
         this.priceReaders=Set.copyOf(priceReaders);this.detail=detail;this.facts=List.copyOf(facts);
     }
-    public String scope(){return scope;}public String label(){return label;}
-    public boolean canWrite(){return false;}public boolean canViewPrice(){return hasAny(priceReaders);}
-    public boolean personalDefinitions(){return true;}
-    public List<FactDefinition> facts(){return facts;}
-    public void requireDefinitionAccess(boolean write) {
+    @Override public String scope(){return scope;}@Override public String label(){return label;}
+    @Override public boolean canWrite(){return false;}@Override public boolean canViewPrice(){return hasAny(priceReaders);}
+    @Override public boolean personalDefinitions(){return true;}
+    @Override public List<FactDefinition> facts(){return facts;}
+    @Override public void requireDefinitionAccess(boolean write) {
         if(!hasAny(readers)||(write&&current.get().map(u->u.getImpersonatedBy()!=null).orElse(true)))throw new ApiException(ErrorCode.FORBIDDEN);
     }
-    public void requireDocumentSaveAccess(boolean create){throw new ApiException(ErrorCode.FORBIDDEN,"历史记录只允许计算展示");}
-    public Map<UUID,RecordAccess> authorize(Set<UUID> ids,boolean write) {
+    @Override public void requireDocumentSaveAccess(boolean create){throw new ApiException(ErrorCode.FORBIDDEN,"历史记录只允许计算展示");}
+    @Override public Map<UUID,RecordAccess> authorize(Set<UUID> ids,boolean write) {
         requireDefinitionAccess(false);if(write)throw new ApiException(ErrorCode.FORBIDDEN,"历史记录只允许计算展示");
         Map<UUID,RecordAccess> result=new LinkedHashMap<>();
         for(UUID id:ids) {

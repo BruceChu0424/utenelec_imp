@@ -260,20 +260,20 @@ class MaterialAnalysisRouteBatchWriterPostgresTest {
     /** Only the persistence adapter is replaced; the real writer emits and executes every SQL statement. */
     private MaterialAnalysisRouteBatchWriter writer(boolean legacy) {
         EntityManager manager=(EntityManager)Proxy.newProxyInstance(EntityManager.class.getClassLoader(),new Class<?>[]{EntityManager.class},(proxy,method,args)->{
-            if(!method.getName().equals("createNativeQuery"))throw new UnsupportedOperationException(method.getName());
+            if(!method.getName().equals("createNativeQuery")){ throw new UnsupportedOperationException(method.getName()); }
             String supplied=(String)args[0];String sql=legacy&&supplied.contains("conflicts AS")?LEGACY_GUARD:
                     legacy&&supplied.contains("changed AS MATERIALIZED")?LEGACY_UPDATE:supplied;
             Map<String,Object> parameters=new LinkedHashMap<>();
             return Proxy.newProxyInstance(Query.class.getClassLoader(),new Class<?>[]{Query.class},(query,operation,values)->{
                 if(operation.getName().equals("setParameter")){parameters.put((String)values[0],values[1]);return query;}
                 statements.add(new Statement(sql,new LinkedHashMap<>(parameters)));
-                if(operation.getName().equals("executeUpdate"))return named.update(sql,parameters);
+                if(operation.getName().equals("executeUpdate")){ return named.update(sql,parameters); }
                 var rows=named.query(sql,parameters,(rs,index)->{
-                    int columns=rs.getMetaData().getColumnCount();if(columns==1)return rs.getObject(1);
-                    Object[] row=new Object[columns];for(int col=0;col<columns;col++)row[col]=rs.getObject(col+1);return row;
+                    int columns=rs.getMetaData().getColumnCount();if(columns==1){ return rs.getObject(1); }
+                    Object[] row=new Object[columns];for(int col=0;col<columns;col++){ row[col]=rs.getObject(col+1); }return row;
                 });
-                if(operation.getName().equals("getResultList"))return rows;
-                if(operation.getName().equals("getSingleResult"))return rows.getFirst();
+                if(operation.getName().equals("getResultList")){ return rows; }
+                if(operation.getName().equals("getSingleResult")){ return rows.getFirst(); }
                 throw new UnsupportedOperationException(operation.getName());
             });
         });

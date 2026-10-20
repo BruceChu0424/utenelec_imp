@@ -41,7 +41,7 @@ class LifecyclePermanentHistoryPostgresTest {
         blessings=repositories.getRepository(NoticeBlessingRepository.class);sms=repositories.getRepository(VisitorSmsCodeRepository.class);
         tx=new TransactionTemplate(new JpaTransactionManager(factory));
     }
-    @AfterAll static void close() throws Exception {if(factory!=null)factory.close();if(database!=null)database.close();}
+    @AfterAll static void close() throws Exception {if(factory!=null){ factory.close(); }if(database!=null){ database.close(); }}
     @BeforeEach void staff() {
         actor=UUID.randomUUID();employee=UUID.randomUUID();
         jdbc.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) SELECT ?,?,'保全测试','其他',id,CURRENT_DATE,'active','regular' FROM departments WHERE code='DEPT_FIN'",employee,"LIFE-"+employee);

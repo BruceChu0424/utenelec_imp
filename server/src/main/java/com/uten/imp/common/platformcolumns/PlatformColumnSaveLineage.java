@@ -29,7 +29,7 @@ public final class PlatformColumnSaveLineage {
         private final Map<UUID,List<UUID>> targets=new HashMap<>();
         private Context(Context previous,Set<UUID> tokens){this.previous=previous;this.tokens=tokens;}
         List<UUID> targets(UUID token){return List.copyOf(targets.getOrDefault(token,List.of()));}
-        public void close(){if(previous==null)CURRENT.remove();else CURRENT.set(previous);}
+        @Override public void close(){if(previous==null)CURRENT.remove();else CURRENT.set(previous);}
     }
     private static ApiException conflict(String message){return new ApiException(ErrorCode.CONFLICT,message);}
 }

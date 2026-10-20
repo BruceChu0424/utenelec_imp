@@ -150,8 +150,8 @@ class ActualOutputSupplementScopePostgresTest {
                 parameters.put(bind.getArgument(0),bind.getArgument(1));return query;
             });
             org.mockito.Mockito.when(query.getResultList()).thenAnswer(read->jdbc.query(statement,parameters,(row,index)->{
-                int columns=row.getMetaData().getColumnCount();if(columns==1)return row.getObject(1);
-                Object[] values=new Object[columns];for(int i=0;i<columns;i++)values[i]=row.getObject(i+1);return values;
+                int columns=row.getMetaData().getColumnCount();if(columns==1){ return row.getObject(1); }
+                Object[] values=new Object[columns];for(int i=0;i<columns;i++){ values[i]=row.getObject(i+1); }return values;
             }));return query;
         });
         var service=new com.uten.imp.features.production.plan.ProductionPlanMutationFootprintService(em,

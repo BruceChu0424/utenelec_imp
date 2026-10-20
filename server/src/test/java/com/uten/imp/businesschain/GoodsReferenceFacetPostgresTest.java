@@ -104,7 +104,7 @@ class GoodsReferenceFacetPostgresTest extends AuthSessionPostgresTestSupport {
         var result = mvc.perform(request.header("Authorization", "Bearer "+token)).andReturn();
         assertEquals(200, result.getResponse().getStatus(), body(result)); return json(result);
     }
-    private static JsonNode findRow(JsonNode page, UUID id) { for (JsonNode row : page.path("items")) if (id.toString().equals(row.path("id").asText())) return row; throw new AssertionError(id); }
+    private static JsonNode findRow(JsonNode page, UUID id) { for (JsonNode row : page.path("items")) { if (id.toString().equals(row.path("id").asText())) { return row; } } throw new AssertionError(id); }
     private static Set<String> ids(JsonNode page) { Set<String> result = new HashSet<>(); page.path("items").forEach(row -> result.add(row.path("id").asText())); return result; }
     private static Set<String> values(JsonNode rows) { Set<String> result = new HashSet<>(); rows.forEach(row -> result.add(row.path("value").asText())); return result; }
 }

@@ -39,7 +39,7 @@ public final class MasterPlatformColumnAdapter implements PlatformColumnResource
     @Override public String scope() { return scope; }
     @Override public String label() { return label; }
     @Override public List<FactDefinition> facts() { return facts; }
-    public boolean preserveValuesOnReset() { return true; }
+    @Override public boolean preserveValuesOnReset() { return true; }
     @Override public boolean canWrite() { return has(reader) && has(writer) && current.get().orElseThrow().getImpersonatedBy() == null; }
     @Override public boolean canViewPrice() { return priceReaders.stream().anyMatch(this::has); }
     @Override public void requireDefinitionAccess(boolean write) {

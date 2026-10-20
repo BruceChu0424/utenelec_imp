@@ -58,7 +58,7 @@ class FinanceDepartmentReferencePostgresTest {
     @TestConfiguration static class ProbeConfiguration {
         @Bean HibernatePropertiesCustomizer financeReferenceSqlProbe() {
             return properties -> properties.put("hibernate.session_factory.statement_inspector", (StatementInspector) sql -> {
-                var capture=SQL.get(); if(capture!=null) capture.add(sql); return sql;
+                var capture=SQL.get(); if(capture!=null) { capture.add(sql); } return sql;
             });
         }
     }

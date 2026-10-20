@@ -84,6 +84,6 @@ class FinancialBookAllocationPostgresTest {
     }
     private static void assertAmount(String expected,String actual){assertEquals(0,new BigDecimal(expected).compareTo(new BigDecimal(actual)),
             ()->"expected exact amount "+expected+" but got "+actual);}
-    private static void execute(Connection c,String sql,Object...args)throws SQLException{try(var s=c.prepareStatement(sql)){for(int i=0;i<args.length;i++)s.setObject(i+1,args[i]);s.execute();}}
-    private static String value(Connection c,String sql,Object...args)throws SQLException{try(var s=c.prepareStatement(sql)){for(int i=0;i<args.length;i++)s.setObject(i+1,args[i]);try(var r=s.executeQuery()){return r.next()?r.getString(1):null;}}}
+    private static void execute(Connection c,String sql,Object...args)throws SQLException{try(var s=c.prepareStatement(sql)){for(int i=0;i<args.length;i++){ s.setObject(i+1,args[i]); }s.execute();}}
+    private static String value(Connection c,String sql,Object...args)throws SQLException{try(var s=c.prepareStatement(sql)){for(int i=0;i<args.length;i++){ s.setObject(i+1,args[i]); }try(var r=s.executeQuery()){return r.next()?r.getString(1):null;}}}
 }

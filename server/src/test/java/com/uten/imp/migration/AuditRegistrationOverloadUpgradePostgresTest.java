@@ -179,5 +179,5 @@ class AuditRegistrationOverloadUpgradePostgresTest {
     private static String auditTriggers(Connection connection, String table) throws SQLException { return scalar(connection, "SELECT string_agg(pg_get_triggerdef(oid)||':'||tgenabled::text,E'\\n' ORDER BY tgname) FROM pg_trigger WHERE tgrelid='" + table + "'::regclass AND tgfoid='fn_audit()'::regprocedure"); }
     private static void execute(Connection connection, String sql) throws SQLException { try (Statement statement = connection.createStatement()) { statement.execute(sql); } }
     private static String scalar(Connection connection, String sql) throws SQLException { try (Statement statement = connection.createStatement(); var rows = statement.executeQuery(sql)) { assertTrue(rows.next()); return rows.getString(1); } }
-    private static String sqlState(Throwable failure) { for (Throwable current = failure; current != null; current = current.getCause()) if (current instanceof SQLException sql) return sql.getSQLState(); return null; }
+    private static String sqlState(Throwable failure) { for (Throwable current = failure; current != null; current = current.getCause()) { if (current instanceof SQLException sql) { return sql.getSQLState(); } } return null; }
 }

@@ -83,7 +83,7 @@ class TxSessionVarsTransactionBindingPostgresTest {
         manager.addListener(new TransactionAuditActorBinder(beans.getBeanProvider(TxSessionVars.class)));
         transactions = new TransactionTemplate(manager);
     }
-    @AfterAll static void stop() { if (factory != null) factory.close(); POSTGRES.stop(); }
+    @AfterAll static void stop() { if (factory != null) { factory.close(); } POSTGRES.stop(); }
     @BeforeEach void reset() { SET_CONFIG.set(0); PRINCIPAL.set(null); }
 
     @Test void writeTransactionBindsOnceAtBeginAndRebindsOnlyWhenTheActorChanges() {

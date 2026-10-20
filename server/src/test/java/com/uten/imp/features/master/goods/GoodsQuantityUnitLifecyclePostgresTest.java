@@ -88,7 +88,7 @@ class GoodsQuantityUnitLifecyclePostgresTest {
         emf = factory.getObject();
     }
 
-    @AfterAll static void close() { if (emf != null) emf.close(); DB.stop(); }
+    @AfterAll static void close() { if (emf != null) { emf.close(); } DB.stop(); }
 
     @Test void forwardBackfillIncludesZeroBalancesDeletedHistoryAndBothBomEnds() {
         for (UUID id : List.of(HISTORICAL, LEGACY, BOM_PARENT, BOM_CHILD)) assertThat(locked(id)).isTrue();

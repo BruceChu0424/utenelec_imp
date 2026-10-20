@@ -329,5 +329,5 @@ class DailyReportApprovalV2PostgresTest {
         request.with(authentication(actor));if(body!=null)request.contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(body));
         MvcResult result=http.perform(request).andReturn();assertEquals(expected,result.getResponse().getStatus(),result.getResponse().getContentAsString());return result;
     }
-    private static void update(Connection c,String sql,Object...args)throws Exception {try(var statement=c.prepareStatement(sql)){for(int i=0;i<args.length;i++)statement.setObject(i+1,args[i]);statement.executeUpdate();}}
+    private static void update(Connection c,String sql,Object...args)throws Exception {try(var statement=c.prepareStatement(sql)){for(int i=0;i<args.length;i++){ statement.setObject(i+1,args[i]); }statement.executeUpdate();}}
 }

@@ -88,7 +88,7 @@ class InventoryValuationCorePostgresTest {
         service=new InventoryValuationService(named,mutex);
         openings=new InventoryOpeningService(named,mutex);
     }
-    @AfterAll static void stop(){if(emf!=null)emf.close();DB.stop();}
+    @AfterAll static void stop(){if(emf!=null){ emf.close(); }DB.stop();}
 
     @Test void actualAverageMergeAndFullIssueLeaveNoResidualValue(){
         PoolKey key=key();receive(key,"10","100",true);receive(key,"10","100",true);
@@ -554,7 +554,7 @@ class InventoryValuationCorePostgresTest {
     private static void assertMoney(BigDecimal value,String expected){assertThat(value).isEqualByComparingTo(expected);}
     private static long count(String table){return jdbc.queryForObject("SELECT count(*) FROM "+table,Long.class);}
     private static void assertJobClosed(UUID event){assertThat(jdbc.queryForObject("SELECT status FROM stock_value_jobs WHERE event_id=?",String.class,event)).isEqualTo("APPLIED");assertMoney(jdbc.queryForObject("SELECT clearing_remaining_local FROM stock_value_jobs WHERE event_id=?",BigDecimal.class,event),"0");}
-    private static void drain(){for(int round=0;round<1000;round++){List<PropagationWork> work=service.pendingWork(100);if(work.isEmpty())return;boolean progress=false;for(PropagationWork item:work)progress|=locked(item.lockKey(),()->service.propagate(item.taskId())).applied();if(!progress)fail("Propagation made no progress");}fail("Propagation did not finish within bounded test rounds");}
+    private static void drain(){for(int round=0;round<1000;round++){List<PropagationWork> work=service.pendingWork(100);if(work.isEmpty()){ return; }boolean progress=false;for(PropagationWork item:work){ progress|=locked(item.lockKey(),()->service.propagate(item.taskId())).applied(); }if(!progress){ fail("Propagation made no progress"); }}fail("Propagation did not finish within bounded test rounds");}
     private static void await(CountDownLatch latch){try{if(!latch.await(15,TimeUnit.SECONDS))throw new IllegalStateException("barrier timed out");}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException(e);}}
 
     private static class CountingJdbc extends NamedParameterJdbcTemplate {

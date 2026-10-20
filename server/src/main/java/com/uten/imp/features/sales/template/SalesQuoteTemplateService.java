@@ -321,5 +321,5 @@ public class SalesQuoteTemplateService {
         catch (IllegalArgumentException invalid) { throw invalidProjection("扩展列编号无效"); }
     }
     private static ApiException invalidProjection(String text) { return new ApiException(ErrorCode.VALIDATION_FAILED, text); }
-    private static String first(String... values) { for (String value:values) if (value!=null && !value.isBlank()) return value; return ""; }
+    private static String first(String... values) { for (String value:values) { if (value!=null && !value.isBlank()) { return value; } } return ""; }
 }

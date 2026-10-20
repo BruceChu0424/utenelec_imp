@@ -39,7 +39,7 @@ class AiInputOriginalPostgresTest {
     private UUID actor,employee;private final byte[] input="model,qty,price\r\nMODEL,1,123.45\r\n".getBytes(StandardCharsets.UTF_8);
     @AfterAll static void close() throws Exception {if(database!=null)database.close();}
     @BeforeEach void setup() throws Exception {
-        if(database!=null)database.close();database=MigratedSchemaBaseline.openDatabase("ai_original_evidence");
+        if(database!=null){ database.close(); }database=MigratedSchemaBaseline.openDatabase("ai_original_evidence");
         var source=new DriverManagerDataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword());
         jdbc=new JdbcTemplate(source);named=spy(new NamedParameterJdbcTemplate(source));tx=new TransactionTemplate(new DataSourceTransactionManager(source));
         employee=UUID.randomUUID();actor=UUID.randomUUID();

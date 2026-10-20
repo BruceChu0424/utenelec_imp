@@ -94,9 +94,9 @@ class ArApDualCurrencySettlementPostgresTest {
     }
     private static Connection connect(PostgreSQLContainer<?> database)throws SQLException { return DriverManager.getConnection(database.getJdbcUrl(),database.getUsername(),database.getPassword()); }
     private static void execute(Connection connection,String sql,Object...args)throws SQLException {
-        try(var statement=connection.prepareStatement(sql)){for(int i=0;i<args.length;i++) statement.setObject(i+1,args[i]);statement.execute();}
+        try(var statement=connection.prepareStatement(sql)){for(int i=0;i<args.length;i++) { statement.setObject(i+1,args[i]); }statement.execute();}
     }
     private static String value(Connection connection,String sql,Object...args)throws SQLException {
-        try(var statement=connection.prepareStatement(sql)){for(int i=0;i<args.length;i++) statement.setObject(i+1,args[i]);try(var result=statement.executeQuery()){return result.next()?result.getString(1):null;}}
+        try(var statement=connection.prepareStatement(sql)){for(int i=0;i<args.length;i++) { statement.setObject(i+1,args[i]); }try(var result=statement.executeQuery()){return result.next()?result.getString(1):null;}}
     }
 }

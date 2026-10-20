@@ -239,8 +239,8 @@ class WarehouseInsightPostgresTest {
             java.util.Map<String,Object> parameters=new java.util.LinkedHashMap<>();
             when(query.setParameter(org.mockito.ArgumentMatchers.anyString(),any())).thenAnswer(p->{parameters.put(p.getArgument(0),p.getArgument(1));return query;});
             when(query.getResultList()).thenAnswer(p->jdbc.query(sql,parameters,(rs,index)->{
-                int count=rs.getMetaData().getColumnCount();if(count==1)return rs.getObject(1);
-                Object[] row=new Object[count];for(int i=0;i<count;i++)row[i]=rs.getObject(i+1);return row;
+                int count=rs.getMetaData().getColumnCount();if(count==1){ return rs.getObject(1); }
+                Object[] row=new Object[count];for(int i=0;i<count;i++){ row[i]=rs.getObject(i+1); }return row;
             }));
             when(query.getSingleResult()).thenAnswer(p->jdbc.queryForObject(sql,parameters,Long.class));return query;
         });

@@ -73,7 +73,7 @@ class BaseEntityPersistablePostgresTest {
         repository = new JpaRepositoryFactory(em).getRepository(PersistableProbeRepository.class);
         transactions = new TransactionTemplate(new JpaTransactionManager(factory));
     }
-    @AfterAll static void stop() { if (factory != null) factory.close(); POSTGRES.stop(); }
+    @AfterAll static void stop() { if (factory != null) { factory.close(); } POSTGRES.stop(); }
     @BeforeEach void reset() { STATEMENTS.clear(); }
 
     @Test void newEntitySaveIsOneInsertWithoutPrimaryKeyLookup() {

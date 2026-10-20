@@ -255,7 +255,7 @@ class NonFinanceUnapprovalEligibilityEndToEndTest {
  }
 
  private FullChainEndToEndTest.World world(String label){var w=harness.seedWorld(label+"-"+UUID.randomUUID());harness.loginAs(w.superAdminUserId());return w;}
- private Map<String,Long> factsCounts(){Map<String,Long> r=new TreeMap<>();for(String table:List.of("stock_movements","stock_value_events","stock_value_nodes","stock_value_edges","stock_value_postings","stock_value_position_transfers","document_unapprovals"))r.put(table,db.queryForObject("SELECT COUNT(*) FROM "+table,Long.class));return r;}
+ private Map<String,Long> factsCounts(){Map<String,Long> r=new TreeMap<>();for(String table:List.of("stock_movements","stock_value_events","stock_value_nodes","stock_value_edges","stock_value_postings","stock_value_position_transfers","document_unapprovals")){ r.put(table,db.queryForObject("SELECT COUNT(*) FROM "+table,Long.class)); }return r;}
  private static void ready(Eligibility value){assertThat(value.eligible()).isTrue();assertThat(value.reasons()).isEmpty();assertThat(value.factsSnapshot()).matches("[0-9a-f]{64}");}
  private static void blocked(Eligibility value,String phrase){assertThat(value.eligible()).isFalse();assertThat(value.reasons()).anySatisfy(r->assertThat(r.message()).contains(phrase));}
  @SuppressWarnings("unchecked")private static <T>T call(Object target,String method,Object...args){return (T)ReflectionTestUtils.invokeMethod(target,method,args);}

@@ -134,6 +134,6 @@ class FinancialActualBankReceiptPostgresTest {
     }
     static void assertRejected(Connection c,String sql,Object...args)throws Exception {assertThrows(SQLException.class,()->execute(c,sql,args));}
     static void assertAmount(String expected,String actual){assertNotNull(actual);assertEquals(0,new BigDecimal(expected).compareTo(new BigDecimal(actual)));}
-    static void execute(Connection c,String sql,Object...args)throws SQLException{try(var s=c.prepareStatement(sql)){for(int i=0;i<args.length;i++)s.setObject(i+1,args[i]);s.execute();}}
-    static String value(Connection c,String sql,Object...args)throws SQLException{try(var s=c.prepareStatement(sql)){for(int i=0;i<args.length;i++)s.setObject(i+1,args[i]);try(var r=s.executeQuery()){return r.next()?r.getString(1):null;}}}
+    static void execute(Connection c,String sql,Object...args)throws SQLException{try(var s=c.prepareStatement(sql)){for(int i=0;i<args.length;i++){ s.setObject(i+1,args[i]); }s.execute();}}
+    static String value(Connection c,String sql,Object...args)throws SQLException{try(var s=c.prepareStatement(sql)){for(int i=0;i<args.length;i++){ s.setObject(i+1,args[i]); }try(var r=s.executeQuery()){return r.next()?r.getString(1):null;}}}
 }

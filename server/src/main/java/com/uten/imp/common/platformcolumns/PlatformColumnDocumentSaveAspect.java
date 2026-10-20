@@ -148,7 +148,7 @@ public class PlatformColumnDocumentSaveAspect {
         return Collections.unmodifiableMap(values);
     }
     private static String quantityField(Object row,String[] quantityFields) {
-        for(String field:quantityFields)if(hasProperty(row,field)&&value(row,field)!=null)return field;return null;
+        for(String field:quantityFields){ if(hasProperty(row,field)&&value(row,field)!=null){ return field; } }return null;
     }
     private static List<?> items(Object object) {Object rows=value(object,"items");if(!(rows instanceof List<?> list))throw conflict("保存桥仅支持显式的一对一items明细结构");return list;}
     private static boolean hasProperty(Object object,String key) {

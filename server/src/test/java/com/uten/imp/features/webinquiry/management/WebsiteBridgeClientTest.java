@@ -52,7 +52,7 @@ class WebsiteBridgeClientTest {
     @Test void cancelsOversizedBodyWithoutRetainingIt(){
         var body=new WebsiteBridgeClient.BoundedBody(8);
         AtomicBoolean canceled=new AtomicBoolean();
-        body.onSubscribe(new Flow.Subscription(){public void request(long n){}public void cancel(){canceled.set(true);}});
+        body.onSubscribe(new Flow.Subscription(){@Override public void request(long n){}@Override public void cancel(){canceled.set(true);}});
         body.onNext(List.of(ByteBuffer.wrap(new byte[9])));
         assertThat(canceled).isTrue();
         assertThat(body.getBody().toCompletableFuture()).isCompletedExceptionally();

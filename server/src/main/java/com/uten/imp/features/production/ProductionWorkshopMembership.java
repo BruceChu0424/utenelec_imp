@@ -35,7 +35,7 @@ public class ProductionWorkshopMembership implements ActiveOperatorPort {
     private final SecurityContextCurrentUser currentUser;
 
     /** An owner/data-scope grant never reactivates an offboarded workshop operator. */
-    @Transactional(readOnly = true)
+    @Override @Transactional(readOnly = true)
     public boolean isActiveOperator() {
         if (isSuperAdmin()) return true;
         var actor = currentUser.get().orElse(null);
@@ -50,7 +50,7 @@ public class ProductionWorkshopMembership implements ActiveOperatorPort {
                 .setParameter("employeeId", actor.getEmployeeId()).getSingleResult());
     }
 
-    @Transactional(readOnly = true)
+    @Override @Transactional(readOnly = true)
     public void requireActiveOperator() {
         if (!isActiveOperator()) {
             throw new ApiException(ErrorCode.FORBIDDEN, "车间操作人员须为有效在职员工，历史计划归属不能恢复离职人员的操作权限");

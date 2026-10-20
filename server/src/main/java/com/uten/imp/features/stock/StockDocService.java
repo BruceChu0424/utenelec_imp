@@ -809,7 +809,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
      * 授权在登记那一刻由 production_finished_in:before_inspection 完成，
      * 更强的不变量由 V597 的登记守卫与点收来源守卫在数据库层兜底。
      */
-    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    @Override @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public void confirmPreStockedFinishedInbound(UUID id, String idempotencyKey) {
         confirmPreStockedFinishedInbound(id, idempotencyKey, null);
     }

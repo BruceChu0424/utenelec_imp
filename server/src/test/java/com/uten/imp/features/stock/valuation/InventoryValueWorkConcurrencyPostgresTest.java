@@ -69,7 +69,7 @@ class InventoryValueWorkConcurrencyPostgresTest {
         jdbc.execute("CREATE TABLE stock_value_production_cost_tasks(id uuid,status text)");
         jdbc.execute("CREATE TABLE applied_refresh(scope uuid,event uuid,actor uuid,kind text,version bigint,PRIMARY KEY(scope,event,kind))");
     }
-    @AfterAll static void stop() { if(factory!=null)factory.close();PG.stop(); }
+    @AfterAll static void stop() { if(factory!=null){ factory.close(); }PG.stop(); }
     @BeforeEach void setup() {
         jdbc.execute("TRUNCATE stock_value_pools,stock_value_production_cost_objects,stock_value_nodes,stock_value_production_cost_inputs,stock_value_production_cost_outputs,subcontract_receipt_material_consumptions,subcontract_material_issue_items,stock_value_production_cost_dirty,stock_value_events,stock_value_jobs,stock_value_tasks,stock_value_production_cost_tasks,applied_refresh");
         mutex=spy(new InventoryMutationLock(SharedEntityManagerCreator.createSharedEntityManager(factory)));
@@ -224,7 +224,7 @@ class InventoryValueWorkConcurrencyPostgresTest {
 
     private CountDownLatch signalWorkerLock() {
         CountDownLatch attempted=new CountDownLatch(1);AtomicBoolean first=new AtomicBoolean();
-        doAnswer(i->{if(Thread.currentThread().getName().equals("blocked-value-worker")&&first.compareAndSet(false,true))attempted.countDown();return i.callRealMethod();})
+        doAnswer(i->{if(Thread.currentThread().getName().equals("blocked-value-worker")&&first.compareAndSet(false,true)){ attempted.countDown(); }return i.callRealMethod();})
                 .when(mutex).lockAll(anyCollection());
         return attempted;
     }

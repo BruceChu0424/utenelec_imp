@@ -49,7 +49,7 @@ class FinanceNativeSearchPostgresTest {
             when(q.setParameter(anyString(),any())).thenAnswer(binding->{values.put(binding.getArgument(0),binding.getArgument(1));return q;});
             when(q.getSingleResult()).thenAnswer(ignored->db.queryForObject(sql,values,Long.class));
             when(q.getResultList()).thenAnswer(ignored->db.query(sql,values,(rs,index)->{
-                Object[] row=new Object[rs.getMetaData().getColumnCount()];for(int i=0;i<row.length;i++)row[i]=rs.getObject(i+1);return row;
+                Object[] row=new Object[rs.getMetaData().getColumnCount()];for(int i=0;i<row.length;i++){ row[i]=rs.getObject(i+1); }return row;
             }));return q;
         });return em;
     }

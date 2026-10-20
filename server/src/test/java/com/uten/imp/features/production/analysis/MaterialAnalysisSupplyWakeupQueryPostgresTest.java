@@ -85,7 +85,7 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
         try(var connection=connection()){connection.setAutoCommit(false);actor=ProcurementReceiptFixtureSupport.createActor(connection);connection.commit();}
         maker=db.queryForObject("SELECT employee_id FROM users WHERE id=?",UUID.class,actor);
     }
-    @AfterAll static void stop(){if(em!=null)em.close();if(factory!=null)factory.close();DB.stop();}
+    @AfterAll static void stop(){if(em!=null){ em.close(); }if(factory!=null){ factory.close(); }DB.stop();}
 
     @Test void purchaseAndSubcontractKeepApprovalReverseAndLegacyDimensions() throws Exception {
         for(String type:List.of("PURCHASE","SUBCONTRACT")){
@@ -331,7 +331,7 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
     private static UUID goods(){UUID id=UUID.randomUUID();db.update("INSERT INTO goods(id,code,name,unit_id,code_sequence) VALUES (?,?,'wakeup goods',?,(SELECT coalesce(max(code_sequence),0)+1 FROM goods))",id,"WU-G-"+id,unit);return id;}
     private static UUID warehouse(UUID parent){UUID id=UUID.randomUUID();db.update("INSERT INTO warehouses(id,code,name,parent_id,status) VALUES (?,?,'wakeup warehouse',?,'使用')",id,"WU-W-"+id,parent);return id;}
     private static Connection connection() throws Exception{return DriverManager.getConnection(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword());}
-    private static void execute(Connection connection,String sql,Object...params) throws Exception{try(var query=connection.prepareStatement(sql)){for(int i=0;i<params.length;i++)query.setObject(i+1,params[i]);query.execute();}}
+    private static void execute(Connection connection,String sql,Object...params) throws Exception{try(var query=connection.prepareStatement(sql)){for(int i=0;i<params.length;i++){ query.setObject(i+1,params[i]); }query.execute();}}
     private record Receipt(UUID id,UUID inspection){}
     private record Scope(UUID main,UUID leaf,UUID goods,UUID blue,UUID colored,List<UUID> expected){}
 }

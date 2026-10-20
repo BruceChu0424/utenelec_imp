@@ -31,9 +31,9 @@ import static org.mockito.Mockito.when;
 class StockServiceTest {
     private static StockBalanceRepository.PhysicalSnapshot snapshot(StockBalance balance){
         return new StockBalanceRepository.PhysicalSnapshot(){
-            public BigDecimal getQty(){return balance.getQty();}
-            public BigDecimal getWeight(){return balance.getWeight();}
-            public Boolean getWeightEstimated(){return balance.isWeightEstimated();}
+            @Override public BigDecimal getQty(){return balance.getQty();}
+            @Override public BigDecimal getWeight(){return balance.getWeight();}
+            @Override public Boolean getWeightEstimated(){return balance.isWeightEstimated();}
         };
     }
 

@@ -99,7 +99,7 @@ public class TaskClaimService implements TaskClaimMutationGuardPort {
     }
 
     /** 释放（本人或持 manage 权限者；无有效认领时幂等成功）。 */
-    @Transactional
+    @Override @Transactional
     public void release(String targetType, String targetKey) {
         release(targetType,targetKey,null);
     }
@@ -233,7 +233,7 @@ public class TaskClaimService implements TaskClaimMutationGuardPort {
     }
 
     /** The caller's business transaction must own a live lease before changing financial facts. */
-    @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    @Override @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
     public void requireActiveClaimByMe(String targetType,String targetKey,UUID expectedClaimId) {
         requireActiveClaimsByMe(targetType,List.of(new ClaimExpectation(targetKey,expectedClaimId)));
     }
@@ -244,7 +244,7 @@ public class TaskClaimService implements TaskClaimMutationGuardPort {
     }
 
     /** Lock every header, then every case, then claims in stable order; one failure aborts the caller's whole batch. */
-    @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    @Override @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
     public void requireActiveClaimsByMe(String targetType,List<ClaimExpectation> expectations) {
         if (expectations==null || expectations.isEmpty()) return;
         TaskClaimPolicy policy=TaskClaimPolicy.of(targetType);
@@ -292,7 +292,7 @@ public class TaskClaimService implements TaskClaimMutationGuardPort {
     }
 
     /** Commercial writes are blocked even when the salesperson also owns the review claim. */
-    @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    @Override @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
     public void requireNoActiveClaim(String targetType, String targetKey) {
         claimRepo.findUnreleasedForUpdate(targetType, targetKey)
                 .filter(TaskClaim::isActive)

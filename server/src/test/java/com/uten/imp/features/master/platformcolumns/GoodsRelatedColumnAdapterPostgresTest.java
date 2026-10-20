@@ -4,6 +4,7 @@ import com.uten.imp.common.platformcolumns.PlatformColumnResourceAdapter;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.support.MigratedProjectionSchema;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -24,9 +25,9 @@ class GoodsRelatedColumnAdapterPostgresTest {
     @Test void followsUuidRelationBatchesMissingRelationsAndNeverGuessesFromMatchingCodes() {
         var source=new DriverManagerDataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword());
         var db=new JdbcTemplate(source);
-        // Domain adapter SQL fixture; full migration and definition ownership are tested by PlatformColumnServicePostgresTest.
-        db.execute("CREATE TABLE moulds(id uuid PRIMARY KEY,legacy_id integer UNIQUE,name text,code text,qty text,tqty numeric(18,4),manufacturer text,place text,mstatus text,is_deleted boolean DEFAULT false)");
-        db.execute("CREATE TABLE goods(id uuid PRIMARY KEY,mould_id uuid,mould_legacy_id integer,code text,is_deleted boolean DEFAULT false)");
+        // Query fixtures copy the complete current catalog; command constraints
+        // and definition ownership have separate full-chain coverage.
+        MigratedProjectionSchema.createCurrentTables(db, "moulds", "goods");
         UUID first=UUID.randomUUID(),second=UUID.randomUUID(),bound=UUID.randomUUID(),unbound=UUID.randomUUID();
         db.update("INSERT INTO moulds(id,name,code,qty,tqty,manufacturer) VALUES(?, '模具甲','00012','1+1',2,'厂家甲'),(?, '模具乙','00013','2',3,'厂家乙')",first,second);
         db.update("INSERT INTO goods(id,mould_id,code) VALUES(?,?,'00012'),(?,null,'00012')",bound,first,unbound);

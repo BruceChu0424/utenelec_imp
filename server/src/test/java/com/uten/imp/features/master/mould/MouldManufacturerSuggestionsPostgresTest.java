@@ -5,6 +5,7 @@ import com.uten.imp.common.util.DepartmentNameResolver;
 import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.features.master.mouldcategory.MouldCategoryRepository;
 import com.uten.imp.security.TxSessionVars;
+import com.uten.imp.support.MigratedProjectionSchema;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
@@ -27,8 +28,8 @@ class MouldManufacturerSuggestionsPostgresTest {
     @Test void emptyInputReturnsHistoryAndSearchRanksNearestManufacturersExcludingDeletedOrBlank() {
         var source=new DriverManagerDataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword());
         var db=new JdbcTemplate(source);var named=new NamedParameterJdbcTemplate(source);
-        db.execute("CREATE TABLE moulds(manufacturer text,is_deleted boolean DEFAULT false)");
-        db.update("INSERT INTO moulds VALUES(' 厂家甲 ',false),('厂家甲',false),('厂家乙',false),('甲方模具公司',false),('',false),(null,false),('已删除厂家',true)");
+        MigratedProjectionSchema.createCurrentTables(db, "moulds");
+        db.update("INSERT INTO moulds(manufacturer,is_deleted) VALUES(' 厂家甲 ',false),('厂家甲',false),('厂家乙',false),('甲方模具公司',false),('',false),(null,false),('已删除厂家',true)");
         var em=mock(EntityManager.class);
         when(em.createNativeQuery(anyString())).thenAnswer(call->{
             String sql=call.getArgument(0);var query=mock(Query.class);var parameters=new HashMap<String,Object>();

@@ -196,46 +196,43 @@ Future<void> _dropAt(
 }
 
 void main() {
-  testWidgets(
-    '悬停自动展开子级后拖拽仍存活：可继续下探到子级行落点（不卡死）',
-    (tester) async {
-      final repo = _FakeBomRepo();
-      await _pumpTab(tester, repo);
+  testWidgets('悬停自动展开子级后拖拽仍存活：可继续下探到子级行落点（不卡死）', (tester) async {
+    final repo = _FakeBomRepo();
+    await _pumpTab(tester, repo);
 
-      final gesture = await _pickUp(tester, find.text('外壳'));
-      // 悬停「螺丝」中部超过自动展开时限 → 懒加载出「垫片」。
-      final screw = tester.getRect(
-        find.byKey(const ValueKey('row-drag-slot:goods-a/row-a2')),
-      );
-      await gesture.moveTo(Offset(screw.center.dx, screw.top + screw.height * 0.5));
-      await tester.pump(const Duration(milliseconds: 800));
-      await tester.pump(const Duration(milliseconds: 100));
-      await tester.pumpAndSettle();
-      expect(find.text('垫片'), findsOneWidget, reason: '悬停应自动展开螺丝');
+    final gesture = await _pickUp(tester, find.text('外壳'));
+    // 悬停「螺丝」中部超过自动展开时限 → 懒加载出「垫片」。
+    final screw = tester.getRect(
+      find.byKey(const ValueKey('row-drag-slot:goods-a/row-a2')),
+    );
+    await gesture.moveTo(
+      Offset(screw.center.dx, screw.top + screw.height * 0.5),
+    );
+    await tester.pump(const Duration(milliseconds: 800));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
+    expect(find.text('垫片'), findsOneWidget, reason: '悬停应自动展开螺丝');
 
-      // 展开插入行后元素随 key 平移，识别器必须存活：继续拖到「垫片」下缘松手。
-      // 子行的槽位键是完整出现路径（occurrenceKey 递归拼接）。
-      final washer = tester.getRect(
-        find.byKey(
-          const ValueKey('row-drag-slot:goods-a/row-a2/row-y1'),
-        ),
-      );
-      await gesture.moveTo(
-        Offset(washer.center.dx, washer.bottom - washer.height * 0.1),
-      );
-      await tester.pumpAndSettle();
-      await gesture.up();
-      await tester.pump(const Duration(milliseconds: 50));
-      await tester.pump(const Duration(seconds: 2));
+    // 展开插入行后元素随 key 平移，识别器必须存活：继续拖到「垫片」下缘松手。
+    // 子行的槽位键是完整出现路径（occurrenceKey 递归拼接）。
+    final washer = tester.getRect(
+      find.byKey(const ValueKey('row-drag-slot:goods-a/row-a2/row-y1')),
+    );
+    await gesture.moveTo(
+      Offset(washer.center.dx, washer.bottom - washer.height * 0.1),
+    );
+    await tester.pumpAndSettle();
+    await gesture.up();
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(seconds: 2));
 
-      expect(repo.moveCalls, hasLength(1), reason: '展开后的指针 up 必须仍被接收');
-      final move = repo.moveCalls.single.$2.single;
-      expect(move.itemId, 'row-a1');
-      expect(move.targetParentGoodsId, 'goods-y');
-      expect(move.anchorItemId, 'row-y1');
-      expect(move.afterAnchor, isTrue);
-    },
-  );
+    expect(repo.moveCalls, hasLength(1), reason: '展开后的指针 up 必须仍被接收');
+    final move = repo.moveCalls.single.$2.single;
+    expect(move.itemId, 'row-a1');
+    expect(move.targetParentGoodsId, 'goods-y');
+    expect(move.anchorItemId, 'row-y1');
+    expect(move.afterAnchor, isTrue);
+  });
 
   testWidgets('长按拖到另一行下缘 = 同层下移（锚定目标行 after）', (tester) async {
     final repo = _FakeBomRepo();
@@ -331,10 +328,7 @@ void main() {
       tester.element(find.text('线材')),
     );
     final notes = container.read(appNotificationProvider);
-    expect(
-      notes.any((n) => n.message.contains('已在当前位置')),
-      isTrue,
-    );
+    expect(notes.any((n) => n.message.contains('已在当前位置')), isTrue);
   });
 
   testWidgets('只读账号不挂拖拽：长按不产生 move', (tester) async {

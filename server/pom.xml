@@ -510,6 +510,9 @@
                                     <include>com.fasterxml.jackson.core:jackson-databind</include>
                                     <include>com.fasterxml.jackson.dataformat:jackson-dataformat-toml</include>
                                     <include>com.fasterxml.jackson.datatype:jackson-datatype-jsr310</include>
+                                    <!-- Boot 4 运行时经 Jackson 3（tools.jackson）装配框架内部序列化，
+                                         缺构件会在打包 IT 里 NoClassDefFound。 -->
+                                    <include>tools.jackson.core:*</include>
                                 </includes>
                             </artifactSet>
                             <filters>

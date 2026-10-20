@@ -218,6 +218,29 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
 
   GlobalKey<MasterEditFormState>? _formKey;
   bool _savingBasic = false;
+  final _bomKey = GlobalKey<GoodsBomTabState>();
+  bool _bomEditing = false;
+  bool _leavingBom = false;
+
+  Future<void> _finishBomBeforeLeaving(Object? result) async {
+    if (_leavingBom) return;
+    _leavingBom = true;
+    try {
+      final finished = await _bomKey.currentState?.finishEditing() ?? true;
+      if (!mounted || !finished) return;
+      await WidgetsBinding.instance.endOfFrame;
+      if (mounted) Navigator.of(context).pop(result);
+    } finally {
+      _leavingBom = false;
+    }
+  }
+
+  Future<void> _refreshPage() async {
+    await Future.wait([
+      _refreshDetail(),
+      if (_bomKey.currentState case final bom?) bom.refresh(),
+    ]);
+  }
 
   /// 「库存与出入库」页签打开时停在哪个分段 (基本信息「出入库流水」按钮 = 流水)。
   GoodsStockLedgerSegment _stockSegment = GoodsStockLedgerSegment.balance;
@@ -842,7 +865,13 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
 
   @override
   Widget build(BuildContext context) {
-    return withFormDraft(_buildEditor(context));
+    return PopScope<Object?>(
+      canPop: !_bomEditing,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) _finishBomBeforeLeaving(result);
+      },
+      child: withFormDraft(_buildEditor(context)),
+    );
   }
 
   Widget _buildEditor(BuildContext context) {
@@ -988,6 +1017,17 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       showBackButton: true,
       showBottomBorder: false,
       actions: [
+        if (_goodsId != null)
+          UtenAppBarActionButton(
+            key: const Key('goods-bom-refresh'),
+            label:
+                Localizations.of<AppLocalizations>(
+                  context,
+                  AppLocalizations,
+                )?.commonRefresh ??
+                '刷新',
+            onPressed: _refreshPage,
+          ),
         if (_goodsId != null &&
             (ref.watch(isSuperAdminProvider) ||
                 ref.watch(currentPermissionsProvider).containsAll({
@@ -997,9 +1037,16 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
           UtenAppBarActionButton(
             key: const Key('goods-price-analysis-entry'),
             label: priceText(context, 'title'),
-            onPressed: () => context.push(
-              '/basicinfo/goods/${Uri.encodeComponent(_goodsId!)}/price-analysis',
-            ),
+            onPressed: () async {
+              if (!await (_bomKey.currentState?.finishEditing() ??
+                      Future.value(true)) ||
+                  !mounted) {
+                return;
+              }
+              context.push(
+                '/basicinfo/goods/${Uri.encodeComponent(_goodsId!)}/price-analysis',
+              );
+            },
           ),
       ],
     ),
@@ -1500,11 +1547,14 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       return _emptyTab('请先在「基本信息」保存货品后维护组装信息');
     }
     return GoodsBomTab(
-      key: ValueKey('bom-$_goodsId'),
+      key: _bomKey,
       goodsId: _goodsId!,
       canCreate: widget.canBomCreate,
       canEdit: widget.canBomEdit,
       canDelete: widget.canBomDelete,
+      onEditModeChanged: (editing) {
+        if (mounted) setState(() => _bomEditing = editing);
+      },
       productCode: _detail?.code,
       productName: _detail?.name,
       // ADR-131：BOM 上整批领料的料的单个重量与货品资料单重相差 20% 以上时标黄。

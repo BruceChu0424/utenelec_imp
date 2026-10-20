@@ -11639,4 +11639,395 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get rdInitialUnitRetry => 'Retry';
+
+  @override
+  String get bomEditMode => 'Edit mode';
+
+  @override
+  String get bomEditExitAndSave => 'Save and exit';
+
+  @override
+  String get bomEditAuditMode => 'Audit mode';
+
+  @override
+  String get bomEditExitAudit => 'Exit audit';
+
+  @override
+  String get bomEditSaveTitle => 'Save assembly information and exit';
+
+  @override
+  String bomEditSaveSummary(int operations, int parents) {
+    return 'This session has $operations changes affecting the assembly information of $parents items.';
+  }
+
+  @override
+  String get bomEditUnnamedGoods => 'Item';
+
+  @override
+  String bomEditMoreGoods(int count) {
+    return 'And $count more items';
+  }
+
+  @override
+  String bomEditSharedWarning(int count) {
+    return 'These components are also referenced in $count other assemblies. Saving applies the revised component structure everywhere it is used. Save and synchronize?';
+  }
+
+  @override
+  String get bomEditSaveNote =>
+      'Confirm to save all changes. Production already started keeps its original material records.';
+
+  @override
+  String get bomEditContinue => 'Continue editing';
+
+  @override
+  String get bomEditConfirmShared => 'Confirm, synchronize and save';
+
+  @override
+  String get bomEditConfirmSave => 'Confirm save';
+
+  @override
+  String get bomEditSaved =>
+      'Assembly information saved and all references synchronized';
+
+  @override
+  String bomEditMoreProblems(int count) {
+    return 'There are $count more issues. Return to the draft to review them.';
+  }
+
+  @override
+  String get bomEditSaveUnknown =>
+      'The save result cannot be confirmed yet. Check the assembly information before retrying. Your draft remains on this page.';
+
+  @override
+  String get bomEditSaveFailedTitle => 'Assembly changes were not fully saved';
+
+  @override
+  String bomEditRecoveryMessage(String message) {
+    return '$message\n\nKeep the draft for review, or discard it and reload the latest assembly information.';
+  }
+
+  @override
+  String get bomEditKeepDraft => 'Keep draft';
+
+  @override
+  String get bomEditDiscardRefresh => 'Discard draft and refresh';
+
+  @override
+  String get bomEditPermissionChanged =>
+      'Editing permission or sign-in state has changed. Restore access before saving the draft.';
+
+  @override
+  String get bomEditBoundaryExpired =>
+      'Your identity or permissions changed. The previous editing draft has expired. If you just saved, check the result again.';
+
+  @override
+  String get bomEditNoView => 'This account cannot view assembly information';
+
+  @override
+  String get bomEditCopy => 'Copy';
+
+  @override
+  String get bomEditPaste => 'Paste';
+
+  @override
+  String get bomEditNewComponent => 'New component';
+
+  @override
+  String get bomEditCurrentGoods => 'Current item';
+
+  @override
+  String bomEditCopied(int count) {
+    return 'Copied $count components. Paste them in another item\'s edit mode.';
+  }
+
+  @override
+  String get bomEditPasteParentRequired =>
+      'Select one parent component, or clear the selection to paste at the top level';
+
+  @override
+  String bomEditPasteStaged(int count) {
+    return 'Staged $count pasted components. Save and exit to apply them.';
+  }
+
+  @override
+  String bomEditDeleteStaged(int count) {
+    return 'Staged deletion of $count components. Save and exit to apply it.';
+  }
+
+  @override
+  String bomEditMoveStaged(int count) {
+    return 'Staged movement of $count components. Save and exit to apply it.';
+  }
+
+  @override
+  String bomEditAddStaged(int count) {
+    return 'Staged $count added components. Save and exit to apply them.';
+  }
+
+  @override
+  String get bomEditComponentStaged =>
+      'Component changes staged. Save and exit to apply them.';
+
+  @override
+  String bomEditReviewWarnings(String message, String warnings) {
+    return '$message; please review: $warnings';
+  }
+
+  @override
+  String get bomEditPasteFailed => 'Paste failed. Please try again.';
+
+  @override
+  String get bomEditEmpty => 'No assembly information';
+
+  @override
+  String get bomEditPasting => 'Pasting components';
+
+  @override
+  String get bomEditSaving => 'Saving assembly information';
+
+  @override
+  String get bomEditProcessing => 'Processing this operation. Please wait.';
+
+  @override
+  String goodsBomBatchWeightUnit(String unit) {
+    return 'Unit weight ($unit)';
+  }
+
+  @override
+  String goodsBomBatchInvalidQuantity(String name, String label) {
+    return '$label for \"$name\" must be greater than 0.';
+  }
+
+  @override
+  String goodsBomBatchSharedPeriodicNotAllowed(String name) {
+    return '\"$name\" is auxiliary material or workshop overhead material and cannot be added to the assembly list.';
+  }
+
+  @override
+  String get goodsBomBatchSelectFirst => 'Select components first.';
+
+  @override
+  String goodsBomBatchComponentLimit(int limit) {
+    return 'Select up to $limit components at a time.';
+  }
+
+  @override
+  String get goodsBomBatchCommitUncertain =>
+      'The submission result is not yet confirmed. Inputs are locked. Retry this submission to check its original result.';
+
+  @override
+  String get goodsBomBatchFailed =>
+      'Assembly maintenance did not complete. Preview again before retrying.';
+
+  @override
+  String get goodsBomBatchAddTitle => 'Add components in bulk';
+
+  @override
+  String get goodsBomBatchRemoveTitle => 'Remove selected components in bulk';
+
+  @override
+  String get goodsBomBatchOverwriteTitle =>
+      'Overwrite the entire assembly list';
+
+  @override
+  String goodsBomBatchTargets(int count) {
+    return '$count goods selected. Only each good\'s top-level assembly list will be maintained.';
+  }
+
+  @override
+  String get goodsBomBatchOverwriteDescription =>
+      'Overwrite this good\'s top-level assembly list with the copied components. Existing top-level components absent from the new list will be removed. Nested shared subassemblies retain their own assembly lists.';
+
+  @override
+  String get goodsBomBatchRemoveDescription =>
+      'Remove matching components only from the selected goods\' top level. Skip goods without a match. Components inside nested subassemblies are retained.';
+
+  @override
+  String get goodsBomBatchAddDescription =>
+      'Append the specified components to the selected goods\' top level. Skip existing components and retain their quantities and other fields.';
+
+  @override
+  String get goodsBomBatchChooseComponents => 'Select components';
+
+  @override
+  String get goodsBomBatchUseCopied => 'Use copied components';
+
+  @override
+  String get goodsBomBatchUnselectComponent => 'Deselect this component';
+
+  @override
+  String get goodsBomBatchCollapseComponents => 'Collapse components';
+
+  @override
+  String goodsBomBatchExpandComponents(int count) {
+    return 'Expand all $count components';
+  }
+
+  @override
+  String goodsBomBatchSummary(
+    int targets,
+    int added,
+    int updated,
+    int removed,
+    int skipped,
+  ) {
+    return 'Will change $targets goods: add $added, update $updated, remove $removed, skip $skipped.';
+  }
+
+  @override
+  String goodsBomBatchTargetCounts(
+    int added,
+    int updated,
+    int removed,
+    int skipped,
+  ) {
+    return 'Add $added / Update $updated / Remove $removed / Skip $skipped';
+  }
+
+  @override
+  String goodsBomBatchSharedImpact(int count) {
+    return 'Another $count reference locations will change with the shared good\'s assembly list.';
+  }
+
+  @override
+  String goodsBomBatchHiddenImpact(int count) {
+    return '$count of these reference locations are restricted by viewing permissions; only their count is shown.';
+  }
+
+  @override
+  String get goodsBomBatchConfirmImpact =>
+      'Review the selected goods, skipped items and shared impact. Confirm to save the whole batch. If any item fails, nothing will be changed.';
+
+  @override
+  String get goodsBomBatchCloseVerify => 'Close and refresh to verify';
+
+  @override
+  String get goodsBomBatchRetryCommit => 'Retry this submission';
+
+  @override
+  String get goodsBomBatchPreview => 'Preview impact';
+
+  @override
+  String get goodsBomBatchConfirmCommit => 'Confirm batch changes';
+
+  @override
+  String goodsBomBatchCompleted(
+    int targets,
+    int added,
+    int updated,
+    int removed,
+    int skipped,
+  ) {
+    return 'Processed $targets goods: added $added, updated $updated, removed $removed, skipped $skipped.';
+  }
+
+  @override
+  String get goodsBomBatchClearTopTitle => 'Clear the top-level assembly list';
+
+  @override
+  String get goodsBomBatchOverwriteCopied =>
+      'Overwrite the entire assembly list (using copied components)';
+
+  @override
+  String goodsBomBatchMoreProblems(int count) {
+    return 'There are $count more issues. Correct them and preview again.';
+  }
+
+  @override
+  String get exportPdfDialogTitle => 'Export PDF';
+
+  @override
+  String get whereUsedReplacementTitle => 'Replace component';
+
+  @override
+  String get whereUsedReplacementConfirmTitle => 'Confirm shared replacement';
+
+  @override
+  String get whereUsedCurrentComponent => 'Current component';
+
+  @override
+  String get whereUsedReplaceWith => 'Replace with';
+
+  @override
+  String get whereUsedChooseComponent => 'Choose component';
+
+  @override
+  String get whereUsedReplacementPickerTitle => 'Choose replacement component';
+
+  @override
+  String get whereUsedReplacementSameComponent =>
+      'The replacement must differ from the current component';
+
+  @override
+  String get whereUsedReplacementFailed =>
+      'Replacement was not completed. Preview the current assembly relationships and try again.';
+
+  @override
+  String whereUsedReplacementRules(int count) {
+    return 'Selected $count products. Keep each assembly line\'s quantity, color, supplier, unit price and control rules. Both components must use the same base unit and material issue method.';
+  }
+
+  @override
+  String get whereUsedReplacementHistory =>
+      'Only current assembly relationships change. Historical documents, frozen demand and recorded consumption retain their original records.';
+
+  @override
+  String whereUsedReplacementImpact(int edges, int products) {
+    return 'Replace $edges assembly relationships affecting $products products.';
+  }
+
+  @override
+  String whereUsedReplacementSharedImpact(int count) {
+    return 'This includes $count other products using shared components; they will change too.';
+  }
+
+  @override
+  String get whereUsedReplacementSelectedSuffix => '(selected)';
+
+  @override
+  String get whereUsedReplacementSharedSuffix => '(shared impact)';
+
+  @override
+  String get whereUsedPreviewImpact => 'Preview impact';
+
+  @override
+  String get whereUsedConfirmReplaceSync => 'Confirm replacement and sync';
+
+  @override
+  String get whereUsedReplaceAction => 'Replace component';
+
+  @override
+  String get whereUsedReplacementSuccess =>
+      'Component replaced and related product assemblies updated';
+
+  @override
+  String get whereUsedHistoryNotReplaceable =>
+      'This product has historical relationships only. Historical records cannot be replaced.';
+
+  @override
+  String get whereUsedExportFiltered => 'Export filtered results';
+
+  @override
+  String get whereUsedExportDescription =>
+      'Export all filtered results with component identity, filters, operator, export time and evidence sources. Use Excel for further filtering or PDF for reading and printing.';
+
+  @override
+  String get whereUsedExportExcel => 'Excel';
+
+  @override
+  String get whereUsedExportPdf => 'PDF';
+
+  @override
+  String get whereUsedExportFilename => 'where_used_filtered_results';
+
+  @override
+  String get whereUsedReplacementCommitUncertain =>
+      'The submission result is not confirmed. Retry this same submission to retrieve its result; keep the selected component unchanged.';
+
+  @override
+  String get whereUsedRetryReplacementCommit => 'Retry this submission';
+
+  @override
+  String get whereUsedCloseAndVerify => 'Close and refresh to verify';
 }

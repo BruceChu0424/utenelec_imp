@@ -10942,4 +10942,380 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get rdInitialUnitRetry => '重试';
+
+  @override
+  String get bomEditMode => '编辑模式';
+
+  @override
+  String get bomEditExitAndSave => '退出并保存';
+
+  @override
+  String get bomEditAuditMode => '审计模式';
+
+  @override
+  String get bomEditExitAudit => '退出审计';
+
+  @override
+  String get bomEditSaveTitle => '保存组装信息并退出';
+
+  @override
+  String bomEditSaveSummary(int operations, int parents) {
+    return '本次共 $operations 项操作，修改 $parents 个货品的组装信息。';
+  }
+
+  @override
+  String get bomEditUnnamedGoods => '货品';
+
+  @override
+  String bomEditMoreGoods(int count) {
+    return '另有 $count 个货品';
+  }
+
+  @override
+  String bomEditSharedWarning(int count) {
+    return '这些组件还被其他 $count 处组装信息引用。确认保存后，所有引用处会同步使用修改后的组件结构。是否同步保存？';
+  }
+
+  @override
+  String get bomEditSaveNote => '确认后保存本次全部修改。已开始的生产业务保留原有用料记录。';
+
+  @override
+  String get bomEditContinue => '继续编辑';
+
+  @override
+  String get bomEditConfirmShared => '确认同步并保存';
+
+  @override
+  String get bomEditConfirmSave => '确认保存';
+
+  @override
+  String get bomEditSaved => '组装信息已保存，所有引用处已同步';
+
+  @override
+  String bomEditMoreProblems(int count) {
+    return '另有 $count 处问题，请返回草稿核对';
+  }
+
+  @override
+  String get bomEditSaveUnknown => '保存结果暂时无法确认。请核对组装信息后重试，草稿仍保留在本页。';
+
+  @override
+  String get bomEditSaveFailedTitle => '本次组装信息未完成保存';
+
+  @override
+  String bomEditRecoveryMessage(String message) {
+    return '$message\n\n可以保留草稿继续核对，或放弃本次草稿后重新读取最新组装信息。';
+  }
+
+  @override
+  String get bomEditKeepDraft => '继续保留草稿';
+
+  @override
+  String get bomEditDiscardRefresh => '放弃草稿并刷新';
+
+  @override
+  String get bomEditPermissionChanged => '编辑权限或登录状态已变化，请恢复权限后保存草稿';
+
+  @override
+  String get bomEditBoundaryExpired => '登录身份或权限已变化，原编辑草稿已失效；若刚执行保存，请重新核对结果';
+
+  @override
+  String get bomEditNoView => '当前账号无权查看组装信息';
+
+  @override
+  String get bomEditCopy => '复制';
+
+  @override
+  String get bomEditPaste => '粘贴';
+
+  @override
+  String get bomEditNewComponent => '新增组件';
+
+  @override
+  String get bomEditCurrentGoods => '当前货品';
+
+  @override
+  String bomEditCopied(int count) {
+    return '已复制 $count 个组件，可到其他货品的编辑模式中粘贴';
+  }
+
+  @override
+  String get bomEditPasteParentRequired => '请只选择一个父组件，或清除选择后粘贴到顶层';
+
+  @override
+  String bomEditPasteStaged(int count) {
+    return '已暂存粘贴 $count 个组件，退出并保存后生效';
+  }
+
+  @override
+  String bomEditDeleteStaged(int count) {
+    return '已暂存删除 $count 个组件，退出并保存后生效';
+  }
+
+  @override
+  String bomEditMoveStaged(int count) {
+    return '已暂存移动 $count 个组件，退出并保存后生效';
+  }
+
+  @override
+  String bomEditAddStaged(int count) {
+    return '已暂存添加 $count 个组件，退出并保存后生效';
+  }
+
+  @override
+  String get bomEditComponentStaged => '组件修改已暂存，退出并保存后生效';
+
+  @override
+  String bomEditReviewWarnings(String message, String warnings) {
+    return '$message；请核对：$warnings';
+  }
+
+  @override
+  String get bomEditPasteFailed => '粘贴失败，请稍后重试';
+
+  @override
+  String get bomEditEmpty => '暂无组装信息';
+
+  @override
+  String get bomEditPasting => '正在粘贴组件';
+
+  @override
+  String get bomEditSaving => '正在保存组装信息';
+
+  @override
+  String get bomEditProcessing => '正在处理本次操作，请稍候。';
+
+  @override
+  String goodsBomBatchWeightUnit(String unit) {
+    return '单个重量 ($unit)';
+  }
+
+  @override
+  String goodsBomBatchInvalidQuantity(String name, String label) {
+    return '「$name」$label必须大于 0';
+  }
+
+  @override
+  String goodsBomBatchSharedPeriodicNotAllowed(String name) {
+    return '「$name」是辅料或车间费用料，不能加入组装清单';
+  }
+
+  @override
+  String get goodsBomBatchSelectFirst => '请先选择组件';
+
+  @override
+  String goodsBomBatchComponentLimit(int limit) {
+    return '一次最多选择 $limit 个组件，请分批操作';
+  }
+
+  @override
+  String get goodsBomBatchCommitUncertain => '提交结果暂未确认。输入已锁定，请重试本次提交以核对原结果。';
+
+  @override
+  String get goodsBomBatchFailed => '本次组装维护未完成，请重新预览后重试';
+
+  @override
+  String get goodsBomBatchAddTitle => '批量添加组件';
+
+  @override
+  String get goodsBomBatchRemoveTitle => '批量移除指定组件';
+
+  @override
+  String get goodsBomBatchOverwriteTitle => '覆盖整份组装清单';
+
+  @override
+  String goodsBomBatchTargets(int count) {
+    return '已选 $count 个货品，仅维护各货品的顶层组装清单。';
+  }
+
+  @override
+  String get goodsBomBatchOverwriteDescription =>
+      '使用已复制组件覆盖当前货品的顶层组装清单；新清单没有的原顶层组件将移除。嵌套共享子件自身的组装清单保持不变。';
+
+  @override
+  String get goodsBomBatchRemoveDescription =>
+      '仅移除所选货品顶层命中的指定组件；未命中时跳过，不删除嵌套子件自身的组件。';
+
+  @override
+  String get goodsBomBatchAddDescription =>
+      '向所选货品顶层追加指定组件；已有相同组件时直接跳过，保留原数量及其他字段。';
+
+  @override
+  String get goodsBomBatchChooseComponents => '选择组件';
+
+  @override
+  String get goodsBomBatchUseCopied => '使用已复制组件';
+
+  @override
+  String get goodsBomBatchUnselectComponent => '取消选择此组件';
+
+  @override
+  String get goodsBomBatchCollapseComponents => '收起组件';
+
+  @override
+  String goodsBomBatchExpandComponents(int count) {
+    return '展开全部 $count 个组件';
+  }
+
+  @override
+  String goodsBomBatchSummary(
+    int targets,
+    int added,
+    int updated,
+    int removed,
+    int skipped,
+  ) {
+    return '将修改 $targets 个货品：添加 $added、更新 $updated、移除 $removed、跳过 $skipped。';
+  }
+
+  @override
+  String goodsBomBatchTargetCounts(
+    int added,
+    int updated,
+    int removed,
+    int skipped,
+  ) {
+    return '添加 $added / 更新 $updated / 移除 $removed / 跳过 $skipped';
+  }
+
+  @override
+  String goodsBomBatchSharedImpact(int count) {
+    return '另外 $count 个引用位置会随共享货品的组装清单同步变化。';
+  }
+
+  @override
+  String goodsBomBatchHiddenImpact(int count) {
+    return '其中 $count 个引用位置受查看权限限制，仅显示数量。';
+  }
+
+  @override
+  String get goodsBomBatchConfirmImpact =>
+      '请核对所选货品、跳过项与同步影响。确认后整批保存，任何一项失败都不会修改。';
+
+  @override
+  String get goodsBomBatchCloseVerify => '关闭并刷新核对';
+
+  @override
+  String get goodsBomBatchRetryCommit => '重试本次提交';
+
+  @override
+  String get goodsBomBatchPreview => '预览影响范围';
+
+  @override
+  String get goodsBomBatchConfirmCommit => '确认整批修改';
+
+  @override
+  String goodsBomBatchCompleted(
+    int targets,
+    int added,
+    int updated,
+    int removed,
+    int skipped,
+  ) {
+    return '已完成 $targets 个货品：添加 $added、更新 $updated、移除 $removed、跳过 $skipped。';
+  }
+
+  @override
+  String get goodsBomBatchClearTopTitle => '清空顶层组装清单';
+
+  @override
+  String get goodsBomBatchOverwriteCopied => '覆盖整份组装清单(使用已复制组件)';
+
+  @override
+  String goodsBomBatchMoreProblems(int count) {
+    return '另有 $count 项问题，请调整后重新预览。';
+  }
+
+  @override
+  String get exportPdfDialogTitle => '导出 PDF';
+
+  @override
+  String get whereUsedReplacementTitle => '一键替换组件';
+
+  @override
+  String get whereUsedReplacementConfirmTitle => '确认同步替换';
+
+  @override
+  String get whereUsedCurrentComponent => '当前组件';
+
+  @override
+  String get whereUsedReplaceWith => '替换成';
+
+  @override
+  String get whereUsedChooseComponent => '选择组件';
+
+  @override
+  String get whereUsedReplacementPickerTitle => '选择替换组件';
+
+  @override
+  String get whereUsedReplacementSameComponent => '替换组件不能与当前组件相同';
+
+  @override
+  String get whereUsedReplacementFailed => '替换未完成，请重新预览当前组装关系后重试';
+
+  @override
+  String whereUsedReplacementRules(int count) {
+    return '已选 $count 个产品。保留原组装行的用量、颜色、供应商、单价和控制规则；两个组件须有相同基本单位及领料方式。';
+  }
+
+  @override
+  String get whereUsedReplacementHistory =>
+      '本次替换只修改当前组装信息，历史凭证、冻结需求与已发生的实际耗用保持原记录。';
+
+  @override
+  String whereUsedReplacementImpact(int edges, int products) {
+    return '将替换 $edges 条组装关系，共影响 $products 个产品。';
+  }
+
+  @override
+  String whereUsedReplacementSharedImpact(int count) {
+    return '其中 $count 个为共用组件关联的其他产品，也会同步变化。';
+  }
+
+  @override
+  String get whereUsedReplacementSelectedSuffix => '(已选)';
+
+  @override
+  String get whereUsedReplacementSharedSuffix => '(同步影响)';
+
+  @override
+  String get whereUsedPreviewImpact => '预览影响范围';
+
+  @override
+  String get whereUsedConfirmReplaceSync => '确认替换并同步';
+
+  @override
+  String get whereUsedReplaceAction => '一键替换';
+
+  @override
+  String get whereUsedReplacementSuccess => '组件已替换，关联产品的组装信息已同步';
+
+  @override
+  String get whereUsedHistoryNotReplaceable => '该产品只有历史关系，不能替换历史记录';
+
+  @override
+  String get whereUsedExportFiltered => '导出筛选结果';
+
+  @override
+  String get whereUsedExportDescription =>
+      '导出全部筛选结果，并附组件、筛选条件、操作员、导出时间和证据来源说明。Excel 适合继续筛选，PDF 适合查阅与打印。';
+
+  @override
+  String get whereUsedExportExcel => 'Excel';
+
+  @override
+  String get whereUsedExportPdf => 'PDF';
+
+  @override
+  String get whereUsedExportFilename => '物料反查筛选结果';
+
+  @override
+  String get whereUsedReplacementCommitUncertain =>
+      '提交结果暂未确认。请重试本次提交以核对原结果，暂勿更换组件。';
+
+  @override
+  String get whereUsedRetryReplacementCommit => '重试本次提交';
+
+  @override
+  String get whereUsedCloseAndVerify => '关闭并刷新核对';
 }

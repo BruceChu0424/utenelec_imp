@@ -162,8 +162,8 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
       'Perm.goodsDelete': 1,
       'Perm.goodsStatus': 1,
       'Perm.goodsBomDelete': 1,
-      'Perm.goodsBomCreate': 1,
-      'Perm.goodsBomEdit': 1,
+      'Perm.goodsBomCreate': 2,
+      'Perm.goodsBomEdit': 3,
       'Perm.goodsPriceEdit': 2,
       'Perm.goodsDiscountView': 1,
       'Perm.goodsPriceView': 1,
@@ -351,6 +351,46 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
     legacyCount: 0,
     tokens: {'Perm.webinquiryClaim': 1},
   ),
+  // ADR-185: edit mode and retained asynchronous callbacks intersect current
+  // split BOM grants with the page session. The server independently checks
+  // each queued command, parent visibility, snapshots and explicit consent.
+  // Where-used replacement requires view + BOM edit; its separate export grant
+  // is enforced by the export controller. These exact tokens grant no object
+  // scope or state transition locally, and do not raise the global baseline.
+  'lib/features/basic_data/widgets/goods_bom_tab.dart': (
+    legacyCount: 2,
+    tokens: {
+      'Perm.goodsBomAudit': 1,
+      'Perm.goodsBomCreate': 2,
+      'Perm.goodsBomDelete': 2,
+      'Perm.goodsBomEdit': 1,
+      'Perm.goodsExport': 1,
+      'Perm.goodsView': 1,
+    },
+  ),
+  'lib/features/production/pages/where_used_report_page.dart': (
+    legacyCount: 2,
+    tokens: {
+      'Perm.goodsBomEdit': 2,
+      'Perm.goodsView': 1,
+      'Perm.productionWhereUsedExport': 1,
+      'Perm.stockView': 1,
+    },
+  ),
+  'lib/features/production/widgets/where_used_replacement_dialog.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.goodsBomEdit': 1, 'Perm.productionWhereUsedView': 1},
+  ),
+  // ADR-185: action grants are rechecked across picker/preview/consent awaits.
+  // Object visibility, top-level scope and atomic validation remain server-owned.
+  'lib/features/basic_data/widgets/goods_bom_batch_maintenance_dialog.dart': (
+    legacyCount: 0,
+    tokens: {
+      'Perm.goodsBomEdit': 1,
+      'Perm.goodsBomCreate': 1,
+      'Perm.goodsBomDelete': 2,
+    },
+  ),
 };
 
 Map<String, int> _permissionTokens(String source) {
@@ -449,7 +489,7 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
         (sum, entry) =>
             sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
       ),
-      104, // Previous 65 + 15 history guards; 2026-10-18 +8 for the V875 transfer UI and ADR-184 HR task cards, +16 for the website management page and inquiry source timeline (V879 website:* permissions).
+      122, // Previous 115 + 3 list action checks and 4 retained batch-dialog checks. Global baseline remains 677.
     );
   });
 

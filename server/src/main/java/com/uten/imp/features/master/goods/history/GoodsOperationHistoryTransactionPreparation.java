@@ -21,7 +21,8 @@ public class GoodsOperationHistoryTransactionPreparation implements TransactionW
         if (requestMethod == null || !WRITE_METHODS.contains(requestMethod)
                 || requestPath == null
                 || !(under(requestPath, "/api/master/goods")
-                || under(requestPath, "/api/master/material-categories"))) {
+                || under(requestPath, "/api/master/material-categories")
+                || requestPath.equals("/api/production/reports/where-used/replacement/commit"))) {
             return;
         }
         // The database owns the exact route allowlist and reads the actor from

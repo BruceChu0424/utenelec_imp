@@ -20,6 +20,9 @@ import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_bom_tab.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
+import '../../support/goods_bom_edit_test_api.dart';
 
 /// 伪仓库：move 真的换行序/换父件，才能验出移动后的展开与勾选保持。
 class _FakeBomRepo implements GoodsBomRepository {
@@ -142,8 +145,17 @@ Future<void> _pumpTab(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        apiClientProvider.overrideWithValue(GoodsBomEditTestApi(repo)),
+        localServerReachableProvider.overrideWith(
+          (ref) => LocalServerReachabilityNotifier(null, web: true),
+        ),
         goodsBomRepositoryProvider.overrideWithValue(repo),
-        currentPermissionsProvider.overrideWithValue(const <String>{}),
+        currentPermissionsProvider.overrideWithValue(const <String>{
+          Perm.goodsView,
+          Perm.goodsBomEdit,
+          Perm.goodsBomCreate,
+          Perm.goodsBomDelete,
+        }),
         isSuperAdminProvider.overrideWithValue(false),
       ],
       child: MaterialApp(
@@ -162,6 +174,7 @@ Future<void> _pumpTab(
     ),
   );
   await tester.pumpAndSettle();
+  if (canEdit) await enterBomEdit(tester);
 }
 
 /// 长按拾起一行（按住 600ms）并保持手势。
@@ -226,6 +239,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
     await tester.pump(const Duration(seconds: 2));
 
+    expect(repo.moveCalls, isEmpty, reason: '拖拽先暂存，未写正式清单');
+    await saveBomEdit(tester);
     expect(repo.moveCalls, hasLength(1), reason: '展开后的指针 up 必须仍被接收');
     final move = repo.moveCalls.single.$2.single;
     expect(move.itemId, 'row-a1');
@@ -241,6 +256,8 @@ void main() {
     final gesture = await _pickUp(tester, find.text('外壳'));
     await _dropAt(tester, gesture, 'row-drag-slot:goods-a/row-a3', 0.9);
 
+    expect(repo.moveCalls, isEmpty);
+    await saveBomEdit(tester);
     expect(repo.moveCalls, hasLength(1));
     final (root, moves) = repo.moveCalls.single;
     expect(root, 'goods-a');
@@ -264,6 +281,8 @@ void main() {
     final gesture = await _pickUp(tester, find.text('线材'));
     await _dropAt(tester, gesture, 'row-drag-slot:goods-a/row-a2', 0.5);
 
+    expect(repo.moveCalls, isEmpty);
+    await saveBomEdit(tester);
     expect(repo.moveCalls, hasLength(1));
     final moves = repo.moveCalls.single.$2;
     expect(moves.single.itemId, 'row-a3');
@@ -288,6 +307,8 @@ void main() {
     final gesture = await _pickUp(tester, find.text('螺丝'));
     await _dropAt(tester, gesture, 'row-drag-slot:goods-a/row-a3', 0.9);
 
+    expect(repo.moveCalls, isEmpty);
+    await saveBomEdit(tester);
     expect(repo.moveCalls, hasLength(1));
     final moves = repo.moveCalls.single.$2;
     expect(moves, hasLength(2));

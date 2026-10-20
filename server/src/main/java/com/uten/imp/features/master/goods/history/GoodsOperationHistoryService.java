@@ -47,7 +47,8 @@ public class GoodsOperationHistoryService {
     public record Event(String id, UUID operationId, String action, String label, OffsetDateTime createdAt,String operationType) {}
     public record History(List<Entry> entries, List<Event> events) {}
     private record Operation(UUID id, String type, String label, OffsetDateTime createdAt, String state,
-                             long version, boolean redoAllowed, String unsupportedReason) {}
+                             long version, boolean redoAllowed, String unsupportedReason,
+                             Set<String> requiredPermissions) {}
     private record Row(String table, UUID id, JsonNode before, JsonNode after, JsonNode expected) {
         JsonNode target(boolean undo) { return undo ? before : after; }
         boolean deleting(boolean undo) { JsonNode target=target(undo); return target==null || target.path("is_deleted").asBoolean(); }
@@ -274,7 +275,7 @@ public class GoodsOperationHistoryService {
             case "GOODS_DELETE"->needed.add("goods:delete");
             case "GOODS_IMPORT"->{needed.add("goods:import");needed.add("goods:import:undo");}
             case "BOM_CREATE","BOM_PASTE"->needed.add("goods:bom:create");
-            case "BOM_EDIT"->needed.add("goods:bom:edit");
+            case "BOM_EDIT"->{needed.add("goods:bom:edit");needed.addAll(op.requiredPermissions());}
             case "BOM_DELETE"->needed.add("goods:bom:delete");
             case "BOM_AUDIT"->needed.add("goods:bom:audit");
             case "CATEGORY_CREATE"->needed.add("material_category:create");
@@ -408,10 +409,12 @@ public class GoodsOperationHistoryService {
 
     private List<Operation> recent(UUID actor) {
         @SuppressWarnings("unchecked") List<Object[]> result=em.createNativeQuery("""
-                SELECT id,operation_type,label,created_at,state,version,redo_allowed,unsupported_reason
+                SELECT id,operation_type,label,created_at,state,version,redo_allowed,unsupported_reason,
+                       array_to_string(required_permissions,',')
                 FROM goods_operation_history WHERE actor_id=:actor ORDER BY created_at DESC,id DESC LIMIT 10
                 """).setParameter("actor",actor).getResultList();
-        return result.stream().map(r->new Operation(uuid(r[0]),r[1].toString(),r[2].toString(),time(r[3]),r[4].toString(),((Number)r[5]).longValue(),(Boolean)r[6],(String)r[7])).toList();
+        return result.stream().map(r->new Operation(uuid(r[0]),r[1].toString(),r[2].toString(),time(r[3]),r[4].toString(),((Number)r[5]).longValue(),(Boolean)r[6],(String)r[7],
+                r[8]==null||r[8].toString().isBlank()?Set.<String>of():Set.copyOf(Arrays.asList(r[8].toString().split(","))))).toList();
     }
     private UUID nextRedo(UUID actor) {
         List<?> result=em.createNativeQuery("""

@@ -1,11 +1,14 @@
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:dio/dio.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/feedback/uten_floating_window.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
+import 'support/goods_bom_edit_test_api.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_bom_tab.dart';
@@ -127,7 +130,20 @@ Future<void> _pumpBom(WidgetTester tester, _FakeGoodsBomRepository repo) async {
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [goodsBomRepositoryProvider.overrideWithValue(repo)],
+      overrides: [
+        goodsBomRepositoryProvider.overrideWithValue(repo),
+        apiClientProvider.overrideWithValue(GoodsBomEditTestApi(repo)),
+        localServerReachableProvider.overrideWith(
+          (ref) => LocalServerReachabilityNotifier(null, web: true),
+        ),
+        currentPermissionsProvider.overrideWithValue({
+          Perm.goodsView,
+          Perm.goodsBomEdit,
+          Perm.goodsBomCreate,
+          Perm.goodsBomDelete,
+        }),
+        isSuperAdminProvider.overrideWithValue(false),
+      ],
       child: const MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
@@ -145,6 +161,7 @@ Future<void> _pumpBom(WidgetTester tester, _FakeGoodsBomRepository repo) async {
   );
   await tester.pumpAndSettle();
 
+  await enterBomEdit(tester);
   final parentToggle = find.byKey(
     const ValueKey('goods-bom-tree-toggle-row-b'),
   );
@@ -168,7 +185,7 @@ Future<void> _pumpBom(WidgetTester tester, _FakeGoodsBomRepository repo) async {
 
 void main() {
   testWidgets(
-    'goods:view + goods:bom:create shows the primary add button and opens flow',
+    'goods:view + goods:bom:create cannot bypass edit mode permission',
     (tester) async {
       final repo = _FakeGoodsBomRepository(empty: true);
       await tester.binding.setSurfaceSize(const Size(1600, 900));
@@ -208,18 +225,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final add = find.byKey(const Key('goods-bom-add-component'));
-      expect(add, findsOneWidget);
-      expect(find.text('暂无组装信息，点右下「添加组件」录入'), findsOneWidget);
-      expect(find.text('编辑'), findsNothing);
-      expect(find.text('删除'), findsNothing);
-
-      await tester.tap(add);
-      await tester.pumpAndSettle();
-      // 2026-10-19 添加组件改为页内浮窗 (无蒙版、切页保留现场)，不再是 Dialog。
-      expect(find.byType(UtenFloatingWindow), findsOneWidget);
-      expect(find.text('添加位置'), findsOneWidget);
-      expect(find.text('选择组件'), findsOneWidget);
+      expect(find.byKey(const Key('goods-bom-add-component')), findsNothing);
+      expect(find.byKey(const Key('goods-bom-edit-mode')), findsNothing);
+      expect(find.text('暂无组装信息'), findsOneWidget);
+      expect(find.byType(UtenFloatingWindow), findsNothing);
     },
   );
 
@@ -277,6 +286,7 @@ void main() {
 
     // ADR-111：删除只剩批量这一条路径，且不再按父货品分组——请求挂在本页货品
     // (组装树的根)下，服务端核对嵌套行的父件在这棵树里、按它真正的父件软删。
+    await saveBomEdit(tester);
     expect(repo.batchDeleteCalls.length, 1);
     expect(repo.batchDeleteCalls.first.$1, 'goods-a');
     expect(repo.batchDeleteCalls.first.$2, ['row-c']);
@@ -292,7 +302,13 @@ void main() {
     final repo = _FakeGoodsBomRepository();
     await _pumpBom(tester, repo);
 
-    await tester.tap(find.text('编辑').first);
+    await tester.tap(
+      find.textContaining('Nested component'),
+      buttons: kSecondaryMouseButton,
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('编辑').last);
     await tester.pumpAndSettle();
     // 字段名「设计使用数量」，打开时按 6 位去尾零回填原值。
     expect(_editQtyField, findsOneWidget);
@@ -305,6 +321,7 @@ void main() {
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
 
+    await saveBomEdit(tester);
     expect(repo.updatedParentId, 'goods-b');
     expect(repo.updatedItemId, 'row-c');
     // A legacy-only history row stays untouched; ordinary editing must not turn
@@ -324,7 +341,13 @@ void main() {
     final repo = _FakeGoodsBomRepository(nestedLearned: true);
     await _pumpBom(tester, repo);
 
-    await tester.tap(find.text('编辑').first);
+    await tester.tap(
+      find.textContaining('Nested component'),
+      buttons: kSecondaryMouseButton,
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('编辑').last);
     await tester.pumpAndSettle();
     // 系统学出的组件：先用黄色提示说清改数量的后果。
     expect(
@@ -336,6 +359,7 @@ void main() {
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
 
+    await saveBomEdit(tester);
     expect(repo.updatedBody?.containsKey('qty'), isFalse);
     expect(repo.updatedBody?['summary'], '换供应商试产');
   });
@@ -346,7 +370,13 @@ void main() {
     final repo = _FakeGoodsBomRepository();
     await _pumpBom(tester, repo);
 
-    await tester.tap(find.text('编辑').first);
+    await tester.tap(
+      find.textContaining('Nested component'),
+      buttons: kSecondaryMouseButton,
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('编辑').last);
     await tester.pumpAndSettle();
     await tester.enterText(_editQtyField, '');
     await tester.tap(find.text('保存'));

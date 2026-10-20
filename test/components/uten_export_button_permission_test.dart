@@ -7,12 +7,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 // ignore: depend_on_referenced_packages
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/print/uten_print_preview.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/authenticated_request_scope.dart';
+import 'package:uten_imp/core/security/secure_storage.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
@@ -22,6 +25,7 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 Widget _app({required Set<String> permissions, required Widget child}) {
   return ProviderScope(
     overrides: [
+      apiClientProvider.overrideWithValue(_NoDownloadApi()),
       authenticatedScopeProvider.overrideWithValue(
         const AuthenticatedScope(userId: 'a'),
       ),
@@ -38,6 +42,64 @@ Widget _app({required Set<String> permissions, required Widget child}) {
 }
 
 void main() {
+  testWidgets('PDF format uses the PDF password dialog title', (tester) async {
+    await tester.pumpWidget(
+      _app(
+        permissions: {},
+        child: UtenExportButton(
+          endpoint: '/export',
+          report: 'where-used',
+          queryParams: const {},
+          prepareExport: () async =>
+              const UtenExportSelection(extension: 'pdf'),
+        ),
+      ),
+    );
+    await tester.tap(find.text('下载表格'));
+    await tester.pumpAndSettle();
+    expect(find.text('导出 PDF'), findsOneWidget);
+    expect(find.text('导出 Excel'), findsNothing);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+  });
+  testWidgets(
+    'stored session change during password entry cannot dispatch under the next identity',
+    (tester) async {
+      final storage = _ExportScopeStorage();
+      final api = _ScopedDownloadApi(storage);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            authenticatedScopeProvider.overrideWithValue(
+              const AuthenticatedScope(userId: 'a'),
+            ),
+            apiBaseUrlProvider.overrideWithValue('https://a.invalid'),
+            currentPermissionsProvider.overrideWithValue({}),
+          ],
+          child: const MaterialApp(
+            locale: Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: UtenExportButton(
+                endpoint: '/export',
+                report: 'quote',
+                queryParams: {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('下载表格'));
+      await tester.pumpAndSettle();
+      storage.lineage = 'next-session';
+      await tester.tap(find.text('直接下载'));
+      await tester.pumpAndSettle();
+      expect(api.downloads, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'ordinary export cannot revive after server A to B to A while password dialog is open',
     (tester) async {
@@ -553,4 +615,32 @@ class _NoDownloadApi extends ApiClient {
     downloads++;
     throw StateError('Revoked export must not reach the network');
   }
+}
+
+class _ExportScopeStorage extends SecureStorage {
+  _ExportScopeStorage() : super(const FlutterSecureStorage());
+  String lineage = 'initial-session';
+  @override
+  Future<AuthTokenSnapshot> getAuthTokenSnapshot() async => AuthTokenSnapshot(
+    accessToken: 'fixture-access',
+    refreshToken: 'fixture-refresh',
+    generation: 1,
+    intentGeneration: 1,
+    sessionLineage: lineage,
+  );
+  @override
+  Future<ImpersonationRecord?> getImpersonationRecord() async => null;
+}
+
+class _ScopedDownloadApi extends _NoDownloadApi {
+  _ScopedDownloadApi(this.storage);
+  final SecureStorage storage;
+  @override
+  Future<AuthenticatedRequestScope> captureRequestScope({
+    required bool Function() isCurrent,
+  }) => AuthenticatedRequestScope.capture(
+    baseUrl: 'https://a.invalid',
+    storage: storage,
+    isCurrent: isCurrent,
+  );
 }

@@ -1,22 +1,8 @@
-// 货品详情「组装信息」页签：BOM 组件树（懒加载子级）+ 增删改（goods:edit）
-// + 审计模式（goods:bom:audit，V256）。
-//
-// 审计模式：工具条「审计模式」按钮进入后（进行中按钮转红色「退出审计」），
-// 已审行浅绿底 + 「已审」列（实心圆对勾/空心圆，点这一格即翻状态）——都只在
-// 该模式出现，关闭审计模式就是普通清单视图。右键菜单也提供「标记/取消已核对
-// 无误」；单击行本身始终是选中，审计模式下照样可以勾多行批量删除。
-// 标记持久化在服务端（goods_bom_items.audited_at/_by），多人/跨天/换机器不丢；
-// 编辑组件行内容后服务端自动清除该行的审计标记（内容变了需重新核对）。
-// 「审计模式」按钮仅 goods:bom:audit 持有者可见。
-//
-// 工具条（2026-09-25 口径）：顶部按钮全部靠左（表头设置/全屏 + BOM学习记录/
-// 预览/导出组件/导入组件/审计模式），统一高度 UtenTableToolbar.controlHeight、
-// 同色（primary）、不带 icon；「已选 N 项 + 添加组件/编辑/删除」驻右下悬浮组
-// （batchActionsBuilder，普通视图与全屏路由同款）。
-//
-// 右键（2026-09-25 统一口径）：右键 = 选中当前行 + UtenContextMenu 自绘小框
-// （编辑/添加子组件/删除/审计标记），与货品资料列表同款；此前没挂菜单时右键
-// 命中文本会弹框架默认的「全选/复制」工具条，看着像一整屏遮罩。
+// 货品详情「组装信息」：默认只读；编辑模式中的每次操作进入会话草稿。
+// 退出并保存前预览共用组件的影响，二次确认后一次提交全部变更。
+// 右下固定选择摘要、编辑模式和审计模式；写入口同时检查模式、会话及细分权限。
+// 行右键自动选中未选中的行，已选中的行保留多选，支持批量复制与跨货品粘贴。
+// 审计模式独立于结构编辑，已核对标记持久化在服务端，修改结构后需重新核对。
 //
 // 树结构：一级 = 当前货品的组件清单；组件自身有 BOM（hasChildren）可展开，
 // 展开时对组件 id 再调 list 接口懒加载（对照老系统 001.jpg 的 +/- 树）。
@@ -33,7 +19,7 @@
 // 底部横向滚动条 + 单击行高亮。树形通过「可见节点平铺」表达：
 // 首列「▶/▼」= 该行有子类（点行任意位置展开/收起，loading 显 …），
 // 名称列子类缩进一格（└ 分支符，更深逐级加全角空格）；
-// 工具条「编辑/删除」作用于当前选中行。
+// 编辑模式下右键或双击编辑所选行，删除按钮作用于当前多选集合。
 //
 // 添加组件（2026-08-01）：仿部门添加——选中某组件行再点「添加组件」默认作为该组件的
 // 子组件，弹窗内可选「顶层」或任一可见组件作为父级（POST 到对应 goods 的 BOM）。
@@ -66,6 +52,7 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_reference_picker_field.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../../core/network/api_client.dart';
 import '../../../core/network/api_error.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -77,13 +64,20 @@ import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/widgets/uten_tree_table_cell.dart';
 import '../models/goods_bom_item.dart';
 import '../models/goods_node.dart';
+import '../providers/goods_clipboard.dart';
 import '../repositories/goods_bom_repository.dart';
+import '../repositories/goods_bom_edit_repository.dart';
 import 'goods_bom_import_dialog.dart';
 import 'master_data_table_view.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import 'uten_goods_picker.dart';
 import 'goods_bom_learning_panel.dart';
 import 'periodic_bom_confirmation.dart';
+import 'bom_component_picker.dart';
+import 'bom_component_quantity_field.dart';
+
+export 'bom_component_picker.dart'
+    show bomComponentPickerProvider, bomComponentSuggestionsProvider;
 
 /// 树节点：BOM 行 + 懒加载子级状态。
 class _BomNode {
@@ -152,26 +146,6 @@ class _BomDeleteTarget {
 
 /// 「添加组件」弹窗里的选货入口(组件范围、多选)。独立成 provider，组件测试可以换成
 /// 固定结果，而不必驱动整套分类树 + 分页选货面板。
-final bomComponentPickerProvider =
-    Provider<
-      Future<List<GoodsListItem>> Function(BuildContext context, WidgetRef ref)
-    >(
-      (ref) =>
-          (context, ref) => showUtenGoodsPickerMulti(
-            context,
-            ref,
-            allowScopeExpansion: true,
-            readBoundary: ref.read(sensitiveReadBoundaryProvider),
-          ),
-    );
-
-final bomComponentSuggestionsProvider =
-    Provider<Future<List<GoodsListItem>> Function(WidgetRef, String)>(
-      (ref) =>
-          (widgetRef, query) =>
-              loadUtenGoodsPickerSuggestions(widgetRef, query),
-    );
-
 class GoodsBomTab extends ConsumerStatefulWidget {
   const GoodsBomTab({
     super.key,
@@ -184,6 +158,7 @@ class GoodsBomTab extends ConsumerStatefulWidget {
     this.onPreview,
     this.onDataChanged,
     this.productWeightGrams,
+    this.onEditModeChanged,
   });
 
   final String goodsId;
@@ -205,18 +180,350 @@ class GoodsBomTab extends ConsumerStatefulWidget {
   final VoidCallback? onPreview;
 
   final VoidCallback? onDataChanged;
+  final ValueChanged<bool>? onEditModeChanged;
 
   @override
-  ConsumerState<GoodsBomTab> createState() => _GoodsBomTabState();
+  ConsumerState<GoodsBomTab> createState() => GoodsBomTabState();
 }
 
-class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
+class GoodsBomTabState extends ConsumerState<GoodsBomTab>
     with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
   List<_BomNode>? _roots;
   bool _loading = true;
   String? _error;
   int _loadRevision = 0;
   bool? _wasActive;
+
+  bool _editMode = false;
+  bool _switchingMode = false;
+  bool _pasting = false;
+  SensitiveReadBoundary? _editBoundary;
+  GoodsBomEditDraft? _draft;
+  ProviderSubscription<SensitiveReadBoundary>? _boundarySubscription;
+
+  AppLocalizations get _l10n => AppLocalizations.of(context);
+
+  bool _hasPermission(String permission) =>
+      ref.read(isSuperAdminProvider) ||
+      ref.read(currentPermissionsProvider).contains(permission);
+
+  bool get _canEnterEdit => widget.canEdit && _hasPermission(Perm.goodsBomEdit);
+  bool get _canEdit =>
+      _editMode &&
+      _canEnterEdit &&
+      _editBoundary == ref.read(sensitiveReadBoundaryProvider);
+  bool get _canCreate =>
+      _canEdit && widget.canCreate && _hasPermission(Perm.goodsBomCreate);
+  bool get _canDelete =>
+      _canEdit && widget.canDelete && _hasPermission(Perm.goodsBomDelete);
+  bool get _writeBusy => _deleting || _moving || _pasting || _switchingMode;
+
+  GoodsBomRepository get _repository =>
+      _draft ?? ref.read(goodsBomRepositoryProvider);
+  bool get hasEditingSession => _editMode;
+
+  Future<void> refresh() async {
+    if (!_writeBusy) await _load();
+  }
+
+  Future<bool> finishEditing() async {
+    if (!_editMode) return true;
+    if (_writeBusy || _draft?.isBusy == true) return false;
+    final draft = _draft;
+    if (draft != null && draft.hasChanges) {
+      if (!_canEdit) {
+        context.appWarning(_l10n.bomEditPermissionChanged);
+        return false;
+      }
+      setState(() => _switchingMode = true);
+      try {
+        BomEditPreview preview;
+        while (true) {
+          try {
+            preview = await draft.preview();
+            break;
+          } on ApiException catch (error) {
+            final confirmations = periodicConfirmationsOf(error);
+            if (confirmations == null) rethrow;
+            if (!mounted || !_canEdit || !identical(draft, _draft)) {
+              return false;
+            }
+            setState(() => _switchingMode = false);
+            await WidgetsBinding.instance.endOfFrame;
+            if (!mounted || !_canEdit || !identical(draft, _draft)) {
+              return false;
+            }
+            final confirmed = await askPeriodicConfirmations(
+              context,
+              confirmations,
+            );
+            if (confirmed == null ||
+                !mounted ||
+                !_canEdit ||
+                !identical(draft, _draft)) {
+              return false;
+            }
+            draft.confirmPeriodicFields(confirmed);
+            setState(() => _switchingMode = true);
+          }
+        }
+        if (!mounted || !_canEdit || !identical(draft, _draft)) return false;
+        // 预览完成后才询问，服务端尚未修改任何共用组件。
+        setState(() => _switchingMode = false);
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted || !_canEdit || !identical(draft, _draft)) return false;
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => UtenAlertDialog(
+            title: Text(_l10n.bomEditSaveTitle),
+            content: SizedBox(
+              width: 460,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _l10n.bomEditSaveSummary(
+                        preview.operationCount,
+                        preview.affectedParents.length,
+                      ),
+                    ),
+                    const SizedBox(height: UtenSpacing.s12),
+                    if (preview.warnings.isNotEmpty) ...[
+                      UtenInlineNotice(
+                        level: UtenInlineNoticeLevel.warning,
+                        message: preview.warnings.join('\n'),
+                      ),
+                      const SizedBox(height: UtenSpacing.s12),
+                    ],
+                    for (final parent in preview.affectedParents.take(6))
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
+                        child: Text(
+                          '· ${parent.goodsName ?? parent.goodsCode ?? _l10n.bomEditUnnamedGoods}',
+                        ),
+                      ),
+                    if (preview.affectedParents.length > 6)
+                      Text(
+                        _l10n.bomEditMoreGoods(
+                          preview.affectedParents.length - 6,
+                        ),
+                      ),
+                    const SizedBox(height: UtenSpacing.s12),
+                    UtenInlineNotice(
+                      level: preview.otherUsageCount > 0
+                          ? UtenInlineNoticeLevel.warning
+                          : UtenInlineNoticeLevel.info,
+                      message: preview.otherUsageCount > 0
+                          ? _l10n.bomEditSharedWarning(preview.otherUsageCount)
+                          : _l10n.bomEditSaveNote,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: Text(_l10n.bomEditContinue),
+              ),
+              FilledButton(
+                key: const Key('goods-bom-save-confirm'),
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: Text(
+                  preview.otherUsageCount > 0
+                      ? _l10n.bomEditConfirmShared
+                      : _l10n.bomEditConfirmSave,
+                ),
+              ),
+            ],
+          ),
+        );
+        if (confirmed != true ||
+            !mounted ||
+            !_canEdit ||
+            !identical(draft, _draft)) {
+          return false;
+        }
+        setState(() => _switchingMode = true);
+        await draft.commit(preview.previewToken, confirmSharedChanges: true);
+        if (!mounted) return false;
+        widget.onDataChanged?.call();
+        context.appSuccess(_l10n.bomEditSaved);
+      } on ApiException catch (error) {
+        if (!mounted) return false;
+        final details = error.fieldErrors ?? const <ApiFieldError>[];
+        return await _offerDiscardDraft(
+          [
+            error.message,
+            for (final detail in details.take(10))
+              '${detail.field}：${detail.message}',
+            if (details.length > 10)
+              _l10n.bomEditMoreProblems(details.length - 10),
+          ].join('\n'),
+        );
+      } catch (_) {
+        if (!mounted) return false;
+        return await _offerDiscardDraft(_l10n.bomEditSaveUnknown);
+      } finally {
+        if (mounted) setState(() => _switchingMode = false);
+      }
+    }
+    if (!mounted) return false;
+    _closeAddComponentWindow();
+    draft?.close();
+    setState(() {
+      _editMode = false;
+      _editBoundary = null;
+      _draft = null;
+    });
+    widget.onEditModeChanged?.call(false);
+    await _load();
+    return true;
+  }
+
+  Future<bool> _offerDiscardDraft(String message) async {
+    if (!mounted || !_editMode) return false;
+    setState(() => _switchingMode = false);
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted || !_editMode) return false;
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => UtenAlertDialog(
+        title: Text(_l10n.bomEditSaveFailedTitle),
+        content: SizedBox(
+          width: 460,
+          child: Text(_l10n.bomEditRecoveryMessage(message)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_l10n.bomEditKeepDraft),
+          ),
+          FilledButton(
+            key: const Key('goods-bom-discard-draft'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_l10n.bomEditDiscardRefresh),
+          ),
+        ],
+      ),
+    );
+    if (discard != true || !mounted) return false;
+    _draft?.close();
+    _closeAddComponentWindow();
+    setState(() {
+      _draft = null;
+      _editBoundary = null;
+      _editMode = false;
+      _selectedRowIds = <String>{};
+    });
+    widget.onEditModeChanged?.call(false);
+    await _load();
+    return true;
+  }
+
+  Future<void> _toggleEditMode() async {
+    if (_writeBusy) return;
+    if (_editMode) {
+      await finishEditing();
+      return;
+    }
+    if (!_canEnterEdit) return;
+    setState(() {
+      _editMode = true;
+      _editBoundary = ref.read(sensitiveReadBoundaryProvider);
+      _auditMode = false;
+      _draft = GoodsBomEditDraft(
+        base: ref.read(goodsBomRepositoryProvider),
+        api: ref.read(apiClientProvider),
+        rootGoodsId: widget.goodsId,
+        isCurrent: () => mounted && _canEdit,
+      );
+    });
+    widget.onEditModeChanged?.call(true);
+    await _load();
+  }
+
+  Future<void> _toggleAuditMode() async {
+    if (!_canAudit || _writeBusy) return;
+    if (_editMode && !await finishEditing()) return;
+    if (!mounted || !_canAudit) return;
+    setState(() => _auditMode = !_auditMode);
+  }
+
+  Future<void> _importComponents() async {
+    if (!_canCreate || _writeBusy) return;
+    final goodsId = widget.goodsId;
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    bool current() =>
+        mounted &&
+        widget.goodsId == goodsId &&
+        boundary == ref.read(sensitiveReadBoundaryProvider) &&
+        _canEnterEdit &&
+        widget.canCreate &&
+        _hasPermission(Perm.goodsBomCreate);
+    if (!await finishEditing() || !mounted || !current()) return;
+    await showGoodsBomImport(
+      context,
+      ref,
+      goodsId: goodsId,
+      canWrite: current,
+      canReplace: () =>
+          current() && widget.canDelete && _hasPermission(Perm.goodsBomDelete),
+      onImported: () {
+        if (!current()) return;
+        widget.onDataChanged?.call();
+        _load();
+      },
+    );
+    if (current() && !_editMode) await _toggleEditMode();
+  }
+
+  Future<void> _showLearning({bool showMaterialEvidence = false}) async {
+    final goodsId = widget.goodsId;
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    bool canWrite() =>
+        mounted &&
+        widget.goodsId == goodsId &&
+        boundary == ref.read(sensitiveReadBoundaryProvider) &&
+        _canEnterEdit;
+    final openedInEditMode = _canEdit;
+    await showGoodsBomLearning(
+      context,
+      goodsId,
+      showMaterialEvidence: showMaterialEvidence,
+      canWrite: () => openedInEditMode && canWrite(),
+      beforeRelearn: () async => canWrite() && await finishEditing(),
+      onRelearned: () {
+        if (mounted) _load();
+      },
+    );
+    if (openedInEditMode && canWrite() && !_editMode) await _toggleEditMode();
+  }
+
+  Future<void> _previewBom() async {
+    final goodsId = widget.goodsId;
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    if (!await finishEditing() ||
+        !mounted ||
+        goodsId != widget.goodsId ||
+        boundary != ref.read(sensitiveReadBoundaryProvider)) {
+      return;
+    }
+    widget.onPreview?.call();
+  }
+
+  Future<UtenExportSelection?> _prepareBomExport() async {
+    final goodsId = widget.goodsId;
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    bool current() =>
+        mounted &&
+        goodsId == widget.goodsId &&
+        boundary == ref.read(sensitiveReadBoundaryProvider);
+    if (!await finishEditing() || !current()) return null;
+    return UtenExportSelection(stillCurrent: current);
+  }
 
   /// 当前勾选的行键集合(复合键 `父货品id|关系行id`，见 [_rowId])。
   ///
@@ -274,11 +581,50 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _boundarySubscription = ref.listenManual(sensitiveReadBoundaryProvider, (
+      previous,
+      next,
+    ) {
+      if (previous == null || previous == next || !mounted) return;
+      final hadDraft = _draft?.hasChanges == true;
+      _draft?.close();
+      for (final pending in _auditBusyRows.values) {
+        if (!pending.isCompleted) pending.complete();
+      }
+      _auditBusyRows.clear();
+      _auditRevisions.clear();
+      _loadRevision++;
+      setState(() {
+        _draft = null;
+        _editMode = false;
+        _editBoundary = null;
+        _auditMode = false;
+        _addComponentCandidates = null;
+        _roots = null;
+        _selectedRowIds = <String>{};
+        _expandedIds.clear();
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        widget.onEditModeChanged?.call(false);
+        if (hadDraft) context.appWarning(_l10n.bomEditBoundaryExpired);
+        if (_hasPermission(Perm.goodsView)) {
+          _load();
+        } else {
+          setState(() {
+            _loading = false;
+            _error = _l10n.bomEditNoView;
+          });
+        }
+      });
+    });
     _load();
   }
 
   @override
   void dispose() {
+    _boundarySubscription?.close();
+    _draft?.close();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -311,7 +657,12 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
     if (oldWidget.goodsId != widget.goodsId) {
       _roots = null;
       _expandedIds.clear();
-      _selectedRowIds.clear();
+      _selectedRowIds = <String>{};
+      _editMode = false;
+      _draft?.close();
+      _draft = null;
+      _auditMode = false;
+      _addComponentCandidates = null;
       _load();
     }
   }
@@ -329,7 +680,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
       if (!mounted) return const [];
       if (hasPending()) continue;
       final revision = _auditRevisions[goodsId] ?? 0;
-      final items = await ref.read(goodsBomRepositoryProvider).list(goodsId);
+      final items = await _repository.list(goodsId);
       if (revision == (_auditRevisions[goodsId] ?? 0) && !hasPending()) {
         return items;
       }
@@ -569,7 +920,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
   // ---- 增删改 -------------------------------------------------------------
   //
   // 添加组件：选中某组件行 → 默认作为该组件的子组件；未选中 → 顶层。浮窗内父级可选。
-  // 保存 POST 到所选父级 goods 的 BOM（/master/goods/{parentGoodsId}/bom）。
+  // 保存把添加动作暂存到所选父级的会话草稿，退出并确认后统一提交。
   //
   // 2026-10-19 二轮口径：浮窗是页面内常驻浮层（不是路由弹窗）——底层组装表照常
   // 可点可滚；跳去其它页面时随本页被盖住（回来现场还在，切页签靠 keep-alive
@@ -583,6 +934,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
   final _addComponentWindowKey = GlobalKey<UtenFloatingWindowState>();
 
   void _addItem() {
+    if (!_canCreate || _writeBusy) return;
     // 已开着（含缩成球）：只把窗口展开回原位，保留正在核对的内容。
     if (_addComponentOpen) {
       _addComponentWindowKey.currentState?.expand();
@@ -614,24 +966,28 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
     });
   }
 
-  /// 浮窗内保存成功：确保目标父级展开（子组件重载后可见）→ 通知外层 → 重载 → 关窗。
+  /// 浮窗内暂存成功：展开目标父级并重读草稿，清除窗口内的暂选内容。
   Future<void> _onAddComponentSaved(String parentGoodsId) async {
     if (parentGoodsId != widget.goodsId) {
       _expandedIds.add(parentGoodsId);
     }
     _closeAddComponentWindow();
-    widget.onDataChanged?.call();
     await _load();
   }
 
   Future<void> _editSelected() async {
+    if (!_canEdit || _writeBusy) return;
     final row = _singleSelectedRow;
     if (row == null) return;
+    final repository = _repository;
     final saved = await showDialog<bool>(
       context: context,
       builder: (_) => _BomItemEditDialog(
         parentGoodsId: row.parentGoodsId,
         editing: row.node.item,
+        repository: repository,
+        canWrite: () =>
+            mounted && _canEdit && identical(repository, _repository),
         // 货品资料单重只对直接挂在本产品下的行有意义 (嵌套行的父件是别的货品)。
         referenceGrams: row.parentGoodsId == widget.goodsId
             ? widget.productWeightGrams
@@ -639,7 +995,6 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
       ),
     );
     if (saved == true) {
-      widget.onDataChanged?.call();
       await _load();
     }
   }
@@ -650,6 +1005,8 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
   /// entry，Navigator 每次 rearrange 都把它重新抬到最顶，会盖住之后弹出的对话框
   /// 并让它点不动(全站铁律)。所以遮罩只包住确认之后的纯网络段，且 finally 必清。
   Future<void> _deleteSelected() async {
+    if (!_canDelete || _writeBusy) return;
+    final repository = _repository;
     final targets = _selectedTargets;
     if (targets.isEmpty) return;
     final nestedCount = targets.where((t) => t.nested).length;
@@ -758,7 +1115,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
       },
     );
     if (ok != true) return;
-    if (!mounted) return;
+    if (!mounted || !_canDelete || !identical(repository, _repository)) return;
 
     // 勾选可能横跨树的多层：服务端按本货品的组装树核对每一行(ADR-111)，
     // 一次请求、一个事务，要么全删要么一条不删——不再按父货品分组逐组提交。
@@ -772,7 +1129,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
     int? deleted;
     try {
       deleted = await context.guardAction(
-        () => ref.read(goodsBomRepositoryProvider).deleteMany(widget.goodsId, [
+        () => repository.deleteMany(widget.goodsId, [
           for (final t in targets) t.itemId,
         ]),
         errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
@@ -782,8 +1139,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
     }
     if (!mounted) return;
     if (deleted != null) {
-      context.appSuccess('已删除 $deleted 个组件'); // TODO(l10n): 补 arb
-      widget.onDataChanged?.call();
+      context.appSuccess(_l10n.bomEditDeleteStaged(deleted));
     }
     // 失败也重载：树可能已被别人改过，重载顺带把删掉的行从勾选集剪掉。
     await _load();
@@ -795,31 +1151,47 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
   // ---- 右键菜单（2026-09-25 统一口径：右键=选中当前行+自绘小框弹窗） ---------
   //
   // 与货品资料列表同款：MasterDataTableView 先把右键命中的行纳入选择集，再弹
-  // UtenContextMenu（锚定指针、无遮罩）；菜单动作直接复用悬浮组的编辑/删除/添加。
+  // UtenContextMenu（锚定指针、无遮罩）；编辑只在菜单与双击提供，增删复用悬浮组。
   // 审计模式的「标记/取消已核对」也走这里（单击行不再兼任审计开关，勾选与审计
   // 两种语义从此不打架）。
 
   List<UtenContextMenuEntry> _rowMenuItems(_BomRow row) {
     final single = _selectedRowIds.length == 1;
     return [
-      UtenMenuItem(
-        label: '编辑', // TODO(l10n): 补 arb
-        enabled: widget.canEdit && single,
-        onTap: _editSelected,
-      ),
-      UtenMenuItem(
-        label: '添加子组件', // TODO(l10n): 补 arb
-        enabled: widget.canCreate,
-        onTap: _addItem,
-      ),
-      UtenMenuItem(
-        label: '删除', // TODO(l10n): 补 arb
-        enabled: widget.canDelete && _selectedRowIds.isNotEmpty,
-        destructive: true,
-        onTap: _deleteSelected,
-      ),
-      if (_auditMode) ...[
+      if (_canEdit) ...[
+        UtenMenuItem(
+          label: '编辑', // TODO(l10n): 补 arb
+          enabled: single && !_writeBusy,
+          onTap: _editSelected,
+        ),
+        if (_canCreate)
+          UtenMenuItem(
+            label: '添加子组件', // TODO(l10n): 补 arb
+            enabled: _canCreate && !_writeBusy,
+            onTap: _addItem,
+          ),
+        if (_canDelete)
+          UtenMenuItem(
+            label: '删除', // TODO(l10n): 补 arb
+            enabled: _canDelete && _selectedRowIds.isNotEmpty && !_writeBusy,
+            destructive: true,
+            onTap: _deleteSelected,
+          ),
         const UtenMenuDivider(),
+        UtenMenuItem(
+          label: _l10n.bomEditCopy,
+          enabled: _selectedRowIds.isNotEmpty && !_writeBusy,
+          onTap: _copySelected,
+        ),
+        if (_canCreate)
+          UtenMenuItem(
+            label: _l10n.bomEditPaste,
+            enabled: _canPaste && single && !_writeBusy,
+            onTap: _pasteSelected,
+          ),
+      ],
+      if (_auditMode) ...[
+        if (_canEdit) const UtenMenuDivider(),
         UtenMenuItem(
           label: row.node.item.audited ? '取消已核对' : '标记已核对无误', // TODO(l10n)
           enabled: _canAudit && !_auditBusyRows.containsKey(_rowId(row)),
@@ -828,6 +1200,121 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
       ],
     ];
   }
+
+  bool get _canPaste =>
+      _canCreate &&
+      ref.read(goodsClipboardProvider).bomItems?.isNotEmpty == true;
+
+  void _copySelected() {
+    if (!_canEdit || _writeBusy) return;
+    final selectedRows = _visibleRows
+        .where((row) => _selectedRowIds.contains(_rowId(row)))
+        .toList();
+    final rows = <String, GoodsBomItem>{
+      for (final row in selectedRows)
+        if (!selectedRows.any(
+          (ancestor) =>
+              row.occurrenceKey.startsWith('${ancestor.occurrenceKey}/'),
+        ))
+          _rowId(row): row.node.item,
+    };
+    if (rows.isEmpty) return;
+    ref
+        .read(goodsClipboardProvider.notifier)
+        .copyBom(
+          rows.values.toList(),
+          widget.productName ?? widget.productCode ?? _l10n.bomEditCurrentGoods,
+        );
+    context.appSuccess(_l10n.bomEditCopied(rows.length));
+  }
+
+  Future<void> _pasteSelected() async {
+    if (!_canPaste || _writeBusy) return;
+    if (_selectedRowIds.length > 1) {
+      context.appWarning(_l10n.bomEditPasteParentRequired);
+      return;
+    }
+    final repository = _repository;
+    final items = ref.read(goodsClipboardProvider).bomItems!;
+    _draft?.rememberItems(items);
+    final target =
+        _singleSelectedRow?.node.item.componentGoodsId ?? widget.goodsId;
+    final bodies = [for (final item in items) _copyBody(item)];
+    final periodicBodies = [
+      for (var i = 0; i < items.length; i++)
+        if (items[i].isPeriodicEdge) bodies[i],
+    ];
+    setState(() => _pasting = true);
+    try {
+      BomPasteResult result;
+      while (true) {
+        if (!_canCreate || !identical(repository, _repository)) return;
+        try {
+          result = await repository.paste(
+            mode: BomPasteMode.append,
+            targets: [BomPasteTarget(target)],
+            items: bodies,
+          );
+          break;
+        } on ApiException catch (error) {
+          final confirmations = periodicConfirmationsOf(error);
+          if (confirmations == null || !mounted) rethrow;
+          setState(() => _pasting = false);
+          await WidgetsBinding.instance.endOfFrame;
+          if (!mounted || !_canCreate || !identical(repository, _repository)) {
+            return;
+          }
+          final confirmed = await askPeriodicConfirmations(
+            context,
+            confirmations,
+          );
+          if (confirmed == null || !mounted || !_canCreate) return;
+          applyPeriodicConfirmations(periodicBodies, confirmed);
+          setState(() => _pasting = true);
+        }
+      }
+      if (!mounted || !_canCreate || !identical(repository, _repository)) {
+        return;
+      }
+      if (target != widget.goodsId) _expandedIds.add(target);
+      if (result.warnings.isEmpty) {
+        context.appSuccess(_l10n.bomEditPasteStaged(result.added));
+      } else {
+        context.appWarning(
+          _l10n.bomEditReviewWarnings(
+            _l10n.bomEditPasteStaged(result.added),
+            result.warnings.join('；'),
+          ),
+        );
+      }
+      await _load();
+    } on ApiException catch (error) {
+      if (mounted) {
+        context.appError(error.message, fieldErrors: error.fieldErrors);
+      }
+    } catch (_) {
+      if (mounted) context.appError(_l10n.bomEditPasteFailed);
+    } finally {
+      if (mounted) setState(() => _pasting = false);
+    }
+  }
+
+  Map<String, dynamic> _copyBody(GoodsBomItem item) => {
+    'componentGoodsId': item.componentGoodsId,
+    'qty': item.qty,
+    'price': item.price,
+    'summary': item.summary,
+    if (item.colorId != null) 'colorId': item.colorId,
+    if (item.defaultSupplierId != null)
+      'defaultSupplierId': item.defaultSupplierId,
+    if (!item.isPeriodicEdge) ...{
+      'controlStage': item.controlStage.code,
+      'consumptionBasis': item.consumptionBasis.code,
+      'basisOutputQty': item.basisOutputQty,
+      'allowPartialPackage': item.allowPartialPackage,
+      'hardGate': item.hardGate,
+    },
+  };
 
   // ---- 审计标记（V256） ---------------------------------------------------
   //
@@ -863,6 +1350,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
     };
     if (!originals.containsKey(row.node)) return;
     final repository = ref.read(goodsBomRepositoryProvider);
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
     final pending = Completer<void>();
     setState(() {
       _auditBusyRows[key] = pending;
@@ -879,6 +1367,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
         !item.audited,
       );
       if (!mounted ||
+          boundary != ref.read(sensitiveReadBoundaryProvider) ||
           !identical(repository, ref.read(goodsBomRepositoryProvider))) {
         return;
       }
@@ -899,19 +1388,25 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
         if (structureChanged) _pruneSelection();
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || boundary != ref.read(sensitiveReadBoundaryProvider)) {
+        return;
+      }
       context.appError(e.message);
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || boundary != ref.read(sensitiveReadBoundaryProvider)) {
+        return;
+      }
       context.appError('保存核对标记失败，请稍后重试'); // TODO(l10n): 补 arb
     } finally {
-      _auditRevisions.update(
-        row.parentGoodsId,
-        (value) => value + 1,
-        ifAbsent: () => 1,
-      );
-      _auditBusyRows.remove(key);
-      pending.complete();
+      if (identical(_auditBusyRows[key], pending)) {
+        _auditRevisions.update(
+          row.parentGoodsId,
+          (value) => value + 1,
+          ifAbsent: () => 1,
+        );
+        _auditBusyRows.remove(key);
+      }
+      if (!pending.isCompleted) pending.complete();
       if (mounted) setState(() {});
     }
   }
@@ -994,7 +1489,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
     _BomRow target,
     UtenTableRowDropMode mode,
   ) async {
-    if (_moving || _deleting || _loading || dragged.isEmpty) return;
+    if (!_canEdit || _writeBusy || _loading || dragged.isEmpty) return;
     if (_isInDraggedSubtree(target, dragged)) return;
     if (_dropIsNoOp(dragged, target, mode)) {
       context.appSuccess('已在当前位置，未移动'); // TODO(l10n): 补 arb
@@ -1028,7 +1523,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
     int? moved;
     try {
       moved = await context.guardAction(
-        () => ref.read(goodsBomRepositoryProvider).move(widget.goodsId, moves),
+        () => _repository.move(widget.goodsId, moves),
         errorFallback: '移动组件失败，请稍后重试', // TODO(l10n): 补 arb
       );
     } finally {
@@ -1036,8 +1531,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
     }
     if (!mounted) return;
     if (moved != null) {
-      context.appSuccess('已移动 $moved 个组件'); // TODO(l10n): 补 arb
-      widget.onDataChanged?.call();
+      context.appSuccess(_l10n.bomEditMoveStaged(moved));
     }
     if (mode == UtenTableRowDropMode.into) {
       // 移入的层级自动展开：重载后新位置直接可见（与本页「添加子组件后保持
@@ -1047,10 +1541,9 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
     await _load();
   }
 
-  UtenTableRowDrag<_BomRow>? get _rowDrag => (widget.canEdit && !_loading)
+  UtenTableRowDrag<_BomRow>? get _rowDrag => (_canEdit && !_loading)
       ? UtenTableRowDrag<_BomRow>(
-          canDragRow: (r) =>
-              widget.canEdit && !_loading && !_deleting && !_moving,
+          canDragRow: (r) => _canEdit && !_loading && !_writeBusy,
           dragRowsOf: _dragPayloadOf,
           dragLabelOf: (r) =>
               r.node.item.componentName ?? r.node.item.componentCode ?? '组件',
@@ -1309,15 +1802,11 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
     ref.watch(isSuperAdminProvider);
     ref.watch(currentPermissionsProvider);
     final visible = _visibleRows;
-    // 勾中条数决定悬浮组「编辑」的可用性：编辑只认 1 条，删除 >=1 条即可。
+    ref.watch(sensitiveReadBoundaryProvider);
+    ref.watch(goodsClipboardProvider);
     final selectedCount = _selectedRowIds.length;
-    // 勾选框要不要给：三个动作(批量删除/编辑/添加组件定位)一个都没权限时不给——
-    // 只读账号看到一整列勾选框却没有任何按钮可接，按准则「隐藏而非禁用」。
-    // 2026-09-25 起审计模式不再关掉勾选：审计模式下也要能多选批量删除，
-    // 「标记已核对」改由右键菜单触发（单击行与勾选不再打架）。
-    final canActOnSelection =
-        widget.canDelete || widget.canEdit || widget.canCreate;
-    final selectable = canActOnSelection;
+    // 查询态保留多选和已选摘要，写入能力只由模式与权限决定。
+    const selectable = true;
     final learning = ref.watch(goodsBomLearningProvider(widget.goodsId));
     final evidence =
         learning.asData?.value.materialEvidence ??
@@ -1353,12 +1842,8 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                         '${pendingMaterials.length > 3 ? "等 ${pendingMaterials.length} 种" : ""}。'
                         '尚未加入 BOM；认料需补设计单重，按单用料需核清后学习。',
                     trailing: UtenButton(
-                      onPressed: () => showGoodsBomLearning(
-                        context,
-                        widget.goodsId,
-                        showMaterialEvidence: true,
-                        onRelearned: _load,
-                      ),
+                      onPressed: () =>
+                          _showLearning(showMaterialEvidence: true),
                       child: const Text('查看选料与结构'),
                     ),
                   ),
@@ -1393,6 +1878,23 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                   isSelected: (row) => _selectedRowIds.contains(_rowId(row)),
                   // 右键菜单：组件先选中当前行再弹自绘小框（与货品资料列表同款）。
                   rowMenuBuilder: _rowMenuItems,
+                  backgroundMenuBuilder: _canCreate
+                      ? () => [
+                          UtenMenuItem(
+                            label: _l10n.bomEditNewComponent,
+                            enabled: _canCreate && !_writeBusy,
+                            onTap: _addItem,
+                          ),
+                          UtenMenuItem(
+                            label: _l10n.bomEditPaste,
+                            enabled:
+                                _canPaste &&
+                                _selectedRowIds.length <= 1 &&
+                                !_writeBusy,
+                            onTap: _pasteSelected,
+                          ),
+                        ]
+                      : null,
                   // 已审行浅绿底也只在审计模式出现（与「已审」列同进退）——审计标记是
                   // 核对工作态，普通视图不该有无从解释的绿色行；单击选中时表格组件
                   // 自动加深加亮。绿/黄为「已核对/待核对」既有语义（ADR-169 §2.5），
@@ -1407,22 +1909,10 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                   // 统一高度/同色、不带 icon——大动作在右下悬浮组）。
                   toolbarLeadingActions: [
                     UtenButton(
-                      key: const Key('goods-bom-refresh'),
-                      height: UtenTableToolbar.controlHeight,
-                      onPressed: _loading ? null : _load,
-                      child: Text(AppLocalizations.of(context).commonRefresh),
-                    ),
-                    UtenButton(
                       key: const Key('goods-bom-learning'),
                       height: UtenTableToolbar.controlHeight,
                       // 在学习记录里重学后真实使用数量会变，本页签跟着重读。
-                      onPressed: () => showGoodsBomLearning(
-                        context,
-                        widget.goodsId,
-                        onRelearned: () {
-                          if (mounted) _load();
-                        },
-                      ),
+                      onPressed: _showLearning,
                       child: Text(
                         AppLocalizations.of(context).bomLearningTitle,
                       ),
@@ -1431,12 +1921,13 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                       UtenButton(
                         key: const ValueKey('goods-bom-preview'),
                         height: UtenTableToolbar.controlHeight,
-                        onPressed: widget.onPreview,
+                        onPressed: _writeBusy ? null : _previewBom,
                         child: const Text('预览'), // TODO(l10n): 补 arb
                       ),
                     // 导出组件（goods:export）：与「预览」弹窗里的下载Excel 同一端点
                     // （整树展开的加密 xlsx），列集与本表一致。
                     UtenExportButton(
+                      prepareExport: _prepareBomExport,
                       endpoint: ApiEndpoints.goodsBomExport(widget.goodsId),
                       requiredPermission: Perm.goodsExport,
                       report: '',
@@ -1449,66 +1940,61 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                     ),
                     // 导入组件（goods:bom:create，与粘贴组件同权）：格式 = 导出格式，
                     // 序号列(1/2.1)表达层级，检测报告确认后再提交。
-                    if (widget.canCreate)
+                    if (_canCreate)
                       UtenButton(
                         key: const Key('goods-bom-import'),
                         height: UtenTableToolbar.controlHeight,
-                        onPressed: () => showGoodsBomImport(
-                          context,
-                          ref,
-                          goodsId: widget.goodsId,
-                          onImported: () {
-                            widget.onDataChanged?.call();
-                            _load();
-                          },
-                        ),
-                        child: const Text('导入组件'), // TODO(l10n): 补 arb
-                      ),
-                    // 审计模式（V256，goods:bom:audit）：开=右键行「标记/取消已核对无误」
-                    // （已审行绿色 + 已审列 ✓，都只在该模式出现）；勾选与批量删除照常可用。
-                    if (_canAudit)
-                      UtenButton(
-                        height: UtenTableToolbar.controlHeight,
-                        // 审计进行中 = 红色「退出审计」，一眼看出当前处于特殊工作态。
-                        type: _auditMode
-                            ? UtenButtonType.danger
-                            : UtenButtonType.primary,
-                        onPressed: () => setState(() {
-                          _auditMode = !_auditMode;
-                          // 模式切换后「选中」的语义不再变化(都是勾选)，但切走审计时
-                          // 清一下残留更干净，避免带着勾选进编辑流。
-                          if (!_auditMode) _selectedRowIds = <String>{};
-                        }),
-                        child: Text(_auditMode ? '退出审计' : '审计模式'), // TODO(l10n)
+                        onPressed: _writeBusy ? null : _importComponents,
+                        child: const Text('导入组件'),
                       ),
                   ],
-                  // 右下悬浮组：已选 N 项胶囊 + 添加组件/编辑/删除（全屏路由同款）。
                   batchActionsBuilder: (context, ids) => [
-                    if (widget.canCreate)
+                    if (_canCreate)
                       UtenButton(
                         key: const Key('goods-bom-add-component'),
                         size: UtenButtonSize.large,
                         icon: Icons.add_rounded,
-                        onPressed: _addItem,
-                        child: const Text('添加组件'), // TODO(l10n): 补 arb
+                        onPressed: _writeBusy ? null : _addItem,
+                        child: const Text('添加组件'),
                       ),
-                    // 编辑只对一条生效：勾了多条时目标不明确，宁可灰掉也不替用户猜。
-                    if (widget.canEdit)
-                      UtenButton(
-                        size: UtenButtonSize.large,
-                        icon: Icons.edit_outlined,
-                        onPressed: selectedCount == 1 ? _editSelected : null,
-                        child: const Text('编辑'), // TODO(l10n): 补 arb
-                      ),
-                    // 删除：勾一条起可用，一律走批量路径(条数在确认框里报)。
-                    if (widget.canDelete)
+                    if (_canDelete)
                       UtenButton(
                         key: const Key('goods-bom-delete-selected'),
                         type: UtenButtonType.danger,
                         size: UtenButtonSize.large,
                         icon: Icons.delete_outline,
-                        onPressed: selectedCount == 0 ? null : _deleteSelected,
-                        child: const Text('删除'), // TODO(l10n): 补 arb
+                        onPressed: selectedCount == 0 || _writeBusy
+                            ? null
+                            : _deleteSelected,
+                        child: const Text('删除'),
+                      ),
+                    if (_canEnterEdit || _editMode)
+                      UtenButton(
+                        key: const Key('goods-bom-edit-mode'),
+                        type: _editMode
+                            ? UtenButtonType.danger
+                            : UtenButtonType.primary,
+                        size: UtenButtonSize.large,
+                        onPressed: _writeBusy ? null : _toggleEditMode,
+                        child: Text(
+                          _editMode
+                              ? _l10n.bomEditExitAndSave
+                              : _l10n.bomEditMode,
+                        ),
+                      ),
+                    if (_canAudit)
+                      UtenButton(
+                        key: const Key('goods-bom-audit-mode'),
+                        type: _auditMode
+                            ? UtenButtonType.danger
+                            : UtenButtonType.primary,
+                        size: UtenButtonSize.large,
+                        onPressed: _writeBusy ? null : _toggleAuditMode,
+                        child: Text(
+                          _auditMode
+                              ? _l10n.bomEditExitAudit
+                              : _l10n.bomEditAuditMode,
+                        ),
                       ),
                   ],
                   isLoading: _loading && _roots == null,
@@ -1516,11 +2002,20 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                   onRetry: _load,
                   // 双击行 = 展开/收起该行子级（2026-10-19 用户口径；表格组件的
                   // onRowTap 只在手动双击判定里触发，单击仍是选中，语义不打架）。
-                  onRowTap: (r) => _toggle(r.node),
+                  onRowTap: (row) {
+                    if (_canEdit) {
+                      _selectedRowIds = {_rowId(row)};
+                      _editSelected();
+                    } else {
+                      _toggle(row.node);
+                    }
+                  },
                   // 长按拖拽（goods:bom:edit 才挂）：单行换位 / 多选批量 / 悬停
                   // 展开下探移入任意层级；普通列表页与只读账号不受影响。
                   rowDrag: _rowDrag,
-                  emptyMessage: '暂无组装信息，点右下「添加组件」录入', // TODO(l10n): 补 arb
+                  emptyMessage: _canEdit
+                      ? '暂无组装信息，点右下「添加组件」录入'
+                      : _l10n.bomEditEmpty,
                 ),
               ),
             ],
@@ -1534,6 +2029,11 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
             description: '正在把所选组件从组装清单中移除，请勿重复提交或关闭页面。',
           ),
         // 拖拽移动网络段的全屏加载遮罩(落点已定，无确认框，直接包网络段)。
+        if (_pasting || _switchingMode)
+          UtenBusyOverlay(
+            title: _pasting ? _l10n.bomEditPasting : _l10n.bomEditSaving,
+            description: _l10n.bomEditProcessing,
+          ),
         if (_moving)
           const UtenBusyOverlay(
             title: '正在移动组件',
@@ -1551,6 +2051,8 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
               existingPeriodicCount: _periodicEdgeCountByParent,
               onClose: _closeAddComponentWindow,
               onSaved: _onAddComponentSaved,
+              repository: _repository,
+              canWrite: () => mounted && _canCreate,
             ),
           ),
       ],
@@ -1688,27 +2190,13 @@ String _plainQty(double? v) {
       .replaceFirst(RegExp(r'\.$'), '');
 }
 
-/// 期间边的单个重量 (克) → BOM 数量 (基本单位, 5 位小数)。只在组件单位是千克/克时调用。
-double _gramsToQty(double grams, double gramsPerUnit) =>
-    double.parse((grams / gramsPerUnit).toStringAsFixed(5));
-
 /// 期间边一行的请求体：组件单位能按克换算时按克提交 unitWeightGrams (服务端换成基本单位存)，
 /// 不能换算时 [entered] 就是基本单位的用量，只提交 qty。形状字段不提交 (服务端固定)。
 Map<String, dynamic> _periodicEdgeBody(
   String componentGoodsId,
   double entered,
   String? unitName,
-) {
-  final factor = periodicGramsPerBaseUnit(unitName);
-  if (factor == null) {
-    return {'componentGoodsId': componentGoodsId, 'qty': entered};
-  }
-  return {
-    'componentGoodsId': componentGoodsId,
-    'qty': _gramsToQty(entered, factor),
-    'unitWeightGrams': entered,
-  };
-}
+) => periodicBomQuantityBody(componentGoodsId, entered, unitName);
 
 /// 期间边输入值对应的克数 (不能换算为 null，此时不在页面判断异常单重，交服务端)。
 double? _enteredGrams(double entered, String? unitName) =>
@@ -1717,12 +2205,11 @@ double? _enteredGrams(double entered, String? unitName) =>
 /// 添加组件浮窗（多选批量）：选父级 + 右滑窗勾选多个组件（component scope）+ 每个用量，
 /// 一次添加多个组件到同一层级。组件属性只读、用量可改、单价取自组件。
 ///
-/// 2026-10-19 二轮起是页面内常驻浮层（宿主 [_GoodsBomTabState] 的会话）：关闭/保存
+/// 2026-10-19 二轮起是页面内常驻浮层（宿主 [GoodsBomTabState] 的会话）：关闭/保存
 /// 都经 [onClose]/[onSaved] 回调交给宿主，组件自身不再操作 Navigator。
 ///
-/// 保存走服务端「追加组件」原子命令(ADR-111，与粘贴组件同一个接口)：一次请求、一个事务，
-/// 任何一行不合格(重复、成环、组件停用……)一条都不写，逐行原因留在浮窗里给用户改，
-/// 不再逐个新建、失败的只报「N 个跳过」。
+/// 保存把整批追加动作自动暂存到本页草稿；本地校验失败保留浮窗供用户修改。
+/// 退出并保存时服务端复核重复、成环、停用与并发状态，整批确认后一次事务提交。
 class _BomItemAddDialog extends ConsumerStatefulWidget {
   const _BomItemAddDialog({
     required this.windowKey,
@@ -1730,6 +2217,8 @@ class _BomItemAddDialog extends ConsumerStatefulWidget {
     required this.defaultParentGoodsId,
     required this.onClose,
     required this.onSaved,
+    required this.repository,
+    required this.canWrite,
     this.existingPeriodicCount = const {},
   });
 
@@ -1740,8 +2229,10 @@ class _BomItemAddDialog extends ConsumerStatefulWidget {
   final String defaultParentGoodsId;
   final VoidCallback onClose;
 
-  /// 保存成功（已落库）后回调，参数为实际写入的父级 goodsId。
+  /// 加入会话草稿后回调，参数为本次暂存的父级 goodsId。
   final ValueChanged<String> onSaved;
+  final GoodsBomRepository repository;
+  final bool Function() canWrite;
 
   /// 各父件下已有的整批领料的料条数 (看得到的部分)：再加一种要确认 (双色 / 双料)。
   final Map<String, int> existingPeriodicCount;
@@ -1757,6 +2248,7 @@ class _PickedComponent {
 }
 
 class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
+  AppLocalizations get _l10n => AppLocalizations.of(context);
   late String _parentGoodsId;
   final List<_PickedComponent> _picked = [];
   final _componentSearchCtl = TextEditingController();
@@ -1817,6 +2309,7 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
     String parent,
   ) =>
       mounted &&
+      widget.canWrite() &&
       !_saving &&
       generation == _lookupGeneration &&
       parent == _parentGoodsId &&
@@ -1841,6 +2334,7 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
   }
 
   Future<void> _save() async {
+    if (_saving || !widget.canWrite()) return;
     if (_picked.isEmpty) {
       setState(() => _error = '请先选择组件货品'); // TODO(l10n): 补 arb
       return;
@@ -1896,7 +2390,7 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
     // 单个重量异常 (小于 0.1 克或大于 5000 克) 二次确认；确认框弹出时不能有遮罩。
     if (unusual.isNotEmpty) {
       final ok = await _confirmUnusualGrams(context, unusual);
-      if (!ok || !mounted) return;
+      if (!ok || !mounted || !widget.canWrite()) return;
       for (final body in periodicBodies) {
         body[periodicConfirmUnusualWeight] = true;
       }
@@ -1906,7 +2400,7 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
     if (periodicBodies.isNotEmpty && existing + periodicBodies.length >= 2) {
       if (!mounted) return;
       final ok = await _confirmSecondPeriodicMaterial(context);
-      if (!ok || !mounted) return;
+      if (!ok || !mounted || !widget.canWrite()) return;
       for (final body in periodicBodies) {
         body[periodicConfirmSecondMaterial] = true;
       }
@@ -1917,9 +2411,10 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
       _problems = const [];
     });
     try {
-      final repo = ref.read(goodsBomRepositoryProvider);
+      final repo = widget.repository;
       BomPasteResult result;
       while (true) {
+        if (!mounted || !widget.canWrite()) return;
         try {
           result = await repo.paste(
             mode: BomPasteMode.append,
@@ -1938,7 +2433,7 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
             context,
             confirmations,
           );
-          if (confirmed == null || !mounted) return;
+          if (confirmed == null || !mounted || !widget.canWrite()) return;
           applyPeriodicConfirmations(periodicBodies, confirmed);
           setState(() => _saving = true);
         }
@@ -1947,10 +2442,15 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
       // 服务端的提醒 (如与货品资料单重相差 20% 以上) 只提示、不拦截。
       if (result.warnings.isNotEmpty) {
         context.appWarning(
-          '已添加 ${result.added} 个组件；请核对：${result.warnings.join("；")}',
+          _l10n.bomEditReviewWarnings(
+            _l10n.bomEditAddStaged(result.added),
+            result.warnings.join('；'),
+          ),
         );
       } else {
-        context.appSuccess('已添加 ${result.added} 个组件'); // TODO(l10n): 补 arb
+        context.appSuccess(
+          _l10n.bomEditAddStaged(result.added),
+        ); // TODO(l10n): 补 arb
       }
       widget.onSaved(_parentGoodsId);
     } on ApiException catch (e) {
@@ -2240,51 +2740,13 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
   }
 
   /// 数量格：空/非正数红框即错（保存前的本地可视校验；提交校验仍走 [_save]）。
-  Widget _qtyCell(ThemeData theme, _PickedComponent p) {
-    final outline = theme.colorScheme.outlineVariant;
-    return ListenableBuilder(
-      listenable: p.qtyCtl,
-      builder: (context, _) {
-        final raw = p.qtyCtl.text.trim();
-        final parsed = double.tryParse(raw);
-        final invalid = raw.isEmpty || parsed == null || parsed <= 0;
-        final borderSide = BorderSide(
-          color: invalid ? theme.colorScheme.error : outline,
-        );
-        return TextField(
-          key: ValueKey('goods-bom-add-qty-${p.goods.id}'),
-          controller: p.qtyCtl,
-          textAlign: TextAlign.right,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          style: theme.textTheme.bodyMedium,
-          decoration: InputDecoration(
-            // 整批领料的料 (ADR-131)：按克（或组件基本单位）填单个重量；其余填设计使用数量。
-            hintText: p.goods.isPeriodicIssue
-                ? _periodicWeightLabel(context, p.goods.unitName)
-                : AppLocalizations.of(context).bomDesignQty,
-            suffixText: p.goods.isPeriodicIssue
-                ? null
-                : (p.goods.unitName ?? ''),
-            isDense: true,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: UtenSpacing.s8,
-              vertical: UtenSpacing.s8,
-            ),
-            border: OutlineInputBorder(borderSide: borderSide),
-            enabledBorder: OutlineInputBorder(borderSide: borderSide),
-            focusedBorder: OutlineInputBorder(
-              borderSide: BorderSide(
-                color: invalid
-                    ? theme.colorScheme.error
-                    : theme.colorScheme.primary,
-                width: 1.6,
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
+  Widget _qtyCell(ThemeData theme, _PickedComponent p) =>
+      BomComponentQuantityField(
+        goods: p.goods,
+        controller: p.qtyCtl,
+        fieldKey: ValueKey('goods-bom-add-qty-${p.goods.id}'),
+        enabled: !_saving,
+      );
 
   static const double _pickedQtyFieldWidth = 104;
 }
@@ -2299,11 +2761,15 @@ class _BomItemEditDialog extends ConsumerStatefulWidget {
   const _BomItemEditDialog({
     required this.parentGoodsId,
     required this.editing,
+    required this.repository,
+    required this.canWrite,
     this.referenceGrams,
   });
 
   final String parentGoodsId;
   final GoodsBomItem editing;
+  final GoodsBomRepository repository;
+  final bool Function() canWrite;
 
   /// 父件 (产品) 货品资料单重折算的克数；期间边单重与它相差 20% 以上时提醒核对。
   final double? referenceGrams;
@@ -2313,6 +2779,9 @@ class _BomItemEditDialog extends ConsumerStatefulWidget {
 }
 
 class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
+  late final SensitiveReadBoundary _dialogBoundary;
+  ProviderSubscription<SensitiveReadBoundary>? _dialogBoundarySubscription;
+  AppLocalizations get _l10n => AppLocalizations.of(context);
   final _qtyCtl = TextEditingController();
   final _summaryCtl = TextEditingController();
   bool _saving = false;
@@ -2324,6 +2793,24 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
   @override
   void initState() {
     super.initState();
+    _dialogBoundary = ref.read(sensitiveReadBoundaryProvider);
+    _dialogBoundarySubscription = ref.listenManual(
+      sensitiveReadBoundaryProvider,
+      (previous, next) {
+        if (next == _dialogBoundary || !mounted) return;
+        final route = ModalRoute.of(context);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || route == null || !route.isActive) return;
+          final navigator = route.navigator;
+          if (navigator == null) return;
+          if (route.isCurrent) {
+            navigator.pop(false);
+          } else {
+            navigator.removeRoute(route);
+          }
+        });
+      },
+    );
     final e = widget.editing;
     if (e.isPeriodicEdge) {
       // 期间边按克输入显示 (ADR-131)；组件单位不能按克换算时按基本单位显示。
@@ -2354,12 +2841,14 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
 
   @override
   void dispose() {
+    _dialogBoundarySubscription?.close();
     _qtyCtl.dispose();
     _summaryCtl.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
+    if (_saving || !widget.canWrite()) return;
     final e = widget.editing;
     final raw = _qtyCtl.text.trim();
     final entered = double.tryParse(raw);
@@ -2388,7 +2877,7 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
       final ok = await _confirmUnusualGrams(context, [
         _unusualLine(context, '', grams),
       ]);
-      if (!ok || !mounted) return;
+      if (!ok || !mounted || !widget.canWrite()) return;
       confirmUnusual = true;
     }
     final body = <String, dynamic>{
@@ -2412,9 +2901,10 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
       _error = null;
     });
     try {
-      final repo = ref.read(goodsBomRepositoryProvider);
+      final repo = widget.repository;
       GoodsBomItem updated;
       while (true) {
+        if (!mounted || !widget.canWrite()) return;
         try {
           updated = await repo.update(widget.parentGoodsId, e.id, body);
           break;
@@ -2429,7 +2919,7 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
             context,
             confirmations,
           );
-          if (confirmed == null || !mounted) return;
+          if (confirmed == null || !mounted || !widget.canWrite()) return;
           applyPeriodicConfirmations([body], confirmed);
           setState(() => _saving = true);
         }
@@ -2437,9 +2927,14 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
       if (!mounted) return;
       // 服务端的提醒 (如与货品资料单重相差 20% 以上) 只提示、不拦截。
       if (updated.warnings.isNotEmpty) {
-        context.appWarning('组件已更新；请核对：${updated.warnings.join('；')}');
+        context.appWarning(
+          _l10n.bomEditReviewWarnings(
+            _l10n.bomEditComponentStaged,
+            updated.warnings.join('；'),
+          ),
+        );
       } else {
-        context.appSuccess('组件已更新'); // TODO(l10n): 补 arb
+        context.appSuccess(_l10n.bomEditComponentStaged);
       }
       Navigator.of(context).pop(true);
     } on ApiException catch (ex) {
@@ -2459,6 +2954,10 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
 
   @override
   Widget build(BuildContext context) {
+    if (ref.watch(sensitiveReadBoundaryProvider) != _dialogBoundary ||
+        !widget.canWrite()) {
+      return const SizedBox.shrink();
+    }
     final theme = Theme.of(context);
     final e = widget.editing;
     return UtenDialogFrame(

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +6,7 @@ import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/basic_data/models/color_node.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
@@ -29,6 +29,7 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/sensitive_read_boundary_provider.dart';
 
 import '../../../shared/drafts/memory_form_draft_storage.dart';
+import '../../../support/goods_bom_edit_test_api.dart';
 
 class _Goods extends Fake implements GoodsRepository {
   Map<String, dynamic>? body;
@@ -75,6 +76,21 @@ class _Bom extends Fake implements GoodsBomRepository {
   Future<List<GoodsBomItem>> list(String goodsId) async => const [];
 }
 
+class _NavigationBomApi extends GoodsBomEditTestApi {
+  _NavigationBomApi(super.repository);
+
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    if (path == ApiEndpoints.authMe) {
+      return {'id': 'goods-editor', 'session': <String, dynamic>{}};
+    }
+    return super.get(path, query: query);
+  }
+}
+
 class _Moulds extends Fake implements MouldRepository {
   final requests = <String>[];
   @override
@@ -104,12 +120,15 @@ Future<({ProviderContainer container, GoRouter router})> _pump(
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
+  final bom = _Bom();
+  final api = _NavigationBomApi(bom);
   final container = ProviderContainer(
     overrides: [
+      apiClientProvider.overrideWithValue(api),
       sensitiveReadBoundaryProvider.overrideWith(
         (ref) => SensitiveReadBoundary(
           identity: ref.watch(authenticatedScopeProvider),
-          api: ApiClient(Dio()),
+          api: api,
           permissions: ref.watch(currentPermissionsProvider),
           superAdmin: false,
         ),
@@ -127,11 +146,12 @@ Future<({ProviderContainer container, GoRouter router})> _pump(
         Perm.goodsEdit,
         Perm.goodsStatus,
         Perm.goodsBomCreate,
+        Perm.goodsBomEdit,
       }),
       isSuperAdminProvider.overrideWithValue(false),
       goodsRepositoryProvider.overrideWithValue(goods),
       if (moulds != null) mouldRepositoryProvider.overrideWithValue(moulds),
-      goodsBomRepositoryProvider.overrideWithValue(_Bom()),
+      goodsBomRepositoryProvider.overrideWithValue(bom),
       colorDictProvider.overrideWith(
         (ref) async => const [
           ColorListItem(id: 'blue', name: '蓝色'),
@@ -305,6 +325,9 @@ void main() {
       expect(find.text('是否保存为草稿？'), findsNothing);
       await tester.tap(find.text('继续维护组装'));
       await tester.pumpAndSettle();
+      expect(find.byKey(const Key('goods-bom-add-component')), findsNothing);
+      expect(find.byKey(const Key('goods-bom-edit-mode')), findsOneWidget);
+      await enterBomEdit(tester);
       expect(find.byKey(const Key('goods-bom-add-component')), findsOneWidget);
       expect(tester.takeException(), isNull);
     },

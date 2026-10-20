@@ -19,7 +19,6 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../core/network/api_endpoints.dart';
-import '../../../core/network/api_error.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -27,12 +26,14 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/goods_node.dart';
 import '../models/goods_bom_item.dart';
 import '../models/product_category_node.dart';
 import '../providers/goods_clipboard.dart';
 import '../repositories/goods_bom_repository.dart';
+import '../repositories/goods_bom_batch_repository.dart';
 import '../repositories/goods_repository.dart';
 import '../repositories/goods_facet_repository.dart';
 import '../repositories/product_category_repository.dart';
@@ -48,6 +49,8 @@ import '../widgets/master_batch_feedback.dart';
 import '../models/master_batch.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../widgets/periodic_bom_confirmation.dart';
+import '../widgets/goods_bom_batch_maintenance_dialog.dart';
+import '../widgets/bom_component_quantity_field.dart';
 import '../widgets/system_master_category_guard.dart';
 
 class ProductCategoryPage extends ConsumerStatefulWidget {
@@ -61,6 +64,7 @@ class ProductCategoryPage extends ConsumerStatefulWidget {
 class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     with CategoryPageShell<ProductCategoryPage> {
   int _detailEpoch = 0;
+  bool _bomBatchDialogOpen = false;
   bool _includeRelated = false;
 
   @override
@@ -468,13 +472,18 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
   bool get _canCreateMaster => _perms.contains(Perm.goodsCreate);
   bool get _canDeleteMaster => _perms.contains(Perm.goodsDelete);
   bool get _canStatusMaster => _perms.contains(Perm.goodsStatus);
-  bool get _canBomDelete => _perms.contains(Perm.goodsBomDelete);
+  bool get _canRemoveBom =>
+      _perms.contains(Perm.goodsBomEdit) &&
+      _perms.contains(Perm.goodsBomDelete);
+  bool get _canAddBom =>
+      _perms.contains(Perm.goodsBomEdit) &&
+      _perms.contains(Perm.goodsBomCreate);
 
   /// 替换粘贴要同时能新增、编辑、删除组件行(服务端替换还会再核一次删除权限)。
   bool get _canReplaceBom =>
       _perms.contains(Perm.goodsBomCreate) &&
       _perms.contains(Perm.goodsBomEdit) &&
-      _canBomDelete;
+      _canRemoveBom;
   bool get _canEditPrice => _perms.contains(Perm.goodsPriceEdit);
 
   /// 无 goods:discount:view / goods:price:view(或 price:edit)者，折扣列/价格列整列移除
@@ -806,22 +815,8 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
   /// 只复制设计值(ADR-129)：qty 是设计使用数量；真实使用数量属于源货品自己的
   /// 生产学习累计，不随复制带走，目标货品按自己的生产重新累计。
   /// 整批领料的料 (期间边, ADR-131) 只带用量 (基本单位的单个重量)，形状由服务端固定，不提交。
-  Map<String, dynamic> _bomSaveBody(GoodsBomItem it) => <String, dynamic>{
-    'componentGoodsId': it.componentGoodsId,
-    'qty': it.qty,
-    'price': it.price,
-    'total': it.total,
-    'summary': it.summary,
-    if (!it.isPeriodicEdge) ...{
-      'controlStage': it.controlStage.code,
-      'consumptionBasis': it.consumptionBasis.code,
-      'basisOutputQty': it.basisOutputQty,
-      'allowPartialPackage': it.allowPartialPackage,
-      'hardGate': it.hardGate,
-    },
-    if (it.colorId != null) 'colorId': it.colorId,
-    if (it.defaultSupplierId != null) 'defaultSupplierId': it.defaultSupplierId,
-  };
+  Map<String, dynamic> _bomSaveBody(GoodsBomItem it) =>
+      bomComponentCopyBody(it);
 
   /// 「复制货品」：整份详情 + 全部组件行一起快照进 App 内剪贴板（全量复制）。
   Future<void> _copyGoods(
@@ -1107,14 +1102,36 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
   Future<void> _copyBom(
     MasterEntityPaneController<GoodsListItem, GoodsDetail> pane,
     GoodsListItem g,
+    SensitiveReadBoundary boundary,
   ) async {
-    final items = await pane.runExclusive(
-      () => context.guardLoad(
-        () => ref.read(goodsBomRepositoryProvider).list(g.id),
-        errorFallback: '读取组件信息失败', // TODO(l10n): 补 arb
-      ),
-    );
-    if (items == null || !mounted) return;
+    var invalidated = false;
+    bool current() =>
+        mounted &&
+        !invalidated &&
+        boundary == ref.read(sensitiveReadBoundaryProvider);
+    if (!current()) return;
+    final subscription = ref.listenManual(sensitiveReadBoundaryProvider, (
+      previous,
+      next,
+    ) {
+      if (next != boundary) invalidated = true;
+    });
+    List<GoodsBomItem>? items;
+    try {
+      items = await pane.runExclusive<List<GoodsBomItem>?>(
+        () => context.guardLoad(() async {
+          final scope = await boundary.api.captureRequestScope(
+            isCurrent: current,
+          );
+          return scope.run(
+            () => ref.read(goodsBomRepositoryProvider).list(g.id),
+          );
+        }, errorFallback: '读取组件信息失败'),
+      );
+    } finally {
+      subscription.close();
+    }
+    if (!mounted || !current() || items == null) return;
     if (items.isEmpty) {
       context.appError('「${_goodsLabel(g)}」没有组件信息可复制');
       return;
@@ -1123,194 +1140,138 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     context.appSuccess('已复制 ${items.length} 个组件，可在目标货品上粘贴');
   }
 
-  /// 粘贴组件信息到一个或多个目标：服务端一次请求、一个事务(ADR-111)——
-  /// 任何一处不合格(重复/成环/组件停用/目标已被他人改过)一条都不写，逐条说明原因。
-  Future<void> _submitBomPaste(
-    MasterEntityPaneController<GoodsListItem, GoodsDetail> pane, {
-    required BomPasteMode mode,
-    required List<BomPasteTarget> targets,
-    required List<GoodsBomItem> items,
-  }) async {
-    final bodies = [for (final it in items) _bomSaveBody(it)];
-    final periodicBodies = [
-      for (var i = 0; i < items.length; i++)
-        if (items[i].isPeriodicEdge) bodies[i],
-    ];
-    BomPasteResult? result;
-    while (true) {
-      List<ApiFieldError>? confirmations;
-      result = await pane.runExclusive<BomPasteResult?>(() async {
-        try {
-          return await ref
-              .read(goodsBomRepositoryProvider)
-              .paste(mode: mode, targets: targets, items: bodies);
-        } on ApiException catch (e) {
-          // 整批领料的料只差人确认 (异常单重 / 第二种料)：退出忙碌后问，确认了带上重发。
-          confirmations = periodicConfirmationsOf(e);
-          if (confirmations != null) return null;
-          if (mounted) {
-            context.appError(
-              e.message.isNotEmpty ? e.message : '粘贴失败，请稍后重试',
-              fieldErrors: e.fieldErrors,
-            );
-          }
-          return null;
-        } catch (_) {
-          if (mounted) context.appError('粘贴失败，请稍后重试'); // TODO(l10n): 补 arb
-          return null;
-        }
-      });
-      final pending = confirmations;
-      if (pending == null || !mounted) break;
-      // 忙碌遮罩在 runExclusive 结束时撤掉，等这一帧画完再弹确认框。
-      await WidgetsBinding.instance.endOfFrame;
-      if (!mounted) return;
-      final confirmed = await askPeriodicConfirmations(context, pending);
-      if (confirmed == null || !mounted) return;
-      applyPeriodicConfirmations(periodicBodies, confirmed);
-    }
-    if (result == null || !mounted) return;
-    pane.clearSelection();
-    final done = mode == BomPasteMode.replace
-        ? '已替换 ${result.targets} 个货品的组件，共 ${result.added} 个' // TODO(l10n): 补 arb
-        : '已给 ${result.targets} 个货品追加 ${result.added} 个组件'; // TODO(l10n): 补 arb
-    if (result.warnings.isNotEmpty) {
-      context.appWarning('$done；请核对：${result.warnings.join('；')}');
-    } else {
-      context.appSuccess(done);
-    }
-  }
-
-  /// 「粘贴组件信息」：目标已有组件时让用户选「替换」或「同级追加」；
-  /// 读到的现有组件行作为版本一起提交，期间被他人改过就整批拒绝。
-  Future<void> _pasteBom(
-    MasterEntityPaneController<GoodsListItem, GoodsDetail> pane,
-    GoodsListItem g,
-  ) async {
-    final clip = ref.read(goodsClipboardProvider);
-    final items = clip.bomItems;
-    if (items == null || items.isEmpty || pane.busy) return;
-    final existing = await pane.runExclusive(
-      () => context.guardLoad(
-        () => ref.read(goodsBomRepositoryProvider).list(g.id),
-        errorFallback: '读取目标货品组件信息失败', // TODO(l10n): 补 arb
-      ),
-    );
-    if (existing == null || !mounted) return;
-    final sourceLabel = clip.bomSourceLabel ?? '剪贴板';
-    var mode = BomPasteMode.append;
-    if (existing.isNotEmpty) {
-      final choice = await _askBomPasteMode(
-        '「${_goodsLabel(g)}」已有 ${existing.length} 个组件。\n'
-        '从「$sourceLabel」复制的 ${items.length} 个组件要如何粘贴？',
-      );
-      if (choice == null || !mounted) return;
-      mode = choice;
-    } else {
-      final ok = await UtenDialog.show(
-        context,
-        title: '粘贴组件信息', // TODO(l10n): 补 arb
-        content: Text(
-          '将从「$sourceLabel」复制的 ${items.length} 个组件粘贴到「${_goodsLabel(g)}」？',
-        ),
-        confirmLabel: '粘贴', // TODO(l10n): 补 arb
-      );
-      if (ok != true || !mounted) return;
-    }
-    await _submitBomPaste(
-      pane,
-      mode: mode,
-      targets: [
-        BomPasteTarget(g.id, expectedItemIds: [for (final e in existing) e.id]),
-      ],
-      items: items,
-    );
-  }
-
-  /// 批量粘贴组件信息：把剪贴板 BOM 一次粘到多个选中目标；统一选替换/追加。
-  Future<void> _batchPasteBom(
+  Future<void> _maintainBom(
     MasterEntityPaneController<GoodsListItem, GoodsDetail> pane,
     Set<String> ids,
+    BomBatchAction action,
+    SensitiveReadBoundary boundary, {
+    List<GoodsBomItem> initialComponents = const [],
+  }) async {
+    if (pane.busy ||
+        _bomBatchDialogOpen ||
+        !mounted ||
+        boundary != ref.read(sensitiveReadBoundaryProvider)) {
+      return;
+    }
+    if (action == BomBatchAction.add && !_canAddBom ||
+        action == BomBatchAction.remove && !_canRemoveBom ||
+        action == BomBatchAction.overwrite && !_canReplaceBom) {
+      return;
+    }
+    _bomBatchDialogOpen = true;
+    try {
+      final result = await showGoodsBomBatchMaintenanceDialog(
+        context: context,
+        action: action,
+        targetGoodsIds: ids,
+        initialComponents: initialComponents,
+      );
+      if (!mounted || boundary != ref.read(sensitiveReadBoundaryProvider)) {
+        return;
+      }
+      if (result != null) {
+        pane.clearSelection();
+        final l10n = AppLocalizations.of(context);
+        final message = l10n.goodsBomBatchCompleted(
+          result.selectedTargetCount,
+          result.added,
+          result.updated,
+          result.removed,
+          result.skipped,
+        );
+        if (result.warnings.isNotEmpty) {
+          context.appWarning('$message ${result.warnings.join('；')}');
+        } else {
+          context.appSuccess(message);
+        }
+      }
+      // A user may close while a receipt is uncertain; reread the authoritative current data.
+      await pane.reload();
+    } finally {
+      _bomBatchDialogOpen = false;
+    }
+  }
+
+  Future<void> _clearTopBom(
+    MasterEntityPaneController<GoodsListItem, GoodsDetail> pane,
+    GoodsListItem goods,
+    SensitiveReadBoundary boundary,
   ) async {
-    final clip = ref.read(goodsClipboardProvider);
-    final items = clip.bomItems;
-    if (ids.isEmpty || items == null || items.isEmpty || pane.busy) return;
-    final choice = await _askBomPasteMode(
-      '从「${clip.bomSourceLabel ?? '剪贴板'}」复制的 ${items.length} 个组件，'
-      '如何粘贴到选中的 ${ids.length} 个货品？', // TODO(l10n): 补 arb
+    if (!_canRemoveBom ||
+        pane.busy ||
+        _bomBatchDialogOpen ||
+        boundary != ref.read(sensitiveReadBoundaryProvider)) {
+      return;
+    }
+    final rows = await pane.runExclusive(
+      () => context.guardLoad(
+        () => ref.read(goodsBomRepositoryProvider).list(goods.id),
+      ),
     );
-    if (choice == null || !mounted) return;
-    await _submitBomPaste(
+    if (!mounted ||
+        rows == null ||
+        boundary != ref.read(sensitiveReadBoundaryProvider)) {
+      return;
+    }
+    await _maintainBom(
       pane,
-      mode: choice,
-      targets: [for (final id in ids) BomPasteTarget(id)],
-      items: items,
+      {goods.id},
+      BomBatchAction.remove,
+      boundary,
+      initialComponents: rows,
     );
   }
 
-  Future<BomPasteMode?> _askBomPasteMode(String message) =>
-      showDialog<BomPasteMode>(
-        context: context,
-        builder: (ctx) => UtenAlertDialog(
-          title: const Text('粘贴组件信息'), // TODO(l10n): 补 arb
-          content: Text(message),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消'), // TODO(l10n): 补 arb
-            ),
-            FilledButton.tonal(
-              onPressed: () => Navigator.pop(ctx, BomPasteMode.append),
-              child: const Text('同级追加'), // TODO(l10n): 补 arb
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: UtenColors.error),
-              onPressed: () => Navigator.pop(ctx, BomPasteMode.replace),
-              child: const Text('替换现有组件'), // TODO(l10n): 补 arb
-            ),
-          ],
-        ),
-      );
-
-  /// 「删除组件信息」：确认后一次请求删除该货品的全部 BOM 行(整批原子)。
-  Future<void> _deleteBom(
+  List<UtenContextMenuEntry> _bomMaintenanceMenuItems(
     MasterEntityPaneController<GoodsListItem, GoodsDetail> pane,
-    GoodsListItem g,
-  ) async {
-    if (pane.busy) return;
-    final existing = await pane.runExclusive(
-      () => context.guardLoad(
-        () => ref.read(goodsBomRepositoryProvider).list(g.id),
-        errorFallback: '读取组件信息失败', // TODO(l10n): 补 arb
-      ),
-    );
-    if (existing == null || !mounted) return;
-    if (existing.isEmpty) {
-      context.appError('「${_goodsLabel(g)}」没有组件信息');
-      return;
-    }
-    final ok = await UtenDialog.show(
-      context,
-      title: '删除组件信息', // TODO(l10n): 补 arb
-      content: Text(
-        '确定删除「${_goodsLabel(g)}」的全部 ${existing.length} 个组件吗？此操作不可恢复。',
-      ),
-      confirmLabel: '删除', // TODO(l10n): 补 arb
-      danger: true,
-    );
-    if (ok != true || !mounted) return;
-    final deleted = await pane.runExclusive(
-      () => context.guardAction(
-        () => ref.read(goodsBomRepositoryProvider).deleteMany(g.id, [
-          for (final e in existing) e.id,
-        ]),
-        errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
-      ),
-    );
-    if (deleted != null && mounted) {
-      context.appSuccess('已删除全部 $deleted 个组件'); // TODO(l10n): 补 arb
-    }
+    Set<String> selected, {
+    GoodsListItem? single,
+  }) {
+    final ids = Set<String>.unmodifiable(selected);
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final l10n = AppLocalizations.of(context);
+    final copies =
+        ref.read(goodsClipboardProvider).bomItems ?? const <GoodsBomItem>[];
+    return [
+      if (_canAddBom)
+        UtenMenuItem(
+          label: l10n.goodsBomBatchAddTitle,
+          icon: Icons.playlist_add_rounded,
+          preserveSelectionAfterAction: true,
+          onTap: () => _maintainBom(pane, ids, BomBatchAction.add, boundary),
+        ),
+      if (_canRemoveBom)
+        UtenMenuItem(
+          label: l10n.goodsBomBatchRemoveTitle,
+          icon: Icons.playlist_remove_rounded,
+          preserveSelectionAfterAction: true,
+          destructive: true,
+          onTap: () => _maintainBom(pane, ids, BomBatchAction.remove, boundary),
+        ),
+      if (single != null && _canReplaceBom)
+        UtenMenuItem(
+          label: l10n.goodsBomBatchOverwriteCopied,
+          icon: Icons.content_paste_rounded,
+          preserveSelectionAfterAction: true,
+          destructive: true,
+          enabled: copies.isNotEmpty,
+          onTap: () => _maintainBom(
+            pane,
+            ids,
+            BomBatchAction.overwrite,
+            boundary,
+            initialComponents: copies,
+          ),
+        ),
+      if (single != null && _canRemoveBom)
+        UtenMenuItem(
+          label: l10n.goodsBomBatchClearTopTitle,
+          icon: Icons.layers_clear_rounded,
+          preserveSelectionAfterAction: true,
+          destructive: true,
+          onTap: () => _clearTopBom(pane, single, boundary),
+        ),
+    ];
   }
 
   /// 粘贴只依赖当前分类与剪贴板，行菜单、批量菜单和空白区共用。
@@ -1352,6 +1313,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       return _goodsBatchMenu(pane, selected, clip);
     }
     final disabled = g.status == '禁用';
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
     return [
       UtenMenuItem(
         label: '查看详情',
@@ -1385,21 +1347,9 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       UtenMenuItem(
         label: '复制组件信息',
         icon: Icons.account_tree_outlined,
-        onTap: () => _copyBom(pane, g),
+        onTap: () => _copyBom(pane, g, boundary),
       ),
-      UtenMenuItem(
-        label: '粘贴组件信息',
-        icon: Icons.content_paste_rounded,
-        enabled: _canReplaceBom && (clip.bomItems?.isNotEmpty ?? false),
-        onTap: () => _pasteBom(pane, g),
-      ),
-      UtenMenuItem(
-        label: '删除组件信息',
-        icon: Icons.playlist_remove_rounded,
-        destructive: true,
-        enabled: _canBomDelete,
-        onTap: () => _deleteBom(pane, g),
-      ),
+      ..._bomMaintenanceMenuItems(pane, {g.id}, single: g),
     ];
   }
 
@@ -1417,12 +1367,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
         enabled: _canCreateMaster,
         onTap: () => _batchCopyGoods(pane, selected),
       ),
-      UtenMenuItem(
-        label: '批量粘贴组件($n)', // TODO(l10n): 补 arb
-        icon: Icons.account_tree_outlined,
-        enabled: _canReplaceBom && (clip.bomItems?.isNotEmpty ?? false),
-        onTap: () => _batchPasteBom(pane, selected),
-      ),
+      ..._bomMaintenanceMenuItems(pane, selected),
       UtenMenuItem(
         label: '批量禁用($n)', // TODO(l10n): 补 arb
         icon: Icons.pause_circle_outline_rounded,

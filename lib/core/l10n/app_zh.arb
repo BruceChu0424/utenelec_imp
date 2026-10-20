@@ -5812,5 +5812,203 @@
   "rdInitialUnitConfirm": "确认首次基本单位",
   "rdInitialUnitSaved": "首次基本单位已核对，其它资料问题请继续办理",
   "rdInitialUnitFailed": "首次基本单位核对失败",
-  "rdInitialUnitRetry": "重试"
+  "rdInitialUnitRetry": "重试",
+  "bomEditMode": "编辑模式",
+  "bomEditExitAndSave": "退出并保存",
+  "bomEditAuditMode": "审计模式",
+  "bomEditExitAudit": "退出审计",
+  "bomEditSaveTitle": "保存组装信息并退出",
+  "bomEditSaveSummary": "本次共 {operations} 项操作，修改 {parents} 个货品的组装信息。",
+  "@bomEditSaveSummary": {
+    "placeholders": {
+      "operations": {
+        "type": "int"
+      },
+      "parents": {
+        "type": "int"
+      }
+    }
+  },
+  "bomEditUnnamedGoods": "货品",
+  "bomEditMoreGoods": "另有 {count} 个货品",
+  "@bomEditMoreGoods": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "bomEditSharedWarning": "这些组件还被其他 {count} 处组装信息引用。确认保存后，所有引用处会同步使用修改后的组件结构。是否同步保存？",
+  "@bomEditSharedWarning": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "bomEditSaveNote": "确认后保存本次全部修改。已开始的生产业务保留原有用料记录。",
+  "bomEditContinue": "继续编辑",
+  "bomEditConfirmShared": "确认同步并保存",
+  "bomEditConfirmSave": "确认保存",
+  "bomEditSaved": "组装信息已保存，所有引用处已同步",
+  "bomEditMoreProblems": "另有 {count} 处问题，请返回草稿核对",
+  "@bomEditMoreProblems": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "bomEditSaveUnknown": "保存结果暂时无法确认。请核对组装信息后重试，草稿仍保留在本页。",
+  "bomEditSaveFailedTitle": "本次组装信息未完成保存",
+  "bomEditRecoveryMessage": "{message}\n\n可以保留草稿继续核对，或放弃本次草稿后重新读取最新组装信息。",
+  "@bomEditRecoveryMessage": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "bomEditKeepDraft": "继续保留草稿",
+  "bomEditDiscardRefresh": "放弃草稿并刷新",
+  "bomEditPermissionChanged": "编辑权限或登录状态已变化，请恢复权限后保存草稿",
+  "bomEditBoundaryExpired": "登录身份或权限已变化，原编辑草稿已失效；若刚执行保存，请重新核对结果",
+  "bomEditNoView": "当前账号无权查看组装信息",
+  "bomEditCopy": "复制",
+  "bomEditPaste": "粘贴",
+  "bomEditNewComponent": "新增组件",
+  "bomEditCurrentGoods": "当前货品",
+  "bomEditCopied": "已复制 {count} 个组件，可到其他货品的编辑模式中粘贴",
+  "@bomEditCopied": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "bomEditPasteParentRequired": "请只选择一个父组件，或清除选择后粘贴到顶层",
+  "bomEditPasteStaged": "已暂存粘贴 {count} 个组件，退出并保存后生效",
+  "@bomEditPasteStaged": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "bomEditDeleteStaged": "已暂存删除 {count} 个组件，退出并保存后生效",
+  "@bomEditDeleteStaged": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "bomEditMoveStaged": "已暂存移动 {count} 个组件，退出并保存后生效",
+  "@bomEditMoveStaged": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "bomEditAddStaged": "已暂存添加 {count} 个组件，退出并保存后生效",
+  "@bomEditAddStaged": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "bomEditComponentStaged": "组件修改已暂存，退出并保存后生效",
+  "bomEditReviewWarnings": "{message}；请核对：{warnings}",
+  "@bomEditReviewWarnings": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      },
+      "warnings": {
+        "type": "String"
+      }
+    }
+  },
+  "bomEditPasteFailed": "粘贴失败，请稍后重试",
+  "bomEditEmpty": "暂无组装信息",
+  "bomEditPasting": "正在粘贴组件",
+  "bomEditSaving": "正在保存组装信息",
+  "bomEditProcessing": "正在处理本次操作，请稍候。",
+  "goodsBomBatchWeightUnit": "单个重量 ({unit})",
+  "@goodsBomBatchWeightUnit": {"placeholders":{"unit":{"type":"String"}}},
+  "goodsBomBatchInvalidQuantity": "「{name}」{label}必须大于 0",
+  "@goodsBomBatchInvalidQuantity": {"placeholders":{"name":{"type":"String"},"label":{"type":"String"}}},
+  "goodsBomBatchSharedPeriodicNotAllowed": "「{name}」是辅料或车间费用料，不能加入组装清单",
+  "@goodsBomBatchSharedPeriodicNotAllowed": {"placeholders":{"name":{"type":"String"}}},
+  "goodsBomBatchSelectFirst": "请先选择组件",
+  "goodsBomBatchComponentLimit": "一次最多选择 {limit} 个组件，请分批操作",
+  "@goodsBomBatchComponentLimit": {"placeholders":{"limit":{"type":"int"}}},
+  "goodsBomBatchCommitUncertain": "提交结果暂未确认。输入已锁定，请重试本次提交以核对原结果。",
+  "goodsBomBatchFailed": "本次组装维护未完成，请重新预览后重试",
+  "goodsBomBatchAddTitle": "批量添加组件",
+  "goodsBomBatchRemoveTitle": "批量移除指定组件",
+  "goodsBomBatchOverwriteTitle": "覆盖整份组装清单",
+  "goodsBomBatchTargets": "已选 {count} 个货品，仅维护各货品的顶层组装清单。",
+  "@goodsBomBatchTargets": {"placeholders":{"count":{"type":"int"}}},
+  "goodsBomBatchOverwriteDescription": "使用已复制组件覆盖当前货品的顶层组装清单；新清单没有的原顶层组件将移除。嵌套共享子件自身的组装清单保持不变。",
+  "goodsBomBatchRemoveDescription": "仅移除所选货品顶层命中的指定组件；未命中时跳过，不删除嵌套子件自身的组件。",
+  "goodsBomBatchAddDescription": "向所选货品顶层追加指定组件；已有相同组件时直接跳过，保留原数量及其他字段。",
+  "goodsBomBatchChooseComponents": "选择组件",
+  "goodsBomBatchUseCopied": "使用已复制组件",
+  "goodsBomBatchUnselectComponent": "取消选择此组件",
+  "goodsBomBatchCollapseComponents": "收起组件",
+  "goodsBomBatchExpandComponents": "展开全部 {count} 个组件",
+  "@goodsBomBatchExpandComponents": {"placeholders":{"count":{"type":"int"}}},
+  "goodsBomBatchSummary": "将修改 {targets} 个货品：添加 {added}、更新 {updated}、移除 {removed}、跳过 {skipped}。",
+  "@goodsBomBatchSummary": {"placeholders":{"targets":{"type":"int"},"added":{"type":"int"},"updated":{"type":"int"},"removed":{"type":"int"},"skipped":{"type":"int"}}},
+  "goodsBomBatchTargetCounts": "添加 {added} / 更新 {updated} / 移除 {removed} / 跳过 {skipped}",
+  "@goodsBomBatchTargetCounts": {"placeholders":{"added":{"type":"int"},"updated":{"type":"int"},"removed":{"type":"int"},"skipped":{"type":"int"}}},
+  "goodsBomBatchSharedImpact": "另外 {count} 个引用位置会随共享货品的组装清单同步变化。",
+  "@goodsBomBatchSharedImpact": {"placeholders":{"count":{"type":"int"}}},
+  "goodsBomBatchHiddenImpact": "其中 {count} 个引用位置受查看权限限制，仅显示数量。",
+  "@goodsBomBatchHiddenImpact": {"placeholders":{"count":{"type":"int"}}},
+  "goodsBomBatchConfirmImpact": "请核对所选货品、跳过项与同步影响。确认后整批保存，任何一项失败都不会修改。",
+  "goodsBomBatchCloseVerify": "关闭并刷新核对",
+  "goodsBomBatchRetryCommit": "重试本次提交",
+  "goodsBomBatchPreview": "预览影响范围",
+  "goodsBomBatchConfirmCommit": "确认整批修改",
+  "goodsBomBatchCompleted": "已完成 {targets} 个货品：添加 {added}、更新 {updated}、移除 {removed}、跳过 {skipped}。",
+  "@goodsBomBatchCompleted": {"placeholders":{"targets":{"type":"int"},"added":{"type":"int"},"updated":{"type":"int"},"removed":{"type":"int"},"skipped":{"type":"int"}}},
+  "goodsBomBatchClearTopTitle": "清空顶层组装清单",
+  "goodsBomBatchOverwriteCopied": "覆盖整份组装清单(使用已复制组件)",
+  "goodsBomBatchMoreProblems": "另有 {count} 项问题，请调整后重新预览。",
+  "@goodsBomBatchMoreProblems": {"placeholders":{"count":{"type":"int"}}},
+  "exportPdfDialogTitle": "导出 PDF",
+  "whereUsedReplacementTitle": "一键替换组件",
+  "whereUsedReplacementConfirmTitle": "确认同步替换",
+  "whereUsedCurrentComponent": "当前组件",
+  "whereUsedReplaceWith": "替换成",
+  "whereUsedChooseComponent": "选择组件",
+  "whereUsedReplacementPickerTitle": "选择替换组件",
+  "whereUsedReplacementSameComponent": "替换组件不能与当前组件相同",
+  "whereUsedReplacementFailed": "替换未完成，请重新预览当前组装关系后重试",
+  "whereUsedReplacementRules": "已选 {count} 个产品。保留原组装行的用量、颜色、供应商、单价和控制规则；两个组件须有相同基本单位及领料方式。",
+  "@whereUsedReplacementRules": {"placeholders": {"count": {"type": "int"}}},
+  "whereUsedReplacementHistory": "本次替换只修改当前组装信息，历史凭证、冻结需求与已发生的实际耗用保持原记录。",
+  "whereUsedReplacementImpact": "将替换 {edges} 条组装关系，共影响 {products} 个产品。",
+  "@whereUsedReplacementImpact": {"placeholders": {"edges": {"type": "int"}, "products": {"type": "int"}}},
+  "whereUsedReplacementSharedImpact": "其中 {count} 个为共用组件关联的其他产品，也会同步变化。",
+  "@whereUsedReplacementSharedImpact": {"placeholders": {"count": {"type": "int"}}},
+  "whereUsedReplacementSelectedSuffix": "(已选)",
+  "whereUsedReplacementSharedSuffix": "(同步影响)",
+  "whereUsedPreviewImpact": "预览影响范围",
+  "whereUsedConfirmReplaceSync": "确认替换并同步",
+  "whereUsedReplaceAction": "一键替换",
+  "whereUsedReplacementSuccess": "组件已替换，关联产品的组装信息已同步",
+  "whereUsedHistoryNotReplaceable": "该产品只有历史关系，不能替换历史记录",
+  "whereUsedExportFiltered": "导出筛选结果",
+  "whereUsedExportDescription": "导出全部筛选结果，并附组件、筛选条件、操作员、导出时间和证据来源说明。Excel 适合继续筛选，PDF 适合查阅与打印。",
+  "whereUsedExportExcel": "Excel",
+  "whereUsedExportPdf": "PDF",
+  "whereUsedExportFilename": "物料反查筛选结果",
+  "whereUsedReplacementCommitUncertain": "提交结果暂未确认。请重试本次提交以核对原结果，暂勿更换组件。",
+  "whereUsedRetryReplacementCommit": "重试本次提交",
+  "whereUsedCloseAndVerify": "关闭并刷新核对"
 }

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:dio/dio.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/feedback/uten_floating_window.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.dart';
@@ -212,7 +213,8 @@ void main() {
 
       await tester.tap(add);
       await tester.pumpAndSettle();
-      expect(find.byType(Dialog), findsOneWidget);
+      // 2026-10-19 添加组件改为页内浮窗 (无蒙版、切页保留现场)，不再是 Dialog。
+      expect(find.byType(UtenFloatingWindow), findsOneWidget);
       expect(find.text('添加位置'), findsOneWidget);
       expect(find.text('选择组件'), findsOneWidget);
     },

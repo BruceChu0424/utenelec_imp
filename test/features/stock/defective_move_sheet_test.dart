@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/stock/repositories/defective_move_repository.dart';
 import 'package:uten_imp/features/stock/widgets/defective_move_sheet.dart';
@@ -101,6 +102,12 @@ Future<(ProviderContainer, ValueNotifier<bool?>)> _open(
   addTearDown(() => tester.binding.setSurfaceSize(null));
   final container = ProviderContainer(
     overrides: [
+      // Riverpod 3 同步挂链（表格控制器 → session → connectionRecovery →
+      // apiBaseUrl）会拉起真实可达性探针的 60s 周期 Timer，假时钟下挂死；
+      // web 探针零 Timer，语义等同「上次可达」。
+      localServerReachableProvider.overrideWith(
+        (ref) => LocalServerReachabilityNotifier(null, web: true),
+      ),
       masterNameServiceProvider.overrideWithValue(_Names()),
       defectiveMoveRepositoryProvider.overrideWithValue(repo),
     ],

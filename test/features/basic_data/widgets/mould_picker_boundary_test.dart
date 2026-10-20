@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_reference_picker_field.dart';
 import 'package:uten_imp/components/layout/uten_picker_confirm_bar.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:uten_imp/features/basic_data/models/mould_node.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/repositories/mould_category_repository.dart';
@@ -135,6 +136,14 @@ Future<ProviderContainer> _host(
       sensitiveReadBoundaryProvider.overrideWith((ref) => ref.watch(source)),
       mouldRepositoryProvider.overrideWithValue(repository),
       mouldCategoryRepositoryProvider.overrideWithValue(_Categories()),
+      // 完整面板的 UtenAppBar 挂 PagePermissionAction → sessionSnapshot →
+      // sessionProvider → connectionRecovery → apiBaseUrl，Riverpod 3 的 listen
+      // 会同步建整条链，末端的本地可达性探针随即起一个 60s 周期定时器；测试的
+      // 假时钟下它永远走不到销毁点，收尾的「无 pending timer」断言必炸。
+      // 按仓库既有口径用 web: true（Web 不跑探针、不起定时器）把它关掉。
+      localServerReachableProvider.overrideWith(
+        (ref) => LocalServerReachabilityNotifier(null, web: true),
+      ),
     ],
   );
   addTearDown(container.dispose);

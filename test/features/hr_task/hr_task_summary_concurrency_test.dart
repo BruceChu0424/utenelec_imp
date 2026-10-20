@@ -285,7 +285,16 @@ void main() {
           );
         }
         await Future<void>.delayed(Duration.zero);
-        expect(container.read(hrTaskSummaryProvider).value, isNull);
+        // Riverpod 3：AsyncNotifier 元素在世期间无法清空 previous value——reload
+        // 保留旧快照仅供 skipLoadingOnReload 渐进渲染（v3 起 when 默认渲染 reload
+        // 的骨架屏，工作台不再呈现旧身仧行；见同文件 HR workbench 页面级用例）。
+        // 此处锁「身份一变立即进入重载」，新身份数据落地后原子替换，旧响应晚到
+        // 被世代号拒收（下方两条 requireValue 断言）。
+        expect(
+          container.read(hrTaskSummaryProvider).isReloading,
+          isTrue,
+          reason: '切换身份/权限必须立即进入重载过渡',
+        );
         repository.requests[2].complete(_summary('current employee', count: 0));
         await container.read(hrTaskSummaryProvider.future);
         repository.requests[1].complete(_summary('old employee', count: 9));

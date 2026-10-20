@@ -24,6 +24,7 @@ import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/providers/uten_page_prefs_notifier.dart';
 import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 
@@ -166,6 +167,11 @@ void main() {
           (ref) => ref.watch(_testBatchPermissionsProvider),
         ),
         isSuperAdminProvider.overrideWithValue(false),
+        // Riverpod 3 同步挂链会经 session→apiBaseUrl 拉起本地可达性探针的
+        // 60s 周期定时器，假时钟下收尾必炸；web: true 不起探针。
+        localServerReachableProvider.overrideWith(
+          (ref) => LocalServerReachabilityNotifier(null, web: true),
+        ),
       ],
     );
     addTearDown(container.dispose);

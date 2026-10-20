@@ -20,11 +20,6 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 
-class _StubSession extends SessionNotifier {
-  @override
-  SessionState build() => const SessionState();
-}
-
 AppUser _user(Set<String> permissions) => AppUser(
   id: 'workshop-entry-user',
   code: 'W001',
@@ -66,7 +61,6 @@ Future<GoRouter> _pump(WidgetTester tester, Set<String> permissions) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        sessionProvider.overrideWith(() => _StubSession()),
         sharedPreferencesProvider.overrideWithValue(preferences),
         formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
         sessionProvider.overrideWith(_TestSession.new),

@@ -25,6 +25,28 @@ Future<SalesQuoteTemplate?> learnSalesQuoteTemplate(
   String quoteId, {
   bool Function()? stillCurrent,
 }) async {
+  // Riverpod 3 对「没有活动监听者的 provider」会暂停其依赖通知：epoch 栅栏若在
+  // 学习期间只被 read，账号/服务器切换时它不会 +1，current() 永远过检，跨账号
+  // 文件就会被继续提交。学习全程持有一份活动订阅，身份一变栅栏即时失效。
+  final fence = ref.listenManual(exportContextEpochProvider, (_, _) {});
+  try {
+    return await _learnSalesQuoteTemplate(
+      context,
+      ref,
+      quoteId,
+      stillCurrent: stillCurrent,
+    );
+  } finally {
+    fence.close();
+  }
+}
+
+Future<SalesQuoteTemplate?> _learnSalesQuoteTemplate(
+  BuildContext context,
+  WidgetRef ref,
+  String quoteId, {
+  bool Function()? stillCurrent,
+}) async {
   final scope = SalesQuoteTemplateScope(ref);
   bool current() =>
       context.mounted &&

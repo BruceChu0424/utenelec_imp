@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/production/pages/production_workshop_tasks_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -31,6 +32,11 @@ void main() {
           Perm.productionExecutionView,
           Perm.productionExecutionStart,
         }),
+        // 页面链路挂 apiBaseUrl → localServerReachable，v3 同步挂链会拉起 60s
+        // 周期可达性探针定时器，假时钟下收尾必炸；按 Web 形态不起探针。
+        localServerReachableProvider.overrideWith(
+          (ref) => LocalServerReachabilityNotifier(null, web: true),
+        ),
       ],
     );
     addTearDown(container.dispose);
@@ -81,6 +87,10 @@ void main() {
             Perm.productionExecutionView,
             Perm.productionExecutionStart,
           }),
+          // 同上：关掉 60s 本地可达性探针定时器。
+          localServerReachableProvider.overrideWith(
+            (ref) => LocalServerReachabilityNotifier(null, web: true),
+          ),
         ],
       );
       addTearDown(container.dispose);

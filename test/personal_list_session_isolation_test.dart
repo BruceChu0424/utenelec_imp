@@ -26,7 +26,12 @@ void main() {
         await harness.tick();
         harness.container.read(harness.identity.notifier).state = 'B';
         await harness.tick();
-        expect(harness.value(), isNull);
+        // Riverpod 3：AsyncNotifier 元素在世期间无法清空 previous value——reload
+        // 会保留旧快照供 skipLoadingOnReload 渐进渲染（v3 起 when 默认不再跳过
+        // reload 的 loading 分支，默认消费方渲染骨架屏，不再呈现旧身份数据）。
+        // 隔离契约由此处的「切换立即进入重载」+ 后续「新身份数据原子替换、旧响应
+        // 晚到被世代号拒收」+ 页面层 RetainedAsyncPage（scope 键含会话）共同保证。
+        expect(harness.reloading(), isTrue, reason: '切换身份必须立即进入重载过渡');
         harness.complete(2, 22);
         expect(await harness.total(), 22);
         harness.complete(1, 99);
@@ -103,6 +108,9 @@ class _Harness {
   PagedResult<Object?>? value() => payroll
       ? container.read(payrollListProvider).value
       : container.read(expenseListProvider).value;
+  bool reloading() => payroll
+      ? container.read(payrollListProvider).isReloading
+      : container.read(expenseListProvider).isReloading;
   Future<void> refresh() => payroll
       ? container.read(payrollListProvider.notifier).refresh()
       : container.read(expenseListProvider.notifier).refresh();

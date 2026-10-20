@@ -7,6 +7,7 @@ import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/data_write_revision.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/models/stock_doc.dart';
 import 'package:uten_imp/features/purchase/models/purchase_doc.dart';
@@ -292,6 +293,11 @@ void main() {
           ),
           formDraftsProvider.overrideWith(() => drafts),
           fixedBadgeSummaryOverride(),
+          // Riverpod 3 的同步挂链会把 apiBaseUrl 连同本地可达性探针一起拉起，
+          // 60s 周期定时器在假时钟下走不到销毁点；web: true 不起探针。
+          localServerReachableProvider.overrideWith(
+            (ref) => LocalServerReachabilityNotifier(null, web: true),
+          ),
         ],
       );
       addTearDown(container.dispose);

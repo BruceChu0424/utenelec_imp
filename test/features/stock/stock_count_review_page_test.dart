@@ -241,6 +241,8 @@ Future<void> _pump(
   WarehouseTaskScope warehouseScope = const WarehouseTaskScope.all(),
   String? keyword,
   String initialStatus = 'PENDING',
+  // 徽章汇总覆写只能给一份：v3 对同一 provider 二次覆写直接断言。
+  Override? badgeOverride,
   List<Override> extraOverrides = const [],
 }) async {
   await tester.binding.setSurfaceSize(size);
@@ -252,7 +254,7 @@ Future<void> _pump(
     ProviderScope(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(prefs),
-        fixedBadgeSummaryOverride(),
+        badgeOverride ?? fixedBadgeSummaryOverride(),
         stockCountRequestRepositoryProvider.overrideWithValue(repo),
         currentPermissionsProvider.overrideWithValue(permissions),
         isSuperAdminProvider.overrideWithValue(false),
@@ -574,13 +576,11 @@ void main() {
       tester,
       repo,
       requestId: null,
-      extraOverrides: [
-        fixedBadgeSummaryOverride(
-          badgeSummaryFixture(
-            entries: {BadgeEntry.financeStockCountReview: (3, 0)},
-          ),
+      badgeOverride: fixedBadgeSummaryOverride(
+        badgeSummaryFixture(
+          entries: {BadgeEntry.financeStockCountReview: (3, 0)},
         ),
-      ],
+      ),
     );
     expect(redCounts(tester, '待审核'), [3]);
     expect(redCounts(tester, '历史单据'), isEmpty);
@@ -597,13 +597,11 @@ void main() {
       requestId: null,
       reviewRoute: null,
       permissions: const {Perm.stockCountSubmit},
-      extraOverrides: [
-        fixedBadgeSummaryOverride(
-          badgeSummaryFixture(
-            entries: {BadgeEntry.financeStockCountReview: (3, 0)},
-          ),
+      badgeOverride: fixedBadgeSummaryOverride(
+        badgeSummaryFixture(
+          entries: {BadgeEntry.financeStockCountReview: (3, 0)},
         ),
-      ],
+      ),
     );
     expect(find.byType(UtenNotificationBadge), findsNothing);
   });
@@ -615,13 +613,11 @@ void main() {
       requestId: null,
       reviewRoute: 'WAREHOUSE',
       permissions: const {Perm.stockCountWarehouseReview},
-      extraOverrides: [
-        fixedBadgeSummaryOverride(
-          badgeSummaryFixture(
-            entries: {BadgeEntry.warehouseStockCountReview: (1, 0)},
-          ),
+      badgeOverride: fixedBadgeSummaryOverride(
+        badgeSummaryFixture(
+          entries: {BadgeEntry.warehouseStockCountReview: (1, 0)},
         ),
-      ],
+      ),
     );
     expect(redCounts(tester, '待审核'), [1]);
   });

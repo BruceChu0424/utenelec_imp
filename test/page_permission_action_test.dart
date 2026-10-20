@@ -664,6 +664,11 @@ Widget _actionApp({
   return ProviderScope(
     overrides: [
       isSuperAdminProvider.overrideWithValue(superAdmin),
+      // 打开抽屉会同步挂载委派仓储链（apiClient → apiBaseUrl → 网络恢复）。
+      // 与 _drawerApp 同款离线口径：mock 偏好 + Fake ApiClient，避免真实 Dio
+      // 在假时钟里挂起（骨架屏无限动画）导致 pumpAndSettle 超时。
+      sharedPreferencesProvider.overrideWithValue(mockSharedPreferences),
+      apiClientProvider.overrideWithValue(_DrawerApi()),
       // 可委派页面随会话快照(/auth/me)一次带回(ADR-108), 不再逐页请求 capability。
       sessionSnapshotProvider.overrideWith(
         () => _FixedSnapshot(

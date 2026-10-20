@@ -12,6 +12,7 @@ import 'package:uten_imp/components/inputs/uten_autofill_text_controller.dart';
 import 'package:uten_imp/components/inputs/uten_field_message.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/shared/measurement/weight_params.dart';
 import 'package:uten_imp/shared/measurement/weight_predictor.dart';
 import 'package:uten_imp/shared/measurement/weight_prefs.dart';
@@ -107,6 +108,10 @@ Future<UtenEditableGridController<_Row>> _pump(
         warehouseWeightUnitsPrefsProvider.overrideWith(
           _MemoryWeightUnitsPrefs.new,
         ),
+        // 见 weight_sample_dialog_test：内存 prefs 子类重写了 build，_ownerServer
+        // 停在 ''；未注入的 sharedPreferencesProvider 兜底成内存实现后 apiBaseUrl
+        // 不再是 ''，setEntry 的 _owns 守卫会误拦。钉回 '' 恢复 v2 事实行为。
+        apiBaseUrlProvider.overrideWithValue(''),
       ],
       child: MaterialApp(
         home: Scaffold(

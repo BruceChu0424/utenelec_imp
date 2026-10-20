@@ -116,7 +116,14 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     _localRevokes = null;
     _lastReportedPermissionDirty = null;
     if (lifecycleChanged) {
-      ref.invalidate(adminEffectivePermissionsProvider(widget.user.id));
+      // didUpdateWidget 处于 build 期；Riverpod 3 的 provider 刷新经 vsync 在
+      // ProviderScope 上 setState，直接 invalidate 会触发 "markNeedsBuild
+      // called during build" 断言，推迟到本帧结束后再失效。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ref.invalidate(adminEffectivePermissionsProvider(widget.user.id));
+        }
+      });
     }
   }
 

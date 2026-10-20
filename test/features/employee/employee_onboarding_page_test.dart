@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/inputs/uten_date_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/core/utils/china_datetime.dart';
 import 'package:uten_imp/core/utils/id_card_utils.dart';
@@ -115,6 +116,13 @@ Future<ProviderContainer> _pump(
       }),
       employeeRepositoryProvider.overrideWithValue(repo),
       performanceProvider.overrideWith(_FixedPerformanceNotifier.new),
+      // 草稿自动保存 → formDraftsProvider → apiBaseUrl → localServerReachable，
+      // Riverpod 3 同步挂链会在测试容器里拉起 60s 周期可达性探针定时器，
+      // 假时钟下永远到不了销毁点，收尾「无 pending timer」断言必炸。
+      // 按仓库既有口径用 web: true（Web 不跑探针、不起定时器）关掉。
+      localServerReachableProvider.overrideWith(
+        (ref) => LocalServerReachabilityNotifier(null, web: true),
+      ),
       departmentPickerTreeProvider.overrideWith(
         (ref) async => [
           DepartmentNode(

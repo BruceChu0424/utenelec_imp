@@ -194,6 +194,10 @@ class _SalesLearningStatusPanelState
     final state = ref.watch(salesLearningReceiptsProvider(_key));
     final readOnly = ref.watch(authenticatedScopeProvider)?.readOnly ?? true;
     return state.when(
+      // Riverpod 3 对失败的 async provider 默认安排自动重试，等待期间状态是
+      // 「带旧错误的 loading(retrying)」；不跳过 reload 态会把这行吞成空白，
+      // 用户在退避窗口里既看不到「暂时无法读取」也没有手动重试入口。
+      skipLoadingOnReload: true,
       loading: () => const SizedBox.shrink(),
       error: (error, _) =>
           error is ApiException &&

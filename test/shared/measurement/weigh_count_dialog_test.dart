@@ -12,6 +12,7 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_autofill_text_controller.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/measurement/weight_params.dart';
 import 'package:uten_imp/shared/measurement/weight_predictor.dart';
@@ -103,6 +104,10 @@ Future<(_FakeApi, _Harness)> _open(
         warehouseWeightUnitsPrefsProvider.overrideWith(
           _MemoryWeightUnitsPrefs.new,
         ),
+        // 见 weight_sample_dialog_test：内存 prefs 子类重写了 build，_ownerServer
+        // 停在 ''；未注入的 sharedPreferencesProvider 兜底成内存实现后 apiBaseUrl
+        // 不再是 ''，setSample 的 _owns 守卫会误拦。钉回 '' 恢复 v2 事实行为。
+        apiBaseUrlProvider.overrideWithValue(''),
         weightRepositoryProvider.overrideWithValue(WeightRepository(api)),
         currentPermissionsProvider.overrideWithValue(permissions),
       ],

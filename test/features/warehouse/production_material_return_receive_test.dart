@@ -6,6 +6,7 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/warehouse/models/stock_doc.dart';
 import 'package:uten_imp/features/warehouse/pages/stock_doc_detail_page.dart';
@@ -122,6 +123,12 @@ Future<void> _openReceived(
   addTearDown(tester.view.resetDevicePixelRatio);
   final container = ProviderContainer(
     overrides: [
+      // Riverpod 3 同步挂链（pagePrefs → session → connectionRecovery →
+      // apiBaseUrl）会拉起真实可达性探针的 60s 周期 Timer，假时钟下挂死；
+      // web 探针零 Timer，语义等同「上次可达」。
+      localServerReachableProvider.overrideWith(
+        (ref) => LocalServerReachabilityNotifier(null, web: true),
+      ),
       currentPermissionsProvider.overrideWithValue({
         Perm.stockDocView,
         if (canReverse) Perm.stockDocReverse,
@@ -306,6 +313,9 @@ void main() {
         final api = _Api();
         final container = ProviderContainer(
           overrides: [
+            localServerReachableProvider.overrideWith(
+              (ref) => LocalServerReachabilityNotifier(null, web: true),
+            ),
             currentPermissionsProvider.overrideWithValue({
               Perm.stockDocView,
               if (approve) Perm.stockDocApprove,

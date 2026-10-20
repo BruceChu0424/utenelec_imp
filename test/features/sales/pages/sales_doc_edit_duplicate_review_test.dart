@@ -66,7 +66,6 @@ Future<_DupApi> _pumpEditor(
         salesMasterNameServiceProvider.overrideWithValue(
           SalesMasterNameService(api),
         ),
-        sessionProvider.overrideWith(_TestSessionNotifier.new),
       ],
       child: MaterialApp.router(
         routerConfig: GoRouter(

@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/measurement/weight_params.dart';
 import 'package:uten_imp/shared/measurement/weight_predictor.dart';
@@ -85,6 +86,11 @@ Future<(_FakeApi, _Harness, ProviderContainer)> _open(
       warehouseWeightUnitsPrefsProvider.overrideWith(
         _MemoryWeightUnitsPrefs.new,
       ),
+      // UtenPagePrefsNotifier.update 的 _owns 守卫会比对 _server()；riverpod 3
+      // 迁移后未注入的 sharedPreferencesProvider 兜底成内存实现，apiBaseUrl 不再
+      // 是 ''，重写 build 的内存子类（_ownerServer 默认 ''）会被误判换过服务器
+      // 而静默丢弃更新。显式钉回 ''，恢复「测试读不到服务器配置」的事实行为。
+      apiBaseUrlProvider.overrideWithValue(''),
       weightRepositoryProvider.overrideWithValue(WeightRepository(api)),
       currentPermissionsProvider.overrideWithValue(permissions),
     ],

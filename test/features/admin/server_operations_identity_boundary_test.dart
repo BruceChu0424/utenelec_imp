@@ -252,7 +252,10 @@ class _MeApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    expect(path, ApiEndpoints.authMe);
+    // 快照重取可能发生在 pumpAndSettle 守卫内（Riverpod 3 vsync 任务经假时钟
+    // Timer 触发），此处再调守卫版 expect 会抛 "Guarded function conflict"，
+    // 把快照打成错误态并留下 5s 重试 Timer；expectSync 保住同样的路径断言。
+    expectSync(path, ApiEndpoints.authMe);
     meReads++;
     return {
       'session': {

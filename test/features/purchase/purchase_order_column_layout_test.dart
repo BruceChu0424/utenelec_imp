@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_layout.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_binding.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_controller.dart';
@@ -232,6 +233,10 @@ void main() {
               authenticatedScopeProvider.overrideWith(
                 (ref) => ref.watch(owner),
               ),
+              // owner=true 会把身份切到已登录，Riverpod 3 的同步挂链随之唤醒
+              // sessionSnapshot 真拉一次 /auth/me：真实 Dio 在假时钟下留下
+              // 永不完成的超时定时器。给一份不发请求的空快照即可。
+              sessionSnapshotProvider.overrideWith(_NoSession.new),
             ],
             child: MaterialApp(
               home: Builder(
@@ -278,4 +283,9 @@ void main() {
       },
     );
   }
+}
+
+class _NoSession extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async => null;
 }

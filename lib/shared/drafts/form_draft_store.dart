@@ -811,6 +811,10 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
   }
 
   Future<void> delete(String id, {String? expectedRevision}) {
+    // Default revision lookup reads `state`; after provider disposal that
+    // access is illegal (Riverpod 3 throws UnmountedRefException). Reject
+    // with the notifier's own stale-identity error before touching state.
+    if (_closed) throw StateError('登录身份已变化');
     final generation = _generation;
     final prefix = _prefix;
     final storage = _storage;
@@ -929,6 +933,8 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
   /// Confirmed creation leaves a terminal marker and an immutable payload in
   /// history. Stale tabs cannot restore or recreate the submitted editor.
   Future<void> complete(String id, {String? expectedRevision}) {
+    // Same post-disposal guard as [delete]: reject before reading `state`.
+    if (_closed) throw StateError('登录身份已变化');
     final generation = _generation;
     final prefix = _prefix;
     final storage = _storage;

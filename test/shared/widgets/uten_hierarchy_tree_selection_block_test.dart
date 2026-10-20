@@ -46,7 +46,6 @@ void main() {
               ],
               flatLevelColors: true,
               showSearch: false,
-              initiallyExpandDepth: 1,
               trailingBuilder: (node) => Builder(
                 builder: (rowContext) => Icon(
                   Icons.star,

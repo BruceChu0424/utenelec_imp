@@ -962,8 +962,9 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
     UtenTableRowDropMode mode,
   ) {
     if (mode == UtenTableRowDropMode.into) return false;
-    if (dragged.any((r) => r.parentGoodsId != target.parentGoodsId))
+    if (dragged.any((r) => r.parentGoodsId != target.parentGoodsId)) {
       return false;
+    }
     final draggedIds = dragged.map((r) => r.node.item.id).toSet();
     // 可见平铺里同层的行序即层内顺序（目标行可见 = 该层可见）。
     final levelRows = _visibleRows

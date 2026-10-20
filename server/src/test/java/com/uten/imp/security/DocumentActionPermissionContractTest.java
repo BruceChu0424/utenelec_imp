@@ -345,17 +345,36 @@ class DocumentActionPermissionContractTest {
         sourcedLine.setApplicationItemId(UUID.randomUUID());
         OrderSaveRequest sourced = new OrderSaveRequest();
         sourced.setItems(List.of(sourcedLine));
-        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
-                service, "requireDecompositionAuthorityIfNeeded", sourced))
-                .isInstanceOf(ApiException.class)
-                .hasMessageContaining("分解订货单");
+        OrderItemLine listOnlyLine = new OrderItemLine();
+        listOnlyLine.setApplicationItemIds(List.of(UUID.randomUUID()));
+        OrderSaveRequest listOnly = new OrderSaveRequest();
+        listOnly.setItems(List.of(listOnlyLine));
+        OrderItemLine mixedLine = new OrderItemLine();
+        mixedLine.setApplicationItemId(sourcedLine.getApplicationItemId());
+        mixedLine.setApplicationItemIds(List.of(sourcedLine.getApplicationItemId(), UUID.randomUUID()));
+        OrderSaveRequest mixed = new OrderSaveRequest();
+        mixed.setItems(List.of(mixedLine));
+        for (OrderSaveRequest request : List.of(sourced, listOnly, mixed)) {
+            assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                    service, "requireDecompositionAuthorityIfNeeded", request))
+                    .isInstanceOf(ApiException.class)
+                    .hasMessageContaining("分解订货单");
+            assertThatThrownBy(() -> service.create(request))
+                    .isInstanceOf(ApiException.class)
+                    .hasMessageContaining("分解订货单");
+            assertThatThrownBy(() -> service.createBatch(request))
+                    .isInstanceOf(ApiException.class)
+                    .hasMessageContaining("分解订货单");
+        }
 
         grants.set(Set.of(
                 "subcontract_order:create",
                 "subcontract_order:decompose"));
-        assertThatCode(() -> ReflectionTestUtils.invokeMethod(
-                service, "requireDecompositionAuthorityIfNeeded", sourced))
-                .doesNotThrowAnyException();
+        for (OrderSaveRequest request : List.of(sourced, listOnly, mixed)) {
+            assertThatCode(() -> ReflectionTestUtils.invokeMethod(
+                    service, "requireDecompositionAuthorityIfNeeded", request))
+                    .doesNotThrowAnyException();
+        }
     }
 
     @Test

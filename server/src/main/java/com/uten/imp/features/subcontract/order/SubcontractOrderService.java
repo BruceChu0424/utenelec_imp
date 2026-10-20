@@ -62,6 +62,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -604,6 +605,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         requireRowsMatchHeaderSupplier(req);
         requireRowsMatchHeaderCommercial(req);
         var oldItems=itemRepo.findByOrderIdOrderByLineNoAsc(id);
+        requireDecompositionAuthorityForSourceChange(id, req);
         var previousColumns = previousColumns(req.getItems(), oldItems);
         Map<OrderItemLine,SubcontractOrderItem> retained=new java.util.IdentityHashMap<>();
         var remaining=new ArrayList<>(oldItems);
@@ -2085,15 +2087,41 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     }
 
     private void requireDecompositionAuthorityIfNeeded(OrderSaveRequest req) {
-        boolean hasApplicationLines = req != null
-                && req.getItems() != null
-                && req.getItems().stream()
-                .anyMatch(item -> item != null && item.getApplicationItemId() != null);
-        if (hasApplicationLines && !access.hasAuthority("subcontract_order:decompose")) {
+        boolean canDecompose = access.hasAuthority("subcontract_order:decompose");
+        if (!canDecompose && !requestedApplicationSources(req).isEmpty()) {
             throw new ApiException(
                     ErrorCode.FORBIDDEN,
                     "缺少从委外申请分解订货单的权限");
         }
+    }
+
+    /** Editing existing sources remains an ordinary edit; changing their identity is a decomposition command. */
+    private void requireDecompositionAuthorityForSourceChange(UUID orderId, OrderSaveRequest req) {
+        boolean canDecompose = access.hasAuthority("subcontract_order:decompose");
+        if (canDecompose) return;
+        Set<UUID> existingSources = new java.util.HashSet<>(NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                        SELECT item.application_item_id
+                        FROM subcontract_order_items item
+                        WHERE item.order_id=:order AND NOT item.is_deleted AND item.application_item_id IS NOT NULL
+                        UNION
+                        SELECT source.application_item_id
+                        FROM subcontract_order_item_sources source
+                        JOIN subcontract_order_items item ON item.id=source.order_item_id
+                        WHERE item.order_id=:order AND NOT item.is_deleted
+                        """).setParameter("order", orderId), UUID.class));
+        if (!existingSources.equals(requestedApplicationSources(req))) {
+            throw new ApiException(
+                    ErrorCode.FORBIDDEN,
+                    "缺少从委外申请分解订货单的权限");
+        }
+    }
+
+    private static Set<UUID> requestedApplicationSources(OrderSaveRequest request) {
+        if (request == null || request.getItems() == null) return Set.of();
+        return request.getItems().stream().filter(Objects::nonNull)
+                .flatMap(item -> item.resolvedApplicationItemIds().stream())
+                .collect(Collectors.toSet());
     }
 
     private SubcontractOrder requireOrder(UUID id) { return requireOrder(id, false); }

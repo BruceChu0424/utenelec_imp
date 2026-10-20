@@ -1,6 +1,8 @@
 package com.uten.imp.businesschain;
 
 import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService;
 import com.uten.imp.features.subcontract.application.SubcontractApplicationService;
 import com.uten.imp.features.subcontract.application.dto.ApplicationItemLine;
@@ -8,8 +10,10 @@ import com.uten.imp.features.subcontract.application.dto.ApplicationSaveRequest;
 import com.uten.imp.features.subcontract.order.SubcontractOrderService;
 import com.uten.imp.features.subcontract.order.dto.OrderItemLine;
 import com.uten.imp.features.subcontract.order.dto.OrderSaveRequest;
+import com.uten.imp.security.AuthUser;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -30,6 +34,7 @@ import java.util.UUID;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Issued application inputs; every order, source allocation, approval and reversal uses real services. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
@@ -72,6 +77,98 @@ class SubcontractOrderSourceFifoEndToEndTest {
                         "25", List.of(1, 2), List.of("30", "5", "0"), List.of("0", "15", "10")),
                 Arguments.of("genuine excess remains on the last declared source", "35", List.of(0, 1),
                         "25", List.of(0, 1), List.of("30", "5", "0"), List.of("0", "25", "0")));
+    }
+
+    @Test
+    void listOnlyApplicationSourcesCannotBypassSingleOrBatchCreateAuthority() {
+        String tag = "sc-source-create-" + UUID.randomUUID().toString().substring(0, 8);
+        var w = fixture.seedWorld(tag);
+        fixture.loginAs(w.superAdminUserId());
+        fixture.ensureSubcontractDirectMaterial(w, w.goodsE());
+        UUID source = application(w, "20", 0);
+        UUID buyer = fixture.createUserWithPerms(w, tag + "-buyer", "subcontract_order:create", "subcontract_order:view");
+        var request = order(w);
+        request.setItems(List.of(row(w, 1, "2", "3", List.of(source))));
+        fixture.loginAs(buyer);
+        assertNoDecompositionAuthority();
+
+        assertForbidden(() -> orders.create(request));
+        assertForbidden(() -> orders.createBatch(request));
+
+        assertThat(db.queryForObject("""
+                SELECT count(*) FROM subcontract_orders
+                WHERE maker_id=(SELECT employee_id FROM users WHERE id=?)
+                """, Integer.class, buyer)).isZero();
+        assertThat(db.queryForObject("""
+                SELECT count(*) FROM subcontract_order_item_sources WHERE application_item_id=?
+                """, Integer.class, source)).isZero();
+        counter(source, "0");
+    }
+
+    @Test
+    void draftEditsKeepExistingSourcesButRequireAuthorityToAddReplaceOrDetachThem() {
+        String tag = "sc-source-edit-" + UUID.randomUUID().toString().substring(0, 8);
+        var w = fixture.seedWorld(tag);
+        fixture.loginAs(w.superAdminUserId());
+        fixture.ensureSubcontractDirectMaterial(w, w.goodsE());
+        UUID originalSource = application(w, "20", 0);
+        UUID replacementSource = application(w, "20", 1);
+        UUID buyer = fixture.createUserWithPerms(w, tag + "-buyer", "subcontract_order:create", "subcontract_order:edit",
+                "subcontract_order:view", "subcontract_application:view", "subcontract_order:decompose");
+        fixture.withSubcontractKitStaged(w, Map.of(w.goodsE(), "20"), () -> {
+            try {
+                fixture.loginAs(buyer);
+                var request = order(w);
+                request.setItems(List.of(row(w, 1, "2", "3", List.of(originalSource))));
+                var saved = orders.create(request);
+                db.update("""
+                        DELETE FROM user_permission_overrides
+                        WHERE user_id=? AND permission_id=(SELECT id FROM permissions WHERE code='subcontract_order:decompose')
+                        """, buyer);
+                fixture.loginAs(buyer);
+                assertNoDecompositionAuthority();
+
+                request.setRemark("Ordinary edit keeps the existing application source");
+                var edited = orders.update(saved.getId(), request);
+                assertThat(edited.getRemark()).isEqualTo(request.getRemark());
+                String before = sourceFacts(saved.getId());
+                var line = request.getItems().getFirst();
+                line.setApplicationItemIds(List.of(replacementSource));
+                assertForbidden(() -> orders.update(saved.getId(), request));
+                line.setApplicationItemIds(List.of(originalSource, replacementSource));
+                assertForbidden(() -> orders.update(saved.getId(), request));
+                line.setApplicationItemIds(List.of());
+                assertForbidden(() -> orders.update(saved.getId(), request));
+                assertThat(sourceFacts(saved.getId())).isEqualTo(before);
+                counter(originalSource, "0");
+                counter(replacementSource, "0");
+
+                db.update("""
+                        INSERT INTO user_permission_overrides(user_id,permission_id,effect)
+                        SELECT ?,id,'grant' FROM permissions WHERE code='subcontract_order:decompose'
+                        """, buyer);
+                fixture.loginAs(buyer);
+                line.setApplicationItemIds(List.of(replacementSource));
+                var replaced = orders.update(saved.getId(), request);
+                assertThat(db.queryForList("""
+                        SELECT source.application_item_id FROM subcontract_order_item_sources source
+                        JOIN subcontract_order_items item ON item.id=source.order_item_id
+                        WHERE item.order_id=? AND NOT item.is_deleted
+                        """, UUID.class, replaced.getId())).containsExactly(replacementSource);
+            } finally {
+                fixture.loginAs(w.superAdminUserId());
+            }
+        });
+    }
+
+    private static void assertNoDecompositionAuthority() {
+        AuthUser actor = (AuthUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        assertThat(actor.getPermissions()).doesNotContain("subcontract_order:decompose");
+    }
+
+    private static void assertForbidden(Runnable action) {
+        assertThatThrownBy(action::run).isInstanceOfSatisfying(ApiException.class, error ->
+                assertThat(error.getCode()).isEqualTo(ErrorCode.FORBIDDEN));
     }
 
     @ParameterizedTest(name = "{0}")

@@ -20732,6 +20732,30 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'关闭并刷新核对'**
   String get whereUsedCloseAndVerify;
+
+  /// No description provided for @bomEditPreparing.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在准备编辑'**
+  String get bomEditPreparing;
+
+  /// No description provided for @bomEditChecking.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在检查修改范围'**
+  String get bomEditChecking;
+
+  /// No description provided for @bomEditRefreshing.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在刷新组装信息'**
+  String get bomEditRefreshing;
+
+  /// No description provided for @bomEditPrepareFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'准备编辑失败，请重试。'**
+  String get bomEditPrepareFailed;
 }
 
 class _AppLocalizationsDelegate

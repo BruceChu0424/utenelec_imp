@@ -6010,5 +6010,9 @@
   "whereUsedExportFilename": "物料反查筛选结果",
   "whereUsedReplacementCommitUncertain": "提交结果暂未确认。请重试本次提交以核对原结果，暂勿更换组件。",
   "whereUsedRetryReplacementCommit": "重试本次提交",
-  "whereUsedCloseAndVerify": "关闭并刷新核对"
+  "whereUsedCloseAndVerify": "关闭并刷新核对",
+  "bomEditPreparing": "正在准备编辑",
+  "bomEditChecking": "正在检查修改范围",
+  "bomEditRefreshing": "正在刷新组装信息",
+  "bomEditPrepareFailed": "准备编辑失败，请重试。"
 }

@@ -18,6 +18,7 @@ class MouldListItem {
     this.name,
     this.qty,
     this.tqty,
+    this.tqtyText,
     this.place,
     this.mstatus,
     this.manufacturer,
@@ -32,6 +33,8 @@ class MouldListItem {
   final String? code; // 模具编号（Number，如 C20-001【B3-12】）
   final String? name; // 模具名称（MouldName）
   final String? qty; // 模数（老库 QTY，字符串如 "1+1"）
+  final String?
+  tqtyText; // Exact server CAS baseline; never parsed through double.
   final double? tqty; // 套数（老库 TQTY 总数量）
   final String? place; // 存放位置（车间/位置）
   final String? mstatus; // 制造日期（源 MStatus，制造年月如 2018年7月）
@@ -48,6 +51,7 @@ class MouldListItem {
     name: json['name'] as String?,
     qty: json['qty'] as String?,
     tqty: (json['tqty'] as num?)?.toDouble(),
+    tqtyText: json['tqtyText'] as String?,
     place: json['place'] as String?,
     mstatus: json['mstatus'] as String?,
     manufacturer: json['manufacturer'] as String?,

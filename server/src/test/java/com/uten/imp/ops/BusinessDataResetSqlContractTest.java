@@ -211,6 +211,9 @@ public class BusinessDataResetSqlContractTest {
             Map.entry("goods_operation_history", 871),
             Map.entry("goods_operation_history_rows", 871),
             Map.entry("goods_operation_history_events", 871),
+            Map.entry("master_operation_history", 885),
+            Map.entry("master_operation_history_rows", 885),
+            Map.entry("master_operation_history_events", 885),
             Map.entry("sms_gateway_settings", 867),
             Map.entry("platform_branding", 839),
             Map.entry("ai_user_limits", 815),
@@ -451,6 +454,16 @@ public class BusinessDataResetSqlContractTest {
             assertThat(PRESERVE_RESET_EXTENSIONS).containsEntry(table, 871);
             assertThat(migration).contains("(''" + table + "'', ''PRESERVE'')");
             assertThat(expectedCurrentPolicy()).containsEntry(table, "PRESERVE");
+        }
+    }
+
+    @Test
+    void masterOperationHistoryRetainsItsRegisteredPreservePolicy() throws IOException {
+        String migration=extensionSql(885);
+        for(String table:List.of("master_operation_history","master_operation_history_rows","master_operation_history_events")) {
+            assertThat(PRESERVE_RESET_EXTENSIONS).containsEntry(table,885);
+            assertThat(migration).contains("(''"+table+"'', ''PRESERVE'')");
+            assertThat(expectedCurrentPolicy()).containsEntry(table,"PRESERVE");
         }
     }
 

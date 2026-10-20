@@ -351,6 +351,23 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
     legacyCount: 0,
     tokens: {'Perm.webinquiryClaim': 1},
   ),
+  // Inline price cells mirror GoodsInlineEditService's goods:price:edit guard.
+  // The master-history entry also admits client-address action holders; the
+  // native read boundary and server still enforce visibility, original action
+  // grants, actor ownership, snapshots and reference constraints. These four
+  // exact references only present existing actions and do not raise 677.
+  'lib/features/basic_data/widgets/goods_inline_edit.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.goodsPriceEdit': 1},
+  ),
+  'lib/features/basic_data/widgets/master_operation_history_panel.dart': (
+    legacyCount: 0,
+    tokens: {
+      'Perm.clientView': 1,
+      'Perm.clientAddressCreate': 1,
+      'Perm.clientAddressDelete': 1,
+    },
+  ),
   // ADR-185: edit mode and retained asynchronous callbacks intersect current
   // split BOM grants with the page session. The server independently checks
   // each queued command, parent visibility, snapshots and explicit consent.
@@ -489,7 +506,7 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
         (sum, entry) =>
             sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
       ),
-      122, // Previous 115 + 3 list action checks and 4 retained batch-dialog checks. Global baseline remains 677.
+      126, // Previous 122 + 4 reviewed inline/history entry checks. Global baseline remains 677.
     );
   });
 

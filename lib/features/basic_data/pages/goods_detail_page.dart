@@ -54,6 +54,7 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
   GoodsDetail? _detail;
   bool _loading = false;
   String? _error;
+  bool _changing = false;
 
   bool get _isCreate => widget.goodsId == null;
 
@@ -91,21 +92,27 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
   }
 
   Future<void> _toggleStatus() async {
+    if (_changing) return;
     final d = _detail;
     if (d == null) return;
     final next = d.status == '使用' ? '禁用' : '使用';
-    final ok = await context.guardRun(
-      () => ref
-          .read(masterStatusRepositoryProvider)
-          .change(
-            resourcePath: ApiEndpoints.good(d.id),
-            status: next,
-            version: d.version,
-          ),
-      success: next == '禁用' ? '货品已停用' : '货品已启用',
-      errorFallback: '状态变更失败，请稍后重试',
-    );
-    if (ok && mounted) await _load();
+    setState(() => _changing = true);
+    try {
+      final ok = await context.guardRun(
+        () => ref
+            .read(masterStatusRepositoryProvider)
+            .change(
+              resourcePath: ApiEndpoints.good(d.id),
+              status: next,
+              version: d.version,
+            ),
+        success: next == '禁用' ? '货品已停用' : '货品已启用',
+        errorFallback: '状态变更失败，请稍后重试',
+      );
+      if (ok && mounted) await _load();
+    } finally {
+      if (mounted) setState(() => _changing = false);
+    }
   }
 
   /// 删除：确认 → 删 → 回本页上一级（列表 push 进来则 pop 回列表）。
@@ -134,13 +141,19 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
       ),
     );
     if (ok != true || !mounted) return;
-    final deleted = await context.guardRun(
-      () async {
-        await ref.read(goodsRepositoryProvider).delete(d.id);
-      },
-      success: '货品已删除', // TODO(l10n): 补 arb
-      errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
-    );
+    setState(() => _changing = true);
+    bool deleted;
+    try {
+      deleted = await context.guardRun(
+        () async {
+          await ref.read(goodsRepositoryProvider).delete(d.id);
+        },
+        success: '货品已删除', // TODO(l10n): 补 arb
+        errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
+      );
+    } finally {
+      if (mounted) setState(() => _changing = false);
+    }
     if (!deleted || !mounted) return;
     popOrBackTo(context, defaultPath: RouteName.basicinfoGoods);
   }
@@ -189,6 +202,7 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
       body: SelectionArea(
         child: GoodsDetailBody(
           readBoundary: ref.watch(sensitiveReadBoundaryProvider),
+          busy: _changing,
           // 详情拉到后再挂主体；新增态直接进 create。
           key: ValueKey(
             'goods-detail-${_detail?.id ?? 'new-${widget.categoryId}'}',
@@ -204,9 +218,8 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
           canBomDelete: canBomDelete,
           onToggleStatus: canStatus && !_isCreate ? _toggleStatus : null,
           onDelete: canDelete && !_isCreate ? _delete : null,
-          // 整页语义下来源页刷新由「返回时重载」统一承担（各入口 push 后
-          // await 恢复即刷新），此处无需回调。
-          onDataChanged: null,
+          // 本页按钮也要拿到最新版本与可写范围；返回来源页仍由入口重载。
+          onDataChanged: _isCreate ? null : _load,
           onSaved: () =>
               popOrBackTo(context, defaultPath: RouteName.basicinfoGoods),
         ),

@@ -1494,7 +1494,7 @@ public class GoodsService {
                                  Map<UUID, String> owningWorkshopNames) {
         UUID owningWarehouseId = owningWarehouseIdOf(g);
         UUID owningWorkshopId = owningWorkshopIdOf(g);
-        return new GoodsListItem(
+        GoodsListItem item = new GoodsListItem(
                 g.getId(), g.getCode(), g.getName(), g.getSpec(), g.getModel(),
                 canViewPrice() ? g.getPrice() : null,
                 canViewDiscount() ? g.getDiscount() : null, g.getStatus(), g.getLegacyId(),
@@ -1527,6 +1527,9 @@ public class GoodsService {
                 g.getIssueMethod(), g.getPeriodicCostBasis(), g.getBulkPackageQty(), g.isRecycledMaterial(),
                 // ADR-134 英文名称(列表只读展示)。
                 g.getNameEn(), g.getNameEnSource());
+        item.setMouldId(g.getMould() == null ? null : g.getMould().getId());
+        item.setWritable(canWrite(g));
+        return item;
     }
 
     /**

@@ -97,6 +97,14 @@ class GoodsOperationHistoryPostgresTest {
         assertEquals("0.9000",scalar("SELECT zk::text FROM goods WHERE id=:id",id));
         assertEquals(0,count("SELECT count(*) FROM goods_operation_history_events WHERE actor_id=:id",actor));
     }
+    @Test void costPermissionIsRecheckedEvenForDecimalDifferencesBeyondDoublePrecision() {
+        UUID id=goods("precise cost permission");
+        inTx(()->{update("UPDATE goods SET g_total=99999999999999.9998 WHERE id=:id",id);return null;});
+        UUID op=inTx(()->{provenance("/api/master/goods/"+id,"PUT");update("UPDATE goods SET g_total=99999999999999.9999,version=version+1 WHERE id=:id",id);return latest();});
+        login(Set.of("goods:view","goods:edit"),false);
+        var entry=service.list().entries().getFirst();assertFalse(entry.canUndo());assertTrue(entry.blockedReason().contains("goods:cost:view"));
+        assertThrows(ApiException.class,()->inTx(()->service.undo(op,0)));
+    }
 
     @Test void aRestoredGoodsCannotPointToItsNowDeletedCategory() {
         UUID category=category("original"),other=category("other"),id=goodsIn(category,"reference");
@@ -256,6 +264,29 @@ class GoodsOperationHistoryPostgresTest {
         assertEquals("false",scalar("SELECT is_deleted::text FROM goods WHERE id=:id",parent));
         assertEquals("false",scalar("SELECT is_deleted::text FROM goods_bom_items WHERE id=:id",edge));
         assertEquals(0,count("SELECT count(*) FROM goods_operation_history_events WHERE actor_id=:id",actor));
+    }
+
+    @Test void restoringADeletedEdgeRejectsACycleIntroducedByALaterIndependentEdge() {
+        UUID parent=goods("cycle parent"),component=goods("cycle component"),edge=UUID.randomUUID();
+        inTx(()->{bom(edge,parent,component);return null;});
+        UUID deletion=inTx(()->{provenance("/api/master/goods/"+parent+"/bom/"+edge,"DELETE");
+            update("UPDATE goods_bom_items SET is_deleted=true,deleted_at=now() WHERE id=:id",edge);return latest();});
+        inTx(()->{bom(UUID.randomUUID(),component,parent);return null;});
+        assertThrows(ApiException.class,()->inTx(()->service.undo(deletion,0)));
+        assertEquals("true",scalar("SELECT is_deleted::text FROM goods_bom_items WHERE id=:id",edge));
+    }
+
+    @Test void dragRouteCapturesAReversibleMoveAndInlineRouteCapturesGoodsEdit() {
+        UUID parent=goods("drag parent"),component=goods("drag component"),edge=UUID.randomUUID();
+        inTx(()->{bom(edge,parent,component);return null;});
+        UUID move=inTx(()->{provenance("/api/master/goods/"+parent+"/bom/move","PUT");
+            update("UPDATE goods_bom_items SET sort_order=7 WHERE id=:id",edge);return latest();});
+        assertEquals("BOM_MOVE",service.list().entries().getFirst().operationType());
+        inTx(()->service.undo(move,0));assertEquals("0",scalar("SELECT sort_order::text FROM goods_bom_items WHERE id=:id",edge));
+        UUID edit=inTx(()->{provenance("/api/master/inline-edit/goods/"+parent,"PATCH");
+            update("UPDATE goods SET name='inline changed',version=version+1 WHERE id=:id",parent);return latest();});
+        assertEquals("GOODS_EDIT",service.list().entries().getFirst().operationType());
+        inTx(()->service.undo(edit,0));assertEquals("drag parent",scalar("SELECT name FROM goods WHERE id=:id",parent));
     }
 
     private void login(Set<String> permissions,boolean superAdmin) {when(current.get()).thenReturn(Optional.of(new AuthUser(actor,UUID.randomUUID(),"history-test",permissions,false,true,superAdmin)));}

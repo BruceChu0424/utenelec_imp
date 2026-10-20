@@ -4867,5 +4867,9 @@
   "whereUsedExportFilename": "자재_역조회_필터_결과",
   "whereUsedReplacementCommitUncertain": "제출 결과가 아직 확인되지 않았습니다. 구성품을 변경하지 말고 같은 제출을 재시도하여 원래 결과를 확인하세요.",
   "whereUsedRetryReplacementCommit": "같은 제출 재시도",
-  "whereUsedCloseAndVerify": "닫고 새로 고쳐 확인"
+  "whereUsedCloseAndVerify": "닫고 새로 고쳐 확인",
+  "bomEditPreparing": "편집 준비 중",
+  "bomEditChecking": "변경 및 공유 영향 확인 중",
+  "bomEditRefreshing": "조립 정보 새로 고치는 중",
+  "bomEditPrepareFailed": "편집을 준비하지 못했습니다. 다시 시도해 주세요."
 }

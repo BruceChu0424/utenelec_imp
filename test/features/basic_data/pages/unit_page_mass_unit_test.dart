@@ -53,6 +53,70 @@ void main() {
   });
 
   group('unit page', () {
+    testWidgets(
+      'inline dimension changes update only the dependent mass-unit editor in both directions',
+      (tester) async {
+        final units = _FakeUnitRepository(
+          detailPayload: const UnitDetail(
+            id: 'u-count',
+            code: 'DW000020',
+            name: '箱',
+            status: '使用',
+            measurementDimension: 'COUNT',
+          ),
+        );
+        await _pumpPage(tester, units);
+        await tester.tap(find.text('编辑模式'));
+        await tester.pumpAndSettle();
+        final massActivation = find.byKey(
+          const ValueKey('inline-activate-u-count-massUnitCode'),
+        );
+        expect(massActivation, findsNothing);
+        await tester.tap(
+          find.byKey(
+            const ValueKey('inline-activate-u-count-measurementDimension'),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final dimension = find.byWidgetPredicate(
+          (widget) =>
+              widget is UtenDropdownField &&
+              widget.items.any((option) => option.value == 'MASS'),
+        );
+        final massUnit = find.byWidgetPredicate(
+          (widget) =>
+              widget is UtenDropdownField &&
+              widget.items.any((option) => option.value == 'KG'),
+        );
+        final table = tester.widget<MasterDataTableView<UnitListItem>>(
+          find.byType(MasterDataTableView<UnitListItem>),
+        );
+        tester.widget<UtenDropdownField>(dimension).onChanged('MASS');
+        await tester.pumpAndSettle();
+        expect(massActivation, findsOneWidget);
+        await tester.tap(massActivation);
+        await tester.pumpAndSettle();
+        expect(massUnit, findsOneWidget);
+        tester.widget<UtenDropdownField>(dimension).onChanged('COUNT');
+        await tester.pumpAndSettle();
+        expect(massUnit, findsNothing);
+        expect(massActivation, findsNothing);
+        tester.widget<UtenDropdownField>(dimension).onChanged('MASS');
+        await tester.pumpAndSettle();
+        expect(massUnit, findsOneWidget);
+        expect(
+          identical(
+            table,
+            tester.widget<MasterDataTableView<UnitListItem>>(
+              find.byType(MasterDataTableView<UnitListItem>),
+            ),
+          ),
+          isTrue,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+
     testWidgets('列表带「重量单位」列，与服务端导出同口径', (tester) async {
       final units = _FakeUnitRepository(
         detailPayload: const UnitDetail(id: 'u-kg', name: 'kg'),
@@ -222,6 +286,7 @@ Future<void> _pumpPage(WidgetTester tester, _FakeUnitRepository units) async {
         }),
       ],
       child: const MaterialApp(
+        locale: Locale('zh'),
         home: UnitPage(),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,

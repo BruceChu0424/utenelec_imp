@@ -103,6 +103,13 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
+        <!-- Boot 4 keeps Flyway auto-configuration in a separate runtime module.
+             Dev startup must migrate before serving requests; controlled server
+             profiles still disable application-side migration explicitly. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-flyway</artifactId>
+        </dependency>
         <!-- Flyway 数据库迁移 -->
         <dependency>
             <groupId>org.flywaydb</groupId>
@@ -274,12 +281,6 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-restclient</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <!-- FlywayDataSource/FlywayAutoConfiguration（Boot 4 移入 spring-boot-flyway 模块，测试直接引用） -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-flyway</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>

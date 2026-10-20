@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
@@ -19,6 +20,8 @@ import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/providers/goods_clipboard.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_bom_tab.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/sensitive_read_boundary_provider.dart';
 import '../../support/audit_screenshot_support.dart';
@@ -64,6 +67,11 @@ class _Api extends ApiClient {
   final commands = <(String, Map<String, dynamic>)>[];
   List<String> previewWarnings = const [];
   Completer<GoodsBomItem>? pendingAudit;
+  final pendingSnapshots = <String, Completer<Map<String, dynamic>>>{};
+  final snapshotCalls = <String>[];
+  VoidCallback? onSnapshotRead;
+  Completer<void>? pendingPreview;
+  Completer<void>? pendingCommit;
   final tree = <String, List<Map<String, dynamic>>>{
     'source': [
       _row('row-frame', 'frame', '铁架'),
@@ -79,6 +87,10 @@ class _Api extends ApiClient {
   }) async {
     if (path.endsWith('/snapshot')) {
       final goodsId = path.split('/').reversed.elementAt(3);
+      snapshotCalls.add(goodsId);
+      onSnapshotRead?.call();
+      final pending = pendingSnapshots[goodsId];
+      if (pending != null) return pending.future;
       return {'items': tree[goodsId] ?? [], 'fingerprint': 'fp-$goodsId'};
     }
     final id = path.split('/').last;
@@ -104,6 +116,7 @@ class _Api extends ApiClient {
     final request = Map<String, dynamic>.from(body! as Map);
     commands.add((path, request));
     if (path.endsWith('/preview')) {
+      await pendingPreview?.future;
       return {
         'previewToken': 'review',
         'operationCount': (request['operations'] as List).length,
@@ -114,6 +127,7 @@ class _Api extends ApiClient {
         'warnings': previewWarnings,
       };
     }
+    await pendingCommit?.future;
     return {};
   }
 }
@@ -157,10 +171,15 @@ Future<_Fixture> _pump(
   Size size = const Size(1440, 900),
   double textScale = 1,
   Brightness brightness = Brightness.light,
+  void Function(_Api)? configure,
+  ValueChanged<bool>? onInteractionChanged,
+  ValueChanged<bool>? onEditModeChanged,
+  VoidCallback? onDataChanged,
 }) async {
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
   final api = _Api();
+  configure?.call(api);
   final container = ProviderContainer(
     overrides: [
       localServerReachableProvider.overrideWith(
@@ -213,6 +232,9 @@ Future<_Fixture> _pump(
                     canCreate: true,
                     canEdit: true,
                     canDelete: true,
+                    onInteractionChanged: onInteractionChanged,
+                    onEditModeChanged: onEditModeChanged,
+                    onDataChanged: onDataChanged,
                   ),
                 ),
               ),
@@ -259,6 +281,487 @@ Future<void> _capture(WidgetTester tester, String name) async {
 }
 
 void main() {
+  testWidgets(
+    'history interlock spans pending entry, draft, consent and canonical commit',
+    (tester) async {
+      final interactions = <bool>[];
+      final modes = <bool>[];
+      var canonicalChanges = 0;
+      final fixture = await _pump(
+        tester,
+        onInteractionChanged: interactions.add,
+        onEditModeChanged: modes.add,
+        onDataChanged: () => canonicalChanges++,
+      );
+      final snapshot = fixture.api.pendingSnapshots['source'] =
+          Completer<Map<String, dynamic>>();
+      await tester.tap(find.byKey(const Key('goods-bom-edit-mode')));
+      expect(interactions, [true]);
+      expect(modes, isEmpty);
+      await tester.pump();
+      await tester.pump();
+      snapshot.complete({
+        'items': fixture.api.tree['source'],
+        'fingerprint': 'ready',
+      });
+      await tester.pumpAndSettle();
+      expect(modes, [true]);
+      expect(interactions, [true]);
+      await _menu(tester, '铁架');
+      await tester.tap(find.text('删除').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('goods-bom-batch-delete-confirm')));
+      await tester.pumpAndSettle();
+      expect(canonicalChanges, 0);
+      await _edit(tester);
+      expect(find.byKey(const Key('goods-bom-save-confirm')), findsOneWidget);
+      expect(interactions, [true]);
+      fixture.api.pendingCommit = Completer<void>();
+      await tester.tap(find.byKey(const Key('goods-bom-save-confirm')));
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 10));
+      }
+      expect(canonicalChanges, 0);
+      expect(interactions, [true]);
+      fixture.api.pendingCommit!.complete();
+      await tester.pumpAndSettle();
+      expect(canonicalChanges, 1);
+      expect(modes, [true, false]);
+      expect(interactions, [true, false]);
+    },
+  );
+
+  testWidgets(
+    'failed or revoked entry releases history interlock without canonical mutation',
+    (tester) async {
+      final interactions = <bool>[];
+      var canonicalChanges = 0;
+      final fixture = await _pump(
+        tester,
+        onInteractionChanged: interactions.add,
+        onDataChanged: () => canonicalChanges++,
+      );
+      final failed = fixture.api.pendingSnapshots['source'] =
+          Completer<Map<String, dynamic>>();
+      await tester.tap(find.byKey(const Key('goods-bom-edit-mode')));
+      await tester.pump();
+      await tester.pump();
+      failed.completeError(ApiException('INTERNAL', '快照读取失败'));
+      await tester.pumpAndSettle();
+      expect(interactions, [true, false]);
+      final revoked = fixture.api.pendingSnapshots['source'] =
+          Completer<Map<String, dynamic>>();
+      await tester.tap(find.byKey(const Key('goods-bom-edit-mode')));
+      await tester.pump();
+      await tester.pump();
+      fixture.container.read(_permissions.notifier).replace({Perm.goodsView});
+      await tester.pumpAndSettle();
+      expect(interactions, [true, false, true, false]);
+      revoked.complete({
+        'items': fixture.api.tree['source'],
+        'fingerprint': 'late',
+      });
+      await tester.pumpAndSettle();
+      expect(interactions, [true, false, true, false]);
+      expect(canonicalChanges, 0);
+      expect(find.text('退出并保存'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'audit writes and learning dialogs hold their own history interlock',
+    (tester) async {
+      final interactions = <bool>[];
+      final fixture = await _pump(
+        tester,
+        onInteractionChanged: interactions.add,
+      );
+      fixture.api.pendingAudit = Completer<GoodsBomItem>();
+      await tester.tap(find.byKey(const Key('goods-bom-audit-mode')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('已核对，点击取消').first);
+      await tester.pump();
+      expect(interactions, [true]);
+      fixture.api.pendingAudit!.complete(
+        GoodsBomItem.fromJson(fixture.api.tree['source']!.first),
+      );
+      await tester.pumpAndSettle();
+      expect(interactions, [true, false]);
+      await tester.tap(find.byKey(const Key('goods-bom-learning')));
+      await tester.pumpAndSettle();
+      expect(interactions, [true, false, true]);
+      Navigator.of(tester.element(find.byType(GoodsBomTab))).pop();
+      await tester.pumpAndSettle();
+      expect(interactions, [true, false, true, false]);
+    },
+  );
+
+  testWidgets(
+    'history release after widget replacement may safely rebuild the host',
+    (tester) async {
+      late _Fixture fixture;
+      var replaceAfterRelease = false;
+      final interactions = <bool>[];
+      fixture = await _pump(
+        tester,
+        onInteractionChanged: (interacting) {
+          interactions.add(interacting);
+          if (!interacting && replaceAfterRelease) {
+            replaceAfterRelease = false;
+            fixture.goodsId.value = 'replacement';
+          }
+        },
+      );
+      await _edit(tester);
+      expect(interactions, [true]);
+      replaceAfterRelease = true;
+      fixture.goodsId.value = 'target';
+      await tester.pumpAndSettle();
+      expect(interactions, [true, false]);
+      expect(fixture.goodsId.value, 'replacement');
+      expect(tester.takeException(), isNull);
+      expect(fixture.api.commands, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'slow edit entry paints feedback first and keeps the selected table interactive',
+    (tester) async {
+      final fixture = await _pump(tester);
+      final pending = Completer<Map<String, dynamic>>();
+      fixture.api.pendingSnapshots['source'] = pending;
+      await tester.tap(find.byType(Checkbox).at(1));
+      await tester.pumpAndSettle();
+      final tableFinder = find.byWidgetPredicate(
+        (widget) => widget is MasterDataTableView,
+      );
+      final table = tester.state(tableFinder.first);
+      final rows = tester
+          .widget<MasterDataTableView<Object?>>(tableFinder.first)
+          .items;
+      var feedbackPainted = false;
+      tester.binding.addPostFrameCallback((_) => feedbackPainted = true);
+      fixture.api.onSnapshotRead = () {
+        expect(feedbackPainted, isTrue);
+        expect(
+          find.byKey(const Key('goods-bom-read-progress')),
+          findsOneWidget,
+        );
+      };
+
+      await tester.tap(find.byKey(const Key('goods-bom-edit-mode')));
+      expect(fixture.api.snapshotCalls, isEmpty);
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 80));
+      expect(fixture.api.snapshotCalls, ['source']);
+      expect(find.text('铁架'), findsOneWidget);
+      expect(find.text('退出并保存'), findsNothing);
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(find.byKey(const Key('goods-bom-add-component')), findsNothing);
+      expect(
+        identical(
+          tester.widget<MasterDataTableView<Object?>>(tableFinder.first).items,
+          rows,
+        ),
+        isTrue,
+      );
+      // Waiting for a backend snapshot does not block read-only interaction.
+      await tester.tap(find.byType(Checkbox).at(2));
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(
+        tester.widget<Checkbox>(find.byType(Checkbox).at(1)).value,
+        isTrue,
+      );
+      expect(
+        tester.widget<Checkbox>(find.byType(Checkbox).at(2)).value,
+        isTrue,
+      );
+      pending.complete({
+        'items': fixture.api.tree['source'],
+        'fingerprint': 'ready',
+      });
+      await tester.pumpAndSettle();
+      expect(identical(tester.state(tableFinder.first), table), isTrue);
+      expect(find.text('退出并保存'), findsOneWidget);
+      expect(
+        tester.widget<Checkbox>(find.byType(Checkbox).at(1)).value,
+        isTrue,
+      );
+      expect(
+        tester.widget<Checkbox>(find.byType(Checkbox).at(2)).value,
+        isTrue,
+      );
+    },
+  );
+
+  testWidgets('a large tree preserves scrolling while snapshots are prepared', (
+    tester,
+  ) async {
+    final fixture = await _pump(
+      tester,
+      configure: (api) {
+        api.tree['source'] = [
+          for (var i = 0; i < 512; i++) _row('edge-$i', 'item-$i', '大清单组件$i'),
+        ];
+      },
+    );
+    final pending = Completer<Map<String, dynamic>>();
+    fixture.api.pendingSnapshots['source'] = pending;
+    final scroll = tester
+        .stateList<ScrollableState>(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is Scrollable &&
+                widget.axisDirection == AxisDirection.down,
+          ),
+        )
+        .firstWhere((state) => state.position.maxScrollExtent > 500);
+    final vertical = find.byElementPredicate(
+      (element) =>
+          element is StatefulElement && identical(element.state, scroll),
+    );
+    await tester.drag(vertical, const Offset(0, -1200));
+    await tester.pumpAndSettle();
+    final before = scroll.position.pixels;
+    expect(before, greaterThan(0));
+    await tester.tap(find.byKey(const Key('goods-bom-edit-mode')));
+    await tester.pump();
+    await tester.pump();
+    expect(scroll.position.pixels, closeTo(before, 0.1));
+    await tester.drag(vertical, const Offset(0, -300));
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(scroll.position.pixels, greaterThan(before));
+    final beforeAdoption = scroll.position.pixels;
+    pending.complete({
+      'items': fixture.api.tree['source'],
+      'fingerprint': 'large',
+    });
+    await tester.pumpAndSettle();
+    expect(scroll.position.pixels, greaterThanOrEqualTo(beforeAdoption));
+    expect(find.text('退出并保存'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'a failed edit snapshot stays read only and preserves the table',
+    (tester) async {
+      final fixture = await _pump(tester);
+      final pending = Completer<Map<String, dynamic>>();
+      fixture.api.pendingSnapshots['source'] = pending;
+      await tester.tap(find.byType(Checkbox).at(1));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('goods-bom-edit-mode')));
+      await tester.pump();
+      await tester.pump();
+      pending.completeError(ApiException('INTERNAL', '服务器暂时不可用'));
+      await tester.pumpAndSettle();
+      expect(find.text('服务器暂时不可用'), findsOneWidget);
+      expect(find.text('铁架'), findsOneWidget);
+      expect(find.text('退出并保存'), findsNothing);
+      expect(find.byKey(const Key('goods-bom-add-component')), findsNothing);
+      expect(
+        tester.widget<Checkbox>(find.byType(Checkbox).at(1)).value,
+        isTrue,
+      );
+    },
+  );
+
+  testWidgets(
+    'permission revocation cancels pending entry before any late snapshot',
+    (tester) async {
+      final fixture = await _pump(tester);
+      final pending = Completer<Map<String, dynamic>>();
+      fixture.api.pendingSnapshots['source'] = pending;
+      await tester.tap(find.byKey(const Key('goods-bom-edit-mode')));
+      await tester.pump();
+      await tester.pump();
+      fixture.container.read(_permissions.notifier).replace({Perm.goodsView});
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('goods-bom-read-progress')), findsNothing);
+      pending.complete({
+        'items': [_row('late', 'late', '过时快照')],
+        'fingerprint': 'late',
+      });
+      await tester.pumpAndSettle();
+      expect(find.text('过时快照'), findsNothing);
+      expect(find.text('铁架'), findsOneWidget);
+      expect(find.text('退出并保存'), findsNothing);
+      expect(fixture.api.commands, isEmpty);
+    },
+  );
+
+  testWidgets('expanded siblings load concurrently with a four-request bound', (
+    tester,
+  ) async {
+    final fixture = await _pump(
+      tester,
+      configure: (api) {
+        api.tree['source'] = [
+          for (var i = 0; i < 6; i++)
+            {..._row('row-part-$i', 'part-$i', '组件$i'), 'hasChildren': true},
+        ];
+        for (var i = 0; i < 6; i++) {
+          api.tree['part-$i'] = [_row('leaf-$i', 'leaf-$i', '子件$i')];
+        }
+      },
+    );
+    for (var i = 0; i < 6; i++) {
+      await tester.tap(
+        find.byKey(ValueKey('goods-bom-tree-toggle-row-part-$i')),
+      );
+      await tester.pumpAndSettle();
+      fixture.api.pendingSnapshots['part-$i'] =
+          Completer<Map<String, dynamic>>();
+    }
+    await tester.tap(find.byKey(const Key('goods-bom-edit-mode')));
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    expect(fixture.api.snapshotCalls.toSet(), {
+      'source',
+      'part-0',
+      'part-1',
+      'part-2',
+      'part-3',
+    });
+    expect(find.text('子件0'), findsOneWidget);
+    for (var i = 0; i < 4; i++) {
+      fixture.api.pendingSnapshots['part-$i']!.complete({
+        'items': fixture.api.tree['part-$i'],
+        'fingerprint': 'part-$i',
+      });
+    }
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    expect(fixture.api.snapshotCalls, hasLength(7));
+    for (var i = 4; i < 6; i++) {
+      fixture.api.pendingSnapshots['part-$i']!.complete({
+        'items': fixture.api.tree['part-$i'],
+        'fingerprint': 'part-$i',
+      });
+    }
+    await tester.pumpAndSettle();
+    expect(find.text('退出并保存'), findsOneWidget);
+    expect(find.text('子件0'), findsOneWidget);
+  });
+
+  testWidgets(
+    'one failed expanded snapshot cancels entry while siblings still wait',
+    (tester) async {
+      final fixture = await _pump(
+        tester,
+        configure: (api) {
+          for (final row in api.tree['source']!) {
+            row['hasChildren'] = true;
+          }
+          api.tree['frame'] = [_row('frame-child', 'washer', '垫片')];
+          api.tree['screw'] = [_row('screw-child', 'nut', '螺母')];
+        },
+      );
+      for (final id in ['row-frame', 'row-screw']) {
+        await tester.tap(find.byKey(ValueKey('goods-bom-tree-toggle-$id')));
+        await tester.pumpAndSettle();
+      }
+      final failed = fixture.api.pendingSnapshots['frame'] =
+          Completer<Map<String, dynamic>>();
+      final delayed = fixture.api.pendingSnapshots['screw'] =
+          Completer<Map<String, dynamic>>();
+      await tester.tap(find.byKey(const Key('goods-bom-edit-mode')));
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 10));
+      }
+      expect(fixture.api.snapshotCalls.toSet(), {'source', 'frame', 'screw'});
+      failed.completeError(ApiException('INTERNAL', '子组件快照暂时不可用'));
+      await tester.pumpAndSettle();
+      expect(find.text('子组件快照暂时不可用'), findsOneWidget);
+      expect(find.byKey(const Key('goods-bom-read-progress')), findsNothing);
+      expect(find.text('退出并保存'), findsNothing);
+      expect(find.text('垫片'), findsOneWidget);
+      delayed.complete({
+        'items': <Map<String, dynamic>>[],
+        'fingerprint': 'late',
+      });
+      await tester.pumpAndSettle();
+      expect(find.text('螺母'), findsOneWidget);
+      expect(find.text('退出并保存'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'save feedback covers slow preview and commit but yields to consent',
+    (tester) async {
+      final fixture = await _pump(tester);
+      await _edit(tester);
+      await _menu(tester, '铁架');
+      await tester.tap(find.text('删除').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('goods-bom-batch-delete-confirm')));
+      await tester.pumpAndSettle();
+      fixture.api.pendingPreview = Completer<void>();
+      final exit = tester
+          .widget<UtenButton>(find.byKey(const Key('goods-bom-edit-mode')))
+          .onPressed!;
+      await tester.tap(find.byKey(const Key('goods-bom-edit-mode')));
+      expect(fixture.api.commands, isEmpty);
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 10));
+      }
+      expect(find.text('正在检查修改范围'), findsOneWidget);
+      expect(find.byType(UtenBusyOverlayCard), findsOneWidget);
+      exit();
+      await tester.pump();
+      expect(fixture.api.commands, hasLength(1));
+      fixture.api.pendingPreview!.complete();
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(find.byKey(const Key('goods-bom-save-confirm')), findsOneWidget);
+      exit();
+      await tester.pump();
+      expect(fixture.api.commands, hasLength(1));
+      fixture.api.pendingCommit = Completer<void>();
+      await tester.tap(find.byKey(const Key('goods-bom-save-confirm')));
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 10));
+      }
+      expect(find.text('正在保存组装信息'), findsOneWidget);
+      expect(find.byType(UtenBusyOverlayCard), findsOneWidget);
+      expect(fixture.api.commands, hasLength(2));
+      fixture.api.pendingCommit!.complete();
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(find.text('编辑模式'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'revoking permission while preview waits never opens consent or commits',
+    (tester) async {
+      final fixture = await _pump(tester);
+      await _edit(tester);
+      await _menu(tester, '铁架');
+      await tester.tap(find.text('删除').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('goods-bom-batch-delete-confirm')));
+      await tester.pumpAndSettle();
+      fixture.api.pendingPreview = Completer<void>();
+      await tester.tap(find.byKey(const Key('goods-bom-edit-mode')));
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 10));
+      }
+      expect(fixture.api.commands, hasLength(1));
+      fixture.container.read(_permissions.notifier).replace({Perm.goodsView});
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      fixture.api.pendingPreview!.complete();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('goods-bom-save-confirm')), findsNothing);
+      expect(fixture.api.commands, hasLength(1));
+      expect(find.text('退出并保存'), findsNothing);
+    },
+  );
+
   testWidgets(
     'default is read only and create/delete cannot grant entry without edit permission',
     (tester) async {

@@ -23,6 +23,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../models/account_node.dart';
@@ -36,6 +37,9 @@ import '../repositories/payment_style_repository.dart';
 import '../widgets/account_balance_reconciliation_dialog.dart';
 import '../widgets/account_overview_card.dart';
 import '../widgets/master_data_table_view.dart';
+import '../widgets/master_inline_edit.dart';
+import '../widgets/master_inline_page_mixin.dart';
+import '../widgets/master_operation_history_panel.dart';
 import '../widgets/master_edit_dialog.dart';
 
 class AccountPage extends ConsumerStatefulWidget {
@@ -47,7 +51,78 @@ class AccountPage extends ConsumerStatefulWidget {
   ConsumerState<AccountPage> createState() => _AccountPageState();
 }
 
-class _AccountPageState extends ConsumerState<AccountPage> {
+class _AccountPageState extends ConsumerState<AccountPage>
+    with MasterInlinePageMixin<AccountPage, AccountListItem> {
+  @override
+  String get inlineEntityType => 'accounts';
+  @override
+  bool get inlineCanEdit => _canEdit;
+  @override
+  bool get inlineReadReady => !_loading && _error == null;
+  @override
+  String inlineIdOf(AccountListItem row) => row.id;
+  @override
+  Future<void> inlineReload() =>
+      _loadAccounts(_pageNum, refreshDisabled: _disabledRequested);
+  @override
+  Future<void> inlineReloadAfterBoundary() => _refresh();
+  @override
+  void inlineClearView() {
+    _page = null;
+    _disabledAccounts = null;
+    _facets = null;
+    _summary = null;
+    _selectedAccount = null;
+    _error = null;
+    _summaryError = null;
+    _disabledError = null;
+    _currencies = {};
+    _currencyOptions = [];
+    _styleOptions = [];
+    _referenceOptionsFuture = null;
+    _stylesError = null;
+    _stylesLoading = false;
+  }
+
+  @override
+  Map<String, MasterInlineField<AccountListItem>> get inlineFields => {
+    'name': MasterInlineField(
+      key: 'name',
+      read: (row) => row.name,
+      required: true,
+    ),
+    'bankAccountNo': MasterInlineField(
+      key: 'bankAccountNo',
+      read: (row) => row.bankAccountNo,
+    ),
+    'accountType': MasterInlineField(
+      key: 'accountType',
+      read: (row) => row.accountType,
+      type: MasterFieldType.select,
+      options: [
+        for (final type in AccountType.values)
+          MasterSelectOption(value: type.value, label: type.label),
+      ],
+      required: true,
+    ),
+    'currencyId': MasterInlineField(
+      key: 'currencyId',
+      read: (row) => row.currencyId,
+      type: MasterFieldType.custom,
+      cellBuilder: (context, row, field) => MasterInlineOptionsCell(
+        field: field,
+        currentLabel: row.currencyName,
+        load: () async => [
+          for (final currency
+              in await ref.read(currencyRepositoryProvider).dict())
+            MasterSelectOption(
+              value: currency.id,
+              label: currency.name ?? currency.code ?? currency.id,
+            ),
+        ],
+      ),
+    ),
+  };
   PagedResult<AccountListItem>? _page;
   PagedResult<AccountListItem>? _disabledAccounts;
   AccountFacets? _facets;
@@ -113,6 +188,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
   };
 
   Future<void> _loadDisabledAccounts({bool force = false}) async {
+    final inlineReadBoundary = ref.read(sensitiveReadBoundaryProvider);
     if (!_foldDisabledAccounts) return;
     if (!force && (_disabledLoading || _disabledAccounts != null)) return;
     final generation = _disabledListRequests.begin();
@@ -130,19 +206,31 @@ class _AccountPageState extends ConsumerState<AccountPage> {
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
-      if (!mounted || !_disabledListRequests.isCurrent(generation)) return;
+      if (!mounted ||
+          !inlineAcceptsRead(inlineReadBoundary) ||
+          !_disabledListRequests.isCurrent(generation)) {
+        return;
+      }
       setState(() {
         _disabledAccounts = result;
         _disabledLoading = false;
       });
     } on ApiException catch (error) {
-      if (!mounted || !_disabledListRequests.isCurrent(generation)) return;
+      if (!mounted ||
+          !inlineAcceptsRead(inlineReadBoundary) ||
+          !_disabledListRequests.isCurrent(generation)) {
+        return;
+      }
       setState(() {
         _disabledError = error.message;
         _disabledLoading = false;
       });
     } catch (_) {
-      if (!mounted || !_disabledListRequests.isCurrent(generation)) return;
+      if (!mounted ||
+          !inlineAcceptsRead(inlineReadBoundary) ||
+          !_disabledListRequests.isCurrent(generation)) {
+        return;
+      }
       setState(() {
         _disabledError = '加载禁用账户失败，请重试';
         _disabledLoading = false;
@@ -151,6 +239,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
   }
 
   Future<void> _loadAccounts(int page, {bool refreshDisabled = false}) async {
+    final inlineReadBoundary = ref.read(sensitiveReadBoundaryProvider);
     final generation = _listRequests.begin();
     final disabledLoad =
         refreshDisabled && _disabledRequested && _foldDisabledAccounts
@@ -171,7 +260,11 @@ class _AccountPageState extends ConsumerState<AccountPage> {
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
-      if (!mounted || !_listRequests.isCurrent(generation)) return;
+      if (!mounted ||
+          !inlineAcceptsRead(inlineReadBoundary) ||
+          !_listRequests.isCurrent(generation)) {
+        return;
+      }
       setState(() {
         _page = result;
         final selectedId = _selectedAccount?.id;
@@ -181,13 +274,21 @@ class _AccountPageState extends ConsumerState<AccountPage> {
         _loading = false;
       });
     } on ApiException catch (error) {
-      if (!mounted || !_listRequests.isCurrent(generation)) return;
+      if (!mounted ||
+          !inlineAcceptsRead(inlineReadBoundary) ||
+          !_listRequests.isCurrent(generation)) {
+        return;
+      }
       setState(() {
         _error = error.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || !_listRequests.isCurrent(generation)) return;
+      if (!mounted ||
+          !inlineAcceptsRead(inlineReadBoundary) ||
+          !_listRequests.isCurrent(generation)) {
+        return;
+      }
       setState(() {
         _error = '加载账户列表失败';
         _loading = false;
@@ -198,15 +299,19 @@ class _AccountPageState extends ConsumerState<AccountPage> {
   }
 
   Future<void> _loadFacets() async {
+    final inlineReadBoundary = ref.read(sensitiveReadBoundaryProvider);
     try {
       final result = await ref.read(accountRepositoryProvider).facets();
-      if (mounted) setState(() => _facets = result);
+      if (inlineAcceptsRead(inlineReadBoundary)) {
+        setState(() => _facets = result);
+      }
     } catch (_) {
       // 表头筛选是增强能力，失败不阻断主列表。
     }
   }
 
   Future<void> _loadSummary() async {
+    final inlineReadBoundary = ref.read(sensitiveReadBoundaryProvider);
     if (!_canViewBalance) return;
     final generation = _summaryRequests.begin();
     setState(() {
@@ -215,19 +320,31 @@ class _AccountPageState extends ConsumerState<AccountPage> {
     });
     try {
       final result = await ref.read(accountRepositoryProvider).summary();
-      if (!mounted || !_summaryRequests.isCurrent(generation)) return;
+      if (!mounted ||
+          !inlineAcceptsRead(inlineReadBoundary) ||
+          !_summaryRequests.isCurrent(generation)) {
+        return;
+      }
       setState(() {
         _summary = result;
         _summaryLoading = false;
       });
     } on ApiException catch (error) {
-      if (!mounted || !_summaryRequests.isCurrent(generation)) return;
+      if (!mounted ||
+          !inlineAcceptsRead(inlineReadBoundary) ||
+          !_summaryRequests.isCurrent(generation)) {
+        return;
+      }
       setState(() {
         _summaryError = error.message;
         _summaryLoading = false;
       });
     } catch (_) {
-      if (!mounted || !_summaryRequests.isCurrent(generation)) return;
+      if (!mounted ||
+          !inlineAcceptsRead(inlineReadBoundary) ||
+          !_summaryRequests.isCurrent(generation)) {
+        return;
+      }
       setState(() {
         _summaryError = '账户余额概览加载失败';
         _summaryLoading = false;
@@ -250,6 +367,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
   }
 
   Future<bool> _loadReferenceOptions() async {
+    final inlineReadBoundary = ref.read(sensitiveReadBoundaryProvider);
     setState(() {
       _stylesLoading = true;
       _stylesError = null;
@@ -264,7 +382,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
       final currencies = results[0] as List<CurrencyListItem>;
       final roots = results[1] as List<PaymentStyleNode>;
       final leaves = activeAccountStyleLeaves(roots);
-      if (!mounted) return false;
+      if (!mounted || !inlineAcceptsRead(inlineReadBoundary)) return false;
       final currencyMap = {for (final item in currencies) item.id: item};
       setState(() {
         _currencies = currencyMap;
@@ -298,14 +416,14 @@ class _AccountPageState extends ConsumerState<AccountPage> {
       });
       return _stylesError == null;
     } catch (_) {
-      if (!mounted) return false;
+      if (!mounted || !inlineAcceptsRead(inlineReadBoundary)) return false;
       setState(() {
         _stylesLoading = false;
         _stylesError = '币种或会计科目加载失败，请重试';
       });
       return false;
     } finally {
-      _referenceOptionsFuture = null;
+      if (inlineAcceptsRead(inlineReadBoundary)) _referenceOptionsFuture = null;
     }
   }
 
@@ -442,8 +560,9 @@ class _AccountPageState extends ConsumerState<AccountPage> {
   ];
 
   Future<void> _showCreate() async {
+    final inlineReadBoundary = ref.read(sensitiveReadBoundaryProvider);
     final referencesReady = await _ensureReferenceOptions();
-    if (!mounted) return;
+    if (!mounted || !inlineAcceptsRead(inlineReadBoundary)) return;
     if (!referencesReady) {
       context.appError(_stylesError ?? '币种或会计科目加载失败，请重试');
       return;
@@ -467,6 +586,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
   }
 
   Future<void> _openAccount(String id, {bool edit = false}) async {
+    if (!await inlineEdit.confirmLeave(context) || !mounted) return;
     if (_detailBusy) return;
     _detailBusy = true;
     try {
@@ -527,6 +647,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
     String? accountId,
     bool compactOverride = false,
   }) async {
+    if (!await inlineEdit.confirmLeave(context) || !mounted) return;
     if (!_canAdjustBalance) return;
     final result = await showAccountBalanceReconciliationDialog(
       context,
@@ -726,151 +847,163 @@ class _AccountPageState extends ConsumerState<AccountPage> {
     final title = widget.initialAccountTypeFilter == null
         ? '账户资料'
         : '${filteredLabel ?? '账户'}账户';
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: title,
-        leading: UtenBackButton(
-          onPressed: () => backTo(context, defaultPath: RouteName.basicinfo),
-        ),
-        actions: [
-          IconButton(
-            tooltip: '刷新',
-            onPressed: _loading ? null : _refresh,
-            icon: const Icon(Icons.refresh_rounded),
+    return inlineGuard(
+      Scaffold(
+        appBar: UtenAppBar(
+          title: title,
+          leading: UtenBackButton(
+            onPressed: () => inlineNavigate(
+              () => backTo(context, defaultPath: RouteName.basicinfo),
+            ),
           ),
-        ],
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: _canCreate
-          ? UtenFloatingActionGroup(
-              children: [
-                UtenButton(
-                  size: UtenButtonSize.large,
-                  icon: Icons.add_rounded,
-                  onPressed: _showCreate,
-                  child: const Text('添加账户'),
-                ),
-              ],
-            )
-          : null,
-      body: SafeArea(
-        child: UtenContentContainer.wide(
-          child: Padding(
-            padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            child: UtenCollapsingHeaderScrollView(
-              collapsingHeader: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      UtenSpacing.s4,
-                      UtenSpacing.s8,
-                      UtenSpacing.s4,
-                      UtenSpacing.s12,
-                    ),
-                    child: AccountOverviewCard(
-                      totalAccounts: _summary?.totalAccounts ?? _safeTotal,
-                      canViewBalance: _canViewBalance,
-                      summary: _summary,
-                      loading: _summaryLoading,
-                      error: _summaryError,
-                      onRetry: _loadSummary,
-                      filteredType: widget.initialAccountTypeFilter,
-                    ),
-                  ),
-                  if (_stylesLoading || _stylesError != null)
-                    AccountStyleLoadNotice(
-                      loading: _stylesLoading,
-                      error: _stylesError,
-                      onRetry: () => _ensureReferenceOptions(force: true),
-                    ),
-                ],
+          actions: [
+            MasterOperationHistoryActions(
+              entityType: 'accounts',
+              onChanged: _refresh,
+            ),
+            IconButton(
+              tooltip: '刷新',
+              onPressed: _loading ? null : () => inlineNavigate(_refresh),
+              icon: const Icon(Icons.refresh_rounded),
+            ),
+          ],
+        ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+        floatingActionButton: inlineFloatingActions(
+          additionalActions: [
+            if (_canCreate)
+              UtenButton(
+                size: UtenButtonSize.large,
+                icon: Icons.add_rounded,
+                onPressed: _showCreate,
+                child: const Text('添加账户'),
               ),
-              body: Column(
-                children: [
-                  _actionRow(),
-                  Expanded(
-                    child: MasterDataTableView<AccountListItem>(
-                      bottomContentPadding: _canCreate
-                          ? UtenFloatingActionGroup.scrollClearance
-                          : 0,
-                      columnEditingEnabled: _canEdit,
-                      tableKey:
-                          'features.basic_data.pages.account_workspace_page.AccountPageState._buildDraftHost.1',
-                      primary: true,
-                      showFullscreenToggle:
-                          MediaQuery.sizeOf(context).width >= 600,
-                      showColumnChooser:
-                          MediaQuery.sizeOf(context).width >= 600,
-                      columns: _columns,
-                      items: _page?.items ?? const [],
-                      leadingGroups: _leadingGroups,
-                      // 导出/打印进左簇（2026-10-18 用户口径）：与「表头设置 / 全屏」同排靠左，
-                      // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
-                      toolbarLeadingActions:
-                          MediaQuery.sizeOf(context).width < 600
-                          ? null
-                          : [
-                              UtenPrintPreviewButton(
-                                title: '账户资料',
-                                subtitle: '最多前 2000 行',
-                                loader: _printLoader,
-                                exportEndpoint: '/master/accounts/export',
-                                exportPermission: Perm.accountExport,
-                                exportReport: '',
-                                exportQuery: _exportQuery,
-                                exportFilename: '账户资料',
-                                type: UtenButtonType.primary,
-                                size: UtenButtonSize.large,
-                                icon: null,
-                              ),
-                              UtenExportButton(
-                                endpoint: '/master/accounts/export',
-                                requiredPermission: Perm.accountExport,
-                                report: '',
-                                queryParams: _exportQuery,
-                                filename: '账户资料',
-                                label: '导出账户',
-                                type: UtenButtonType.primary,
-                                size: UtenButtonSize.large,
-                                icon: null,
-                              ),
-                            ],
-                      facets: _labeledFacets,
-                      nullCounts: _facets?.nullCounts ?? const {},
-                      filters: _filters,
-                      onFilterChanged: _onFilterChanged,
-                      // 行底色按状态（ADR-169 收编）：使用=蓝档淡底（裸色收编）/
-                      // 禁用=灰档淡底（停用归中性终态，原浅红当异常色）。
-                      rowColor: (account) => switch (account.status) {
-                        '使用' => UtenColors.info.withValues(alpha: 0.11),
-                        '禁用' => UtenColors.statusNeutral.withValues(
-                          alpha: 0.09,
-                        ),
-                        _ => null,
-                      },
-                      rowMenuBuilder: _rowMenu,
-                      onSelectionChanged: (account) =>
-                          setState(() => _selectedAccount = account),
-                      onSelectionCleared: () =>
-                          setState(() => _selectedAccount = null),
-                      onRowTap: (account) => _openAccount(account.id),
-                      sortColumn: _sortKey,
-                      sortAscending: _sortAsc,
-                      onSortChange: _onSortChange,
-                      isLoading: _loading && _page == null,
-                      loadingMore: _loading && _page != null,
-                      error: _error,
-                      onRetry: () =>
-                          _loadAccounts(_pageNum, refreshDisabled: true),
-                      emptyMessage: '暂无账户',
-                      currentPage: _page?.page ?? 1,
-                      totalPages: _page?.totalPages ?? 1,
-                      paginationScope: _keyword,
-                      onPageChange: _loadAccounts,
+          ],
+        ),
+        body: SafeArea(
+          child: UtenContentContainer.wide(
+            child: Padding(
+              padding: const EdgeInsets.only(top: UtenSpacing.s8),
+              child: UtenCollapsingHeaderScrollView(
+                collapsingHeader: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        UtenSpacing.s4,
+                        UtenSpacing.s8,
+                        UtenSpacing.s4,
+                        UtenSpacing.s12,
+                      ),
+                      child: AccountOverviewCard(
+                        totalAccounts: _summary?.totalAccounts ?? _safeTotal,
+                        canViewBalance: _canViewBalance,
+                        summary: _summary,
+                        loading: _summaryLoading,
+                        error: _summaryError,
+                        onRetry: _loadSummary,
+                        filteredType: widget.initialAccountTypeFilter,
+                      ),
                     ),
-                  ),
-                ],
+                    if (_stylesLoading || _stylesError != null)
+                      AccountStyleLoadNotice(
+                        loading: _stylesLoading,
+                        error: _stylesError,
+                        onRetry: () => _ensureReferenceOptions(force: true),
+                      ),
+                  ],
+                ),
+                body: Column(
+                  children: [
+                    _actionRow(),
+                    Expanded(
+                      child: MasterDataTableView<AccountListItem>(
+                        bottomContentPadding: (_canCreate || _canEdit)
+                            ? UtenFloatingActionGroup.scrollClearance
+                            : 0,
+                        columnEditingEnabled: _canEdit,
+                        tableKey:
+                            'features.basic_data.pages.account_workspace_page.AccountPageState._buildDraftHost.1',
+                        primary: true,
+                        showFullscreenToggle:
+                            MediaQuery.sizeOf(context).width >= 600,
+                        showColumnChooser:
+                            MediaQuery.sizeOf(context).width >= 600,
+                        columns: inlineColumns(_columns),
+                        items: _page?.items ?? const [],
+                        leadingGroups: _leadingGroups,
+                        // 导出/打印进左簇（2026-10-18 用户口径）：与「表头设置 / 全屏」同排靠左，
+                        // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
+                        toolbarLeadingActions:
+                            MediaQuery.sizeOf(context).width < 600
+                            ? null
+                            : [
+                                UtenPrintPreviewButton(
+                                  title: '账户资料',
+                                  subtitle: '最多前 2000 行',
+                                  loader: _printLoader,
+                                  exportEndpoint: '/master/accounts/export',
+                                  exportPermission: Perm.accountExport,
+                                  exportReport: '',
+                                  exportQuery: _exportQuery,
+                                  exportFilename: '账户资料',
+                                  type: UtenButtonType.primary,
+                                  size: UtenButtonSize.large,
+                                  icon: null,
+                                ),
+                                UtenExportButton(
+                                  endpoint: '/master/accounts/export',
+                                  requiredPermission: Perm.accountExport,
+                                  report: '',
+                                  queryParams: _exportQuery,
+                                  filename: '账户资料',
+                                  label: '导出账户',
+                                  type: UtenButtonType.primary,
+                                  size: UtenButtonSize.large,
+                                  icon: null,
+                                ),
+                              ],
+                        facets: _labeledFacets,
+                        nullCounts: _facets?.nullCounts ?? const {},
+                        filters: _filters,
+                        onFilterChanged: (key, value) =>
+                            inlineNavigate(() => _onFilterChanged(key, value)),
+                        // 行底色按状态（ADR-169 收编）：使用=蓝档淡底（裸色收编）/
+                        // 禁用=灰档淡底（停用归中性终态，原浅红当异常色）。
+                        rowColor: (account) => switch (account.status) {
+                          '使用' => UtenColors.info.withValues(alpha: 0.11),
+                          '禁用' => UtenColors.statusNeutral.withValues(
+                            alpha: 0.09,
+                          ),
+                          _ => null,
+                        },
+                        rowMenuBuilder: inlineEdit.active ? null : _rowMenu,
+                        onSelectionChanged: (account) =>
+                            setState(() => _selectedAccount = account),
+                        onSelectionCleared: () =>
+                            setState(() => _selectedAccount = null),
+                        onRowTap: inlineEdit.active
+                            ? null
+                            : (account) => _openAccount(account.id),
+                        sortColumn: _sortKey,
+                        sortAscending: _sortAsc,
+                        onSortChange: (key, ascending) =>
+                            inlineNavigate(() => _onSortChange(key, ascending)),
+                        isLoading: _loading && _page == null,
+                        loadingMore: _loading && _page != null,
+                        error: _error,
+                        onRetry: () =>
+                            _loadAccounts(_pageNum, refreshDisabled: true),
+                        emptyMessage: '暂无账户',
+                        currentPage: _page?.page ?? 1,
+                        totalPages: _page?.totalPages ?? 1,
+                        paginationScope: _keyword,
+                        onPageChange: (page) =>
+                            inlineNavigate(() => _loadAccounts(page)),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -915,7 +1048,8 @@ class _AccountPageState extends ConsumerState<AccountPage> {
           final search = UtenSearchBar(
             hint: '搜索账户（名称/编号/银行账号）',
             initialValue: _keyword,
-            onChanged: _onKeywordChanged,
+            onChanged: (value) =>
+                inlineNavigate(() => _onKeywordChanged(value)),
           );
           if (compact) {
             return Row(

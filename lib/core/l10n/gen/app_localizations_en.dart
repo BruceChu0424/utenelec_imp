@@ -12030,4 +12030,17 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get whereUsedCloseAndVerify => 'Close and refresh to verify';
+
+  @override
+  String get bomEditPreparing => 'Preparing to edit';
+
+  @override
+  String get bomEditChecking => 'Checking changes and shared usage';
+
+  @override
+  String get bomEditRefreshing => 'Refreshing assembly information';
+
+  @override
+  String get bomEditPrepareFailed =>
+      'Could not prepare editing. Please try again.';
 }

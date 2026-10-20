@@ -23,6 +23,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../models/client_access_models.dart';
 import '../models/client_node.dart';
 import '../models/product_category_node.dart';
@@ -39,6 +40,8 @@ import '../widgets/client_access_panel.dart';
 import '../widgets/client_master_edit.dart';
 import '../widgets/master_edit_dialog.dart';
 import '../widgets/master_data_table_view.dart';
+import '../widgets/master_inline_edit.dart';
+import '../repositories/master_inline_edit_repository.dart';
 import '../widgets/master_entity_detail_pane.dart';
 
 class ClientCategoryPage extends ConsumerStatefulWidget {
@@ -236,12 +239,126 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
   /// 客户明细区配置：列、仓储闭包、权限与客户特有动作(负责人/可见人)。
   MasterEntityPaneConfig<ClientListItem, ClientDetail> _paneConfig() {
     final perms = ref.read(currentPermissionsProvider);
-    final clients = ref.read(clientRepositoryProvider);
+    final clients = ref.watch(clientRepositoryProvider);
     return MasterEntityPaneConfig<ClientListItem, ClientDetail>(
       noun: '客户', // TODO(l10n): 补 arb
       icon: Icons.people_outline,
       defaultCodePrefix: 'KH',
       columns: _visibleClientColumns(basicDataL10n(context)),
+      inlineFields: {
+        'name': MasterInlineField<ClientListItem>(
+          key: 'name',
+          read: (row) => row.name,
+          required: true,
+        ),
+        'fullName': MasterInlineField<ClientListItem>(
+          key: 'fullName',
+          read: (row) => row.fullName,
+        ),
+        'nameEn': MasterInlineField<ClientListItem>(
+          key: 'nameEn',
+          read: (row) => row.nameEn,
+        ),
+        'region': MasterInlineField<ClientListItem>(
+          key: 'region',
+          read: (row) => row.region,
+        ),
+        'placeId': MasterInlineField<ClientListItem>(
+          key: 'placeId',
+          read: (row) => row.placeId,
+        ),
+        'legalPerson': MasterInlineField<ClientListItem>(
+          key: 'legalPerson',
+          read: (row) => row.legalPerson,
+        ),
+        'linkman': MasterInlineField<ClientListItem>(
+          key: 'linkman',
+          read: (row) => row.linkman,
+          required: true,
+        ),
+        'mobile': MasterInlineField<ClientListItem>(
+          key: 'mobile',
+          read: (row) => row.mobile,
+        ),
+        'phone': MasterInlineField<ClientListItem>(
+          key: 'phone',
+          read: (row) => row.phone,
+        ),
+        'phone2': MasterInlineField<ClientListItem>(
+          key: 'phone2',
+          read: (row) => row.phone2,
+        ),
+        'fax': MasterInlineField<ClientListItem>(
+          key: 'fax',
+          read: (row) => row.fax,
+        ),
+        'postcode': MasterInlineField<ClientListItem>(
+          key: 'postcode',
+          read: (row) => row.postcode,
+        ),
+        'address': MasterInlineField<ClientListItem>(
+          key: 'address',
+          read: (row) => row.address,
+        ),
+        'bank': MasterInlineField<ClientListItem>(
+          key: 'bank',
+          read: (row) => row.bank,
+        ),
+        'bankAccount': MasterInlineField<ClientListItem>(
+          key: 'bankAccount',
+          read: (row) => row.bankAccount,
+        ),
+        'taxId': MasterInlineField<ClientListItem>(
+          key: 'taxId',
+          read: (row) => row.taxId,
+        ),
+        'website': MasterInlineField<ClientListItem>(
+          key: 'website',
+          read: (row) => row.website,
+        ),
+        'tday': MasterInlineField<ClientListItem>(
+          key: 'tday',
+          read: (row) => row.tday,
+          type: MasterFieldType.integer,
+          validate: (value) => value is int && value < 0 ? '天数不能为负数' : null,
+        ),
+        'creditFloor': MasterInlineField<ClientListItem>(
+          key: 'creditFloor',
+          read: (row) => row.creditFloor,
+          type: MasterFieldType.money,
+        ),
+        'defaultSettlementMethodName': MasterInlineField<ClientListItem>(
+          key: 'defaultSettlementMethodId',
+          read: (row) => row.defaultSettlementMethodId,
+          type: MasterFieldType.custom,
+          cellBuilder: (context, row, field) => MasterInlineOptionsCell(
+            field: field,
+            currentLabel: row.defaultSettlementMethodName,
+            load: () async => [
+              for (final method
+                  in await ref
+                      .read(referenceMethodRepositoryProvider)
+                      .settlementMethods())
+                MasterSelectOption(value: method.id, label: method.name),
+            ],
+          ),
+        ),
+      },
+      onInlineSave: (id, patch, original) {
+        final boundary = ref.read(sensitiveReadBoundaryProvider);
+        return ref
+            .read(masterInlineEditRepositoryProvider)
+            .saveParty(
+              'clients',
+              id,
+              patch,
+              expectedVersion: original.version,
+              isCurrent: () =>
+                  mounted &&
+                  ref.read(sensitiveReadBoundaryProvider) == boundary,
+            );
+      },
+
       idOf: (c) => c.id,
       statusOf: (c) => c.status,
       versionOf: (c) => c.version,

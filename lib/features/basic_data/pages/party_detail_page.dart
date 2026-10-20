@@ -54,6 +54,7 @@ import '../widgets/client_master_edit.dart';
 import '../models/currency_node.dart';
 import '../models/reference_method_option.dart';
 import '../widgets/master_edit_dialog.dart';
+import '../widgets/master_operation_history_panel.dart';
 import '../widgets/supplier_master_edit.dart';
 import '../widgets/uten_detail_tab_bar.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -102,6 +103,8 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
 
   bool _loading = true;
   bool _busy = false;
+  bool _openingEditor = false;
+  int _loadEpoch = 0;
   String? _error;
 
   PartyDirectoryRepository get _directoryRepo => ref.read(
@@ -138,24 +141,36 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool clearCurrent = false}) async {
     if (_busy) return;
+    final epoch = ++_loadEpoch;
+    bool current() => mounted && epoch == _loadEpoch;
     setState(() {
       _loading = true;
       _error = null;
+      if (clearCurrent) {
+        _client = null;
+        _supplier = null;
+        _contacts = const [];
+        _addresses = const [];
+        _activities = const [];
+        _lossSummary = null;
+        _creditScore = null;
+        _scoreLoaded = false;
+      }
     });
     try {
       if (_isClient) {
         final detail = await ref
             .read(clientRepositoryProvider)
             .detail(widget.id);
-        if (!mounted) return;
+        if (!current()) return;
         setState(() => _client = detail);
       } else {
         final detail = await ref
             .read(supplierRepositoryProvider)
             .detail(widget.id);
-        if (!mounted) return;
+        if (!current()) return;
         setState(() => _supplier = detail);
         unawaited(_loadSubcontractLossSummary());
       }
@@ -165,7 +180,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
         _directoryRepo.activityRecords(widget.id),
         if (_isClient) _directoryRepo.creditScore(widget.id),
       ]);
-      if (!mounted) return;
+      if (!current()) return;
       setState(() {
         _contacts = results[0] as List<PartyContactMethod>;
         _addresses = results[1] as List<PartyAddress>;
@@ -177,14 +192,18 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!current()) return;
       setState(() {
+        _client = null;
+        _supplier = null;
         _error = e.message;
         _loading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!current()) return;
       setState(() {
+        _client = null;
+        _supplier = null;
         _error =
             humanErrorMessage(error) ??
             basicDataL10n(context).productionDailyReportLoadFailed;
@@ -192,6 +211,8 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
       });
     }
   }
+
+  Future<void> _reloadAfterHistory() => _load(clearCurrent: true);
 
   /// ADR-098：供应商「委外损耗」段——已结清委外订货行的加权损耗率与最近几次短交结案。
   Future<void> _loadSubcontractLossSummary() async {
@@ -258,15 +279,24 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(currentPermissionsProvider);
+    ref.watch(isSuperAdminProvider);
     final theme = Theme.of(context);
     return Scaffold(
       appBar: UtenAppBar(
         title: _isClient ? '客户详情' : '供应商详情',
         leading: UtenBackButton(onPressed: () => Navigator.maybePop(context)),
         actions: [
+          MasterOperationHistoryActions(
+            entityType: _isClient ? 'clients' : 'suppliers',
+            enabled: !_loading && !_busy && !_editing && !_openingEditor,
+            onChanged: _reloadAfterHistory,
+          ),
           IconButton(
             tooltip: '刷新',
-            onPressed: _loading || _busy ? null : _load,
+            onPressed: _loading || _busy || _editing || _openingEditor
+                ? null
+                : _load,
             icon: const Icon(Icons.refresh_rounded, size: 20),
           ),
         ],
@@ -1101,6 +1131,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
   }
 
   Future<void> _saveInlineEdit() async {
+    if (_busy || !_canEdit || !_writable) return;
     final d = _client;
     final controller = _editController;
     if (d == null || controller == null) return;
@@ -1113,6 +1144,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
       return;
     }
     late final bool ok;
+    setState(() => _busy = true);
     try {
       ok = await context.guardRun(
         () async {
@@ -1133,6 +1165,8 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
     } catch (_) {
       if (mounted) context.appError('更新失败，请稍后重试');
       return;
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
     if (!ok || !mounted) return;
     setState(_stopInlineEdit);
@@ -1832,6 +1866,16 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
   }
 
   Future<void> _edit() async {
+    if (_busy || _openingEditor || !_canEdit || !_writable) return;
+    setState(() => _openingEditor = true);
+    try {
+      await _openEditor();
+    } finally {
+      if (mounted) setState(() => _openingEditor = false);
+    }
+  }
+
+  Future<void> _openEditor() async {
     // 客户：详情页**就地编辑**（分区变输入，不再弹窗）；供应商沿用弹窗。
     if (_isClient && _client != null) {
       final settlements =
@@ -1872,23 +1916,31 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
   }
 
   Future<void> _toggleStatus(bool active) async {
+    if (_busy || _editing || !_canStatus || !_writable) return;
     final version = _isClient ? _client?.version : _supplier?.version;
-    final ok = await context.guardRun(
-      () => ref
-          .read(masterStatusRepositoryProvider)
-          .change(
-            resourcePath: _isClient
-                ? ApiEndpoints.client(widget.id)
-                : ApiEndpoints.supplier(widget.id),
-            status: active ? '禁用' : '使用',
-            version: version,
-          ),
-      success: active ? '已停用' : '已启用',
-    );
+    setState(() => _busy = true);
+    bool ok;
+    try {
+      ok = await context.guardRun(
+        () => ref
+            .read(masterStatusRepositoryProvider)
+            .change(
+              resourcePath: _isClient
+                  ? ApiEndpoints.client(widget.id)
+                  : ApiEndpoints.supplier(widget.id),
+              status: active ? '禁用' : '使用',
+              version: version,
+            ),
+        success: active ? '已停用' : '已启用',
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
     if (ok && mounted) await _load();
   }
 
   Future<void> _delete() async {
+    if (_busy || _editing || !_canDelete || !_writable) return;
     final name = _title ?? '';
     final confirmed = await showDialog<bool>(
       context: context,
@@ -1912,13 +1964,19 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
       ),
     );
     if (confirmed != true || !mounted) return;
-    final ok = await context.guardRun(
-      () => _isClient
-          ? ref.read(clientRepositoryProvider).delete(widget.id)
-          : ref.read(supplierRepositoryProvider).delete(widget.id),
-      success: _isClient ? '客户已删除' : '供应商已删除',
-      errorFallback: '删除失败，请稍后重试',
-    );
+    setState(() => _busy = true);
+    bool ok;
+    try {
+      ok = await context.guardRun(
+        () => _isClient
+            ? ref.read(clientRepositoryProvider).delete(widget.id)
+            : ref.read(supplierRepositoryProvider).delete(widget.id),
+        success: _isClient ? '客户已删除' : '供应商已删除',
+        errorFallback: '删除失败，请稍后重试',
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
     if (!ok || !mounted) return;
     // 删除后返回：pop 优先（打开方 await 后重载列表）；深链无栈时归位对应
     // 分类列表页——原来 canPop 为假就停在已删除实体的详情页上。

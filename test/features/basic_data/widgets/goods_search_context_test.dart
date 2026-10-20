@@ -66,7 +66,8 @@ void main() {
     expect(api.lastList.queryParameters, isNot(contains('categoryId')));
     expect(_ids(tester), ['a', 'b', 'r']);
     await _search(tester, '');
-    expect(_related, findsNothing);
+    expect(_related.hitTestable(), findsNothing);
+    expect(tester.widget<CheckboxListTile>(_related).value, isFalse);
     expect(api.lastList.queryParameters['categoryId'], 'cat-a');
     await _search(tester, '螺丝');
     expect(tester.widget<CheckboxListTile>(_related).value, isFalse);

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
@@ -368,7 +369,8 @@ void main() {
 Finder _nameField({bool payment = false}) => find.byWidgetPredicate(
   (widget) =>
       widget is TextField &&
-      widget.decoration?.labelText == (payment ? '类别名称 *' : '名称'),
+      widget.decoration != null &&
+      utenDecorationFieldName(widget.decoration!) == (payment ? '类别名称' : '名称'),
 );
 
 String _searchText(WidgetTester tester) => tester

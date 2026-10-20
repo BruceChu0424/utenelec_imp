@@ -472,20 +472,6 @@ class _ColorPageState extends ConsumerState<ColorPage>
     ];
   }
 
-  /// 右下悬浮组只挂「添加颜色」（已选胶囊由表格恒置首位）；批量启停/删除走
-  /// 右键菜单（见 [_colorMenuItems] 的多选分支）。
-  List<Widget> _colorBatchActions(BuildContext context, Set<String> ids) {
-    return [
-      if (_canCreate)
-        UtenButton(
-          size: UtenButtonSize.large,
-          icon: Icons.add_rounded,
-          onPressed: _showCreate,
-          child: const Text('添加颜色'),
-        ),
-    ];
-  }
-
   /// 批量启停(ADR-111)：一次请求、一个事务，服务端逐条回原因(原本就是目标状态的不动)。
   Future<void> _batchSetColorStatus(Set<String> ids, String status) async {
     if (_rowOpBusy || ids.isEmpty) return;
@@ -723,15 +709,12 @@ class _ColorPageState extends ConsumerState<ColorPage>
                           icon: null,
                         ),
                       ],
-                      // 多选：最前列勾选框 + 表头三态全选；选中非空时工具条出批量操作区。
+                      // 多选保留勾选状态；批量启停和删除由右键菜单提供。
                       selectable: true,
                       idOf: (c) => c.id,
                       selectedIds: _selectedColorIds,
                       onSelectedIdsChanged: (s) =>
                           setState(() => _selectedColorIds = s),
-                      batchActionsBuilder: inlineEdit.active
-                          ? null
-                          : _colorBatchActions,
                       // 行菜单（右击/长按）：查看/启用/禁用/编辑/删除。
                       rowMenuBuilder: inlineEdit.active
                           ? null

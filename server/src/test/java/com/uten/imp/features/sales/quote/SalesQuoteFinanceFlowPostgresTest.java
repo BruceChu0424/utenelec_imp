@@ -206,7 +206,7 @@ class SalesQuoteFinanceFlowPostgresTest {
         assertConflict(() -> quotes.update(created.getId(), proposed));
         jdbc.update("UPDATE goods SET price = 12 WHERE id = ?", priced);
         QuoteSaveRequest resave = copy(repriced, request);
-        resave.getItems().add(line(priced, "1", null, null, null));
+        resave.addItem(line(priced, "1", null, null, null));
         QuoteDetail updated = quotes.update(created.getId(), resave);
         assertThat(updated.getItems().get(0).getId()).isEqualTo(first.getId());
         assertThat(updated.getItems().get(0).getPrice()).isEqualByComparingTo("11");
@@ -420,7 +420,7 @@ class SalesQuoteFinanceFlowPostgresTest {
         extra.setUnitRate(BigDecimal.ONE);
         extra.setQty(BigDecimal.ONE);
         extra.setDiscount(new BigDecimal("0.5"));
-        qtyEdit.getItems().add(extra);
+        qtyEdit.addItem(extra);
         OrderDetail revisedOrder = orders.update(order.getId(), qtyEdit);
         assertThat(revisedOrder.getItems().getFirst().getDiscount()).isEqualByComparingTo("0.92");
         assertThat(revisedOrder.getItems().getFirst().getQty()).isEqualByComparingTo("15");
@@ -867,7 +867,7 @@ class SalesQuoteFinanceFlowPostgresTest {
         sameGoods.setUnitRate(BigDecimal.ONE);
         sameGoods.setQty(BigDecimal.ONE);
         sameGoods.setDiscount(new BigDecimal("0.92"));
-        extra.getItems().add(sameGoods);
+        extra.addItem(sameGoods);
         OrderDetail revised = orders.update(order.getId(), extra);
         assertThat(revised.getStatus()).isEqualTo((short) 1);
         assertThat(revised.getItems()).extracting(OrderItemDto::isQuoteLocked).containsExactly(true, false);

@@ -26,4 +26,16 @@ public class MaterialCategoryNode {
     /** 子树（含自身）未软删货品数；仅 tree?withGoodsCounts=true 时返回，其余调用为 null。 */
     private Long goodsCount;
     private List<MaterialCategoryNode> children = new ArrayList<>();
+
+    public List<MaterialCategoryNode> getChildren() {
+        return children == null ? null : java.util.Collections.unmodifiableList(children);
+    }
+
+    public void setChildren(List<MaterialCategoryNode> children) {
+        this.children = children == null ? null : new ArrayList<>(children);
+    }
+
+    public void addChild(MaterialCategoryNode child) {
+        children.add(child);
+    }
 }

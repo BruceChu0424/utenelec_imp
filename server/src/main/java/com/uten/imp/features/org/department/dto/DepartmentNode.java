@@ -23,4 +23,16 @@ public class DepartmentNode {
     private Integer sortOrder;
     private Integer headcount;
     private List<DepartmentNode> children = new ArrayList<>();
+
+    public List<DepartmentNode> getChildren() {
+        return children == null ? null : java.util.Collections.unmodifiableList(children);
+    }
+
+    public void setChildren(List<DepartmentNode> children) {
+        this.children = children == null ? null : new ArrayList<>(children);
+    }
+
+    public void addChild(DepartmentNode child) {
+        children.add(child);
+    }
 }

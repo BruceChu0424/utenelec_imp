@@ -410,7 +410,7 @@ public class PaymentStyleService {
                     roots.add(node);
                 }
             } else {
-                map.get(parent.getId()).getChildren().add(node);
+                map.get(parent.getId()).addChild(node);
             }
         }
         return roots;

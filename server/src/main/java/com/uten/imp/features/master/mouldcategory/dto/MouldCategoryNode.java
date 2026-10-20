@@ -24,4 +24,16 @@ public class MouldCategoryNode {
     private Integer legacyId;
     private boolean systemManaged;
     private List<MouldCategoryNode> children = new ArrayList<>();
+
+    public List<MouldCategoryNode> getChildren() {
+        return children == null ? null : java.util.Collections.unmodifiableList(children);
+    }
+
+    public void setChildren(List<MouldCategoryNode> children) {
+        this.children = children == null ? null : new ArrayList<>(children);
+    }
+
+    public void addChild(MouldCategoryNode child) {
+        children.add(child);
+    }
 }

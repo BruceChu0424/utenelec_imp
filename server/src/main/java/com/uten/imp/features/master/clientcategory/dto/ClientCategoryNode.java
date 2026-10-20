@@ -24,4 +24,16 @@ public class ClientCategoryNode {
     private Integer legacyId;
     private boolean systemManaged;
     private List<ClientCategoryNode> children = new ArrayList<>();
+
+    public List<ClientCategoryNode> getChildren() {
+        return children == null ? null : java.util.Collections.unmodifiableList(children);
+    }
+
+    public void setChildren(List<ClientCategoryNode> children) {
+        this.children = children == null ? null : new ArrayList<>(children);
+    }
+
+    public void addChild(ClientCategoryNode child) {
+        children.add(child);
+    }
 }

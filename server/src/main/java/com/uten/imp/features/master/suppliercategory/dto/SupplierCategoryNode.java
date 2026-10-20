@@ -24,4 +24,16 @@ public class SupplierCategoryNode {
     private Integer legacyId;
     private boolean systemManaged;
     private List<SupplierCategoryNode> children = new ArrayList<>();
+
+    public List<SupplierCategoryNode> getChildren() {
+        return children == null ? null : java.util.Collections.unmodifiableList(children);
+    }
+
+    public void setChildren(List<SupplierCategoryNode> children) {
+        this.children = children == null ? null : new ArrayList<>(children);
+    }
+
+    public void addChild(SupplierCategoryNode child) {
+        children.add(child);
+    }
 }

@@ -53,4 +53,17 @@ public class QuoteSaveRequest {
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)
     private List<QuoteItemLine> items;
+
+    public List<QuoteItemLine> getItems() {
+        return items == null ? null : java.util.Collections.unmodifiableList(items);
+    }
+
+    public void setItems(List<QuoteItemLine> items) {
+        this.items = items == null ? null : new java.util.ArrayList<>(items);
+    }
+
+    public void addItem(QuoteItemLine item) {
+        if (items == null) items = new java.util.ArrayList<>();
+        items.add(item);
+    }
 }

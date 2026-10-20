@@ -78,6 +78,7 @@ class DashboardAiChatToolTest {
         @SuppressWarnings("unchecked") var evidence = (Map<String, Object>) result.get("_toolEvidence");
         assertDoesNotThrow(() -> tool.authorizeResultRead(evidence));
         cards.set(0, new DashboardOverviewDto.TodoCard("empty", "零任务入口", "", 1, 0, "", "", "", null, null, false));
+        when(overview.overview()).thenReturn(new DashboardOverviewDto("DEPT_PROD", "生产", Instant.EPOCH, List.of(), cards));
         assertThrows(ApiException.class, () -> tool.authorizeResultRead(evidence));
     }
 

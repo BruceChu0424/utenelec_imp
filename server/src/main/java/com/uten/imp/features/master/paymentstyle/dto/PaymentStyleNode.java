@@ -31,4 +31,16 @@ public class PaymentStyleNode {
     private String status;
     private Integer legacyId;
     private List<PaymentStyleNode> children = new ArrayList<>();
+
+    public List<PaymentStyleNode> getChildren() {
+        return children == null ? null : java.util.Collections.unmodifiableList(children);
+    }
+
+    public void setChildren(List<PaymentStyleNode> children) {
+        this.children = children == null ? null : new ArrayList<>(children);
+    }
+
+    public void addChild(PaymentStyleNode child) {
+        children.add(child);
+    }
 }

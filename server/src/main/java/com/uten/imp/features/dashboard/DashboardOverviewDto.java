@@ -15,6 +15,11 @@ public record DashboardOverviewDto(
         List<MetricCard> metrics,
         List<TodoCard> todos) {
 
+    public DashboardOverviewDto {
+        metrics = metrics == null ? null : List.copyOf(metrics);
+        todos = todos == null ? null : List.copyOf(todos);
+    }
+
     public record MetricCard(
             String id,
             String title,

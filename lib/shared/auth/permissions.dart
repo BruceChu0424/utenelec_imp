@@ -363,6 +363,7 @@ abstract final class Perm {
   static const productionPlanEdit = 'production_plan:edit';
   static const productionPlanApprove = 'production_plan:approve';
   static const productionPlanCreate = 'production_plan:create';
+  static const productionPlanForwardRd = 'production_plan:forward_rd';
 
   /// 追加用料 / 超产比例 / 追加生产计划三条申请通道（V694–V702）。
   static const productionExecutionRequestMaterialIncrement =
@@ -400,6 +401,7 @@ abstract final class Perm {
   static const productionReportView = 'production_report:view';
   static const productionReportExport = 'production_report:export';
   static const productionWhereUsedView = 'production_where_used:view';
+  static const productionWhereUsedExport = 'production_where_used:export';
 
   /// 查看全部生产单据（对象级授权；生产计划/日报按制单人 maker_id 隔离，持此权限看全部）。
   static const productionPlanViewAll = 'production_plan:view:all';

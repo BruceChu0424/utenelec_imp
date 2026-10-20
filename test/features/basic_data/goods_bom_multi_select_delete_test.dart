@@ -1,14 +1,6 @@
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
-// 组装信息页签的多选批量删除(2026-09-21 用户口径「组件信息最前面加个多选框，
-// 然后可以多选，批量删除」)。
-//
-// 钉住五件容易回归的事：
-//  1. 勾两行后「删除」可用、「编辑」反而要灰掉(目标不唯一)，确认框列出两个组件名；
-//  2. 勾到子级行时确认框必须出跨层级警告(删的是那个子件自己的组装清单)；
-//  3. 审计模式下勾选框照常在（2026-09-25 起审计模式也要能多选批量删除，
-//     「标记已核对」改走右键菜单），退出审计清空勾选不留残留；
-//  4. 折叠父级后子级行的勾选被剪掉——看到的勾选 = 提交的内容；
-//  5. 勾选横跨多层时按所属父货品分组提交，删完的行自动退出勾选。
+// 组装信息多选删除：结构写操作仅在编辑模式暂存；共享影响确认后才原子提交。
+// 覆盖跨层警告、可见选中集、只读选择、独立审计模式与提交前零正式写入。
 //
 // 删除确认之后只能**定量 pump**：批量删除的遮罩 UtenBusyOverlay 里是
 // CircularProgressIndicator(无限动画)，pumpAndSettle 会死循环。
@@ -20,6 +12,9 @@ import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_bom_tab.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
+import '../../support/goods_bom_edit_test_api.dart';
 
 /// 伪仓库：批量删除**真的**把行从树里移除，否则验不出「删完勾选自动退出」。
 ///
@@ -112,7 +107,13 @@ class _FakeBomRepo implements GoodsBomRepository {
 Future<void> _pumpTab(
   WidgetTester tester,
   _FakeBomRepo repo, {
-  Set<String> permissions = const <String>{},
+  Set<String> permissions = const <String>{
+    Perm.goodsView,
+    Perm.goodsBomEdit,
+    Perm.goodsBomCreate,
+    Perm.goodsBomDelete,
+    Perm.goodsBomAudit,
+  },
   bool canCreate = true,
   bool canEdit = true,
   bool canDelete = true,
@@ -122,6 +123,10 @@ Future<void> _pumpTab(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        apiClientProvider.overrideWithValue(GoodsBomEditTestApi(repo)),
+        localServerReachableProvider.overrideWith(
+          (ref) => LocalServerReachabilityNotifier(null, web: true),
+        ),
         goodsBomRepositoryProvider.overrideWithValue(repo),
         currentPermissionsProvider.overrideWithValue(permissions),
         isSuperAdminProvider.overrideWithValue(false),
@@ -142,6 +147,9 @@ Future<void> _pumpTab(
     ),
   );
   await tester.pumpAndSettle();
+  if (canEdit && permissions.contains(Perm.goodsBomEdit)) {
+    await enterBomEdit(tester);
+  }
 }
 
 final _deleteFinder = find.byKey(const Key('goods-bom-delete-selected'));
@@ -149,9 +157,6 @@ final _toggleScrew = find.byKey(const ValueKey('goods-bom-tree-toggle-row-a2'));
 
 UtenButton _deleteButton(WidgetTester tester) =>
     tester.widget<UtenButton>(_deleteFinder);
-
-UtenButton _editButton(WidgetTester tester) =>
-    tester.widget<UtenButton>(find.widgetWithText(UtenButton, '编辑'));
 
 /// 点「螺丝」行的展开箭头(展开或收起)。
 ///
@@ -183,7 +188,7 @@ void main() {
 
     expect(_deleteButton(tester).onPressed, isNotNull);
     // 勾了两条，「编辑」的目标不唯一 —— 宁可灰掉也不替用户猜。
-    expect(_editButton(tester).onPressed, isNull);
+    expect(find.widgetWithText(UtenButton, '编辑'), findsNothing);
 
     await tester.tap(_deleteFinder);
     await tester.pumpAndSettle();
@@ -217,7 +222,7 @@ void main() {
     expect(find.textContaining('挂在「螺丝」下'), findsOneWidget);
   });
 
-  testWidgets('三个动作都没权限时不给勾选框', (tester) async {
+  testWidgets('没有编辑权限仍保留选择计数但不显示写操作', (tester) async {
     final repo = _FakeBomRepo();
     await _pumpTab(
       tester,
@@ -229,15 +234,15 @@ void main() {
 
     // 勾选框是给「批量删除 / 编辑 / 添加组件定位」用的，三个都没权限时它什么也
     // 接不上 —— 按准则「隐藏而非禁用」整列不渲染，而不是让人勾完无处可去。
-    expect(find.byType(Checkbox), findsNothing);
+    expect(find.byType(Checkbox), findsWidgets);
     expect(_deleteFinder, findsNothing);
     // 2026-09-25 起工具条下的说明行（共 X 个顶层组件…）已整体退役。
     expect(find.textContaining('顶层组件'), findsNothing);
   });
 
-  testWidgets('审计模式下仍可多选批量删除，退出审计清空勾选', (tester) async {
+  testWidgets('审计模式保留勾选但不能删除结构', (tester) async {
     final repo = _FakeBomRepo();
-    await _pumpTab(tester, repo, permissions: {Perm.goodsBomAudit});
+    await _pumpTab(tester, repo);
 
     await tester.tap(find.text('外壳'));
     await tester.pump();
@@ -251,13 +256,14 @@ void main() {
     expect(find.byType(Checkbox), findsWidgets);
     expect(find.text('已审'), findsOneWidget);
     // 进审计不清勾选：已勾的行在审计模式下照样能删。
-    expect(_deleteButton(tester).onPressed, isNotNull);
+    expect(_deleteFinder, findsNothing);
 
     await tester.tap(find.text('退出审计'));
     await tester.pumpAndSettle();
     expect(find.byType(Checkbox), findsWidgets);
     // 退出审计清空勾选：避免带着勾选进普通编辑流。
-    expect(_deleteButton(tester).onPressed, isNull);
+    expect(_deleteFinder, findsNothing);
+    expect(repo.batchCalls, isEmpty);
   });
 
   testWidgets('折叠父级把子级行的勾选剪掉', (tester) async {
@@ -297,11 +303,15 @@ void main() {
 
     // ADR-111：不再按父货品分组逐组提交(两组两个事务，删一半的可能)，
     // 一次请求、一个事务，挂在本货品组装树里的行一起删。
-    expect(repo.batchCalls.length, 1, reason: '跨层级也只发一次请求');
+    expect(repo.batchCalls, isEmpty, reason: '暂存阶段不写正式清单');
+    expect(find.text('外壳'), findsNothing);
+    expect(_deleteButton(tester).onPressed, isNull);
+    await saveBomEdit(tester);
+    expect(repo.batchCalls.length, 1, reason: '确认保存后跨层级只发一次批量命令');
     expect(repo.batchCalls.single.$1, 'goods-a');
     expect(repo.batchCalls.single.$2, unorderedEquals(['row-a1', 'row-y1']));
     // 删掉的行不在树里了，重载后勾选被剪空，删除按钮回灰。
     expect(find.text('外壳'), findsNothing);
-    expect(_deleteButton(tester).onPressed, isNull);
+    expect(_deleteFinder, findsNothing);
   });
 }

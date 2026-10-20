@@ -157,9 +157,10 @@ class UtenContextMenuRegion extends StatelessWidget {
   final HitTestBehavior behavior;
 
   Future<void> _open(BuildContext context, Offset globalPosition) async {
+    // 菜单的可用状态依赖本次右键刚选中的行，必须先更新选择再构建条目。
+    onMenuOpening?.call();
     final entries = entriesBuilder();
     if (entries.isEmpty) return;
-    onMenuOpening?.call();
     await showUtenContextMenu(
       context,
       globalPosition: globalPosition,

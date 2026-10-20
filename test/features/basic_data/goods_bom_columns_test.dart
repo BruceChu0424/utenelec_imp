@@ -317,7 +317,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('在学习记录里重学后，组装信息页签跟着重读真实使用数量', (tester) async {
+  testWidgets('只读模式的学习记录展示真实使用数量且不提供重新学习写入口', (tester) async {
     final repo = _FakeBomRepo(withLearned: true);
     await _pumpTab(tester, repo);
     expect(find.text('0.105 千克'), findsOneWidget);
@@ -328,18 +328,10 @@ void main() {
     // 学习记录面板与背后的页签各显示一次。
     expect(find.text('0.105 千克'), findsNWidgets(2));
 
-    // 操作列在学习记录表格最右侧，先横向滚到可见。
     final relearn = find.byKey(const ValueKey('goods-bom-relearn-goods-p'));
-    await tester.ensureVisible(relearn);
-    await tester.pumpAndSettle();
-    await tester.tap(relearn);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('确认'));
-    await tester.pumpAndSettle();
-
-    expect(repo.relearned, {'goods-p'});
-    expect(repo.listCalls, 2, reason: '重学后组装信息页签重读一次');
-    expect(find.text('0.105 千克'), findsNothing, reason: '面板与页签都换成重学后的数据');
+    expect(relearn, findsNothing);
+    expect(repo.relearned, isEmpty);
+    expect(repo.listCalls, 1);
     expect(tester.takeException(), isNull);
   });
 

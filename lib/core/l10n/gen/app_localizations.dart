@@ -20115,6 +20115,623 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'重试'**
   String get rdInitialUnitRetry;
+
+  /// No description provided for @bomEditMode.
+  ///
+  /// In zh, this message translates to:
+  /// **'编辑模式'**
+  String get bomEditMode;
+
+  /// No description provided for @bomEditExitAndSave.
+  ///
+  /// In zh, this message translates to:
+  /// **'退出并保存'**
+  String get bomEditExitAndSave;
+
+  /// No description provided for @bomEditAuditMode.
+  ///
+  /// In zh, this message translates to:
+  /// **'审计模式'**
+  String get bomEditAuditMode;
+
+  /// No description provided for @bomEditExitAudit.
+  ///
+  /// In zh, this message translates to:
+  /// **'退出审计'**
+  String get bomEditExitAudit;
+
+  /// No description provided for @bomEditSaveTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存组装信息并退出'**
+  String get bomEditSaveTitle;
+
+  /// No description provided for @bomEditSaveSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'本次共 {operations} 项操作，修改 {parents} 个货品的组装信息。'**
+  String bomEditSaveSummary(int operations, int parents);
+
+  /// No description provided for @bomEditUnnamedGoods.
+  ///
+  /// In zh, this message translates to:
+  /// **'货品'**
+  String get bomEditUnnamedGoods;
+
+  /// No description provided for @bomEditMoreGoods.
+  ///
+  /// In zh, this message translates to:
+  /// **'另有 {count} 个货品'**
+  String bomEditMoreGoods(int count);
+
+  /// No description provided for @bomEditSharedWarning.
+  ///
+  /// In zh, this message translates to:
+  /// **'这些组件还被其他 {count} 处组装信息引用。确认保存后，所有引用处会同步使用修改后的组件结构。是否同步保存？'**
+  String bomEditSharedWarning(int count);
+
+  /// No description provided for @bomEditSaveNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认后保存本次全部修改。已开始的生产业务保留原有用料记录。'**
+  String get bomEditSaveNote;
+
+  /// No description provided for @bomEditContinue.
+  ///
+  /// In zh, this message translates to:
+  /// **'继续编辑'**
+  String get bomEditContinue;
+
+  /// No description provided for @bomEditConfirmShared.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认同步并保存'**
+  String get bomEditConfirmShared;
+
+  /// No description provided for @bomEditConfirmSave.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认保存'**
+  String get bomEditConfirmSave;
+
+  /// No description provided for @bomEditSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'组装信息已保存，所有引用处已同步'**
+  String get bomEditSaved;
+
+  /// No description provided for @bomEditMoreProblems.
+  ///
+  /// In zh, this message translates to:
+  /// **'另有 {count} 处问题，请返回草稿核对'**
+  String bomEditMoreProblems(int count);
+
+  /// No description provided for @bomEditSaveUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存结果暂时无法确认。请核对组装信息后重试，草稿仍保留在本页。'**
+  String get bomEditSaveUnknown;
+
+  /// No description provided for @bomEditSaveFailedTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'本次组装信息未完成保存'**
+  String get bomEditSaveFailedTitle;
+
+  /// No description provided for @bomEditRecoveryMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'{message}\n\n可以保留草稿继续核对，或放弃本次草稿后重新读取最新组装信息。'**
+  String bomEditRecoveryMessage(String message);
+
+  /// No description provided for @bomEditKeepDraft.
+  ///
+  /// In zh, this message translates to:
+  /// **'继续保留草稿'**
+  String get bomEditKeepDraft;
+
+  /// No description provided for @bomEditDiscardRefresh.
+  ///
+  /// In zh, this message translates to:
+  /// **'放弃草稿并刷新'**
+  String get bomEditDiscardRefresh;
+
+  /// No description provided for @bomEditPermissionChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'编辑权限或登录状态已变化，请恢复权限后保存草稿'**
+  String get bomEditPermissionChanged;
+
+  /// No description provided for @bomEditBoundaryExpired.
+  ///
+  /// In zh, this message translates to:
+  /// **'登录身份或权限已变化，原编辑草稿已失效；若刚执行保存，请重新核对结果'**
+  String get bomEditBoundaryExpired;
+
+  /// No description provided for @bomEditNoView.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前账号无权查看组装信息'**
+  String get bomEditNoView;
+
+  /// No description provided for @bomEditCopy.
+  ///
+  /// In zh, this message translates to:
+  /// **'复制'**
+  String get bomEditCopy;
+
+  /// No description provided for @bomEditPaste.
+  ///
+  /// In zh, this message translates to:
+  /// **'粘贴'**
+  String get bomEditPaste;
+
+  /// No description provided for @bomEditNewComponent.
+  ///
+  /// In zh, this message translates to:
+  /// **'新增组件'**
+  String get bomEditNewComponent;
+
+  /// No description provided for @bomEditCurrentGoods.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前货品'**
+  String get bomEditCurrentGoods;
+
+  /// No description provided for @bomEditCopied.
+  ///
+  /// In zh, this message translates to:
+  /// **'已复制 {count} 个组件，可到其他货品的编辑模式中粘贴'**
+  String bomEditCopied(int count);
+
+  /// No description provided for @bomEditPasteParentRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请只选择一个父组件，或清除选择后粘贴到顶层'**
+  String get bomEditPasteParentRequired;
+
+  /// No description provided for @bomEditPasteStaged.
+  ///
+  /// In zh, this message translates to:
+  /// **'已暂存粘贴 {count} 个组件，退出并保存后生效'**
+  String bomEditPasteStaged(int count);
+
+  /// No description provided for @bomEditDeleteStaged.
+  ///
+  /// In zh, this message translates to:
+  /// **'已暂存删除 {count} 个组件，退出并保存后生效'**
+  String bomEditDeleteStaged(int count);
+
+  /// No description provided for @bomEditMoveStaged.
+  ///
+  /// In zh, this message translates to:
+  /// **'已暂存移动 {count} 个组件，退出并保存后生效'**
+  String bomEditMoveStaged(int count);
+
+  /// No description provided for @bomEditAddStaged.
+  ///
+  /// In zh, this message translates to:
+  /// **'已暂存添加 {count} 个组件，退出并保存后生效'**
+  String bomEditAddStaged(int count);
+
+  /// No description provided for @bomEditComponentStaged.
+  ///
+  /// In zh, this message translates to:
+  /// **'组件修改已暂存，退出并保存后生效'**
+  String get bomEditComponentStaged;
+
+  /// No description provided for @bomEditReviewWarnings.
+  ///
+  /// In zh, this message translates to:
+  /// **'{message}；请核对：{warnings}'**
+  String bomEditReviewWarnings(String message, String warnings);
+
+  /// No description provided for @bomEditPasteFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'粘贴失败，请稍后重试'**
+  String get bomEditPasteFailed;
+
+  /// No description provided for @bomEditEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无组装信息'**
+  String get bomEditEmpty;
+
+  /// No description provided for @bomEditPasting.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在粘贴组件'**
+  String get bomEditPasting;
+
+  /// No description provided for @bomEditSaving.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在保存组装信息'**
+  String get bomEditSaving;
+
+  /// No description provided for @bomEditProcessing.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在处理本次操作，请稍候。'**
+  String get bomEditProcessing;
+
+  /// No description provided for @goodsBomBatchWeightUnit.
+  ///
+  /// In zh, this message translates to:
+  /// **'单个重量 ({unit})'**
+  String goodsBomBatchWeightUnit(String unit);
+
+  /// No description provided for @goodsBomBatchInvalidQuantity.
+  ///
+  /// In zh, this message translates to:
+  /// **'「{name}」{label}必须大于 0'**
+  String goodsBomBatchInvalidQuantity(String name, String label);
+
+  /// No description provided for @goodsBomBatchSharedPeriodicNotAllowed.
+  ///
+  /// In zh, this message translates to:
+  /// **'「{name}」是辅料或车间费用料，不能加入组装清单'**
+  String goodsBomBatchSharedPeriodicNotAllowed(String name);
+
+  /// No description provided for @goodsBomBatchSelectFirst.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先选择组件'**
+  String get goodsBomBatchSelectFirst;
+
+  /// No description provided for @goodsBomBatchComponentLimit.
+  ///
+  /// In zh, this message translates to:
+  /// **'一次最多选择 {limit} 个组件，请分批操作'**
+  String goodsBomBatchComponentLimit(int limit);
+
+  /// No description provided for @goodsBomBatchCommitUncertain.
+  ///
+  /// In zh, this message translates to:
+  /// **'提交结果暂未确认。输入已锁定，请重试本次提交以核对原结果。'**
+  String get goodsBomBatchCommitUncertain;
+
+  /// No description provided for @goodsBomBatchFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'本次组装维护未完成，请重新预览后重试'**
+  String get goodsBomBatchFailed;
+
+  /// No description provided for @goodsBomBatchAddTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量添加组件'**
+  String get goodsBomBatchAddTitle;
+
+  /// No description provided for @goodsBomBatchRemoveTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量移除指定组件'**
+  String get goodsBomBatchRemoveTitle;
+
+  /// No description provided for @goodsBomBatchOverwriteTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'覆盖整份组装清单'**
+  String get goodsBomBatchOverwriteTitle;
+
+  /// No description provided for @goodsBomBatchTargets.
+  ///
+  /// In zh, this message translates to:
+  /// **'已选 {count} 个货品，仅维护各货品的顶层组装清单。'**
+  String goodsBomBatchTargets(int count);
+
+  /// No description provided for @goodsBomBatchOverwriteDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'使用已复制组件覆盖当前货品的顶层组装清单；新清单没有的原顶层组件将移除。嵌套共享子件自身的组装清单保持不变。'**
+  String get goodsBomBatchOverwriteDescription;
+
+  /// No description provided for @goodsBomBatchRemoveDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅移除所选货品顶层命中的指定组件；未命中时跳过，不删除嵌套子件自身的组件。'**
+  String get goodsBomBatchRemoveDescription;
+
+  /// No description provided for @goodsBomBatchAddDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'向所选货品顶层追加指定组件；已有相同组件时直接跳过，保留原数量及其他字段。'**
+  String get goodsBomBatchAddDescription;
+
+  /// No description provided for @goodsBomBatchChooseComponents.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择组件'**
+  String get goodsBomBatchChooseComponents;
+
+  /// No description provided for @goodsBomBatchUseCopied.
+  ///
+  /// In zh, this message translates to:
+  /// **'使用已复制组件'**
+  String get goodsBomBatchUseCopied;
+
+  /// No description provided for @goodsBomBatchUnselectComponent.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消选择此组件'**
+  String get goodsBomBatchUnselectComponent;
+
+  /// No description provided for @goodsBomBatchCollapseComponents.
+  ///
+  /// In zh, this message translates to:
+  /// **'收起组件'**
+  String get goodsBomBatchCollapseComponents;
+
+  /// No description provided for @goodsBomBatchExpandComponents.
+  ///
+  /// In zh, this message translates to:
+  /// **'展开全部 {count} 个组件'**
+  String goodsBomBatchExpandComponents(int count);
+
+  /// No description provided for @goodsBomBatchSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'将修改 {targets} 个货品：添加 {added}、更新 {updated}、移除 {removed}、跳过 {skipped}。'**
+  String goodsBomBatchSummary(
+    int targets,
+    int added,
+    int updated,
+    int removed,
+    int skipped,
+  );
+
+  /// No description provided for @goodsBomBatchTargetCounts.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加 {added} / 更新 {updated} / 移除 {removed} / 跳过 {skipped}'**
+  String goodsBomBatchTargetCounts(
+    int added,
+    int updated,
+    int removed,
+    int skipped,
+  );
+
+  /// No description provided for @goodsBomBatchSharedImpact.
+  ///
+  /// In zh, this message translates to:
+  /// **'另外 {count} 个引用位置会随共享货品的组装清单同步变化。'**
+  String goodsBomBatchSharedImpact(int count);
+
+  /// No description provided for @goodsBomBatchHiddenImpact.
+  ///
+  /// In zh, this message translates to:
+  /// **'其中 {count} 个引用位置受查看权限限制，仅显示数量。'**
+  String goodsBomBatchHiddenImpact(int count);
+
+  /// No description provided for @goodsBomBatchConfirmImpact.
+  ///
+  /// In zh, this message translates to:
+  /// **'请核对所选货品、跳过项与同步影响。确认后整批保存，任何一项失败都不会修改。'**
+  String get goodsBomBatchConfirmImpact;
+
+  /// No description provided for @goodsBomBatchCloseVerify.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭并刷新核对'**
+  String get goodsBomBatchCloseVerify;
+
+  /// No description provided for @goodsBomBatchRetryCommit.
+  ///
+  /// In zh, this message translates to:
+  /// **'重试本次提交'**
+  String get goodsBomBatchRetryCommit;
+
+  /// No description provided for @goodsBomBatchPreview.
+  ///
+  /// In zh, this message translates to:
+  /// **'预览影响范围'**
+  String get goodsBomBatchPreview;
+
+  /// No description provided for @goodsBomBatchConfirmCommit.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认整批修改'**
+  String get goodsBomBatchConfirmCommit;
+
+  /// No description provided for @goodsBomBatchCompleted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已完成 {targets} 个货品：添加 {added}、更新 {updated}、移除 {removed}、跳过 {skipped}。'**
+  String goodsBomBatchCompleted(
+    int targets,
+    int added,
+    int updated,
+    int removed,
+    int skipped,
+  );
+
+  /// No description provided for @goodsBomBatchClearTopTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'清空顶层组装清单'**
+  String get goodsBomBatchClearTopTitle;
+
+  /// No description provided for @goodsBomBatchOverwriteCopied.
+  ///
+  /// In zh, this message translates to:
+  /// **'覆盖整份组装清单(使用已复制组件)'**
+  String get goodsBomBatchOverwriteCopied;
+
+  /// No description provided for @goodsBomBatchMoreProblems.
+  ///
+  /// In zh, this message translates to:
+  /// **'另有 {count} 项问题，请调整后重新预览。'**
+  String goodsBomBatchMoreProblems(int count);
+
+  /// No description provided for @exportPdfDialogTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'导出 PDF'**
+  String get exportPdfDialogTitle;
+
+  /// No description provided for @whereUsedReplacementTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'一键替换组件'**
+  String get whereUsedReplacementTitle;
+
+  /// No description provided for @whereUsedReplacementConfirmTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认同步替换'**
+  String get whereUsedReplacementConfirmTitle;
+
+  /// No description provided for @whereUsedCurrentComponent.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前组件'**
+  String get whereUsedCurrentComponent;
+
+  /// No description provided for @whereUsedReplaceWith.
+  ///
+  /// In zh, this message translates to:
+  /// **'替换成'**
+  String get whereUsedReplaceWith;
+
+  /// No description provided for @whereUsedChooseComponent.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择组件'**
+  String get whereUsedChooseComponent;
+
+  /// No description provided for @whereUsedReplacementPickerTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择替换组件'**
+  String get whereUsedReplacementPickerTitle;
+
+  /// No description provided for @whereUsedReplacementSameComponent.
+  ///
+  /// In zh, this message translates to:
+  /// **'替换组件不能与当前组件相同'**
+  String get whereUsedReplacementSameComponent;
+
+  /// No description provided for @whereUsedReplacementFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'替换未完成，请重新预览当前组装关系后重试'**
+  String get whereUsedReplacementFailed;
+
+  /// No description provided for @whereUsedReplacementRules.
+  ///
+  /// In zh, this message translates to:
+  /// **'已选 {count} 个产品。保留原组装行的用量、颜色、供应商、单价和控制规则；两个组件须有相同基本单位及领料方式。'**
+  String whereUsedReplacementRules(int count);
+
+  /// No description provided for @whereUsedReplacementHistory.
+  ///
+  /// In zh, this message translates to:
+  /// **'本次替换只修改当前组装信息，历史凭证、冻结需求与已发生的实际耗用保持原记录。'**
+  String get whereUsedReplacementHistory;
+
+  /// No description provided for @whereUsedReplacementImpact.
+  ///
+  /// In zh, this message translates to:
+  /// **'将替换 {edges} 条组装关系，共影响 {products} 个产品。'**
+  String whereUsedReplacementImpact(int edges, int products);
+
+  /// No description provided for @whereUsedReplacementSharedImpact.
+  ///
+  /// In zh, this message translates to:
+  /// **'其中 {count} 个为共用组件关联的其他产品，也会同步变化。'**
+  String whereUsedReplacementSharedImpact(int count);
+
+  /// No description provided for @whereUsedReplacementSelectedSuffix.
+  ///
+  /// In zh, this message translates to:
+  /// **'(已选)'**
+  String get whereUsedReplacementSelectedSuffix;
+
+  /// No description provided for @whereUsedReplacementSharedSuffix.
+  ///
+  /// In zh, this message translates to:
+  /// **'(同步影响)'**
+  String get whereUsedReplacementSharedSuffix;
+
+  /// No description provided for @whereUsedPreviewImpact.
+  ///
+  /// In zh, this message translates to:
+  /// **'预览影响范围'**
+  String get whereUsedPreviewImpact;
+
+  /// No description provided for @whereUsedConfirmReplaceSync.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认替换并同步'**
+  String get whereUsedConfirmReplaceSync;
+
+  /// No description provided for @whereUsedReplaceAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'一键替换'**
+  String get whereUsedReplaceAction;
+
+  /// No description provided for @whereUsedReplacementSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'组件已替换，关联产品的组装信息已同步'**
+  String get whereUsedReplacementSuccess;
+
+  /// No description provided for @whereUsedHistoryNotReplaceable.
+  ///
+  /// In zh, this message translates to:
+  /// **'该产品只有历史关系，不能替换历史记录'**
+  String get whereUsedHistoryNotReplaceable;
+
+  /// No description provided for @whereUsedExportFiltered.
+  ///
+  /// In zh, this message translates to:
+  /// **'导出筛选结果'**
+  String get whereUsedExportFiltered;
+
+  /// No description provided for @whereUsedExportDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'导出全部筛选结果，并附组件、筛选条件、操作员、导出时间和证据来源说明。Excel 适合继续筛选，PDF 适合查阅与打印。'**
+  String get whereUsedExportDescription;
+
+  /// No description provided for @whereUsedExportExcel.
+  ///
+  /// In zh, this message translates to:
+  /// **'Excel'**
+  String get whereUsedExportExcel;
+
+  /// No description provided for @whereUsedExportPdf.
+  ///
+  /// In zh, this message translates to:
+  /// **'PDF'**
+  String get whereUsedExportPdf;
+
+  /// No description provided for @whereUsedExportFilename.
+  ///
+  /// In zh, this message translates to:
+  /// **'物料反查筛选结果'**
+  String get whereUsedExportFilename;
+
+  /// No description provided for @whereUsedReplacementCommitUncertain.
+  ///
+  /// In zh, this message translates to:
+  /// **'提交结果暂未确认。请重试本次提交以核对原结果，暂勿更换组件。'**
+  String get whereUsedReplacementCommitUncertain;
+
+  /// No description provided for @whereUsedRetryReplacementCommit.
+  ///
+  /// In zh, this message translates to:
+  /// **'重试本次提交'**
+  String get whereUsedRetryReplacementCommit;
+
+  /// No description provided for @whereUsedCloseAndVerify.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭并刷新核对'**
+  String get whereUsedCloseAndVerify;
 }
 
 class _AppLocalizationsDelegate

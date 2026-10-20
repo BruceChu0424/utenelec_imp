@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -33,6 +35,7 @@ Future<void> _openActions(WidgetTester tester) async {
 
 Widget _app(Widget home) => ProviderScope(
   overrides: [
+    apiClientProvider.overrideWithValue(ApiClient(Dio())),
     authenticatedScopeProvider.overrideWithValue(
       const AuthenticatedScope(userId: 'test'),
     ),

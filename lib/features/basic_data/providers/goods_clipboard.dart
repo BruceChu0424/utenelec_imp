@@ -12,6 +12,7 @@
 // 避免敏感主档数据写进系统剪贴板被其他应用读到）。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../models/goods_bom_item.dart';
 import '../models/goods_node.dart';
 
@@ -64,7 +65,11 @@ class GoodsClipboardState {
 
 class GoodsClipboardNotifier extends Notifier<GoodsClipboardState> {
   @override
-  GoodsClipboardState build() => const GoodsClipboardState();
+  GoodsClipboardState build() {
+    // 同一会话可跨货品使用；账号、授权或服务地址变化后清掉旧快照。
+    ref.watch(sensitiveReadBoundaryProvider);
+    return const GoodsClipboardState();
+  }
 
   /// 写入货品快照列表（批量复制用；单个复制走 [copyGoods] 传单元素列表）。
   void copyGoodsList(List<GoodsCopyClip> clips) {

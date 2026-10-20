@@ -11221,4 +11221,388 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get rdInitialUnitRetry => '다시 시도';
+
+  @override
+  String get bomEditMode => '편집 모드';
+
+  @override
+  String get bomEditExitAndSave => '저장 후 종료';
+
+  @override
+  String get bomEditAuditMode => '검토 모드';
+
+  @override
+  String get bomEditExitAudit => '검토 종료';
+
+  @override
+  String get bomEditSaveTitle => '조립 정보 저장 후 종료';
+
+  @override
+  String bomEditSaveSummary(int operations, int parents) {
+    return '이번 작업 $operations건으로 품목 $parents개의 조립 정보를 변경합니다.';
+  }
+
+  @override
+  String get bomEditUnnamedGoods => '품목';
+
+  @override
+  String bomEditMoreGoods(int count) {
+    return '그 외 품목 $count개';
+  }
+
+  @override
+  String bomEditSharedWarning(int count) {
+    return '이 부품은 다른 조립 정보 $count곳에서도 참조합니다. 저장하면 모든 참조 위치에 변경된 부품 구조가 반영됩니다. 동기화하여 저장할까요?';
+  }
+
+  @override
+  String get bomEditSaveNote =>
+      '확인하면 이번 변경을 모두 저장합니다. 이미 시작한 생산 작업은 기존 자재 기록을 유지합니다.';
+
+  @override
+  String get bomEditContinue => '계속 편집';
+
+  @override
+  String get bomEditConfirmShared => '동기화 및 저장 확인';
+
+  @override
+  String get bomEditConfirmSave => '저장 확인';
+
+  @override
+  String get bomEditSaved => '조립 정보를 저장하고 모든 참조 위치에 반영했습니다';
+
+  @override
+  String bomEditMoreProblems(int count) {
+    return '문제가 $count건 더 있습니다. 초안으로 돌아가 확인하세요';
+  }
+
+  @override
+  String get bomEditSaveUnknown =>
+      '저장 결과를 아직 확인할 수 없습니다. 조립 정보를 확인한 후 다시 시도하세요. 초안은 이 페이지에 유지됩니다.';
+
+  @override
+  String get bomEditSaveFailedTitle => '조립 정보 저장을 완료하지 못했습니다';
+
+  @override
+  String bomEditRecoveryMessage(String message) {
+    return '$message\n\n초안을 유지하며 확인하거나, 초안을 버리고 최신 조립 정보를 다시 불러올 수 있습니다.';
+  }
+
+  @override
+  String get bomEditKeepDraft => '초안 유지';
+
+  @override
+  String get bomEditDiscardRefresh => '초안 버리고 새로고침';
+
+  @override
+  String get bomEditPermissionChanged =>
+      '편집 권한 또는 로그인 상태가 변경되었습니다. 권한을 복구한 후 초안을 저장하세요';
+
+  @override
+  String get bomEditBoundaryExpired =>
+      '로그인 사용자 또는 권한이 변경되어 이전 편집 초안이 만료되었습니다. 방금 저장했다면 결과를 다시 확인하세요';
+
+  @override
+  String get bomEditNoView => '현재 계정은 조립 정보를 볼 수 없습니다';
+
+  @override
+  String get bomEditCopy => '복사';
+
+  @override
+  String get bomEditPaste => '붙여넣기';
+
+  @override
+  String get bomEditNewComponent => '부품 추가';
+
+  @override
+  String get bomEditCurrentGoods => '현재 품목';
+
+  @override
+  String bomEditCopied(int count) {
+    return '부품 $count개를 복사했습니다. 다른 품목의 편집 모드에서 붙여넣을 수 있습니다';
+  }
+
+  @override
+  String get bomEditPasteParentRequired =>
+      '상위 부품 하나를 선택하거나 선택을 해제하여 최상위에 붙여넣으세요';
+
+  @override
+  String bomEditPasteStaged(int count) {
+    return '붙여넣은 부품 $count개를 임시 저장했습니다. 저장 후 종료하면 반영됩니다';
+  }
+
+  @override
+  String bomEditDeleteStaged(int count) {
+    return '부품 $count개 삭제를 임시 저장했습니다. 저장 후 종료하면 반영됩니다';
+  }
+
+  @override
+  String bomEditMoveStaged(int count) {
+    return '부품 $count개 이동을 임시 저장했습니다. 저장 후 종료하면 반영됩니다';
+  }
+
+  @override
+  String bomEditAddStaged(int count) {
+    return '추가한 부품 $count개를 임시 저장했습니다. 저장 후 종료하면 반영됩니다';
+  }
+
+  @override
+  String get bomEditComponentStaged => '부품 변경을 임시 저장했습니다. 저장 후 종료하면 반영됩니다';
+
+  @override
+  String bomEditReviewWarnings(String message, String warnings) {
+    return '$message. 확인: $warnings';
+  }
+
+  @override
+  String get bomEditPasteFailed => '붙여넣지 못했습니다. 다시 시도하세요';
+
+  @override
+  String get bomEditEmpty => '조립 정보가 없습니다';
+
+  @override
+  String get bomEditPasting => '부품을 붙여넣는 중';
+
+  @override
+  String get bomEditSaving => '조립 정보를 저장하는 중';
+
+  @override
+  String get bomEditProcessing => '작업을 처리하는 중입니다. 잠시 기다려 주세요.';
+
+  @override
+  String goodsBomBatchWeightUnit(String unit) {
+    return '개당 중량 ($unit)';
+  }
+
+  @override
+  String goodsBomBatchInvalidQuantity(String name, String label) {
+    return '\"$name\"의 $label은(는) 0보다 커야 합니다.';
+  }
+
+  @override
+  String goodsBomBatchSharedPeriodicNotAllowed(String name) {
+    return '\"$name\"은(는) 보조 자재 또는 작업장 경비 자재이므로 조립 목록에 추가할 수 없습니다.';
+  }
+
+  @override
+  String get goodsBomBatchSelectFirst => '먼저 구성품을 선택하세요.';
+
+  @override
+  String goodsBomBatchComponentLimit(int limit) {
+    return '한 번에 구성품을 최대 $limit개까지 선택할 수 있습니다.';
+  }
+
+  @override
+  String get goodsBomBatchCommitUncertain =>
+      '제출 결과가 아직 확인되지 않았습니다. 입력이 잠겼습니다. 같은 제출을 다시 시도하여 원래 결과를 확인하세요.';
+
+  @override
+  String get goodsBomBatchFailed => '조립 정보 유지보수가 완료되지 않았습니다. 다시 미리 본 후 재시도하세요.';
+
+  @override
+  String get goodsBomBatchAddTitle => '구성품 일괄 추가';
+
+  @override
+  String get goodsBomBatchRemoveTitle => '지정 구성품 일괄 제거';
+
+  @override
+  String get goodsBomBatchOverwriteTitle => '전체 조립 목록 덮어쓰기';
+
+  @override
+  String goodsBomBatchTargets(int count) {
+    return '품목 $count개가 선택되었습니다. 각 품목의 최상위 조립 목록만 변경합니다.';
+  }
+
+  @override
+  String get goodsBomBatchOverwriteDescription =>
+      '복사한 구성품으로 현재 품목의 최상위 조립 목록을 덮어씁니다. 새 목록에 없는 기존 최상위 구성품은 제거됩니다. 중첩된 공용 반제품 자체의 조립 목록은 유지됩니다.';
+
+  @override
+  String get goodsBomBatchRemoveDescription =>
+      '선택한 품목의 최상위에서 일치하는 지정 구성품만 제거합니다. 일치하지 않으면 건너뛰며, 중첩된 반제품 내부의 구성품은 제거하지 않습니다.';
+
+  @override
+  String get goodsBomBatchAddDescription =>
+      '선택한 품목의 최상위에 지정 구성품을 추가합니다. 같은 구성품이 이미 있으면 건너뛰고 기존 수량과 다른 필드를 유지합니다.';
+
+  @override
+  String get goodsBomBatchChooseComponents => '구성품 선택';
+
+  @override
+  String get goodsBomBatchUseCopied => '복사한 구성품 사용';
+
+  @override
+  String get goodsBomBatchUnselectComponent => '이 구성품 선택 해제';
+
+  @override
+  String get goodsBomBatchCollapseComponents => '구성품 접기';
+
+  @override
+  String goodsBomBatchExpandComponents(int count) {
+    return '구성품 $count개 모두 펼치기';
+  }
+
+  @override
+  String goodsBomBatchSummary(
+    int targets,
+    int added,
+    int updated,
+    int removed,
+    int skipped,
+  ) {
+    return '품목 $targets개 변경 예정: 추가 $added개, 수정 $updated개, 제거 $removed개, 건너뜀 $skipped개.';
+  }
+
+  @override
+  String goodsBomBatchTargetCounts(
+    int added,
+    int updated,
+    int removed,
+    int skipped,
+  ) {
+    return '추가 $added / 수정 $updated / 제거 $removed / 건너뜀 $skipped';
+  }
+
+  @override
+  String goodsBomBatchSharedImpact(int count) {
+    return '공용 품목의 조립 목록 변경이 다른 참조 위치 $count곳에도 반영됩니다.';
+  }
+
+  @override
+  String goodsBomBatchHiddenImpact(int count) {
+    return '이 중 참조 위치 $count곳은 조회 권한이 제한되어 개수만 표시됩니다.';
+  }
+
+  @override
+  String get goodsBomBatchConfirmImpact =>
+      '선택한 품목, 건너뛴 항목 및 공용 참조에 미치는 영향을 확인하세요. 확인 후 전체 작업을 저장하며, 하나라도 실패하면 아무것도 변경하지 않습니다.';
+
+  @override
+  String get goodsBomBatchCloseVerify => '닫고 새로고침하여 확인';
+
+  @override
+  String get goodsBomBatchRetryCommit => '같은 제출 다시 시도';
+
+  @override
+  String get goodsBomBatchPreview => '영향 범위 미리 보기';
+
+  @override
+  String get goodsBomBatchConfirmCommit => '일괄 변경 확인';
+
+  @override
+  String goodsBomBatchCompleted(
+    int targets,
+    int added,
+    int updated,
+    int removed,
+    int skipped,
+  ) {
+    return '품목 $targets개 처리 완료: 추가 $added개, 수정 $updated개, 제거 $removed개, 건너뜀 $skipped개.';
+  }
+
+  @override
+  String get goodsBomBatchClearTopTitle => '최상위 조립 목록 비우기';
+
+  @override
+  String get goodsBomBatchOverwriteCopied => '전체 조립 목록 덮어쓰기(복사한 구성품 사용)';
+
+  @override
+  String goodsBomBatchMoreProblems(int count) {
+    return '문제가 $count개 더 있습니다. 수정한 후 다시 미리 보세요.';
+  }
+
+  @override
+  String get exportPdfDialogTitle => 'PDF 내보내기';
+
+  @override
+  String get whereUsedReplacementTitle => '구성품 일괄 교체';
+
+  @override
+  String get whereUsedReplacementConfirmTitle => '공유 구성품 교체 확인';
+
+  @override
+  String get whereUsedCurrentComponent => '현재 구성품';
+
+  @override
+  String get whereUsedReplaceWith => '교체할 구성품';
+
+  @override
+  String get whereUsedChooseComponent => '구성품 선택';
+
+  @override
+  String get whereUsedReplacementPickerTitle => '대체 구성품 선택';
+
+  @override
+  String get whereUsedReplacementSameComponent => '대체 구성품은 현재 구성품과 달라야 합니다';
+
+  @override
+  String get whereUsedReplacementFailed =>
+      '교체가 완료되지 않았습니다. 현재 조립 관계를 다시 미리 본 후 재시도하세요.';
+
+  @override
+  String whereUsedReplacementRules(int count) {
+    return '제품 $count개를 선택했습니다. 기존 조립 행의 사용량, 색상, 공급업체, 단가 및 제어 규칙을 유지합니다. 두 구성품의 기본 단위와 자재 출고 방식이 같아야 합니다.';
+  }
+
+  @override
+  String get whereUsedReplacementHistory =>
+      '현재 조립 관계만 변경합니다. 과거 증빙, 확정 수요 및 이미 기록된 실제 소비량은 원래 기록을 유지합니다.';
+
+  @override
+  String whereUsedReplacementImpact(int edges, int products) {
+    return '조립 관계 $edges개를 교체하며 제품 $products개에 영향을 줍니다.';
+  }
+
+  @override
+  String whereUsedReplacementSharedImpact(int count) {
+    return '공유 구성품을 사용하는 다른 제품 $count개도 함께 변경됩니다.';
+  }
+
+  @override
+  String get whereUsedReplacementSelectedSuffix => '(선택됨)';
+
+  @override
+  String get whereUsedReplacementSharedSuffix => '(동기화 영향)';
+
+  @override
+  String get whereUsedPreviewImpact => '영향 범위 미리 보기';
+
+  @override
+  String get whereUsedConfirmReplaceSync => '교체 및 동기화 확인';
+
+  @override
+  String get whereUsedReplaceAction => '구성품 일괄 교체';
+
+  @override
+  String get whereUsedReplacementSuccess => '구성품을 교체하고 관련 제품의 조립 정보를 동기화했습니다';
+
+  @override
+  String get whereUsedHistoryNotReplaceable =>
+      '과거 관계만 있는 제품입니다. 과거 기록은 교체할 수 없습니다.';
+
+  @override
+  String get whereUsedExportFiltered => '필터 결과 내보내기';
+
+  @override
+  String get whereUsedExportDescription =>
+      '구성품, 필터 조건, 작업자, 내보낸 시간 및 근거 출처와 함께 모든 필터 결과를 내보냅니다. 추가 필터링은 Excel, 열람 및 인쇄는 PDF를 선택하세요.';
+
+  @override
+  String get whereUsedExportExcel => 'Excel';
+
+  @override
+  String get whereUsedExportPdf => 'PDF';
+
+  @override
+  String get whereUsedExportFilename => '자재_역조회_필터_결과';
+
+  @override
+  String get whereUsedReplacementCommitUncertain =>
+      '제출 결과가 아직 확인되지 않았습니다. 구성품을 변경하지 말고 같은 제출을 재시도하여 원래 결과를 확인하세요.';
+
+  @override
+  String get whereUsedRetryReplacementCommit => '같은 제출 재시도';
+
+  @override
+  String get whereUsedCloseAndVerify => '닫고 새로 고쳐 확인';
 }

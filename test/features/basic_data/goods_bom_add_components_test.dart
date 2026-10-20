@@ -8,6 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:dio/dio.dart';
 import 'package:uten_imp/components/feedback/uten_floating_window.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
+import '../../support/goods_bom_edit_test_api.dart';
 import 'package:uten_imp/core/network/api_error.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
@@ -105,11 +107,19 @@ Future<void> _openAddDialog(WidgetTester tester, _RecordingBomRepo repo) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        apiClientProvider.overrideWithValue(GoodsBomEditTestApi(repo)),
+        localServerReachableProvider.overrideWith(
+          (ref) => LocalServerReachabilityNotifier(null, web: true),
+        ),
         sensitiveReadBoundaryProvider.overrideWithValue(
           SensitiveReadBoundary(
             identity: null,
             api: ApiClient(Dio()),
-            permissions: {Perm.goodsView, Perm.goodsBomCreate},
+            permissions: {
+              Perm.goodsView,
+              Perm.goodsBomCreate,
+              Perm.goodsBomEdit,
+            },
             superAdmin: false,
           ),
         ),
@@ -120,6 +130,7 @@ Future<void> _openAddDialog(WidgetTester tester, _RecordingBomRepo repo) async {
         currentPermissionsProvider.overrideWithValue({
           Perm.goodsView,
           Perm.goodsBomCreate,
+          Perm.goodsBomEdit,
         }),
         isSuperAdminProvider.overrideWithValue(false),
       ],
@@ -131,7 +142,7 @@ Future<void> _openAddDialog(WidgetTester tester, _RecordingBomRepo repo) async {
           body: GoodsBomTab(
             goodsId: 'goods-a',
             canCreate: true,
-            canEdit: false,
+            canEdit: true,
             canDelete: false,
           ),
         ),
@@ -139,6 +150,7 @@ Future<void> _openAddDialog(WidgetTester tester, _RecordingBomRepo repo) async {
     ),
   );
   await tester.pumpAndSettle();
+  await enterBomEdit(tester);
   await tester.tap(find.byKey(const Key('goods-bom-add-component')));
   await tester.pumpAndSettle();
   await tester.tap(find.text('选择组件'));
@@ -148,38 +160,34 @@ Future<void> _openAddDialog(WidgetTester tester, _RecordingBomRepo repo) async {
 }
 
 void main() {
-  testWidgets('两个组件一次追加请求：服务端拒绝时逐行原因留在弹窗、改好再存才关闭', (tester) async {
+  testWidgets('两个组件先整批暂存，服务端拒绝保留草稿，核对后重试一次提交', (tester) async {
     final repo = _RecordingBomRepo();
     await _openAddDialog(tester, repo);
-
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
-
-    // 只发了一次请求、目标是添加位置(顶层=本货品)、两行一起提交。
+    expect(repo.pasteCalls, isEmpty, reason: '暂存不写正式组装信息');
+    expect(find.byType(UtenFloatingWindow), findsNothing);
+    await saveBomEdit(tester);
     expect(repo.pasteCalls, hasLength(1));
     final first = repo.pasteCalls.single;
     expect(first.mode, BomPasteMode.append);
-    expect(first.targets.map((t) => t.goodsId), ['goods-a']);
-    expect(first.targets.single.expectedItemIds, isNull);
-    expect(first.items.map((i) => i['componentGoodsId']), [
+    expect(first.targets.map((target) => target.goodsId), ['goods-a']);
+    expect(first.items.map((item) => item['componentGoodsId']), [
       'goods-x',
       'goods-y',
     ]);
-    // 被拒：弹窗还在，整体原因 + 逐行原因都看得到。
-    expect(find.byType(UtenFloatingWindow), findsOneWidget);
-    expect(find.byKey(const Key('goods-bom-add-error')), findsOneWidget);
     expect(find.textContaining('现有组件没有任何改动'), findsOneWidget);
     expect(
       find.textContaining('第 2 行 S01 螺丝：粘贴到「A 成品」会形成组装环路'),
       findsOneWidget,
     );
-
-    final reloadsBefore = repo.listCalls;
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.text('继续保留草稿'));
     await tester.pumpAndSettle();
+    final readsBefore = repo.listCalls;
+    await saveBomEdit(tester);
     expect(repo.pasteCalls, hasLength(2));
-    expect(find.byType(UtenFloatingWindow), findsNothing, reason: '整批成功才关弹窗');
-    expect(repo.listCalls, greaterThan(reloadsBefore), reason: '成功后重载组装树');
+    expect(find.text('编辑模式'), findsOneWidget);
+    expect(repo.listCalls, greaterThan(readsBefore));
   });
 
   testWidgets('设计使用数量不合法在本地拦下，不发任何请求', (tester) async {
@@ -222,6 +230,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
+    await saveBomEdit(tester);
     expect(repo.pasteCalls.single.items.map((i) => i['qty']), [1.0, 0.25]);
   });
 

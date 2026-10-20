@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -13,12 +16,18 @@ import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/pages/product_category_page.dart';
 import 'package:uten_imp/features/basic_data/providers/goods_clipboard.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.dart';
+import 'package:uten_imp/features/basic_data/repositories/goods_bom_batch_repository.dart';
+import 'package:uten_imp/features/basic_data/widgets/bom_component_picker.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/product_category_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+
+final _livePermissions = StateProvider<Set<String>?>((ref) => null);
+final _liveIdentity = StateProvider<String>((ref) => 'operator-a');
 
 const _source = GoodsDetail(
   id: 'source-goods',
@@ -70,6 +79,8 @@ Future<void> _pumpPage(
   _BomRepository bom, {
   bool canCreate = true,
   bool withClipboard = false,
+  Set<String> bomPermissions = const {},
+  GoodsBomBatchRepository? maintenance,
   Size surfaceSize = const Size(1600, 900),
 }) async {
   await tester.binding.setSurfaceSize(surfaceSize);
@@ -81,15 +92,45 @@ Future<void> _pumpPage(
           await SharedPreferences.getInstance(),
         ),
         apiClientProvider.overrideWithValue(ApiClient(Dio())),
-        currentPermissionsProvider.overrideWithValue({
-          Perm.goodsView,
-          Perm.materialCategoryView,
-          if (canCreate) Perm.goodsCreate,
-        }),
+        currentPermissionsProvider.overrideWith(
+          (ref) =>
+              ref.watch(_livePermissions) ??
+              {
+                Perm.goodsView,
+                Perm.materialCategoryView,
+                if (canCreate) Perm.goodsCreate,
+                ...bomPermissions,
+              },
+        ),
+        authenticatedScopeProvider.overrideWith(
+          (ref) => AuthenticatedScope(userId: ref.watch(_liveIdentity)),
+        ),
         isSuperAdminProvider.overrideWithValue(false),
         productCategoryRepositoryProvider.overrideWithValue(_Categories()),
         goodsRepositoryProvider.overrideWithValue(goods),
         goodsBomRepositoryProvider.overrideWithValue(bom),
+        if (maintenance != null)
+          goodsBomBatchRepositoryProvider.overrideWithValue(maintenance),
+        bomComponentPickerProvider.overrideWithValue(
+          (context, ref) async => const [
+            GoodsListItem(
+              id: 'component-1',
+              code: 'C01',
+              name: '目标组件',
+              unitName: '个',
+            ),
+          ],
+        ),
+        bomComponentRemovalPickerProvider.overrideWithValue(
+          (context, ref) async => const [
+            GoodsListItem(
+              id: 'component-1',
+              code: 'C01',
+              name: '停用旧组件',
+              status: '禁用',
+            ),
+          ],
+        ),
       ],
       child: const MaterialApp(
         locale: Locale('zh'),
@@ -111,6 +152,163 @@ Future<void> _pumpPage(
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  for (final permission in [Perm.goodsBomCreate, Perm.goodsBomDelete]) {
+    testWidgets('组件$permission授权不能绕过编辑权限显示批量维护入口', (tester) async {
+      await _pumpPage(
+        tester,
+        _GoodsRepository(),
+        _BomRepository(),
+        bomPermissions: {permission},
+      );
+      await tester.tap(find.text('原分类'));
+      await tester.pumpAndSettle();
+      await _rightClickAt(tester, tester.getCenter(find.text(_source.name!)));
+      expect(find.text('批量添加组件'), findsNothing);
+      expect(find.text('批量移除指定组件'), findsNothing);
+      expect(find.text('清空顶层组装清单'), findsNothing);
+    });
+  }
+
+  testWidgets('货品列表多选右键仅提供获权ADD/REMOVE并用预览确认维护所选两品', (tester) async {
+    final maintenance = _MaintenanceRepository();
+    final bom = _BomRepository();
+    await _pumpPage(
+      tester,
+      _GoodsRepository(targetCount: 2),
+      bom,
+      maintenance: maintenance,
+      bomPermissions: {
+        Perm.goodsBomEdit,
+        Perm.goodsBomCreate,
+        Perm.goodsBomDelete,
+      },
+    );
+    await tester.tap(find.text('新分类'));
+    await tester.pumpAndSettle();
+    tester
+        .widget<MasterDataTableView<GoodsListItem>>(_table)
+        .onSelectedIdsChanged!({'existing-1', 'existing-2'});
+    await tester.pumpAndSettle();
+    await _rightClickAt(tester, tester.getCenter(find.text('已有货品 1')));
+    expect(find.text('批量添加组件'), findsOneWidget);
+    expect(find.text('批量移除指定组件'), findsOneWidget);
+    expect(find.text('覆盖整份组装清单(使用已复制组件)'), findsNothing);
+    expect(find.textContaining('批量粘贴组件'), findsNothing);
+    await tester.tap(find.text('批量添加组件'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('goods-bom-batch-pick')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('goods-bom-batch-submit')));
+    await tester.pumpAndSettle();
+    expect(maintenance.targets, ['existing-1', 'existing-2']);
+    expect(maintenance.commits, 0);
+    await tester.tap(find.byKey(const Key('goods-bom-batch-submit')));
+    await tester.pumpAndSettle();
+    expect(maintenance.commits, 1);
+    expect(bom.pasted, isEmpty);
+    expect(
+      tester.widget<MasterDataTableView<GoodsListItem>>(_table).selectedIds,
+      isEmpty,
+    );
+  });
+
+  testWidgets('已有单品整份覆盖使用新预览且明确顶层清单语义', (tester) async {
+    final maintenance = _MaintenanceRepository();
+    final bom = _BomRepository();
+    await _pumpPage(
+      tester,
+      _GoodsRepository(),
+      bom,
+      maintenance: maintenance,
+      bomPermissions: {
+        Perm.goodsBomEdit,
+        Perm.goodsBomCreate,
+        Perm.goodsBomDelete,
+      },
+    );
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ProductCategoryPage)),
+    );
+    container.read(goodsClipboardProvider.notifier).copyBom(const [
+      _component,
+    ], '来源清单');
+    await tester.tap(find.text('原分类'));
+    await tester.pumpAndSettle();
+    await _rightClickAt(tester, tester.getCenter(find.text(_source.name!)));
+    await tester.scrollUntilVisible(
+      find.text('覆盖整份组装清单(使用已复制组件)'),
+      120,
+      scrollable: find
+          .descendant(
+            of: find.byType(ListView).last,
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.tap(find.text('覆盖整份组装清单(使用已复制组件)'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('嵌套共享子件自身的组装清单保持不变'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('goods-bom-batch-submit')));
+    await tester.pumpAndSettle();
+    expect(maintenance.action, BomBatchAction.overwrite);
+    expect(maintenance.targets, [_source.id]);
+    expect(maintenance.items.single['qty'], _component.qty);
+    expect(bom.pasted, isEmpty);
+  });
+
+  testWidgets('单品清空只预选现有顶层组件进入REMOVE预览而不再直接删除', (tester) async {
+    final maintenance = _MaintenanceRepository();
+    final bom = _BomRepository();
+    await _pumpPage(
+      tester,
+      _GoodsRepository(),
+      bom,
+      maintenance: maintenance,
+      bomPermissions: {Perm.goodsBomEdit, Perm.goodsBomDelete},
+    );
+    await tester.tap(find.text('原分类'));
+    await tester.pumpAndSettle();
+    await _rightClickAt(tester, tester.getCenter(find.text(_source.name!)));
+    expect(find.text('批量添加组件'), findsNothing);
+    await tester.drag(find.byType(ListView).last, const Offset(0, -350));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('清空顶层组装清单'));
+    await tester.pumpAndSettle();
+    expect(bom.listCalls, [_source.id]);
+    await tester.tap(find.byKey(const Key('goods-bom-batch-submit')));
+    await tester.pumpAndSettle();
+    expect(maintenance.action, BomBatchAction.remove);
+    expect(maintenance.components, [_component.componentGoodsId]);
+    expect(maintenance.commits, 0);
+  });
+
+  for (final change in ['permission', 'account']) {
+    testWidgets('复制组件回执迟到遇到$change变化不能写回新剪贴板', (tester) async {
+      final bom = _BomRepository()
+        ..pendingCopy = Completer<List<GoodsBomItem>>();
+      await _pumpPage(tester, _GoodsRepository(), bom);
+      await tester.tap(find.text('原分类'));
+      await tester.pumpAndSettle();
+      await _rightClickAt(tester, tester.getCenter(find.text(_source.name!)));
+      await tester.ensureVisible(find.text('复制组件信息'));
+      await tester.tap(find.text('复制组件信息'));
+      await tester.pump();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(ProductCategoryPage)),
+      );
+      if (change == 'account') {
+        container.read(_liveIdentity.notifier).state = 'operator-b';
+      } else {
+        container.read(_livePermissions.notifier).state = {Perm.goodsView};
+      }
+      await tester.pump();
+      bom.pendingCopy!.complete(const [_component]);
+      await tester.pumpAndSettle();
+      expect(container.read(goodsClipboardProvider).bomItems, isNull);
+      expect(bom.listCalls, [_source.id]);
+    });
+  }
 
   testWidgets('复制源分类货品后在空目标分类空白处粘贴，副本与组件写入目标且立即显示', (tester) async {
     final goods = _GoodsRepository();
@@ -375,6 +573,62 @@ void main() {
   });
 }
 
+class _MaintenanceRepository implements GoodsBomBatchRepository {
+  BomBatchAction? action;
+  List<String> targets = [];
+  List<String> components = [];
+  List<Map<String, dynamic>> items = [];
+  int commits = 0;
+  @override
+  Future<BomBatchPreview> preview({
+    required BomBatchAction action,
+    required List<String> targetGoodsIds,
+    List<Map<String, dynamic>> items = const [],
+    List<String> componentGoodsIds = const [],
+  }) async {
+    this.action = action;
+    targets = List.of(targetGoodsIds);
+    components = List.of(componentGoodsIds);
+    this.items = [for (final item in items) Map.of(item)];
+    return BomBatchPreview(
+      previewToken: 'list-preview',
+      action: action,
+      selectedTargetCount: targets.length,
+      changedTargetCount: targets.length,
+      added: action == BomBatchAction.add ? targets.length : 0,
+      updated: 0,
+      removed: action == BomBatchAction.remove ? targets.length : 0,
+      skipped: 0,
+      targets: [
+        for (final id in targets)
+          BomBatchTarget(goodsId: id, goodsCode: id, goodsName: id),
+      ],
+      affectedProducts: const [],
+      otherUsageCount: 0,
+      hiddenUsageCount: 0,
+    );
+  }
+
+  @override
+  Future<BomBatchResult> commit(
+    String previewToken, {
+    required bool confirmSharedChanges,
+  }) async {
+    expect(previewToken, 'list-preview');
+    expect(confirmSharedChanges, isTrue);
+    commits++;
+    return BomBatchResult(
+      selectedTargetCount: targets.length,
+      changedTargetCount: targets.length,
+      added: 1,
+      updated: 0,
+      removed: 0,
+      skipped: 0,
+      targets: const [],
+    );
+  }
+}
+
 class _Categories implements ProductCategoryRepository {
   @override
   Future<List<ProductCategoryNode>> tree() async => [
@@ -517,6 +771,7 @@ class _GoodsRepository implements GoodsRepository {
 }
 
 class _BomRepository implements GoodsBomRepository {
+  Completer<List<GoodsBomItem>>? pendingCopy;
   final listCalls = <String>[];
   final pasted =
       <
@@ -530,6 +785,7 @@ class _BomRepository implements GoodsBomRepository {
   @override
   Future<List<GoodsBomItem>> list(String goodsId) async {
     listCalls.add(goodsId);
+    if (pendingCopy != null) return pendingCopy!.future;
     return [_component];
   }
 

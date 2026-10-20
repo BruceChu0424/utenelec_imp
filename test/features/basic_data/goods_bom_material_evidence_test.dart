@@ -88,7 +88,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('已记录车间选料：PC颗粒 (白色)'), findsOneWidget);
       final prior = repo.learningReads;
-      await tester.tap(find.byKey(const Key('goods-bom-refresh')));
+      await tester.state<GoodsBomTabState>(find.byType(GoodsBomTab)).refresh();
       await tester.pumpAndSettle();
       expect(repo.learningReads, greaterThan(prior));
       await tester.tap(find.text('查看选料与结构'));

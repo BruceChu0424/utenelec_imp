@@ -12,6 +12,7 @@ import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/api_exception.dart';
+import '../../core/network/authenticated_request_scope.dart';
 import '../../core/ui/app_notification.dart';
 import '../../shared/auth/permissions.dart';
 import '../../shared/platform_tables/table_column_projection.dart';
@@ -133,15 +134,18 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
     final operation = ++_operation;
     final actionContext = UtenAppBarActionScope.actionContextOf(context);
     final epoch = ref.read(exportContextEpochProvider);
+    final api = ref.read(apiClientProvider);
     UtenExportSelection? selection;
     bool current() =>
         mounted &&
         operation == _operation &&
         epoch == ref.read(exportContextEpochProvider) &&
+        identical(api, ref.read(apiClientProvider)) &&
         _authorized &&
         (selection?.stillCurrent?.call() ?? true);
     setState(() => _preparing = true);
     try {
+      final scope = await api.captureRequestScope(isCurrent: current);
       selection = widget.prepareExport == null
           ? const UtenExportSelection()
           : await widget.prepareExport!();
@@ -153,10 +157,10 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
       }
       final password = await showDialog<String>(
         context: actionContext,
-        builder: (_) => const _ExportPasswordDialog(),
+        builder: (_) => _ExportPasswordDialog(format: selection!.extension),
       );
       if (password == null || !mounted || !current()) return;
-      await _doExport(password, selection, current);
+      await _doExport(password, selection, current, api, scope);
     } on ApiException catch (error) {
       if (mounted && current()) context.appError(error.message);
     } catch (_) {
@@ -177,6 +181,8 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
     String password,
     UtenExportSelection selection,
     bool Function() current,
+    ApiClient api,
+    AuthenticatedRequestScope scope,
   ) async {
     if (!mounted || !widget.enabled || !current()) return;
     setState(() => _loading = true);
@@ -206,19 +212,20 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
                 .where((column) => column.exportable)
                 .toList(growable: false),
           );
-    final Uint8List bytes = await ref
-        .read(apiClientProvider)
-        .downloadBytes(
-          widget.endpoint,
-          body: {
-            ...widget.bodyParams,
-            ...selection.bodyParams,
-            if (exportProjection != null && exportProjection.columns.isNotEmpty)
-              'columnProjection': exportProjection.toJson(),
-            'password': password,
-          },
-          query: {'report': widget.report, ...widget.queryParams},
-        );
+    final Uint8List bytes = await scope.run(
+      () => api.downloadBytes(
+        widget.endpoint,
+        body: {
+          ...widget.bodyParams,
+          ...selection.bodyParams,
+          if (exportProjection != null && exportProjection.columns.isNotEmpty)
+            'columnProjection': exportProjection.toJson(),
+          'password': password,
+        },
+        query: {'report': widget.report, ...widget.queryParams},
+      ),
+    );
+    await scope.verify();
     if (!mounted || !current()) return;
     final extension = switch (selection.extension) {
       'zip' => 'zip',
@@ -266,7 +273,9 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
 
 /// 返回空字符串表示普通下载，返回非空密码表示加密下载，取消返回 null。
 class _ExportPasswordDialog extends StatefulWidget {
-  const _ExportPasswordDialog();
+  const _ExportPasswordDialog({required this.format});
+
+  final String format;
 
   @override
   State<_ExportPasswordDialog> createState() => _ExportPasswordDialogState();
@@ -307,7 +316,11 @@ class _ExportPasswordDialogState extends State<_ExportPasswordDialog> {
     final l10n = AppLocalizations.of(context);
     final hasPassword = _pwd.text.isNotEmpty;
     return UtenAlertDialog(
-      title: Text(l10n.exportDialogTitle),
+      title: Text(
+        widget.format == 'pdf'
+            ? l10n.exportPdfDialogTitle
+            : l10n.exportDialogTitle,
+      ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,

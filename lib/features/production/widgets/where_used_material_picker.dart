@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
@@ -27,6 +28,23 @@ Future<GoodsListItem?> showWhereUsedMaterialPicker(
   readBoundary: ref.read(sensitiveReadBoundaryProvider),
 );
 
+/// Current replacement candidates use the same picker without requiring unrelated master-view grants.
+Future<GoodsListItem?> showWhereUsedReplacementPicker(
+  BuildContext context,
+  WidgetRef ref, {
+  required SensitiveReadBoundary readBoundary,
+}) => showUtenGoodsPicker(
+  context,
+  ref,
+  scope: UtenGoodsPickerScope.component,
+  dataSource: _WhereUsedMaterialDataSource(
+    readBoundary.api,
+    operationalOnly: true,
+  ),
+  title: AppLocalizations.of(context).whereUsedReplacementPickerTitle,
+  readBoundary: readBoundary,
+);
+
 /// Inline discovery uses the same report-only scope and historical candidates
 /// as the full picker, without requiring master-data permissions.
 Future<List<GoodsListItem>> loadWhereUsedMaterialSuggestions(
@@ -41,9 +59,10 @@ Future<List<GoodsListItem>> loadWhereUsedMaterialSuggestions(
 }
 
 class _WhereUsedMaterialDataSource extends UtenGoodsPickerDataSource {
-  _WhereUsedMaterialDataSource(this.api);
+  _WhereUsedMaterialDataSource(this.api, {this.operationalOnly = false});
 
   final ApiClient api;
+  final bool operationalOnly;
   // Bind evidence to the returned snapshot, so a late discarded request cannot
   // overwrite the tags of a newer visible item with the same goods ID.
   final _evidence = Map<GoodsListItem, _WhereUsedMaterial>.identity();
@@ -51,6 +70,23 @@ class _WhereUsedMaterialDataSource extends UtenGoodsPickerDataSource {
 
   @override
   bool get supportsRelatedSearch => true;
+
+  @override
+  bool isSelectable(GoodsListItem goods) {
+    if (!operationalOnly) return true;
+    final material = _evidence[goods];
+    return material != null &&
+        !material.deleted &&
+        !material.autoCreated &&
+        !const {
+          '禁用',
+          '停用',
+          '报废',
+          'DISABLED',
+          'SCRAPPED',
+          'STOPPED',
+        }.contains(material.status.toUpperCase());
+  }
 
   @override
   Future<List<ProductCategoryNode>> tree() async {

@@ -36,8 +36,10 @@ List<ApiFieldError>? periodicConfirmationsOf(Object error) {
 /// 调用前先撤掉忙碌遮罩 (遮罩会盖住后弹的确认框)。
 Future<Set<String>?> askPeriodicConfirmations(
   BuildContext context,
-  List<ApiFieldError> confirmations,
-) async {
+  List<ApiFieldError> confirmations, {
+  ValueChanged<ModalRoute<dynamic>?>? onRouteOpened,
+  bool Function()? isCurrent,
+}) async {
   final secondMaterial = confirmations.any(
     (f) => f.field == periodicConfirmSecondMaterial,
   );
@@ -46,49 +48,54 @@ Future<Set<String>?> askPeriodicConfirmations(
   );
   final ok = await showDialog<bool>(
     context: context,
-    builder: (ctx) => UtenAlertDialog(
-      scrollable: false,
-      title: const Text('保存前请确认'),
-      content: SizedBox(
-        width: 460,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (final f in confirmations)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Text('· ${f.message}'),
-                ),
-              if (unusual)
-                const Padding(
-                  padding: EdgeInsets.only(top: 4),
-                  child: Text('单个重量小于 0.1 克或大于 5000 克, 常见是把公斤当成克填了。'),
-                ),
-              if (secondMaterial)
-                const Padding(
-                  padding: EdgeInsets.only(top: 4),
-                  child: Text('同一个产品同时用两种料 (双色 / 双料) 才这样填; 只是换料的话, 请改原来那一行。'),
-                ),
-            ],
+    builder: (ctx) {
+      onRouteOpened?.call(ModalRoute.of(ctx));
+      if (isCurrent?.call() == false) return const SizedBox.shrink();
+      return UtenAlertDialog(
+        scrollable: false,
+        title: const Text('保存前请确认'),
+        content: SizedBox(
+          width: 460,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final f in confirmations)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text('· ${f.message}'),
+                  ),
+                if (unusual)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 4),
+                    child: Text('单个重量小于 0.1 克或大于 5000 克, 常见是把公斤当成克填了。'),
+                  ),
+                if (secondMaterial)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 4),
+                    child: Text('同一个产品同时用两种料 (双色 / 双料) 才这样填; 只是换料的话, 请改原来那一行。'),
+                  ),
+              ],
+            ),
           ),
         ),
-      ),
-      actionsAlignment: MainAxisAlignment.center,
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, false),
-          child: const Text('返回修改'),
-        ),
-        FilledButton(
-          key: const Key('periodic-bom-confirm'),
-          onPressed: () => Navigator.pop(ctx, true),
-          child: const Text('确定没错, 继续保存'),
-        ),
-      ],
-    ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('返回修改'),
+          ),
+          FilledButton(
+            key: const Key('periodic-bom-confirm'),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确定没错, 继续保存'),
+          ),
+        ],
+      );
+    },
   );
+  onRouteOpened?.call(null);
   if (ok != true) return null;
   return {for (final f in confirmations) f.field};
 }

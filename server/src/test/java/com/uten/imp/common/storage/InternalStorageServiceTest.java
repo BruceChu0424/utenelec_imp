@@ -81,6 +81,37 @@ class InternalStorageServiceTest {
         store.delete(KEY,object.versionId());store.delete(KEY,object.versionId());
     }
 
+    @Test void everyObjectEntryPointRejectsTraversalAbsolutePathsAndEncodedSeparatorsBeforeIo() throws Exception {
+        var store = store();
+        AtomicInteger reads = new AtomicInteger();
+        InputStream body = new InputStream() {
+            @Override public int read() { reads.incrementAndGet(); return 65; }
+        };
+        String[] unsafeKeys = {
+                null, "", ".", "..", "../" + KEY, "..\\" + KEY,
+                directory.resolve("outside").resolve(KEY).toString(),
+                "/tmp/" + KEY, "C:\\outside\\" + KEY,
+                "i1_EMPLOYEE_202610_../" + KEY,
+                "i1_EMPLOYEE_202610_" + KEY + "/../" + KEY,
+                "i1_EMPLOYEE_202610_%2e%2e%2f" + KEY,
+                "i1_EMPLOYEE_202610_" + KEY + "%5c..%5c" + KEY
+        };
+        String version = "internal-v1:" + "a".repeat(64);
+        for (String key : unsafeKeys) {
+            assertThrows(IllegalArgumentException.class, () -> store.store(key, body, 1, "text/plain"));
+            assertThrows(IllegalArgumentException.class, () -> store.describe(key));
+            assertThrows(IllegalArgumentException.class,
+                    () -> store.inspectObject(StorageService.ObjectLocation.FINAL, key));
+            assertThrows(IllegalArgumentException.class, () -> store.openFinal(key, version));
+            assertThrows(IllegalArgumentException.class, () -> store.delete(key, version));
+        }
+        assertEquals(0, reads.get(), "An invalid object identity must not consume any upload bytes");
+        assertEquals(0, scratchCount());
+        try (var files = Files.walk(directory)) {
+            assertEquals(0, files.filter(Files::isRegularFile).count());
+        }
+    }
+
     @Test void corruptedCompressedObjectFailsBeforeReturningAnyDownloadStream() throws Exception {
         var store=store();var object=upload(store,KEY,"stable original\n".repeat(12000).getBytes(StandardCharsets.UTF_8));
         Path file=directory.resolve("final").resolve(KEY);byte[] saved=Files.readAllBytes(file);saved[saved.length-5]^=0x7f;Files.write(file,saved);

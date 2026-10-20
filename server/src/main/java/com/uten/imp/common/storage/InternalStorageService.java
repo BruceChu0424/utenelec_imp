@@ -216,7 +216,8 @@ public class InternalStorageService implements StorageService, BlobStore {
                     compressed = temporary();
                     try (Envelope envelope = envelope(source);
                          OutputStream file = Files.newOutputStream(compressed);
-                         GZIPOutputStream gzip = new FastGzip(new CompressionLimit(file,original.originalSize))) {
+                          CompressionLimit bounded = new CompressionLimit(file,original.originalSize);
+                          GZIPOutputStream gzip = new FastGzip(bounded)) {
                         copyExact(envelope.payload(), gzip, original.originalSize, lease, original.sha);
                     } catch (CompressionNotUseful noSavings) {
                         Files.deleteIfExists(compressed);
@@ -449,12 +450,21 @@ public class InternalStorageService implements StorageService, BlobStore {
         if (length<=0 || length>maximum) throw new IllegalArgumentException("Attachment length is outside storage limits");
     }
     private Path resolve(Path namespace,String key) {
-        if(key!=null && key.matches("[a-f0-9]{32}(\\.[a-z0-9]{1,8})?"))return namespace.resolve(key);
-        if(key!=null) {
+        Path candidate = null;
+        if(key!=null && key.matches("[a-f0-9]{32}(\\.[a-z0-9]{1,8})?")) {
+            candidate = namespace.resolve(key);
+        } else if(key!=null) {
             var match=java.util.regex.Pattern.compile("i1_([A-Z][A-Z0-9_]{0,63})_([0-9]{4}(?:0[1-9]|1[0-2]))_([a-f0-9]{32}(?:\\.[a-z0-9]{1,8})?)").matcher(key);
-            if(match.matches())return namespace.resolve(match.group(1)).resolve(match.group(2)).resolve(key);
+            if(match.matches())candidate = namespace.resolve(match.group(1)).resolve(match.group(2)).resolve(key);
         }
-        throw new IllegalArgumentException("Invalid internal attachment key");
+        if (candidate == null) throw new IllegalArgumentException("Invalid internal attachment key");
+        // The exact key grammar and normalized descendant proof are independent
+        // boundaries. A future key format must never turn this into an arbitrary path.
+        Path normalized = candidate.normalize();
+        if (!normalized.startsWith(namespace) || normalized.equals(namespace)) {
+            throw new IllegalArgumentException("Internal attachment is outside its namespace");
+        }
+        return normalized;
     }
     /** Missing leaf/never-created partitions are distinct from an unavailable initialized storage root. */
     private void requireObjectNamespaces(Path object) {
@@ -542,7 +552,7 @@ public class InternalStorageService implements StorageService, BlobStore {
             throw new IOException("Object original length or SHA-256 differs");
         return hash;
     }
-    private final class CheckedInput extends FilterInputStream {
+    private static final class CheckedInput extends FilterInputStream {
         private final Header header; private final Lease lease; private final Path temporary;
         private final MessageDigest digest=sha256(); private long count; private boolean verified; private boolean closed;
         CheckedInput(InputStream input,Header header,Lease lease,Path temporary) { super(input);this.header=header;this.lease=lease;this.temporary=temporary; }

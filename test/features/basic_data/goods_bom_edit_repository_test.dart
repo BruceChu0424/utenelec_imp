@@ -9,6 +9,52 @@ import 'package:uten_imp/features/basic_data/repositories/goods_bom_edit_reposit
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.dart';
 
 void main() {
+  test('concurrent occurrences share one snapshot request per goods', () async {
+    final api = _DraftApi()
+      ..pendingSnapshot = Completer<Map<String, dynamic>>();
+    final draft = _draft(api);
+    final reads = [
+      draft.list('frame'),
+      draft.list('frame'),
+      draft.list('frame'),
+    ];
+    await Future<void>.delayed(Duration.zero);
+    expect(api.snapshotCalls, ['frame']);
+    api.pendingSnapshot!.complete({
+      'items': [_row('same-edge', 'screw')],
+      'fingerprint': 'same',
+    });
+    final results = await Future.wait(reads);
+    expect(results.map((rows) => rows.single.id), everyElement('same-edge'));
+    expect(api.snapshotCalls, ['frame']);
+  });
+
+  test(
+    'large snapshot conversions yield event turns and reject revoked state',
+    () async {
+      final api = _DraftApi()
+        ..pendingSnapshot = Completer<Map<String, dynamic>>();
+      var current = true;
+      final draft = _draft(api, isCurrent: () => current);
+      final read = draft.list('root');
+      await Future<void>.delayed(Duration.zero);
+      var inputHandled = false;
+      Timer.run(() {
+        inputHandled = true;
+        current = false;
+      });
+      final failed = expectLater(read, throwsA(isA<ApiException>()));
+      api.pendingSnapshot!.complete({
+        'items': [for (var i = 0; i < 2048; i++) _row('edge-$i', 'item-$i')],
+        'fingerprint': 'large',
+      });
+      await failed;
+      expect(inputHandled, isTrue);
+      expect(draft.operationCount, 0);
+      expect(api.commands, isEmpty);
+    },
+  );
+
   test('nested edits remain a draft until the reviewed commit', () async {
     final api = _DraftApi();
     final draft = _draft(api);
@@ -323,6 +369,7 @@ class _DraftApi extends ApiClient {
   _DraftApi() : super(Dio());
 
   final commands = <(String, Map<String, dynamic>)>[];
+  final snapshotCalls = <String>[];
   bool rejectCommit = false;
   bool loseCommitResponse = false;
   bool periodic = false;
@@ -335,8 +382,9 @@ class _DraftApi extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     if (path.endsWith('/snapshot')) {
-      if (pendingSnapshot != null) return pendingSnapshot!.future;
       final goodsId = path.split('/').reversed.elementAt(3);
+      snapshotCalls.add(goodsId);
+      if (pendingSnapshot != null) return pendingSnapshot!.future;
       return {
         'items': switch (goodsId) {
           'root' => [_row('frame-edge', 'frame')],

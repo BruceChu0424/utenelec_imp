@@ -40,6 +40,11 @@ class ServerJarPackagingIT {
                     .filter(name -> name.matches("BOOT-INF/lib/postgresql-[^/]+\\.jar"))
                     .toList();
             assertThat(postgresDrivers).hasSize(1);
+            // A test-scoped module can make Spring tests pass while the real
+            // dev server silently skips all newly added database migrations.
+            assertThat(entries.stream()
+                    .filter(name -> name.matches("BOOT-INF/lib/spring-boot-flyway-[^/]+\\.jar"))
+                    .toList()).hasSize(1);
             // ADR-153: whitelisted design documents are packaged read-only for the AI assistant's knowledge;
             // administration, security and AI-assistant documents are not.
             assertThat(entries)

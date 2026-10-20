@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/basic_data/models/client_node.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/basic_data/models/mould_node.dart';
@@ -23,8 +24,10 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/features/basic_data/widgets/uten_category_tree_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 
 final _grants = StateProvider<Set<String>>((ref) => {});
+final _owner = StateProvider<AuthenticatedScope?>((ref) => null);
 const _cases =
     <
       ({
@@ -62,6 +65,46 @@ const _cases =
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  testWidgets(
+    'same permissions after an account switch still clear and reload the category tree',
+    (tester) async {
+      final api = _ReadApi();
+      await _pump(
+        tester,
+        'clients',
+        {Perm.clientView, Perm.clientCategoryView},
+        api,
+        const Size(1500, 1000),
+        owner: const AuthenticatedScope(userId: 'A'),
+      );
+      expect(find.textContaining('当前分类'), findsWidgets);
+      final readsBefore = api.categoryReads.length;
+      final replacement = Completer<List<Map<String, dynamic>>>();
+      api.pendingTree = replacement;
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(ClientCategoryPage)),
+      );
+      container.read(_owner.notifier).state = const AuthenticatedScope(
+        userId: 'B',
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(find.textContaining('当前分类'), findsNothing);
+      replacement.complete([
+        {
+          'id': 'b-category',
+          'name': 'B账号分类',
+          'code': 'B',
+          'children': <Object>[],
+        },
+      ]);
+      await tester.pumpAndSettle();
+      expect(api.categoryReads.length, greaterThan(readsBefore));
+      expect(find.textContaining('B账号分类'), findsWidgets);
+      expect(find.textContaining('当前分类'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
   for (final scenario in _cases) {
     for (final size in [const Size(1500, 1000), const Size(375, 1000)]) {
       testWidgets(
@@ -180,8 +223,9 @@ Future<void> _pump(
   String kind,
   Set<String> grants,
   _ReadApi api,
-  Size size,
-) async {
+  Size size, {
+  AuthenticatedScope? owner,
+}) async {
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
   final preferences = await SharedPreferences.getInstance();
@@ -230,6 +274,9 @@ Future<void> _pump(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(preferences),
         apiClientProvider.overrideWithValue(api),
+        apiBaseUrlProvider.overrideWithValue('https://company.invalid/api'),
+        _owner.overrideWith((ref) => owner),
+        authenticatedScopeProvider.overrideWith((ref) => ref.watch(_owner)),
         _grants.overrideWith((ref) => grants),
         currentPermissionsProvider.overrideWith((ref) => ref.watch(_grants)),
         isSuperAdminProvider.overrideWithValue(false),

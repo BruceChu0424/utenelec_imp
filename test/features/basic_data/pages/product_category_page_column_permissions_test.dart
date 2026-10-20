@@ -21,6 +21,7 @@ import 'package:uten_imp/features/basic_data/repositories/product_category_repos
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/platform_tables_host.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_layout.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_models.dart';
@@ -30,6 +31,12 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 final _permissionsProvider = StateProvider<Set<String>>((ref) => {});
+
+class _ConfirmedSession extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async => SessionSnapshot();
+}
+
 const _addColumnKey = Key('platform-table-add-column');
 const _newColumnKey = Key('platform-column-new');
 const _createColumnKey = Key('platform-column-create');
@@ -252,10 +259,12 @@ void main() {
     'revoking goods edit closes creation and fences the open action',
     (tester) async {
       final repository = _FakePlatformTableRepository();
-      final container = await _pumpPage(tester, repository, {
-        Perm.goodsView,
-        Perm.goodsEdit,
-      });
+      final container = await _pumpPage(
+        tester,
+        repository,
+        {Perm.goodsView, Perm.goodsEdit},
+        identity: const AuthenticatedScope(userId: 'column-editor', epoch: 1),
+      );
       await _tap(tester, _goodsColumns());
       await _tap(tester, find.byKey(_newColumnKey));
       await tester.enterText(find.byKey(_columnNameKey), '待创建说明');
@@ -295,6 +304,7 @@ Future<ProviderContainer> _pumpPage(
   Set<String> permissions, {
   bool categoryBrowsing = true,
   GoodsFacetRepository? facetRepository,
+  AuthenticatedScope? identity,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1600, 900));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -326,7 +336,9 @@ Future<ProviderContainer> _pumpPage(
           (ref) => ref.watch(_permissionsProvider),
         ),
         isSuperAdminProvider.overrideWithValue(false),
-        authenticatedScopeProvider.overrideWithValue(null),
+        authenticatedScopeProvider.overrideWithValue(identity),
+        if (identity != null)
+          sessionSnapshotProvider.overrideWith(_ConfirmedSession.new),
         productCategoryRepositoryProvider.overrideWithValue(
           _FakeCategoryRepository(),
         ),

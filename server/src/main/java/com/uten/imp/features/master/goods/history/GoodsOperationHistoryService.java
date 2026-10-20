@@ -135,10 +135,19 @@ public class GoodsOperationHistoryService {
         if(op.version()!=expectedVersion) throw conflict("记录已变化，请刷新后重试");
         if(undo!="APPLIED".equals(op.state())) throw conflict("操作状态已变化，请刷新后重试");
         List<Row> rows=rows(id);
+        try {
+            for(Row row:rows.stream().filter(r->TABLES.contains(r.table()))
+                    .sorted(Comparator.comparing(Row::table).thenComparing(Row::id)).toList())
+                em.createNativeQuery("SELECT id FROM "+row.table()+" WHERE id=:id FOR UPDATE NOWAIT").setParameter("id",row.id()).getResultList();
+        } catch(RuntimeException error) {
+            if(lockBusy(error))throw busy();
+            throw error;
+        }
         String blocked=reason(op,rows,undo,nextRedo(actor),facts(rows));
         if(blocked!=null) throw conflict(blocked);
         requireDeletionReferences(rows,undo);
         requireLiveReferences(rows,undo);
+        if(!op.type().equals("BOM_AUDIT"))requireAcyclicBom(id,undo,rows);
         requireCategoryContext(op);
         try {
             em.createNativeQuery("SELECT fn_replay_goods_operation(:id,:actor,:version,:undo)")
@@ -276,6 +285,7 @@ public class GoodsOperationHistoryService {
             case "GOODS_IMPORT"->{needed.add("goods:import");needed.add("goods:import:undo");}
             case "BOM_CREATE","BOM_PASTE"->needed.add("goods:bom:create");
             case "BOM_EDIT"->{needed.add("goods:bom:edit");needed.addAll(op.requiredPermissions());}
+            case "BOM_MOVE"->needed.add("goods:bom:edit");
             case "BOM_DELETE"->needed.add("goods:bom:delete");
             case "BOM_AUDIT"->needed.add("goods:bom:audit");
             case "CATEGORY_CREATE"->needed.add("material_category:create");
@@ -333,6 +343,29 @@ public class GoodsOperationHistoryService {
                     """).setParameter("ids",ids).setParameter("goods",goods).getSingleResult();
             if(count.longValue()>0)throw conflict("该分类后来新增了货品或子分类，不能撤回");
         }
+    }
+
+    /** Later independent edges must not turn a restored relationship into a cycle. */
+    private void requireAcyclicBom(UUID operation,boolean undo,List<Row> rows) {
+        if(rows.stream().noneMatch(r->r.table().equals("goods_bom_items")&&!r.deleting(undo)))return;
+        Boolean cyclic=(Boolean)em.createNativeQuery("""
+            WITH RECURSIVE desired AS (
+             SELECT CASE WHEN :undo THEN before_row ELSE after_row END AS node
+             FROM goods_operation_history_rows WHERE operation_id=:operation AND table_name='goods_bom_items'
+            ), restored AS (
+             SELECT (node->>'goods_id')::uuid parent,(node->>'component_goods_id')::uuid component
+             FROM desired WHERE node IS NOT NULL AND NOT COALESCE((node->>'is_deleted')::boolean,false)
+            ), effective AS (
+             SELECT b.goods_id parent,b.component_goods_id component FROM goods_bom_items b
+             WHERE NOT b.is_deleted AND NOT EXISTS(SELECT 1 FROM goods_operation_history_rows r
+              WHERE r.operation_id=:operation AND r.table_name='goods_bom_items' AND r.row_id=b.id)
+             UNION SELECT parent,component FROM restored
+            ), descendants(root,node) AS (
+             SELECT parent,component FROM restored
+             UNION SELECT d.root,e.component FROM descendants d JOIN effective e ON e.parent=d.node
+            ) SELECT EXISTS(SELECT 1 FROM descendants WHERE root=node)
+            """).setParameter("operation",operation).setParameter("undo",undo).getSingleResult();
+        if(cyclic)throw conflict("后来新增的组装关系会使恢复后的组件互相套用形成循环，请先处理后续组装操作");
     }
 
     private void requireCategoryContext(Operation op) {
@@ -507,7 +540,7 @@ public class GoodsOperationHistoryService {
         return scope.seeAll()||owner==null||scope.visibleOwners().contains(owner);
     }
     private static String label(JsonNode node){return node==null?"":(node.path("code").asText("")+" "+node.path("name").asText("")).strip();}
-    private JsonNode json(Object value) {if(value==null)return null;try{return mapper.readTree(value.toString());}catch(Exception error){throw new IllegalStateException("Invalid goods history snapshot",error);}}
+    private JsonNode json(Object value) {if(value==null)return null;try{return mapper.reader().with(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS).readTree(value.toString());}catch(Exception error){throw new IllegalStateException("Invalid goods history snapshot",error);}}
     private static boolean changed(JsonNode before,JsonNode after,String...fields) {if(before==null||after==null)return false;return Arrays.stream(fields).anyMatch(k->!Objects.equals(before.get(k),after.get(k)));}
     private static UUID optionalUuid(JsonNode node,String field) {return node==null||!node.hasNonNull(field)?null:uuid(node.path(field).asText());}
     private static UUID uuid(Object value) {return value instanceof UUID id?id:UUID.fromString(value.toString());}

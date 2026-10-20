@@ -37,6 +37,7 @@ class GoodsListItem {
     this.requireRemark,
     this.mouldCode,
     this.mouldName,
+    this.mouldId,
     this.rearInsertCode,
     this.paper,
     this.colorId,
@@ -63,6 +64,7 @@ class GoodsListItem {
     this.periodicCostBasis,
     this.bulkPackageQty,
     this.recycledMaterial = false,
+    this.writable = false,
   });
 
   /// 乐观锁版本(ADR-111)：行启停、批量启停/删除直接回传比对，不必先拉详情。
@@ -90,6 +92,8 @@ class GoodsListItem {
   final String? requireRemark; // 老库 Require 迁移残值（真实迁移恒空；显示走 paper）
   final String? mouldCode; // 模具编号（moulds.code；UUID 关系优先，历史缺失回落 legacy 快照）
   final String? mouldName; // 模具名称（moulds.name；口径同 mouldCode，表格「模具名称」列）
+  final String? mouldId;
+  final bool writable;
   final String? rearInsertCode; // 后模镶件编号（V457）：生产该货品需使用的后模镶件标识
   final String? paper; // 备注（老库 B_Goods.Paper；列表「备注」列数据源）
   final String? colorId;
@@ -162,6 +166,8 @@ class GoodsListItem {
     requireRemark: json['requireRemark'] as String?,
     mouldCode: json['mouldCode'] as String?,
     mouldName: json['mouldName'] as String?,
+    mouldId: json['mouldId'] as String?,
+    writable: json['writable'] == true,
     rearInsertCode: json['rearInsertCode'] as String?,
     paper: json['paper'] as String?,
     colorId: json['colorId'] as String?,

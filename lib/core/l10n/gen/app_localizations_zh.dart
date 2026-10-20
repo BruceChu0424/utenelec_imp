@@ -11318,4 +11318,16 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get whereUsedCloseAndVerify => '关闭并刷新核对';
+
+  @override
+  String get bomEditPreparing => '正在准备编辑';
+
+  @override
+  String get bomEditChecking => '正在检查修改范围';
+
+  @override
+  String get bomEditRefreshing => '正在刷新组装信息';
+
+  @override
+  String get bomEditPrepareFailed => '准备编辑失败，请重试。';
 }

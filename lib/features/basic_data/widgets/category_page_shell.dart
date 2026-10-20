@@ -36,6 +36,7 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../shared/hierarchy/uten_tree_path.dart';
 import '../../../shared/widgets/uten_hierarchy_search_header.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -50,6 +51,8 @@ import '../../../shared/widgets/uten_hierarchy_tree_view.dart'
     show UtenHierarchyRowSkin;
 import '../widgets/uten_category_tree_view.dart';
 import 'basic_data_l10n.dart';
+import 'master_inline_edit.dart';
+import 'master_operation_history_panel.dart';
 
 /// 分类页壳层 mixin：与 ConsumerState 组合使用。
 ///
@@ -76,6 +79,9 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
 
   FormDraftDescriptor get shellCategoryDraftDescriptor;
   String get shellCategoryViewPermission;
+
+  /// Only a specifically reviewed action may keep the mounted read shell.
+  String? get shellReadStableWritePermission => null;
   bool get shellCanViewCategories =>
       ref.read(isSuperAdminProvider) ||
       ref
@@ -227,18 +233,19 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   @override
   void initState() {
     super.initState();
-    ref.listenManual(currentPermissionsProvider, (previous, next) {
-      if ((previous?.contains(shellCategoryViewPermission) ?? false) !=
-          next.contains(shellCategoryViewPermission)) {
-        _categoryAccessChanged();
+    ref.listenManual(sensitiveReadBoundaryProvider, (previous, next) {
+      if (previous != next &&
+          !canRetainMasterReadShell(
+            previous,
+            next,
+            writeOnlyPermission: shellReadStableWritePermission,
+          )) {
+        _categoryAccessChanged(next);
       }
-    });
-    ref.listenManual(isSuperAdminProvider, (previous, next) {
-      if (previous != next) _categoryAccessChanged();
     });
   }
 
-  void _categoryAccessChanged() {
+  void _categoryAccessChanged(SensitiveReadBoundary next) {
     _treeRequests.begin();
     _searchRequests.begin();
     _shellSearchDebounce?.cancel();
@@ -257,7 +264,9 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
       _shellDetailEpoch++;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) shellReload();
+      if (mounted && ref.read(sensitiveReadBoundaryProvider) == next) {
+        shellReload();
+      }
     });
   }
 
@@ -267,6 +276,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   /// 选中分类的右栏（内容列表/facets/结算方式等）整体重拉重挂。
   Future<void> shellReloadAll() async {
     if (!mounted) return;
+    if (!await confirmMasterInlineLeave(context) || !mounted) return;
     setState(() => _shellDetailEpoch++);
     await shellReload();
   }
@@ -319,7 +329,19 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
 
   // ---- 顶部统一搜索（分类名 + 内容名 → 定位分类）----------------------------
 
-  void _onGlobalSearchInput(String raw) {
+  bool _inlineLeavePrompt = false;
+  int _searchFieldRevision = 0;
+
+  void _onGlobalSearchInput(String raw) async {
+    if (_inlineLeavePrompt) return;
+    _inlineLeavePrompt = true;
+    final canLeave = await confirmMasterInlineLeave(context);
+    _inlineLeavePrompt = false;
+    if (!mounted) return;
+    if (!canLeave) {
+      setState(() => _searchFieldRevision++);
+      return;
+    }
     _shellSearchDebounce?.cancel();
     _searchRequests.begin();
     if (!mounted) return;
@@ -430,7 +452,12 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     }
   }
 
-  void _selectCategory(String id) {
+  void _selectCategory(String id) async {
+    if (_inlineLeavePrompt) return;
+    _inlineLeavePrompt = true;
+    final canLeave = await confirmMasterInlineLeave(context);
+    _inlineLeavePrompt = false;
+    if (!mounted || !canLeave) return;
     if (_globalQuery.isNotEmpty) {
       setState(() => _searchCategoryId = id);
       shellRefreshSearch();
@@ -455,6 +482,11 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
       if (!mounted || _paneSelectedId == _selectedId) return;
       setState(() => _paneSelectedId = _selectedId);
     });
+  }
+
+  Future<void> _deleteCategoryAfterDraft(ProductCategoryNode node) async {
+    if (!await confirmMasterInlineLeave(context) || !mounted) return;
+    await shellDeleteNode(node);
   }
 
   /// A deliberate scope or search-mode change invalidates the whole query,
@@ -484,6 +516,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
           children: [
             UtenHierarchySearchHeader(
               search: UtenSearchBar(
+                key: ValueKey('master-search-$_searchFieldRevision'),
                 initialValue: _globalQuery,
                 hint: shellCanViewCategories
                     ? shellSearchHint
@@ -558,7 +591,13 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
                               if (_searchCategoryId != null)
                                 IconButton(
                                   tooltip: '清除分类范围，搜索全部分类',
-                                  onPressed: () {
+                                  onPressed: () async {
+                                    if (!await confirmMasterInlineLeave(
+                                          context,
+                                        ) ||
+                                        !mounted) {
+                                      return;
+                                    }
                                     setState(() => _searchCategoryId = null);
                                     shellRefreshSearch();
                                   },
@@ -596,6 +635,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
 
   Future<void> shellShowCreateDialog({ProductCategoryNode? parent}) async {
     if (!shellCanCreate) return;
+    if (!await confirmMasterInlineLeave(context) || !mounted) return;
     final descriptor = shellCategoryDraftDescriptor;
     await showDialog<void>(
       context: context,
@@ -677,6 +717,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   /// 树行「编辑」动作：先按 id 拉分类详情（编辑弹窗要 Detail，树节点没有），
   /// 拉取失败走统一错误提示；成功后再开 [shellShowEditDialog]。
   Future<void> _editCategoryNode(ProductCategoryNode node) async {
+    if (!await confirmMasterInlineLeave(context) || !mounted) return;
     ProductCategoryDetail? loaded;
     final ok = await context.guardRun(
       () async {
@@ -857,7 +898,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
             const ValueKey('category-node-delete'),
             '删除${node.name}', // TODO(l10n): 补 arb
             Icons.delete_outline,
-            () => shellDeleteNode(node),
+            () => _deleteCategoryAfterDraft(node),
           ),
       ],
     );
@@ -886,7 +927,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
           label: '删除分类', // TODO(l10n): 补 arb
           icon: Icons.delete_outline,
           destructive: true,
-          onTap: () => shellDeleteNode(node),
+          onTap: () => _deleteCategoryAfterDraft(node),
         ),
       ],
     ];
@@ -1039,9 +1080,24 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
         title: shellTitle, // TODO(l10n): 补 arb
         // 显式返回到基础资料 hub（默认返回会因 context.go 不压栈而兜底回工作台）。
         leading: UtenBackButton(
-          onPressed: () => backTo(context, defaultPath: RouteName.basicinfo),
+          onPressed: () async {
+            if (!await confirmMasterInlineLeave(context) || !context.mounted) {
+              return;
+            }
+            backTo(context, defaultPath: RouteName.basicinfo);
+          },
         ),
         actions: [
+          if (const {
+                'basicData.client': 'clients',
+                'basicData.supplier': 'suppliers',
+                'basicData.mould': 'moulds',
+              }[shellPersistenceKey]
+              case final entityType?)
+            MasterOperationHistoryActions(
+              entityType: entityType,
+              onChanged: shellReloadAll,
+            ),
           ...shellExtraAppBarActions(
             context,
             compact: bp == UtenBreakpoint.compact,

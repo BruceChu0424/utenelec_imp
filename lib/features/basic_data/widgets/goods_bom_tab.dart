@@ -37,6 +37,7 @@ import 'package:uten_imp/components/feedback/uten_floating_window.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
@@ -159,6 +160,7 @@ class GoodsBomTab extends ConsumerStatefulWidget {
     this.onDataChanged,
     this.productWeightGrams,
     this.onEditModeChanged,
+    this.onInteractionChanged,
   });
 
   final String goodsId;
@@ -182,6 +184,10 @@ class GoodsBomTab extends ConsumerStatefulWidget {
   final VoidCallback? onDataChanged;
   final ValueChanged<bool>? onEditModeChanged;
 
+  /// A pending snapshot, draft, write or confirmation must finish before the
+  /// host can replay operation history against the same canonical assembly.
+  final ValueChanged<bool>? onInteractionChanged;
+
   @override
   ConsumerState<GoodsBomTab> createState() => GoodsBomTabState();
 }
@@ -195,10 +201,19 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
   bool? _wasActive;
 
   bool _editMode = false;
+  bool _enteringEdit = false;
+  bool _finishingEdit = false;
   bool _switchingMode = false;
+  bool _checkingChanges = false;
+  int _modeRevision = 0;
   bool _pasting = false;
   SensitiveReadBoundary? _editBoundary;
   GoodsBomEditDraft? _draft;
+  GoodsBomEditDraft? _pendingDraft;
+  List<_BomRow>? _visibleRowsCache;
+  int _modalInteractions = 0;
+  bool _reportedInteraction = false;
+  bool _interactionReportScheduled = false;
   ProviderSubscription<SensitiveReadBoundary>? _boundarySubscription;
 
   AppLocalizations get _l10n => AppLocalizations.of(context);
@@ -216,27 +231,101 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
       _canEdit && widget.canCreate && _hasPermission(Perm.goodsBomCreate);
   bool get _canDelete =>
       _canEdit && widget.canDelete && _hasPermission(Perm.goodsBomDelete);
-  bool get _writeBusy => _deleting || _moving || _pasting || _switchingMode;
+  bool get _writeBusy =>
+      _deleting ||
+      _moving ||
+      _pasting ||
+      _switchingMode ||
+      _enteringEdit ||
+      _finishingEdit;
 
   GoodsBomRepository get _repository =>
       _draft ?? ref.read(goodsBomRepositoryProvider);
   bool get hasEditingSession => _editMode;
+
+  void _notifyInteractionChanged() {
+    if (!mounted) return;
+    // Widget/authority replacement may run during an ancestor's build. Report
+    // the latest state after that frame rather than marking the host dirty.
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      if (_interactionReportScheduled) return;
+      _interactionReportScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _interactionReportScheduled = false;
+        if (mounted) _notifyInteractionChanged();
+      });
+      return;
+    }
+    final interacting =
+        _editMode ||
+        _enteringEdit ||
+        _finishingEdit ||
+        _writeBusy ||
+        _addComponentOpen ||
+        _modalInteractions > 0 ||
+        _auditBusyRows.isNotEmpty;
+    if (interacting == _reportedInteraction) return;
+    _reportedInteraction = interacting;
+    widget.onInteractionChanged?.call(interacting);
+  }
+
+  Future<T> _duringInteraction<T>(Future<T> Function() action) async {
+    _modalInteractions++;
+    _notifyInteractionChanged();
+    try {
+      return await action();
+    } finally {
+      _modalInteractions--;
+      if (mounted) _notifyInteractionChanged();
+    }
+  }
 
   Future<void> refresh() async {
     if (!_writeBusy) await _load();
   }
 
   Future<bool> finishEditing() async {
+    if (_enteringEdit) return false;
     if (!_editMode) return true;
     if (_writeBusy || _draft?.isBusy == true) return false;
+    final revision = _modeRevision;
+    _finishingEdit = true;
+    _notifyInteractionChanged();
+    try {
+      return await _finishEditing();
+    } finally {
+      if (mounted && revision == _modeRevision) {
+        setState(() => _finishingEdit = false);
+        _notifyInteractionChanged();
+      }
+    }
+  }
+
+  // UtenBusyOverlay inserts its root entry after the first frame. Waiting for
+  // the following frame lets the spinner actually paint before work starts,
+  // including synchronous completion from a warm cache or a fast local API.
+  Future<void> _paintFeedback() async {
+    await WidgetsBinding.instance.endOfFrame;
+    WidgetsBinding.instance.scheduleFrame();
+    await WidgetsBinding.instance.endOfFrame;
+  }
+
+  Future<bool> _finishEditing() async {
     final draft = _draft;
+    final modeRevision = _modeRevision;
     if (draft != null && draft.hasChanges) {
       if (!_canEdit) {
         context.appWarning(_l10n.bomEditPermissionChanged);
         return false;
       }
-      setState(() => _switchingMode = true);
+      setState(() {
+        _switchingMode = true;
+        _checkingChanges = true;
+      });
       try {
+        await _paintFeedback();
+        if (!mounted || !_canEdit || !identical(draft, _draft)) return false;
         BomEditPreview preview;
         while (true) {
           try {
@@ -265,6 +354,10 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
             }
             draft.confirmPeriodicFields(confirmed);
             setState(() => _switchingMode = true);
+            await _paintFeedback();
+            if (!mounted || !_canEdit || !identical(draft, _draft)) {
+              return false;
+            }
           }
         }
         if (!mounted || !_canEdit || !identical(draft, _draft)) return false;
@@ -346,13 +439,22 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
             !identical(draft, _draft)) {
           return false;
         }
-        setState(() => _switchingMode = true);
+        setState(() {
+          _switchingMode = true;
+          _checkingChanges = false;
+        });
+        await _paintFeedback();
+        if (!mounted || !_canEdit || !identical(draft, _draft)) return false;
         await draft.commit(preview.previewToken, confirmSharedChanges: true);
         if (!mounted) return false;
         widget.onDataChanged?.call();
         context.appSuccess(_l10n.bomEditSaved);
       } on ApiException catch (error) {
-        if (!mounted) return false;
+        if (!mounted ||
+            modeRevision != _modeRevision ||
+            !identical(draft, _draft)) {
+          return false;
+        }
         final details = error.fieldErrors ?? const <ApiFieldError>[];
         return await _offerDiscardDraft(
           [
@@ -364,10 +466,16 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
           ].join('\n'),
         );
       } catch (_) {
-        if (!mounted) return false;
+        if (!mounted ||
+            modeRevision != _modeRevision ||
+            !identical(draft, _draft)) {
+          return false;
+        }
         return await _offerDiscardDraft(_l10n.bomEditSaveUnknown);
       } finally {
-        if (mounted) setState(() => _switchingMode = false);
+        if (mounted && modeRevision == _modeRevision) {
+          setState(() => _switchingMode = false);
+        }
       }
     }
     if (!mounted) return false;
@@ -430,19 +538,60 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
       return;
     }
     if (!_canEnterEdit) return;
+    final goodsId = widget.goodsId;
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final revision = ++_modeRevision;
+    bool current() =>
+        mounted &&
+        revision == _modeRevision &&
+        goodsId == widget.goodsId &&
+        boundary == ref.read(sensitiveReadBoundaryProvider) &&
+        _canEnterEdit;
+    final draft = GoodsBomEditDraft(
+      base: ref.read(goodsBomRepositoryProvider),
+      api: ref.read(apiClientProvider),
+      rootGoodsId: goodsId,
+      isCurrent: current,
+    );
     setState(() {
-      _editMode = true;
-      _editBoundary = ref.read(sensitiveReadBoundaryProvider);
-      _auditMode = false;
-      _draft = GoodsBomEditDraft(
-        base: ref.read(goodsBomRepositoryProvider),
-        api: ref.read(apiClientProvider),
-        rootGoodsId: widget.goodsId,
-        isCurrent: () => mounted && _canEdit,
-      );
+      _enteringEdit = true;
+      _pendingDraft = draft;
     });
-    widget.onEditModeChanged?.call(true);
-    await _load();
+    _notifyInteractionChanged();
+    try {
+      await _paintFeedback();
+      if (!current()) return;
+      final roots = await _readTree(draft, goodsId, current);
+      if (!current()) return;
+      // Preparing snapshots must not replace the current table with a loading
+      // screen or enable any write controls before the snapshot succeeds.
+      _loadRevision++;
+      setState(() {
+        _roots = roots;
+        _visibleRowsCache = null;
+        _pruneSelection();
+        _editMode = true;
+        _editBoundary = boundary;
+        _auditMode = false;
+        _draft = draft;
+        _error = null;
+        _loading = false;
+      });
+      widget.onEditModeChanged?.call(true);
+    } on ApiException catch (error) {
+      if (mounted && current()) context.appError(error.message);
+    } catch (_) {
+      if (mounted && current()) context.appError(_l10n.bomEditPrepareFailed);
+    } finally {
+      if (!identical(draft, _draft)) draft.close();
+      if (mounted && revision == _modeRevision) {
+        setState(() {
+          _enteringEdit = false;
+          _pendingDraft = null;
+        });
+        _notifyInteractionChanged();
+      }
+    }
   }
 
   Future<void> _toggleAuditMode() async {
@@ -452,7 +601,10 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
     setState(() => _auditMode = !_auditMode);
   }
 
-  Future<void> _importComponents() async {
+  Future<void> _importComponents() =>
+      _duringInteraction(_importComponentsInSession);
+
+  Future<void> _importComponentsInSession() async {
     if (!_canCreate || _writeBusy) return;
     final goodsId = widget.goodsId;
     final boundary = ref.read(sensitiveReadBoundaryProvider);
@@ -480,7 +632,12 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
     if (current() && !_editMode) await _toggleEditMode();
   }
 
-  Future<void> _showLearning({bool showMaterialEvidence = false}) async {
+  Future<void> _showLearning({bool showMaterialEvidence = false}) =>
+      _duringInteraction(
+        () => _showLearningPanel(showMaterialEvidence: showMaterialEvidence),
+      );
+
+  Future<void> _showLearningPanel({required bool showMaterialEvidence}) async {
     final goodsId = widget.goodsId;
     final boundary = ref.read(sensitiveReadBoundaryProvider);
     bool canWrite() =>
@@ -587,7 +744,9 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
     ) {
       if (previous == null || previous == next || !mounted) return;
       final hadDraft = _draft?.hasChanges == true;
+      _modeRevision++;
       _draft?.close();
+      _pendingDraft?.close();
       for (final pending in _auditBusyRows.values) {
         if (!pending.isCompleted) pending.complete();
       }
@@ -596,17 +755,23 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
       _loadRevision++;
       setState(() {
         _draft = null;
+        _pendingDraft = null;
+        _enteringEdit = false;
+        _finishingEdit = false;
+        _switchingMode = false;
         _editMode = false;
         _editBoundary = null;
         _auditMode = false;
         _addComponentCandidates = null;
         _roots = null;
+        _visibleRowsCache = null;
         _selectedRowIds = <String>{};
         _expandedIds.clear();
       });
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         widget.onEditModeChanged?.call(false);
+        _notifyInteractionChanged();
         if (hadDraft) context.appWarning(_l10n.bomEditBoundaryExpired);
         if (_hasPermission(Perm.goodsView)) {
           _load();
@@ -625,6 +790,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
   void dispose() {
     _boundarySubscription?.close();
     _draft?.close();
+    _pendingDraft?.close();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -655,32 +821,47 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
   void didUpdateWidget(covariant GoodsBomTab oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.goodsId != widget.goodsId) {
+      _modeRevision++;
       _roots = null;
+      _visibleRowsCache = null;
       _expandedIds.clear();
       _selectedRowIds = <String>{};
       _editMode = false;
       _draft?.close();
+      _pendingDraft?.close();
       _draft = null;
+      _pendingDraft = null;
+      _enteringEdit = false;
+      _finishingEdit = false;
+      _switchingMode = false;
       _auditMode = false;
       _addComponentCandidates = null;
       _load();
+      _notifyInteractionChanged();
     }
   }
 
   /// 展开/刷新若与审计写入交错，只重读相应父件，不能让旧 GET 覆盖新标记。
-  Future<List<GoodsBomItem>> _readBomItems(String goodsId) async {
+  Future<List<GoodsBomItem>> _readBomItems(
+    String goodsId, {
+    GoodsBomRepository? repository,
+    bool Function()? isCurrent,
+  }) async {
+    final source = repository ?? _repository;
+    bool current() => mounted && (isCurrent?.call() ?? true);
     bool hasPending() =>
         _auditBusyRows.keys.any((key) => key.startsWith('$goodsId|'));
-    while (mounted) {
+    while (current()) {
       final pending = [
         for (final entry in _auditBusyRows.entries)
           if (entry.key.startsWith('$goodsId|')) entry.value.future,
       ];
       if (pending.isNotEmpty) await Future.wait(pending);
-      if (!mounted) return const [];
+      if (!current()) return const [];
       if (hasPending()) continue;
       final revision = _auditRevisions[goodsId] ?? 0;
-      final items = await _repository.list(goodsId);
+      final items = await source.list(goodsId);
+      if (!current()) return const [];
       if (revision == (_auditRevisions[goodsId] ?? 0) && !hasPending()) {
         return items;
       }
@@ -691,20 +872,25 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
   Future<void> _load() async {
     final revision = ++_loadRevision;
     final goodsId = widget.goodsId;
+    final repository = _repository;
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    bool current() =>
+        mounted &&
+        revision == _loadRevision &&
+        goodsId == widget.goodsId &&
+        boundary == ref.read(sensitiveReadBoundaryProvider) &&
+        identical(repository, _repository);
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final items = await _readBomItems(goodsId);
-      if (!mounted || revision != _loadRevision) return;
-      final roots = items.map(_BomNode.new).toList();
-      // 恢复之前展开的子树（CRUD 后树不塌，新加的子组件立即可见）。
-      await _restoreExpansion(roots);
-      if (!mounted || revision != _loadRevision) return;
+      final roots = await _readTree(repository, goodsId, current);
+      if (!current()) return;
       ref.invalidate(goodsBomLearningProvider(goodsId));
       setState(() {
         _roots = roots;
+        _visibleRowsCache = null;
         // 重载会重建全部行/节点对象，但勾选集用的是业务复合键而非对象引用，
         // 所以编辑保存后的重载不会平白丢掉用户的勾选；真正已经不在
         // 树里的行(刚被删掉的、父级子树没恢复展开的)在这里一并剪掉，
@@ -713,13 +899,13 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted || revision != _loadRevision) return;
+      if (!current()) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || revision != _loadRevision) return;
+      if (!current()) return;
       setState(() {
         _error = '加载组装信息失败'; // TODO(l10n): 补 arb
         _loading = false;
@@ -727,22 +913,68 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
     }
   }
 
-  /// 按 _expandedIds 递归恢复展开的子树（深度上限保护，防脏数据）。
-  Future<void> _restoreExpansion(List<_BomNode> nodes, [int depth = 0]) async {
-    if (depth > 10) return;
-    for (final n in nodes) {
-      if (_expandedIds.contains(n.item.componentGoodsId) &&
-          n.item.hasChildren) {
-        try {
-          final items = await _readBomItems(n.item.componentGoodsId);
-          n.children = items.map(_BomNode.new).toList();
-          n.expanded = true;
-          await _restoreExpansion(n.children!, depth + 1);
-        } catch (_) {
-          // 单个子树恢复失败不阻断整体。
+  Future<List<_BomNode>> _readTree(
+    GoodsBomRepository repository,
+    String goodsId,
+    bool Function() current,
+  ) async {
+    // One load owns its read cache. Repeated shared assemblies still produce
+    // separate occurrence nodes, but never issue duplicate snapshot requests.
+    final reads = <String, Future<List<GoodsBomItem>>>{};
+    Future<List<_BomNode>> read(String id) async {
+      final items = await reads.putIfAbsent(
+        id,
+        () => _readBomItems(id, repository: repository, isCurrent: current),
+      );
+      final nodes = <_BomNode>[];
+      for (var index = 0; index < items.length; index++) {
+        if (index > 0 && index % 128 == 0) {
+          await Future<void>.delayed(Duration.zero);
+          if (!current()) return const [];
         }
+        nodes.add(_BomNode(items[index]));
       }
+      return nodes;
     }
+
+    final roots = await read(goodsId);
+    var level = roots;
+    // Breadth-first, at most four independent reads at a time across the entire
+    // level; recursive Future.wait would multiply concurrency at every depth.
+    for (var depth = 0; depth <= 10 && current(); depth++) {
+      final expanded = level
+          .where(
+            (node) =>
+                node.item.hasChildren &&
+                _expandedIds.contains(node.item.componentGoodsId),
+          )
+          .toList();
+      final next = <_BomNode>[];
+      for (var start = 0; start < expanded.length; start += 4) {
+        if (!current()) return roots;
+        await Future.wait([
+          for (final node in expanded.skip(start).take(4))
+            () async {
+              // An edit session cannot become writable with an incomplete
+              // visible snapshot. Read-only refreshes may retain a collapsed
+              // failed subtree and let the user retry its own expand control.
+              try {
+                node.children = await read(node.item.componentGoodsId);
+                node.expanded = true;
+              } catch (_) {
+                if (repository is GoodsBomEditDraft) rethrow;
+              }
+            }(),
+        ], eagerError: true);
+      }
+      for (final node in expanded) {
+        if (node.children != null) next.addAll(node.children!);
+      }
+      level = next;
+      if (level.isEmpty) break;
+      await Future<void>.delayed(Duration.zero);
+    }
+    return roots;
   }
 
   /// 可见节点平铺：根 → （展开的）子级递归，级联序号 1 / 1.1 / 1.1.2。
@@ -752,6 +984,8 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
   /// （`hasChildren` 是服务端事实，不能从扁平行推），所以保留本地 walk；
   /// 同口径的通用推导见 `utenTreeProjection`。
   List<_BomRow> get _visibleRows {
+    final cached = _visibleRowsCache;
+    if (cached != null) return cached;
     final rows = <_BomRow>[];
     void walk(
       List<_BomNode> nodes,
@@ -794,7 +1028,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
       const [],
       widget.goodsId,
     );
-    return rows;
+    return _visibleRowsCache = rows;
   }
 
   /// 行键：`父货品id|关系行id`。
@@ -883,6 +1117,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
     if (node.expanded) {
       setState(() {
         node.expanded = false;
+        _visibleRowsCache = null;
         _expandedIds.remove(id);
         // 整棵子树的行随折叠消失，它们的勾选跟着剪掉(见 _pruneSelection)。
         _pruneSelection();
@@ -892,14 +1127,22 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
     if (node.children != null) {
       setState(() {
         node.expanded = true;
+        _visibleRowsCache = null;
         _expandedIds.add(id);
       });
       return;
     }
+    if (node.loading) return;
+    final repository = _repository;
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final revision = _loadRevision;
     setState(() => node.loading = true);
     try {
-      final items = await _readBomItems(id);
+      final items = await _readBomItems(id, repository: repository);
       if (!mounted ||
+          revision != _loadRevision ||
+          boundary != ref.read(sensitiveReadBoundaryProvider) ||
+          !identical(repository, _repository) ||
           node.item.componentGoodsId != id ||
           !node.item.hasChildren) {
         return;
@@ -907,11 +1150,16 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
       setState(() {
         node.children = items.map(_BomNode.new).toList();
         node.expanded = true;
+        _visibleRowsCache = null;
         node.loading = false;
         _expandedIds.add(id);
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted ||
+          revision != _loadRevision ||
+          boundary != ref.read(sensitiveReadBoundaryProvider)) {
+        return;
+      }
       setState(() => node.loading = false);
       context.appError('加载子级组件失败'); // TODO(l10n): 补 arb
     }
@@ -957,6 +1205,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
       _addComponentDefaultParent =
           _singleSelectedRow?.node.item.componentGoodsId ?? widget.goodsId;
     });
+    _notifyInteractionChanged();
   }
 
   void _closeAddComponentWindow() {
@@ -964,6 +1213,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
       _addComponentCandidates = null;
       _addComponentDefaultParent = null;
     });
+    _notifyInteractionChanged();
   }
 
   /// 浮窗内暂存成功：展开目标父级并重读草稿，清除窗口内的暂选内容。
@@ -975,7 +1225,9 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
     await _load();
   }
 
-  Future<void> _editSelected() async {
+  Future<void> _editSelected() => _duringInteraction(_editSelectedItem);
+
+  Future<void> _editSelectedItem() async {
     if (!_canEdit || _writeBusy) return;
     final row = _singleSelectedRow;
     if (row == null) return;
@@ -1004,7 +1256,9 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
   /// 确认框弹出前不能有任何 busy 态：UtenBusyOverlay 是挂 root Overlay 的裸
   /// entry，Navigator 每次 rearrange 都把它重新抬到最顶，会盖住之后弹出的对话框
   /// 并让它点不动(全站铁律)。所以遮罩只包住确认之后的纯网络段，且 finally 必清。
-  Future<void> _deleteSelected() async {
+  Future<void> _deleteSelected() => _duringInteraction(_deleteSelectedItems);
+
+  Future<void> _deleteSelectedItems() async {
     if (!_canDelete || _writeBusy) return;
     final repository = _repository;
     final targets = _selectedTargets;
@@ -1339,6 +1593,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
     final key = _rowId(row);
     if (!_auditMode ||
         _loading ||
+        _writeBusy ||
         !_canAudit ||
         _auditBusyRows.containsKey(key)) {
       return;
@@ -1360,6 +1615,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         ifAbsent: () => 1,
       );
     });
+    _notifyInteractionChanged();
     try {
       final updated = await repository.setAudited(
         row.parentGoodsId,
@@ -1385,7 +1641,10 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
           }
           node.item = updated;
         }
-        if (structureChanged) _pruneSelection();
+        if (structureChanged) {
+          _visibleRowsCache = null;
+          _pruneSelection();
+        }
       });
     } on ApiException catch (e) {
       if (!mounted || boundary != ref.read(sensitiveReadBoundaryProvider)) {
@@ -1408,6 +1667,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
       }
       if (!pending.isCompleted) pending.complete();
       if (mounted) setState(() {});
+      if (mounted) _notifyInteractionChanged();
     }
   }
 
@@ -1824,6 +2084,23 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         Positioned.fill(
           child: Column(
             children: [
+              if (_enteringEdit || (_loading && _roots != null))
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const LinearProgressIndicator(
+                      key: Key('goods-bom-read-progress'),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(UtenSpacing.s8),
+                      child: Text(
+                        _enteringEdit
+                            ? _l10n.bomEditPreparing
+                            : _l10n.bomEditRefreshing,
+                      ),
+                    ),
+                  ],
+                ),
               if (learning.hasError)
                 const Padding(
                   padding: EdgeInsets.only(bottom: UtenSpacing.s8),
@@ -1874,7 +2151,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
                   selectedIds: _selectedRowIds,
                   onSelectedIdsChanged: (next) =>
                       setState(() => _selectedRowIds = next),
-                  // _BomRow 每次 build 重建(引用变)，故按行键比较而非引用相等。
+                  // 投影缓存只随树结构变化；勾选始终按业务行键比较。
                   isSelected: (row) => _selectedRowIds.contains(_rowId(row)),
                   // 右键菜单：组件先选中当前行再弹自绘小框（与货品资料列表同款）。
                   rowMenuBuilder: _rowMenuItems,
@@ -1975,6 +2252,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
                             ? UtenButtonType.danger
                             : UtenButtonType.primary,
                         size: UtenButtonSize.large,
+                        isLoading: _enteringEdit,
                         onPressed: _writeBusy ? null : _toggleEditMode,
                         child: Text(
                           _editMode
@@ -2031,7 +2309,11 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         // 拖拽移动网络段的全屏加载遮罩(落点已定，无确认框，直接包网络段)。
         if (_pasting || _switchingMode)
           UtenBusyOverlay(
-            title: _pasting ? _l10n.bomEditPasting : _l10n.bomEditSaving,
+            title: _pasting
+                ? _l10n.bomEditPasting
+                : _checkingChanges
+                ? _l10n.bomEditChecking
+                : _l10n.bomEditSaving,
             description: _l10n.bomEditProcessing,
           ),
         if (_moving)

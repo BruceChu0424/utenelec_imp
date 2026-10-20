@@ -90,6 +90,7 @@ class GoodsBomEditDraft implements GoodsBomRepository {
   Map<String, dynamic>? _reviewedRequest;
   bool _recoverCommit = false;
   AuthenticatedRequestScope? _requestScope;
+  Future<AuthenticatedRequestScope>? _capturingScope;
 
   bool get hasChanges => _operations.isNotEmpty;
   int get operationCount => _operations.length;
@@ -103,9 +104,15 @@ class GoodsBomEditDraft implements GoodsBomRepository {
 
   Future<AuthenticatedRequestScope> _scope() async {
     _check();
-    final scope = _requestScope ??= await api.captureRequestScope(
-      isCurrent: () => !_closed && _isCurrent(),
-    );
+    // Expanded sibling snapshots share one authenticated capture even when
+    // their reads start together. Verification still runs for every request.
+    final AuthenticatedRequestScope scope;
+    try {
+      scope = _requestScope ??= await (_capturingScope ??= api
+          .captureRequestScope(isCurrent: () => !_closed && _isCurrent()));
+    } finally {
+      if (_requestScope == null) _capturingScope = null;
+    }
     await scope.verify();
     _check();
     return scope;
@@ -120,11 +127,19 @@ class GoodsBomEditDraft implements GoodsBomRepository {
       final scope = await _scope();
       final json = await scope.run(() => api.get('${_path(goodsId)}/snapshot'));
       _check();
+      final source = json['items'] as List;
+      final rows = <Map<String, dynamic>>[];
+      for (var index = 0; index < source.length; index++) {
+        if (index > 0 && index % 128 == 0) {
+          // Network Futures alone do not yield a long synchronous conversion
+          // to browser input or animation; use an event turn between chunks.
+          await Future<void>.delayed(Duration.zero);
+          _check();
+        }
+        rows.add(Map<String, dynamic>.from(source[index] as Map));
+      }
+      _check();
       _fingerprints[goodsId] = json['fingerprint'] as String;
-      final rows = [
-        for (final row in json['items'] as List)
-          Map<String, dynamic>.from(row as Map),
-      ];
       _rows[goodsId] = rows;
       for (final row in rows) {
         _components[row['componentGoodsId'] as String] = _presentation(row);
@@ -142,14 +157,23 @@ class GoodsBomEditDraft implements GoodsBomRepository {
   Future<List<GoodsBomItem>> list(String goodsId) async {
     await _ensure(goodsId);
     _check();
-    return [
-      for (final row in _rows[goodsId]!)
+    final items = <GoodsBomItem>[];
+    final rows = _rows[goodsId]!;
+    for (var index = 0; index < rows.length; index++) {
+      if (index > 0 && index % 128 == 0) {
+        await Future<void>.delayed(Duration.zero);
+        _check();
+      }
+      final row = rows[index];
+      items.add(
         GoodsBomItem.fromJson({
           ...row,
           if (_rows.containsKey(row['componentGoodsId']))
             'hasChildren': _rows[row['componentGoodsId']]!.isNotEmpty,
         }),
-    ];
+      );
+    }
+    return items;
   }
 
   Future<T> _mutate<T>(Future<T> Function() action) async {

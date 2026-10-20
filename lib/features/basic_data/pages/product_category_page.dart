@@ -35,6 +35,7 @@ import '../providers/goods_clipboard.dart';
 import '../repositories/goods_bom_repository.dart';
 import '../repositories/goods_bom_batch_repository.dart';
 import '../repositories/goods_repository.dart';
+import '../repositories/master_inline_edit_repository.dart';
 import '../repositories/goods_facet_repository.dart';
 import '../repositories/product_category_repository.dart';
 import '../widgets/category_edit_dialog.dart';
@@ -43,6 +44,8 @@ import '../widgets/category_page_shell.dart';
 import '../widgets/goods_import_dialog.dart';
 import '../widgets/goods_related_search_control.dart';
 import '../widgets/goods_operation_history_panel.dart';
+import '../widgets/goods_inline_edit.dart';
+import '../widgets/master_inline_edit.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/master_entity_detail_pane.dart';
 import '../widgets/master_batch_feedback.dart';
@@ -112,6 +115,8 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       FormDraftCatalog.goodsCategory;
   @override
   String get shellCategoryViewPermission => Perm.materialCategoryView;
+  @override
+  String get shellReadStableWritePermission => Perm.goodsEdit;
 
   @override
   bool get shellCanCreate => ref
@@ -155,16 +160,25 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     final l10n = basicDataL10n(context);
     return [
       TextButton(
-        onPressed: () =>
-            showGoodsOperationHistory(context, onChanged: _reloadAll),
+        onPressed: () async {
+          if (!await confirmMasterInlineLeave(context) || !context.mounted) {
+            return;
+          }
+          await showGoodsOperationHistory(context, onChanged: _reloadAll);
+        },
         child: Text(l10n.goodsHistoryUndo),
       ),
       TextButton(
-        onPressed: () => showGoodsOperationHistory(
-          context,
-          preferRedo: true,
-          onChanged: _reloadAll,
-        ),
+        onPressed: () async {
+          if (!await confirmMasterInlineLeave(context) || !context.mounted) {
+            return;
+          }
+          await showGoodsOperationHistory(
+            context,
+            preferRedo: true,
+            onChanged: _reloadAll,
+          );
+        },
         child: Text(l10n.goodsHistoryRedo),
       ),
     ];
@@ -521,8 +535,9 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
   /// 货品明细区配置：浏览态排除禁用/迁移占位(它们归表头下的前导分组)，
   /// 行菜单由本页接管(复制/粘贴/组件信息 + 多选批量菜单)。
   MasterEntityPaneConfig<GoodsListItem, GoodsDetail> _paneConfig() {
-    final goods = ref.read(goodsRepositoryProvider);
-    final facetRepository = ref.read(goodsFacetRepositoryProvider);
+    final goods = ref.watch(goodsRepositoryProvider);
+    final facetRepository = ref.watch(goodsFacetRepositoryProvider);
+    final canInlineEdit = _perms.contains(shellReadStableWritePermission);
     final includeRelated = _includeRelated;
     final categoryBrowsing = shellCanViewCategories;
     return MasterEntityPaneConfig<GoodsListItem, GoodsDetail>(
@@ -596,7 +611,17 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       batchEntityPath: ApiEndpoints.goods,
       statusResourceOf: ApiEndpoints.good,
       canCreate: _canCreateMaster,
-      canEdit: _perms.contains(Perm.goodsEdit),
+      canEdit: canInlineEdit,
+      writableOf: (row) => row.writable,
+      inlineFields: canInlineEdit ? goodsInlineFields(context, ref) : const {},
+      readStableWritePermission: shellReadStableWritePermission,
+      onInlineSave: (id, patch, row) async {
+        final version = row.version;
+        if (version == null) throw StateError('无法核对资料版本，请刷新后重试');
+        await ref
+            .read(masterInlineEditRepositoryProvider)
+            .save('goods', id, changes: patch, expected: {'version': version});
+      },
       canDelete: _canDeleteMaster,
       canStatus: _canStatusMaster,
       defaultSortKey: 'code',

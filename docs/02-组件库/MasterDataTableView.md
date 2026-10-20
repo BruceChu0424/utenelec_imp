@@ -474,6 +474,8 @@ return MasterDataTableView<Map<String, dynamic>>(
   组件同时跟踪实际正文 `TextStyle` 的布局变化、文字缩放、方向与触控目标尺寸，
   包括 Theme 字体动画期间的中间排版；单纯颜色等 paint 变化不重新量宽。
   调用方的 scope 也应只包含几何事实，不应把颜色动画作为字体版本。
+  行内编辑等列定义包装器必须一并透传 `measureValueOf`、`measureWidthOf` 与 `measureWidthScope`，
+  防止切换编辑模式后丢失富内容几何或沿用旧宽度。
 - 两个测宽回调与 `measureWidthScope` 均只用于呈现。`value`、`exactValueOf` 仍是文本和精确数值来源，
   筛选、排序、复制、语义与导出不调用富内容量宽回调，也不使用其去重文本代替业务值。
 - 数据刷新(翻页/筛选/排序/静默重拉, 包括同一份数据换了新的 List 实例)**不在当帧重量**: 帧后只补量新出现的值,

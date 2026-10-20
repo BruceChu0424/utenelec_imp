@@ -354,6 +354,8 @@ class MasterInlineEditController<T> extends ChangeNotifier {
           width: column.width < 140 ? 140 : column.width,
           value: column.value,
           measureValueOf: column.measureValueOf,
+          measureWidthOf: column.measureWidthOf,
+          measureWidthScope: column.measureWidthScope,
           minimumWidthOf: (context) {
             final minimum = column.minimumWidthOf?.call(context) ?? 0;
             return minimum < 140 ? 140 : minimum;

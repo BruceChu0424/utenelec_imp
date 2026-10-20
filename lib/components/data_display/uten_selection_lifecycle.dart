@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:collection';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
@@ -10,7 +11,8 @@ import 'package:flutter/scheduler.dart';
 /// Flutter's SelectionContainer unregisters on State.dispose, which is later
 /// than render detach for retained/reparented content. Its deferred screen-order
 /// sort must never receive a container whose RenderObject no longer has an owner.
-class UtenSelectionArea extends StatelessWidget {
+/// Nested regions also restore the mouse-selection winner's own keyboard focus.
+class UtenSelectionArea extends StatefulWidget {
   const UtenSelectionArea({
     super.key,
     this.selectionKey,
@@ -34,13 +36,138 @@ class UtenSelectionArea extends StatelessWidget {
   );
 
   @override
-  Widget build(BuildContext context) => SelectionArea(
-    key: selectionKey,
-    focusNode: focusNode,
-    onSelectionChanged: onSelectionChanged,
-    contextMenuBuilder: contextMenuBuilder,
-    child: UtenSelectionLifecycleScope(child: child),
+  State<UtenSelectionArea> createState() => _SelectionAreaState();
+}
+
+class _SelectionAreaState extends State<UtenSelectionArea> {
+  FocusNode? _ownedFocus;
+  FocusNode get _focus =>
+      widget.focusNode ??
+      (_ownedFocus ??= FocusNode(debugLabel: 'Uten text selection'));
+  int _gestureEpoch = 0;
+  int? _mousePointer;
+  bool _finishingGesture = false;
+  bool _producedSelection = false;
+  bool _hasSelectedText = false;
+  bool _nativeInputHit = false;
+
+  void _pointerDown(PointerDownEvent event) {
+    if (event.kind != PointerDeviceKind.mouse ||
+        event.buttons != kPrimaryButton) {
+      return;
+    }
+    _gestureEpoch++;
+    _mousePointer = event.pointer;
+    _finishingGesture = false;
+    _producedSelection = false;
+    _nativeInputHit = _hitsNativeInput(event);
+  }
+
+  void _selectionChanged(SelectedContent? content) {
+    _hasSelectedText = content?.plainText.isNotEmpty ?? false;
+    if ((_mousePointer != null || _finishingGesture) && _hasSelectedText) {
+      _producedSelection = true;
+    }
+    widget.onSelectionChanged?.call(content);
+  }
+
+  void _pointerUp(PointerUpEvent event) {
+    if (event.pointer != _mousePointer) return;
+    final epoch = _gestureEpoch;
+    _mousePointer = null;
+    _finishingGesture = true;
+    // Ancestor and descendant regions both receive tap-down after the press
+    // deadline. The loser may take focus, then cancel while the inner region
+    // wins the drag. Wait for arena cancellation/final selection before giving
+    // the actual nonempty winner its own keyboard focus again.
+    scheduleMicrotask(() {
+      if (!mounted || epoch != _gestureEpoch) return;
+      _finishingGesture = false;
+      // An explicit focus request made by another pointer-up listener must be
+      // applied first. Restore only after that same event's focus queue drains.
+      scheduleMicrotask(() => _restoreSelectionFocus(epoch));
+    });
+  }
+
+  void _restoreSelectionFocus(int epoch) {
+    if (!mounted || epoch != _gestureEpoch) return;
+    if (!_producedSelection || !_hasSelectedText || _nativeInputHit) return;
+    final current = FocusManager.instance.primaryFocus;
+    if (current != null && !identical(current, _focus)) {
+      var isAncestorFocus = false;
+      context.visitAncestorElements((element) {
+        if (identical(element, current.context)) {
+          isAncestorFocus = true;
+          return false;
+        }
+        return true;
+      });
+      // A new native input, menu or another table owns its new focus. Only
+      // the selection ancestor that lost this same gesture may be replaced.
+      if (!isAncestorFocus) return;
+    }
+    if (_focus.canRequestFocus && !_focus.hasPrimaryFocus) {
+      _focus.requestFocus();
+    }
+  }
+
+  void _cancelGesture() {
+    _gestureEpoch++;
+    _mousePointer = null;
+    _finishingGesture = false;
+    _producedSelection = false;
+  }
+
+  @override
+  void didUpdateWidget(UtenSelectionArea oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.focusNode, widget.focusNode) ||
+        !identical(oldWidget.selectionKey, widget.selectionKey)) {
+      _cancelGesture();
+    }
+  }
+
+  @override
+  void deactivate() {
+    _cancelGesture();
+    super.deactivate();
+  }
+
+  @override
+  void dispose() {
+    _cancelGesture();
+    _ownedFocus?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Listener(
+    onPointerDown: _pointerDown,
+    onPointerUp: _pointerUp,
+    onPointerCancel: (event) {
+      if (event.pointer == _mousePointer) _cancelGesture();
+    },
+    child: SelectionArea(
+      key: widget.selectionKey,
+      focusNode: _focus,
+      onSelectionChanged: _selectionChanged,
+      contextMenuBuilder: widget.contextMenuBuilder,
+      child: UtenSelectionLifecycleScope(child: widget.child),
+    ),
   );
+}
+
+final _nativeInputHits = Expando<bool>();
+
+bool _hitsNativeInput(PointerDownEvent event) {
+  final original = event.original ?? event;
+  final cached = _nativeInputHits[original];
+  if (cached != null) return cached;
+  final hit = HitTestResult();
+  RendererBinding.instance.hitTestInView(hit, event.position, event.viewId);
+  final value = hit.path.any((entry) => entry.target is RenderEditable);
+  _nativeInputHits[original] = value;
+  return value;
 }
 
 /// Keeps child registrations locally while detached, then restores them once

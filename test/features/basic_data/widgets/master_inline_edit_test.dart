@@ -25,6 +25,106 @@ final _days = MasterInlineField<_Row>(
 );
 
 void main() {
+  testWidgets(
+    'inline rich geometry and scope changes resize real table columns',
+    (tester) async {
+      final controller = MasterInlineEditController<_Row>()..begin();
+      addTearDown(controller.dispose);
+      const row = (id: '1', name: 'Original', days: 1);
+      const rows = [row];
+      var geometry = 260.0;
+      var measured = 0;
+      double richWidth(BuildContext context, _Row row, TextScaler scaler) {
+        measured++;
+        return geometry;
+      }
+
+      late MasterColumnDef<_Row> projected;
+      Widget app() {
+        final source = MasterColumnDef<_Row>(
+          key: 'name',
+          label: '名称',
+          width: 140,
+          value: (row) => row.name,
+          exactValueOf: (_) => '0.0001',
+          measureValueOf: (row) => 'measurement-key-${row.id}',
+          measureWidthOf: richWidth,
+          measureWidthScope: geometry,
+          cellBuilder: (_, row) => Row(
+            children: [
+              const Icon(Icons.inventory_2_outlined),
+              const SizedBox(width: 12),
+              Expanded(child: Text(row.name, overflow: TextOverflow.ellipsis)),
+            ],
+          ),
+        );
+        projected = controller
+            .columns(
+              columns: [source],
+              idOf: (row) => row.id,
+              fields: {'name': _name},
+            )
+            .single;
+        return MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: SizedBox(
+              width: 300,
+              height: 400,
+              child: MasterDataTableView<_Row>(
+                columns: [projected],
+                items: rows,
+                facets: const {},
+                nullCounts: const {},
+                filters: const {},
+                onFilterChanged: (_, _) {},
+                showFullscreenToggle: false,
+              ),
+            ),
+          ),
+        );
+      }
+
+      double width() =>
+          tester.getSize(find.byKey(const ValueKey('inline-1-name'))).width;
+
+      await tester.pumpWidget(app());
+      await tester.pumpAndSettle();
+      expect(
+        width(),
+        greaterThanOrEqualTo(260),
+        reason: 'entering inline mode must preserve rich cell geometry',
+      );
+      expect(measured, 1);
+      final narrow = width();
+      geometry = 380;
+      // Same rows, same callback and same measurement text: only the scope
+      // retires the previous width. Field assertions would miss this stale cache.
+      await tester.pumpWidget(app());
+      await tester.pumpAndSettle();
+      expect(measured, 2);
+      expect(width(), greaterThanOrEqualTo(380));
+      expect(width(), greaterThan(narrow));
+      expect(projected.value(row), 'Original');
+      expect(projected.exactValueOf!(row), '0.0001');
+      expect(find.textContaining('measurement-key-'), findsNothing);
+      controller.setValue('1', _name, 'Edited', originalValue: row.name);
+      final writes = <Map<String, dynamic>>[];
+      expect(
+        await controller.save((id, patch) async {
+          expect(id, '1');
+          writes.add(patch);
+        }),
+        isTrue,
+      );
+      expect(writes, [
+        {'name': 'Edited'},
+      ]);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   test(
     'read shell opt-in rejects unknown grants and every reader boundary change',
     () {

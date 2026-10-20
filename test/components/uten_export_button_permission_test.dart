@@ -16,6 +16,7 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/platform_tables/table_column_projection.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 
 Widget _app({required Set<String> permissions, required Widget child}) {
@@ -387,6 +388,121 @@ void main() {
 
     expect(find.text('下载Excel'), findsNothing);
   });
+
+  // 2026-10-20「导出组件」事故回归：纯展示列（树形身份格等）不进导出投影，
+  // 否则后端以「列不存在或不在可导出范围」整单拒绝；全部列都不可导出时不送投影。
+  testWidgets('export projection drops non-exportable columns', (tester) async {
+    final api = _CapturingApi();
+    final exported = await _runExportWithProjection(
+      tester,
+      api,
+      const [
+        TableProjectedColumn(
+          key: 'treeIdentity',
+          label: '层级 / 组件',
+          width: 340,
+          type: 'text',
+          exportable: false,
+        ),
+        TableProjectedColumn(key: 'code', label: '编号', width: 110, type: 'text'),
+      ],
+    );
+    expect(exported['columnProjection'], isA<Map<String, dynamic>>());
+    final columns = (exported['columnProjection'] as Map<String, dynamic>)['columns']
+        as List<dynamic>;
+    expect(columns.map((c) => (c as Map<String, dynamic>)['key']), ['code']);
+  });
+
+  testWidgets('all columns non-exportable means no projection payload', (tester) async {
+    final api = _CapturingApi();
+    final exported = await _runExportWithProjection(
+      tester,
+      api,
+      const [
+        TableProjectedColumn(
+          key: 'treeIdentity',
+          label: '层级 / 组件',
+          width: 340,
+          type: 'text',
+          exportable: false,
+        ),
+      ],
+    );
+    expect(exported.containsKey('columnProjection'), isFalse);
+  });
+}
+
+/// 发布一张投影并跑完「下载表格 → 直接下载」，返回捕获到的请求体。
+Future<Map<String, dynamic>> _runExportWithProjection(
+  WidgetTester tester,
+  ApiClient api,
+  List<TableProjectedColumn> columns,
+) async {
+  final controller = TableColumnProjectionController();
+  addTearDown(controller.dispose);
+  final owner = Object();
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        apiClientProvider.overrideWithValue(api),
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'a'),
+        ),
+        apiBaseUrlProvider.overrideWithValue('https://a.invalid'),
+        currentPermissionsProvider.overrideWithValue(const {}),
+      ],
+      child: MaterialApp(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: TableColumnProjectionScope(
+          controller: controller,
+          child: Scaffold(
+            body: Builder(
+              builder: (context) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  controller.publish(
+                    owner,
+                    TableColumnProjection(
+                      tableKey: 'goods-bom-table',
+                      columns: columns,
+                    ),
+                    contextOwner: ModalRoute.of(context),
+                  );
+                });
+                return const UtenExportButton(
+                  endpoint: '/export',
+                  report: '',
+                  queryParams: {},
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pump();
+  await tester.tap(find.text('下载表格'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('直接下载'));
+  await tester.pumpAndSettle();
+  expect(api.bodies, hasLength(1));
+  return api.bodies.single!;
+}
+
+class _CapturingApi extends ApiClient {
+  _CapturingApi() : super(Dio());
+  final List<Map<String, dynamic>> bodies = [];
+  @override
+  Future<Uint8List> downloadBytes(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? query,
+  }) async {
+    if (body is Map<String, dynamic>) bodies.add(Map.of(body));
+    throw StateError('capture only');
+  }
 }
 
 class _CountingPaths extends PathProviderPlatform {

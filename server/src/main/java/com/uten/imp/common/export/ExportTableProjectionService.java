@@ -20,7 +20,10 @@ public class ExportTableProjectionService {
         Map.entry("price",List.of("listPrice")),Map.entry("amount",List.of("amountOriginal")),
         Map.entry("colorLegacyId",List.of("colorName")),Map.entry("unitLegacyId",List.of("unitName")),
         Map.entry("owningWarehouse",List.of("owningWarehouseName")),Map.entry("owningWorkshop",List.of("owningWorkshopName")),
-        Map.entry("currencyId",List.of("currencyName")),Map.entry("parent",List.of("parentName")));
+        Map.entry("currencyId",List.of("currencyName")),Map.entry("parent",List.of("parentName")),
+        // 表格列名与导出列名的既有差异(2026-10-20):BOM 组装表「来源」列 key=source(导出列 sourceType)、
+        // 货架标签页「实际仓库」列 key=warehouse(导出列 warehouseName)。仅在该端点白名单没有同名键时生效。
+        Map.entry("source",List.of("sourceType")),Map.entry("warehouse",List.of("warehouseName")));
 
     public ExportPayload project(List<ExportColumn> available,List<Map<String,Object>> source,
                                  TableColumnProjection request,String allowedScope) {

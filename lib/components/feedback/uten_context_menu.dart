@@ -24,7 +24,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/gestures.dart' show kSecondaryButton;
+import 'package:flutter/gestures.dart' show PointerDeviceKind, kSecondaryButton;
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
@@ -200,6 +200,15 @@ class UtenContextMenuRegion extends StatelessWidget {
         behavior: behavior,
         // 手机/触屏：长按出同一个菜单。与单击选中/双击打开共存：
         // 长按与 tap 是不同识别器，tap 先赢则长按自动取消，行为符合直觉。
+        // 只挂触屏类设备——桌面右键已由上面的 Listener 覆盖，鼠标长按留给
+        // 表格行拖拽（2026-10-19 UtenTableRowDrag），否则更深的本识别器会在
+        // 竞技场里抢赢鼠标长按，行永远拾不起来。
+        supportedDevices: const {
+          PointerDeviceKind.touch,
+          PointerDeviceKind.stylus,
+          PointerDeviceKind.invertedStylus,
+          PointerDeviceKind.trackpad,
+        },
         onLongPressStart: (d) => unawaited(_open(context, d.globalPosition)),
         child: child,
       ),

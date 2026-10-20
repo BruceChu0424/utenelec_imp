@@ -3073,8 +3073,19 @@ class _UtenEditableGridState<T extends EditableGridRow>
     // MasterDataTableView「单击行选中」契约统一（2026-09-05，物料分析车间计划表
     // 反馈）。输入/按钮格自己消费点按，不会误触；编辑模式（showAddRow）不启用——
     // 点格输入优先，选中走复选框/行菜单。
-    final tapToggle = widget.selectable && !widget.showAddRow
-        ? _rowOnSelect(row)
+    // 纯勾选模式（selectable 且非编辑）：点行身任意非输入区 = 切换选中，与
+    // MasterDataTableView「单击行选中」契约统一（2026-09-05，物料分析车间计划表
+    // 反馈）。输入/按钮格自己消费点按，不会误触；编辑模式（showAddRow）不启用——
+    // 点格输入优先，选中走复选框/行菜单。存在文字框选时单击只清框选（Excel 口径，
+    // 与 MasterDataTableView 同款守卫）。
+    final VoidCallback? tapToggle = widget.selectable && !widget.showAddRow
+        ? () {
+            if (_textSelection.hasSelection) {
+              _textSelection.clear();
+              return;
+            }
+            _rowOnSelect(row)?.call();
+          }
         : null;
     final rowBody = tapToggle == null
         ? cell

@@ -129,6 +129,9 @@ class _FakeBomRepo implements GoodsBomRepository {
   ) async => throw UnimplementedError();
 
   @override
+  Future<int> move(String goodsId, List<GoodsBomMove> moves) async => 0;
+
+  @override
   Future<GoodsBomItem> setAudited(
     String goodsId,
     String itemId,

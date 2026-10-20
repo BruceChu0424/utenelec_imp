@@ -305,6 +305,9 @@ abstract final class ApiEndpoints {
   /// 上并不可靠(部分中间件会直接丢掉 DELETE 的 body)。
   static String goodsBomBatchDelete(String id) =>
       '/master/goods/$id/bom/batch-delete';
+
+  /// 拖拽移动组装行(2026-10-19)：同层重排 / 跨层换父，整批原子。
+  static String goodsBomMove(String id) => '/master/goods/$id/bom/move';
   static String goodsBomExport(String id) => '/master/goods/$id/bom/export';
 
   /// BOM 学习记录(ADR-129)：逐组件的设计/真实使用数量与累计；relearn 把某组件

@@ -469,7 +469,10 @@ public class StockReportService {
                 // 文件里不混单位：整列按一个导出单位(默认千克)写数值，估算/未称另列说明。
                 ReportColumn.number("weight", "库存重量(" + weightUnit.label() + ")"),
                 ReportColumn.text("weightStatus", "重量状态", 80),
-                ReportColumn.number("pendingQty", "待检量").withUnitKey("unit")));
+                ReportColumn.number("pendingQty", "待检量").withUnitKey("unit"),
+                // 合格待入库(2026-10-20)：页面同名列早已上线，导出列集漏了它——
+                // 带该列的表格投影导出会被「列不存在或不在可导出范围」整单拒绝。
+                ReportColumn.number("pendingStockInQty", "合格待入库").withUnitKey("unit")));
         if (canViewCost) {
             columns.add(ReportColumn.money("costAmount", "库存台账金额").withUnitLabel("元"));
         }
@@ -524,6 +527,7 @@ public class StockReportService {
                         : weightUnit.fromKg(it.getWeight(), exportWeightScale(weightUnit)));
                 m.put("weightStatus", it.getWeight() == null ? "未称" : it.isWeightEstimated() ? "估算" : "");
                 m.put("pendingQty", it.getPendingQty());
+                m.put("pendingStockInQty", it.getPendingStockInQty());
                 if (canViewCost) {
                     m.put("costAmount", it.getCostAmount());
                 }

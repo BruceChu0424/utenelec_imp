@@ -13,6 +13,7 @@ class TableProjectedColumn {
     required this.type,
     this.definition,
     this.sourceKey,
+    this.exportable = true,
   });
   final String key;
   final String label;
@@ -20,6 +21,11 @@ class TableProjectedColumn {
   final String type;
   final Map<String, dynamic>? definition;
   final String? sourceKey;
+
+  /// 纯展示列（树形身份格、审计勾选格）为 false：打印预览照常用本列，
+  /// 「下载表格」组装 columnProjection 时剔除（后端导出列集没有对应列，
+  /// 送过去会被「列不存在或不在可导出范围」整单拒绝）。不序列化给后端。
+  final bool exportable;
   Map<String, dynamic> toJson() => {
     'key': key,
     'label': label,

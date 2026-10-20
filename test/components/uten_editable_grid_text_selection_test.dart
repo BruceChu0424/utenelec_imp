@@ -206,6 +206,11 @@ void main() {
       expect((await Clipboard.getData('text/plain'))?.text, 'Alpha goods');
       expect(controller.selectedCount, 0);
 
+      // 2026-10-19 口径（Excel/浏览器一致）：框选存在时单击只取消框选，
+      // 不再顺带选中行；框选清掉后再单击才恢复「点行选中」。
+      await tester.tap(find.text('Alpha goods'));
+      await tester.pump();
+      expect(controller.selectedCount, 0);
       await tester.tap(find.text('Alpha goods'));
       await tester.pump();
       expect(controller.selectedCount, 1);

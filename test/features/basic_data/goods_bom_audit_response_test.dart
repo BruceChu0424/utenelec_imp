@@ -529,6 +529,9 @@ class _AuditRepository implements GoodsBomRepository {
   }
 
   @override
+  Future<int> move(String goodsId, List<GoodsBomMove> moves) async => 0;
+
+  @override
   Future<GoodsBomItem> setAudited(String goodsId, String itemId, bool audited) {
     final request = _AuditRequest(goodsId, itemId, audited);
     requests.add(request);

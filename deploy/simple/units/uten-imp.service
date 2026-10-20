@@ -61,6 +61,14 @@ ProtectSystem=strict
 # 旧本地目录 /data/uten-imp/attachments 不再放开写: internal 存储只会读旧 local 原件;
 # 旧 local 引用清零后该目录整个删除 (治理记录 C4)。
 ReadWritePaths=/var/lib/uten-imp-media/attachments /var/log/uten-imp
+# fontconfig 缓存 (2026-10-20 根因): POI 在每个 JVM 里首次建 xlsx sheet 时会懒初始化
+# JDK 字体子系统, Linux 上经 fontconfig 枚举字体; ProtectSystem=strict + ProtectHome 下
+# 默认缓存目录全部不可写, 于是每个 JVM 生命周期的第一次 Excel 导出都在 journal 打
+# 8 条 "Fontconfig error: No writable cache directories" (导出本身成功, 纯日志噪音)。
+# CacheDirectory 自动创建 /var/cache/uten-imp (属主 uten-imp, 0700) 并在 strict 沙箱下
+# 放行写入; XDG_CACHE_HOME 让 fontconfig 用它建缓存。沙箱内探针已验证缓存文件落盘且报错消失。
+CacheDirectory=uten-imp
+Environment=XDG_CACHE_HOME=/var/cache/uten-imp
 ProtectProc=invisible
 ProtectKernelTunables=true
 ProtectKernelModules=true

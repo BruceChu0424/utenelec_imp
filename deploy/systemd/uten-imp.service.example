@@ -81,6 +81,14 @@ ProtectSystem=strict
 # recovery authorization from this root:root 0700 runtime directory. The
 # leading '-' keeps ordinary boot valid when no transaction directory exists.
 ReadWritePaths=-/run/uten-imp-release /var/lib/uten-imp-media/attachments /var/log/uten-imp
+# POI's first xlsx sheet creation in a JVM lazily initializes the JDK font
+# subsystem, which enumerates fonts through fontconfig; under ProtectSystem=strict
+# + ProtectHome every default cache dir is read-only, so the first Excel export
+# per JVM logs 8x "Fontconfig error: No writable cache directories" (export
+# still succeeds). CacheDirectory provisions /var/cache/uten-imp (owned by the
+# service user, implicitly writable) and XDG_CACHE_HOME points fontconfig at it.
+CacheDirectory=uten-imp
+Environment=XDG_CACHE_HOME=/var/cache/uten-imp
 ProtectControlGroups=true
 ProtectKernelTunables=true
 ProtectKernelModules=true

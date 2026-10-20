@@ -263,6 +263,13 @@
             <artifactId>spring-boot-resttestclient</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Boot 4 把 MockMvc 的 security 集成（springSecurity() 自动装配，令 .with(user()) 生效）
+             拆进 spring-boot-security-test；缺它 WebMvcTest 下所有带认证的请求一律 401。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
         <!-- FlywayDataSource/FlywayAutoConfiguration（Boot 4 移入 spring-boot-flyway 模块，测试直接引用） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

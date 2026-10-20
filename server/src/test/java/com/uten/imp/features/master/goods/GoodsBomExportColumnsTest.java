@@ -80,15 +80,16 @@ class GoodsBomExportColumnsTest {
         when(bomRepo.findUsageRows(anyCollection())).thenAnswer(invocation -> {
             java.util.Collection<?> ids = invocation.getArgument(0);
             return ids.contains(rowShell.getId())
-                    ? java.util.Collections.singletonList(usageRow(rowShell, "1.85"))
+                    ? java.util.Collections.singletonList(usageRow(rowShell, "1.85", true))
                     : List.of();
         });
 
         ExportPayload payload = service.exportPayload(root.getId());
 
-        // 列集 = 组装信息表格列(四列退役后)，共 14 列、顺序即表格顺序。
+        // 列集 = 组装信息表格列(四列退役后)，共 15 列、顺序即表格顺序（学习来源
+        // 与表格「学习来源」列同位：紧跟物料名称）。
         assertEquals(
-                List.of("序号", "物料编号", "物料名称", "型号", "规格", "单位", "颜色", "来源",
+                List.of("序号", "物料编号", "物料名称", "学习来源", "型号", "规格", "单位", "颜色", "来源",
                         "计量方式", "基准产量", "尾包", "设计使用数量", "真实使用数量", "备注"),
                 payload.columns().stream().map(c -> c.label()).collect(Collectors.toList()),
                 () -> "导出列必须与表格列一致");
@@ -123,6 +124,11 @@ class GoodsBomExportColumnsTest {
         assertEquals(new BigDecimal("1.85"), bySeq.get("1").get("actualQty"));
         assertNull(bySeq.get("2").get("actualQty"));
         assertNull(bySeq.get("2.1").get("actualQty"));
+
+        // 学习来源(2026-10-20)：只有系统学习边(外壳)标「系统学习」，人工维护行留空。
+        assertEquals("系统学习", bySeq.get("1").get("learned"));
+        assertEquals("", bySeq.get("2").get("learned"));
+        assertEquals("", bySeq.get("2.1").get("learned"));
     }
 
     @Test
@@ -194,11 +200,11 @@ class GoodsBomExportColumnsTest {
         assertFalse(error.getMessage().contains("H"));
     }
 
-    /** v_goods_bom_item_usage 一行：[行 id, BomItemUsage.COLUMNS...]。 */
-    private static Object[] usageRow(GoodsBomItem row, String actual) {
+    /** v_goods_bom_item_usage 一行：[行 id, BomItemUsage.COLUMNS...]。system_learned 在第 11 列。 */
+    private static Object[] usageRow(GoodsBomItem row, String actual, boolean systemLearned) {
         return new Object[]{row.getId(), new BigDecimal(actual), new BigDecimal(actual), "ACTUAL",
-                new BigDecimal(actual), "ACTUAL", 2L, new BigDecimal("200"), new BigDecimal("370"), null, null, false,
-                BigDecimal.ZERO, new BigDecimal(actual), BigDecimal.ZERO};
+                new BigDecimal(actual), "ACTUAL", 2L, new BigDecimal("200"), new BigDecimal("370"), null, null,
+                systemLearned, BigDecimal.ZERO, new BigDecimal(actual), BigDecimal.ZERO};
     }
 
     private static GoodsBomItem bomRow(Goods parent, Goods component, String qty) {

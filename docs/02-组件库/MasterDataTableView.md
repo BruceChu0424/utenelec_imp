@@ -131,6 +131,22 @@
   且挡住页面级 SelectionArea 渗入。含输入格、多选、自动刷新或分页的大表同样保留复制，
   输入控件使用原生选择；保持选择区挂载和稳定行键，不靠禁用复制规避生命周期问题。
   Ctrl+C / Cmd+C 复制所选文字；有行菜单时另有“复制所选文字”，与复制货品/整行业务动作独立。
+  **框选光标与点击口径（2026-10-19）**：有内容的格 hover 显 I 型文本光标
+  （`MouseRegion(text)`；空白格与 `enableTextSelection=false` 不换，格内按钮/链接
+  自带光标不受影响）；存在框选时左键单击只取消框选、不切换行选中（Excel/浏览器
+  口径，清完后再点恢复选行）。测试：
+  `test/master_data_table_view_text_cursor_and_click_clear_test.dart`。
+- **行拖拽（2026-10-19，opt-in）**：传 `rowDrag: UtenTableRowDrag<T>` 才启用——
+  长按(约 500ms)拾起行，跟随光标幽灵卡(名称 + N 行徽记)、被拖行淡出、ESC 取消；
+  落点按目标行内位置分三档：上缘带=同层上方插入、下缘带=同层下方插入、中部=移入
+  子级(`canDropInto` 放行时，指示框+「移入「名称」」标签)；悬停约 700ms 触发一次
+  `onHoverAutoExpand`（树表悬停自动展开/懒加载由宿主管）；拖到视口上下缘自动滚动。
+  按下已勾选行拖整批勾选行；拾起即把按下行纳入勾选。持久化/加载遮罩/失败提示
+  归宿主 `onDrop`。**默认不挂**：普通清单页与自带服务端排序口径的表不传——
+  目前全站只有货品「组装信息」接（见 goods_bom_tab.dart）；触屏长按仍是行右键
+  菜单等价物（UtenContextMenuRegion 长按已限定触屏类设备，鼠标长按让给拖拽）。
+  测试：`test/master_data_table_view_row_drag_test.dart`、
+  `test/features/basic_data/goods_bom_row_drag_move_test.dart`。
 - **分页（2026-10-18 起位于表头上方工具条右上角）**：紧凑形态「‹ [页码框] / 总页数 ›」，
   与「表头设置 / 全屏」同一行、恒排工具条最右（原表格下方翻页条退役）；列表形态（picker
   列表，无表头工具条）把同一分页钉在列表上方右角。跳页框桌面 40 宽；按钮桌面 32、触屏
@@ -237,6 +253,8 @@ MasterDataTableView<T>(
   singleSelection: false,              // 选中互斥（单选）：点其他行自动换选、再点取消；防看岔
                                         // 纯阅读勾选传 true（通常同时 showSelectionSummary:false）
   enableTextSelection: true,           // 默认支持表体文字框选，与行勾选独立
+  rowDrag: UtenTableRowDrag(...),      // 可选：行拖拽（长按拾起，单行/整批/移入子级）；默认 null 不启用，
+                                        // 只有需要人工排层的表（货品「组装信息」）接
   idOf: (item) => item.id,             // 多选业务键；无单一 id 时传稳定复合键
   selectedIds: selectedIds,            // 调用方持有的唯一选中真值
   onSelectedIdsChanged: (next) {},     // 行勾选与表头三态全选统一回交新 Set

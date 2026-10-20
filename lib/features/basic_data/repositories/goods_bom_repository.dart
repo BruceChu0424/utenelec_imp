@@ -32,6 +32,12 @@ abstract interface class GoodsBomRepository {
   /// 审计标记（goods:bom:audit，V256）：把组装行标记为「已核对无误」或取消。
   Future<GoodsBomItem> setAudited(String goodsId, String itemId, bool audited);
 
+  /// 拖拽移动组装行（goods:bom:edit，2026-10-19）：同层重排 / 跨层换父，整批原子。
+  ///
+  /// 服务端校验成环（目标父件在被移组件自己的子树里 409/400）与 (父件, 组件)
+  /// 重复，任何一条不合法整批回滚并抛 [ApiException]。
+  Future<int> move(String goodsId, List<GoodsBomMove> moves);
+
   /// 粘贴组件信息(ADR-111)：把 [items] 一次替换/追加到 1~50 个目标货品，整批原子。
   ///
   /// 任何一处不合格(重复、成环、组件停用、目标已被他人改过……)服务端一条都不写，
@@ -57,6 +63,30 @@ abstract interface class GoodsBomRepository {
 
 /// 粘贴方式：替换目标现有组件 / 在现有组件后追加。
 enum BomPasteMode { replace, append }
+
+/// 拖拽移动的一条指令：把 [itemId] 挂到 [targetParentGoodsId] 下、插到
+/// [anchorItemId] 前/后（anchor null = 追加到该层末尾）。与服务端
+/// BomMoveRequest.Move 同形。
+class GoodsBomMove {
+  const GoodsBomMove({
+    required this.itemId,
+    required this.targetParentGoodsId,
+    this.anchorItemId,
+    this.afterAnchor = false,
+  });
+
+  final String itemId;
+  final String targetParentGoodsId;
+  final String? anchorItemId;
+  final bool afterAnchor;
+
+  Map<String, dynamic> toJson() => {
+    'itemId': itemId,
+    'targetParentGoodsId': targetParentGoodsId,
+    'anchorItemId': ?anchorItemId,
+    'afterAnchor': afterAnchor,
+  };
+}
 
 /// 粘贴目标。[expectedItemIds] 是页面读到的目标现有组件行 id(乐观锁)；
 /// 为 null 表示不比对(批量粘贴不逐个预读目标)。
@@ -144,6 +174,18 @@ class DioGoodsBomRepository implements GoodsBomRepository {
       body: {'audited': audited},
     );
     return GoodsBomItem.fromJson(json);
+  }
+
+  @override
+  Future<int> move(String goodsId, List<GoodsBomMove> moves) async {
+    final json = await api.put(
+      ApiEndpoints.goodsBomMove(goodsId),
+      body: {
+        'moves': [for (final m in moves) m.toJson()],
+      },
+    );
+    final moved = json['moved'];
+    return moved is num ? moved.toInt() : 0;
   }
 
   @override

@@ -32,6 +32,10 @@ class UtenTableTextSelection {
     _hasNativeSelection = _selectedText.isNotEmpty;
   }
 
+  /// 当前是否有框选中的文本。行点击前据此判定「先取消框选」——存在框选时
+  /// 左键单击只清框选、不切换行选中（Excel/浏览器文本选择口径；2026-10-19）。
+  bool get hasSelection => _selectedText.isNotEmpty || _hasNativeSelection;
+
   /// Forget selection when the table's rows or business identity change.
   void clear() {
     _revision++;

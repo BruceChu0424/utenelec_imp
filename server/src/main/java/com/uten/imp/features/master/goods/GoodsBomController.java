@@ -10,6 +10,7 @@ import com.uten.imp.features.master.goods.dto.BomAuditRequest;
 import com.uten.imp.features.master.goods.dto.BomBatchDeleteRequest;
 import com.uten.imp.features.master.goods.dto.BomItemSaveRequest;
 import com.uten.imp.features.master.goods.dto.BomItemView;
+import com.uten.imp.features.master.goods.dto.BomMoveRequest;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +38,7 @@ import java.util.UUID;
  * - DELETE /api/master/goods/{id}/bom/{itemId}     → 删除组件行（goods:bom:delete，软删）
  * - POST   /api/master/goods/{id}/bom/batch-delete → 批量删除勾选的组件行(goods:bom:delete，软删，整批原子，
  *                                                  可横跨本货品组装树的多层)
+ * - PUT    /api/master/goods/{id}/bom/move        → 拖拽移动组件行(goods:bom:edit，同层重排/跨层换父，整批原子)
  * - POST   /api/master/goods/{id}/bom/export       → 产品配件清单加密 Excel（goods:export）
  * - POST   /api/master/goods/bom/paste             → 粘贴组件信息到 1~50 个货品(见 {@link GoodsBomPasteController})
  *
@@ -89,6 +91,17 @@ public class GoodsBomController {
         return Map.of("deleted", service.deleteAll(id, req.getItemIds()));
     }
 
+    /**
+     * 拖拽移动组件行(2026-10-19 组装信息长按拖拽)：同层重排 sort_order / 跨层换父件，
+     * 整批原子，成环与(父件, 组件)重复在服务端校验。
+     */
+    @PutMapping("/move")
+    @PreAuthorize("hasAuthority('goods:bom:edit')")
+    public Map<String, Object> move(@PathVariable UUID id,
+                                    @Valid @RequestBody BomMoveRequest req) {
+        return Map.of("moved", service.moveAll(id, req.getMoves()));
+    }
+
     /** 审计标记：把组装行标记为「已核对无误」或取消；非 BOM 数据变更。 */
     @PutMapping("/{itemId}/audit")
     @PreAuthorize("hasAuthority('goods:bom:audit')")
@@ -104,7 +117,8 @@ public class GoodsBomController {
     public ResponseEntity<byte[]> export(@PathVariable UUID id,
                                          @Valid @RequestBody ExportPasswordRequest body) {
         ExportPayload payload = service.exportPayload(id);
-        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "view_master");
+        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(),
+                GoodsBomExportProjection.forImportTemplate(body.columnProjection()), "view_master");
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_goods_bom", "master_data", String.valueOf(payload.total()), "success"));

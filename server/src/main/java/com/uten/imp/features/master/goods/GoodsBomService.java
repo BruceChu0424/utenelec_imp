@@ -12,6 +12,7 @@ import com.uten.imp.features.master.color.ColorRepository;
 import com.uten.imp.features.master.goods.dto.BomItemSaveRequest;
 import com.uten.imp.features.master.goods.dto.BomItemUsage;
 import com.uten.imp.features.master.goods.dto.BomItemView;
+import com.uten.imp.features.master.goods.dto.BomMoveRequest;
 import com.uten.imp.features.master.lifecycle.MasterObjectAccess;
 import com.uten.imp.features.master.unit.Unit;
 import com.uten.imp.features.master.unit.UnitRepository;
@@ -329,6 +330,144 @@ public class GoodsBomService {
         return visited;
     }
 
+    // ===== 拖拽移动（2026-10-19 组装信息长按拖拽排序/移层，goods:bom:edit） =====
+
+    /**
+     * 批量移动组装行：同层换位只重排 sort_order，跨层移动换 goods_id，整批原子。
+     *
+     * <p>每条 move = 把行挂到 targetParentGoodsId 下、插到 anchor 前/后(锚点省略 =
+     * 追加到该层末尾)，随后对落点父件整层重排 sort_order。校验与批量删除同口径：
+     * 行仍有效、行的现父件与目标父件都在本货品组装树里(目标额外要求可见)；此外
+     * 跨层移动做两类检查——成环(目标父件不得落在被移组件自己的子树里)与
+     * (父件, 组件)唯一(目标父件下已有同一组件时给友好报错，部分唯一索引兜底)。
+     * 移完对受影响父件(旧+新)各调一次 {@code recalcSourceE}。
+     *
+     * @return 实际移动条数(按行 id 去重)
+     */
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:bom:edit')")
+    @Transactional
+    public int moveAll(UUID goodsId, List<BomMoveRequest.Move> moves) {
+        tx.bind();
+        references.requireVisibleGoods(goodsId);
+        Map<UUID, BomMoveRequest.Move> distinct = new LinkedHashMap<>();
+        for (BomMoveRequest.Move m : moves == null ? List.<BomMoveRequest.Move>of() : moves) {
+            if (m == null || m.getItemId() == null || m.getTargetParentGoodsId() == null) continue;
+            distinct.putIfAbsent(m.getItemId(), m);
+        }
+        if (distinct.isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请先选择要移动的组件行");
+        }
+        List<GoodsBomItem> rows = bomRepo.findAllById(distinct.keySet());
+        Map<UUID, GoodsBomItem> byId = new HashMap<>();
+        for (GoodsBomItem r : rows) {
+            if (!r.isDeleted()) byId.put(r.getId(), r);
+        }
+        if (byId.size() != distinct.size()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "组装行不存在");
+        }
+        Set<UUID> currentParents = new java.util.LinkedHashSet<>();
+        for (GoodsBomItem r : byId.values()) currentParents.add(r.getGoods().getId());
+        Set<UUID> targetParents = new java.util.LinkedHashSet<>();
+        for (BomMoveRequest.Move m : distinct.values()) targetParents.add(m.getTargetParentGoodsId());
+
+        Set<UUID> lock = new java.util.LinkedHashSet<>(currentParents);
+        lock.addAll(targetParents);
+        goodsRepo.lockBomParents(lock);
+
+        Set<UUID> wanted = new java.util.LinkedHashSet<>(currentParents);
+        wanted.addAll(targetParents);
+        Set<UUID> tree = treeGoodsIds(goodsId, wanted);
+        for (UUID parent : currentParents) {
+            if (!tree.contains(parent)) {
+                throw new ApiException(ErrorCode.NOT_FOUND, "组装行不存在");
+            }
+        }
+        for (UUID target : targetParents) {
+            if (target.equals(goodsId)) continue;
+            if (!tree.contains(target)) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "目标层级不在本货品的组装树里");
+            }
+            references.requireVisibleGoods(target);
+        }
+        // 成环：目标父件落在被移组件自己的子树里(含组件自身)会把树拧成环。
+        Set<UUID> movedComponents = new java.util.LinkedHashSet<>();
+        for (GoodsBomItem r : byId.values()) movedComponents.add(r.getComponent().getId());
+        Set<UUID> subtree = subtreeGoodsIds(movedComponents);
+        for (UUID target : targetParents) {
+            if (subtree.contains(target)) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "不能把组件移到它自己的下级");
+            }
+        }
+        // 目标父件实体只取一次，跨层移动直接换引用。
+        Map<UUID, Goods> parentEntities = new HashMap<>();
+        for (Goods g : goodsRepo.findAllById(targetParents)) parentEntities.put(g.getId(), g);
+
+        for (BomMoveRequest.Move m : distinct.values()) {
+            GoodsBomItem r = byId.get(m.getItemId());
+            UUID target = m.getTargetParentGoodsId();
+            if (!r.getGoods().getId().equals(target)) {
+                bomRepo.findByGoods_IdAndComponent_IdAndDeletedFalse(target, r.getComponent().getId())
+                        .ifPresent(existing -> {
+                            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                                    "目标层级下已存在同一组件「" + componentLabel(existing) + "」");
+                        });
+                r.setGoods(parentEntities.get(target));
+            }
+            reorderSiblings(target, r, m.getAnchorItemId(), m.isAfterAnchor());
+        }
+        Set<UUID> affected = new java.util.LinkedHashSet<>(currentParents);
+        affected.addAll(targetParents);
+        goodsRepo.findAllById(affected).forEach(this::recalcSourceE);
+        return distinct.size();
+    }
+
+    /** 组件子树(含自身)的货品 id：与 {@link #treeGoodsIds} 同款逐层下探，仅起点不同。 */
+    private Set<UUID> subtreeGoodsIds(Set<UUID> roots) {
+        Set<UUID> visited = new java.util.LinkedHashSet<>(roots);
+        Set<UUID> frontier = new java.util.LinkedHashSet<>(roots);
+        for (int depth = 0; depth < MAX_DEPTH && !frontier.isEmpty(); depth++) {
+            Set<UUID> next = new java.util.LinkedHashSet<>();
+            for (Object[] edge : bomRepo.findOperationalEdges(frontier)) {
+                UUID child = (UUID) edge[2];
+                if (visited.add(child)) next.add(child);
+            }
+            frontier = next;
+        }
+        return visited;
+    }
+
+    /** 落点父件整层重排：按现 sort_order 取回(查询前挂起的换父已自动刷库)，抽出被移行、按锚点插回、顺序号重编。 */
+    private void reorderSiblings(UUID parentGoodsId, GoodsBomItem moved, UUID anchorItemId, boolean afterAnchor) {
+        List<GoodsBomItem> siblings =
+                bomRepo.findByGoods_IdAndDeletedFalseOrderBySortOrderAscIdAsc(parentGoodsId);
+        siblings.removeIf(s -> s.getId().equals(moved.getId()));
+        int index = siblings.size();
+        if (anchorItemId != null) {
+            index = -1;
+            for (int i = 0; i < siblings.size(); i++) {
+                if (siblings.get(i).getId().equals(anchorItemId)) {
+                    index = afterAnchor ? i + 1 : i;
+                    break;
+                }
+            }
+            if (index < 0) {
+                throw new ApiException(ErrorCode.NOT_FOUND, "目标位置的参照行不存在");
+            }
+        }
+        siblings.add(index, moved);
+        for (int i = 0; i < siblings.size(); i++) {
+            siblings.get(i).setSortOrder(i);
+        }
+    }
+
+    /** 报错用的组件人话标签：名称优先、编号兜底。 */
+    private static String componentLabel(GoodsBomItem r) {
+        Goods c = r.getComponent();
+        if (c == null) return "未命名组件";
+        if (c.getName() != null && !c.getName().isBlank()) return c.getName();
+        return c.getCode() != null ? c.getCode() : "未命名组件";
+    }
+
     // ===== 配件清单导出（2026-09-25 口径：导出列 = 组装信息表格列） =====
 
     /** 树展开深度上限（防历史脏数据 A→B→A 环路死循环）。 */
@@ -350,6 +489,8 @@ public class GoodsBomService {
             new ExportColumn("seq", "序号", ExportColumn.TEXT),
             new ExportColumn("code", "物料编号", ExportColumn.TEXT),
             new ExportColumn("name", "物料名称", ExportColumn.TEXT),
+            // 学习来源(2026-10-20)：与表格「学习来源」列同口径——系统学习边有值，人工维护行留空。
+            new ExportColumn("learned", "学习来源", ExportColumn.TEXT),
             new ExportColumn("model", "型号", ExportColumn.TEXT),
             new ExportColumn("spec", "规格", ExportColumn.TEXT),
             new ExportColumn("unitName", "单位", ExportColumn.TEXT),
@@ -393,6 +534,7 @@ public class GoodsBomService {
             row.put("seq", seq);
             row.put("code", v.getComponentCode());
             row.put("name", v.getComponentName());
+            row.put("learned", v.getUsage() != null && v.getUsage().systemLearned() ? "系统学习" : "");
             row.put("model", v.getComponentModel());
             row.put("spec", v.getComponentSpec());
             row.put("unitName", v.getComponentUnitName());

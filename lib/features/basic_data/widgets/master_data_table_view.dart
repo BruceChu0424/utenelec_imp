@@ -1,5 +1,6 @@
 import '../../../components/data_display/uten_table_surface.dart';
 import '../../../components/data_display/uten_table_text_selection.dart';
+import '../../../components/data_display/uten_table_row_drag.dart';
 import '../../../shared/platform_tables/platform_table_binding.dart';
 import '../../../shared/platform_tables/platform_table_controller.dart';
 import '../../../shared/platform_tables/platform_table_picker.dart';
@@ -106,6 +107,7 @@ class MasterColumnDef<T> {
     this.exactListenableOf,
     this.legendOf,
     this.aiSensitive = false,
+    this.exportable = true,
   });
 
   final String key;
@@ -119,6 +121,12 @@ class MasterColumnDef<T> {
   /// 敏感数值列(成本/工资/信用额度等, ADR-150)：AI 读页面时只发列名不发值。
   /// 列名命中平台敏感词表的列即使不标也不会发送。
   final bool aiSensitive;
+
+  /// 是否随「下载表格」导出（默认 true）。纯展示列——树形身份格、审计勾选格这类
+  /// 后端导出列集里没有对应列的——标 false：投影照常发布（打印预览继续用），
+  /// 只在导出请求组装 columnProjection 时剔除（2026-10-20「导出组件」报
+  /// 「列不存在或不在可导出范围：treeIdentity」的根因收口）。
+  final bool exportable;
   final Map<String, dynamic>? exportDefinition;
 
   /// Unformatted decimal source for display calculations; never inferred from a money/quantity label.
@@ -350,6 +358,7 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.showFullscreenToggle,
     this.showColumnChooser = true,
     this.enableTextSelection = true,
+    this.rowDrag,
     this.rowColor,
     this.rowForegroundColor,
     this.rowDecorationBuilder,
@@ -652,6 +661,13 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 表体选择区实例保持稳定，禁用屏障位于 ListView 自动保活节点之下。
   /// 拖选文字不触发行勾选；单击、复选框和行菜单保留原有业务选择语义。
   final bool enableTextSelection;
+
+  /// 行拖拽（长按启动）：单行换位、多选整批移动、树表跨层级移入。
+  ///
+  /// 默认 null = 不支持拖拽（普通清单页、自带服务端排序口径的表都不挂）。
+  /// 只有需要人工排层/排顺序的表（如货品「组装信息」BOM）显式接入。
+  /// 交互细节见 [UtenTableRowDrag] 的契约文档。
+  final UtenTableRowDrag<T>? rowDrag;
 
   /// 行底色（按行数据定，如货品按状态：使用=浅蓝/禁用=浅红）；返回 null = 默认透明。
   /// 单击选中时组件自动把该色加深加亮（提高不透明度），无底色行维持原 primary 高亮。
@@ -1784,6 +1800,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                 width: i < _widths.length ? _widths[i] : _columns[i].width,
                 type: _columns[i].type,
                 definition: _columns[i].exportDefinition,
+                exportable: _columns[i].exportable,
               ),
           ],
         ),
@@ -2262,6 +2279,46 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   /// 双击时间窗：比系统 kDoubleTapTimeout(300ms) 略宽，老人双击慢一点也不漏判。
   static const Duration _kDoubleClickWindow = Duration(milliseconds: 350);
+
+  // ===== 行拖拽（长按启动，2026-10-19；widget.rowDrag 非空才有整套状态） =====
+  //
+  // 拖拽期间的重绘制走 ValueNotifier（幽灵卡跟随光标、落点指示条换行），
+  // 不整表 setState——大表拖动每 16ms 重建全部可见单元格会掉帧；
+  // 只有拖拽开始/结束（行变淡/恢复）才真正 setState。
+
+  /// 可见数据行的拖拽槽（行键 → 行条目）：拖动中把光标位置映射到悬停行。
+  /// itemBuilder 挂载/更新/卸载时登记，虚拟化滚出视口自动注销。
+  final Map<String, _RowDragSlotEntry<T>> _dragSlots = {};
+
+  /// 被拖的行（按下时一次定格；宿主重载/展开后行对象重建，拖拽中不再跟随）。
+  List<T>? _dragRows;
+  Set<String> _dragRowKeys = const <String>{};
+  String? _dragLabel;
+
+  /// 悬停目标与落点形态（null = 当前位置不可放）。
+  String? _dragTargetKey;
+  UtenTableRowDropMode? _dragMode;
+
+  /// 幽灵卡位置（全局坐标）与落点指示条几何（表体 Stack 本地坐标）。
+  final ValueNotifier<Offset?> _dragPointerPos = ValueNotifier(null);
+  final ValueNotifier<_RowDragIndicatorGeometry?> _dragIndicator =
+      ValueNotifier(null);
+  OverlayEntry? _dragGhost;
+
+  Timer? _dragAutoScroll;
+  Timer? _dragHoverTimer;
+  Timer? _dragRetracking;
+  String? _dragAutoExpandedKey;
+  bool _dragKeyHandlerInstalled = false;
+
+  bool get _dragActive => _dragRows != null;
+
+  /// 行 → 拖拽行键（与行 RepaintBoundary 同口径：rowKeyOf 优先、idOf 兜底；
+  /// 两者都缺的行不参与拖拽槽，长按手势仍可挂但落点解析找不到它）。
+  String? _dragKeyOf(T item) {
+    final key = widget.rowKeyOf?.call(item) ?? widget.idOf?.call(item);
+    return (key == null || key.isEmpty) ? null : key;
+  }
 
   /// 当前隐藏的列 key 集合：表头上方工具条「列」浮层勾选维护；
   /// 列集合变化（如报表切 docType）时清空（默认全部显示）。
@@ -2973,6 +3030,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   @override
   void didUpdateWidget(covariant MasterDataTableView<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // 拖拽能力被宿主摘除（如切到只读态）：就地取消进行中的拖拽。
+    if (widget.rowDrag == null && _dragActive) _cancelRowDrag();
     if (!widget.enableTextSelection ||
         oldWidget.paginationScope != widget.paginationScope ||
         oldWidget.paginationRevision != widget.paginationRevision ||
@@ -3383,6 +3442,18 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   @override
   void dispose() {
+    // 拖拽中表被卸载（翻页/切路由）：清计时器、键监听与幽灵卡，防止悬挂。
+    _dragAutoScroll?.cancel();
+    _dragHoverTimer?.cancel();
+    _dragRetracking?.cancel();
+    if (_dragKeyHandlerInstalled) {
+      _dragKeyHandlerInstalled = false;
+      HardwareKeyboard.instance.removeHandler(_handleRowDragKeyEvent);
+    }
+    _dragGhost?.remove();
+    _dragGhost = null;
+    _dragPointerPos.dispose();
+    _dragIndicator.dispose();
     widget.rowsController?.detachPagination(this);
     _projection?.remove(this);
     _aiSlot.detach();
@@ -3701,9 +3772,17 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
     );
-    return widget.selectable
+    Widget cell = widget.selectable
         ? Align(alignment: Alignment.centerLeft, child: text)
         : text;
+    // 框选开启时，有内容的格 hover 显 I 型文本光标（2026-10-19 用户口径：
+    // 单元格有内容 = 可框选，光标要示意「这里能拖选文字」）。空白格不换光标，
+    // 仍由行 InkWell 的可点击态接管。嵌套在内层的 MouseRegion（按钮/链接）
+    // 更深、依然优先于这层包裹。
+    if (widget.enableTextSelection && value.trim().isNotEmpty) {
+      cell = MouseRegion(cursor: SystemMouseCursors.text, child: cell);
+    }
+    return cell;
   }
 
   Widget _dataCell(
@@ -3742,12 +3821,19 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final aligned = widget.selectable && !column.fillsCellHeight
         ? Align(alignment: Alignment.centerLeft, child: custom)
         : custom;
-    if (column.cellBuilderHandlesSemantics) return aligned;
+    // 自定义格同口径：格里有文本内容（value 非空）且框选开启时 hover 显 I 型
+    // 文本光标；格内自带 MouseRegion 的控件（按钮/链接）更深、不受影响。
+    final Widget cursorWrapped = widget.enableTextSelection &&
+            value != null &&
+            value.isNotEmpty
+        ? MouseRegion(cursor: SystemMouseCursors.text, child: aligned)
+        : aligned;
+    if (column.cellBuilderHandlesSemantics) return cursorWrapped;
     return Semantics(
       label: value == null || value.isEmpty
           ? column.label
           : '${column.label}: $value',
-      child: aligned,
+      child: cursorWrapped,
     );
   }
 
@@ -3986,13 +4072,34 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         final wrapped = i == plan.length - 1
             ? KeyedSubtree(key: _lastRowKey, child: rowWidget)
             : rowWidget;
+        // 行拖拽三件套（rowDrag 非空才有）：槽登记 + 长按拾起手势 + 被拖行淡出。
+        // **外层结构必须恒定**：淡出用常驻 AnimatedOpacity 的 opacity 值切换，
+        // 不能条件性包一层新 widget——拖拽开始的 setState 若改变 itemBuilder
+        // 顶层类型，行元素会被重建，进行中的长按识别器连同 State 一起销毁，
+        // 之后的 move/up 事件全部丢失（2026-10-19 实测教训）。
+        Widget draggable = _wrapRowDragSlot(
+          item,
+          _wrapRowDragAffordance(item, wrapped),
+        );
+        if (widget.rowDrag != null) {
+          final dragKey = _dragKeyOf(item);
+          draggable = AnimatedOpacity(
+            opacity: _dragActive &&
+                    dragKey != null &&
+                    _dragRowKeys.contains(dragKey)
+                ? 0.35
+                : 1.0,
+            duration: const Duration(milliseconds: 150),
+            child: draggable,
+          );
+        }
         return _trackPaginationRow(
           planId(i),
           row.group == null &&
               !widget.unpagedItems.any(
                 (local) => _paginationRowId(local) == _paginationRowId(item),
               ),
-          wrapped,
+          draggable,
         );
       },
     );
@@ -4693,6 +4800,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                   );
                 },
               ),
+              // 行拖拽落点指示层（上/下插入线 + 移入高亮框；ValueNotifier 驱动）。
+              if (widget.rowDrag != null) _buildRowDragIndicatorLayer(),
               // 竖向内容滚动条（自绘）：thumb 活动带与长度剔除底部让位空白
               // （悬浮批量动作 clearance / bottomContentPadding），滚到底时 thumb
               // 下缘贴内容底而非视口底；可拖、hover 高亮。联动表经
@@ -4834,6 +4943,463 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   Widget _rowSelectionArea(Widget child) => !widget.enableTextSelection
       ? SelectionContainer.disabled(child: child)
       : child;
+
+  // ===== 行拖拽实现（配置见 UtenTableRowDrag） =====
+
+  /// 给数据行挂长按拾起手势。按住不动约 500ms（LongPress 默认时限）拾起；
+  /// 按下就拖仍是 SelectionArea 的文字框选，两种手势不抢——先动的一方赢。
+  Widget _wrapRowDragAffordance(T item, Widget child) {
+    final drag = widget.rowDrag;
+    if (drag == null || !drag.canDragRow(item)) return child;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPressStart: (details) =>
+          _startRowDrag(item, details.globalPosition),
+      onLongPressMoveUpdate: (details) =>
+          _updateRowDrag(details.globalPosition),
+      onLongPressEnd: (details) => _finishRowDrag(details.globalPosition),
+      onLongPressCancel: _cancelRowDrag,
+      child: child,
+    );
+  }
+
+  /// 给数据行挂拖拽槽（登记行条目，拖动中按光标位置反查悬停行）。
+  Widget _wrapRowDragSlot(T item, Widget child) {
+    if (widget.rowDrag == null) return child;
+    final key = _dragKeyOf(item);
+    if (key == null) return child;
+    return _RowDragSlot<T>(
+      key: ValueKey('row-drag-slot:$key'),
+      slotKey: key,
+      item: item,
+      registry: _dragSlots,
+      child: child,
+    );
+  }
+
+  void _startRowDrag(T item, Offset global) {
+    final drag = widget.rowDrag;
+    if (drag == null || _dragActive) return;
+    final rows = drag.dragRowsOf(item);
+    if (rows.isEmpty) return;
+    // 拖行让位：清文字框选，避免选区与行拖拽在表体上并存。
+    if (_textSelection.hasSelection) _textSelection.clear();
+    // 用户口径「长按首先是选中这一行」：把按下的行纳入勾选（已在勾选集中
+    // 或不可勾选则不动；多选拖整批、单行拖单行）。
+    _toggleRow(item, true);
+    setState(() {
+      _dragRows = rows;
+      _dragRowKeys = <String>{
+        for (final r in rows)
+          if (_dragKeyOf(r) case final k?) k, // ignore: use_null_aware_elements
+      };
+      _dragLabel = drag.dragLabelOf?.call(item);
+      _dragTargetKey = null;
+      _dragMode = null;
+      _dragAutoExpandedKey = null;
+    });
+    _dragPointerPos.value = global;
+    _dragIndicator.value = null;
+    _mountRowDragGhost();
+    if (!_dragKeyHandlerInstalled) {
+      _dragKeyHandlerInstalled = true;
+      HardwareKeyboard.instance.addHandler(_handleRowDragKeyEvent);
+    }
+    // 低频重锚：自动展开插入子行/宿主刷新后，光标不动目标也变了。
+    _dragRetracking?.cancel();
+    _dragRetracking = Timer.periodic(const Duration(milliseconds: 120), (_) {
+      if (!_dragActive) return;
+      final pos = _dragPointerPos.value;
+      if (pos != null) _updateRowDragTargets(pos);
+    });
+    _updateRowDragTargets(global);
+  }
+
+  /// ESC 取消拖拽。
+  bool _handleRowDragKeyEvent(KeyEvent event) {
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.escape) {
+      _cancelRowDrag();
+      return true;
+    }
+    return false;
+  }
+
+  void _updateRowDrag(Offset global) {
+    if (!_dragActive) return;
+    _dragPointerPos.value = global;
+    _scheduleRowDragAutoScroll(global);
+    _updateRowDragTargets(global);
+  }
+
+  /// 把光标位置解析成悬停行与落点形态，更新指示条与悬停自动展开计时。
+  void _updateRowDragTargets(Offset global) {
+    if (!_dragActive) return;
+    final drag = widget.rowDrag!;
+    final entry = _resolveRowDragTarget(global);
+    UtenTableRowDropMode? mode;
+    if (entry != null) {
+      final box = entry.context.findRenderObject();
+      if (box is RenderBox && box.attached && box.size.height > 0) {
+        final t = box.globalToLocal(global).dy / box.size.height;
+        final into = drag.canDropInto;
+        final intoAllowed =
+            t >= 0.25 && t < 0.75 && into != null && into(entry.item, _dragRows!);
+        if (intoAllowed) {
+          mode = UtenTableRowDropMode.into;
+        } else {
+          final upper = intoAllowed ? 0.25 : 0.5;
+          final above = t < upper;
+          mode = above ? UtenTableRowDropMode.above : UtenTableRowDropMode.below;
+          if (!drag.canDrop(entry.item, _dragRows!)) mode = null;
+        }
+      }
+    }
+    final newKey = entry?.key;
+    final targetChanged = newKey != _dragTargetKey;
+    _dragTargetKey = newKey;
+    _dragMode = mode;
+    if (targetChanged) {
+      _dragHoverTimer?.cancel();
+      _dragHoverTimer = null;
+      if (entry != null &&
+          mode != null &&
+          drag.onHoverAutoExpand != null &&
+          _dragAutoExpandedKey != entry.key) {
+        final key = entry.key;
+        final item = entry.item;
+        _dragHoverTimer = Timer(drag.hoverAutoExpandDelay, () {
+          if (!_dragActive || _dragTargetKey != key) return;
+          if (_dragAutoExpandedKey == key) return;
+          _dragAutoExpandedKey = key;
+          drag.onHoverAutoExpand!(item);
+        });
+      }
+    }
+    _updateRowDragIndicator(entry, mode);
+  }
+
+  /// 光标位置 → 悬停行条目（越过被拖行本身；多个槽不重叠，取首个命中）。
+  _RowDragSlotEntry<T>? _resolveRowDragTarget(Offset global) {
+    for (final entry in _dragSlots.values) {
+      if (_dragRowKeys.contains(entry.key)) continue;
+      final box = entry.context.findRenderObject();
+      if (box is! RenderBox || !box.attached) continue;
+      if (box.size.contains(box.globalToLocal(global))) return entry;
+    }
+    return null;
+  }
+
+  void _updateRowDragIndicator(
+    _RowDragSlotEntry<T>? entry,
+    UtenTableRowDropMode? mode,
+  ) {
+    if (entry == null || mode == null) {
+      _dragIndicator.value = null;
+      return;
+    }
+    final stackBox = _bodyAreaKey.currentContext?.findRenderObject();
+    final rowBox = entry.context.findRenderObject();
+    if (stackBox is! RenderBox ||
+        !stackBox.attached ||
+        rowBox is! RenderBox ||
+        !rowBox.attached) {
+      _dragIndicator.value = null;
+      return;
+    }
+    final topLeft = stackBox.globalToLocal(rowBox.localToGlobal(Offset.zero));
+    double top;
+    double height;
+    switch (mode) {
+      case UtenTableRowDropMode.above:
+        top = topLeft.dy - 2;
+        height = 3;
+      case UtenTableRowDropMode.below:
+        top = topLeft.dy + rowBox.size.height - 1;
+        height = 3;
+      case UtenTableRowDropMode.into:
+        top = topLeft.dy + 1;
+        height = rowBox.size.height - 2;
+    }
+    _dragIndicator.value = _RowDragIndicatorGeometry(
+      left: topLeft.dx + 8,
+      width: math.max(80, rowBox.size.width - 16),
+      top: top,
+      height: height,
+      mode: mode,
+      label: mode == UtenTableRowDropMode.into
+          ? widget.rowDrag?.dragLabelOf?.call(entry.item)
+          : null,
+    );
+  }
+
+  /// 拖到表体上下边缘时自动滚动（离边越近越快）。
+  void _scheduleRowDragAutoScroll(Offset global) {
+    final box = _bodyAreaKey.currentContext?.findRenderObject();
+    ScrollController? controller() {
+      if (_bodyV.hasClients && _bodyV.positions.isNotEmpty) return _bodyV;
+      final primary = PrimaryScrollController.maybeOf(context);
+      if (primary != null && primary.hasClients && primary.positions.isNotEmpty) {
+        return primary;
+      }
+      return null;
+    }
+
+    final scroll = controller();
+    int? direction;
+    if (box is RenderBox && box.attached && scroll != null) {
+      final local = box.globalToLocal(global);
+      const edge = 64.0;
+      if (local.dy >= -24 && local.dy < edge) {
+        direction = -1;
+      } else if (local.dy > box.size.height - edge &&
+          local.dy <= box.size.height + 24) {
+        direction = 1;
+      }
+    }
+    if (direction == null) {
+      _dragAutoScroll?.cancel();
+      _dragAutoScroll = null;
+      return;
+    }
+    if (_dragAutoScroll != null) return;
+    _dragAutoScroll = Timer.periodic(const Duration(milliseconds: 16), (_) {
+      if (!_dragActive ||
+          scroll == null ||
+          !scroll.hasClients ||
+          scroll.positions.isEmpty) {
+        _dragAutoScroll?.cancel();
+        _dragAutoScroll = null;
+        return;
+      }
+      scroll.position.pointerScroll(direction! * 16);
+      final pos = _dragPointerPos.value;
+      if (pos != null) _updateRowDragTargets(pos);
+    });
+  }
+
+  /// 幽灵卡（root Overlay，可越出表体边界）：跟随光标 + 整屏 grabbing 光标。
+  void _mountRowDragGhost() {
+    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    if (overlay == null) return;
+    _dragGhost = OverlayEntry(
+      builder: (overlayContext) {
+        final theme = Theme.of(overlayContext);
+        return Stack(children: [
+          // 拖拽期间整屏 grabbing 光标；指针事件早已绑定在长按手势上，
+          // 这里只接管鼠标光标与点击兜底（拖拽中不容许点到别处）。
+          const Positioned.fill(
+            child: MouseRegion(
+              cursor: SystemMouseCursors.grabbing,
+              child: SizedBox.expand(),
+            ),
+          ),
+          ValueListenableBuilder<Offset?>(
+            valueListenable: _dragPointerPos,
+            builder: (_, pos, _) {
+              if (pos == null) return const SizedBox.shrink();
+              return Positioned(
+                left: math.max(8, pos.dx + 18),
+                top: math.max(8, pos.dy + 14),
+                child: _buildRowDragGhostCard(theme),
+              );
+            },
+          ),
+        ]);
+      },
+    );
+    overlay.insert(_dragGhost!);
+  }
+
+  Widget _buildRowDragGhostCard(ThemeData theme) {
+    final count = _dragRowKeys.length;
+    final label = _dragLabel;
+    return Material(
+      elevation: 10,
+      borderRadius: UtenRadius.mdAll,
+      color: theme.colorScheme.surfaceContainerHighest,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: UtenSpacing.s12,
+          vertical: UtenSpacing.s8,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.drag_indicator_rounded,
+              size: 18,
+              color: theme.colorScheme.primary,
+            ),
+            const SizedBox(width: UtenSpacing.s8),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 260),
+              child: Text(
+                (label == null || label.trim().isEmpty) ? '移动行' : label.trim(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            if (count > 1) ...[
+              const SizedBox(width: UtenSpacing.s8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: UtenSpacing.s8,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary,
+                  borderRadius: BorderRadius.circular(UtenRadius.pill),
+                ),
+                child: Text(
+                  '$count 行',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _finishRowDrag(Offset global) async {
+    if (!_dragActive) return;
+    final drag = widget.rowDrag!;
+    final rows = _dragRows!;
+    _updateRowDragTargets(global);
+    final targetEntry = _dragTargetKey == null
+        ? null
+        : _dragSlots[_dragTargetKey!];
+    final mode = _dragMode;
+    final targetItem = targetEntry?.item;
+    _resetRowDragState();
+    if (targetItem == null || mode == null) return;
+    if (_dragKeyOf(targetItem) case final key?) {
+      if (_dragRowKeys.contains(key)) return;
+    }
+    // 持久化、busy 遮罩、成功/失败反馈与重载全由宿主负责（见 UtenTableRowDrag.onDrop）。
+    await drag.onDrop(rows, targetItem, mode);
+  }
+
+  void _cancelRowDrag() {
+    if (!_dragActive) return;
+    _resetRowDragState();
+  }
+
+  void _resetRowDragState() {
+    _dragAutoScroll?.cancel();
+    _dragAutoScroll = null;
+    _dragHoverTimer?.cancel();
+    _dragHoverTimer = null;
+    _dragRetracking?.cancel();
+    _dragRetracking = null;
+    if (_dragKeyHandlerInstalled) {
+      _dragKeyHandlerInstalled = false;
+      HardwareKeyboard.instance.removeHandler(_handleRowDragKeyEvent);
+    }
+    _dragGhost?.remove();
+    _dragGhost = null;
+    _dragPointerPos.value = null;
+    _dragIndicator.value = null;
+    _dragTargetKey = null;
+    _dragMode = null;
+    _dragAutoExpandedKey = null;
+    setState(() {
+      _dragRows = null;
+      _dragRowKeys = const <String>{};
+      _dragLabel = null;
+    });
+  }
+
+  /// 表体 Stack 里的落点指示层（ValueNotifier 驱动，不整表重建）。
+  Widget _buildRowDragIndicatorLayer() => Positioned.fill(
+    child: IgnorePointer(
+      child: ValueListenableBuilder<_RowDragIndicatorGeometry?>(
+        valueListenable: _dragIndicator,
+        builder: (context, geo, _) {
+          if (geo == null) return const SizedBox.shrink();
+          final theme = Theme.of(context);
+          return SizedBox.expand(
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                AnimatedPositioned(
+                  key: const ValueKey('row-drag-indicator'),
+                  duration: const Duration(milliseconds: 110),
+                  curve: Curves.easeOutCubic,
+                  left: geo.left,
+                  top: geo.top,
+                  width: geo.width,
+                  height: geo.height,
+                  child: _buildRowDragIndicatorVisual(theme, geo),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    ),
+  );
+
+  Widget _buildRowDragIndicatorVisual(
+    ThemeData theme,
+    _RowDragIndicatorGeometry geo,
+  ) {
+    final color = theme.colorScheme.primary;
+    if (geo.mode == UtenTableRowDropMode.into) {
+      final label = geo.label?.trim();
+      return Container(
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(UtenRadius.sm),
+          border: Border.all(color: color, width: 1.6),
+        ),
+        alignment: Alignment.center,
+        child: (label == null || label.isEmpty)
+            ? null
+            : Container(
+                constraints: const BoxConstraints(maxWidth: 320),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: UtenSpacing.s8,
+                  vertical: 3,
+                ),
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(UtenRadius.pill),
+                ),
+                child: Text(
+                  '移入「$label」',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+      );
+    }
+    return Container(
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(2),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.35),
+            blurRadius: 6,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+    );
+  }
 
   /// 选择摘要：已选 N 项 + 清除（升位公共组件 UtenSelectionSummaryPill）。
   /// 业务动作在右下悬浮区，不再塞进表头工具条。
@@ -5712,6 +6278,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     if (widget.embedded || widget.singleTapRows) {
       interactive = InkWell(
         onTap: () {
+          // 存在文字框选时，单击的第一职责是取消框选（Excel/浏览器口径），
+          // 不再顺带切换行选中——否则「点一下想让选区消失」变成「选中了一行」。
+          if (_textSelection.hasSelection) {
+            _textSelection.clear();
+            return;
+          }
           selectRow();
           onRowTap?.call(item);
         },
@@ -5727,6 +6299,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           'cells:${_columns.map((c) => c.value(item) ?? '').join(' ')}';
       interactive = InkWell(
         onTap: () {
+          // 同上：框选存在时单击只清框选，不进入选中/双击判定（清掉后下一击
+          // 恢复正常行交互），避免「想关掉选区却把行选中了」。
+          if (_textSelection.hasSelection) {
+            _textSelection.clear();
+            return;
+          }
           final now = clock.now();
           final isDoubleClick =
               _lastTapRowKey == rowKey &&
@@ -6900,4 +7478,96 @@ class _ColumnTextMeasure {
   double header = 0;
   double body = 0;
   final Set<String> seen = <String>{};
+}
+
+// ===== 行拖拽的私有支撑（配置见 components/data_display/uten_table_row_drag.dart） =====
+
+/// 一个可见数据行的拖拽槽条目：行键、当前行对象与该行的 BuildContext
+/// （context.findRenderObject() 即行 RenderBox，拖动中做光标→行的反查）。
+class _RowDragSlotEntry<T> {
+  _RowDragSlotEntry({required this.key, required this.item, required this.context});
+
+  final String key;
+  T item;
+  final BuildContext context;
+}
+
+/// 数据行外圈的拖拽槽：挂载/更新/卸载时维护 [registry]。
+/// 带 ValueKey（行键派生），列表重排时元素跟着行走，条目自动换新对象。
+class _RowDragSlot<T> extends StatefulWidget {
+  const _RowDragSlot({
+    super.key,
+    required this.slotKey,
+    required this.item,
+    required this.registry,
+    required this.child,
+  });
+
+  final String slotKey;
+  final T item;
+  final Map<String, _RowDragSlotEntry<T>> registry;
+  final Widget child;
+
+  @override
+  State<_RowDragSlot<T>> createState() => _RowDragSlotState<T>();
+}
+
+class _RowDragSlotState<T> extends State<_RowDragSlot<T>> {
+  @override
+  void initState() {
+    super.initState();
+    _register();
+  }
+
+  void _register() {
+    widget.registry[widget.slotKey] = _RowDragSlotEntry<T>(
+      key: widget.slotKey,
+      item: widget.item,
+      context: context,
+    );
+  }
+
+  @override
+  void didUpdateWidget(_RowDragSlot<T> oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.slotKey != widget.slotKey) {
+      if (identical(widget.registry[oldWidget.slotKey]?.context, context)) {
+        widget.registry.remove(oldWidget.slotKey);
+      }
+      _register();
+      return;
+    }
+    // 同一行的新对象（宿主重建行模型）：只刷新条目里的行引用。
+    widget.registry[widget.slotKey]?.item = widget.item;
+  }
+
+  @override
+  void dispose() {
+    if (identical(widget.registry[widget.slotKey]?.context, context)) {
+      widget.registry.remove(widget.slotKey);
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
+/// 落点指示条的几何（表体 Stack 本地坐标）与形态。
+class _RowDragIndicatorGeometry {
+  const _RowDragIndicatorGeometry({
+    required this.left,
+    required this.top,
+    required this.width,
+    required this.height,
+    required this.mode,
+    this.label,
+  });
+
+  final double left;
+  final double top;
+  final double width;
+  final double height;
+  final UtenTableRowDropMode mode;
+  final String? label;
 }

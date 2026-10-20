@@ -32,6 +32,16 @@ class ExportTableProjectionServiceTest {
             .isInstanceOf(ApiException.class);
         verifyNoInteractions(platform);
     }
+    /** 2026-10-20：BOM 组装表「来源」列与货架标签页「实际仓库」列的表名与导出列名不同名，必须走别名而不是 409。 */
+    @Test void sourceAndWarehouseColumnAliasesResolveToExportSchemaKeys() {
+        var bom=service.project(List.of(new ExportColumn("sourceType","来源","text"),new ExportColumn("qty","数量","number")),
+                List.of(),new TableColumnProjection("t",null,List.of(column("source","来源"),column("qty","数量"))),"view_master");
+        assertThat(bom.columns()).extracting(ExportColumn::key).containsExactly("sourceType","qty");
+        var shelf=service.project(List.of(new ExportColumn("warehouseName","实际仓库","text")),
+                List.of(),new TableColumnProjection("t",null,List.of(column("warehouse","实际仓库"))),"view_warehouse");
+        assertThat(shelf.columns()).extracting(ExportColumn::key).containsExactly("warehouseName");
+        verifyNoInteractions(platform);
+    }
     @Test void displayCalculationUsesServerDefinitionAndOnlyAuthorizedSourceFacts() {
         UUID id=UUID.randomUUID();
         var definition=new Definition(id,"view_sales","数量倍数","CALCULATED",false,

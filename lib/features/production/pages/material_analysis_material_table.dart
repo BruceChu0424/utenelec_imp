@@ -1606,6 +1606,8 @@ abstract class _MaterialAnalysisMaterialTableState
       // 树列自己吃满整行高度：同一行里只要别的列换了两行，这一格若被竖向
       // 居中收缩，层级竖线就接不到上下行（2026-09-15）。
       fillsCellHeight: true,
+      // 纯展示列不进导出投影（本页暂无表格投影导出，防患于同类页面踩同坑）。
+      exportable: false,
       cellBuilder: (_, row) => _materialTableIdentityCell(theme, row),
     ),
     // 2026-09-14 用户口径：编号 / 颜色从身份格副行提升为独立列，紧跟

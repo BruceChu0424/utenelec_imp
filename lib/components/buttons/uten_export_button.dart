@@ -193,6 +193,19 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
       context.appError('无法确定要导出的表头，请返回对应表格后重试');
       return;
     }
+    // 纯展示列（树形身份格等）不进导出投影：后端导出列集没有对应列，送过去
+    // 会被「列不存在或不在可导出范围」整单拒绝（2026-10-20「导出组件」事故）。
+    // 全部列都被剔除时干脆不送投影，让后端用它默认的完整列集。
+    final exportProjection = projection == null
+        ? null
+        : TableColumnProjection(
+            tableKey: projection.tableKey,
+            scope: projection.scope,
+            sourceKeys: projection.sourceKeys,
+            columns: projection.columns
+                .where((column) => column.exportable)
+                .toList(growable: false),
+          );
     final Uint8List bytes = await ref
         .read(apiClientProvider)
         .downloadBytes(
@@ -200,7 +213,9 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
           body: {
             ...widget.bodyParams,
             ...selection.bodyParams,
-            if (projection != null) 'columnProjection': projection.toJson(),
+            if (exportProjection != null &&
+                exportProjection.columns.isNotEmpty)
+              'columnProjection': exportProjection.toJson(),
             'password': password,
           },
           query: {'report': widget.report, ...widget.queryParams},

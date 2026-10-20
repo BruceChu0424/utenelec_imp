@@ -56,6 +56,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_table_row_drag.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
@@ -915,6 +916,125 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
     }
   }
 
+  // ---- 拖拽移动（2026-10-19：长按拖行排序 / 悬停展开下探 / 移入任意层级） ----
+  //
+  // 与表格组件 UtenTableRowDrag 的分工：表格只管手势、幽灵卡、落点指示与
+  // 悬停自动展开回调；层级语义（同层前后插入 = 换父件保持/调整 sort_order，
+  // 移入 = 换父件）与持久化在这里。成环的完整校验在服务端（可见树只是子集）。
+
+  /// 拖拽移动的网络段进行中（UtenBusyOverlay 遮罩；落点已定，无确认框）。
+  bool _moving = false;
+
+  /// 目标行是否在被拖行的子树里（可见部分的前置判断；深度上限 10 与服务端一致）。
+  bool _isInDraggedSubtree(_BomRow target, List<_BomRow> dragged) {
+    bool within(_BomNode ancestor, _BomNode candidate, [int depth = 0]) {
+      if (depth > 10) return false;
+      if (identical(ancestor, candidate)) return true;
+      final kids = ancestor.children;
+      if (kids == null) return false;
+      for (final k in kids) {
+        if (within(k, candidate, depth + 1)) return true;
+      }
+      return false;
+    }
+
+    for (final d in dragged) {
+      if (within(d.node, target.node)) return true;
+    }
+    return false;
+  }
+
+  List<_BomRow> _dragPayloadOf(_BomRow pressed) {
+    if (_selectedRowIds.contains(_rowId(pressed))) {
+      // 多选批量：勾选行按可见顺序整批拖走。
+      final keys = _selectedRowIds;
+      return _visibleRows.where((r) => keys.contains(_rowId(r))).toList();
+    }
+    return [pressed];
+  }
+
+  /// 落点持久化：above = 逐条插到目标前（保序）；below = 逆序插到目标后
+  /// （服务端逐条「插参照后」，逆序提交恰好正序落位）；into = 追加到目标层末尾。
+  /// 成功后把移入的层级展开（移动结果立即可见）并整树重载。
+  Future<void> _onRowsDropped(
+    List<_BomRow> dragged,
+    _BomRow target,
+    UtenTableRowDropMode mode,
+  ) async {
+    if (_moving || _deleting || _loading || dragged.isEmpty) return;
+    if (_isInDraggedSubtree(target, dragged)) return;
+
+    final targetParent = mode == UtenTableRowDropMode.into
+        ? target.node.item.componentGoodsId
+        : target.parentGoodsId;
+    final anchorId = target.node.item.id;
+    final moves = <GoodsBomMove>[
+      if (mode == UtenTableRowDropMode.below)
+        for (final r in dragged.reversed)
+          GoodsBomMove(
+            itemId: r.node.item.id,
+            targetParentGoodsId: targetParent,
+            anchorItemId: anchorId,
+            afterAnchor: true,
+          )
+      else
+        for (final r in dragged)
+          GoodsBomMove(
+            itemId: r.node.item.id,
+            targetParentGoodsId: targetParent,
+            anchorItemId: mode == UtenTableRowDropMode.above ? anchorId : null,
+          ),
+    ];
+    if (moves.isEmpty) return;
+
+    setState(() => _moving = true);
+    int? moved;
+    try {
+      moved = await context.guardAction(
+        () => ref.read(goodsBomRepositoryProvider).move(widget.goodsId, moves),
+        errorFallback: '移动组件失败，请稍后重试', // TODO(l10n): 补 arb
+      );
+    } finally {
+      if (mounted) setState(() => _moving = false);
+    }
+    if (!mounted) return;
+    if (moved != null) {
+      context.appSuccess('已移动 $moved 个组件'); // TODO(l10n): 补 arb
+      widget.onDataChanged?.call();
+    }
+    if (mode == UtenTableRowDropMode.into) {
+      // 移入的层级自动展开：重载后新位置直接可见（与本页「添加子组件后保持
+      // 展开」同口径）。
+      _expandedIds.add(target.node.item.componentGoodsId);
+    }
+    await _load();
+  }
+
+  UtenTableRowDrag<_BomRow>? get _rowDrag => (widget.canEdit && !_loading)
+      ? UtenTableRowDrag<_BomRow>(
+          canDragRow: (r) =>
+              widget.canEdit && !_loading && !_deleting && !_moving,
+          dragRowsOf: _dragPayloadOf,
+          dragLabelOf: (r) =>
+              r.node.item.componentName ??
+              r.node.item.componentCode ??
+              '组件',
+          canDrop: (target, dragged) =>
+              !_isInDraggedSubtree(target, dragged),
+          // 任何可见节点都能接收子级（叶子挂上组件后自然成父件）；
+          // 成环与重复的权威校验在服务端。
+          canDropInto: (target, dragged) =>
+              !_isInDraggedSubtree(target, dragged),
+          onHoverAutoExpand: (target) {
+            final node = target.node;
+            if (node.item.hasChildren && !node.expanded && !node.loading) {
+              _toggle(node);
+            }
+          },
+          onDrop: _onRowsDropped,
+        )
+      : null;
+
   // ---- 渲染 ---------------------------------------------------------------
 
   /// 表格列（与 MasterDataTableView 对齐：key 仅标识用，本页不接筛选/排序）。
@@ -940,6 +1060,9 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
         // 树列吃满整行高度 + 连线跨过数据格纵向内边距，否则层级竖线会在
         // 行与行之间断开（与物料分析主表 / 级联页同一处理，2026-09-15）。
         fillsCellHeight: true,
+        // 纯展示列不进导出投影：序号/名称由后端导出列集兜底
+        // （GoodsBomExportProjection 强制保留），打印预览不受影响。
+        exportable: false,
         cellBuilder: (context, r) {
           final cell = UtenTreeTableCell(
             key: ValueKey('goods-bom-tree-cell-${r.node.item.id}'),
@@ -976,6 +1099,8 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
           label: '已审',
           width: 64,
           value: (r) => r.node.item.audited ? '已核对' : '',
+          // 交互辅助列（点格翻核对状态），不进导出投影——后端导出列集没有它。
+          exportable: false,
           // 点这一格 = 翻「已核对无误」（2026-09-25：右键菜单之外的快捷路径）；
           // 图标弃用细体 ✓ 文本，换实心圆形对勾（已核对，绿色）/ 空心圆（未核对，
           // 待点选），年长用户隔着屏幕也认得出状态。
@@ -1355,6 +1480,9 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                   isLoading: _loading && _roots == null,
                   error: _error,
                   onRetry: _load,
+                  // 长按拖拽（goods:bom:edit 才挂）：单行换位 / 多选批量 / 悬停
+                  // 展开下探移入任意层级；普通列表页与只读账号不受影响。
+                  rowDrag: _rowDrag,
                   emptyMessage: '暂无组装信息，点右下「添加组件」录入', // TODO(l10n): 补 arb
                 ),
               ),
@@ -1367,6 +1495,12 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
           const UtenBusyOverlay(
             title: '正在删除组件',
             description: '正在把所选组件从组装清单中移除，请勿重复提交或关闭页面。',
+          ),
+        // 拖拽移动网络段的全屏加载遮罩(落点已定，无确认框，直接包网络段)。
+        if (_moving)
+          const UtenBusyOverlay(
+            title: '正在移动组件',
+            description: '正在保存新的组装层级与顺序，请勿重复提交或关闭页面。',
           ),
         // 添加组件浮窗（页面内浮层，2026-10-19 二轮）：无蒙版、底层表格照常可点；
         // 跳页/切页签随本页隐藏，回来现场还在；保存成功才由会话关闭。

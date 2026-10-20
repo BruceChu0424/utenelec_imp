@@ -382,7 +382,8 @@ final class AiChatScopeGate {
             "\\bwhich\\s+(?:class|method|function|service)\\s+(?:handles|processes|implements)\\b"));
     /** Internal names typed by the user: API paths, snake_case table or field names, Java class names, file paths. */
     private static final Pattern INTERNAL_NAME = Pattern.compile("(?<![\\w/])/api/|(?<![\\w@.])[a-z]{2,}(?:_[a-z0-9]{2,})+(?![\\w@.])"
-            + "|(?<![\\w])[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)*(?:Service|Controller|Handler|Repository|Impl|Dto|DTO|Entity|Mapper|Utils?|Config"
+            // Lowercase/digit runs stop at every uppercase class-name boundary. They never need to backtrack.
+            + "|(?<![\\w])[A-Z][a-z0-9]++(?:[A-Z][a-z0-9]++)*(?:Service|Controller|Handler|Repository|Impl|Dto|DTO|Entity|Mapper|Utils?|Config"
             + "|Configuration|Exception|Dao|DAO)(?![\\w])"
             + "|(?i:\\b[a-z]:\\\\|(?<![\\w.])/(?:etc|var|home|usr|opt|root|tmp|srv)/|\\.(?:java|dart|py|sh|bat|ps1|yml|yaml|properties|conf|jar"
             + "|sql)\\b)");

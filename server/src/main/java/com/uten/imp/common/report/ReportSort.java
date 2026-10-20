@@ -19,9 +19,14 @@ public final class ReportSort {
 
     public static String resolveOrderBy(String sort, String order, String defaultOrderBy,
                                         Collection<String> allowedKeys) {
-        if (sort == null || sort.isBlank() || allowedKeys == null || !allowedKeys.contains(sort)) {
+        if (sort == null || sort.isBlank() || allowedKeys == null) {
             return defaultOrderBy;
         }
-        return "\"" + sort + "\"" + ("desc".equalsIgnoreCase(order) ? " DESC" : " ASC");
+        for (String key : allowedKeys) {
+            if (sort.equals(key)) {
+                return "\"" + key + "\"" + ("desc".equalsIgnoreCase(order) ? " DESC" : " ASC");
+            }
+        }
+        return defaultOrderBy;
     }
 }

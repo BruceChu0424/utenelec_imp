@@ -131,11 +131,22 @@ class GoodsPriceHistoryTablePostgresTest {
     }
     @Test void malformedColumnsAndNumericValuesCannotBecomeSqlOrTriggerAnUnboundedPage(){
         for(String key:List.of("unitPrice DESC; DROP TABLE goods","comparable","unknown"))assertThatThrownBy(()->table.table(query(Kind.PURCHASE,1,10,key,true,Map.of()))).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->table.table(query(Kind.PURCHASE,1,10,null,false,Map.of("sourceNo) OR TRUE;--","x")))).isInstanceOf(ApiException.class);
         assertThatThrownBy(()->table.table(query(Kind.PURCHASE,1,10,null,false,Map.of("unitPrice","NaN")))).isInstanceOf(ApiException.class);
         assertThatThrownBy(()->table.table(query(Kind.PURCHASE,1,101,null,false,Map.of()))).isInstanceOf(ApiException.class);
         assertThatThrownBy(()->table.table(new TableQuery(context(Kind.PURCHASE),null,BusinessTime.today().plusDays(1),1,50,null,null,Map.of()))).isInstanceOf(ApiException.class);
         doThrow(new ApiException(ErrorCode.FORBIDDEN,"revoked")).when(access).requireHistory(Kind.PURCHASE);clearInvocations(named);
         assertThatThrownBy(()->table.table(query(Kind.PURCHASE,1,10,null,false,Map.of()))).hasMessageContaining("revoked");verifyNoInteractions(named);
+    }
+    @Test void multipleFacetBranchesKeepStableBindingsAndSqlShapedTextIsOnlyAValue(){
+        order("purchase",owner,"10","1",null);
+        order("purchase",owner,"20","1",null);
+        var filtered=table.table(query(Kind.PURCHASE,1,10,null,false,Map.of("unitPrice","10","quantity","1")));
+        assertThat(filtered.total()).isEqualTo(1);
+        assertThat(filtered.facets().get("unitPrice")).extracting(com.uten.imp.common.web.FacetBucket::value).containsExactly("10","20");
+        assertThat(filtered.facets().get("quantity")).extracting(com.uten.imp.common.web.FacetBucket::value).containsExactly("1");
+        assertThat(table.table(query(Kind.PURCHASE,1,10,null,false,Map.of("sourceNo","x' OR TRUE; DROP TABLE goods;--"))).total()).isZero();
+        assertThat(db.queryForObject("SELECT count(*) FROM goods",Long.class)).isEqualTo(1L);
     }
     private TableQuery query(Kind kind,int page,int size,String sort,boolean asc,Map<String,String> filters){return new TableQuery(context(kind),null,null,page,size,sort,asc,filters);}
     private Query context(Kind kind){return new Query(goods,kind,null,null,null,null,null,null,null,null,null,null,null,null);}

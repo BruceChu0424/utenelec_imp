@@ -458,7 +458,7 @@ class FulfillmentWorkbenchQueryServiceTest {
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em, times(6)).createNativeQuery(sql.capture());
-        assertTrue(sql.getAllValues().getFirst().contains("NULLIF(plan_no,'') desc NULLS LAST, task_id"));
+        assertTrue(sql.getAllValues().getFirst().contains("NULLIF(plan_no,'') DESC NULLS LAST, task_id"));
         // docNo 分面：与列表同一份 WHERE（filters），按 visible_doc_no 分组计数。
         assertTrue(sql.getAllValues().getLast().contains("GROUP BY visible_doc_no"));
         assertEquals(1, result.facets().size());
@@ -470,10 +470,10 @@ class FulfillmentWorkbenchQueryServiceTest {
 
     @Test
     void warehouseSortOnlyColumnsAreWhitelistedAndNeverBecomeFilters() {
-        assertEquals("NULLIF(warehouse_name,'') asc NULLS LAST, task_id",
+        assertEquals("NULLIF(warehouse_name,'') ASC NULLS LAST, task_id",
                 new FulfillmentWorkbenchTableQuery("warehouseName", "asc", java.util.Map.of(),
                         null, null, null, null).orderSql());
-        assertEquals("open_qty desc NULLS LAST, task_id",
+        assertEquals("open_qty DESC NULLS LAST, task_id",
                 new FulfillmentWorkbenchTableQuery("openQty", "desc", java.util.Map.of(),
                         null, null, null, null).orderSql());
         org.junit.jupiter.api.Assertions.assertThrows(com.uten.imp.common.web.ApiException.class,
@@ -490,9 +490,9 @@ class FulfillmentWorkbenchQueryServiceTest {
                 "f.goods", "goods-uuid", "search.goods", "开关 面板", "search.goodsCode", "M3_20%",
                 "search.supplierName", "华东"), null, null, null, null);
         String sql = table.filterSql(null);
-        assertTrue(sql.contains("goods_id::text = :f_goods"));
-        assertTrue(sql.contains(":s_goods"));
-        assertTrue(sql.contains(":s_goodsCode"));
+        assertTrue(sql.contains("goods_id::text = :filter_1"));
+        assertTrue(sql.contains(":filter_7"));
+        assertTrue(sql.contains(":filter_8"));
         assertTrue(sql.contains("lower(COALESCE(goods_name,''))"), "the goods-name header only searches names");
         assertTrue(sql.contains("lower(COALESCE(goods_code,''))"), "the independent code header still searches codes");
         assertFalse(sql.contains("concat_ws(' ',goods_code,goods_name)"), "a code match must not satisfy a name-column word");
@@ -500,12 +500,31 @@ class FulfillmentWorkbenchQueryServiceTest {
         assertFalse(sql.contains("华东"));
         Query query = mock(Query.class);
         table.bind(query);
-        verify(query).setParameter("f_goods", "goods-uuid");
-        verify(query).setParameter("s_goods", "开关 面板");
-        verify(query).setParameter("s_goodsCode", "M3_20%");
+        verify(query).setParameter("filter_1", "goods-uuid");
+        verify(query).setParameter("filter_7", "开关 面板");
+        verify(query).setParameter("filter_8", "M3_20%");
         org.junit.jupiter.api.Assertions.assertThrows(com.uten.imp.common.web.ApiException.class,
                 () -> FulfillmentWorkbenchTableQuery.from("needDate", "asc",
                         java.util.Map.of("search.goods);DROP TABLE goods;--", "x"), null, null, null, null));
+    }
+
+    @Test
+    void maliciousFacetValuesStayBoundAndExcludedFacetsKeepTheOtherParameterIdentities() {
+        String value = "x' OR TRUE; DROP TABLE goods;--";
+        var table = FulfillmentWorkbenchTableQuery.from("goods", "DESC", java.util.Map.of(
+                "f.docNo", value, "search.goods", value, "f.goods", "__null__"), null, null, null, null);
+        String sql = table.filterSql("docNo");
+        assertFalse(sql.contains(value));
+        assertTrue(sql.contains("goods_id::text IS NULL"));
+        assertFalse(sql.contains("visible_doc_no ="));
+        Query query = mock(Query.class);
+        table.bindFilters(query, "docNo");
+        verify(query).setParameter("filter_7", value);
+        org.mockito.Mockito.verifyNoMoreInteractions(query);
+        assertEquals("goods_code DESC NULLS LAST, goods_name DESC NULLS LAST, task_id", table.orderSql());
+        org.junit.jupiter.api.Assertions.assertThrows(com.uten.imp.common.web.ApiException.class,
+                () -> FulfillmentWorkbenchTableQuery.from("goods", "desc; SELECT pg_sleep(1)",
+                        java.util.Map.of(), null, null, null, null));
     }
 
     @Test

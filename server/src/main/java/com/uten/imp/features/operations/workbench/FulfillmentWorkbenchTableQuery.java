@@ -6,6 +6,7 @@ import jakarta.persistence.Query;
 
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /** Whitelisted table controls; values are always bound separately from SQL. */
@@ -32,6 +33,17 @@ public record FulfillmentWorkbenchTableQuery(
      */
     static final Map<String, String> SORT_ONLY_FIELDS = Map.of(
             "warehouseName", "NULLIF(warehouse_name,'')", "openQty", "open_qty");
+    private record FilterField(String key, String expression, String parameter, boolean search) {}
+    private static final List<FilterField> FILTER_FIELDS = filterFields();
+
+    private static List<FilterField> filterFields() {
+        Map<String, String> fields = new java.util.TreeMap<>(FIELDS);
+        SEARCH_FIELDS.forEach((key, expression) -> fields.put("search." + key, expression));
+        List<FilterField> result = new java.util.ArrayList<>();
+        fields.forEach((key, expression) -> result.add(
+                new FilterField(key, expression, "filter_" + result.size(), key.startsWith("search."))));
+        return List.copyOf(result);
+    }
 
     public FulfillmentWorkbenchTableQuery {
         sort = sort == null || sort.isBlank() ? "needDate" : sort.strip();
@@ -69,18 +81,17 @@ public record FulfillmentWorkbenchTableQuery(
 
     String filterSql(String excludedField) {
         StringBuilder sql = new StringBuilder();
-        filters.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
-            if (entry.getKey().equals(excludedField)) return;
-            if (entry.getKey().startsWith("search.")) {
-                String key = entry.getKey().substring(7);
+        for (FilterField field : FILTER_FIELDS) {
+            String value = filters.get(field.key());
+            if (value == null || field.key().equals(excludedField)) continue;
+            if (field.search()) {
                 sql.append(" AND ").append(com.uten.imp.common.util.TaskKeywordSearch.conditionParameter(
-                        "s_" + key, SEARCH_FIELDS.get(key)));
-                return;
+                        field.parameter(), field.expression()));
+            } else {
+                sql.append(" AND ").append(field.expression());
+                sql.append(NULL_VALUE.equals(value) ? " IS NULL" : " = :" + field.parameter());
             }
-            String field = FIELDS.get(entry.getKey());
-            sql.append(" AND ").append(field);
-            sql.append(NULL_VALUE.equals(entry.getValue()) ? " IS NULL" : " = :f_" + entry.getKey());
-        });
+        }
         return sql.toString();
     }
 
@@ -102,21 +113,22 @@ public record FulfillmentWorkbenchTableQuery(
     }
 
     void bindFilters(Query query, String excludedField) {
-        filters.forEach((key, value) -> {
-            if (key.equals(excludedField)) return;
-            if (key.startsWith("search.")) query.setParameter("s_" + key.substring(7), value);
-            else if (!NULL_VALUE.equals(value)) query.setParameter("f_" + key, value);
-        });
+        for (FilterField field : FILTER_FIELDS) {
+            String value = filters.get(field.key());
+            if (value == null || field.key().equals(excludedField)) continue;
+            if (field.search() || !NULL_VALUE.equals(value)) query.setParameter(field.parameter(), value);
+        }
     }
 
     String orderSql() {
+        String direction = "desc".equals(order) ? "DESC" : "ASC";
         String expression = switch (sort) {
-            case "goods" -> "goods_code " + order + " NULLS LAST, goods_name";
+            case "goods" -> "goods_code " + direction + " NULLS LAST, goods_name";
             case "issuedAt" -> "issued_at";
             case "needDate" -> "need_date";
             default -> FIELDS.containsKey(sort) ? FIELDS.get(sort) : SORT_ONLY_FIELDS.get(sort);
         };
-        return expression + " " + order + " NULLS LAST, task_id";
+        return expression + " " + direction + " NULLS LAST, task_id";
     }
 
     private static ApiException invalid(String message) {

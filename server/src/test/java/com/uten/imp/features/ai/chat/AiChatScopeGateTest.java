@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -364,6 +365,18 @@ class AiChatScopeGateTest {
             if (actual.isPresent()) wrong.add(question + " -> " + actual.get());
         }
         assertThat(wrong).isEmpty();
+    }
+
+    @Test void boundedAdversarialClassNamesDoNotBacktrackAndRealInternalNamesStillMatch() {
+        org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(Duration.ofSeconds(3), () -> {
+            for (String text : List.of("a0a" + "0a".repeat(998) + "!",
+                    "A0a" + "0a".repeat(998) + "!", "Aa".repeat(999) + "!")) {
+                assertThat(AiChatScopeGate.classify(text)).isEmpty();
+            }
+            for (String name : List.of("StockService", "OrderLineDTO", "Stock1Configuration", "OrderDao", "PriceUtils")) {
+                assertThat(AiChatScopeGate.classify(name)).contains(AiChatScopeGate.Category.CODE);
+            }
+        });
     }
 
     /**

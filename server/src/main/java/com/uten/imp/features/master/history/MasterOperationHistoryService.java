@@ -54,6 +54,24 @@ public class MasterOperationHistoryService {
         Map.entry("accounts",new Domain("account",Set.of("accounts"))),
         Map.entry("reference-methods",new Domain("settlement_method",Set.of("settlement_methods"))),
         Map.entry("payment-styles",new Domain("payment_style",Set.of("payment_styles"))));
+    /** Each authorized relation has a complete server-owned statement; request/history names are never SQL text. */
+    private static final Map<String,String> SNAPSHOT_SQL=Map.ofEntries(
+        Map.entry("clients","SELECT CAST(fn_goods_history_snapshot('clients'::regclass,t) AS text) FROM clients t WHERE id=:id"),
+        Map.entry("client_categories","SELECT CAST(fn_goods_history_snapshot('client_categories'::regclass,t) AS text) FROM client_categories t WHERE id=:id"),
+        Map.entry("party_contact_methods","SELECT CAST(fn_goods_history_snapshot('party_contact_methods'::regclass,t) AS text) FROM party_contact_methods t WHERE id=:id"),
+        Map.entry("party_addresses","SELECT CAST(fn_goods_history_snapshot('party_addresses'::regclass,t) AS text) FROM party_addresses t WHERE id=:id"),
+        Map.entry("client_ship_addresses","SELECT CAST(fn_goods_history_snapshot('client_ship_addresses'::regclass,t) AS text) FROM client_ship_addresses t WHERE id=:id"),
+        Map.entry("suppliers","SELECT CAST(fn_goods_history_snapshot('suppliers'::regclass,t) AS text) FROM suppliers t WHERE id=:id"),
+        Map.entry("supplier_categories","SELECT CAST(fn_goods_history_snapshot('supplier_categories'::regclass,t) AS text) FROM supplier_categories t WHERE id=:id"),
+        Map.entry("moulds","SELECT CAST(fn_goods_history_snapshot('moulds'::regclass,t) AS text) FROM moulds t WHERE id=:id"),
+        Map.entry("mould_categories","SELECT CAST(fn_goods_history_snapshot('mould_categories'::regclass,t) AS text) FROM mould_categories t WHERE id=:id"),
+        Map.entry("colors","SELECT CAST(fn_goods_history_snapshot('colors'::regclass,t) AS text) FROM colors t WHERE id=:id"),
+        Map.entry("units","SELECT CAST(fn_goods_history_snapshot('units'::regclass,t) AS text) FROM units t WHERE id=:id"),
+        Map.entry("currencies","SELECT CAST(fn_goods_history_snapshot('currencies'::regclass,t) AS text) FROM currencies t WHERE id=:id"),
+        Map.entry("warehouses","SELECT CAST(fn_goods_history_snapshot('warehouses'::regclass,t) AS text) FROM warehouses t WHERE id=:id"),
+        Map.entry("accounts","SELECT CAST(fn_goods_history_snapshot('accounts'::regclass,t) AS text) FROM accounts t WHERE id=:id"),
+        Map.entry("settlement_methods","SELECT CAST(fn_goods_history_snapshot('settlement_methods'::regclass,t) AS text) FROM settlement_methods t WHERE id=:id"),
+        Map.entry("payment_styles","SELECT CAST(fn_goods_history_snapshot('payment_styles'::regclass,t) AS text) FROM payment_styles t WHERE id=:id"));
 
     @Transactional(readOnly=true)
     public History list(String entityType) {
@@ -158,6 +176,7 @@ public class MasterOperationHistoryService {
     private void validateTargets(List<Row> rows,boolean undo) {
         for(Row row:rows) {
             JsonNode target=row.target(undo);
+            String targetStatus=target==null?null:target.path("status").asText();
             if(directory(row.table())) {
                 JsonNode identity=target!=null?target:row.before()!=null?row.before():row.after();
                 String parent="CLIENT".equals(identity.path("party_type").asText())?"clients":"suppliers";
@@ -180,11 +199,11 @@ public class MasterOperationHistoryService {
                     throw conflict("收货地址所属的客户已删除，不能恢复");
             }
             if("currencies".equals(row.table())&&row.expected().path("is_base_currency").asBoolean()
-                &&(row.deleting(undo)||!"使用".equals(target.path("status").asText())))throw conflict("本位币必须保持启用，不能通过历史停用或删除");
+                &&(row.deleting(undo)||!"使用".equals(targetStatus)))throw conflict("本位币必须保持启用，不能通过历史停用或删除");
             if("settlement_methods".equals(row.table())&&!row.expected().path("system_role").asText("").isBlank())
                 throw conflict("系统结算方式不能修改，请使用结算方式维护流程处理");
             if("payment_styles".equals(row.table()))validatePaymentStyle(row,target);
-            if("warehouses".equals(row.table())&&(row.deleting(undo)||!"使用".equals(target.path("status").asText()))
+            if("warehouses".equals(row.table())&&(row.deleting(undo)||!"使用".equals(targetStatus))
                 &&!warehouseRules.retirementBlockers(List.of(row.id())).isEmpty())throw conflict("该仓库仍有库存、业务任务或下级仓库，不能停用或删除");
             if(row.deleting(undo)) {
                 MasterEntityKind kind=kind(row.table());
@@ -293,7 +312,9 @@ public class MasterOperationHistoryService {
     }
     private JsonNode snapshot(String table,UUID id) {
         if(DOMAINS.values().stream().noneMatch(d->d.tables().contains(table)))throw conflict("不支持的资料表");
-        List<?> result=em.createNativeQuery("SELECT CAST(fn_goods_history_snapshot('"+table+"'::regclass,t) AS text) FROM "+table+" t WHERE id=:id").setParameter("id",id).getResultList();
+        String sql=SNAPSHOT_SQL.get(table);
+        if(sql==null)throw conflict("不支持的资料表");
+        List<?> result=em.createNativeQuery(sql).setParameter("id",id).getResultList();
         return result.isEmpty()?null:json(result.getFirst());
     }
     private AuthUser principal(boolean writing) {

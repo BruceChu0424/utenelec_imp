@@ -160,11 +160,13 @@ public class GoodsPriceHistoryTableService {
     }
     private static String filters(Prepared p,String excluded) {
         StringBuilder sql=new StringBuilder("1=1");
-        for(var e:p.filters().entrySet()){
-            if(e.getKey().equals(excluded)||e.getValue()==null||e.getValue().isEmpty())continue;
-            String expression=column(e.getKey());
-            if(e.getValue().equals("__null__")){sql.append(" AND ").append(expression).append(" IS NULL");continue;}
-            String parameter="filter_"+e.getKey();Object value=NUMERIC.contains(e.getKey())?numeric(e.getValue()):e.getKey().equals("businessDate")?date(e.getValue()):e.getValue();
+        int index=0;
+        for(var column:COLUMNS.entrySet()){
+            String key=column.getKey(),text=p.filters().get(key),parameter="filter_"+index++;
+            if(key.equals(excluded)||text==null||text.isEmpty())continue;
+            String expression=column.getValue();
+            if(text.equals("__null__")){sql.append(" AND ").append(expression).append(" IS NULL");continue;}
+            Object value=NUMERIC.contains(key)?numeric(text):key.equals("businessDate")?date(text):text;
             p.parameters().addValue(parameter,value);sql.append(" AND ").append(expression).append("=:").append(parameter);
         }
         return sql.toString();

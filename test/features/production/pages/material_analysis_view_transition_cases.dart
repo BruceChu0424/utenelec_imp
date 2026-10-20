@@ -103,10 +103,14 @@ void materialAnalysisViewTransitionCases() {
       );
       expect(tester.state(tableFinder), same(originalState));
       await tester.pump(const Duration(milliseconds: 60));
+      final opacity = tester.widget<AnimatedOpacity>(
+        find.byKey(const Key('material-view-switch-opacity')),
+      );
       final fade = tester.widget<FadeTransition>(
-        find.descendant(
-          of: find.byKey(const Key('material-view-switch-opacity')),
-          matching: find.byType(FadeTransition),
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is FadeTransition &&
+              identical(widget.child, opacity.child),
         ),
       );
       expect(fade.opacity.value, greaterThan(0));

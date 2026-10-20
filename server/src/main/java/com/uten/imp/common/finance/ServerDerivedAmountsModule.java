@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.module.SimpleModule;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.util.Set;
 
 /**
  * 全局 Jackson 模块: 对标记了 {@link ServerDerivedAmounts} 的请求 DTO, 请求体带金额字段时直接失败
@@ -16,6 +17,9 @@ import java.io.IOException;
  */
 @Component
 public class ServerDerivedAmountsModule extends SimpleModule {
+    static final Set<String> CLIENT_FORBIDDEN_FIELDS = Set.of(
+            "amountOriginal", "amountLocal", "totalOriginal", "totalLocal", "costAmount",
+            "exchangeDiff", "taxAmount", "returnAmount");
 
     public ServerDerivedAmountsModule() {
         super("server-derived-amounts");
@@ -34,7 +38,7 @@ public class ServerDerivedAmountsModule extends SimpleModule {
             Class<?> type = beanOrClass instanceof Class<?> declared ? declared
                     : beanOrClass == null ? null : beanOrClass.getClass();
             if (type != null && ServerDerivedAmounts.class.isAssignableFrom(type)
-                    && ServerDerivedAmounts.CLIENT_FORBIDDEN_FIELDS.contains(propertyName)) {
+                    && CLIENT_FORBIDDEN_FIELDS.contains(propertyName)) {
                 throw MismatchedInputException.from(parser, type,
                         "金额由系统按数量、单价和汇率计算，请求里不能带金额字段: " + propertyName);
             }

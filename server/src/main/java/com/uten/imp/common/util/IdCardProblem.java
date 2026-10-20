@@ -105,6 +105,10 @@ public record IdCardProblem(String code, String message) {
                 return null;
             }
         }
-        return Integer.parseInt(text);
+        try {
+            return Integer.parseInt(text);
+        } catch (NumberFormatException invalid) {
+            return null;
+        }
     }
 }

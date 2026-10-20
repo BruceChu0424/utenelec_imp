@@ -101,11 +101,11 @@ public final class AuditClassifier {
         String code = normalized(action);
         String path = normalized(httpPath);
         boolean failed = failed(result, statusCode);
-        String category = category(source, code, normalized(targetType), path);
-        return new Classification(risk(source, code, normalized(targetType), path, category, failed), category);
+        String category = category(source, code, path);
+        return new Classification(risk(source, code, normalized(targetType), category, failed), category);
     }
 
-    static String category(String source, String action, String targetType, String path) {
+    static String category(String source, String action, String path) {
         if (CRITICAL_ACTIONS.contains(action) || "security".equals(source)
                 || AUDIT_EVIDENCE_ACTIONS.contains(action)) {
             return "security";
@@ -149,7 +149,6 @@ public final class AuditClassifier {
             String source,
             String action,
             String targetType,
-            String path,
             String category,
             boolean failed) {
         if (CRITICAL_ACTIONS.contains(action)) {

@@ -191,7 +191,23 @@ public final class ReportQueryKit {
     public static UUID parseUuid(String s) { return (s == null || s.isBlank()) ? null : UUID.fromString(s); }
 
     /** 2026-09-16 从六个报表服务收敛：导出参数解析（空/空白 → null）。 */
-    public static Short parseShort(String s) { return (s == null || s.isBlank()) ? null : Short.valueOf(s); }
+    public static Short parseShort(String s) {
+        if (s == null || s.isBlank()) return null;
+        try {
+            return Short.valueOf(s);
+        } catch (NumberFormatException invalid) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "报表整数筛选格式或范围无效");
+        }
+    }
+
+    /** Required integral facet value; malformed or missing input is a client validation error. */
+    public static int parseRequiredInt(String value) {
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException invalid) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "报表整数筛选格式或范围无效");
+        }
+    }
 
     /** 2026-09-16 从六个报表服务收敛：导出参数解析（空/空白 → null）。 */
     public static LocalDate parseDate(String s) { return (s == null || s.isBlank()) ? null : LocalDate.parse(s); }

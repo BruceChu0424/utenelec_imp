@@ -73,7 +73,7 @@ class ServerDerivedAmountsContractTest {
                 for (Field field : current.getDeclaredFields()) {
                     boolean actualInput = "amountOriginal".equals(field.getName())
                             && ACTUAL_AMOUNT_INPUTS.contains(type.getSimpleName());
-                    if (ServerDerivedAmounts.CLIENT_FORBIDDEN_FIELDS.contains(field.getName()) && !actualInput) {
+                    if (ServerDerivedAmountsModule.CLIENT_FORBIDDEN_FIELDS.contains(field.getName()) && !actualInput) {
                         violations.add(type.getName() + "." + field.getName());
                     }
                 }

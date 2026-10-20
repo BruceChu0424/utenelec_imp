@@ -160,13 +160,23 @@ public class InternalTestRuntimeSafetyGate
         }
         long address = 0;
         for (int index = 1; index <= 4; index++) {
-            int octet = Integer.parseInt(matcher.group(index));
+            int octet;
+            try {
+                octet = Integer.parseInt(matcher.group(index));
+            } catch (NumberFormatException invalid) {
+                return false;
+            }
             if (octet > 255) {
                 return false;
             }
             address = (address << 8) | octet;
         }
-        int prefix = Integer.parseInt(matcher.group(5));
+        int prefix;
+        try {
+            prefix = Integer.parseInt(matcher.group(5));
+        } catch (NumberFormatException invalid) {
+            return false;
+        }
         if (prefix > 32 || (address & prefixMask(prefix)) != address) {
             return false;
         }

@@ -130,7 +130,12 @@ public class LocalNetworkAccessPolicy {
                 if (octets[index].length() > 1 && octets[index].startsWith("0")) {
                     return null;
                 }
-                int octet = Integer.parseInt(octets[index]);
+                int octet;
+                try {
+                    octet = Integer.parseInt(octets[index]);
+                } catch (NumberFormatException invalid) {
+                    return null;
+                }
                 if (octet > 255) {
                     return null;
                 }

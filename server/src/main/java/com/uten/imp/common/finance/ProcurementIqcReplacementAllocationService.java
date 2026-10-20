@@ -257,16 +257,12 @@ public class ProcurementIqcReplacementAllocationService {
         }
         if(neededQty.signum()==0)return intent;
         BigDecimal qtyLeft=neededQty;
-        BigDecimal allocatedOriginal=BigDecimal.ZERO;
-        BigDecimal allocatedLocal=BigDecimal.ZERO;
         UUID actor=currentUser.requireId();
         for(ReturnedShare share:availableShares){
             if(qtyLeft.signum()<=0)break;
             UUID caseId=share.caseId();
             BigDecimal caseQty=share.qty();
             BigDecimal caseBase=share.baseQty();
-            BigDecimal caseOriginal=share.original();
-            BigDecimal caseLocal=share.local();
             BigDecimal takeQty=qtyLeft.min(caseQty);
             boolean finishesShare=takeQty.compareTo(caseQty)==0;
             BigDecimal takeBase=finishesShare?MoneyPolicy.quantity(caseBase)

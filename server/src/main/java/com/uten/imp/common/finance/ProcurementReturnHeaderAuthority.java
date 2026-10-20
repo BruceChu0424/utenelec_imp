@@ -28,8 +28,10 @@ public final class ProcurementReturnHeaderAuthority {
         } else {
             throw new IllegalArgumentException("unsupported procurement return type: " + rawReceiptType);
         }
-        List<UUID> ids = rawReceiptItemIds == null ? List.of()
-                : rawReceiptItemIds.stream().filter(Objects::nonNull).distinct().sorted().toList();
+        if (rawReceiptItemIds == null || rawReceiptItemIds.isEmpty()) {
+            throw validation("退货每一行必须唯一关联来源收货明细");
+        }
+        List<UUID> ids = rawReceiptItemIds.stream().filter(Objects::nonNull).distinct().sorted().toList();
         if (ids.isEmpty() || ids.size() != rawReceiptItemIds.size()) {
             throw validation("退货每一行必须唯一关联来源收货明细");
         }
@@ -89,8 +91,13 @@ public final class ProcurementReturnHeaderAuthority {
     }
 
     private static Integer integer(Object value) {
-        return value instanceof Number number ? number.intValue()
-                : value == null ? null : Integer.valueOf(value.toString());
+        if (value == null) return null;
+        try {
+            return value instanceof Number number ? new BigDecimal(number.toString()).intValueExact()
+                    : Integer.valueOf(value.toString());
+        } catch (NumberFormatException | ArithmeticException invalid) {
+            throw conflict("来源收货单结算方式历史编号无效");
+        }
     }
 
     private static ApiException validation(String message) {

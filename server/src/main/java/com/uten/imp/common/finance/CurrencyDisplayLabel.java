@@ -1,5 +1,6 @@
 package com.uten.imp.common.finance;
 
+import com.uten.imp.common.sql.SqlCatalogLiteral;
 import java.util.Map;
 import java.util.Locale;
 
@@ -47,8 +48,8 @@ public final class CurrencyDisplayLabel {
     private static String knownSql(String value) {
         StringBuilder sql = new StringBuilder("CASE UPPER(" + value + ")");
         NAMES.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry ->
-                sql.append(" WHEN '").append(entry.getKey()).append("' THEN '")
-                        .append(entry.getValue()).append("'"));
+                sql.append(" WHEN ").append(SqlCatalogLiteral.text(entry.getKey())).append(" THEN ")
+                        .append(SqlCatalogLiteral.text(entry.getValue())));
         return sql.append(" ELSE NULL END").toString();
     }
 

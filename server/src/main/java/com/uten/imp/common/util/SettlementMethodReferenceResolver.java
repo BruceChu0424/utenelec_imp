@@ -28,7 +28,7 @@ public final class SettlementMethodReferenceResolver {
         if (target == null) {
             throw invalid(subject + "不存在、已停用，或旧编号没有 UUID 映射");
         }
-        if (id != null && legacyId != null && !Objects.equals(legacyId, target.legacyId())) {
+        if (legacyId != null && !Objects.equals(legacyId, target.legacyId())) {
             throw new ApiException(ErrorCode.CONFLICT, subject + " UUID 与旧编号不一致");
         }
         return target;

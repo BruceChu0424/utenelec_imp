@@ -242,9 +242,10 @@ public final class PostgresJdbcTlsPolicy {
         rejectCustomTlsVerifier(property, parsed);
 
         String rootCertificate = parsed.parameters().get("sslrootcert");
-        String normalizedRootCertificate = rootCertificate == null
-                ? null
-                : rootCertificate.trim();
+        if (rootCertificate == null) {
+            throw invalid(property, "must include an absolute, non-placeholder sslrootcert path");
+        }
+        String normalizedRootCertificate = rootCertificate.trim();
         if (!StringUtils.hasText(rootCertificate)
                 || !rootCertificate.equals(normalizedRootCertificate)
                 || containsPlaceholder(rootCertificate)

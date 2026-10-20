@@ -165,7 +165,7 @@ public class FulfillmentMutationLocks {
         // Freeze the declared inventory set even for a source-only command.
         inventory.lockDimensions(plan.inventoryDimensions().stream().sorted().toList());
         state.inventoryEntered = true;
-        lockMainWarehouses(state, plan.mainWarehouseIds());
+        lockMainWarehouses(plan.mainWarehouseIds());
         state.warehouses.addAll(plan.mainWarehouseIds());
         if (!plan.analysisIds().isEmpty()) {
             List<?> rows = em.createNativeQuery("""
@@ -313,7 +313,7 @@ public class FulfillmentMutationLocks {
      * <p>走 JDBC 直接执行并在这里接住等锁超时: 不经 JPA 查询异常转换, Hibernate 不会把事务标成只能回滚
      * (数据库事务已因这条语句出错而作废, 调用方的保存点回滚仍能照常恢复)。</p>
      */
-    private void lockMainWarehouses(FulfillmentLockState.State state, Collection<UUID> mainWarehouses) {
+    private void lockMainWarehouses(Collection<UUID> mainWarehouses) {
         String sql = "SELECT pg_advisory_xact_lock(hashtextextended(?,0))";
         for (UUID warehouse : sorted(mainWarehouses)) {
             String key = "MATERIAL-ANALYSIS-WAREHOUSE:" + warehouse;

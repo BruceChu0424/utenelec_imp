@@ -47,6 +47,7 @@ public final class ProcurementReceiptHeaderAuthority {
                 throw conflict("收货来源币种、税率或结算方式不同，请按商业条款分单");
             authority = next;
         }
+        if (authority == null) throw conflict("收货来源订单明细不存在或已删除");
         if ((currencyId != null && !currencyId.equals(authority.currencyId()))
                 || (taxRate != null && taxRate.compareTo(authority.taxRate()) != 0)
                 || (settlementMethodId != null && !settlementMethodId.equals(authority.settlementMethodId())))

@@ -19,6 +19,26 @@ import static org.mockito.Mockito.when;
 class ProcurementReturnHeaderAuthorityTest {
 
     @Test
+    void absentReceiptIdentityListFailsBeforeAnyDatabaseAccess() {
+        EntityManager em = mock(EntityManager.class);
+        assertThatThrownBy(() -> ProcurementReturnHeaderAuthority.derive(em, "PURCHASE", null))
+                .isInstanceOf(ApiException.class).hasMessageContaining("唯一关联来源收货明细");
+        org.mockito.Mockito.verifyNoInteractions(em);
+    }
+
+    @Test
+    void malformedOrTruncatedLegacySettlementFactsCannotCreateAReturnHeader() {
+        UUID item = UUID.randomUUID();
+        for (Object legacy : List.of("not-a-key", new BigDecimal("6.5"), Long.MAX_VALUE)) {
+            Fixture fixture = fixture(List.<Object[]>of(new Object[]{item, UUID.randomUUID(), UUID.randomUUID(),
+                    BigDecimal.ONE, BigDecimal.ZERO, UUID.randomUUID(), legacy}));
+            assertThatThrownBy(() -> ProcurementReturnHeaderAuthority.derive(
+                    fixture.em(), "PURCHASE", List.of(item)))
+                    .isInstanceOf(ApiException.class).hasMessageContaining("历史编号无效");
+        }
+    }
+
+    @Test
     void derivesCompleteHeaderWithoutAnyClientCommercialFields() {
         UUID supplier = UUID.randomUUID();
         UUID currency = UUID.randomUUID();

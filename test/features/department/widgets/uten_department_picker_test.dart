@@ -81,6 +81,13 @@ void main() {
     expect(centerText, findsOneWidget);
     await tester.tap(decisionText);
     await tester.pump();
+    expect(
+      centerText.hitTestable(),
+      findsNothing,
+      reason:
+          'exiting children cannot receive selection during the short collapse fade',
+    );
+    await tester.pumpAndSettle();
     expect(centerText, findsNothing);
     expect(
       tester.widget<UtenDepartmentTreeView>(treeView).selectedIds,

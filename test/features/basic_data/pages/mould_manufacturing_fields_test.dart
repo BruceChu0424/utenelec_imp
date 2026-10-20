@@ -18,6 +18,74 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  for (final boundDepartment in [false, true]) {
+    testWidgets('模具详情独立展示车间关系与存放位置 $boundDepartment', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1440, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repository = _Moulds(
+        detailOverride: MouldDetail(
+          id: 'mould',
+          categoryId: 'cat',
+          categoryName: '历史模具',
+          code: 'MJ001',
+          name: '旧模具名称',
+          status: '使用',
+          place: 'UAT Shelf A-07',
+          departmentId: boundDepartment
+              ? 'e71a67b8-cc50-4111-a19f-f5c01a328402'
+              : null,
+          departmentName: 'UAT注塑车间',
+        ),
+      );
+      await _pumpPage(
+        tester,
+        repository,
+        await SharedPreferences.getInstance(),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('历史模具'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('旧模具名称'));
+      await tester.pump(const Duration(milliseconds: 80));
+      await tester.tap(find.text('旧模具名称'));
+      await tester.pumpAndSettle();
+      final dialog = find.byWidgetPredicate((widget) => widget is Dialog);
+      final workshop = find
+          .descendant(of: dialog, matching: find.text('车间'))
+          .last;
+      final workshopCell = find
+          .ancestor(of: workshop, matching: find.byType(Column))
+          .first;
+      expect(
+        find.descendant(
+          of: workshopCell,
+          matching: find.text(boundDepartment ? 'UAT注塑车间' : '—'),
+        ),
+        findsOneWidget,
+      );
+      final location = find
+          .descendant(of: dialog, matching: find.text('存放位置'))
+          .last;
+      final locationCell = find
+          .ancestor(of: location, matching: find.byType(Column))
+          .first;
+      expect(
+        find.descendant(
+          of: locationCell,
+          matching: find.text('UAT Shelf A-07'),
+        ),
+        findsOneWidget,
+      );
+      if (!boundDepartment) {
+        expect(
+          find.descendant(of: dialog, matching: find.text('UAT注塑车间')),
+          findsNothing,
+        );
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('模具旧年月回显，按月份选择后提交 mstatus 和制造商，重开保留', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1440, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -233,22 +301,26 @@ class _Categories implements MouldCategoryRepository {
 }
 
 class _Moulds implements MouldRepository {
+  _Moulds({this.detailOverride});
+  final MouldDetail? detailOverride;
   Map<String, dynamic>? saved;
   Map<String, dynamic>? created;
   int globalListCalls = 0;
   int globalFacetsCalls = 0;
-  MouldDetail get record => MouldDetail(
-    id: 'mould',
-    categoryId: 'cat',
-    categoryName: '历史模具',
-    code: 'MJ001',
-    name: '旧模具名称',
-    status: '使用',
-    mstatus: saved?['mstatus'] as String? ?? '2008年7月',
-    manufacturer: saved?['manufacturer'] as String?,
-    place: saved?['place'] as String? ?? '历史存放位置',
-    keeper: saved?['keeper'] as String? ?? '历史保管人',
-  );
+  MouldDetail get record =>
+      detailOverride ??
+      MouldDetail(
+        id: 'mould',
+        categoryId: 'cat',
+        categoryName: '历史模具',
+        code: 'MJ001',
+        name: '旧模具名称',
+        status: '使用',
+        mstatus: saved?['mstatus'] as String? ?? '2008年7月',
+        manufacturer: saved?['manufacturer'] as String?,
+        place: saved?['place'] as String? ?? '历史存放位置',
+        keeper: saved?['keeper'] as String? ?? '历史保管人',
+      );
   @override
   Future<PagedResult<MouldListItem>> list(
     String categoryId, {

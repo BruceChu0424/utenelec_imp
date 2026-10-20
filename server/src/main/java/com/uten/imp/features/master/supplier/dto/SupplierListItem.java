@@ -9,8 +9,7 @@ import java.util.UUID;
 /**
  * 供应商列表项。
  *
- * <p>覆盖用户指定的 21 列展示字段中的 19 个有物理列的字段（编号 code 不在用户列表内；
- * 主结账方式/损耗率无对应物理列，不进 DTO，前端单元格恒显示"—"）。
+ * <p>包含供应商主档展示字段；默认结算名称按UUID批量解析，损耗率由权威汇总视图补充。
  * 与 {@code com.uten.imp.features.master.goods.dto.GoodsListItem} 同构。
  *
  * <p>连续大写/驼峰边界字段（legalPerson/bankAccount/taxId/empId/shipVia/shipAddress）
@@ -27,9 +26,8 @@ public class SupplierListItem {
     // ===== 用户指定的 21 列（19 个有数据列）=====
     private String name;            // 供应商简称（Vend_Name）
     private String description;     // 全称（Vend_Desc）
-    // 主结账方式：price_style 语义为"价格样式"，与"主结账方式"对不上 → 不在 DTO，前端恒显示"—"
     private Integer tday;           // 信用天数（TDay，INT）
-    // 损耗率(%)：suppliers 无对应列 → 不在 DTO，前端恒显示"—"
+    // 损耗率由视图批量补充，见下方 lossRate。
     private String place;           // 所属地区（Vend_Place）
     @JsonProperty("empId")
     private String empId;           // 业务员（Emp_ID，文本保原值）
@@ -72,4 +70,8 @@ public class SupplierListItem {
 
     /** 状态(使用/禁用)：行菜单直接显示「启用」或「禁用」，批量启停跳过已是目标状态的行。 */
     private String status;
+
+    /** Canonical default settlement relation; the legacy price_style snapshot may be null. */
+    private UUID defaultSettlementMethodId;
+    private String defaultSettlementMethodName;
 }

@@ -7,7 +7,7 @@ import com.uten.imp.security.SecurityContextCurrentUser;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import java.util.*;
 
-/** Goods' registered UUID mould relation, rechecked under the target's view authority on every read. */
+/** Goods' registered mould display relation, using the same UUID-first/exact-legacy policy as standard goods columns. */
 final class GoodsRelatedColumnAdapter implements PlatformColumnResourceAdapter {
     private static final Map<String,String> FIELDS;
     static {
@@ -45,10 +45,15 @@ final class GoodsRelatedColumnAdapter implements PlatformColumnResourceAdapter {
         delegate.requireDefinitionAccess(false);
         if(!canViewMoulds())throw new ApiException(ErrorCode.FORBIDDEN,"没有模具资料查看权限");
         if(!FIELDS.keySet().containsAll(keys))throw new ApiException(ErrorCode.VALIDATION_FAILED,"未注册的货品关联字段");
-        // Source ids were authorized by PlatformColumnService. Never infer a relation from a name or code.
+        // Source ids were authorized by PlatformColumnService. Only an absent canonical UUID may use the
+        // exact, unique legacy master key, as in GoodsService.mouldNameOf/mouldCodeOf. An explicit UUID
+        // pointing to a deleted mould must stay empty, never silently switch to the legacy target.
+        // Resolve identity once for all projected fields; null field values do not choose another mould.
         String projection=keys.stream().sorted().map(key->"CAST(m."+FIELDS.get(key)+" AS text) AS \""+key+"\"").collect(java.util.stream.Collectors.joining(","));
         Map<UUID,Map<String,String>> result=new LinkedHashMap<>();
-        jdbc.query("SELECT g.id,"+projection+" FROM goods g LEFT JOIN moulds m ON m.id=g.mould_id AND m.is_deleted=false "
+        jdbc.query("SELECT g.id,"+projection+" FROM goods g "
+            +"LEFT JOIN moulds legacy ON g.mould_id IS NULL AND legacy.legacy_id=g.mould_legacy_id AND legacy.is_deleted=false "
+            +"LEFT JOIN moulds m ON m.id=COALESCE(g.mould_id,legacy.id) AND m.is_deleted=false "
             +"WHERE g.id IN(:ids) AND g.is_deleted=false",Map.of("ids",ids),rs->{
                 Map<String,String> values=new HashMap<>();
                 for(String key:keys){String value=rs.getString(key);if(value!=null)values.put(key,value);}

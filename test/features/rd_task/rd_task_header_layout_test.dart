@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
+import 'package:uten_imp/components/layout/uten_app_bar.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/rd_task/pages/rd_task_page.dart';
@@ -35,7 +36,7 @@ class _RdApi extends ApiClient {
 }
 
 void main() {
-  for (final width in [1400.0, 375.0]) {
+  for (final width in [1400.0, 834.0, 375.0]) {
     testWidgets('研发四分段共用分类右侧搜索，宽度$width与大字适应空间', (tester) async {
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
@@ -99,7 +100,7 @@ void main() {
         final search = find.byKey(const Key('rd-task-keyword'));
         final categoryRect = tester.getRect(segments);
         final searchRect = tester.getRect(search);
-        if (width > 800) {
+        if (width >= 834) {
           expect(searchRect.left, greaterThanOrEqualTo(categoryRect.right));
           expect(
             (searchRect.center.dy - categoryRect.center.dy).abs(),
@@ -126,6 +127,42 @@ void main() {
           expect(api.queries.last['keyword'], text);
           expect(api.queries.last['status'], stage.value);
           expect(api.queries.last['page'], 1);
+          expect(
+            find.descendant(
+              of: find.byKey(const Key('rd-task-header')),
+              matching: find.byTooltip('刷新'),
+            ),
+            findsNothing,
+            reason: '页面刷新不能在筛选区下方再占一行',
+          );
+          final refresh = find.byTooltip('刷新');
+          final header = find.byType(UtenAppBar);
+          final compactActions = find.byKey(
+            const Key('uten-app-bar-more-actions'),
+          );
+          final headerAction = refresh.evaluate().isNotEmpty
+              ? refresh
+              : compactActions;
+          expect(
+            find.ancestor(of: headerAction, matching: header),
+            findsOneWidget,
+          );
+          final actionRect = tester.getRect(headerAction);
+          expect(
+            actionRect.bottom,
+            lessThanOrEqualTo(tester.getRect(header).bottom),
+          );
+          expect(actionRect.right, greaterThan(width - 16));
+          if (refresh.evaluate().isEmpty) {
+            await tester.tap(compactActions);
+            await tester.pumpAndSettle();
+          }
+          final beforeRefresh = api.queries.length;
+          await tester.tap(find.byTooltip('刷新'));
+          await tester.pumpAndSettle();
+          expect(api.queries.length, beforeRefresh + 1);
+          expect(api.queries.last['keyword'], text);
+          expect(api.queries.last['status'], stage.value);
         }
         expect(tester.takeException(), isNull);
       }

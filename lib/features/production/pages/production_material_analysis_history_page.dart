@@ -146,6 +146,14 @@ class _ProductionMaterialAnalysisHistoryPageState
           ),
         ),
         actions: [
+          UtenButton(
+            key: const Key('analysis-history-refresh'),
+            type: UtenButtonType.tonal,
+            icon: Icons.refresh_rounded,
+            isLoading: _loading,
+            onPressed: _loading ? null : () => _load(),
+            child: const Text('刷新'),
+          ),
           if (compact)
             IconButton(
               constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
@@ -175,7 +183,7 @@ class _ProductionMaterialAnalysisHistoryPageState
               children: [
                 _intro(theme),
                 const SizedBox(height: UtenSpacing.s8),
-                _filters(compact),
+                _filters(),
                 const SizedBox(height: UtenSpacing.s8),
                 Expanded(child: _content(theme, compact)),
               ],
@@ -208,71 +216,64 @@ class _ProductionMaterialAnalysisHistoryPageState
     ),
   );
 
-  Widget _filters(bool compact) {
-    return Wrap(
-      spacing: UtenSpacing.s8,
-      runSpacing: UtenSpacing.s8,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        SizedBox(
-          width: compact ? double.infinity : 320,
-          child: UtenSearchBar(
-            key: const Key('analysis-history-search'),
-            controller: _search,
-            hint: '搜索需求编号、销售单号或产品',
-            onSubmitted: (_) => _load(),
-            // 服务端检索：防抖由 UtenSearchBar 内置（300ms），停止输入后再加载。
-            onChanged: (_) => _load(),
+  Widget _filters() {
+    return LayoutBuilder(
+      builder: (context, constraints) => Wrap(
+        spacing: UtenSpacing.s8,
+        runSpacing: UtenSpacing.s8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          SizedBox(
+            width: math.min(320, constraints.maxWidth),
+            child: UtenSearchBar(
+              key: const Key('analysis-history-search'),
+              controller: _search,
+              hint: '搜索需求编号、销售单号或产品',
+              onSubmitted: (_) => _load(),
+              // 服务端检索：防抖由 UtenSearchBar 内置（300ms），停止输入后再加载。
+              onChanged: (_) => _load(),
+            ),
           ),
-        ),
-        SizedBox(
-          width: compact ? double.infinity : 190,
-          child: UtenDropdownField(
-            key: ValueKey('analysis-history-status-$_status'),
-            label: '状态',
-            value: _status,
-            allowClear: false,
-            enabled: !_loading,
-            items: [
-              const UtenDropdownItem(value: '', label: '全部状态'),
-              for (final entry in _statuses.entries)
-                UtenDropdownItem(value: entry.key, label: entry.value),
-            ],
-            onChanged: (value) {
-              setState(() => _status = value ?? '');
-              _load();
-            },
+          SizedBox(
+            width: math.min(190, constraints.maxWidth),
+            child: UtenDropdownField(
+              key: ValueKey('analysis-history-status-$_status'),
+              label: '状态',
+              value: _status,
+              allowClear: false,
+              enabled: !_loading,
+              items: [
+                const UtenDropdownItem(value: '', label: '全部状态'),
+                for (final entry in _statuses.entries)
+                  UtenDropdownItem(value: entry.key, label: entry.value),
+              ],
+              onChanged: (value) {
+                setState(() => _status = value ?? '');
+                _load();
+              },
+            ),
           ),
-        ),
-        SizedBox(
-          width: compact ? double.infinity : 190,
-          child: UtenDropdownField(
-            key: ValueKey('analysis-history-source-$_sourceType'),
-            label: '需求来源',
-            value: _sourceType,
-            allowClear: false,
-            enabled: !_loading,
-            items: [
-              const UtenDropdownItem(value: '', label: '全部来源'),
-              for (final entry in _sourceTypes.entries)
-                UtenDropdownItem(value: entry.key, label: entry.value),
-            ],
-            onChanged: (value) {
-              setState(() => _sourceType = value ?? '');
-              _load();
-            },
+          SizedBox(
+            width: math.min(190, constraints.maxWidth),
+            child: UtenDropdownField(
+              key: ValueKey('analysis-history-source-$_sourceType'),
+              label: '需求来源',
+              value: _sourceType,
+              allowClear: false,
+              enabled: !_loading,
+              items: [
+                const UtenDropdownItem(value: '', label: '全部来源'),
+                for (final entry in _sourceTypes.entries)
+                  UtenDropdownItem(value: entry.key, label: entry.value),
+              ],
+              onChanged: (value) {
+                setState(() => _sourceType = value ?? '');
+                _load();
+              },
+            ),
           ),
-        ),
-        UtenButton(
-          key: const Key('analysis-history-refresh'),
-          type: UtenButtonType.tonal,
-          size: UtenButtonSize.large,
-          icon: Icons.refresh_rounded,
-          isLoading: _loading,
-          onPressed: _loading ? null : () => _load(),
-          child: const Text('刷新'),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -456,6 +457,8 @@ class _ProductionMaterialAnalysisHistoryPageState
                 Expanded(
                   child: Text(
                     _join(item.productLabels, fallback: '未命名产品'),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w800,
                     ),

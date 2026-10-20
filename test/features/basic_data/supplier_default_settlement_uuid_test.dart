@@ -6,6 +6,26 @@ import 'package:uten_imp/features/basic_data/models/supplier_node.dart';
 /// V452：供应商默认结算方式 UUID 权威（模型解析 + 编辑页只上送 UUID 契约）。
 void main() {
   group('supplier default settlement UUID models', () {
+    test(
+      'list parses canonical settlement even when legacy snapshot is absent',
+      () {
+        final item = SupplierListItem.fromJson(const {
+          'id': 'supplier-id',
+          'defaultSettlementMethodId': 'settlement-uuid',
+          'defaultSettlementMethodName': 'Local UAT Net30',
+          'priceStyle': null,
+        });
+        expect(item.defaultSettlementMethodId, 'settlement-uuid');
+        expect(item.defaultSettlementMethodName, 'Local UAT Net30');
+        final legacy = SupplierListItem.fromJson(const {
+          'id': 'legacy',
+          'priceStyle': 30,
+        });
+        expect(legacy.defaultSettlementMethodId, isNull);
+        expect(legacy.defaultSettlementMethodName, isNull);
+      },
+    );
+
     test('detail parses UUID authority and display name', () {
       final detail = SupplierDetail.fromJson(const {
         'id': 'supplier-id',

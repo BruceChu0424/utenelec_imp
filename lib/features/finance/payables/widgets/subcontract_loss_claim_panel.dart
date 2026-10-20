@@ -21,10 +21,17 @@ import '../repositories/subcontract_loss_claim_repository.dart';
 import 'subcontract_loss_claim_detail_panel.dart';
 
 class SubcontractLossClaimPanel extends ConsumerStatefulWidget {
-  const SubcontractLossClaimPanel({super.key, this.refreshTick = 0});
+  const SubcontractLossClaimPanel({
+    super.key,
+    this.refreshTick = 0,
+    this.showRefreshAction = true,
+  });
 
   /// 宿主（应付工作台）「返回即刷新」驱动的重载信号；数值变化时重拉当前页。
   final int refreshTick;
+
+  /// Standalone panels keep a local reload; a page header can provide it instead.
+  final bool showRefreshAction;
 
   @override
   ConsumerState<SubcontractLossClaimPanel> createState() =>
@@ -269,12 +276,13 @@ class _SubcontractLossClaimPanelState
                   ),
                 ),
               ),
-              UtenButton(
-                type: UtenButtonType.ghost,
-                icon: Icons.refresh_rounded,
-                onPressed: _loading ? null : () => _load(1),
-                child: const Text('刷新'),
-              ),
+              if (widget.showRefreshAction)
+                UtenButton(
+                  type: UtenButtonType.ghost,
+                  icon: Icons.refresh_rounded,
+                  onPressed: _loading ? null : () => _load(1),
+                  child: const Text('刷新'),
+                ),
             ],
           ),
         ),

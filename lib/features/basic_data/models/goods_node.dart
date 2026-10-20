@@ -846,12 +846,32 @@ class GoodsFacets {
                 .toList()
           : const [];
     }
+    // Keep persisted column keys and picker contracts; the new reference buckets also include
+    // canonical UUID-only masters and exact legacy fallback, unlike old snapshot-only buckets.
+    for (final entry in const {
+      'colorRef': 'colorLegacyId',
+      'unitRef': 'unitLegacyId',
+    }.entries) {
+      if (json[entry.key] case final List<dynamic> values) {
+        fields[entry.value] = values
+            .map((e) => MasterFacetBucket.fromJson(e as Map<String, dynamic>))
+            .toList();
+      }
+    }
     final ncRaw = json['nullCounts'];
     final nullCounts = <String, int>{};
     if (ncRaw is Map) {
       ncRaw.forEach((k, v) {
         nullCounts[k.toString()] = (v is num ? v.toInt() : 0);
       });
+    }
+    for (final entry in const {
+      'colorRef': 'colorLegacyId',
+      'unitRef': 'unitLegacyId',
+    }.entries) {
+      if (nullCounts.containsKey(entry.key)) {
+        nullCounts[entry.value] = nullCounts.remove(entry.key)!;
+      }
     }
     return GoodsFacets(fields: fields, nullCounts: nullCounts);
   }

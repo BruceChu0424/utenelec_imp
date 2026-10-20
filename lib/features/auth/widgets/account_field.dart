@@ -34,6 +34,8 @@ class AccountField extends ConsumerStatefulWidget {
 class _AccountFieldState extends ConsumerState<AccountField> {
   final _layerLink = LayerLink();
   final _focus = FocusNode();
+  final _menuFocus = FocusNode(skipTraversal: true, canRequestFocus: false);
+  final _tapRegionGroup = Object();
   OverlayEntry? _overlay;
   List<String> _history = const [];
   bool _open = false;
@@ -45,13 +47,16 @@ class _AccountFieldState extends ConsumerState<AccountField> {
     super.initState();
     _loadHistory(fillLast: true);
     _focus.addListener(_onFocusChange);
+    _menuFocus.addListener(_closeIfFocusLeft);
   }
 
   @override
   void dispose() {
-    _hideDropdown();
+    _hideDropdown(notify: false);
     _focus.removeListener(_onFocusChange);
     _focus.dispose();
+    _menuFocus.removeListener(_closeIfFocusLeft);
+    _menuFocus.dispose();
     super.dispose();
   }
 
@@ -64,15 +69,32 @@ class _AccountFieldState extends ConsumerState<AccountField> {
         widget.controller.text = h.first;
       }
     });
+    if (h.isEmpty) {
+      _hideDropdown();
+    } else {
+      _overlay?.markNeedsBuild();
+    }
   }
 
   void _onFocusChange() {
-    // 仅聚焦时展开。失焦不在这里关闭：点击弹层内的账号项会让 TextField 先失焦，
-    // 若立即 _hideDropdown 会把整个弹层（含 InkWell）一并移除，onTap 还没触发就被销毁 → 点账号无反应。
-    // 关闭交给：弹层内选中后 onPick/onClear → hide、点外部遮罩 → onClose、下拉箭头切换。
     if (_focus.hasFocus && _history.length > 1) {
       _showDropdown();
+    } else if (!_focus.hasFocus) {
+      _closeIfFocusLeft();
     }
+  }
+
+  void _closeIfFocusLeft() {
+    if (!_open) return;
+    // Wait for focus to finish moving into a candidate before deciding whether
+    // it left the whole account control. Removing InkWell on pointer-down would
+    // otherwise discard the candidate's pending click.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_focus.hasFocus && !_menuFocus.hasFocus) {
+        _hideDropdown();
+      }
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   void _toggleDropdown() {
@@ -86,6 +108,8 @@ class _AccountFieldState extends ConsumerState<AccountField> {
     final entry = OverlayEntry(
       builder: (_) => _Dropdown(
         layerLink: _layerLink,
+        menuFocus: _menuFocus,
+        tapRegionGroup: _tapRegionGroup,
         width: _fieldWidth,
         accounts: _history,
         onPick: (a) {
@@ -112,10 +136,15 @@ class _AccountFieldState extends ConsumerState<AccountField> {
     setState(() => _open = true);
   }
 
-  void _hideDropdown() {
+  void _hideDropdown({bool notify = true}) {
     _overlay?.remove();
+    _overlay?.dispose();
     _overlay = null;
-    if (mounted && _open) setState(() => _open = false);
+    if (notify && mounted && _open) {
+      setState(() => _open = false);
+    } else {
+      _open = false;
+    }
   }
 
   @override
@@ -127,6 +156,7 @@ class _AccountFieldState extends ConsumerState<AccountField> {
         return CompositedTransformTarget(
           link: _layerLink,
           child: TextFormField(
+            groupId: _tapRegionGroup,
             controller: widget.controller,
             focusNode: _focus,
             textInputAction: widget.textInputAction,
@@ -166,6 +196,8 @@ class _AccountFieldState extends ConsumerState<AccountField> {
 class _Dropdown extends StatelessWidget {
   const _Dropdown({
     required this.layerLink,
+    required this.menuFocus,
+    required this.tapRegionGroup,
     required this.width,
     required this.accounts,
     required this.onPick,
@@ -174,6 +206,8 @@ class _Dropdown extends StatelessWidget {
     required this.onClose,
   });
   final LayerLink layerLink;
+  final FocusNode menuFocus;
+  final Object tapRegionGroup;
   final double width;
   final List<String> accounts;
   final void Function(String) onPick;
@@ -184,93 +218,99 @@ class _Dropdown extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Stack(
-      children: [
-        // 点外部关闭
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: onClose,
-          child: const SizedBox.expand(),
-        ),
-        Positioned(
-          // 用 LayerLink + Follower 手动定位到输入框下方（避免计算坐标）
-          child: CompositedTransformFollower(
-            link: layerLink,
-            targetAnchor: Alignment.bottomLeft,
-            offset: const Offset(0, 4),
-            child: TapRegion(
-              onTapOutside: (_) => onClose(),
-              child: Material(
-                elevation: 6,
-                borderRadius: BorderRadius.circular(UtenRadius.md),
-                color: theme.colorScheme.surface,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 280),
-                  child: SizedBox(
-                    // 与输入框同宽（不再按内容收缩）
-                    width: width,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Flexible(
-                          child: ListView.builder(
-                            shrinkWrap: true,
-                            itemCount: accounts.length,
-                            itemBuilder: (_, i) {
-                              final a = accounts[i];
-                              return InkWell(
-                                onTap: () => onPick(a),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 6,
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.person_outline,
-                                        size: 18,
+    // Keep the follower's full-screen hit-test area without a modal barrier:
+    // an outside pointer closes the menu and still reaches password/login.
+    return SizedBox.expand(
+      child: Stack(
+        children: [
+          Positioned(
+            // 用 LayerLink + Follower 手动定位到输入框下方（避免计算坐标）
+            child: CompositedTransformFollower(
+              link: layerLink,
+              targetAnchor: Alignment.bottomLeft,
+              offset: const Offset(0, 4),
+              child: Focus(
+                focusNode: menuFocus,
+                child: TextFieldTapRegion(
+                  groupId: tapRegionGroup,
+                  onTapOutside: (_) => onClose(),
+                  child: Material(
+                    elevation: 6,
+                    borderRadius: BorderRadius.circular(UtenRadius.md),
+                    color: theme.colorScheme.surface,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 280),
+                      child: SizedBox(
+                        // 与输入框同宽（不再按内容收缩）
+                        width: width,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Flexible(
+                              child: ListView.builder(
+                                shrinkWrap: true,
+                                itemCount: accounts.length,
+                                itemBuilder: (_, i) {
+                                  final a = accounts[i];
+                                  return InkWell(
+                                    onTap: () => onPick(a),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 6,
                                       ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          a,
-                                          style: theme.textTheme.bodyMedium,
-                                        ),
+                                      child: Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.person_outline,
+                                            size: 18,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              a,
+                                              style: theme.textTheme.bodyMedium,
+                                            ),
+                                          ),
+                                          IconButton(
+                                            tooltip: '删除',
+                                            iconSize: 18,
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            icon: const Icon(
+                                              Icons.close,
+                                              size: 16,
+                                            ),
+                                            onPressed: () => onDelete(a),
+                                          ),
+                                        ],
                                       ),
-                                      IconButton(
-                                        tooltip: '删除',
-                                        iconSize: 18,
-                                        visualDensity: VisualDensity.compact,
-                                        icon: const Icon(Icons.close, size: 16),
-                                        onPressed: () => onDelete(a),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                            const Divider(height: 1),
+                            TextButton.icon(
+                              onPressed: onClear,
+                              icon: const Icon(
+                                Icons.delete_sweep_outlined,
+                                size: 18,
+                              ),
+                              label: const Text('清除全部'),
+                            ),
+                          ],
                         ),
-                        const Divider(height: 1),
-                        TextButton.icon(
-                          onPressed: onClear,
-                          icon: const Icon(
-                            Icons.delete_sweep_outlined,
-                            size: 18,
-                          ),
-                          label: const Text('清除全部'),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

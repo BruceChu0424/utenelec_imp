@@ -17,11 +17,25 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
-  for (final kind in ['client', 'supplier', 'mould']) {
-    testWidgets('$kind 搜索跨分类直接显示全局结果，翻页不截分类，清空回原分类', (tester) async {
+  for (final (kind, reducedMotion, lite) in [
+    ('client', false, false),
+    ('supplier', false, false),
+    ('mould', false, false),
+    ('client', true, false),
+    ('supplier', false, true),
+  ]) {
+    final title =
+        '$kind ${reducedMotion
+            ? "减少动画 "
+            : lite
+            ? "省电 "
+            : ""}搜索跨分类直接显示全局结果，翻页不截分类，清空回原分类';
+    testWidgets(title, (tester) async {
       await tester.binding.setSurfaceSize(const Size(1600, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      SharedPreferences.setMockInitialValues({});
+      SharedPreferences.setMockInitialValues({
+        if (lite) 'performancePreference': 'lite',
+      });
       final preferences = await SharedPreferences.getInstance();
       final requests = <RequestOptions>[];
       final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
@@ -120,6 +134,12 @@ void main() {
             isSuperAdminProvider.overrideWithValue(false),
           ],
           child: MaterialApp(
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(disableAnimations: reducedMotion),
+              child: child!,
+            ),
             home: page,
             localizationsDelegates: AppLocalizations.localizationsDelegates,
             supportedLocales: AppLocalizations.supportedLocales,
@@ -139,10 +159,12 @@ void main() {
         ),
         matching: find.byType(TextField),
       );
+      final searchElement = tester.element(search);
       await tester.enterText(search, '共同名称');
       await tester.pump(const Duration(milliseconds: 450));
       await tester.pumpAndSettle();
       expect(_rowIds(tester), ['exact-b', 'near-a']);
+      expect(tester.element(search), same(searchElement));
       final globalTable = tester.widget<MasterDataTableView<dynamic>>(_table);
       expect(globalTable.facets['name']?.single.value, '跨分类选项');
       final facetRead = requests.lastWhere(
@@ -202,6 +224,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 450));
       await tester.pumpAndSettle();
       expect(_rowIds(tester), ['category-a']);
+      expect(tester.element(search), same(searchElement));
       expect(tester.takeException(), isNull);
     });
   }

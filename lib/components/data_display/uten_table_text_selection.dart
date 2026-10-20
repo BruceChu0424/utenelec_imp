@@ -25,6 +25,8 @@ class UtenTableTextSelection {
   bool _clearScheduled = false;
   bool _clearing = false;
   bool _copyGuardInstalled = false;
+  bool _disposed = false;
+  Timer? _clearTimer;
 
   void onSelectionChanged(SelectedContent? content) {
     if (_clearPending) return;
@@ -68,8 +70,17 @@ class UtenTableTextSelection {
     WidgetsBinding.instance.scheduleFrame();
     unawaited(
       frame.then((_) {
-        _clearScheduled = false;
-        if (_clearPending) _clearNativeSelection();
+        if (_disposed) return;
+        // Nested Scrollable selection delegates merge/remove their children in
+        // post-frame microtasks. endOfFrame itself completes in that same
+        // microtask queue, before those nested registrations have all settled.
+        // A new event turn drains that queue first, so clearing an empty child
+        // cannot unregister it from a parent currently iterating its children.
+        _clearTimer = Timer(Duration.zero, () {
+          _clearTimer = null;
+          _clearScheduled = false;
+          if (_clearPending) _clearNativeSelection();
+        });
       }),
     );
   }
@@ -120,6 +131,18 @@ class UtenTableTextSelection {
     // Do not move focus or alter an input's native selection. Only prevent the
     // old area's copy/cut shortcuts during its short deferred-clear window.
     return belongsToArea ? KeyEventResult.handled : KeyEventResult.ignored;
+  }
+
+  void dispose() {
+    _disposed = true;
+    _revision++;
+    _clearTimer?.cancel();
+    _clearTimer = null;
+    _clearPending = false;
+    if (_copyGuardInstalled) {
+      FocusManager.instance.removeEarlyKeyEventHandler(_guardPendingCopy);
+      _copyGuardInstalled = false;
+    }
   }
 
   /// [tableContext] must be the table's own context, above all of its cells.

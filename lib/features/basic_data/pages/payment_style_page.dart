@@ -39,6 +39,8 @@ import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/widgets/uten_location_field.dart';
 import '../../../shared/widgets/master_detail_card.dart';
+import '../../../shared/widgets/uten_hierarchy_tree_view.dart'
+    show UtenHierarchyRowSkin;
 import '../../../shared/widgets/uten_hierarchy_search_header.dart';
 import '../models/payment_style_node.dart';
 import '../repositories/payment_style_repository.dart';
@@ -363,13 +365,10 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            // 左缘贴 0（2026-10-18 全站分栏口径）：分段行/搜索与货品资料等
-            // 分类页左栏、返回键图标共用 x=0 左缘；不再设目录标题行。
-            padding: const EdgeInsets.fromLTRB(
-              0,
-              UtenSpacing.s16,
-              UtenSpacing.s12,
-              UtenSpacing.s12,
+            key: const ValueKey('payment-style-category-selector'),
+            padding: const EdgeInsets.only(
+              top: UtenSpacing.s12,
+              bottom: UtenSpacing.s8,
             ),
             child: UtenSegmentRow<PaymentStyleCategory>(
               showSelectedIcon: false,
@@ -386,7 +385,8 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.only(bottom: 8),
+            key: const ValueKey('payment-style-search-header'),
+            padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
             child: UtenHierarchySearchHeader(
               search: UtenSearchBar(
                 controller: _categorySearch,
@@ -485,78 +485,8 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
                     _select(node.id, closeDrawer: closeOnSelect),
                 // 行右键/长按菜单（2026-10-19 全站树口径）：与右侧检查器同一套
                 // 动作与拦截口径；树自带「展开/收起」通用项自动追加在后面。
-                rowMenuBuilder: (node) => [
-                  if (_canCreate)
-                    UtenMenuItem(
-                      label: '新增子类别', // TODO(l10n): 补 arb
-                      icon: Icons.add_outlined,
-                      onTap: () async {
-                        final detail = await _loadDetailForMenu(node);
-                        if (detail == null || !mounted) return;
-                        final systemLocked = _isProtectedSystemDetail(detail);
-                        final protectedLeaf =
-                            systemLocked && detail.childCount == 0;
-                        if (detail.status == '禁用') {
-                          context.appWarning('已禁用类别不能新增子类别');
-                        } else if (protectedLeaf) {
-                          context.appWarning('该系统科目可直接记账，不能再挂下级分类');
-                        } else {
-                          await _showCreate(parent: node);
-                        }
-                      },
-                    ),
-                  if (_canManage)
-                    UtenMenuItem(
-                      label: '编辑类别', // TODO(l10n): 补 arb
-                      icon: Icons.edit_outlined,
-                      onTap: () async {
-                        final detail = await _loadDetailForMenu(node);
-                        if (detail == null || !mounted) return;
-                        _showEdit(detail);
-                      },
-                    ),
-                  if (_canStatus) ...[
-                    const UtenMenuDivider(),
-                    UtenMenuItem(
-                      label: node.status == '禁用'
-                          ? '启用'
-                          : '停用', // TODO(l10n): 补 arb
-                      icon: node.status == '禁用'
-                          ? Icons.play_circle_outline_rounded
-                          : Icons.pause_circle_outline_rounded,
-                      onTap: () async {
-                        final detail = await _loadDetailForMenu(node);
-                        if (detail == null || !mounted) return;
-                        if (detail.status != '禁用') {
-                          if (_isProtectedSystemDetail(detail)) {
-                            context.appWarning('关键财务科目必须保持使用状态');
-                            return;
-                          }
-                          if (_hasActiveDescendant(node)) {
-                            context.appWarning('请先停用或迁移使用中的子类别');
-                            return;
-                          }
-                        }
-                        await _toggleStatus(detail);
-                      },
-                    ),
-                  ],
-                ],
-                trailingBuilder: (node) => Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (node.status == '禁用')
-                      const Padding(
-                        padding: EdgeInsets.only(right: UtenSpacing.s4),
-                        child: UtenStatusBadge(
-                          label: '禁用',
-                          type: UtenStatusBadgeType.neutral,
-                          size: UtenStatusBadgeSize.small,
-                        ),
-                      ),
-                    // 子类计数退役（2026-10-19 用户口径，与四个分类页同款）。
-                  ],
-                ),
+                rowMenuBuilder: _treeNodeMenu,
+                trailingBuilder: _treeNodeActions,
               ),
             ),
           ],
@@ -565,6 +495,154 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
           const Align(
             alignment: Alignment.topCenter,
             child: LinearProgressIndicator(minHeight: 2),
+          ),
+      ],
+    );
+  }
+
+  bool _nodeSystemLocked(PaymentStyleNode node) =>
+      (node.level == 0 && _protectedRootCodes.contains(node.code)) ||
+      ((node.category ?? _category.value) ==
+              PaymentStyleCategory.expense.value &&
+          const {'手续费', '汇兑损益'}.contains(node.name));
+
+  bool _nodeCanAddChild(PaymentStyleNode node) =>
+      node.status != '禁用' &&
+      !(_nodeSystemLocked(node) && node.children.isEmpty);
+  bool _nodeCanToggle(PaymentStyleNode node) =>
+      node.status == '禁用' ||
+      (!_nodeSystemLocked(node) && !_hasActiveDescendant(node));
+
+  Future<void> _addChildForNode(PaymentStyleNode node) async {
+    if (!_canCreate) return;
+    final detail = await _loadDetailForMenu(node);
+    if (detail == null || !mounted || !_canCreate) return;
+    if (detail.status == '禁用') {
+      context.appWarning('已禁用类别不能新增子类别');
+      return;
+    }
+    if (_isProtectedSystemDetail(detail) && detail.childCount == 0) {
+      context.appWarning('该系统科目可直接记账，不能再挂下级分类');
+      return;
+    }
+    await _showCreate(parent: node);
+  }
+
+  Future<void> _editNode(PaymentStyleNode node) async {
+    if (!_canManage) return;
+    final detail = await _loadDetailForMenu(node);
+    if (detail != null && mounted && _canManage) _showEdit(detail);
+  }
+
+  Future<void> _toggleNode(PaymentStyleNode node) async {
+    if (!_canStatus) return;
+    final detail = await _loadDetailForMenu(node);
+    if (detail == null || !mounted || !_canStatus) return;
+    if (detail.status != '禁用') {
+      if (_isProtectedSystemDetail(detail)) {
+        context.appWarning('关键财务科目必须保持使用状态');
+        return;
+      }
+      if (_hasActiveDescendant(node)) {
+        context.appWarning('请先停用或迁移使用中的子类别');
+        return;
+      }
+    }
+    await _toggleStatus(detail);
+  }
+
+  List<UtenContextMenuEntry> _treeNodeMenu(PaymentStyleNode node) => [
+    if (_canCreate)
+      UtenMenuItem(
+        label: '新增子类别',
+        icon: Icons.add_outlined,
+        enabled: !_treeLoading && _nodeCanAddChild(node),
+        onTap: () => _addChildForNode(node),
+      ),
+    if (_canManage)
+      UtenMenuItem(
+        label: '编辑类别',
+        icon: Icons.edit_outlined,
+        enabled: !_treeLoading,
+        onTap: () => _editNode(node),
+      ),
+    if (_canStatus) ...[
+      const UtenMenuDivider(),
+      UtenMenuItem(
+        label: node.status == '禁用' ? '启用' : '停用',
+        icon: node.status == '禁用'
+            ? Icons.play_circle_outline_rounded
+            : Icons.pause_circle_outline_rounded,
+        enabled: !_treeLoading && _nodeCanToggle(node),
+        onTap: () => _toggleNode(node),
+      ),
+    ],
+  ];
+  Widget _treeNodeActions(PaymentStyleNode node) {
+    final theme = Theme.of(context);
+    final hitExtent = UtenControlMetrics.minimumHitExtent(context, desktop: 32);
+    Widget action(
+      String key,
+      String tooltip,
+      IconData icon,
+      VoidCallback? onPressed,
+    ) => Builder(
+      builder: (rowContext) => IconButton(
+        key: ValueKey('$key-${node.id}'),
+        tooltip: tooltip,
+        constraints: BoxConstraints.tightFor(
+          width: hitExtent,
+          height: hitExtent,
+        ),
+        padding: EdgeInsets.zero,
+        onPressed: _treeLoading ? null : onPressed,
+        icon: Icon(
+          icon,
+          size: 16,
+          color:
+              UtenHierarchyRowSkin.maybeOf(rowContext)?.foreground ??
+              theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (_canCreate)
+          action(
+            'payment-style-node-add',
+            _nodeCanAddChild(node) ? '新增${node.name}的子类别' : '该类别当前不能新增子类别',
+            Icons.add_outlined,
+            _nodeCanAddChild(node) ? () => _addChildForNode(node) : null,
+          ),
+        if (_canManage)
+          action(
+            'payment-style-node-edit',
+            '编辑${node.name}',
+            Icons.edit_outlined,
+            () => _editNode(node),
+          ),
+        if (_canStatus)
+          action(
+            'payment-style-node-status',
+            _nodeCanToggle(node)
+                ? '${node.status == '禁用' ? '启用' : '停用'}${node.name}'
+                : '系统科目或使用中的子类别限制停用',
+            _nodeSystemLocked(node) && node.status != '禁用'
+                ? Icons.lock_outline_rounded
+                : node.status == '禁用'
+                ? Icons.play_circle_outline_rounded
+                : Icons.pause_circle_outline_rounded,
+            _nodeCanToggle(node) ? () => _toggleNode(node) : null,
+          ),
+        if (node.status == '禁用')
+          const Padding(
+            padding: EdgeInsets.only(right: UtenSpacing.s4),
+            child: UtenStatusBadge(
+              label: '禁用',
+              type: UtenStatusBadgeType.neutral,
+              size: UtenStatusBadgeSize.small,
+            ),
           ),
       ],
     );
@@ -615,13 +693,6 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
         : _PaymentStyleInspector(
             node: selected,
             revision: _detailRevision,
-            canCreate: _canCreate,
-            canManage: _canManage,
-            canEdit: _canEdit,
-            canStatus: _canStatus,
-            onAddChild: () => _showCreate(parent: selected),
-            onEdit: _showEdit,
-            onToggleStatus: _toggleStatus,
             onSelectChild: (id) => _select(id),
           );
 
@@ -635,6 +706,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
       selectedLeadingLabel: utenTreeSelectionPath(_tree, _selectedId),
       selectedLeadingKey: _selectedId,
       leadingNoun: '类别',
+      openLeadingButtonKey: const ValueKey('payment-style-open-directory'),
       leading: _buildDirectory(),
       trailing: detail,
     );
@@ -675,25 +747,11 @@ class _PaymentStyleInspector extends ConsumerStatefulWidget {
   const _PaymentStyleInspector({
     required this.node,
     required this.revision,
-    required this.canCreate,
-    required this.canManage,
-    required this.canEdit,
-    required this.canStatus,
-    required this.onAddChild,
-    required this.onEdit,
-    required this.onToggleStatus,
     required this.onSelectChild,
   });
 
   final PaymentStyleNode node;
   final int revision;
-  final bool canCreate;
-  final bool canManage;
-  final bool canEdit;
-  final bool canStatus;
-  final VoidCallback onAddChild;
-  final ValueChanged<PaymentStyleDetail> onEdit;
-  final Future<void> Function(PaymentStyleDetail detail) onToggleStatus;
   final ValueChanged<String> onSelectChild;
 
   @override
@@ -788,16 +846,9 @@ class _PaymentStyleInspectorState
             children: [
               _InspectorHeader(
                 detail: detail,
-                canCreate: widget.canCreate,
-                canManage: widget.canManage,
-                canEdit: widget.canEdit,
-                canStatus: widget.canStatus,
                 hasActiveDescendant: _hasActiveDescendant(widget.node),
-                onAddChild: widget.onAddChild,
-                onEdit: () => widget.onEdit(detail),
-                onToggleStatus: () => widget.onToggleStatus(detail),
               ),
-              const SizedBox(height: UtenSpacing.s20),
+              const SizedBox(height: UtenSpacing.s12),
               _BasicInfoSection(detail: detail),
               const SizedBox(height: UtenSpacing.s16),
               _BusinessAttributesSection(detail: detail),
@@ -834,86 +885,14 @@ class _PaymentStyleInspectorState
 class _InspectorHeader extends StatelessWidget {
   const _InspectorHeader({
     required this.detail,
-    required this.canCreate,
-    required this.canManage,
-    required this.canEdit,
-    required this.canStatus,
     required this.hasActiveDescendant,
-    required this.onAddChild,
-    required this.onEdit,
-    required this.onToggleStatus,
   });
-
   final PaymentStyleDetail detail;
-  final bool canCreate;
-  final bool canManage;
-  final bool canEdit;
-  final bool canStatus;
   final bool hasActiveDescendant;
-  final VoidCallback onAddChild;
-  final VoidCallback onEdit;
-  final Future<void> Function() onToggleStatus;
-
   @override
   Widget build(BuildContext context) {
     final disabled = detail.status == '禁用';
     final systemLocked = _isProtectedSystemDetail(detail);
-    final protectedLeaf = systemLocked && detail.childCount == 0;
-    final actions = Wrap(
-      spacing: UtenSpacing.s8,
-      runSpacing: UtenSpacing.s8,
-      children: [
-        if (canCreate)
-          UtenButton(
-            type: UtenButtonType.tonal,
-            icon: Icons.add_rounded,
-            onPressed: disabled || protectedLeaf ? null : onAddChild,
-            onDisabledTap: disabled || protectedLeaf
-                ? () => context.appWarning(
-                    disabled ? '已禁用类别不能新增子类别' : '该系统科目可直接记账，不能再挂下级分类',
-                  )
-                : null,
-            child: const Text('新增子类别'),
-          ),
-        if (canManage)
-          UtenButton(
-            type: UtenButtonType.secondary,
-            icon: Icons.edit_outlined,
-            onPressed: onEdit,
-            child: const Text('编辑'),
-          ),
-        if (systemLocked && !disabled)
-          const Tooltip(
-            message: '关键财务科目必须保持使用状态',
-            child: UtenStatusBadge(
-              label: '系统锁定',
-              type: UtenStatusBadgeType.info,
-              icon: Icons.lock_outline_rounded,
-            ),
-          )
-        else if (!disabled && hasActiveDescendant)
-          const Tooltip(
-            message: '请先停用或迁移使用中的子类别',
-            // 橙档（ADR-169）：停用被前置条件卡住的注意态——等的是自己
-            // 处理子类，不是等待外部，原黄档语义不符。
-            child: UtenStatusBadge(
-              label: '子类仍在使用',
-              type: UtenStatusBadgeType.orange,
-              icon: Icons.account_tree_outlined,
-            ),
-          )
-        else if (canStatus)
-          UtenActionButton(
-            type: UtenActionButtonType.ghost,
-            icon: disabled
-                ? Icons.play_circle_outline_rounded
-                : Icons.pause_circle_outline_rounded,
-            label: Text(disabled ? '启用' : '停用'),
-            onAction: onToggleStatus,
-          ),
-      ],
-    );
-
     return MasterDetailCard(
       title: detail.name,
       subtitle:
@@ -928,7 +907,24 @@ class _InspectorHeader extends StatelessWidget {
               ? UtenStatusBadgeType.neutral
               : UtenStatusBadgeType.success,
         ),
-        actions,
+        if (systemLocked && !disabled)
+          const Tooltip(
+            message: '关键财务科目必须保持使用状态',
+            child: UtenStatusBadge(
+              label: '系统锁定',
+              type: UtenStatusBadgeType.info,
+              icon: Icons.lock_outline_rounded,
+            ),
+          )
+        else if (!disabled && hasActiveDescendant)
+          const Tooltip(
+            message: '请先停用或迁移使用中的子类别',
+            child: UtenStatusBadge(
+              label: '子类仍在使用',
+              type: UtenStatusBadgeType.orange,
+              icon: Icons.account_tree_outlined,
+            ),
+          ),
       ],
     );
   }
@@ -1188,7 +1184,7 @@ class _RetentionSection extends StatelessWidget {
                       const SizedBox(height: UtenSpacing.s4),
                       Text(
                         '财务类别不直接删除，以免破坏历史、审计链或并发业务引用。'
-                        '不再使用的普通类别请在页面顶部选择“停用”。',
+                        '不再使用的普通类别请在类别目录中选择“停用”。',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
@@ -1718,29 +1714,68 @@ class _PaymentStyleEditDialogState
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (_isEdit)
-                TextFormField(
-                  errorBuilder: utenTextFieldErrorBuilder,
-                  enabled: false,
-                  initialValue: widget.editing!.code,
-                  decoration: const UtenInputDecoration(
-                    InputDecoration(labelText: '系统编号'),
-                  ),
-                )
-              else
+              if (!_isEdit) ...[
                 const _InlineNotice(
                   icon: Icons.auto_awesome_outlined,
                   text: '系统编号将在保存后自动生成，所属大类创建后不可更改。',
                 ),
-              const SizedBox(height: UtenSpacing.s12),
-              TextField(
-                controller: _nameController,
-                autofocus: !protectedName && (!_isEdit || widget.canEditFields),
-                enabled: !protectedName && (!_isEdit || widget.canEditFields),
-                maxLength: 120,
-                decoration: const UtenInputDecoration(
-                  InputDecoration(labelText: '类别名称 *'),
-                ),
+                const SizedBox(height: UtenSpacing.s12),
+              ],
+              UtenFormGrid(
+                columns: 2,
+                maxColumns: 2,
+                children: [
+                  if (_isEdit)
+                    TextFormField(
+                      errorBuilder: utenTextFieldErrorBuilder,
+                      enabled: false,
+                      initialValue: widget.editing!.code,
+                      decoration: const UtenInputDecoration(
+                        InputDecoration(labelText: '系统编号'),
+                      ),
+                    ),
+                  TextField(
+                    controller: _nameController,
+                    autofocus:
+                        !protectedName && (!_isEdit || widget.canEditFields),
+                    enabled:
+                        !protectedName && (!_isEdit || widget.canEditFields),
+                    maxLength: 120,
+                    decoration: UtenInputDecoration(
+                      InputDecoration(
+                        label: fieldLabel('类别名称', theme, required: true),
+                      ),
+                    ),
+                  ),
+                  TextField(
+                    controller: _sortOrderController,
+                    readOnly: _isEdit && !widget.canReorder,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      signed: true,
+                    ),
+                    decoration: UtenInputDecoration(
+                      InputDecoration(
+                        label: fieldLabel(
+                          '同级排序',
+                          theme,
+                          required: true,
+                          info: '数字越小越靠前，仅在同一父级内比较',
+                        ),
+                      ),
+                    ),
+                  ),
+                  UtenLocationField(
+                    headingLabel: '所属位置',
+                    pathLabel: parentPathLabel,
+                    rootLabel: '顶级类别',
+                    resultLevelLabel: 'L$resultLevel',
+                    enabled:
+                        (!_isEdit || widget.canMove) &&
+                        (!_isEdit ||
+                            !_isProtectedSystemDetail(widget.editing!)),
+                    onTap: _pickParent,
+                  ),
+                ],
               ),
               if (protectedName) ...[
                 const SizedBox(height: UtenSpacing.s8),
@@ -1749,81 +1784,54 @@ class _PaymentStyleEditDialogState
                   text: '该名称已被财务记账流程使用，不能修改。',
                 ),
               ],
-              const SizedBox(height: UtenSpacing.s12),
-              TextField(
-                controller: _sortOrderController,
-                readOnly: _isEdit && !widget.canReorder,
-                keyboardType: const TextInputType.numberWithOptions(
-                  signed: true,
-                ),
-                decoration: UtenInputDecoration(
-                  InputDecoration(
-                    label: fieldLabel(
-                      '同级排序',
-                      theme,
-                      required: true,
-                      info: '数字越小越靠前，仅在同一父级内比较',
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              UtenLocationField(
-                headingLabel: '所属位置',
-                pathLabel: parentPathLabel,
-                rootLabel: '顶级类别',
-                resultLevelLabel: 'L$resultLevel',
-                enabled:
-                    (!_isEdit || widget.canMove) &&
-                    (!_isEdit || !_isProtectedSystemDetail(widget.editing!)),
-                onTap: _pickParent,
-              ),
-              const SizedBox(height: UtenSpacing.s20),
+              const SizedBox(height: UtenSpacing.s16),
               const UtenSectionHeader(title: '业务属性', icon: Icons.tune_rounded),
               const SizedBox(height: UtenSpacing.s8),
-              SwitchListTile.adaptive(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('收款标志'),
-                subtitle: const Text('保留该类别的收方向主档属性'),
-                value: _receipt,
-                onChanged: _isEdit && !widget.canEditFields
-                    ? null
-                    : (value) => setState(() => _receipt = value),
-              ),
-              SwitchListTile.adaptive(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('付款标志'),
-                subtitle: const Text('保留该类别的付方向主档属性'),
-                value: _payment,
-                onChanged: _isEdit && !widget.canEditFields
-                    ? null
-                    : (value) => setState(() => _payment = value),
-              ),
-              SwitchListTile.adaptive(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('部门核算'),
-                subtitle: const Text('标识该类别是否具有部门核算属性'),
-                value: _departmental,
-                onChanged: _isEdit && !widget.canEditFields
-                    ? null
-                    : (value) => setState(() => _departmental = value),
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-              UtenDropdownField(
-                label: '状态',
-                value: _status,
-                enabled:
-                    widget.canStatus &&
-                    (widget.editing == null ||
-                        !_isProtectedSystemDetail(widget.editing!) ||
-                        _status == '禁用'),
-                items: const [
-                  UtenDropdownItem(value: '使用', label: '使用'),
-                  UtenDropdownItem(value: '禁用', label: '禁用'),
+              UtenFormGrid(
+                columns: 2,
+                maxColumns: 2,
+                children: [
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('收款标志'),
+                    value: _receipt,
+                    onChanged: _isEdit && !widget.canEditFields
+                        ? null
+                        : (value) => setState(() => _receipt = value),
+                  ),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('付款标志'),
+                    value: _payment,
+                    onChanged: _isEdit && !widget.canEditFields
+                        ? null
+                        : (value) => setState(() => _payment = value),
+                  ),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('部门核算'),
+                    value: _departmental,
+                    onChanged: _isEdit && !widget.canEditFields
+                        ? null
+                        : (value) => setState(() => _departmental = value),
+                  ),
+                  UtenDropdownField(
+                    label: '状态',
+                    value: _status,
+                    enabled:
+                        widget.canStatus &&
+                        (widget.editing == null ||
+                            !_isProtectedSystemDetail(widget.editing!) ||
+                            _status == '禁用'),
+                    items: const [
+                      UtenDropdownItem(value: '使用', label: '使用'),
+                      UtenDropdownItem(value: '禁用', label: '禁用'),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) setState(() => _status = value);
+                    },
+                  ),
                 ],
-                onChanged: (value) {
-                  if (value != null) setState(() => _status = value);
-                },
               ),
               const SizedBox(height: UtenSpacing.s12),
               _InlineNotice(

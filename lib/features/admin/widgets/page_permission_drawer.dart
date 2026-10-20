@@ -856,19 +856,22 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
         Expanded(child: _staffList()),
       ],
     );
-    return UtenSplitView(
-      persistenceKey: 'pagePermission.staffDepartments',
-      leadingNoun: '部门',
-      selectedLeadingLabel:
-          utenTreeSelectionPath(_departmentForest.roots, _departmentId) ??
-          '全部可管理部门',
-      selectedLeadingKey: _departmentId,
-      compactHeader: tree.header,
-      initialLeadingWidth: 240,
-      minLeadingWidth: 160,
-      maxLeadingWidth: 560,
-      leading: tree,
-      trailing: people,
+    return Padding(
+      padding: const EdgeInsets.all(UtenSpacing.s12),
+      child: UtenSplitView(
+        persistenceKey: 'pagePermission.staffDepartments',
+        leadingNoun: '部门',
+        selectedLeadingLabel:
+            utenTreeSelectionPath(_departmentForest.roots, _departmentId) ??
+            '全部可管理部门',
+        selectedLeadingKey: _departmentId,
+        compactHeader: tree.header,
+        initialLeadingWidth: 240,
+        minLeadingWidth: 160,
+        maxLeadingWidth: 560,
+        leading: tree,
+        trailing: people,
+      ),
     );
   }
 

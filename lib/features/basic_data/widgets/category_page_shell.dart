@@ -18,6 +18,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../components/data_display/uten_selection_lifecycle.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,6 +26,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_motion.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_split_view.dart';
@@ -469,18 +471,15 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   }
 
   Widget _buildGlobalSearchBox() {
+    final showScope = _globalQuery.isNotEmpty && shellCanViewCategories;
     return Padding(
       padding: const EdgeInsets.only(
         top: UtenSpacing.s12,
         bottom: UtenSpacing.s8,
       ),
-      child: AnimatedSize(
-        alignment: Alignment.topLeft,
-        duration: MediaQuery.disableAnimationsOf(context)
-            ? Duration.zero
-            : UtenAnim.fast,
-        curve: UtenAnim.standard,
-        child: Column(
+      child: UtenMotion(
+        duration: UtenAnim.fast,
+        builder: (context, duration) => Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             UtenHierarchySearchHeader(
@@ -521,33 +520,63 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
                     )
                   : null,
             ),
-            if (_globalQuery.isNotEmpty && shellCanViewCategories) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      _searchCategoryId == null
-                          ? '搜索范围：全部分类'
-                          : '搜索范围：${utenTreeSelectionPath(_tree ?? const <ProductCategoryNode>[], _searchCategoryId) ?? '所选分类'}',
-                      key: const ValueKey('category-search-scope'),
-                      softWrap: true,
-                      style: Theme.of(context).textTheme.bodySmall,
+            TweenAnimationBuilder<double>(
+              tween: Tween<double>(end: showScope ? 1 : 0),
+              duration: duration,
+              curve: UtenAnim.standard,
+              builder: (context, factor, child) => ClipRect(
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  heightFactor: factor,
+                  child: child,
+                ),
+              ),
+              child: ExcludeFocus(
+                excluding: !showScope,
+                child: ExcludeSemantics(
+                  excluding: !showScope,
+                  child: IgnorePointer(
+                    ignoring: !showScope,
+                    child: TickerMode(
+                      enabled: showScope,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const SizedBox(height: UtenSpacing.s8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  _searchCategoryId == null
+                                      ? '搜索范围：全部分类'
+                                      : '搜索范围：${utenTreeSelectionPath(_tree ?? const <ProductCategoryNode>[], _searchCategoryId) ?? '所选分类'}',
+                                  key: const ValueKey('category-search-scope'),
+                                  softWrap: true,
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ),
+                              if (_searchCategoryId != null)
+                                IconButton(
+                                  tooltip: '清除分类范围，搜索全部分类',
+                                  onPressed: () {
+                                    setState(() => _searchCategoryId = null);
+                                    shellRefreshSearch();
+                                  },
+                                  icon: const Icon(
+                                    Icons.close_rounded,
+                                    size: 18,
+                                  ),
+                                ),
+                            ],
+                          ),
+                          ...shellSearchOptions(context),
+                        ],
+                      ),
                     ),
                   ),
-                  if (_searchCategoryId != null)
-                    IconButton(
-                      tooltip: '清除分类范围，搜索全部分类',
-                      onPressed: () {
-                        setState(() => _searchCategoryId = null);
-                        shellRefreshSearch();
-                      },
-                      icon: const Icon(Icons.close_rounded, size: 18),
-                    ),
-                ],
+                ),
               ),
-              ...shellSearchOptions(context),
-            ],
+            ),
           ],
         ),
       ),
@@ -974,20 +1003,30 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
         actionLabel: '重试', // TODO(l10n): 补 arb
         onAction: shellReload,
       );
-    } else if (tree.isEmpty && _globalQuery.isEmpty) {
+    } else if (tree.isEmpty) {
+      // Keep the input in the same slot when the first character starts a
+      // global search. Switching this Column to SplitView disposes its active
+      // text input connection before the next character can arrive.
       body = Column(
         children: [
           _buildGlobalSearchBox(),
           Expanded(
-            child: UtenEmpty(
-              icon: shellEmptyIcon,
-              message: '暂无$shellContentNoun分类', // TODO(l10n): 补 arb
-              description: canCreate
-                  ? '还没有任何分类，新建第一个吧'
-                  : null, // TODO(l10n): 补 arb
-              actionLabel: canCreate ? '新建分类' : null, // TODO(l10n): 补 arb
-              onAction: canCreate ? () => shellShowCreateDialog() : null,
-            ),
+            child: _treeSearchKeyword != null && searchPaneBuilder != null
+                ? KeyedSubtree(
+                    key: ValueKey(
+                      'shell-global-search-$_shellDetailEpoch-$_searchRevision',
+                    ),
+                    child: searchPaneBuilder(_treeSearchKeyword!),
+                  )
+                : UtenEmpty(
+                    icon: shellEmptyIcon,
+                    message: '暂无$shellContentNoun分类', // TODO(l10n): 补 arb
+                    description: canCreate
+                        ? '还没有任何分类，新建第一个吧'
+                        : null, // TODO(l10n): 补 arb
+                    actionLabel: canCreate ? '新建分类' : null, // TODO(l10n): 补 arb
+                    onAction: canCreate ? () => shellShowCreateDialog() : null,
+                  ),
           ),
         ],
       );
@@ -1017,7 +1056,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
       ),
       // 页面级局部 SelectionArea：分类树/详情面板/空态文字可框选复制（准则 §3.4）。
       // 内嵌 MasterDataTableView 自带更深层 region，嵌套各管各的；AppBar 不进选择区。
-      body: SafeArea(child: SelectionArea(child: body)),
+      body: SafeArea(child: UtenSelectionArea(child: body)),
     );
   }
 }

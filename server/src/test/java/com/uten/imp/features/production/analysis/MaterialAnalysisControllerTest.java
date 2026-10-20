@@ -25,6 +25,15 @@ import static org.mockito.Mockito.when;
 class MaterialAnalysisControllerTest {
 
     @Test
+    void engineeringForwardUsesItsRegisteredAnalysisActionAndView() throws Exception {
+        Method forward = MaterialAnalysisController.class.getDeclaredMethod(
+                "forwardBomDiagnostics", MaterialAnalysisContracts.BomForwardRequest.class);
+        assertThat(forward.getAnnotation(PreAuthorize.class).value())
+                .isEqualTo("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:forward_rd')")
+                .doesNotContain("production_plan:forward_rd");
+    }
+
+    @Test
     void defaultWorkshopLookupUsesProductionPermissionAndPreferenceService()
             throws Exception {
         ProductionGoodsWorkshopPreferenceService preferences =

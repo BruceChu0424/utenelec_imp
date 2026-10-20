@@ -87,7 +87,7 @@ public class GoodsService {
     private static final Set<String> ALLOWED_NULL_FIELDS = Set.of(
             "series", "model", "material", "code", "name", "spec",
             "cNumber", "requireRemark", "paper", "rearInsertCode",
-            "colorLegacyId", "unitLegacyId", "sourceType",
+            "colorLegacyId", "unitLegacyId", "colorRef", "unitRef", "sourceType",
             // V587/V590 归属表头筛选的空值桶（@ManyToOne 属性名）。
             "owningWarehouse", "owningWorkshop");
 
@@ -115,6 +115,8 @@ public class GoodsService {
         FACET_COLUMNS.put("colorLegacyId", "color_legacy_id");
         FACET_COLUMNS.put("unitLegacyId", "unit_legacy_id");
         FACET_COLUMNS.put("sourceType", "source_type");
+        FACET_COLUMNS.put("colorRef", "color_id");
+        FACET_COLUMNS.put("unitRef", "unit_id");
     }
 
     private final GoodsRepository repo;
@@ -296,6 +298,12 @@ public class GoodsService {
         if (f.owningWorkshop() != null) {
             ps.add(cb.equal(root.get("owningWorkshop").get("id"), f.owningWorkshop()));
         }
+        if (f.colorRef() != null && !f.colorRef().isBlank()) {
+            ps.add(GoodsReferenceFacet.matches(root, cb, "colorRef", f.colorRef()));
+        }
+        if (f.unitRef() != null && !f.unitRef().isBlank()) {
+            ps.add(GoodsReferenceFacet.matches(root, cb, "unitRef", f.unitRef()));
+        }
         if (f.colorLegacyId() != null) ps.add(cb.equal(root.get("colorLegacyId"), f.colorLegacyId()));
         if (f.unitLegacyId() != null) ps.add(cb.equal(root.get("unitLegacyId"), f.unitLegacyId()));
         if (Boolean.TRUE.equals(f.excludeDisabled())) {
@@ -312,7 +320,8 @@ public class GoodsService {
         }
         if (f.nullFields() != null) {
             for (String fld : f.nullFields()) {
-                if (ALLOWED_NULL_FIELDS.contains(fld)) ps.add(cb.isNull(root.get(fld)));
+                if (GoodsReferenceFacet.supports(fld)) ps.add(cb.isNull(GoodsReferenceFacet.projection(root, cb, fld).value()));
+                else if (ALLOWED_NULL_FIELDS.contains(fld)) ps.add(cb.isNull(root.get(fld)));
             }
         }
         return cb.and(ps.toArray(new Predicate[0]));
@@ -659,7 +668,7 @@ public class GoodsService {
     @Transactional(readOnly = true)
     public com.uten.imp.features.master.goods.dto.GoodsFacetPage facetValues(
             GoodsQueryFilter filter, String field, String search, int page, int size) {
-        boolean reference = "owningWarehouse".equals(field) || "owningWorkshop".equals(field);
+        boolean reference = "owningWarehouse".equals(field) || "owningWorkshop".equals(field) || GoodsReferenceFacet.supports(field);
         if (!FACET_COLUMNS.containsKey(field) && !reference && !"code".equals(field)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "不支持的货品表头字段");
         }
@@ -675,8 +684,9 @@ public class GoodsService {
         CriteriaBuilder cb = em.getCriteriaBuilder();
         CriteriaQuery<Object[]> query = cb.createQuery(Object[].class);
         Root<Goods> root = query.from(Goods.class);
-        jakarta.persistence.criteria.Expression<?> value = reference ? root.get(field).get("id") : root.get(field);
-        jakarta.persistence.criteria.Expression<String> label = reference ? root.get(field).get("name") : null;
+        var resolved = GoodsReferenceFacet.supports(field) ? GoodsReferenceFacet.projection(root, cb, field) : null;
+        jakarta.persistence.criteria.Expression<?> value = resolved != null ? resolved.value() : reference ? root.get(field).get("id") : root.get(field);
+        jakarta.persistence.criteria.Expression<String> label = resolved != null ? resolved.label() : reference ? root.get(field).get("name") : null;
         var count = cb.count(root);
         if (reference) query.select(cb.array(value, count, label)).groupBy(value, label);
         else query.select(cb.array(value, count)).groupBy(value);
@@ -744,10 +754,11 @@ public class GoodsService {
             CriteriaBuilder cb = em.getCriteriaBuilder();
             CriteriaQuery<Object[]> query = cb.createQuery(Object[].class);
             Root<Goods> root = query.from(Goods.class);
-            boolean reference = field.equals("owningWarehouse") || field.equals("owningWorkshop");
-            jakarta.persistence.criteria.Expression<?> value = reference
+            boolean reference = field.equals("owningWarehouse") || field.equals("owningWorkshop") || GoodsReferenceFacet.supports(field);
+            var resolved = GoodsReferenceFacet.supports(field) ? GoodsReferenceFacet.projection(root, cb, field) : null;
+            jakarta.persistence.criteria.Expression<?> value = resolved != null ? resolved.value() : reference
                     ? root.get(field).get("id") : root.get(field);
-            jakarta.persistence.criteria.Expression<String> label = reference ? root.get(field).get("name") : null;
+            jakarta.persistence.criteria.Expression<String> label = resolved != null ? resolved.label() : reference ? root.get(field).get("name") : null;
             var count = cb.count(root);
             if (reference) query.select(cb.array(value, count, label)).groupBy(value, label);
             else query.select(cb.array(value, count)).groupBy(value);
@@ -766,7 +777,8 @@ public class GoodsService {
             CriteriaQuery<Long> nullQuery = cb.createQuery(Long.class);
             Root<Goods> nullRoot = nullQuery.from(Goods.class);
             nullQuery.select(cb.count(nullRoot)).where(cb.and(
-                    goodsPredicate(facetFilter, ids, scope, nullRoot, cb, keyword), cb.isNull(nullRoot.get(field)),
+                    goodsPredicate(facetFilter, ids, scope, nullRoot, cb, keyword), cb.isNull(GoodsReferenceFacet.supports(field)
+                            ? GoodsReferenceFacet.projection(nullRoot, cb, field).value() : nullRoot.get(field)),
                     com.uten.imp.features.master.search.MasterColumnSearch.predicate(cb, nullRoot.get("id"),
                             com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS, filter.columnSearch())));
             nullCounts.put(field, em.createQuery(nullQuery).getSingleResult());
@@ -776,7 +788,7 @@ public class GoodsService {
                 buckets.get("name"), buckets.get("spec"), buckets.get("material"),
                 buckets.get("rearInsertCode"), buckets.get("paper"),
                 buckets.get("colorLegacyId"), buckets.get("unitLegacyId"), buckets.get("sourceType"),
-                buckets.get("owningWarehouse"), buckets.get("owningWorkshop"), nullCounts);
+                buckets.get("owningWarehouse"), buckets.get("owningWorkshop"), nullCounts, buckets.get("colorRef"), buckets.get("unitRef"));
     }
 
     /** facets 桶展示标签：颜色/单位字段用解析名（解析不到回落 #id），其余字段=label=value。 */

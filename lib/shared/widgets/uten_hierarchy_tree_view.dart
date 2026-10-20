@@ -13,6 +13,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../../components/data_display/uten_selection_lifecycle.dart';
 
 import '../../components/feedback/uten_context_menu.dart';
 import '../../components/feedback/uten_motion.dart';
@@ -189,8 +190,15 @@ class UtenHierarchyTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
       _UtenHierarchyTreeViewState<T>();
 }
 
+class _HierarchyBranchMotion {
+  _HierarchyBranchMotion(this.controller);
+  final AnimationController controller;
+  bool closing = false;
+}
+
 class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
-    extends State<UtenHierarchyTreeView<T>> {
+    extends State<UtenHierarchyTreeView<T>>
+    with TickerProviderStateMixin {
   late TextEditingController _searchCtl;
   final _headerKey = GlobalKey();
   final _scrollController = ScrollController();
@@ -203,6 +211,14 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
   int _fontRevision = 0;
   Object? _rankKey;
   final _branchRanks = <String, int?>{};
+  final _branchMotions = <String, _HierarchyBranchMotion>{};
+
+  void _stopBranchMotions() {
+    for (final motion in _branchMotions.values) {
+      motion.controller.dispose();
+    }
+    _branchMotions.clear();
+  }
 
   bool get _searching => _query.trim().isNotEmpty;
 
@@ -254,12 +270,17 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
 
   void _onSearchChanged() {
     if (_searchCtl.value.composing != TextRange.empty) return;
+    _stopBranchMotions();
     setState(() => _query = _searchCtl.text);
   }
 
   @override
   void didUpdateWidget(UtenHierarchyTreeView<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.externalSearchQuery != widget.externalSearchQuery ||
+        oldWidget.visibleFilterIds != widget.visibleFilterIds) {
+      _stopBranchMotions();
+    }
     if (widget.searchController != oldWidget.searchController) {
       _searchCtl.removeListener(_onSearchChanged);
       if (_ownsSearchController) _searchCtl.dispose();
@@ -275,6 +296,7 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
 
   @override
   void dispose() {
+    _stopBranchMotions();
     PaintingBinding.instance.systemFonts.removeListener(_onSystemFontsChanged);
     _widthController?.reportLabelWidth(this, null);
     _widthController = null;
@@ -427,25 +449,43 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
   // Flatten models only. Each visible row is built by the viewport, including
   // children of a large expanded category; recursive Columns eagerly mounted
   // the whole branch on search, selection and expansion.
-  List<({T node, int depth, List<String> ancestors})> _rowPlan(
-    Set<String>? visible,
-  ) {
-    final rows = <({T node, int depth, List<String> ancestors})>[];
-    void walk(List<T> nodes, int depth, List<String> ancestors) {
+  List<({T node, int depth, List<String> ancestors, List<String> branches})>
+  _rowPlan(Set<String>? visible) {
+    final rows =
+        <
+          ({T node, int depth, List<String> ancestors, List<String> branches})
+        >[];
+    void walk(
+      List<T> nodes,
+      int depth,
+      List<String> ancestors,
+      List<String> branches,
+    ) {
       for (final node in _ordered(nodes)) {
         if (_passes(node)) {
-          walk(node.children, depth, ancestors);
+          walk(node.children, depth, ancestors, branches);
           continue;
         }
         if (visible != null && !visible.contains(node.id)) continue;
-        rows.add((node: node, depth: depth, ancestors: ancestors));
-        if (node.hasChildren && _rowExpanded(node)) {
-          walk(node.children, depth + 1, [...ancestors, node.name]);
+        rows.add((
+          node: node,
+          depth: depth,
+          ancestors: ancestors,
+          branches: branches,
+        ));
+        if (node.hasChildren &&
+            (_rowExpanded(node) || _branchMotions[node.id]?.closing == true)) {
+          walk(
+            node.children,
+            depth + 1,
+            [...ancestors, node.name],
+            [...branches, node.id],
+          );
         }
       }
     }
 
-    walk(widget.nodes, 0, const []);
+    walk(widget.nodes, 0, const [], const []);
     return rows;
   }
 
@@ -495,11 +535,53 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
 
   void _toggleExpand(T node) {
     if (_searching) return;
+    final duration = utenMotionDurationOf(context, UtenAnim.fast);
+    final expanding = !_expanded.contains(node.id);
     setState(() {
-      if (_expanded.contains(node.id)) {
-        _expanded.remove(node.id);
-      } else {
+      if (expanding) {
         _expanded.add(node.id);
+      } else {
+        _expanded.remove(node.id);
+      }
+      if (duration == Duration.zero ||
+          widget.visibleFilterIds != null ||
+          (widget.externalSearchQuery?.trim().isNotEmpty ?? false)) {
+        _branchMotions.remove(node.id)?.controller.dispose();
+        return;
+      }
+      final motion = _branchMotions.putIfAbsent(node.id, () {
+        final created = _HierarchyBranchMotion(
+          AnimationController(
+            vsync: this,
+            duration: duration,
+            value: expanding ? 0 : 1,
+          ),
+        );
+        created.controller.addStatusListener((status) {
+          if ((created.closing && status == AnimationStatus.dismissed) ||
+              (!created.closing && status == AnimationStatus.completed)) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted || !identical(_branchMotions[node.id], created)) {
+                return;
+              }
+              // A fast second click may have reversed this transition.
+              if ((created.closing && !created.controller.isDismissed) ||
+                  (!created.closing && !created.controller.isCompleted)) {
+                return;
+              }
+              setState(() => _branchMotions.remove(node.id));
+              created.controller.dispose();
+            });
+            WidgetsBinding.instance.ensureVisualUpdate();
+          }
+        });
+        return created;
+      });
+      motion.closing = !expanding;
+      if (expanding) {
+        motion.controller.forward();
+      } else {
+        motion.controller.reverse();
       }
     });
   }
@@ -836,10 +918,13 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
 
   @override
   Widget build(BuildContext context) => UtenPanelOpeningScope.isReadyOf(context)
-      ? UtenMotion(duration: UtenAnim.normal, builder: _buildTree)
+      ? UtenSelectionLifecycleScope(
+          child: UtenMotion(duration: UtenAnim.normal, builder: _buildTree),
+        )
       : const UtenPanelOpeningPlaceholder();
 
   Widget _buildTree(BuildContext context, Duration animDuration) {
+    if (animDuration == Duration.zero) _stopBranchMotions();
     final theme = Theme.of(context);
     _reportForestWidth(context, theme);
     _ensureBranchRanks();
@@ -914,13 +999,44 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
     Widget rowBuilder(BuildContext context, int index) {
       if (index < plan.length) {
         final entry = plan[index];
-        return RepaintBoundary(
+        final motion = entry.branches
+            .map((id) => _branchMotions[id])
+            .whereType<_HierarchyBranchMotion>()
+            .firstOrNull;
+        final opacity =
+            motion?.controller.drive(CurveTween(curve: UtenAnim.standard)) ??
+            const AlwaysStoppedAnimation<double>(1);
+        return KeyedSubtree(
           key: ValueKey('hierarchy-row:${entry.node.id}'),
-          child: _buildNode(
-            entry.node,
-            entry.depth,
-            entry.ancestors,
-            animDuration,
+          child: ExcludeFocus(
+            excluding: motion?.closing ?? false,
+            child: ExcludeSemantics(
+              excluding: motion?.closing ?? false,
+              child: IgnorePointer(
+                ignoring: motion?.closing ?? false,
+                child: FadeTransition(
+                  opacity: opacity,
+                  child: SlideTransition(
+                    position: opacity.drive(
+                      Tween<Offset>(
+                        begin: const Offset(0, 0.08),
+                        end: Offset.zero,
+                      ),
+                    ),
+                    child: UtenSelectionLifecycleScope(
+                      child: RepaintBoundary(
+                        child: _buildNode(
+                          entry.node,
+                          entry.depth,
+                          entry.ancestors,
+                          animDuration,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
         );
       }

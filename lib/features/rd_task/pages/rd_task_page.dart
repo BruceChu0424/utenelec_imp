@@ -37,9 +37,11 @@ import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/network/server_config.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/providers/session_provider.dart';
 import 'package:flutter/foundation.dart' show setEquals;
@@ -129,6 +131,14 @@ class _RdTaskPageState extends ConsumerState<RdTaskPage> {
           // 本页由工作台卡片 push 进入；无 returnTo 时回到工作台。
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
+        actions: [
+          if (_seg != _RdTaskSeg.draft)
+            IconButton(
+              tooltip: '刷新',
+              onPressed: () => setState(() => _refreshVersion++),
+              icon: const Icon(Icons.refresh_rounded),
+            ),
+        ],
       ),
       body: SafeArea(
         child: Column(
@@ -140,6 +150,7 @@ class _RdTaskPageState extends ConsumerState<RdTaskPage> {
               padding: const EdgeInsets.only(top: UtenSpacing.s12),
               child: UtenFilterToolbar<_RdTaskSeg>(
                 key: const Key('rd-task-header'),
+                compactBreakpoint: UtenBreakpoints.mediumStart,
                 segmentsKey: const Key('rd-task-segments'),
                 searchKey: const Key('rd-task-keyword'),
                 searchController: _searchController,
@@ -150,13 +161,6 @@ class _RdTaskPageState extends ConsumerState<RdTaskPage> {
                   final keyword = value.trim();
                   if (keyword != _keyword) setState(() => _keyword = keyword);
                 },
-                trailing: _seg == _RdTaskSeg.draft
-                    ? null
-                    : IconButton(
-                        tooltip: '刷新',
-                        onPressed: () => setState(() => _refreshVersion++),
-                        icon: const Icon(Icons.refresh_rounded),
-                      ),
                 segments: [
                   UtenFilterSegment(
                     value: _RdTaskSeg.draft,
@@ -235,10 +239,13 @@ class _RdTaskListPanel extends ConsumerStatefulWidget {
 class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
   int _unitOperationRevision = 0;
   bool _openingUnit = false;
+  Object? _unitOpeningToken;
   BuildContext? _unitDialogContext;
 
   void _invalidateUnitOperation() {
     _unitOperationRevision++;
+    _unitOpeningToken = null;
+    if (_openingUnit && mounted) setState(() => _openingUnit = false);
     final dialog = _unitDialogContext;
     if (dialog == null) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -253,6 +260,14 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
     });
   }
 
+  void _finishUnitOpening(Object token) {
+    if (!mounted || !identical(_unitOpeningToken, token)) return;
+    setState(() {
+      _unitOpeningToken = null;
+      _openingUnit = false;
+    });
+  }
+
   RdTaskData? _data;
   String? _error;
   bool _loading = true;
@@ -263,7 +278,7 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
   bool _hasLoaded = false;
   bool _resolving = false;
 
-  /// 桌面表格当前选中任务 id（点行触发：既打开 BOM 维护，也据此显示「标记完成」上下文条）。
+  /// 当前选中任务；办理动作悬浮在表体上，选中时不改变行与表头位置。
   String? _selectedTaskId;
 
   /// 是否有"标记完成"权限（rd_task:resolve 或超管）。仅用于决定是否暴露完成入口；
@@ -361,21 +376,27 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
             ) ??
             false);
     if (!current()) return;
-    _openingUnit = true;
+    final openingToken = Object();
+    setState(() {
+      _unitOpeningToken = openingToken;
+      _openingUnit = true;
+    });
     AuthenticatedRequestScope scope;
     try {
       scope = await repo.captureRequestScope(isCurrent: current);
     } catch (_) {
-      _openingUnit = false;
+      _finishUnitOpening(openingToken);
       return;
     }
     if (!mounted || !current()) {
-      _openingUnit = false;
+      _finishUnitOpening(openingToken);
       return;
     }
+    BuildContext? openedDialog;
     final input = await showDialog<RdInitialBasicUnitInput>(
       context: context,
       builder: (dialog) {
+        openedDialog = dialog;
         _unitDialogContext = dialog;
         return RdInitialBasicUnitDialog(
           task: row,
@@ -384,8 +405,8 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
         );
       },
     );
-    _unitDialogContext = null;
-    _openingUnit = false;
+    if (_unitDialogContext == openedDialog) _unitDialogContext = null;
+    _finishUnitOpening(openingToken);
     if (!mounted || input == null || !current()) return;
     try {
       await scope.verify();
@@ -606,39 +627,57 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
     // 2026-10-01 用户口径：删除列表上方的「待处理/进行中/已完成任务」总数
     // 指标卡——分段工具条上的计数徽章已给出同口径数字，指标卡重复展示。
     final sel = _selectedRow;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    final reconcileUnit =
+        sel?.allowedActions.contains('RECONCILE_BASIC_UNIT') ?? false;
+    final canAct =
+        sel != null &&
+        !widget.seg.isClosed &&
+        (reconcileUnit ? sel.isOpen : _resolveEligible(sel));
+    return Stack(
+      fit: StackFit.expand,
       children: [
-        // 选中可完成任务时，显示「标记完成」上下文条（行点击=开 BOM；完成走这里）。
-        if (sel != null && !widget.seg.isClosed && _resolveEligible(sel))
-          _ResolveBar(
-            task: sel,
-            resolving: _resolving,
-            onResolve: () => _onResolve(sel),
-          ),
-        Expanded(
-          child: _DesktopTaskTable(
-            key: const Key('rd-task-desktop-table'),
-            data: data,
-            items: data.items,
-            paginationScope: (widget.seg, _keyword, _category),
-            loading: _loading,
-            filters: {'category': _category.isEmpty ? null : _category},
-            onFilterChanged: (key, value) {
-              if (key != 'category') return;
-              _applyFilter(category: value ?? '');
-            },
-            onOpenGoods: _openGoodsBom,
-            onSelectionChanged: (row) =>
-                setState(() => _selectedTaskId = row.id),
-            canResolve: _resolveEligible,
-            onResolve: _onResolve,
-            onPageChanged: (page) {
-              setState(() => _page = page);
-              _load();
-            },
-          ),
+        _DesktopTaskTable(
+          key: const Key('rd-task-desktop-table'),
+          data: data,
+          items: data.items,
+          paginationScope: (widget.seg, _keyword, _category),
+          loading: _loading,
+          filters: {'category': _category.isEmpty ? null : _category},
+          onFilterChanged: (key, value) {
+            if (key != 'category') return;
+            _applyFilter(category: value ?? '');
+          },
+          onOpenGoods: _openGoodsBom,
+          onSelectionChanged: (row) => setState(() => _selectedTaskId = row.id),
+          canResolve: _resolveEligible,
+          onResolve: _onResolve,
+          onPageChanged: (page) {
+            setState(() => _page = page);
+            _load();
+          },
         ),
+        if (canAct)
+          PositionedDirectional(
+            start: UtenSpacing.s16,
+            end: UtenSpacing.s16,
+            bottom: UtenSpacing.s16,
+            child: Align(
+              alignment: AlignmentDirectional.bottomEnd,
+              child: UtenFloatingActionGroup(
+                maxWidth: 680,
+                children: [
+                  _ResolveBar(
+                    task: sel,
+                    resolving: _resolving || _openingUnit,
+                    actionLabel: reconcileUnit ? '核对基本单位' : '标记完成',
+                    onResolve: () => reconcileUnit
+                        ? _reconcileInitialBasicUnit(sel)
+                        : _onResolve(sel),
+                  ),
+                ],
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -673,7 +712,7 @@ class _DesktopTaskTable extends StatelessWidget {
   /// 点行 = 打开关联货品的 BOM 维护弹窗（不是确认完成）。
   final ValueChanged<RdTaskRow> onOpenGoods;
 
-  /// 行被点选时回调（驱动上方「标记完成」上下文条）。
+  /// 行被点选时回调（驱动悬浮办理条，不改变表格布局）。
   final ValueChanged<RdTaskRow> onSelectionChanged;
   final ValueChanged<int> onPageChanged;
   final Object paginationScope;
@@ -707,7 +746,9 @@ class _DesktopTaskTable extends StatelessWidget {
     return MasterDataTableView<RdTaskRow>(
       tableKey: 'features.rd_task.pages.rd_task_page.DesktopTaskTable.build.1',
       // 大小屏共用一张表：同一份列定义驱动，窄屏横向滚动（卡片形态已退役）。
-      bottomContentPadding: UtenCapsuleNavScope.occlusionOf(context),
+      bottomContentPadding:
+          UtenFloatingActionGroup.scrollClearance +
+          UtenCapsuleNavScope.occlusionOf(context),
       columns: [
         MasterColumnDef(
           key: 'status',
@@ -806,15 +847,23 @@ class _DesktopTaskTable extends StatelessWidget {
       nullCounts: const {},
       filters: filters,
       onFilterChanged: onFilterChanged,
-      // 行点击 = 打开关联货品的 BOM 维护弹窗；同时回调选中（驱动上方「标记完成」上下文条）。
+      // 单击选中更新悬浮条；双击打开对应办理入口，表头与行保持原位置。
       onRowTap: onOpenGoods,
       onSelectionChanged: onSelectionChanged,
       // 行菜单（右键/长按）：打开 BOM 之外承载「标记完成」。
       rowMenuBuilder: onResolve == null
           ? null
           : (item) => [
-              UtenMenuItem(label: '打开货品 BOM', onTap: () => onOpenGoods(item)),
-              if (canResolve?.call(item) ?? false)
+              UtenMenuItem(
+                label: item.allowedActions.contains('RECONCILE_BASIC_UNIT')
+                    ? '核对基本单位'
+                    : item.sourceDocType == 'MATERIAL_ANALYSIS_MASTER_ISSUE'
+                    ? '打开货品资料'
+                    : '打开货品 BOM',
+                onTap: () => onOpenGoods(item),
+              ),
+              if (!item.allowedActions.contains('RECONCILE_BASIC_UNIT') &&
+                  (canResolve?.call(item) ?? false))
                 UtenMenuItem(label: '标记完成', onTap: () => onResolve!(item)),
             ],
       rowColor: (item) => item.priority.toUpperCase() == 'URGENT'
@@ -834,11 +883,13 @@ class _ResolveBar extends StatelessWidget {
   const _ResolveBar({
     required this.task,
     required this.resolving,
+    required this.actionLabel,
     required this.onResolve,
   });
 
   final RdTaskRow task;
   final bool resolving;
+  final String actionLabel;
   final VoidCallback onResolve;
 
   @override
@@ -878,11 +929,11 @@ class _ResolveBar extends StatelessWidget {
               ],
             );
             final action = UtenButton(
-              size: UtenButtonSize.small,
+              size: UtenButtonSize.large,
               isExpanded: compact,
               onPressed: resolving ? null : onResolve,
               icon: Icons.check_circle_outline_rounded,
-              child: Text(resolving ? '处理中…' : '标记完成'),
+              child: Text(resolving ? '处理中…' : actionLabel),
             );
             if (compact) {
               return ConstrainedBox(

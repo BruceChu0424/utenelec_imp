@@ -820,11 +820,14 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
           onPressed: () => backTo(context, defaultPath: RouteName.finance),
         ),
         actions: [
-          if (_workspace == _PayablesWorkspaceView.payables && _canViewPayables)
+          if (availableWorkspaces.contains(_workspace))
             IconButton(
               icon: const Icon(Icons.refresh_rounded),
               tooltip: '刷新',
-              onPressed: _loading ? null : () => _load(1),
+              onPressed:
+                  _workspace == _PayablesWorkspaceView.payables && _loading
+                  ? null
+                  : _refreshWorkspace,
             ),
         ],
       ),
@@ -916,6 +919,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
                       Expanded(
                         child: SubcontractLossClaimPanel(
                           refreshTick: _panelRefreshTick,
+                          showRefreshAction: false,
                         ),
                       )
                     else if (_workspace ==

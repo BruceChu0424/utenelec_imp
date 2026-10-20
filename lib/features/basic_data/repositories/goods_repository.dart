@@ -11,6 +11,22 @@ import '../../../shared/models/paged_result.dart';
 import '../models/goods_node.dart';
 import '../models/master_facet.dart';
 
+/// Stable table keys retain saved layouts while relation filters use UUID-aware API references.
+String goodsFacetField(String field) => switch (field) {
+  'colorLegacyId' => 'colorRef',
+  'unitLegacyId' => 'unitRef',
+  _ => field,
+};
+
+Map<String, dynamic> goodsFilterQueryParams(Map<String, String?> filters) =>
+    masterFilterQueryParams({
+      for (final entry in filters.entries)
+        (entry.key.startsWith('search.')
+                ? entry.key
+                : goodsFacetField(entry.key)):
+            entry.value,
+    });
+
 const _maxGoodsCategoryRootsPerRequest = 32;
 const _goodsSearchMergeFetchSize = 100;
 
@@ -211,17 +227,7 @@ class DioGoodsRepository implements GoodsRepository, GoodsColumnSearchGateway {
       if (includeRelated && keyword?.trim().isNotEmpty == true)
         'includeRelated': true,
     };
-    // 哨兵值 → nullFields（Dio 把 List 序列化成重复 param，Spring Set<String> 绑定）；
-    // 其余按 字段=值 发送。
-    final nullFields = <String>[];
-    filters.forEach((k, v) {
-      if (v == kMasterFilterNullValue) {
-        nullFields.add(k);
-      } else {
-        query[k] = v;
-      }
-    });
-    if (nullFields.isNotEmpty) query['nullFields'] = nullFields;
+    query.addAll(goodsFilterQueryParams(filters));
 
     final json = await api.get(ApiEndpoints.goods, query: query);
     return PagedResult.fromJson(json, GoodsListItem.fromJson);
@@ -281,7 +287,7 @@ class DioGoodsRepository implements GoodsRepository, GoodsColumnSearchGateway {
           'includeRelated': true,
         if (excludeDisabled) 'excludeDisabled': true,
         if (excludeStub) 'excludeStub': true,
-        ...masterFilterQueryParams(filters),
+        ...goodsFilterQueryParams(filters),
       },
     );
     return GoodsFacets.fromJson(json);
@@ -375,7 +381,7 @@ class DioGoodsRepository implements GoodsRepository, GoodsColumnSearchGateway {
     final json = await api.get(
       ApiEndpoints.goods,
       query: {
-        ...masterFilterQueryParams(filters),
+        ...goodsFilterQueryParams(filters),
         'page': page,
         'size': size,
         if (categoryRootIds.isNotEmpty) 'categoryRootIds': categoryRootIds,
@@ -514,7 +520,7 @@ class DioGoodsRepository implements GoodsRepository, GoodsColumnSearchGateway {
       final ids = await api.getStringList(
         ApiEndpoints.goodsSearchCategoryIds,
         query: {
-          ...masterFilterQueryParams(filters),
+          ...goodsFilterQueryParams(filters),
           'categoryRootIds': roots,
           'categoryId': ?categoryId,
           if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),

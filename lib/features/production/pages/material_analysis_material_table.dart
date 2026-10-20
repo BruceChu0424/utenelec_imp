@@ -1822,7 +1822,8 @@ abstract class _MaterialAnalysisMaterialTableState
       key: 'orderQty',
       label: _l10n.materialToSupply,
       width: 165,
-      minimumWidthOf: (_) => 96,
+      minimumWidthOf: _materialQuantityMinimumWidth,
+      measureValueOf: (row) => _materialQuantityMeasureText(row, append: false),
       type: 'number',
       value: (row) => _materialTableOrderQtyText(row) ?? '—',
       exactValueOf: (row) => _materialTableOrderRaw(row, append: false),
@@ -1881,7 +1882,8 @@ abstract class _MaterialAnalysisMaterialTableState
       key: 'appendQty',
       label: _l10n.materialAdditionalOrder,
       width: 158,
-      minimumWidthOf: (_) => 96,
+      minimumWidthOf: _materialQuantityMinimumWidth,
+      measureValueOf: (row) => _materialQuantityMeasureText(row, append: true),
       type: 'number',
       info:
           '已经下达过的行要再下多少。默认 0 = 本次不动它，填成正数才追加。'
@@ -5347,6 +5349,82 @@ abstract class _MaterialAnalysisMaterialTableState
     );
   }
 
+  // One geometry per font/scale/direction, not a scan or text shape per material row.
+  final _quantityGeometry =
+      <
+        (TextStyle, double, TextDirection),
+        ({double digits, double ellipsis})
+      >{};
+
+  ({double digits, double ellipsis}) _materialQuantityGeometry(
+    BuildContext context,
+  ) {
+    final style =
+        Theme.of(context).textTheme.bodySmall ?? const TextStyle(fontSize: 12);
+    final scaler = MediaQuery.textScalerOf(context);
+    final direction = Directionality.of(context);
+    final key = (style, scaler.scale(style.fontSize ?? 12), direction);
+    if (_quantityGeometry.length > 8) _quantityGeometry.clear();
+    return _quantityGeometry.putIfAbsent(key, () {
+      final painter = TextPainter(
+        textDirection: direction,
+        textScaler: scaler,
+        maxLines: 1,
+      );
+      double width(String text) {
+        painter.text = TextSpan(text: text, style: style);
+        painter.layout();
+        return painter.width;
+      }
+
+      final result = (digits: width('0000.00') + 2, ellipsis: width('…'));
+      painter.dispose();
+      return result;
+    });
+  }
+
+  double _materialQuantityMinimumWidth(BuildContext context) {
+    final geometry = _materialQuantityGeometry(context);
+    final padding = UtenEditableGridCellSpec.contentPaddingOf(context);
+    return math
+        .max(
+          96,
+          24 + padding.horizontal + 4 + geometry.digits + geometry.ellipsis,
+        )
+        .ceilToDouble();
+  }
+
+  double _materialQuantityFieldHeight(BuildContext context) {
+    final style = Theme.of(context).textTheme.bodyMedium;
+    final line =
+        MediaQuery.textScalerOf(context).scale(style?.fontSize ?? 14) *
+        (style?.height ?? 1.5);
+    final padding = UtenEditableGridCellSpec.contentPaddingOf(context);
+    final density = UtenControlMetrics.usesTouchTargets(context)
+        ? VisualDensity.standard
+        : VisualDensity.compact;
+    return math.max(
+      UtenEditableGridCellSpec.heightOf(context),
+      line + padding.vertical + density.baseSizeAdjustment.dy,
+    );
+  }
+
+  String? _materialQuantityMeasureText(
+    _MaterialTableRow row, {
+    required bool append,
+  }) {
+    final value = append
+        ? _materialTableAppendQtyText(row)
+        : _materialTableOrderQtyText(row);
+    if (value == null || value == '—') return value;
+    final unit = _materialTableUnitText(row);
+    if (unit == null || unit.isEmpty) return value;
+    // This string is only shaped by MasterDataTableView's bounded width batches.
+    // Reserve a readable numeric editor plus its insets, independently of the unit.
+    final digits = value.length < 7 ? '0000.00' : value;
+    return '$digits    $unit';
+  }
+
   /// 数量输入框：填错 / 填少了当场描红(RequiredCellFrame 订阅控制器 + 估算 tick，
   /// 父行改大让这一行的还需安排涨上去时红框也立刻出现)。[suffixText] 是
   /// 2026-10-10 T9 起的单位尾注（单位列退役，单位跟着输入框走）。
@@ -5369,27 +5447,71 @@ abstract class _MaterialAnalysisMaterialTableState
       child: RequiredCellFrame(
         listenable: Listenable.merge([controller, _tableEstimateTick]),
         isEmpty: invalid,
-        child: TextField(
-          key: ValueKey(key),
-          controller: controller,
-          enabled: enabled,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          style: theme.textTheme.bodySmall,
-          decoration: UtenInputDecoration(
-            InputDecoration(
-              isDense: true,
-              hintText: hintText,
-              hintMaxLines: 1,
-              suffixText: suffixText,
-            ),
+        // The table's selectable rows query intrinsic height. Supply the shared
+        // adaptive input height before LayoutBuilder so it need not speculate.
+        child: SizedBox(
+          height: _materialQuantityFieldHeight(fieldContext),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final unit = suffixText?.trim();
+              final geometry = _materialQuantityGeometry(context);
+              final unitWidth = math.max(
+                0.0,
+                constraints.maxWidth -
+                    UtenEditableGridCellSpec.contentPaddingOf(
+                      context,
+                    ).horizontal -
+                    4 -
+                    geometry.digits,
+              );
+              return TextField(
+                key: ValueKey(key),
+                controller: controller,
+                enabled: enabled,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                style: theme.textTheme.bodySmall,
+                decoration: UtenInputDecoration(
+                  InputDecoration(
+                    isDense: true,
+                    hintText: hintText,
+                    hintMaxLines: 1,
+                    contentPadding: UtenEditableGridCellSpec.contentPaddingOf(
+                      context,
+                    ),
+                    suffix: unit == null || unit.isEmpty
+                        ? null
+                        : Padding(
+                            padding: const EdgeInsets.only(left: 4),
+                            child: Tooltip(
+                              message: unit,
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxWidth: unitWidth,
+                                ),
+                                child: Text(
+                                  unit,
+                                  maxLines: 1,
+                                  softWrap: false,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodySmall,
+                                ),
+                              ),
+                            ),
+                          ),
+                  ),
+                ),
+                // 敲键不 setState：整张表几百行，每敲一下重建一次树会卡。数量本身由
+                // controller 驱动重绘，依赖数量的列(办理可办性、筛选桶)在失焦/提交时重算。
+                onChanged: onTyped,
+                onSubmitted: (_) {
+                  setState(() {});
+                  onFinished?.call(fieldContext);
+                },
+              );
+            },
           ),
-          // 敲键不 setState：整张表几百行，每敲一下重建一次树会卡。数量本身由
-          // controller 驱动重绘，依赖数量的列(办理可办性、筛选桶)在失焦/提交时重算。
-          onChanged: onTyped,
-          onSubmitted: (_) {
-            setState(() {});
-            onFinished?.call(fieldContext);
-          },
         ),
       ),
     ),

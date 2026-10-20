@@ -479,7 +479,7 @@ abstract class _MaterialAnalysisPageBase
       diagnostic: diagnostic,
       sourceCount: _bomDiagnosticSources.length,
       busy: _checkingBom,
-      onForward: _permissions.contains('production_plan:forward_rd')
+      onForward: _permissions.contains(Perm.productionMaterialAnalysisForwardRd)
           ? (keys) async {
               await _checkBomProblems(forwardKeys: keys);
             }

@@ -25,9 +25,14 @@ import '../../../core/router/nav_helpers.dart';
 /// 产品、分析人、分析时间；追加生产仍归同一产品的未完成状态。
 /// 工单号/车间/产品编号/数量明细等执行细节双击进物料分析页查看。
 class ProductionExecutionGroupPanel extends ConsumerStatefulWidget {
-  const ProductionExecutionGroupPanel({super.key, required this.keyword});
+  const ProductionExecutionGroupPanel({
+    super.key,
+    required this.keyword,
+    this.refreshRevision = 0,
+  });
 
   final String keyword;
+  final int refreshRevision;
 
   @override
   ConsumerState<ProductionExecutionGroupPanel> createState() =>
@@ -56,19 +61,26 @@ class _ProductionExecutionGroupPanelState
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load();
+    });
   }
 
   @override
   void didUpdateWidget(covariant ProductionExecutionGroupPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.keyword != widget.keyword) {
-      _page = 1;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    final keywordChanged = oldWidget.keyword != widget.keyword;
+    if (keywordChanged || oldWidget.refreshRevision != widget.refreshRevision) {
+      if (keywordChanged) _page = 1;
+      final generation = ++_loadGeneration;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && generation == _loadGeneration) _load();
+      });
     }
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     final generation = ++_loadGeneration;
     final requestedPage = _page;
     final requestedKeyword = widget.keyword;
@@ -194,14 +206,6 @@ class _ProductionExecutionGroupPanelState
         error: _error,
         onRetry: _load,
         emptyMessage: widget.keyword.isEmpty ? '暂无进行中的物料分析或生产任务' : '没有匹配的生产任务',
-        toolbarActions: [
-          IconButton(
-            key: const Key('production-progress-refresh'),
-            tooltip: '刷新',
-            onPressed: _loading ? null : _load,
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-        ],
       ),
     );
   }

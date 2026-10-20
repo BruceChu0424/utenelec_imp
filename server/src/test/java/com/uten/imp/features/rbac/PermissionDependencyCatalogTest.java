@@ -11,6 +11,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class PermissionDependencyCatalogTest {
     @Test
+    void materialEngineeringForwardRequiresItsActualAnalysisReadWithoutPlanOrGoodsWrites() {
+        var catalog = catalog(view("production_material_analysis:view"),
+                action("production_material_analysis:forward_rd"), view("production_plan:view"),
+                action("goods:edit"));
+        assertThat(catalog.requiredPermissions("production_material_analysis:forward_rd", Set.of()))
+                .containsExactly("production_material_analysis:view");
+        assertThat(catalog.hardRequiredPermissions("production_material_analysis:forward_rd", Set.of()))
+                .containsExactly("production_material_analysis:view");
+        assertThat(catalog.usablePermissions(Set.of("production_material_analysis:forward_rd"))).isEmpty();
+        assertThat(catalog.usablePermissions(Set.of("production_material_analysis:view", "production_material_analysis:forward_rd")))
+                .containsExactlyInAnyOrder("production_material_analysis:view", "production_material_analysis:forward_rd");
+    }
+    @Test
     void anAssignedActionIsNotUsableUntilItsPageReadIsAssigned() {
         var catalog = catalog(view("sales_shipment_finance:view"), action("sales_shipment_finance:approve"));
         assertThat(catalog.usablePermissions(Set.of("sales_shipment_finance:approve"))).isEmpty();

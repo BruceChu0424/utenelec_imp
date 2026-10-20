@@ -5,6 +5,7 @@ import com.uten.imp.common.mastercode.CategoryDrivenCodeService;
 import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.features.master.supplier.dto.SupplierDetail;
 import com.uten.imp.features.master.supplier.dto.SupplierSaveRequest;
+import com.uten.imp.features.master.supplier.dto.SupplierQueryFilter;
 import com.uten.imp.features.master.suppliercategory.SupplierCategory;
 import com.uten.imp.features.master.suppliercategory.SupplierCategoryRepository;
 import com.uten.imp.features.org.employee.EmployeeRepository;
@@ -22,6 +23,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -36,6 +38,46 @@ import static org.mockito.Mockito.when;
  * 字典/详情透出（镜像客户的 V285 契约；DB 触发器兜底一致性）。
  */
 class SupplierDefaultSettlementMethodTest {
+
+    @Test
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    void listAndExportResolveCanonicalUuidNamesEvenWithoutLegacySnapshot() {
+        UUID method = UUID.randomUUID(), missing = UUID.randomUUID();
+        Supplier modern = new Supplier(); modern.setId(UUID.randomUUID()); modern.setName("现代结算供应商");
+        modern.setDefaultSettlementMethodId(method);
+        Supplier noRelation = new Supplier(); noRelation.setId(UUID.randomUUID()); noRelation.setName("未关联"); noRelation.setPriceStyle(30);
+        Supplier unresolved = new Supplier(); unresolved.setId(UUID.randomUUID()); unresolved.setName("目标缺失");
+        unresolved.setDefaultSettlementMethodId(missing); unresolved.setPriceStyle(30);
+        SupplierRepository repo = mock(SupplierRepository.class);
+        when(repo.findAll(any(Specification.class), any(org.springframework.data.domain.Pageable.class)))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(modern, noRelation, unresolved)));
+        EntityManager em = mock(EntityManager.class);
+        Query names = mock(Query.class), loss = mock(Query.class);
+        when(em.createNativeQuery(org.mockito.ArgumentMatchers.contains("FROM settlement_methods"))).thenReturn(names);
+        when(em.createNativeQuery(org.mockito.ArgumentMatchers.contains("FROM v_subcontract_supplier_loss_summary"))).thenReturn(loss);
+        when(names.setParameter(anyString(), any())).thenReturn(names);
+        when(loss.setParameter(anyString(), any())).thenReturn(loss);
+        when(names.getResultList()).thenReturn(List.<Object[]>of(new Object[]{method, "Local UAT Net30"}));
+        when(loss.getResultList()).thenReturn(List.of());
+        SupplierService service = new SupplierService(repo, mock(SupplierCategoryRepository.class), mock(TxSessionVars.class), em,
+                mock(CategoryDrivenCodeService.class), mock(EmployeeRepository.class), mock(EmployeeNameResolver.class));
+        SupplierQueryFilter filter = new SupplierQueryFilter(null, null, Set.of(),
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null);
+        var rows = service.list(filter, 1, 20, null, null).getItems();
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        assertThat(mapper.valueToTree(rows.getFirst()).path("defaultSettlementMethodId").asText()).isEqualTo(method.toString());
+        assertThat(mapper.valueToTree(rows.getFirst()).path("defaultSettlementMethodName").asText()).isEqualTo("Local UAT Net30");
+        assertThat(mapper.valueToTree(rows.get(1)).path("defaultSettlementMethodName").asText(null)).isNull();
+        assertThat(mapper.valueToTree(rows.get(2)).path("defaultSettlementMethodName").asText(null)).isNull();
+        verify(names).setParameter("ids", Set.of(method, missing));
+        var exported = service.export(filter, null, null, 100);
+        assertThat(exported.rows().getFirst().get("priceStyle")).isEqualTo("Local UAT Net30");
+        assertThat(exported.rows().get(1).get("priceStyle")).isNull();
+        assertThat(exported.rows().get(2).get("priceStyle")).isNull();
+        assertThat(modern.getPriceStyle()).isNull();
+        verify(repo, org.mockito.Mockito.never()).save(any());
+    }
 
     private EntityManager emWithMethodRow(UUID methodId, int legacyId, String name) {
         EntityManager em = mock(EntityManager.class);

@@ -230,7 +230,12 @@ void main() {
 
     expect(find.byType(UtenSplitView), findsOneWidget);
     // 2026-10-17 滑窗口径：1920 屏 browse 档 = max(720, 1920 × 75%) = 1440。
-    expect(tester.getSize(find.byType(UtenSplitView)).width, 1440);
+    final panel = tester.getRect(find.byKey(const Key('uten-adaptive-panel')));
+    final content = tester.getRect(find.byType(UtenSplitView));
+    expect(panel.width, 1440);
+    expect(content.width, 1416);
+    expect(content.left - panel.left, 12);
+    expect(panel.right - content.right, 12);
     final tree = tester.widget<UtenDepartmentTreeView>(
       find.byType(UtenDepartmentTreeView),
     );

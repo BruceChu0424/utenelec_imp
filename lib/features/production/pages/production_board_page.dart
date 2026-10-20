@@ -2,7 +2,7 @@
 //
 //  待排产：已审订单行缺口列表（交货升序 ≤3天标红）→ 勾选/全选 → 合并排产（原调度页能力）。
 //  2026-09-05 起简化：交货日期范围筛选与「建议联合分析」下线（排序/状态筛选仍在表头），
-//  刷新按钮统一放表格右上角（toolbarActions；窄屏卡片列表顶部右上角兜底）。
+//  刷新统一由页面右上角顶栏提供，当前分段保留筛选后重拉。
 //  大类行计数(2026-09-21 ADR-100 起三形态口径): 「待排产」挂红色通知徽章
 //  (调度员必须清空的队列, 计数与列表同源的分页 total); 「进行中」挂黄色进行中
 //  徽章 —— 按最外层分析/根计划聚合的在办批次, 已经在跑、此刻没人等调度员动手,
@@ -89,7 +89,7 @@ class ProductionBoardPage extends ConsumerStatefulWidget {
 }
 
 class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
-  /// 顶栏刷新按钮 → 待排产面板整页重拉（列表回第 1 页 + 进行中计数失效）。
+  /// 顶栏刷新与返回刷新共同推进；当前草稿/待排产/进行中/历史面板接收此代际。
   int _refreshRevision = 0;
 
   /// 当前大类分段：pending/progress/history；null = 未选择引导态（不发请求）。
@@ -122,8 +122,7 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
     _myLocation ??= currentLocationOr(context, RouteName.productionSchedule);
     // 返回即刷新（防御性注册）：子页（联合分析/恢复分析/计划详情）若以 go/
     // popOrBackTo 栈空分支收尾，push 的 Future 会丢——登记后期间写过数据就
-    // 走与顶栏刷新按钮同一条路（驱动待排产面板重拉；进行中/历史面板各自有
-    // 自己的刷新信号注册）。
+    // 走与顶栏刷新按钮同一条路，驱动当前分段重拉。
     ref.onPageResume(_myLocation!, () => setState(() => _refreshRevision++));
     final segment = _segment;
     final historyReady = _historyTime.range != null || _historyTime.all;
@@ -253,6 +252,7 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
                         ? ProductionExecutionGroupPanel(
                             key: const Key('production-board-progress'),
                             keyword: _keyword,
+                            refreshRevision: _refreshRevision,
                           )
                         : const UtenFilterPlaceholder(
                             key: Key('production-board-progress-no-permission'),
@@ -271,6 +271,7 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
                             ),
                             closed: true,
                             keyword: _keyword,
+                            refreshRevision: _refreshRevision,
                             forcedDateFrom: _historyTime.range == null
                                 ? null
                                 : ChinaDateTime.formatDate(
@@ -920,7 +921,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     return Scaffold(
       // 容器（UtenContentContainer.wide）由页面级统一提供，面板不再自套（避免双 gutter）。
       // 2026-09-05 起：交货日期范围筛选与「建议联合分析」按钮下线——排序/状态
-      // 筛选在表头，刷新统一放右上角（表格 toolbarActions；窄屏列表顶部右上角）。
+      // 筛选在表头，刷新统一由页面右上角顶栏提供。
       body: Column(
         children: [
           const ProductionFqcReplenishmentBanner(),
@@ -933,7 +934,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     );
   }
 
-  /// 右上角刷新按钮（桌面表格进 toolbarActions，窄屏卡片列表顶部右上角）。
+  /// 页面右上角刷新信号的处理入口。
   /// 整页刷新(2026-09-05 用户口径)：列表回第 1 页 + 大类行计数(徽章汇总)一并重拉。
   void _refreshAll() {
     refreshBadges(ref);
@@ -1188,6 +1189,7 @@ class _PlanPanel extends ConsumerStatefulWidget {
     super.key,
     required this.closed,
     required this.keyword,
+    this.refreshRevision = 0,
     this.forcedDateFrom,
     this.forcedDateTo,
   });
@@ -1196,6 +1198,7 @@ class _PlanPanel extends ConsumerStatefulWidget {
 
   /// 页级搜索关键字（300ms 防抖后的值；变化即重拉）。
   final String keyword;
+  final int refreshRevision;
 
   /// 历史记录段强制开单日期范围（yyyy-MM-dd；历史模式下时间门控值即日期，
   /// 面板内不再显示自带的开单日期按钮）。非 null 即历史模式。
@@ -1212,6 +1215,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
   List<String> _workshops = const [];
   bool _loading = false;
   String? _error;
+  int _loadGeneration = 0;
 
   int _pageNo = 1;
   int _pageSize = 20;
@@ -1253,11 +1257,19 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
   @override
   void didUpdateWidget(covariant _PlanPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.keyword != widget.keyword ||
+    final refreshChanged = oldWidget.refreshRevision != widget.refreshRevision;
+    if (refreshChanged ||
+        oldWidget.keyword != widget.keyword ||
         oldWidget.forcedDateFrom != widget.forcedDateFrom ||
         oldWidget.forcedDateTo != widget.forcedDateTo) {
+      final generation = ++_loadGeneration;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _reload();
+        if (!mounted || generation != _loadGeneration) return;
+        if (refreshChanged) {
+          _refreshAll();
+        } else {
+          _reload();
+        }
       });
     }
   }
@@ -1272,6 +1284,8 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
+    final generation = ++_loadGeneration;
     setState(() {
       _loading = true;
       _error = null;
@@ -1305,7 +1319,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
         ),
         repo.planProgressWorkshops(closed: widget.closed),
       ]);
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       final page = results[0] as PagedResult<PlanProgressRow>;
       // 服务端已把越界页码回退到最后一页；与本地页码不一致时对齐（如过滤后总数变少）
       if (page.page != _pageNo) {
@@ -1318,7 +1332,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
         _loading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _error = productionErrorMessage(e, fallback: '加载生产进度失败');
         _loading = false;
@@ -1399,7 +1413,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
   }
 
   /// 筛选面板：车间 / 排序 / 开单日期范围（历史模式隐藏——日期来自时间门控）/
-  /// 显示设置 / 刷新（搜索在大类行，页级统一下发）。
+  /// 显示设置（搜索与刷新在页级统一提供）。
   /// vertical=true 宽屏左栏竖排；false 窄屏顶部 Wrap 横排。
   Widget _controls(ThemeData theme, {required bool vertical}) {
     final showDates =
@@ -1423,7 +1437,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
             Align(alignment: Alignment.centerLeft, child: _dateRange()),
           ],
           const SizedBox(height: UtenSpacing.s4),
-          Row(children: [_settingsMenu(), const Spacer(), _refreshBtn()]),
+          Align(alignment: Alignment.centerLeft, child: _settingsMenu()),
         ],
       );
     }
@@ -1443,12 +1457,9 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                       const SizedBox(height: UtenSpacing.s8),
                       _dateRange(),
                     ],
-                    Row(
-                      children: [
-                        _settingsMenu(),
-                        const Spacer(),
-                        _refreshBtn(),
-                      ],
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: _settingsMenu(),
                     ),
                   ],
                 )
@@ -1461,7 +1472,6 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                     SizedBox(width: 160, child: _sortDropdown()),
                     if (showDates) _dateRange(),
                     _settingsMenu(),
-                    _refreshBtn(),
                   ],
                 ),
         );
@@ -1575,14 +1585,6 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
   void _refreshAll() {
     refreshBadges(ref);
     _reload();
-  }
-
-  Widget _refreshBtn() {
-    return IconButton(
-      icon: const Icon(Icons.refresh_rounded),
-      tooltip: '刷新',
-      onPressed: _loading ? null : _refreshAll,
-    );
   }
 
   PopupMenuItem<void> _checkItem(

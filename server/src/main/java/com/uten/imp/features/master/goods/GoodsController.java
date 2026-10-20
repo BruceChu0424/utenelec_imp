@@ -86,6 +86,8 @@ public class GoodsController {
             @RequestParam(required = false) String paper,
             @RequestParam(required = false) Integer colorLegacyId,
             @RequestParam(required = false) Integer unitLegacyId,
+            @RequestParam(required = false) String colorRef,
+            @RequestParam(required = false) String unitRef,
             @RequestParam(required = false) String sourceType,
             @RequestParam(required = false) Boolean excludeDisabled,
             @RequestParam(required = false) Boolean excludeStub,
@@ -105,7 +107,7 @@ public class GoodsController {
                 colorLegacyId, unitLegacyId, sourceType, excludeDisabled,
                 excludeStub, disabledOnly, stubOnly,
                 owningWarehouse, owningWorkshop, includeRelated).withColumnSearch(
-                        com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)), page, size, sort, order);
+                        com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)).withReferences(colorRef, unitRef), page, size, sort, order);
     }
 
     /** 统一选择器搜索定位：只返回受 scope/权限约束的命中货品分类 id，不下载全部货品页。 */
@@ -184,6 +186,8 @@ public class GoodsController {
             @RequestParam(required = false) String paper,
             @RequestParam(required = false) Integer colorLegacyId,
             @RequestParam(required = false) Integer unitLegacyId,
+            @RequestParam(required = false) String colorRef,
+            @RequestParam(required = false) String unitRef,
             @RequestParam(required = false) String sourceType,
             @RequestParam(required = false) Boolean excludeDisabled,
             @RequestParam(required = false) Boolean excludeStub,
@@ -200,7 +204,7 @@ public class GoodsController {
                 mouldCode, rearInsertCode, paper,
                 colorLegacyId, unitLegacyId, sourceType, excludeDisabled,
                 excludeStub, disabledOnly, stubOnly, owningWarehouse, owningWorkshop, includeRelated).withColumnSearch(
-                        com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)), sort, order,
+                        com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)).withReferences(colorRef, unitRef), sort, order,
                 exportLimits.exportMaxRows());
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(),
                 GoodsExportProjection.forImportTemplate(body.columnProjection()), "master_goods");

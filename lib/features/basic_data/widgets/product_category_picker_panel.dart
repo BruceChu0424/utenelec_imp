@@ -201,46 +201,49 @@ class _ProductCategoryPickerSheetState
             ),
             const Divider(height: 1),
             Expanded(
-              child: widget.tree.isEmpty
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(UtenSpacing.s24),
-                        child: Text(
-                          '暂无可选分类', // TODO(l10n): 补 arb
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
+              child: Padding(
+                padding: const EdgeInsets.all(UtenSpacing.s12),
+                child: widget.tree.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(UtenSpacing.s24),
+                          child: Text(
+                            '暂无可选分类', // TODO(l10n): 补 arb
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      )
+                    : UtenCategoryTreeView<ProductCategoryNode>(
+                        key: const Key('category-picker-tree'),
+                        nodes: widget.tree,
+                        mode: UtenCategoryTreeMode.single,
+                        selectedIds: {?_pendingSelection?.id},
+                        // 行点击只暂存选择；展开/收起交给左侧 chevron。
+                        // 左树默认全部收起（2026-09-24 用户口径，与货品选择滑窗同款）。
+                        initiallyExpandDepth: 0,
+                        initiallyCollapsedNames: const {'未分类'},
+                        searchFieldKey: const Key('category-picker-search'),
+                        searchHint: '搜索分类名称 / 编号', // TODO(l10n): 补 arb
+                        // 无缩进层级色（与货品选择滑窗左树同款，2026-09-24）。
+                        flatLevelColors: true,
+                        trailingBuilder: (node) => node.goodsCount == null
+                            ? null
+                            : Text(
+                                '${node.goodsCount}',
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                        onToggleSelect: (node) => setState(
+                          () => _pendingSelection = ProductCategoryPickResult(
+                            id: node.id,
+                            name: node.name,
                           ),
                         ),
                       ),
-                    )
-                  : UtenCategoryTreeView<ProductCategoryNode>(
-                      key: const Key('category-picker-tree'),
-                      nodes: widget.tree,
-                      mode: UtenCategoryTreeMode.single,
-                      selectedIds: {?_pendingSelection?.id},
-                      // 行点击只暂存选择；展开/收起交给左侧 chevron。
-                      // 左树默认全部收起（2026-09-24 用户口径，与货品选择滑窗同款）。
-                      initiallyExpandDepth: 0,
-                      initiallyCollapsedNames: const {'未分类'},
-                      searchFieldKey: const Key('category-picker-search'),
-                      searchHint: '搜索分类名称 / 编号', // TODO(l10n): 补 arb
-                      // 无缩进层级色（与货品选择滑窗左树同款，2026-09-24）。
-                      flatLevelColors: true,
-                      trailingBuilder: (node) => node.goodsCount == null
-                          ? null
-                          : Text(
-                              '${node.goodsCount}',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                      onToggleSelect: (node) => setState(
-                        () => _pendingSelection = ProductCategoryPickResult(
-                          id: node.id,
-                          name: node.name,
-                        ),
-                      ),
-                    ),
+              ),
             ),
             UtenPickerConfirmBar(
               selectedCount: _pendingSelection == null ? 0 : 1,

@@ -587,7 +587,10 @@ class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet> {
               selectedLeadingLabel: _categoryName,
               selectedLeadingKey: _categoryId,
               openLeadingButtonKey: const Key('mould-picker-open-categories'),
-              leading: _categoryTree(),
+              leading: Padding(
+                padding: const EdgeInsets.all(UtenSpacing.s12),
+                child: _categoryTree(),
+              ),
               trailing: Padding(
                 padding: const EdgeInsets.all(UtenSpacing.s12),
                 child: Column(

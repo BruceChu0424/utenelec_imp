@@ -517,6 +517,10 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     final includeRelated = _includeRelated;
     final categoryBrowsing = shellCanViewCategories;
     return MasterEntityPaneConfig<GoodsListItem, GoodsDetail>(
+      filterParamOfColumn: const {
+        'colorLegacyId': 'colorRef',
+        'unitLegacyId': 'unitRef',
+      },
       noun: '货品', // TODO(l10n): 补 arb
       icon: Icons.inventory_2_outlined,
       defaultCodePrefix: 'HP',
@@ -577,7 +581,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
               keyword: query.keyword,
               includeRelated: includeRelated && query.hasKeyword,
               filters: query.filters,
-              excludeDisabled: !query.hasKeyword,
+              excludeDisabled: categoryBrowsing && !query.hasKeyword,
               excludeStub: true,
             ),
       batchEntityPath: ApiEndpoints.goods,
@@ -593,7 +597,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
         permission: Perm.goodsExport,
         label: '导出货品', // TODO(l10n): 补 arb
         queryParamsOf: (query) => {
-          'excludeDisabled': !query.hasKeyword,
+          'excludeDisabled': categoryBrowsing && !query.hasKeyword,
           'excludeStub': true,
           if (includeRelated && query.hasKeyword) 'includeRelated': true,
         },

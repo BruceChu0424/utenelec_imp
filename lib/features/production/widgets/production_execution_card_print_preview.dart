@@ -8,6 +8,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_table_surface.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/print/pdf_printer.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -588,45 +589,56 @@ class _ProductionExecutionCardPrintDialogState
             else
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
-                child: DataTable(
-                  headingRowHeight: 40,
-                  dataRowMinHeight: 40,
-                  dataRowMaxHeight: 56,
-                  columns: const [
-                    // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
-                    DataColumn(label: Text('物料名称')),
-                    DataColumn(label: Text('编号')),
-                    DataColumn(label: Text('颜色')),
-                    DataColumn(label: Text('规格')),
-                    DataColumn(label: Text('单位')),
-                    DataColumn(label: Text('用量口径')),
-                    // 全站表格口径（2026-10-10）：数字列也左对齐，不再 numeric 右对齐。
-                    DataColumn(label: Text('需求数量')),
-                    DataColumn(label: Text('现货承诺')),
-                    DataColumn(label: Text('缺口')),
-                    DataColumn(label: Text('供给路线')),
-                  ],
-                  rows: [
-                    for (final material in card.materials)
-                      DataRow(
-                        cells: [
-                          DataCell(Text(_value(material.goodsName))),
-                          DataCell(Text(_value(material.goodsCode))),
-                          DataCell(Text(_value(material.colorName))),
-                          DataCell(Text(_value(material.spec))),
-                          DataCell(Text(_value(material.unitName))),
-                          DataCell(
-                            Text(
-                              formatProductionWorkCardMaterialUsage(material),
-                            ),
-                          ),
-                          DataCell(Text(_qty(material.requiredQty))),
-                          DataCell(Text(_qty(material.stockAllocatedQty))),
-                          DataCell(Text(_qty(material.shortageQty))),
-                          DataCell(Text(_routeLabel(material.supplyRoute))),
-                        ],
+                child: UtenTableHeaderSurface(
+                  child: DataTable(
+                    border: TableBorder(
+                      right: BorderSide(
+                        color: theme.colorScheme.outline,
+                        width: 0.5,
                       ),
-                  ],
+                    ),
+                    headingRowColor: WidgetStatePropertyAll(
+                      theme.colorScheme.surfaceContainerHigh,
+                    ),
+                    headingRowHeight: 40,
+                    dataRowMinHeight: 40,
+                    dataRowMaxHeight: 56,
+                    columns: const [
+                      // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
+                      DataColumn(label: Text('物料名称')),
+                      DataColumn(label: Text('编号')),
+                      DataColumn(label: Text('颜色')),
+                      DataColumn(label: Text('规格')),
+                      DataColumn(label: Text('单位')),
+                      DataColumn(label: Text('用量口径')),
+                      // 全站表格口径（2026-10-10）：数字列也左对齐，不再 numeric 右对齐。
+                      DataColumn(label: Text('需求数量')),
+                      DataColumn(label: Text('现货承诺')),
+                      DataColumn(label: Text('缺口')),
+                      DataColumn(label: Text('供给路线')),
+                    ],
+                    rows: [
+                      for (final material in card.materials)
+                        DataRow(
+                          cells: [
+                            DataCell(Text(_value(material.goodsName))),
+                            DataCell(Text(_value(material.goodsCode))),
+                            DataCell(Text(_value(material.colorName))),
+                            DataCell(Text(_value(material.spec))),
+                            DataCell(Text(_value(material.unitName))),
+                            DataCell(
+                              Text(
+                                formatProductionWorkCardMaterialUsage(material),
+                              ),
+                            ),
+                            DataCell(Text(_qty(material.requiredQty))),
+                            DataCell(Text(_qty(material.stockAllocatedQty))),
+                            DataCell(Text(_qty(material.shortageQty))),
+                            DataCell(Text(_routeLabel(material.supplyRoute))),
+                          ],
+                        ),
+                    ],
+                  ),
                 ),
               ),
             if (_present(card.requestNote) || _present(card.remark)) ...[

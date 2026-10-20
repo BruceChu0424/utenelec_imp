@@ -6,10 +6,10 @@ import '../../../shared/providers/authenticated_scope_provider.dart';
 class MouldManufacturerRepository {
   MouldManufacturerRepository(this.api);
   final ApiClient api;
-  Future<List<String>> suggestions(String keyword) async => (await api.getList(
+  Future<List<String>> suggestions(String keyword) => api.getStringList(
     '${ApiEndpoints.moulds}/manufacturer-suggestions',
     query: {'q': keyword.trim()},
-  )).map((value) => value.toString()).toList(growable: false);
+  );
 }
 
 final mouldManufacturerRepositoryProvider = Provider((ref) {

@@ -34,6 +34,7 @@ public final class PermissionDependencyCatalog {
         actions(hard, catalog, "production_quality_inspection", "approve");
         actions(hard, catalog, "website", "content_edit", "product_edit", "media_manage", "publish", "rollback");
         add(hard, catalog, "goods:price_analysis:view", "goods:view");
+        add(hard, catalog, "production_material_analysis:forward_rd", "production_material_analysis:view");
         // Import preview legitimately edits cost inputs without general goods browsing.
         add(hard, catalog, "goods:cost:edit", "goods:cost:view");
         for (String operation : List.of("confirm", "export", "template")) {
@@ -102,7 +103,7 @@ public final class PermissionDependencyCatalog {
                 "request_material_increment", "request_overproduction_rate", "request_supplement_plan");
         actions(rules, catalog, "production_daily_report", "create", "edit", "delete", "approve", "reverse");
         actions(rules, catalog, "production_material_analysis", "create", "refresh", "cancel", "route", "notify",
-                "generate", "reallocate", "cross_reallocate", "over_supply", "claim_shared_future");
+                "generate", "reallocate", "cross_reallocate", "over_supply", "claim_shared_future", "forward_rd");
         actions(rules, catalog, "production_fqc_replenishment", "confirm");
         for (String resource : List.of("finance_receipt", "finance_payment", "finance_expense",
                 "finance_other_income", "finance_bank_transfer")) {

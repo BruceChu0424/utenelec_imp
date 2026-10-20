@@ -730,7 +730,11 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
     MasterDetailRow('模数', d.qty), // TODO(l10n): 补 arb
     MasterDetailRow('套数', goodsQtyText(d.tqty)), // TODO(l10n): 补 arb
     MasterDetailRow('状态', d.status), // TODO(l10n): 补 arb
-    MasterDetailRow('车间', d.place), // TODO(l10n): 补 arb
+    MasterDetailRow(
+      '车间',
+      d.departmentId?.trim().isNotEmpty == true ? d.departmentName : null,
+    ), // TODO(l10n): 补 arb
+    MasterDetailRow('存放位置', d.place), // TODO(l10n): 补 arb
     MasterDetailRow('保管人', d.keeper), // TODO(l10n): 补 arb
     MasterDetailRow('制造年月', d.mstatus), // TODO(l10n): 补 arb
     MasterDetailRow('模具制造商', d.manufacturer),

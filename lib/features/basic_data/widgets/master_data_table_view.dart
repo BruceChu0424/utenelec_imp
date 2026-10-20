@@ -1,5 +1,6 @@
 import '../../../components/data_display/uten_table_surface.dart';
 import '../../../components/data_display/uten_table_text_selection.dart';
+import '../../../components/data_display/uten_selection_lifecycle.dart';
 import '../../../components/data_display/uten_table_row_drag.dart';
 import '../../../shared/platform_tables/platform_table_binding.dart';
 import '../../../shared/platform_tables/platform_table_controller.dart';
@@ -89,6 +90,7 @@ class MasterColumnDef<T> {
     required this.label,
     required this.width,
     required this.value,
+    this.measureValueOf,
     this.minimumWidthOf,
     this.cellHorizontalPaddingOf,
     this.type = 'text',
@@ -147,6 +149,11 @@ class MasterColumnDef<T> {
   /// side. Header labels retain their existing padding and tooltip behavior.
   final double Function(BuildContext context)? cellHorizontalPaddingOf;
   final String? Function(T item) value;
+
+  /// Presentation-only text for automatic width sampling of rich controls.
+  /// Uses the existing per-frame measurement budget; value/exactValueOf remain
+  /// authoritative for filtering, sorting, semantics and export.
+  final String? Function(T item)? measureValueOf;
 
   /// 表头说明（2026-09-06）：非空时列头标签后渲染 ⓘ——桌面悬停出 Tooltip、
   /// 点击（含手机）弹出说明小窗。用于业务口径晦涩的列（如物料分析的数量列）
@@ -3375,7 +3382,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // 去重集合只防重复量同一串；过大时清掉(最大宽度已记下，不影响结果)。
     if (measure.seen.length > 4000) measure.seen.clear();
     for (var r = 0; r < pool.length; r++) {
-      final text = def.value(pool[r]) ?? '';
+      final text = (def.measureValueOf ?? def.value)(pool[r]) ?? '';
       if (text.isEmpty || !measure.seen.add(text)) continue;
       final width = _measureText(text, measureStyle, textScaler);
       if (width > measure.body) measure.body = width;
@@ -3488,6 +3495,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   @override
   void dispose() {
     // 拖拽中表被卸载（翻页/切路由）：清计时器、键监听与幽灵卡，防止悬挂。
+    _textSelection.dispose();
     _dragAutoScroll?.cancel();
     _dragHoverTimer?.cancel();
     _dragRetracking?.cancel();
@@ -5000,8 +5008,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 表体选择区保持稳定，切分类时不撤掉 ListView 的 SelectionRegistrar。
   /// SDK 的行保活节点在祖先 registrar 变 null 后仍可能收到旧文本的 remove，
   /// 此时内部强制解引用会崩溃。禁用文字选择必须放在行保活节点下面。
-  Widget _maybeSelectionArea(Widget child) => SelectionArea(
-    key: _textSelection.areaKey,
+  Widget _maybeSelectionArea(Widget child) => UtenSelectionArea(
+    selectionKey: _textSelection.areaKey,
     onSelectionChanged: _textSelection.onSelectionChanged,
     // 2026-09-15 用户口径：表格自带右键行菜单时，只显示自家菜单。右键点到
     // 可选文字上 SelectionArea 会弹框架默认「全选/复制」工具条与行菜单撞车
@@ -5016,7 +5024,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// SelectionKeepAlive 的祖先 registrar；行勾选不影响文字选择。
   Widget _rowSelectionArea(Widget child) => !widget.enableTextSelection
       ? SelectionContainer.disabled(child: child)
-      : child;
+      : UtenSelectionLifecycleScope(child: child);
 
   // ===== 行拖拽实现（配置见 UtenTableRowDrag） =====
 

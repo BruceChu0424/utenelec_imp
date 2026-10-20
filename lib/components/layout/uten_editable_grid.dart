@@ -1,6 +1,7 @@
 import '../data_display/uten_table_surface.dart';
 import 'uten_panel_opening_scope.dart';
 import '../data_display/uten_table_text_selection.dart';
+import '../data_display/uten_selection_lifecycle.dart';
 import '../../shared/platform_tables/platform_table_binding.dart';
 import '../../shared/platform_tables/platform_table_controller.dart';
 import '../../shared/platform_tables/platform_table_picker.dart';
@@ -2407,6 +2408,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
   @override
   void dispose() {
     _projection?.remove(this);
+    _textSelection.dispose();
     _aiSlot.detach();
     _platform.dispose();
     _pagePos?.removeListener(_onPagePosChanged);
@@ -2769,8 +2771,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
               // Plain Text and custom read-only cells share a local region;
               // TextField keeps its own native selection. Header and action
               // gestures stay outside it, isolated from any page region.
-              child: SelectionArea(
-                key: _textSelection.areaKey,
+              child: UtenSelectionArea(
+                selectionKey: _textSelection.areaKey,
                 onSelectionChanged: _textSelection.onSelectionChanged,
                 child: ListenableBuilder(
                   // 只随行集变化重建；勾选由各行自己订阅(见 _RowSelectionListener)。

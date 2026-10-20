@@ -31,4 +31,7 @@ public class GoodsFacets {
     /** V590 生产车间桶：value=department UUID，label=车间名。 */
     private final List<FacetBucket> owningWorkshop;
     private final Map<String, Long> nullCounts;
+    /** UUID-first references; unresolved historical references use legacy:<id>. */
+    private final List<FacetBucket> colorRef;
+    private final List<FacetBucket> unitRef;
 }

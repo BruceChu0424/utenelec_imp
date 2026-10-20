@@ -621,17 +621,20 @@ class _DepartmentPickerSheetState extends State<_DepartmentPickerSheet> {
           ),
         ),
         Expanded(
-          child: UtenDepartmentTreeView(
-            nodes: widget.tree,
-            mode: _isMulti
-                ? UtenDepartmentTreeMode.multi
-                : UtenDepartmentTreeMode.single,
-            selectedIds: _selected.keys.toSet(),
-            onToggleSelect: _onToggleSelect,
-            trailingBuilder: widget.badgeCountFor == null ? null : _badge,
-            expandOnRowTap: widget.expandOnRowTap,
-            initiallyExpandedIds: widget.initiallyExpandedIds,
-            nodeEnabledPredicate: widget.selectablePredicate,
+          child: Padding(
+            padding: const EdgeInsets.all(UtenSpacing.s12),
+            child: UtenDepartmentTreeView(
+              nodes: widget.tree,
+              mode: _isMulti
+                  ? UtenDepartmentTreeMode.multi
+                  : UtenDepartmentTreeMode.single,
+              selectedIds: _selected.keys.toSet(),
+              onToggleSelect: _onToggleSelect,
+              trailingBuilder: widget.badgeCountFor == null ? null : _badge,
+              expandOnRowTap: widget.expandOnRowTap,
+              initiallyExpandedIds: widget.initiallyExpandedIds,
+              nodeEnabledPredicate: widget.selectablePredicate,
+            ),
           ),
         ),
         UtenPickerConfirmBar(

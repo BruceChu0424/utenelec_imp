@@ -23,6 +23,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../data_display/uten_selection_lifecycle.dart';
 
 import '../../core/responsive/breakpoint.dart';
 import '../../core/responsive/display_zoom.dart';
@@ -128,7 +129,7 @@ class UtenContentContainer extends StatelessWidget {
             width: double.infinity,
             // 局部 SelectionArea：页面正文文字可框选复制（准则 §3.4 局部包裹口径）。
             child: _ContentGutterScope(
-              child: selectable ? SelectionArea(child: child) : child,
+              child: selectable ? UtenSelectionArea(child: child) : child,
             ),
           ),
         );

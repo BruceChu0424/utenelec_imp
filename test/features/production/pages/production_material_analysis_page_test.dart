@@ -207,7 +207,7 @@ void main() {
         ],
         permissions: const {
           Perm.productionMaterialAnalysisCreate,
-          'production_plan:forward_rd',
+          Perm.productionMaterialAnalysisForwardRd,
         },
         errorOverride: (request) =>
             request.path.endsWith('/preview') && !repaired

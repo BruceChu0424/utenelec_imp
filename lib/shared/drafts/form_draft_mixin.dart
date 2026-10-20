@@ -813,6 +813,18 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
 
   Future<bool> confirmFormDraftExit() => _confirmDraftExit();
 
+  Future<void> _returnToWorkbench() async {
+    final router = GoRouter.of(context);
+    final route = ModalRoute.of(context);
+    // Root-navigator dialogs outlive changes to a nested shell's page. Retain
+    // the original command first, then close its modal before changing pages.
+    if (route is PopupRoute) {
+      if (!await _confirmDraftExit() || !mounted || !route.isCurrent) return;
+      route.navigator?.pop();
+    }
+    if (mounted) router.go('/dashboard');
+  }
+
   Future<bool> _showDraftExitPrompt() async {
     final unknown = formDraftHasUnknownSubmission;
     final decision = await showDialog<String>(
@@ -993,8 +1005,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
                           const SizedBox(height: 12),
                         ],
                         FilledButton(
-                          onPressed: () =>
-                              GoRouter.of(context).go('/dashboard'),
+                          onPressed: _returnToWorkbench,
                           child: const Text('返回工作台'),
                         ),
                       ],

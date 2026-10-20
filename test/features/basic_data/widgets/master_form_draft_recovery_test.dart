@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_edit_dialog.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -89,6 +90,87 @@ void main() {
       container.dispose();
     },
   );
+
+  for (final size in [const Size(1400, 1000), const Size(480, 1000)]) {
+    testWidgets(
+      'unknown master submission leaves its modal after retaining evidence at $size',
+      (tester) async {
+        await tester.binding.setSurfaceSize(size);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        var submits = 0;
+        final container = ProviderContainer(
+          overrides: [
+            authenticatedScopeProvider.overrideWithValue(
+              const AuthenticatedScope(userId: 'master-user'),
+            ),
+            currentPermissionsProvider.overrideWithValue({'master:create'}),
+            apiBaseUrlProvider.overrideWithValue('https://test.example/api'),
+            formDraftStorageProvider.overrideWithValue(
+              MemoryFormDraftStorage(),
+            ),
+          ],
+        );
+        final router = GoRouter(
+          initialLocation: '/master',
+          routes: [
+            ShellRoute(
+              builder: (_, _, child) => child,
+              routes: [
+                DraftAwareGoRoute(
+                  path: '/master',
+                  builder: (_, _) => _Host(
+                    onSubmit: (_) async {
+                      submits++;
+                      throw ApiException('INTERNAL', '服务器繁忙', httpStatus: 500);
+                    },
+                  ),
+                ),
+                DraftAwareGoRoute(
+                  path: '/dashboard',
+                  builder: (_, _) => const Scaffold(body: Text('已回到工作台')),
+                ),
+              ],
+            ),
+          ],
+        );
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: MaterialApp.router(routerConfig: router),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('新增'));
+        await tester.pumpAndSettle();
+        await tester.enterText(_field('名称'), '待核对资料');
+        await tester.ensureVisible(find.text('保存'));
+        await tester.tap(find.text('保存'));
+        await tester.pumpAndSettle();
+        expect(submits, 1);
+        await tester.tap(find.text('返回工作台'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('继续核对'));
+        await tester.pumpAndSettle();
+        expect(router.routeInformationProvider.value.uri.path, '/master');
+        expect(find.byType(MasterEditForm), findsOneWidget);
+        await tester.tap(find.text('返回工作台'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('保存原提交后离开'));
+        await tester.pumpAndSettle();
+        expect(router.routeInformationProvider.value.uri.path, '/dashboard');
+        expect(find.byType(MasterEditForm), findsNothing);
+        expect(find.text('已回到工作台'), findsOneWidget);
+        final draft = container.read(formDraftsProvider).single;
+        expect(draft.hasUnknownSubmission, isTrue);
+        expect((draft.data['text'] as Map)['名称'], '待核对资料');
+        expect(submits, 1);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+        router.dispose();
+        container.dispose();
+      },
+    );
+  }
 }
 
 Finder _field(String key) => find.byType(TextField).at(key == '名称' ? 0 : 1);

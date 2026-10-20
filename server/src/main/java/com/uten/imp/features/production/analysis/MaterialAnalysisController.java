@@ -51,7 +51,7 @@ public class MaterialAnalysisController {
     }
 
     @PostMapping("/bom-diagnostics/forward")
-    @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_plan:forward_rd')")
+    @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:forward_rd')")
     public BomDiagnosticView forwardBomDiagnostics(@Valid @RequestBody BomForwardRequest request) {
         return bomDiagnostics.forward(request);
     }

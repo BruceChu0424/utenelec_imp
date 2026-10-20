@@ -27,6 +27,8 @@ class _MouldManufacturerFieldState
   );
   final _focus = FocusNode();
   final _menu = MenuController();
+  final _menuFocus = FocusNode(skipTraversal: true, canRequestFocus: false);
+  bool _closingForSelection = false;
   Timer? _debounce;
   int _generation = 0;
   List<String> _options = const [];
@@ -37,6 +39,7 @@ class _MouldManufacturerFieldState
   void initState() {
     super.initState();
     _focus.addListener(_focusChanged);
+    _menuFocus.addListener(_menuFocusChanged);
   }
 
   @override
@@ -49,11 +52,26 @@ class _MouldManufacturerFieldState
 
   void _focusChanged() {
     if (_focus.hasFocus) {
-      _search(immediate: true);
+      if (!_closingForSelection) _search(immediate: true);
     } else {
       _generation++;
       _debounce?.cancel();
+      _closeIfFocusLeft();
     }
+  }
+
+  void _menuFocusChanged() {
+    if (!_menuFocus.hasFocus) _closeIfFocusLeft();
+  }
+
+  void _closeIfFocusLeft() {
+    if (!_menu.isOpen) return;
+    // Focus can move from the input into a candidate on pointer-down. Wait for
+    // the whole transfer before closing, so the candidate's click still commits.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_focus.hasFocus && !_menuFocus.hasFocus) _menu.close();
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   void _search({bool immediate = false}) {
@@ -101,6 +119,7 @@ class _MouldManufacturerFieldState
   }
 
   void _choose(String value) {
+    _closingForSelection = true;
     _generation++;
     _debounce?.cancel();
     _text.value = TextEditingValue(
@@ -109,6 +128,10 @@ class _MouldManufacturerFieldState
     );
     widget.onChanged(value);
     _menu.close();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _closingForSelection = false;
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   @override
@@ -117,6 +140,7 @@ class _MouldManufacturerFieldState
     _debounce?.cancel();
     _text.dispose();
     _focus.dispose();
+    _menuFocus.dispose();
     super.dispose();
   }
 
@@ -135,25 +159,33 @@ class _MouldManufacturerFieldState
           maximumSize: WidgetStatePropertyAll(Size(constraints.maxWidth, 280)),
         ),
         menuChildren: [
-          if (_loading)
-            const Padding(
-              padding: EdgeInsets.all(UtenSpacing.s12),
-              child: LinearProgressIndicator(),
-            )
-          else if (_failed || _options.isEmpty)
-            MenuItemButton(
-              child: Text(_failed ? '候选加载失败，仍可直接输入' : '暂无历史候选，可直接输入'),
-            )
-          else
-            for (final value in _options)
-              MenuItemButton(
-                onPressed: () => _choose(value),
-                child: Text(
-                  value,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
+          Focus(
+            focusNode: _menuFocus,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_loading)
+                  const Padding(
+                    padding: EdgeInsets.all(UtenSpacing.s12),
+                    child: LinearProgressIndicator(),
+                  )
+                else if (_failed || _options.isEmpty)
+                  MenuItemButton(
+                    child: Text(_failed ? '候选加载失败，仍可直接输入' : '暂无历史候选，可直接输入'),
+                  )
+                else
+                  for (final value in _options)
+                    MenuItemButton(
+                      onPressed: () => _choose(value),
+                      child: Text(
+                        value,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+              ],
+            ),
+          ),
         ],
         builder: (context, controller, _) => TextField(
           controller: _text,

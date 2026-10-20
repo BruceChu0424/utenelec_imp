@@ -171,7 +171,11 @@ public class SupplierService {
         };
         Pageable pageable = Pageables.of(page, size, keyword.active() ? Sort.unsorted() : requestedSort);
         Page<Supplier> p = repo.findAll(spec, pageable);
-        List<SupplierListItem> items = new ArrayList<>(p.map(this::toList).getContent());
+        Map<UUID, String> settlementNames = settlementMethodNames(p.getContent());
+        List<SupplierListItem> items = new ArrayList<>(p.getContent().stream()
+                .map(supplier -> toList(supplier, supplier.getDefaultSettlementMethodId() == null
+                        ? null : settlementNames.get(supplier.getDefaultSettlementMethodId())))
+                .toList());
         applySubcontractLossRates(items);
         return new PageResponse<>(items, p);
     }
@@ -199,7 +203,7 @@ public class SupplierService {
      * 列定义服务端权威；过滤/排序走 list 已接的 TableSort 白名单（tday）。
      * 2026-09-25 口径「表格显示啥导出啥」：补「损耗率(%)」（ADR-098 汇总视图，表格已有）；
      * 「业务员」导解析人名（空显「未分配」，与表格同兜底），不再导旧库 empId 数字串。
-     * 主结账方式前端为恒「—」占位列（无物理数据），导出不带。
+     * 主结账方式与详情/列表同源，按 default_settlement_method_id 解析，不使用旧快照猜测。
      */
     @Transactional(readOnly = true)
     public ExportPayload export(SupplierQueryFilter f, String sort, String order, int maxRows) {
@@ -232,6 +236,7 @@ public class SupplierService {
                     row.put("_platformRecordId", m.getId());
                     row.put("name", m.getName());
                     row.put("description", m.getDescription());
+                    row.put("priceStyle", m.getDefaultSettlementMethodName());
                     row.put("tday", m.getTday());
                     row.put("lossRate", m.getLossRate());
                     row.put("place", m.getPlace());
@@ -541,7 +546,7 @@ public class SupplierService {
         return names;
     }
 
-    private SupplierListItem toList(Supplier m) {
+    private SupplierListItem toList(Supplier m, String settlementMethodName) {
         return new SupplierListItem(
                 m.getId(), m.getLegacyId(),
                 m.getName(), m.getDescription(), m.getTday(), m.getPlace(),
@@ -551,7 +556,7 @@ public class SupplierService {
                 m.getShipVia(), m.getShipAddress(),
                 m.getCategory() == null ? null : m.getCategory().getId(),
                 employeeNameResolver.nameOf(m.getOwnerEmployeeId()),
-                null, m.getVersion(), m.getStatus());
+                null, m.getVersion(), m.getStatus(), m.getDefaultSettlementMethodId(), settlementMethodName);
     }
 
     /**

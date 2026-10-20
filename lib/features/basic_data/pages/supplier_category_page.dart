@@ -332,8 +332,8 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
   /// [MasterColumnDef.key]=筛选键（与后端 query 参数名一一对齐，autofilter）；
   /// [MasterColumnDef.value]=单元格取值。
   ///
-  /// 主结账方式（key=priceStyle）/损耗率（key=lossRate）无对应物理列：
-  /// 不可筛（不进 facets/nullCounts → 下拉仅显示"所有"），单元格恒显示"—"。
+  /// 主结账方式（key=priceStyle）显示UUID关系解析名，保留原个人表头键。
+  /// 此列和汇总损耗率不参与旧物理列 facets。
   static final _supplierColumns = <MasterColumnDef<SupplierListItem>>[
     MasterColumnDef(
       key: 'name',
@@ -352,8 +352,8 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
       label: '主结账方式',
       columnSearchEnabled: false,
       width: 110,
-      value: (_) => '—',
-    ), // 无对应物理列，恒显示"—"
+      value: (supplier) => supplier.defaultSettlementMethodName,
+    ),
     MasterColumnDef(
       key: 'tday',
       label: '信用天数',

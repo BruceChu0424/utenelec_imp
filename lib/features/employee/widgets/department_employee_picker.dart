@@ -18,6 +18,7 @@ import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../components/layout/uten_split_view.dart';
 import '../../../shared/hierarchy/uten_tree_path.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/formatters/employee_display.dart';
 import '../../../shared/hierarchy/category_tree_search.dart';
@@ -571,7 +572,12 @@ class _DeptEmployeePickerSheetState
           ),
         ),
         const Divider(height: 1),
-        Expanded(child: body),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.all(UtenSpacing.s12),
+            child: body,
+          ),
+        ),
         UtenPickerConfirmBar(
           selectedCount: _picked == null ? 0 : 1,
           selectedLabel: _picked?.displayName,

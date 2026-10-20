@@ -270,6 +270,13 @@ void main() {
       expect(find.textContaining('1 张生产计划、1 张执行工卡。'), findsOneWidget);
       expect(find.text('等待车间领料'), findsOneWidget);
       expect(find.textContaining('仓库实际发料完成后可直接报工'), findsOneWidget);
+      final tableBorder = tester
+          .widget<DataTable>(find.byType(DataTable))
+          .border;
+      expect(tableBorder?.right.style, BorderStyle.solid);
+      expect(tableBorder?.right.width, greaterThan(0));
+      expect(tableBorder?.left, BorderSide.none);
+      expect(tableBorder?.top, BorderSide.none);
 
       await tester.tap(
         find.byKey(const ValueKey('production-work-card-print-segment-1')),

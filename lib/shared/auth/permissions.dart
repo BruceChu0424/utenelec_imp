@@ -377,6 +377,8 @@ abstract final class Perm {
       'production_material_analysis:route';
   static const productionMaterialAnalysisNotify =
       'production_material_analysis:notify';
+  static const productionMaterialAnalysisForwardRd =
+      'production_material_analysis:forward_rd';
   static const productionMaterialAnalysisGenerate =
       'production_material_analysis:generate';
   static const productionMaterialAnalysisReallocate =

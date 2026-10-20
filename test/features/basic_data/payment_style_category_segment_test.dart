@@ -11,6 +11,9 @@ import 'package:uten_imp/features/basic_data/widgets/uten_category_tree_view.dar
 import '../../support/filter_segment_tap.dart';
 import '../../support/audit_screenshot_support.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/components/layout/uten_form_grid.dart';
+import 'package:uten_imp/components/feedback/uten_context_menu.dart';
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 
 class _Categories extends Fake implements PaymentStyleRepository {
   final requests = <String?>[];
@@ -67,8 +70,24 @@ void main() {
         'payment-style-shared-header',
       );
     }
-    await tester.tap(find.text('编辑'));
+    expect(
+      find.descendant(
+        of: find.byType(MasterDetailCard),
+        matching: find.text('编辑'),
+      ),
+      findsNothing,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('payment-style-node-edit-style')),
+    );
     await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byType(UtenAlertDialog),
+        matching: find.byType(UtenFormGrid),
+      ),
+      findsNWidgets(2),
+    );
     final name = find.byWidgetPredicate(
       (widget) => widget is TextField && widget.controller?.text == '测试费用',
     );
@@ -82,6 +101,84 @@ void main() {
       tester.widget<MasterDetailCard>(find.byType(MasterDetailCard)).title,
       '变更费用',
     );
+    expect(tester.takeException(), isNull);
+  });
+  for (final scenario in [
+    (name: '普通类别', locked: false, disabled: false, viewOnly: false),
+    (name: '系统科目', locked: true, disabled: false, viewOnly: false),
+    (name: '停用类别', locked: false, disabled: true, viewOnly: false),
+    (name: '仅查看', locked: false, disabled: false, viewOnly: true),
+  ]) {
+    testWidgets('${scenario.name}同行与右键动作共用权限和保护口径', (tester) async {
+      final repository = _PopulatedCategories(
+        locked: scenario.locked,
+        disabled: scenario.disabled,
+      );
+      await _pumpPolicy(tester, repository, viewOnly: scenario.viewOnly);
+      final tree = tester.widget<UtenCategoryTreeView<PaymentStyleNode>>(
+        find.byType(UtenCategoryTreeView<PaymentStyleNode>),
+      );
+      final node = tree.nodes.single;
+      final entries = tree.rowMenuBuilder!(node)
+          .whereType<UtenMenuItem>()
+          .toList();
+      if (scenario.viewOnly) {
+        expect(entries, isEmpty);
+        expect(
+          find.byKey(const ValueKey('payment-style-node-edit-style')),
+          findsNothing,
+        );
+      } else {
+        final add = tester.widget<IconButton>(
+          find.byKey(const ValueKey('payment-style-node-add-style')),
+        );
+        final status = tester.widget<IconButton>(
+          find.byKey(const ValueKey('payment-style-node-status-style')),
+        );
+        expect(add.onPressed != null, !scenario.locked && !scenario.disabled);
+        expect(
+          entries.firstWhere((entry) => entry.label == '新增子类别').enabled,
+          add.onPressed != null,
+        );
+        expect(status.onPressed != null, !scenario.locked);
+        expect(
+          entries
+              .firstWhere(
+                (entry) => entry.label == (scenario.disabled ? '启用' : '停用'),
+              )
+              .enabled,
+          status.onPressed != null,
+        );
+        expect(
+          find.byKey(const ValueKey('payment-style-node-edit-style')),
+          findsOneWidget,
+        );
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
+  testWidgets('窄屏大字目录同行可编辑，专用表单用共享网格且操作可达', (tester) async {
+    await _pumpPolicy(tester, _PopulatedCategories(), width: 390, scale: 1.6);
+    await tester.tap(
+      find.byKey(const ValueKey('payment-style-open-directory')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('payment-style-node-edit-style')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('编辑类别'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(UtenAlertDialog),
+        matching: find.byType(UtenFormGrid),
+      ),
+      findsNWidgets(2),
+    );
+    await tester.ensureVisible(find.text('取消').last);
+    expect(find.text('取消').last.hitTestable(), findsOneWidget);
+    await tester.tap(find.text('取消').last);
+    await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
   testWidgets(
@@ -121,23 +218,28 @@ void main() {
 }
 
 class _PopulatedCategories extends Fake implements PaymentStyleRepository {
+  _PopulatedCategories({this.locked = false, this.disabled = false});
+  final bool locked;
+  final bool disabled;
+  String get code => locked ? '031' : 'EXP-TEST';
+  String get status => disabled ? '禁用' : '使用';
   PaymentStyleUpdateInput? updated;
   @override
   Future<List<PaymentStyleNode>> tree({String? category}) async => [
     PaymentStyleNode(
       id: 'style',
-      code: 'EXP-TEST',
+      code: code,
       name: updated?.name ?? '测试费用',
       category: 'EXPENSE',
       level: 0,
-      status: '使用',
+      status: status,
       children: const [],
     ),
   ];
   @override
   Future<PaymentStyleDetail> detail(String id) async => PaymentStyleDetail(
     id: 'style',
-    code: 'EXP-TEST',
+    code: code,
     name: updated?.name ?? '测试费用',
     category: 'EXPENSE',
     level: 0,
@@ -145,7 +247,7 @@ class _PopulatedCategories extends Fake implements PaymentStyleRepository {
     childCount: 0,
     sortOrder: 15,
     receipt: true,
-    status: '使用',
+    status: status,
   );
   @override
   Future<PaymentStyleDetail> update(
@@ -155,4 +257,43 @@ class _PopulatedCategories extends Fake implements PaymentStyleRepository {
     updated = input;
     return detail(id);
   }
+}
+
+Future<void> _pumpPolicy(
+  WidgetTester tester,
+  PaymentStyleRepository repository, {
+  bool viewOnly = false,
+  double width = 1400,
+  double scale = 1,
+}) async {
+  tester.view.physicalSize = Size(width, 1000);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        paymentStyleRepositoryProvider.overrideWithValue(repository),
+        currentPermissionsProvider.overrideWithValue({
+          Perm.paymentStyleView,
+          if (!viewOnly) ...[
+            Perm.paymentStyleCreate,
+            Perm.paymentStyleEdit,
+            Perm.paymentStyleStatus,
+            Perm.paymentStyleReorder,
+          ],
+        }),
+      ],
+      child: MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(scale)),
+          child: child!,
+        ),
+        home: const PaymentStylePage(),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
 }

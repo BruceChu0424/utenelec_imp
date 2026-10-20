@@ -3,7 +3,7 @@
 // 与 goods_node.dart 同构。ListItem 覆盖用户指定的 21 列展示字段中的 19 个有物理列的字段：
 //   name/description/tday/place/empId/legalPerson/linkman/mobile/phone/phone2/
 //   fax/postcode/address/bank/bankAccount/taxId/website/shipVia/shipAddress
-// （编号 code 不在用户列表内；主结账方式/损耗率无对应物理列，不进 DTO。）
+// （编号 code 不在用户列表内；主结账方式按默认结算UUID解析名称；损耗率由汇总视图补充。）
 //
 // 数值字段一律走 (json['x'] as num?)?.toInt()/toDouble()，避免 int/double 被后端
 // 序列化成 String（或 null）时直接 cast 崩溃——老库迁移常踩这个坑。
@@ -38,6 +38,8 @@ class SupplierListItem {
     this.shipAddress,
     this.categoryId,
     this.ownerEmployeeName,
+    this.defaultSettlementMethodId,
+    this.defaultSettlementMethodName,
     this.lossRate,
     this.status,
     this.version,
@@ -75,6 +77,9 @@ class SupplierListItem {
   final String? categoryId; // 所属分类 id（供应商资料页"搜供应商定位分类"用）
   final String? ownerEmployeeName; // 业务员姓名（V578：按 owner_employee_id 解析）
 
+  final String? defaultSettlementMethodId;
+  final String? defaultSettlementMethodName;
+
   /// 委外损耗率(%)（ADR-098）：已结清委外订货行的加权损耗率；没有结清行为空，显示「—」。
   final double? lossRate;
 
@@ -106,6 +111,9 @@ class SupplierListItem {
         shipAddress: (json['shipAddress'] ?? json['shipaddress']) as String?,
         categoryId: json['categoryId'] as String?,
         ownerEmployeeName: json['ownerEmployeeName'] as String?,
+        defaultSettlementMethodId: json['defaultSettlementMethodId'] as String?,
+        defaultSettlementMethodName:
+            json['defaultSettlementMethodName'] as String?,
         status: json['status'] as String?,
         version: (json['version'] as num?)?.toInt(),
       );

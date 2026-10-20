@@ -11,6 +11,9 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
+import 'package:uten_imp/features/basic_data/models/master_facet.dart';
+import 'package:uten_imp/features/basic_data/repositories/goods_facet_repository.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_entity_detail_pane.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/pages/product_category_page.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_repository.dart';
@@ -48,6 +51,30 @@ Finder _goodsColumnTooltip(String message) => find.descendant(
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets('只有货品查看权限时远程候选和导出与含禁用品列表同范围', (tester) async {
+    final facets = _ScopeFacetRepository();
+    await _pumpPage(
+      tester,
+      _FakePlatformTableRepository(),
+      {Perm.goodsView},
+      categoryBrowsing: false,
+      facetRepository: facets,
+    );
+    final pane = tester
+        .widget<MasterEntityDetailPane<GoodsListItem, GoodsDetail>>(
+          find.byType(MasterEntityDetailPane<GoodsListItem, GoodsDetail>),
+        );
+    const query = MasterPaneQuery(categoryId: null);
+    await pane.config.loadFacetPage!(query, 'unitRef', '', 1);
+    expect(
+      facets.excludeDisabled,
+      false,
+      reason: '无分类浏览权限时全局列表纳入禁用品，候选必须保持同范围',
+    );
+    expect(pane.config.export!.queryParamsOf!(query)['excludeDisabled'], false);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('只有查看权限也能添加本人关联列，不能新建共享文字数字或计算列', (tester) async {
     final repository = _FakePlatformTableRepository()..personalAllowed = true;
@@ -265,8 +292,10 @@ void main() {
 Future<ProviderContainer> _pumpPage(
   WidgetTester tester,
   _FakePlatformTableRepository platformRepository,
-  Set<String> permissions,
-) async {
+  Set<String> permissions, {
+  bool categoryBrowsing = true,
+  GoodsFacetRepository? facetRepository,
+}) async {
   await tester.binding.setSurfaceSize(const Size(1600, 900));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   final dio = Dio()
@@ -288,7 +317,10 @@ Future<ProviderContainer> _pumpPage(
         ),
         apiClientProvider.overrideWithValue(ApiClient(dio)),
         _permissionsProvider.overrideWith(
-          (ref) => {...permissions, Perm.materialCategoryView},
+          (ref) => {
+            ...permissions,
+            if (categoryBrowsing) Perm.materialCategoryView,
+          },
         ),
         currentPermissionsProvider.overrideWith(
           (ref) => ref.watch(_permissionsProvider),
@@ -299,6 +331,8 @@ Future<ProviderContainer> _pumpPage(
           _FakeCategoryRepository(),
         ),
         goodsRepositoryProvider.overrideWithValue(_FakeGoodsRepository()),
+        if (facetRepository != null)
+          goodsFacetRepositoryProvider.overrideWithValue(facetRepository),
         platformTableRepositoryProvider.overrideWithValue(platformRepository),
       ],
       child: const PlatformTablesHost(
@@ -312,7 +346,7 @@ Future<ProviderContainer> _pumpPage(
     ),
   );
   await tester.pumpAndSettle();
-  await _tap(tester, find.text('成品类'));
+  if (categoryBrowsing) await _tap(tester, find.text('成品类'));
   return ProviderScope.containerOf(
     tester.element(find.byType(ProductCategoryPage)),
   );
@@ -476,7 +510,38 @@ class _FakeCategoryRepository implements ProductCategoryRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+class _ScopeFacetRepository extends GoodsFacetRepository {
+  _ScopeFacetRepository() : super(ApiClient(Dio()));
+  bool? excludeDisabled;
+  @override
+  Future<MasterFacetPage> values({
+    required String field,
+    required String search,
+    int page = 1,
+    String? categoryId,
+    Set<String> categoryRootIds = const {},
+    String? keyword,
+    bool includeRelated = false,
+    Map<String, String?> filters = const {},
+    bool excludeDisabled = false,
+    bool excludeStub = false,
+  }) async {
+    this.excludeDisabled = excludeDisabled;
+    return const MasterFacetPage(items: [], hasMore: false);
+  }
+}
+
 class _FakeGoodsRepository implements GoodsRepository {
+  @override
+  Future<GoodsFacets> globalFacets({
+    String? keyword,
+    bool includeRelated = false,
+    Map<String, String?> filters = const {},
+    bool excludeDisabled = false,
+    bool excludeStub = false,
+    Set<String> categoryRootIds = const {},
+  }) async => const GoodsFacets(fields: {}, nullCounts: {});
+
   @override
   Future<PagedResult<GoodsListItem>> list(
     String? categoryId, {

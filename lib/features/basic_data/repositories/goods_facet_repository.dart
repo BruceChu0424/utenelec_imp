@@ -26,7 +26,7 @@ class GoodsFacetRepository {
     final json = await api.get(
       '${ApiEndpoints.goods}/facet-values',
       query: {
-        'field': field,
+        'field': goodsFacetField(field),
         'search': search.trim(),
         'page': page,
         'size': 50,
@@ -38,7 +38,7 @@ class GoodsFacetRepository {
           'includeRelated': true,
         if (excludeDisabled) 'excludeDisabled': true,
         if (excludeStub) 'excludeStub': true,
-        ...masterFilterQueryParams(filters),
+        ...goodsFilterQueryParams(filters),
       },
     );
     return MasterFacetPage.fromJson(json);

@@ -51,8 +51,10 @@ public final class MasterColumnSearch {
                 fields.put("paper", "COALESCE(master.paper, master.require_remark)");
                 fields.put("colorLegacyId", legacyReference("colors", "color_id", "color_legacy_id", "name", true));
                 fields.put("colorName", fields.get("colorLegacyId"));
+                fields.put("colorRef", fields.get("colorLegacyId"));
                 fields.put("unitLegacyId", legacyReference("units", "unit_id", "unit_legacy_id", "name", true));
                 fields.put("unitName", fields.get("unitLegacyId"));
+                fields.put("unitRef", fields.get("unitLegacyId"));
                 fields.put("mouldCode", legacyReference("moulds", "mould_id", "mould_legacy_id", "code", false));
                 fields.put("mouldName", legacyReference("moulds", "mould_id", "mould_legacy_id", "name", false));
                 fields.put("owningWarehouse", "(SELECT name FROM warehouses WHERE id = master.owning_warehouse_id AND NOT is_deleted)");

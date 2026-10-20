@@ -196,6 +196,12 @@ try {
 
 CodeQL 与 OSV 以 GitHub Actions 的本次远端运行结果为准。本地构建通过不等于远端 CI 已通过。
 
+CodeQL 必须检查实际 SARIF，不能只看分析作业成功。`.github/scripts/check_codeql_sarif.py`
+要求所有输出文件的全部结果为零，包括 error、warning、note 和已经抑制的结果；规则默认级别同时从
+driver 与扩展查询包读取。缺少结果文件、空分析、缺少结果数组或失败的调用均不能当作零问题。
+即使该门禁失败，也保留原始 SARIF 供逐项追因。不得跳过测试源码编译、删除查询或隐藏报告换取绿灯。
+修复涉及 UI 代码或相关设计文档时，仍按项目规则默认使用 `frontend-design`，保留 Uten 组件、主题和业务约束。
+
 ### 4.3 Website 额外门禁
 
 Quality Gate 已包含 `Website / Node 22`，与官网签名发布共用

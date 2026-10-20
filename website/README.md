@@ -12,6 +12,8 @@ A full CMS-driven public website and international inquiry portal built with Nex
 
 The project now uses a family-first catalog model and strict publish guards so only safe, intentional content is exposed.
 
+UI changes and related design documentation follow [AGENTS.md](AGENTS.md): use `frontend-design` by default, preserve Uten branding and business constraints, and use `ui-ux-pro-max` only when explicitly requested.
+
 ## What is in this repo
 
 - Public pages (zh/en multi-locale, plus locale detection)
@@ -123,6 +125,8 @@ Local pages:
 Catalog normalization and the 50-series repair integration tests create private disposable SQLite databases from the checked-in Prisma migrations and seed synthetic catalog/source-audit records. They do not read or copy `prisma/dev.db`. Build validation uses another fresh empty migrated database and does not write the production uploads path.
 
 Production builds intentionally disable Webpack's filesystem cache: the pinned `next-intl` formatter loader contains a runtime import whose dependencies Webpack cannot reliably snapshot. Development keeps incremental caching, and production still performs compilation, lint and type checks. `tests/production-build-cache.test.ts` verifies both modes and the i18n alias.
+
+Lint uses supported ESLint 10.13.0 and keeps the complete Next.js 16.4.2 Core Web Vitals configuration. The official `@eslint/compat` adapter preserves the existing React, import and accessibility rules while their three pinned plugin releases still declare ESLint 9 peer ranges. Version-specific npm overrides bind only those plugins to the direct ESLint dependency; no `--force`, `--legacy-peer-deps` or warning suppression is used. `npm run lint` rejects every warning, and `tests/eslint-compat.test.ts` checks that representative negative fixtures still produce the original diagnostics. Remove the adapters and overrides together only after all three plugins publish compatible peer declarations and the regression checks pass.
 
 The 2026-09-29 lockfile security update changes only the transitive `brace-expansion` patches to `1.1.21` and `5.0.12`. These cover the upstream parsing and recursion advisories [GHSA-q2hr-2g5m-vwhr](https://github.com/juliangruber/brace-expansion/security/advisories/GHSA-q2hr-2g5m-vwhr), [GHSA-qhr7-859c-m2p7](https://github.com/juliangruber/brace-expansion/security/advisories/GHSA-qhr7-859c-m2p7) and [GHSA-6j4f-fj2g-mc7p](https://github.com/juliangruber/brace-expansion/security/advisories/GHSA-6j4f-fj2g-mc7p); application dependencies and major versions remain unchanged.
 

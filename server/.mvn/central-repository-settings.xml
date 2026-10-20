@@ -2,7 +2,7 @@
   <mirrors>
     <mirror>
       <id>uten-central-obsolete-transitive-repositories</id>
-      <mirrorOf>flyway-community-db-support,jvnet-nexus-releases,jvnet-nexus-snapshots</mirrorOf>
+      <mirrorOf>flyway-community-db-support,MavenFeed,jvnet-nexus-releases,jvnet-nexus-snapshots</mirrorOf>
       <url>https://repo.maven.apache.org/maven2</url>
     </mirror>
     <mirror>

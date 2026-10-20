@@ -19,10 +19,13 @@
 ### Maven 仓库来源
 
 `server/.mvn/maven.config` 对在 `server/` 内运行 Maven 和在项目根目录运行
-`mvn -f server/pom.xml ...` 同样生效。它忽略依赖描述文件引入的仓库，并把三个旧仓库 ID
-`flyway-community-db-support`、`jvnet-nexus-releases`、`jvnet-nexus-snapshots` 精确映射到官方
+`mvn -f server/pom.xml ...` 同样生效。它忽略依赖描述文件引入的仓库，并把四个旧仓库 ID
+`flyway-community-db-support`、`MavenFeed`、`jvnet-nexus-releases`、`jvnet-nexus-snapshots` 精确映射到官方
 HTTPS Maven Central；该映射也覆盖 CycloneDX 独立构建依赖有效 POM 时的仓库解析。
 依赖、插件版本和 TLS 校验保持原规则，其他仓库 ID 不会被重定向。
+`MavenFeed` 来自 Flyway 12.4.0 父 POM 声明的测试仓库，其 Redgate Azure DevOps 地址对未认证的
+CI 返回 HTTP 401。将这个已知仓库 ID 单独映射到 Central，避免它进入实际发布依赖和 SBOM
+解析；不注入该测试仓库凭据，也不放宽其他仓库访问或安全校验。
 
 这里选择项目的 global settings，替代 Maven 安装目录的 `conf/settings.xml`；保留官方
 `maven-default-http-blocker` 对外部 HTTP 仓库的拒绝规则。默认 `~/.m2/settings.xml` 仍会合并，

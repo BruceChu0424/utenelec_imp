@@ -1,7 +1,8 @@
 import { defineConfig, globalIgnores } from 'eslint/config';
+import { fixupConfigRules } from '@eslint/compat';
 import nextVitals from 'eslint-config-next/core-web-vitals';
 export default defineConfig([
-  ...nextVitals,
+  ...fixupConfigRules(nextVitals),
   // Existing server-driven forms intentionally render dynamic translations and
   // update draft previews from input handlers; retain useful correctness rules.
   { rules: { 'react-hooks/set-state-in-effect': 'off', 'react-hooks/refs': 'off' } },

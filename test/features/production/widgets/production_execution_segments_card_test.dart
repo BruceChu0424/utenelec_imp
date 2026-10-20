@@ -5,7 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/router/route_names.dart';
+import 'package:uten_imp/features/department/models/department_node.dart';
 import 'package:uten_imp/features/production/models/production_execution_planning.dart';
+import 'package:uten_imp/features/production/providers/production_department_provider.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/features/production/widgets/production_execution_segments_card.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -812,7 +814,15 @@ Widget _app({
   double textScale = 1,
 }) {
   return ProviderScope(
-    overrides: [productionPlanRepositoryProvider.overrideWithValue(repository)],
+    overrides: [
+      productionPlanRepositoryProvider.overrideWithValue(repository),
+      // 调整分配弹窗先 await 车间组织树；不覆写会走真实 departmentRepository，
+      // 真实 Dio 在假时钟下永不返回，弹窗根本打不开。给空树即可（下拉回落
+      // 「待分配」），弹窗可用性检查不受影响。
+      productionWorkshopTreeProvider.overrideWith(
+        (ref) async => const <DepartmentNode>[],
+      ),
+    ],
     child: MaterialApp(
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(

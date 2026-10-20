@@ -692,6 +692,9 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
         _category = category;
         _loading = false;
       });
+      // 前导分组要读分类详情（systemManaged、把 detail 交给 loader），只能跟在
+      // 详情之后拉；四路并行时 _category 尚为 null，首屏分组会被整体跳过。
+      await _loadGroups();
     }
 
     try {
@@ -699,7 +702,6 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
         loadDetail(),
         _loadList(1),
         _loadFacets(),
-        _loadGroups(),
       ]);
     } on ApiException catch (e) {
       if (!mounted || !_categoryRequests.isCurrent(generation)) return;

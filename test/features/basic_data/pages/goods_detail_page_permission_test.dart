@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:uten_imp/shared/providers/sensitive_read_boundary_provider.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
@@ -67,6 +68,11 @@ void main() {
         goodsBomRepositoryProvider.overrideWithValue(_BomRepository()),
         colorDictProvider.overrideWith((ref) async => const []),
         unitDictProvider.overrideWith((ref) async => const []),
+        // 详情页挂链会同步拉起 apiBaseUrl → 本地可达性探针的 60s 周期定时器，
+        // 假时钟收尾必炸；web: true 不起探针（仓库既有口径）。
+        localServerReachableProvider.overrideWith(
+          (ref) => LocalServerReachabilityNotifier(null, web: true),
+        ),
       ],
     );
     addTearDown(container.dispose);

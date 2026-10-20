@@ -79,7 +79,17 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     await tester.pumpWidget(
-      const ProviderScope(child: MaterialApp(home: SettlementMethodPage())),
+      ProviderScope(
+        overrides: [
+          currentPermissionsProvider.overrideWithValue(const <String>{}),
+          // 不覆写会走真实 repository + 真实 Dio，假时钟下请求永不完成，
+          // 转圈动画让 pumpAndSettle 超时（Riverpod 3 自动重试还会反复拉）。
+          referenceMethodRepositoryProvider.overrideWithValue(
+            _ReferenceMethodRepositoryFake(),
+          ),
+        ],
+        child: const MaterialApp(home: SettlementMethodPage()),
+      ),
     );
     // 无权限环境（空权限）：页面仍可渲染列表（路由守卫在真实导航层），
     // 本例验证列表项与锁定徽标的呈现由模型层覆盖；此处页面空态/错误态不崩。

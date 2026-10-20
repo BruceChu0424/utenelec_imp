@@ -127,9 +127,17 @@ void main() {
         isNull,
       );
       expect(find.text('员'), findsOneWidget);
+      // Riverpod 3 对失败的 async provider 默认安排指数退避自动重试，NOT_FOUND
+      // 后可能已多发一两次；本用例的关键是登出后不再发任何新请求（重试定时器
+      // 随会话重建取消）、且迟到/被拒数据始终不显示。
+      final readsAtLogout = service.pending.length;
       notifier.replace(const SessionState());
+      // 先给一帧零前进的 pump：旧会话的 autoDispose family 实例要在这帧里
+      // 完成销毁、取消 Riverpod 3 自动重试的退避定时器；直接 pumpAndSettle
+      // 推进假时钟会先撞上 200ms 退避窗口，多发一次登出后的请求。
+      await tester.pump();
       await tester.pumpAndSettle();
-      expect(service.pending, hasLength(3));
+      expect(service.pending, hasLength(readsAtLogout));
       expect(tester.takeException(), isNull);
     },
   );

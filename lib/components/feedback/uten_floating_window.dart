@@ -504,8 +504,12 @@ class UtenFloatingWindowState extends State<UtenFloatingWindow>
         color: theme.colorScheme.surfaceContainerHigh,
         borderRadius: UtenRadius.xxlAll,
         clipBehavior: Clip.antiAlias,
+        // 外壳必须填满 _windowRect（mainAxisSize 默认 max）：拖拽、四边缩放手柄和
+        // 缩球 morph 全部以 _windowRect 为几何。若按内容收短（min），动画会从比
+        // 可见卡片高的隐形矩形起跳/落回，肉眼看就是「先变长触底再收起/展开」，
+        // 底边手柄也会悬在卡片下方的空档里（2026-10-19 用户反馈）。内容超出时由
+        // body 自己滚动。
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           children: [
             _buildHeader(theme),
             const Divider(height: 1),

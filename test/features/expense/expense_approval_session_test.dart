@@ -61,8 +61,15 @@ void main() {
           .nextPage();
       await Future<void>.delayed(Duration.zero);
       container.read(identity.notifier).state = 'B';
-      await Future<void>.delayed(Duration.zero);
-      expect(container.read(expenseApprovalListProvider).value, isNull);
+      // Riverpod 3 的 provider 刷新经调度器异步入队；给事件循环几个节拍让
+      // session key 重建传导到审批队列。
+      for (var i = 0; i < 6; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      // Riverpod 3 起 loading 态会并入旧值（copyWithPrevious），value 不再清空；
+      // 「队列已清空、旧数据不再作为完成态展示」的 v3 等价断言是 isLoading。
+      // 旧身份迟到分页响应的拒绝由下方 _requestGeneration 断言保证。
+      expect(container.read(expenseApprovalListProvider).isLoading, isTrue);
       repo.requests[2].complete(_page(22));
       expect(
         (await container.read(expenseApprovalListProvider.future)).total,

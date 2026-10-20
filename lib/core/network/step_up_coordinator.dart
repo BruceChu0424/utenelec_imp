@@ -16,7 +16,11 @@ class StepUpCoordinator {
   static final StepUpCoordinator instance = StepUpCoordinator._();
 
   StepUpPrompter? _prompter;
-  Future<void> _queue = Future.value();
+
+  /// 延迟到首次 obtain 时在调用方 zone 里创建：字段初始化器会钉死在实例构造
+  /// 所在的 zone（widget 测试里可能是 runAsync 的真实事件循环），完成微任务
+  /// 永远排不上假时钟的队，之后所有 obtain 都挂死。
+  Future<void>? _queue;
 
   /// 应用根部登记弹窗; 返回解除登记的函数。
   void Function() register(StepUpPrompter prompter) {
@@ -28,7 +32,7 @@ class StepUpCoordinator {
 
   /// 取一张新凭证; 用户取消或没有可用的弹窗时返回 null。
   Future<String?> obtain() {
-    final previous = _queue;
+    final previous = _queue ??= Future.value();
     final next = previous.then((_) async {
       final prompter = _prompter;
       return prompter == null ? null : await prompter();

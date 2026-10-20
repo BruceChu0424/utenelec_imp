@@ -189,6 +189,10 @@ class _LastResetResultLine extends ConsumerWidget {
     return ref
         .watch(lastBusinessDataResetResultProvider)
         .when(
+          // Riverpod 3 对失败的 async provider 默认安排指数退避自动重试，等待
+          // 期间是「带旧错误的 loading(retrying)」；不跳过 reload 态会把报错行
+          // 换成「正在核对…」，用户在退避窗口里失去手动重试入口。
+          skipLoadingOnReload: true,
           loading: () => const Text('正在核对清空完成记录…'),
           error: (error, _) => retry(
             '无法读取清空完成记录：${error is ApiException ? error.message : '请检查连接后重试'}'

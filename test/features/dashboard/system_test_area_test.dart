@@ -966,10 +966,13 @@ void main() {
       notifier: _TestSessionNotifier(),
     );
     expect(find.textContaining('无法读取清空完成记录'), findsOneWidget);
+    // Riverpod 3 对失败的 async provider 有指数退避自动重试，初始 pump 期间可能
+    // 已多读过一次；断言跨手动重试的增量——按钮恰好再读一次、且绝不发清空请求。
+    final readsBeforeRetry = repository.lastResultCalls;
     repository.lastResultError = null;
     await tester.tap(find.byKey(const Key('system-test-last-reset-retry')));
     await tester.pumpAndSettle();
-    expect(repository.lastResultCalls, 2);
+    expect(repository.lastResultCalls, readsBeforeRetry + 1);
     expect(repository.calls, 0);
   });
 

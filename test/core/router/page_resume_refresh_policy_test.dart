@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/data_write_revision.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/core/router/route_transition_tracker.dart';
 import 'package:uten_imp/core/theme/uten_page_transitions.dart';
@@ -69,7 +70,15 @@ Future<(List<bool>, ProviderContainer)> _pump(WidgetTester tester) async {
     ],
   );
   addTearDown(router.dispose);
-  final container = ProviderContainer();
+  final container = ProviderContainer(
+    overrides: [
+      // onPageResume 挂链会同步拉起 apiBaseUrl → 本地可达性探针的 60s 周期
+      // 定时器，假时钟收尾必炸；web: true 不起探针（仓库既有口径）。
+      localServerReachableProvider.overrideWith(
+        (ref) => LocalServerReachabilityNotifier(null, web: true),
+      ),
+    ],
+  );
   addTearDown(container.dispose);
   addTearDown(
     attachPageResume(router, container.read(pageResumeProvider.notifier)),

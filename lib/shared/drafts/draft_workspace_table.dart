@@ -202,7 +202,14 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
   @override
   void didUpdateWidget(covariant DraftWorkspaceTable oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.refreshRevision != widget.refreshRevision) _refresh();
+    if (oldWidget.refreshRevision != widget.refreshRevision) {
+      // didUpdateWidget 处于 build 期；Riverpod 3 的 invalidate 会经 flutter
+      // vsync 对 ProviderScope setState，同步调用即触发「build 期 setState」
+      // 断言。挪到本帧结束后再失效重建，刷新语义不变（本就异步）。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _refresh();
+      });
+    }
     if (!listEquals(oldWidget.kinds, widget.kinds) ||
         oldWidget.localScope != widget.localScope ||
         oldWidget.search != widget.search) {

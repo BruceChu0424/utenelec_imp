@@ -11548,4 +11548,95 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get goodsHistoryGoodsSubcontractPolicy =>
       'Edit goods subcontract policy';
+
+  @override
+  String materialBomIssueHeading(int count, int sources) {
+    return '$count BOM issues affect $sources demands';
+  }
+
+  @override
+  String get materialBomIssueGuidance =>
+      'Affected demands stay on this page. Analyze other demands separately. Recheck after engineering repairs; unresolved demands cannot be issued.';
+
+  @override
+  String materialBomIssueForwardedTask(String taskNo) {
+    return 'Engineering task $taskNo';
+  }
+
+  @override
+  String get materialBomIssueSelectAll => 'Select all issues';
+
+  @override
+  String get materialBomIssueDeselectAll => 'Clear selection';
+
+  @override
+  String materialBomIssueForward(int count) {
+    return 'Send to engineering ($count)';
+  }
+
+  @override
+  String get materialBomIssueRecheck => 'Recheck';
+
+  @override
+  String materialBomIssueContinue(int count) {
+    return 'Analyze $count other demands';
+  }
+
+  @override
+  String get materialBomIssueForwarded =>
+      'Sent to engineering. Recheck after repair.';
+
+  @override
+  String get materialBomIssueForwardFailed => 'Could not send to engineering';
+
+  @override
+  String get materialBomIssueClear =>
+      'No BOM issues found. Run analysis again to check demand and stock.';
+
+  @override
+  String get materialBomIssueOpenGoods => 'Open goods details';
+
+  @override
+  String get materialBomIssueOpenBom => 'Open goods BOM';
+
+  @override
+  String get rdInitialUnitTitle => 'Verify the initial basic unit';
+
+  @override
+  String get rdInitialUnitGuidance =>
+      'Choose the unit from original source evidence and record your basis. This is only available when the basic unit is missing and no quantity facts exist outside the BOM. Existing units and historical quantity meanings cannot be changed. An existing legacy unit mapping must agree.';
+
+  @override
+  String get rdInitialUnitLabel => 'Verified basic unit';
+
+  @override
+  String get rdInitialUnitRequired => 'Choose the verified basic unit';
+
+  @override
+  String get rdInitialUnitEvidence =>
+      'Original source and verification evidence';
+
+  @override
+  String get rdInitialUnitEvidenceRequired =>
+      'Enter at least 2 characters of evidence';
+
+  @override
+  String get rdInitialUnitLoadFailed =>
+      'Could not load units. Close and try again.';
+
+  @override
+  String get rdInitialUnitCancel => 'Cancel';
+
+  @override
+  String get rdInitialUnitConfirm => 'Confirm initial basic unit';
+
+  @override
+  String get rdInitialUnitSaved =>
+      'Initial basic unit verified. Continue handling any other data issues.';
+
+  @override
+  String get rdInitialUnitFailed => 'Could not verify the initial basic unit';
+
+  @override
+  String get rdInitialUnitRetry => 'Retry';
 }

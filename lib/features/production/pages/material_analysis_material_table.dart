@@ -338,10 +338,17 @@ abstract class _MaterialAnalysisMaterialTableState
             .length
       : groups.length;
   ProductionMaterialAnalysisView? _materialRowsCacheAnalysis;
-  String? _materialRowsCacheKey;
-  List<_MaterialTableRow>? _materialRowsCache;
+  final _materialRowsByView =
+      <
+        bool,
+        ({
+          String key,
+          List<_MaterialTableRow> rows,
+          Map<String, List<MasterFacetBucket>> facets,
+        })
+      >{};
 
-  /// 与 [_materialRowsCache] 同生命周期的表头筛选桶（产品视图取自投影，汇总
+  /// 与行缓存同生命周期的表头筛选桶（产品视图取自投影，汇总
   /// 视图按聚合行聚合）；始终从「未套表头筛选」的行集算出。
   Map<String, List<MasterFacetBucket>> _materialRowsFacetsCache = const {};
 
@@ -357,15 +364,21 @@ abstract class _MaterialAnalysisMaterialTableState
       (_expandedMaterialAggregates.toList()..sort()).join(','),
       _materialTableProjectionSignature(),
     ].join('|');
-    if (identical(_materialRowsCacheAnalysis, analysis) &&
-        _materialRowsCacheKey == projectionKey &&
-        _materialRowsCache != null) {
-      return _materialRowsCache!;
+    if (!identical(_materialRowsCacheAnalysis, analysis)) {
+      _materialRowsCacheAnalysis = analysis;
+      _materialRowsByView.clear();
+    }
+    final cached = _materialRowsByView[_bomAggregateByMaterial];
+    if (cached != null && cached.key == projectionKey) {
+      _materialRowsFacetsCache = cached.facets;
+      return cached.rows;
     }
     final rows = _computeMaterialTableRows(analysis);
-    _materialRowsCacheAnalysis = analysis;
-    _materialRowsCacheKey = projectionKey;
-    _materialRowsCache = rows;
+    _materialRowsByView[_bomAggregateByMaterial] = (
+      key: projectionKey,
+      rows: rows,
+      facets: _materialRowsFacetsCache,
+    );
     return rows;
   }
 
@@ -1188,8 +1201,47 @@ abstract class _MaterialAnalysisMaterialTableState
     (value) => value != null && value.isNotEmpty,
   );
 
-  /// 投影/行缓存键：表头筛选值 + 路线草稿/脏组/学习记忆代际（路线桶与路线
-  /// 筛选随下拉草稿变化）+ 视图排布。
+  int _materialLocalFacetRevision = 0;
+  Object? _materialFacetWorkshopDefaults;
+  Object? _materialFacetWorkshopManagers;
+  List<Object> _materialLocalFacetFacts = const [];
+
+  /// Observe the facts used by editable column facets, including programmatic
+  /// draft/preview restores. This avoids fragile invalidation calls in every
+  /// assignment handler. Default maps are replaced atomically by their readers;
+  /// checking their identity avoids walking the whole goods-default catalog.
+  /// Append 5 -> 6 keeps the same facet and does not invalidate either view.
+  int _materialTableLocalFacetRevision() {
+    final facts = <Object>[
+      for (final entry in _tableWorkshopDraft.entries)
+        ('workshop', entry.key, entry.value.id, entry.value.name),
+      for (final entry in _tableWorkerDraft.entries)
+        ('worker', entry.key, entry.value.id, entry.value.name),
+      for (final entry in _tableAppendQtyControllers.entries)
+        if ((double.tryParse(entry.value.text.trim()) ?? 0) > 0)
+          ('appendPositive', entry.key),
+      for (final entry in _aggregateTable.drafts.entries)
+        if (entry.value.mixedWorkshop || entry.value.mixedWorker)
+          (
+            'mixedAssignment',
+            entry.key,
+            entry.value.mixedWorkshop,
+            entry.value.mixedWorker,
+          ),
+    ];
+    if (!identical(_materialFacetWorkshopDefaults, _tableWorkshopDefaults) ||
+        !identical(_materialFacetWorkshopManagers, _tableWorkshopManagers) ||
+        !listEquals(_materialLocalFacetFacts, facts)) {
+      _materialFacetWorkshopDefaults = _tableWorkshopDefaults;
+      _materialFacetWorkshopManagers = _tableWorkshopManagers;
+      _materialLocalFacetFacts = facts;
+      _materialLocalFacetRevision++;
+    }
+    return _materialLocalFacetRevision;
+  }
+
+  /// 投影/行缓存键：表头筛选值、路线草稿/脏组、仓库覆盖及本地指派/追加
+  /// 筛选事实代次。服务端数量快照另由 analysis 对象身份隔离。
   @override
   String _materialTableProjectionSignature() {
     final filters = [
@@ -1214,6 +1266,7 @@ abstract class _MaterialAnalysisMaterialTableState
       drafts.join(','),
       dirty.join(','),
       owningWarehouses.join(','),
+      _materialTableLocalFacetRevision().toString(),
     ].join('|');
   }
 

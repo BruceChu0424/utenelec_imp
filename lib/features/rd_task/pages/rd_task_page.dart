@@ -22,6 +22,8 @@ import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
+import '../widgets/rd_initial_basic_unit_dialog.dart';
 import '../../../shared/drafts/form_draft_category.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
@@ -36,6 +38,11 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/authenticated_request_scope.dart';
+import '../../../core/network/server_config.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
+import '../../../shared/providers/session_provider.dart';
+import 'package:flutter/foundation.dart' show setEquals;
 import '../../../core/network/connection_recovery.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -226,6 +233,26 @@ class _RdTaskListPanel extends ConsumerStatefulWidget {
 }
 
 class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
+  int _unitOperationRevision = 0;
+  bool _openingUnit = false;
+  BuildContext? _unitDialogContext;
+
+  void _invalidateUnitOperation() {
+    _unitOperationRevision++;
+    final dialog = _unitDialogContext;
+    if (dialog == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!dialog.mounted || _unitDialogContext != dialog) return;
+      final route = ModalRoute.of(dialog);
+      if (route == null || !route.isActive) return;
+      if (route.isCurrent) {
+        Navigator.of(dialog).pop();
+      } else {
+        Navigator.of(dialog).removeRoute(route);
+      }
+    });
+  }
+
   RdTaskData? _data;
   String? _error;
   bool _loading = true;
@@ -259,13 +286,36 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
   /// 保存 BOM 后后端经 GOODS_BOM_UPDATED→notifyBomUpdated 自动完成任务并通知计划员；
   /// 故对 BOM 类任务，维护即完成，「标记完成」仅作手动兜底。
   Future<void> _openGoodsBom(RdTaskRow row) async {
+    if (row.allowedActions.contains('RECONCILE_BASIC_UNIT')) {
+      await _reconcileInitialBasicUnit(row);
+      return;
+    }
     final goodsId = row.goodsId;
     if (goodsId == null || goodsId.isEmpty) {
       context.appInfo('该任务未关联货品，可直接「标记完成」');
       return;
     }
-    // 货品详情整页 (tab=bom 组装信息)；详情拉取/编辑权限由页面自理。
-    await context.push(RoutePath.basicinfoGoodsDetail(goodsId, tab: 'bom'));
+    final masterIssue = row.sourceDocType == 'MATERIAL_ANALYSIS_MASTER_ISSUE';
+    final reportedIssue =
+        masterIssue || row.sourceDocType == 'MATERIAL_ANALYSIS_BOM_ISSUE';
+    if (reportedIssue && (row.description?.isNotEmpty ?? false)) {
+      final open = await UtenDialog.show(
+        context,
+        title: row.title,
+        content: SingleChildScrollView(child: SelectableText(row.description!)),
+        confirmLabel: masterIssue
+            ? AppLocalizations.of(context).materialBomIssueOpenGoods
+            : AppLocalizations.of(context).materialBomIssueOpenBom,
+      );
+      if (open != true || !mounted) return;
+    }
+    // Missing units/colors are maintained on the basic tab; BOM structure uses the assembly tab.
+    await context.push(
+      RoutePath.basicinfoGoodsDetail(
+        goodsId,
+        tab: masterIssue ? 'basic' : 'bom',
+      ),
+    );
     // 返回后刷新：BOM 保存触发自动完成经 outbox ~2s，先即时刷一次，再延迟刷一次
     // 让已维护 BOM 的任务自然离开「待完成」（研发不必手动刷新或「标记完成」）。
     if (mounted) {
@@ -277,6 +327,101 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
           _load();
         }
       });
+    }
+  }
+
+  Future<void> _reconcileInitialBasicUnit(RdTaskRow row) async {
+    if (_resolving ||
+        _openingUnit ||
+        !row.allowedActions.contains('RECONCILE_BASIC_UNIT')) {
+      return;
+    }
+    final identity = ref.read(authenticatedScopeProvider);
+    final server = ref.read(apiBaseUrlProvider);
+    final permissions = Set<String>.of(ref.read(currentPermissionsProvider));
+    final session = ref.read(sessionProvider.notifier);
+    final intent = session.requestIntentEpoch;
+    final revision = _unitOperationRevision;
+    final repo = ref.read(rdTaskRepositoryProvider);
+    bool current() =>
+        mounted &&
+        identity != null &&
+        !identity.readOnly &&
+        _unitOperationRevision == revision &&
+        ref.read(authenticatedScopeProvider) == identity &&
+        ref.read(apiBaseUrlProvider) == server &&
+        setEquals(ref.read(currentPermissionsProvider), permissions) &&
+        identical(ref.read(sessionProvider.notifier), session) &&
+        session.requestIntentEpoch == intent &&
+        (_data?.items.any(
+              (item) =>
+                  item.id == row.id &&
+                  item.rowVersion == row.rowVersion &&
+                  item.allowedActions.contains('RECONCILE_BASIC_UNIT'),
+            ) ??
+            false);
+    if (!current()) return;
+    _openingUnit = true;
+    AuthenticatedRequestScope scope;
+    try {
+      scope = await repo.captureRequestScope(isCurrent: current);
+    } catch (_) {
+      _openingUnit = false;
+      return;
+    }
+    if (!mounted || !current()) {
+      _openingUnit = false;
+      return;
+    }
+    final input = await showDialog<RdInitialBasicUnitInput>(
+      context: context,
+      builder: (dialog) {
+        _unitDialogContext = dialog;
+        return RdInitialBasicUnitDialog(
+          task: row,
+          requestScope: scope,
+          isCurrent: current,
+        );
+      },
+    );
+    _unitDialogContext = null;
+    _openingUnit = false;
+    if (!mounted || input == null || !current()) return;
+    try {
+      await scope.verify();
+    } catch (_) {
+      return;
+    }
+    if (!mounted || !current()) return;
+    if (input.openGoods && row.goodsId != null) {
+      await context.push(
+        RoutePath.basicinfoGoodsDetail(row.goodsId!, tab: 'basic'),
+      );
+      if (mounted) await _load();
+      return;
+    }
+    setState(() => _resolving = true);
+    final result = await context.guardAction(
+      () => scope.run(() async {
+        final result = await repo.reconcileInitialBasicUnit(
+          row.id,
+          row.rowVersion,
+          input.unitId,
+          input.evidence,
+        );
+        await scope.verify();
+        if (!current()) throw AuthenticatedRequestScope.changed();
+        return result;
+      }),
+      success: AppLocalizations.of(context).rdInitialUnitSaved,
+      errorFallback: AppLocalizations.of(context).rdInitialUnitFailed,
+    );
+    if (!mounted) return;
+    setState(() => _resolving = false);
+    if (!current()) return;
+    if (result != null) {
+      refreshBadges(ref);
+      await _load();
     }
   }
 
@@ -310,6 +455,7 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
 
   Future<void> _load() async {
     if (!mounted) return;
+    _invalidateUnitOperation();
     final requestId = ++_requestId;
     setState(() {
       _loading = true;
@@ -406,6 +552,14 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(
+      authenticatedScopeProvider,
+      (_, _) => _invalidateUnitOperation(),
+    );
+    ref.listen(apiBaseUrlProvider, (_, _) => _invalidateUnitOperation());
+    ref.listen<Set<String>>(currentPermissionsProvider, (before, next) {
+      if (!setEquals(before, next)) _invalidateUnitOperation();
+    });
     // 网络恢复后，不打扰老人、自动重载当前可见 Tab（同 operations_workbench）。
     ref.listen<int>(
       connectionRecoveryProvider.select((state) => state.recoveryEpoch),

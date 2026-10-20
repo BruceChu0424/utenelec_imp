@@ -114,6 +114,36 @@ class PlatformColumnServicePostgresTest {
         assertThatThrownBy(()->service.read("stock_summary",new BatchRead(List.of(record),null))).isInstanceOf(ApiException.class);
     }
 
+    @Test void relatedColumnsArePrivateReadonlyAndRecheckTargetPermissionWithoutWritingAnyBusinessValues() {
+        master.relatedValue="旧模具";
+        var shared=define("goods","共享说明","TEXT",false,null);
+        master.canDefine=false;
+        var related=tx(()->service.create("goods",new CreateDefinition("我的模具","RELATED",false,null,"mouldName")));
+        assertThatThrownBy(()->define("goods","不得借个人关联新建共享字段","TEXT",false,null)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->define("goods","不得借个人关联新建共享计算","CALCULATED",false,factFormula("qty","ADD","1"))).isInstanceOf(ApiException.class);
+        master.canDefine=true;
+        assertThat(related.relationKey()).isEqualTo("mouldName");
+        assertThat(sql.queryForObject("SELECT owner_user_id FROM platform_column_definitions WHERE id=?",UUID.class,related.id())).isEqualTo(actor);
+        assertThat(read("goods",related.id()).cells().getFirst().value()).isEqualTo("旧模具");
+        master.relatedValue="变更后的模具";
+        assertThat(read("goods",related.id()).cells().getFirst().value()).isEqualTo("变更后的模具");
+        master.relatedValue=null;
+        assertThat(read("goods",related.id()).cells().getFirst().value()).isNull();
+        assertThatThrownBy(()->tx(()->service.write("goods",record,new Write(0,List.of(new CellInput(related.id(),null))))))
+                .isInstanceOf(ApiException.class).hasMessageContaining("只读");
+        assertThatThrownBy(()->define("goods","禁止关联列参与数值计算","CALCULATED",false,new Formula(new Operand(related.id(),null,null),List.of())))
+                .isInstanceOf(ApiException.class).hasMessageContaining("数字列");
+        assertThatThrownBy(()->tx(()->service.create("goods",new CreateDefinition("未知关联","RELATED",false,null,"arbitrarySql"))))
+                .isInstanceOf(ApiException.class);
+        UUID firstActor=actor;actor=UUID.randomUUID();
+        assertThat(service.search("goods","")).extracting(Definition::id).contains(shared.id()).doesNotContain(related.id());
+        assertThatThrownBy(()->read("goods",related.id())).isInstanceOf(ApiException.class);
+        actor=firstActor;master.targetVisible=false;
+        assertThat(service.search("goods","")).extracting(Definition::id).contains(shared.id()).doesNotContain(related.id());
+        assertThatThrownBy(()->read("goods",related.id())).isInstanceOf(ApiException.class).hasMessageContaining("查看权限");
+        assertThat(sql.queryForObject("SELECT count(*) FROM platform_record_fields",Integer.class)).isZero();
+    }
+
     @Test void simultaneousFirstSaveHasOneWinnerAndOneVersionConflict() throws Exception {
         var column=define("goods","并发","TEXT",false,null);
         var ds=new DriverManagerDataSource(connection.getMetaData().getURL(),postgres.getUsername(),postgres.getPassword());
@@ -418,6 +448,8 @@ class PlatformColumnServicePostgresTest {
     private final class TestAdapter implements PlatformColumnResourceAdapter {
         private final String scope;private final boolean preserve,personal;
         boolean writable=true,priceVisible=true,canDefine=true,projectionRecords=false;
+        boolean targetVisible=true;
+        String relatedValue;
         final UUID documentId=UUID.randomUUID();
         final Set<UUID> allowed=new HashSet<>(Set.of(record));
         final Map<UUID,UUID> parents=new HashMap<>(Map.of(record,documentId));
@@ -430,6 +462,13 @@ class PlatformColumnServicePostgresTest {
         public Map<UUID,RecordAccess> authorizeCreated(Set<UUID> ids){if(ids.stream().anyMatch(id->!PlatformColumnSaveLineage.wasPersisted(id)))throw new ApiException(ErrorCode.CONFLICT);return authorize(ids,false);}
         public boolean supportsValues(){return !personal||projectionRecords;}public boolean personalDefinitions(){return personal;}public boolean preserveValuesOnReset(){return preserve;}
         public List<FactDefinition> facts(){return List.of(new FactDefinition("qty","数量",false),new FactDefinition("price","单价",true));}
+        public List<RelationDefinition> relations(){return targetVisible?List.of(new RelationDefinition("mouldName","模具名称")):List.of();}
+        public boolean canDefineRelatedColumns(){return targetVisible;}
+        public Map<UUID,Map<String,String>> relatedValues(Set<UUID> ids,Set<String> keys){
+            Map<UUID,Map<String,String>> values=new HashMap<>();
+            for(UUID id:ids)values.put(id,relatedValue==null?Map.of():Map.of("mouldName",relatedValue));
+            return values;
+        }
         public Set<UUID> recordIdsForDocument(UUID id){if(!documentId.equals(id))throw new ApiException(ErrorCode.NOT_FOUND);authorize(Set.of(record),false);return Set.of(record);}
         public void requireDocumentFieldWrite(UUID id){recordIdsForDocument(id);requireDocumentSaveAccess(false);if(!writable)throw new ApiException(ErrorCode.CONFLICT,"当前单据不允许修改扩展字段");}
         public Map<UUID,UUID> parentDocuments(Set<UUID> ids){Map<UUID,UUID> result=new HashMap<>();ids.forEach(id->result.put(id,parents.get(id)));return result;}

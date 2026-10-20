@@ -19965,6 +19965,156 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'修改货品委外方式'**
   String get goodsHistoryGoodsSubcontractPolicy;
+
+  /// No description provided for @materialBomIssueHeading.
+  ///
+  /// In zh, this message translates to:
+  /// **'发现 {count} 处 BOM 问题，影响 {sources} 项需求'**
+  String materialBomIssueHeading(int count, int sources);
+
+  /// No description provided for @materialBomIssueGuidance.
+  ///
+  /// In zh, this message translates to:
+  /// **'问题需求保留在本页；其它需求可另开分析。工程部修复后重新检查，仍有问题的需求不能下达。'**
+  String get materialBomIssueGuidance;
+
+  /// No description provided for @materialBomIssueForwardedTask.
+  ///
+  /// In zh, this message translates to:
+  /// **'已转工程部 {taskNo}'**
+  String materialBomIssueForwardedTask(String taskNo);
+
+  /// No description provided for @materialBomIssueSelectAll.
+  ///
+  /// In zh, this message translates to:
+  /// **'全选问题'**
+  String get materialBomIssueSelectAll;
+
+  /// No description provided for @materialBomIssueDeselectAll.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消全选'**
+  String get materialBomIssueDeselectAll;
+
+  /// No description provided for @materialBomIssueForward.
+  ///
+  /// In zh, this message translates to:
+  /// **'转工程部({count})'**
+  String materialBomIssueForward(int count);
+
+  /// No description provided for @materialBomIssueRecheck.
+  ///
+  /// In zh, this message translates to:
+  /// **'重新检查'**
+  String get materialBomIssueRecheck;
+
+  /// No description provided for @materialBomIssueContinue.
+  ///
+  /// In zh, this message translates to:
+  /// **'分析其它 {count} 项需求'**
+  String materialBomIssueContinue(int count);
+
+  /// No description provided for @materialBomIssueForwarded.
+  ///
+  /// In zh, this message translates to:
+  /// **'已转工程部，修复后请重新检查'**
+  String get materialBomIssueForwarded;
+
+  /// No description provided for @materialBomIssueForwardFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'转工程部失败'**
+  String get materialBomIssueForwardFailed;
+
+  /// No description provided for @materialBomIssueClear.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前未发现 BOM 问题，请重新联合分析以核对需求和库存'**
+  String get materialBomIssueClear;
+
+  /// No description provided for @materialBomIssueOpenGoods.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开货品资料'**
+  String get materialBomIssueOpenGoods;
+
+  /// No description provided for @materialBomIssueOpenBom.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开货品 BOM'**
+  String get materialBomIssueOpenBom;
+
+  /// No description provided for @rdInitialUnitTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'核对首次基本单位'**
+  String get rdInitialUnitTitle;
+
+  /// No description provided for @rdInitialUnitGuidance.
+  ///
+  /// In zh, this message translates to:
+  /// **'请对照原始资料选择单位并填写核对依据。只允许尚无基本单位且没有BOM以外数量事实的货品首次赋单位；已有历史数量或非空单位时不能更换。原历史单位桥接存在时须一致。'**
+  String get rdInitialUnitGuidance;
+
+  /// No description provided for @rdInitialUnitLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'核对后的基本单位'**
+  String get rdInitialUnitLabel;
+
+  /// No description provided for @rdInitialUnitRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请选择核对后的基本单位'**
+  String get rdInitialUnitRequired;
+
+  /// No description provided for @rdInitialUnitEvidence.
+  ///
+  /// In zh, this message translates to:
+  /// **'原始资料与核对依据'**
+  String get rdInitialUnitEvidence;
+
+  /// No description provided for @rdInitialUnitEvidenceRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写至少2字的核对依据'**
+  String get rdInitialUnitEvidenceRequired;
+
+  /// No description provided for @rdInitialUnitLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'单位加载失败，请关闭后重试'**
+  String get rdInitialUnitLoadFailed;
+
+  /// No description provided for @rdInitialUnitCancel.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消'**
+  String get rdInitialUnitCancel;
+
+  /// No description provided for @rdInitialUnitConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认首次基本单位'**
+  String get rdInitialUnitConfirm;
+
+  /// No description provided for @rdInitialUnitSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'首次基本单位已核对，其它资料问题请继续办理'**
+  String get rdInitialUnitSaved;
+
+  /// No description provided for @rdInitialUnitFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'首次基本单位核对失败'**
+  String get rdInitialUnitFailed;
+
+  /// No description provided for @rdInitialUnitRetry.
+  ///
+  /// In zh, this message translates to:
+  /// **'重试'**
+  String get rdInitialUnitRetry;
 }
 
 class _AppLocalizationsDelegate

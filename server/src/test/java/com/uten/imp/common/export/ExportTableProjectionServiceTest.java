@@ -68,4 +68,15 @@ class ExportTableProjectionServiceTest {
         assertThat(projected.rows().getFirst().get("platform:"+id)).isEqualTo("0017");
         verify(platform).read("master_goods",new BatchRead(List.of(record),List.of(id)));
     }
+    @Test void privateRelatedCodesRemainTextAndUseCurrentAuthorizedRelationDuringExport() {
+        UUID id=UUID.randomUUID(),record=UUID.randomUUID();
+        var definition=new Definition(id,"master_goods","我的模具编号","RELATED",false,null,0,0,"mouldCode");
+        when(platform.definitionsByIds("master_goods",List.of(id))).thenReturn(List.of(definition));
+        when(platform.read(eq("master_goods"),any())).thenReturn(List.of(new Row(record,0,false,
+            List.of(new Cell(id,"00012",definition,false,false,null)))));
+        var projected=service.project(List.of(),List.of(Map.of("_platformRecordId",record)),
+            new TableColumnProjection("t","master_goods",List.of(column("platform:"+id,"我的模具编号"))),"master_goods");
+        assertThat(projected.columns().getFirst().type()).isEqualTo("text");
+        assertThat(projected.rows().getFirst().get("platform:"+id)).isEqualTo("00012");
+    }
 }

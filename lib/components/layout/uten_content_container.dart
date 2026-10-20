@@ -5,6 +5,7 @@
 // - 默认、narrow 和 wide 入口均不限制页面最大宽度
 // - 导航收起 / 展开时，页面正文随右侧可用空间一起伸缩
 // - 水平 gutter 随可用宽度自适应（<600: 16 / <840: 24 / >=840: 32）；大字号按倍率反向收
+// - 页面外壳已经提供 gutter 时，页面内部容器不重复叠加；与工作台使用同一正文边缘
 //
 // 注意：gutter 基于 LayoutBuilder 拿到的"可用宽度"（父容器实际宽度），
 // 而不是屏幕宽度——桌面端被侧边栏挤窄的内容区也能正确取 gutter。
@@ -114,17 +115,21 @@ class UtenContentContainer extends StatelessWidget {
         final available = constraints.hasBoundedWidth
             ? constraints.maxWidth
             : MediaQuery.sizeOf(context).width;
-        final gutter = gutterForWidth(
-          available,
-          fontZoom: UtenDisplayScale.fontZoomOf(context),
-        );
+        final gutter = _ContentGutterScope.maybeOf(context) != null
+            ? 0.0
+            : gutterForWidth(
+                available,
+                fontZoom: UtenDisplayScale.fontZoomOf(context),
+              );
 
         Widget content = ConstrainedBox(
           constraints: BoxConstraints(maxWidth: math.min(maxWidth, available)),
           child: SizedBox(
             width: double.infinity,
             // 局部 SelectionArea：页面正文文字可框选复制（准则 §3.4 局部包裹口径）。
-            child: selectable ? SelectionArea(child: child) : child,
+            child: _ContentGutterScope(
+              child: selectable ? SelectionArea(child: child) : child,
+            ),
           ),
         );
 
@@ -146,4 +151,16 @@ class UtenContentContainer extends StatelessWidget {
       },
     );
   }
+}
+
+/// Only the outermost standard content container owns the page gutter. Local
+/// explicit padding and width limits remain effective in nested containers.
+class _ContentGutterScope extends InheritedWidget {
+  const _ContentGutterScope({required super.child});
+
+  static _ContentGutterScope? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_ContentGutterScope>();
+
+  @override
+  bool updateShouldNotify(_ContentGutterScope oldWidget) => false;
 }

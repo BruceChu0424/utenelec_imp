@@ -174,38 +174,12 @@ Future<void> showPagePermissionDrawer(
   BuildContext context, {
   required PagePermissionScope scope,
 }) {
-  return showGeneralDialog<void>(
+  return showUtenAdaptivePanel<void>(
     context: context,
+    drawerWidth: 720,
+    barrierDismissible: false,
     barrierLabel: '页面权限设置',
-    transitionBuilder: (context, animation, secondaryAnimation, child) {
-      final curved = CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeOutCubic,
-      );
-      return SlideTransition(
-        position: Tween<Offset>(
-          begin: const Offset(1, 0),
-          end: Offset.zero,
-        ).animate(curved),
-        child: child,
-      );
-    },
-    pageBuilder: (context, _, _) {
-      final media = MediaQuery.of(context);
-      // 滑窗宽度口径 2026-10-17：与其他右滑面板同一口径（browse 档 75% 屏宽，
-      // 720 只作小屏下限），见 uten_adaptive_panel.dart 的 UtenPanelWidth。
-      final width = utenPanelWidth(media.size, 720, UtenPanelWidth.browse);
-      return Align(
-        alignment: Alignment.centerRight,
-        child: SizedBox(
-          width: width,
-          child: Padding(
-            padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
-            child: PagePermissionDrawer(scope: scope),
-          ),
-        ),
-      );
-    },
+    builder: (_) => PagePermissionDrawer(scope: scope),
   );
 }
 

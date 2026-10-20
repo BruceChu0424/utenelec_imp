@@ -141,11 +141,13 @@ PlatformTableBinding<T>? resolvePlatformTable<T>(
     String scope,
     String? Function(R) id, {
     String? schema,
+    bool allowPersonalRelatedColumns = false,
   }) => PlatformTableBinding<T>(
     tableKey: schema ?? key,
     scope: scope,
     recordIdOf: (row) => row is R ? id(row) : null,
     canEditValues: table.kind == 'editable' || !scope.endsWith('_item'),
+    allowPersonalRelatedColumns: allowPersonalRelatedColumns,
     columnAliases: _aliases,
     factValuesOf: (row) => platformDisplayFacts(row),
     factListenablesOf: platformDisplayListenables,
@@ -155,6 +157,7 @@ PlatformTableBinding<T>? resolvePlatformTable<T>(
       'master_goods',
       (r) => r.id,
       schema: 'master.goods',
+      allowPersonalRelatedColumns: true,
     );
   }
   if (T == ClientListItem) {

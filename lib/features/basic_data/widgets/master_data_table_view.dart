@@ -44,6 +44,7 @@ import '../../../components/layout/uten_content_scrollbar.dart';
 import '../../../components/layout/uten_sticky_header.dart';
 import '../../../components/layout/uten_table_column_kit.dart';
 import '../../../components/layout/uten_table_horizontal_scroll_controller.dart';
+import '../../../components/layout/uten_panel_opening_scope.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/responsive/scale.dart';
@@ -1768,10 +1769,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   Widget _platformAddButton() => IconButton(
     key: const Key('platform-table-add-column'),
-    tooltip: _platform.columnEditingEnabled ? '添加列' : '显示列',
+    tooltip: _platform.canCustomizeColumns ? '添加列' : '显示列',
     onPressed: _addPlatformColumn,
     icon: Icon(
-      _platform.columnEditingEnabled
+      _platform.canCustomizeColumns
           ? Icons.add_rounded
           : Icons.view_column_outlined,
     ),
@@ -2255,6 +2256,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 数据变了(列集合不变)：待本帧之后补量新值、需要时加宽。
   bool _widthGrowthPending = false;
   bool _widthGrowthScheduled = false;
+  List<T>? _widthGrowthPool;
+  int _widthGrowthOffset = 0;
+
+  // Text shaping is UI work even when it runs in a post-frame callback.
+  // Bound each batch by cells so wide tables also leave time for input/paint.
+  static const _widthMeasureCellBudget = 256;
 
   /// 上次量宽时生效的字号系数（textScaler.scale(1)）。用户在系统设置改字号档后，
   /// 渲染文字按新字号铺，但列宽缓存不会自动失效——[_ensureWidths] 据此比较触发重算，
@@ -3081,6 +3088,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       // 数据变了(翻页/筛选/排序/加载更多/静默重拉)→ 帧后只补量新出现的值，
       // 超出当前宽度才加宽；已手动调整的列不动。
       _widthGrowthPending = true;
+      _widthGrowthPool = null;
+      _widthGrowthOffset = 0;
     }
     // 吸顶表：数据/列变化改表高 → post-frame 重测锚点；notifier 换实例重绑。
     if (!identical(oldWidget.stickyHeaderPinned, widget.stickyHeaderPinned)) {
@@ -3297,8 +3306,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     }
     _widthsDirty = false;
     _widthGrowthPending = false;
+    _widthGrowthPool = null;
+    _widthGrowthOffset = 0;
     _lastScale = scale;
     final pool = _widthSamplePool();
+    final sampleSize = math.min(
+      pool.length,
+      math.max(1, _widthMeasureCellBudget ~/ math.max(1, _columns.length)),
+    );
+    final sample = pool.sublist(0, sampleSize);
     final next = List<double>.filled(
       _columns.length,
       _minColWidth,
@@ -3313,10 +3329,16 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       next[i] = _fitColumnWidth(
         context,
         def,
-        _measureColumn(context, def, pool, textScaler),
+        _measureColumn(context, def, sample, textScaler),
       );
     }
     _widths = next;
+    if (sampleSize < pool.length) {
+      _widthGrowthPool = pool;
+      _widthGrowthOffset = sampleSize;
+      _widthGrowthPending = true;
+      _scheduleWidthGrowth();
+    }
   }
 
   /// 取样池：主数据 + 前导分组条目(分组行与主行共用同一套列宽，故一并参与测算，
@@ -3394,14 +3416,24 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _widthGrowthScheduled = false;
       if (!mounted || !_widthGrowthPending) return;
-      _widthGrowthPending = false;
       final textScaler = MediaQuery.textScalerOf(context);
-      if (_lastScale != textScaler || _widths.length != _columns.length) {
+      if (_widthsDirty ||
+          _lastScale != textScaler ||
+          _widths.length != _columns.length) {
         setState(() => _widthsDirty = true);
         if (_fullscreen) _fsTick.value++;
         return;
       }
-      final pool = _widthSamplePool();
+      final pool = _widthGrowthPool ??= _widthSamplePool();
+      final end = math.min<int>(
+        pool.length,
+        _widthGrowthOffset +
+            math.max<int>(
+              1,
+              _widthMeasureCellBudget ~/ math.max<int>(1, _columns.length),
+            ),
+      );
+      final sample = pool.sublist(_widthGrowthOffset, end);
       var grown = false;
       final next = List<double>.of(_widths);
       for (var i = 0; i < _columns.length; i++) {
@@ -3410,7 +3442,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         final fitted = _fitColumnWidth(
           context,
           def,
-          _measureColumn(context, def, pool, textScaler),
+          _measureColumn(context, def, sample, textScaler),
         );
         if (fitted > next[i] + 0.5) {
           next[i] = fitted;
@@ -3422,6 +3454,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         // The fullscreen route retains the table stage. Its total width must
         // advance with the column widths used by newly mounted lazy rows.
         if (_fullscreen) _fsTick.value++;
+      }
+      _widthGrowthOffset = end;
+      _widthGrowthPending = end < pool.length;
+      if (_widthGrowthPending) {
+        _scheduleWidthGrowth();
+        WidgetsBinding.instance.ensureVisualUpdate();
+      } else {
+        _widthGrowthPool = null;
+        _widthGrowthOffset = 0;
       }
     });
   }
@@ -3850,6 +3891,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   @override
   Widget build(BuildContext context) {
+    if (!UtenPanelOpeningScope.isReadyOf(context)) {
+      return const UtenPanelOpeningPlaceholder();
+    }
     _bindPagination();
     _publishProjection();
     // 吸顶表：每帧 post-frame 复核量位（数据/布局变化后刷新锚点）。
@@ -4766,12 +4810,14 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       // 吸顶表（stickyHeaderPinned）：表头行+分隔线进覆盖层（顶到视口上沿后钉住、
       // 表尾推到时随表尾离开），流内留同高占位——组装见下方 children 的 Stack 分支。
       final Widget headerRow = SelectionContainer.disabled(
-        child: Material(
-          color: theme.colorScheme.surfaceContainerHigh,
-          child: SingleChildScrollView(
-            controller: _headerH,
-            scrollDirection: Axis.horizontal,
-            child: SizedBox(width: total, child: _buildHeaderRow(theme)),
+        child: UtenTableHeaderSurface(
+          child: Material(
+            color: theme.colorScheme.surfaceContainerHigh,
+            child: SingleChildScrollView(
+              controller: _headerH,
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(width: total, child: _buildHeaderRow(theme)),
+            ),
           ),
         ),
       );
@@ -5722,12 +5768,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         : UtenFrozenTrailingColumn(
             horizontal: _headerH,
             width: 48,
-            // 左线隔开滚过的列头；视口最右缘不画外框线。
+            // 左线隔开滚过的列头；右线收住末列边缘。
             cell: DecoratedBox(
               decoration: BoxDecoration(
                 color: theme.colorScheme.surfaceContainerHigh,
                 border: Border(
                   left: BorderSide(color: theme.colorScheme.outline),
+                  right: BorderSide(color: theme.colorScheme.outline),
                 ),
               ),
               child: _platformAddButton(),
@@ -5738,11 +5785,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   Widget _buildHeaderRowBody(ThemeData theme) {
     final visibleIndices = _visibleIndices;
-    final lastVisibleIndex = visibleIndices.isEmpty
-        ? null
-        : visibleIndices.last;
-    bool showRightDivider(int index) =>
-        widget.showColumnChooser || index != lastVisibleIndex;
+    bool showRightDivider(int index) => true;
     // 多选表头三态全选格（合成单元格）：false=本页全未选 / true=全选 / 空=部分。
     // 横滚时钉在视口左缘（[UtenFrozenLeadingColumn]），行内留等宽占位保持列对齐。
     // showSelectionColumn=false 时不渲染（该格与整列一起退场，本变量不再挂载）。
@@ -6115,11 +6158,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   Widget _buildDataRow(ThemeData theme, T item) {
     final visibleIndices = _visibleIndices;
-    final lastVisibleIndex = visibleIndices.isEmpty
-        ? null
-        : visibleIndices.last;
-    bool showRightDivider(int index) =>
-        widget.showColumnChooser || index != lastVisibleIndex;
+    bool showRightDivider(int index) => true;
     // selectable 多选：选中由 selectedIds（业务键）驱动，单选 _selectedItem 失效。
     // 否则沿用单选：外部 isSelected 谓词优先，回落内部 _selectedItem 引用相等。
     final String? multiId = widget.selectable ? widget.idOf?.call(item) : null;
@@ -6240,7 +6279,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final undecoratedRow = DecoratedBox(
       // 行间横线：逐行分隔；选中行也用常态横线（底色由下面的 ColoredBox 统一给）。
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: lineColor, width: 0.5)),
+        border: Border(
+          bottom: BorderSide(color: lineColor, width: 0.5),
+          right: BorderSide(color: lineColor, width: 0.5),
+        ),
       ),
       child: ColoredBox(
         color: rowBg,

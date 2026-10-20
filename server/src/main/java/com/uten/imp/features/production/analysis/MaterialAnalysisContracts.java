@@ -79,6 +79,28 @@ public final class MaterialAnalysisContracts {
             @Digits(integer = 14, fraction = 4) BigDecimal requestedQty) {
     }
 
+    public record BomDiagnosticRequest(
+            UUID analysisId,
+            @NotEmpty @Size(max = RequestLimits.DOCUMENT_LINES)
+            @JsonAlias("sources") List<@Valid PreviewItem> items) {}
+
+    public record BomForwardRequest(
+            @NotNull @Valid BomDiagnosticRequest diagnostic,
+            @NotEmpty @Size(max = 5000) List<@NotBlank String> findingKeys) {}
+
+    public record BomFinding(String key, UUID rootGoodsId, UUID parentGoodsId,
+            UUID componentGoodsId, UUID repairGoodsId, boolean masterData,
+            String rootLabel, String parentLabel, String componentLabel,
+            String problemCode, String reason, String fix, String taskNo) {
+        public BomFinding withTaskNo(String number) {
+            return new BomFinding(key, rootGoodsId, parentGoodsId, componentGoodsId,
+                    repairGoodsId, masterData, rootLabel, parentLabel, componentLabel,
+                    problemCode, reason, fix, number);
+        }
+    }
+
+    public record BomDiagnosticView(List<BomFinding> findings, List<Integer> blockedSourceIndexes) {}
+
     public record RouteRequest(
             @NotNull @JsonAlias("expectedVersion") Long version,
             @NotBlank @Pattern(regexp = "(?i)[0-9a-f]{64}") String fingerprint,

@@ -32,10 +32,10 @@ void main() {
         final expandedRailWidth = tester
             .getSize(find.byType(NavigationRail))
             .width;
-        // Both the shell and the business page retain 32dp side gutters, but
-        // neither may absorb available desktop space with a maximum width.
+        // The shell owns the single 32dp page gutter. Business pages retain
+        // the same content edges as the dashboard, including after collapse.
         expect(expandedWidth, closeTo(width - expandedRailWidth - 64, 0.01));
-        expect(expandedBodyWidth, closeTo(expandedWidth - 64, 0.01));
+        expect(expandedBodyWidth, closeTo(expandedWidth, 0.01));
         expect(
           tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
           isTrue,
@@ -47,7 +47,7 @@ void main() {
         final collapsedWidth = tester.getSize(find.byKey(_surfaceKey)).width;
         final collapsedBodyWidth = tester.getSize(find.byKey(_bodyKey)).width;
         expect(collapsedWidth, greaterThan(expandedWidth + 100));
-        expect(collapsedBodyWidth, closeTo(collapsedWidth - 64, 0.01));
+        expect(collapsedBodyWidth, closeTo(collapsedWidth, 0.01));
         expect(
           collapsedBodyWidth - expandedBodyWidth,
           closeTo(collapsedWidth - expandedWidth, 0.01),

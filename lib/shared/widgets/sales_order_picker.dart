@@ -17,7 +17,6 @@ import '../../components/layout/uten_adaptive_panel.dart';
 import '../../components/layout/uten_picker_confirm_bar.dart';
 import '../../components/layout/uten_picker_footer_layout.dart';
 import '../../core/network/api_exception.dart';
-import '../../core/responsive/breakpoint.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../features/basic_data/widgets/master_data_table_view.dart';
 import '../../features/department/models/department_node.dart';
@@ -39,65 +38,14 @@ Future<SalesDocListItem?> showSalesOrderPicker(
   WidgetRef ref, {
   UtenEmployeePickerItem? initialSeller,
 }) {
-  final sheet = _SalesOrderPickerSheet(initialSeller: initialSeller);
-  if (context.breakpoint.isCompact) {
-    return showModalBottomSheet<SalesDocListItem>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(UtenRadius.lg),
-        ),
-      ),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
-        child: SizedBox(
-          height: MediaQuery.sizeOf(ctx).height * 0.9,
-          child: sheet,
-        ),
-      ),
-    );
-  }
-  return showGeneralDialog<SalesDocListItem>(
+  return showUtenAdaptivePanel<SalesDocListItem>(
     context: context,
-    barrierDismissible: true,
-    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-    barrierColor: Colors.black54,
-    transitionDuration: const Duration(milliseconds: 250),
-    pageBuilder: (ctx, _, _) {
-      // 浮动留边：面板与屏幕上/右/下边各留 16px，圆角 + 阴影，不再贴边。
-      // 宽度口径 2026-10-17：browse 档（75% 屏宽，840 只作小屏下限），
-      // 与其他右滑面板同一口径（uten_adaptive_panel.dart 的 UtenPanelWidth）。
-      final panelWidth = utenPanelWidth(
-        MediaQuery.sizeOf(ctx),
-        840,
-        UtenPanelWidth.browse,
-      );
-      return Align(
-        alignment: Alignment.centerRight,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(0, 16, 16, 16),
-          child: Material(
-            color: Theme.of(ctx).colorScheme.surface,
-            elevation: 12,
-            borderRadius: BorderRadius.circular(UtenRadius.lg),
-            child: SizedBox(
-              width: panelWidth,
-              height: double.infinity,
-              child: sheet,
-            ),
-          ),
-        ),
-      );
-    },
-    transitionBuilder: (ctx, anim, _, child) => SlideTransition(
-      position: Tween<Offset>(
-        begin: const Offset(1, 0),
-        end: Offset.zero,
-      ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
-      child: child,
-    ),
+    compactHeightFactor: 0.9,
+    drawerWidth: 840,
+    panelMargin: const EdgeInsetsDirectional.fromSTEB(0, 16, 16, 16),
+    panelBorderRadius: BorderRadius.circular(UtenRadius.lg),
+    panelElevation: 12,
+    builder: (_) => _SalesOrderPickerSheet(initialSeller: initialSeller),
   );
 }
 

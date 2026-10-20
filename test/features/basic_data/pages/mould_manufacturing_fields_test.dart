@@ -85,6 +85,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.saved?['mstatus'], '2008-09');
     expect(repository.saved?['manufacturer'], '测试制造商');
+    expect(repository.saved?['place'], '历史存放位置');
+    expect(repository.saved?['keeper'], '历史保管人');
     expect(repository.saved, isNot(contains('mfgMonth')));
     await tester.tap(find.text('旧模具名称'));
     await tester.pump(const Duration(milliseconds: 80));
@@ -244,6 +246,8 @@ class _Moulds implements MouldRepository {
     status: '使用',
     mstatus: saved?['mstatus'] as String? ?? '2008年7月',
     manufacturer: saved?['manufacturer'] as String?,
+    place: saved?['place'] as String? ?? '历史存放位置',
+    keeper: saved?['keeper'] as String? ?? '历史保管人',
   );
   @override
   Future<PagedResult<MouldListItem>> list(

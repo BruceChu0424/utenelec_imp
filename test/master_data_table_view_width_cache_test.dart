@@ -12,6 +12,7 @@ Widget _table(
   double Function(BuildContext)? minimumWidthOf,
   Widget Function(BuildContext, String)? cellBuilder,
   TextScaler textScaler = TextScaler.noScaling,
+  bool virtualized = false,
 }) => MaterialApp(
   builder: (context, child) => MediaQuery(
     data: MediaQuery.of(context).copyWith(textScaler: textScaler),
@@ -22,6 +23,7 @@ Widget _table(
       width: 900,
       height: 400,
       child: MasterDataTableView<String>(
+        virtualized: virtualized,
         columns: [
           MasterColumnDef<String>(
             key: columnKey,
@@ -44,6 +46,27 @@ Widget _table(
 );
 
 void main() {
+  testWidgets(
+    'large snapshots yield between text measurement batches and still fit the last value',
+    (tester) async {
+      final before = debugMasterTableMeasureTextCount;
+      final items = [
+        for (var i = 0; i < 1200; i++) '料$i',
+        '这是一条位于末尾而且必须完整量宽的货品名称',
+      ];
+      await tester.pumpWidget(_table(items, virtualized: true));
+      expect(
+        debugMasterTableMeasureTextCount - before,
+        lessThan(600),
+        reason: 'the first frame must not shape every loaded value',
+      );
+      final firstWidth = _columnWidth(tester);
+      await tester.pumpAndSettle();
+      expect(debugMasterTableMeasureTextCount - before, items.length + 1);
+      expect(_columnWidth(tester), greaterThan(firstWidth));
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'plain columns fit all loaded values rather than declared width',
     (tester) async {

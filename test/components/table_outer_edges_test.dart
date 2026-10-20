@@ -38,7 +38,7 @@ void main() {
     for (final actions in [false, true]) {
       for (final pinned in [false, true]) {
         testWidgets(
-          '${editor ? 'editor' : 'master'} logical last column keeps no outer edge, actions=$actions, pinned=$pinned',
+          '${editor ? 'editor' : 'master'} logical last column retains its right border, actions=$actions, pinned=$pinned',
           (tester) async {
             tester.view.devicePixelRatio = 1;
             tester.view.physicalSize = const Size(500, 500);
@@ -121,16 +121,17 @@ void main() {
             );
             await tester.pumpAndSettle();
             expect(find.text('隐藏值'), findsNothing);
+            expect(
+              find.ancestor(
+                of: find.text('右列').first,
+                matching: find.byType(UtenTableHeaderSurface),
+              ),
+              findsOneWidget,
+            );
             expect(_cellBorder(tester, '左列').right.style, BorderStyle.solid);
-            expect(
-              _cellBorder(tester, '右列').right.style,
-              actions ? BorderStyle.solid : BorderStyle.none,
-            );
+            expect(_cellBorder(tester, '右列').right.style, BorderStyle.solid);
             expect(_cellBorder(tester, '左值').right.style, BorderStyle.solid);
-            expect(
-              _cellBorder(tester, '右值').right.style,
-              actions ? BorderStyle.solid : BorderStyle.none,
-            );
+            expect(_cellBorder(tester, '右值').right.style, BorderStyle.solid);
             expect(_cellBorder(tester, '右值').top.style, BorderStyle.solid);
             expect(_cellBorder(tester, '右值').bottom.style, BorderStyle.solid);
             for (final element in find.byType(Scrollable).evaluate()) {
@@ -142,15 +143,9 @@ void main() {
             }
             await tester.pumpAndSettle();
             expect(_cellBorder(tester, '左列').right.style, BorderStyle.solid);
-            expect(
-              _cellBorder(tester, '右列').right.style,
-              actions ? BorderStyle.solid : BorderStyle.none,
-            );
+            expect(_cellBorder(tester, '右列').right.style, BorderStyle.solid);
             expect(_cellBorder(tester, '左值').right.style, BorderStyle.solid);
-            expect(
-              _cellBorder(tester, '右值').right.style,
-              actions ? BorderStyle.solid : BorderStyle.none,
-            );
+            expect(_cellBorder(tester, '右值').right.style, BorderStyle.solid);
             expect(tester.takeException(), isNull);
           },
         );

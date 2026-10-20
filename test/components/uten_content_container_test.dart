@@ -5,6 +5,46 @@ import 'package:uten_imp/components/layout/uten_content_container.dart';
 const _contentKey = Key('page-content');
 
 void main() {
+  testWidgets(
+    'business content and dashboard keep the same single page gutter',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1920, 900);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: UtenContentContainer(
+              selectable: false,
+              child: Column(
+                children: [
+                  Expanded(
+                    child: SizedBox.expand(key: Key('dashboard-content')),
+                  ),
+                  Expanded(
+                    child: UtenContentContainer(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: SizedBox.expand(key: _contentKey),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      final dashboard = tester.getRect(
+        find.byKey(const Key('dashboard-content')),
+      );
+      final business = tester.getRect(find.byKey(_contentKey));
+      expect(business.left, dashboard.left);
+      expect(business.right, dashboard.right);
+      expect(business.width, 1920 - 64);
+      expect(business.height, dashboard.height - 24);
+    },
+  );
+
   final variants = <String, Widget Function(Widget)>{
     'standard': (child) => UtenContentContainer(child: child),
     'narrow': (child) => UtenContentContainer.narrow(child: child),

@@ -41,6 +41,7 @@ import '../models/daily_report_material_review.dart';
 import '../models/production_daily_report_create_request.dart';
 import '../models/production_execution_planning.dart';
 import '../models/production_material_analysis.dart';
+import '../models/material_analysis_bom_diagnostic.dart';
 import '../models/material_analysis_projection.dart';
 import '../models/material_priority_replenishment.dart';
 import '../models/material_future_transfer.dart';
@@ -818,6 +819,27 @@ class ProductionPlanRepository {
 
   /// Creates or CAS-refreshes one joint analysis. BOM expansion, warehouse
   /// availability and readiness quantities are all server-owned facts.
+  Future<MaterialAnalysisBomDiagnostic> inspectMaterialAnalysisBom({
+    String? analysisId,
+    required List<MaterialAnalysisSourceInput> sources,
+    Set<String>? forwardFindingKeys,
+  }) async {
+    final diagnostic = {
+      'analysisId': ?analysisId,
+      'sources': [for (final source in sources) source.toJson()],
+    };
+    final json = await api.post(
+      '$_materialAnalysesBase/bom-diagnostics${forwardFindingKeys == null ? '' : '/forward'}',
+      body: forwardFindingKeys == null
+          ? diagnostic
+          : {
+              'diagnostic': diagnostic,
+              'findingKeys': forwardFindingKeys.toList(),
+            },
+    ); // ENDPOINT
+    return MaterialAnalysisBomDiagnostic.fromJson(json);
+  }
+
   Future<ProductionMaterialAnalysisView> previewMaterialAnalysis({
     String? analysisId,
     int? expectedVersion,

@@ -45,6 +45,21 @@ class PlatformTableRepository {
       },
     ),
   );
+  Future<PlatformColumnDefinition> createRelated(
+    String scope, {
+    required String name,
+    required String relationKey,
+  }) async => PlatformColumnDefinition.fromJson(
+    await api.post(
+      '/platform-columns/$scope/definitions',
+      body: {
+        'name': name,
+        'type': 'RELATED',
+        'relationKey': relationKey,
+        'priceProtected': false,
+      },
+    ),
+  );
   Future<List<PlatformRowValues>> rows(
     String scope,
     List<String> ids, {

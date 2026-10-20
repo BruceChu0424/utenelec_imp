@@ -69,6 +69,7 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
   final _sourceColumns = <String, PlatformColumnDefinition>{};
   String _type = 'CALCULATED';
   String? _base;
+  String? _relation;
   String? _loadError;
   String? _saveError;
   List<PlatformColumnDefinition> _results = const [];
@@ -80,11 +81,15 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
   int _generation = 0;
   PlatformTableRepository? _repository;
   bool _editingEnabled = false;
+  String _relationSignature = '';
+  int _authorizationRevision = -1;
   bool get _catalog => widget.controller.bound;
-  bool get _editing => widget.controller.columnEditingEnabled;
-  bool get _canDefine => widget.controller.canDefineColumns;
+  bool get _editing => widget.controller.canCustomizeColumns;
+  bool get _sharedDefinitions => widget.controller.canDefineColumns;
+  bool get _canDefine =>
+      _sharedDefinitions || widget.controller.canDefineRelatedColumns;
   bool get _values =>
-      _editing &&
+      widget.controller.columnEditingEnabled &&
       _catalog &&
       !widget.controller.historical &&
       widget.controller.binding?.canEditValues == true &&
@@ -92,19 +97,41 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
           (widget.controller.draftOf != null &&
               widget.controller.capabilities?.canCreate == true)) &&
       widget.controller.capabilities?.supportsValues == true;
-  String get _activeType => _values ? _type : 'CALCULATED';
+  List<PlatformTableRelation> get _relations =>
+      widget.controller.capabilities?.relations ?? const [];
+  String get _activeType =>
+      !_sharedDefinitions && widget.controller.canDefineRelatedColumns
+      ? 'RELATED'
+      : _type == 'RELATED' && _relations.isNotEmpty
+      ? 'RELATED'
+      : _values
+      ? _type
+      : 'CALCULATED';
 
   @override
   void initState() {
     super.initState();
     _repository = widget.controller.repository;
     _editingEnabled = _editing;
+    _relationSignature = _relations.map((relation) => relation.key).join('|');
+    _authorizationRevision = widget.controller.authorizationRevision;
     widget.controller.addListener(_onControllerChanged);
     unawaited(_load());
   }
 
   void _onControllerChanged() {
     if (!mounted) return;
+    final nextRelations = _relations.map((relation) => relation.key).join('|');
+    final accessChanged =
+        nextRelations != _relationSignature ||
+        _authorizationRevision != widget.controller.authorizationRevision;
+    _relationSignature = nextRelations;
+    _authorizationRevision = widget.controller.authorizationRevision;
+    if (accessChanged) {
+      _generation++;
+      _saving = false;
+      _loading = false;
+    }
     final editingChanged = _editingEnabled != _editing;
     _editingEnabled = _editing;
     if (editingChanged) {
@@ -123,7 +150,7 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
     }
     if (identical(_repository, widget.controller.repository)) {
       setState(() {});
-      if (editingChanged && _editing) unawaited(_load());
+      if ((editingChanged || accessChanged) && _editing) unawaited(_load());
       return;
     }
     _repository = widget.controller.repository;
@@ -263,7 +290,11 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
       if (!_creationInitialized) {
         _creationInitialized = true;
         _name.text = _query.text.trim();
-        _type = _values ? 'TEXT' : 'CALCULATED';
+        _type = !_sharedDefinitions && widget.controller.canDefineRelatedColumns
+            ? 'RELATED'
+            : _values
+            ? 'TEXT'
+            : 'CALCULATED';
       }
       _saveError = null;
     });
@@ -288,12 +319,20 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
 
   Future<void> _create() async {
     if (_saving || _loading || !_canDefine) return;
+    if (_activeType != 'RELATED' && !_sharedDefinitions) return;
+    if (_type == 'RELATED' &&
+        !_relations.any((relation) => relation.key == _relation)) {
+      setState(() => _saveError = '关联资料权限或选项已变化，请重新选择关联内容。');
+      return;
+    }
     setState(() {
       _submitted = true;
       _saveError = null;
     });
     final sources = _sources;
     if (_name.text.trim().isEmpty ||
+        (_activeType == 'RELATED' &&
+            !_relations.any((item) => item.key == _relation)) ||
         (_activeType == 'CALCULATED' &&
             (_baseError(sources) != null ||
                 _steps.any((step) => _stepError(step, sources) != null)))) {
@@ -318,14 +357,21 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
     setState(() => _saving = true);
     final repository = widget.controller.repository;
     final generation = _generation;
+    final authorizationRevision = widget.controller.authorizationRevision;
     try {
       final definition = _catalog
-          ? await repository!.create(
-              widget.controller.binding!.scope,
-              name: _name.text.trim(),
-              type: _activeType,
-              formula: formula,
-            )
+          ? _activeType == 'RELATED'
+                ? await repository!.createRelated(
+                    widget.controller.binding!.scope,
+                    name: _name.text.trim(),
+                    relationKey: _relation!,
+                  )
+                : await repository!.create(
+                    widget.controller.binding!.scope,
+                    name: _name.text.trim(),
+                    type: _activeType,
+                    formula: formula,
+                  )
           : PlatformColumnDefinition(
               id: 'display-${const Uuid().v4()}',
               scope: '',
@@ -335,6 +381,12 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
             );
       if (!mounted ||
           !_canDefine ||
+          (!definition.related && !_sharedDefinitions) ||
+          authorizationRevision != widget.controller.authorizationRevision ||
+          (definition.related &&
+              !_relations.any(
+                (relation) => relation.key == definition.relationKey,
+              )) ||
           generation != _generation ||
           !identical(repository, widget.controller.repository)) {
         return;
@@ -428,6 +480,7 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
         .where(
           (column) =>
               _visibleColumn(column) &&
+              (widget.controller.columnEditingEnabled || column.related) &&
               (_catalog ||
                   query.isEmpty ||
                   matchesKeywordSearch([column.name], query)),
@@ -574,13 +627,19 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
                   label: '内容类型',
                   value: _activeType,
                   allowClear: false,
-                  enabled: !_saving && _values,
+                  enabled: !_saving && (_values || _relations.isNotEmpty),
                   items: [
                     if (_values)
                       const UtenDropdownItem(value: 'TEXT', label: '文字说明'),
                     if (_values)
                       const UtenDropdownItem(value: 'NUMBER', label: '记数字'),
-                    const UtenDropdownItem(value: 'CALCULATED', label: '自动计算'),
+                    if (_sharedDefinitions)
+                      const UtenDropdownItem(
+                        value: 'CALCULATED',
+                        label: '自动计算',
+                      ),
+                    if (_relations.isNotEmpty)
+                      const UtenDropdownItem(value: 'RELATED', label: '关联资料'),
                   ],
                   onChanged: (value) => setState(() {
                     _type = value!;
@@ -595,12 +654,16 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
                       ? '每行都能写说明或编号；编号开头的 0 不会丢。'
                       : _activeType == 'NUMBER'
                       ? '每行填一个数字，只作记录，不改单子的金额和数量。'
+                      : _activeType == 'RELATED'
+                      ? '通过已绑定的资料自动显示。只加入你的表头；资料未关联时显示空，关联变更后同步。'
                       : '按你设的算法自动算出结果，仅供参考；单子的金额、数量仍按原来的规则算。',
                 ),
-                if (!_values) ...[
+                if (!_values && _activeType != 'RELATED') ...[
                   const SizedBox(height: UtenSpacing.s8),
                   Text(
-                    '这张表只能加自动计算的列；要手填文字或数字，需要有编辑权限。',
+                    _sharedDefinitions
+                        ? '这张表只能加自动计算的列；要手填文字或数字，需要有编辑权限。'
+                        : '这里只能添加个人只读关联列；不会修改货品资料或其他人的表头。',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
@@ -610,6 +673,28 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
           if (_activeType == 'CALCULATED') ...[
             const SizedBox(height: UtenSpacing.s16),
             _formulaEditor(sources),
+          ],
+          if (_activeType == 'RELATED') ...[
+            const SizedBox(height: UtenSpacing.s16),
+            UtenDropdownField(
+              key: const Key('platform-column-relation'),
+              label: '关联显示内容',
+              value: _relations.any((item) => item.key == _relation)
+                  ? _relation
+                  : null,
+              hintText: '选择有权查看的关联资料',
+              allowClear: false,
+              enabled: !_saving,
+              errorMessage:
+                  _submitted && !_relations.any((item) => item.key == _relation)
+                  ? '请选择关联显示内容'
+                  : null,
+              items: [
+                for (final item in _relations)
+                  UtenDropdownItem(value: item.key, label: item.name),
+              ],
+              onChanged: (value) => setState(() => _relation = value),
+            ),
           ],
         ],
       ],
@@ -823,12 +908,14 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
 
 String _columnPurpose(String type) => switch (type) {
   'CALCULATED' => '自动计算 · 按设好的算法显示结果',
+  'RELATED' => '关联资料 · 按已绑定的资料显示，仅自己可见',
   'NUMBER' => '记数字 · 手动填写，只作记录',
   _ => '文字说明 · 写说明或编号',
 };
 
 IconData _columnIcon(String type) => switch (type) {
   'CALCULATED' => Icons.calculate_outlined,
+  'RELATED' => Icons.link_rounded,
   'NUMBER' => Icons.numbers_rounded,
   _ => Icons.notes_rounded,
 };

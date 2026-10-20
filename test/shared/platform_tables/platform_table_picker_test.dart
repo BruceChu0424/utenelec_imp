@@ -76,6 +76,23 @@ class _Repository extends PlatformTableRepository {
       formula: formula,
     );
   }
+
+  @override
+  Future<PlatformColumnDefinition> createRelated(
+    String scope, {
+    required String name,
+    required String relationKey,
+  }) async {
+    creates++;
+    await createGate?.future;
+    return created = PlatformColumnDefinition(
+      id: 'related',
+      scope: scope,
+      name: name,
+      type: 'RELATED',
+      relationKey: relationKey,
+    );
+  }
 }
 
 class _Controller extends PlatformTableController<String> {
@@ -103,6 +120,9 @@ class _Controller extends PlatformTableController<String> {
   bool failSave = false;
   String? saved;
   int reloads = 0;
+  int _accessRevision = 0;
+  @override
+  int get authorizationRevision => _accessRevision;
 
   @override
   bool canCalculateFact(String key) => key == 'quantity';
@@ -152,6 +172,21 @@ class _Controller extends PlatformTableController<String> {
 
   void switchEditingMode(bool enabled) {
     columnEditingEnabled = enabled;
+    notifyListeners();
+  }
+
+  void changeRelations(List<PlatformTableRelation> relations) {
+    capabilities = PlatformTableCapabilities(
+      scope: 'resource',
+      canWrite: true,
+      canDefine: true,
+      relations: relations,
+    );
+    notifyListeners();
+  }
+
+  void invalidateAuthorization() {
+    _accessRevision++;
     notifyListeners();
   }
 }
@@ -243,6 +278,76 @@ Future<void> _newFormula(WidgetTester tester) async {
 }
 
 void main() {
+  for (final boundary in ['target ABA', 'same repository authorization ABA']) {
+    testWidgets('在途关联创建遇到 $boundary 不选入旧响应', (tester) async {
+      final repository = _Repository()..createGate = Completer<void>();
+      final controller = _Controller(repository, columnEditingEnabled: true);
+      const relations = [
+        PlatformTableRelation(key: 'mouldName', name: '模具 · 名称'),
+      ];
+      controller.changeRelations(relations);
+      await _open(tester, controller);
+      await _tap(tester, find.byKey(const Key('platform-column-new')));
+      await tester.enterText(
+        find.byKey(const Key('platform-column-name')),
+        '我的模具名称',
+      );
+      await tester.pumpAndSettle();
+      await _choose(tester, 'platform-column-type', '关联资料');
+      await _choose(tester, 'platform-column-relation', '模具 · 名称');
+      await tester.ensureVisible(
+        find.byKey(const Key('platform-column-create')),
+      );
+      await tester.tap(find.byKey(const Key('platform-column-create')));
+      await tester.pump();
+      expect(repository.creates, 1);
+      if (boundary == 'target ABA') {
+        controller.changeRelations(const []);
+        await tester.pumpAndSettle();
+        controller.changeRelations(relations);
+      } else {
+        controller.invalidateAuthorization();
+        controller.invalidateAuthorization();
+      }
+      await tester.pumpAndSettle();
+      repository.createGate!.complete();
+      await tester.pumpAndSettle();
+      expect(controller.selected, isNull);
+      expect(find.byKey(const Key('platform-column-create')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+  testWidgets('按权限选择关联资料，创建个人只读列并保留关联标识', (tester) async {
+    final repository = _Repository();
+    final controller = _Controller(repository, columnEditingEnabled: true);
+    controller.capabilities = const PlatformTableCapabilities(
+      scope: 'resource',
+      canWrite: true,
+      canDefine: true,
+      relations: [PlatformTableRelation(key: 'mouldName', name: '模具 · 名称')],
+    );
+    await _open(tester, controller);
+    await _tap(tester, find.byKey(const Key('platform-column-new')));
+    await tester.enterText(
+      find.byKey(const Key('platform-column-name')),
+      '我的模具名称',
+    );
+    await tester.pumpAndSettle();
+    await _choose(tester, 'platform-column-type', '关联资料');
+    await _choose(tester, 'platform-column-relation', '模具 · 名称');
+    expect(find.textContaining('只加入你的表头'), findsOneWidget);
+    await _tap(tester, find.byKey(const Key('platform-column-create')));
+    expect(controller.selected?.relationKey, 'mouldName');
+    expect(controller.selected?.related, isTrue);
+    expect(controller.selected?.numeric, isFalse);
+    expect(
+      PlatformColumnDefinition.fromJson(
+        controller.selected!.toJson(),
+      ).relationKey,
+      'mouldName',
+    );
+    expect(tester.takeException(), isNull);
+  });
   testWidgets(
     'pending catalog search recovers after switching to review and back to creation',
     (tester) async {

@@ -42,6 +42,8 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'uten_adaptive_hierarchy_pane.dart';
 import 'uten_hierarchy_content_width.dart';
+import '../../core/theme/uten_anim.dart';
+import '../feedback/uten_motion.dart';
 
 /// 左右分栏布局：左面板固定宽（可拖调），右面板占满剩余。
 class UtenSplitView extends StatefulWidget {
@@ -321,76 +323,79 @@ class _UtenSplitViewState extends State<UtenSplitView> {
   Widget _buildGutter(BuildContext context) {
     final theme = Theme.of(context);
     final active = _active;
-    return MouseRegion(
-      cursor: SystemMouseCursors.resizeColumn,
-      onEnter: (_) => setState(() => _hovering = true),
-      onExit: (_) => setState(() => _hovering = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        // 点击手柄即取焦，保证 ←/→ 键盘微调可用。
-        onTap: _handleFocus.requestFocus,
-        onHorizontalDragStart: (_) => setState(() => _dragging = true),
-        onHorizontalDragUpdate: _onDragUpdate,
-        onHorizontalDragEnd: (_) {
-          setState(() => _dragging = false);
-          _persist(); // 拖动期间只改内存，松手一次落盘
-        },
-        onDoubleTap: _reset,
-        child: Tooltip(
-          message: '拖动调整宽度 · 双击复位', // TODO(l10n): 补 arb
-          child: CallbackShortcuts(
-            bindings: {
-              const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
-                  _nudge(-16),
-              const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
-                  _nudge(16),
-            },
-            child: Focus(
-              focusNode: _handleFocus,
-              child: SizedBox(
-                width: UtenSplitView.gutterWidth,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 120),
-                      width: active ? 2 : 1,
-                      color: active
-                          ? theme.colorScheme.primary
-                          : theme.colorScheme.outlineVariant,
-                    ),
-                    // 握把：常驻可见的「可拖」标记（贴满命中区宽的圆角小块 + 抓握纹），
-                    // 不再只在 hover 浮现——触屏无悬停也能一眼看出可拖。悬停/拖动时
-                    // 染主色并轻微放大，强化「点这里拖」的反馈。
-                    AnimatedScale(
-                      scale: active ? 1.08 : 1.0,
-                      duration: const Duration(milliseconds: 120),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 120),
-                        width: UtenSplitView.gutterWidth,
-                        height: 38,
-                        decoration: BoxDecoration(
-                          color: active
-                              ? theme.colorScheme.primaryContainer
-                              : theme.colorScheme.surfaceContainerHigh,
-                          borderRadius: BorderRadius.circular(UtenRadius.sm),
-                          border: Border.all(
+    return UtenMotion(
+      duration: UtenAnim.fast,
+      builder: (context, duration) => MouseRegion(
+        cursor: SystemMouseCursors.resizeColumn,
+        onEnter: (_) => setState(() => _hovering = true),
+        onExit: (_) => setState(() => _hovering = false),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          // 点击手柄即取焦，保证 ←/→ 键盘微调可用。
+          onTap: _handleFocus.requestFocus,
+          onHorizontalDragStart: (_) => setState(() => _dragging = true),
+          onHorizontalDragUpdate: _onDragUpdate,
+          onHorizontalDragEnd: (_) {
+            setState(() => _dragging = false);
+            _persist(); // 拖动期间只改内存，松手一次落盘
+          },
+          onDoubleTap: _reset,
+          child: Tooltip(
+            message: '拖动调整宽度 · 双击复位', // TODO(l10n): 补 arb
+            child: CallbackShortcuts(
+              bindings: {
+                const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
+                    _nudge(-16),
+                const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
+                    _nudge(16),
+              },
+              child: Focus(
+                focusNode: _handleFocus,
+                child: SizedBox(
+                  width: UtenSplitView.gutterWidth,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      AnimatedContainer(
+                        duration: duration,
+                        width: active ? 2 : 1,
+                        color: active
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.outlineVariant,
+                      ),
+                      // 握把：常驻可见的「可拖」标记（贴满命中区宽的圆角小块 + 抓握纹），
+                      // 不再只在 hover 浮现——触屏无悬停也能一眼看出可拖。悬停/拖动时
+                      // 染主色并轻微放大，强化「点这里拖」的反馈。
+                      AnimatedScale(
+                        scale: active ? 1.08 : 1.0,
+                        duration: duration,
+                        child: AnimatedContainer(
+                          duration: duration,
+                          width: UtenSplitView.gutterWidth,
+                          height: 38,
+                          decoration: BoxDecoration(
                             color: active
-                                ? theme.colorScheme.primary
-                                : theme.colorScheme.outlineVariant,
-                            width: active ? 1.5 : 1,
+                                ? theme.colorScheme.primaryContainer
+                                : theme.colorScheme.surfaceContainerHigh,
+                            borderRadius: BorderRadius.circular(UtenRadius.sm),
+                            border: Border.all(
+                              color: active
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.outlineVariant,
+                              width: active ? 1.5 : 1,
+                            ),
                           ),
-                        ),
-                        child: Center(
-                          child: _gripDots(
-                            active
-                                ? theme.colorScheme.primary
-                                : theme.colorScheme.onSurfaceVariant,
+                          child: Center(
+                            child: _gripDots(
+                              active
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.onSurfaceVariant,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),

@@ -4,7 +4,7 @@ import 'dart:math' as math;
 import '../../../shared/search/keyword_search.dart';
 
 import 'package:dio/dio.dart' show CancelToken;
-import 'package:flutter/foundation.dart' show mapEquals, setEquals;
+import 'package:flutter/foundation.dart' show listEquals, mapEquals, setEquals;
 import 'package:flutter/material.dart';
 import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -67,6 +67,8 @@ import '../../employee/repositories/employee_repository.dart';
 import '../../employee/repositories/employee_picker_candidates.dart';
 import '../models/material_cascade_math.dart';
 import '../models/production_material_analysis.dart';
+import '../models/material_analysis_bom_diagnostic.dart';
+import '../widgets/material_analysis_bom_issues_panel.dart';
 import '../models/material_analysis_source_graph.dart';
 import '../models/material_quantity_apportionment.dart';
 import '../models/material_quantity_presentation.dart';
@@ -402,6 +404,123 @@ abstract class _MaterialAnalysisPageBase
   String? _warehouseId;
   final Set<String> _warehouseIds = {};
   String? _error;
+  MaterialAnalysisBomDiagnostic? _bomDiagnostic;
+  String? _bomDiagnosticScope;
+  List<MaterialAnalysisSourceInput> _bomDiagnosticSources = const [];
+  List<MaterialAnalysisSourceInput> _pendingBomSources = const [];
+  bool _checkingBom = false;
+
+  Future<bool> _checkBomProblems({Set<String>? forwardKeys}) async {
+    if (_checkingBom) return false;
+    final sources = forwardKeys == null
+        ? List<MaterialAnalysisSourceInput>.of(_sources)
+        : _bomDiagnosticSources;
+    if (sources.isEmpty) return false;
+    final scope = _sessionScopeKey();
+    final sourceKeys = [
+      for (final source in sources)
+        '${source.canonicalKey}:${source.requestedQty}',
+    ].join('|');
+    final analysisId = _analysis?.analysisId;
+    setState(() => _checkingBom = true);
+    try {
+      final result = await ref
+          .read(productionPlanRepositoryProvider)
+          .inspectMaterialAnalysisBom(
+            analysisId: analysisId,
+            sources: sources,
+            forwardFindingKeys: forwardKeys,
+          );
+      if (!mounted ||
+          scope != _sessionScopeKey() ||
+          analysisId != _analysis?.analysisId ||
+          (forwardKeys == null &&
+              sourceKeys !=
+                  [
+                    for (final source in _sources)
+                      '${source.canonicalKey}:${source.requestedQty}',
+                  ].join('|'))) {
+        return false;
+      }
+      setState(() {
+        _bomDiagnosticSources = sources;
+        _bomDiagnosticScope = scope;
+        if (_analysis == null && widget.seed.sources.isNotEmpty) {
+          _pendingBomSources = sources;
+        }
+        _bomDiagnostic = result.findings.isEmpty ? null : result;
+        if (result.findings.isNotEmpty) _error = null;
+      });
+      if (forwardKeys != null) {
+        context.appSuccess(_l10n.materialBomIssueForwarded);
+      }
+      return result.findings.isNotEmpty;
+    } catch (error) {
+      if (mounted && forwardKeys != null) {
+        context.appError(
+          productionErrorMessage(
+            error,
+            fallback: _l10n.materialBomIssueForwardFailed,
+          ),
+        );
+      }
+      return false;
+    } finally {
+      if (mounted) setState(() => _checkingBom = false);
+    }
+  }
+
+  Widget? _bomProblemsPanel() {
+    final diagnostic = _bomDiagnostic;
+    if (diagnostic == null || _bomDiagnosticScope != _sessionScopeKey()) {
+      return null;
+    }
+    return MaterialAnalysisBomIssuesPanel(
+      diagnostic: diagnostic,
+      sourceCount: _bomDiagnosticSources.length,
+      busy: _checkingBom,
+      onForward: _permissions.contains('production_plan:forward_rd')
+          ? (keys) async {
+              await _checkBomProblems(forwardKeys: keys);
+            }
+          : null,
+      onRecheck: () async {
+        if (!await _checkBomProblems() && mounted && _bomDiagnostic == null) {
+          context.appInfo(_l10n.materialBomIssueClear);
+        }
+      },
+      onContinue: _analysis != null || !_canManage
+          ? null
+          : () async {
+              // Move valid demands to their own analysis; pending demand keeps its exact source here.
+              final available = [
+                for (var i = 0; i < _bomDiagnosticSources.length; i++)
+                  if (!diagnostic.blockedSourceIndexes.contains(i))
+                    _bomDiagnosticSources[i],
+              ];
+              final pending = [
+                for (var i = 0; i < _bomDiagnosticSources.length; i++)
+                  if (diagnostic.blockedSourceIndexes.contains(i))
+                    _bomDiagnosticSources[i],
+              ];
+              setState(() {
+                _pendingBomSources = pending;
+                _sources = pending;
+                _moveAvailableBomSources(available);
+              });
+              await context.push(
+                RouteName.productionMaterialAnalysis,
+                extra: ProductionMaterialAnalysisSeed(
+                  warehouseId: _warehouseId,
+                  warehouseIds: _warehouseIds.toList(),
+                  sources: available,
+                ),
+              );
+              if (mounted) await _checkBomProblems();
+            },
+    );
+  }
+
   String? _serverRefreshNotice;
   bool _booting = true;
 
@@ -817,6 +936,7 @@ abstract class _MaterialAnalysisPageBase
 
   // ===== 继承链协作契约：实现在后段 part，基类生命周期按虚调用分发 =====
   Future<void> _previewAnalysis();
+  void _moveAvailableBomSources(List<MaterialAnalysisSourceInput> sources);
 
   /// 供应方式自动确认的轻提示文案 (预览 / 改路线回包共用一处)。
   String _autoConfirmedRoutesText(int count) => '已按货品档案自动确认 $count 条供应方式';
@@ -1105,11 +1225,19 @@ abstract class _MaterialAnalysisPageBase
   Future<void> _pollAnalysisIfIdle() async {
     if (!mounted) return;
     final visible =
-        ModalRoute.of(context)?.isCurrent == true ||
+        (TickerMode.valuesOf(context).enabled &&
+            ModalRoute.of(context)?.isCurrent == true) ||
         _preparationReadContexts.any(
-          (scope) => scope.mounted && ModalRoute.of(scope)?.isCurrent == true,
+          (scope) =>
+              scope.mounted &&
+              TickerMode.valuesOf(scope).enabled &&
+              ModalRoute.of(scope)?.isCurrent == true,
         );
     if (!visible) return;
+    if (_bomDiagnostic != null && !_booting && !_busy && !_checkingBom) {
+      await _checkBomProblems();
+      if (!mounted) return;
+    }
     if (_analysis == null || _booting || _busy) {
       return;
     }
@@ -1280,6 +1408,10 @@ abstract class _MaterialAnalysisPageBase
   }
 
   void _applyAnalysis(ProductionMaterialAnalysisView view) {
+    _bomDiagnostic = null;
+    _bomDiagnosticScope = null;
+    _bomDiagnosticSources = const [];
+    _pendingBomSources = const [];
     view = _prepareAnalysisOwnership(view);
     final previousAnalysisId = _analysis?.analysisId;
     ++_futureTransferRequest;
@@ -2075,7 +2207,16 @@ class _ProductionMaterialAnalysisPageState
       widget.planCreateEntry
           ? RoutePath.productionPlanNew()
           : RouteName.productionMaterialAnalysis,
-      () => _reloadAnalysisSilently(protectUnsavedEditing: true),
+      () async {
+        if (_bomDiagnostic != null &&
+            !_checkingBom &&
+            !_busy &&
+            TickerMode.valuesOf(context).enabled &&
+            ModalRoute.of(context)?.isCurrent == true) {
+          await _checkBomProblems();
+        }
+        if (mounted) await _reloadAnalysisSilently(protectUnsavedEditing: true);
+      },
     );
     final theme = Theme.of(context);
     final compact = context.breakpoint.isCompact;
@@ -2440,6 +2581,11 @@ class _ProductionMaterialAnalysisPageState
         Padding(
           padding: const EdgeInsets.only(top: UtenSpacing.s8),
           child: _inlineError(theme, _error!, _previewAnalysis),
+        ),
+      if (_bomProblemsPanel() case final panel?)
+        Padding(
+          padding: const EdgeInsets.only(top: UtenSpacing.s8),
+          child: panel,
         ),
     ];
     // 无物料任务时不进联动滚动：单一滚动区铺完各区块即可（表格缺席时

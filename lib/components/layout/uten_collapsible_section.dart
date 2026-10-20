@@ -1,7 +1,7 @@
 // UtenCollapsibleSection - 可折叠分区
 //
 // 分区内容多的时候（如工作台功能模块、待办清单）允许整段收起，
-// 只留标题栏。点标题行切换展开/收起， chevron 旋转 + AnimatedCrossFade 过渡
+// 只留标题栏。点标题行切换展开/收起， chevron 旋转 + 裁剪展开过渡
 // (收起时箭头朝下、展开后朝上, 与 ExpansionTile / expand_more·expand_less 同一口径)。
 //
 // 折叠状态两种模式：
@@ -13,6 +13,7 @@ import '../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_anim.dart';
+import '../feedback/uten_motion.dart';
 
 class UtenCollapsibleSection extends StatefulWidget {
   const UtenCollapsibleSection({
@@ -79,85 +80,107 @@ class _UtenCollapsibleSectionState extends State<UtenCollapsibleSection> {
     final theme = Theme.of(context);
     final isExpanded = _isExpanded;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // 标题行（整行可点）
-        Material(
-          type: MaterialType.transparency,
-          borderRadius: BorderRadius.circular(UtenRadius.md),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: _toggle,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 6),
-              child: Row(
-                children: [
-                  if (widget.accentColor != null) ...[
-                    Container(
-                      width: 4,
-                      height: 16,
-                      decoration: BoxDecoration(
-                        color: widget.accentColor,
-                        borderRadius: BorderRadius.circular(UtenRadius.xs),
+    return UtenMotion(
+      duration: UtenAnim.normal,
+      builder: (context, duration) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 标题行（整行可点）
+          Material(
+            type: MaterialType.transparency,
+            borderRadius: BorderRadius.circular(UtenRadius.md),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: _toggle,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 6),
+                child: Row(
+                  children: [
+                    if (widget.accentColor != null) ...[
+                      Container(
+                        width: 4,
+                        height: 16,
+                        decoration: BoxDecoration(
+                          color: widget.accentColor,
+                          borderRadius: BorderRadius.circular(UtenRadius.xs),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              widget.title,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          // 紧贴标题文字的附加组件（如待办总数徽章）
+                          if (widget.titleTrailing != null) ...[
+                            const SizedBox(width: 8),
+                            widget.titleTrailing!,
+                          ],
+                        ],
                       ),
                     ),
-                    const SizedBox(width: 8),
-                  ],
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            widget.title,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        // 紧贴标题文字的附加组件（如待办总数徽章）
-                        if (widget.titleTrailing != null) ...[
-                          const SizedBox(width: 8),
-                          widget.titleTrailing!,
-                        ],
-                      ],
+                    // 附加组件（如拖动排序手柄），在 chevron 左侧
+                    if (widget.trailing != null) ...[
+                      widget.trailing!,
+                      const SizedBox(width: 4),
+                    ],
+                    // 与全站展开箭头同一口径: 收起时朝下(点开往下展开), 展开后朝上。
+                    AnimatedRotation(
+                      turns: isExpanded ? 0.5 : 0,
+                      duration: duration,
+                      curve: UtenAnim.standard,
+                      child: Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
-                  ),
-                  // 附加组件（如拖动排序手柄），在 chevron 左侧
-                  if (widget.trailing != null) ...[
-                    widget.trailing!,
-                    const SizedBox(width: 4),
                   ],
-                  // 与全站展开箭头同一口径: 收起时朝下(点开往下展开), 展开后朝上。
-                  AnimatedRotation(
-                    turns: isExpanded ? 0.5 : 0,
-                    duration: UtenAnim.normal,
-                    curve: UtenAnim.standard,
-                    child: Icon(
-                      Icons.keyboard_arrow_down_rounded,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
-        ),
-        AnimatedCrossFade(
-          firstChild: Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: SizedBox(width: double.infinity, child: widget.child),
+          TweenAnimationBuilder<double>(
+            tween: Tween<double>(end: isExpanded ? 1 : 0),
+            duration: duration,
+            curve: UtenAnim.standard,
+            builder: (context, factor, child) => ClipRect(
+              child: Align(
+                alignment: Alignment.topCenter,
+                heightFactor: factor,
+                child: child,
+              ),
+            ),
+            child: ExcludeFocus(
+              excluding: !isExpanded,
+              child: ExcludeSemantics(
+                excluding: !isExpanded,
+                child: IgnorePointer(
+                  ignoring: !isExpanded,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: TickerMode(
+                      enabled: isExpanded,
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: widget.child,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
-          secondChild: const SizedBox(width: double.infinity),
-          crossFadeState: isExpanded
-              ? CrossFadeState.showFirst
-              : CrossFadeState.showSecond,
-          duration: UtenAnim.normal,
-          sizeCurve: UtenAnim.standard,
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

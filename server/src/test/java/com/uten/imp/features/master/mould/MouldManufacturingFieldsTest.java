@@ -125,6 +125,24 @@ class MouldManufacturingFieldsTest {
     }
 
     @Test
+    void editingUnrelatedFieldsPreservesUnmappedHistoricalPlaceAndKeeperAndExplicitClearWorks() {
+        authenticate();
+        Mould mould = new Mould(); mould.setCategory(category); mould.setCode("MJ001"); mould.setCodeSequence(1L);
+        mould.setPlace("旧库位置 B3-12"); mould.setKeeper("旧保管人");
+        when(categories.findById(category.getId())).thenReturn(Optional.of(category));
+        when(repository.findById(mould.getId())).thenReturn(Optional.of(mould));
+        when(codes.allocateForUpdate(any(),any(),any(),any(),any())).thenReturn(new CategoryCodeAllocation("MJ001",1,null,true));
+        var request=request();
+        service.update(mould.getId(),request);
+        assertThat(mould.getPlace()).isEqualTo("旧库位置 B3-12");
+        assertThat(mould.getKeeper()).isEqualTo("旧保管人");
+        request.setDepartmentId(null); request.setKeeperId(null);
+        request.setPlace(null); request.setKeeper(null);
+        service.update(mould.getId(),request);
+        assertThat(mould.getPlace()).isNull(); assertThat(mould.getKeeper()).isNull();
+    }
+
+    @Test
     void oldAliasAndCanonicalJsonRequestsSaveAndReadBackThroughTheSameMonthContract() throws Exception {
         authenticate();
         var json = new ObjectMapper();

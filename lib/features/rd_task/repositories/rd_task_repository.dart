@@ -2,6 +2,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../models/rd_task.dart';
 
@@ -9,6 +10,31 @@ class RdTaskRepository {
   const RdTaskRepository(this._api);
 
   final ApiClient _api;
+  Future<AuthenticatedRequestScope> captureRequestScope({
+    required bool Function() isCurrent,
+  }) => _api.captureRequestScope(isCurrent: isCurrent);
+
+  Future<RdInitialUnitContext> initialBasicUnitContext(String id) async =>
+      RdInitialUnitContext.fromJson(
+        await _api.get('${ApiEndpoints.rdTasks}/$id/initial-basic-unit'),
+      );
+
+  Future<RdTaskRow> reconcileInitialBasicUnit(
+    String id,
+    int expectedVersion,
+    String unitId,
+    String evidence,
+  ) async {
+    final json = await _api.post(
+      '${ApiEndpoints.rdTasks}/$id/initial-basic-unit',
+      body: {
+        'expectedVersion': expectedVersion,
+        'unitId': unitId,
+        'evidence': evidence,
+      },
+    );
+    return RdTaskRow.fromJson(json);
+  }
 
   /// status: 'open'（OPEN/IN_PROGRESS）| 'done'（DONE/CANCELED）。
   Future<RdTaskData> load({

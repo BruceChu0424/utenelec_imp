@@ -13,7 +13,7 @@
 // - compact：页面自带 UtenContentContainer（水平 gutter 16），
 //   底部留白 96，滚到底内容可越过悬浮胶囊导航
 // - medium+：外壳（MainShellPage）已提供 UtenContentContainer
-//   （maxWidth 1600 居中 + gutter 24/32），页面不再叠加，避免双重 gutter；
+//   （随可用宽度伸缩 + gutter 24/32），页面不再叠加，避免双重 gutter；
 //   无胶囊遮挡，底部留白 32
 
 import 'package:flutter/material.dart';

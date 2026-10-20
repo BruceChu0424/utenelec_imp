@@ -94,7 +94,6 @@ Future<StartConfirmationOutcome?> showStartConfirmationSheet(
     panelElevation: 16,
     barrierColor: Colors.black.withValues(alpha: .38),
     barrierLabel: '关闭开工确认表',
-    transitionDuration: const Duration(milliseconds: 300),
     builder: (_) => StartConfirmationSheet(tasks: tasks, alsoStart: alsoStart),
   );
 }

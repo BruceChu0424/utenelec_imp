@@ -441,15 +441,18 @@ abstract class _MaterialAnalysisBomTreeState
         byKey.putIfAbsent(_aggregateKeyOf(material), () => []).add(material);
       }
     }
+    // All aggregate rows refer to the same immutable analysis snapshot. A map
+    // per group made switching views allocate groups x material-count entries.
+    final materialsById = <String, ProductionMaterialAnalysisMaterial>{
+      for (final material in analysis.materials)
+        material.materialLineId: material,
+    };
     final aggregates = [
       for (final entry in byKey.entries)
         _MaterialAggregate(
           key: entry.key,
           paths: entry.value,
-          materialsById: {
-            for (final material in analysis.materials)
-              material.materialLineId: material,
-          },
+          materialsById: materialsById,
           rootProductIds: {
             for (final material in entry.value)
               if (indexes

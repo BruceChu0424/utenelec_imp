@@ -58,12 +58,12 @@ public class MasterPlatformColumnAdapters {
     private final ObjectMapper json;
     private final SystemMasterCategoryRegistry systemCategories;
 
-    @Bean PlatformColumnResourceAdapter masterGoodsColumns(GoodsService service) {
-        return adapter("goods", "货品资料", Set.of("goods:price:view", "goods:price:edit"), Goods.class, service::detail,
+    @Bean PlatformColumnResourceAdapter masterGoodsColumns(GoodsService service, org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate jdbc) {
+        return new GoodsRelatedColumnAdapter(adapter("goods", "货品资料", Set.of("goods:price:view", "goods:price:edit"), Goods.class, service::detail,
                 row -> row.path("writable").asBoolean(false), List.of(
                         fact("price", "售价", true), fact("stockQty", "当前库存数量", false),
                         fact("mWeight", "单重", false), fact("thickness", "厚度", false),
-                        fact("minOrderQty", "最小起订量", false), fact("orderMultipleQty", "订货倍数", false)));
+                        fact("minOrderQty", "最小起订量", false), fact("orderMultipleQty", "订货倍数", false))), current, jdbc);
     }
     @Bean PlatformColumnResourceAdapter masterClientColumns(ClientService service) {
         return adapter("client", "客户资料", Set.of("client:view"), Client.class, service::detail,

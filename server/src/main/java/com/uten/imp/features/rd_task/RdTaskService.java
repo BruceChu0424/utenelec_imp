@@ -53,11 +53,12 @@ public class RdTaskService {
     private static final String SELECT_COLUMNS = """
             SELECT t.id, t.task_no, t.title, t.category, t.status, t.priority,
                    t.goods_id, g.name AS goods_name, g.code AS goods_code,
-                   goods_color.name AS color_name,
+                   goods_color.name AS color_name, g.unit_id AS goods_unit_id,
                    t.order_item_id, t.source_doc_type, t.source_doc_id, t.source_doc_no,
                    t.assignee_employee_id, assignee.full_name AS assignee_name,
                    t.reporter_employee_id, reporter.full_name AS reporter_name,
-                   t.due_date, t.started_at, t.completed_at, t.created_at, t.close_note, t.row_version
+                   t.due_date, t.started_at, t.completed_at, t.created_at, t.close_note, t.row_version,
+                   t.description
             """ + TASK_FROM;
 
     private final JdbcTemplate jdbc;
@@ -149,16 +150,20 @@ public class RdTaskService {
         boolean canMaintainBom = actor.isSuperAdmin() || (actor.getPermissions().contains("goods:view")
                 && (actor.getPermissions().contains("goods:bom:create")
                     || actor.getPermissions().contains("goods:bom:edit")));
-        if (!canResolve && !canMaintainBom) return new RdTaskCounts(0, 0);
+        boolean canReconcileUnit=actor.isSuperAdmin() || actor.getPermissions().containsAll(
+                java.util.Set.of("goods:view","goods:edit","unit:view"));
+        if (!canResolve && !canMaintainBom && !canReconcileUnit) return new RdTaskCounts(0, 0);
         RdTaskCounts counts = jdbc.queryForObject("""
                 SELECT COUNT(*) FILTER (WHERE status = 'OPEN'),
                        COUNT(*) FILTER (WHERE status = 'IN_PROGRESS')
                 FROM rd_tasks
                 WHERE is_deleted = false AND status IN ('OPEN','IN_PROGRESS')
                   AND (assignee_employee_id IS NULL OR assignee_employee_id = ?)
-                  AND (? OR (category = 'BOM' AND goods_id IS NOT NULL AND ?))
+                  AND (? OR (category = 'BOM' AND goods_id IS NOT NULL AND ?)
+                    OR (category='OTHER' AND goods_id IS NOT NULL AND source_doc_type=? AND ?))
                 """, (rs, rowNum) -> new RdTaskCounts(rs.getLong(1), rs.getLong(2)),
-                actor.getEmployeeId(), canResolve, canMaintainBom);
+                actor.getEmployeeId(), canResolve, canMaintainBom,
+                com.uten.imp.application.port.RdMaterialIssuePort.MASTER_SOURCE,canReconcileUnit);
         return counts == null ? new RdTaskCounts(0, 0) : counts;
     }
 
@@ -179,11 +184,21 @@ public class RdTaskService {
 
     @Transactional
     public RdTaskRow resolve(UUID id, long expectedVersion, String note) {
+        if (jdbc.queryForList("SELECT id FROM rd_tasks WHERE id=? AND NOT is_deleted FOR UPDATE",UUID.class,id).isEmpty()) {
+            throw new ApiException(ErrorCode.NOT_FOUND,"任务不存在");
+        }
         RdTaskRow task = get(id);
         if (!canResolve(task.assigneeEmployeeId())) {
             throw new ApiException(ErrorCode.FORBIDDEN, "当前账号没有办理该研发任务的权限或责任范围");
         }
         tx.bind();
+        if (com.uten.imp.application.port.RdMaterialIssuePort.MASTER_SOURCE.equals(task.sourceDocType())) {
+            if (jdbc.queryForList("SELECT id FROM goods WHERE id=? AND NOT is_deleted FOR UPDATE",UUID.class,task.goodsId()).isEmpty()) {
+                throw new ApiException(ErrorCode.NOT_FOUND,"货品不存在");
+            }
+            Boolean repaired=jdbc.queryForObject("SELECT fn_rd_master_issue_resolved(?)",Boolean.class,task.goodsId());
+            if(!Boolean.TRUE.equals(repaired)) throw new ApiException(ErrorCode.CONFLICT,"货品资料仍有问题，请修复基本单位和主颜色后再完成任务");
+        }
         UUID actor = currentUser.requireId();
         int changed = jdbc.update("""
                 UPDATE rd_tasks
@@ -251,9 +266,19 @@ public class RdTaskService {
 
     private RdTaskRow mapRow(ResultSet rs) throws SQLException {
         String status = rs.getString("status");
-        List<String> actions = ("OPEN".equals(status) || "IN_PROGRESS".equals(status))
-                && canResolve(rs.getObject("assignee_employee_id", UUID.class))
-                ? List.of("RESOLVE") : List.of();
+        UUID assignee=rs.getObject("assignee_employee_id", UUID.class);
+        List<String> actions = new ArrayList<>(("OPEN".equals(status) || "IN_PROGRESS".equals(status))
+                && canResolve(assignee)
+                ? List.of("RESOLVE") : List.of());
+        if (("OPEN".equals(status) || "IN_PROGRESS".equals(status))
+                && "OTHER".equals(rs.getString("category"))
+                && com.uten.imp.application.port.RdMaterialIssuePort.MASTER_SOURCE.equals(rs.getString("source_doc_type"))
+                && rs.getObject("goods_unit_id",UUID.class)==null
+                && currentUser.get().map(actor -> actor.isSuperAdmin() || (
+                    actor.getPermissions().containsAll(java.util.Set.of("rd_task:view","goods:view","goods:edit","unit:view"))
+                    && (assignee==null || assignee.equals(actor.getEmployeeId())))).orElse(false)) {
+            actions.add("RECONCILE_BASIC_UNIT");
+        }
         return new RdTaskRow(
                 rs.getObject("id", UUID.class),
                 rs.getString("task_no"),
@@ -279,8 +304,9 @@ public class RdTaskService {
                 rs.getString("close_note"),
                 rs.getLong("row_version"),
                 actions,
-                rs.getString("color_name"));
+                rs.getString("color_name"), rs.getString("description"));
     }
+
 
     private boolean canResolve(UUID assigneeEmployeeId) {
         return currentUser.get().map(actor -> actor.isSuperAdmin()

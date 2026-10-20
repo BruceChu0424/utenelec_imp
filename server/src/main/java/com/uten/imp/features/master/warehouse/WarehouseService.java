@@ -382,7 +382,7 @@ public class WarehouseService {
         }
         w.setName(req.getName());
         w.setLocation(req.getLocation());
-        w.setRemark(req.getRemark());
+        if (req.isRemarkProvided()) w.setRemark(req.getRemark());
         if (req.getAccountable() != null) w.setAccountable(req.getAccountable());
         if (req.hasWorkshopDepartmentReference()) {
             DepartmentReference workshop = requireWorkshop(req.getWorkshopDepartmentId());

@@ -74,6 +74,204 @@ class _TestSnapshot extends SessionSnapshotNotifier {
 }
 
 void main() {
+  testWidgets(
+    'a retained hidden page does not poll BOM diagnostics until visible',
+    (tester) async {
+      final visible = ValueNotifier<bool>(true);
+      addTearDown(visible.dispose);
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1400, 900),
+        visibility: visible,
+        permissions: const {Perm.productionMaterialAnalysisCreate},
+        errorOverride: (request) => request.path.endsWith('/preview')
+            ? _materialAnalysisConflict(request)
+            : null,
+        responseOverride: (request) {
+          if (!request.path.endsWith('/bom-diagnostics')) return null;
+          return {
+            'findings': <Map<String, dynamic>>[
+              {
+                'key': 'issue',
+                'rootLabel': '产品',
+                'parentLabel': '父件',
+                'componentLabel': '组件',
+                'reason': '缺单位',
+                'fix': '按原始资料核对',
+              },
+            ],
+            'blockedSourceIndexes': <int>[0],
+          };
+        },
+      );
+      final before = harness.requests
+          .where((request) => request.path.endsWith('/bom-diagnostics'))
+          .length;
+      visible.value = false;
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 46));
+      await tester.pump();
+      expect(
+        harness.requests
+            .where((request) => request.path.endsWith('/bom-diagnostics'))
+            .length,
+        before,
+      );
+      visible.value = true;
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 45));
+      await tester.pumpAndSettle();
+      expect(
+        harness.requests
+            .where((request) => request.path.endsWith('/bom-diagnostics'))
+            .length,
+        before + 1,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'visible pending BOM issues recheck automatically without writing another analysis',
+    (tester) async {
+      var repaired = false;
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1400, 900),
+        permissions: const {Perm.productionMaterialAnalysisCreate},
+        errorOverride: (request) => request.path.endsWith('/preview')
+            ? _materialAnalysisConflict(request)
+            : null,
+        responseOverride: (request) {
+          if (!request.path.endsWith('/bom-diagnostics')) return null;
+          return {
+            'findings': repaired
+                ? <Map<String, dynamic>>[]
+                : <Map<String, dynamic>>[
+                    {
+                      'key': 'unit-issue',
+                      'rootLabel': '产品',
+                      'parentLabel': '父件',
+                      'componentLabel': '组件',
+                      'reason': '缺单位',
+                      'fix': '核对原始资料',
+                    },
+                  ],
+            'blockedSourceIndexes': repaired ? <int>[] : <int>[0],
+          };
+        },
+      );
+      expect(
+        find.byKey(const Key('material-analysis-bom-issues')),
+        findsOneWidget,
+      );
+      final before = harness.requests
+          .where((request) => request.path.endsWith('/bom-diagnostics'))
+          .length;
+      repaired = true;
+      await tester.pump(const Duration(seconds: 46));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('material-analysis-bom-issues')),
+        findsNothing,
+      );
+      expect(
+        harness.requests
+            .where((request) => request.path.endsWith('/bom-diagnostics'))
+            .length,
+        before + 1,
+      );
+      expect(
+        harness.requests.where((request) => request.path.endsWith('/preview')),
+        hasLength(1),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'BOM problems batch-forward and valid demand moves separately while repaired demand retains its source',
+    (tester) async {
+      var repaired = false;
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1400, 900),
+        withPlanRoute: true,
+        sources: const [
+          MaterialAnalysisSourceInput(
+            salesOrderItemId: 'bad-source',
+            requestedQty: 7,
+          ),
+          MaterialAnalysisSourceInput(
+            salesOrderItemId: 'good-source',
+            requestedQty: 11,
+          ),
+        ],
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          'production_plan:forward_rd',
+        },
+        errorOverride: (request) =>
+            request.path.endsWith('/preview') && !repaired
+            ? _materialAnalysisConflict(request)
+            : null,
+        responseOverride: (request) {
+          if (!request.path.contains('/bom-diagnostics')) return null;
+          return {
+            'findings': repaired
+                ? <Map<String, dynamic>>[]
+                : <Map<String, dynamic>>[
+                    {
+                      'key': 'bad-key',
+                      'rootLabel': '问题产品',
+                      'parentLabel': '父件',
+                      'componentLabel': '缺单位组件',
+                      'reason': '组件没有基本单位',
+                      'fix': '维护基本单位',
+                      if (request.path.endsWith('/forward')) 'taskNo': 'RD-1',
+                    },
+                  ],
+            'blockedSourceIndexes': repaired ? <int>[] : <int>[0],
+          };
+        },
+      );
+      expect(
+        find.byKey(const Key('material-analysis-bom-issues')),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('全选问题'));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('bom-issues-forward')));
+      await tester.pumpAndSettle();
+      final forwarded = harness.requests.lastWhere(
+        (request) => request.path.endsWith('/bom-diagnostics/forward'),
+      );
+      expect((forwarded.data as Map)['findingKeys'], ['bad-key']);
+      expect(
+        ((forwarded.data as Map)['diagnostic'] as Map)['sources'],
+        hasLength(2),
+      );
+      await tester.tap(find.byKey(const Key('bom-issues-continue')));
+      await tester.pumpAndSettle();
+      expect(find.text('另开分析 good-source:11.0'), findsOneWidget);
+      await tester.tap(find.text('返回问题需求'));
+      await tester.pumpAndSettle();
+      repaired = true;
+      await tester.tap(find.text('重新检查'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('material-analysis-bom-issues')),
+        findsNothing,
+      );
+      await tester.tap(find.byKey(const Key('material-analysis-start')));
+      await tester.pumpAndSettle();
+      final preview = harness.requests.lastWhere(
+        (request) => request.path.endsWith('/preview'),
+      );
+      expect((preview.data as Map)['sources'], [
+        {'salesOrderItemId': 'bad-source', 'requestedQty': 7.0},
+      ]);
+      expect(tester.takeException(), isNull);
+    },
+  );
   for (final empty in [true, false]) {
     testWidgets(
       'candidate selection summary floats at zero and clears selected rows empty=$empty',
@@ -9536,6 +9734,7 @@ Future<_Harness> _pumpPage(
   String? workerId,
   ThemeData? theme,
   double textScale = 1,
+  ValueNotifier<bool>? visibility,
   bool withPlanRoute = false,
   List<Map<String, dynamic>> warehouseEntries = const [
     {'id': 'warehouse-1', 'name': '主仓'},
@@ -9576,18 +9775,47 @@ Future<_Harness> _pumpPage(
               : const []),
     ),
   );
-  final TransitionBuilder? mediaBuilder = textScale == 1
+  final TransitionBuilder? mediaBuilder = textScale == 1 && visibility == null
       ? null
-      : (context, child) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.linear(textScale)),
-          child: child!,
-        );
+      : (context, child) {
+          final scaled = MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: TextScaler.linear(textScale)),
+            child: child!,
+          );
+          return visibility == null
+              ? scaled
+              : ValueListenableBuilder<bool>(
+                  valueListenable: visibility,
+                  builder: (context, visible, _) =>
+                      TickerMode(enabled: visible, child: scaled),
+                );
+        };
   final GoRouter? router = withPlanRoute
       ? GoRouter(
           routes: [
             GoRoute(path: '/', builder: (_, _) => page),
+            GoRoute(
+              path: RouteName.productionMaterialAnalysis,
+              builder: (context, state) {
+                final sources =
+                    (state.extra! as ProductionMaterialAnalysisSeed).sources;
+                return Scaffold(
+                  body: Column(
+                    children: [
+                      Text(
+                        '另开分析 ${sources.map((source) => '${source.salesOrderItemId}:${source.requestedQty}').join(',')}',
+                      ),
+                      TextButton(
+                        onPressed: () => context.pop(),
+                        child: const Text('返回问题需求'),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
             if (withPlanRoute)
               GoRoute(
                 path: '/production/plans/:id',

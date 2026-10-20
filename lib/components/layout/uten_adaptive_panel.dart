@@ -3,7 +3,10 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../core/responsive/breakpoint.dart';
+import '../../core/theme/uten_anim.dart';
 import '../../core/theme/uten_tokens.dart';
+import '../feedback/uten_motion.dart';
+import 'uten_panel_opening_scope.dart';
 
 /// 右侧滑窗屏宽占比档位（2026-10-17：保留表格可读性，滑窗适当收窄）。
 ///
@@ -55,7 +58,12 @@ Future<T?> showUtenAdaptivePanel<T>({
   bool showDragHandle = false,
   String? barrierLabel,
   Color barrierColor = Colors.black54,
-  Duration transitionDuration = const Duration(milliseconds: 250),
+  Duration transitionDuration = UtenAnim.normal,
+
+  /// Optional inset/shape for a floating panel. Compact sheets retain their
+  /// normal bottom-sheet shape and use the full available width.
+  EdgeInsetsGeometry panelMargin = EdgeInsets.zero,
+  BorderRadiusGeometry? panelBorderRadius,
 
   /// 宽屏右侧面板 Material 的投影高度（默认 0 与历史行为一致）。
   double panelElevation = 0,
@@ -66,6 +74,7 @@ Future<T?> showUtenAdaptivePanel<T>({
   final resolvedBarrierLabel =
       barrierLabel ??
       MaterialLocalizations.of(context).modalBarrierDismissLabel;
+  final duration = utenMotionDurationOf(context, transitionDuration);
 
   if (context.breakpoint.isCompact) {
     const shape = RoundedRectangleBorder(
@@ -82,6 +91,10 @@ Future<T?> showUtenAdaptivePanel<T>({
       barrierColor: barrierColor,
       shape: shape,
       clipBehavior: Clip.antiAlias,
+      sheetAnimationStyle: AnimationStyle(
+        duration: duration,
+        reverseDuration: duration,
+      ),
       builder: (sheetContext) {
         final mediaQuery = MediaQuery.of(sheetContext);
         final visibleHeight = math.max(
@@ -94,7 +107,7 @@ Future<T?> showUtenAdaptivePanel<T>({
           padding: EdgeInsets.only(bottom: mediaQuery.viewInsets.bottom),
           child: SizedBox(
             height: visibleHeight * compactHeightFactor,
-            child: builder(sheetContext),
+            child: _PanelContent(builder: builder),
           ),
         );
       },
@@ -107,10 +120,10 @@ Future<T?> showUtenAdaptivePanel<T>({
     barrierDismissible: barrierDismissible,
     barrierLabel: resolvedBarrierLabel,
     barrierColor: barrierColor,
-    transitionDuration: transitionDuration,
-    pageBuilder: (dialogContext, _, _) {
+    transitionDuration: duration,
+    pageBuilder: (dialogContext, animation, _) {
       final mediaQuery = MediaQuery.of(dialogContext);
-      Widget content = builder(dialogContext);
+      Widget content = _PanelContent(builder: builder);
       if (useSafeArea) {
         content = SafeArea(left: false, child: content);
       }
@@ -118,28 +131,125 @@ Future<T?> showUtenAdaptivePanel<T>({
         padding: EdgeInsets.only(bottom: mediaQuery.viewInsets.bottom),
         child: Align(
           alignment: AlignmentDirectional.centerEnd,
-          child: Material(
-            color: Theme.of(dialogContext).colorScheme.surface,
-            elevation: panelElevation,
-            child: SizedBox(
-              width: utenPanelWidth(
-                mediaQuery.size,
-                drawerWidth,
-                widthFraction,
+          // Translate the panel and its inset, rather than the full-screen
+          // route. Including a floating margin keeps the whole panel outside
+          // the screen at the start of the transition.
+          child: UtenMotion(
+            duration: transitionDuration,
+            builder: (_, motionDuration) => SlideTransition(
+              position: motionDuration == Duration.zero
+                  ? const AlwaysStoppedAnimation(Offset.zero)
+                  : Tween<Offset>(
+                      begin: Offset(isRtl ? -1 : 1, 0),
+                      end: Offset.zero,
+                    ).animate(
+                      animation.drive(CurveTween(curve: UtenAnim.standard)),
+                    ),
+              child: Padding(
+                padding: panelMargin,
+                child: Material(
+                  key: const Key('uten-adaptive-panel'),
+                  color: Theme.of(dialogContext).colorScheme.surface,
+                  elevation: panelElevation,
+                  borderRadius: panelBorderRadius,
+                  clipBehavior: panelBorderRadius == null
+                      ? Clip.none
+                      : Clip.antiAlias,
+                  child: SizedBox(
+                    width: utenPanelWidth(
+                      mediaQuery.size,
+                      drawerWidth,
+                      widthFraction,
+                    ),
+                    height: double.infinity,
+                    child: content,
+                  ),
+                ),
               ),
-              height: double.infinity,
-              child: content,
             ),
           ),
         ),
       );
     },
-    transitionBuilder: (_, animation, _, child) => SlideTransition(
-      position: Tween<Offset>(
-        begin: Offset(isRtl ? -1 : 1, 0),
-        end: Offset.zero,
-      ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
-      child: child,
-    ),
+    transitionBuilder: (_, _, _, child) => child,
+  );
+}
+
+/// Mount lifecycle and authorization state immediately so requests run in
+/// parallel with motion. Only heavy views use the opening-ready scope.
+class _PanelContent extends StatefulWidget {
+  const _PanelContent({required this.builder});
+
+  final WidgetBuilder builder;
+
+  @override
+  State<_PanelContent> createState() => _PanelContentState();
+}
+
+class _PanelContentState extends State<_PanelContent> {
+  Animation<double>? _animation;
+  bool _ready = false;
+  late Widget _content = Builder(builder: widget.builder);
+
+  @override
+  void didUpdateWidget(_PanelContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.builder != widget.builder) {
+      _content = Builder(builder: widget.builder);
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final animation = ModalRoute.of(context)?.animation;
+    if (_animation != animation) {
+      _animation?.removeStatusListener(_onStatus);
+      _animation?.removeListener(_onTick);
+      _animation = animation;
+      animation?.addStatusListener(_onStatus);
+      animation?.addListener(_onTick);
+    }
+    if (animation == null ||
+        animation.value >= 1 ||
+        utenMotionDurationOf(context, UtenAnim.normal) == Duration.zero) {
+      _ready = true;
+    }
+  }
+
+  void _onStatus(AnimationStatus status) {
+    if (!_ready && status == AnimationStatus.completed && mounted) {
+      setState(() => _ready = true);
+    }
+  }
+
+  void _onTick() {
+    // A route can already be at its final transform while Flutter reports
+    // forward until the next simulation tick. Release the view at the actual
+    // end position, without imposing an extra empty frame on ready data.
+    if (!_ready && (_animation?.value ?? 0) >= 1 && mounted) {
+      setState(() => _ready = true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _animation?.removeStatusListener(_onStatus);
+    _animation?.removeListener(_onTick);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => UtenMotion(
+    duration: UtenAnim.normal,
+    builder: (context, duration) {
+      // A performance/accessibility change may finish the reveal early. Once
+      // mounted the content stays mounted, even if motion is later re-enabled.
+      _ready = _ready || duration == Duration.zero;
+      return UtenPanelOpeningScope(
+        ready: _ready,
+        child: RepaintBoundary(child: _content),
+      );
+    },
   );
 }

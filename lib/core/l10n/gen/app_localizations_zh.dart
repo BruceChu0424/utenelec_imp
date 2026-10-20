@@ -10857,4 +10857,89 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get goodsHistoryGoodsSubcontractPolicy => '修改货品委外方式';
+
+  @override
+  String materialBomIssueHeading(int count, int sources) {
+    return '发现 $count 处 BOM 问题，影响 $sources 项需求';
+  }
+
+  @override
+  String get materialBomIssueGuidance =>
+      '问题需求保留在本页；其它需求可另开分析。工程部修复后重新检查，仍有问题的需求不能下达。';
+
+  @override
+  String materialBomIssueForwardedTask(String taskNo) {
+    return '已转工程部 $taskNo';
+  }
+
+  @override
+  String get materialBomIssueSelectAll => '全选问题';
+
+  @override
+  String get materialBomIssueDeselectAll => '取消全选';
+
+  @override
+  String materialBomIssueForward(int count) {
+    return '转工程部($count)';
+  }
+
+  @override
+  String get materialBomIssueRecheck => '重新检查';
+
+  @override
+  String materialBomIssueContinue(int count) {
+    return '分析其它 $count 项需求';
+  }
+
+  @override
+  String get materialBomIssueForwarded => '已转工程部，修复后请重新检查';
+
+  @override
+  String get materialBomIssueForwardFailed => '转工程部失败';
+
+  @override
+  String get materialBomIssueClear => '当前未发现 BOM 问题，请重新联合分析以核对需求和库存';
+
+  @override
+  String get materialBomIssueOpenGoods => '打开货品资料';
+
+  @override
+  String get materialBomIssueOpenBom => '打开货品 BOM';
+
+  @override
+  String get rdInitialUnitTitle => '核对首次基本单位';
+
+  @override
+  String get rdInitialUnitGuidance =>
+      '请对照原始资料选择单位并填写核对依据。只允许尚无基本单位且没有BOM以外数量事实的货品首次赋单位；已有历史数量或非空单位时不能更换。原历史单位桥接存在时须一致。';
+
+  @override
+  String get rdInitialUnitLabel => '核对后的基本单位';
+
+  @override
+  String get rdInitialUnitRequired => '请选择核对后的基本单位';
+
+  @override
+  String get rdInitialUnitEvidence => '原始资料与核对依据';
+
+  @override
+  String get rdInitialUnitEvidenceRequired => '请填写至少2字的核对依据';
+
+  @override
+  String get rdInitialUnitLoadFailed => '单位加载失败，请关闭后重试';
+
+  @override
+  String get rdInitialUnitCancel => '取消';
+
+  @override
+  String get rdInitialUnitConfirm => '确认首次基本单位';
+
+  @override
+  String get rdInitialUnitSaved => '首次基本单位已核对，其它资料问题请继续办理';
+
+  @override
+  String get rdInitialUnitFailed => '首次基本单位核对失败';
+
+  @override
+  String get rdInitialUnitRetry => '重试';
 }

@@ -34,6 +34,14 @@ public interface PlatformColumnResourceAdapter {
     /** Fixed numeric business facts usable only in display calculations. No caller-provided SQL. */
     default List<FactDefinition> facts() { return List.of(); }
 
+    /** Authorized, fixed domain relations. These are private read-only projections, never arbitrary joins. */
+    default List<RelationDefinition> relations() { return List.of(); }
+    default boolean canDefineRelatedColumns() { return false; }
+    default Map<UUID, Map<String, String>> relatedValues(Set<UUID> recordIds, Set<String> keys) {
+        if (!keys.isEmpty()) throw new UnsupportedOperationException("No related columns are registered");
+        return Map.of();
+    }
+
     /**
      * Fail closed if any requested id is absent, deleted, or outside the current user's read scope.
      * For write=true, lock the real resource/header BEFORE reading lifecycle/data-scope state,
@@ -77,6 +85,7 @@ public interface PlatformColumnResourceAdapter {
     }
 
     record FactDefinition(String key, String name, boolean priceProtected) { }
+    record RelationDefinition(String key, String name) { }
     record RecordAccess(boolean canWrite, boolean priceVisible, Map<String, BigDecimal> facts) {
         public RecordAccess { facts = Map.copyOf(facts == null ? Map.of() : facts); }
         public RecordAccess(boolean canWrite, boolean priceVisible) { this(canWrite, priceVisible, Map.of()); }

@@ -120,6 +120,12 @@ public class MouldController {
         return service.facets(categoryId);
     }
 
+    @GetMapping("/manufacturer-suggestions")
+    @PreAuthorize("hasAuthority('mould:view')")
+    public java.util.List<String> manufacturers(@RequestParam(defaultValue = "") String q) {
+        return service.manufacturerSuggestions(q);
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('mould:view')")
     public MouldDetail detail(@PathVariable UUID id) {

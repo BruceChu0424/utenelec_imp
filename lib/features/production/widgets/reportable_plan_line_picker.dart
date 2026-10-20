@@ -8,7 +8,6 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../components/layout/uten_picker_footer_layout.dart';
-import '../../../core/theme/uten_anim.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -35,7 +34,6 @@ Future<List<ReportablePlanLine>?> showReportablePlanLinePicker(
     compactHeightFactor: 0.94,
     drawerWidth: 840,
     panelElevation: 12,
-    transitionDuration: UtenAnim.normal,
     builder: (_) => _ReportablePlanLineSheet(
       departmentId: departmentId,
       executionSegmentId: executionSegmentId,

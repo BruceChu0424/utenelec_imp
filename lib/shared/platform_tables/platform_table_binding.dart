@@ -11,6 +11,7 @@ class PlatformTableBinding<T> {
     required this.scope,
     required this.recordIdOf,
     this.canEditValues = false,
+    this.allowPersonalRelatedColumns = false,
     this.canEditRow,
     this.snapshotOf,
     this.factValuesOf,
@@ -26,6 +27,7 @@ class PlatformTableBinding<T> {
   final String scope;
   final String? Function(T row) recordIdOf;
   final bool canEditValues;
+  final bool allowPersonalRelatedColumns;
   final bool Function(T row)? canEditRow;
   final Map<String, String?> Function(T row)? factValuesOf;
   final Iterable<Listenable> Function(T row)? factListenablesOf;
@@ -44,6 +46,7 @@ class PlatformTableBinding<T> {
     String? scope,
     String? Function(T row)? recordIdOf,
     bool? canEditValues,
+    bool? allowPersonalRelatedColumns,
     bool Function(T row)? canEditRow,
     PlatformRowValues? Function(T row)? snapshotOf,
     Map<String, String?> Function(T row)? factValuesOf,
@@ -58,6 +61,8 @@ class PlatformTableBinding<T> {
     scope: scope ?? this.scope,
     recordIdOf: recordIdOf ?? this.recordIdOf,
     canEditValues: canEditValues ?? this.canEditValues,
+    allowPersonalRelatedColumns:
+        allowPersonalRelatedColumns ?? this.allowPersonalRelatedColumns,
     canEditRow: canEditRow ?? this.canEditRow,
     snapshotOf: snapshotOf ?? this.snapshotOf,
     factValuesOf: factValuesOf ?? this.factValuesOf,

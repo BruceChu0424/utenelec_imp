@@ -5,7 +5,7 @@ import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
-import org.flywaydb.core.Flyway;
+import com.uten.imp.support.MigratedSchemaBaseline;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -17,7 +17,6 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -43,11 +42,7 @@ import static org.mockito.Mockito.mock;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class MaterialAnalysisBomTreeHibernatePostgresTest {
 
-    private static final PostgreSQLContainer<?> POSTGRES =
-            new PostgreSQLContainer<>("postgres:16-alpine")
-                    .withDatabaseName("uten_imp")
-                    .withUsername("uten")
-                    .withPassword("uten");
+    private static MigratedSchemaBaseline.ScopedDatabase database;
 
     private static JdbcTemplate jdbc;
     private static TransactionTemplate transaction;
@@ -55,21 +50,13 @@ class MaterialAnalysisBomTreeHibernatePostgresTest {
     private static EntityManager entityManager;
 
     @BeforeAll
-    static void migrateAndCreateHibernateHarness() {
-        POSTGRES.start();
-        Flyway.configure()
-                .dataSource(
-                        POSTGRES.getJdbcUrl(),
-                        POSTGRES.getUsername(),
-                        POSTGRES.getPassword())
-                .locations("classpath:db/migration")
-                .load()
-                .migrate();
+    static void migrateAndCreateHibernateHarness() throws Exception {
+        database = MigratedSchemaBaseline.openDatabase("bom_hibernate");
 
         DriverManagerDataSource dataSource = new DriverManagerDataSource(
-                POSTGRES.getJdbcUrl(),
-                POSTGRES.getUsername(),
-                POSTGRES.getPassword());
+                database.getJdbcUrl(),
+                database.getUsername(),
+                database.getPassword());
         jdbc = new JdbcTemplate(dataSource);
         transaction = new TransactionTemplate(
                 new DataSourceTransactionManager(dataSource));
@@ -92,14 +79,14 @@ class MaterialAnalysisBomTreeHibernatePostgresTest {
     }
 
     @AfterAll
-    static void stopPostgres() {
+    static void stopPostgres() throws Exception {
         if (entityManager != null) {
             entityManager.close();
         }
         if (entityManagerFactory != null) {
             entityManagerFactory.close();
         }
-        POSTGRES.stop();
+        if (database != null) database.close();
     }
 
     @Test
@@ -188,6 +175,57 @@ class MaterialAnalysisBomTreeHibernatePostgresTest {
         if ("true".equalsIgnoreCase(System.getenv("UTEN_RUN_PRODUCTION_STRESS"))) {
             measureSourceReadModes(batch);
         }
+    }
+
+    @Test
+    void diagnosticsReturnAllProblemsForEveryAffectedRootAndReadRepairsImmediately() {
+        UUID unit=UUID.randomUUID(), first=UUID.randomUUID(), second=UUID.randomUUID(), good=UUID.randomUUID();
+        jdbc.update("INSERT INTO units(id,code,name) VALUES(?,?,?)",unit,"DIAG-U-"+unit,"piece");
+        insertGoods(first,unit,"DIAG-FIRST-");
+        insertGoods(second,unit,"DIAG-SECOND-");
+        insertGoods(good,unit,"DIAG-GOOD-");
+        java.util.List<UUID> missing=new java.util.ArrayList<>();
+        for(int index=0;index<7;index++) {
+            UUID component=UUID.randomUUID();
+            missing.add(component);
+            insertGoods(component,null,"DIAG-COMP-");
+            for(UUID root:List.of(first,second)) jdbc.update("""
+                    INSERT INTO goods_bom_items(id,goods_id,component_goods_id,qty,sort_order)
+                    VALUES(?,?,?,?,?)
+                    """,UUID.randomUUID(),root,component,BigDecimal.ONE,index+1);
+        }
+        var reader=new MaterialAnalysisBomSnapshotReader(entityManager);
+        var findings=reader.findings(List.of(first,second,good));
+        assertThat(findings).hasSize(14);
+        assertThat(findings).extracting(MaterialAnalysisContracts.BomFinding::rootGoodsId)
+                .containsOnly(first,second);
+        assertThat(findings).extracting(MaterialAnalysisContracts.BomFinding::repairGoodsId)
+                .containsExactlyInAnyOrderElementsOf(java.util.stream.Stream.concat(missing.stream(),missing.stream()).toList());
+        // The unaffected demand remains analyzable; no guessed unit enters a snapshot for a bad demand.
+        assertThat(reader.read(List.of(sourceLine(UUID.randomUUID(),good,unit)))).isEmpty();
+        assertThatThrownBy(() -> reader.read(List.of(sourceLine(UUID.randomUUID(),first,unit))))
+                .isInstanceOf(com.uten.imp.common.web.ApiException.class).hasMessageContaining("7 处问题");
+        // Historical units stay immutable. Engineering corrects the BOM's master reference;
+        // it must not guess a unit for a component already used by quantity/BOM history.
+        assertThatThrownBy(() -> jdbc.update("UPDATE goods SET unit_id=? WHERE id=?",unit,missing.getFirst()))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        for(UUID component:missing) {
+            UUID corrected=UUID.randomUUID();
+            insertGoods(corrected,unit,"DIAG-CORRECTED-");
+            jdbc.update("UPDATE goods_bom_items SET component_goods_id=? WHERE component_goods_id=?",corrected,component);
+        }
+        assertThat(reader.findings(List.of(first,second,good))).isEmpty();
+        assertThat(reader.read(List.of(sourceLine(UUID.randomUUID(),first,unit))).values())
+                .singleElement().satisfies(rows -> assertThat(rows).hasSize(7));
+        UUID missingRoot=UUID.randomUUID();
+        insertGoods(missingRoot,null,"DIAG-MISSING-ROOT-");
+        assertThat(reader.findings(List.of(missingRoot))).singleElement().satisfies(finding -> {
+            assertThat(finding.rootGoodsId()).isEqualTo(missingRoot);
+            assertThat(finding.repairGoodsId()).isEqualTo(missingRoot);
+            assertThat(finding.masterData()).isTrue();
+        });
+        jdbc.update("UPDATE goods SET unit_id=? WHERE id=?",unit,missingRoot);
+        assertThat(reader.findings(List.of(missingRoot))).isEmpty();
     }
 
     /**

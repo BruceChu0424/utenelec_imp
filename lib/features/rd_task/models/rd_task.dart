@@ -1,6 +1,17 @@
 // 工程研发部任务模型（对应后端 RdTaskContracts.RdTaskRow / PageResponse）。
 // 后端 status: OPEN/IN_PROGRESS/DONE/CANCELED；category: BOM/DESIGN/SAMPLE/TRIAL/ECN/OTHER。
 
+class RdInitialUnitContext {
+  const RdInitialUnitContext({required this.allowed, this.reason});
+  final bool allowed;
+  final String? reason;
+  factory RdInitialUnitContext.fromJson(Map<String, dynamic> json) =>
+      RdInitialUnitContext(
+        allowed: json['allowed'] == true,
+        reason: json['reason'] as String?,
+      );
+}
+
 class RdTaskRow {
   const RdTaskRow({
     required this.id,
@@ -27,6 +38,7 @@ class RdTaskRow {
     this.completedAt,
     this.createdAt,
     this.closeNote,
+    this.description,
     this.allowedActions = const [],
   });
 
@@ -56,6 +68,7 @@ class RdTaskRow {
   final String? completedAt;
   final String? createdAt;
   final String? closeNote;
+  final String? description;
   final List<String> allowedActions;
 
   bool get isOpen => status == 'OPEN' || status == 'IN_PROGRESS';
@@ -85,6 +98,7 @@ class RdTaskRow {
     completedAt: json['completedAt'] as String?,
     createdAt: json['createdAt'] as String?,
     closeNote: json['closeNote'] as String?,
+    description: json['description'] as String?,
     allowedActions: (json['allowedActions'] as List? ?? const [])
         .map((e) => e as String)
         .toList(),

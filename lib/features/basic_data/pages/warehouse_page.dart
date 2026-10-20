@@ -261,6 +261,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
         group: '基础',
         hint: '如 总仓库/轨道仓',
       ),
+      const MasterFieldDef(key: 'remark', label: '备注', group: '基础'),
       const MasterFieldDef(
         key: 'accountable',
         label: '是否核算',
@@ -391,6 +392,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
         'name': d.name ?? '',
         'code': d.code ?? '',
         'location': d.location ?? '',
+        'remark': d.remark ?? '',
         'accountable': d.accountable ? 'true' : 'false',
         'workshopDepartmentId': d.workshopDepartmentId ?? '',
         'workshopDepartmentName': d.workshopDepartmentName ?? '',

@@ -47,7 +47,7 @@ public class ExportTableProjectionService {
             if(key.startsWith("platform:")) {
                 var definition=definitions.get(uuid(key.substring(9)));
                 if(definition==null)throw new ApiException(ErrorCode.FORBIDDEN,"没有该扩展列的导出权限");
-                original=new ExportColumn(key,definition.name(),"TEXT".equals(definition.type())?ExportColumn.TEXT:ExportColumn.QTY);
+                original=new ExportColumn(key,definition.name(),Set.of("TEXT","RELATED").contains(definition.type())?ExportColumn.TEXT:ExportColumn.QTY);
             }else{
                 String actual=known.containsKey(key)?key:ALIASES.getOrDefault(key,List.of()).stream().filter(known::containsKey).findFirst().orElse(null);
                 if(actual==null)throw new ApiException(ErrorCode.FORBIDDEN,"列不存在或不在可导出范围："+key);

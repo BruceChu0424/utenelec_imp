@@ -36,6 +36,7 @@ import '../widgets/master_data_table_view.dart';
 import '../widgets/master_entity_detail_pane.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
+import '../widgets/mould_manufacturer_field.dart';
 import '../widgets/category_tree_search.dart';
 import '../widgets/system_master_category_guard.dart';
 import '../../department/models/department_node.dart';
@@ -456,7 +457,16 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
         type: MasterFieldType.money,
         group: '制造',
       ),
-      const MasterFieldDef(key: 'manufacturer', label: '模具制造商', group: '制造'),
+      MasterFieldDef(
+        key: 'manufacturer',
+        label: '模具制造商',
+        group: '制造',
+        type: MasterFieldType.custom,
+        customBuilder: (ctx) => MouldManufacturerField(
+          value: ctx.initialValue,
+          onChanged: ctx.onChanged,
+        ),
+      ),
       // 制造年月按月份输入/选择；与 API 的 mstatus 字段保持同一契约。
       MasterFieldDef(
         key: 'mstatus',
@@ -504,6 +514,13 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
           );
         },
       ),
+      if ((iv['departmentId'] ?? '').isEmpty)
+        const MasterFieldDef(
+          key: 'place',
+          label: '存放位置',
+          group: '制造',
+          info: '可填写历史位置；选择车间后，存放位置跟随车间名称。',
+        ),
       // 保管人：先选部门（未展开的分类树）再挑人，也可跨部门搜姓名/工号（问题 #6）；
       // 落 keeperId，后端按 id 解析 keeper 文本。
       MasterFieldDef(
@@ -540,6 +557,13 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
           );
         },
       ),
+      if ((iv['keeperId'] ?? '').isEmpty && (iv['keeper'] ?? '').isNotEmpty)
+        const MasterFieldDef(
+          key: 'keeper',
+          label: '历史保管人',
+          group: '制造',
+          info: '尚未关联员工的历史姓名；选择员工后，以员工资料为准。',
+        ),
       const MasterFieldDef(key: 'remark', label: '备注', group: '其他'),
     ];
   }
@@ -596,8 +620,10 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       'status': d.status ?? '',
       'departmentId': d.departmentId ?? '',
       'departmentName': d.departmentName ?? '',
+      'place': d.place ?? '',
       'keeperId': d.keeperId ?? '',
       'keeperName': d.keeperName ?? '',
+      'keeper': d.keeper ?? '',
       'remark': d.remark ?? '',
     };
     showMasterEditDialog(
@@ -769,7 +795,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
     ),
     MasterColumnDef(
       key: 'mstatus',
-      label: '制造日期',
+      label: '制造年月',
       width: 110,
       value: (m) => m.mstatus,
     ),

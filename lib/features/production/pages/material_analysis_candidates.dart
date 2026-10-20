@@ -17,6 +17,34 @@ class _ManualDemandSummary {
 abstract class _MaterialAnalysisCandidatesState
     extends _MaterialAnalysisPageBase {
   @override
+  void _moveAvailableBomSources(List<MaterialAnalysisSourceInput> sources) {
+    final manualGroups = <String>{};
+    for (final source in sources) {
+      final salesId = source.salesOrderItemId;
+      if (salesId != null) {
+        _sourceQtyControllers.remove(salesId)?.dispose();
+        _selectedCandidateLabels.remove(salesId);
+      } else {
+        manualGroups.add(
+          '${source.sourceType}|${source.sourceRef?.trim().toLowerCase()}',
+        );
+      }
+    }
+    final moved = _manualDemandDrafts
+        .where(
+          (draft) => manualGroups.contains(
+            '${draft.sourceType}|${draft.refController.text.trim().toLowerCase()}',
+          ),
+        )
+        .toList();
+    _manualDemandDrafts.removeWhere(moved.contains);
+    _releaseManualDemandDrafts(moved);
+    if (_manualDemandDrafts.isEmpty) {
+      _manualDemandDrafts.add(_createManualDemandDraft());
+    }
+  }
+
+  @override
   void initState() {
     super.initState();
     // 计划入口模式没有销售分段，固定落在手工需求选货。
@@ -43,8 +71,24 @@ abstract class _MaterialAnalysisCandidatesState
   }
 
   /// 本次分析项数 = 勾选的销售订单产品 + 手工需求里已选货品的行(合计上限 500)。
-  int get _selectedAnalysisSourceCount =>
-      _sourceQtyControllers.length + _manualGoodsLineCount;
+  int get _selectedAnalysisSourceCount {
+    final currentKeys = <String>{..._sourceQtyControllers.keys};
+    for (final draft in _manualDemandDrafts) {
+      for (final line in draft.grid.rows) {
+        final goods = line.goods;
+        if (goods != null) {
+          currentKeys.add(
+            '${draft.sourceType}|${draft.refController.text.trim()}|${goods.id}|${goods.colorId ?? ''}|${goods.unitId ?? ''}',
+          );
+        }
+      }
+    }
+    return _sourceQtyControllers.length +
+        _manualGoodsLineCount +
+        _pendingBomSources
+            .where((source) => !currentKeys.contains(source.canonicalKey))
+            .length;
+  }
 
   int get _remainingSalesSourceSlots =>
       (_MaterialAnalysisPageBase._maxAnalysisItems - _manualGoodsLineCount)
@@ -175,7 +219,12 @@ abstract class _MaterialAnalysisCandidatesState
     final manual = buildMaterialManualDemandSources(
       _manualDemandDrafts,
       defaultDeliveryDate: _deliveryDate,
-      otherSourceCount: salesSources.length,
+      // Pending seeded sources need no second manual form. The final merged count is checked by preview.
+      otherSourceCount:
+          salesSources.length + (_pendingBomSources.isEmpty ? 0 : 1),
+      maxSources:
+          _MaterialAnalysisPageBase._maxAnalysisItems +
+          (_pendingBomSources.isEmpty ? 0 : 1),
     );
     if (!manual.isValid) {
       for (final line in manual.flaggedLines) {
@@ -189,7 +238,12 @@ abstract class _MaterialAnalysisCandidatesState
       context.appWarning(manual.error!);
       return null;
     }
-    return [...manual.sources, ...salesSources];
+    final sources = <String, MaterialAnalysisSourceInput>{
+      for (final pending in _pendingBomSources) pending.canonicalKey: pending,
+      for (final source in [...manual.sources, ...salesSources])
+        source.canonicalKey: source,
+    };
+    return sources.values.toList();
   }
 
   /// 每张手工需求单卡片的定位锚点：新建一张或校验卡在某一张时把它滚进视野。
@@ -408,6 +462,9 @@ abstract class _MaterialAnalysisCandidatesState
         _previewingAnalysis = false;
         _error = productionErrorMessage(error, fallback: '联合物料分析失败');
       });
+      if (error is ApiException && error.code == 'CONFLICT') {
+        await _checkBomProblems();
+      }
     }
   }
 
@@ -455,6 +512,10 @@ abstract class _MaterialAnalysisCandidatesState
             ],
           ),
           const SizedBox(height: UtenSpacing.s8),
+          if (_bomProblemsPanel() case final panel?) ...[
+            panel,
+            const SizedBox(height: UtenSpacing.s8),
+          ],
           if (_error != null) ...[
             _inlineError(theme, _error!, () => _loadCandidates()),
             const SizedBox(height: UtenSpacing.s8),
@@ -522,6 +583,10 @@ abstract class _MaterialAnalysisCandidatesState
             ],
           ),
           const SizedBox(height: UtenSpacing.s8),
+          if (_bomProblemsPanel() case final panel?) ...[
+            panel,
+            const SizedBox(height: UtenSpacing.s8),
+          ],
           if (_error != null) ...[
             _inlineError(theme, _error!, () => _previewAnalysis()),
             const SizedBox(height: UtenSpacing.s8),
@@ -560,6 +625,8 @@ abstract class _MaterialAnalysisCandidatesState
         SliverToBoxAdapter(child: _planEntryBillDateField()),
         gap,
         SliverToBoxAdapter(child: _planEntryDeliveryDateField()),
+        if (_bomProblemsPanel() case final panel?)
+          SliverToBoxAdapter(child: panel),
         if (_error != null)
           SliverToBoxAdapter(
             child: Padding(
@@ -876,6 +943,8 @@ abstract class _MaterialAnalysisCandidatesState
         SliverToBoxAdapter(child: _warehouseField()),
         gap,
         SliverToBoxAdapter(child: _compactCandidateTabs()),
+        if (_bomProblemsPanel() case final panel?)
+          SliverToBoxAdapter(child: panel),
         if (_error != null)
           SliverToBoxAdapter(
             child: Padding(

@@ -1,7 +1,7 @@
 // 收付款类别管理页（基础资料 · 邻接树 + 物化路径）。
 //
-// 这是纯分类主档，不套用“分类摘要卡 + 下方业务表格”的通用详情页模板：
-// 大屏采用可调宽目录树 + 页面级属性检查器，手机采用详情 + 分类抽屉。
+// 纯分类主档沿用基础资料的分栏、分类摘要卡、树工具栏和行菜单；
+// 右侧展示本类别的业务属性，手机使用同一分栏组件提供分类抽屉。
 import 'package:flutter/material.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_dialog.dart';
@@ -38,6 +38,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/widgets/uten_location_field.dart';
+import '../../../shared/widgets/master_detail_card.dart';
 import '../../../shared/widgets/uten_hierarchy_search_header.dart';
 import '../models/payment_style_node.dart';
 import '../repositories/payment_style_repository.dart';
@@ -777,9 +778,9 @@ class _PaymentStyleInspectorState
       children: [
         SingleChildScrollView(
           padding: EdgeInsets.fromLTRB(
-            context.breakpoint.isCompact ? 0 : UtenSpacing.s24,
-            UtenSpacing.s20,
-            context.breakpoint.isCompact ? 0 : UtenSpacing.s24,
+            context.breakpoint.isCompact ? 0 : UtenSpacing.s16,
+            UtenSpacing.s16,
+            context.breakpoint.isCompact ? 0 : UtenSpacing.s16,
             UtenSpacing.s32,
           ),
           child: Column(
@@ -855,142 +856,80 @@ class _InspectorHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final disabled = detail.status == '禁用';
     final systemLocked = _isProtectedSystemDetail(detail);
     final protectedLeaf = systemLocked && detail.childCount == 0;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final narrow = constraints.maxWidth < 720;
-        final identity = Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primaryContainer,
-                borderRadius: UtenRadius.lgAll,
-              ),
-              child: Icon(
-                Icons.account_tree_outlined,
-                color: theme.colorScheme.onPrimaryContainer,
-              ),
+    final actions = Wrap(
+      spacing: UtenSpacing.s8,
+      runSpacing: UtenSpacing.s8,
+      children: [
+        if (canCreate)
+          UtenButton(
+            type: UtenButtonType.tonal,
+            icon: Icons.add_rounded,
+            onPressed: disabled || protectedLeaf ? null : onAddChild,
+            onDisabledTap: disabled || protectedLeaf
+                ? () => context.appWarning(
+                    disabled ? '已禁用类别不能新增子类别' : '该系统科目可直接记账，不能再挂下级分类',
+                  )
+                : null,
+            child: const Text('新增子类别'),
+          ),
+        if (canManage)
+          UtenButton(
+            type: UtenButtonType.secondary,
+            icon: Icons.edit_outlined,
+            onPressed: onEdit,
+            child: const Text('编辑'),
+          ),
+        if (systemLocked && !disabled)
+          const Tooltip(
+            message: '关键财务科目必须保持使用状态',
+            child: UtenStatusBadge(
+              label: '系统锁定',
+              type: UtenStatusBadgeType.info,
+              icon: Icons.lock_outline_rounded,
             ),
-            const SizedBox(width: UtenSpacing.s12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Wrap(
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    spacing: UtenSpacing.s8,
-                    runSpacing: UtenSpacing.s4,
-                    children: [
-                      Text(
-                        detail.name,
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      UtenStatusBadge(
-                        label: disabled ? '禁用' : '使用中',
-                        type: disabled
-                            ? UtenStatusBadgeType.neutral
-                            : UtenStatusBadgeType.success,
-                        icon: disabled
-                            ? Icons.block_outlined
-                            : Icons.check_circle_outline_rounded,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: UtenSpacing.s4),
-                  Text(
-                    '${PaymentStyleCategory.labelOf(detail.category)} · 编号 ${detail.code}',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
+          )
+        else if (!disabled && hasActiveDescendant)
+          const Tooltip(
+            message: '请先停用或迁移使用中的子类别',
+            // 橙档（ADR-169）：停用被前置条件卡住的注意态——等的是自己
+            // 处理子类，不是等待外部，原黄档语义不符。
+            child: UtenStatusBadge(
+              label: '子类仍在使用',
+              type: UtenStatusBadgeType.orange,
+              icon: Icons.account_tree_outlined,
             ),
-          ],
-        );
+          )
+        else if (canStatus)
+          UtenActionButton(
+            type: UtenActionButtonType.ghost,
+            icon: disabled
+                ? Icons.play_circle_outline_rounded
+                : Icons.pause_circle_outline_rounded,
+            label: Text(disabled ? '启用' : '停用'),
+            onAction: onToggleStatus,
+          ),
+      ],
+    );
 
-        final actions = Wrap(
-          spacing: UtenSpacing.s8,
-          runSpacing: UtenSpacing.s8,
-          children: [
-            if (canCreate)
-              UtenButton(
-                type: UtenButtonType.tonal,
-                icon: Icons.add_rounded,
-                onPressed: disabled || protectedLeaf ? null : onAddChild,
-                onDisabledTap: disabled || protectedLeaf
-                    ? () => context.appWarning(
-                        disabled ? '已禁用类别不能新增子类别' : '该系统科目可直接记账，不能再挂下级分类',
-                      )
-                    : null,
-                child: const Text('新增子类别'),
-              ),
-            if (canManage)
-              UtenButton(
-                type: UtenButtonType.secondary,
-                icon: Icons.edit_outlined,
-                onPressed: onEdit,
-                child: const Text('编辑'),
-              ),
-            if (systemLocked && !disabled)
-              const Tooltip(
-                message: '关键财务科目必须保持使用状态',
-                child: UtenStatusBadge(
-                  label: '系统锁定',
-                  type: UtenStatusBadgeType.info,
-                  icon: Icons.lock_outline_rounded,
-                ),
-              )
-            else if (!disabled && hasActiveDescendant)
-              const Tooltip(
-                message: '请先停用或迁移使用中的子类别',
-                // 橙档（ADR-169）：停用被前置条件卡住的注意态——等的是自己
-                // 处理子类，不是等待外部，原黄档语义不符。
-                child: UtenStatusBadge(
-                  label: '子类仍在使用',
-                  type: UtenStatusBadgeType.orange,
-                  icon: Icons.account_tree_outlined,
-                ),
-              )
-            else if (canStatus)
-              UtenActionButton(
-                type: UtenActionButtonType.ghost,
-                icon: disabled
-                    ? Icons.play_circle_outline_rounded
-                    : Icons.pause_circle_outline_rounded,
-                label: Text(disabled ? '启用' : '停用'),
-                onAction: onToggleStatus,
-              ),
-          ],
-        );
-
-        if (!canCreate && !canManage && !canStatus) return identity;
-        if (narrow) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              identity,
-              const SizedBox(height: UtenSpacing.s16),
-              actions,
-            ],
-          );
-        }
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: identity),
-            const SizedBox(width: UtenSpacing.s16),
-            actions,
-          ],
-        );
-      },
+    return MasterDetailCard(
+      title: detail.name,
+      subtitle:
+          '${PaymentStyleCategory.labelOf(detail.category)} · 编号 ${detail.code} · 层级 L${detail.level}',
+      icon: Icons.account_tree_outlined,
+      stats: const [],
+      canEdit: false,
+      secondaryActions: [
+        UtenStatusBadge(
+          label: disabled ? '禁用' : '使用中',
+          type: disabled
+              ? UtenStatusBadgeType.neutral
+              : UtenStatusBadgeType.success,
+        ),
+        actions,
+      ],
     );
   }
 }

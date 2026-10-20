@@ -69,7 +69,7 @@ RenderBox _hBarBox(WidgetTester tester) {
   return bars[0].findRenderObject() as RenderBox;
 }
 
-/// 最后一行底边：末行末格文本的仅带底分隔线祖先才是真实业务行。
+/// 最后一行底边：末行末格文本的业务行同时拥有底分隔线与末列右边界。
 /// 整表 surface 也可能是更宽的 DecoratedBox，不能拿它的底边当作末行。
 /// 纯展示行不挂 InkWell，锚点用末行最后一列的单元格文本。
 RenderBox _lastRowBox(WidgetTester tester, {String text = 'b-7'}) {
@@ -85,7 +85,7 @@ RenderBox _lastRowBox(WidgetTester tester, {String text = 'b-7'}) {
           border.bottom.width > 0 &&
           border.top == BorderSide.none &&
           border.left == BorderSide.none &&
-          border.right == BorderSide.none;
+          border.right == border.bottom;
     }),
   );
   expect(row, findsOneWidget, reason: '末格应只属于一条带行分隔线的业务行');

@@ -86,6 +86,7 @@ class PlatformColumnDefinition {
     this.formula,
     this.usageCount = 0,
     this.personalUsageCount = 0,
+    this.relationKey,
   });
   final String id;
   final String scope;
@@ -95,8 +96,10 @@ class PlatformColumnDefinition {
   final PlatformFormula? formula;
   final int usageCount;
   final int personalUsageCount;
+  final String? relationKey;
   bool get calculated => type == 'CALCULATED';
-  bool get numeric => type != 'TEXT';
+  bool get related => type == 'RELATED';
+  bool get numeric => type == 'NUMBER' || calculated;
   String get key => 'platform:$id';
   factory PlatformColumnDefinition.fromJson(Map<String, dynamic> json) =>
       PlatformColumnDefinition(
@@ -112,6 +115,7 @@ class PlatformColumnDefinition {
             : null,
         usageCount: (json['usageCount'] as num?)?.toInt() ?? 0,
         personalUsageCount: (json['personalUsageCount'] as num?)?.toInt() ?? 0,
+        relationKey: json['relationKey']?.toString(),
       );
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -120,6 +124,7 @@ class PlatformColumnDefinition {
     'type': type,
     'priceProtected': priceProtected,
     if (formula != null) 'formula': formula!.toJson(),
+    if (relationKey != null) 'relationKey': relationKey,
   };
 }
 
@@ -207,6 +212,8 @@ class PlatformTableCapabilities {
     this.priceVisible = false,
     this.supportsValues = true,
     this.facts = const [],
+    this.relations = const [],
+    this.canDefineRelated = false,
   });
   final String scope;
   final String label;
@@ -217,6 +224,8 @@ class PlatformTableCapabilities {
   final bool canCreate;
   final bool personalDefinitions;
   final List<PlatformTableFact> facts;
+  final List<PlatformTableRelation> relations;
+  final bool canDefineRelated;
   factory PlatformTableCapabilities.fromJson(Map<String, dynamic> json) =>
       PlatformTableCapabilities(
         scope: json['scope']?.toString() ?? '',
@@ -227,6 +236,15 @@ class PlatformTableCapabilities {
         canDefine: json['canDefine'] == true,
         canCreate: json['canCreate'] == true,
         personalDefinitions: json['personalDefinitions'] == true,
+        canDefineRelated: json['canDefineRelated'] == true,
+        relations: [
+          for (final relation in json['relations'] as List? ?? [])
+            if (relation is Map)
+              PlatformTableRelation(
+                key: relation['key'].toString(),
+                name: relation['name'].toString(),
+              ),
+        ],
         facts: [
           for (final fact in json['facts'] as List? ?? [])
             if (fact is Map)
@@ -263,4 +281,10 @@ String? platformExactFact(Object? raw) {
     digits += List.filled(-scale, '0').join();
   }
   return businessExactDecimal('${match.group(1) == '-' ? '-' : ''}$digits');
+}
+
+class PlatformTableRelation {
+  const PlatformTableRelation({required this.key, required this.name});
+  final String key;
+  final String name;
 }

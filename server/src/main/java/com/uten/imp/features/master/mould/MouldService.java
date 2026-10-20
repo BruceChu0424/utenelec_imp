@@ -173,7 +173,7 @@ public class MouldService {
                 new ExportColumn("tqty", "套数", ExportColumn.TEXT),
                 new ExportColumn("categoryName", "系列 / 分类", ExportColumn.TEXT),
                 new ExportColumn("place", "存放位置", ExportColumn.TEXT),
-                new ExportColumn("mstatus", "制造日期", ExportColumn.TEXT),
+                new ExportColumn("mstatus", "制造年月", ExportColumn.TEXT),
                 new ExportColumn("manufacturer", "制造商", ExportColumn.TEXT),
                 new ExportColumn("remark", "备注", ExportColumn.TEXT),
                 new ExportColumn("status", "状态", ExportColumn.TEXT));
@@ -235,6 +235,35 @@ public class MouldService {
     }
 
     // ===== 详情 / CRUD（不变） =====
+
+    @Transactional(readOnly = true)
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('mould:view')")
+    public List<String> manufacturerSuggestions(String query) {
+        String needle = query == null ? "" : query.strip().toLowerCase(java.util.Locale.ROOT);
+        if (needle.length() > 200) throw new ApiException(ErrorCode.VALIDATION_FAILED, "制造商搜索不能超过200字符");
+        var search = em.createNativeQuery("""
+                SELECT btrim(manufacturer) AS value, count(*) AS uses FROM moulds
+                WHERE is_deleted=false AND manufacturer IS NOT NULL AND btrim(manufacturer)<>''
+                  AND (:q='' OR position(:q IN lower(manufacturer))>0 OR EXISTS(
+                    SELECT 1 FROM generate_series(1,length(CAST(:q AS text))-1) n
+                    WHERE position(substring(CAST(:q AS text) from n for 2) IN lower(manufacturer))>0))
+                GROUP BY btrim(manufacturer)
+                ORDER BY CASE WHEN lower(btrim(manufacturer))=:q THEN 0
+                  WHEN position(:q IN lower(btrim(manufacturer)))>0 THEN 1 ELSE 2 END, uses DESC, value
+                LIMIT 100
+                """);
+        search.setParameter("q", needle);
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(search);
+        return rows.stream().sorted(java.util.Comparator
+                .comparingInt((Object[] row) -> String.valueOf(row[0]).toLowerCase(java.util.Locale.ROOT).equals(needle) ? 0
+                        : String.valueOf(row[0]).toLowerCase(java.util.Locale.ROOT).contains(needle) ? 1 : 2)
+                .thenComparing(java.util.Comparator.comparingDouble((Object[] row) -> needle.isEmpty() ? 0
+                        : com.uten.imp.common.text.IntakeTextNormalizer.bigramDice(
+                                String.valueOf(row[0]).toLowerCase(java.util.Locale.ROOT), needle)).reversed())
+                .thenComparing(java.util.Comparator.comparingLong((Object[] row) -> ((Number)row[1]).longValue()).reversed())
+                .thenComparing(row -> String.valueOf(row[0])))
+                .limit(20).map(row -> String.valueOf(row[0])).toList();
+    }
 
     @Transactional(readOnly = true)
     public MouldDetail detail(UUID id) {
@@ -321,10 +350,16 @@ public class MouldService {
         m.setStatus(req.getStatus());
         m.setRemark(req.getRemark());
         // 车间/保管人：id 优先；文本列由 id 解析补名（前端 picker 只传 id），保留文本作 fallback 显示。
-        m.setDepartmentId(req.getDepartmentId());
-        m.setKeeperId(req.getKeeperId());
-        m.setPlace(resolvePlace(req.getPlace(), req.getDepartmentId()));
-        m.setKeeper(resolveKeeper(req.getKeeper(), req.getKeeperId()));
+        if (req.isDepartmentIdProvided() || req.isPlaceProvided()) {
+            UUID departmentId = req.isDepartmentIdProvided() ? req.getDepartmentId() : m.getDepartmentId();
+            m.setDepartmentId(departmentId);
+            m.setPlace(resolvePlace(req.isPlaceProvided() ? req.getPlace() : m.getPlace(), departmentId));
+        }
+        if (req.isKeeperIdProvided() || req.isKeeperProvided()) {
+            UUID keeperId = req.isKeeperIdProvided() ? req.getKeeperId() : m.getKeeperId();
+            m.setKeeperId(keeperId);
+            m.setKeeper(resolveKeeper(req.isKeeperProvided() ? req.getKeeper() : m.getKeeper(), keeperId));
+        }
     }
 
     /** UUID 是关系真源；有 UUID 时名称只由服务端解析，避免 id/text 两套值互相矛盾。 */

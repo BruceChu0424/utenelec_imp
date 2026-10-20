@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../core/network/api_exception.dart';
+import '../../core/theme/uten_tokens.dart';
 import '../../features/basic_data/widgets/master_data_table_view.dart';
 import '../../features/department/models/department_node.dart';
 import '../../features/employee/providers/employee_picker_department_tree_provider.dart';
@@ -14,6 +15,7 @@ import '../feedback/uten_empty.dart';
 import '../layout/uten_adaptive_panel.dart';
 import '../layout/uten_picker_confirm_bar.dart';
 import '../layout/uten_split_view.dart';
+import '../layout/uten_panel_opening_scope.dart';
 import 'uten_employee_department_tree.dart';
 import 'uten_employee_picker_models.dart';
 import 'uten_employee_picker_access.dart';
@@ -560,7 +562,12 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
           ),
         ),
         const Divider(height: 1),
-        Expanded(child: body),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.all(UtenSpacing.s12),
+            child: UtenPanelDeferredView(builder: (_) => body),
+          ),
+        ),
         _confirmBar(theme),
       ],
     );

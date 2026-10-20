@@ -51,6 +51,26 @@ const _defective = WarehouseListItem(
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  testWidgets('新增仓库可填写备注并提交正式字段', (tester) async {
+    final warehouses = _FakeWarehouseRepository();
+    await _pump(
+      tester,
+      warehouses,
+      permissions: {Perm.warehouseView, Perm.warehouseCreate},
+    );
+    await tester.tap(find.text('添加仓库'));
+    await tester.pumpAndSettle();
+    final name = _input('仓库名称');
+    final remark = _input('备注');
+    await tester.enterText(name, '新增备注仓库');
+    await tester.enterText(remark, '新建仓库备注');
+    await tester.tap(find.text('保存').last);
+    await tester.pumpAndSettle();
+    expect(warehouses.creates.single['name'], '新增备注仓库');
+    expect(warehouses.creates.single['remark'], '新建仓库备注');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('仓库用途列可筛选，主仓置顶带标签', (tester) async {
     final warehouses = _FakeWarehouseRepository(
       facetPayload: const WarehouseFacets(
@@ -92,6 +112,7 @@ void main() {
           status: '使用',
           parentId: 'main',
           selectableForNew: true,
+          remark: '历史仓库备注',
         ),
       },
     );
@@ -108,6 +129,7 @@ void main() {
     // 详情：上级仓库显示主仓名，仓库用途显示良品仓。
     expect(find.text('仓库(14年版)'), findsWidgets);
     expect(find.text('良品仓'), findsWidgets);
+    expect(find.text('历史仓库备注'), findsOneWidget);
     await tester.tap(find.text('编辑').last);
     await tester.pumpAndSettle();
 
@@ -123,12 +145,23 @@ void main() {
     expect(readOnly('上级仓库').controller!.text, '仓库(14年版)');
     expect(readOnly('内料仓').enabled, isFalse);
     expect(readOnly('内料仓').controller!.text, '否');
+    final remarkInput = find
+        .byWidgetPredicate(
+          (widget) =>
+              widget is TextField &&
+              widget.controller?.text == '历史仓库备注' &&
+              widget.enabled != false,
+        )
+        .hitTestable();
+    expect(remarkInput, findsOneWidget);
+    await tester.enterText(remarkInput, '修改仓库备注');
 
     await tester.tap(find.text('保存').last);
     await tester.pumpAndSettle();
     final body = warehouses.updates.single;
     expect(body['name'], '五金仓库');
     expect(body['defective'], 'false');
+    expect(body['remark'], '修改仓库备注');
     expect(body.containsKey('parentId'), isFalse);
     expect(body.containsKey('parentName'), isFalse);
     expect(body.containsKey('isLineSide'), isFalse);
@@ -204,6 +237,9 @@ void main() {
   });
 }
 
+Finder _input(String label) =>
+    find.ancestor(of: find.text(label), matching: find.byType(TextField));
+
 Future<void> _pump(
   WidgetTester tester,
   _FakeWarehouseRepository warehouses, {
@@ -244,6 +280,7 @@ class _FakeWarehouseRepository implements WarehouseRepository {
   final Map<String, WarehouseDetail> details;
   Map<String, String?>? lastFilters;
   final updates = <Map<String, dynamic>>[];
+  final creates = <Map<String, dynamic>>[];
 
   @override
   Future<PagedResult<WarehouseListItem>> list({
@@ -275,6 +312,11 @@ class _FakeWarehouseRepository implements WarehouseRepository {
   @override
   Future<void> update(String id, Map<String, dynamic> body) async {
     updates.add(Map<String, dynamic>.from(body));
+  }
+
+  @override
+  Future<void> create(Map<String, dynamic> body) async {
+    creates.add(Map.of(body));
   }
 
   @override

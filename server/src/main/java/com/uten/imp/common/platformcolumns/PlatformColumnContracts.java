@@ -8,11 +8,23 @@ public final class PlatformColumnContracts {
     public record Operand(UUID columnId, String fact, String constant) { }
     public record Step(String operation, Operand operand) { }
     public record Formula(Operand base, List<Step> steps) { }
-    public record CreateDefinition(String name, String type, boolean priceProtected, Formula formula) { }
+    public record CreateDefinition(String name, String type, boolean priceProtected, Formula formula, String relationKey) {
+        public CreateDefinition(String name, String type, boolean priceProtected, Formula formula) { this(name,type,priceProtected,formula,null); }
+    }
     public record Definition(UUID id, String scope, String name, String type, boolean priceProtected,
-                             Formula formula, long usageCount, long personalUsageCount) { }
+                             Formula formula, long usageCount, long personalUsageCount, String relationKey) {
+        public Definition(UUID id,String scope,String name,String type,boolean priceProtected,Formula formula,long usageCount,long personalUsageCount) {
+            this(id,scope,name,type,priceProtected,formula,usageCount,personalUsageCount,null);
+        }
+    }
     public record Scope(String scope, String label, boolean canWrite, boolean priceVisible, boolean supportsValues,
-                        List<PlatformColumnResourceAdapter.FactDefinition> facts, boolean canDefine, boolean personalDefinitions, boolean canCreate) { }
+                        List<PlatformColumnResourceAdapter.FactDefinition> facts, boolean canDefine, boolean personalDefinitions, boolean canCreate,
+                        List<PlatformColumnResourceAdapter.RelationDefinition> relations, boolean canDefineRelated) {
+        public Scope(String scope,String label,boolean canWrite,boolean priceVisible,boolean supportsValues,
+                     List<PlatformColumnResourceAdapter.FactDefinition> facts,boolean canDefine,boolean personalDefinitions,boolean canCreate) {
+            this(scope,label,canWrite,priceVisible,supportsValues,facts,canDefine,personalDefinitions,canCreate,List.of(),false);
+        }
+    }
     public record BatchRead(List<UUID> recordIds, List<UUID> columnIds) { }
     public record CellInput(UUID columnId, String value) { }
     public record Write(long expectedVersion, List<CellInput> cells) { }

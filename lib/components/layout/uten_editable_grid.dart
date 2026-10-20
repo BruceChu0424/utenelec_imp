@@ -1,4 +1,5 @@
 import '../data_display/uten_table_surface.dart';
+import 'uten_panel_opening_scope.dart';
 import '../data_display/uten_table_text_selection.dart';
 import '../../shared/platform_tables/platform_table_binding.dart';
 import '../../shared/platform_tables/platform_table_controller.dart';
@@ -2421,7 +2422,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
   }
 
   /// 表头行尾操作列的冻结包裹：无行尾操作列时原样返回。占位格与行内同款
-  /// surfaceContainerHigh 底 + 左侧内部竖线；视口最右缘不画外框线。
+  /// surfaceContainerHigh 底 + 左侧内部竖线及末列右边界。
   /// 横滚时钉在视口右缘盖住滚过的列头。
   Widget _withFrozenTrailingAction(ThemeData theme, Widget row) {
     if (!widget._showRowActionColumn) return row;
@@ -2431,7 +2432,10 @@ class _UtenEditableGridState<T extends EditableGridRow>
       cell: DecoratedBox(
         decoration: BoxDecoration(
           color: theme.colorScheme.surfaceContainerHigh,
-          border: Border(left: BorderSide(color: theme.colorScheme.outline)),
+          border: Border(
+            left: BorderSide(color: theme.colorScheme.outline),
+            right: BorderSide(color: theme.colorScheme.outline),
+          ),
         ),
         child: _addColumnHeader(),
       ),
@@ -2709,14 +2713,17 @@ class _UtenEditableGridState<T extends EditableGridRow>
   }
 
   @override
-  Widget build(BuildContext context) => TableColumnProjectionTarget(
-    tableKey: _platform.tableKey,
-    owner: this,
-    child: AiCellRegistryScope(
-      registry: _aiCells,
-      child: _buildProjectedGrid(context),
-    ),
-  );
+  Widget build(BuildContext context) =>
+      !UtenPanelOpeningScope.isReadyOf(context)
+      ? const UtenPanelOpeningPlaceholder()
+      : TableColumnProjectionTarget(
+          tableKey: _platform.tableKey,
+          owner: this,
+          child: AiCellRegistryScope(
+            registry: _aiCells,
+            child: _buildProjectedGrid(context),
+          ),
+        );
   Widget _buildProjectedGrid(BuildContext context) {
     _publishProjection();
     _ensureAutoFit(context); // 随内容自动加宽：首帧/行集/字号档变化时量宽（手动锁定列除外）。
@@ -3477,8 +3484,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
     double total,
     List<int> visibleColumnIndices,
   ) {
-    bool showRightDivider(int index) =>
-        widget._showRowActionColumn || index != visibleColumnIndices.last;
+    bool showRightDivider(int index) => true;
     final pinnedIndices = _pinnedVisibleColumnIndices;
     // 横滚时钉在视口左缘的冻结区副本：全选格 + 已固定列的表头格。副本格不挂
     // 换位/移除拖拽（避免同一 LayerLink 双挂载），但保留表头筛选点按、右键
@@ -3497,47 +3503,49 @@ class _UtenEditableGridState<T extends EditableGridRow>
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Material(
-          color: theme.colorScheme.surfaceContainerHigh,
-          child: SingleChildScrollView(
-            controller: _headerH,
-            scrollDirection: Axis.horizontal,
-            child: SizedBox(
-              width: total,
-              // 换位拖动中在表头行上渲染插入位指示线（前导选择列让位）。
-              child: columnHeaderIndicatorOverlay(
-                leadingInset: widget._showSelect ? _selectColWidth : 0,
-                child: _withFrozenTrailingAction(
-                  theme,
-                  _withFrozenLeadingRegion(
+        UtenTableHeaderSurface(
+          child: Material(
+            color: theme.colorScheme.surfaceContainerHigh,
+            child: SingleChildScrollView(
+              controller: _headerH,
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                width: total,
+                // 换位拖动中在表头行上渲染插入位指示线（前导选择列让位）。
+                child: columnHeaderIndicatorOverlay(
+                  leadingInset: widget._showSelect ? _selectColWidth : 0,
+                  child: _withFrozenTrailingAction(
                     theme,
-                    pinnedIndices: pinnedIndices,
-                    cell: frozenHeaderRegion,
-                    row: Row(
-                      children: [
-                        if (widget._showSelect)
-                          SizedBox(
-                            width: _selectColWidth,
-                            child: _selectAllHeaderCell(theme),
-                          ),
-                        for (final i in visibleColumnIndices)
-                          _headerColumnCell(
-                            theme,
-                            i,
-                            frozen: false,
-                            showRightDivider: showRightDivider(i),
-                          ),
-                        if (widget._showRowActionColumn)
-                          SizedBox(
-                            width: _deleteColWidth,
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.surfaceContainerHigh,
-                              ),
-                              child: _addColumnHeader(),
+                    _withFrozenLeadingRegion(
+                      theme,
+                      pinnedIndices: pinnedIndices,
+                      cell: frozenHeaderRegion,
+                      row: Row(
+                        children: [
+                          if (widget._showSelect)
+                            SizedBox(
+                              width: _selectColWidth,
+                              child: _selectAllHeaderCell(theme),
                             ),
-                          ),
-                      ],
+                          for (final i in visibleColumnIndices)
+                            _headerColumnCell(
+                              theme,
+                              i,
+                              frozen: false,
+                              showRightDivider: showRightDivider(i),
+                            ),
+                          if (widget._showRowActionColumn)
+                            SizedBox(
+                              width: _deleteColWidth,
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.surfaceContainerHigh,
+                                ),
+                                child: _addColumnHeader(),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -3857,8 +3865,7 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
   final double deleteColWidth;
   final BorderSide divider;
 
-  BorderSide _columnDivider(int index) =>
-      showDelete || index != columnIndices.last ? divider : BorderSide.none;
+  BorderSide _columnDivider(int index) => divider;
 
   /// 固定在左侧的列下标（可见序列前缀；表头右键菜单维护）。
   final List<int> pinnedColumnIndices;
@@ -4012,7 +4019,11 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
               onDelete!();
             },
           );
-    final deleteCell = SizedBox(width: deleteColWidth, child: deleteButton);
+    final deleteCell = Container(
+      width: deleteColWidth,
+      decoration: BoxDecoration(border: Border(right: divider)),
+      child: deleteButton,
+    );
     final frozenDeleteCell = ColoredBox(
       color: Color.alphaBlend(
         rowBg ?? Colors.transparent,
@@ -4020,8 +4031,8 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
       ),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          // 冻结副本保留内部列/行分隔线，最右缘没有外框线。
-          border: Border(left: divider, bottom: divider),
+          // 冻结副本保留内部列/行分隔线，以及末列右边界。
+          border: Border(left: divider, right: divider, bottom: divider),
         ),
         child: deleteButton,
       ),

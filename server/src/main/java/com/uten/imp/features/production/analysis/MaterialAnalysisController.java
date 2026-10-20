@@ -41,6 +41,20 @@ public class MaterialAnalysisController {
     private final AuditDetailViewRecorder detailViewAudit;
     private final GoodsOwningWarehouseWriteService goodsOwningWarehouses;
     private final MaterialAnalysisPlanWithdrawalService planWithdrawals;
+    @org.springframework.beans.factory.annotation.Autowired
+    private MaterialAnalysisBomDiagnosticService bomDiagnostics;
+
+    @PostMapping("/bom-diagnostics")
+    @PreAuthorize("hasAuthority('production_material_analysis:view')")
+    public BomDiagnosticView bomDiagnostics(@Valid @RequestBody BomDiagnosticRequest request) {
+        return bomDiagnostics.inspect(request);
+    }
+
+    @PostMapping("/bom-diagnostics/forward")
+    @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_plan:forward_rd')")
+    public BomDiagnosticView forwardBomDiagnostics(@Valid @RequestBody BomForwardRequest request) {
+        return bomDiagnostics.forward(request);
+    }
 
     @PostMapping("/{id}/make-public-claims")
     @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:claim_shared_future')")

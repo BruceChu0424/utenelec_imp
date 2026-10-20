@@ -44,6 +44,7 @@ import '../repositories/product_category_repository.dart';
 import 'category_tree_search.dart';
 import 'goods_related_search_control.dart';
 import 'uten_category_tree_view.dart';
+import '../../../components/layout/uten_panel_opening_scope.dart';
 import 'master_data_table_view.dart';
 
 /// 货品选择器排除的根分类 legacyId（来自后端 material_categories 种子）：
@@ -1157,7 +1158,12 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
               ),
             ),
             const Divider(height: 1),
-            Expanded(child: body),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(UtenSpacing.s12),
+                child: UtenPanelDeferredView(builder: (_) => body),
+              ),
+            ),
             _buildConfirmBar(theme),
           ],
         ),

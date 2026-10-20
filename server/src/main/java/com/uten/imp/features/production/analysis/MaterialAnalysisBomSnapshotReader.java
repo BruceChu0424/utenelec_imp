@@ -66,24 +66,45 @@ final class MaterialAnalysisBomSnapshotReader {
     /**
      * 同一条查询、同样的判定口径(循环、超过十层、非正用量、组件已删、单位/颜色失效或老库
      * 颜色未桥接)，但不再只回一个布尔：返回具体违规行(父件 → 组件 + 原因)，按问题去重，
-     * 报错列出前 {@value #SHOWN_FINDINGS} 条并说明怎么修(ADR-111)。
+     * 返回全部问题；界面按问题多选转工程，不能靠逐次报错才能发现下一处。
      */
     private void validate(List<UUID> goodsIds) {
-        List<Object[]> findings = NativeQueryResults.objectArrayRows(em.createNativeQuery(VALIDATION_SQL)
-                .setParameter("goodsIds", goodsIds.stream().map(UUID::toString)
-                        .collect(java.util.stream.Collectors.joining(","))));
+        List<Object[]> findings = findingRows(goodsIds);
         if (findings.isEmpty()) return;
         long total = ((Number) findings.getFirst()[8]).longValue();
         StringBuilder message = new StringBuilder("物料分析用到的 BOM 有 ").append(total)
-                .append(" 处问题，修好后才能分析：");
+                .append(" 处问题；受影响需求须修复后分析，其它需求可单独继续：");
         int index = 1;
-        for (Object[] finding : findings) {
+        for (Object[] finding : findings.subList(0, Math.min(findings.size(), 5))) {
             message.append('\n').append(index++).append(") ").append(describe(finding));
         }
-        if (total > findings.size()) {
-            message.append("\n……还有 ").append(total - findings.size()).append(" 处未列出，修好上面几处后再试一次会继续提示");
-        }
+        message.append("\n请在问题清单一次查看全部问题，可多选转工程部；其它需求可另开分析。");
         throw conflict(message.toString());
+    }
+
+    List<MaterialAnalysisContracts.BomFinding> findings(List<UUID> goodsIds) {
+        List<MaterialAnalysisContracts.BomFinding> result = new ArrayList<>();
+        for (Object[] row : findingRows(goodsIds)) {
+            UUID root = (UUID) row[9], parent = (UUID) row[10], component = (UUID) row[11];
+            for (String code : String.valueOf(row[0]).split(",")) {
+                Problem problem = PROBLEMS.get(code);
+                if (problem == null) continue;
+                boolean master = code.startsWith("UNIT_") || code.startsWith("COMPONENT_COLOR_");
+                UUID repair = master ? component : parent;
+                String key = root + ":" + parent + ":" + component + ":" + code;
+                result.add(new MaterialAnalysisContracts.BomFinding(key, root, parent, component,
+                        repair, master, label(row[1], row[2]), label(row[3], row[4]),
+                        label(row[5], row[6]), code, problem.reason(), problem.fix(), null));
+            }
+        }
+        return List.copyOf(result);
+    }
+
+    private List<Object[]> findingRows(List<UUID> goodsIds) {
+        if (goodsIds.isEmpty()) return List.of();
+        return NativeQueryResults.objectArrayRows(em.createNativeQuery(VALIDATION_SQL)
+                .setParameter("goodsIds", goodsIds.stream().map(UUID::toString)
+                        .collect(java.util.stream.Collectors.joining(","))));
     }
 
     /** 一条违规：「成品」的 BOM 里「父件」→ 组件「组件」：原因。怎么修。 */
@@ -123,7 +144,7 @@ final class MaterialAnalysisBomSnapshotReader {
             "QTY", new Problem(MaterialConsumptionMath.NON_POSITIVE_BOM_QTY_REASON,
                     MaterialConsumptionMath.NON_POSITIVE_BOM_QTY_FIX),
             "COMPONENT_DELETED", new Problem("组件货品已被删除", "请在父件的 BOM 里移除或换掉这个组件"),
-            "UNIT_MISSING", new Problem("组件没有设置基本单位", "请到货品资料里给组件设置基本单位"),
+            "UNIT_MISSING", new Problem("货品没有设置基本单位", "请转工程任务核对首次基本单位；已有BOM以外数量事实时须按原始单据受控核对，或修正父件 BOM 的货品映射"),
             "UNIT_DELETED", new Problem("组件的基本单位已被删除", "请到货品资料里给组件换一个有效的基本单位"),
             "ROW_COLOR_DELETED", new Problem("这一行指定的颜色已被删除", "请在父件的 BOM 里给这一行换一个颜色"),
             "COMPONENT_COLOR_DELETED", new Problem("组件的主颜色已被删除", "请到货品资料里给组件换一个颜色"),
@@ -131,9 +152,6 @@ final class MaterialAnalysisBomSnapshotReader {
                     "请在父件的 BOM 里给这一行重新选择颜色"),
             "COMPONENT_COLOR_LEGACY", new Problem("组件的主颜色是老系统颜色，还没对应到新颜色",
                     "请到货品资料里给组件重新选择颜色"));
-
-    /** 报错里最多列出的违规条数。 */
-    private static final int SHOWN_FINDINGS = 5;
 
     private static ApiException conflict(String message) { return new ApiException(ErrorCode.CONFLICT, message); }
 
@@ -309,19 +327,25 @@ final class MaterialAnalysisBomSnapshotReader {
                            root_goods_id, parent_goods_id, goods_id, depth
                     FROM walk
                     WHERE cycle OR depth > 10 OR problems IS NOT NULL
+                    UNION ALL
+                    SELECT CASE WHEN root.unit_id IS NULL THEN 'UNIT_MISSING' ELSE 'UNIT_DELETED' END,
+                           2, roots.goods_id, roots.goods_id, roots.goods_id, 0
+                    FROM roots JOIN goods root ON root.id=roots.goods_id
+                    LEFT JOIN units root_unit ON root_unit.id=root.unit_id AND root_unit.is_deleted=FALSE
+                    WHERE root.unit_id IS NULL OR root_unit.id IS NULL
                 ), findings AS (
-                    SELECT DISTINCT ON (kind, parent_goods_id, goods_id)
+                    SELECT DISTINCT ON (root_goods_id, kind, parent_goods_id, goods_id)
                            kind, priority, root_goods_id, parent_goods_id, goods_id, depth
                     FROM flagged
-                    ORDER BY kind, parent_goods_id, goods_id, depth
+                    ORDER BY root_goods_id, kind, parent_goods_id, goods_id, depth
                 )
                 SELECT f.kind, root.code, root.name, parent.code, parent.name,
-                       component.code, component.name, f.depth, count(*) OVER () AS total
+                       component.code, component.name, f.depth, count(*) OVER () AS total,
+                       f.root_goods_id, f.parent_goods_id, f.goods_id
                 FROM findings f
                 JOIN goods root ON root.id = f.root_goods_id
                 JOIN goods parent ON parent.id = f.parent_goods_id
                 JOIN goods component ON component.id = f.goods_id
                 ORDER BY f.priority, f.depth, parent.code, component.code
-                LIMIT %2$d
-                """.formatted(EDGE_PROBLEMS, SHOWN_FINDINGS);
+                """.formatted(EDGE_PROBLEMS);
 }

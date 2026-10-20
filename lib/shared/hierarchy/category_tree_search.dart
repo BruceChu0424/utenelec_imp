@@ -16,22 +16,20 @@ import '../search/keyword_search.dart';
 Set<String> categoryHits<T extends UtenTreeNode<T>>(List<T> roots, String q) {
   if (keywordSearchTerms(q).isEmpty) return <String>{};
   final ids = <String>{};
-  bool walk(List<T> nodes, List<String> ancestors) {
+  bool walk(List<T> nodes, bool inheritedHit) {
     var anyHit = false;
     for (final n in nodes) {
-      final selfHit = matchesKeywordSearch([n.name, n.code], q);
-      final childHit = walk(n.children, [...ancestors, n.id]);
+      final selfHit = inheritedHit || matchesKeywordSearch([n.name, n.code], q);
+      final childHit = walk(n.children, selfHit);
       if (selfHit || childHit) {
-        ids.addAll(ancestors); // 祖先链（用于展开路径）
         ids.add(n.id);
-        if (selfHit) addAllSubtree(n, ids); // 命中分类下所有子分类都相关
         anyHit = true;
       }
     }
     return anyHit;
   }
 
-  walk(roots, const []);
+  walk(roots, false);
   return ids;
 }
 
@@ -131,20 +129,22 @@ HierarchySearchResolution resolveHierarchySearch<T extends UtenTreeNode<T>>({
   Iterable<String?> contentCategoryIds = const <String?>[],
 }) {
   final categoryMatches = categoryHits(roots, query);
-  final allIds = <String>{};
-  void collect(List<T> nodes) {
+  final nodesById = <String, T>{};
+  final parents = <String, String?>{};
+  void collect(List<T> nodes, String? parent) {
     for (final node in nodes) {
-      allIds.add(node.id);
-      collect(node.children);
+      nodesById[node.id] = node;
+      parents[node.id] = parent;
+      collect(node.children, node.id);
     }
   }
 
-  collect(roots);
+  collect(roots, null);
   final validContentIds = <String>{};
   var ignored = 0;
   for (final rawId in contentCategoryIds) {
     final id = rawId?.trim();
-    if (id == null || id.isEmpty || !allIds.contains(id)) {
+    if (id == null || id.isEmpty || !nodesById.containsKey(id)) {
       ignored++;
       continue;
     }
@@ -153,23 +153,20 @@ HierarchySearchResolution resolveHierarchySearch<T extends UtenTreeNode<T>>({
 
   final visible = <String>{...categoryMatches};
   for (final id in validContentIds) {
-    addAncestors(roots, id, visible);
-  }
-  final categorySelection = shallowestHit(roots, query, categoryMatches);
-  int? selectedCategoryRank;
-  void findRank(List<T> nodes) {
-    for (final node in nodes) {
-      if (node.id == categorySelection) {
-        selectedCategoryRank = keywordSearchRank([node.name, node.code], query);
-        return;
-      }
-      findRank(node.children);
+    // The index is shared by all content hits. Rewalking the whole forest for
+    // every matching category made a broad goods search quadratic.
+    String? ancestor = id;
+    while (ancestor != null && visible.add(ancestor)) {
+      ancestor = parents[ancestor];
     }
   }
-
-  findRank(roots);
+  final categorySelection = shallowestHit(roots, query, categoryMatches);
+  final selectedNode = nodesById[categorySelection];
+  final selectedCategoryRank = selectedNode == null
+      ? null
+      : keywordSearchRank([selectedNode.name, selectedNode.code], query);
   final preferCategory =
-      selectedCategoryRank != null && selectedCategoryRank! <= 1;
+      selectedCategoryRank != null && selectedCategoryRank <= 1;
   return HierarchySearchResolution(
     visibleIds: visible,
     contentCategoryIds: validContentIds,

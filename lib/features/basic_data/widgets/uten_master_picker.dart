@@ -22,6 +22,8 @@ import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../components/layout/uten_picker_footer_layout.dart';
 import '../../../components/layout/uten_split_view.dart';
+import '../../../components/layout/uten_panel_opening_scope.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/hierarchy/uten_tree_path.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
@@ -452,7 +454,12 @@ class _MasterPickerSheetState<TItem>
           ),
         ),
         const Divider(height: 1),
-        Expanded(child: body),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.all(UtenSpacing.s12),
+            child: UtenPanelDeferredView(builder: (_) => body),
+          ),
+        ),
         UtenPickerConfirmBar(
           pagination: UtenPickerPageControls(controller: _pickerRows),
           selectedCount: picked == null ? 0 : 1,
@@ -511,7 +518,7 @@ class _MasterPickerSheetState<TItem>
 
   Widget _buildUnifiedSearch() {
     return Padding(
-      // 左缘贴 0（2026-10-18 全站分栏口径）：与分类页左栏搜索共缘。
+      // 与分类树共缘；选择器正文统一负责距滑窗边缘的留白。
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: UtenSearchBar(
         key: _spec.searchKey,

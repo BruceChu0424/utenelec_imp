@@ -27,6 +27,21 @@ import java.util.UUID;
 public class RdTaskController {
 
     private final RdTaskService service;
+    private final RdMaterialIssueService materialIssues;
+
+    @GetMapping("/{id}/initial-basic-unit")
+    @PreAuthorize("hasAuthority('rd_task:view') and hasAuthority('goods:view') and hasAuthority('goods:edit') and hasAuthority('unit:view')")
+    public RdTaskContracts.InitialBasicUnitContext initialBasicUnitContext(@PathVariable UUID id) {
+        return materialIssues.initialBasicUnitContext(id);
+    }
+
+    @PostMapping("/{id}/initial-basic-unit")
+    @PreAuthorize("hasAuthority('rd_task:view') and hasAuthority('goods:view') and hasAuthority('goods:edit') and hasAuthority('unit:view')")
+    public RdTaskRow reconcileBasicUnit(@PathVariable UUID id,
+            @Valid @RequestBody RdTaskContracts.InitialBasicUnitRequest request) {
+        materialIssues.reconcileBasicUnit(id,request);
+        return service.get(id);
+    }
 
     /**
      * @param status 分段范围：open(待处理+进行中，默认，老调用点口径不变) /

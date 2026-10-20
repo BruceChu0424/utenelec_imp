@@ -23,6 +23,8 @@ public class WarehouseSaveRequest {
     private String code;             // 仓库编号
     private String location;         // 仓库位置
     private String remark;           // 备注
+    @JsonIgnore
+    private boolean remarkProvided;
     private Boolean accountable;     // 是否参与库存核算（null 时保留默认 true）
     /** 线边仓标记（V584）：null=不改；新建默认否。置「是」须同时有所属车间且参与核算。 */
     private Boolean isLineSide;
@@ -41,6 +43,12 @@ public class WarehouseSaveRequest {
      * 不良品仓只能是子仓、不能是车间内料仓, 有库存或还是货品所属仓库时不能改用途。
      */
     private Boolean defective;
+
+    @JsonSetter("remark")
+    public void setRemark(String remark) {
+        this.remark=remark;
+        this.remarkProvided=true;
+    }
 
     @JsonSetter("workshopDepartmentId")
     public void setWorkshopDepartmentId(UUID workshopDepartmentId) {

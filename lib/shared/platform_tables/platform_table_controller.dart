@@ -38,6 +38,8 @@ class PlatformTableController<T> extends ChangeNotifier {
   ProviderSubscription<AuthenticatedScope?>? _queryScopeSubscription;
   ProviderSubscription<String>? _queryServerSubscription;
   int _queryLifecycle = 0;
+  int _authorizationRevision = 0;
+  int get authorizationRevision => _authorizationRevision;
   int get queryLifecycle => _queryLifecycle;
   ProviderContainer? _container;
   final Map<String, PlatformColumnDefinition> _definitions = {};
@@ -78,6 +80,13 @@ class PlatformTableController<T> extends ChangeNotifier {
   bool get columnEditingEnabled => _columnEditingEnabled && !historical;
   bool get canDefineColumns =>
       columnEditingEnabled && (!bound || capabilities?.canDefine == true);
+  bool get canDefineRelatedColumns =>
+      !historical &&
+      binding?.allowPersonalRelatedColumns == true &&
+      capabilities?.canDefineRelated == true &&
+      capabilities?.relations.isNotEmpty == true;
+  bool get canCustomizeColumns =>
+      columnEditingEnabled || canDefineRelatedColumns;
 
   void configure(
     BuildContext context, {
@@ -128,6 +137,7 @@ class PlatformTableController<T> extends ChangeNotifier {
     final dataChanged = _sourceRevision != descriptor.revision;
     _sourceRevision = descriptor.revision;
     if (changed) {
+      _authorizationRevision++;
       _generation++;
       _signature = '';
       _tableKey = key;
@@ -240,6 +250,7 @@ class PlatformTableController<T> extends ChangeNotifier {
   }
 
   void _invalidateAccess() {
+    _authorizationRevision++;
     _generation++;
     capabilities = null;
     _values.clear();
@@ -424,8 +435,15 @@ class PlatformTableController<T> extends ChangeNotifier {
   }
 
   void select(PlatformColumnDefinition column) {
-    if (!columnEditingEnabled) {
+    if (!columnEditingEnabled && !(column.related && canDefineRelatedColumns)) {
       throw const FormatException('当前页面只能显示已有列，请在单据录入页添加列');
+    }
+    if (column.related &&
+        capabilities?.relations.any(
+              (relation) => relation.key == column.relationKey,
+            ) !=
+            true) {
+      throw const FormatException('该关联资料已不可查看，请重新选择');
     }
     if (layout.added.every((d) => d.id != column.id) &&
         layout.added.length >= 32) {
@@ -475,7 +493,11 @@ class PlatformTableController<T> extends ChangeNotifier {
           .where(
             (column) =>
                 column.scope == owner.scope &&
-                (!column.priceProtected || capabilities!.priceVisible),
+                (!column.priceProtected || capabilities!.priceVisible) &&
+                (!column.related ||
+                    capabilities!.relations.any(
+                      (relation) => relation.key == column.relationKey,
+                    )),
           )
           .map((column) => column.id)
           .toList();
@@ -498,7 +520,14 @@ class PlatformTableController<T> extends ChangeNotifier {
             .toList();
         final revisions = {for (final id in ids) id: _edits[id] ?? 0};
         final columns = layout.added
-            .where((d) => d.scope == owner.scope)
+            .where(
+              (d) =>
+                  d.scope == owner.scope &&
+                  (!d.related ||
+                      capabilities!.relations.any(
+                        (relation) => relation.key == d.relationKey,
+                      )),
+            )
             .map((d) => d.id)
             .toList();
         for (var start = 0; start < ids.length; start += 200) {
@@ -536,6 +565,16 @@ class PlatformTableController<T> extends ChangeNotifier {
       }
     } catch (failure) {
       if (!disposed && generation == _generation) {
+        if (failure is ApiException &&
+            (failure.httpStatus == 401 ||
+                failure.httpStatus == 403 ||
+                failure.code == 'UNAUTHORIZED' ||
+                failure.code == 'FORBIDDEN')) {
+          // A fresh server rejection outranks cached capabilities, including
+          // target permissions revoked before the local permission refresh.
+          loading = false;
+          _invalidateAccess();
+        }
         error = platformTableError(failure);
       }
     } finally {
@@ -592,6 +631,13 @@ class PlatformTableController<T> extends ChangeNotifier {
     PlatformColumnDefinition column, [
     Set<String> visiting = const {},
   ]) {
+    if (column.related &&
+        capabilities?.relations.any(
+              (relation) => relation.key == column.relationKey,
+            ) !=
+            true) {
+      return null;
+    }
     if (masked(item, column)) return '***';
     if (repository != null && capabilities == null) return null;
     final stored = cell(item, column.id);
@@ -653,7 +699,10 @@ class PlatformTableController<T> extends ChangeNotifier {
               capabilities?.canCreate == true)) &&
       !_saving.contains(binding?.recordIdOf(item));
   bool canEdit(T item, PlatformColumnDefinition column) =>
-      _canWriteFields(item) && !column.calculated && !masked(item, column);
+      _canWriteFields(item) &&
+      !column.calculated &&
+      !column.related &&
+      !masked(item, column);
   Future<void> saveCell(
     T item,
     PlatformColumnDefinition column,

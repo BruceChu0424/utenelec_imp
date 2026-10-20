@@ -29,7 +29,7 @@ import static com.uten.imp.common.platformcolumns.PlatformColumnContracts.*;
 @Service
 public class PlatformColumnService {
     private static final int MAX_COLUMNS=32, MAX_ROWS=200, MAX_DEPENDENCIES=8192, MAX_DEPTH=16;
-    private static final Set<String> TYPES=Set.of("TEXT","NUMBER","CALCULATED");
+    private static final Set<String> TYPES=Set.of("TEXT","NUMBER","CALCULATED","RELATED");
     private static final Set<String> OPERATIONS=Set.of("ADD","SUBTRACT","MULTIPLY","DIVIDE");
     private final Map<String,PlatformColumnResourceAdapter> adapters;
     private final NamedParameterJdbcTemplate jdbc;
@@ -67,7 +67,7 @@ public class PlatformColumnService {
             boolean canDefine=true;
             try{adapter.requireDefinitionAccess(true);}catch(ApiException denied){if(denied.getCode()==ErrorCode.FORBIDDEN)canDefine=false;else throw denied;}
             scopes.add(new Scope(adapter.scope(),adapter.label(),adapter.canWrite(),price,adapter.supportsValues(),
-                    adapter.facts().stream().filter(f->price||!f.priceProtected()).toList(),canDefine,adapter.personalDefinitions(),adapter.canCreate()));
+                    adapter.facts().stream().filter(f->price||!f.priceProtected()).toList(),canDefine,adapter.personalDefinitions(),adapter.canCreate(),adapter.relations(),adapter.canDefineRelatedColumns()));
         }
         return scopes.stream().sorted(Comparator.comparing(Scope::scope)).toList();
     }
@@ -82,12 +82,13 @@ public class PlatformColumnService {
                 SELECT d.*,COALESCE(u.usage_count,0) AS personal_usage_count
                 FROM platform_column_definitions d LEFT JOIN platform_column_usage u
                   ON u.definition_id=d.id AND u.user_id=:actor
-                WHERE d.scope=:scope AND d.owner_user_id=:owner AND (:q='' OR position(:q IN d.normalized_name)>0
+                WHERE d.scope=:scope AND (d.owner_user_id=:owner OR (d.value_type='RELATED' AND d.owner_user_id=:actor)) AND (:q='' OR position(:q IN d.normalized_name)>0
                   OR EXISTS(SELECT 1 FROM generate_series(1,length(CAST(:q AS text))-1) n
                     WHERE position(substring(CAST(:q AS text) from n for 2) IN d.normalized_name)>0))
                 ORDER BY CASE WHEN d.normalized_name=:q THEN 0 WHEN position(:q IN d.normalized_name)>0 THEN 1 ELSE 2 END,
                   personal_usage_count DESC,d.usage_count DESC,d.id LIMIT 500
                 """,parameters,this::definition);
+        candidates=candidates.stream().filter(d->!"RELATED".equals(d.type())||relationAllowed(adapter,d.relationKey())).toList();
         Map<UUID,Definition> catalog=loadDefinitions(scope,candidates.stream().map(Definition::id).collect(java.util.stream.Collectors.toSet()));
         Comparator<Definition> order=Comparator.comparingInt((Definition d)->tier(d.name(),needle))
                 .thenComparing(Comparator.comparingDouble((Definition d)->similarity(d.name(),needle)).reversed())
@@ -100,13 +101,18 @@ public class PlatformColumnService {
 
     @Transactional
     public Definition create(String scope,CreateDefinition input) {
-        var adapter=resource(scope);adapter.requireDefinitionAccess(true);
+        var adapter=resource(scope);
         if(input==null)throw invalid("请填写扩展列定义");
+        boolean related="RELATED".equals(input.type());
+        adapter.requireDefinitionAccess(!related);
+        if(related&&!adapter.canDefineRelatedColumns())throw forbidden("没有个人关联列的定义权限");
         String name=input.name()==null?"":input.name().strip();
         String normalized=BusinessColumnService.normalize(name);
         if(normalized.isBlank()||name.length()>80||name.chars().anyMatch(Character::isISOControl))throw invalid("列名需为1至80个可见字符");
         if(input.type()==null||!TYPES.contains(input.type()))throw invalid("无效的扩展列类型");
-        if((adapter.personalDefinitions()||!adapter.supportsValues())&&!"CALCULATED".equals(input.type()))throw invalid("个人显示配置只支持计算展示列");
+        if(related){if(!relationAllowed(adapter,input.relationKey()))throw forbidden("该关联字段不存在或没有目标资料查看权限");}
+        else if(input.relationKey()!=null)throw invalid("普通列不能带关联字段");
+        if((adapter.personalDefinitions()||!adapter.supportsValues())&&!"CALCULATED".equals(input.type())&&!related)throw invalid("个人显示配置只支持计算展示列");
         if("CALCULATED".equals(input.type())!=(input.formula()!=null))throw invalid("计算展示列必须填写公式，普通信息列不能带公式");
         Formula formula=normalizeFormula(input.formula());
         Set<UUID> refs=references(formula);
@@ -116,12 +122,14 @@ public class PlatformColumnService {
         requireDependencyDepth(formula,dependencies,new HashSet<>(),0);
         tx.bind();
         Map<String,Object> parameters=params(scope);
+        if(related)parameters.put("owner",currentUser.requireId());
+        parameters.put("relation",input.relationKey());
         parameters.put("id",UUID.randomUUID());parameters.put("name",name);parameters.put("normalized",normalized);
         parameters.put("type",input.type());parameters.put("protected",protectedPrice);parameters.put("formula",formula==null?null:json(formula));
-        parameters.put("fingerprint",hash(normalized+"|"+input.type()+"|"+protectedPrice+"|"+json(formula)));
+        parameters.put("fingerprint",hash(normalized+"|"+input.type()+"|"+protectedPrice+"|"+json(formula)+(related?"|"+input.relationKey():"")));
         jdbc.update("""
-                INSERT INTO platform_column_definitions(id,scope,name,normalized_name,value_type,price_protected,formula,definition_fingerprint,created_by,owner_user_id)
-                VALUES(:id,:scope,:name,:normalized,:type,:protected,CAST(:formula AS jsonb),:fingerprint,:actor,:owner)
+                INSERT INTO platform_column_definitions(id,scope,name,normalized_name,value_type,price_protected,formula,definition_fingerprint,created_by,owner_user_id,relation_key)
+                VALUES(:id,:scope,:name,:normalized,:type,:protected,CAST(:formula AS jsonb),:fingerprint,:actor,:owner,:relation)
                 ON CONFLICT(scope,owner_user_id,definition_fingerprint) DO NOTHING
                 """,parameters);
         return jdbc.queryForObject("""
@@ -251,7 +259,11 @@ public class PlatformColumnService {
         Set<UUID> needed=new LinkedHashSet<>(selected);
         records.values().forEach(r->r.cells().forEach(c->needed.add(c.columnId())));
         Map<UUID,Definition> definitions=loadDefinitions(scope,needed);
-        return ids.stream().map(id->row(id,records.getOrDefault(id,new Stored(0,List.of())),selected,definitions,access.get(id),adapter)).toList();
+        Set<String> relationKeys=new LinkedHashSet<>();
+        definitions.values().stream().filter(d->"RELATED".equals(d.type())).forEach(d->relationKeys.add(d.relationKey()));
+        Map<UUID,Map<String,String>> related=adapter.relatedValues(ids,relationKeys);
+        return ids.stream().map(id->row(id,records.getOrDefault(id,new Stored(0,List.of())),selected,definitions,access.get(id),adapter,
+                related.getOrDefault(id,Map.of()))).toList();
     }
 
     @Transactional
@@ -330,6 +342,7 @@ public class PlatformColumnService {
         List<CellInput> normalized=new ArrayList<>();
         for(var cell:cells) {
             Definition definition=definitions.get(cell.columnId());
+            if("RELATED".equals(definition.type()))throw invalid("关联列是个人只读显示，不能写入业务记录");
             String value=cell.value()==null||cell.value().isBlank()?null:cell.value().strip();
             if(protectedDefinition(definition,definitions,adapter,new HashSet<>())&&!access.priceVisible()) {
                 if(!previous.containsKey(cell.columnId())||value!=null)throw forbidden("没有价格权限，不能添加或修改敏感字段");
@@ -457,6 +470,9 @@ public class PlatformColumnService {
     }
 
     private Row row(UUID id,Stored stored,Set<UUID> selected,Map<UUID,Definition> definitions,PlatformColumnResourceAdapter.RecordAccess access,PlatformColumnResourceAdapter adapter) {
+        return row(id,stored,selected,definitions,access,adapter,Map.of());
+    }
+    private Row row(UUID id,Stored stored,Set<UUID> selected,Map<UUID,Definition> definitions,PlatformColumnResourceAdapter.RecordAccess access,PlatformColumnResourceAdapter adapter,Map<String,String> related) {
         Map<UUID,String> values=new LinkedHashMap<>();stored.cells().forEach(c->values.put(c.columnId(),c.value()));
         Set<UUID> columns=new LinkedHashSet<>(values.keySet());columns.addAll(selected);
         List<Cell> cells=new ArrayList<>();
@@ -467,7 +483,7 @@ public class PlatformColumnService {
             boolean masked=protectedPrice&&!access.priceVisible();
             String value=null,error=null;
             if(!masked) {
-                try { value="CALCULATED".equals(definition.type())?decimalText(evaluate(column,definitions,values,access.facts(),new HashSet<>(),0)):values.get(column); }
+                try { value="RELATED".equals(definition.type())?related.get(definition.relationKey()):"CALCULATED".equals(definition.type())?decimalText(evaluate(column,definitions,values,access.facts(),new HashSet<>(),0)):values.get(column); }
                 catch(ApiException badCalculation){error=badCalculation.getMessage();}
             }
             cells.add(new Cell(column,value,visibleDefinition(definition,access.priceVisible()),masked,values.containsKey(column),error));
@@ -517,7 +533,7 @@ public class PlatformColumnService {
         for(Operand operand:operands(formula)) {
             if(operand.columnId()!=null) {
                 Definition definition=definitions.get(operand.columnId());
-                if(definition==null||"TEXT".equals(definition.type()))throw invalid("计算只能引用同模块的数字列或计算列");
+                if(definition==null||!("NUMBER".equals(definition.type())||"CALCULATED".equals(definition.type())))throw invalid("计算只能引用同模块的数字列或计算列");
                 protectedPrice|=protectedDefinition(definition,definitions,adapter,new HashSet<>());
             }
             if(operand.fact()!=null) {
@@ -583,11 +599,13 @@ public class PlatformColumnService {
             List<Definition> loaded=jdbc.query("""
                     SELECT d.*,COALESCE(u.usage_count,0) AS personal_usage_count FROM platform_column_definitions d
                     LEFT JOIN platform_column_usage u ON u.definition_id=d.id AND u.user_id=:actor
-                    WHERE d.scope=:scope AND d.owner_user_id=:owner AND d.id IN(:ids)
+                    WHERE d.scope=:scope AND (d.owner_user_id=:owner OR (d.value_type='RELATED' AND d.owner_user_id=:actor)) AND d.id IN(:ids)
                     """,parameters,this::definition);
             if(loaded.size()!=pending.size())throw invalid("扩展列不存在或不属于当前模块");
             pending=new LinkedHashSet<>();
-            for(Definition definition:loaded){definitions.put(definition.id(),definition);pending.addAll(references(definition.formula()));}
+            for(Definition definition:loaded){
+                if("RELATED".equals(definition.type())&&!relationAllowed(adapters.get(scope),definition.relationKey()))throw forbidden("没有该关联字段的目标资料查看权限");
+                definitions.put(definition.id(),definition);pending.addAll(references(definition.formula()));}
             pending.removeAll(definitions.keySet());
         }
         return definitions;
@@ -595,10 +613,10 @@ public class PlatformColumnService {
     private void trackUsage(String scope,Set<UUID> ids) {
         if(ids.isEmpty())return;
         Map<String,Object> parameters=params(scope);parameters.put("ids",ids);
-        jdbc.update("UPDATE platform_column_definitions SET usage_count=usage_count+1,last_used_at=now() WHERE scope=:scope AND owner_user_id=:owner AND id IN(:ids)",parameters);
+        jdbc.update("UPDATE platform_column_definitions SET usage_count=usage_count+1,last_used_at=now() WHERE scope=:scope AND (owner_user_id=:owner OR (value_type='RELATED' AND owner_user_id=:actor)) AND id IN(:ids)",parameters);
         jdbc.update("""
                 INSERT INTO platform_column_usage(user_id,definition_id,usage_count,last_used_at)
-                SELECT :actor,d.id,1,now() FROM platform_column_definitions d WHERE d.scope=:scope AND d.owner_user_id=:owner AND d.id IN(:ids)
+                SELECT :actor,d.id,1,now() FROM platform_column_definitions d WHERE d.scope=:scope AND (d.owner_user_id=:owner OR (d.value_type='RELATED' AND d.owner_user_id=:actor)) AND d.id IN(:ids)
                 ON CONFLICT(user_id,definition_id) DO UPDATE SET usage_count=platform_column_usage.usage_count+1,last_used_at=now()
                 """,parameters);
     }
@@ -613,11 +631,12 @@ public class PlatformColumnService {
         currentUser.requireId();var adapter=scope==null?null:adapters.get(scope);
         if(adapter==null)throw invalid("当前模块未注册可授权的扩展字段资源");return adapter;
     }
+    private static boolean relationAllowed(PlatformColumnResourceAdapter adapter,String key) { return key!=null&&adapter.relations().stream().anyMatch(relation->key.equals(relation.key())); }
     private static void requireValues(PlatformColumnResourceAdapter adapter) { if(!adapter.supportsValues())throw invalid("汇总报表没有可保存的实体记录，请使用计算展示列"); }
     private Definition definition(ResultSet rs,int row) throws SQLException {
         String formula=rs.getString("formula");
         return new Definition(rs.getObject("id",UUID.class),rs.getString("scope"),rs.getString("name"),rs.getString("value_type"),
-                rs.getBoolean("price_protected"),formula==null?null:readJson(formula,Formula.class),rs.getLong("usage_count"),rs.getLong("personal_usage_count"));
+                rs.getBoolean("price_protected"),formula==null?null:readJson(formula,Formula.class),rs.getLong("usage_count"),rs.getLong("personal_usage_count"),rs.getString("relation_key"));
     }
     private static Definition visibleDefinition(Definition definition,boolean priceVisible) {
         return definition.priceProtected()&&!priceVisible?new Definition(definition.id(),definition.scope(),"受保护字段",definition.type(),true,null,

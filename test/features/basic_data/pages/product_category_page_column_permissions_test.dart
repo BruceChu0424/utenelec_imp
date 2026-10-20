@@ -1,12 +1,15 @@
 import 'package:dio/dio.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/pages/product_category_page.dart';
@@ -19,6 +22,7 @@ import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_layout.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_models.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_repository.dart';
+import 'package:uten_imp/shared/platform_tables/platform_table_widgets.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
@@ -45,6 +49,100 @@ Finder _goodsColumnTooltip(String message) => find.descendant(
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  testWidgets('只有查看权限也能添加本人关联列，不能新建共享文字数字或计算列', (tester) async {
+    final repository = _FakePlatformTableRepository()..personalAllowed = true;
+    await _pumpPage(tester, repository, {Perm.goodsView, Perm.mouldView});
+    expect(tester.widget<IconButton>(_goodsColumns()).tooltip, '添加列');
+    await _tap(tester, _goodsColumns());
+    await _tap(tester, find.byKey(_newColumnKey));
+    await tester.enterText(find.byKey(_columnNameKey), '个人模具厂家');
+    await tester.pumpAndSettle();
+    final type = tester.widget<UtenDropdownField>(
+      find.byKey(const Key('platform-column-type')),
+    );
+    expect(type.items.map((item) => item.value), ['RELATED']);
+    await _tap(tester, find.byKey(const Key('platform-column-relation')));
+    await _tap(tester, find.text('模具 · 制造商').last);
+    await _tap(tester, find.byKey(_createColumnKey));
+    expect(repository.created.single.type, 'RELATED');
+    expect(find.text('厂家甲'), findsWidgets);
+    final cell = tester.widget<PlatformColumnValue<GoodsListItem>>(
+      find.byType(PlatformColumnValue<GoodsListItem>).first,
+    );
+    expect(cell.controller.columnEditingEnabled, isFalse);
+    expect(
+      cell.controller.canEdit(cell.row, repository.created.single),
+      isFalse,
+    );
+    repository.targetVisible = false;
+    await cell.controller.reload();
+    await tester.pumpAndSettle();
+    expect(find.text('厂家甲'), findsNothing);
+    expect(tester.widget<IconButton>(_goodsColumns()).tooltip, '显示列');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('货品页面创建个人模具关联列，刷新同步且撤回权限立即清除展示值', (tester) async {
+    final repository = _FakePlatformTableRepository();
+    await _pumpPage(tester, repository, {
+      Perm.goodsView,
+      Perm.goodsEdit,
+      Perm.mouldView,
+    });
+    await _tap(tester, _goodsColumns());
+    await _tap(tester, find.byKey(_newColumnKey));
+    await tester.enterText(find.byKey(_columnNameKey), '我的模具厂家');
+    await tester.pumpAndSettle();
+    await _tap(tester, find.byKey(const Key('platform-column-type')));
+    await _tap(tester, find.text('关联资料').last);
+    await _tap(tester, find.byKey(const Key('platform-column-relation')));
+    await _tap(tester, find.text('模具 · 制造商').last);
+    await _tap(tester, find.byKey(_createColumnKey));
+    expect(repository.created.single.relationKey, 'mouldManufacturer');
+    expect(find.text('厂家甲'), findsWidgets);
+    final cell = tester.widget<PlatformColumnValue<GoodsListItem>>(
+      find.byType(PlatformColumnValue<GoodsListItem>).first,
+    );
+    expect(
+      cell.controller.canEdit(cell.row, repository.created.single),
+      isFalse,
+    );
+    repository.relatedValue = '厂家乙';
+    await cell.controller.reload();
+    await tester.pumpAndSettle();
+    expect(find.text('厂家乙'), findsWidgets);
+    expect(find.text('厂家甲'), findsNothing);
+    final oldRows = Completer<void>();
+    repository.rowGate = oldRows;
+    repository.relatedValue = '旧权限在途响应';
+    final pending = cell.controller.reload();
+    await tester.pump();
+    repository.rowGate = null;
+    repository.targetVisible = false;
+    await cell.controller.reload();
+    await tester.pumpAndSettle();
+    expect(find.text('厂家乙'), findsNothing);
+    repository.targetVisible = true;
+    repository.relatedValue = '重新授权后的厂家';
+    await cell.controller.reload();
+    await tester.pumpAndSettle();
+    oldRows.complete();
+    await pending;
+    await tester.pumpAndSettle();
+    expect(find.text('重新授权后的厂家'), findsWidgets);
+    expect(find.text('旧权限在途响应'), findsNothing);
+    repository.denyRows = true;
+    await cell.controller.reload();
+    await tester.pumpAndSettle();
+    expect(
+      find.text('重新授权后的厂家'),
+      findsNothing,
+      reason: '服务器403先于本地权限刷新时，旧投影立即失效',
+    );
+    expect(cell.controller.capabilities, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'goods edit permission enables adding a real master_goods column',
     (tester) async {
@@ -55,6 +153,19 @@ void main() {
       });
 
       final button = tester.widget<IconButton>(_goodsColumns());
+      final table = tester.widget<MasterDataTableView<GoodsListItem>>(
+        find.byType(MasterDataTableView<GoodsListItem>),
+      );
+      final mouldName = table.columns.singleWhere(
+        (column) => column.key == 'mouldName',
+      );
+      expect(mouldName.value(table.items.single), '已关联模具名称');
+      expect(
+        table.columns
+            .singleWhere((column) => column.key == 'mouldCode')
+            .value(table.items.single),
+        'MJ-001',
+      );
       expect(button.tooltip, '添加列');
       expect((button.icon as Icon).icon, Icons.add_rounded);
       expect(_goodsColumnTooltip('显示列'), findsNothing);
@@ -221,15 +332,26 @@ class _FakePlatformTableRepository implements PlatformTableRepository {
   final created = <PlatformColumnDefinition>[];
   final searchScopes = <String>[];
   final used = <(String, String)>[];
+  String relatedValue = '厂家甲';
+  bool targetVisible = true;
+  bool personalAllowed = false;
+  Completer<void>? rowGate;
+  bool denyRows = false;
 
   @override
-  Future<List<PlatformTableCapabilities>> scopes() async => const [
+  Future<List<PlatformTableCapabilities>> scopes() async => [
     // Keep server capabilities permissive to verify the page's own edit gate.
     PlatformTableCapabilities(
       scope: 'master_goods',
       canWrite: true,
       canDefine: true,
       canCreate: true,
+      canDefineRelated: personalAllowed,
+      relations: targetVisible
+          ? const [
+              PlatformTableRelation(key: 'mouldManufacturer', name: '模具 · 制造商'),
+            ]
+          : const [],
     ),
   ];
 
@@ -271,13 +393,50 @@ class _FakePlatformTableRepository implements PlatformTableRepository {
   }
 
   @override
+  Future<PlatformColumnDefinition> createRelated(
+    String scope, {
+    required String name,
+    required String relationKey,
+  }) async {
+    final column = PlatformColumnDefinition(
+      id: 'goods-related-${created.length + 1}',
+      scope: scope,
+      name: name,
+      type: 'RELATED',
+      relationKey: relationKey,
+    );
+    created.add(column);
+    return column;
+  }
+
+  @override
   Future<List<PlatformRowValues>> rows(
     String scope,
     List<String> ids, {
     List<String> columnIds = const [],
-  }) async => [
-    for (final id in ids) PlatformRowValues(recordId: id, canWrite: true),
-  ];
+  }) async {
+    final value = relatedValue;
+    await rowGate?.future;
+    if (denyRows) throw ApiException('FORBIDDEN', '目标权限已撤回', httpStatus: 403);
+    return [
+      for (final id in ids)
+        PlatformRowValues(
+          recordId: id,
+          canWrite: true,
+          cells: [
+            for (final column in created.where(
+              (column) => column.related && columnIds.contains(column.id),
+            ))
+              PlatformColumnCell(
+                columnId: column.id,
+                value: value,
+                definition: column,
+                persisted: false,
+              ),
+          ],
+        ),
+    ];
+  }
 
   @override
   Future<void> recordUse(String scope, String id) async =>
@@ -342,6 +501,8 @@ class _FakeGoodsRepository implements GoodsRepository {
               name: '两开多功能三极插座',
               categoryId: 'finished',
               status: '使用',
+              mouldCode: 'MJ-001',
+              mouldName: '已关联模具名称',
             ),
           ];
     return PagedResult(

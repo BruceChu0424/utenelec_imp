@@ -1,8 +1,142 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_adaptive_panel.dart';
+import 'package:uten_imp/components/layout/uten_panel_opening_scope.dart';
 
 void main() {
+  testWidgets('a floating panel starts fully outside the viewport', (
+    tester,
+  ) async {
+    _setTestSize(tester, const Size(1200, 900));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => showUtenAdaptivePanel<void>(
+                context: context,
+                panelMargin: const EdgeInsetsDirectional.fromSTEB(
+                  0,
+                  16,
+                  16,
+                  16,
+                ),
+                builder: (_) => const Text('浮动内容'),
+              ),
+              child: const Text('打开浮动面板'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('打开浮动面板'));
+    await tester.pump();
+    final panel = find.byKey(const Key('uten-adaptive-panel'));
+    expect(tester.getTopLeft(panel).dx, 1200);
+    await tester.pumpAndSettle();
+    expect(tester.getTopRight(panel).dx, 1184);
+    expect(tester.getTopLeft(panel).dy, 16);
+    expect(find.text('浮动内容'), findsOneWidget);
+  });
+
+  testWidgets(
+    'panel shell animates before heavy content is mounted, including exit',
+    (tester) async {
+      _setTestSize(tester, const Size(1200, 900));
+      var builds = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () => showUtenAdaptivePanel<void>(
+                  context: context,
+                  builder: (_) => UtenPanelDeferredView(
+                    builder: (context) {
+                      builds++;
+                      return TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('关闭重内容'),
+                      );
+                    },
+                  ),
+                ),
+                child: const Text('打开重面板'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('打开重面板'));
+      await tester.pump();
+      expect(builds, 0);
+      expect(find.text('加载中…'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 150));
+      final panel = find.byKey(const Key('uten-adaptive-panel'));
+      final entering = tester.getTopLeft(panel).dx;
+      expect(entering, greaterThan(300));
+      expect(entering, lessThan(1200));
+      expect(builds, 0);
+      await tester.pumpAndSettle();
+      expect(builds, 1);
+      expect(tester.getTopLeft(panel).dx, 300);
+      await tester.tap(find.text('关闭重内容'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(tester.getTopLeft(panel).dx, greaterThan(300));
+      expect(builds, 1);
+      await tester.pumpAndSettle();
+      expect(find.text('关闭重内容'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'reduced motion opens immediately without a deferred content frame',
+    (tester) async {
+      _setTestSize(tester, const Size(1200, 900));
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(disableAnimations: true),
+            child: child!,
+          ),
+          home: const _PanelHarness(),
+        ),
+      );
+      await tester.tap(find.byKey(const Key('open-panel')));
+      await tester.pump();
+      expect(find.byKey(const Key('panel-content')), findsOneWidget);
+      expect(find.text('加载中…'), findsNothing);
+      expect(
+        tester.getTopLeft(find.byKey(const Key('uten-adaptive-panel'))).dx,
+        300,
+      );
+    },
+  );
+
+  testWidgets('RTL panels enter and leave from the leading screen edge', (
+    tester,
+  ) async {
+    _setTestSize(tester, const Size(1200, 900));
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) =>
+            Directionality(textDirection: TextDirection.rtl, child: child!),
+        home: const _PanelHarness(),
+      ),
+    );
+    await tester.tap(find.byKey(const Key('open-panel')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    final panel = find.byKey(const Key('uten-adaptive-panel'));
+    expect(tester.getTopLeft(panel).dx, lessThan(0));
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(panel).dx, 0);
+    await tester.tap(find.byKey(const Key('complete-panel')));
+    await tester.pumpAndSettle();
+    expect(find.text('result:selected'), findsOneWidget);
+  });
+
   testWidgets('compact screens use a safe bottom sheet and return the result', (
     tester,
   ) async {

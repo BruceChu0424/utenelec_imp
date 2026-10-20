@@ -11136,4 +11136,89 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get goodsHistoryGoodsSubcontractPolicy => '상품 외주 방식 수정';
+
+  @override
+  String materialBomIssueHeading(int count, int sources) {
+    return 'BOM 문제 $count개가 수요 $sources개에 영향을 줍니다';
+  }
+
+  @override
+  String get materialBomIssueGuidance =>
+      '문제가 있는 수요는 이 페이지에 유지됩니다. 다른 수요를 별도로 분석할 수 있습니다. 엔지니어링에서 수정한 후 다시 확인하세요.';
+
+  @override
+  String materialBomIssueForwardedTask(String taskNo) {
+    return '엔지니어링 작업 $taskNo';
+  }
+
+  @override
+  String get materialBomIssueSelectAll => '모든 문제 선택';
+
+  @override
+  String get materialBomIssueDeselectAll => '선택 해제';
+
+  @override
+  String materialBomIssueForward(int count) {
+    return '엔지니어링으로 전달 ($count)';
+  }
+
+  @override
+  String get materialBomIssueRecheck => '다시 확인';
+
+  @override
+  String materialBomIssueContinue(int count) {
+    return '다른 수요 $count개 분석';
+  }
+
+  @override
+  String get materialBomIssueForwarded => '엔지니어링으로 전달했습니다. 수정 후 다시 확인하세요.';
+
+  @override
+  String get materialBomIssueForwardFailed => '엔지니어링으로 전달하지 못했습니다';
+
+  @override
+  String get materialBomIssueClear => 'BOM 문제가 없습니다. 수요와 재고를 확인하려면 다시 분석하세요.';
+
+  @override
+  String get materialBomIssueOpenGoods => '품목 자료 열기';
+
+  @override
+  String get materialBomIssueOpenBom => '품목 BOM 열기';
+
+  @override
+  String get rdInitialUnitTitle => '최초 기본 단위 확인';
+
+  @override
+  String get rdInitialUnitGuidance =>
+      '원본 자료를 확인하여 단위를 선택하고 근거를 입력하세요. 기본 단위가 없고 BOM 외 수량 기록이 없는 품목만 가능합니다. 기존 단위나 수량 이력은 변경할 수 없습니다. 기존 시스템의 단위 연결과 일치해야 합니다.';
+
+  @override
+  String get rdInitialUnitLabel => '확인된 기본 단위';
+
+  @override
+  String get rdInitialUnitRequired => '확인된 기본 단위를 선택하세요';
+
+  @override
+  String get rdInitialUnitEvidence => '원본 자료 및 확인 근거';
+
+  @override
+  String get rdInitialUnitEvidenceRequired => '확인 근거를 2자 이상 입력하세요';
+
+  @override
+  String get rdInitialUnitLoadFailed => '단위를 불러오지 못했습니다. 닫고 다시 시도하세요.';
+
+  @override
+  String get rdInitialUnitCancel => '취소';
+
+  @override
+  String get rdInitialUnitConfirm => '최초 기본 단위 확인';
+
+  @override
+  String get rdInitialUnitSaved => '최초 기본 단위를 확인했습니다. 다른 자료 문제를 계속 처리하세요.';
+
+  @override
+  String get rdInitialUnitFailed => '최초 기본 단위를 확인하지 못했습니다';
+
+  @override
+  String get rdInitialUnitRetry => '다시 시도';
 }

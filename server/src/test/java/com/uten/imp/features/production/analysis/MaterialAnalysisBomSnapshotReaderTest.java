@@ -85,15 +85,42 @@ class MaterialAnalysisBomSnapshotReaderTest {
             ApiException error = assertThrows(ApiException.class, () -> new MaterialAnalysisBomSnapshotReader(em)
                     .read(List.of(source(UUID.randomUUID(), BigDecimal.ONE))));
             verify(em, times(1)).createNativeQuery(anyString());
-            // 报错点名到行：成品、父件、组件编号都在，且给出总处数与「未列出」提示。
+            // 报错点名到行；完整问题不再要求人逐次修好前五处才能看后面。
             assertThat(error.getMessage())
                     .contains("7 处问题")
                     .contains("FG-1 成品")
                     .contains("SA-1 半成品")
                     .contains("RM-9 底衬")
-                    .contains("还有 6 处未列出")
+                    .doesNotContain("未列出")
                     .doesNotContain(kind);
         }
+    }
+
+    @Test
+    void diagnosticsReturnEveryRootAndRouteMasterRepairsToTheComponent() {
+        EntityManager em = mock(EntityManager.class);
+        UUID first = UUID.randomUUID(), second = UUID.randomUUID();
+        UUID parent = UUID.randomUUID(), component = UUID.randomUUID();
+        List<Object[]> findings = new ArrayList<>();
+        for (int i = 0; i < 8; i++) findings.add(new Object[]{
+                "UNIT_MISSING,ROW_COLOR_DELETED", "FG-" + i, "产品", "P", "父件", "C", "组件", 2,
+                8L, i < 4 ? first : second, parent, component});
+        List<String> statements = new ArrayList<>();
+        when(em.createNativeQuery(anyString())).thenAnswer(call -> {
+            statements.add(call.getArgument(0));
+            return query(findings);
+        });
+
+        var result = new MaterialAnalysisBomSnapshotReader(em).findings(List.of(first, second));
+
+        assertThat(result).hasSize(16);
+        assertThat(result).filteredOn(MaterialAnalysisContracts.BomFinding::masterData)
+                .allSatisfy(finding -> assertThat(finding.repairGoodsId()).isEqualTo(component));
+        assertThat(result).filteredOn(finding -> !finding.masterData())
+                .allSatisfy(finding -> assertThat(finding.repairGoodsId()).isEqualTo(parent));
+        assertThat(result).extracting(MaterialAnalysisContracts.BomFinding::rootGoodsId).contains(first, second);
+        assertThat(statements.getFirst()).doesNotContain("LIMIT 5")
+                .contains("DISTINCT ON (root_goods_id, kind, parent_goods_id, goods_id)");
     }
 
     @Test

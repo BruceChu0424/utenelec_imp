@@ -14,7 +14,6 @@ import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
-import '../../../core/responsive/breakpoint.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/position.dart';
 import '../repositories/position_repository.dart';
@@ -101,68 +100,13 @@ class _UtenPositionEntryPickerState
     if (!widget.enabled || departmentId == null || departmentId.isEmpty) {
       return;
     }
-    final sheet = _PositionEntrySheet(
-      departmentId: departmentId,
-      initialValue: _value,
+    final result = await showUtenAdaptivePanel<PositionEntryValue>(
+      context: context,
+      compactHeightFactor: 0.9,
+      widthFraction: UtenPanelWidth.form,
+      builder: (_) =>
+          _PositionEntrySheet(departmentId: departmentId, initialValue: _value),
     );
-    final PositionEntryValue? result;
-    if (context.breakpoint.isCompact) {
-      result = await showModalBottomSheet<PositionEntryValue>(
-        context: context,
-        isScrollControlled: true,
-        useSafeArea: true,
-        builder: (sheetContext) => Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
-          ),
-          child: FractionallySizedBox(heightFactor: 0.9, child: sheet),
-        ),
-      );
-    } else {
-      result = await showGeneralDialog<PositionEntryValue>(
-        context: context,
-        barrierDismissible: true,
-        barrierLabel: MaterialLocalizations.of(
-          context,
-        ).modalBarrierDismissLabel,
-        barrierColor: Colors.black54,
-        transitionDuration: const Duration(milliseconds: 250),
-        pageBuilder: (dialogContext, _, _) {
-          // 滑窗宽度口径 2026-10-17：职位选择是简单列表，form 档（35% 屏宽，420 下限），
-          // 与其他右滑面板同一口径（uten_adaptive_panel.dart 的 UtenPanelWidth）。
-          final width = utenPanelWidth(
-            MediaQuery.sizeOf(dialogContext),
-            420,
-            UtenPanelWidth.form,
-          );
-          return Align(
-            alignment: Alignment.centerRight,
-            child: Material(
-              color: Theme.of(dialogContext).colorScheme.surface,
-              child: SizedBox(
-                width: width,
-                height: double.infinity,
-                child: sheet,
-              ),
-            ),
-          );
-        },
-        transitionBuilder: (dialogContext, animation, _, child) =>
-            SlideTransition(
-              position:
-                  Tween<Offset>(
-                    begin: const Offset(1, 0),
-                    end: Offset.zero,
-                  ).animate(
-                    CurvedAnimation(
-                      parent: animation,
-                      curve: Curves.easeOutCubic,
-                    ),
-                  ),
-              child: child,
-            ),
-      );
-    }
     final confirmed = result;
     if (!mounted ||
         confirmed == null ||

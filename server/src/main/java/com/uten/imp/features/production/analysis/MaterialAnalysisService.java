@@ -5171,7 +5171,7 @@ public class MaterialAnalysisService {
                 existing==null ? List.of() : List.of(existing));
     }
 
-    private List<PreviewItem> normalizePreviewItems(List<PreviewItem> raw) {
+    List<PreviewItem> normalizePreviewItems(List<PreviewItem> raw) {
         List<PreviewItem> result = new ArrayList<>();
         Set<String> keys = new HashSet<>();
         // ADR-130：同一 (来源类型, 需求编号) 的各货品行统一落第一行的写法，历史列表不会出现两种拼写。

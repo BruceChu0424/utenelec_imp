@@ -29,6 +29,68 @@ void main() {
   for (final multiple in [false, true]) {
     for (final boundary in ['identity', 'server', 'permissions']) {
       testWidgets(
+        '$boundary ABA during opening closes ${multiple ? 'multi' : 'single'} controller before heavy views mount',
+        (tester) async {
+          final pending = Completer<List<UtenEmployeePickerItem>>();
+          final changed = <Object?>[];
+          var requests = 0;
+          Future<List<UtenEmployeePickerItem>> load(String? _) {
+            requests++;
+            return pending.future;
+          }
+
+          final container = await _pump(
+            tester,
+            multiple
+                ? UtenEmployeeMultiPicker(
+                    initialSelection: const [_person],
+                    loader: load,
+                    onChanged: changed.add,
+                  )
+                : UtenEmployeePicker(
+                    initial: _person,
+                    loader: load,
+                    onChanged: changed.add,
+                  ),
+          );
+          await tester.tap(find.byType(InputDecorator));
+          await tester.pump();
+          expect(find.byType(UtenEmployeeSelectionPanel), findsOneWidget);
+          expect(
+            requests,
+            1,
+            reason:
+                'candidate requests start in parallel with the opening transition',
+          );
+          expect(
+            find.byKey(const Key('uten-employee-picker-candidates')),
+            findsNothing,
+          );
+          switch (boundary) {
+            case 'identity':
+              container.read(_identity.notifier).state =
+                  const AuthenticatedScope(userId: 'account-b', epoch: 2);
+              await tester.pump();
+              container.read(_identity.notifier).state =
+                  const AuthenticatedScope(userId: 'account-a', epoch: 1);
+            case 'server':
+              container.read(_server.notifier).state = 'https://server-b.test';
+              await tester.pump();
+              container.read(_server.notifier).state = 'https://server-a.test';
+            case 'permissions':
+              container.read(_permissions.notifier).state = {};
+              await tester.pump();
+              container.read(_permissions.notifier).state = {'employee:view'};
+          }
+          pending.complete(const [_person]);
+          await tester.pumpAndSettle();
+          expect(find.byType(UtenEmployeeSelectionPanel), findsNothing);
+          expect(changed, isEmpty);
+          expect(tester.takeException(), isNull);
+        },
+      );
+
+      testWidgets(
         '$boundary invalidates open ${multiple ? 'multi' : 'single'} picker even after ABA',
         (tester) async {
           final pending = Completer<List<UtenEmployeePickerItem>>();

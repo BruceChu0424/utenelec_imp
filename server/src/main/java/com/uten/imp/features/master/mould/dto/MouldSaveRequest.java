@@ -35,6 +35,7 @@ public class MouldSaveRequest {
     private boolean mstatusProvided;
     @JsonIgnore
     private boolean canonicalMstatusProvided;
+    @jakarta.validation.constraints.Size(max = 200)
     private String manufacturer;
     @JsonIgnore
     private boolean manufacturerProvided;
@@ -43,6 +44,10 @@ public class MouldSaveRequest {
     private String keeper;       // summary（保管人；picker 落 keeperId 时后端按 id 补名）
     private UUID departmentId;   // 车间部门 id（departments.id，picker 落）
     private UUID keeperId;       // 保管人员工 id（employees.id，picker 落）
+    @JsonIgnore private boolean placeProvided;
+    @JsonIgnore private boolean keeperProvided;
+    @JsonIgnore private boolean departmentIdProvided;
+    @JsonIgnore private boolean keeperIdProvided;
     private String remark;       // Remark（备注）
 
     @JsonSetter("mstatus")
@@ -65,4 +70,8 @@ public class MouldSaveRequest {
         manufacturer = value;
         manufacturerProvided = true;
     }
+    @JsonSetter("place") public void setPlace(String value) { place=value;placeProvided=true; }
+    @JsonSetter("keeper") public void setKeeper(String value) { keeper=value;keeperProvided=true; }
+    @JsonSetter("departmentId") public void setDepartmentId(UUID value) { departmentId=value;departmentIdProvided=true; }
+    @JsonSetter("keeperId") public void setKeeperId(UUID value) { keeperId=value;keeperIdProvided=true; }
 }

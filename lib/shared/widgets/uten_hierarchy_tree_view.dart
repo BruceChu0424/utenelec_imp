@@ -10,17 +10,23 @@
 // ([rowMenuBuilder]，与表格行同一机制、右键即选中)。
 //
 // 放在 shared：部门与基础资料两个 feature 都用它，谁都不反向依赖谁(节点契约同理在 shared)。
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../components/feedback/uten_context_menu.dart';
+import '../../components/feedback/uten_motion.dart';
 import '../../components/inputs/uten_search_bar.dart';
 import '../../components/layout/uten_adaptive_hierarchy_pane.dart';
 import '../../components/layout/uten_hierarchy_content_width.dart';
+import '../../components/layout/uten_panel_opening_scope.dart';
 import '../../core/responsive/breakpoint.dart';
 import '../../core/theme/uten_colors.dart';
+import '../../core/theme/uten_anim.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../models/uten_tree_node.dart';
 import '../hierarchy/category_tree_search.dart';
+import '../search/keyword_search.dart';
 import 'uten_hierarchy_search_header.dart';
 
 /// 树的选择语义。
@@ -168,7 +174,7 @@ class UtenHierarchyTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
   /// 明度、四档起转中性灰，4 及更深固定第五档（至少 5 个层级色差、最深一层固定
   /// 一色、色差拉开且协调，2026-09-24 第二轮口径）；行距收紧、行间 1px 分隔线。
   /// 选中 = 行首整高色块盖过展开/收起箭头与名字（宽 = 箭头位 + 名字
-  /// 自然宽 + 呼吸位，上限行宽 60% 的名字默认占比；右侧上下两角平台统一控件
+  /// 自然宽 + 呼吸位，上限为扣除行尾控件后的实际标题簇宽；右侧上下两角平台统一控件
   /// 圆角）。切换选中 = 块体刚性平移：旧行**向左滑出**左缘、新行**向右滑入**
   /// （2026-10-19 用户口径）。名字/箭头随色块同拍取反色——一级深绿行本身即深绿，反其道用白块 +
   /// 深绿前景；浏览态右缘对勾退役（2026-10-19 用户口径，色块盖名后冗余；同日
@@ -195,6 +201,8 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
   Object? _forestWidthKey;
   double _forestTitleWidth = 0;
   int _fontRevision = 0;
+  Object? _rankKey;
+  final _branchRanks = <String, int?>{};
 
   bool get _searching => _query.trim().isNotEmpty;
 
@@ -204,7 +212,7 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
   final _labelWidthCache = <String, double>{};
 
   double _labelWidth(String label, TextStyle style, TextScaler scaler) {
-    final key = '$_fontRevision:$scaler:$label';
+    final key = '$_fontRevision:$scaler:$style:$label';
     return _labelWidthCache[key] ??= () {
       final painter = TextPainter(
         text: TextSpan(text: label, style: style),
@@ -310,36 +318,60 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
       _fontRevision,
     );
     if (key != _forestWidthKey) {
-      final painter = TextPainter(
-        textDirection: direction,
-        textScaler: scaler,
-        locale: locale,
-        maxLines: 1,
-      );
-      var width = 0.0;
-      void measure(List<T> nodes) {
+      _forestWidthKey = key;
+      final labelOf = widget.labelOf;
+      final passThrough = widget.passThrough;
+      Iterable<String> labels(List<T> nodes) sync* {
         for (final node in nodes) {
-          if (!_passes(node)) {
-            painter.text = TextSpan(
-              text: widget.labelOf?.call(node) ?? node.name,
-              style: style,
-            );
+          if (!(passThrough?.call(node) ?? false)) {
+            yield labelOf?.call(node) ?? node.name;
+          }
+          yield* labels(node.children);
+        }
+      }
+
+      final titles = labels(widget.nodes).iterator;
+      var width = 0.0;
+      // Offscreen titles still determine the natural split width, but text
+      // shaping must yield between bounded batches instead of blocking the
+      // first search/selection frame for the entire forest.
+      void measureBatch(Duration _) {
+        if (!mounted ||
+            key != _forestWidthKey ||
+            controller != _widthController) {
+          return;
+        }
+        final painter = TextPainter(
+          textDirection: direction,
+          textScaler: scaler,
+          locale: locale,
+          maxLines: 1,
+        );
+        var complete = false;
+        try {
+          for (var i = 0; i < 40; i++) {
+            if (!titles.moveNext()) {
+              complete = true;
+              break;
+            }
+            painter.text = TextSpan(text: titles.current, style: style);
             painter.layout();
             if (painter.maxIntrinsicWidth > width) {
               width = painter.maxIntrinsicWidth;
             }
           }
-          measure(node.children);
+        } finally {
+          painter.dispose();
+        }
+        if (complete) {
+          setState(() => _forestTitleWidth = width);
+        } else {
+          WidgetsBinding.instance.addPostFrameCallback(measureBatch);
+          WidgetsBinding.instance.ensureVisualUpdate();
         }
       }
 
-      try {
-        measure(widget.nodes);
-      } finally {
-        painter.dispose();
-      }
-      _forestTitleWidth = width;
-      _forestWidthKey = key;
+      WidgetsBinding.instance.addPostFrameCallback(measureBatch);
     }
     controller.reportLabelWidth(
       this,
@@ -392,28 +424,50 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
       _expanded.contains(node.id) ||
       (widget.visibleFilterIds?.contains(node.id) ?? false);
 
-  /// flat 模式下当前实际成行的首/末节点 id（卡片圆角只挂在这两行上）。
-  /// 按渲染顺序走一遍（透传下沉、可见过滤、展开态、同级排序全部同源）。
-  ({String? firstId, String? lastId}) _computeFlatEdgeRowIds(
+  // Flatten models only. Each visible row is built by the viewport, including
+  // children of a large expanded category; recursive Columns eagerly mounted
+  // the whole branch on search, selection and expansion.
+  List<({T node, int depth, List<String> ancestors})> _rowPlan(
     Set<String>? visible,
   ) {
-    String? first;
-    String? last;
-    void walk(List<T> nodes) {
-      for (final n in _ordered(nodes)) {
-        if (_passes(n)) {
-          walk(n.children);
+    final rows = <({T node, int depth, List<String> ancestors})>[];
+    void walk(List<T> nodes, int depth, List<String> ancestors) {
+      for (final node in _ordered(nodes)) {
+        if (_passes(node)) {
+          walk(node.children, depth, ancestors);
           continue;
         }
-        if (visible != null && !visible.contains(n.id)) continue;
-        first ??= n.id;
-        last = n.id;
-        if (n.hasChildren && _rowExpanded(n)) walk(n.children);
+        if (visible != null && !visible.contains(node.id)) continue;
+        rows.add((node: node, depth: depth, ancestors: ancestors));
+        if (node.hasChildren && _rowExpanded(node)) {
+          walk(node.children, depth + 1, [...ancestors, node.name]);
+        }
       }
     }
 
-    walk(widget.nodes);
-    return (firstId: first, lastId: last);
+    walk(widget.nodes, 0, const []);
+    return rows;
+  }
+
+  void _ensureBranchRanks() {
+    final query = widget.externalSearchQuery ?? _query;
+    final key = (widget.nodes, query);
+    if (_rankKey == key) return;
+    _rankKey = key;
+    _branchRanks.clear();
+    if (query.trim().isEmpty) return;
+    int? rank(T node) {
+      var best = keywordSearchRank([node.name, node.code], query);
+      for (final child in node.children) {
+        final nested = rank(child);
+        if (nested != null && (best == null || nested < best)) best = nested;
+      }
+      return _branchRanks[node.id] = best;
+    }
+
+    for (final root in widget.nodes) {
+      rank(root);
+    }
   }
 
   /// 本次 build 的 flat 首末行 id（build 开头重算，_buildNode 只读）。
@@ -431,8 +485,8 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
         ordered[index].id: index,
     };
     ordered.sort((a, b) {
-      final aRank = categoryBranchKeywordRank(a, query) ?? (1 << 20);
-      final bRank = categoryBranchKeywordRank(b, query) ?? (1 << 20);
+      final aRank = _branchRanks[a.id] ?? (1 << 20);
+      final bRank = _branchRanks[b.id] ?? (1 << 20);
       final rank = aRank.compareTo(bRank);
       return rank != 0 ? rank : positions[a.id]!.compareTo(positions[b.id]!);
     });
@@ -513,41 +567,22 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
   Widget _buildNode(
     T node,
     int depth,
-    Set<String>? visibleFilter, [
-    List<String> ancestors = const [],
-  ]) {
-    if (_passes(node)) {
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final c in _ordered(node.children))
-            _buildNode(c, depth, visibleFilter, ancestors),
-        ],
-      );
-    }
-    if (visibleFilter != null && !visibleFilter.contains(node.id)) {
-      return const SizedBox.shrink();
-    }
+    List<String> ancestors,
+    Duration animDuration,
+  ) {
     final theme = Theme.of(context);
     final enabled = _enabled(node);
-    // 外部可见集合(搜索定位用)经 [_rowExpanded] 参与展开判定：命中节点的祖先链
-    // 也展开，否则深层命中不可见。
     final expanded = _rowExpanded(node);
     final isSelected = widget.selectedIds.contains(node.id);
     final trailing = widget.trailingBuilder?.call(node);
     final leading = widget.leadingBuilder?.call(node, enabled);
     final highlight = widget.mode == UtenTreeSelectMode.none && isSelected;
-
-    // flat 模式的行样式（见 [flatLevelColors] 文档）：铺色 + 首末行圆角 + 无缩进；
-    // 非 flat 保持原样（缩进 + 圆角高亮）。
     final flat = widget.flatLevelColors;
     final rowBg = flat
         ? _flatRowBackground(theme, depth)
         : (highlight ? theme.colorScheme.primaryContainer : null);
-    // 深绿实底行上的前景（文字/勾选/强调条）一律反白，浅色行用主色强调选中。
     final onDarkRow = flat && depth == 0;
     final rowAccent = onDarkRow ? Colors.white : theme.colorScheme.primary;
-    // 卡片圆角（flat）：首行上两角、末行下两角；其余方角相接不露缝。
     final rowRadius = !flat
         ? BorderRadius.circular(UtenRadius.md)
         : BorderRadius.vertical(
@@ -558,8 +593,7 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
               node.id == _flatEdgeRowIds?.lastId ? UtenRadius.md : 0,
             ),
           );
-
-    final row = LayoutBuilder(
+    return LayoutBuilder(
       builder: (context, constraints) {
         final indent = flat
             ? 0.0
@@ -569,42 +603,22 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
           desktop: 32,
         );
         final label = widget.labelOf?.call(node) ?? node.name;
-        // flat 选中色块（2026-10-19 用户口径「色块盖过名字+从左滑入」）：铺在行
-        // 内容之下、行首整高，宽度 = 箭头位 + 名字自然宽（w700 实测）+ 呼吸位，
-        // 上限为行宽的 60%（名字默认占比，超长不吞行尾动作区），下限仍盖满展开
-        // 位；标题不位移。浅色档行盖深绿块、名字/箭头**反白**；一级行本身即深绿
-        // 反其道盖白块、前景转**深绿**——选中文字永远落在与色块成对比的颜色上
-        // （2026-10-19 修正：此前误用色块同色导致字被块吞掉）。宽度经
-        // AnimatedPositioned 0↔目标宽 生长/收回（左缘锚定 = 从左边滑入），文字
-        // 与箭头颜色同拍过渡、选中加粗 w700；浏览态右缘对勾退役（盖名后冗余）。
         final flatSelected = flat && isSelected;
         final blockColor = onDarkRow
             ? Colors.white
             : _flatRowBackground(theme, 0);
-        // 选中前景 = 色块的反色：深绿块上白字、白块上深绿字。
         final selectedForeColor = onDarkRow
             ? _flatRowBackground(theme, 0)
             : Colors.white;
         final toggleColor = flatSelected
             ? selectedForeColor
             : (onDarkRow ? Colors.white : theme.colorScheme.onSurfaceVariant);
-        final animDuration = MediaQuery.disableAnimationsOf(context)
-            ? Duration.zero
-            : const Duration(milliseconds: 260);
-        double blockWidth = 0;
-        if (flat) {
-          final scaler = MediaQuery.textScalerOf(context);
-          final nameWidth = _labelWidth(
-            label,
-            theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700) ??
-                const TextStyle(),
-            scaler,
-          );
-          blockWidth = (8 + hitExtent + 4 + nameWidth + 8).clamp(
-            hitExtent + 12.0,
-            constraints.maxWidth * 0.6,
-          );
-        }
+        final minHeight = flat
+            ? UtenFilterRow.heightOf(context)
+            : UtenControlMetrics.controlHeight(context);
+        final verticalPadding = flat
+            ? (UtenControlMetrics.usesTouchTargets(context) ? 0.0 : 2.0)
+            : 6.0;
         final Widget? selection;
         if (enabled && widget.mode == UtenTreeSelectMode.multi) {
           selection = Checkbox(
@@ -620,6 +634,160 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
               : const SizedBox(width: 18, height: 18);
         } else {
           selection = null;
+        }
+        final expandSlot = SizedBox(
+          width: hitExtent,
+          height: hitExtent,
+          child: node.hasChildren
+              ? IconButton(
+                  tooltip: expanded ? '收起$label' : '展开$label',
+                  constraints: BoxConstraints.tightFor(
+                    width: hitExtent,
+                    height: hitExtent,
+                  ),
+                  padding: EdgeInsets.zero,
+                  onPressed: () => _toggleExpand(node),
+                  icon: TweenAnimationBuilder<Color?>(
+                    tween: ColorTween(end: toggleColor),
+                    duration: animDuration,
+                    curve: UtenAnim.standard,
+                    builder: (context, color, _) => AnimatedRotation(
+                      turns: expanded ? 0.25 : 0,
+                      duration: animDuration,
+                      curve: UtenAnim.standard,
+                      child: Icon(
+                        Icons.chevron_right_rounded,
+                        size: 20,
+                        color: color ?? toggleColor,
+                      ),
+                    ),
+                  ),
+                )
+              : null,
+        );
+        final title = Expanded(
+          child: UtenHierarchyLabelWidth(
+            child: Tooltip(
+              message: [...ancestors, label].join(' / '),
+              child: AnimatedDefaultTextStyle(
+                duration: animDuration,
+                curve: UtenAnim.standard,
+                style: (theme.textTheme.bodyMedium ?? const TextStyle())
+                    .copyWith(
+                      fontWeight: isSelected
+                          ? FontWeight.w700
+                          : (onDarkRow ? FontWeight.w600 : FontWeight.w400),
+                      color: enabled
+                          ? (flat
+                                ? (flatSelected
+                                      ? toggleColor
+                                      : (onDarkRow ? Colors.white : null))
+                                : (onDarkRow
+                                      ? Colors.white
+                                      : isSelected
+                                      ? theme.colorScheme.primary
+                                      : null))
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+          ),
+        );
+        final titleCluster = <Widget>[
+          expandSlot,
+          const SizedBox(width: 4),
+          if (leading != null) ...[leading, const SizedBox(width: 8)],
+          title,
+        ];
+        final Widget body;
+        if (flat) {
+          final hasControls = trailing != null || selection != null;
+          // The expanded title cluster receives the width left AFTER the real
+          // trailing controls are laid out. Its selection block can never cover
+          // those controls, and the title ellipsis stays entirely inside it.
+          body = Row(
+            children: [
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, titleConstraints) {
+                    final nameWidth = _labelWidth(
+                      label,
+                      theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ) ??
+                          const TextStyle(),
+                      MediaQuery.textScalerOf(context),
+                    );
+                    final blockWidth = leading == null
+                        ? math.min(
+                            titleConstraints.maxWidth,
+                            8 + hitExtent + 4 + nameWidth + 8,
+                          )
+                        : titleConstraints.maxWidth;
+                    return ConstrainedBox(
+                      constraints: BoxConstraints(minHeight: minHeight),
+                      child: Stack(
+                        alignment: Alignment.centerLeft,
+                        children: [
+                          AnimatedPositioned(
+                            duration: animDuration,
+                            curve: UtenAnim.standard,
+                            top: 0,
+                            bottom: 0,
+                            left: flatSelected ? 0 : -blockWidth,
+                            width: blockWidth,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: blockColor,
+                                borderRadius: const BorderRadius.horizontal(
+                                  right: Radius.circular(UtenRadius.control),
+                                ),
+                              ),
+                            ),
+                          ),
+                          Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: verticalPadding,
+                            ),
+                            child: Row(children: titleCluster),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+              ?trailing,
+              if (selection != null) ...[
+                if (trailing != null) const SizedBox(width: 8),
+                selection,
+              ],
+              if (hasControls) const SizedBox(width: 8),
+            ],
+          );
+        } else {
+          body = Padding(
+            padding: EdgeInsets.fromLTRB(
+              8 + indent,
+              verticalPadding,
+              8,
+              verticalPadding,
+            ),
+            child: Row(
+              children: [
+                ...titleCluster,
+                if (trailing != null) ...[const SizedBox(width: 8), trailing],
+                if (selection != null) ...[const SizedBox(width: 8), selection],
+              ],
+            ),
+          );
         }
         final content = Semantics(
           selected: isSelected,
@@ -643,162 +811,12 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
                       )
                     : const BoxDecoration(),
                 child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minHeight: flat
-                        ? UtenFilterRow.heightOf(context)
-                        : UtenControlMetrics.controlHeight(context),
-                  ),
+                  constraints: BoxConstraints(minHeight: minHeight),
                   child: UtenHierarchyRowSkin(
-                    // 行级前景皮肤：深绿一级行下发白色，浅色行下发
-                    // onSurfaceVariant——行尾图标/文字读它取色（含收付款全站）。
                     foreground: onDarkRow
                         ? Colors.white
                         : theme.colorScheme.onSurfaceVariant,
-                    child: Stack(
-                      children: [
-                        if (flat)
-                          AnimatedPositioned(
-                            duration: animDuration,
-                            curve: Curves.easeOutCubic,
-                            top: 0,
-                            bottom: 0,
-                            // 选中切换的滑入/滑出（2026-10-19 用户口径「旧的向左滑
-                            // 出、新的向右进来」）：块体刚性平移——选中 left:0，
-                            // 未选中 left:-blockWidth（整块滑出左缘，Stack 裁剪不可
-                            // 见）。恒挂载保证行内容 element 稳定（选中切换不失焦
-                            // 不重挂）；宽度恒为盖名宽，只动位置。
-                            left: flatSelected ? 0 : -blockWidth,
-                            width: blockWidth,
-                            // 右侧上下两角用平台统一控件圆角（UtenRadius.control，
-                            // 2026-10-19 用户口径）：色块读作行首「页签」而不是
-                            // 贴片；左缘与行边齐平（首末行的卡片圆角由外层裁剪）。
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: blockColor,
-                                borderRadius: const BorderRadius.horizontal(
-                                  right: Radius.circular(UtenRadius.control),
-                                ),
-                              ),
-                            ),
-                          ),
-                        Padding(
-                          padding: EdgeInsets.fromLTRB(
-                            8 + indent,
-                            flat
-                                ? (UtenControlMetrics.usesTouchTargets(context)
-                                      ? 0
-                                      : 2)
-                                : 6,
-                            8,
-                            flat
-                                ? (UtenControlMetrics.usesTouchTargets(context)
-                                      ? 0
-                                      : 2)
-                                : 6,
-                          ),
-                          child: Row(
-                            children: [
-                              // A leaf keeps the same expand slot as its siblings, so
-                              // selecting or expanding a row never shifts its title.
-                              SizedBox(
-                                width: hitExtent,
-                                height: hitExtent,
-                                child: node.hasChildren
-                                    ? IconButton(
-                                        tooltip: expanded
-                                            ? '收起$label'
-                                            : '展开$label',
-                                        constraints: BoxConstraints.tightFor(
-                                          width: hitExtent,
-                                          height: hitExtent,
-                                        ),
-                                        padding: EdgeInsets.zero,
-                                        onPressed: () => _toggleExpand(node),
-                                        icon: TweenAnimationBuilder<Color?>(
-                                          tween: ColorTween(end: toggleColor),
-                                          duration: animDuration,
-                                          curve: Curves.easeOutCubic,
-                                          builder: (context, color, _) => Icon(
-                                            expanded
-                                                ? Icons.expand_more_rounded
-                                                : Icons.chevron_right_rounded,
-                                            size: 20,
-                                            color: color ?? toggleColor,
-                                          ),
-                                        ),
-                                      )
-                                    : null,
-                              ),
-                              const SizedBox(width: 4),
-                              if (leading != null) ...[
-                                leading,
-                                const SizedBox(width: 8),
-                              ],
-                              Expanded(
-                                child: UtenHierarchyLabelWidth(
-                                  child: Tooltip(
-                                    message: [...ancestors, label].join(' / '),
-                                    // 文字颜色随色块同拍过渡（flat 选中 = 色块盖过
-                                    // 名字，前景反白/一级行反绿）。
-                                    child: AnimatedDefaultTextStyle(
-                                      duration: animDuration,
-                                      curve: Curves.easeOutCubic,
-                                      style:
-                                          (theme.textTheme.bodyMedium ??
-                                                  const TextStyle())
-                                              .copyWith(
-                                                // 选中加粗 w700（2026-10-19 用户
-                                                // 口径）；一级深绿行基线 w600。
-                                                fontWeight: isSelected
-                                                    ? FontWeight.w700
-                                                    : (onDarkRow
-                                                          ? FontWeight.w600
-                                                          : FontWeight.w400),
-                                                // 选中文字 = 色块的反色（浅色行深绿块
-                                                // → 白字；一级行白块 → 深绿字），
-                                                // 与箭头同拍过渡。
-                                                color: enabled
-                                                    ? (flat
-                                                          ? (flatSelected
-                                                                ? toggleColor
-                                                                : (onDarkRow
-                                                                      ? Colors
-                                                                            .white
-                                                                      : null))
-                                                          : (onDarkRow
-                                                                ? Colors.white
-                                                                : isSelected
-                                                                ? theme
-                                                                      .colorScheme
-                                                                      .primary
-                                                                : null))
-                                                    : theme
-                                                          .colorScheme
-                                                          .onSurfaceVariant,
-                                              ),
-                                      child: Text(
-                                        label,
-                                        maxLines: 1,
-                                        softWrap: false,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              if (trailing != null) ...[
-                                const SizedBox(width: 8),
-                                trailing,
-                              ],
-                              if (selection != null) ...[
-                                const SizedBox(width: 8),
-                                selection,
-                              ],
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
+                    child: body,
                   ),
                 ),
               ),
@@ -806,8 +824,6 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
           ),
         );
         return UtenHierarchyRowWidth(
-          // 每行都挂右键/长按菜单（2026-10-19 用户口径「所有树所有节点」）：
-          // 条目见 [_rowMenuEntries]，全空时自动不弹。
           child: UtenContextMenuRegion(
             entriesBuilder: () => _rowMenuEntries(node),
             onMenuOpening: () => _onRowMenuOpening(node),
@@ -816,22 +832,17 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
         );
       },
     );
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        row,
-        if (node.hasChildren && expanded)
-          for (final c in _ordered(node.children))
-            _buildNode(c, depth + 1, visibleFilter, [...ancestors, node.name]),
-      ],
-    );
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => UtenPanelOpeningScope.isReadyOf(context)
+      ? UtenMotion(duration: UtenAnim.normal, builder: _buildTree)
+      : const UtenPanelOpeningPlaceholder();
+
+  Widget _buildTree(BuildContext context, Duration animDuration) {
     final theme = Theme.of(context);
     _reportForestWidth(context, theme);
-    final roots = _ordered(widget.nodes);
+    _ensureBranchRanks();
     final internal = _searching ? _visibleIds() : null;
     final external = widget.visibleFilterIds;
     final externalQuery = widget.externalSearchQuery?.trim() ?? '';
@@ -846,8 +857,9 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
         widget.externalSearchError == null &&
         (visibleFilter?.isEmpty ?? false);
     // flat 模式：先按当前渲染顺序定出首/末行（圆角挂点），再构建行。
-    _flatEdgeRowIds = widget.flatLevelColors
-        ? _computeFlatEdgeRowIds(visibleFilter)
+    final plan = _rowPlan(visibleFilter);
+    _flatEdgeRowIds = widget.flatLevelColors && plan.isNotEmpty
+        ? (firstId: plan.first.node.id, lastId: plan.last.node.id)
         : null;
     final header = KeyedSubtree(
       key: _headerKey,
@@ -893,27 +905,44 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
         ],
       ),
     );
-    final rows = <Widget>[
-      for (final r in roots) _buildNode(r, 0, visibleFilter),
-      if ((_searching && (visibleFilter?.isEmpty ?? false)) ||
-          showExternalEmpty)
-        Padding(
-          padding: const EdgeInsets.all(24),
-          child: Center(
-            child: Semantics(
-              liveRegion: true,
-              child: Text(
-                widget.emptySearchText ??
-                    '未找到匹配「${externalSearching ? externalQuery : _query}」的${widget.emptyNoun}', // TODO(l10n): 补 arb
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+    final showEmpty =
+        (_searching && (visibleFilter?.isEmpty ?? false)) || showExternalEmpty;
+    final rowIndexes = {
+      for (var i = 0; i < plan.length; i++)
+        ValueKey('hierarchy-row:${plan[i].node.id}'): i,
+    };
+    Widget rowBuilder(BuildContext context, int index) {
+      if (index < plan.length) {
+        final entry = plan[index];
+        return RepaintBoundary(
+          key: ValueKey('hierarchy-row:${entry.node.id}'),
+          child: _buildNode(
+            entry.node,
+            entry.depth,
+            entry.ancestors,
+            animDuration,
+          ),
+        );
+      }
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Center(
+          child: Semantics(
+            liveRegion: true,
+            child: Text(
+              widget.emptySearchText ??
+                  '未找到匹配「${externalSearching ? externalQuery : _query}」的${widget.emptyNoun}', // TODO(l10n): 补 arb
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ),
         ),
-    ];
+      );
+    }
+
+    final rowCount = plan.length + (showEmpty ? 1 : 0);
     return LayoutBuilder(
       builder: (context, constraints) {
         // Match the shared collapsing layout's short-viewport contract: let
@@ -927,7 +956,11 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
               SliverToBoxAdapter(child: header),
               SliverPadding(
                 padding: const EdgeInsets.only(bottom: 8),
-                sliver: SliverList.list(children: rows),
+                sliver: SliverList.builder(
+                  itemCount: rowCount,
+                  itemBuilder: rowBuilder,
+                  findChildIndexCallback: (key) => rowIndexes[key],
+                ),
               ),
             ],
           );
@@ -936,11 +969,13 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
           children: [
             header,
             Expanded(
-              child: ListView(
+              child: ListView.builder(
                 controller: _scrollController,
                 primary: false,
                 padding: const EdgeInsets.only(bottom: 8),
-                children: rows,
+                itemCount: rowCount,
+                itemBuilder: rowBuilder,
+                findChildIndexCallback: (key) => rowIndexes[key],
               ),
             ),
           ],

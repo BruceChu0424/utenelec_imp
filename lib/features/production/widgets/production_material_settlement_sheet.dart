@@ -48,7 +48,6 @@ Future<bool?> showProductionMaterialSettlementSheet(
     panelElevation: 16,
     barrierColor: Colors.black.withValues(alpha: .38),
     barrierLabel: '关闭用料记录面板',
-    transitionDuration: const Duration(milliseconds: 300),
     builder: (_) => _MaterialSettlementSheet(
       planId: planId,
       executionSegmentId: executionSegmentId,

@@ -263,6 +263,201 @@ void main() {
   materialQuantityPresentationCases();
   materialPolicyCases();
   testWidgets(
+    'cross-view facet cache refreshes workshop and manager after aggregate assignment',
+    (tester) async {
+      await _pumpSplit(tester, mutate: _threeSharedMakeSources);
+      MasterDataTableView<dynamic> table() =>
+          tester.widget<MasterDataTableView<dynamic>>(
+            find.byKey(const Key('material-analysis-material-table')),
+          );
+      Set<String> values(String key) =>
+          table().facets[key]?.map((bucket) => bucket.value).toSet() ??
+          <String>{};
+      expect(values('productionWorkshop'), contains('装配一车间'));
+      expect(values('productionWorkshop'), isNot(contains('装配二车间')));
+      await tester.tap(
+        find.byKey(const ValueKey('material-bom-layout-material')),
+      );
+      await tester.pumpAndSettle();
+      final field = find.byKey(
+        const ValueKey('material-aggregate-workshop-split-make|本色|unit-1'),
+      );
+      tester.widget<InkWell>(field).onTap!();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('装配二车间').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(UtenButton, '确定'));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('material-bom-layout-product')),
+      );
+      await tester.pumpAndSettle();
+      expect(values('productionWorkshop'), contains('装配二车间'));
+      expect(values('responsible'), contains('李四'));
+      table().onFilterChanged('productionWorkshop', '装配二车间');
+      await tester.pumpAndSettle();
+      expect(
+        table().facets['productionWorkshop']!
+            .singleWhere((bucket) => bucket.value == '装配二车间')
+            .count,
+        3,
+      );
+      for (var i = 0; i < 3; i++) {
+        expect(
+          find.byKey(ValueKey('material-table-row-shared-$i')),
+          findsOneWidget,
+        );
+      }
+      table().onFilterChanged('productionWorkshop', '装配一车间');
+      await tester.pumpAndSettle();
+      for (var i = 0; i < 3; i++) {
+        expect(
+          find.byKey(ValueKey('material-table-row-shared-$i')),
+          findsNothing,
+        );
+      }
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'cross-view facet cache tracks positive append state without rebuilding for each positive quantity',
+    (tester) async {
+      await _pump(
+        tester,
+        permissions: _overSupplyPermissions,
+        overSupply: true,
+      );
+      MasterDataTableView<dynamic> table() =>
+          tester.widget<MasterDataTableView<dynamic>>(
+            find.byKey(const Key('material-analysis-material-table')),
+          );
+      Set<String> values() =>
+          table().facets['appendQty']?.map((bucket) => bucket.value).toSet() ??
+          <String>{};
+      expect(values(), isNot(contains('已填追加')));
+      await tester.tap(
+        find.byKey(const ValueKey('material-bom-layout-material')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('material-bom-layout-product')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(_appendQty('m-3'), '10');
+      await _settleRebuild(tester);
+      expect(values(), contains('已填追加'));
+      final positiveRows = table().items;
+      await tester.enterText(_appendQty('m-3'), '20');
+      await _settleRebuild(tester);
+      expect(
+        identical(table().items, positiveRows),
+        isTrue,
+        reason: 'the append facet is unchanged between positive quantities',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('material-bom-layout-material')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('material-bom-layout-product')),
+      );
+      await tester.pumpAndSettle();
+      expect(values(), contains('已填追加'));
+      await tester.enterText(_appendQty('m-3'), '0');
+      await _settleRebuild(tester);
+      expect(values(), isNot(contains('已填追加')));
+      expect(values(), contains('未填追加'));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'cross-view facet cache refreshes asynchronously loaded assignment defaults',
+    (tester) async {
+      final defaults = Completer<List<Map<String, dynamic>>>();
+      await _pump(
+        tester,
+        permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+        mutate: (data) {
+          (data['allowedActions'] as List).add('GENERATE_PLAN');
+          return data;
+        },
+        departmentTree: _twoWorkshopTree,
+        defaultWorkshopRead: (_, _) => defaults.future,
+      );
+      MasterDataTableView<dynamic> table() =>
+          tester.widget<MasterDataTableView<dynamic>>(
+            find.byKey(const Key('material-analysis-material-table')),
+          );
+      Set<String> values(String key) =>
+          table().facets[key]?.map((bucket) => bucket.value).toSet() ??
+          <String>{};
+      expect(values('productionWorkshop'), isNot(contains('装配一车间')));
+      await tester.tap(
+        find.byKey(const ValueKey('material-bom-layout-material')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('material-bom-layout-product')),
+      );
+      await tester.pumpAndSettle();
+      defaults.complete([
+        for (final goodsId in ['g-m-root', 'g-m-6'])
+          {
+            'goodsId': goodsId,
+            'departmentId': 'ws-1',
+            'departmentName': '装配一车间',
+          },
+      ]);
+      await tester.pumpAndSettle();
+      expect(values('productionWorkshop'), contains('装配一车间'));
+      expect(
+        values('responsible'),
+        contains('张三'),
+        reason: 'the department manager arrived with the delayed defaults',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('material-bom-layout-material')),
+      );
+      await tester.pumpAndSettle();
+      expect(values('productionWorkshop'), contains('装配一车间'));
+      expect(values('responsible'), contains('张三'));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'view switching reuses each snapshot projection and its exact quantities',
+    (tester) async {
+      await _pump(tester);
+      MasterDataTableView<dynamic> table() =>
+          tester.widget<MasterDataTableView<dynamic>>(
+            find.byKey(const Key('material-analysis-material-table')),
+          );
+      final productRows = table().items;
+      await tester.tap(
+        find.byKey(const ValueKey('material-bom-layout-material')),
+      );
+      await tester.pumpAndSettle();
+      final materialRows = table().items;
+      expect(materialRows, isNotEmpty);
+      for (var i = 0; i < 3; i++) {
+        await tester.tap(
+          find.byKey(const ValueKey('material-bom-layout-product')),
+        );
+        await tester.pumpAndSettle();
+        expect(identical(table().items, productRows), isTrue);
+        await tester.tap(
+          find.byKey(const ValueKey('material-bom-layout-material')),
+        );
+        await tester.pumpAndSettle();
+        expect(identical(table().items, materialRows), isTrue);
+      }
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
     'initial planning progress is unified across product and material views',
     (tester) async {
       await _pump(tester);
@@ -7312,6 +7507,11 @@ Future<void> _pump(
   )?
   analysisPlanWithdraw,
   List<Map<String, dynamic>> defaultWorkshops = const [],
+  FutureOr<List<Map<String, dynamic>>> Function(
+    int count,
+    List<Map<String, dynamic>> current,
+  )?
+  defaultWorkshopRead,
   List<Map<String, dynamic>> issuedRates = const [],
   FutureOr<List<Map<String, dynamic>>> Function(
     int count,
@@ -7343,6 +7543,7 @@ Future<void> _pump(
           as Map<String, dynamic>;
   if (mutate != null) data = mutate(data);
   var detailReads = 0;
+  var defaultWorkshopReads = 0;
   var currentIssuedRates = issuedRates.map(Map<String, dynamic>.from).toList();
   var issuedRateReads = 0;
   // 真下达 / 通知之后服务端会换版本与指纹；夹具照样推一版，否则页面把
@@ -7429,7 +7630,12 @@ Future<void> _pump(
               ? await issuedRateRead(++issuedRateReads, currentIssuedRates)
               : currentIssuedRates;
         } else if (request.path.endsWith('/default-workshops')) {
-          result = defaultWorkshops;
+          result = defaultWorkshopRead == null
+              ? defaultWorkshops
+              : await defaultWorkshopRead(
+                  ++defaultWorkshopReads,
+                  defaultWorkshops,
+                );
         } else if (departmentTree != null &&
             request.path == '/org/departments/tree') {
           result = departmentTree;

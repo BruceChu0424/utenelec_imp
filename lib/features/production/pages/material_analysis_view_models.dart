@@ -162,7 +162,7 @@ class _MaterialGroup {
 /// 仅用于汇总展示与选择入口；任务身份仍是 [paths] 里的逐路径节点，
 /// 合计数字只是各路径服务端事实的加总，客户端不重新分配库存。
 class _MaterialAggregate {
-  const _MaterialAggregate({
+  _MaterialAggregate({
     required this.key,
     required this.paths,
     this.rootProductIds,
@@ -173,8 +173,10 @@ class _MaterialAggregate {
   final List<ProductionMaterialAnalysisMaterial> paths;
   final Set<String?>? rootProductIds;
   final Map<String, ProductionMaterialAnalysisMaterial> materialsById;
-  MaterialQualifiedCoverage get coverage =>
-      MaterialQualifiedCoverage(paths, materialsById);
+  late final MaterialQualifiedCoverage coverage = MaterialQualifiedCoverage(
+    paths,
+    materialsById,
+  );
   String? get totalRequiredText => coverage.requiredText;
   String? get qualifiedCoveredText => coverage.coveredText;
 

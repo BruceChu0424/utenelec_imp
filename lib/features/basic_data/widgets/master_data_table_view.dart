@@ -5485,7 +5485,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     return Container(
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(2),
+        borderRadius: BorderRadius.circular(UtenRadius.xs),
         boxShadow: [
           BoxShadow(
             color: color.withValues(alpha: 0.35),

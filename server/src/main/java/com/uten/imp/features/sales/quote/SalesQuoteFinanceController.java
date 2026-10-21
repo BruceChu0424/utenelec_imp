@@ -32,7 +32,7 @@ import java.util.UUID;
  *   <li>PUT  /api/sales/quotes/{id}/finance → 核价修改</li>
  *   <li>POST /api/sales/quotes/{id}/finance-return → 退回销售(必须写原因)</li>
  *   <li>POST /api/sales/quotes/{id}/finance-confirm → 确认报价</li>
- *   <li>POST /api/sales/quotes/{id}/finance-reopen → 撤销确认再修改</li>
+ *   <li>POST /api/sales/quotes/{id}/finance-reopen → 重新核价</li>
  * </ul>
  * 认领用通用任务认领接口 /api/task-claims/SALES_QUOTE_FINANCE_REVIEW/{报价id}/claim。
  */
@@ -78,7 +78,7 @@ public class SalesQuoteFinanceController {
     }
 
     @PostMapping("/{id}/finance-return")
-    @PreAuthorize("hasAuthority('sales_quote_finance:view') and hasAuthority('sales_quote_finance:confirm')")
+    @PreAuthorize("hasAuthority('sales_quote_finance:view') and hasAuthority('sales_quote_finance:reject')")
     public QuoteFinanceReviewDto returnToSales(
             @PathVariable UUID id, @Valid @RequestBody QuoteFinanceDecisionRequest req) {
         return service.returnToSales(id, req);
@@ -92,7 +92,7 @@ public class SalesQuoteFinanceController {
     }
 
     @PostMapping("/{id}/finance-reopen")
-    @PreAuthorize("hasAuthority('sales_quote_finance:view') and hasAuthority('sales_quote_finance:confirm')")
+    @PreAuthorize("hasAuthority('sales_quote_finance:view') and hasAuthority('sales_quote_finance:reverse')")
     public QuoteFinanceReviewDto reopen(@PathVariable UUID id, @Valid @RequestBody QuoteActionRequest req) {
         return service.reopen(id, req);
     }

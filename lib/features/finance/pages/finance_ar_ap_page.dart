@@ -12,16 +12,16 @@ import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
-import '../../../components/layout/uten_list_two_pane.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/formatters/money_display.dart';
@@ -433,47 +433,39 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
           child: Padding(
             padding: const EdgeInsets.only(top: UtenSpacing.s8),
             // 方向保留为主业务视图，清结状态由彩色状态列与表头承接。
-            child: UtenListTwoPane(
-              filterPane: Padding(
-                padding: EdgeInsets.zero,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: double.infinity,
-                      child: UtenSearchBar(
-                        hint: '搜索单据号/来源单号',
-                        initialValue: _keyword,
-                        onChanged: (v) {
-                          setState(() => _keyword = v);
-                          _load(1);
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s16),
-                    _filterLabel('方向'),
-                    // 全平台统一筛选工具条：方向分段（大类，纯分类无搜索）。
-                    // 进页面不预选。
-                    UtenFilterToolbar<String?>(
-                      segments: const [
-                        UtenFilterSegment<String?>(value: null, label: '全部'),
-                        UtenFilterSegment<String?>(value: 'AR', label: '应收'),
-                        UtenFilterSegment<String?>(value: 'AP', label: '应付'),
-                      ],
-                      selected: _directionSelected ? {_direction} : const {},
-                      onSelectionChanged: (v) {
-                        setState(() {
-                          _direction = v;
-                          _directionSelected = true;
-                          _partyId = null;
-                        });
-                        _load(1);
-                      },
-                    ),
+            child: UtenCollapsingHeaderScrollView(
+              collapsingHeader: Padding(
+                padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+                child: UtenFilterToolbar<String?>(
+                  compactBreakpoint: UtenBreakpoints.mediumStart,
+                  segments: const [
+                    UtenFilterSegment<String?>(value: null, label: '全部'),
+                    UtenFilterSegment<String?>(value: 'AR', label: '应收'),
+                    UtenFilterSegment<String?>(value: 'AP', label: '应付'),
                   ],
+                  selected: _directionSelected ? {_direction} : const {},
+                  onSelectionChanged: (value) {
+                    setState(() {
+                      _direction = value;
+                      _directionSelected = true;
+                      _partyId = null;
+                    });
+                    _load(1);
+                  },
+                  searchHint: '搜索单据号 / 来源单号',
+                  initialSearchValue: _keyword,
+                  onSearchChanged: (value) {
+                    setState(() => _keyword = value);
+                    _load(1);
+                  },
+                  onSearchSubmitted: (value) {
+                    setState(() => _keyword = value);
+                    _load(1);
+                  },
                 ),
               ),
-              tablePane: MasterDataTableView<ArApLedgerItem>(
+              body: MasterDataTableView<ArApLedgerItem>(
+                primary: true,
                 tableKey:
                     'features.finance.pages.finance_ar_ap_page.FinanceArApPageState.build.1',
                 columns: _columns(names),
@@ -521,21 +513,6 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
               ),
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _filterLabel(String text) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
-      child: Text(
-        text,
-        style: theme.textTheme.labelLarge?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.4,
         ),
       ),
     );

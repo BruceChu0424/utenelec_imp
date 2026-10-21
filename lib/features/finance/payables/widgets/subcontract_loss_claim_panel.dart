@@ -6,9 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/data_display/uten_status_badge.dart';
 import '../../../../components/data_display/uten_status_cell_color.dart';
-import '../../../../components/inputs/uten_search_bar.dart';
 import '../../../../components/layout/uten_adaptive_panel.dart';
-import '../../../../components/layout/uten_segment_row.dart';
+import '../../../../components/layout/uten_filter_toolbar.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/network/latest_request_guard.dart';
 import '../../../../core/theme/uten_tokens.dart';
@@ -288,37 +287,24 @@ class _SubcontractLossClaimPanelState
         ),
         Padding(
           padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              UtenSearchBar(
-                key: const ValueKey('subcontract-loss-claim-search'),
-                hint: '搜索损耗单号、委外商编号或名称',
-                initialValue: _keyword,
-                onChanged: (value) => _changeFilter(() => _keyword = value),
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-              UtenSegmentRow<String?>(
-                key: const ValueKey('subcontract-loss-claim-status'),
-                emptySelectionAllowed: true,
-                segments: const [
-                  ButtonSegment(value: null, label: Text('全部')),
-                  ButtonSegment(value: 'OPEN', label: Text('待处理')),
-                  ButtonSegment(value: 'DISPUTED', label: Text('争议中')),
-                  ButtonSegment(
-                    value: 'AWAITING_FULFILLMENT',
-                    label: Text('待履约'),
-                  ),
-                  ButtonSegment(value: 'RESOLVED', label: Text('已解决')),
-                  ButtonSegment(value: 'REVERSED', label: Text('已反转')),
-                ],
-                selected: {_status},
-                onSelectionChanged: (values) {
-                  final status = values.isEmpty ? _status : values.single;
-                  _changeFilter(() => _status = status);
-                },
-              ),
+          child: UtenFilterToolbar<String?>(
+            autoSelectBadge: false,
+            segmentsKey: const ValueKey('subcontract-loss-claim-status'),
+            searchKey: const ValueKey('subcontract-loss-claim-search'),
+            segments: const [
+              UtenFilterSegment(value: null, label: '全部'),
+              UtenFilterSegment(value: 'OPEN', label: '待处理'),
+              UtenFilterSegment(value: 'DISPUTED', label: '争议中'),
+              UtenFilterSegment(value: 'AWAITING_FULFILLMENT', label: '待履约'),
+              UtenFilterSegment(value: 'RESOLVED', label: '已解决'),
+              UtenFilterSegment(value: 'REVERSED', label: '已反转'),
             ],
+            selected: {_status},
+            onSelectionChanged: (status) =>
+                _changeFilter(() => _status = status),
+            searchHint: '搜索损耗单 / 委外商',
+            initialSearchValue: _keyword,
+            onSearchChanged: (value) => _changeFilter(() => _keyword = value),
           ),
         ),
         Expanded(

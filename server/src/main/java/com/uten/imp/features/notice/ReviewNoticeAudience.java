@@ -184,7 +184,8 @@ public class ReviewNoticeAudience {
             case "SALES_ORDER_PENDING_FINANCE_CONFIRM" ->
                     permissions.containsAll(Set.of("sales_order_finance:view", "sales_order_finance:confirm"));
             case "SALES_QUOTE_PENDING_FINANCE_REVIEW" ->
-                    permissions.containsAll(Set.of("sales_quote_finance:view", "sales_quote_finance:confirm"));
+                    permissions.contains("sales_quote_finance:view")
+                    && any(permissions, "sales_quote_finance:confirm", "sales_quote_finance:reject");
             case "PROCUREMENT_FINANCE_SUBMITTED", "PROCUREMENT_FINANCE_CHANGE_SUBMITTED" ->
                     permissions.contains("finance_order_approval:view")
                     && any(permissions, "finance_order_approval:approve", "finance_order_approval:reject");

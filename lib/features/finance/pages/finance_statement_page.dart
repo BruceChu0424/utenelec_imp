@@ -16,17 +16,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
-import '../../../components/layout/uten_list_two_pane.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/human_error_message.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -35,6 +35,7 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_data.dart';
 import '../../report/shared/report_date_range.dart';
+import '../widgets/finance_date_range_filter.dart';
 import '../../report/shared/report_filter_prefs.dart';
 import '../../report/shared/report_sort.dart';
 import '../../report/shared/report_total.dart';
@@ -295,9 +296,9 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
         child: UtenContentContainer.wide(
           child: Padding(
             padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            child: UtenListTwoPane(
-              filterPane: _buildFilterPane(theme),
-              tablePane: _buildTable(),
+            child: UtenCollapsingHeaderScrollView(
+              collapsingHeader: _buildFilterPane(theme),
+              body: _buildTable(),
             ),
           ),
         ),
@@ -307,157 +308,114 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
 
   Widget _buildFilterPane(ThemeData theme) {
     return Padding(
-      padding: EdgeInsets.zero,
-      child: SingleChildScrollView(
-        // 筛选区独立滚动，不接表格的主滚动控制器。
-        primary: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _filterLabel('方向'),
-            // 全平台统一筛选工具条：应收/应付分段（纯分类无搜索）。
-            UtenFilterToolbar<String>(
-              segments: const [
-                UtenFilterSegment(value: 'AR', label: '应收(客户)'),
-                UtenFilterSegment(value: 'AP', label: '应付(供应商)'),
-              ],
-              selected: {_side},
-              onSelectionChanged: _changeSide,
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            _filterLabel('报表类型'),
-            // 全平台统一筛选工具条：报表类型分段（纯分类无搜索）。
-            UtenFilterToolbar<_StmtView>(
-              segments: const [
-                UtenFilterSegment(value: _StmtView.flow, label: '流水对帐'),
-                UtenFilterSegment(value: _StmtView.detail, label: '明细对帐'),
-                UtenFilterSegment(value: _StmtView.annual, label: '年度对帐'),
-              ],
-              selected: {_view},
-              onSelectionChanged: _changeView,
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            _filterLabel(_side == 'AR' ? '客户' : '供应商'),
-            if (_partyLoading)
-              const Padding(
-                padding: EdgeInsets.all(8),
-                child: LinearProgressIndicator(),
-              )
-            else
-              DropdownButtonFormField<String?>(
-                initialValue: _partyId,
-                isExpanded: true,
-                decoration: const UtenInputDecoration(
-                  InputDecoration(isDense: true, labelText: '往来单位'),
-                ),
-                items: [
-                  for (final p in _partyList)
-                    DropdownMenuItem<String?>(
-                      value: p.id,
-                      child: Text(
-                        p.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                ],
-                onChanged: (v) {
-                  setState(() {
-                    _partyId = v;
-                    _page = 1;
-                  });
-                  _persistAndReload();
-                  _load();
-                },
-              ),
-            if (_view == _StmtView.annual) ...[
-              const SizedBox(height: UtenSpacing.s12),
-              _filterLabel('年度'),
-              Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.chevron_left),
-                    onPressed: () {
-                      setState(() => _year--);
-                      _page = 1;
-                      _persistAndReload();
-                      _load();
-                    },
-                  ),
-                  Text('$_year', style: theme.textTheme.titleMedium),
-                  IconButton(
-                    icon: const Icon(Icons.chevron_right),
-                    onPressed: () {
-                      setState(() => _year++);
-                      _page = 1;
-                      _persistAndReload();
-                      _load();
-                    },
-                  ),
-                ],
-              ),
-            ] else ...[
-              const SizedBox(height: UtenSpacing.s12),
-              _filterLabel('日期范围'),
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  TextButton.icon(
-                    onPressed: () async {
-                      final p = await showDatePicker(
-                        context: context,
-                        initialDate: _from,
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2100),
-                      );
-                      if (p != null) {
-                        setState(() => _from = p);
-                        _persistAndReload();
-                      }
-                    },
-                    icon: const Icon(Icons.event_outlined, size: 18),
-                    label: Text('起 ${_fmt(_from)}'),
-                  ),
-                  TextButton.icon(
-                    onPressed: () async {
-                      final p = await showDatePicker(
-                        context: context,
-                        initialDate: _to,
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2100),
-                      );
-                      if (p != null) {
-                        setState(() => _to = p);
-                        _persistAndReload();
-                      }
-                    },
-                    icon: const Icon(Icons.event_outlined, size: 18),
-                    label: Text('止 ${_fmt(_to)}'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              _filterLabel('搜索'),
-              UtenSearchBar(
-                // 筛选面板里的一格：紧凑态（用户要求搜索框小一点）。
-                dense: true,
-                hint: '搜索单号',
-                initialValue: _keyword,
-                // 防抖到点即查；回车立刻查（不等防抖）。
-                onChanged: (v) {
-                  _keyword = v;
-                  _persistAndReload();
-                },
-                onSubmitted: (v) {
-                  _keyword = v;
-                  _persistAndReload();
-                },
-              ),
+      padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          UtenFilterToolbar<String>(
+            compactBreakpoint: UtenBreakpoints.mediumStart,
+            segments: const [
+              UtenFilterSegment(value: 'AR', label: '应收(客户)'),
+              UtenFilterSegment(value: 'AP', label: '应付(供应商)'),
             ],
-          ],
-        ),
+            selected: {_side},
+            onSelectionChanged: _changeSide,
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+          UtenFilterToolbar<_StmtView>(
+            compactBreakpoint: UtenBreakpoints.mediumStart,
+            segments: const [
+              UtenFilterSegment(value: _StmtView.flow, label: '流水对帐'),
+              UtenFilterSegment(value: _StmtView.detail, label: '明细对帐'),
+              UtenFilterSegment(value: _StmtView.annual, label: '年度对帐'),
+            ],
+            selected: {_view},
+            onSelectionChanged: _changeView,
+            searchHint: _view == _StmtView.annual ? null : '搜索单号',
+            initialSearchValue: _keyword,
+            onSearchChanged: (value) {
+              _keyword = value;
+              _persistAndReload();
+            },
+            onSearchSubmitted: (value) {
+              _keyword = value;
+              _persistAndReload();
+            },
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+          Wrap(
+            spacing: UtenSpacing.s12,
+            runSpacing: UtenSpacing.s8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              SizedBox(
+                width: 240,
+                child: _partyLoading
+                    ? const LinearProgressIndicator()
+                    : DropdownButtonFormField<String?>(
+                        initialValue: _partyId,
+                        isExpanded: true,
+                        decoration: UtenInputDecoration(
+                          InputDecoration(
+                            isDense: true,
+                            labelText: _side == 'AR' ? '客户' : '供应商',
+                          ),
+                        ),
+                        items: [
+                          for (final party in _partyList)
+                            DropdownMenuItem<String?>(
+                              value: party.id,
+                              child: Text(
+                                party.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                        ],
+                        onChanged: (value) {
+                          setState(() => _partyId = value);
+                          _persistAndReload();
+                        },
+                      ),
+              ),
+              if (_view == _StmtView.annual)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: '上一年',
+                      icon: const Icon(Icons.chevron_left),
+                      onPressed: () {
+                        setState(() => _year--);
+                        _persistAndReload();
+                      },
+                    ),
+                    Text('$_year', style: theme.textTheme.titleMedium),
+                    IconButton(
+                      tooltip: '下一年',
+                      icon: const Icon(Icons.chevron_right),
+                      onPressed: () {
+                        setState(() => _year++);
+                        _persistAndReload();
+                      },
+                    ),
+                  ],
+                )
+              else
+                FinanceDateRangeFilter(
+                  from: _from,
+                  to: _to,
+                  onChanged: (from, to) {
+                    setState(() {
+                      _from = from!;
+                      _to = to!;
+                    });
+                    _persistAndReload();
+                  },
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -521,6 +479,7 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
         )
         .toList();
     return MasterDataTableView<Map<String, dynamic>>(
+      primary: true,
       tableKey:
           'features.finance.pages.finance_statement_page.FinanceStatementPageState._buildTable.1',
       columns: columns,
@@ -573,21 +532,5 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
     );
   }
 
-  Widget _filterLabel(String text) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
-      child: Text(
-        text,
-        style: theme.textTheme.labelLarge?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.4,
-        ),
-      ),
-    );
-  }
-
-  /// 状态类列判定：label 为「状态」或含「状态」（如 单据状态/审核状态）。
   static bool _isStatusColumnLabel(String label) => label.contains('状态');
 }

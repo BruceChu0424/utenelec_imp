@@ -1,11 +1,10 @@
 package com.uten.imp.features.warehouse.materialbin.report;
 
-import com.uten.imp.common.web.ApiException;
-import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialPermissions;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialScope;
+import com.uten.imp.features.warehouse.materialbin.WorkshopBinService;
 import com.uten.imp.features.warehouse.materialbin.report.WorkshopMaterialReportDtos.BinUsageRow;
 import com.uten.imp.features.warehouse.materialbin.report.WorkshopMaterialReportDtos.LedgerRow;
 import com.uten.imp.features.warehouse.materialbin.report.WorkshopMaterialReportDtos.MissingWeightRow;
@@ -42,12 +41,14 @@ public class WorkshopMaterialReportQueryService {
     private final NamedParameterJdbcTemplate db;
     private final WorkshopMaterialScope scope;
     private final WorkshopMaterialPermissions permissions;
+    private final WorkshopBinService openings;
 
     public WorkshopMaterialReportQueryService(NamedParameterJdbcTemplate db, WorkshopMaterialScope scope,
-                                              WorkshopMaterialPermissions permissions) {
+                                              WorkshopMaterialPermissions permissions, WorkshopBinService openings) {
         this.db = db;
         this.scope = scope;
         this.permissions = permissions;
+        this.openings = openings;
     }
 
     // ------------------------------------------------------------------ 内料仓用量表
@@ -278,16 +279,9 @@ public class WorkshopMaterialReportQueryService {
 
     // ------------------------------------------------------------------ 共用
 
-    /** 内料仓必须是某个车间设置过的整批领料内料仓; 车间成员只看本车间。 */
+    /** 内料仓身份来自开通记录; 整批领料设置不决定仓库身份。车间成员只看本车间。 */
     private void requireBin(UUID binId) {
-        if (binId == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "请选择内料仓");
-        List<UUID> workshops = db.queryForList("""
-                SELECT settings.workshop_department_id
-                FROM workshop_material_settings settings
-                WHERE settings.periodic_bin_warehouse_id = :bin
-                """, Map.of("bin", binId), UUID.class);
-        if (workshops.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "这个仓库不是车间内料仓");
-        scope.requireWorkshop(workshops.getFirst());
+        scope.requireWorkshop(openings.requireWorkshopOfOpenedBin(binId));
     }
 
     private static MapSqlParameterSource range(UUID binId, LocalDate from, LocalDate to) {

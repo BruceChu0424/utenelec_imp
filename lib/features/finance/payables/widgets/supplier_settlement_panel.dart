@@ -4,11 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../components/buttons/uten_refresh_button.dart';
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/feedback/uten_busy_overlay.dart';
-import '../../../../components/inputs/uten_search_bar.dart';
 import '../../../../components/layout/uten_adaptive_panel.dart';
 import '../../../../components/layout/uten_app_bar.dart';
 import '../../../../components/layout/uten_floating_action_group.dart';
-import '../../../../components/layout/uten_segment_row.dart';
+import '../../../../components/layout/uten_filter_toolbar.dart';
 import '../../../../shared/platform_tables/platform_table_binding.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/network/latest_request_guard.dart';
@@ -279,36 +278,28 @@ class _SupplierSettlementPanelState
               ],
             ),
             const SizedBox(height: UtenSpacing.s8),
-            UtenSearchBar(
-              key: const ValueKey('supplier-settlement-search'),
-              hint: '搜索批次号、供应商编号或名称',
-              initialValue: _keyword,
-              onChanged: (value) {
-                setState(() => _keyword = value);
-                _load(1);
-              },
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            UtenSegmentRow<String?>(
-              key: const ValueKey('supplier-settlement-status'),
-              emptySelectionAllowed: true,
+            UtenFilterToolbar<String?>(
+              autoSelectBadge: false,
+              segmentsKey: const ValueKey('supplier-settlement-status'),
+              searchKey: const ValueKey('supplier-settlement-search'),
               segments: const [
-                ButtonSegment(value: null, label: Text('全部')),
-                ButtonSegment(value: 'FROZEN', label: Text('已冻结')),
-                ButtonSegment(
-                  value: 'SUPPLIER_CONFIRMED',
-                  label: Text('供应商确认'),
-                ),
-                ButtonSegment(value: 'INTERNAL_CONFIRMED', label: Text('公司确认')),
-                ButtonSegment(value: 'BOTH_CONFIRMED', label: Text('双方确认')),
-                ButtonSegment(value: 'DISPUTED', label: Text('争议')),
-                ButtonSegment(value: 'REVERSED', label: Text('已反转')),
+                UtenFilterSegment(value: null, label: '全部'),
+                UtenFilterSegment(value: 'FROZEN', label: '已冻结'),
+                UtenFilterSegment(value: 'SUPPLIER_CONFIRMED', label: '供应商确认'),
+                UtenFilterSegment(value: 'INTERNAL_CONFIRMED', label: '公司确认'),
+                UtenFilterSegment(value: 'BOTH_CONFIRMED', label: '双方确认'),
+                UtenFilterSegment(value: 'DISPUTED', label: '争议'),
+                UtenFilterSegment(value: 'REVERSED', label: '已反转'),
               ],
               selected: {_status},
-              onSelectionChanged: (values) {
-                // Original status chips reloaded their current status on a repeated tap.
-                final status = values.isEmpty ? _status : values.single;
+              onSelectionChanged: (status) {
                 setState(() => _status = status);
+                _load(1);
+              },
+              searchHint: '搜索批次 / 供应商',
+              initialSearchValue: _keyword,
+              onSearchChanged: (value) {
+                setState(() => _keyword = value);
                 _load(1);
               },
             ),

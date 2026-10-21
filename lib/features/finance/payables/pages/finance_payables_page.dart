@@ -11,21 +11,17 @@ import '../../../../components/data_display/uten_status_badge.dart';
 import '../../../../components/data_display/uten_status_cell_color.dart';
 import '../../../../components/feedback/uten_busy_overlay.dart';
 import '../../../../components/feedback/uten_segment_badge_label.dart';
-import '../../../../components/inputs/uten_search_bar.dart';
-import '../../../../components/layout/uten_adaptive_panel.dart';
 import '../../../../components/layout/uten_app_bar.dart';
 import '../../../../components/layout/uten_content_container.dart';
 import '../../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../../components/layout/uten_filter_toolbar.dart';
 import '../../../../components/layout/uten_floating_action_group.dart';
-import '../../../../components/layout/uten_list_two_pane.dart';
 import '../../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/network/latest_request_guard.dart';
 import '../../../../core/router/nav_helpers.dart';
 import '../../../../core/router/page_resume_provider.dart';
 import '../../../../core/router/route_names.dart';
-import '../../../../core/responsive/breakpoint.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
 import '../../../../core/utils/currency_display.dart';
@@ -37,6 +33,7 @@ import '../../../basic_data/widgets/master_data_table_view.dart';
 import '../../../basic_data/repositories/reference_method_repository.dart';
 import '../../providers/finance_name_provider.dart';
 import '../../widgets/finance_table_facets.dart';
+import '../../widgets/finance_date_range_filter.dart';
 import '../models/finance_payable.dart';
 import '../repositories/finance_payables_repository.dart';
 import '../widgets/finance_payables_kpi_strip.dart';
@@ -332,13 +329,6 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
       },
     );
   }
-
-  Future<DateTime?> _pickDate(DateTime? current) => showDatePicker(
-    context: context,
-    initialDate: current ?? DateTime.now(),
-    firstDate: DateTime(2000),
-    lastDate: DateTime(2100),
-  );
 
   void _createPayment() {
     if (!_selectedOnlyPositivePayables) return;
@@ -806,7 +796,6 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
         ref.watch(settlementMethodOptionsProvider).value ?? const [];
     final canCreatePayment = _canCreatePayment;
     final canApplyOffset = _canApplyOffset;
-    final isExpanded = context.breakpoint.isExpanded;
     final availableWorkspaces = <_PayablesWorkspaceView>[
       if (_canViewPayables) _PayablesWorkspaceView.payables,
       if (_canViewLossClaims) _PayablesWorkspaceView.lossClaims,
@@ -836,10 +825,13 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
                 padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
                 child: Column(
                   children: [
-                    if (availableWorkspaces.length > 1) ...[
-                      // 全平台统一筛选工具条：工作区分段（无搜索框的纯分段形态）。
-                      // 委外超耗责任挂红圆计数徽章（pendingLossCases，0/null 不显示）。
+                    if (availableWorkspaces.length > 1 ||
+                        _workspace == _PayablesWorkspaceView.payables &&
+                            _canViewPayables) ...[
                       UtenFilterToolbar<_PayablesWorkspaceView>(
+                        key: const ValueKey(
+                          'finance-payables-workspace-toolbar',
+                        ),
                         segments: [
                           if (_canViewPayables)
                             const UtenFilterSegment(
@@ -866,6 +858,17 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
                           _selectedIds = <String>{};
                           _selectedItemsById.clear();
                         }),
+                        searchKey: const ValueKey('finance-payables-search'),
+                        searchHint:
+                            _workspace == _PayablesWorkspaceView.payables
+                            ? '搜索单号 / 供应商'
+                            : null,
+                        initialSearchValue: _keyword,
+                        onSearchChanged: (value) =>
+                            _changeFilter(() => _keyword = value),
+                        trailing: _workspace == _PayablesWorkspaceView.payables
+                            ? _dateFilters()
+                            : null,
                       ),
                       const SizedBox(height: UtenSpacing.s12),
                     ],
@@ -880,35 +883,18 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
                                 summary: _result?.summary,
                                 loading: _loading && _result == null,
                               ),
-                              if (!isExpanded) ...[
-                                const SizedBox(height: UtenSpacing.s12),
-                                _compactFilterBar(theme),
-                              ],
                               const SizedBox(height: UtenSpacing.s12),
                             ],
                           ),
-                          body: isExpanded
-                              ? UtenListTwoPane(
-                                  filterPane: _buildFilters(),
-                                  tablePane: _buildPayablesTablePane(
-                                    theme: theme,
-                                    names: names.supplierEntries,
-                                    currencyNames: names.currencyEntries,
-                                    settlementMethods: settlementMethods,
-                                    total: total,
-                                    canCreatePayment: canCreatePayment,
-                                    canApplyOffset: canApplyOffset,
-                                  ),
-                                )
-                              : _buildPayablesTablePane(
-                                  theme: theme,
-                                  names: names.supplierEntries,
-                                  currencyNames: names.currencyEntries,
-                                  settlementMethods: settlementMethods,
-                                  total: total,
-                                  canCreatePayment: canCreatePayment,
-                                  canApplyOffset: canApplyOffset,
-                                ),
+                          body: _buildPayablesTablePane(
+                            theme: theme,
+                            names: names.supplierEntries,
+                            currencyNames: names.currencyEntries,
+                            settlementMethods: settlementMethods,
+                            total: total,
+                            canCreatePayment: canCreatePayment,
+                            canApplyOffset: canApplyOffset,
+                          ),
                         ),
                       )
                     else if (_workspace == _PayablesWorkspaceView.lossClaims &&
@@ -1048,228 +1034,40 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
     );
   }
 
-  Widget _compactFilterBar(ThemeData theme) {
-    return Container(
-      key: const ValueKey('finance-payables-compact-filter-bar'),
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: UtenRadius.lgAll,
-        border: Border.all(color: theme.colorScheme.outlineVariant),
+  Widget _dateFilters() => Wrap(
+    spacing: UtenSpacing.s8,
+    runSpacing: UtenSpacing.s8,
+    crossAxisAlignment: WrapCrossAlignment.center,
+    children: [
+      FinanceDateRangeFilter(
+        key: const ValueKey('finance-payables-bill-date'),
+        label: '立账日期',
+        from: _dateFrom,
+        to: _dateTo,
+        allowOpenRange: true,
+        onChanged: (from, to) => _changeFilter(() {
+          _dateFrom = from;
+          _dateTo = to;
+        }),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: UtenSearchBar(
-              key: const ValueKey('finance-payables-search'),
-              hint: '搜索来源单号、供应商或委外商',
-              initialValue: _keyword,
-              onChanged: (value) => _changeFilter(() => _keyword = value),
-            ),
-          ),
-          const SizedBox(width: UtenSpacing.s8),
-          UtenButton(
-            key: const ValueKey('finance-payables-open-filters'),
-            type: UtenButtonType.secondary,
-            size: UtenButtonSize.small,
-            icon: Icons.tune_rounded,
-            onPressed: _showCompactFilters,
-            child: Text(
-              _activeFilterCount == 0 ? '筛选' : '筛选($_activeFilterCount)',
-            ),
-          ),
-        ],
+      FinanceDateRangeFilter(
+        key: const ValueKey('finance-payables-due-date'),
+        label: '到期日期',
+        from: _dueFrom,
+        to: _dueTo,
+        allowOpenRange: true,
+        onChanged: (from, to) => _changeFilter(() {
+          _dueFrom = from;
+          _dueTo = to;
+        }),
       ),
-    );
-  }
-
-  Future<void> _showCompactFilters() async {
-    await showUtenAdaptivePanel<void>(
-      context: context,
-      widthFraction: UtenPanelWidth.form,
-      showDragHandle: true,
-      barrierLabel: '关闭应付筛选',
-      builder: (panelContext) => StatefulBuilder(
-        builder: (context, setPanelState) {
-          void changeFilter(VoidCallback change) {
-            _changeFilter(change);
-            setPanelState(() {});
-          }
-
-          void resetFilters() {
-            _resetFilters();
-            setPanelState(() {});
-          }
-
-          final theme = Theme.of(context);
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  UtenSpacing.s16,
-                  UtenSpacing.s8,
-                  UtenSpacing.s8,
-                  UtenSpacing.s8,
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.filter_alt_outlined,
-                      size: 20,
-                      color: theme.colorScheme.primary,
-                    ),
-                    const SizedBox(width: UtenSpacing.s8),
-                    Expanded(
-                      child: Text(
-                        '筛选应付记录',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    if (_activeFilterCount > 0)
-                      Text(
-                        '$_activeFilterCount 项生效',
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          color: theme.colorScheme.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    IconButton(
-                      tooltip: '关闭',
-                      onPressed: () => Navigator.of(panelContext).pop(),
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-                  ],
-                ),
-              ),
-              Divider(height: 1, color: theme.colorScheme.outlineVariant),
-              Expanded(
-                child: SingleChildScrollView(
-                  primary: false,
-                  padding: const EdgeInsets.all(UtenSpacing.s16),
-                  child: _buildFilters(
-                    showSearch: false,
-                    changeFilter: changeFilter,
-                    resetFilters: resetFilters,
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildFilters({
-    bool showSearch = true,
-    void Function(VoidCallback change)? changeFilter,
-    VoidCallback? resetFilters,
-  }) {
-    final applyFilter = changeFilter ?? _changeFilter;
-    final applyReset = resetFilters ?? _resetFilters;
-    return Padding(
-      padding: EdgeInsets.zero,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (showSearch)
-            UtenSearchBar(
-              key: const ValueKey('finance-payables-search'),
-              hint: '搜索来源单号、供应商或委外商',
-              initialValue: _keyword,
-              onChanged: (value) => applyFilter(() => _keyword = value),
-            ),
-          if (_activeFilterCount > 0) ...[
-            const SizedBox(height: UtenSpacing.s4),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                key: const ValueKey('finance-payables-reset-filters'),
-                onPressed: _loading ? null : applyReset,
-                icon: const Icon(Icons.restart_alt_rounded, size: 18),
-                label: Text('重置筛选 ($_activeFilterCount)'),
-              ),
-            ),
-          ],
-          const SizedBox(height: UtenSpacing.s12),
-          _dateRange(
-            label: '立账日期',
-            from: _dateFrom,
-            to: _dateTo,
-            onChanged: (from, to) => applyFilter(() {
-              _dateFrom = from;
-              _dateTo = to;
-            }),
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          _dateRange(
-            label: '到期日期',
-            from: _dueFrom,
-            to: _dueTo,
-            onChanged: (from, to) => applyFilter(() {
-              _dueFrom = from;
-              _dueTo = to;
-            }),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _filterLabel(String text) => Padding(
-    padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
-    child: Text(
-      text,
-      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
-        fontWeight: FontWeight.w600,
-      ),
-    ),
-  );
-
-  Widget _dateRange({
-    required String label,
-    required DateTime? from,
-    required DateTime? to,
-    required void Function(DateTime? from, DateTime? to) onChanged,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _filterLabel(label),
-        Wrap(
-          spacing: UtenSpacing.s4,
-          runSpacing: UtenSpacing.s4,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            TextButton.icon(
-              onPressed: () async {
-                final picked = await _pickDate(from);
-                if (picked != null && mounted) onChanged(picked, to);
-              },
-              icon: const Icon(Icons.event_outlined, size: 18),
-              label: Text(from == null ? '起始' : _fmt(from)!),
-            ),
-            TextButton.icon(
-              onPressed: () async {
-                final picked = await _pickDate(to);
-                if (picked != null && mounted) onChanged(from, picked);
-              },
-              icon: const Icon(Icons.event_outlined, size: 18),
-              label: Text(to == null ? '截止' : _fmt(to)!),
-            ),
-            if (from != null || to != null)
-              IconButton(
-                icon: const Icon(Icons.clear_rounded, size: 18),
-                tooltip: '清除$label',
-                onPressed: () => onChanged(null, null),
-              ),
-          ],
+      if (_activeFilterCount > 0)
+        IconButton(
+          key: const ValueKey('finance-payables-reset-filters'),
+          tooltip: '重置筛选 ($_activeFilterCount)',
+          onPressed: _loading ? null : _resetFilters,
+          icon: const Icon(Icons.filter_alt_off_outlined),
         ),
-      ],
-    );
-  }
+    ],
+  );
 }

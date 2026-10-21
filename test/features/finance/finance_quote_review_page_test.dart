@@ -289,6 +289,12 @@ Future<(_FakeRepo, FinanceClaimFixture)> _pump(
   WidgetTester tester,
   Map<String, dynamic> review, {
   FinanceClaimFixture Function(_FakeRepo repo)? claims,
+  Set<String> permissions = const {
+    Perm.salesQuoteFinanceView,
+    Perm.salesQuoteFinanceConfirm,
+    Perm.salesQuoteFinanceReject,
+    Perm.salesQuoteFinanceReverse,
+  },
 }) async {
   tester.view.physicalSize = const Size(2400, 1400);
   tester.view.devicePixelRatio = 1;
@@ -300,10 +306,7 @@ Future<(_FakeRepo, FinanceClaimFixture)> _pump(
     ProviderScope(
       overrides: [
         isSuperAdminProvider.overrideWithValue(false),
-        currentPermissionsProvider.overrideWithValue(const {
-          Perm.salesQuoteFinanceView,
-          Perm.salesQuoteFinanceConfirm,
-        }),
+        currentPermissionsProvider.overrideWithValue(permissions),
         sessionProvider.overrideWith(_Session.new),
         apiBaseUrlProvider.overrideWithValue('http://quote-test/api'),
         sessionSnapshotProvider.overrideWith(_Snapshot.new),
@@ -378,6 +381,88 @@ Future<void> _save(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'return-only reviewer can claim and return without price editing',
+    (tester) async {
+      final (repo, claims) = await _pump(
+        tester,
+        _review(),
+        permissions: const {
+          Perm.salesQuoteFinanceView,
+          Perm.salesQuoteFinanceReject,
+        },
+      );
+      expect(claims.acquired, ['quote-1']);
+      expect(_deal('a'), findsNothing);
+      expect(_discount('a'), findsNothing);
+      expect(find.byKey(const Key('quote-finance-save')), findsNothing);
+      expect(find.byKey(const Key('quote-finance-confirm')), findsNothing);
+      expect(find.byKey(const Key('quote-finance-reopen')), findsNothing);
+      final state =
+          tester.state(find.byType(FinanceQuoteReviewPage))
+              as ReviewTaskDraftMixin<FinanceQuoteReviewPage>;
+      expect(state.reviewDraftEditable, isFalse);
+      await tester.tap(find.byKey(const Key('quote-finance-return')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('quote-finance-return-chip-0')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('quote-finance-return-submit')));
+      await tester.pumpAndSettle();
+      expect(repo.returns.single['expectedRevision'], 5);
+      expect(repo.returns.single['text'], '客户要改数量');
+      expect(repo.saves, isEmpty);
+      expect(repo.confirms, isEmpty);
+      expect(find.text('quote-queue'), findsOneWidget);
+    },
+  );
+
+  testWidgets('pricing permission does not grant return or reopen', (
+    tester,
+  ) async {
+    final (_, claims) = await _pump(
+      tester,
+      _review(actions: const ['edit', 'return', 'confirm', 'reopen']),
+      permissions: const {
+        Perm.salesQuoteFinanceView,
+        Perm.salesQuoteFinanceConfirm,
+      },
+    );
+    expect(claims.acquired, ['quote-1']);
+    expect(_deal('a'), findsOneWidget);
+    expect(find.byKey(const Key('quote-finance-save')), findsOneWidget);
+    expect(find.byKey(const Key('quote-finance-confirm')), findsOneWidget);
+    expect(find.byKey(const Key('quote-finance-return')), findsNothing);
+    expect(find.byKey(const Key('quote-finance-reopen')), findsNothing);
+  });
+
+  testWidgets('reopen-only reviewer does not claim the pending pricing task', (
+    tester,
+  ) async {
+    final (repo, claims) = await _pump(
+      tester,
+      _review(status: 1),
+      permissions: const {
+        Perm.salesQuoteFinanceView,
+        Perm.salesQuoteFinanceReverse,
+      },
+    );
+    expect(claims.acquired, isEmpty);
+    await tester.tap(find.byKey(const Key('quote-finance-reopen')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find
+          .descendant(of: find.byType(AlertDialog), matching: find.text('重新核价'))
+          .last,
+    );
+    await tester.pumpAndSettle();
+    expect(repo.reopens.single['expectedRevision'], 5);
+    expect(claims.acquired, isEmpty);
+    expect(_deal('a'), findsNothing);
+    expect(find.byKey(const Key('quote-finance-return')), findsNothing);
+    expect(find.byKey(const Key('quote-finance-confirm')), findsNothing);
+    expect(find.textContaining('只能查看'), findsOneWidget);
+  });
+
   for (final (code, suffix) in [('USD', '美金'), ('CNY', '元')]) {
     testWidgets('quote header and total reuse Chinese currency units $code', (
       tester,
@@ -963,17 +1048,14 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(
       find
-          .descendant(
-            of: find.byType(AlertDialog),
-            matching: find.text('撤销确认再修改'),
-          )
+          .descendant(of: find.byType(AlertDialog), matching: find.text('重新核价'))
           .last,
     );
     await tester.pumpAndSettle();
     expect(repo.reopens, [
       {'expectedRevision': 5},
     ]);
-    expect(_notices(tester), contains('已撤销确认, 可以继续修改价格'));
+    expect(_notices(tester), contains('报价已回到待核价'));
     // 重载：报价回到待核价 → 认领成功 → 可改价/确认。
     expect(gated.refused, isEmpty);
     expect(gated.acquired, ['quote-1']);

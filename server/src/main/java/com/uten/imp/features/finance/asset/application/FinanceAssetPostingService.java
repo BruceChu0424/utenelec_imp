@@ -183,17 +183,18 @@ public class FinanceAssetPostingService {
     }
 
     @Transactional
-    @PreAuthorize("hasAuthority('finance_asset:post')")
+    @PreAuthorize("hasAnyAuthority('finance_asset:post', 'finance_asset:reverse')")
     public AssetWorkbenchResponses.PostingRun post(UUID runId, AssetWorkbenchRequests.PostingActionCommand command) {
         tx.bind();
         PaymentStyleHierarchyLock.lock(em);
-        UUID actor = authorization.requireActorId(FinanceAssetAuthorization.POST);
         Run locked = lock(runId);
+        String permission = FinanceAssetAuthorization.postingPermission(locked.runKind());
+        UUID actor = authorization.requireActorId(permission);
         FinanceAssetStateMachine.requireRunTransition(locked.status(), "POSTED");
         requireVersion(locked.version(), command.expectedVersion());
         AssetPostingPolicy.requireDifferentActor(actor, locked.submittedBy(), "过账");
         AssetPostingPolicy.requireCorporateGlBook(locked.bookType());
-        periods.ensureOpen(locked.period(), FinanceAssetAuthorization.POST);
+        periods.ensureOpen(locked.period(), permission);
         advisoryLock(locked.runType(), locked.bookType());
         if ("NORMAL".equals(locked.runKind())) postNormal(locked, actor); else postReversal(locked, actor);
         return get(runId, null);
@@ -201,17 +202,17 @@ public class FinanceAssetPostingService {
 
     /** Starts, but does not bypass, the approval workflow for an immutable reversal run. */
     @Transactional
-    @PreAuthorize("hasAuthority('finance_asset:post')")
+    @PreAuthorize("hasAuthority('finance_asset:reverse')")
     public AssetWorkbenchResponses.PostingRun reverse(UUID originalRunId, AssetWorkbenchRequests.PostingReasonCommand command) {
         tx.bind();
         PaymentStyleHierarchyLock.lock(em);
-        UUID actor = authorization.requireActorId(FinanceAssetAuthorization.POST);
+        UUID actor = authorization.requireActorId(FinanceAssetAuthorization.REVERSE);
         Run original = lock(originalRunId);
         requireVersion(original.version(), command.expectedVersion());
         if (!"NORMAL".equals(original.runKind()) || !"POSTED".equals(original.status())) {
-            throw conflict("只有已生效过账的正常批次才能红冲");
+            throw conflict("只有已经入账的正常批次才能撤销入账");
         }
-        periods.ensureOpen(original.period(), FinanceAssetAuthorization.POST);
+        periods.ensureOpen(original.period(), FinanceAssetAuthorization.REVERSE);
         advisoryLock(original.runType(), original.bookType());
         Number later = (Number) em.createNativeQuery("""
                 SELECT COUNT(*) FROM finance_asset_posting_runs
@@ -219,7 +220,7 @@ public class FinanceAssetPostingService {
                   AND period>:period AND is_deleted=false
                 """).setParameter("type", original.runType()).setParameter("book", original.bookType())
                 .setParameter("period", original.period()).getSingleResult();
-        if (later.intValue() > 0) throw conflict("请先红冲更晚期间的过账批次，再红冲本期间");
+        if (later.intValue() > 0) throw conflict("请先撤销后续期间的入账，再撤销本期间入账");
         Number derecognized = (Number) em.createNativeQuery("""
                 SELECT (SELECT COUNT(*) FROM finance_asset_posting_lines l
                         JOIN fixed_assets a ON a.id=l.fixed_asset_id
@@ -229,7 +230,7 @@ public class FinanceAssetPostingService {
                         WHERE l.run_id=:run AND d.lifecycle_status='TERMINATED')
                 """).setParameter("run", originalRunId).getSingleResult();
         if (derecognized.longValue() > 0) {
-            throw conflict("请先撤销后面的处置或终止流程，再红冲这个过账批次");
+            throw conflict("该批次之后已经办理处置或终止，不能撤销入账");
         }
 
         UUID reversalId = UUID.randomUUID();
@@ -343,7 +344,7 @@ public class FinanceAssetPostingService {
     private void postReversal(Run run, UUID actor) {
         Run original = lock(run.reversalOf());
         if (!"POSTED".equals(original.status())) {
-            throw conflict("原过账批次已不是生效状态，不能红冲，请刷新后重试");
+            throw conflict("原批次已不在已入账状态，不能撤销入账，请刷新核对");
         }
         Number later = (Number) em.createNativeQuery("""
                 SELECT COUNT(*) FROM finance_asset_posting_runs
@@ -351,7 +352,7 @@ public class FinanceAssetPostingService {
                   AND period>:period AND is_deleted=false
                 """).setParameter("type", original.runType()).setParameter("book", original.bookType())
                 .setParameter("period", original.period()).getSingleResult();
-        if (later.longValue() > 0) throw conflict("请先红冲更晚期间的过账批次，再红冲本期间");
+        if (later.longValue() > 0) throw conflict("请先撤销后续期间的入账，再撤销本期间入账");
         String objectLockSql = "DEPRECIATION".equals(original.runType()) ? """
                 SELECT a.id,a.lifecycle_status FROM finance_asset_posting_lines l
                 JOIN fixed_assets a ON a.id=l.fixed_asset_id
@@ -365,10 +366,10 @@ public class FinanceAssetPostingService {
                 .setParameter("run",original.id()).getResultList();
         boolean derecognized = objectStates.stream().anyMatch(row ->
                 "DISPOSED".equals(NativeValueConverters.text(row[1])) || "TERMINATED".equals(NativeValueConverters.text(row[1])));
-        if (derecognized) throw conflict("请先撤销后面的处置或终止流程，再红冲这个批次");
+        if (derecognized) throw conflict("该批次之后已经办理处置或终止，不能撤销入账");
         List<PostingFact> facts = facts(run.id());
         if (original.voucherId() == null && !facts.isEmpty()) {
-            throw conflict("原过账批次有金额但没有对应的凭证，不能红冲，请核对数据");
+            throw conflict("原批次有金额但没有对应的凭证，不能撤销入账，请核对数据");
         }
         UUID voucher = original.voucherId() == null ? null : ledger.reverse(
                 original.voucherId(), voucherNo(run), run.period(), YearMonth.parse(run.period()).atEndOfMonth(),
@@ -718,15 +719,8 @@ public class FinanceAssetPostingService {
         Object[] r = rows.getFirst();
         List<AssetWorkbenchResponses.PostingLine> lines = lineResponses(id);
         String status = NativeValueConverters.text(r[5]);
-        boolean separatedFromMaker = !authorization.isCurrentActor(NativeValueConverters.uuid(r[16]));
-        Set<String> actions = switch (status) {
-            case "PREVIEWED" -> authorization.has(FinanceAssetAuthorization.POST) ? Set.of("SUBMIT") : Set.of();
-            case "SUBMITTED" -> authorization.has(FinanceAssetAuthorization.APPROVE) && separatedFromMaker ? Set.of("APPROVE") : Set.of();
-            case "APPROVED" -> authorization.has(FinanceAssetAuthorization.POST) && separatedFromMaker ? Set.of("POST") : Set.of();
-            case "POSTED" -> authorization.has(FinanceAssetAuthorization.POST) && "NORMAL".equals(NativeValueConverters.text(r[4]))
-                    ? Set.of("REVERSE") : Set.of();
-            default -> Set.of();
-        };
+        Set<String> actions = authorization.allowedPostingRunActions(
+                status, NativeValueConverters.text(r[4]), NativeValueConverters.uuid(r[16]));
         return new AssetWorkbenchResponses.PostingRun(NativeValueConverters.uuid(r[0]),NativeValueConverters.text(r[1]),NativeValueConverters.text(r[2]),NativeValueConverters.text(r[3]),status,token,
                 number(r[6]).intValue(),NativeValueConverters.toBigDecimal(r[7]),exceptionsForResponse(NativeValueConverters.text(r[8])),lines,NativeValueConverters.text(r[9]),NativeValueConverters.uuid(r[10]),
                 number(r[11]).longValue(),NativeValueConverters.toInstant(r[12]),actions);

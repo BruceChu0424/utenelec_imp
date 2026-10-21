@@ -24,7 +24,6 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
-import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_field_message.dart';
@@ -584,15 +583,6 @@ class _WorkshopMaterialReportsPageState
               onSelectionChanged: _selectView,
             ),
           ),
-          if (_view == WmReportView.usage || _view == WmReportView.product)
-            const Padding(
-              padding: EdgeInsets.zero,
-              child: UtenInlineNotice(
-                message:
-                    '耗用由期初和期末盘点推算；含容器估盘时只能作为估算。'
-                    '耗用差异还受单重、漏录及回收料影响，不等于报废率。产品用量为分摊或独占期平均。',
-              ),
-            ),
         ],
       ),
       body: KeyedSubtree(key: _reportBodyKey, child: _viewBody(context, l10n)),

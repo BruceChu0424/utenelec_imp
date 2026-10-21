@@ -15,16 +15,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
-import '../../../components/layout/uten_list_two_pane.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/human_error_message.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -33,6 +33,7 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_data.dart';
 import '../../report/shared/report_date_range.dart';
+import '../widgets/finance_date_range_filter.dart';
 import '../../report/shared/report_filter_prefs.dart';
 import '../../report/shared/report_sort.dart';
 import '../../report/shared/report_total.dart';
@@ -251,9 +252,9 @@ class _FinanceAccountFlowPageState
         child: UtenContentContainer.wide(
           child: Padding(
             padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            child: UtenListTwoPane(
-              filterPane: _buildFilterPane(theme),
-              tablePane: _buildTable(),
+            child: UtenCollapsingHeaderScrollView(
+              collapsingHeader: _buildFilterPane(theme),
+              body: _buildTable(),
             ),
           ),
         ),
@@ -264,129 +265,83 @@ class _FinanceAccountFlowPageState
   Widget _buildFilterPane(ThemeData theme) {
     final names = ref.watch(financeNameServiceProvider);
     return Padding(
-      padding: EdgeInsets.zero,
-      child: SingleChildScrollView(
-        // 筛选区独立滚动，不接表格的主滚动控制器。
-        primary: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _filterLabel('报表类型'),
-            // 全平台统一筛选工具条：报表类型分段（纯分类无搜索）。
-            UtenFilterToolbar<_FlowView>(
-              segments: const [
-                UtenFilterSegment(value: _FlowView.statement, label: '帐户进出流水'),
-                UtenFilterSegment(value: _FlowView.bankDetail, label: '银行存取明细'),
-                UtenFilterSegment(
-                  value: _FlowView.bankSummary,
-                  label: '银行存取汇总',
-                ),
-              ],
-              selected: {_view},
-              onSelectionChanged: _changeView,
-            ),
-            if (_view == _FlowView.statement) ...[
-              const SizedBox(height: UtenSpacing.s12),
-              _filterLabel('账户'),
-              SizedBox(
-                width: double.infinity,
-                child: DropdownButtonFormField<String?>(
-                  initialValue: _accountId,
-                  isExpanded: true,
-                  decoration: const UtenInputDecoration(
-                    InputDecoration(isDense: true, labelText: '账户'),
-                  ),
-                  items: [
-                    for (final e in names.accountEntries.entries)
-                      DropdownMenuItem<String?>(
-                        value: e.key,
-                        child: Text(
-                          e.value,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+      padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          UtenFilterToolbar<_FlowView>(
+            compactBreakpoint: UtenBreakpoints.mediumStart,
+            segments: const [
+              UtenFilterSegment(value: _FlowView.statement, label: '帐户进出流水'),
+              UtenFilterSegment(value: _FlowView.bankDetail, label: '银行存取明细'),
+              UtenFilterSegment(value: _FlowView.bankSummary, label: '银行存取汇总'),
+            ],
+            selected: {_view},
+            onSelectionChanged: _changeView,
+            searchHint: _view == _FlowView.statement ? '搜索单号 / 对方' : null,
+            initialSearchValue: _keyword,
+            onSearchChanged: (value) {
+              _keyword = value;
+              _persistAndReload();
+            },
+            onSearchSubmitted: (value) {
+              _keyword = value;
+              _persistAndReload();
+            },
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+          if (_view == _FlowView.statement)
+            Wrap(
+              spacing: UtenSpacing.s12,
+              runSpacing: UtenSpacing.s8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                SizedBox(
+                  width: 240,
+                  child: DropdownButtonFormField<String?>(
+                    initialValue: _accountId,
+                    isExpanded: true,
+                    decoration: const UtenInputDecoration(
+                      InputDecoration(isDense: true, labelText: '账户'),
+                    ),
+                    items: [
+                      for (final entry in names.accountEntries.entries)
+                        DropdownMenuItem<String?>(
+                          value: entry.key,
+                          child: Text(
+                            entry.value,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                      ),
-                  ],
-                  onChanged: (v) {
+                    ],
+                    onChanged: (value) {
+                      setState(() => _accountId = value);
+                      _persistAndReload();
+                    },
+                  ),
+                ),
+                FinanceDateRangeFilter(
+                  from: _from,
+                  to: _to,
+                  onChanged: (from, to) {
                     setState(() {
-                      _accountId = v;
-                      _page = 1;
+                      _from = from!;
+                      _to = to!;
                     });
                     _persistAndReload();
-                    _load();
                   },
                 ),
+              ],
+            )
+          else
+            Text(
+              '银行存取款数据尚未启用，当前暂无记录。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
-              const SizedBox(height: UtenSpacing.s12),
-              _filterLabel('日期范围'),
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  TextButton.icon(
-                    onPressed: () async {
-                      final p = await showDatePicker(
-                        context: context,
-                        initialDate: _from,
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2100),
-                      );
-                      if (p != null) {
-                        setState(() => _from = p);
-                        _persistAndReload();
-                      }
-                    },
-                    icon: const Icon(Icons.event_outlined, size: 18),
-                    label: Text('起 ${_fmt(_from)}'),
-                  ),
-                  TextButton.icon(
-                    onPressed: () async {
-                      final p = await showDatePicker(
-                        context: context,
-                        initialDate: _to,
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2100),
-                      );
-                      if (p != null) {
-                        setState(() => _to = p);
-                        _persistAndReload();
-                      }
-                    },
-                    icon: const Icon(Icons.event_outlined, size: 18),
-                    label: Text('止 ${_fmt(_to)}'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              _filterLabel('搜索'),
-              UtenSearchBar(
-                // 筛选面板里的一格：紧凑态（用户要求搜索框小一点）。
-                dense: true,
-                hint: '搜索单号/对方',
-                initialValue: _keyword,
-                // 防抖到点即查；回车立刻查（不等防抖）。
-                onChanged: (v) {
-                  _keyword = v;
-                  _persistAndReload();
-                },
-                onSubmitted: (v) {
-                  _keyword = v;
-                  _persistAndReload();
-                },
-              ),
-            ],
-            if (_view != _FlowView.statement) ...[
-              const SizedBox(height: UtenSpacing.s12),
-              Text(
-                '银行存取款单老库未启用(0 行)，报表为空(结构已就位，启用后自动出数)。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
@@ -426,6 +381,7 @@ class _FinanceAccountFlowPageState
         )
         .toList();
     return MasterDataTableView<Map<String, dynamic>>(
+      primary: true,
       tableKey:
           'features.finance.pages.finance_account_flow_page.FinanceAccountFlowPageState._buildTable.1',
       columns: columns,
@@ -475,21 +431,6 @@ class _FinanceAccountFlowPageState
         _page = p;
         _load();
       },
-    );
-  }
-
-  Widget _filterLabel(String text) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
-      child: Text(
-        text,
-        style: theme.textTheme.labelLarge?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.4,
-        ),
-      ),
     );
   }
 }

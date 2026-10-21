@@ -7,13 +7,13 @@ enum PermissionActionType {
   create('新增'),
   edit('编辑'),
   delete('删除'),
-  approve('审批'),
+  approve('审核'),
   importData('导入'),
   exportData('导出'),
-  execute('执行'),
-  configure('配置'),
+  execute('办理'),
+  configure('设置'),
   assign('分配'),
-  other('其它');
+  other('其他');
 
   const PermissionActionType(this.label);
 

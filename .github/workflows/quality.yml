@@ -24,7 +24,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -47,7 +47,7 @@ jobs:
   # discovered Surefire and Failsafe test across isolated, duration-balanced jobs.
   backend-fast:
     name: "Backend / Java 21 (fast: unit + architecture)"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -67,7 +67,7 @@ jobs:
 
   backend-plan:
     name: Backend / discover complete test inventory
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -97,7 +97,7 @@ jobs:
   backend-shards:
     name: Backend / DB partition ${{ matrix.shard }}
     needs: backend-plan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 180
     strategy:
       # Collect all failures in one run; no partition is allowed to fail silently.
@@ -142,7 +142,7 @@ jobs:
   backend-reference:
     name: Backend / optional unfiltered reference
     needs: backend-plan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 240
     env:
       RUN_REFERENCE: ${{ github.event_name == 'workflow_dispatch' && inputs.compare_reference }}
@@ -197,7 +197,7 @@ jobs:
     name: "Backend / Java 21 (full: DB full-chain)"
     needs: [backend-plan, backend-shards, backend-reference]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -266,7 +266,7 @@ jobs:
 
   frontend:
     name: Flutter / Web
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -338,7 +338,7 @@ jobs:
 
   deployment:
     name: Deployment contracts
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

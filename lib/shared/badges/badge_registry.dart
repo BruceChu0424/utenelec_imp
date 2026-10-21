@@ -51,7 +51,7 @@ enum BadgeEntry {
   financeAuditCenter(BadgeModule.finance),
 
   /// 报价核价(ADR-134): 销售提交、等待持有核价权限的员工定价确认的报价(持
-  /// sales_quote_finance:confirm 的人才有数)。
+  /// sales_quote_finance:confirm 或 sales_quote_finance:reject 的人才有数)。
   financeQuoteReview(BadgeModule.finance),
   financeStockCountReview(BadgeModule.finance),
   financeExpenseConfirmation(BadgeModule.finance),

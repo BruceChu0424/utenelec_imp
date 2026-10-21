@@ -3178,7 +3178,7 @@
   "quoteFinanceActionSaving": "保存中…",
   "quoteFinanceActionReturn": "退回销售",
   "quoteFinanceActionConfirm": "确认报价",
-  "quoteFinanceActionReopen": "撤销确认再修改",
+  "quoteFinanceActionReopen": "重新核价",
   "quoteFinanceActionBack": "返回",
   "quoteFinanceSaved": "修改已保存",
   "quoteFinanceNothingToSave": "没有需要保存的修改",
@@ -3202,7 +3202,7 @@
   },
   "quoteFinanceConfirmedDone": "报价已确认, 已通知销售转订货单",
   "quoteFinanceReturnedDone": "已退回销售, 销售会收到通知",
-  "quoteFinanceReopenedDone": "已撤销确认, 可以继续修改价格",
+  "quoteFinanceReopenedDone": "报价已回到待核价",
   "quoteFinanceLoadDetailFailed": "报价详情暂时无法加载，请重试。",
   "quoteFinanceActionFailed": "操作没有成功, 请稍后再试",
   "quoteFinanceUnsavedTitle": "有修改还没保存",
@@ -3220,7 +3220,7 @@
       }
     }
   },
-  "quoteFinanceConfirmBody": "确认后价格和折扣就定下来了, 销售可以转成订货单。以后要改, 可以在转单前「撤销确认再修改」。",
+  "quoteFinanceConfirmBody": "确认后价格和折扣就定下来了, 销售可以转成订货单。以后要改, 可以在转单前「重新核价」。",
   "quoteFinanceConfirmResponsibility": "报价核价确认",
   "quoteFinanceConfirmResponsibilityDesc": "确认后系统会记录你是本次核价人。",
   "quoteFinanceConfirmTotal": "报价金额 {amount}",
@@ -3246,8 +3246,8 @@
   "quoteFinanceReturnReasonLabel": "退回原因(必填)",
   "quoteFinanceReturnReasonRequired": "请填写退回原因",
   "quoteFinanceReturnSubmit": "确认退回",
-  "quoteFinanceReopenTitle": "撤销确认再修改",
-  "quoteFinanceReopenBody": "报价会回到「待核价」, 你可以继续修改价格, 改好后要重新确认。这期间销售不能转订货单。确定撤销?",
+  "quoteFinanceReopenTitle": "重新核价",
+  "quoteFinanceReopenBody": "报价将回到「待核价」，由核价人员重新核对并确认。在重新确认前，销售不能转订货单。确定继续？",
   "quoteFinanceCancel": "取消",
   "quoteFinanceRevisionTitle": "核价记录",
   "quoteFinanceTotalQty": "合计数量",
@@ -6262,5 +6262,30 @@
   "productionProductRequirement": "产品单独备注",
   "productionRequirementsClose": "关闭",
   "productionSalesRequirements": "销售生产要求",
-  "materialTransferContextChanged": "账号、权限或计划状态已变化，请关闭后重新核对调拨。"
+  "materialTransferContextChanged": "账号、权限或计划状态已变化，请关闭后重新核对调拨。",
+  "goodsBatchPasteTitle": "批量粘贴货品",
+  "goodsBatchPasteClipboard": "剪贴板中有 {count} 个货品，设置每个货品的复制份数。",
+  "goodsBatchPasteCopiesLabel": "每个货品复制",
+  "goodsBatchPasteCopiesHint": "输入 1 到 50 的整数，可直接修改",
+  "goodsBatchPasteCopiesError": "请输入 1 到 50 的整数",
+  "goodsBatchPasteCopiesUnit": "份",
+  "goodsBatchPasteDecrease": "减少一份",
+  "goodsBatchPasteIncrease": "增加一份",
+  "goodsBatchPasteTotal": "预计新增 {count} 个货品",
+  "goodsBatchPastePendingTotal": "填写份数后显示新增数量",
+  "goodsBatchPasteAutoCode": "新货品编号由系统自动生成",
+  "@goodsBatchPasteClipboard": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@goodsBatchPasteTotal": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  }
 }

@@ -16,12 +16,12 @@ class PermissionBusinessDescriptionsTest {
         Permission compensation = permission("employee:compensation:edit", "旧薪酬说明");
 
         assertThat(PermissionBusinessDescriptions.descriptionFor(price))
-                .contains("字段授权", "「新增货品资料」", "修改已有货品", "「编辑货品资料」",
+                .contains("允许填写货品售价和折扣", "「新增货品资料」", "修改已有货品", "「编辑货品资料」",
                         "同时允许查看货品售价", "查看折扣须另行开启「查看货品折扣」")
                 .doesNotContain("goods:", "employee:");
         assertThat(PermissionBusinessDescriptions.descriptionFor(compensation))
-                .contains("字段写入授权", "「办理员工入职」和「编辑员工证件、联系方式与银行字段」", "「编辑员工」",
-                        "查看已有薪酬须另行开启「查看员工薪资字段」")
+                .contains("允许填写工资、社保、公积金和补贴", "「办理员工入职」和「编辑员工证件、联系方式和银行资料」", "「编辑员工」",
+                        "查看已有薪酬须另行开启「查看员工薪酬资料」")
                 .doesNotContain("goods:", "employee:");
         assertThat(price.getDescription()).isEqualTo("旧价格说明");
         assertThat(compensation.getDescription()).isEqualTo("旧薪酬说明");
@@ -50,8 +50,8 @@ class PermissionBusinessDescriptionsTest {
     @Test
     void onboardingNamesTheMandatorySensitiveWriteAndDepartmentSelectionPermissions() {
         assertThat(PermissionBusinessDescriptions.descriptionFor("employee:create", null))
-                .contains("「编辑员工证件、联系方式与银行字段」", "「查看部门」",
-                        "填写薪资", "「编辑员工薪资、社保、公积金与补贴字段」")
+                .contains("「编辑员工证件、联系方式和银行资料」", "「查看部门」",
+                        "填写工资", "「编辑员工工资、社保公积金和补贴」")
                 .doesNotContain("employee:", "department:");
     }
 

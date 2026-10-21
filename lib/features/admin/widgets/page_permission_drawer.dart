@@ -679,7 +679,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
       context,
       title: '确认授权',
       content: Text(
-        '$names会开放商业敏感数据或敏感能力。请确认该员工确需访问。',
+        '$names会开放商业敏感数据或高风险操作。请确认该员工确需使用。',
         style: const TextStyle(height: 1.5),
       ),
       confirmLabel: '确认授权',
@@ -762,7 +762,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
                   _detail == null
                       ? '选择一名员工后设置本页权限'
                       : _detail!.superAdminMode
-                      ? '超管模式：目录全集，可加授也可明确收回'
+                      ? '超级管理员可设置本页全部权限，也可收回已有权限'
                       : '负责人转授：只显示你可转授的权限',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
@@ -803,7 +803,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
       return const UtenEmpty(
         icon: Icons.shield_outlined,
         message: '当前没有可管理的组织范围',
-        description: '负责人关系请在人事的部门管理中设置，本权限面板不再维护负责人范围。',
+        description: '负责人关系请在人事的部门管理中设置，此处用于设置操作权限。',
       );
     }
     final theme = Theme.of(context);
@@ -1123,11 +1123,11 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
           Text(
             isClient
                 ? '开启“查看客户”后，默认可查看本人负责及被指定共享的客户。'
-                      '还可额外选择指定负责人的客户；“查看全部客户资料”会覆盖为全部客户。'
+                      '还可额外选择指定负责人的客户；拥有“查看全部客户资料”权限时可查看全部客户。'
                       '如只看本人或指定负责人，请先关闭“查看全部”并保存。'
                       '客户信用汇总只在可见客户范围内生效，全公司应收台账仍需独立财务权限。'
                 : '开启查看权限后，默认按本人负责及已授权的数据范围查看。'
-                      '可额外选择指定负责人；“查看全部”会覆盖为全部数据。',
+                      '可额外选择指定负责人；拥有“查看全部”权限时可查看全部数据。',
           ),
           if (canConfigure) ...[
             const SizedBox(height: UtenSpacing.s8),

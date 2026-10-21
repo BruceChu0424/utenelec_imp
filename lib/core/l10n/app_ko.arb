@@ -5079,5 +5079,30 @@
   "productionProductRequirement": "제품별 비고",
   "productionRequirementsClose": "닫기",
   "productionSalesRequirements": "판매 생산 요구 사항",
-  "materialTransferContextChanged": "계정, 권한 또는 계획 상태가 변경되었습니다. 창을 닫고 자재 이동을 다시 확인하세요."
+  "materialTransferContextChanged": "계정, 권한 또는 계획 상태가 변경되었습니다. 창을 닫고 자재 이동을 다시 확인하세요.",
+  "goodsBatchPasteTitle": "품목 일괄 붙여넣기",
+  "goodsBatchPasteClipboard": "클립보드에 품목 {count}개가 있습니다. 품목별 복사 수를 설정하세요.",
+  "goodsBatchPasteCopiesLabel": "품목별 복사 수",
+  "goodsBatchPasteCopiesHint": "1부터 50까지 정수를 직접 입력하세요",
+  "goodsBatchPasteCopiesError": "1부터 50까지의 정수를 입력하세요",
+  "goodsBatchPasteCopiesUnit": "개",
+  "goodsBatchPasteDecrease": "복사 수 1 줄이기",
+  "goodsBatchPasteIncrease": "복사 수 1 늘리기",
+  "goodsBatchPasteTotal": "새 품목 {count}개 생성 예정",
+  "goodsBatchPastePendingTotal": "복사 수를 입력하면 생성 수량이 표시됩니다",
+  "goodsBatchPasteAutoCode": "새 품목 코드는 자동으로 생성됩니다",
+  "@goodsBatchPasteClipboard": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@goodsBatchPasteTotal": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  }
 }

@@ -38,6 +38,7 @@ public class WorkshopMaterialPeriodService {
     private final WorkshopMaterialBinSupport bins;
     private final WorkshopMaterialCommandLedger commands;
     private final WorkshopMaterialScope scope;
+    private final WorkshopBinService openings;
     private final WorkshopMaterialCountService counts;
     private final WorkshopMaterialPeriodViews views;
     private final SecurityContextCurrentUser currentUser;
@@ -45,7 +46,7 @@ public class WorkshopMaterialPeriodService {
     public WorkshopMaterialPeriodService(NamedParameterJdbcTemplate db, WorkshopMaterialBinSupport bins,
                                          WorkshopMaterialCommandLedger commands, WorkshopMaterialScope scope,
                                          WorkshopMaterialCountService counts, WorkshopMaterialPeriodViews views,
-                                         SecurityContextCurrentUser currentUser) {
+                                         SecurityContextCurrentUser currentUser, WorkshopBinService openings) {
         this.db = db;
         this.bins = bins;
         this.commands = commands;
@@ -53,14 +54,12 @@ public class WorkshopMaterialPeriodService {
         this.counts = counts;
         this.views = views;
         this.currentUser = currentUser;
+        this.openings = openings;
     }
 
     @Transactional(readOnly = true)
     public PeriodList list(UUID binWarehouseId) {
-        if (binWarehouseId == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "请选择内料仓");
-        Settings settings = bins.settingsByBin(binWarehouseId);
-        if (settings == null) throw new ApiException(ErrorCode.NOT_FOUND, "这个仓库不是车间内料仓");
-        scope.requireWorkshop(settings.workshopDepartmentId());
+        scope.requireWorkshop(openings.requireWorkshopOfOpenedBin(binWarehouseId));
         return new PeriodList(views.ofBin(binWarehouseId));
     }
 

@@ -5197,5 +5197,30 @@
   "productionProductRequirement": "Product instructions",
   "productionRequirementsClose": "Close",
   "productionSalesRequirements": "Sales production instructions",
-  "materialTransferContextChanged": "Your account, permissions, or plan changed. Close this window and review the transfer again."
+  "materialTransferContextChanged": "Your account, permissions, or plan changed. Close this window and review the transfer again.",
+  "goodsBatchPasteTitle": "Paste goods in bulk",
+  "goodsBatchPasteClipboard": "Your clipboard has {count} goods. Set how many copies to make of each.",
+  "goodsBatchPasteCopiesLabel": "Copies per item",
+  "goodsBatchPasteCopiesHint": "Enter a whole number from 1 to 50",
+  "goodsBatchPasteCopiesError": "Enter a whole number from 1 to 50",
+  "goodsBatchPasteCopiesUnit": "copies",
+  "goodsBatchPasteDecrease": "One fewer copy",
+  "goodsBatchPasteIncrease": "One more copy",
+  "goodsBatchPasteTotal": "{count} new goods will be created",
+  "goodsBatchPastePendingTotal": "Enter a copy count to see the total",
+  "goodsBatchPasteAutoCode": "New goods codes are generated automatically",
+  "@goodsBatchPasteClipboard": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@goodsBatchPasteTotal": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  }
 }

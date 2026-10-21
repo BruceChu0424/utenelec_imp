@@ -488,7 +488,7 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
     final (statusLabel, statusType) = !definition.enabled
         ? ('功能未启用', UtenStatusBadgeType.neutral)
         : viewAll
-        ? ('查看全部覆盖', UtenStatusBadgeType.orange)
+        ? ('可查看全部', UtenStatusBadgeType.orange)
         : count > 0
         ? ('额外查看 $count 人', UtenStatusBadgeType.info)
         : ('仅本人', UtenStatusBadgeType.success);
@@ -538,10 +538,7 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
               Icons.pause_circle_outline_rounded,
             )
           else if (viewAll)
-            _notice(
-              '已由“${definition.viewAllPermission}”覆盖为查看全部；下方负责人范围不再生效。',
-              Icons.visibility_outlined,
-            )
+            _notice('已拥有查看全部数据的权限，无需再选择负责人范围。', Icons.visibility_outlined)
           else if (_loading.contains(scope))
             const Row(
               children: [

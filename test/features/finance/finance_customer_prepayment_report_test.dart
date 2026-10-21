@@ -14,6 +14,7 @@ import 'package:uten_imp/features/basic_data/widgets/uten_client_picker.dart';
 import 'package:uten_imp/features/finance/config/finance_report_config.dart';
 import 'package:uten_imp/features/finance/pages/finance_hub_page.dart';
 import 'package:uten_imp/features/finance/pages/finance_report_table_page.dart';
+import 'package:uten_imp/features/finance/widgets/finance_date_range_filter.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 late SharedPreferences _preferences;
@@ -63,8 +64,8 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('客户预收流水'), findsWidgets);
     expect(find.byType(ClientPickerField), findsOneWidget);
-    expect(find.textContaining('起 '), findsOneWidget);
-    expect(find.textContaining('止 '), findsOneWidget);
+    expect(find.byType(FinanceDateRangeFilter), findsOneWidget);
+    expect(find.textContaining('日期:'), findsOneWidget);
     expect(find.text('搜索'), findsNothing);
     expect(find.text('记账日期'), findsOneWidget);
     expect(find.text('资金单号'), findsOneWidget);

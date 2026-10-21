@@ -5,7 +5,7 @@
 //
 // 后端 GET /api/finance/reports/{group}/{view} 返回 ReportTableResponse：
 //   { columns, rows(显示就绪), facets, page, totalPages, total }。
-// UI：左筛选侧栏（报表类型 chip + 日期范围 + 搜索 + 查询 + 已选筛选）+ 右 Excel 风格表格
+// UI：分类与短搜索同排，日期范围与业务筛选按需换行，表格随页面滚动承接
 //   （标题行每列可 autofilter + 横滚 + 翻页）。默认日期范围 = 上月今日..今日（defaultReportFrom()，收紧默认；firstDate 仍 2010 可手选更早）。
 //
 // 筛选口径（报表变体/日期范围/facet/排序）按账号服务端持久化
@@ -21,13 +21,14 @@ import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
-import '../../../components/layout/uten_list_two_pane.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/human_error_message.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -40,6 +41,7 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_data.dart';
 import '../../report/shared/report_date_range.dart';
+import '../widgets/finance_date_range_filter.dart';
 import '../../report/shared/report_filter_prefs.dart';
 import '../../report/shared/report_sort.dart';
 import '../../report/shared/report_total.dart';
@@ -324,9 +326,9 @@ class _FinanceReportTablePageState
         child: UtenContentContainer.wide(
           child: Padding(
             padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            child: UtenListTwoPane(
-              filterPane: _buildFilterPane(theme),
-              tablePane: _buildTable(),
+            child: UtenCollapsingHeaderScrollView(
+              collapsingHeader: _buildFilterPane(theme),
+              body: _buildTable(),
             ),
           ),
         ),
@@ -355,126 +357,82 @@ class _FinanceReportTablePageState
 
   Widget _buildFilterPane(ThemeData theme) {
     return Padding(
-      padding: EdgeInsets.zero,
-      child: SingleChildScrollView(
-        // 筛选区独立滚动，不接表格的主滚动控制器。
-        primary: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _filterLabel('报表类型'),
-            // 全平台统一筛选工具条：报表变体分段 + 搜索同一行（宽屏搜索靠右、
-            // 宽度受 searchWidth 封顶），不再让搜索框单独占一整行。
-            // 客户预收流水卡用客户选择器代替关键字检索，故那一卡不渲染搜索框。
-            UtenFilterToolbar<int>(
-              segments: [
-                for (int i = 0; i < _card.variants.length; i++)
-                  UtenFilterSegment(value: i, label: _card.variants[i].label),
-              ],
-              selected: {_variantIndex},
-              onSelectionChanged: _changeVariant,
-              searchHint: _isCustomerPrepaymentEvents ? null : '搜索单号 / 名称',
-              initialSearchValue: _keyword,
-              // 防抖到点即查；回车立刻查（不等防抖）。
-              onSearchChanged: (v) {
-                _keyword = v;
-                _persistAndReload();
-              },
-              onSearchSubmitted: (v) {
-                _keyword = v;
-                _persistAndReload();
-              },
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            _filterLabel('日期范围'),
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                TextButton.icon(
-                  onPressed: () async {
-                    final p = await showDatePicker(
-                      context: context,
-                      initialDate: _from,
-                      firstDate: DateTime(2000),
-                      lastDate: DateTime(2100),
-                    );
-                    if (p != null) {
-                      setState(() => _from = p);
-                      _persistAndReload();
-                    }
-                  },
-                  icon: const Icon(Icons.event_outlined, size: 18),
-                  label: Text('起 ${_fmt(_from)}'),
-                ),
-                TextButton.icon(
-                  onPressed: () async {
-                    final p = await showDatePicker(
-                      context: context,
-                      initialDate: _to,
-                      firstDate: DateTime(2000),
-                      lastDate: DateTime(2100),
-                    );
-                    if (p != null) {
-                      setState(() => _to = p);
-                      _persistAndReload();
-                    }
-                  },
-                  icon: const Icon(Icons.event_outlined, size: 18),
-                  label: Text('止 ${_fmt(_to)}'),
-                ),
-              ],
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            if (widget.cardId == 'gl') ...[
-              _filterLabel('报表设置'),
-              // ADR-112: 附表/经营损益表各行取哪些科目或部门的数由这里配置,
-              // 没配置的行在报表上标注「未配置」且不计入合计。
-              TextButton.icon(
-                key: const ValueKey('gl-line-bindings'),
-                onPressed: _openLineBindings,
-                icon: const Icon(Icons.tune_outlined, size: 18),
-                label: const Text('附表取数设置'),
-              ),
-              const SizedBox(height: UtenSpacing.s12),
+      padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          UtenFilterToolbar<int>(
+            compactBreakpoint: UtenBreakpoints.mediumStart,
+            segments: [
+              for (int i = 0; i < _card.variants.length; i++)
+                UtenFilterSegment(value: i, label: _card.variants[i].label),
             ],
-            if (_isCustomerPrepaymentEvents) ...[
-              _filterLabel('客户'),
-              ClientPickerField(
-                key: ValueKey('prepayment-report-client-${_clientId ?? 'all'}'),
-                initialId: _clientId,
-                initialName: _clientName,
-                onPick: () async {
-                  final selected = await _pickClient();
-                  if (selected != null) _clientName = selected.name;
-                  return selected;
+            selected: {_variantIndex},
+            onSelectionChanged: _changeVariant,
+            searchHint: _isCustomerPrepaymentEvents ? null : '搜索单号 / 名称',
+            initialSearchValue: _keyword,
+            onSearchChanged: (value) {
+              _keyword = value;
+              _persistAndReload();
+            },
+            onSearchSubmitted: (value) {
+              _keyword = value;
+              _persistAndReload();
+            },
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+          Wrap(
+            spacing: UtenSpacing.s12,
+            runSpacing: UtenSpacing.s8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              FinanceDateRangeFilter(
+                from: _from,
+                to: _to,
+                onChanged: (from, to) {
+                  setState(() {
+                    _from = from!;
+                    _to = to!;
+                  });
+                  _persistAndReload();
                 },
-                onChanged: _onClientChanged,
               ),
-              const SizedBox(height: UtenSpacing.s12),
-            ],
-            if (_filters.isNotEmpty) ...[
-              const SizedBox(height: UtenSpacing.s12),
-              _filterLabel('已选筛选 (${_filters.length})'),
-              Wrap(
-                spacing: 6,
-                runSpacing: 4,
-                children: [
-                  for (final e in _filters.entries)
-                    Chip(
-                      label: Text(
-                        '${e.key}: ${e.value == kMasterFilterNullValue ? '(空)' : e.value}',
-                        style: Theme.of(context).textTheme.labelSmall,
-                      ),
-                      onDeleted: () => _onFilterChanged(e.key, null),
-                      visualDensity: VisualDensity.compact,
+              if (_isCustomerPrepaymentEvents)
+                SizedBox(
+                  width: 240,
+                  child: ClientPickerField(
+                    key: ValueKey(
+                      'prepayment-report-client-${_clientId ?? 'all'}',
                     ),
-                ],
-              ),
+                    initialId: _clientId,
+                    initialName: _clientName,
+                    onPick: () async {
+                      final selected = await _pickClient();
+                      if (selected != null) _clientName = selected.name;
+                      return selected;
+                    },
+                    onChanged: _onClientChanged,
+                  ),
+                ),
+              if (widget.cardId == 'gl')
+                TextButton.icon(
+                  key: const ValueKey('gl-line-bindings'),
+                  onPressed: _openLineBindings,
+                  icon: const Icon(Icons.tune_outlined, size: 18),
+                  label: const Text('附表取数设置'),
+                ),
+              for (final entry in _filters.entries)
+                Chip(
+                  label: Text(
+                    '${entry.key}: ${entry.value == kMasterFilterNullValue ? '(空)' : entry.value}',
+                    style: theme.textTheme.labelSmall,
+                  ),
+                  onDeleted: () => _onFilterChanged(entry.key, null),
+                  visualDensity: VisualDensity.compact,
+                ),
             ],
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -532,6 +490,7 @@ class _FinanceReportTablePageState
         )
         .toList();
     return MasterDataTableView<Map<String, dynamic>>(
+      primary: true,
       tableKey:
           'features.finance.pages.finance_report_table_page.FinanceReportTablePageState._buildTable.1',
       columns: columns,
@@ -594,21 +553,6 @@ class _FinanceReportTablePageState
         _page = p;
         _load();
       },
-    );
-  }
-
-  Widget _filterLabel(String text) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
-      child: Text(
-        text,
-        style: theme.textTheme.labelLarge?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.4,
-        ),
-      ),
     );
   }
 

@@ -11,10 +11,9 @@ import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_search_bar.dart';
-import '../../../components/layout/uten_list_two_pane.dart';
-import '../../../core/network/latest_request_guard.dart';
-import '../../../core/responsive/breakpoint.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/auth/permissions.dart';
@@ -37,6 +36,8 @@ class FinanceAssetLedgerPanel extends ConsumerStatefulWidget {
     required this.capabilities,
     required this.policyReady,
     required this.refreshToken,
+    this.creationToken = 0,
+    this.onFullscreenChanged,
     this.refreshCompletion,
   });
 
@@ -44,6 +45,8 @@ class FinanceAssetLedgerPanel extends ConsumerStatefulWidget {
   final FinanceAssetCapabilities capabilities;
   final bool policyReady;
   final int refreshToken;
+  final int creationToken;
+  final ValueChanged<bool>? onFullscreenChanged;
   final Completer<void>? refreshCompletion;
 
   @override
@@ -64,6 +67,7 @@ class _FinanceAssetLedgerPanelState
   bool _categoriesLoading = true;
   String? _categoriesError;
   DeptSelection? _department;
+  bool _fullscreen = false;
 
   @override
   void initState() {
@@ -74,6 +78,9 @@ class _FinanceAssetLedgerPanelState
   @override
   void didUpdateWidget(covariant FinanceAssetLedgerPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.creationToken != widget.creationToken) {
+      _query = _query.copyWith(page: 1);
+    }
     if (oldWidget.refreshToken != widget.refreshToken) {
       _refresh();
     }
@@ -184,13 +191,6 @@ class _FinanceAssetLedgerPanelState
     _load();
   }
 
-  Future<void> _create() async {
-    final saved = await showFinanceAssetForm(context, ledger: widget.ledger);
-    if (!mounted || !saved) return;
-    _query = _query.copyWith(page: 1);
-    await _load();
-  }
-
   Future<void> _edit(FinanceAssetSummary item) async {
     try {
       final detail = await ref
@@ -208,6 +208,13 @@ class _FinanceAssetLedgerPanelState
         context.appApiError(error, fallback: '加载完整草稿失败，请刷新后重试');
       }
     }
+  }
+
+  Future<void> _create() async {
+    final saved = await showFinanceAssetForm(context, ledger: widget.ledger);
+    if (!mounted || !saved) return;
+    _query = _query.copyWith(page: 1);
+    await _load();
   }
 
   Future<void> _delete(FinanceAssetSummary item) async {
@@ -327,98 +334,69 @@ class _FinanceAssetLedgerPanelState
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (constraints.maxWidth < UtenBreakpoints.mediumStart) {
-          // 大小屏复用同一份列、可见字段、行菜单与分页。compact 筛选控件挂表格
-          // 的稳定工具条槽(toolbarLeadingActions)：loading/空态/错误态切换不重建
-          // 不失焦（搜索中的输入法组合不被打断，2026-10-09 根因修复——原先塞
-          // scrollingHeader 只在状态占位壳里渲染），也不在表格外另设固定槽——
-          // 固定槽会成为滚动静区(拖它不收横幅)且挤压表体把错误态重试挤出屏幕。
-          return _table(
-            compactToolbarLeading: _compactToolbarWidgets(constraints),
-          );
-        }
-        return UtenListTwoPane(
-          filterPaneTitle: '${widget.ledger.label}筛选',
-          filterPane: _filterFields(),
-          filterPaneFooter: widget.capabilities.canEdit
-              ? UtenButton(
-                  icon: Icons.add_rounded,
-                  onPressed: _create,
-                  child: Text('新建${widget.ledger.label}'),
-                )
-              : null,
-          tablePane: _table(),
-        );
+        return _table(filterWidth: constraints.maxWidth);
       },
     );
   }
 
-  /// compact 工具条 chip：搜索(占满首行剩余宽) + 新建 + 状态/分类下拉，
-  /// Wrap 流式换行；挂 [MasterDataTableView.toolbarLeadingActions] 稳定槽。
-  List<Widget> _compactToolbarWidgets(BoxConstraints constraints) {
-    final canEdit = widget.capabilities.canEdit;
-    return [
-      SizedBox(
-        width: constraints.maxWidth - (canEdit ? 56 : 0),
-        child: _search(),
-      ),
-      if (canEdit)
-        Semantics(
-          button: true,
-          label: '新建${widget.ledger.label}',
-          child: IconButton.filled(
-            key: Key('finance-asset-create-${widget.ledger.apiValue}'),
-            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-            tooltip: '新建${widget.ledger.label}',
-            onPressed: _create,
-            icon: const Icon(Icons.add_rounded),
-          ),
+  // Stable table slots retain focus during loading, empty/error states and
+  // fullscreen. Each field wraps as a unit; no clipped secondary scroll pane.
+  List<Widget> _filterFields(double width) {
+    if (width < 840) {
+      final active = [
+        _query.status,
+        _query.categoryId,
+        _query.departmentId,
+      ].where((value) => value != null).length;
+      return [
+        _draftFilter(),
+        SizedBox(width: 180, child: _search()),
+        UtenButton(
+          key: Key('finance-asset-more-filters-${widget.ledger.apiValue}'),
+          type: active > 0 ? UtenButtonType.tonal : UtenButtonType.secondary,
+          icon: Icons.filter_alt_outlined,
+          onPressed: _showMoreFilters,
+          child: Text(active == 0 ? '筛选' : '筛选 ($active)'),
         ),
-      SizedBox(width: 164, child: _statusFilter()),
-      SizedBox(width: 164, child: _categoryFilter()),
-    ];
-  }
-
-  Widget _filterFields() {
-    return Padding(
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _search(),
-          const SizedBox(height: UtenSpacing.s12),
-          _statusFilter(),
-          const SizedBox(height: UtenSpacing.s12),
-          _categoryFilter(),
-          const SizedBox(height: UtenSpacing.s12),
-          UtenDepartmentPicker(
-            key: ValueKey('asset-filter-department-${_department?.id}'),
-            mode: UtenDepartmentPickerMode.single,
-            label: '归属部门',
-            hint: '全部部门',
-            initialSelection: _department == null ? const [] : [_department!],
-            onChanged: (selection) {
-              final department = selection.firstOrNull;
-              _department = department;
-              _changeQuery(
-                _query.copyWith(
-                  page: 1,
-                  departmentId: department?.id,
-                  clearDepartmentId: department == null,
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          UtenButton(
-            type: UtenButtonType.ghost,
-            icon: Icons.filter_alt_off_outlined,
-            onPressed: _resetFilters,
-            child: const Text('重置筛选'),
-          ),
-        ],
+      ];
+    }
+    final fieldWidth = width < 600
+        ? ((width - 16) / 2).clamp(120.0, 180.0)
+        : 180.0;
+    return [
+      _draftFilter(),
+      SizedBox(width: fieldWidth, child: _search()),
+      SizedBox(width: fieldWidth, child: _statusFilter()),
+      SizedBox(width: fieldWidth, child: _categoryFilter()),
+      SizedBox(
+        width: fieldWidth,
+        child: UtenDepartmentPicker(
+          key: ValueKey('asset-filter-department-${_department?.id}'),
+          mode: UtenDepartmentPickerMode.single,
+          label: '归属部门',
+          hint: '全部部门',
+          initialSelection: _department == null ? const [] : [_department!],
+          onChanged: (selection) {
+            final department = selection.firstOrNull;
+            _department = department;
+            _changeQuery(
+              _query.copyWith(
+                page: 1,
+                departmentId: department?.id,
+                clearDepartmentId: department == null,
+              ),
+            );
+          },
+        ),
       ),
-    );
+      UtenButton(
+        key: Key('finance-asset-reset-${widget.ledger.apiValue}'),
+        type: UtenButtonType.ghost,
+        icon: Icons.filter_alt_off_outlined,
+        onPressed: _resetFilters,
+        child: const Text('重置筛选'),
+      ),
+    ];
   }
 
   Widget _search() {
@@ -433,6 +411,19 @@ class _FinanceAssetLedgerPanelState
   }
 
   Widget _statusFilter() {
+    return UtenDropdownField(
+      key: ValueKey('asset-status-${widget.ledger.apiValue}-${_query.status}'),
+      label: '状态',
+      value: _query.status,
+      hintText: '全部状态',
+      items: _statusItems,
+      onChanged: (value) => _changeQuery(
+        _query.copyWith(page: 1, status: value, clearStatus: value == null),
+      ),
+    );
+  }
+
+  List<UtenDropdownItem> get _statusItems {
     final statuses = <String, String>{
       'DRAFT': '草稿',
       'PENDING_APPROVAL': '待审批',
@@ -446,6 +437,117 @@ class _FinanceAssetLedgerPanelState
         'TERMINATION_PENDING': '待终止',
       'TERMINATED': '已终止',
     };
+    return [
+      for (final entry in statuses.entries)
+        UtenDropdownItem(value: entry.key, label: entry.value),
+    ];
+  }
+
+  Future<void> _showMoreFilters() async {
+    var status = _query.status;
+    var category = _query.categoryId;
+    var department = _department;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, update) => UtenAlertDialog(
+          title: Text('${widget.ledger.label}筛选'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              UtenDropdownField(
+                key: ValueKey('asset-status-${widget.ledger.apiValue}-$status'),
+                label: '状态',
+                value: status,
+                hintText: '全部状态',
+                items: _statusItems,
+                onChanged: (value) => update(() => status = value),
+              ),
+              const SizedBox(height: UtenSpacing.s16),
+              if (_categoriesError != null)
+                UtenButton(
+                  type: UtenButtonType.ghost,
+                  onPressed: () async {
+                    await _loadCategories();
+                    if (context.mounted) update(() {});
+                  },
+                  child: const Text('分类加载失败，重试'),
+                ),
+              UtenDropdownField(
+                key: ValueKey(
+                  'asset-category-filter-${widget.ledger.apiValue}-$category',
+                ),
+                label: '分类',
+                value: category,
+                hintText: '全部分类',
+                searchable: true,
+                items: [
+                  for (final item in _categories)
+                    UtenDropdownItem(
+                      value: item.id,
+                      label: '${item.code} · ${item.name}',
+                    ),
+                ],
+                onChanged: (value) => update(() => category = value),
+              ),
+              const SizedBox(height: UtenSpacing.s16),
+              UtenDepartmentPicker(
+                key: ValueKey('asset-filter-department-${department?.id}'),
+                mode: UtenDepartmentPickerMode.single,
+                label: '归属部门',
+                hint: '全部部门',
+                initialSelection: department == null ? const [] : [department!],
+                onChanged: (values) =>
+                    update(() => department = values.firstOrNull),
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+              UtenButton(
+                type: UtenButtonType.ghost,
+                onPressed: () => update(() {
+                  status = null;
+                  category = null;
+                  department = null;
+                }),
+                child: const Text('重置筛选'),
+              ),
+            ],
+          ),
+          actions: [
+            UtenButton(
+              type: UtenButtonType.secondary,
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('取消'),
+            ),
+            UtenButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('应用'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+    if (status == _query.status &&
+        category == _query.categoryId &&
+        department?.id == _query.departmentId) {
+      return;
+    }
+    _department = department;
+    _changeQuery(
+      _query.copyWith(
+        page: 1,
+        status: status,
+        clearStatus: status == null,
+        categoryId: category,
+        clearCategoryId: category == null,
+        departmentId: department?.id,
+        clearDepartmentId: department == null,
+      ),
+    );
+  }
+
+  Widget _draftFilter() {
     final localDrafts = ref
         .watch(formDraftCategoryProvider(_formDraftScope))
         .where(
@@ -453,43 +555,20 @@ class _FinanceAssetLedgerPanelState
               formDraftConfirmedIds(draft).isEmpty && _matchesAssetDraft(draft),
         )
         .length;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        UtenDropdownField(
-          key: ValueKey(
-            'asset-status-${widget.ledger.apiValue}-${_query.status}',
-          ),
-          label: '状态',
-          value: _query.status,
-          hintText: '全部状态',
-          items: [
-            for (final entry in statuses.entries)
-              UtenDropdownItem(value: entry.key, label: entry.value),
-          ],
-          onChanged: (value) => _changeQuery(
-            _query.copyWith(page: 1, status: value, clearStatus: value == null),
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s8),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: UtenButton(
-            key: ValueKey('asset-draft-category-${widget.ledger.apiValue}'),
-            size: UtenButtonSize.small,
-            type: UtenButtonType.tonal,
-            onPressed: () =>
-                _changeQuery(_query.copyWith(page: 1, status: 'DRAFT')),
-            child: UtenSegmentBadgeLabel(
-              label: '草稿',
-              count: _draftTotal == null
-                  ? (localDrafts == 0 ? null : localDrafts)
-                  : _draftTotal! + localDrafts,
-              countForm: UtenSegmentCountForm.actionable,
-            ),
-          ),
-        ),
-      ],
+    return UtenButton(
+      key: ValueKey('asset-draft-category-${widget.ledger.apiValue}'),
+      size: UtenButtonSize.small,
+      type: _query.status == 'DRAFT'
+          ? UtenButtonType.tonal
+          : UtenButtonType.secondary,
+      onPressed: () => _changeQuery(_query.copyWith(page: 1, status: 'DRAFT')),
+      child: UtenSegmentBadgeLabel(
+        label: '草稿',
+        count: _draftTotal == null
+            ? (localDrafts == 0 ? null : localDrafts)
+            : _draftTotal! + localDrafts,
+        countForm: UtenSegmentCountForm.actionable,
+      ),
     );
   }
 
@@ -541,12 +620,32 @@ class _FinanceAssetLedgerPanelState
     _load();
   }
 
-  Widget _table({List<Widget>? compactToolbarLeading}) {
+  Widget _table({required double filterWidth}) {
     final result = _result;
     return _withFormDraftRows(
       MasterDataTableView<FinanceAssetSummary>(
         tableKey: 'finance.asset.${widget.ledger.name}.ledger',
-        toolbarLeadingActions: compactToolbarLeading,
+        toolbarLeadingActions: _filterFields(filterWidth),
+        onFullscreenChanged: (fullscreen) {
+          if (!mounted) return;
+          setState(() => _fullscreen = fullscreen);
+          widget.onFullscreenChanged?.call(fullscreen);
+        },
+        toolbarActions: _fullscreen && widget.capabilities.canEdit
+            ? [
+                UtenButton(
+                  key: Key(
+                    'finance-asset-create-fullscreen-${widget.ledger.apiValue}',
+                  ),
+                  icon: Icons.add_rounded,
+                  onPressed: _create,
+                  child: Text('新建${widget.ledger.label}'),
+                ),
+              ]
+            : null,
+        bottomContentPadding: widget.capabilities.canEdit
+            ? UtenFloatingActionGroup.scrollClearance
+            : 0,
         errorKey: Key('finance-asset-retry-${widget.ledger.apiValue}'),
         key: ValueKey('finance-asset-table-${widget.ledger.apiValue}'),
         columns: [
@@ -657,18 +756,6 @@ class _FinanceAssetLedgerPanelState
           _query.departmentId,
         ),
         onPageChange: (page) => _changeQuery(_query.copyWith(page: page)),
-        toolbarActions: widget.capabilities.canEdit
-            ? [
-                UtenButton(
-                  key: Key(
-                    'finance-asset-create-table-${widget.ledger.apiValue}',
-                  ),
-                  icon: Icons.add_rounded,
-                  onPressed: _create,
-                  child: Text('新建${widget.ledger.label}'),
-                ),
-              ]
-            : null,
       ),
     );
   }

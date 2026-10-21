@@ -10,6 +10,7 @@ class FinanceAssetCapabilities {
     this.canDelete = false,
     required this.canApprove,
     required this.canPost,
+    this.canReverse = false,
     required this.canDispose,
     required this.canManagePeriod,
   });
@@ -19,6 +20,7 @@ class FinanceAssetCapabilities {
   final bool canDelete;
   final bool canApprove;
   final bool canPost;
+  final bool canReverse;
   final bool canDispose;
   final bool canManagePeriod;
 }

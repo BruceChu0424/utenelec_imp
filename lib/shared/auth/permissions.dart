@@ -425,6 +425,7 @@ abstract final class Perm {
   static const financeAssetDelete = 'finance_asset:delete';
   static const financeAssetApprove = 'finance_asset:approve';
   static const financeAssetPost = 'finance_asset:post';
+  static const financeAssetReverse = 'finance_asset:reverse';
   static const financeAssetDispose = 'finance_asset:dispose';
   static const financeAssetPeriodManage = 'finance_asset_period:manage';
   static const financePostExecute = 'finance_post:execute';
@@ -442,10 +443,12 @@ abstract final class Perm {
   static const salesOrderFinanceView = 'sales_order_finance:view';
   static const salesOrderFinanceConfirm = 'sales_order_finance:confirm';
 
-  /// 销售报价财务核价(ADR-134)：查看核价队列与详情 / 改价、退回、确认、撤销确认。
-  /// 按有效查看/确认权限办理，不叠加部门或授权来源；按钮仍遵守服务端 allowedActions。
+  /// 销售报价财务核价：查看 / 核价并确认 / 退回销售 / 重新核价分别授权。
+  /// 查看权限与对应动作权限同时生效；按钮仍遵守服务端 allowedActions。
   static const salesQuoteFinanceView = 'sales_quote_finance:view';
   static const salesQuoteFinanceConfirm = 'sales_quote_finance:confirm';
+  static const salesQuoteFinanceReject = 'sales_quote_finance:reject';
+  static const salesQuoteFinanceReverse = 'sales_quote_finance:reverse';
 
   static const arApLedgerView = 'ar_ap_ledger:view';
   static const customerPrepaymentView = 'customer_prepayment:view';

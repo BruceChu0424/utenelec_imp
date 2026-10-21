@@ -165,6 +165,29 @@ class _FakeRepo implements WorkshopMaterialReportRepository {
       const PagedResult(items: [], page: 1, size: 50, total: 0, totalPages: 1);
 }
 
+class _OpenedOnlyRepo extends _FakeRepo {
+  final periodReads = <String>[];
+
+  @override
+  Future<List<WmReportBin>> bins() async => [
+    WmReportBin.fromSettingsJson({
+      'workshopDepartmentId': 'ws-1',
+      'workshopName': '注塑车间',
+      'status': 'OPEN',
+      'binOpened': true,
+      'periodicEnabled': false,
+      'binWarehouseId': 'bin-opened',
+      'binWarehouseName': '注塑车间内料仓',
+    })!,
+  ];
+
+  @override
+  Future<List<WmReportPeriod>> periods(String binId) async {
+    periodReads.add(binId);
+    return const [];
+  }
+}
+
 const _usageRow = WmBinUsageRow(
   periodId: 'p1',
   periodNo: 1,
@@ -250,6 +273,19 @@ Future<void> _pump(
 
 void main() {
   _serverShapeTests();
+
+  testWidgets('已开通但未整批领料的内料仓可浏览空报表且不显示蓝色说明', (tester) async {
+    final repo = _OpenedOnlyRepo();
+    await _pump(tester, repo);
+    expect(find.text('注塑车间内料仓'), findsOneWidget);
+    expect(repo.periodReads, ['bin-opened']);
+    expect(find.text('这个仓库不是车间内料仓'), findsNothing);
+    expect(find.textContaining('耗用由期初和期末盘点推算'), findsNothing);
+    await selectFilterSegment(tester, '产品用料');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('耗用由期初和期末盘点推算'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets(
     '320 2x nonlinear waste trend keeps axes, extreme/null facts and selection',
     (tester) async {
@@ -791,7 +827,7 @@ void main() {
     );
     expect(unit.label, '材料单位');
     expect(unit.value(table.items.first), 'kg');
-    expect(find.textContaining('不等于报废率'), findsOneWidget);
+    expect(find.textContaining('不等于报废率'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

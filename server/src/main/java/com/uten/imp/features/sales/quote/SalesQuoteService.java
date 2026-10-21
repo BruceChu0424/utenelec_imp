@@ -80,6 +80,8 @@ public class SalesQuoteService {
 
     public static final String FINANCE_VIEW = "sales_quote_finance:view";
     public static final String FINANCE_CONFIRM = "sales_quote_finance:confirm";
+    public static final String FINANCE_REJECT = "sales_quote_finance:reject";
+    public static final String FINANCE_REVERSE = "sales_quote_finance:reverse";
 
     public static final String BUCKET_DRAFT = "DRAFT";
     public static final String BUCKET_FINANCE_REJECTED = "FINANCE_REJECTED";

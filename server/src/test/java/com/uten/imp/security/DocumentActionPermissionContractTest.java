@@ -136,6 +136,18 @@ class DocumentActionPermissionContractTest {
     }
 
     @Test
+    void assetReversalHasItsOwnGateAtBothControllerAndServiceLayers() {
+        Class<?> controller = type("com.uten.imp.features.finance.asset.FixedAssetController");
+        Class<?> service = type("com.uten.imp.features.finance.asset.application.FinanceAssetPostingService");
+        assertGate(controller, "reverseRun", authority("finance_asset:reverse"));
+        assertGate(service, "reverse", authority("finance_asset:reverse"));
+        // A single post route accepts either role; the service checks the persisted run kind.
+        String execution = "hasAnyAuthority('finance_asset:post', 'finance_asset:reverse')";
+        assertGate(controller, "postRun", execution);
+        assertGate(service, "post", execution);
+    }
+
+    @Test
     void conversionsOrdersAndSpecialActionsKeepTheirExactMultiLayerGates() {
         String convert = authority("sales_quote:convert")
                 + " and " + authority("sales_order:create");
@@ -146,7 +158,7 @@ class DocumentActionPermissionContractTest {
         assertGate(type("com.uten.imp.features.sales.order.SalesOrderService"),
                 "createFromQuote", convert);
 
-        // ADR-134 报价财务核价: 读 = sales_quote_finance:view; 改价/退回/确认/撤销确认 = view + confirm。
+        // 报价财务核价：改价和确认共用核价权；退回和重新核价分别授权。
         String financeView = authority("sales_quote_finance:view");
         String financeDecide = financeView + " and " + authority("sales_quote_finance:confirm");
         Class<?> financeController = type("com.uten.imp.features.sales.quote.SalesQuoteFinanceController");
@@ -157,10 +169,12 @@ class DocumentActionPermissionContractTest {
         }
         assertGate(financeController, "edit", financeDecide);
         assertGate(financeService, "edit", financeDecide);
-        for (String method : List.of("returnToSales", "confirm", "reopen")) {
-            assertGate(financeController, method, financeDecide);
-            assertGate(financeService, method, financeDecide);
-        }
+        assertGate(financeController, "confirm", financeDecide);
+        assertGate(financeService, "confirm", financeDecide);
+        assertGate(financeController, "returnToSales", financeView + " and " + authority("sales_quote_finance:reject"));
+        assertGate(financeService, "returnToSales", financeView + " and " + authority("sales_quote_finance:reject"));
+        assertGate(financeController, "reopen", financeView + " and " + authority("sales_quote_finance:reverse"));
+        assertGate(financeService, "reopen", financeView + " and " + authority("sales_quote_finance:reverse"));
 
         Class<?> salesOrderController =
                 type("com.uten.imp.features.sales.order.SalesOrderController");

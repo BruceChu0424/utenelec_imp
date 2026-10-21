@@ -275,8 +275,13 @@ class _FinanceAssetPostingPanelState
   }
 
   Future<void> _reverse(AssetPostingRun run) async {
-    final reason = await _reasonDialog('冲销过账批次');
-    if (reason == null || !mounted) return;
+    if (_busy ||
+        !widget.capabilities.canReverse ||
+        !actionAllowed(run.allowedActions, 'REVERSE')) {
+      return;
+    }
+    final reason = await _reasonDialog('撤销入账');
+    if (reason == null || !mounted || !widget.capabilities.canReverse) return;
     await _runBusy(() async {
       try {
         await ref
@@ -289,16 +294,23 @@ class _FinanceAssetPostingPanelState
               reason: reason,
             );
         if (!mounted) return;
-        context.appSuccess('冲销申请已提交，待复核与过账');
+        context.appSuccess('撤销入账申请已提交，待复核与入账');
         await _loadRuns();
         await _loadPeriods();
       } catch (error) {
-        if (mounted) context.appApiError(error, fallback: '冲销失败，请重试');
+        if (mounted) context.appApiError(error, fallback: '撤销入账失败，请重试');
       }
     });
   }
 
+  bool _canPostRun(AssetPostingRun run) =>
+      (run.isReversal
+          ? widget.capabilities.canReverse
+          : widget.capabilities.canPost) &&
+      actionAllowed(run.allowedActions, 'POST');
+
   Future<void> _runHistoryAction(AssetPostingRun run, String action) async {
+    if (action == 'post' && !_canPostRun(run)) return;
     if (action == 'approve') {
       final confirmed = await showUtenReviewerConfirmDialog(
         context,
@@ -757,7 +769,7 @@ class _FinanceAssetPostingPanelState
   Widget _runHistory() {
     return _sectionShell(
       title: '过账批次历史',
-      subtitle: '每次预览、审批、过账与冲销均保留可追溯记录。',
+      subtitle: '每次预览、审批、过账与撤销入账均保留可追溯记录。',
       child: _runsLoading
           ? const Center(child: CircularProgressIndicator())
           : _runsError != null
@@ -800,22 +812,21 @@ class _FinanceAssetPostingPanelState
                             onAction: () => _runHistoryAction(run, 'approve'),
                             label: const Text('审批'),
                           ),
-                        if (widget.capabilities.canPost &&
-                            actionAllowed(run.allowedActions, 'POST'))
+                        if (_canPostRun(run))
                           UtenActionButton(
                             key: Key('finance-asset-history-post-${run.id}'),
                             size: UtenActionButtonSize.small,
                             onAction: () => _runHistoryAction(run, 'post'),
                             label: const Text('过账'),
                           ),
-                        if (widget.capabilities.canPost &&
+                        if (widget.capabilities.canReverse &&
                             actionAllowed(run.allowedActions, 'REVERSE'))
                           UtenActionButton(
                             key: Key('finance-asset-history-reverse-${run.id}'),
                             type: UtenActionButtonType.danger,
                             size: UtenActionButtonSize.small,
                             onAction: () => _reverse(run),
-                            label: const Text('冲销'),
+                            label: const Text('撤销入账'),
                           ),
                       ],
                     ),

@@ -137,6 +137,8 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
           .contains(Perm.salesQuoteFinanceConfirm);
   @override
   bool canDispatchReviewCommand(String action) =>
+      formDraftIdentityIsCurrent &&
+      !formDraftRestorationBlocked &&
       _claimReady &&
       _allows(switch (action) {
         'save' => SalesQuoteFinanceAction.edit,
@@ -355,14 +357,28 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
   bool get _claimReady => _claim?.isReady == true;
 
   bool _allows(SalesQuoteFinanceAction action) =>
-      ref
-          .read(currentPermissionsProvider)
-          .contains(Perm.salesQuoteFinanceConfirm) &&
-      ref
-          .read(currentPermissionsProvider)
-          .contains(Perm.salesQuoteFinanceView) &&
-      !ref.read(sessionProvider).impersonationReadOnly &&
-      (_review?.allows(action) ?? false);
+      _review != null && _allowsForReview(_review!, action);
+
+  bool _allowsForReview(
+    SalesQuoteFinanceReview review,
+    SalesQuoteFinanceAction action,
+  ) {
+    final permissions = ref.read(currentPermissionsProvider);
+    final actionPermission = switch (action) {
+      SalesQuoteFinanceAction.edit ||
+      SalesQuoteFinanceAction.confirm => Perm.salesQuoteFinanceConfirm,
+      SalesQuoteFinanceAction.returnToSales => Perm.salesQuoteFinanceReject,
+      SalesQuoteFinanceAction.reopen => Perm.salesQuoteFinanceReverse,
+    };
+    return permissions.contains(Perm.salesQuoteFinanceView) &&
+        permissions.contains(actionPermission) &&
+        !ref.read(sessionProvider).impersonationReadOnly &&
+        review.allows(action);
+  }
+
+  bool _needsClaim(SalesQuoteFinanceReview review) => SalesQuoteFinanceAction
+      .values
+      .any((action) => action.needsClaim && _allowsForReview(review, action));
 
   /// 能改价：服务端允许 + 本人认领有效。
   bool get _editable => _allows(SalesQuoteFinanceAction.edit) && _claimReady;
@@ -410,7 +426,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
       if (!mounted || !isCurrent()) return;
       // 只有能改价/退回/确认时才占用；撤销确认、已办结或无权的都不占认领
       // (已核价的报价服务端拒绝认领，撤销确认本身也不要求认领)。
-      if (review.needsClaim) {
+      if (_needsClaim(review)) {
         final claim = financeReviewClaim(
           container,
           localizations: AppLocalizations.of(context),
@@ -761,11 +777,19 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
     _setBusy(true, l10n.quoteFinanceBusy);
     try {
       if (!await _ensureClaim(l10n) || !isCurrent()) return;
-      await submitReviewCommand(
-        action,
-        () => call(_claimId()!),
-        request: request,
-      );
+      if (!canDispatchReviewCommand(action) || formDraftHasUnknownSubmission) {
+        return;
+      }
+      if (reviewDraftEditable) {
+        await submitReviewCommand(
+          action,
+          () => call(_claimId()!),
+          request: request,
+        );
+      } else {
+        // 只有退回权限时不开放核价编辑草稿；仍使用当前版本和本人有效认领提交。
+        await call(_claimId()!);
+      }
       if (!mounted || !isCurrent()) return;
       await finishReviewDraft();
       if (!mounted || !isCurrent()) return;
@@ -1018,18 +1042,18 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (review.needsClaim && !_claimReady) ...[
+        if (_needsClaim(review) && !_claimReady) ...[
           FinanceReviewClaimNotice(
             claim: _claim,
             onRetry: _busy ? null : _load,
           ),
           const SizedBox(height: UtenSpacing.s12),
         ],
-        if (!review.hasFinanceActions) ...[
+        if (!SalesQuoteFinanceAction.values.any(_allows)) ...[
           UtenInlineNotice(message: l10n.quoteFinanceReadOnlyNotice),
           const SizedBox(height: UtenSpacing.s12),
         ],
-        if (resubmitted && review.allows(SalesQuoteFinanceAction.edit)) ...[
+        if (resubmitted && _allows(SalesQuoteFinanceAction.edit)) ...[
           UtenInlineNotice(
             key: const Key('quote-finance-resubmit-notice'),
             level: UtenInlineNoticeLevel.warning,
@@ -1037,8 +1061,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
           ),
           const SizedBox(height: UtenSpacing.s12),
         ],
-        if (needPrice.isNotEmpty &&
-            review.allows(SalesQuoteFinanceAction.edit)) ...[
+        if (needPrice.isNotEmpty && _allows(SalesQuoteFinanceAction.edit)) ...[
           UtenInlineNotice(
             key: const Key('quote-finance-need-price-notice'),
             level: UtenInlineNoticeLevel.error,
@@ -1839,7 +1862,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
               ? null
               : () => setState(_selected.clear),
         ),
-      if (review.allows(SalesQuoteFinanceAction.returnToSales))
+      if (_allows(SalesQuoteFinanceAction.returnToSales))
         UtenButton(
           key: const Key('quote-finance-return'),
           type: UtenButtonType.danger,
@@ -1850,7 +1873,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
           child: Text(l10n.quoteFinanceActionReturn),
         ),
       // 撤销确认不需要认领(SPEC §6.2)，只看服务端是否允许。
-      if (review.allows(SalesQuoteFinanceAction.reopen))
+      if (_allows(SalesQuoteFinanceAction.reopen))
         UtenButton(
           key: const Key('quote-finance-reopen'),
           type: UtenButtonType.secondary,
@@ -1859,7 +1882,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
           onPressed: _busy ? null : _reopen,
           child: Text(l10n.quoteFinanceActionReopen),
         ),
-      if (review.allows(SalesQuoteFinanceAction.edit))
+      if (_allows(SalesQuoteFinanceAction.edit))
         UtenButton(
           key: const Key('quote-finance-save'),
           type: UtenButtonType.secondary,
@@ -1871,7 +1894,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
               : notReady,
           child: Text(l10n.quoteFinanceActionSave),
         ),
-      if (review.allows(SalesQuoteFinanceAction.confirm))
+      if (_allows(SalesQuoteFinanceAction.confirm))
         UtenButton(
           key: const Key('quote-finance-confirm'),
           size: UtenButtonSize.large,

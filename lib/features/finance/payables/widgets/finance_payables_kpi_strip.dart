@@ -85,12 +85,6 @@ class FinancePayablesKpiStrip extends StatelessWidget {
                         ),
                       ),
                     ),
-                    Text(
-                      '服务端汇总口径',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
                   ],
                 ),
                 const SizedBox(height: UtenSpacing.s4),

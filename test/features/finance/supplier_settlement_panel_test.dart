@@ -61,7 +61,7 @@ void main() {
   });
 
   testWidgets(
-    'monthly status re-tap reloads its same status and all removes only that query',
+    'monthly status re-tap keeps its query and all removes only that query',
     (tester) async {
       tester.view.physicalSize = const Size(375, 900);
       tester.view.devicePixelRatio = 1;
@@ -81,7 +81,7 @@ void main() {
       final reads = api.listQueries.length;
       await selectFilterSegment(tester, '已冻结');
       await tester.pumpAndSettle();
-      expect(api.listQueries.length, reads + 1);
+      expect(api.listQueries.length, reads);
       expect(api.listQueries.last['status'], 'FROZEN');
       await selectFilterSegment(tester, '全部');
       await tester.pumpAndSettle();

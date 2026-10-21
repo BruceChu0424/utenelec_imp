@@ -9,15 +9,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
-import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_list_two_pane.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -268,55 +269,52 @@ class _FinanceReconciliationPageState
         child: UtenContentContainer.wide(
           child: Padding(
             padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            child: UtenListTwoPane(
-              filterPane: Padding(
-                padding: EdgeInsets.zero,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: double.infinity,
-                      child: UtenSearchBar(
-                        hint: '搜索单据号/对手方/支票号',
-                        initialValue: _keyword,
-                        onChanged: (v) {
-                          setState(() => _keyword = v);
-                          _load(1);
-                        },
+            child: UtenCollapsingHeaderScrollView(
+              collapsingHeader: Padding(
+                padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+                child: UtenFilterToolbar<Object>(
+                  compactBreakpoint: UtenBreakpoints.mediumStart,
+                  searchHint: '搜索单据号 / 对手方',
+                  initialSearchValue: _keyword,
+                  onSearchChanged: (value) {
+                    setState(() => _keyword = value);
+                    _load(1);
+                  },
+                  onSearchSubmitted: (value) {
+                    setState(() => _keyword = value);
+                    _load(1);
+                  },
+                  trailing: SizedBox(
+                    width: 220,
+                    child: DropdownButtonFormField<String?>(
+                      initialValue: _accountId,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        labelText: '账户',
                       ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: DropdownButtonFormField<String?>(
-                        initialValue: _accountId,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          labelText: '账户',
-                        ),
-                        items: [
-                          const DropdownMenuItem<String?>(child: Text('全部账户')),
-                          for (final e in names.accountEntries.entries)
-                            DropdownMenuItem<String?>(
-                              value: e.key,
-                              child: Text(
-                                e.value,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
+                      items: [
+                        const DropdownMenuItem<String?>(child: Text('全部账户')),
+                        for (final entry in names.accountEntries.entries)
+                          DropdownMenuItem<String?>(
+                            value: entry.key,
+                            child: Text(
+                              entry.value,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                        ],
-                        onChanged: (v) {
-                          setState(() => _accountId = v);
-                          _load(1);
-                        },
-                      ),
+                          ),
+                      ],
+                      onChanged: (value) {
+                        setState(() => _accountId = value);
+                        _load(1);
+                      },
                     ),
-                  ],
+                  ),
                 ),
               ),
-              tablePane: MasterDataTableView<ReconciliationItem>(
+              body: MasterDataTableView<ReconciliationItem>(
+                primary: true,
                 tableKey:
                     'features.finance.pages.finance_reconciliation_page.FinanceReconciliationPageState.build.1',
                 columns: _columns(names),

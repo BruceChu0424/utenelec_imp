@@ -2,6 +2,8 @@ package com.uten.imp.features.warehouse.materialbin.report;
 
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialPermissions;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialScope;
+import com.uten.imp.features.warehouse.materialbin.WorkshopBinService;
+import com.uten.imp.common.web.ApiException;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,6 +19,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
 /** 真实 PostgreSQL 查询回归；只搭建只读投影所需的表形状，不执行库存写命令或全链迁移。 */
@@ -47,6 +50,8 @@ class WorkshopMaterialReportCountBasisPostgresTest {
         db.execute("""
                 DROP SCHEMA public CASCADE; CREATE SCHEMA public;
                 CREATE TABLE workshop_material_settings(periodic_bin_warehouse_id uuid, workshop_department_id uuid);
+                CREATE TABLE workshop_bins(bin_warehouse_id uuid PRIMARY KEY, workshop_department_id uuid);
+                CREATE TABLE warehouses(id uuid PRIMARY KEY, is_deleted boolean DEFAULT false);
                 CREATE TABLE workshop_material_periods(id uuid PRIMARY KEY, bin_warehouse_id uuid, period_no int);
                 CREATE TABLE workshop_material_counts(id uuid PRIMARY KEY, period_id uuid, status text);
                 CREATE TABLE workshop_material_count_lines(count_id uuid, goods_id uuid, color_id uuid,
@@ -88,6 +93,8 @@ class WorkshopMaterialReportCountBasisPostgresTest {
             db.execute(migration.substring(start, migration.indexOf("$$;", start) + 3));
         }
         db.update("INSERT INTO workshop_material_settings VALUES (?, ?)", bin, workshop);
+        db.update("INSERT INTO workshop_bins VALUES (?, ?)", bin, workshop);
+        db.update("INSERT INTO warehouses(id) VALUES (?)", bin);
         db.update("INSERT INTO goods VALUES (?, 'PP', '颗粒'), (?, 'P1', '外壳')", goods, product);
         db.update("INSERT INTO product_reference VALUES (?)", product);
         db.update("INSERT INTO colors VALUES (?, '黑')", color);
@@ -106,7 +113,42 @@ class WorkshopMaterialReportCountBasisPostgresTest {
         permissions = mock(WorkshopMaterialPermissions.class);
         when(permissions.has("goods:cost:view")).thenReturn(true);
         scope = mock(WorkshopMaterialScope.class);
-        reports = new WorkshopMaterialReportQueryService(named, scope, permissions);
+        reports = new WorkshopMaterialReportQueryService(named, scope, permissions, new WorkshopBinService(named));
+    }
+
+    @Test void openedBinIdentityDoesNotDependOnPeriodicSettingsAndHistoricalDataRemainsReadable() {
+        db.update("DELETE FROM workshop_material_settings WHERE periodic_bin_warehouse_id = ?", bin);
+        assertThat(reports.binUsage(bin, null, null)).hasSize(4);
+        assertThat(reports.productUsage(bin, null, null)).hasSize(4);
+        assertThat(reports.wasteTrend(bin, null)).hasSize(4);
+        verify(scope, times(3)).requireWorkshop(workshop);
+        assertThat(db.queryForObject("SELECT count(*) FROM workshop_material_settings", Integer.class)).isZero();
+    }
+
+    @Test void newlyOpenedBinWithNoPeriodicActivityReturnsAnEmptyReport() {
+        UUID openedOnly = UUID.randomUUID(), openedWorkshop = UUID.randomUUID();
+        db.update("INSERT INTO workshop_bins VALUES (?, ?)", openedOnly, openedWorkshop);
+        db.update("INSERT INTO warehouses(id) VALUES (?)", openedOnly);
+        assertThat(reports.binUsage(openedOnly, null, null)).isEmpty();
+        assertThat(reports.productUsage(openedOnly, null, null)).isEmpty();
+        assertThat(reports.wasteTrend(openedOnly, null)).isEmpty();
+        verify(scope, times(3)).requireWorkshop(openedWorkshop);
+    }
+
+    @Test void ordinaryDeletedAndOutOfScopeBinsRemainRejected() {
+        UUID ordinary = UUID.randomUUID();
+        db.update("INSERT INTO warehouses(id) VALUES (?)", ordinary);
+        assertThatThrownBy(() -> reports.binUsage(ordinary, null, null))
+                .isInstanceOf(ApiException.class).hasMessageContaining("不是车间内料仓");
+        db.update("UPDATE warehouses SET is_deleted = true WHERE id = ?", bin);
+        assertThatThrownBy(() -> reports.binUsage(bin, null, null))
+                .isInstanceOf(ApiException.class).hasMessageContaining("不是车间内料仓");
+        verifyNoInteractions(scope);
+        db.update("UPDATE warehouses SET is_deleted = false WHERE id = ?", bin);
+        doThrow(new ApiException(com.uten.imp.common.web.ErrorCode.FORBIDDEN, "只能查看和办理本车间的内料仓"))
+                .when(scope).requireWorkshop(workshop);
+        assertThatThrownBy(() -> reports.binUsage(bin, null, null))
+                .isInstanceOf(ApiException.class).hasMessageContaining("本车间");
     }
 
     @Test void openingEstimateSurvivesAWeighedClosingAndIsSharedByAllThreeReports() {

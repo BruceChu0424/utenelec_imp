@@ -257,7 +257,9 @@ void main() {
     expect(find.text('可查看数据'), findsOneWidget);
     expect(find.text('客户与销售'), findsOneWidget);
     expect(find.text('财务'), findsOneWidget);
-    expect(find.text('查看全部覆盖'), findsOneWidget);
+    expect(find.text('可查看全部'), findsOneWidget);
+    expect(find.text('已拥有查看全部数据的权限，无需再选择负责人范围。'), findsOneWidget);
+    expect(find.textContaining('client:view:all'), findsNothing);
     expect(find.text('功能未启用'), findsOneWidget);
     expect(find.text('当前全员可见全部货品'), findsOneWidget);
     expect(find.text('财务单据可见负责人'), findsOneWidget);

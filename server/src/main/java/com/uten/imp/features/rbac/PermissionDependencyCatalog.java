@@ -29,7 +29,7 @@ public final class PermissionDependencyCatalog {
         // These are existing controller/service AND conditions, not naming conventions.
         actions(hard, catalog, "finance_order_approval", "approve", "reject");
         actions(hard, catalog, "sales_order_finance", "confirm");
-        actions(hard, catalog, "sales_quote_finance", "confirm");
+        actions(hard, catalog, "sales_quote_finance", "confirm", "reject", "reverse");
         actions(hard, catalog, "sales_shipment_finance", "approve", "reject");
         actions(hard, catalog, "production_quality_inspection", "approve");
         actions(hard, catalog, "website", "content_edit", "product_edit", "media_manage", "publish", "rollback");
@@ -110,7 +110,7 @@ public final class PermissionDependencyCatalog {
             actions(rules, catalog, resource, "create", "edit", "delete", "approve", "reverse");
         }
         actions(rules, catalog, "finance_expense", "gl_confirm");
-        actions(rules, catalog, "finance_asset", "create", "edit", "delete", "approve", "post", "dispose");
+        actions(rules, catalog, "finance_asset", "create", "edit", "delete", "approve", "post", "reverse", "dispose");
         actions(rules, catalog, "sales_shipment_finance", "reverse");
         actions(rules, catalog, "supplier_settlement", "create", "confirm", "dispute", "reverse");
         actions(rules, catalog, "subcontract_loss_claim", "review", "fulfill", "reverse");

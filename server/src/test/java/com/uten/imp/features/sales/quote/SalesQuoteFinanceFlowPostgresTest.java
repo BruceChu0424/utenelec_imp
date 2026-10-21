@@ -58,7 +58,7 @@ import static org.mockito.Mockito.verify;
 
 /**
  * ADR-134 报价核价流程(真实 PostgreSQL, 切换销售/财务/无资格账号走完整服务栈):
- * 报价单价权威、提交/撤回/退回/确认/撤销确认、财务读范围、认领与修订号、确认前阻断、转订货单带折扣并锁定、
+ * 报价单价权威、提交/撤回/退回/确认/重新核价、财务读范围、认领与修订号、确认前阻断、转订货单带折扣并锁定、
  * 看不到价格的人保存、学习出口与识别采用事件、分段计数/草稿计数/徽章。
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
@@ -168,6 +168,59 @@ class SalesQuoteFinanceFlowPostgresTest {
     // =====================================================================
     // 单价权威
     // =====================================================================
+
+    @Test
+    void confirmationReturnAndReopenCanBeGrantedIndependentlyWithoutCrossingActions() {
+        Fixture f = fixture("split-actions");
+        UUID item = goods("分权核价货品", BigDecimal.TEN);
+        UUID separateDepartment = department("Q-SPLIT-" + SEQ.incrementAndGet());
+        UUID rejector = user("quote-reject-" + SEQ.incrementAndGet(), separateDepartment,
+                List.of("sales_quote_finance:view", "sales_quote_finance:reject", "notice:read"));
+        UUID confirmer = user("quote-confirm-" + SEQ.incrementAndGet(), separateDepartment,
+                List.of("sales_quote_finance:view", "sales_quote_finance:confirm", "notice:read"));
+        UUID reopener = user("quote-reopen-" + SEQ.incrementAndGet(), separateDepartment,
+                List.of("sales_quote_finance:view", "sales_quote_finance:reverse", "notice:read"));
+        loginAs(f.sales());
+        var draft = quotes.create(quoteRequest(f.client(), line(item, "2", null, "1", null)));
+        quotes.submit(draft.getId(), new QuoteActionRequest(0));
+
+        loginAs(rejector);
+        var rejectionReview = finance.review(draft.getId());
+        assertThat(rejectionReview.financeActions()).containsExactly("return");
+        assertThat(finance.pendingCount().get("pending")).isPositive();
+        var rejectClaim = claims.claim(CLAIM, draft.getId().toString());
+        assertThatThrownBy(() -> finance.edit(draft.getId(), null))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThatThrownBy(() -> finance.confirm(draft.getId(),
+                new QuoteFinanceDecisionRequest(rejectionReview.reviewRevision(), rejectClaim.claimId(), null)))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        var returned = finance.returnToSales(draft.getId(),
+                new QuoteFinanceDecisionRequest(rejectionReview.reviewRevision(), rejectClaim.claimId(), "请销售重新确认客户要求"));
+        loginAs(f.sales());
+        quotes.submit(draft.getId(), new QuoteActionRequest(returned.reviewRevision()));
+
+        loginAs(confirmer);
+        var confirmationReview = finance.review(draft.getId());
+        assertThat(confirmationReview.financeActions()).containsExactly("edit", "confirm");
+        var confirmClaim = claims.claim(CLAIM, draft.getId().toString());
+        assertThatThrownBy(() -> finance.returnToSales(draft.getId(),
+                new QuoteFinanceDecisionRequest(confirmationReview.reviewRevision(), confirmClaim.claimId(), "无退回权限")))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        var confirmed = finance.confirm(draft.getId(),
+                new QuoteFinanceDecisionRequest(confirmationReview.reviewRevision(), confirmClaim.claimId(), null));
+        assertThat(confirmed.financeActions()).isEmpty();
+        assertThatThrownBy(() -> finance.reopen(draft.getId(), new QuoteActionRequest(confirmed.reviewRevision())))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+
+        loginAs(reopener);
+        assertThat(finance.review(draft.getId()).financeActions()).containsExactly("reopen");
+        assertThat(finance.pendingCount().get("pending")).isZero();
+        assertThatThrownBy(() -> claims.claim(CLAIM, draft.getId().toString())).isInstanceOf(ApiException.class);
+        var reopened = finance.reopen(draft.getId(), new QuoteActionRequest(confirmed.reviewRevision()));
+        assertThat(reopened.status()).isEqualTo(SalesQuoteService.STATUS_PENDING_FINANCE);
+        assertThat(reopened.financeActions()).isEmpty();
+        assertThatThrownBy(() -> claims.claim(CLAIM, draft.getId().toString())).isInstanceOf(ApiException.class);
+    }
 
     @Test
     void salesCanProposeDocumentPricesWithoutChangingTheGoodsMaster() {
@@ -373,7 +426,7 @@ class SalesQuoteFinanceFlowPostgresTest {
         assertThat(confirmed.financeRemark()).isEqualTo("按 9.2 折");
         assertThat(claims.activeClaimView(CLAIM, quoteId.toString())).isEmpty();
 
-        // 财务撤销确认 → 待核价, 再确认: 上次确认折扣可对照。
+        // 重新核价 → 待核价, 再确认: 上次确认折扣可对照。
         finance.reopen(quoteId, new QuoteActionRequest(8, "客户追加折扣"));
         var claim3 = claims.claim(CLAIM, quoteId.toString());
         QuoteFinanceReviewDto reconfirmed = finance.confirm(quoteId, new QuoteFinanceDecisionRequest(9, claim3.claimId(), null));
@@ -427,7 +480,7 @@ class SalesQuoteFinanceFlowPostgresTest {
         assertThat(revisedOrder.getItems().getLast().getDiscount()).isEqualByComparingTo("0.5");
         assertThat(revisedOrder.getItems().getLast().isQuoteLocked()).isFalse();
 
-        // 报价已转单: 销售不能重新修改/作废, 财务不能撤销确认。
+        // 报价已转单: 销售不能重新修改/作废, 财务不能重新核价。
         assertConflict(() -> quotes.reopen(quoteId, new QuoteActionRequest(9)));
         assertConflict(() -> quotes.reverse(quoteId));
         loginAs(f.finance());
@@ -739,7 +792,7 @@ class SalesQuoteFinanceFlowPostgresTest {
                 new QuoteFinanceEditRequest.Line(ids.get(0), new BigDecimal("0.9"), null, null, null))));   // 2
         finance.confirm(id, new QuoteFinanceDecisionRequest(2, first.claimId(), null));                     // 3 确认(0.9)
 
-        // 财务撤销确认后自己再改: 不是「销售改了」, 也没有新的提交可对照。
+        // 重新核价后财务自己再改: 不是「销售改了」, 也没有新的提交可对照。
         finance.reopen(id, new QuoteActionRequest(3, "客户再要一点折扣"));                                   // 4
         var second = claims.claim(CLAIM, id.toString());
         QuoteFinanceReviewDto.Line afterReopen = finance.edit(id, edit(4, second.claimId(), List.of(
@@ -1496,7 +1549,7 @@ class SalesQuoteFinanceFlowPostgresTest {
         UUID sales = user("qs-" + suffix, salesDept, salesPerms);
         UUID masked = user("qm-" + suffix, salesDept, SALES_PERMS);
         UUID financeUser = user("qf-" + suffix, financeDept, List.of(
-                "sales_quote_finance:view", "sales_quote_finance:confirm", "sales_quote:view",
+                "sales_quote_finance:view", "sales_quote_finance:confirm", "sales_quote_finance:reject", "sales_quote_finance:reverse", "sales_quote:view",
                 "sales_order_finance:view", "sales_order_finance:confirm", "sales_order:view", "notice:read"));
         UUID outsider = user("qx-" + suffix, outsiderDept, List.of("notice:read"));
         return new Fixture(sales, masked, financeUser, outsider,

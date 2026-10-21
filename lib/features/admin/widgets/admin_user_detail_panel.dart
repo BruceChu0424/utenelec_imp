@@ -197,7 +197,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         if (_savingOverrides)
           const UtenBusyOverlay(
             title: '正在保存个人数据权限',
-            description: '正在写入权限覆盖并刷新生效权限，请勿重复提交或离开本页。',
+            description: '正在保存个人权限设置，请勿重复提交或离开本页。',
           ),
         Expanded(
           child: ListView(
@@ -317,7 +317,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                   child: Text(
                     dirtyCount > 0
                         ? '已修改 $dirtyCount 项'
-                        : '有 $legacyUnknownCount 项历史覆盖待超级管理员确认',
+                        : '有 $legacyUnknownCount 项历史权限设置待超级管理员确认',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
@@ -789,7 +789,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
               const SizedBox(width: UtenSpacing.s8),
               Expanded(
                 child: Text(
-                  '$reason。不能新增或调整个人授权；可清空已有个人授权覆盖。',
+                  '$reason。不能新增或调整个人授权；可清空已有个人权限设置。',
                   style: theme.textTheme.bodySmall?.copyWith(height: 1.45),
                 ),
               ),
@@ -845,7 +845,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
       return const UtenEmpty(
         icon: Icons.security_outlined,
         message: '权限目录为空',
-        description: '后端尚未返回可配置的权限点。',
+        description: '服务器尚未返回可设置的权限。',
       );
     }
 
@@ -857,7 +857,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
       isEnabled: (permission) => _switchValue(data, permission.code),
       isChanged: (permission) =>
           grants.contains(permission.code) || revokes.contains(permission.code),
-      changedFilterLabel: '个人覆盖',
+      changedFilterLabel: '个人单独设置',
       // 全量操作位于权限明细标题旁；目录里只保留模块/子类分组批量。
       showGlobalBulkActions: false,
       onGrantScope: canEdit ? (scope) => _grantScope(data, scope) : null,
@@ -998,7 +998,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
             '”会开放',
             permission.sensitivity == 'SENSITIVE_COMMERCIAL'
                 ? '商业敏感数据'
-                : '敏感能力',
+                : '高风险操作',
             '。该权限不会被批量授权带入，请确认该员工确需访问。',
           ].join(),
         ),
@@ -1108,10 +1108,10 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
           children: [
             if (viaDept) _sourceTag('部门'),
             if (viaBaseline) _sourceTag('基础'),
-            if (viaManager) _sourceTag('负责人委派'),
-            if (grants.contains(permission.code)) _sourceTag('个人加授'),
+            if (viaManager) _sourceTag('负责人授权'),
+            if (grants.contains(permission.code)) _sourceTag('个人单独授权'),
             if (data.legacyUnknownGrants.contains(permission.code))
-              _sourceTag('历史加授待确认', danger: true),
+              _sourceTag('历史授权待确认', danger: true),
             if (revoked) _sourceTag('已收回', danger: true),
             if (data.legacyUnknownRevokes.contains(permission.code))
               _sourceTag('历史收回待确认', danger: true),
@@ -1258,7 +1258,9 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     final confirmed = await UtenDialog.show(
       context,
       title: '清空个人授权？',
-      content: const Text('将移除全部个人加授、个人收回和待确认历史覆盖。部门权限、基础权限不会改变。'),
+      content: const Text(
+        '将清空此人的单独授权、单独收回和待确认历史设置；之后按部门、全员基础和仍有效的负责人授权重新计算权限。',
+      ),
       confirmLabel: '清空授权',
       danger: true,
     );
@@ -1656,7 +1658,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         promote
             ? '确定把「$name」设为超级管理员吗？\n设成后该账号拥有全部功能、可管理他人授权。'
             : '确定取消「$name」的超级管理员吗？\n取消后该账号将失去默认全部权限与授权管理能力，'
-                  '仅保留已显式配置的权限。',
+                  '之后按普通账号的权限设置使用。',
       ),
       confirmLabel: promote ? '设为超管' : '取消超管',
       danger: !promote,

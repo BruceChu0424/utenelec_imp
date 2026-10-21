@@ -18,6 +18,7 @@ import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
+import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -487,6 +488,96 @@ void main() {
     await tester.binding.setSurfaceSize(null);
   });
 
+  for (final reverseOnly in [false, true]) {
+    testWidgets(
+      'approved reversal posting uses reversal permission (reverseOnly=$reverseOnly)',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1280, 900));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final repository = _FakeAssetRepository(
+          historyRuns: [
+            AssetPostingRun.fromJson({
+              'id': 'run-reversal',
+              'runType': 'DEPRECIATION',
+              'period': '2026-08',
+              'status': 'APPROVED',
+              'itemCount': 1,
+              'totalAmount': '-100.00',
+              'allowedActions': ['POST'],
+              'reversalOfRunId': 'run-original',
+              'version': 6,
+            }),
+          ],
+        );
+        await _pumpWorkbench(
+          tester,
+          repository: repository,
+          permissions: {
+            Perm.financeAssetView,
+            if (reverseOnly)
+              Perm.financeAssetReverse
+            else
+              Perm.financeAssetPost,
+          },
+        );
+        await tester.tap(find.text('月末处理'));
+        await tester.pumpAndSettle();
+        final button = find.byKey(
+          const Key('finance-asset-history-post-run-reversal'),
+        );
+        expect(button, reverseOnly ? findsOneWidget : findsNothing);
+        if (reverseOnly) {
+          await tester.tap(button);
+          await tester.pumpAndSettle();
+          expect(repository.postingExpectedVersions, [6]);
+        }
+        expect(repository.postingActionCalls, reverseOnly ? 1 : 0);
+      },
+    );
+
+    testWidgets(
+      'asset posting reversal needs its own permission (reverseOnly=$reverseOnly)',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1280, 900));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await _pumpWorkbench(
+          tester,
+          repository: _FakeAssetRepository(
+            historyRuns: const [
+              AssetPostingRun(
+                id: 'run-split',
+                runType: AssetPostingRunType.depreciation,
+                period: '2026-08',
+                status: 'POSTED',
+                itemCount: 1,
+                totalAmount: '100.00',
+                allowedActions: {'POST', 'REVERSE'},
+                version: 6,
+              ),
+            ],
+          ),
+          permissions: {
+            Perm.financeAssetView,
+            if (reverseOnly)
+              Perm.financeAssetReverse
+            else
+              Perm.financeAssetPost,
+          },
+        );
+        await tester.tap(find.text('月末处理'));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('finance-asset-history-reverse-run-split')),
+          reverseOnly ? findsOneWidget : findsNothing,
+        );
+        expect(
+          find.byKey(const Key('finance-asset-history-post-run-split')),
+          reverseOnly ? findsNothing : findsOneWidget,
+        );
+      },
+    );
+  }
+
   testWidgets('policy banner masks English policy keys with Chinese labels', (
     tester,
   ) async {
@@ -501,6 +592,10 @@ void main() {
       ],
     );
 
+    await tester.tap(
+      find.byKey(const Key('finance-asset-restrictions-toggle')),
+    );
+    await tester.pumpAndSettle();
     expect(find.textContaining('政策未就绪'), findsOneWidget);
     // 用完整友好标签断言（账簿 Tab 只写「固定资产/长期待摊费用」，标签全称仅出现在横幅）
     expect(find.textContaining('固定资产类别政策'), findsOneWidget);
@@ -515,44 +610,39 @@ void main() {
     await tester.binding.setSurfaceSize(null);
   });
 
-  // ────────────────────────────────────────────────────────────────────
-  // 滚动层级：数据卡片常驻 → 横幅滚走 → Tab 吸顶 → 内容内滚 → 下滚还原
-  // ────────────────────────────────────────────────────────────────────
-
-  // TODO(follow-up): 2026-10-09 紧凑布局(筛选稳定槽+行区提示)在 360x900 双横幅
-  // 初始帧仍有 167px 溢出(滚动收起横幅后恢复)；需重排紧凑骨架并补齐实际回归。
-
-  testWidgets('wide: drag on empty table collapses banners and pins tab bar', (
+  testWidgets('wide: overview scrolls away and ledger remains usable', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await _pumpWorkbench(
       tester,
       repository: _FakeAssetRepository(),
       policyReady: false,
       postedWorkflowsEnabled: false,
     );
-
-    expect(find.text('核心落账暂未开放'), findsOneWidget);
-    final tabBar = find.byType(TabBar);
-    final tabTop0 = tester.getTopLeft(tabBar).dy;
-
-    // 表格行数为 0 也要能拖动联动（primary 模式 AlwaysScrollable 的意义）。
-    final tableArea = tester.getCenter(find.byType(Scrollable).last);
-    for (var i = 0; i < 4; i++) {
-      await tester.dragFrom(tableArea, const Offset(0, -260));
-      await tester.pumpAndSettle();
-    }
-
-    final tabTop1 = tester.getTopLeft(tabBar).dy;
-    expect(tabTop1, lessThan(tabTop0), reason: '空表格上滑也应收起横幅');
-
-    for (var i = 0; i < 2; i++) {
-      await tester.dragFrom(tableArea, const Offset(0, -200));
-      await tester.pumpAndSettle();
-    }
-    expect(tester.getTopLeft(tabBar).dy, tabTop1, reason: '吸顶后 Tab 栏应钉住不动');
-    await tester.binding.setSurfaceSize(null);
+    final sections = find.byKey(const Key('finance-asset-sections'));
+    final top = tester.getTopLeft(sections).dy;
+    final outer = find
+        .descendant(
+          of: find.byType(UtenCollapsingHeaderScrollView),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    final outerState = tester.state<ScrollableState>(outer);
+    expect(outerState.position.maxScrollExtent, greaterThan(0));
+    outerState.position.jumpTo(outerState.position.maxScrollExtent);
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(sections).dy, lessThan(top));
+    expect(
+      find.byKey(const Key('asset-search-FIXED_ASSET')).hitTestable(),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('finance-asset-create-FIXED_ASSET')).hitTestable(),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
   });
 }
 
@@ -565,6 +655,7 @@ Future<void> _pumpWorkbench(
     Perm.financeAssetDelete,
     Perm.financeAssetApprove,
     Perm.financeAssetPost,
+    Perm.financeAssetReverse,
     Perm.financeAssetDispose,
     Perm.financeAssetPeriodManage,
   },

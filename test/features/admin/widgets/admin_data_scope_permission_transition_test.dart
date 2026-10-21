@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_employee_multi_picker.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/admin/models/admin_models.dart';
 import 'package:uten_imp/features/admin/repositories/admin_repository.dart';
 import 'package:uten_imp/features/admin/repositories/permission_configuration_repository.dart';
@@ -31,6 +32,9 @@ void main() {
           isSuperAdminProvider.overrideWithValue(true),
         ],
         child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('zh'),
           home: Scaffold(
             body: AdminUserDetailPanel(
               user: const AdminUserSummary(
@@ -139,7 +143,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(repository.loadedScopes, isEmpty);
-      expect(find.text('查看全部覆盖'), findsOneWidget);
+      expect(find.text('可查看全部'), findsOneWidget);
 
       effective.value = const AsyncValue.data(
         EffectivePermissions(

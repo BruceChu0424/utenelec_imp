@@ -18,7 +18,7 @@ permissions:
 jobs:
   java:
     name: Java security and quality
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
       # Full-project queries avoid the compare API's 300-file diff limit.

@@ -202,6 +202,10 @@ class ReviewNoticeAudienceTest {
         Set<String> reviewer = Set.of("notice:read", "sales_quote_finance:view", "sales_quote_finance:confirm");
         assertThat(ReviewNoticeAudience.eligible(event, reviewer)).isTrue();
         assertThat(ReviewNoticeAudience.eligible(event,
+                Set.of("notice:read", "sales_quote_finance:view", "sales_quote_finance:reject"))).isTrue();
+        assertThat(ReviewNoticeAudience.eligible(event,
+                Set.of("notice:read", "sales_quote_finance:view", "sales_quote_finance:reverse"))).isFalse();
+        assertThat(ReviewNoticeAudience.eligible(event,
                 Set.of("notice:read", "sales_quote_finance:view"))).isFalse();
         assertThat(ReviewNoticeAudience.eligible(event,
                 Set.of("notice:read", "sales_order_finance:view", "sales_order_finance:confirm"))).isFalse();

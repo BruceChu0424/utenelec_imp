@@ -80,6 +80,31 @@ class FinanceAssetAuthorizationTest {
         assertThat(guard.allowedActions("ACTIVE", UUID.randomUUID(), true)).isEmpty();
     }
 
+    @Test
+    void postingAndReversalHaveIndependentActionsThroughFinalExecution() {
+        SecurityContextCurrentUser current = mock(SecurityContextCurrentUser.class);
+        FinanceAssetAuthorization guard = new FinanceAssetAuthorization(current, new FinanceAssetFeatureGate(true));
+        AuthUser poster = user(Set.of(FinanceAssetAuthorization.POST), false);
+        when(current.get()).thenReturn(Optional.of(poster));
+        when(current.id()).thenReturn(Optional.of(poster.getId()));
+        UUID maker = UUID.randomUUID();
+        assertThat(guard.allowedPostingRunActions("APPROVED", "NORMAL", maker)).containsExactly("POST");
+        assertThat(guard.allowedPostingRunActions("APPROVED", "REVERSAL", maker)).isEmpty();
+        assertThat(guard.allowedPostingRunActions("POSTED", "NORMAL", maker)).isEmpty();
+        assertThatThrownBy(() -> guard.require(FinanceAssetAuthorization.REVERSE)).isInstanceOf(ApiException.class);
+
+        AuthUser reverter = user(Set.of(FinanceAssetAuthorization.REVERSE), false);
+        when(current.get()).thenReturn(Optional.of(reverter));
+        when(current.id()).thenReturn(Optional.of(reverter.getId()));
+        assertThat(guard.allowedPostingRunActions("APPROVED", "NORMAL", maker)).isEmpty();
+        assertThat(guard.allowedPostingRunActions("APPROVED", "REVERSAL", maker)).containsExactly("POST");
+        assertThat(guard.allowedPostingRunActions("POSTED", "NORMAL", maker)).containsExactly("REVERSE");
+        assertThat(guard.allowedPostingRunActions("POSTED", "REVERSAL", maker)).isEmpty();
+        assertThat(guard.allowedPostingRunActions("APPROVED", "REVERSAL", reverter.getId())).isEmpty();
+        assertThat(guard.allowedPostingRunActions("SUBMITTED", "REVERSAL", maker)).isEmpty();
+        assertThatThrownBy(() -> guard.require(FinanceAssetAuthorization.POST)).isInstanceOf(ApiException.class);
+    }
+
     private static AuthUser user(Set<String> permissions, boolean superAdmin) {
         return new AuthUser(
                 UUID.randomUUID(), UUID.randomUUID(), "asset-user", permissions,

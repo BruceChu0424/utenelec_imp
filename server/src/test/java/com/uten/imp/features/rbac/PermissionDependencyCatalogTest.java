@@ -24,6 +24,14 @@ class PermissionDependencyCatalogTest {
                 .containsExactlyInAnyOrder("production_material_analysis:view", "production_material_analysis:forward_rd");
     }
     @Test
+    void assetReversalOffersItsPageReadWithoutRequiringNormalPostingAuthority() {
+        var catalog = catalog(view("finance_asset:view"), action("finance_asset:post"), action("finance_asset:reverse"));
+        assertThat(catalog.requiredPermissions("finance_asset:reverse", Set.of())).containsExactly("finance_asset:view");
+        assertThat(catalog.hardRequiredPermissions("finance_asset:reverse", Set.of())).isEmpty();
+        assertThat(catalog.usablePermissions(Set.of("finance_asset:reverse"))).containsExactly("finance_asset:reverse");
+    }
+
+    @Test
     void anAssignedActionIsNotUsableUntilItsPageReadIsAssigned() {
         var catalog = catalog(view("sales_shipment_finance:view"), action("sales_shipment_finance:approve"));
         assertThat(catalog.usablePermissions(Set.of("sales_shipment_finance:approve"))).isEmpty();
@@ -232,7 +240,7 @@ class PermissionDependencyCatalogTest {
         Map<String, List<String>> reviews = Map.of(
                 "finance_order_approval", List.of("approve", "reject"),
                 "sales_order_finance", List.of("confirm"),
-                "sales_quote_finance", List.of("confirm"),
+                "sales_quote_finance", List.of("confirm", "reject", "reverse"),
                 "sales_shipment_finance", List.of("approve", "reject"),
                 "production_quality_inspection", List.of("approve"));
         reviews.forEach((resource, operations) -> operations.forEach(operation -> {

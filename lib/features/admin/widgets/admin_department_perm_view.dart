@@ -261,7 +261,7 @@ class _AdminDepartmentPermViewState
             '”会开放',
             permission.sensitivity == 'SENSITIVE_COMMERCIAL'
                 ? '商业敏感数据'
-                : '敏感能力',
+                : '高风险操作',
             '。该权限不会被批量配置带入，请确认确需授予当前部门。',
           ].join(),
         ),
@@ -404,7 +404,7 @@ class _AdminDepartmentPermViewState
             ),
             const SizedBox(height: UtenSpacing.s12),
             Text(
-              '先选择一个部门，再为其配置权限点',
+              '先选择一个部门，再为其设置权限',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -498,7 +498,7 @@ class _AdminDepartmentPermViewState
       return const UtenEmpty(
         icon: Icons.security_outlined,
         message: '权限目录为空',
-        description: '后端尚未返回可配置的权限点。',
+        description: '服务器尚未返回可设置的权限。',
       );
     }
 

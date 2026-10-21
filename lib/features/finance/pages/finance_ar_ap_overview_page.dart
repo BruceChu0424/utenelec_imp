@@ -42,6 +42,7 @@ import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_column.dart';
 import '../../report/shared/report_data.dart';
 import '../../report/shared/report_date_range.dart';
+import '../widgets/finance_date_range_filter.dart';
 import '../../report/shared/report_filter_prefs.dart';
 import '../../report/shared/report_sort.dart';
 import '../../basic_data/widgets/uten_category_tree_view.dart';
@@ -540,11 +541,17 @@ class _FinanceArApOverviewPageState
       header: Padding(
         // 左缘贴 0（2026-10-18 全站分栏口径）：与分类页左栏搜索、返回键图标共缘。
         padding: const EdgeInsets.only(top: 8, bottom: 8),
-        child: UtenSearchBar(
-          key: const ValueKey('finance-ar-ap-unified-search'),
-          controller: _treeSearchController,
-          hint: '搜索分类/往来单位名称或编号',
-          onSubmitted: (_) => _queueUnifiedSearch(immediate: true),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: SizedBox(
+            width: 180,
+            child: UtenSearchBar(
+              key: const ValueKey('finance-ar-ap-unified-search'),
+              controller: _treeSearchController,
+              hint: '搜索分类/往来单位名称或编号',
+              onSubmitted: (_) => _queueUnifiedSearch(immediate: true),
+            ),
+          ),
         ),
       ),
       onNodeTap: _onTreeTap,
@@ -585,11 +592,17 @@ class _FinanceArApOverviewPageState
       compactHeader: Padding(
         // 左缘贴 0（2026-10-18 全站分栏口径），与展开态左栏搜索同缘。
         padding: const EdgeInsets.only(top: 8),
-        child: UtenSearchBar(
-          key: const ValueKey('finance-ar-ap-compact-search'),
-          controller: _searchController,
-          hint: '搜索分类/往来单位名称或编号',
-          onSubmitted: (_) => _queueUnifiedSearch(immediate: true),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: SizedBox(
+            width: 180,
+            child: UtenSearchBar(
+              key: const ValueKey('finance-ar-ap-compact-search'),
+              controller: _searchController,
+              hint: '搜索分类/往来单位名称或编号',
+              onSubmitted: (_) => _queueUnifiedSearch(immediate: true),
+            ),
+          ),
         ),
       ),
       leading: treeWidget,
@@ -668,37 +681,16 @@ class _FinanceArApOverviewPageState
                 runSpacing: 4,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  TextButton.icon(
-                    onPressed: () async {
-                      final p = await showDatePicker(
-                        context: context,
-                        initialDate: _from,
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2100),
-                      );
-                      if (p != null) {
-                        setState(() => _from = p);
-                        _persistAndReload();
-                      }
+                  FinanceDateRangeFilter(
+                    from: _from,
+                    to: _to,
+                    onChanged: (from, to) {
+                      setState(() {
+                        _from = from!;
+                        _to = to!;
+                      });
+                      _persistAndReload();
                     },
-                    icon: const Icon(Icons.event_outlined, size: 18),
-                    label: Text('起 ${_fmt(_from)}'),
-                  ),
-                  TextButton.icon(
-                    onPressed: () async {
-                      final p = await showDatePicker(
-                        context: context,
-                        initialDate: _to,
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2100),
-                      );
-                      if (p != null) {
-                        setState(() => _to = p);
-                        _persistAndReload();
-                      }
-                    },
-                    icon: const Icon(Icons.event_outlined, size: 18),
-                    label: Text('止 ${_fmt(_to)}'),
                   ),
                   DropdownButton<String>(
                     value: _displayMode,

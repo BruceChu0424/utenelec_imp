@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -408,7 +409,7 @@ void main() {
     });
   }
 
-  testWidgets('空分类批量粘贴所有副本进入当前分类并显示', (tester) async {
+  testWidgets('空分类直接输入复制份数后所有副本进入当前分类并显示', (tester) async {
     final goods = _GoodsRepository();
     final bom = _BomRepository();
     await _pumpPage(tester, goods, bom, withClipboard: true);
@@ -417,9 +418,13 @@ void main() {
     await _rightClickBlank(tester);
     await tester.tap(find.text('批量粘贴…'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byIcon(Icons.add_circle_outline_rounded));
+    await tester.enterText(
+      find.byKey(const Key('goods-batch-paste-copies')),
+      '2',
+    );
     await tester.pump();
-    await tester.tap(find.widgetWithText(FilledButton, '粘贴'));
+    expect(find.text('预计新增 2 个货品'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('goods-batch-paste-confirm')));
     await tester.pumpAndSettle();
     expect(goods.created, hasLength(2));
     expect(
@@ -437,6 +442,54 @@ void main() {
       tester.widget<MasterDataTableView<GoodsListItem>>(_table).selectedIds,
       {'copy-1', 'copy-2'},
     );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('批量粘贴非法份数不创建货品或组件且取消丢弃输入', (tester) async {
+    final goods = _GoodsRepository();
+    final bom = _BomRepository();
+    await _pumpPage(tester, goods, bom, withClipboard: true);
+    await tester.tap(find.text('新分类'));
+    await tester.pumpAndSettle();
+    await _rightClickBlank(tester);
+    await tester.tap(find.text('批量粘贴…'));
+    await tester.pumpAndSettle();
+
+    final copies = find.byKey(const Key('goods-batch-paste-copies'));
+    final confirm = find.byKey(const Key('goods-batch-paste-confirm'));
+    for (final value in ['', '0', '51']) {
+      await tester.enterText(copies, value);
+      await tester.pump();
+      expect(tester.widget<UtenButton>(confirm).onPressed, isNull);
+      await tester.tap(confirm);
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(find.text('批量粘贴货品'), findsOneWidget);
+      expect(goods.created, isEmpty);
+      expect(bom.pasted, isEmpty);
+    }
+
+    await tester.enterText(copies, '4');
+    await tester.pump();
+    expect(find.text('预计新增 4 个货品'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(find.text('批量粘贴货品'), findsNothing);
+    expect(goods.created, isEmpty);
+    expect(bom.pasted, isEmpty);
+    expect(
+      tester.widget<MasterDataTableView<GoodsListItem>>(_table).selectedIds,
+      isEmpty,
+    );
+
+    await _rightClickBlank(tester);
+    await tester.tap(find.text('批量粘贴…'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(copies).controller!.text, '1');
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(goods.created, isEmpty);
+    expect(bom.pasted, isEmpty);
     expect(tester.takeException(), isNull);
   });
 
@@ -486,10 +539,10 @@ void main() {
     await tester.tap(find.text('批量粘贴…'));
     await tester.pumpAndSettle();
     for (var i = 0; i < 4; i++) {
-      await tester.tap(find.byIcon(Icons.add_circle_outline_rounded));
+      await tester.tap(find.byKey(const Key('goods-batch-paste-increase')));
       await tester.pump();
     }
-    await tester.tap(find.widgetWithText(FilledButton, '粘贴'));
+    await tester.tap(find.byKey(const Key('goods-batch-paste-confirm')));
     await tester.pumpAndSettle();
 
     final table = tester.widget<MasterDataTableView<GoodsListItem>>(_table);
@@ -525,10 +578,10 @@ void main() {
     await tester.tap(find.text('批量粘贴…'));
     await tester.pumpAndSettle();
     for (var i = 0; i < 2; i++) {
-      await tester.tap(find.byIcon(Icons.add_circle_outline_rounded));
+      await tester.tap(find.byKey(const Key('goods-batch-paste-increase')));
       await tester.pump();
     }
-    await tester.tap(find.widgetWithText(FilledButton, '粘贴'));
+    await tester.tap(find.byKey(const Key('goods-batch-paste-confirm')));
     await tester.pumpAndSettle();
 
     final table = tester.widget<MasterDataTableView<GoodsListItem>>(_table);
@@ -549,10 +602,10 @@ void main() {
     await tester.tap(find.text('批量粘贴…'));
     await tester.pumpAndSettle();
     for (var i = 0; i < 2; i++) {
-      await tester.tap(find.byIcon(Icons.add_circle_outline_rounded));
+      await tester.tap(find.byKey(const Key('goods-batch-paste-increase')));
       await tester.pump();
     }
-    await tester.tap(find.widgetWithText(FilledButton, '粘贴'));
+    await tester.tap(find.byKey(const Key('goods-batch-paste-confirm')));
     await tester.pumpAndSettle();
     expect(find.text('测试插座(2)'), findsOneWidget);
     expect(find.text('测试中第二份创建失败'), findsOneWidget);

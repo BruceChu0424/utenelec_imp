@@ -20,6 +20,7 @@ public class FinanceAssetAuthorization {
     public static final String DELETE = "finance_asset:delete";
     public static final String APPROVE = "finance_asset:approve";
     public static final String POST = "finance_asset:post";
+    public static final String REVERSE = "finance_asset:reverse";
     public static final String DISPOSE = "finance_asset:dispose";
     public static final String PERIOD_MANAGE = "finance_asset_period:manage";
 
@@ -68,6 +69,26 @@ public class FinanceAssetAuthorization {
             case "DISPOSAL_PENDING" -> pendingActions(actorId, makerId, false);
             case "TERMINATION_PENDING" -> pendingActions(actorId, makerId, true);
             default -> Set.of();
+        };
+    }
+
+    /** Reversal runs retain approval and maker separation, but require their own execution authority. */
+    public Set<String> allowedPostingRunActions(String status, String runKind, UUID makerId) {
+        boolean separatedFromMaker = !isCurrentActor(makerId);
+        return switch (status) {
+            case "PREVIEWED" -> has(POST) ? Set.of("SUBMIT") : Set.of();
+            case "SUBMITTED" -> has(APPROVE) && separatedFromMaker ? Set.of("APPROVE") : Set.of();
+            case "APPROVED" -> has(postingPermission(runKind)) && separatedFromMaker ? Set.of("POST") : Set.of();
+            case "POSTED" -> has(REVERSE) && "NORMAL".equals(runKind) ? Set.of("REVERSE") : Set.of();
+            default -> Set.of();
+        };
+    }
+
+    public static String postingPermission(String runKind) {
+        return switch (runKind) {
+            case "NORMAL" -> POST;
+            case "REVERSAL" -> REVERSE;
+            default -> throw new ApiException(ErrorCode.CONFLICT, "资产入账批次类型不正确，请刷新核对");
         };
     }
 

@@ -252,6 +252,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(AccountDetailPage), findsOneWidget);
 
+    await tester.tap(find.byKey(const ValueKey('hierarchy-detail-menu')));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('编辑'));
     await tester.pumpAndSettle();
     await tester.enterText(

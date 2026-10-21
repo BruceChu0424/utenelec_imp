@@ -51,7 +51,9 @@ public record TaskClaimPolicy(int leaseMinutes, Set<String> claimPermissions, Se
             "IQC_INSPECT", new TaskClaimPolicy(30, "procurement_inspection:handle", "procurement_inspection:handle"),
             // ADR-134 销售报价财务核价(池化, 同 SALES_ORDER_FINANCE_CONFIRM): 认领后才能改折扣/成交单价、
             // 退回或确认; 核价人资格另经 SalesQuoteFinanceReviewerEligibilityPort 复核。
-            "SALES_QUOTE_FINANCE_REVIEW", new TaskClaimPolicy(30,Set.of("sales_quote_finance:confirm"),Set.of("sales_quote_finance:confirm"),"sales_quote_finance:view"));
+            "SALES_QUOTE_FINANCE_REVIEW", new TaskClaimPolicy(30,
+                    Set.of("sales_quote_finance:confirm", "sales_quote_finance:reject"),
+                    Set.of("sales_quote_finance:confirm", "sales_quote_finance:reject"), "sales_quote_finance:view"));
 
     /** 取某类型策略；未登记抛 400（fail-closed）。 */
     public static TaskClaimPolicy of(String targetType) {

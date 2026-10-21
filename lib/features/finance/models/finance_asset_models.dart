@@ -975,6 +975,7 @@ class AssetPostingRun {
     this.token,
     this.version,
     this.voucherNo,
+    this.reversalOfRunId,
     this.createdAt,
   });
   final String id;
@@ -987,7 +988,10 @@ class AssetPostingRun {
   final String? token;
   final int? version;
   final String? voucherNo;
+  final String? reversalOfRunId;
   final String? createdAt;
+
+  bool get isReversal => reversalOfRunId != null;
 
   factory AssetPostingRun.fromJson(Map<String, dynamic> json) =>
       AssetPostingRun(
@@ -1001,6 +1005,7 @@ class AssetPostingRun {
         token: _nullableText(json, const ['token', 'previewToken']),
         version: _integer(json, const ['version']),
         voucherNo: _nullableText(json, const ['voucherNo', 'voucherNumber']),
+        reversalOfRunId: _nullableText(json, const ['reversalOfRunId']),
         createdAt: _nullableText(json, const ['createdAt']),
       );
 }

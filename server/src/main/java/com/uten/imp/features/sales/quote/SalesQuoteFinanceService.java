@@ -53,6 +53,8 @@ public class SalesQuoteFinanceService {
 
     private static final String FINANCE_VIEW = SalesQuoteService.FINANCE_VIEW;
     private static final String FINANCE_CONFIRM = SalesQuoteService.FINANCE_CONFIRM;
+    private static final String FINANCE_REJECT = SalesQuoteService.FINANCE_REJECT;
+    private static final String FINANCE_REVERSE = SalesQuoteService.FINANCE_REVERSE;
     private static final String TARGET = SalesQuoteFinanceClaimTargetLocks.TARGET_TYPE;
     private static final int MAX_PAGE_SIZE = 100;
     private static final String[] SEARCH_FIELDS = {"o.bill_no", "c.name", "seller.full_name", "maker.full_name"};
@@ -165,7 +167,7 @@ public class SalesQuoteFinanceService {
     @PreAuthorize("hasAuthority('sales_quote_finance:view')")
     @com.uten.imp.security.BusinessTaskRead
     public Map<String, Long> pendingCount() {
-        if (!accessPolicy.hasAuthority(FINANCE_CONFIRM)
+        if (!(accessPolicy.hasAuthority(FINANCE_CONFIRM) || accessPolicy.hasAuthority(FINANCE_REJECT))
                 || !reviewers.isEligible(currentUser.get().map(AuthUser::getId).orElse(null))) {
             return Map.of("pending", 0L);
         }
@@ -313,12 +315,19 @@ public class SalesQuoteFinanceService {
     }
 
     private List<String> financeActions(SalesQuote q, boolean converted) {
-        if (!accessPolicy.hasAuthority(FINANCE_CONFIRM) || !reviewers.isEligible(currentUser.requireId())) {
-            return List.of();
-        }
         short status = q.getStatus() == null ? SalesQuoteService.STATUS_DRAFT : q.getStatus();
-        if (status == SalesQuoteService.STATUS_PENDING_FINANCE) return List.of("edit", "return", "confirm");
-        if (status == SalesQuoteService.STATUS_CONFIRMED && !converted) return List.of("reopen");
+        if (status == SalesQuoteService.STATUS_PENDING_FINANCE
+                && (accessPolicy.hasAuthority(FINANCE_CONFIRM) || accessPolicy.hasAuthority(FINANCE_REJECT))
+                && reviewers.isEligible(currentUser.requireId())) {
+            List<String> actions = new ArrayList<>();
+            if (accessPolicy.hasAuthority(FINANCE_CONFIRM)) actions.add("edit");
+            if (accessPolicy.hasAuthority(FINANCE_REJECT)) actions.add("return");
+            if (accessPolicy.hasAuthority(FINANCE_CONFIRM)) actions.add("confirm");
+            return List.copyOf(actions);
+        }
+        if (status == SalesQuoteService.STATUS_CONFIRMED && !converted
+                && accessPolicy.hasAuthority(FINANCE_REVERSE) && reviewers.canReopen(currentUser.requireId()))
+            return List.of("reopen");
         return List.of();
     }
 
@@ -416,7 +425,7 @@ public class SalesQuoteFinanceService {
 
     /** 退回销售: 待核价 → 草稿(带原因), 通知报价负责人。 */
     @Transactional
-    @PreAuthorize("hasAuthority('sales_quote_finance:view') and hasAuthority('sales_quote_finance:confirm')")
+    @PreAuthorize("hasAuthority('sales_quote_finance:view') and hasAuthority('sales_quote_finance:reject')")
     public QuoteFinanceReviewDto returnToSales(UUID id, QuoteFinanceDecisionRequest req) {
         tx.bind();
         requireEligibleReviewer();
@@ -488,20 +497,23 @@ public class SalesQuoteFinanceService {
         return reviewOf(q);
     }
 
-    /** 撤销确认再修改: 已核价且未转订货单 → 待核价(之后照常认领核价)。 */
+    /** 重新核价: 已核价且未转订货单 → 待核价(之后照常认领核价)。 */
     @Transactional
-    @PreAuthorize("hasAuthority('sales_quote_finance:view') and hasAuthority('sales_quote_finance:confirm')")
+    @PreAuthorize("hasAuthority('sales_quote_finance:view') and hasAuthority('sales_quote_finance:reverse')")
     public QuoteFinanceReviewDto reopen(UUID id, QuoteActionRequest req) {
         tx.bind();
-        requireEligibleReviewer();
+        if (!reviewers.canReopen(currentUser.requireId())) {
+            throw new ApiException(ErrorCode.FORBIDDEN,
+                    "无法重新核价：请核对账号是否启用、员工是否在职，以及报价核价查看和重新核价权限");
+        }
         SalesQuote q = lockForDecision(id);
         if (q.getStatus() == null || q.getStatus() != SalesQuoteService.STATUS_CONFIRMED
                 || q.getFinanceConfirmedAt() == null) {
-            throw new ApiException(ErrorCode.CONFLICT, "只有财务已确认的报价可以撤销确认");
+            throw new ApiException(ErrorCode.CONFLICT, "只有已确认的报价可以重新核价");
         }
         SalesQuoteService.requireRevision(q, req == null ? null : req.expectedRevision());
         if (!quotes.convertedOrders(List.of(id)).isEmpty()) {
-            throw new ApiException(ErrorCode.CONFLICT, "报价已转成订货单, 不能撤销确认");
+            throw new ApiException(ErrorCode.CONFLICT, "报价已转成订货单，不能重新核价");
         }
         UUID actor = currentUser.requireEmployeeId();
         q.setStatus(SalesQuoteService.STATUS_PENDING_FINANCE);
@@ -615,7 +627,7 @@ public class SalesQuoteFinanceService {
     private void requireEligibleReviewer() {
         if (!reviewers.isEligible(currentUser.requireId())) {
             throw new ApiException(ErrorCode.FORBIDDEN,
-                    "无法办理报价核价：请核对账号是否启用、员工是否在职，以及报价核价查看和确认权限");
+                    "无法办理报价核价：请核对账号是否启用、员工是否在职，以及报价核价查看和本次操作权限");
         }
     }
 

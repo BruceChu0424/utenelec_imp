@@ -11696,7 +11696,7 @@ abstract class AppLocalizations {
   /// No description provided for @quoteFinanceActionReopen.
   ///
   /// In zh, this message translates to:
-  /// **'撤销确认再修改'**
+  /// **'重新核价'**
   String get quoteFinanceActionReopen;
 
   /// No description provided for @quoteFinanceActionBack.
@@ -11756,7 +11756,7 @@ abstract class AppLocalizations {
   /// No description provided for @quoteFinanceReopenedDone.
   ///
   /// In zh, this message translates to:
-  /// **'已撤销确认, 可以继续修改价格'**
+  /// **'报价已回到待核价'**
   String get quoteFinanceReopenedDone;
 
   /// No description provided for @quoteFinanceLoadDetailFailed.
@@ -11822,7 +11822,7 @@ abstract class AppLocalizations {
   /// No description provided for @quoteFinanceConfirmBody.
   ///
   /// In zh, this message translates to:
-  /// **'确认后价格和折扣就定下来了, 销售可以转成订货单。以后要改, 可以在转单前「撤销确认再修改」。'**
+  /// **'确认后价格和折扣就定下来了, 销售可以转成订货单。以后要改, 可以在转单前「重新核价」。'**
   String get quoteFinanceConfirmBody;
 
   /// No description provided for @quoteFinanceConfirmResponsibility.
@@ -11894,13 +11894,13 @@ abstract class AppLocalizations {
   /// No description provided for @quoteFinanceReopenTitle.
   ///
   /// In zh, this message translates to:
-  /// **'撤销确认再修改'**
+  /// **'重新核价'**
   String get quoteFinanceReopenTitle;
 
   /// No description provided for @quoteFinanceReopenBody.
   ///
   /// In zh, this message translates to:
-  /// **'报价会回到「待核价」, 你可以继续修改价格, 改好后要重新确认。这期间销售不能转订货单。确定撤销?'**
+  /// **'报价将回到「待核价」，由核价人员重新核对并确认。在重新确认前，销售不能转订货单。确定继续？'**
   String get quoteFinanceReopenBody;
 
   /// No description provided for @quoteFinanceCancel.
@@ -21272,6 +21272,72 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'账号、权限或计划状态已变化，请关闭后重新核对调拨。'**
   String get materialTransferContextChanged;
+
+  /// No description provided for @goodsBatchPasteTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量粘贴货品'**
+  String get goodsBatchPasteTitle;
+
+  /// No description provided for @goodsBatchPasteClipboard.
+  ///
+  /// In zh, this message translates to:
+  /// **'剪贴板中有 {count} 个货品，设置每个货品的复制份数。'**
+  String goodsBatchPasteClipboard(int count);
+
+  /// No description provided for @goodsBatchPasteCopiesLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'每个货品复制'**
+  String get goodsBatchPasteCopiesLabel;
+
+  /// No description provided for @goodsBatchPasteCopiesHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'输入 1 到 50 的整数，可直接修改'**
+  String get goodsBatchPasteCopiesHint;
+
+  /// No description provided for @goodsBatchPasteCopiesError.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入 1 到 50 的整数'**
+  String get goodsBatchPasteCopiesError;
+
+  /// No description provided for @goodsBatchPasteCopiesUnit.
+  ///
+  /// In zh, this message translates to:
+  /// **'份'**
+  String get goodsBatchPasteCopiesUnit;
+
+  /// No description provided for @goodsBatchPasteDecrease.
+  ///
+  /// In zh, this message translates to:
+  /// **'减少一份'**
+  String get goodsBatchPasteDecrease;
+
+  /// No description provided for @goodsBatchPasteIncrease.
+  ///
+  /// In zh, this message translates to:
+  /// **'增加一份'**
+  String get goodsBatchPasteIncrease;
+
+  /// No description provided for @goodsBatchPasteTotal.
+  ///
+  /// In zh, this message translates to:
+  /// **'预计新增 {count} 个货品'**
+  String goodsBatchPasteTotal(int count);
+
+  /// No description provided for @goodsBatchPastePendingTotal.
+  ///
+  /// In zh, this message translates to:
+  /// **'填写份数后显示新增数量'**
+  String get goodsBatchPastePendingTotal;
+
+  /// No description provided for @goodsBatchPasteAutoCode.
+  ///
+  /// In zh, this message translates to:
+  /// **'新货品编号由系统自动生成'**
+  String get goodsBatchPasteAutoCode;
 }
 
 class _AppLocalizationsDelegate

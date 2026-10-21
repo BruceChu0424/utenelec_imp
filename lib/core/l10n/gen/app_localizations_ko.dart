@@ -11900,4 +11900,41 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get materialTransferContextChanged =>
       '계정, 권한 또는 계획 상태가 변경되었습니다. 창을 닫고 자재 이동을 다시 확인하세요.';
+
+  @override
+  String get goodsBatchPasteTitle => '품목 일괄 붙여넣기';
+
+  @override
+  String goodsBatchPasteClipboard(int count) {
+    return '클립보드에 품목 $count개가 있습니다. 품목별 복사 수를 설정하세요.';
+  }
+
+  @override
+  String get goodsBatchPasteCopiesLabel => '품목별 복사 수';
+
+  @override
+  String get goodsBatchPasteCopiesHint => '1부터 50까지 정수를 직접 입력하세요';
+
+  @override
+  String get goodsBatchPasteCopiesError => '1부터 50까지의 정수를 입력하세요';
+
+  @override
+  String get goodsBatchPasteCopiesUnit => '개';
+
+  @override
+  String get goodsBatchPasteDecrease => '복사 수 1 줄이기';
+
+  @override
+  String get goodsBatchPasteIncrease => '복사 수 1 늘리기';
+
+  @override
+  String goodsBatchPasteTotal(int count) {
+    return '새 품목 $count개 생성 예정';
+  }
+
+  @override
+  String get goodsBatchPastePendingTotal => '복사 수를 입력하면 생성 수량이 표시됩니다';
+
+  @override
+  String get goodsBatchPasteAutoCode => '새 품목 코드는 자동으로 생성됩니다';
 }

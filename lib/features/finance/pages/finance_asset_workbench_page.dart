@@ -12,6 +12,8 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -21,6 +23,7 @@ import '../../../shared/auth/permissions.dart';
 import '../models/finance_asset_models.dart';
 import '../repositories/finance_asset_overview_repository.dart';
 import '../widgets/finance_asset_ledger_panel.dart';
+import '../widgets/finance_asset_form.dart';
 import '../widgets/finance_asset_policy_dialog.dart';
 import '../widgets/finance_asset_posting_panel.dart';
 import '../widgets/finance_asset_ui.dart';
@@ -34,10 +37,12 @@ class FinanceAssetWorkbenchPage extends ConsumerStatefulWidget {
 }
 
 class _FinanceAssetWorkbenchPageState
-    extends ConsumerState<FinanceAssetWorkbenchPage>
-    with SingleTickerProviderStateMixin {
+    extends ConsumerState<FinanceAssetWorkbenchPage> {
   final _overviewGuard = LatestRequestGuard();
-  late final TabController _tabs;
+  int _tabIndex = 0;
+  bool _restrictionsExpanded = false;
+  bool _ledgerFullscreen = false;
+  final _creationTokens = [0, 0];
   final Set<int> _visitedTabs = <int>{0};
   FinanceAssetWorkbenchOverview? _overview;
   bool _overviewLoading = true;
@@ -48,8 +53,6 @@ class _FinanceAssetWorkbenchPageState
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 4, vsync: this)
-      ..addListener(_handleTabChanged);
     _loadOverview();
   }
 
@@ -58,15 +61,14 @@ class _FinanceAssetWorkbenchPageState
     for (final completion in _refreshCompletions.values) {
       if (!completion.isCompleted) completion.complete();
     }
-    _tabs
-      ..removeListener(_handleTabChanged)
-      ..dispose();
     super.dispose();
   }
 
-  void _handleTabChanged() {
-    if (_tabs.indexIsChanging) return;
-    setState(() => _visitedTabs.add(_tabs.index));
+  void _selectSection(int index) {
+    setState(() {
+      _tabIndex = index;
+      _visitedTabs.add(index);
+    });
   }
 
   FinanceAssetCapabilities _capabilities() {
@@ -80,6 +82,7 @@ class _FinanceAssetWorkbenchPageState
       canDelete: has(Perm.financeAssetDelete),
       canApprove: has(Perm.financeAssetApprove),
       canPost: has(Perm.financeAssetPost),
+      canReverse: has(Perm.financeAssetReverse),
       canDispose: has(Perm.financeAssetDispose),
       canManagePeriod: has(Perm.financeAssetPeriodManage),
     );
@@ -133,6 +136,23 @@ class _FinanceAssetWorkbenchPageState
     await _refreshAll();
   }
 
+  Future<void> _createAsset() async {
+    final ledger = _tabIndex == 0
+        ? FinanceAssetLedger.fixedAsset
+        : FinanceAssetLedger.deferredExpense;
+    final saved = await showFinanceAssetForm(context, ledger: ledger);
+    if (mounted && saved) {
+      _creationTokens[ledger == FinanceAssetLedger.fixedAsset ? 0 : 1]++;
+      await _refreshAll();
+    }
+  }
+
+  void _onLedgerFullscreenChanged(bool fullscreen) {
+    if (mounted && _ledgerFullscreen != fullscreen) {
+      setState(() => _ledgerFullscreen = fullscreen);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => FormDraftDialogResume(
     descriptor: FormDraftCatalog.assetPolicy,
@@ -162,34 +182,49 @@ class _FinanceAssetWorkbenchPageState
       );
     }
     final policyReady = _overview?.policyReady ?? false;
-    final tabBar = TabBar(
-      controller: _tabs,
-      isScrollable: true,
-      tabAlignment: TabAlignment.start,
-      tabs: [
-        const Tab(icon: Icon(Icons.apartment_outlined), text: '固定资产'),
-        const Tab(icon: Icon(Icons.calendar_month_outlined), text: '长期待摊'),
-        const Tab(icon: Icon(Icons.fact_check_outlined), text: '月末处理'),
-        Tab(
-          child: UtenSegmentBadgeLabel(
-            label: '政策草稿',
-            count: ref.watch(
-              formDraftCategoryVisibleCountProvider(
-                const FormDraftCategoryScope(
-                  routePath: '/finance/assets',
-                  query: {'draftForm': 'assetPolicy'},
-                ),
+    final sections = UtenFilterToolbar<int>(
+      key: const Key('finance-asset-sections'),
+      selected: {_tabIndex},
+      onSelectionChanged: _selectSection,
+      autoSelectBadge: false,
+      segments: [
+        const UtenFilterSegment(value: 0, label: '固定资产'),
+        const UtenFilterSegment(value: 1, label: '长期待摊'),
+        const UtenFilterSegment(value: 2, label: '月末处理'),
+        UtenFilterSegment(
+          value: 3,
+          label: '政策草稿',
+          count: ref.watch(
+            formDraftCategoryVisibleCountProvider(
+              const FormDraftCategoryScope(
+                routePath: '/finance/assets',
+                query: {'draftForm': 'assetPolicy'},
               ),
             ),
-            countForm: UtenSegmentCountForm.actionable,
           ),
+          countForm: UtenSegmentCountForm.actionable,
         ),
       ],
     );
-    // 垂直层级：一级固定区（4 个数据卡片，常驻不滚）→ 可滚动区（提示横幅滚走 →
-    // Tab 导航吸顶 → 筛选/内容内滚）。NestedScrollView 协调，页面任意位置上滚
-    // 都先收横幅、Tab 顶到卡片下沿后吸顶，之后仅面板内容滚动；下滚反向还原。
+    // Overview and restrictions scroll away to leave room for the ledger.
+    // Compact/short viewports use the shared whole-page scrolling fallback.
     return Scaffold(
+      floatingActionButton:
+          capabilities.canEdit && _tabIndex < 2 && !_ledgerFullscreen
+          ? UtenFloatingActionGroup(
+              children: [
+                UtenButton(
+                  key: Key(
+                    'finance-asset-create-${_tabIndex == 0 ? 'FIXED_ASSET' : 'DEFERRED_EXPENSE'}',
+                  ),
+                  size: UtenButtonSize.large,
+                  icon: Icons.add_rounded,
+                  onPressed: _createAsset,
+                  child: Text(_tabIndex == 0 ? '新建固定资产' : '新建长期待摊'),
+                ),
+              ],
+            )
+          : null,
       appBar: UtenAppBar(
         title: '资产与待摊',
         leading: UtenBackButton(
@@ -207,82 +242,72 @@ class _FinanceAssetWorkbenchPageState
       body: SafeArea(
         child: UtenContentContainer.wide(
           padding: const EdgeInsets.only(top: UtenSpacing.s12),
-          child: Column(
-            children: [
-              _metricsSection(capabilities),
-              Expanded(
-                child: UtenCollapsingHeaderScrollView(
-                  collapsingHeader: _bannerSection(capabilities),
-                  pinnedHeader: Padding(
-                    padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surface,
-                        borderRadius: UtenRadius.lgAll,
-                        border: Border.all(
-                          color: Theme.of(context).colorScheme.outlineVariant,
-                        ),
-                      ),
-                      child: tabBar,
-                    ),
-                  ),
-                  pinnedHeaderExtent:
-                      tabBar.preferredSize.height + UtenSpacing.s8,
-                  body: IndexedStack(
-                    index: _tabs.index,
-                    children: [
-                      FinanceAssetLedgerPanel(
-                        key: const ValueKey('fixed-asset-ledger'),
-                        ledger: FinanceAssetLedger.fixedAsset,
-                        capabilities: capabilities,
-                        policyReady: policyReady,
-                        refreshToken: _refreshToken,
-                        refreshCompletion: _refreshCompletions[0],
-                      ),
-                      if (_visitedTabs.contains(1))
-                        FinanceAssetLedgerPanel(
-                          key: const ValueKey('deferred-expense-ledger'),
-                          ledger: FinanceAssetLedger.deferredExpense,
-                          capabilities: capabilities,
-                          policyReady: policyReady,
-                          refreshToken: _refreshToken,
-                          refreshCompletion: _refreshCompletions[1],
-                        )
-                      else
-                        const SizedBox.shrink(),
-                      if (_visitedTabs.contains(2))
-                        FinanceAssetPostingPanel(
-                          key: ValueKey('asset-posting-$_refreshToken'),
-                          capabilities: capabilities,
-                          refreshCompletion: _refreshCompletions[2],
-                        )
-                      else
-                        const SizedBox.shrink(),
-                      if (_visitedTabs.contains(3))
-                        const FormDraftCategoryList(
-                          scope: FormDraftCategoryScope(
-                            routePath: '/finance/assets',
-                            query: {'draftForm': 'assetPolicy'},
-                          ),
-                          // 本页已有联动容器（横幅折叠+Tab 吸顶），草稿表直接
-                          // 拾取外层注入的控制器，不再自建折叠容器。
-                          linkedScroll: false,
-                        )
-                      else
-                        const SizedBox.shrink(),
-                    ],
-                  ),
+          child: UtenCollapsingHeaderScrollView(
+            compactBodyMinHeight: 640,
+            collapsingHeader: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _metricsSection(capabilities),
+                _bannerSection(capabilities),
+                sections,
+                const SizedBox(height: UtenSpacing.s12),
+              ],
+            ),
+            body: IndexedStack(
+              index: _tabIndex,
+              children: [
+                FinanceAssetLedgerPanel(
+                  key: const ValueKey('fixed-asset-ledger'),
+                  ledger: FinanceAssetLedger.fixedAsset,
+                  capabilities: capabilities,
+                  policyReady: policyReady,
+                  refreshToken: _refreshToken,
+                  creationToken: _creationTokens[0],
+                  onFullscreenChanged: _onLedgerFullscreenChanged,
+                  refreshCompletion: _refreshCompletions[0],
                 ),
-              ),
-            ],
+                if (_visitedTabs.contains(1))
+                  FinanceAssetLedgerPanel(
+                    key: const ValueKey('deferred-expense-ledger'),
+                    ledger: FinanceAssetLedger.deferredExpense,
+                    capabilities: capabilities,
+                    policyReady: policyReady,
+                    refreshToken: _refreshToken,
+                    creationToken: _creationTokens[1],
+                    onFullscreenChanged: _onLedgerFullscreenChanged,
+                    refreshCompletion: _refreshCompletions[1],
+                  )
+                else
+                  const SizedBox.shrink(),
+                if (_visitedTabs.contains(2))
+                  FinanceAssetPostingPanel(
+                    key: ValueKey('asset-posting-$_refreshToken'),
+                    capabilities: capabilities,
+                    refreshCompletion: _refreshCompletions[2],
+                  )
+                else
+                  const SizedBox.shrink(),
+                if (_visitedTabs.contains(3))
+                  const FormDraftCategoryList(
+                    scope: FormDraftCategoryScope(
+                      routePath: '/finance/assets',
+                      query: {'draftForm': 'assetPolicy'},
+                    ),
+                    // 本页已有联动容器，草稿表直接
+                    // 拾取外层注入的控制器，不再自建折叠容器。
+                    linkedScroll: false,
+                  )
+                else
+                  const SizedBox.shrink(),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  /// 一级固定区：4 个数据卡片，始终钉在页面顶端，不随滚动位移。
-  /// 加载中/加载失败时原地展示骨架与重试入口（与改版前一致）。
+  /// One quiet summary band, with two columns on narrow screens.
   Widget _metricsSection(FinanceAssetCapabilities capabilities) {
     if (_overviewLoading && _overview == null) {
       return const SizedBox(
@@ -310,64 +335,164 @@ class _FinanceAssetWorkbenchPageState
         const spacing = UtenSpacing.s12;
         final width =
             (constraints.maxWidth - spacing * (columns - 1)) / columns;
-        return Wrap(
-          spacing: spacing,
-          runSpacing: spacing,
-          children: [
-            _MetricCard(
-              width: width,
-              icon: Icons.inventory_2_outlined,
-              label: '固定资产原值',
-              value:
-                  '¥ ${formatFinanceDecimal(overview.metrics.originalValue)}',
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: UtenRadius.lgAll,
+            border: Border.all(
+              color: Theme.of(context).colorScheme.outlineVariant,
             ),
-            _MetricCard(
-              width: width,
-              icon: Icons.account_balance_wallet_outlined,
-              label: '固定资产净值',
-              value: '¥ ${formatFinanceDecimal(overview.metrics.netBookValue)}',
-            ),
-            _MetricCard(
-              width: width,
-              icon: Icons.timelapse_rounded,
-              label: '待摊余额',
-              value:
-                  '¥ ${formatFinanceDecimal(overview.metrics.deferredBalance)}',
-            ),
-            _MetricCard(
-              width: width,
-              icon: Icons.rule_folder_outlined,
-              label: '待办 / 有问题',
-              value: overview.metrics.pendingOrExceptionCount.toString(),
-            ),
-          ],
+          ),
+          child: Wrap(
+            spacing: spacing,
+            runSpacing: spacing,
+            children: [
+              _MetricCard(
+                width: width,
+                icon: Icons.inventory_2_outlined,
+                label: '固定资产原值',
+                value:
+                    '¥ ${formatFinanceDecimal(overview.metrics.originalValue)}',
+              ),
+              _MetricCard(
+                width: width,
+                icon: Icons.account_balance_wallet_outlined,
+                label: '固定资产净值',
+                value:
+                    '¥ ${formatFinanceDecimal(overview.metrics.netBookValue)}',
+              ),
+              _MetricCard(
+                width: width,
+                icon: Icons.timelapse_rounded,
+                label: '待摊余额',
+                value:
+                    '¥ ${formatFinanceDecimal(overview.metrics.deferredBalance)}',
+              ),
+              _MetricCard(
+                width: width,
+                icon: Icons.rule_folder_outlined,
+                label: '待办 / 有问题',
+                value: overview.metrics.pendingOrExceptionCount.toString(),
+              ),
+            ],
+          ),
         );
       },
     );
   }
 
-  /// 可滚动区头部：两条提示横幅，随上滚滑出（被固定卡片遮挡）、下滚拉回。
-  /// 顶部固定 s12 间距：无横幅时也保住卡片与 Tab 栏的初始间距。
   Widget _bannerSection(FinanceAssetCapabilities capabilities) {
     final overview = _overview;
-    return Column(
-      children: [
-        const SizedBox(height: UtenSpacing.s12),
-        if (overview != null && !overview.policyReady) ...[
-          _PolicyBanner(
-            missingItems: overview.missingPolicyItems,
-            canConfigure: capabilities.canApprove,
-            onConfigure: () => _configurePolicy(capabilities),
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-        ],
-        if (overview != null && !overview.postedWorkflowsEnabled) ...[
-          _OperationalSafetyBanner(blockers: overview.operationalBlockers),
-          const SizedBox(height: UtenSpacing.s12),
-        ],
-      ],
+    if (overview == null ||
+        (overview.policyReady && overview.postedWorkflowsEnabled)) {
+      return const SizedBox(height: UtenSpacing.s12);
+    }
+    final theme = Theme.of(context);
+    final policyBlocked = !overview.policyReady;
+    final postingBlocked = !overview.postedWorkflowsEnabled;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s12),
+      child: Container(
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerLow,
+          borderRadius: UtenRadius.lgAll,
+          border: Border.all(color: theme.colorScheme.outlineVariant),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Wrap(
+              spacing: UtenSpacing.s16,
+              runSpacing: UtenSpacing.s8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                if (policyBlocked)
+                  _RestrictionLabel(
+                    icon: Icons.policy_outlined,
+                    label: '政策未就绪',
+                    color: theme.colorScheme.error,
+                  ),
+                if (postingBlocked)
+                  _RestrictionLabel(
+                    key: const Key('finance-asset-posted-workflow-gate'),
+                    icon: Icons.lock_outline,
+                    label: '核心落账暂未开放',
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                UtenButton(
+                  key: const Key('finance-asset-restrictions-toggle'),
+                  type: UtenButtonType.ghost,
+                  icon: _restrictionsExpanded
+                      ? Icons.expand_less_rounded
+                      : Icons.expand_more_rounded,
+                  onPressed: () => setState(
+                    () => _restrictionsExpanded = !_restrictionsExpanded,
+                  ),
+                  child: Text(_restrictionsExpanded ? '收起说明' : '查看限制'),
+                ),
+                if (policyBlocked && capabilities.canApprove)
+                  UtenButton(
+                    key: const Key('finance-asset-configure-policy'),
+                    type: UtenButtonType.secondary,
+                    icon: Icons.settings_outlined,
+                    onPressed: () => _configurePolicy(capabilities),
+                    child: const Text('配置政策'),
+                  ),
+              ],
+            ),
+            const SizedBox(height: UtenSpacing.s4),
+            Text(
+              policyBlocked ? '可先保存草稿；提交、启用、过账和关账需完成政策配置。' : '可建立草稿并完成前置复核。',
+              style: theme.textTheme.bodySmall,
+            ),
+            if (postingBlocked)
+              Text('初始确认、处置和提前终止暂不可用。', style: theme.textTheme.bodySmall),
+            if (_restrictionsExpanded) ...[
+              const Divider(height: UtenSpacing.s24),
+              if (policyBlocked)
+                Text(
+                  '待配置：${overview.missingPolicyItems.isEmpty ? '类别与会计科目政策' : overview.missingPolicyItems.map(_friendlyPolicyLabel).join('、')}。',
+                ),
+              if (postingBlocked) ...[
+                const SizedBox(height: UtenSpacing.s8),
+                const Text('落账功能需完成独立审批与反冲流程验收后开放；配置会计政策不能解除此安全门禁。'),
+                if (overview.operationalBlockers.isNotEmpty)
+                  Text('待完成事项：${overview.operationalBlockers.length} 项'),
+              ],
+            ],
+          ],
+        ),
+      ),
     );
   }
+}
+
+class _RestrictionLabel extends StatelessWidget {
+  const _RestrictionLabel({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Icon(icon, size: 18, color: color),
+      const SizedBox(width: UtenSpacing.s8),
+      Flexible(
+        child: Text(
+          label,
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(color: color),
+        ),
+      ),
+    ],
+  );
 }
 
 class _MetricCard extends StatelessWidget {
@@ -390,25 +515,14 @@ class _MetricCard extends StatelessWidget {
       label: '$label，$value',
       child: Container(
         width: width,
-        constraints: const BoxConstraints(minHeight: 96),
+        constraints: const BoxConstraints(minHeight: 80),
         padding: const EdgeInsets.all(UtenSpacing.s12),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          borderRadius: UtenRadius.lgAll,
-          border: Border.all(color: theme.colorScheme.outlineVariant),
-        ),
         child: Row(
           children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primaryContainer,
-                borderRadius: UtenRadius.mdAll,
-              ),
-              child: Icon(icon, color: theme.colorScheme.onPrimaryContainer),
-            ),
-            const SizedBox(width: UtenSpacing.s12),
+            if (width >= 220) ...[
+              Icon(icon, size: 20, color: theme.colorScheme.primary),
+              const SizedBox(width: UtenSpacing.s12),
+            ],
             Expanded(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -423,7 +537,7 @@ class _MetricCard extends StatelessWidget {
                   const SizedBox(height: UtenSpacing.s4),
                   Text(
                     value,
-                    style: theme.textTheme.titleLarge?.copyWith(
+                    style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w700,
                       fontFeatures: const [FontFeature.tabularFigures()],
                     ),
@@ -447,118 +561,4 @@ String _friendlyPolicyLabel(String raw) {
     'DEFERRED_EXPENSE_CATEGORY_POLICY': '长期待摊费用类别政策',
   };
   return labels[raw] ?? raw;
-}
-
-class _PolicyBanner extends StatelessWidget {
-  const _PolicyBanner({
-    required this.missingItems,
-    required this.canConfigure,
-    required this.onConfigure,
-  });
-
-  final List<String> missingItems;
-  final bool canConfigure;
-  final VoidCallback onConfigure;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final detail = missingItems.isEmpty
-        ? '分类或会计科目政策尚未就绪'
-        : missingItems.take(3).map(_friendlyPolicyLabel).join('、');
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.errorContainer.withValues(alpha: 0.42),
-        borderRadius: UtenRadius.lgAll,
-        border: Border.all(
-          color: theme.colorScheme.error.withValues(alpha: 0.25),
-        ),
-      ),
-      child: Wrap(
-        crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: UtenSpacing.s12,
-        runSpacing: UtenSpacing.s8,
-        children: [
-          Icon(Icons.policy_outlined, color: theme.colorScheme.error),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
-            child: Text('政策未就绪：$detail。可先保存草稿；提交、启用、过账和关账将保持阻断。'),
-          ),
-          if (canConfigure)
-            UtenButton(
-              key: const Key('finance-asset-configure-policy'),
-              type: UtenButtonType.secondary,
-              icon: Icons.settings_outlined,
-              onPressed: onConfigure,
-              child: const Text('配置政策'),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _OperationalSafetyBanner extends StatelessWidget {
-  const _OperationalSafetyBanner({required this.blockers});
-
-  final List<String> blockers;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Semantics(
-      container: true,
-      liveRegion: true,
-      label: '资产核心落账安全门禁已关闭',
-      child: Container(
-        key: const Key('finance-asset-posted-workflow-gate'),
-        width: double.infinity,
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.55),
-          borderRadius: UtenRadius.lgAll,
-          border: Border.all(
-            color: theme.colorScheme.tertiary.withValues(alpha: 0.28),
-          ),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              Icons.lock_clock_outlined,
-              color: theme.colorScheme.onTertiaryContainer,
-            ),
-            const SizedBox(width: UtenSpacing.s12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '核心落账暂未开放',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: UtenSpacing.s4),
-                  const Text(
-                    '可配置类别、建立草稿并完成前置复核；初始确认、处置和提前终止会继续由服务端阻断，'
-                    '直到专用的制单—复核—过账—反冲链路验收完成。配置会计政策不能解除此安全门禁。',
-                  ),
-                  if (blockers.isNotEmpty) ...[
-                    const SizedBox(height: UtenSpacing.s4),
-                    Text(
-                      '服务端阻断项：${blockers.length} 项',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }

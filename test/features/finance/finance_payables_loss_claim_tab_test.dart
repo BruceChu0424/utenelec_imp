@@ -64,10 +64,10 @@ void main() {
     final facetReads = api.facetQueries.length;
     await selectFilterSegment(tester, '待处理');
     await tester.pumpAndSettle();
-    expect(api.listQueries.length, reads + 1);
+    expect(api.listQueries.length, reads);
     expect(api.listQueries.last['status'], 'OPEN');
     expect(api.listQueries.last['page'], 1);
-    expect(api.facetQueries.length, facetReads + 1);
+    expect(api.facetQueries.length, facetReads);
     expect(api.facetQueries.last['status'], 'OPEN');
     await selectFilterSegment(tester, '全部');
     await tester.pumpAndSettle();

@@ -6310,7 +6310,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get quoteFinanceActionConfirm => '确认报价';
 
   @override
-  String get quoteFinanceActionReopen => '撤销确认再修改';
+  String get quoteFinanceActionReopen => '重新核价';
 
   @override
   String get quoteFinanceActionBack => '返回';
@@ -6354,7 +6354,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get quoteFinanceReturnedDone => '已退回销售, 销售会收到通知';
 
   @override
-  String get quoteFinanceReopenedDone => '已撤销确认, 可以继续修改价格';
+  String get quoteFinanceReopenedDone => '报价已回到待核价';
 
   @override
   String get quoteFinanceLoadDetailFailed => '报价详情暂时无法加载，请重试。';
@@ -6390,7 +6390,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get quoteFinanceConfirmBody =>
-      '确认后价格和折扣就定下来了, 销售可以转成订货单。以后要改, 可以在转单前「撤销确认再修改」。';
+      '确认后价格和折扣就定下来了, 销售可以转成订货单。以后要改, 可以在转单前「重新核价」。';
 
   @override
   String get quoteFinanceConfirmResponsibility => '报价核价确认';
@@ -6430,11 +6430,11 @@ class AppLocalizationsZh extends AppLocalizations {
   String get quoteFinanceReturnSubmit => '确认退回';
 
   @override
-  String get quoteFinanceReopenTitle => '撤销确认再修改';
+  String get quoteFinanceReopenTitle => '重新核价';
 
   @override
   String get quoteFinanceReopenBody =>
-      '报价会回到「待核价」, 你可以继续修改价格, 改好后要重新确认。这期间销售不能转订货单。确定撤销?';
+      '报价将回到「待核价」，由核价人员重新核对并确认。在重新确认前，销售不能转订货单。确定继续？';
 
   @override
   String get quoteFinanceCancel => '取消';
@@ -11597,4 +11597,41 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get materialTransferContextChanged => '账号、权限或计划状态已变化，请关闭后重新核对调拨。';
+
+  @override
+  String get goodsBatchPasteTitle => '批量粘贴货品';
+
+  @override
+  String goodsBatchPasteClipboard(int count) {
+    return '剪贴板中有 $count 个货品，设置每个货品的复制份数。';
+  }
+
+  @override
+  String get goodsBatchPasteCopiesLabel => '每个货品复制';
+
+  @override
+  String get goodsBatchPasteCopiesHint => '输入 1 到 50 的整数，可直接修改';
+
+  @override
+  String get goodsBatchPasteCopiesError => '请输入 1 到 50 的整数';
+
+  @override
+  String get goodsBatchPasteCopiesUnit => '份';
+
+  @override
+  String get goodsBatchPasteDecrease => '减少一份';
+
+  @override
+  String get goodsBatchPasteIncrease => '增加一份';
+
+  @override
+  String goodsBatchPasteTotal(int count) {
+    return '预计新增 $count 个货品';
+  }
+
+  @override
+  String get goodsBatchPastePendingTotal => '填写份数后显示新增数量';
+
+  @override
+  String get goodsBatchPasteAutoCode => '新货品编号由系统自动生成';
 }

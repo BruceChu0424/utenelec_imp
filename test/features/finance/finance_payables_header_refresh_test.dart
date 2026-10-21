@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/components/layout/uten_app_bar.dart';
+import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/repositories/reference_method_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -90,6 +91,19 @@ void main() {
     testWidgets('${scenario.name}页面顶栏刷新一次并保留当前筛选', (tester) async {
       final api = _Api();
       await _mount(tester, api, scenario.permissions);
+      final search = find.byType(UtenSearchBar).first;
+      final category = find
+          .byWidgetPredicate((widget) => widget is UtenSegmentRow)
+          .first;
+      expect(tester.getSize(search).width, lessThanOrEqualTo(180));
+      expect(
+        tester.getTopLeft(search).dx,
+        greaterThan(tester.getTopRight(category).dx),
+      );
+      expect(
+        tester.getCenter(search).dy,
+        closeTo(tester.getCenter(category).dy, 1),
+      );
       await tester.enterText(
         find.descendant(
           of: find.byType(UtenSearchBar).first,

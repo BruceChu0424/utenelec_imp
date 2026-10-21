@@ -9,15 +9,72 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
+import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import 'package:uten_imp/features/basic_data/repositories/reference_method_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/finance/payables/models/finance_payable.dart';
 import 'package:uten_imp/features/finance/payables/pages/finance_payables_page.dart';
 import 'package:uten_imp/features/finance/payables/repositories/finance_payables_repository.dart';
+import 'package:uten_imp/features/finance/widgets/finance_date_range_filter.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
+  for (final scenario in [
+    (size: const Size(720, 900), scale: 1.4, dark: true),
+    (size: const Size(844, 390), scale: 1.4, dark: false),
+    (size: const Size(360, 640), scale: 1.6, dark: true),
+  ]) {
+    testWidgets('payables filters fit ${scenario.size} at ${scenario.scale}', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues(const {});
+      final preferences = await SharedPreferences.getInstance();
+      final api = _PageApi();
+      await tester.binding.setSurfaceSize(scenario.size);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            sharedPreferencesProvider.overrideWithValue(preferences),
+            settlementMethodOptionsProvider.overrideWith((_) async => const []),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.arApLedgerView,
+              Perm.financeViewAll,
+            }),
+          ],
+          child: MaterialApp(
+            theme: ThemeData(
+              brightness: scenario.dark ? Brightness.dark : Brightness.light,
+            ),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: TextScaler.linear(scenario.scale)),
+              child: child!,
+            ),
+            home: const FinancePayablesPage(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('finance-payables-search')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('finance-payables-bill-date')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('finance-payables-due-date')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   for (final scenario in [
     (
       name: 'positive',
@@ -150,6 +207,19 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('应付结算工作台'), findsOneWidget);
+    final search = find.byKey(const ValueKey('finance-payables-search'));
+    final category = find
+        .byWidgetPredicate((widget) => widget is UtenSegmentRow)
+        .first;
+    expect(tester.getSize(search).width, lessThanOrEqualTo(180));
+    expect(
+      tester.getTopLeft(search).dx,
+      greaterThan(tester.getTopRight(category).dx),
+    );
+    expect(
+      tester.getCenter(search).dy,
+      closeTo(tester.getCenter(category).dy, 1),
+    );
     expect(find.text('应付(本币)'), findsNWidgets(2));
     expect(find.text('¥10000.00'), findsOneWidget);
     expect(find.text('逾期(本币)'), findsOneWidget);
@@ -285,28 +355,41 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const ValueKey('finance-payables-open-filters')),
-      findsOneWidget,
-    );
-
+    final billDate = find.byKey(const ValueKey('finance-payables-bill-date'));
+    final dueDate = find.byKey(const ValueKey('finance-payables-due-date'));
+    expect(billDate.hitTestable(), findsOneWidget);
+    expect(dueDate.hitTestable(), findsOneWidget);
+    expect(find.byType(FinanceDateRangeFilter), findsNWidgets(2));
     await tester.tap(
-      find.byKey(const ValueKey('finance-payables-open-filters')),
+      find.descendant(of: billDate, matching: find.byType(UtenButton)),
     );
     await tester.pumpAndSettle();
-    expect(find.text('筛选应付记录'), findsOneWidget);
-    expect(find.byType(ChoiceChip), findsNothing);
-    expect(find.text('立账日期'), findsOneWidget);
-    expect(find.text('到期日期'), findsOneWidget);
-
-    await tester.tap(find.byTooltip('关闭'));
+    await tester.tap(find.text('This month'));
     await tester.pumpAndSettle();
+    expect(api.lastQuery?['dateFrom'], isNotNull);
+    expect(api.lastQuery?['dateTo'], isNotNull);
+    expect(api.lastQuery?['dueFrom'], isNull);
+    expect(api.lastQuery?['dueTo'], isNull);
+    // 开放范围仍直接映射原查询边界，不为了统一视觉补造另一端日期。
+    tester
+        .widget<FinanceDateRangeFilter>(dueDate)
+        .onChanged(null, DateTime(2026, 9, 30));
+    await tester.pumpAndSettle();
+    expect(api.lastQuery?['dueFrom'], isNull);
+    expect(api.lastQuery?['dueTo'], '2026-09-30');
+    await tester.tap(
+      find.byKey(const ValueKey('finance-payables-reset-filters')),
+    );
+    await tester.pumpAndSettle();
+    expect(api.lastQuery?['dateFrom'], isNull);
+    expect(api.lastQuery?['dateTo'], isNull);
+    expect(api.lastQuery?['dueTo'], isNull);
     MasterDataTableView<FinancePayableItem> table() =>
         tester.widget(find.byType(MasterDataTableView<FinancePayableItem>));
     table().onFilterChanged('businessType', 'PURCHASE');
     await tester.pumpAndSettle();
     expect(api.lastQuery?['businessType'], 'PURCHASE');
-    expect(find.text('筛选(1)'), findsOneWidget);
+    expect(find.byTooltip('重置筛选 (1)'), findsOneWidget);
     table().onFilterChanged('status', 'OPEN');
     await tester.pumpAndSettle();
     expect(api.lastQuery?['businessType'], 'PURCHASE');

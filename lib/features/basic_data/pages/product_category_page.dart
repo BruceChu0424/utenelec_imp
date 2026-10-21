@@ -42,6 +42,7 @@ import '../widgets/category_edit_dialog.dart';
 import '../widgets/basic_data_l10n.dart';
 import '../widgets/category_page_shell.dart';
 import '../widgets/goods_import_dialog.dart';
+import '../widgets/goods_batch_paste_dialog.dart';
 import '../widgets/goods_related_search_control.dart';
 import '../widgets/goods_operation_history_panel.dart';
 import '../widgets/goods_inline_edit.dart';
@@ -897,6 +898,10 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     MasterEntityPaneController<GoodsListItem, GoodsDetail> pane, {
     required int copies,
   }) async {
+    if (copies < GoodsBatchPasteDialog.minCopies ||
+        copies > GoodsBatchPasteDialog.maxCopies) {
+      return;
+    }
     final targetCategoryId = pane.categoryId;
     if (!_canCreateMaster || pane.busy || targetCategoryId == null) return;
     final clips = ref.read(goodsClipboardProvider).goodsList;
@@ -1013,58 +1018,11 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     if (!_canCreateMaster || pane.busy) return;
     final clips = ref.read(goodsClipboardProvider).goodsList;
     if (clips.isEmpty) return;
-    var copies = 1;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSt) => UtenAlertDialog(
-          title: const Text('批量粘贴货品'), // TODO(l10n): 补 arb
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('剪贴板有 ${clips.length} 个货品。'), // TODO(l10n): 补 arb
-              const SizedBox(height: UtenSpacing.s12),
-              Row(
-                children: [
-                  const Text('每个复制 '), // TODO(l10n): 补 arb
-                  IconButton(
-                    icon: const Icon(Icons.remove_circle_outline_rounded),
-                    onPressed: copies > 1 ? () => setSt(() => copies--) : null,
-                  ),
-                  Text(
-                    '$copies',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.add_circle_outline_rounded),
-                    onPressed: copies < 50 ? () => setSt(() => copies++) : null,
-                  ),
-                  const Text(' 份'), // TODO(l10n): 补 arb
-                ],
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-              Text(
-                '共将生成 ${clips.length * copies} 个新货品(编号自动生成)', // TODO(l10n): 补 arb
-                style: Theme.of(ctx).textTheme.bodySmall,
-              ),
-            ],
-          ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消'), // TODO(l10n): 补 arb
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('粘贴'), // TODO(l10n): 补 arb
-            ),
-          ],
-        ),
-      ),
+    final copies = await showGoodsBatchPasteDialog(
+      context,
+      goodsCount: clips.length,
     );
-    if (confirmed != true || !mounted) return;
+    if (copies == null || !mounted) return;
     await _pasteGoodsCopies(pane, copies: copies);
   }
 

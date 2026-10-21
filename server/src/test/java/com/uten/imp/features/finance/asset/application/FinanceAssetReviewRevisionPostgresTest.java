@@ -7,6 +7,7 @@ import com.uten.imp.features.finance.asset.api.AssetWorkbenchRequests;
 import com.uten.imp.features.finance.asset.api.AssetWorkbenchResponses;
 import com.uten.imp.security.AuthUser;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -45,9 +46,65 @@ class FinanceAssetReviewRevisionPostgresTest {
     }
     @Autowired JdbcTemplate jdbc;
     @Autowired FinanceAssetWorkflowService workflow;
+    @Autowired FinanceAssetPostingService posting;
     @Autowired FinanceAssetQueryService queries;
     @Autowired ObjectMapper json;
     @AfterEach void logout() { SecurityContextHolder.clearContext(); }
+
+    @Test
+    void postingAndReversalPermissionsStayIndependentThroughApprovedRunExecution() {
+        Actor maker = actor("posting-maker"), reviewer = actor("posting-reviewer"), poster = actor("posting-poster");
+        Actor reversalMaker = actor("reversal-maker"), reversalPoster = actor("reversal-poster");
+        String period = YearMonth.from(BusinessTime.today()).toString();
+        UUID original = UUID.randomUUID();
+        // A valid zero-item posted batch isolates authorization and workflow transitions.
+        // Asset value and GL compensation arithmetic are covered by their existing ledger tests.
+        jdbc.update("""
+                INSERT INTO finance_asset_posting_runs(id,run_type,book_type,period,run_kind,status,
+                    input_fingerprint,algorithm_version,idempotency_key,submitted_at,submitted_by,
+                    approved_at,approved_by,posted_at,posted_by)
+                VALUES(?,'DEPRECIATION','CORPORATE',?,'NORMAL','POSTED',?,'TEST',?,now(),?,now(),?,now(),?)
+                """, original, period, "a".repeat(64), "permission-run-" + original,
+                maker.user(), reviewer.user(), poster.user());
+        login(poster, Set.of(FinanceAssetAuthorization.VIEW, FinanceAssetAuthorization.POST));
+        var originalRun = posting.get(original);
+        assertThat(originalRun.allowedActions()).doesNotContain("REVERSE");
+        assertThatThrownBy(() -> posting.reverse(original,
+                new AssetWorkbenchRequests.PostingReasonCommand(originalRun.version(), "无撤销权限")))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM finance_asset_posting_runs WHERE reversal_of_run_id=?",Long.class,original)).isZero();
+
+        login(reversalMaker, Set.of(FinanceAssetAuthorization.VIEW, FinanceAssetAuthorization.REVERSE));
+        assertThatThrownBy(() -> posting.post(original,
+                new AssetWorkbenchRequests.PostingActionCommand(originalRun.version(), null)))
+                .isInstanceOfSatisfying(ApiException.class,error -> assertThat(error.getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.FORBIDDEN));
+        assertThat(posting.get(original).allowedActions()).containsExactly("REVERSE");
+        var reversal = posting.reverse(original,
+                new AssetWorkbenchRequests.PostingReasonCommand(originalRun.version(), "撤销本期计提入账"));
+        assertThat(reversal.status()).isEqualTo("SUBMITTED");
+        login(reversalMaker, Set.of(FinanceAssetAuthorization.VIEW, FinanceAssetAuthorization.REVERSE, FinanceAssetAuthorization.APPROVE));
+        assertThatThrownBy(() -> posting.approve(reversal.id(),
+                new AssetWorkbenchRequests.ApprovalCommand(reversal.version(), "自己不能审"))).isInstanceOf(ApiException.class);
+        login(reviewer, Set.of(FinanceAssetAuthorization.VIEW, FinanceAssetAuthorization.APPROVE));
+        var approved = posting.approve(reversal.id(), new AssetWorkbenchRequests.ApprovalCommand(reversal.version(), "核对后批准"));
+
+        login(poster, Set.of(FinanceAssetAuthorization.VIEW, FinanceAssetAuthorization.POST));
+        assertThat(posting.get(reversal.id()).allowedActions()).doesNotContain("POST");
+        assertThatThrownBy(() -> posting.post(reversal.id(),
+                new AssetWorkbenchRequests.PostingActionCommand(approved.version(), null)))
+                .isInstanceOfSatisfying(ApiException.class,error -> assertThat(error.getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.FORBIDDEN));
+        assertThat(jdbc.queryForObject("SELECT status FROM finance_asset_posting_runs WHERE id=?",String.class,reversal.id())).isEqualTo("APPROVED");
+        login(reversalMaker, Set.of(FinanceAssetAuthorization.VIEW, FinanceAssetAuthorization.REVERSE));
+        assertThat(posting.get(reversal.id()).allowedActions()).doesNotContain("POST");
+        assertThatThrownBy(() -> posting.post(reversal.id(), new AssetWorkbenchRequests.PostingActionCommand(approved.version(), null)))
+                .isInstanceOf(ApiException.class);
+        login(reversalPoster, Set.of(FinanceAssetAuthorization.VIEW, FinanceAssetAuthorization.REVERSE));
+        assertThat(posting.get(reversal.id()).allowedActions()).containsExactly("POST");
+        var completed = posting.post(reversal.id(), new AssetWorkbenchRequests.PostingActionCommand(approved.version(), null));
+        assertThat(completed.status()).isEqualTo("POSTED");
+        assertThat(posting.get(original).status()).isEqualTo("REVERSED");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM finance_asset_posting_runs WHERE reversal_of_run_id=?",Long.class,original)).isEqualTo(1L);
+    }
 
     @ParameterizedTest @ValueSource(booleans={false,true})
     void deletingDraftsRequiresSeparatePermissionAndStillChecksVersionAndState(boolean deferred) {

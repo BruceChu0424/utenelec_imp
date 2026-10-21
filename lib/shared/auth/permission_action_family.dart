@@ -14,12 +14,12 @@ enum PermissionActionFamily {
   edit('编辑', Icons.edit_outlined),
   delete('删除', Icons.delete_outline_rounded),
   approve('审核', Icons.fact_check_outlined),
-  execute('执行·办理', Icons.play_circle_outline),
+  execute('办理', Icons.play_circle_outline),
   importData('导入', Icons.file_upload_outlined),
   exportData('导出', Icons.file_download_outlined),
   assign('分配', Icons.person_add_alt_1_outlined),
-  configure('配置', Icons.tune),
-  other('其它', Icons.more_horiz_rounded);
+  configure('设置', Icons.tune),
+  other('其他', Icons.more_horiz_rounded);
 
   const PermissionActionFamily(this.label, this.icon);
 

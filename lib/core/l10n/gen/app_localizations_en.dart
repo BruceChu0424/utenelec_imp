@@ -12339,4 +12339,43 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get materialTransferContextChanged =>
       'Your account, permissions, or plan changed. Close this window and review the transfer again.';
+
+  @override
+  String get goodsBatchPasteTitle => 'Paste goods in bulk';
+
+  @override
+  String goodsBatchPasteClipboard(int count) {
+    return 'Your clipboard has $count goods. Set how many copies to make of each.';
+  }
+
+  @override
+  String get goodsBatchPasteCopiesLabel => 'Copies per item';
+
+  @override
+  String get goodsBatchPasteCopiesHint => 'Enter a whole number from 1 to 50';
+
+  @override
+  String get goodsBatchPasteCopiesError => 'Enter a whole number from 1 to 50';
+
+  @override
+  String get goodsBatchPasteCopiesUnit => 'copies';
+
+  @override
+  String get goodsBatchPasteDecrease => 'One fewer copy';
+
+  @override
+  String get goodsBatchPasteIncrease => 'One more copy';
+
+  @override
+  String goodsBatchPasteTotal(int count) {
+    return '$count new goods will be created';
+  }
+
+  @override
+  String get goodsBatchPastePendingTotal =>
+      'Enter a copy count to see the total';
+
+  @override
+  String get goodsBatchPasteAutoCode =>
+      'New goods codes are generated automatically';
 }

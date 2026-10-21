@@ -302,7 +302,7 @@ class _AdminBaselinePermViewState extends ConsumerState<AdminBaselinePermView> {
       return const UtenEmpty(
         icon: Icons.security_outlined,
         message: '权限目录为空',
-        description: '后端尚未返回可配置的权限点。',
+        description: '服务器尚未返回可设置的权限。',
       );
     }
     return PermissionCatalogBrowser(

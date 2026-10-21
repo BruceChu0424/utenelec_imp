@@ -55,6 +55,25 @@ public class WorkshopBinService implements LineSideWarehousePort {
         return rows.isEmpty() ? Optional.empty() : Optional.of(rows.getFirst());
     }
 
+    /**
+     * 只读页面按所选仓库回到开通车间。开通与整批领料是两种事实:
+     * 已开通但未开启整批领料的仓同样是内料仓, 只是没有盘点期间和耗用结算。
+     * 调用方取得车间后仍须执行对象范围校验。
+     */
+    @Transactional(propagation = Propagation.SUPPORTS, readOnly = true)
+    public UUID requireWorkshopOfOpenedBin(UUID binWarehouseId) {
+        if (binWarehouseId == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请选择内料仓");
+        }
+        List<UUID> rows = db.queryForList("""
+                SELECT opened.workshop_department_id FROM workshop_bins opened
+                JOIN warehouses bin ON bin.id = opened.bin_warehouse_id AND NOT bin.is_deleted
+                WHERE opened.bin_warehouse_id = :bin
+                """, Map.of("bin", binWarehouseId), UUID.class);
+        if (rows.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "这个仓库不是车间内料仓");
+        return rows.getFirst();
+    }
+
     /** 读开通行并加行锁; 没开通返回 null。 */
     OpenedBin openedForUpdate(UUID workshopDepartmentId) {
         List<Map<String, Object>> rows = db.queryForList("""

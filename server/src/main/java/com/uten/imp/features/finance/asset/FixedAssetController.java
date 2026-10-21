@@ -331,14 +331,14 @@ public class FixedAssetController {
     }
 
     @PostMapping("/asset-posting-runs/{id}/post")
-    @PreAuthorize("hasAuthority('finance_asset:post')")
+    @PreAuthorize("hasAnyAuthority('finance_asset:post', 'finance_asset:reverse')")
     public AssetWorkbenchResponses.PostingRun postRun(
             @PathVariable UUID id, @Valid @RequestBody AssetWorkbenchRequests.PostingActionCommand body) {
         return posting.post(id, body);
     }
 
     @PostMapping("/asset-posting-runs/{id}/reverse")
-    @PreAuthorize("hasAuthority('finance_asset:post')")
+    @PreAuthorize("hasAuthority('finance_asset:reverse')")
     public AssetWorkbenchResponses.PostingRun reverseRun(
             @PathVariable UUID id, @Valid @RequestBody AssetWorkbenchRequests.PostingReasonCommand body) {
         return posting.reverse(id, body);

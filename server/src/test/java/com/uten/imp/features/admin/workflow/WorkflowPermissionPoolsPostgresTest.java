@@ -42,6 +42,8 @@ class WorkflowPermissionPoolsPostgresTest {
         permission("finance_order_approval:reject");
         UUID quoteView = permission("sales_quote_finance:view");
         UUID quoteConfirm = permission("sales_quote_finance:confirm");
+        permission("sales_quote_finance:reject");
+        permission("sales_quote_finance:reverse");
         viewPermissions = List.of(data.view, procurementView, quoteView);
         actionPermissions = List.of(data.confirm, approve, quoteConfirm);
         PermissionResolver resolver = data.resolver(true);
@@ -116,6 +118,20 @@ class WorkflowPermissionPoolsPostgresTest {
         for (UUID permission : viewPermissions) data.grant(actor, permission);
         for (UUID permission : actionPermissions) data.grant(actor, permission);
         assertAllPools(actor);
+    }
+
+    @Test
+    void rejectionOnlyReviewerIsAssignedPendingQuotesButReopenOnlyReviewerIsNot() {
+        UUID rejector = data.account(data.other, false);
+        UUID reopener = data.account(data.other, false);
+        UUID view = jdbc.queryForObject("SELECT id FROM permissions WHERE code='sales_quote_finance:view'", UUID.class);
+        UUID reject = jdbc.queryForObject("SELECT id FROM permissions WHERE code='sales_quote_finance:reject'", UUID.class);
+        UUID reverse = jdbc.queryForObject("SELECT id FROM permissions WHERE code='sales_quote_finance:reverse'", UUID.class);
+        data.grant(rejector, view); data.grant(rejector, reject);
+        data.grant(reopener, view); data.grant(reopener, reverse);
+        assertThat(quotes.eligibleUserIds()).containsExactly(rejector);
+        data.override(rejector, reject, "revoke", "SUPER_ADMIN_CONFIRMED");
+        assertThat(quotes.eligibleUserIds()).isEmpty();
     }
 
     private void grantDepartment() {

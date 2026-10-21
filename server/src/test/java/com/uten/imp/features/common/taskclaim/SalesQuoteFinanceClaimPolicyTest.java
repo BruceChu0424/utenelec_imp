@@ -65,11 +65,11 @@ class SalesQuoteFinanceClaimPolicyTest {
     }
 
     @Test
-    void policyNeedsViewToSeeAndConfirmToClaim() {
+    void policyNeedsViewAndEitherConfirmOrRejectToClaim() {
         TaskClaimPolicy policy = TaskClaimPolicy.of(TYPE);
         assertThat(policy.leaseMinutes()).isEqualTo(30);
-        assertThat(policy.claimPermissions()).containsExactly("sales_quote_finance:confirm");
-        assertThat(policy.managePermissions()).containsExactly("sales_quote_finance:confirm");
+        assertThat(policy.claimPermissions()).containsExactlyInAnyOrder("sales_quote_finance:confirm", "sales_quote_finance:reject");
+        assertThat(policy.managePermissions()).containsExactlyInAnyOrder("sales_quote_finance:confirm", "sales_quote_finance:reject");
         assertThat(policy.requiredViewPermission()).isEqualTo("sales_quote_finance:view");
     }
 
@@ -103,6 +103,18 @@ class SalesQuoteFinanceClaimPolicyTest {
         var view = service.claim(TYPE, key);
         assertThat(view.claimedByMe()).isTrue();
         assertThat(view.targetType()).isEqualTo(TYPE);
+    }
+
+    @Test
+    void rejectOnlyReviewerCanClaimButReopenOnlyReviewerCannot() {
+        SalesQuoteFinanceReviewerEligibilityPort eligibility = mock(SalesQuoteFinanceReviewerEligibilityPort.class);
+        when(eligibility.isEligible(userId)).thenReturn(true);
+        service.setQuoteReviewers(eligibility);
+        when(headerLock.getResultList()).thenReturn(List.of(UUID.fromString(key)));
+        when(me.getPermissions()).thenReturn(Set.of("sales_quote_finance:view", "sales_quote_finance:reject"));
+        assertThat(service.claim(TYPE, key).claimedByMe()).isTrue();
+        when(me.getPermissions()).thenReturn(Set.of("sales_quote_finance:view", "sales_quote_finance:reverse"));
+        assertEquals(ErrorCode.FORBIDDEN, assertThrows(ApiException.class, () -> service.claim(TYPE, key)).getCode());
     }
 
     @Test

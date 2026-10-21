@@ -73,6 +73,25 @@ public class AggregateMaterialOrderPreviewService {
         Map<String,BigDecimal> externalBudget=new HashMap<>();
         for(MaterialView row:view.flatMaterials())if(row.sharedFutureSupplyRefs()!=null)for(var candidate:row.sharedFutureSupplyRefs())
             if(candidate.budgetKey()!=null)externalBudget.put(candidate.budgetKey(),candidate.availableToClaimQty());
+        Map<String,List<GroupInput>> safetyConfirmations=new HashMap<>();
+        Map<String,Integer> earliestSafetyDepth=new HashMap<>();
+        Map<String,Integer> safetyDepthByGroup=new HashMap<>();
+        for(GroupInput group:request.groups()) {
+            if(group!=null&&"BUY".equals(group.route())&&!group.materialLineIds().isEmpty()) {
+                MaterialView source=materials.get(group.materialLineIds().getFirst());
+                if(source!=null) {
+                    String dimension=safetyDimension(source.goodsId(),source.colorId());
+                    int depth=sourceDepth(group,materials);safetyDepthByGroup.put(group.clientGroupKey(),depth);
+                    if(number(group.qty()).signum()>0||group.safetyQty().signum()>0) {
+                        earliestSafetyDepth.merge(dimension,depth,Math::min);
+                    }
+                    if(group.safetyQty().signum()>0) {
+                        safetyConfirmations.computeIfAbsent(dimension,ignored->new ArrayList<>()).add(group);
+                    }
+                }
+            }
+        }
+        var safetyAdmission=new SafetyAdmission(safetyConfirmations,earliestSafetyDepth,safetyDepthByGroup);
         List<GroupPreview> result=new ArrayList<>();
         for(GroupInput group:request.groups()) {
             if(group==null||group.clientGroupKey()==null||group.clientGroupKey().isBlank()||!clientKeys.add(group.clientGroupKey()))throw invalid("汇总行标识缺失或重复");
@@ -131,7 +150,7 @@ public class AggregateMaterialOrderPreviewService {
                 if(anchor!=null&&!"AGGREGATE_MAKE".equals(anchor.sourceType()))pending=pending.max(number(anchor.remainingQty()));
                 requestedPrivateCaps.put(id,requested.min(pending));
             });
-            GroupPreview resolved=resolveGroup(analysisId,request,group,members,products,actions,children,view.overproductionDefaults(),makeBudget,externalBudget,originalScope,requestedPrivateCaps,materials);
+            GroupPreview resolved=resolveGroup(analysisId,request,group,members,products,actions,children,view.overproductionDefaults(),makeBudget,externalBudget,originalScope,requestedPrivateCaps,materials,safetyAdmission);
             if(!compatibilityKeys.add(resolved.compatibilityKey()))throw invalid("同一物料及相同办理规则只能提交一组，请合并来源和总量后重新核对");
             result.add(resolved);
         }
@@ -158,9 +177,22 @@ public class AggregateMaterialOrderPreviewService {
         if(total.compareTo(group.qty())!=0)throw invalid("逐来源下单数量之和必须等于本组下单总量");
     }
 
+    private static String safetyDimension(UUID goods,UUID color) {
+        return goods+":"+Objects.toString(color,"");
+    }
+
+    private static int sourceDepth(GroupInput group,Map<UUID,MaterialView> materials) {
+        return group.materialLineIds().stream().map(materials::get).filter(Objects::nonNull)
+                .mapToInt(MaterialView::level).min().orElse(Integer.MAX_VALUE);
+    }
+
+    private record SafetyAdmission(Map<String,List<GroupInput>> confirmations,Map<String,Integer> earliestDepth,
+                                   Map<String,Integer> depthByGroup) { }
+
     private GroupPreview resolveGroup(UUID analysisId,PreviewRequest request,GroupInput input,List<MaterialView> members,
             Map<UUID,ProductView> products,Map<UUID,SupplyActionView> actions,Map<String,List<MaterialView>> children,
-            Map<UUID,BigDecimal> rateDefaults,Map<UUID,BigDecimal> makeBudget,Map<String,BigDecimal> externalBudget,Map<UUID,java.util.LinkedHashSet<UUID>> originalScope,Map<UUID,BigDecimal> requestedPrivateCaps,Map<UUID,MaterialView> originalMaterials) {
+            Map<UUID,BigDecimal> rateDefaults,Map<UUID,BigDecimal> makeBudget,Map<String,BigDecimal> externalBudget,Map<UUID,java.util.LinkedHashSet<UUID>> originalScope,Map<UUID,BigDecimal> requestedPrivateCaps,Map<UUID,MaterialView> originalMaterials,
+            SafetyAdmission safetyAdmission) {
         boolean canGenerate=access.hasAuthority("production_material_analysis:generate");
         boolean canNotify=access.hasAuthority("production_material_analysis:notify");
         boolean canApprovePlan=access.hasAuthority("production_plan:approve");
@@ -238,10 +270,27 @@ public class AggregateMaterialOrderPreviewService {
         }
         if(allocation.publicExtraQty().signum()>0 && !input.allowPublicExtra())reason="本次超出待安排需求，请明确核对公共备货量";
         if(allocation.publicExtraQty().signum()>0 && !manufacture && !canOverSupply)reason="公共超量备货需要超量下达权限";
-        if(number(input.safetyQty()).signum()>0) {
-            if(!"BUY".equals(input.route()))reason="公共安全补库仅支持采购路线";
-            else if(input.safetyQty().compareTo(number(first.mainWarehouseSafetyReplenishmentGapQty()))>0)
-                reason="公共安全补库量超过当前主仓缺口，请刷新后重新核对";
+        // ADR-056: safety is a separately confirmed, fixed main-warehouse gap.
+        // Use the same physical-dimension proof as ordinary notification: accepting
+        // a partial amount here would pass review and fail the immutable DB snapshot.
+        var safety=MaterialAnalysisCommandService.groupSafetySnapshot(members);
+        if("BUY".equals(input.route())) {
+            String dimension=safetyDimension(first.goodsId(),first.colorId());
+            var confirmations=safetyAdmission.confirmations().getOrDefault(dimension,List.of());
+            boolean hasExactOwner=confirmations.size()==1&&confirmations.getFirst().safetyQty().compareTo(safety.gapQty())==0;
+            if(safety.gapQty().signum()>0&&!hasExactOwner) {
+                reason="公共安全库存补库已变化：当前主仓缺口需固定补库 "+safety.gapQty().stripTrailingZeros().toPlainString()+"，请由同一物料的一组完整确认后再提交";
+            } else if(safety.gapQty().signum()>0&&safetyAdmission.depthByGroup().getOrDefault(confirmations.getFirst().clientGroupKey(),Integer.MAX_VALUE)
+                    >safetyAdmission.earliestDepth().getOrDefault(dimension,Integer.MAX_VALUE)) {
+                reason="请在该物料最先办理的采购批次确认完整安全补库 "+safety.gapQty().stripTrailingZeros().toPlainString()+"，再重新核对";
+            } else if(safety.gapQty().signum()==0&&input.safetyQty().signum()>0) {
+                reason="当前无需公共安全库存补库，请刷新后重新确认";
+            }
+        } else if(input.safetyQty().signum()>0) {
+            reason="公共安全补库仅支持采购路线";
+        } else if(safety.gapQty().signum()>0) {
+            reason="当前公共安全库存缺口 "+safety.gapQty().stripTrailingZeros().toPlainString()
+                    +"；本版本仅支持采购路线的公共安全库存补库，请先走独立补库或修正主数据";
         }
         Map<UUID,BigDecimal> shares=new HashMap<>();
         allocation.allocations().forEach(value->shares.put(value.sourceId(),value.qty()));

@@ -40,6 +40,10 @@ class AggregateMaterialOrderPreviewServiceTest {
         when(value.planningUncoveredQty()).thenReturn(qty(remaining));when(value.sourceRequiredQty()).thenReturn(qty("1000"));
         when(value.downstreamReferences()).thenReturn(List.of());when(value.path()).thenReturn(List.of("外壳","保护门"));
         when(value.goodsName()).thenReturn("黑色保护门");when(value.goodsCode()).thenReturn("V50052");when(value.unitName()).thenReturn("个");
+        when(value.safetyStockQty()).thenReturn(BigDecimal.ZERO);
+        when(value.mainWarehousePublicAvailableQty()).thenReturn(BigDecimal.ZERO);
+        when(value.mainWarehouseOpenSafetySupplyQty()).thenReturn(BigDecimal.ZERO);
+        when(value.mainWarehouseSafetyReplenishmentGapQty()).thenReturn(BigDecimal.ZERO);
         return value;
     }
     private static ProductView product(UUID id,String type,String ordered) {
@@ -624,13 +628,14 @@ class AggregateMaterialOrderPreviewServiceTest {
         assertThat(result.blockedReason()).isNull();assertThat(result.publicExtraQty()).isZero();assertThat(result.remainingQty()).isEqualByComparingTo("2");
     }
 
-    @Test void safetyReplenishmentIsASeparateBuySliceBoundedByTheLiveMainWarehouseGap() {
+    @Test void safetyReplenishmentConfirmsTheWholeSeparateLiveMainWarehouseGap() {
         MaterialView row=material(UUID.randomUUID(),"safety","0");when(row.sourceConfirmed()).thenReturn("BUY");
+        when(row.safetyStockQty()).thenReturn(qty("6"));
         when(row.mainWarehouseSafetyReplenishmentGapQty()).thenReturn(qty("6"));
         GroupInput input=new GroupInput("safety",List.of(row.materialLineId()),"BUY",BigDecimal.ZERO,false,null,null,null,null,null,null,null,qty("6"));
         GroupPreview result=service().resolve(ANALYSIS,request(List.of(input)),view(List.of(),List.of(row))).groups().getFirst();
         assertThat(result.blockedReason()).isNull();assertThat(result.requestedQty()).isZero();assertThat(result.safetyQty()).isEqualByComparingTo("6");
-        when(row.mainWarehouseSafetyReplenishmentGapQty()).thenReturn(qty("5"));
+        when(row.safetyStockQty()).thenReturn(qty("5"));when(row.mainWarehouseSafetyReplenishmentGapQty()).thenReturn(qty("5"));
         assertThat(service().resolve(ANALYSIS,request(List.of(input)),view(List.of(),List.of(row))).groups().getFirst().blockedReason()).contains("主仓缺口");
     }
 }

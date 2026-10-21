@@ -128,7 +128,11 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         Map<UUID,Integer> levels=reviewed.analysis().flatMaterials().stream().collect(Collectors.toMap(MaterialView::materialLineId,MaterialView::level));
         List<GroupPreview> ordered=reviewed.groups().stream().filter(group->group.requestedQty().signum()>0||group.safetyQty().signum()>0)
                 .sorted(Comparator.comparingInt((GroupPreview group)->inputs.get(group.clientGroupKey()).materialLineIds().stream().mapToInt(source->levels.getOrDefault(source,Integer.MAX_VALUE)).min().orElse(Integer.MAX_VALUE))
-                        .thenComparingInt(group->"BUY".equals(group.route())?2:"SUBCONTRACT".equals(group.route())?1:0).thenComparing(GroupPreview::clientGroupKey)).toList();
+                        .thenComparingInt(group->"BUY".equals(group.route())?2:"SUBCONTRACT".equals(group.route())?1:0)
+                        // A physical safety gap has one confirmed owner. Commit it
+                        // before sibling BUY batches recheck the now-covered gap.
+                        .thenComparingInt(group->"BUY".equals(group.route())&&group.safetyQty().signum()>0?0:1)
+                        .thenComparing(GroupPreview::clientGroupKey)).toList();
         if(ordered.isEmpty())throw invalid("本次没有正数下达量");
         analysis.refreshLocked(analysisId);
         AnalysisView nextSnapshot=analysis.detailInternal(analysisId,false);
@@ -563,6 +567,10 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
             if(!compatibilityKeys.add(group.compatibilityKey()))throw invalid("同一物料及相同办理规则只能提交一组，请合并来源和总量后重新核对");
             UUID id=UUID.randomUUID(),action=UUID.randomUUID(),anchor=manufacturing?UUID.randomUUID():null;
             MaterialView material=Objects.requireNonNull(materials.get(group.sources().getFirst().materialLineId()));
+            // Non-purchase actions never own the BUY-only safety snapshot, even
+            // when existing public stock already covers this goods master's minimum.
+            var safety="BUY".equals(group.route())?MaterialAnalysisCommandService.groupSafetySnapshot(List.of(material))
+                    :MaterialAnalysisCommandService.SafetySnapshot.ZERO;
             ObjectNode config=mapper.valueToTree(original);config.set("originalMaterialLineIds",mapper.valueToTree(original.materialLineIds()));
             if(input.privateProof()!=null){config.set("sourcePrivateQtyByMaterialLineId",mapper.valueToTree(input.privateProof()));
                 config.set("sourcePrivateQtyByTargetMaterialLineId",mapper.valueToTree(input.privateFlow()));}
@@ -572,8 +580,8 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
             row.put("route",group.route());row.put("compatibility",group.compatibilityKey());row.set("configuration",config);
             row.put("goods",group.goodsId().toString());row.put("color",group.colorId()==null?null:group.colorId().toString());row.put("unit",group.unitId().toString());
             row.put("need_date",group.deliveryDate()==null?null:group.deliveryDate().toString());row.put("qty",sum(group.sources()));
-            row.put("public_qty",group.publicExtraQty());row.put("safety",group.safetyQty());row.put("safety_stock",material.safetyStockQty());
-            row.put("available",material.mainWarehousePublicAvailableQty());row.put("open_safety",material.mainWarehouseOpenSafetySupplyQty());
+            row.put("public_qty",group.publicExtraQty());row.put("safety",group.safetyQty());row.put("safety_stock",safety.safetyStockQty());
+            row.put("available",safety.publicAvailableQty());row.put("open_safety",safety.openSupplyQty());
             row.put("action_key",stepKey(request.idempotencyKey(),group.clientGroupKey(),"ACTION"));
             row.put("group_key",CanonicalFingerprint.sha256(List.of("AGGREGATE-ACTION",group.compatibilityKey())));
             row.put("business_key",CanonicalFingerprint.sha256(List.of("AGGREGATE-BATCH",id.toString())));

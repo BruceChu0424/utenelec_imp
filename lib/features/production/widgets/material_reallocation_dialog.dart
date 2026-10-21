@@ -14,9 +14,12 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/responsive/dialog_size.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../models/production_material_analysis.dart';
 import '../models/material_future_transfer.dart';
+import '../models/material_transfer_quantity.dart';
 import '../repositories/production_repository.dart';
 
 /// The exact successful stock-transfer intent, retained independently from
@@ -60,6 +63,7 @@ Future<ProductionMaterialAnalysisView?> showMaterialReallocationDialog({
   ValueChanged<MaterialReallocationCompletion>? onCompleted,
   bool receiveIntoCurrent = false,
   bool futureTransfer = false,
+  bool Function()? commandIsCurrent,
   void Function(MaterialReallocationEndpointCandidate candidate)?
   onOpenSourcePlan,
   void Function(MaterialReallocationEndpointCandidate candidate)?
@@ -75,6 +79,7 @@ Future<ProductionMaterialAnalysisView?> showMaterialReallocationDialog({
     onCompleted: onCompleted,
     receiveIntoCurrent: receiveIntoCurrent || futureTransfer,
     futureTransfer: futureTransfer,
+    commandIsCurrent: commandIsCurrent,
     onOpenSourcePlan: onOpenSourcePlan,
     onOpenSourceDocument: onOpenSourceDocument,
   );
@@ -124,12 +129,14 @@ class _MaterialReallocationDialogBody extends StatefulWidget {
     this.onCompleted,
     this.receiveIntoCurrent = false,
     this.futureTransfer = false,
+    this.commandIsCurrent,
     this.onOpenSourcePlan,
     this.onOpenSourceDocument,
   });
 
   final bool receiveIntoCurrent;
   final bool futureTransfer;
+  final bool Function()? commandIsCurrent;
   final ProductionPlanRepository repository;
   final ProductionMaterialAnalysisView sourceAnalysis;
   final ProductionMaterialAnalysisMaterial sourceMaterial;
@@ -210,23 +217,51 @@ class _MaterialReallocationDialogBodyState
   String get _currentRole => widget.receiveIntoCurrent ? '接受计划' : '让出计划';
   bool get _multiSelect => widget.futureTransfer;
 
-  double get _maxQty {
-    final target = _target;
-    if (target == null) return 0;
-    return target.sourceLendableQty < target.shortageQty
-        ? target.sourceLendableQty
-        : target.shortageQty;
+  BigInt? _capacity(MaterialReallocationEndpointCandidate candidate) {
+    final exact = candidate.quantityFactsExact;
+    final sourceKey = candidate is MaterialFutureTransferSource
+        ? 'availableQty'
+        : 'sourceLendableQty';
+    final targetKey = candidate is MaterialFutureTransferSource
+        ? 'targetUncoveredQty'
+        : 'shortageQty';
+    final source = materialTransferUnits(
+      exact[sourceKey] ?? candidate.sourceLendableQty,
+    );
+    final target = materialTransferUnits(
+      exact[targetKey] ?? candidate.shortageQty,
+    );
+    return source == null || target == null
+        ? null
+        : (source < target ? source : target);
   }
 
-  /// 调入模式的本计划待补数：优先物理缺口，无缺口时用建议补供量
-  /// （在途调入入口即按该口径放开）。
-  double get _remainingNeed {
-    if (!widget.receiveIntoCurrent) {
-      return _sourceMaterial.allocatedAvailableQty;
-    }
-    return _sourceMaterial.shortageQty > 0
+  String _sourceQtyLabel(MaterialReallocationEndpointCandidate candidate) {
+    final key = candidate is MaterialFutureTransferSource
+        ? 'availableQty'
+        : 'sourceLendableQty';
+    final units = materialTransferUnits(
+      candidate.quantityFactsExact[key] ?? candidate.sourceLendableQty,
+    );
+    return units == null ? '待核对' : materialTransferText(units);
+  }
+
+  BigInt? get _remainingUnits {
+    final key = !widget.receiveIntoCurrent
+        ? 'allocatedAvailableQty'
+        : widget.futureTransfer
+        ? 'additionalSupplyRecommendedQty'
+        : _sourceMaterial.shortageQty > 0
+        ? 'shortageQty'
+        : 'additionalSupplyRecommendedQty';
+    final legacy = key == 'allocatedAvailableQty'
+        ? _sourceMaterial.allocatedAvailableQty
+        : key == 'shortageQty'
         ? _sourceMaterial.shortageQty
         : _sourceMaterial.additionalSupplyRecommendedQty;
+    return materialTransferUnits(
+      _sourceMaterial.quantityFactsExact[key] ?? legacy,
+    );
   }
 
   bool get _hasMorePages => widget.futureTransfer
@@ -250,8 +285,7 @@ class _MaterialReallocationDialogBodyState
       candidate.materialLineId.isNotEmpty &&
       candidate.version > 0 &&
       candidate.fingerprint.isNotEmpty &&
-      candidate.shortageQty > 0 &&
-      candidate.sourceLendableQty > 0;
+      (_capacity(candidate) ?? BigInt.zero) > BigInt.zero;
 
   Future<void> _loadCandidates({
     required bool reset,
@@ -392,11 +426,6 @@ class _MaterialReallocationDialogBodyState
     }
   }
 
-  double _coverageOf(MaterialReallocationEndpointCandidate candidate) =>
-      candidate.sourceLendableQty < candidate.shortageQty
-      ? candidate.sourceLendableQty
-      : candidate.shortageQty;
-
   /// 自动判断最合适的来源（单选模式）：现货优先于在途、可覆盖缺口
   /// 更多者优先、交期更早者优先、在途避免晚到或交期不明。
   void _autoSelectBest() {
@@ -407,25 +436,30 @@ class _MaterialReallocationDialogBodyState
     }
     if (best == null) return;
     _target = best;
-    _qtyController.text = widget.qtyText(_maxQty);
+    _qtyController.text = materialTransferText(_capacity(best) ?? BigInt.zero);
   }
 
   /// 自动判断（在途多选）：按优先级依次勾选来源直到覆盖本计划待补数。
   void _autoSelectCovering() {
     final ordered = [..._candidates.where(_candidateHasCas)]
-      ..sort((left, right) => _preferredOver(left, right) ? -1 : 1);
-    var remaining = _remainingNeed;
+      ..sort(
+        (left, right) => _preferredOver(left, right)
+            ? -1
+            : _preferredOver(right, left)
+            ? 1
+            : _candidateIdentity(left).compareTo(_candidateIdentity(right)),
+      );
+    var remaining = _remainingUnits ?? BigInt.zero;
     for (final candidate in ordered) {
-      if (remaining <= 0) break;
-      final take = _coverageOf(candidate) < remaining
-          ? _coverageOf(candidate)
-          : remaining;
-      if (take <= 0) continue;
+      if (remaining <= BigInt.zero) break;
+      final coverage = _capacity(candidate) ?? BigInt.zero;
+      final take = coverage < remaining ? coverage : remaining;
+      if (take <= BigInt.zero) continue;
       final identity = _candidateIdentity(candidate);
       _selectedIds.add(identity);
       _selectedQtyControllers.putIfAbsent(
         identity,
-        () => TextEditingController(text: widget.qtyText(take)),
+        () => TextEditingController(text: materialTransferText(take)),
       );
       remaining -= take;
     }
@@ -443,8 +477,8 @@ class _MaterialReallocationDialogBodyState
       final incumbentLate = incumbent.lateOrUnknown;
       if (candidateLate != incumbentLate) return incumbentLate;
     }
-    final coverage = _coverageOf(candidate);
-    final incumbentCoverage = _coverageOf(incumbent);
+    final coverage = _capacity(candidate) ?? BigInt.zero;
+    final incumbentCoverage = _capacity(incumbent) ?? BigInt.zero;
     if (coverage != incumbentCoverage) return coverage > incumbentCoverage;
     final date = candidate.deliveryDate?.trim() ?? '';
     final incumbentDate = incumbent.deliveryDate?.trim() ?? '';
@@ -467,7 +501,9 @@ class _MaterialReallocationDialogBodyState
       _target = selected;
       _dirty = true;
       _submitError = null;
-      _qtyController.text = widget.qtyText(_maxQty);
+      _qtyController.text = materialTransferText(
+        _capacity(selected) ?? BigInt.zero,
+      );
     });
   }
 
@@ -483,7 +519,7 @@ class _MaterialReallocationDialogBodyState
         _selectedQtyControllers.putIfAbsent(
           identity,
           () => TextEditingController(
-            text: widget.qtyText(_defaultMultiQty(candidate, identity)),
+            text: materialTransferText(_defaultMultiQty(candidate, identity)),
           ),
         );
       }
@@ -494,21 +530,20 @@ class _MaterialReallocationDialogBodyState
 
   /// 手动勾选时的默认数量：本计划待补数扣除其它已勾选来源后，该来源
   /// 还能贡献多少。
-  double _defaultMultiQty(
+  BigInt _defaultMultiQty(
     MaterialReallocationEndpointCandidate candidate,
     String identity,
   ) {
-    var taken = 0.0;
+    var taken = BigInt.zero;
     for (final other in _selectedIds) {
       if (other == identity) continue;
       taken +=
-          double.tryParse(_selectedQtyControllers[other]?.text.trim() ?? '') ??
-          0;
+          materialTransferUnits(_selectedQtyControllers[other]?.text ?? '') ??
+          BigInt.zero;
     }
-    final remaining = (_remainingNeed - taken)
-        .clamp(0.0, _remainingNeed)
-        .toDouble();
-    final coverage = _coverageOf(candidate);
+    final need = _remainingUnits ?? BigInt.zero;
+    final remaining = need > taken ? need - taken : BigInt.zero;
+    final coverage = _capacity(candidate) ?? BigInt.zero;
     return coverage < remaining ? coverage : remaining;
   }
 
@@ -518,13 +553,12 @@ class _MaterialReallocationDialogBodyState
       : '${candidate.analysisId}|${candidate.materialLineId}';
 
   String? _validateQty(String? raw) {
-    final qty = double.tryParse(raw?.trim() ?? '');
-    if (qty == null || !qty.isFinite || qty <= 0) return '请输入大于 0 的调拨数量';
-    if (!RegExp(r'^\d+(\.\d{1,4})?$').hasMatch(raw?.trim() ?? '')) {
-      return '数量最多支持 4 位小数';
-    }
-    if (qty > _maxQty) {
-      return '最多可调 ${widget.qtyText(_maxQty)}（不超过服务端权威可调量和本计划缺口）';
+    final qty = materialTransferUnits(raw, positive: true);
+    if (qty == null) return '请输入大于0、最多14位整数和4位小数的数量';
+    final max = _target == null ? null : _capacity(_target!);
+    if (max == null) return '缺少精确可调数量，请重新读取';
+    if (qty > max) {
+      return '最多可调 ${materialTransferText(max)}（不超过服务端权威可调量和本计划缺口）';
     }
     return null;
   }
@@ -533,16 +567,12 @@ class _MaterialReallocationDialogBodyState
     MaterialFutureTransferSource candidate,
     String? raw,
   ) {
-    final qty = double.tryParse(raw?.trim() ?? '');
-    if (qty == null || !qty.isFinite || qty <= 0) return '请输入大于 0 的数量';
-    if (!RegExp(r'^\d+(\.\d{1,4})?$').hasMatch(raw?.trim() ?? '')) {
-      return '数量最多支持 4 位小数';
-    }
-    final max = candidate.availableQty < candidate.targetUncoveredQty
-        ? candidate.availableQty
-        : candidate.targetUncoveredQty;
+    final qty = materialTransferUnits(raw, positive: true);
+    if (qty == null) return '请输入大于0、最多14位整数和4位小数的数量';
+    final max = _capacity(candidate);
+    if (max == null) return '缺少精确可调数量，请重新读取';
     if (qty > max) {
-      return '最多可调 ${widget.qtyText(max)}（不超过该来源可调量和本计划缺口）';
+      return '最多可调 ${materialTransferText(max)}（不超过该来源可调量和本计划缺口）';
     }
     return null;
   }
@@ -554,15 +584,16 @@ class _MaterialReallocationDialogBodyState
     return null;
   }
 
-  double get _selectedTotal => _selectedIds.fold(0, (sum, identity) {
+  BigInt get _selectedTotal => _selectedIds.fold(BigInt.zero, (sum, identity) {
     return sum +
-        (double.tryParse(
+        (materialTransferUnits(
               _selectedQtyControllers[identity]?.text.trim() ?? '',
             ) ??
-            0);
+            BigInt.zero);
   });
 
   Future<void> _submit() async {
+    if (!_validateOwner()) return;
     if (_multiSelect) {
       await _submitBatch();
       return;
@@ -574,7 +605,9 @@ class _MaterialReallocationDialogBodyState
       _submitError = null;
     });
     if (_formKey.currentState?.validate() != true) return;
-    final qty = double.parse(_qtyController.text.trim());
+    final qty = materialTransferText(
+      materialTransferUnits(_qtyController.text, positive: true)!,
+    );
     final reason = _reasonController.text.trim();
     final isFuture = target is MaterialFutureTransferSource;
     final key = businessIdempotencyKey(
@@ -626,7 +659,7 @@ class _MaterialReallocationDialogBodyState
               reason: reason,
               idempotencyKey: key,
             );
-      if (!mounted) return;
+      if (!mounted || !_validateOwner()) return;
       widget.onCompleted?.call(
         MaterialReallocationCompletion(
           sourceAnalysisId: widget.receiveIntoCurrent
@@ -641,7 +674,7 @@ class _MaterialReallocationDialogBodyState
           targetMaterialLineId: widget.receiveIntoCurrent
               ? _sourceMaterial.materialLineId
               : target.materialLineId,
-          quantity: qty,
+          quantity: double.parse(qty),
           sourceLabel: widget.receiveIntoCurrent
               ? target.displayAnalysisLabel
               : widget.sourceProductLabel,
@@ -651,7 +684,7 @@ class _MaterialReallocationDialogBodyState
       );
       _finish(view);
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || !_validateOwner()) return;
       if (error is ApiException && error.code == 'CONFLICT') {
         _uncertain = false;
         await _recoverConflict(error);
@@ -676,27 +709,28 @@ class _MaterialReallocationDialogBodyState
   /// 快照重基版本，再提交下一笔。失败时保留剩余勾选，同键重试不重复调入。
   Future<void> _submitBatch() async {
     if (_submitting) return;
+    if (!_validateOwner()) return;
     setState(() {
       _showValidation = true;
       _submitError = null;
     });
     if (_formKey.currentState?.validate() != true) return;
-    final entries = <(String, MaterialFutureTransferSource, double)>[];
+    final entries = <(String, MaterialFutureTransferSource, String)>[];
     for (final identity in _selectedIds.toList()) {
       final candidate = _byIdentity[identity];
       if (candidate is! MaterialFutureTransferSource) continue;
-      final qty = double.tryParse(
+      final qty = materialTransferUnits(
         _selectedQtyControllers[identity]?.text.trim() ?? '',
       );
-      if (qty == null || qty <= 0) continue;
-      entries.add((identity, candidate, qty));
+      if (qty == null || qty <= BigInt.zero) continue;
+      entries.add((identity, candidate, materialTransferText(qty)));
     }
     if (entries.isEmpty) return;
     final total = _selectedTotal;
-    if (total > _remainingNeed + 0.00005) {
+    final remaining = _remainingUnits;
+    if (remaining == null || total > remaining) {
       setState(() {
-        _submitError =
-            '合计调入 ${widget.qtyText(total)} 超过本计划待补 ${widget.qtyText(_remainingNeed)}，请调小数量';
+        _submitError = '合计调入 ${materialTransferText(total)} 超过本计划精确待补量，请重新核对数量';
       });
       return;
     }
@@ -709,6 +743,7 @@ class _MaterialReallocationDialogBodyState
     ProductionMaterialAnalysisView? lastView;
     try {
       for (final (identity, candidate, qty) in entries) {
+        if (!_validateOwner()) return;
         final key = businessIdempotencyKey(
           'material-analysis-private-future-transfer',
           [
@@ -734,14 +769,14 @@ class _MaterialReallocationDialogBodyState
           reason: reason,
           idempotencyKey: key,
         );
-        if (!mounted) return;
+        if (!mounted || !_validateOwner()) return;
         widget.onCompleted?.call(
           MaterialReallocationCompletion(
             sourceAnalysisId: candidate.analysisId,
             sourceMaterialLineId: candidate.materialLineId,
             targetAnalysisId: _sourceAnalysis.analysisId,
             targetMaterialLineId: _sourceMaterial.materialLineId,
-            quantity: qty,
+            quantity: double.parse(qty),
             sourceLabel: candidate.displayAnalysisLabel,
             idempotencyKey: key,
             futureTransfer: true,
@@ -756,7 +791,7 @@ class _MaterialReallocationDialogBodyState
       }
       _finish(lastView);
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || !_validateOwner()) return;
       if (error is ApiException && error.code == 'CONFLICT') {
         await _recoverConflictBatch(error, entries.length);
       } else {
@@ -794,12 +829,28 @@ class _MaterialReallocationDialogBodyState
     widget.onSourceRebased?.call(view);
   }
 
+  bool _validateOwner() {
+    if (widget.commandIsCurrent?.call() ?? true) return true;
+    if (mounted) {
+      setState(() {
+        _submitting = false;
+        _uncertain = false;
+        _submitError =
+            (Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+                    AppLocalizationsZh())
+                .materialTransferContextChanged;
+      });
+    }
+    return false;
+  }
+
   Future<void> _recoverConflictBatch(ApiException conflict, int planned) async {
+    if (!_validateOwner()) return;
     try {
       final latest = await widget.repository.materialAnalysisDetail(
         _sourceAnalysis.analysisId,
       );
-      if (!mounted) return;
+      if (!mounted || !_validateOwner()) return;
       _rebaseFromView(latest);
       await _loadCandidates(reset: true, preserveSelection: true);
       if (!mounted) return;
@@ -820,10 +871,12 @@ class _MaterialReallocationDialogBodyState
   }
 
   Future<void> _recoverConflict(ApiException conflict) async {
+    if (!_validateOwner()) return;
     try {
       final latest = await widget.repository.materialAnalysisDetail(
         _sourceAnalysis.analysisId,
       );
+      if (!mounted || !_validateOwner()) return;
       ProductionMaterialAnalysisMaterial? source;
       for (final material in latest.materials) {
         if (material.materialLineId == _sourceMaterial.materialLineId) {
@@ -973,14 +1026,14 @@ class _MaterialReallocationDialogBodyState
 
   Widget _sourceSummary(ThemeData theme) {
     final receiving = widget.receiveIntoCurrent;
-    final label = receiving
+    final label = widget.futureTransfer
+        ? '尚需补供 '
+        : receiving
         ? (_sourceMaterial.shortageQty > 0 ? '本计划缺口 ' : '尚需补供 ')
         : '现货覆盖 ';
-    final qty = receiving
-        ? (_sourceMaterial.shortageQty > 0
-              ? _sourceMaterial.shortageQty
-              : _sourceMaterial.additionalSupplyRecommendedQty)
-        : _sourceMaterial.allocatedAvailableQty;
+    final qtyText = _remainingUnits == null
+        ? '待核对'
+        : materialTransferText(_remainingUnits!);
     final numberColor = receiving
         ? theme.colorScheme.error
         : theme.colorScheme.primary;
@@ -990,7 +1043,7 @@ class _MaterialReallocationDialogBodyState
         children: [
           TextSpan(text: label),
           TextSpan(
-            text: widget.qtyText(qty),
+            text: qtyText,
             style: TextStyle(
               color: numberColor,
               fontWeight: FontWeight.w800,
@@ -1007,7 +1060,7 @@ class _MaterialReallocationDialogBodyState
       label:
           '$_currentRole：${widget.sourceProductLabel}，'
           '${_sourceMaterial.goodsName ?? _sourceMaterial.goodsCode ?? '物料'}，'
-          '$label${widget.qtyText(qty)}',
+          '$label$qtyText',
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -1177,7 +1230,7 @@ class _MaterialReallocationDialogBodyState
         ),
         const SizedBox(width: UtenSpacing.s8),
         Text(
-          '${isFuture ? '可调' : '可让'} ${widget.qtyText(candidate.sourceLendableQty)}',
+          '${isFuture ? '可调' : '可让'} ${_sourceQtyLabel(candidate)}',
           style: theme.textTheme.titleSmall?.copyWith(
             color: theme.colorScheme.primary,
             fontWeight: FontWeight.w800,
@@ -1278,7 +1331,7 @@ class _MaterialReallocationDialogBodyState
           sub: [
             if (candidate.documentNo?.trim().isNotEmpty == true)
               candidate.documentNo!.trim(),
-            '可调 ${widget.qtyText(candidate.availableQty)}',
+            '可调 ${_sourceQtyLabel(candidate)}',
           ].join(' · '),
           controller:
               _selectedQtyControllers[identity] ?? TextEditingController(),
@@ -1293,7 +1346,7 @@ class _MaterialReallocationDialogBodyState
         sub: [
           if (target.productLabel?.trim().isNotEmpty == true)
             target.productLabel!.trim(),
-          '可${widget.receiveIntoCurrent ? '调入' : '让出'} ${widget.qtyText(target.sourceLendableQty)}',
+          '可${widget.receiveIntoCurrent ? '调入' : '让出'} ${_sourceQtyLabel(target)}',
         ].join(' · '),
         controller: _qtyController,
         validator: _validateQty,
@@ -1334,8 +1387,8 @@ class _MaterialReallocationDialogBodyState
     final scrollContent = <Widget>[
       if (_multiSelect)
         Text(
-          '已选 ${rows.length} 个来源 · 合计 ${widget.qtyText(_selectedTotal)}'
-          ' · 待补 ${widget.qtyText(_remainingNeed)}',
+          '已选 ${rows.length} 个来源 · 合计 ${materialTransferText(_selectedTotal)}'
+          ' · 待补 ${_remainingUnits == null ? '待核对' : materialTransferText(_remainingUnits!)}',
           style: theme.textTheme.labelLarge?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -1518,9 +1571,9 @@ class _MaterialReallocationDialogBodyState
   Widget _impactLine(ThemeData theme) {
     final qty = _multiSelect
         ? _selectedTotal
-        : double.tryParse(_qtyController.text.trim()) ?? 0;
-    if (qty <= 0) return const SizedBox.shrink();
-    final qtyText = widget.qtyText(qty);
+        : materialTransferUnits(_qtyController.text) ?? BigInt.zero;
+    if (qty <= BigInt.zero) return const SizedBox.shrink();
+    final qtyText = materialTransferText(qty);
     final (
       text,
       semantics,

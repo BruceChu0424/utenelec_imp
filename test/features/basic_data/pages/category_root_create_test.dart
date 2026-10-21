@@ -83,8 +83,19 @@ void main() {
   }
   for (final kind in ['goods', 'mould', 'client', 'supplier']) {
     testWidgets('$kind 根入口独立于选中子类和查询，创建真实根后清查询并定位UUID', (tester) async {
+      const capture = bool.fromEnvironment('UTEN_AUDIT_SCREENSHOTS');
+      final captureKey = GlobalKey();
+      if (capture) await loadAuditScreenshotFonts(tester);
+      final oldShadows = debugDisableShadows;
+      if (capture) debugDisableShadows = false;
+      addTearDown(() => debugDisableShadows = oldShadows);
       final fixture = _CategoryApi(kind);
-      await _pump(tester, fixture);
+      await _pump(
+        tester,
+        fixture,
+        captureKey: captureKey,
+        theme: capture ? auditScreenshotTheme(buildLightTheme()) : null,
+      );
       final search = tester.getRect(find.byType(UtenSearchBar).first);
       final action = find.byKey(const ValueKey('category-add-root'));
       final actionRect = tester.getRect(action);
@@ -143,9 +154,34 @@ void main() {
       );
       expect(tester.takeException(), isNull);
 
-      // 树行「新增子分类」图标继续用选中分类的真实 UUID（2026-10-19 起分类
-      // CRUD 在左树行内图标 + 右键菜单，详情卡不再有分类按钮）。
-      await tester.tap(find.byTooltip('新增新最外层分类的子分类'));
+      if (capture) {
+        await saveAuditScreenshot(
+          tester,
+          captureKey,
+          '$kind-category-selected',
+        );
+      }
+      // 详情菜单继续使用选中分类的真实UUID。
+      await tester.tap(find.byKey(const ValueKey('hierarchy-detail-menu')));
+      await tester.pumpAndSettle();
+      final menu = find
+          .ancestor(of: find.text('复制名称'), matching: find.byType(Material))
+          .first;
+      expect(
+        tester.getRect(menu).right,
+        closeTo(
+          tester
+              .getRect(find.byKey(const ValueKey('hierarchy-detail-menu')))
+              .right,
+          1,
+        ),
+        reason:
+            'The popup follows its actual card button, including a resized canvas',
+      );
+      if (capture) {
+        await saveAuditScreenshot(tester, captureKey, '$kind-category-menu');
+      }
+      await tester.tap(find.text('新增子分类').last);
       await tester.pumpAndSettle();
       expect(
         tester
@@ -156,6 +192,7 @@ void main() {
       );
       await tester.tap(find.text('取消').last);
       await tester.pumpAndSettle();
+      debugDisableShadows = oldShadows;
     });
 
     testWidgets('$kind 无新增权限不显示根入口且不发创建请求', (tester) async {
@@ -177,8 +214,7 @@ void main() {
     final actions = tree.trailingBuilder!(node) as UtenHierarchyNodeActions;
     final operation = actions.operations.add!;
     final menu = tree.rowMenuBuilder!(node).whereType<UtenMenuItem>().toList();
-    expect(menu.single.label, operation.label);
-    expect(identical(menu.single.onTap, operation.onInvoke), isTrue);
+    expect(menu.first.label, operation.label);
     expect(actions.operations.edit, isNull);
     expect(actions.operations.delete, isNull);
 
@@ -191,7 +227,13 @@ void main() {
     final readonlyActions =
         readonlyTree.trailingBuilder!(readonlyNode) as UtenHierarchyNodeActions;
     expect(readonlyActions.operations.add, isNull);
-    expect(readonlyTree.rowMenuBuilder!(readonlyNode), isEmpty);
+    expect(
+      readonlyTree.rowMenuBuilder!(readonlyNode).whereType<UtenMenuItem>().map(
+        (e) => e.label,
+      ),
+      ['复制名称', '复制分类路径'],
+    );
+    expect(find.byKey(const ValueKey('category-node-add')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -455,6 +497,7 @@ Future<void> _pump(
   );
   final app = router == null
       ? MaterialApp(
+          debugShowCheckedModeBanner: false,
           theme: theme,
           home: switch (kind) {
             'goods' => const ProductCategoryPage(),
@@ -469,6 +512,7 @@ Future<void> _pump(
           locale: const Locale('zh'),
         )
       : MaterialApp.router(
+          debugShowCheckedModeBanner: false,
           theme: theme,
           routerConfig: router,
           builder: builder,

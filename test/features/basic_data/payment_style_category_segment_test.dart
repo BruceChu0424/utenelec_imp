@@ -77,9 +77,9 @@ void main() {
       ),
       findsNothing,
     );
-    await tester.tap(
-      find.byKey(const ValueKey('payment-style-node-edit-style')),
-    );
+    await tester.tap(find.byKey(const ValueKey('hierarchy-detail-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('编辑类别'));
     await tester.pumpAndSettle();
     expect(
       find.descendant(
@@ -123,35 +123,27 @@ void main() {
           .whereType<UtenMenuItem>()
           .toList();
       if (scenario.viewOnly) {
-        expect(entries, isEmpty);
+        expect(entries.map((e) => e.label), ['复制名称', '复制分类路径']);
         expect(
           find.byKey(const ValueKey('payment-style-node-edit-style')),
           findsNothing,
         );
       } else {
-        final add = tester.widget<IconButton>(
-          find.byKey(const ValueKey('payment-style-node-add-style')),
-        );
-        final status = tester.widget<IconButton>(
-          find.byKey(const ValueKey('payment-style-node-status-style')),
-        );
-        expect(add.onPressed != null, !scenario.locked && !scenario.disabled);
         expect(
           entries.firstWhere((entry) => entry.label == '新增子类别').enabled,
-          add.onPressed != null,
+          !scenario.locked && !scenario.disabled,
         );
-        expect(status.onPressed != null, !scenario.locked);
         expect(
           entries
               .firstWhere(
                 (entry) => entry.label == (scenario.disabled ? '启用' : '停用'),
               )
               .enabled,
-          status.onPressed != null,
+          !scenario.locked,
         );
         expect(
           find.byKey(const ValueKey('payment-style-node-edit-style')),
-          findsOneWidget,
+          findsNothing,
         );
       }
       expect(tester.takeException(), isNull);
@@ -163,9 +155,11 @@ void main() {
       find.byKey(const ValueKey('payment-style-open-directory')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey('payment-style-node-edit-style')),
-    );
+    await tester.tap(find.text('测试费用').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('hierarchy-detail-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('编辑类别'));
     await tester.pumpAndSettle();
     expect(find.text('编辑类别'), findsOneWidget);
     expect(

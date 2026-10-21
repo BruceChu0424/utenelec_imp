@@ -31,7 +31,24 @@ public record ProductionWorkCardView(
         String warehouseName,
         Instant generatedAt,
         String namePolicy,
-        List<Card> cards) {
+        List<Card> cards,
+        java.util.Map<UUID, List<com.uten.imp.features.production.ProductionSalesRequirements.Requirement>> salesRequirementsBySegment) {
+
+    public ProductionWorkCardView(UUID planId, String planBillNo, LocalDate planBillDate,
+            LocalDate deliveryDate, UUID packageId, String packageStatus, short executionModelVersion,
+            long packageLockVersion, Instant confirmedAt, String approverName, UUID warehouseId,
+            String warehouseCode, String warehouseName, Instant generatedAt, String namePolicy, List<Card> cards) {
+        this(planId, planBillNo, planBillDate, deliveryDate, packageId, packageStatus,
+                executionModelVersion, packageLockVersion, confirmedAt, approverName, warehouseId,
+                warehouseCode, warehouseName, generatedAt, namePolicy, cards, java.util.Map.of());
+    }
+
+    public ProductionWorkCardView withSalesRequirements(
+            java.util.Map<UUID, List<com.uten.imp.features.production.ProductionSalesRequirements.Requirement>> requirements) {
+        return new ProductionWorkCardView(planId, planBillNo, planBillDate, deliveryDate, packageId,
+                packageStatus, executionModelVersion, packageLockVersion, confirmedAt, approverName,
+                warehouseId, warehouseCode, warehouseName, generatedAt, namePolicy, cards, java.util.Map.copyOf(requirements));
+    }
 
     public static final String CURRENT_MASTER_DATA = "CURRENT_MASTER_DATA";
 

@@ -21008,6 +21008,270 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'全部分类'**
   String get filterAllCategoriesSummary;
+
+  /// No description provided for @permissionTemplateTab.
+  ///
+  /// In zh, this message translates to:
+  /// **'按模板'**
+  String get permissionTemplateTab;
+
+  /// No description provided for @permissionTemplateNew.
+  ///
+  /// In zh, this message translates to:
+  /// **'新建模板'**
+  String get permissionTemplateNew;
+
+  /// No description provided for @permissionTemplateSaveFromUser.
+  ///
+  /// In zh, this message translates to:
+  /// **'存为模板'**
+  String get permissionTemplateSaveFromUser;
+
+  /// No description provided for @permissionTemplateApply.
+  ///
+  /// In zh, this message translates to:
+  /// **'应用模板'**
+  String get permissionTemplateApply;
+
+  /// No description provided for @permissionTemplateEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'编辑模板'**
+  String get permissionTemplateEdit;
+
+  /// No description provided for @permissionTemplateDelete.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除模板'**
+  String get permissionTemplateDelete;
+
+  /// No description provided for @permissionTemplateName.
+  ///
+  /// In zh, this message translates to:
+  /// **'模板名称'**
+  String get permissionTemplateName;
+
+  /// No description provided for @permissionTemplateDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'用途说明'**
+  String get permissionTemplateDescription;
+
+  /// No description provided for @permissionTemplateEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有权限模板'**
+  String get permissionTemplateEmpty;
+
+  /// No description provided for @permissionTemplateEmptyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'新建模板，或从员工已生效的操作权限保存。'**
+  String get permissionTemplateEmptyHint;
+
+  /// No description provided for @permissionTemplateSnapshotNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'模板保存操作权限快照；以后编辑或删除模板，不会改动已应用的账号。'**
+  String get permissionTemplateSnapshotNote;
+
+  /// No description provided for @permissionTemplateScopeNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'只设置操作权限。数据范围、部门、账号身份及外网访问资格仍分别管理。'**
+  String get permissionTemplateScopeNote;
+
+  /// No description provided for @permissionTemplateSelect.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择权限模板'**
+  String get permissionTemplateSelect;
+
+  /// No description provided for @permissionTemplateMerge.
+  ///
+  /// In zh, this message translates to:
+  /// **'补充权限'**
+  String get permissionTemplateMerge;
+
+  /// No description provided for @permissionTemplateReplace.
+  ///
+  /// In zh, this message translates to:
+  /// **'覆盖为模板'**
+  String get permissionTemplateReplace;
+
+  /// No description provided for @permissionTemplateMergeHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'保留现有权限，补充模板权限；不会恢复已明确收回的权限。'**
+  String get permissionTemplateMergeHint;
+
+  /// No description provided for @permissionTemplateReplaceHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'将操作权限设置为模板内容；会收回模板外的现有权限，请核对差量。'**
+  String get permissionTemplateReplaceHint;
+
+  /// No description provided for @permissionTemplatePreview.
+  ///
+  /// In zh, this message translates to:
+  /// **'预览变更'**
+  String get permissionTemplatePreview;
+
+  /// No description provided for @permissionTemplateSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'权限模板已保存'**
+  String get permissionTemplateSaved;
+
+  /// No description provided for @permissionTemplateDeleted.
+  ///
+  /// In zh, this message translates to:
+  /// **'权限模板已删除'**
+  String get permissionTemplateDeleted;
+
+  /// No description provided for @permissionTemplateApplied.
+  ///
+  /// In zh, this message translates to:
+  /// **'权限模板已应用'**
+  String get permissionTemplateApplied;
+
+  /// No description provided for @permissionTemplateCancel.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消'**
+  String get permissionTemplateCancel;
+
+  /// No description provided for @permissionTemplateSave.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存模板'**
+  String get permissionTemplateSave;
+
+  /// No description provided for @permissionTemplateClose.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭'**
+  String get permissionTemplateClose;
+
+  /// No description provided for @permissionTemplateDeleteHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅删除这个模板。已经应用模板的账号权限会保留。'**
+  String get permissionTemplateDeleteHint;
+
+  /// No description provided for @permissionTemplateInvalidName.
+  ///
+  /// In zh, this message translates to:
+  /// **'名称不能为空，且最多 80 字；用途说明最多 1000 字。'**
+  String get permissionTemplateInvalidName;
+
+  /// No description provided for @permissionTemplateBoundaryChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'登录身份、授权或服务器已变化，请关闭后重新打开。'**
+  String get permissionTemplateBoundaryChanged;
+
+  /// No description provided for @permissionTemplateUncertain.
+  ///
+  /// In zh, this message translates to:
+  /// **'请求结果尚未确认。请关闭窗口，刷新并核对结果后再操作。'**
+  String get permissionTemplateUncertain;
+
+  /// No description provided for @permissionTemplateLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法读取权限模板，请重试。'**
+  String get permissionTemplateLoadFailed;
+
+  /// No description provided for @permissionTemplateRetry.
+  ///
+  /// In zh, this message translates to:
+  /// **'重新加载'**
+  String get permissionTemplateRetry;
+
+  /// No description provided for @permissionTemplateSelectedCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'已选 {count} 项权限'**
+  String permissionTemplateSelectedCount(int count);
+
+  /// No description provided for @permissionTemplateUnknownCodes.
+  ///
+  /// In zh, this message translates to:
+  /// **'模板含有当前目录未提供的权限码，请核对后移除或重新创建。'**
+  String get permissionTemplateUnknownCodes;
+
+  /// No description provided for @permissionTemplateClearUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'移除失效权限码'**
+  String get permissionTemplateClearUnknown;
+
+  /// No description provided for @permissionTemplateSensitiveNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'敏感权限可以保存；应用到每位员工时仍须逐项确认。'**
+  String get permissionTemplateSensitiveNote;
+
+  /// No description provided for @permissionTemplateNoSelection.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择一个模板查看权限'**
+  String get permissionTemplateNoSelection;
+
+  /// No description provided for @hierarchyActions.
+  ///
+  /// In zh, this message translates to:
+  /// **'更多操作'**
+  String get hierarchyActions;
+
+  /// No description provided for @hierarchyEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'编辑'**
+  String get hierarchyEdit;
+
+  /// No description provided for @hierarchyCopyName.
+  ///
+  /// In zh, this message translates to:
+  /// **'复制名称'**
+  String get hierarchyCopyName;
+
+  /// No description provided for @hierarchyCopyPath.
+  ///
+  /// In zh, this message translates to:
+  /// **'复制分类路径'**
+  String get hierarchyCopyPath;
+
+  /// No description provided for @productionOrderRequirement.
+  ///
+  /// In zh, this message translates to:
+  /// **'订单统一备注'**
+  String get productionOrderRequirement;
+
+  /// No description provided for @productionProductRequirement.
+  ///
+  /// In zh, this message translates to:
+  /// **'产品单独备注'**
+  String get productionProductRequirement;
+
+  /// No description provided for @productionRequirementsClose.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭'**
+  String get productionRequirementsClose;
+
+  /// No description provided for @productionSalesRequirements.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售生产要求'**
+  String get productionSalesRequirements;
+
+  /// No description provided for @materialTransferContextChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'账号、权限或计划状态已变化，请关闭后重新核对调拨。'**
+  String get materialTransferContextChanged;
 }
 
 class _AppLocalizationsDelegate

@@ -7,6 +7,7 @@
 import '../../../shared/models/progress_ratio.dart';
 import 'material_analysis_projection.dart';
 import 'material_preparation_supply_slice.dart';
+import 'production_sales_requirement.dart';
 
 enum MaterialSupplyRoute {
   make('MAKE', '自制'),
@@ -447,6 +448,7 @@ class ProductionMaterialAnalysisView {
     this.pendingAutoConfirmRouteCount = 0,
     this.overproductionDefaults = const {},
     this.analysisNo,
+    this.salesRequirements = const {},
   });
 
   final String analysisId;
@@ -465,6 +467,7 @@ class ProductionMaterialAnalysisView {
   final String? fqcRecoveryAuthorizationId;
   final Map<String, String> planningBlockedReasons;
   final Map<String, double> overproductionDefaults;
+  final Map<String, List<ProductionSalesRequirement>> salesRequirements;
 
   /// 分析编号（WL+日期+日流水，V719）：页面顶部事实卡与「计划单号」同源。
   final String? analysisNo;
@@ -567,6 +570,14 @@ class ProductionMaterialAnalysisView {
               entry.key.toString(): reason,
       },
       analysisNo: _string(json['analysisNo']),
+      salesRequirements: {
+        if (json['salesRequirements']
+            case final Map<Object?, Object?> requirements)
+          for (final entry in requirements.entries)
+            entry.key.toString(): ProductionSalesRequirement.parseList(
+              entry.value,
+            ),
+      },
     );
   }
 }
@@ -1697,6 +1708,7 @@ class MaterialBorrowRef {
 /// 跨物料分析让料候选。版本与指纹属于接受计划的 CAS 快照；提交时必须
 /// 原样回传，不能用列表展示值在客户端重算合法数量。
 abstract interface class MaterialReallocationEndpointCandidate {
+  Map<String, String> get quantityFactsExact;
   String get analysisId;
   int get version;
   String get fingerprint;
@@ -1727,6 +1739,7 @@ class MaterialCrossReallocationCandidate
     this.deliveryDate,
     this.shortageQty = 0,
     this.sourceLendableQty = 0,
+    this.quantityFactsExact = const {},
   });
 
   final String targetAnalysisId;
@@ -1749,6 +1762,8 @@ class MaterialCrossReallocationCandidate
   final double shortageQty;
   @override
   final double sourceLendableQty;
+  @override
+  final Map<String, String> quantityFactsExact;
 
   @override
   String get analysisId => targetAnalysisId;
@@ -1791,6 +1806,7 @@ class MaterialCrossReallocationCandidate
     deliveryDate: _string(json['deliveryDate']),
     shortageQty: _double(json['shortageQty']) ?? 0,
     sourceLendableQty: _double(json['sourceLendableQty']) ?? 0,
+    quantityFactsExact: _quantityFactsExact(json['quantityFactsExact']),
   );
 }
 
@@ -1809,6 +1825,7 @@ class MaterialCrossReallocationSourceCandidate
     this.deliveryDate,
     this.sourceLendableQty = 0,
     this.shortageQty = 0,
+    this.quantityFactsExact = const {},
   });
 
   final String sourceAnalysisId;
@@ -1829,6 +1846,8 @@ class MaterialCrossReallocationSourceCandidate
   final double sourceLendableQty;
   @override
   final double shortageQty;
+  @override
+  final Map<String, String> quantityFactsExact;
   @override
   String get analysisId => sourceAnalysisId;
   @override
@@ -1858,6 +1877,7 @@ class MaterialCrossReallocationSourceCandidate
     deliveryDate: _string(json['deliveryDate']),
     sourceLendableQty: _double(json['sourceLendableQty']) ?? 0,
     shortageQty: _double(json['shortageQty']) ?? 0,
+    quantityFactsExact: _quantityFactsExact(json['quantityFactsExact']),
   );
 }
 

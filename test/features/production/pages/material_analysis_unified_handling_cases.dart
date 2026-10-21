@@ -158,6 +158,35 @@ void materialUnifiedHandlingCases() {
     expect(_notices(tester), contains('分析状态或撤回权限已变化'));
   });
 
+  testWidgets('整计划撤回：原地修改同一权限Set也废止旧确认作用域', (tester) async {
+    final permissions = {..._unifiedHandlingPermissions};
+    await _pump(
+      tester,
+      permissions: permissions,
+      mutate: _unifiedHandlingFixture,
+    );
+    await _showUnifiedMaterialLayout(tester);
+    await tester.tap(
+      find.byKey(const ValueKey('material-top-level-cancel-plan')),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('material-plan-cancel-reason')),
+      '撤回本计划',
+    );
+    // Keep all withdrawal permissions. A changed permission set still means the
+    // user's confirmation belongs to an older semantic authorization scope.
+    expect(permissions.contains(Perm.salesOrderView), isFalse);
+    permissions.add(Perm.salesOrderView);
+    await tester.tap(find.text('确认整批撤回'));
+    await tester.pumpAndSettle();
+    expect(
+      requests.where((request) => request.path.endsWith('/withdraw')),
+      isEmpty,
+    );
+    expect(_notices(tester), contains('分析状态或撤回权限已变化'));
+  });
+
   testWidgets('整计划撤回：网络段换账号后旧回包不得覆盖新页面', (tester) async {
     final session = _OrderAuthoritySession();
     await _pump(

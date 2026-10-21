@@ -241,6 +241,7 @@ abstract class _MaterialAnalysisBorrowState
   ) async {
     final analysis = _analysis;
     if (analysis == null || !_canBorrowOut(material)) return;
+    final sessionScope = _sessionScopeKey();
     final candidates = _borrowCandidates(material);
     if (candidates.isEmpty) {
       context.appInfo('当前分析内没有其它产品缺这种料；可使用“跨计划让料”查找其它分析');
@@ -257,7 +258,13 @@ abstract class _MaterialAnalysisBorrowState
         qtyText: _qty,
       ),
     );
-    if (request == null || !mounted) return;
+    if (request == null ||
+        !mounted ||
+        !_sameAnalysisSnapshot(analysis, sessionScope) ||
+        !_canReallocate ||
+        _busy) {
+      return;
+    }
     await _submitBorrow(material, request);
   }
 
@@ -276,6 +283,12 @@ abstract class _MaterialAnalysisBorrowState
       return;
     }
     final indexes = _analysisIndexes(analysis);
+    final sessionScope = _sessionScopeKey();
+    var expectedAnalysis = analysis;
+    bool current() =>
+        mounted &&
+        _canCrossReallocate &&
+        _sameAnalysisSnapshot(expectedAnalysis, sessionScope);
     final product = indexes.productsById[material.analysisLineId];
     final productLabel = product?.goodsName?.trim().isNotEmpty == true
         ? product!.goodsName!.trim()
@@ -296,10 +309,12 @@ abstract class _MaterialAnalysisBorrowState
         qtyText: _qty,
         receiveIntoCurrent: receiveIntoCurrent,
         futureTransfer: futureTransfer,
+        commandIsCurrent: current,
         onCompleted: completions.add,
         onSourceRebased: (latest) {
-          if (!mounted) return;
+          if (!current()) return;
           setState(() => _applyAnalysis(latest));
+          expectedAnalysis = latest;
         },
         onOpenSourcePlan:
             _permissions.contains(Perm.productionMaterialAnalysisView)
@@ -340,7 +355,7 @@ abstract class _MaterialAnalysisBorrowState
           }
         },
       );
-      if (!mounted) return;
+      if (!mounted || !current()) return;
       setState(() {
         _borrowing = false;
         if (view != null) _applyAnalysis(view);
@@ -382,6 +397,8 @@ abstract class _MaterialAnalysisBorrowState
     required String sourceLabel,
   }) async {
     if (_analysis == null || _borrowing || !mounted) return;
+    final expectedAnalysis = _analysis!;
+    final sessionScope = _sessionScopeKey();
     final currentId = _analysis!.analysisId;
     setState(() => _borrowing = true);
     try {
@@ -393,6 +410,8 @@ abstract class _MaterialAnalysisBorrowState
         idempotencyKey: idempotencyKey,
         futureTransfer: futureTransfer,
         sourceLabel: sourceLabel,
+        commandIsCurrent: () =>
+            mounted && _sameAnalysisSnapshot(expectedAnalysis, sessionScope),
         onOpenSource: _permissions.contains(Perm.productionMaterialAnalysisView)
             ? (source) async {
                 await context.push(
@@ -406,16 +425,22 @@ abstract class _MaterialAnalysisBorrowState
               }
             : null,
       );
-      if (!mounted || supplied == null) return;
+      if (!mounted ||
+          supplied == null ||
+          !_sameAnalysisSnapshot(expectedAnalysis, sessionScope)) {
+        return;
+      }
       final refreshed = supplied.analysisId == currentId
           ? supplied
           : await _readMaterialAnalysisDetail(currentId);
-      if (!mounted) return;
+      if (!mounted || !_sameAnalysisSnapshot(expectedAnalysis, sessionScope)) {
+        return;
+      }
       setState(() => _applyAnalysis(refreshed));
       refreshAfterProductionPlanGenerated(ref);
       context.appSuccess('已为原计划提交补供；原计划入库后减少待补量，超量部分进入公共余量。');
     } catch (error) {
-      if (mounted) {
+      if (mounted && _sameAnalysisSnapshot(expectedAnalysis, sessionScope)) {
         context.appError(
           productionErrorMessage(
             error,
@@ -433,7 +458,8 @@ abstract class _MaterialAnalysisBorrowState
     MaterialBorrowRequestDraft request,
   ) async {
     final analysis = _analysis;
-    if (analysis == null || _borrowing) return;
+    if (analysis == null || _borrowing || !_canReallocate) return;
+    final sessionScope = _sessionScopeKey();
     final key = businessIdempotencyKey(
       'material-analysis-borrow',
       [
@@ -442,7 +468,7 @@ abstract class _MaterialAnalysisBorrowState
         analysis.fingerprint,
         from.materialLineId,
         request.toMaterialLineId,
-        request.qty.toString(),
+        request.qtyExact ?? request.qty.toString(),
         request.reason,
       ].join('|'),
     );
@@ -455,28 +481,33 @@ abstract class _MaterialAnalysisBorrowState
             idempotencyKey: key,
             fromMaterialLineId: from.materialLineId,
             toMaterialLineId: request.toMaterialLineId,
-            qty: request.qty,
+            qty: request.qtyExact ?? request.qty,
             reason: request.reason,
           );
-      if (!mounted) return;
+      if (!mounted || !_sameAnalysisSnapshot(analysis, sessionScope)) return;
       setState(() {
         _borrowing = false;
         _applyAnalysis(view);
       });
-      context.appSuccess('已调拨 ${_qty(request.qty)} 件，齐套结果已由服务端重新计算');
+      context.appSuccess(
+        '已调拨 ${request.qtyExact ?? _qty(request.qty)} 件，齐套结果已由服务端重新计算',
+      );
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || !_sameAnalysisSnapshot(analysis, sessionScope)) return;
       setState(() => _borrowing = false);
       context.appError(
         productionErrorMessage(error, fallback: '调拨失败，请刷新后重试'),
         force: true,
       );
+    } finally {
+      if (mounted && _borrowing) setState(() => _borrowing = false);
     }
   }
 
   Future<void> _revokeBorrow(MaterialBorrowRef borrowRef) async {
     final analysis = _analysis;
     if (analysis == null || !_canReallocate || _busy) return;
+    final sessionScope = _sessionScopeKey();
     final reason = await showDialog<String>(
       context: context,
       builder: (_) => const MaterialRequiredReasonDialog(
@@ -487,7 +518,13 @@ abstract class _MaterialAnalysisBorrowState
         confirmLabel: '确认撤销',
       ),
     );
-    if (reason == null || !mounted) return;
+    if (reason == null ||
+        !mounted ||
+        !_canReallocate ||
+        _busy ||
+        !_sameAnalysisSnapshot(analysis, sessionScope)) {
+      return;
+    }
     final key = businessIdempotencyKey(
       'material-analysis-borrow-revoke',
       [
@@ -508,19 +545,21 @@ abstract class _MaterialAnalysisBorrowState
             idempotencyKey: key,
             reason: reason,
           );
-      if (!mounted) return;
+      if (!mounted || !_sameAnalysisSnapshot(analysis, sessionScope)) return;
       setState(() {
         _borrowing = false;
         _applyAnalysis(view);
       });
       context.appSuccess('借用已撤销，齐套结果已由服务端重新计算');
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || !_sameAnalysisSnapshot(analysis, sessionScope)) return;
       setState(() => _borrowing = false);
       context.appError(
         productionErrorMessage(error, fallback: '撤销借用失败，请刷新后重试'),
         force: true,
       );
+    } finally {
+      if (mounted && _borrowing) setState(() => _borrowing = false);
     }
   }
 
@@ -529,6 +568,7 @@ abstract class _MaterialAnalysisBorrowState
   ) async {
     final analysis = _analysis;
     if (analysis == null || !_canCrossReallocate || _busy) return;
+    final sessionScope = _sessionScopeKey();
     final counterpartVersion = allocation.counterpartVersion;
     final counterpartFingerprint = allocation.counterpartFingerprint;
     if (counterpartVersion == null ||
@@ -547,7 +587,13 @@ abstract class _MaterialAnalysisBorrowState
         confirmLabel: '确认撤销',
       ),
     );
-    if (reason == null || !mounted) return;
+    if (reason == null ||
+        !mounted ||
+        !_canCrossReallocate ||
+        _busy ||
+        !_sameAnalysisSnapshot(analysis, sessionScope)) {
+      return;
+    }
 
     final currentIsSource = allocation.isOutbound;
     final sourceAnalysisId = currentIsSource
@@ -597,23 +643,25 @@ abstract class _MaterialAnalysisBorrowState
             reason: reason,
             idempotencyKey: key,
           );
-      if (!mounted) return;
+      if (!mounted || !_sameAnalysisSnapshot(analysis, sessionScope)) return;
       final currentView = currentIsSource
           ? sourceView
           : await _readMaterialAnalysisDetail(analysis.analysisId);
-      if (!mounted) return;
+      if (!mounted || !_sameAnalysisSnapshot(analysis, sessionScope)) return;
       setState(() {
         _borrowing = false;
         _applyAnalysis(currentView);
       });
       context.appSuccess('跨计划让料已撤销，两份计划的物料覆盖已重新计算');
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || !_sameAnalysisSnapshot(analysis, sessionScope)) return;
       setState(() => _borrowing = false);
       context.appError(
         productionErrorMessage(error, fallback: '撤销跨计划让料失败，请刷新后重试'),
         force: true,
       );
+    } finally {
+      if (mounted && _borrowing) setState(() => _borrowing = false);
     }
   }
 
@@ -716,6 +764,8 @@ abstract class _MaterialAnalysisBorrowState
     ThemeData theme,
     ProductionMaterialAnalysisMaterial material,
   ) {
+    final historyAnalysis = _analysis;
+    final historyScope = _sessionScopeKey();
     final refs = material.borrowRefs;
     final crossRefs = material.crossReallocationRefs;
     final canBorrowOut = _canBorrowOut(material);
@@ -925,6 +975,11 @@ abstract class _MaterialAnalysisBorrowState
               materialId: material.materialLineId,
               revision: materialDetailRevision.value,
               canWrite: _canCrossReallocate && !_busy,
+              commandIsCurrent: () =>
+                  mounted &&
+                  historyAnalysis != null &&
+                  _canCrossReallocate &&
+                  _sameAnalysisSnapshot(historyAnalysis, historyScope),
               canReplenish:
                   !_busy &&
                   (_permissions.contains(

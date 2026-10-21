@@ -132,11 +132,16 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                 FROM production_material_analysis_materials root
                 WHERE item.analysis_id=:id AND root.id=item.root_material_id
                   AND COALESCE(root.confirmed_route,'MAKE')<>'MAKE'
+                  AND (item.ready_now_qty,item.ready_by_date_qty,item.ready_start_qty,item.ready_finish_qty,item.ready_ship_qty)
+                      IS DISTINCT FROM (0::numeric,0::numeric,0::numeric,0::numeric,0::numeric)
                 """).setParameter("id",analysisId).executeUpdate();
         em.createNativeQuery("""
-                UPDATE production_material_analyses analysis
-                SET status=fn_material_analysis_fulfillment_status(analysis.id)
-                WHERE analysis.id=:analysisId AND analysis.status<>'CANCELLED'
+                WITH snapshot AS MATERIALIZED (
+                  SELECT id,fn_material_analysis_fulfillment_status(id) AS status
+                  FROM production_material_analyses WHERE id=:analysisId AND status<>'CANCELLED'
+                )
+                UPDATE production_material_analyses analysis SET status=snapshot.status
+                FROM snapshot WHERE analysis.id=snapshot.id AND analysis.status IS DISTINCT FROM snapshot.status
                 """).setParameter("analysisId", analysisId).executeUpdate();
     }
 
@@ -398,6 +403,12 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                     """+values+"""
                     ) snapshot(id,required,stock,reserved,safety,allocated,shortage,inbound)
                     WHERE root.id=snapshot.id
+                      AND (root.active,root.required_qty,root.available_qty,root.reserved_qty,root.safety_stock_qty,
+                           root.allocated_available_qty,root.allocated_start_qty,root.allocated_finish_qty,root.allocated_ship_qty,
+                           root.shortage_qty,root.inbound_qty)
+                          IS DISTINCT FROM (TRUE,snapshot.required,snapshot.stock,snapshot.reserved,snapshot.safety,
+                                            snapshot.allocated,snapshot.allocated,snapshot.allocated,snapshot.allocated,
+                                            snapshot.shortage,snapshot.inbound)
                     """);
             for(int index=0;index<chunk.size();index++) {
                 RootQuantityRow row=chunk.get(index);

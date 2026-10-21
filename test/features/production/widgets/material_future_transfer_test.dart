@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/features/production/models/material_transfer_quantity.dart';
 import 'package:uten_imp/features/production/models/material_future_transfer.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
@@ -12,6 +13,156 @@ import 'package:uten_imp/features/production/widgets/material_reallocation_dialo
 import 'package:uten_imp/shared/models/paged_result.dart';
 
 void main() {
+  testWidgets('cancel uses exact large remaining and restoration capacities', (
+    tester,
+  ) async {
+    const maximum = '99999999999999.9999';
+    final repository = _Repository(exactLimit: maximum);
+    await _pumpHistory(tester, repository);
+    await tester.tap(
+      find.byKey(const Key('future-transfer-cancel-transfer-1')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<TextFormField>(
+            find.byKey(const Key('future-transfer-cancel-qty')),
+          )
+          .controller!
+          .text,
+      maximum,
+    );
+    expect(find.text('本次恢复原计划 $maximum · 释放公共供给 0'), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const Key('future-transfer-cancel-reason')),
+      '撤销精确剩余量',
+    );
+    await tester.tap(find.byKey(const Key('future-transfer-cancel-confirm')));
+    await tester.pumpAndSettle();
+    expect(repository.cancels.single['qty'], maximum);
+  });
+  testWidgets('future sources share one exact uncovered demand budget', (
+    tester,
+  ) async {
+    final repository = _Repository();
+    await _pumpPicker(tester, repository);
+    await tester.tap(
+      find.byKey(const Key('future-transfer-candidate-allocation-2')),
+    );
+    await tester.pumpAndSettle();
+    for (final id in ['allocation-1', 'allocation-2']) {
+      await tester.enterText(find.byKey(Key('future-transfer-qty-$id')), '60');
+    }
+    await tester.tap(find.byKey(const Key('cross-reallocation-confirm')));
+    await tester.pumpAndSettle();
+    expect(repository.creates, isEmpty);
+    expect(find.textContaining('超过本计划精确待补量'), findsOneWidget);
+  });
+  testWidgets(
+    'future batch checks its owner again between successful commands',
+    (tester) async {
+      var current = true;
+      var completed = 0;
+      final repository = _Repository();
+      await _pumpPicker(
+        tester,
+        repository,
+        commandIsCurrent: () => current,
+        onCompleted: (_) {
+          completed++;
+          current = false;
+        },
+      );
+      await tester.tap(
+        find.byKey(const Key('future-transfer-candidate-allocation-2')),
+      );
+      await tester.pumpAndSettle();
+      for (final id in ['allocation-1', 'allocation-2']) {
+        await tester.enterText(
+          find.byKey(Key('future-transfer-qty-$id')),
+          '50',
+        );
+      }
+      await tester.tap(find.byKey(const Key('cross-reallocation-confirm')));
+      await tester.pumpAndSettle();
+      expect(repository.creates, hasLength(1));
+      expect(completed, 1);
+      expect(find.textContaining('账号、权限或计划状态已变化'), findsOneWidget);
+    },
+  );
+  testWidgets(
+    'future batch stops before a second write when its host changes',
+    (tester) async {
+      var allowed = true;
+      var completions = 0;
+      final repository = _Repository(onCreate: () => allowed = false);
+      await _pumpPicker(
+        tester,
+        repository,
+        commandIsCurrent: () => allowed,
+        onCompleted: (_) => completions++,
+      );
+      await tester.tap(
+        find.byKey(const Key('future-transfer-candidate-allocation-2')),
+      );
+      await tester.pumpAndSettle();
+      for (final id in ['allocation-1', 'allocation-2']) {
+        await tester.enterText(
+          find.byKey(Key('future-transfer-qty-$id')),
+          '50',
+        );
+      }
+      await tester.tap(find.byKey(const Key('cross-reallocation-confirm')));
+      await tester.pumpAndSettle();
+      expect(repository.creates, hasLength(1));
+      expect(completions, 0);
+      expect(find.textContaining('账号、权限或计划状态已变化'), findsOneWidget);
+    },
+  );
+  testWidgets(
+    'an open cancellation cannot write after its host permission is revoked',
+    (tester) async {
+      final repository = _Repository();
+      final writable = ValueNotifier(true);
+      addTearDown(writable.dispose);
+      await _size(tester, const Size(1000, 850));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ValueListenableBuilder<bool>(
+              valueListenable: writable,
+              builder: (context, allowed, child) =>
+                  MaterialFutureTransferHistory(
+                    repository: repository,
+                    analysisId: 'target-B',
+                    materialId: 'target-material',
+                    revision: 1,
+                    canWrite: allowed,
+                    canReplenish: false,
+                    onChanged: (_) {},
+                    onReplenish: (_) {},
+                  ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('future-transfer-cancel-transfer-1')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('future-transfer-cancel-reason')),
+        '取消剩余份额',
+      );
+      writable.value = false;
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('future-transfer-cancel-confirm')));
+      await tester.pumpAndSettle();
+      expect(repository.cancels, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'private source allocations remain distinct and transfer only the uncovered hundred',
     (tester) async {
@@ -30,9 +181,12 @@ void main() {
         find.byKey(const Key('future-transfer-candidate-allocation-2')),
         findsOneWidget,
       );
-      // 自动匹配会勾选两个来源；只保留 allocation-2，验证逐笔数量与提交。
+      // 自动匹配仅覆盖净待补量；改选 allocation-2 验证准确来源。
       await tester.tap(
         find.byKey(const Key('future-transfer-candidate-allocation-1')),
+      );
+      await tester.tap(
+        find.byKey(const Key('future-transfer-candidate-allocation-2')),
       );
       await tester.pumpAndSettle();
       expect(
@@ -66,10 +220,7 @@ void main() {
     (tester) async {
       final repo = _Repository(late: true, failCreate: true);
       await _pumpPicker(tester, repo, size: const Size(375, 812));
-      // 自动勾选了两个晚到来源；只留 allocation-1（晚到默认接受，无确认勾选）。
-      await tester.tap(
-        find.byKey(const Key('future-transfer-candidate-allocation-2')),
-      );
+      // 自动按净待补量选择 allocation-1，晚到默认接受。
       await tester.pumpAndSettle();
       expect(
         find.byKey(const Key('future-transfer-accept-late')),
@@ -278,6 +429,7 @@ Future<void> _pumpPicker(
   _Repository repo, {
   Size size = const Size(1200, 900),
   ValueChanged<MaterialReallocationCompletion>? onCompleted,
+  bool Function()? commandIsCurrent,
 }) async {
   await _size(tester, size);
   await tester.pumpWidget(
@@ -294,6 +446,7 @@ Future<void> _pumpPicker(
               qtyText: (qty) => qty?.toStringAsFixed(0) ?? '—',
               futureTransfer: true,
               onCompleted: onCompleted,
+              commandIsCurrent: commandIsCurrent,
             ),
             child: const Text('打开'),
           ),
@@ -363,6 +516,8 @@ class _Repository extends ProductionPlanRepository {
     this.failRecords = false,
     this.restoreQty,
     this.failedSource = false,
+    this.onCreate,
+    this.exactLimit,
   }) : super(ApiClient(Dio()));
   final bool late;
   bool failCreate;
@@ -371,6 +526,8 @@ class _Repository extends ProductionPlanRepository {
   bool failRecords;
   final double? restoreQty;
   final bool failedSource;
+  final VoidCallback? onCreate;
+  final String? exactLimit;
   final creates = <Map<String, Object>>[];
   final cancels = <Map<String, Object>>[];
   ProductionMaterialAnalysisView? lastView;
@@ -410,14 +567,14 @@ class _Repository extends ProductionPlanRepository {
     required ProductionMaterialAnalysisView targetAnalysis,
     required String targetMaterialId,
     required MaterialFutureTransferSource source,
-    required double qty,
+    required Object qty,
     required bool allowLateSupply,
     required String reason,
     required String idempotencyKey,
   }) async {
     creates.add({
       'allocation': source.sourceAllocationId,
-      'qty': qty,
+      'qty': materialTransferWire(qty),
       'late': allowLateSupply,
       'key': idempotencyKey,
       'targetVersion': targetAnalysis.version,
@@ -426,6 +583,7 @@ class _Repository extends ProductionPlanRepository {
       failCreate = false;
       throw NetworkTimeoutException();
     }
+    onCreate?.call();
     return lastView = _view;
   }
 
@@ -446,10 +604,10 @@ class _Repository extends ProductionPlanRepository {
         sourceMaterialId: 'source-material',
         targetAnalysisId: 'target-B',
         targetMaterialId: 'target-material',
-        qty: 100,
+        qty: exactLimit == null ? 100 : double.parse(exactLimit!),
         cancelledQty: 0,
-        receivedQty: 30,
-        remainingQty: 70,
+        receivedQty: exactLimit == null ? 30 : 0,
+        remainingQty: exactLimit == null ? 70 : double.parse(exactLimit!),
         status: 'PARTIAL',
         sourceVersion: 7,
         sourceFingerprint: 'source-fingerprint',
@@ -459,6 +617,15 @@ class _Repository extends ProductionPlanRepository {
         sourceLabel: '原计划 A',
         targetLabel: '接受计划 B',
         canCancel: true,
+        quantityFactsExact: exactLimit == null
+            ? const {}
+            : {
+                'qty': exactLimit!,
+                'receivedQty': '0',
+                'remainingQty': exactLimit!,
+                'cancelableQty': exactLimit!,
+                'cancelRestoreToSourceQty': exactLimit!,
+              },
         cancelRestoreToSourceQty: restoreQty,
         cancelPublicReleaseQty: restoreQty == null ? 0 : 70 - restoreQty!,
         sourceSupplyShortfallQty: failedSource ? 70 : 0,
@@ -471,13 +638,13 @@ class _Repository extends ProductionPlanRepository {
   Future<ProductionMaterialAnalysisView> cancelMaterialFutureTransfer({
     required String analysisId,
     required MaterialFutureTransferRecord transfer,
-    required double qty,
+    required Object qty,
     required String reason,
     required String idempotencyKey,
     bool acceptPublicRelease = false,
   }) async {
     cancels.add({
-      'qty': qty,
+      'qty': materialTransferWire(qty),
       'key': idempotencyKey,
       'sourceVersion': transfer.sourceVersion,
       'targetVersion': transfer.targetVersion,

@@ -1,248 +1,269 @@
-// flat 树选中色块（2026-10-19 用户口径「盖过名字 + 左出右进」）：
-// 色块为块体刚性平移——选中 left:0 盖过箭头与名字（宽 = 箭头位 + 名字自然宽 +
-// 呼吸位，上限为扣除行尾控件后的标题簇宽），未选中 left:-宽 整块滑出左缘；切换选中 = 旧行向左
-// 滑出、新行向右滑入。选中文字 = 色块反色（深绿块→白字、白块→深绿字）且加粗
-// w700；浏览态右缘对勾退役。
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/models/payment_style_node.dart';
 import 'package:uten_imp/features/basic_data/widgets/uten_category_tree_view.dart';
-import 'package:uten_imp/shared/widgets/uten_hierarchy_tree_view.dart';
+import 'package:uten_imp/core/theme/uten_anim.dart';
+import 'package:uten_imp/core/theme/uten_colors.dart';
 
 void main() {
   for (final dark in [false, true]) {
     for (final scale in [1.0, 2.0]) {
-      testWidgets('长选中标题位于色块内且不覆盖行尾控件 dark=$dark scale=$scale', (tester) async {
-        const name = '外贸客户分类完整名称及编号需要保留核对';
-        await tester.pumpWidget(
-          MaterialApp(
-            theme: ThemeData(
-              brightness: dark ? Brightness.dark : Brightness.light,
-              platform: TargetPlatform.windows,
-            ),
-            home: MediaQuery(
-              data: MediaQueryData(textScaler: TextScaler.linear(scale)),
-              child: Scaffold(
-                body: SizedBox(
-                  width: 240,
-                  height: 300,
-                  child: UtenCategoryTreeView<PaymentStyleNode>(
-                    nodes: [
-                      PaymentStyleNode(
-                        id: 'root',
-                        code: 'ROOT',
-                        name: name,
-                        children: const [],
+      testWidgets(
+        'selected circle keeps a long label and row controls separate dark=$dark scale=$scale',
+        (tester) async {
+          const name = '外贸客户分类完整名称及编号需要保留核对';
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: ThemeData(
+                brightness: dark ? Brightness.dark : Brightness.light,
+                platform: TargetPlatform.windows,
+              ),
+              home: MediaQuery(
+                data: MediaQueryData(
+                  size: const Size(240, 300),
+                  textScaler: TextScaler.linear(scale),
+                ),
+                child: Scaffold(
+                  body: SizedBox(
+                    width: 240,
+                    height: 300,
+                    child: UtenCategoryTreeView<PaymentStyleNode>(
+                      nodes: [
+                        PaymentStyleNode(
+                          id: 'root',
+                          code: 'ROOT',
+                          name: name,
+                          children: const [],
+                        ),
+                      ],
+                      flatLevelColors: true,
+                      showSearch: false,
+                      selectedIds: const {'root'},
+                      trailingBuilder: (_) => const Icon(
+                        Icons.lock_outline,
+                        key: Key('row-protection'),
+                        size: 20,
                       ),
-                    ],
-                    flatLevelColors: true,
-                    showSearch: false,
-                    mode: UtenCategoryTreeMode.single,
-                    selectedIds: const {'root'},
-                    trailingBuilder: (_) => const Icon(
-                      Icons.star,
-                      key: Key('row-action'),
-                      size: 20,
-                      color: Colors.white,
                     ),
                   ),
                 ),
               ),
             ),
-          ),
-        );
-        await tester.pumpAndSettle();
-        final block = find.descendant(
-          of: find.byType(AnimatedPositioned),
-          matching: find.byType(DecoratedBox),
-        );
-        final blockRect = tester.getRect(block);
-        final labelRect = tester.getRect(find.text(name));
-        expect(blockRect.left, 0);
-        expect(blockRect.right, greaterThanOrEqualTo(labelRect.right));
-        expect(
-          blockRect.right,
-          lessThanOrEqualTo(
-            tester.getRect(find.byKey(const Key('row-action'))).left,
-          ),
-        );
-        expect(
-          blockRect.right,
-          lessThanOrEqualTo(
-            tester.getRect(find.byIcon(Icons.check_circle_rounded)).left,
-          ),
-        );
-        expect(
-          tester
-              .renderObject<RenderParagraph>(find.text(name))
-              .didExceedMaxLines,
-          isTrue,
-        );
-        expect(find.byTooltip(name), findsOneWidget);
-        expect(
-          tester.getCenter(find.byKey(const Key('row-action'))).dy,
-          tester.getCenter(find.text(name)).dy,
-        );
-        expect(tester.takeException(), isNull);
-      });
+          );
+          await tester.pumpAndSettle();
+          final check = find.byIcon(Icons.check_circle_rounded);
+          final label = find.text(name);
+          expect(check, findsOneWidget);
+          expect(
+            tester.getRect(label).right,
+            lessThanOrEqualTo(
+              tester.getRect(find.byKey(const Key('row-protection'))).left,
+            ),
+          );
+          expect(tester.getRect(check).right, lessThanOrEqualTo(240));
+          expect(
+            tester.getCenter(check).dy,
+            closeTo(tester.getCenter(label).dy, 0.1),
+          );
+          expect(
+            tester.renderObject<RenderParagraph>(label).didExceedMaxLines,
+            isTrue,
+          );
+          final fill = find.byKey(
+            const ValueKey('hierarchy-selection-fill-root'),
+          );
+          expect(fill, findsOneWidget);
+          expect(tester.getRect(fill).left, 0);
+          expect(
+            tester.getRect(fill).right,
+            greaterThanOrEqualTo(tester.getRect(label).right),
+          );
+          expect(
+            tester.getRect(fill).right,
+            lessThanOrEqualTo(
+              tester.getRect(find.byKey(const Key('row-protection'))).left,
+            ),
+          );
+          expect(
+            tester.renderObject<RenderParagraph>(label).text.style?.color,
+            UtenColors.treeLevelRow(0, dark: dark),
+          );
+          expect(tester.takeException(), isNull);
+        },
+      );
     }
   }
 
-  testWidgets('行皮肤：深绿一级行的行尾图标反白、浅色行用辅助色', (tester) async {
-    Icon iconNear(String name) => tester.widget<Icon>(
-      find
-          .descendant(
-            of: find
-                .ancestor(of: find.text(name), matching: find.byType(InkWell))
-                .first,
-            matching: find.byIcon(Icons.star),
-          )
-          .first,
-    );
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: SizedBox(
-            width: 240,
-            height: 560,
-            child: UtenCategoryTreeView<PaymentStyleNode>(
-              nodes: [
-                PaymentStyleNode(
-                  id: 'root',
-                  code: 'ROOT001',
-                  name: '原材料',
-                  children: [
-                    PaymentStyleNode(
-                      id: 'child',
-                      code: 'CHILD01',
-                      name: '五金件',
-                      children: const [],
-                    ),
-                  ],
-                ),
-              ],
-              flatLevelColors: true,
-              showSearch: false,
-              trailingBuilder: (node) => Builder(
-                builder: (rowContext) => Icon(
-                  Icons.star,
-                  size: 16,
-                  color:
-                      UtenHierarchyRowSkin.maybeOf(rowContext)?.foreground ??
-                      const Color(0xFF123456),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
+  testWidgets(
+    'browse selection slides the fill from the left and the check from the right together',
+    (tester) async {
+      await tester.pumpWidget(const _TreeHost());
+      await tester.pumpAndSettle();
+      final fill = find.byKey(const ValueKey('hierarchy-selection-fill-child'));
+      expect(fill, findsOneWidget);
+      expect(tester.getRect(fill).right, lessThanOrEqualTo(0));
+      final fillWidth = tester.getSize(fill).width;
+      double visibleFill() {
+        final bounds = tester.getRect(fill);
+        return bounds.right.clamp(0, 240) - bounds.left.clamp(0, 240);
+      }
 
-    // 深绿一级行 → 白；浅色子行 → onSurfaceVariant（皮肤由树组件统一下发）。
-    expect(iconNear('原材料').color, Colors.white);
-    expect(iconNear('五金件').color, ThemeData().colorScheme.onSurfaceVariant);
-    expect(tester.takeException(), isNull);
-  });
+      final titleLeft = tester.getTopLeft(find.text('五金件'));
+      await tester.tap(find.text('五金件'));
+      await tester.pump();
+      final marker = find.byKey(const ValueKey('hierarchy-selected-child'));
+      final slide = find
+          .ancestor(of: marker, matching: find.byType(SlideTransition))
+          .first;
+      expect(
+        tester.widget<SlideTransition>(slide).position.value.dx,
+        greaterThan(0),
+      );
+      expect(visibleFill(), 0);
+      await tester.pump(UtenAnim.normal ~/ 2);
+      expect(visibleFill(), greaterThan(0));
+      expect(visibleFill(), lessThan(fillWidth));
+      expect(tester.getSize(fill).width, fillWidth);
+      final middle = tester.widget<SlideTransition>(slide).position.value.dx;
+      expect(middle, greaterThan(0));
+      expect(middle, lessThan(0.6));
+      await tester.pumpAndSettle();
+      expect(tester.widget<SlideTransition>(slide).position.value, Offset.zero);
+      expect(tester.getRect(fill).left, 0);
+      expect(visibleFill(), fillWidth);
+      expect(tester.getTopLeft(find.text('五金件')), titleLeft);
+      final childStyle = tester
+          .renderObject<RenderParagraph>(find.text('五金件'))
+          .text
+          .style;
+      expect(childStyle?.color, Colors.white);
+      await tester.tap(find.text('原材料'));
+      await tester.pump();
+      await tester.pump(UtenAnim.normal ~/ 2);
+      expect(visibleFill(), greaterThan(0));
+      expect(visibleFill(), lessThan(fillWidth));
+      expect(
+        tester.widget<SlideTransition>(slide).position.value.dx,
+        greaterThan(0),
+      );
+      await tester.pumpAndSettle();
+      expect(visibleFill(), 0);
+      expect(marker, findsNothing);
+      expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('hierarchy-selected-root')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
-  testWidgets('选中色块右滑入盖过名字、换选后旧行左滑出，浏览态无对勾', (tester) async {
-    await tester.pumpWidget(const _TreeHost());
-    await tester.pumpAndSettle();
-
-    // 行序：0=原材料(父) 1=五金件(子)。选中前块体整块停在左缘外（不可见）。
-    Finder blockOf(int row) => find.descendant(
-      of: find.byType(AnimatedPositioned).at(row),
-      matching: find.byType(DecoratedBox),
-    );
-    // 块体在 240 宽行内的可见部分（滑入/滑出的观感度量）。
-    double visibleOf(Finder block) {
-      final r = tester.getRect(block);
-      return r.right.clamp(0, 240) - r.left.clamp(0, 240);
-    }
-
-    final block = blockOf(1);
-    expect(tester.getRect(block).right, lessThanOrEqualTo(0));
-    expect(visibleOf(blockOf(0)), 0);
-
-    // 点行选中：块体自左缘向右滑入——起点可见 0，中段部分可见，到位盖过名字。
+  testWidgets('reduced motion makes the selection immediate', (tester) async {
+    await tester.pumpWidget(const _TreeHost(reducedMotion: true));
     await tester.tap(find.text('五金件'));
     await tester.pump();
-    final startVisible = visibleOf(block);
-    await tester.pump(const Duration(milliseconds: 130));
-    final midVisible = visibleOf(block);
+    final marker = find.byKey(const ValueKey('hierarchy-selected-child'));
+    final switcher = find
+        .ancestor(of: marker, matching: find.byType(AnimatedSwitcher))
+        .first;
+    expect(tester.widget<AnimatedSwitcher>(switcher).duration, Duration.zero);
+    final fill = find.byKey(const ValueKey('hierarchy-selection-fill-child'));
+    expect(tester.getRect(fill).left, 0);
     await tester.pumpAndSettle();
-    final fullVisible = visibleOf(block);
-    expect(startVisible, lessThan(midVisible));
-    expect(midVisible, lessThan(fullVisible));
-    // 到位：贴左缘，可见宽 = 块宽 = 箭头位(8+32+4) + 名字自然宽 + 呼吸 8
-    //（组件与量测同源 TextPainter 公式；此处校验明显越过名字起点 + 合理名字宽）。
-    expect(tester.getRect(block).left, 0);
-    expect(fullVisible, greaterThan(8 + 32 + 4 + 20));
-    // 色块最多占实际标题簇；行尾动作区在簇外独立布局，不靠百分比猜测。
-    expect(fullVisible, lessThanOrEqualTo(240));
-    // 浏览态(flat+none)右缘对勾退役。
-    expect(find.byIcon(Icons.check_circle_rounded), findsNothing);
-    // 选中文字 = 色块反色（浅色行深绿块 → 白字）+ 加粗 w700。
-    final rendered = tester
-        .renderObject<RenderParagraph>(find.text('五金件'))
-        .text
-        .style;
-    expect(rendered?.color, Colors.white);
-    expect(rendered?.fontWeight, FontWeight.w700);
-    expect(tester.takeException(), isNull);
-
-    // 点另一行：旧行块体向左滑出（可见宽回 0），新行滑入到位。
-    await tester.tap(find.text('原材料'));
-    await tester.pumpAndSettle();
-    expect(visibleOf(block), 0);
-    expect(tester.getRect(block).right, lessThanOrEqualTo(0));
-    expect(tester.getRect(blockOf(0)).left, 0);
-    expect(visibleOf(blockOf(0)), greaterThan(0));
+    expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  for (final mode in UtenCategoryTreeMode.values) {
+    testWidgets('flat $mode keeps the left fill and its selection control', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_TreeHost(mode: mode));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('五金件'));
+      await tester.pumpAndSettle();
+      final fill = find.byKey(const ValueKey('hierarchy-selection-fill-child'));
+      expect(tester.getRect(fill).left, 0);
+      expect(
+        find.byIcon(Icons.check_circle_rounded),
+        mode == UtenCategoryTreeMode.multi ? findsNothing : findsOneWidget,
+      );
+      if (mode == UtenCategoryTreeMode.multi) {
+        expect(
+          tester.widgetList<Checkbox>(find.byType(Checkbox)).last.value,
+          isTrue,
+        );
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets(
+    'indented tree keeps its existing selection without a flat fill',
+    (tester) async {
+      await tester.pumpWidget(const _TreeHost(flat: false));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('五金件'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('hierarchy-selection-fill-child')),
+        findsNothing,
+      );
+      expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 class _TreeHost extends StatefulWidget {
-  const _TreeHost();
-
+  const _TreeHost({
+    this.reducedMotion = false,
+    this.flat = true,
+    this.mode = UtenCategoryTreeMode.none,
+  });
+  final bool reducedMotion;
+  final bool flat;
+  final UtenCategoryTreeMode mode;
   @override
   State<_TreeHost> createState() => _TreeHostState();
 }
 
 class _TreeHostState extends State<_TreeHost> {
-  String? _selectedId;
-
+  String? selected;
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      home: Scaffold(
+  Widget build(BuildContext context) => MaterialApp(
+    home: MediaQuery(
+      data: MediaQueryData(disableAnimations: widget.reducedMotion),
+      child: Scaffold(
         body: SizedBox(
           width: 240,
-          height: 560,
+          height: 500,
           child: UtenCategoryTreeView<PaymentStyleNode>(
             nodes: [
               PaymentStyleNode(
                 id: 'root',
-                code: 'ROOT001',
+                code: 'ROOT',
                 name: '原材料',
                 children: [
                   PaymentStyleNode(
                     id: 'child',
-                    code: 'CHILD01',
+                    code: 'CHILD',
                     name: '五金件',
                     children: const [],
                   ),
                 ],
               ),
             ],
-            flatLevelColors: true,
             showSearch: false,
-            selectedIds: {_selectedId}.whereType<String>().toSet(),
-            onNodeTap: (node) => setState(() => _selectedId = node.id),
+            flatLevelColors: widget.flat,
+            mode: widget.mode,
+            selectedIds: {?selected},
+            onNodeTap: (node) => setState(() => selected = node.id),
+            onToggleSelect: (node) => setState(() => selected = node.id),
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
 }

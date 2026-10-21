@@ -10,8 +10,9 @@ const double _treeToggleExtent = 48;
 ///
 /// Hierarchy is deliberately redundant: indentation + continuous guide rails +
 /// cascading sequence + an explicit level label. Colour only reinforces the
-/// level and is never the sole signal. Expansion is a dedicated 48dp action so
-/// row selection and tree navigation do not compete for the same gesture.
+/// level and is never the sole signal. Expansion has a dedicated hit area so
+/// row selection and navigation do not compete; touch targets remain at least
+/// 48dp while dense desktop hosts can select their table control role.
 class UtenTreeTableCell extends StatelessWidget {
   const UtenTreeTableCell({
     super.key,
@@ -39,6 +40,7 @@ class UtenTreeTableCell extends StatelessWidget {
     this.toggleColor,
     this.indent = _treeIndent,
     this.mutedToggleWhenChildless = false,
+    this.desktopToggleExtent = _treeToggleExtent,
   });
 
   /// 视觉缩进的深度上限（全站一个数，2026-09-15）：与业务侧的 BOM 展开上限
@@ -47,16 +49,25 @@ class UtenTreeTableCell extends StatelessWidget {
   static const int defaultMaxVisualDepth = 10;
 
   /// 展开位、叶子占位与连线中心同源，缩小偏好仍保留48窗口触摸目标。
-  static double toggleExtentOf(BuildContext context) =>
-      UtenControlMetrics.minimumHitExtent(context, desktop: _treeToggleExtent);
+  static double toggleExtentOf(
+    BuildContext context, {
+    double desktop = _treeToggleExtent,
+  }) => UtenControlMetrics.minimumHitExtent(context, desktop: desktop);
 
-  /// 宿主估宽使用真实树前缀，不能只改按钮而继续按旧48占位估算。
+  /// 宿主估宽使用同一展开槽规格，不能只改按钮而继续按旧占位估算。
   static double prefixWidthOf(
     BuildContext context, {
     required int depth,
     double indent = _treeIndent,
     int maxVisualDepth = defaultMaxVisualDepth,
-  }) => depth.clamp(0, maxVisualDepth) * indent + toggleExtentOf(context);
+    double desktopToggleExtent = _treeToggleExtent,
+  }) =>
+      depth.clamp(0, maxVisualDepth) * indent +
+      toggleExtentOf(context, desktop: desktopToggleExtent);
+
+  /// Dense desktop tables may match their cell control role. Touch targets
+  /// retain the shared minimum, including compensation for application zoom.
+  final double desktopToggleExtent;
 
   /// 连接线向单元格上下各溢出多少像素。
   ///
@@ -164,7 +175,7 @@ class UtenTreeTableCell extends StatelessWidget {
         foregroundColor?.withValues(alpha: 0.82) ?? colors.onSurfaceVariant;
     final effectiveLevelLabel = levelLabel ?? '层级 ${depth + 1}';
     final visualDepth = depth.clamp(0, maxVisualDepth);
-    final toggleExtent = toggleExtentOf(context);
+    final toggleExtent = toggleExtentOf(context, desktop: desktopToggleExtent);
     final toggleCenter = toggleExtent / 2;
     final safeSubtitle = subtitle?.trim();
     // 2026-09-12 起不再有 pathLabel 路径行：货品 BOM 宿主按用户口径收敛为

@@ -6,6 +6,7 @@ import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/production_material_analysis.dart';
+import '../models/material_transfer_quantity.dart';
 
 // 现货调拨对话框（适老化）：默认数量 = min(借出方已分配, 对方缺口)，
 // 确认前用大白话写清双方影响。客户端只收集输入，服务端逐项复核。
@@ -15,11 +16,13 @@ final class MaterialBorrowRequestDraft {
     required this.toMaterialLineId,
     required this.qty,
     required this.reason,
+    this.qtyExact,
   });
 
   final String toMaterialLineId;
   final double qty;
   final String reason;
+  final String? qtyExact;
 }
 
 /// 现货调拨对话框（适老化）：默认数量 = min(借出方已分配, 对方缺口)，
@@ -71,12 +74,28 @@ class _MaterialBorrowDialogState extends State<MaterialBorrowDialog> {
     return null;
   }
 
-  double get _maxQty {
+  String _fact(
+    ProductionMaterialAnalysisMaterial material,
+    String key,
+    double legacy,
+  ) {
+    final units = materialTransferUnits(
+      material.quantityFactsExact[key] ?? legacy,
+    );
+    return units == null ? '待核对' : materialTransferText(units);
+  }
+
+  BigInt? get _maxUnits {
     final target = _target;
-    if (target == null) return 0;
-    return widget.from.allocatedAvailableQty < target.shortageQty
-        ? widget.from.allocatedAvailableQty
-        : target.shortageQty;
+    if (target == null) return null;
+    final from = materialTransferUnits(
+      widget.from.quantityFactsExact['allocatedAvailableQty'] ??
+          widget.from.allocatedAvailableQty,
+    );
+    final to = materialTransferUnits(
+      target.quantityFactsExact['shortageQty'] ?? target.shortageQty,
+    );
+    return from == null || to == null ? null : (from < to ? from : to);
   }
 
   void _selectTarget(String? materialLineId) {
@@ -84,22 +103,24 @@ class _MaterialBorrowDialogState extends State<MaterialBorrowDialog> {
       _toMaterialLineId = materialLineId;
       _qtyError = null;
       // 默认值先行：数量自动填"能调的最大值"，员工只改例外。
-      _qtyController.text = widget.qtyText(_maxQty);
+      _qtyController.text = _maxUnits == null
+          ? ''
+          : materialTransferText(_maxUnits!);
     });
   }
 
   void _submit() {
     final target = _target;
     if (target == null) return;
-    final qty = double.tryParse(_qtyController.text.trim());
-    if (qty == null || qty <= 0) {
+    final qty = materialTransferUnits(_qtyController.text, positive: true);
+    if (qty == null) {
       setState(() => _qtyError = '请填写大于 0 的调拨数量');
       return;
     }
-    if (qty > _maxQty) {
+    if (_maxUnits == null || qty > _maxUnits!) {
       setState(
         () => _qtyError =
-            '最多可调 ${widget.qtyText(_maxQty)} 件'
+            '最多可调 ${_maxUnits == null ? '待核对' : materialTransferText(_maxUnits!)} 件'
             '(不超过借出方已分配量，也不超过对方缺口)',
       );
       return;
@@ -110,7 +131,8 @@ class _MaterialBorrowDialogState extends State<MaterialBorrowDialog> {
       context,
       MaterialBorrowRequestDraft(
         toMaterialLineId: target.materialLineId,
-        qty: qty,
+        qty: double.parse(materialTransferText(qty)),
+        qtyExact: materialTransferText(qty),
         reason: reason,
       ),
     );
@@ -126,7 +148,7 @@ class _MaterialBorrowDialogState extends State<MaterialBorrowDialog> {
     final toProduct = target == null
         ? null
         : widget.productsById[target.analysisLineId];
-    final qty = double.tryParse(_qtyController.text.trim());
+    final qty = materialTransferUnits(_qtyController.text);
     return UtenAlertDialog(
       scrollable: false,
       key: const Key('material-borrow-dialog'),
@@ -154,7 +176,7 @@ class _MaterialBorrowDialogState extends State<MaterialBorrowDialog> {
               ),
               const SizedBox(height: UtenSpacing.s12),
               Text(
-                '可调上限：已分配 ${widget.qtyText(widget.from.allocatedAvailableQty)} 件',
+                '可调上限：已分配 ${_fact(widget.from, 'allocatedAvailableQty', widget.from.allocatedAvailableQty)} 件',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -193,7 +215,7 @@ class _MaterialBorrowDialogState extends State<MaterialBorrowDialog> {
                         ),
                         subtitle: Text(
                           '路径：${widget.pathLabelOf(candidate)} · '
-                          '缺 ${widget.qtyText(candidate.shortageQty)} 件',
+                          '缺 ${_fact(candidate, 'shortageQty', candidate.shortageQty)} 件',
                         ),
                       ),
                   ],
@@ -214,7 +236,7 @@ class _MaterialBorrowDialogState extends State<MaterialBorrowDialog> {
                       theme,
                       info: target == null
                           ? '先选择调给哪个产品'
-                          : '最多 ${widget.qtyText(_maxQty)} 件',
+                          : '最多 ${_maxUnits == null ? '待核对' : materialTransferText(_maxUnits!)} 件',
                     ),
                     error: utenFieldError(_qtyError),
                   ),
@@ -236,7 +258,7 @@ class _MaterialBorrowDialogState extends State<MaterialBorrowDialog> {
                   ),
                 ),
               ),
-              if (target != null && qty != null && qty > 0) ...[
+              if (target != null && qty != null && qty > BigInt.zero) ...[
                 const SizedBox(height: UtenSpacing.s12),
                 Container(
                   padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -248,9 +270,9 @@ class _MaterialBorrowDialogState extends State<MaterialBorrowDialog> {
                   ),
                   child: Text(
                     '确认后：「$fromProductLabel」会重新缺 '
-                    '${widget.qtyText(qty)} 件该料；'
+                    '${materialTransferText(qty)} 件该料；'
                     '「${toProduct?.goodsName ?? toProduct?.goodsCode ?? '对方产品'}」'
-                    '缺口减少 ${widget.qtyText(qty)} 件。'
+                    '缺口减少 ${materialTransferText(qty)} 件。'
                     '正式下达采购/生产前都可以撤销。',
                     style: theme.textTheme.bodyMedium?.copyWith(height: 1.45),
                   ),

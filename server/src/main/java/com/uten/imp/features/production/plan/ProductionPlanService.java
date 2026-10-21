@@ -1880,6 +1880,9 @@ public class ProductionPlanService {
     }
 
     private PlanDetail toDetail(ProductionPlan p, List<PlanItemDto> items) {
+        var requirements = new com.uten.imp.features.production.ProductionSalesRequirements(em)
+                .planItems(items.stream().map(PlanItemDto::getId).toList());
+        items.forEach(item -> item.attachSalesRequirements(requirements.getOrDefault(item.getId(), List.of())));
         return new PlanDetail(p.getId(), p.getLegacyId(), p.getBillNo(), p.getBillDate(), p.getFStyle(),
                 p.getDeliveryDate(), p.getDepartmentId(), p.getWorkshopName(), p.getWorkerName(), p.getSellerName(),
                 p.getSellerId(), p.getWorkerId(),

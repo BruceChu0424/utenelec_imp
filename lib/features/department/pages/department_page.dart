@@ -523,20 +523,6 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
                 color: Theme.of(context).colorScheme.primary,
               ),
             ),
-          if (canDelete && !isCompanyExecutiveOfficeCode(node.code))
-            IconButton(
-              visualDensity: VisualDensity.compact,
-              constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-              tooltip: '删除 ${node.name}',
-              onPressed: _deletingId == null ? () => _delete(node) : null,
-              icon: _deletingId == node.id
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2.5),
-                    )
-                  : const Icon(Icons.delete_outline, size: 18),
-            ),
         ],
       ),
     );

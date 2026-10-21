@@ -17,6 +17,7 @@ import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_inline_edit.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
@@ -153,7 +154,7 @@ void main() {
       permissions: {Perm.warehouseView, Perm.warehouseEdit},
     );
     await _selectWarehouse(tester, _defective.name!);
-    await tester.tap(find.byKey(const ValueKey('warehouse-node-edit-c01')));
+    await _openWarehouseAction(tester, _hardware.name!, '编辑仓库');
     await tester.pumpAndSettle();
     expect(find.byType(Dialog), findsNothing);
     expect(
@@ -225,7 +226,7 @@ void main() {
     final warehouses = _FakeWarehouseRepository();
     await _pump(tester, warehouses, permissions: _allPermissions);
     await _selectWarehouse(tester, _main.name!);
-    await tester.tap(find.byKey(const ValueKey('warehouse-node-edit-main')));
+    await _openWarehouseAction(tester, _main.name!, '编辑仓库');
     await tester.pumpAndSettle();
     for (final field in [
       'code',
@@ -253,13 +254,11 @@ void main() {
     testWidgets('${warehouse.name}行内新增始终固定主仓，不创建第三层', (tester) async {
       final warehouses = _FakeWarehouseRepository();
       await _pump(tester, warehouses, permissions: _allPermissions);
-      final add = find.byKey(ValueKey('warehouse-node-add-${warehouse.id}'));
-      expect(add.hitTestable(), findsOneWidget);
-      expect(
-        tester.widget<IconButton>(add).tooltip,
+      await _openWarehouseAction(
+        tester,
+        warehouse.name!,
         warehouse.isMain ? '新增子仓库' : '新增同级仓库',
       );
-      await tester.tap(add);
       await tester.pumpAndSettle();
       expect(find.text('新增仓库'), findsOneWidget);
       final parent = tester.widget<TextField>(_field('上级仓库'));
@@ -287,7 +286,7 @@ void main() {
     final warehouses = _FakeWarehouseRepository();
     await _pump(tester, warehouses, permissions: _allPermissions);
     await _selectWarehouse(tester, _bin.name!);
-    await tester.tap(find.byKey(const ValueKey('warehouse-node-delete-c01')));
+    await _openWarehouseAction(tester, _hardware.name!, '删除仓库');
     await tester.pumpAndSettle();
     expect(find.text('确定删除「五金仓库」吗？'), findsOneWidget);
     expect(find.text('确定删除「装配第一车间内料仓」吗？'), findsNothing);
@@ -300,13 +299,10 @@ void main() {
   testWidgets('主仓无删除按钮且行菜单不提供停用或删除', (tester) async {
     final warehouses = _FakeWarehouseRepository();
     await _pump(tester, warehouses, permissions: _allPermissions);
-    expect(
-      find.byKey(const ValueKey('warehouse-node-add-main')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const ValueKey('warehouse-node-add-main')), findsNothing);
     expect(
       find.byKey(const ValueKey('warehouse-node-edit-main')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       find.byKey(const ValueKey('warehouse-node-delete-main')),
@@ -328,14 +324,23 @@ void main() {
       warehouses,
       permissions: _allPermissions,
     );
-    VoidCallback callback(String action) => tester
-        .widget<IconButton>(find.byKey(ValueKey('warehouse-node-$action-c01')))
-        .onPressed!;
-    final oldAdd = callback('add');
-    final oldDelete = callback('delete');
+    final region = tester.widget<UtenContextMenuRegion>(
+      find
+          .ancestor(
+            of: find.text(_hardware.name!).first,
+            matching: find.byType(UtenContextMenuRegion),
+          )
+          .first,
+    );
+    final entries = region.entriesBuilder().whereType<UtenMenuItem>();
+    final oldAdd = entries.firstWhere((entry) => entry.label == '新增同级仓库').onTap;
+    final oldDelete = entries
+        .firstWhere((entry) => entry.label == '删除仓库')
+        .onTap;
+    final oldEdit = entries.firstWhere((entry) => entry.label == '编辑仓库').onTap;
     final pending = Completer<WarehouseDetail>();
     warehouses.pendingDetails['c01'] = pending;
-    await tester.tap(find.byKey(const ValueKey('warehouse-node-edit-c01')));
+    unawaited(Future<void>.sync(oldEdit));
     await tester.pump();
     container.read(_grants.notifier).state = {Perm.warehouseView};
     await tester.pump();
@@ -600,6 +605,15 @@ Future<void> _editChoice(
 Finder _field(String label) => find.byWidgetPredicate(
   (widget) => widget is TextField && widget.decoration?.labelText == label,
 );
+
+Future<void> _openWarehouseAction(
+  WidgetTester tester,
+  String name,
+  String action,
+) async {
+  await _rightClickWarehouse(tester, name);
+  await tester.tap(find.text(action));
+}
 
 Future<void> _rightClickWarehouse(WidgetTester tester, String name) async {
   final row = find.descendant(

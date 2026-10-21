@@ -163,6 +163,53 @@ public class PermissionConfigurationTransferService {
         return new Result(!change.isEmpty(),plan.preview().changes());
     }
 
+    /** The template store supplies trusted, versioned codes; the authorization planner remains shared. */
+    Preview previewTemplate(UUID targetId, UUID templateId, long version, Collection<String> codes, boolean merge) {
+        requireActor();
+        return templatePlan(targetId,templateId,version,codes,merge).preview();
+    }
+
+    Result applyTemplate(UUID targetId, UUID templateId, long version, Collection<String> codes, boolean merge,
+                         String expectedFingerprint, List<String> confirmations) {
+        requireActor();
+        Plan plan=templatePlan(targetId,templateId,version,codes,merge);
+        confirm(plan.preview(),expectedFingerprint,confirmations);
+        tx.bind();
+        OverrideConfiguration raw=plan.overrides.get(targetId);
+        var change=overrideAdmin.restoreExactPermissionOverrides(targetId,raw.grants(),raw.revokes(),plan.users.get(targetId));
+        if(!change.isEmpty()) audit.record("permission_template_apply","users",targetId.toString(),change.added(),change.removed(),
+                Map.of("templateId",templateId.toString(),"templateVersion",version,"mode",merge?"MERGE":"REPLACE",
+                        "previewFingerprint",expectedFingerprint,"changes",plan.preview().changes()));
+        return new Result(!change.isEmpty(),plan.preview().changes());
+    }
+
+    private Plan templatePlan(UUID targetId,UUID templateId,long version,Collection<String> codes,boolean merge) {
+        Plan plan=new Plan();
+        plan.notes=List.of(
+                "模板只保存操作权限；不改变数据范围、员工部门、账号身份或外网访问资格。编辑或删除模板不改已应用账号。",
+                merge?"补充模式保留当前有效能力；为保留有效的负责人委派，本次可能将其转换为中央个人授权，请核对个人覆盖与授权来源变化及敏感项。"
+                        :"覆盖模式将目标有效操作权限设置为模板集合，模板外的继承权限会被个人收回；请核对全部新增及收回。",
+                "个人策略变化也会影响该账号授给别人的有效委派；间接影响另列。提交后按当前授权配置重新核对。");
+        try {
+            UserAccount target=eligibleUser(targetId);
+            support.requireAuthorizationTarget(target);
+            var current=resolver.breakdownOf(target);
+            Set<String> desired=new TreeSet<>(codes);
+            Set<String> grants=new TreeSet<>(current.grants()),revokes=new TreeSet<>(current.revokes());
+            if(merge) {
+                for(String code:codes) if(revokes.contains(code)) plan.issues.add("模板包含已明确收回的权限 "+code+"，补充模式不会恢复它；请核对后使用覆盖模式");
+                desired.addAll(current.effective());
+            } else {
+                grants.retainAll(desired);
+                revokes.removeAll(desired);
+            }
+            addUser(plan,templateId.toString(),target,desired,grants,revokes,catalog());
+        } catch(ApiException exception) { plan.issues.add(exception.getMessage()); }
+        addDelegationImpacts(plan);
+        plan.fingerprint=hash(List.of("template",templateId,version,targetId,sorted(codes),merge,stateFingerprint()));
+        return plan;
+    }
+
     private Plan copyPlan(UUID targetId, CopyRequest request) {
         if (request == null) throw invalid("缺少复制来源");
         if (request.sourceUserId() == null) throw invalid("缺少复制来源");
@@ -440,7 +487,7 @@ public class PermissionConfigurationTransferService {
     }
 
     /** NOWAIT also excludes pre-existing FOR UPDATE/SHARE readers; ordinary reads remain available. */
-    private void lockConfiguration() {
+    void lockConfiguration() {
         try {
             em.createNativeQuery("""
                     LOCK TABLE public.authorization_state,public.departments,public.department_permissions,
@@ -456,7 +503,7 @@ public class PermissionConfigurationTransferService {
         em.clear();
     }
 
-    private void requireActor() {
+    void requireActor() {
         support.requireCurrentSuperAdmin();
         var principal = support.requireCurrentUser();
         UserAccount actor = support.require(principal.getId());
@@ -600,6 +647,7 @@ public class PermissionConfigurationTransferService {
 
     private static final class Plan {
         private String fingerprint;
+        private List<String> notes=NOTES;
         private Set<String> baseline;
         private final Map<UUID,Set<String>> departments=new TreeMap<>();
         private final Map<UUID,Set<String>> users=new TreeMap<>();
@@ -612,7 +660,7 @@ public class PermissionConfigurationTransferService {
         private final List<Suggestion> suggestions=new ArrayList<>();
         private final List<String> pinned=new ArrayList<>();
         Preview preview() { return new Preview(fingerprint,issues.isEmpty(),List.copyOf(new LinkedHashSet<>(issues)),List.copyOf(changes),
-                List.copyOf(sensitive),List.copyOf(suggestions),List.copyOf(pinned),NOTES); }
+                List.copyOf(sensitive),List.copyOf(suggestions),List.copyOf(pinned),notes); }
     }
     private record OverrideConfiguration(Set<String> grants,Set<String> revokes) {}
 }

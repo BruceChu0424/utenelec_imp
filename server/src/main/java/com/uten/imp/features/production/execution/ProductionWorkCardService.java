@@ -192,7 +192,9 @@ public class ProductionWorkCardService {
                     ErrorCode.CONFLICT,
                     "计划包没有可打印的生产执行分段");
         }
-        return assemble(planningPackage, rows, Instant.now());
+        ProductionWorkCardView view = assemble(planningPackage, rows, Instant.now());
+        return view.withSalesRequirements(new com.uten.imp.features.production.ProductionSalesRequirements(em)
+                .segments(view.cards().stream().map(ProductionWorkCardView.Card::segmentId).toList()));
     }
 
     static ProductionWorkCardView assemble(

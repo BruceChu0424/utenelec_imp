@@ -518,6 +518,97 @@ void main() {
     expect(find.byKey(const Key('child-shortage-dialog')), findsNothing);
   });
 
+  for (final originalTotalKnown in [true, false]) {
+    for (final aggregateEntry in [false, true]) {
+      testWidgets(
+        '委外公共追加保留私有覆盖量，仍提示采购子件且取消不创建子件申请 (原行总量可证=$originalTotalKnown，汇总入口=$aggregateEntry)',
+        (tester) async {
+          await _pump(
+            tester,
+            issuedRoot: true,
+            extraPermissions: const {Perm.productionMaterialAnalysisOverSupply},
+            mutate: (data) {
+              _line(data, 'm-p')['aggregatePreparation'] = {
+                'requiredQty': 1000,
+                'orderedQty': 1000,
+                'allocatedOrderedQty': 1000,
+                // 共享批次其它来源不属于这次追加的父件。
+                'totalOrderedQty': 3000,
+                'orderedQtyExact': originalTotalKnown,
+                'planningUncoveredQty': 0,
+                'netShortageQty': 0,
+                'targetMaterialLineIds': ['m-p'],
+                'actionable': true,
+              };
+              return data;
+            },
+            afterAggregate: (data) {
+              final parent = _line(data, 'm-p')['aggregatePreparation'] as Map;
+              parent['allocatedOrderedQty'] = 1000;
+              parent['orderedQty'] = 1100;
+              parent['totalOrderedQty'] = 3100;
+              parent['orderedQtyExact'] = originalTotalKnown;
+              _line(data, 'm-pc')['planningUncoveredQty'] = 700;
+              _line(data, 'm-pc')['additionalSupplyRecommendedQty'] = 700;
+              _line(data, 'm-pc')['netShortageQty'] = 700;
+            },
+          );
+          if (aggregateEntry) {
+            await tester.tap(
+              find.byKey(const ValueKey('material-bom-layout-material')),
+            );
+            await tester.pumpAndSettle();
+          }
+          final field = aggregateEntry
+              ? find.byKey(
+                  const ValueKey('material-aggregate-qty-g-m-p||unit-1'),
+                )
+              : _appendQty('m-p');
+          Finder checkbox(String line) => aggregateEntry
+              ? find.descendant(
+                  of: find.byKey(
+                    ValueKey('material-aggregate-g-$line||unit-1'),
+                  ),
+                  matching: find.byType(Checkbox),
+                )
+              : _rowCheckbox(line);
+          await tester.enterText(field, '100');
+          await tester.pumpAndSettle();
+          expect(tester.widget<TextField>(field).controller!.text, '100');
+          if (tester.widget<Checkbox>(checkbox('m-p').last).value != true) {
+            await _check(tester, checkbox('m-p'));
+          }
+          if (tester.widget<Checkbox>(checkbox('m-pc').last).value == true) {
+            await _check(tester, checkbox('m-pc'));
+          }
+          await _submitMainTable(tester);
+
+          expect(
+            find.byKey(const Key('child-shortage-dialog')),
+            findsOneWidget,
+          );
+          expect(
+            find.text(originalTotalKnown ? '刚追加 100个' : '本次已下单，数量见关联单据'),
+            findsOneWidget,
+          );
+          expect(
+            find.descendant(
+              of: find.byKey(const Key('child-shortage-dialog')),
+              matching: find.text('委外件的子料'),
+            ),
+            findsOneWidget,
+          );
+          expect(_submittedSourceQty('m-p'), 100);
+          expect(_submittedSourceQty('m-pc'), isNull);
+          await tester.tap(find.byKey(const Key('child-shortage-later')));
+          await tester.pumpAndSettle();
+          expect(_submittedSourceQty('m-pc'), isNull, reason: '下层需要用户再次明确下达');
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
   testWidgets('补料页：取消勾选的不提交；没定供应方式的不能勾并说原因', (tester) async {
     await _pump(
       tester,
@@ -859,6 +950,8 @@ Future<void> _pump(
   bool failNotify = false,
   Set<String> failAggregateRoutes = const {},
   Map<String, dynamic> Function(Map<String, dynamic> data)? mutate,
+  void Function(Map<String, dynamic> data)? afterAggregate,
+  Set<String> extraPermissions = const {},
   Future<void>? defaultWorkshopsGate,
 }) async {
   requests.clear();
@@ -957,6 +1050,7 @@ Future<void> _pump(
             return;
           }
           _applyAggregate(data, body);
+          afterAggregate?.call(data);
           result = {
             'analysis': bumped(),
             'replayed': false,
@@ -1016,7 +1110,10 @@ Future<void> _pump(
       ),
       masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
       materialAnalysisWarehousePrefsProvider.overrideWith(_WarehousePrefs.new),
-      currentPermissionsProvider.overrideWithValue(_permissions),
+      currentPermissionsProvider.overrideWithValue({
+        ..._permissions,
+        ...extraPermissions,
+      }),
       // 部门仓库接到假后端(riverpod 3 起 apiClientProvider 在测试里可构造，不
       // 覆写会让真实 Dio 的 /org/departments/tree 在假时钟下永不完成，车间/
       // 负责人默认值那批附带读取永远挂着，提交前「必填车间」校验过不去)。

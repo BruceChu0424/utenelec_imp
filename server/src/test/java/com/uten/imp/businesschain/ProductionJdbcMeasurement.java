@@ -87,6 +87,7 @@ final class ProductionJdbcMeasurement {
         if (sql==null) return false;
         String normalized=sql.replaceAll("\\s+"," ").trim().toLowerCase(java.util.Locale.ROOT);
         return normalized.startsWith("with recursive walk as") && normalized.contains("from goods_bom_items b")
+                || normalized.startsWith("with recursive seeds as") && normalized.contains("analysis_scope as") && normalized.contains("sales_order_items")
                 || normalized.startsWith("with aliases as materialized") && normalized.contains("source_budgets as materialized")
                 || normalized.startsWith("with current_appends as materialized") && normalized.contains("growable_order_qty")
                 || normalized.startsWith("with sources as materialized") && normalized.contains("select material.id,source.kind")

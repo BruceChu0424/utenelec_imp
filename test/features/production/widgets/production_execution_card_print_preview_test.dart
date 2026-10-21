@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/production/models/production_work_card.dart';
+import 'package:uten_imp/features/production/models/production_sales_requirement.dart';
 import 'package:uten_imp/features/production/widgets/production_execution_card_print_preview.dart';
 import 'package:uten_imp/shared/platform_branding/platform_branding.dart';
 import 'package:uten_imp/shared/platform_branding/platform_branding_provider.dart';
@@ -52,6 +53,37 @@ void main() {
       throwsA(isA<StateError>()),
     );
   });
+
+  test(
+    'multiple sources and long sales instructions continue across PDF pages',
+    () async {
+      final view = _confirmedView(
+        salesRequirements: [
+          for (var index = 0; index < 8; index++)
+            ProductionSalesRequirement(
+              salesOrderItemId: 'sales-$index',
+              salesOrderNo: 'XD-$index',
+              productName: '测试产品$index',
+              orderRemark: List.filled(25, '本订单不要打字，装配前核对客户要求。').join('\n'),
+              itemRemark: '第$index项产品单独备注，保留白色面板。',
+            ),
+        ],
+      );
+      final bytes = await buildProductionExecutionCardPdf(view);
+      expect(ascii.decode(bytes.take(4).toList()), '%PDF');
+      expect(
+        RegExp(r'/Type\s*/Page\b').allMatches(latin1.decode(bytes)).length,
+        greaterThan(1),
+      );
+      final output =
+          Platform.environment['UTEN_SALES_REQUIREMENTS_PDF_QA_OUTPUT'];
+      if (output != null) {
+        final file = File(output);
+        file.parent.createSync(recursive: true);
+        file.writeAsBytesSync(bytes, flush: true);
+      }
+    },
+  );
 
   test('single and batch PDFs identify the configured company', () async {
     const companyName = 'Acme Manufacturing';
@@ -480,6 +512,7 @@ ProductionWorkCardView _confirmedView({
   int materialCount = 1,
   int cardCount = 1,
   bool zeroMaterial = false,
+  List<ProductionSalesRequirement> salesRequirements = const [],
 }) => ProductionWorkCardView(
   planId: planId,
   planBillNo: planBillNo,
@@ -520,6 +553,7 @@ ProductionWorkCardView _confirmedView({
       planBeginDate: '2026-08-03',
       planEndDate: '2026-08-05',
       salesOrderNo: 'SO-001',
+      salesRequirements: salesRequirements,
       requestNote: '优先生产',
       drawBillNos: zeroMaterial ? null : 'DRAW-001',
       materials: List.generate(zeroMaterial ? 0 : materialCount, (

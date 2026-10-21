@@ -24,11 +24,27 @@ class PermissionTransferDtoTest {
         assertThat(json).doesNotContain("password","superAdmin","remoteAccess");
     }
     @Test void transferReceiptsAreRetainedAuthorizationEvidence() {
-        for(String action:List.of("permission_configuration_import","permission_configuration_copy")) {
+        for(String action:List.of("permission_configuration_import","permission_configuration_copy",
+                "permission_template_create","permission_template_update","permission_template_delete","permission_template_apply")) {
             var classification=com.uten.imp.audit.AuditClassifier.classify("business",action,"permissions","", "success",200);
             assertThat(classification.eventCategory()).isEqualTo("authorization");
             assertThat(classification.riskLevel()).isEqualTo("high");
         }
+    }
+    @Test void templateRequestsRejectIdentityFieldsAndRequireCentralAdministratorStepUp() throws Exception {
+        var controller=PermissionTemplateController.class;
+        assertThat(controller.getAnnotation(org.springframework.security.access.prepost.PreAuthorize.class).value())
+                .contains("authorization:manage","principal.superAdmin");
+        for(var method:List.of(controller.getMethod("create",com.uten.imp.features.admin.dto.PermissionTemplateDtos.Save.class),
+                controller.getMethod("update",java.util.UUID.class,com.uten.imp.features.admin.dto.PermissionTemplateDtos.Save.class),
+                controller.getMethod("delete",java.util.UUID.class,com.uten.imp.features.admin.dto.PermissionTemplateDtos.Delete.class),
+                controller.getMethod("apply",java.util.UUID.class,com.uten.imp.features.admin.dto.PermissionTemplateDtos.Commit.class))) {
+            assertThat(method.getAnnotation(com.uten.imp.security.RequiresStepUp.class)).isNotNull();
+        }
+        assertThat(controller.getMethod("preview",java.util.UUID.class,com.uten.imp.features.admin.dto.PermissionTemplateDtos.Apply.class)
+                .getAnnotation(com.uten.imp.security.StepUpExempt.class)).isNotNull();
+        assertThatThrownBy(()->mapper.readValue("{\"name\":\"bad\",\"permissions\":[],\"expectedVersion\":0,\"superAdmin\":true}",
+                com.uten.imp.features.admin.dto.PermissionTemplateDtos.Save.class)).hasMessageContaining("不支持的字段");
     }
     @Test void everyCommitHasStepUpAndEveryEndpointHasTheSuperAdministratorBoundary() throws Exception {
         var controller=PermissionConfigurationTransferController.class;

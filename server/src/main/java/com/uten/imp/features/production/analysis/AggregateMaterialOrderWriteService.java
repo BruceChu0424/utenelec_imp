@@ -64,6 +64,11 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         if(!replay.isEmpty()){if(!hash.equals(replay.getFirst()))throw conflict("同一防重复提交标识已用于另一项操作，请刷新后重试");return analysis.detailInternal(analysisId,false);}
         guard.verifyUnchanged();analysis.requireCurrent(header,request.version(),request.fingerprint());
         if(!"CANCELLED".equals(row[3])) {
+            if(Boolean.TRUE.equals(em.createNativeQuery("""
+                    SELECT EXISTS(SELECT 1 FROM preplan_aggregate_material_aliases alias
+                      WHERE alias.batch_id=:batch AND fn_preplan_material_has_qualified_receipt(alias.aggregate_material_id))
+                    """).setParameter("batch",row[0]).getSingleResult()))
+                throw conflict("独立子件已有实收到原共享路径；请先处理收货、领用及其归属后再撤回父批次");
             if(plan!=null) {
                 Object[] state=NativeQueryResults.objectArrayRows(em.createNativeQuery("SELECT status,is_deleted FROM production_plans WHERE id=:id FOR UPDATE").setParameter("id",plan)).getFirst();
                 if(!Boolean.TRUE.equals(state[1])&&((Number)state[0]).intValue()==1) {

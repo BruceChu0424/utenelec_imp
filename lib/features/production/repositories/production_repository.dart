@@ -45,6 +45,7 @@ import '../models/material_analysis_bom_diagnostic.dart';
 import '../models/material_analysis_projection.dart';
 import '../models/material_priority_replenishment.dart';
 import '../models/material_future_transfer.dart';
+import '../models/material_transfer_quantity.dart';
 import '../models/material_aggregate_order.dart';
 import '../models/production_plan.dart';
 import '../models/production_work_card.dart';
@@ -1051,7 +1052,7 @@ class ProductionPlanRepository {
     required String idempotencyKey,
     required String fromMaterialLineId,
     required String toMaterialLineId,
-    required double qty,
+    required Object qty,
     required String reason,
   }) async {
     final json = await api.post(
@@ -1063,7 +1064,7 @@ class ProductionPlanRepository {
         'idempotencyKey': idempotencyKey,
         'fromMaterialLineId': fromMaterialLineId,
         'toMaterialLineId': toMaterialLineId,
-        'qty': qty,
+        'qty': materialTransferWire(qty),
         'reason': reason,
       },
     ); // ENDPOINT
@@ -1145,7 +1146,7 @@ class ProductionPlanRepository {
     required ProductionMaterialAnalysisView targetAnalysis,
     required String targetMaterialLineId,
     required MaterialCrossReallocationSourceCandidate source,
-    required double qty,
+    required Object qty,
     required String reason,
     required String idempotencyKey,
   }) async {
@@ -1160,7 +1161,7 @@ class ProductionPlanRepository {
         'targetVersion': targetAnalysis.version,
         'targetFingerprint': targetAnalysis.fingerprint,
         'targetMaterialLineId': targetMaterialLineId,
-        'qty': qty,
+        'qty': materialTransferWire(qty),
         'reason': reason,
         'idempotencyKey': idempotencyKey,
       },
@@ -1172,7 +1173,7 @@ class ProductionPlanRepository {
     required ProductionMaterialAnalysisView sourceAnalysis,
     required MaterialCrossReallocationCandidate target,
     required String sourceMaterialLineId,
-    required double qty,
+    required Object qty,
     required String reason,
     required String idempotencyKey,
   }) async {
@@ -1187,7 +1188,7 @@ class ProductionPlanRepository {
         'targetVersion': target.targetVersion,
         'targetFingerprint': target.targetFingerprint,
         'targetMaterialLineId': target.targetMaterialLineId,
-        'qty': qty,
+        'qty': materialTransferWire(qty),
         'reason': reason,
         'idempotencyKey': idempotencyKey,
       },
@@ -1249,7 +1250,7 @@ class ProductionPlanRepository {
     required ProductionMaterialAnalysisView targetAnalysis,
     required String targetMaterialId,
     required MaterialFutureTransferSource source,
-    required double qty,
+    required Object qty,
     required bool allowLateSupply,
     required String reason,
     required String idempotencyKey,
@@ -1259,7 +1260,7 @@ class ProductionPlanRepository {
       body: {
         'sourceAllocationId': source.sourceAllocationId,
         'targetMaterialId': targetMaterialId,
-        'qty': qty,
+        'qty': materialTransferWire(qty),
         'sourceVersion': source.sourceVersion,
         'sourceFingerprint': source.sourceFingerprint,
         'targetVersion': targetAnalysis.version,
@@ -1283,7 +1284,7 @@ class ProductionPlanRepository {
   Future<ProductionMaterialAnalysisView> cancelMaterialFutureTransfer({
     required String analysisId,
     required MaterialFutureTransferRecord transfer,
-    required double qty,
+    required Object qty,
     required String reason,
     required String idempotencyKey,
     bool acceptPublicRelease = false,
@@ -1291,7 +1292,7 @@ class ProductionPlanRepository {
     await api.post(
       '$_materialAnalysesBase/$analysisId/future-transfers/${transfer.id}/cancel',
       body: {
-        'qty': qty,
+        'qty': materialTransferWire(qty),
         'sourceVersion': transfer.sourceVersion,
         'sourceFingerprint': transfer.sourceFingerprint,
         'targetVersion': transfer.targetVersion,

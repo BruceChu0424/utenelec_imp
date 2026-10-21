@@ -23,6 +23,7 @@ final class _ChildShortageRoot {
     required this.orderedQty,
     required this.appended,
     required this.lines,
+    this.quantityKnown = true,
   });
 
   final _MaterialGroup group;
@@ -32,6 +33,7 @@ final class _ChildShortageRoot {
 
   /// 这次是追加(下单前就下过)。
   final bool appended;
+  final bool quantityKnown;
   final List<_ChildShortageLine> lines;
 }
 
@@ -211,10 +213,11 @@ abstract class _MaterialAnalysisChildShortageState
     // 被清掉时，前后两次按不同路线算出的差不能当成「刚下单」。
     return {
       for (final group in _analysisIndexes(analysis).groupsByKey.values)
-        _issuedSnapshotKey(group): _tableGroupIssuedQty(
-          group,
-          authoritative: true,
-        ),
+        _issuedSnapshotKey(group): _orderedOutputEvidence(group),
+      for (final action in analysis.supplyActions)
+        if (_isOrderingAction(action))
+          _actionSnapshotKey(action.actionId):
+              action.requestedQty + action.publicSurplusQty,
     };
   }
 
@@ -226,16 +229,57 @@ abstract class _MaterialAnalysisChildShortageState
     for (final group in _analysisIndexes(analysis).groupsByKey.values) {
       final previous = before[_issuedSnapshotKey(group)];
       if (previous == null) continue;
-      if (_tableGroupIssuedQty(group, authoritative: true) - previous >
-          0.0001) {
+      if (_orderedOutputEvidence(group) - previous > 0.0001) {
         return true;
       }
     }
-    return false;
+    return analysis.supplyActions.any(
+      (action) =>
+          _isOrderingAction(action) &&
+          action.requestedQty +
+                  action.publicSurplusQty -
+                  (before[_actionSnapshotKey(action.actionId)] ?? 0) >
+              0.0001,
+    );
   }
 
   String _issuedSnapshotKey(_MaterialGroup group) =>
       '${group.key}@${_draftRoute(group)?.name ?? 'PENDING'}';
+
+  String _actionSnapshotKey(String id) => 'ORDER_ACTION|$id';
+
+  bool _isOrderingAction(MaterialAnalysisSupplyAction action) =>
+      !const ['CANCELLED', 'WITHDRAWN', 'REVERSED'].contains(action.status) &&
+      const ['SUPPLY', 'AGGREGATE_SUPPLY'].contains(action.operationType);
+
+  bool _groupHasNewOrderFact(
+    _MaterialGroup group,
+    Map<String, double> before,
+  ) => group.paths.any(
+    (path) => path.notifiedTargets.any((target) {
+      final action = _supplyActionOf(target.actionId);
+      return action != null &&
+          _isOrderingAction(action) &&
+          action.requestedQty +
+                  action.publicSurplusQty -
+                  (before[_actionSnapshotKey(action.actionId)] ?? 0) >
+              0.0001;
+    }),
+  );
+
+  /// 下单增长与私有需求覆盖是两件事实。已满足需求后的追加全属公共备货，
+  /// allocatedOrderedQty 不再增长，但这些产出同样需要直属物料。只读本来源
+  /// 已证实的实际下达量，不能拿共享批次中其它来源的 totalOrderedQty 代替。
+  double _orderedOutputEvidence(_MaterialGroup group) {
+    final preparation = _tablePreviewed(
+      group.representative,
+      authoritative: true,
+    ).aggregatePreparation;
+    if (preparation != null && preparation.orderedQtyExact) {
+      return preparation.orderedQty;
+    }
+    return _tableGroupIssuedQty(group, authoritative: true);
+  }
 
   double _childShortageUncovered(ProductionMaterialAnalysisMaterial material) =>
       material.planningUncoveredQty ??
@@ -294,32 +338,55 @@ abstract class _MaterialAnalysisChildShortageState
     }
 
     // 树顶候选：这次刚下单的件 / 页里记着的那几件 / 所有下过单的件。
-    final seeds = <String, ({double qty, bool appended})>{};
+    final seeds = <String, ({double qty, bool appended, bool known})>{};
     if (before == null && rootKeys != null) {
       // 补料页：只算打开时那几件，不必把整张表的累计已下单量都算一遍。
       for (final key in rootKeys) {
         final group = indexes.groupsByKey[key];
         if (group == null) continue;
         seeds[key] = (
-          qty:
-              orderedQty[key] ??
-              _tableGroupIssuedQty(group, authoritative: true),
+          qty: orderedQty[key] ?? _orderedOutputEvidence(group),
           appended: appendedKeys.contains(key),
+          known: (orderedQty[key] ?? 1) > 0,
         );
       }
     } else {
       for (final group in indexes.groupsByKey.values) {
-        final issued = _tableGroupIssuedQty(group, authoritative: true);
+        final issued = _orderedOutputEvidence(group);
         if (before != null) {
           // 下单前后供应方式不同(未保存的路线草稿被清掉)或下单前还没有这一行：不算刚下单。
           final previous = before[_issuedSnapshotKey(group)];
           if (previous == null) continue;
           final delta = issued - previous;
           if (delta > 0.0001) {
-            seeds[group.key] = (qty: delta, appended: previous > 0.0001);
+            seeds[group.key] = (
+              qty: delta,
+              appended: previous > 0.0001,
+              known: true,
+            );
+          } else if (group
+                      .representative
+                      .aggregatePreparation
+                      ?.orderedQtyExact ==
+                  false &&
+              _groupHasNewOrderFact(group, before)) {
+            // Historical shared batches can lack original total-quantity proof.
+            // A changed real order still requires checking its children's actual
+            // shortages; never invent the amount belonging to this source.
+            seeds[group.key] = (
+              qty: 0,
+              appended: previous > 0.0001,
+              known: false,
+            );
           }
         } else if (issued > 0.0001) {
-          seeds[group.key] = (qty: issued, appended: false);
+          seeds[group.key] = (
+            qty: issued,
+            appended: false,
+            known:
+                group.representative.aggregatePreparation?.orderedQtyExact !=
+                false,
+          );
         }
       }
     }
@@ -404,6 +471,7 @@ abstract class _MaterialAnalysisChildShortageState
           group: group,
           orderedQty: seed.value.qty,
           appended: seed.value.appended,
+          quantityKnown: seed.value.known,
           lines: lines,
         ),
       );
@@ -547,9 +615,10 @@ abstract class _MaterialAnalysisChildShortageState
                 for (final root in roots.take(4)) ...[
                   _ChildShortageRootSummary(
                     title: _tableGroupLabel(root.group),
-                    orderedLabel:
-                        '${root.appended ? '刚追加' : '刚下单'} '
-                        '${_qty(root.orderedQty)}${root.group.representative.unitName ?? ''}',
+                    orderedLabel: !root.quantityKnown
+                        ? '本次已下单，数量见关联单据'
+                        : '${root.appended ? '刚追加' : '刚下单'} '
+                              '${_qty(root.orderedQty)}${root.group.representative.unitName ?? ''}',
                     lines: [
                       for (final line in root.lines.take(5))
                         (

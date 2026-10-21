@@ -41,8 +41,7 @@ import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/widgets/uten_location_field.dart';
 import '../../../shared/widgets/master_detail_card.dart';
-import '../../../shared/widgets/uten_hierarchy_tree_view.dart'
-    show UtenHierarchyRowSkin;
+import '../../../shared/widgets/uten_hierarchy_detail_menu.dart';
 import '../../../shared/widgets/uten_hierarchy_search_header.dart';
 import '../models/payment_style_node.dart';
 import '../repositories/payment_style_repository.dart';
@@ -578,77 +577,23 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
         onTap: () => _toggleNode(node),
       ),
     ],
+    if (_canCreate || _canManage || _canStatus) const UtenMenuDivider(),
+    ...utenHierarchyCopyEntries(
+      context,
+      name: node.name,
+      path: utenTreeSelectionPath(_tree, node.id),
+    ),
   ];
-  Widget _treeNodeActions(PaymentStyleNode node) {
-    final theme = Theme.of(context);
-    final hitExtent = UtenControlMetrics.minimumHitExtent(context, desktop: 32);
-    Widget action(
-      String key,
-      String tooltip,
-      IconData icon,
-      VoidCallback? onPressed,
-    ) => Builder(
-      builder: (rowContext) => IconButton(
-        key: ValueKey('$key-${node.id}'),
-        tooltip: tooltip,
-        constraints: BoxConstraints.tightFor(
-          width: hitExtent,
-          height: hitExtent,
-        ),
-        padding: EdgeInsets.zero,
-        onPressed: _treeLoading ? null : onPressed,
-        icon: Icon(
-          icon,
-          size: 16,
-          color:
-              UtenHierarchyRowSkin.maybeOf(rowContext)?.foreground ??
-              theme.colorScheme.onSurfaceVariant,
-        ),
-      ),
-    );
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (_canCreate)
-          action(
-            'payment-style-node-add',
-            _nodeCanAddChild(node) ? '新增${node.name}的子类别' : '该类别当前不能新增子类别',
-            Icons.add_outlined,
-            _nodeCanAddChild(node) ? () => _addChildForNode(node) : null,
+  Widget? _treeNodeActions(PaymentStyleNode node) => node.status == '禁用'
+      ? const Padding(
+          padding: EdgeInsets.only(right: UtenSpacing.s4),
+          child: UtenStatusBadge(
+            label: '禁用',
+            type: UtenStatusBadgeType.neutral,
+            size: UtenStatusBadgeSize.small,
           ),
-        if (_canManage)
-          action(
-            'payment-style-node-edit',
-            '编辑${node.name}',
-            Icons.edit_outlined,
-            () => _editNode(node),
-          ),
-        if (_canStatus)
-          action(
-            'payment-style-node-status',
-            _nodeCanToggle(node)
-                ? '${node.status == '禁用' ? '启用' : '停用'}${node.name}'
-                : '系统科目或使用中的子类别限制停用',
-            _nodeSystemLocked(node) && node.status != '禁用'
-                ? Icons.lock_outline_rounded
-                : node.status == '禁用'
-                ? Icons.play_circle_outline_rounded
-                : Icons.pause_circle_outline_rounded,
-            _nodeCanToggle(node) ? () => _toggleNode(node) : null,
-          ),
-        if (node.status == '禁用')
-          const Padding(
-            padding: EdgeInsets.only(right: UtenSpacing.s4),
-            child: UtenStatusBadge(
-              label: '禁用',
-              type: UtenStatusBadgeType.neutral,
-              size: UtenStatusBadgeSize.small,
-            ),
-          ),
-      ],
-    );
-  }
-
+        )
+      : null;
   static IconData _categoryIcon(PaymentStyleCategory category) =>
       switch (category) {
         PaymentStyleCategory.account => Icons.account_balance_wallet_outlined,
@@ -691,10 +636,13 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
             icon: Icons.touch_app_outlined,
             message: '从类别目录选择一项查看属性',
           )
-        : _PaymentStyleInspector(
-            node: selected,
-            revision: _detailRevision,
-            onSelectChild: (id) => _select(id),
+        : UtenHierarchyDetailMenu(
+            entriesBuilder: () => _treeNodeMenu(selected),
+            child: _PaymentStyleInspector(
+              node: selected,
+              revision: _detailRevision,
+              onSelectChild: (id) => _select(id),
+            ),
           );
 
     final body = UtenSplitView(

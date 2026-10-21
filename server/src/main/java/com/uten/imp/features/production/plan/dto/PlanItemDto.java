@@ -69,6 +69,14 @@ public class PlanItemDto {
     /** DEFAULT = 系统按货品默认填写；EXPLICIT = 有人确认过(ADR-129 §2.10)。 */
     private String allowedOverproductionRateSource;
 
+    /** Production-only source instructions; populated after the plan passes its read policy. */
+    private final java.util.List<com.uten.imp.features.production.ProductionSalesRequirements.Requirement> salesRequirements = new java.util.ArrayList<>();
+
+    public void attachSalesRequirements(java.util.List<com.uten.imp.features.production.ProductionSalesRequirements.Requirement> requirements) {
+        salesRequirements.clear();
+        salesRequirements.addAll(requirements);
+    }
+
     /** Lossless quantity edit round-trip alongside legacy numeric response values. */
     public String getQtyExact() { return exactQuantityText(qty); }
     public String getOqtyExact() { return exactQuantityText(oqty); }

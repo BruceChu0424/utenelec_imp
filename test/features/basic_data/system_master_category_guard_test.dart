@@ -44,7 +44,7 @@ void main() {
     expect(tooltip.message, systemUncategorizedCategoryProtectionMessage);
   });
 
-  testWidgets('inline and menu actions share callbacks and enabled state', (
+  testWidgets('tree hides management icons and retains the menu policy', (
     tester,
   ) async {
     var additions = 0;
@@ -76,7 +76,6 @@ void main() {
         UtenHierarchyNodeOperation(
           label: '设置负责人',
           icon: Icons.manage_accounts_outlined,
-          showInline: false,
           onInvoke: () => keeperChanges++,
         ),
       ],
@@ -86,24 +85,17 @@ void main() {
         home: Scaffold(body: UtenHierarchyNodeActions(operations: operations)),
       ),
     );
-    await tester.tap(find.byKey(const Key('shared-node-add')));
+    expect(find.byType(IconButton), findsNothing);
     final entries = operations.menuEntries.whereType<UtenMenuItem>().toList();
     expect(entries.map((entry) => entry.label), ['新增子项', '编辑', '设置负责人', '删除']);
     expect(entries[1].enabled, isFalse);
-    expect(
-      tester
-          .widget<IconButton>(find.byKey(const Key('shared-node-edit')))
-          .onPressed,
-      isNull,
-    );
     expect(find.byTooltip('设置负责人'), findsNothing);
     await entries.first.onTap();
     await entries[2].onTap();
-    await tester.tap(find.byKey(const Key('shared-node-delete')));
     await entries.last.onTap();
     expect(entries.last.destructive, isTrue);
-    expect(additions, 2);
-    expect(deletions, 2);
+    expect(additions, 1);
+    expect(deletions, 1);
     expect(keeperChanges, 1);
     expect(tester.takeException(), isNull);
   });

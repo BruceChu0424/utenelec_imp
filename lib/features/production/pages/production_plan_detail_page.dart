@@ -1,4 +1,5 @@
 import '../../../shared/documents/document_unapproval_action.dart';
+import '../widgets/production_sales_requirements.dart';
 import '../../../shared/documents/document_unapproval.dart';
 // 生产计划单详情页（全页路由）：摘要主卡 + 执行子计划 + 折叠参考区 + 右下角悬浮操作组。
 //
@@ -1179,6 +1180,17 @@ class _ProductionPlanDetailPageState
                           widget.id,
                         ),
                         _summaryHeroCard(theme, names),
+                        if (_detail!.items.any(
+                          (item) => item.salesRequirements.isNotEmpty,
+                        )) ...[
+                          const SizedBox(height: UtenSpacing.s16),
+                          ProductionSalesRequirements(
+                            requirements: [
+                              for (final item in _detail!.items)
+                                ...item.salesRequirements,
+                            ],
+                          ),
+                        ],
                         // ② 主体区：执行子计划卡自带标题与状态计数，不再另加区块标题。
                         const SizedBox(height: UtenSpacing.s16),
                         ProductionExecutionSegmentsCard(

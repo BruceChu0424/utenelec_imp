@@ -6,6 +6,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../models/production_execution_workbench.dart';
 import '../models/production_flow_stage.dart';
 import 'production_flow_stage_cell.dart';
+import 'production_sales_requirements.dart';
 
 /// 展示任务事实；办理入口与权限由车间任务页提供，数量不在这里推算。
 class WorkshopTaskDetailDialog extends StatelessWidget {
@@ -106,6 +107,12 @@ class WorkshopTaskDetailDialog extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: UtenSpacing.s20),
+              if (task.salesRequirements.isNotEmpty) ...[
+                ProductionSalesRequirements(
+                  requirements: task.salesRequirements,
+                ),
+                const SizedBox(height: UtenSpacing.s16),
+              ],
               LayoutBuilder(
                 builder: (context, constraints) {
                   final metrics = [

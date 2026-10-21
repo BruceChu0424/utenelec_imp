@@ -49,6 +49,26 @@ class MaterialPreparationBudgetReaderTest {
         verifyNoInteractions(em);
     }
 
+    @Test void manyRepeatedSourcesKeepOnePhysicalBudgetAndDistinctUnitAndColorPools() {
+        EntityManager em=mock(EntityManager.class);Query query=query();
+        when(em.createNativeQuery(anyString())).thenReturn(query);
+        UUID main=UUID.randomUUID(),leaf=UUID.randomUUID(),goods=UUID.randomUUID(),unit=UUID.randomUUID();
+        List<MaterialView> materials=new ArrayList<>();
+        for(int index=0;index<500;index++) materials.add(material(UUID.randomUUID(),goods,unit,
+                List.of(warehouse(leaf,index==499?"15":"12","2"))));
+        UUID otherUnit=UUID.randomUUID(),otherColor=UUID.randomUUID();
+        var unitRow=material(UUID.randomUUID(),goods,otherUnit,List.of(warehouse(leaf,"3","1")));
+        var colorRow=material(UUID.randomUUID(),goods,unit,List.of(warehouse(leaf,"7","2")));
+        when(colorRow.colorId()).thenReturn(otherColor);
+        materials.add(unitRow);materials.add(colorRow);
+        var facts=new MaterialPreparationBudgetReader(em).read(UUID.randomUUID(),main,materials,Set.of(leaf));
+        assertThat(new HashSet<>(facts.poolKeyByMaterial().values())).hasSize(3);
+        assertThat(facts.sharedQtyByPoolKey().values()).containsExactlyInAnyOrder(new BigDecimal("13"),new BigDecimal("2"),new BigDecimal("5"));
+        for(var row:materials.subList(0,500)) assertThat(facts.slicesByMaterial().get(row.materialLineId()))
+                .extracting(PreparationSharedSupplySlice::availableQty).containsExactly(new BigDecimal("13"));
+        verify(em,times(3)).createNativeQuery(anyString());
+    }
+
     private Query query() {
         Query query=mock(Query.class);
         when(query.setParameter(anyString(),any())).thenReturn(query);

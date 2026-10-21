@@ -174,12 +174,10 @@ class UtenHierarchyTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
   /// 五档梯度（UtenColors.treeLevelRow）——一级深绿实底白字、往下逐档降饱和降
   /// 明度、四档起转中性灰，4 及更深固定第五档（至少 5 个层级色差、最深一层固定
   /// 一色、色差拉开且协调，2026-09-24 第二轮口径）；行距收紧、行间 1px 分隔线。
-  /// 选中 = 行首整高色块盖过展开/收起箭头与名字（宽 = 箭头位 + 名字
-  /// 自然宽 + 呼吸位，上限为扣除行尾控件后的实际标题簇宽；右侧上下两角平台统一控件
-  /// 圆角）。切换选中 = 块体刚性平移：旧行**向左滑出**左缘、新行**向右滑入**
-  /// （2026-10-19 用户口径）。名字/箭头随色块同拍取反色——一级深绿行本身即深绿，反其道用白块 +
-  /// 深绿前景；浏览态右缘对勾退役（2026-10-19 用户口径，色块盖名后冗余；同日
-  /// 早前形态依次为左缘 3px 强调条 → 盖箭头短块）。
+  /// 选中色块从左缘滑入，覆盖箭头和标题，旧色块向左退出；文字与箭头取对比色。
+  /// 色块受实际标题槽约束，不覆盖行尾业务标记或选择控件。
+  /// 行末圆形对勾同时从右侧短距离滑入，旧勾从右侧退出。
+  /// 标记槽宽度固定，切换选中不推动文字；减少动画和 lite 档立即切换。
   /// 完整祖先路径由名称提示与外部选中路径表达；行内只保留单行节点标题。
   /// 2026-10-18：整列视作一块卡片——首行上两角、末行下两角用系统圆角
   /// （UtenRadius.md），中间行保持方角相接。
@@ -222,18 +220,19 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
 
   bool get _searching => _query.trim().isNotEmpty;
 
-  /// flat 选中色块要盖过名字（2026-10-19 用户口径）：按选中态文字样式量测每个
-  /// 标签的自然宽（TextPainter），同一 (字体版本, 缩放, 标签) 只量一次；系统
-  /// 字体热载时 [_onSystemFontsChanged] 会换代身键并清缓存。
-  final _labelWidthCache = <String, double>{};
+  final _labelWidthCache =
+      <(String, TextStyle, TextScaler, TextDirection, Locale?), double>{};
 
-  double _labelWidth(String label, TextStyle style, TextScaler scaler) {
-    final key = '$_fontRevision:$scaler:$style:$label';
-    return _labelWidthCache[key] ??= () {
+  double _labelWidth(BuildContext context, String label, TextStyle style) {
+    final scaler = MediaQuery.textScalerOf(context);
+    final direction = Directionality.of(context);
+    final locale = Localizations.maybeLocaleOf(context);
+    return _labelWidthCache[(label, style, scaler, direction, locale)] ??= () {
       final painter = TextPainter(
         text: TextSpan(text: label, style: style),
         textScaler: scaler,
-        textDirection: TextDirection.ltr,
+        textDirection: direction,
+        locale: locale,
         maxLines: 1,
       )..layout();
       final width = painter.maxIntrinsicWidth;
@@ -277,6 +276,7 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
   @override
   void didUpdateWidget(UtenHierarchyTreeView<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(widget.nodes, oldWidget.nodes)) _labelWidthCache.clear();
     if (oldWidget.externalSearchQuery != widget.externalSearchQuery ||
         oldWidget.visibleFilterIds != widget.visibleFilterIds) {
       _stopBranchMotions();
@@ -689,12 +689,14 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
         final blockColor = onDarkRow
             ? Colors.white
             : _flatRowBackground(theme, 0);
-        final selectedForeColor = onDarkRow
+        final selectedForeground = onDarkRow
             ? _flatRowBackground(theme, 0)
             : Colors.white;
         final toggleColor = flatSelected
-            ? selectedForeColor
-            : (onDarkRow ? Colors.white : theme.colorScheme.onSurfaceVariant);
+            ? selectedForeground
+            : onDarkRow
+            ? Colors.white
+            : theme.colorScheme.onSurfaceVariant;
         final minHeight = flat
             ? UtenFilterRow.heightOf(context)
             : UtenControlMetrics.controlHeight(context);
@@ -710,10 +712,37 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
                 ? MaterialTapTargetSize.padded
                 : MaterialTapTargetSize.shrinkWrap,
           );
-        } else if (enabled && widget.mode == UtenTreeSelectMode.single) {
-          selection = isSelected
-              ? Icon(Icons.check_circle_rounded, size: 18, color: rowAccent)
-              : const SizedBox(width: 18, height: 18);
+        } else if (enabled &&
+            (widget.mode == UtenTreeSelectMode.single ||
+                widget.mode == UtenTreeSelectMode.none)) {
+          selection = SizedBox.square(
+            dimension: 24,
+            child: ClipRect(
+              child: AnimatedSwitcher(
+                duration: animDuration,
+                switchInCurve: UtenAnim.standard,
+                switchOutCurve: UtenAnim.standard,
+                transitionBuilder: (child, animation) => FadeTransition(
+                  opacity: animation,
+                  child: SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0.6, 0),
+                      end: Offset.zero,
+                    ).animate(animation),
+                    child: child,
+                  ),
+                ),
+                child: isSelected
+                    ? Icon(
+                        Icons.check_circle_rounded,
+                        key: ValueKey('hierarchy-selected-${node.id}'),
+                        size: 22,
+                        color: rowAccent,
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ),
+          );
         } else {
           selection = null;
         }
@@ -760,15 +789,13 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
                           ? FontWeight.w700
                           : (onDarkRow ? FontWeight.w600 : FontWeight.w400),
                       color: enabled
-                          ? (flat
-                                ? (flatSelected
-                                      ? toggleColor
-                                      : (onDarkRow ? Colors.white : null))
-                                : (onDarkRow
-                                      ? Colors.white
-                                      : isSelected
-                                      ? theme.colorScheme.primary
-                                      : null))
+                          ? (flatSelected
+                                ? selectedForeground
+                                : onDarkRow
+                                ? Colors.white
+                                : isSelected
+                                ? theme.colorScheme.primary
+                                : null)
                           : theme.colorScheme.onSurfaceVariant,
                     ),
                 child: Text(
@@ -790,21 +817,19 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
         final Widget body;
         if (flat) {
           final hasControls = trailing != null || selection != null;
-          // The expanded title cluster receives the width left AFTER the real
-          // trailing controls are laid out. Its selection block can never cover
-          // those controls, and the title ellipsis stays entirely inside it.
+          // Measure only the space left after trailing controls/checks. The
+          // fill translates rigidly under the title; both feedbacks coexist.
           body = Row(
             children: [
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, titleConstraints) {
                     final nameWidth = _labelWidth(
+                      context,
                       label,
-                      theme.textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ) ??
-                          const TextStyle(),
-                      MediaQuery.textScalerOf(context),
+                      DefaultTextStyle.of(context).style
+                          .merge(theme.textTheme.bodyMedium)
+                          .copyWith(fontWeight: FontWeight.w700),
                     );
                     final blockWidth = leading == null
                         ? math.min(
@@ -825,6 +850,9 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
                             left: flatSelected ? 0 : -blockWidth,
                             width: blockWidth,
                             child: DecoratedBox(
+                              key: ValueKey(
+                                'hierarchy-selection-fill-${node.id}',
+                              ),
                               decoration: BoxDecoration(
                                 color: blockColor,
                                 borderRadius: const BorderRadius.horizontal(

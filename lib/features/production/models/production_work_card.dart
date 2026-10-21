@@ -1,8 +1,6 @@
-/// Read-only A4 work-card projection for one confirmed execution package.
-///
-/// Names are resolved from current master data by the server when this view is
-/// requested. The package, segment, demand and quantity identities remain the
-/// persisted source of truth; printing never writes business state.
+import 'production_sales_requirement.dart';
+
+/// Read-only A4 projection; identities stay persisted and names resolve at read time.
 class ProductionWorkCardView {
   const ProductionWorkCardView({
     required this.planId,
@@ -65,7 +63,12 @@ class ProductionWorkCardView {
       namePolicy: json['namePolicy'] as String? ?? 'CURRENT_MASTER_DATA',
       cards: [
         for (final raw in json['cards'] as List? ?? const [])
-          ProductionWorkCard.fromJson(Map<String, dynamic>.from(raw as Map)),
+          ProductionWorkCard.fromJson({
+            ...Map<String, dynamic>.from(raw as Map),
+            'salesRequirements':
+                (json['salesRequirementsBySegment']
+                    as Map<String, dynamic>?)?[raw['segmentId']],
+          }),
       ],
     );
   }
@@ -100,9 +103,11 @@ class ProductionWorkCard {
     this.remark,
     this.drawBillNos,
     this.materials = const [],
+    this.salesRequirements = const [],
   });
 
   final String segmentId;
+  final List<ProductionSalesRequirement> salesRequirements;
   final String segmentCode;
   final String sourcePlanItemId;
   final int? sourceLineNo;
@@ -133,6 +138,9 @@ class ProductionWorkCard {
   factory ProductionWorkCard.fromJson(Map<String, dynamic> json) {
     return ProductionWorkCard(
       segmentId: json['segmentId'] as String,
+      salesRequirements: ProductionSalesRequirement.parseList(
+        json['salesRequirements'],
+      ),
       segmentCode: json['segmentCode'] as String,
       sourcePlanItemId: json['sourcePlanItemId'] as String,
       sourceLineNo: (json['sourceLineNo'] as num?)?.toInt(),

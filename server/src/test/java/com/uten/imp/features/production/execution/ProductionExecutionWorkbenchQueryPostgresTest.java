@@ -103,7 +103,6 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 CREATE TABLE sales_order_items(id uuid, order_id uuid, is_deleted boolean, client_goods_name VARCHAR(500), client_price NUMERIC, extra_columns jsonb NOT NULL DEFAULT '[]'::jsonb, goods_name_en_snapshot varchar(255));
                 CREATE TABLE sales_orders(id uuid, client_id uuid, bill_no text, is_deleted boolean, client_file_currency VARCHAR(8), requoted_to_id uuid, requoted_at timestamptz, requoted_by uuid);
                 CREATE TABLE clients(id uuid, name text, name_en VARCHAR(255));
-                CREATE TABLE execution_segment_sales_allocations(execution_segment_id uuid, sales_order_item_id uuid);
                 CREATE TABLE v_production_execution_workbench_segments(
                     segment_id uuid PRIMARY KEY, plan_id uuid, root_type text DEFAULT 'PLAN', root_id uuid,
                     plan_no text DEFAULT 'PLAN-001', segment_code text, segment_no integer,
@@ -267,6 +266,21 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 UUID.randomUUID(), new UUID(1, 3), settlementEvent);
         jdbc.update("INSERT INTO production_material_stock_postings(id,demand_id,posting_type,qty_base) VALUES (?,?,'ISSUE_REVERSE',10)",
                 UUID.randomUUID(), new UUID(1, 4));
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(jdbc,
+                "production_plan_items", "plan_order_item_links", "execution_segment_sales_allocations",
+                "production_material_analysis_materials", "preplan_supply_actions",
+                "preplan_supply_action_allocations", "preplan_aggregate_batches",
+                "preplan_aggregate_batch_events", "preplan_aggregate_material_aliases");
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentFunctions(jdbc,
+                "fn_aggregate_relative_bom_path", "fn_preplan_aggregate_recorded_private_sources_scoped_batches",
+                "fn_preplan_aggregate_recorded_private_sources_scoped",
+                "fn_preplan_aggregate_recorded_private_sources");
+        jdbc.execute("""
+                ALTER TABLE production_plans ADD COLUMN material_analysis_item_id uuid;
+                ALTER TABLE production_material_analysis_items ADD COLUMN id uuid, ADD COLUMN parent_analysis_material_id uuid;
+                ALTER TABLE sales_order_items ADD COLUMN goods_id uuid, ADD COLUMN remark text;
+                ALTER TABLE sales_orders ADD COLUMN remark text;
+                """);
         var fixtureConfiguration = new Configuration()
                 .setProperty("hibernate.hbm2ddl.auto", "none");
         fixtureConfiguration.getProperties().put("hibernate.connection.datasource", jdbc.getDataSource());
@@ -508,7 +522,8 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
         var reversedIssue = page.getItems().get(3);
         assertThat(reversedIssue.hasMaterialActivity()).isTrue();
         assertThat(reversedIssue.hasUnregisteredMaterial()).isFalse();
-        assertThat(factory.getStatistics().getPrepareStatementCount()).isEqualTo(3);
+        // Count + page + one material-ledger batch + one source-instructions batch.
+        assertThat(factory.getStatistics().getPrepareStatementCount()).isEqualTo(4);
     }
 
     @Test

@@ -33,6 +33,8 @@ void main() {
     expect(departments.detailCalls('sales'), 1);
 
     // 打开编辑弹窗：改名 → 保存。
+    await tester.tap(find.byKey(const ValueKey('hierarchy-detail-menu')));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('编辑'));
     await tester.pumpAndSettle();
     await tester.enterText(
@@ -55,17 +57,23 @@ void main() {
     await _pumpPage(tester, departments);
 
     expect(find.byTooltip('删除 总经办'), findsNothing);
-    expect(find.byTooltip('删除 销售部'), findsOneWidget);
+    expect(find.byTooltip('删除 销售部'), findsNothing);
 
     await tester.tap(find.text('总经办'));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('hierarchy-detail-menu')));
+    await tester.pumpAndSettle();
     expect(find.text('删除'), findsNothing);
+    await tester.tapAt(const Offset(2, 850));
+    await tester.pumpAndSettle();
 
     if (find.text('销售部').evaluate().isEmpty) {
       await tester.tap(find.byIcon(Icons.account_tree_rounded));
       await tester.pumpAndSettle();
     }
     await tester.tap(find.text('销售部'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('hierarchy-detail-menu')));
     await tester.pumpAndSettle();
     expect(find.text('删除'), findsOneWidget);
   });
@@ -91,6 +99,7 @@ Future<void> _pumpPage(
         employeeRepositoryProvider.overrideWithValue(_FakeEmployeeRepository()),
       ],
       child: const MaterialApp(
+        locale: Locale('zh'),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         home: DepartmentPage(),

@@ -21,6 +21,51 @@ const _permissions = {
 
 void main() {
   testWidgets(
+    'replenishment retains exact maximum capacity and typed decimal quantity',
+    (tester) async {
+      const maximum = '99999999999999.9999';
+      final repository = _Repository();
+      repository.json = _preview()
+        ..addAll({
+          'defaultQty': 100000000000000.0,
+          'remainingSupplementQty': 100000000000000.0,
+          'quantityFactsExact': {
+            'defaultQty': maximum,
+            'remainingSupplementQty': maximum,
+            'transferredQty': maximum,
+            'priorityPendingQty': maximum,
+            'safetyReplenishmentQty': '0',
+          },
+        });
+      await _pump(tester, repository);
+      expect(
+        tester.widget<TextField>(find.byKey(_quantity)).controller!.text,
+        maximum,
+      );
+      await tester.tap(find.byKey(_submit));
+      await tester.pumpAndSettle();
+      expect(repository.notifications.single['quantities'], [
+        {
+          'materialLineId': 'source-material',
+          'qty': maximum,
+          'safetyReplenishmentQty': 0.0,
+        },
+      ]);
+    },
+  );
+  testWidgets('replenishment cannot use a replaced transfer session', (
+    tester,
+  ) async {
+    var current = true;
+    final repository = _Repository();
+    await _pump(tester, repository, commandIsCurrent: () => current);
+    current = false;
+    await tester.tap(find.byKey(_submit));
+    await tester.pumpAndSettle();
+    expect(repository.notifications, isEmpty);
+    expect(find.textContaining('账号、权限或计划状态已变化'), findsOneWidget);
+  });
+  testWidgets(
     'entry and cancellation only preview the exact original plan, retaining the completed transfer',
     (tester) async {
       final repo = _Repository();
@@ -176,6 +221,7 @@ Future<void> _pump(
   _Repository repository, {
   Size size = const Size(1100, 900),
   Set<String> permissions = _permissions,
+  bool Function()? commandIsCurrent,
 }) async {
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -199,6 +245,7 @@ Future<void> _pump(
                     sourceMaterialLineId: 'source-material',
                     idempotencyKey: 'successful-transfer-key',
                     sourceLabel: '原计划 A',
+                    commandIsCurrent: commandIsCurrent,
                   ),
                   child: const Text('补供'),
                 ),

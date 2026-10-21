@@ -92,7 +92,11 @@
   "dashboardMoreTasks": "还有 {count} 项任务",
   "@dashboardMoreTasks": {
     "description": "今日概览单行待办中未展示的待处理件数",
-    "placeholders": { "count": { "type": "int" } }
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   },
   "dashboardMoreTasksTitle": "更多待办任务",
   "releaseNotesOpen": "查看本版本更新内容",
@@ -139,7 +143,13 @@
   "platformColumnDeleteTitle": "删除列",
   "platformColumnDeleteAction": "删除",
   "platformColumnDeleteConfirm": "删除“{name}”后，这列将不再出现在可选列中。已保存的单据数据和已有公式引用会保留。只能删除自己创建的列。",
-  "@platformColumnDeleteConfirm": {"placeholders":{"name":{"type":"String"}}},
+  "@platformColumnDeleteConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "platformColumnDeleteForbidden": "只能删除自己创建且有管理权限的列。",
   "platformColumnDeleteUnavailable": "当前列已不可删除，请重新加载后再试。",
   "platformColumnDeleteReferenced": "该列仍被其他计算列引用，请先删除引用它的计算列。",
@@ -1305,7 +1315,8 @@
       }
     }
   },
-  "materialWarehouseFacts": "仓库与供给明细",  "materialExactStock": "本节点合格绑定",
+  "materialWarehouseFacts": "仓库与供给明细",
+  "materialExactStock": "本节点合格绑定",
   "materialPublicStock": "公共现货",
   "materialClaimedSupply": "本节点已采用",
   "materialTaskBuy": "下达采购",
@@ -5945,21 +5956,54 @@
   "bomEditSaving": "正在保存组装信息",
   "bomEditProcessing": "正在处理本次操作，请稍候。",
   "goodsBomBatchWeightUnit": "单个重量 ({unit})",
-  "@goodsBomBatchWeightUnit": {"placeholders":{"unit":{"type":"String"}}},
+  "@goodsBomBatchWeightUnit": {
+    "placeholders": {
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
   "goodsBomBatchInvalidQuantity": "「{name}」{label}必须大于 0",
-  "@goodsBomBatchInvalidQuantity": {"placeholders":{"name":{"type":"String"},"label":{"type":"String"}}},
+  "@goodsBomBatchInvalidQuantity": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "label": {
+        "type": "String"
+      }
+    }
+  },
   "goodsBomBatchSharedPeriodicNotAllowed": "「{name}」是辅料或车间费用料，不能加入组装清单",
-  "@goodsBomBatchSharedPeriodicNotAllowed": {"placeholders":{"name":{"type":"String"}}},
+  "@goodsBomBatchSharedPeriodicNotAllowed": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "goodsBomBatchSelectFirst": "请先选择组件",
   "goodsBomBatchComponentLimit": "一次最多选择 {limit} 个组件，请分批操作",
-  "@goodsBomBatchComponentLimit": {"placeholders":{"limit":{"type":"int"}}},
+  "@goodsBomBatchComponentLimit": {
+    "placeholders": {
+      "limit": {
+        "type": "int"
+      }
+    }
+  },
   "goodsBomBatchCommitUncertain": "提交结果暂未确认。输入已锁定，请重试本次提交以核对原结果。",
   "goodsBomBatchFailed": "本次组装维护未完成，请重新预览后重试",
   "goodsBomBatchAddTitle": "批量添加组件",
   "goodsBomBatchRemoveTitle": "批量移除指定组件",
   "goodsBomBatchOverwriteTitle": "覆盖整份组装清单",
   "goodsBomBatchTargets": "已选 {count} 个货品，仅维护各货品的顶层组装清单。",
-  "@goodsBomBatchTargets": {"placeholders":{"count":{"type":"int"}}},
+  "@goodsBomBatchTargets": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "goodsBomBatchOverwriteDescription": "使用已复制组件覆盖当前货品的顶层组装清单；新清单没有的原顶层组件将移除。嵌套共享子件自身的组装清单保持不变。",
   "goodsBomBatchRemoveDescription": "仅移除所选货品顶层命中的指定组件；未命中时跳过，不删除嵌套子件自身的组件。",
   "goodsBomBatchAddDescription": "向所选货品顶层追加指定组件；已有相同组件时直接跳过，保留原数量及其他字段。",
@@ -5968,26 +6012,101 @@
   "goodsBomBatchUnselectComponent": "取消选择此组件",
   "goodsBomBatchCollapseComponents": "收起组件",
   "goodsBomBatchExpandComponents": "展开全部 {count} 个组件",
-  "@goodsBomBatchExpandComponents": {"placeholders":{"count":{"type":"int"}}},
+  "@goodsBomBatchExpandComponents": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "goodsBomBatchSummary": "将修改 {targets} 个货品：添加 {added}、更新 {updated}、移除 {removed}、跳过 {skipped}。",
-  "@goodsBomBatchSummary": {"placeholders":{"targets":{"type":"int"},"added":{"type":"int"},"updated":{"type":"int"},"removed":{"type":"int"},"skipped":{"type":"int"}}},
+  "@goodsBomBatchSummary": {
+    "placeholders": {
+      "targets": {
+        "type": "int"
+      },
+      "added": {
+        "type": "int"
+      },
+      "updated": {
+        "type": "int"
+      },
+      "removed": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
   "goodsBomBatchTargetCounts": "添加 {added} / 更新 {updated} / 移除 {removed} / 跳过 {skipped}",
-  "@goodsBomBatchTargetCounts": {"placeholders":{"added":{"type":"int"},"updated":{"type":"int"},"removed":{"type":"int"},"skipped":{"type":"int"}}},
+  "@goodsBomBatchTargetCounts": {
+    "placeholders": {
+      "added": {
+        "type": "int"
+      },
+      "updated": {
+        "type": "int"
+      },
+      "removed": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
   "goodsBomBatchSharedImpact": "另外 {count} 个引用位置会随共享货品的组装清单同步变化。",
-  "@goodsBomBatchSharedImpact": {"placeholders":{"count":{"type":"int"}}},
+  "@goodsBomBatchSharedImpact": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "goodsBomBatchHiddenImpact": "其中 {count} 个引用位置受查看权限限制，仅显示数量。",
-  "@goodsBomBatchHiddenImpact": {"placeholders":{"count":{"type":"int"}}},
+  "@goodsBomBatchHiddenImpact": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "goodsBomBatchConfirmImpact": "请核对所选货品、跳过项与同步影响。确认后整批保存，任何一项失败都不会修改。",
   "goodsBomBatchCloseVerify": "关闭并刷新核对",
   "goodsBomBatchRetryCommit": "重试本次提交",
   "goodsBomBatchPreview": "预览影响范围",
   "goodsBomBatchConfirmCommit": "确认整批修改",
   "goodsBomBatchCompleted": "已完成 {targets} 个货品：添加 {added}、更新 {updated}、移除 {removed}、跳过 {skipped}。",
-  "@goodsBomBatchCompleted": {"placeholders":{"targets":{"type":"int"},"added":{"type":"int"},"updated":{"type":"int"},"removed":{"type":"int"},"skipped":{"type":"int"}}},
+  "@goodsBomBatchCompleted": {
+    "placeholders": {
+      "targets": {
+        "type": "int"
+      },
+      "added": {
+        "type": "int"
+      },
+      "updated": {
+        "type": "int"
+      },
+      "removed": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
   "goodsBomBatchClearTopTitle": "清空顶层组装清单",
   "goodsBomBatchOverwriteCopied": "覆盖整份组装清单(使用已复制组件)",
   "goodsBomBatchMoreProblems": "另有 {count} 项问题，请调整后重新预览。",
-  "@goodsBomBatchMoreProblems": {"placeholders":{"count":{"type":"int"}}},
+  "@goodsBomBatchMoreProblems": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "exportPdfDialogTitle": "导出 PDF",
   "whereUsedReplacementTitle": "一键替换组件",
   "whereUsedReplacementConfirmTitle": "确认同步替换",
@@ -5998,12 +6117,33 @@
   "whereUsedReplacementSameComponent": "替换组件不能与当前组件相同",
   "whereUsedReplacementFailed": "替换未完成，请重新预览当前组装关系后重试",
   "whereUsedReplacementRules": "已选 {count} 个产品。保留原组装行的用量、颜色、供应商、单价和控制规则；两个组件须有相同基本单位及领料方式。",
-  "@whereUsedReplacementRules": {"placeholders": {"count": {"type": "int"}}},
+  "@whereUsedReplacementRules": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "whereUsedReplacementHistory": "本次替换只修改当前组装信息，历史凭证、冻结需求与已发生的实际耗用保持原记录。",
   "whereUsedReplacementImpact": "将替换 {edges} 条组装关系，共影响 {products} 个产品。",
-  "@whereUsedReplacementImpact": {"placeholders": {"edges": {"type": "int"}, "products": {"type": "int"}}},
+  "@whereUsedReplacementImpact": {
+    "placeholders": {
+      "edges": {
+        "type": "int"
+      },
+      "products": {
+        "type": "int"
+      }
+    }
+  },
   "whereUsedReplacementSharedImpact": "其中 {count} 个为共用组件关联的其他产品，也会同步变化。",
-  "@whereUsedReplacementSharedImpact": {"placeholders": {"count": {"type": "int"}}},
+  "@whereUsedReplacementSharedImpact": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "whereUsedReplacementSelectedSuffix": "(已选)",
   "whereUsedReplacementSharedSuffix": "(同步影响)",
   "whereUsedPreviewImpact": "预览影响范围",
@@ -6071,5 +6211,56 @@
   "warehouseMasterDelete": "删除仓库",
   "bomEditDiscardAndExit": "不保存并退出",
   "masterEditDiscardRemainingNote": "仅放弃尚未保存的修改，已保存成功的修改会保留。",
-  "filterAllCategoriesSummary": "全部分类"
+  "filterAllCategoriesSummary": "全部分类",
+  "permissionTemplateTab": "按模板",
+  "permissionTemplateNew": "新建模板",
+  "permissionTemplateSaveFromUser": "存为模板",
+  "permissionTemplateApply": "应用模板",
+  "permissionTemplateEdit": "编辑模板",
+  "permissionTemplateDelete": "删除模板",
+  "permissionTemplateName": "模板名称",
+  "permissionTemplateDescription": "用途说明",
+  "permissionTemplateEmpty": "还没有权限模板",
+  "permissionTemplateEmptyHint": "新建模板，或从员工已生效的操作权限保存。",
+  "permissionTemplateSnapshotNote": "模板保存操作权限快照；以后编辑或删除模板，不会改动已应用的账号。",
+  "permissionTemplateScopeNote": "只设置操作权限。数据范围、部门、账号身份及外网访问资格仍分别管理。",
+  "permissionTemplateSelect": "选择权限模板",
+  "permissionTemplateMerge": "补充权限",
+  "permissionTemplateReplace": "覆盖为模板",
+  "permissionTemplateMergeHint": "保留现有权限，补充模板权限；不会恢复已明确收回的权限。",
+  "permissionTemplateReplaceHint": "将操作权限设置为模板内容；会收回模板外的现有权限，请核对差量。",
+  "permissionTemplatePreview": "预览变更",
+  "permissionTemplateSaved": "权限模板已保存",
+  "permissionTemplateDeleted": "权限模板已删除",
+  "permissionTemplateApplied": "权限模板已应用",
+  "permissionTemplateCancel": "取消",
+  "permissionTemplateSave": "保存模板",
+  "permissionTemplateClose": "关闭",
+  "permissionTemplateDeleteHint": "仅删除这个模板。已经应用模板的账号权限会保留。",
+  "permissionTemplateInvalidName": "名称不能为空，且最多 80 字；用途说明最多 1000 字。",
+  "permissionTemplateBoundaryChanged": "登录身份、授权或服务器已变化，请关闭后重新打开。",
+  "permissionTemplateUncertain": "请求结果尚未确认。请关闭窗口，刷新并核对结果后再操作。",
+  "permissionTemplateLoadFailed": "无法读取权限模板，请重试。",
+  "permissionTemplateRetry": "重新加载",
+  "permissionTemplateSelectedCount": "已选 {count} 项权限",
+  "permissionTemplateUnknownCodes": "模板含有当前目录未提供的权限码，请核对后移除或重新创建。",
+  "permissionTemplateClearUnknown": "移除失效权限码",
+  "permissionTemplateSensitiveNote": "敏感权限可以保存；应用到每位员工时仍须逐项确认。",
+  "permissionTemplateNoSelection": "选择一个模板查看权限",
+  "@permissionTemplateSelectedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hierarchyActions": "更多操作",
+  "hierarchyEdit": "编辑",
+  "hierarchyCopyName": "复制名称",
+  "hierarchyCopyPath": "复制分类路径",
+  "productionOrderRequirement": "订单统一备注",
+  "productionProductRequirement": "产品单独备注",
+  "productionRequirementsClose": "关闭",
+  "productionSalesRequirements": "销售生产要求",
+  "materialTransferContextChanged": "账号、权限或计划状态已变化，请关闭后重新核对调拨。"
 }

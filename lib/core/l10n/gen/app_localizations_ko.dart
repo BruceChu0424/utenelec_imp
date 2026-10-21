@@ -11755,4 +11755,149 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get filterAllCategoriesSummary => '전체 분류';
+
+  @override
+  String get permissionTemplateTab => '템플릿별';
+
+  @override
+  String get permissionTemplateNew => '새 템플릿';
+
+  @override
+  String get permissionTemplateSaveFromUser => '템플릿으로 저장';
+
+  @override
+  String get permissionTemplateApply => '템플릿 적용';
+
+  @override
+  String get permissionTemplateEdit => '템플릿 편집';
+
+  @override
+  String get permissionTemplateDelete => '템플릿 삭제';
+
+  @override
+  String get permissionTemplateName => '템플릿 이름';
+
+  @override
+  String get permissionTemplateDescription => '용도 설명';
+
+  @override
+  String get permissionTemplateEmpty => '권한 템플릿이 없습니다';
+
+  @override
+  String get permissionTemplateEmptyHint => '새 템플릿을 만들거나 직원의 현재 유효한 권한을 저장하세요.';
+
+  @override
+  String get permissionTemplateSnapshotNote =>
+      '템플릿은 작업 권한의 스냅샷입니다. 편집하거나 삭제해도 이미 적용된 계정은 변경되지 않습니다.';
+
+  @override
+  String get permissionTemplateScopeNote =>
+      '작업 권한만 설정합니다. 데이터 범위, 부서, 계정 유형 및 외부 접속 자격은 별도로 관리합니다.';
+
+  @override
+  String get permissionTemplateSelect => '권한 템플릿 선택';
+
+  @override
+  String get permissionTemplateMerge => '권한 추가';
+
+  @override
+  String get permissionTemplateReplace => '템플릿으로 덮어쓰기';
+
+  @override
+  String get permissionTemplateMergeHint =>
+      '기존 권한을 유지하고 템플릿 권한을 추가합니다. 명시적으로 회수한 권한은 자동 복원하지 않습니다.';
+
+  @override
+  String get permissionTemplateReplaceHint =>
+      '유효 권한을 템플릿과 일치시키며 템플릿 외 권한은 회수합니다. 변경 내역을 확인하세요.';
+
+  @override
+  String get permissionTemplatePreview => '변경 미리보기';
+
+  @override
+  String get permissionTemplateSaved => '권한 템플릿이 저장되었습니다';
+
+  @override
+  String get permissionTemplateDeleted => '권한 템플릿이 삭제되었습니다';
+
+  @override
+  String get permissionTemplateApplied => '권한 템플릿이 적용되었습니다';
+
+  @override
+  String get permissionTemplateCancel => '취소';
+
+  @override
+  String get permissionTemplateSave => '템플릿 저장';
+
+  @override
+  String get permissionTemplateClose => '닫기';
+
+  @override
+  String get permissionTemplateDeleteHint =>
+      '이 템플릿만 삭제합니다. 계정에 이미 적용된 권한은 유지됩니다.';
+
+  @override
+  String get permissionTemplateInvalidName =>
+      '이름은 필수이며 최대 80자, 용도 설명은 최대 1000자입니다.';
+
+  @override
+  String get permissionTemplateBoundaryChanged =>
+      '로그인 계정, 권한 또는 서버가 변경되었습니다. 창을 닫고 다시 여세요.';
+
+  @override
+  String get permissionTemplateUncertain =>
+      '요청 결과가 확인되지 않았습니다. 창을 닫고 새로고침하여 결과를 확인한 뒤 다시 작업하세요.';
+
+  @override
+  String get permissionTemplateLoadFailed => '권한 템플릿을 불러올 수 없습니다. 다시 시도하세요.';
+
+  @override
+  String get permissionTemplateRetry => '다시 불러오기';
+
+  @override
+  String permissionTemplateSelectedCount(int count) {
+    return '권한 $count개 선택됨';
+  }
+
+  @override
+  String get permissionTemplateUnknownCodes =>
+      '현재 목록에 없는 권한 코드가 포함되어 있습니다. 확인 후 제거하거나 템플릿을 다시 만드세요.';
+
+  @override
+  String get permissionTemplateClearUnknown => '사용할 수 없는 코드 제거';
+
+  @override
+  String get permissionTemplateSensitiveNote =>
+      '민감한 권한도 저장할 수 있지만 직원에게 적용할 때 각각 확인해야 합니다.';
+
+  @override
+  String get permissionTemplateNoSelection => '템플릿을 선택하여 권한을 확인하세요';
+
+  @override
+  String get hierarchyActions => '더 보기';
+
+  @override
+  String get hierarchyEdit => '편집';
+
+  @override
+  String get hierarchyCopyName => '이름 복사';
+
+  @override
+  String get hierarchyCopyPath => '분류 경로 복사';
+
+  @override
+  String get productionOrderRequirement => '주문 공통 비고';
+
+  @override
+  String get productionProductRequirement => '제품별 비고';
+
+  @override
+  String get productionRequirementsClose => '닫기';
+
+  @override
+  String get productionSalesRequirements => '판매 생산 요구 사항';
+
+  @override
+  String get materialTransferContextChanged =>
+      '계정, 권한 또는 계획 상태가 변경되었습니다. 창을 닫고 자재 이동을 다시 확인하세요.';
 }

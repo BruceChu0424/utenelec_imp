@@ -1,4 +1,5 @@
 import 'production_material_analysis.dart';
+import 'material_transfer_quantity.dart';
 
 class MaterialPriorityReplenishmentPreview {
   const MaterialPriorityReplenishmentPreview({
@@ -16,6 +17,7 @@ class MaterialPriorityReplenishmentPreview {
     this.safetyReplenishmentQty = 0,
     this.blockedReason,
     this.existingChildAnalysisLineId,
+    this.quantityFactsExact = const {},
   });
 
   final ProductionMaterialAnalysisView sourceAnalysis;
@@ -32,6 +34,7 @@ class MaterialPriorityReplenishmentPreview {
   final double safetyReplenishmentQty;
   final String? blockedReason;
   final String? existingChildAnalysisLineId;
+  final Map<String, String> quantityFactsExact;
 
   bool get createsProductionPlan => operation == 'ISSUE_WORKSHOP_PLANS';
   ProductionMaterialAnalysisMaterial? get material => sourceAnalysis.materials
@@ -63,6 +66,9 @@ class MaterialPriorityReplenishmentPreview {
       blockedReason: json['blockedReason'] as String?,
       existingChildAnalysisLineId:
           json['existingChildAnalysisLineId'] as String?,
+      quantityFactsExact: materialTransferExactFacts(
+        json['quantityFactsExact'],
+      ),
     );
   }
 }

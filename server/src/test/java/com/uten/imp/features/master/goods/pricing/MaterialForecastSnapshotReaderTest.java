@@ -55,6 +55,15 @@ class MaterialForecastSnapshotReaderTest {
         Files.writeString(directory.resolve("copper-test.json"),"x".repeat(MaterialForecastSnapshotReader.MAX_BYTES+1));assertThat(reader().read("copper-test").snapshot()).isNull();
     }
     @Test void rejectsTrailingJsonAndDuplicateFields()throws Exception{String valid=json.writeValueAsString(fixture());for(String text:List.of(valid+" {}",valid.substring(0,valid.length()-1)+",\"schemaVersion\":1}")){Files.writeString(directory.resolve("copper-test.json"),text);assertThat(reader().read("copper-test").snapshot()).isNull();}}
+    @Test void nonObjectAndEmptySnapshotsStayUnavailableWithoutEnteringTheCatalog() throws Exception {
+        for (String source : List.of("", "null", "[]", "true", "1", "\"snapshot\"")) {
+            Files.writeString(directory.resolve("copper-test.json"), source);
+            var result = reader().read("copper-test");
+            assertThat(result.status()).as("root value %s", source).isEqualTo("UNAVAILABLE");
+            assertThat(result.snapshot()).isNull();
+            assertThat(reader().catalog()).isEmpty();
+        }
+    }
     @Test void identityDigestChangesWithGradeButNotWithDailyPrices()throws Exception{write(fixture());var r=reader();var before=r.identityDigest(r.read("copper-test").snapshot());var n=fixture();n.put("latestPrice","99");write(n);assertThat(r.identityDigest(r.read("copper-test").snapshot())).isEqualTo(before);n.put("grade","T2");write(n);assertThat(r.identityDigest(r.read("copper-test").snapshot())).isNotEqualTo(before);}
     @Test void ownCsvSourcesNeedNoPublicUrlAndZeroLowerBoundIsConservative()throws Exception{
         var n=fixture();n.put("sourceUrl","");n.put("procurementSignal","WATCH");for(var f:n.withArray("forecasts")){((ObjectNode)f).put("lower80","0");((ObjectNode)f).put("direction","UNCERTAIN");}write(n);assertThat(reader().read("copper-test").status()).isEqualTo("READY");
@@ -92,7 +101,20 @@ class MaterialForecastSnapshotReaderTest {
         for(String field:List.of("status","procurementSignal","validationBasis")){var n=automaticFixture();n.put(field,switch(field){case "status"->"READY";case "procurementSignal"->"RISING";default->"POINT_IN_TIME";});writeAutomatic(n);assertThat(reader().read("shfe_cu_main_daily").snapshot()).as(field).isNull();}
     }
     @Test void researchStillRequiresTheHeldoutAccuracyGates()throws Exception{for(String field:List.of("folds","modelMAE","coverage80")){var n=automaticFixture();var v=(ObjectNode)n.get("validation");if(field.equals("folds"))v.put(field,19);else v.put(field,field.equals("modelMAE")?"4":"0.69");writeAutomatic(n);assertThat(reader().read("shfe_cu_main_daily").snapshot()).as(field).isNull();}}
-    @Test void matchingSeriesIdCannotSubstituteAnotherCommodityOrUnit()throws Exception{for(String field:List.of("commodity","unit","sourceName","quoteContract")){var n=automaticFixture();n.put(field,switch(field){case "commodity"->"SILVER";case "unit"->"千克";case "sourceName"->"Unverified source";default->"ag2611";});writeAutomatic(n);assertThat(reader().read("shfe_cu_main_daily").snapshot()).as(field).isNull();}}
+    @Test void matchingSeriesIdCannotSubstituteAnotherCommodityOrUnit() throws Exception {
+        for (String field : List.of("commodity", "unit", "sourceName", "quoteContract")) {
+            var n = automaticFixture();
+            n.put(field, switch (field) {
+                case "commodity" -> "SILVER";
+                case "unit" -> "千克";
+                case "sourceName" -> "Unverified source";
+                default -> "ag2611";
+            });
+            writeAutomatic(n);
+            assertThat(reader().read("shfe_cu_main_daily").snapshot()).as(field).isNull();
+            assertThat(reader().catalog()).as("catalog must reject the same swapped %s", field).isEmpty();
+        }
+    }
     @Test void automaticEvidenceRejectsFutureFetchAndNonIntegerHistorySize()throws Exception{
         var n=automaticFixture();n.put("sourceFetchedAt","2026-10-20T16:30:01Z");writeAutomatic(n);assertThat(reader().read("shfe_cu_main_daily").snapshot()).isNull();
         n=automaticFixture();n.put("historyRecordCount",3.5);writeAutomatic(n);assertThat(reader().read("shfe_cu_main_daily").snapshot()).isNull();

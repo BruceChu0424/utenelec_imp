@@ -1,9 +1,14 @@
 package com.uten.imp.features.master.goods.pricing;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.slf4j.LoggerFactory;
 import java.nio.file.*;
 import java.time.*;
 import java.util.List;
@@ -19,7 +24,29 @@ class MaterialMarketFeedReaderTest {
     ObjectNode health(){var n=json.createObjectNode().put("schemaVersion",1).put("workerVersion","SHFE_AUTO_V1").put("generatedAt","2026-10-20T16:29:00Z").put("autoUpdateEnabled",true);n.putArray("series").add(json.createObjectNode().put("seriesId","shfe_cu_main_daily").put("status","IDLE").put("lastAttemptAt","2026-10-20T16:28:00Z").put("lastSuccessAt","2026-10-20T16:29:00Z").put("nextSyncAt","2026-10-20T16:59:00Z").putNull("errorCode"));return n;}
     void write(String name,ObjectNode n)throws Exception{Files.writeString(directory.resolve(name),json.writeValueAsString(n));}
     @Test void packagedCatalogHasThreeFuturesWithTheCorrectSilverUnit(){assertThat(catalog.all()).hasSize(3).allMatch(b->b.provider().equals("SHFE_PUBLIC_DAILY")&&b.market().equals("FUTURES")&&b.selectable());assertThat(catalog.find("shfe_ag_main_daily").unit()).isEqualTo("千克");assertThat(catalog.find("shfe_cu_main_daily").unit()).isEqualTo("吨");}
-    @Test void aCorruptPackagedCatalogDisablesTheFeatureWithoutBreakingHistoricalPriceAnalysis(){var invalid=new MaterialBenchmarkCatalog(json,new java.io.ByteArrayInputStream("{}".getBytes(java.nio.charset.StandardCharsets.UTF_8)));assertThat(invalid.all()).isEmpty();assertThat(invalid.find("shfe_cu_main_daily")).isNull();}
+    @Test void aCorruptPackagedCatalogDisablesTheFeatureWithoutBreakingHistoricalPriceAnalysis() {
+        Logger logger = (Logger) LoggerFactory.getLogger(MaterialBenchmarkCatalog.class);
+        var captured = new ListAppender<ILoggingEvent>();
+        boolean additive = logger.isAdditive();
+        captured.start();
+        logger.addAppender(captured);
+        logger.setAdditive(false);
+        try {
+            var invalid = new MaterialBenchmarkCatalog(json,
+                    new java.io.ByteArrayInputStream("{}".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            assertThat(invalid.all()).isEmpty();
+            assertThat(invalid.find("shfe_cu_main_daily")).isNull();
+            assertThat(captured.list).singleElement().satisfies(event -> {
+                assertThat(event.getLevel()).isEqualTo(Level.WARN);
+                assertThat(event.getFormattedMessage()).isEqualTo("内置市场参考目录暂不可用，原有价格分析继续可用");
+                assertThat(event.getThrowableProxy()).isNull();
+            });
+        } finally {
+            logger.detachAppender(captured);
+            logger.setAdditive(additive);
+            captured.stop();
+        }
+    }
     @Test void absentHeartbeatNeverClaimsAutomaticCollectionIsRunning(){var state=reader().sync("shfe_cu_main_daily");assertThat(state.status()).isEqualTo("OFFLINE");assertThat(state.autoUpdateEnabled()).isFalse();}
     @Test void freshHeartbeatCarriesIndependentSuccessAndSchedulingState()throws Exception{write("auto-feed-health.json",health());var state=reader().sync("shfe_cu_main_daily");assertThat(state.status()).isEqualTo("IDLE");assertThat(state.autoUpdateEnabled()).isTrue();assertThat(state.lastSuccessAt()).isEqualTo("2026-10-20T16:29:00Z");}
     @Test void malformedOldAndFutureHealthIsOfflineWithoutLeakingRawErrors()throws Exception{

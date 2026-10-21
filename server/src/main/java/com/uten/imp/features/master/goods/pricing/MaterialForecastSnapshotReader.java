@@ -76,6 +76,11 @@ public class MaterialForecastSnapshotReader {
                 if(!validSeries(id))continue;
                 try {
                     Snapshot snapshot=load(root,id);
+                    Benchmark benchmark = benchmarks.find(id);
+                    if (benchmark != null
+                            && (snapshot.schemaVersion() != 2 || !benchmarks.matches(benchmark, snapshot))) {
+                        continue;
+                    }
                     result.add(stale(snapshot)?withoutSignal(snapshot,"STALE_MARKET_DATA"):snapshot);
                 }catch(IOException|RuntimeException invalid){/* Never expose a malformed file or its parse details. */}
             }
@@ -121,6 +126,9 @@ public class MaterialForecastSnapshotReader {
         return json.reader().with(DeserializationFeature.FAIL_ON_READING_DUP_TREE_KEY,DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(Arrays.copyOf(bytes.array(),bytes.position()));
     }
     private void validate(JsonNode n,String id) {
+        if (n == null || !n.isObject()) {
+            bad();
+        }
         int schema=n.path("schemaVersion").intValue();
         var required=new HashSet<>(FIELDS);if(schema==2)required.addAll(V2_FIELDS);
         fields(n,required,Set.of("synthetic"));
@@ -246,8 +254,15 @@ public class MaterialForecastSnapshotReader {
         return n.get(key).isNull() ? null : LocalDate.parse(text(n, key, 10, false));
     }
     static Instant utcInstant(JsonNode n,String key,boolean nullable) {
-        if(nullable&&n.get(key)!=null&&n.get(key).isNull())return null;
-        String value=text(n,key,40,false);if(!value.endsWith("Z"))bad();return Instant.parse(value);
+        JsonNode node = n.get(key);
+        if (nullable && node != null && node.isNull()) {
+            return null;
+        }
+        String value = text(n, key, 40, false);
+        if (!value.endsWith("Z")) {
+            bad();
+        }
+        return Instant.parse(value);
     }
     static void bad(){throw new IllegalArgumentException("Invalid market snapshot");}
 }

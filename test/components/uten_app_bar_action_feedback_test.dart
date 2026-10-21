@@ -130,38 +130,60 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-    'a dialog is the response while its covered header stops animating',
-    (tester) async {
-      await _mount(tester, [
-        Builder(
-          builder: (context) => UtenAppBarActionButton(
-            label: '打开确认',
-            onPressed: () => showDialog<void>(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: const Text('业务确认'),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('取消'),
+  for (final kind in ['shared', 'header']) {
+    testWidgets(
+      '$kind dialog is the response while its covered header stops animating',
+      (tester) async {
+        var calls = 0;
+        await _mount(tester, [
+          Builder(
+            builder: (context) {
+              Future<void> openDialog() {
+                calls++;
+                return showDialog<void>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('业务确认'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('取消'),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ),
+                );
+              }
+
+              return kind == 'shared'
+                  ? UtenButton(onPressed: openDialog, child: const Text('打开确认'))
+                  : UtenAppBarActionButton(
+                      label: '打开确认',
+                      onPressed: openDialog,
+                    );
+            },
           ),
-        ),
-      ]);
-      await tester.tap(find.text('打开确认'));
-      await tester.pumpAndSettle();
-      expect(find.text('业务确认'), findsOneWidget);
-      expect(find.byType(CircularProgressIndicator), findsNothing);
-      await tester.tap(find.text('取消'));
-      await tester.pumpAndSettle();
-      expect(find.byType(CircularProgressIndicator), findsNothing);
-      expect(tester.takeException(), isNull);
-    },
-  );
+        ]);
+        await tester.tap(find.text('打开确认'));
+        await tester.pumpAndSettle();
+        expect(calls, 1);
+        expect(find.text('业务确认'), findsOneWidget);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+        await tester.tap(find.text('取消'));
+        await tester.pumpAndSettle();
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+        await tester.tap(find.text('打开确认'));
+        await tester.pumpAndSettle();
+        expect(
+          calls,
+          2,
+          reason: 'closing the dialog releases the action guard',
+        );
+        await tester.tap(find.text('取消'));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets(
     'an in-flight header can be removed before its request completes',

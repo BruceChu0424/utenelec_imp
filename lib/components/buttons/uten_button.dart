@@ -218,12 +218,14 @@ class UtenButton extends StatelessWidget {
                                 )
                               : _textStyle)
                           .copyWith(color: foreground),
-                  child: _content(
-                    context: context,
-                    foreground: foreground,
-                    iconSize: iconSize,
-                    inAppBar: inAppBar,
-                  ),
+                  child: inAppBar
+                      ? content
+                      : _content(
+                          context: context,
+                          foreground: foreground,
+                          iconSize: iconSize,
+                          inAppBar: inAppBar,
+                        ),
                 ),
               ),
             ),

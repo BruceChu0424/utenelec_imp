@@ -6,7 +6,6 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
-import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';

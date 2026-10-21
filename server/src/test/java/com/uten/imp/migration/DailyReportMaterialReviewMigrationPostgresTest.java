@@ -99,6 +99,11 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertTrue(expectedTables.add("website_inquiry_events"));
         assertTrue(expectedTables.add("website_management_settings"));
         assertTrue(expectedTables.add("website_bridge_status"));
+        // V888 retains catalog-deletion markers independently of business rows.
+        assertTrue(expectedTables.add("platform_column_definition_deletions"));
+        assertTrue(expectedTables.add("business_column_deletions"));
+        // V890 preserves the explicit market association with its goods master.
+        assertTrue(expectedTables.add("goods_market_reference_bindings"));
         V871_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         V885_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         assertEquals(expectedTables.stream().toList(),tables());
@@ -123,6 +128,12 @@ class DailyReportMaterialReviewMigrationPostgresTest {
                 "CREATE UNIQUE INDEX website_management_settings_pkey ON public.website_management_settings USING btree (id)"));
         assertNull(expectedIndexes.put("website_bridge_status_pkey",
                 "CREATE UNIQUE INDEX website_bridge_status_pkey ON public.website_bridge_status USING btree (id)"));
+        assertNull(expectedIndexes.put("platform_column_definition_deletions_pkey",
+                "CREATE UNIQUE INDEX platform_column_definition_deletions_pkey ON public.platform_column_definition_deletions USING btree (definition_id)"));
+        assertNull(expectedIndexes.put("business_column_deletions_pkey",
+                "CREATE UNIQUE INDEX business_column_deletions_pkey ON public.business_column_deletions USING btree (column_id)"));
+        assertNull(expectedIndexes.put("goods_market_reference_bindings_pkey",
+                "CREATE UNIQUE INDEX goods_market_reference_bindings_pkey ON public.goods_market_reference_bindings USING btree (goods_id)"));
         // V870 adds a nullable correction-source relationship to append-only
         // employment events; its one new partial index is an explicit delta.
         assertNull(expectedIndexes.put("idx_employment_history_correction_source",
@@ -143,6 +154,12 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertNull(expectedPolicy.put("website_management_settings","PRESERVE"));
         assertNull(expectedPolicy.put("website_bridge_status","PRESERVE"));
         assertNull(expectedPolicy.put("website_inquiry_events","CLEAR"));
+        assertNull(expectedPolicy.put("platform_column_definition_deletions","PRESERVE"));
+        assertNull(expectedPolicy.put("business_column_deletions","PRESERVE"));
+        // V889 retains step-up lockout state without changing session cleanup;
+        // V890 retains the market binding, including its unlink/CAS tombstone.
+        assertEquals("CLEAR",expectedPolicy.put("auth_step_up_states","PRESERVE"));
+        assertNull(expectedPolicy.put("goods_market_reference_bindings","PRESERVE"));
         V871_HISTORY_TABLES.forEach(table->assertNull(expectedPolicy.put(table,"PRESERVE")));
         V885_HISTORY_TABLES.forEach(table->assertNull(expectedPolicy.put(table,"PRESERVE")));
         assertEquals(expectedPolicy,catalogMap(resetPolicy()));

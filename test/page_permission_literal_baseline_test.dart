@@ -100,6 +100,12 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
       'Perm.financeViewAll': 1,
     },
   ),
+  // Managed market runtime status is read-only and clears immediately on admin
+  // authority loss; policy changes use the existing server settings capability.
+  'lib/features/admin/widgets/material_forecast_runtime_status_card.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.authorizationManage': 1},
+  ),
   'lib/features/finance/pages/finance_quote_review_page.dart': (
     legacyCount: 4,
     tokens: {
@@ -520,7 +526,7 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
         (sum, entry) =>
             sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
       ),
-      132, // Previous 126 + 6 reviewed ADR-186 read guards. Global baseline remains 677.
+      133, // Previous 132 + one managed-runtime read guard. Global baseline remains 677.
     );
   });
 

@@ -43,6 +43,38 @@ local 裸文件在 `media/local/final/`，按数据库原始大小和 SHA-256 �
 发布；最后才更新 `latest-success.json`。`.incomplete-*` 是失败证据，不是可恢复的成功集。
 旧集按下节「自动保留」规则在每次成功后清理；人工处理历史目录时仍禁止全目录盲删。
 
+## 原材料行情状态与换机恢复
+
+2026-10-21 起，配套备份从配置的 `media_root/material-forecast/`（若配置 local 根，则也检查
+`local_media_root/material-forecast/`）自动收集行情状态，无需新增每机路径配置。
+该子树包含当前快照和报价、隐藏 `.auto-feed/` 原始响应与真实首次观察时间、回填游标、已发模型版本及
+health；不会因为文件隐藏而遗漏。runtime、venv、wheelhouse、`__pycache__`、锁和临时文件不纳入备份。
+数据库四项设置、货品绑定及删除版本随同一套 `database.dump` 恢复，关闭状态保持关闭。
+
+复制期间使用 `.market-write.lock` 首字节跨进程共享锁，与 worker 的短写独占屏障互斥；
+既有源锁可只读打开，现役 backup unit 无需放宽媒体卷的 `ReadOnlyPaths`。
+源文件必须为真实普通文件，符号链接、硬链接、路径逃逸或缺失的 raw/模型引用导致整套失败。
+每个 provider 的 `market-state/<provider>/market-state-manifest.json` 记录文件大小和 SHA-256，
+其摘要、总数和总字节数再次绑定到父 `manifest.json.market_state`；篡改、漏文件或未绑定子树均不能通过
+`--verify`。导出失败仍保留旧成功集与成功指针。历史 v2 集合未包含此字段时仍可校验，但不能声称备份了行情。
+
+新机器先恢复同一套数据库和附件，在应用未启动时把行情恢复到新的空媒体根；下列命令只恢复行情，
+不会代替数据库 `pg_restore` 或附件恢复步骤。参数使用新主机实际绝对媒体路径，不使用旧机器缓存路径：
+
+```bash
+python3 /usr/local/lib/uten-imp/paired_internal_backup.py \
+  --restore-market /data/uten-imp-backups/paired/<set-id> \
+  --target-media-root /var/lib/uten-imp-media/attachments
+# 该套含 local provider 时还需 --target-local-media-root <新的独立local媒体根>
+```
+
+目标 `material-forecast/` 必须不存在或为空，不覆盖现有未知状态。恢复继承新媒体根运行账户权限。
+原 health 的字节保留在 `restore-evidence/`，live health 则清除旧 `runId/configRevision`、标记自动采集未运行；
+新主机获得新的自有进程和新鲜 heartbeat 后才可显示运行/设置已应用。
+签名发行中的离线 payload 在新机自动重建执行缓存，缓存无需备份。
+正式换机验收还需核对数据库四项设置（尤其关闭值）、货品绑定版本、行情原始文件摘要和新 owned heartbeat；
+仅 `--verify` 成功不代表应用已经恢复运行。
+
 ## 完整集合之间的原件去重
 
 每轮只读取 `latest-success.json` 指向的上一份完整 v2 集合，核对成功指针里的 manifest SHA 和原件清单 SHA。

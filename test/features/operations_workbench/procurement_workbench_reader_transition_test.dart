@@ -177,7 +177,11 @@ void main() {
       gateway.nextLabel = 'WAREHOUSE-B';
       container.read(_department.notifier).state =
           OperationsWorkbenchDepartment.warehouse;
-      await tester.pumpAndSettle();
+      // The old user-triggered refresh is intentionally still pending, so its
+      // shared button feedback cannot settle before old.complete below.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
       old.complete(
         _data(OperationsWorkbenchDepartment.purchase, 'LATE-PURCHASE-A'),
       );

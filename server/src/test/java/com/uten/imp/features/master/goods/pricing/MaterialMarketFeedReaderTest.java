@@ -5,6 +5,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.config.props.MaterialForecastProperties;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -60,4 +61,14 @@ class MaterialMarketFeedReaderTest {
     }
     @Test void quoteContractMustMatchTheLatestValidatedDailySnapshot()throws Exception{write("shfe_cu_main_daily.quote.json",quote());var snapshot=mock(MaterialForecastContracts.Snapshot.class);when(snapshot.quoteContract()).thenReturn("cu2612");assertThat(reader().quote(catalog.find("shfe_cu_main_daily"),snapshot)).isNull();}
     @Test void aDelayedPublicationTimestampDoesNotInventAnExtraThirtyMinuteOffset()throws Exception{var n=quote();n.put("marketTime","2026-10-20T16:28:00Z");write("shfe_cu_main_daily.quote.json",n);var q=reader().quote(catalog.find("shfe_cu_main_daily"),null);assertThat(q.marketTime()).isEqualTo("2026-10-20T16:28:00Z");assertThat(q.status()).isEqualTo("CURRENT");}
+    @Test void restoredOrForeignManagedHeartbeatCannotClaimAutomaticActivityWithoutTheLiveOwner()throws Exception {
+        String revision="a".repeat(64),runId=java.util.UUID.randomUUID().toString();var n=health();n.put("configRevision",revision);n.put("runId",runId);write("auto-feed-health.json",n);
+        var properties=new MaterialForecastProperties();properties.setSnapshotDirectory(directory.toString());
+        var runtime=mock(com.uten.imp.application.port.MaterialForecastRuntimePort.class);
+        var managed=new MaterialMarketFeedReader(new MaterialForecastSnapshotReader(properties,json,clock),catalog,clock,runtime);
+        assertThat(managed.sync("shfe_cu_main_daily").status()).isEqualTo("OFFLINE");
+        when(runtime.acknowledges(Instant.parse("2026-10-20T16:29:00Z"),revision,runId)).thenReturn(true);
+        assertThat(managed.sync("shfe_cu_main_daily").autoUpdateEnabled()).isTrue();
+        n.remove("runId");write("auto-feed-health.json",n);assertThat(managed.sync("shfe_cu_main_daily").status()).isEqualTo("OFFLINE");
+    }
 }

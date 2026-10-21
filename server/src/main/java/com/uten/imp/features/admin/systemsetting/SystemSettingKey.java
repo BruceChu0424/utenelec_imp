@@ -88,6 +88,20 @@ public enum SystemSettingKey {
             Category.BUSINESS, true, "待办角标刷新间隔", "秒", 340,
             "页面上待办数量角标每隔多少秒自动刷新一次; 调小会增加服务器压力"),
 
+    // ===== 原材料公开行情 =====
+    MATERIAL_FORECAST_ENABLED("material_forecast.enabled", Type.BOOL, "true", null, null,
+            Category.MATERIAL_MARKET, false, "自动采集原材料行情", null, 10,
+            "本机公司业务服务自动采集沪铜、沪铝和沪银公开行情；保存后由后台监督器应用，并以运行回执确认。"),
+    MATERIAL_FORECAST_INTERVAL_MINUTES("material_forecast.interval_minutes", Type.INT, "15", 15L, 60L,
+            Category.MATERIAL_MARKET, false, "行情采集间隔", "分钟", 20,
+            "公开延时行情的采集间隔；不会把公开延时源变成实时行情。"),
+    MATERIAL_FORECAST_HISTORY_DAYS("material_forecast.history_days", Type.INT, "1200", 3L, 3650L,
+            Category.MATERIAL_MARKET, false, "历史行情范围", "天", 30,
+            "按日历天补齐历史以供回放研究；历史样本不足时不发布已验证采购建议。"),
+    MATERIAL_FORECAST_BACKFILL_BUDGET("material_forecast.backfill_budget", Type.INT, "30", 0L, 1000L,
+            Category.MATERIAL_MARKET, false, "每轮历史补齐上限", "份", 40,
+            "限制每轮新增历史请求数；0暂停历史补齐，仍采集最近行情。"),
+
     // ===== 审计留存 =====
     AUDIT_HOT_RETENTION_MONTHS("audit_hot_retention_months", Type.INT, "6", 1L, 120L,
             Category.AUDIT, true, "在线审计保留期", "个月", 410,
@@ -119,7 +133,7 @@ public enum SystemSettingKey {
 
     /** 系统设置页的分组。 */
     public enum Category {
-        SECURITY("security"), TOKEN("token"), SMS("sms"), BUSINESS("business"), AUDIT("audit"), UPDATES("updates");
+        SECURITY("security"), TOKEN("token"), SMS("sms"), BUSINESS("business"), MATERIAL_MARKET("material_market"), AUDIT("audit"), UPDATES("updates");
 
         private final String wire;
 

@@ -2,6 +2,9 @@ version: 2
 
 updates:
   # Upgrade candidates are tested in material-forecast.yml before release.
+  # A version change also requires the reviewed complete runtime closure and both
+  # platform hash locks to be regenerated with build_payload.py --refresh-lock.
+  # The exact wheel locks deliberately fail closed until that candidate is reviewed.
   - package-ecosystem: "pip"
     directory: "/services/material_forecast"
     schedule:

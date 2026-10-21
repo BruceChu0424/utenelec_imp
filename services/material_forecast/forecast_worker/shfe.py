@@ -17,6 +17,7 @@ from pathlib import Path
 
 from .cli import atomic_json
 from .data import BUSINESS_ZONE, InputError, instant, utc_text
+from .locking import write_barrier
 
 HOST = "www.shfe.com.cn"
 SYMBOLS = ("cu", "al", "ag")
@@ -251,7 +252,9 @@ class ReportCache:
         pointer = {"date": day.isoformat(), "rows": rows, "sha256": digest, "tradeSequence": sequence,
                    "firstObservedAt": old["firstObservedAt"] if old else utc_text(now), "fetchedAt": utc_text(now)}
         atomic_json(self.root / "daily" / (day.isoformat() + ".json"), pointer)
-        (self.root / "missing" / (day.isoformat() + ".json")).unlink(missing_ok=True)
+        missing_path = self.root / "missing" / (day.isoformat() + ".json")
+        with write_barrier(missing_path):
+            missing_path.unlink(missing_ok=True)
         return pointer
 
     def record_document(self, key: str, payload: dict, now: datetime) -> None:
@@ -268,7 +271,8 @@ class ReportCache:
 
 
 def load_benchmarks() -> list[dict]:
-    path = Path(__file__).resolve().parents[3] / "server/src/main/resources/pricing/material-benchmarks.json"
+    adjacent = Path(__file__).resolve().parents[1] / "material-benchmarks.json"
+    path = adjacent if adjacent.is_file() else Path(__file__).resolve().parents[3] / "server/src/main/resources/pricing/material-benchmarks.json"
     value = json.loads(path.read_text(encoding="utf-8-sig"))
     if (not isinstance(value, list) or len(value) != 3 or {x.get("symbol") for x in value} != set(SYMBOLS)
             or any(x.get("provider") != "SHFE_PUBLIC_DAILY" or x.get("seriesId") != f"shfe_{x.get('symbol')}_main_daily" for x in value)):

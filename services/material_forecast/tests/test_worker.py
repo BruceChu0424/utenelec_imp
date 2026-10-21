@@ -328,10 +328,13 @@ class WatchCliTests(unittest.TestCase):
                 "--output-directory", str(output.parent), "--watch", "10",
             ], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
             try:
-                deadline = time.monotonic() + 25
+                # Cold scientific imports contend with the complete Java build
+                # on developer Windows hosts. Bound startup separately from the
+                # ten-second watch interval; an exited child still fails early.
+                deadline = time.monotonic() + 90
                 while not output.exists() and time.monotonic() < deadline and process.poll() is None:
                     time.sleep(0.1)
-                self.assertTrue(output.exists(), "watch did not publish initial import")
+                self.assertTrue(output.exists(), f"watch did not publish initial import (exit={process.poll()})")
                 second_day = first_day + timedelta(days=1)
                 with csv_path.open("a", encoding="utf-8") as handle:
                     handle.write(f"{second_day.isoformat()},50010,{second_day.isoformat()}T12:00:00Z\n")

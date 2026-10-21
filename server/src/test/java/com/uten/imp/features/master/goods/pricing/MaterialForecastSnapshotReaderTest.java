@@ -1,6 +1,8 @@
 package com.uten.imp.features.master.goods.pricing;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.application.port.MaterialForecastRuntimePort;
+import com.uten.imp.config.props.MaterialForecastProperties;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -8,6 +10,7 @@ import java.nio.file.*;
 import java.time.*;
 import java.util.List;
 import static org.assertj.core.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 class MaterialForecastSnapshotReaderTest {
     @TempDir Path directory;
@@ -30,6 +33,34 @@ class MaterialForecastSnapshotReaderTest {
         write(fixture());var result=reader().read("copper-test");assertThat(result.status()).isEqualTo("READY");assertThat(result.snapshot().latestPrice()).isEqualTo("100");assertThat(reader().catalog()).hasSize(1);
     }
     @Test void disabledDirectoryDoesNotReadAnything(){var r=new MaterialForecastSnapshotReader(new MaterialForecastProperties(),json,clock);assertThat(r.read("copper-test").status()).isEqualTo("DISABLED");assertThat(r.catalog()).isEmpty();}
+    @Test void managedRuntimeSuppliesThePortableDirectoryWhenNoOverrideExists() throws Exception {
+        write(fixture());
+        var runtime = mock(MaterialForecastRuntimePort.class);
+        when(runtime.snapshotDirectory()).thenReturn(directory);
+        var r = new MaterialForecastSnapshotReader(new MaterialForecastProperties(), json, clock,
+                new MaterialBenchmarkCatalog(json), runtime);
+        assertThat(r.read("copper-test").status()).isEqualTo("READY");
+        assertThat(r.catalog()).extracting(MaterialForecastContracts.Snapshot::seriesId)
+                .containsExactly("copper-test");
+    }
+    @Test void explicitDirectoryOverrideDoesNotConsultTheManagedRuntime() throws Exception {
+        write(fixture());
+        var properties = new MaterialForecastProperties();
+        properties.setSnapshotDirectory(directory.toString());
+        var runtime = mock(MaterialForecastRuntimePort.class);
+        var r = new MaterialForecastSnapshotReader(properties, json, clock,
+                new MaterialBenchmarkCatalog(json), runtime);
+        assertThat(r.read("copper-test").status()).isEqualTo("READY");
+        verifyNoInteractions(runtime);
+    }
+    @Test void unavailableManagedDirectoryFailsClosed() {
+        var runtime = mock(MaterialForecastRuntimePort.class);
+        when(runtime.snapshotDirectory()).thenThrow(new IllegalStateException("Unavailable host state"));
+        var r = new MaterialForecastSnapshotReader(new MaterialForecastProperties(), json, clock,
+                new MaterialBenchmarkCatalog(json), runtime);
+        assertThat(r.read("copper-test").status()).isEqualTo("DISABLED");
+        assertThat(r.catalog()).isEmpty();
+    }
     @Test void rejectsTraversalAndMetadataSwap()throws Exception{write(fixture());assertThat(reader().read("../copper-test").snapshot()).isNull();var n=fixture();n.put("seriesId","silver-test");write(n);assertThat(reader().read("copper-test").status()).isEqualTo("UNAVAILABLE");}
     @Test void expiredQuotesRemainVisibleWithoutAnActiveSignal()throws Exception{
         var n=fixture();n.put("dataAsOf","2026-10-15");((ObjectNode)n.get("validation")).put("backtestEnd","2026-10-14");write(n);
@@ -100,7 +131,18 @@ class MaterialForecastSnapshotReaderTest {
         writeAutomatic(automaticFixture());var result=reader().read("shfe_cu_main_daily");assertThat(result.status()).isEqualTo("RESEARCH_ONLY");assertThat(result.snapshot().validation().passed()).isTrue();assertThat(result.snapshot().procurementSignal()).isEqualTo("INSUFFICIENT");assertThat(result.snapshot().forecasts()).allMatch(f->f.direction().equals("UP"));
         for(String field:List.of("status","procurementSignal","validationBasis")){var n=automaticFixture();n.put(field,switch(field){case "status"->"READY";case "procurementSignal"->"RISING";default->"POINT_IN_TIME";});writeAutomatic(n);assertThat(reader().read("shfe_cu_main_daily").snapshot()).as(field).isNull();}
     }
-    @Test void researchStillRequiresTheHeldoutAccuracyGates()throws Exception{for(String field:List.of("folds","modelMAE","coverage80")){var n=automaticFixture();var v=(ObjectNode)n.get("validation");if(field.equals("folds"))v.put(field,19);else v.put(field,field.equals("modelMAE")?"4":"0.69");writeAutomatic(n);assertThat(reader().read("shfe_cu_main_daily").snapshot()).as(field).isNull();}}
+    @Test void researchStillRequiresTheHeldoutAccuracyGates()throws Exception {
+        for(String field:List.of("folds","modelMAE","coverage80")) {
+            var n=automaticFixture();var v=(ObjectNode)n.get("validation");
+            if(field.equals("folds")) {
+                v.put(field,19);
+            }else {
+                v.put(field,field.equals("modelMAE")?"4":"0.69");
+            }
+            writeAutomatic(n);
+            assertThat(reader().read("shfe_cu_main_daily").snapshot()).as(field).isNull();
+        }
+    }
     @Test void matchingSeriesIdCannotSubstituteAnotherCommodityOrUnit() throws Exception {
         for (String field : List.of("commodity", "unit", "sourceName", "quoteContract")) {
             var n = automaticFixture();

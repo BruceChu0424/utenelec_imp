@@ -8,15 +8,22 @@ import os
 import sys
 import tempfile
 import time
+import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
 from .data import InputError, ledger_payload, read_dataset, require_append_only
 from .engine import build_snapshot
+from .locking import os_file_lock, register_write_barrier, write_barrier
 
 
 def atomic_json(path: Path, value: dict, *, public: bool = False) -> None:
+    with write_barrier(path):
+        _atomic_json(path, value, public=public)
+
+
+def _atomic_json(path: Path, value: dict, *, public: bool = False) -> None:
     descriptor, temporary = tempfile.mkstemp(prefix="." + path.name + ".", suffix=".tmp", dir=path.parent)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
@@ -39,15 +46,10 @@ def atomic_json(path: Path, value: dict, *, public: bool = False) -> None:
 @contextmanager
 def series_lock(path: Path):
     try:
-        descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-    except FileExistsError as exc:
-        raise InputError("series import already running; inspect the state lock if a process crashed") from exc
-    try:
-        with os.fdopen(descriptor, "w", encoding="ascii") as handle:
-            handle.write(str(os.getpid()))
-        yield
-    finally:
-        path.unlink(missing_ok=True)
+        with os_file_lock(path):
+            yield
+    except BlockingIOError as exc:
+        raise InputError("COLLECTOR_BUSY") from exc
 
 
 def run_once(manifest_path: Path, csv_path: Path, output_directory: Path,
@@ -56,6 +58,7 @@ def run_once(manifest_path: Path, csv_path: Path, output_directory: Path,
     now = now or datetime.now(timezone.utc)
     dataset = read_dataset(manifest_path, csv_path, now, allow_synthetic)
     output_directory.mkdir(parents=True, exist_ok=True)
+    register_write_barrier(output_directory)
     state_directory = state_directory or output_directory / ".state"
     state_directory.mkdir(parents=True, exist_ok=True)
     series_id = dataset.manifest["seriesId"]
@@ -88,6 +91,8 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--interval", type=int, default=900, help="automatic poll interval, 900..3600 seconds")
     result.add_argument("--history-days", type=int, default=1200, help="calendar-day history window, 3..3650")
     result.add_argument("--backfill-budget", type=int, default=30, help="maximum additional historical daily requests per cycle, 0..1000")
+    result.add_argument("--configuration-revision", help="managed policy SHA-256, echoed without reinterpretation")
+    result.add_argument("--run-id", help="managed process canonical UUID")
     result.add_argument("--manifest", type=Path)
     result.add_argument("--csv", type=Path)
     result.add_argument("--output-directory", required=True, type=Path)
@@ -99,6 +104,17 @@ def parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
+    if bool(args.configuration_revision) != bool(args.run_id):
+        parser().error("configuration revision and run id must be supplied together")
+    if args.configuration_revision:
+        import re
+        if not re.fullmatch(r"[0-9a-f]{64}", args.configuration_revision):
+            parser().error("invalid configuration revision")
+        try:
+            if str(uuid.UUID(args.run_id)) != args.run_id:
+                raise ValueError()
+        except ValueError:
+            parser().error("invalid managed run id")
     if args.auto:
         if args.manifest or args.csv or args.watch is not None or args.allow_synthetic or args.state_directory:
             parser().error("--auto cannot be combined with manual CSV/test options")
@@ -108,6 +124,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_auto(args)
     if args.once or not args.manifest or not args.csv:
         parser().error("use --auto [--once], or supply both --manifest and --csv")
+    if args.configuration_revision:
+        parser().error("managed policy acknowledgement requires --auto")
     if args.watch is not None and args.watch < 10:
         parser().error("--watch must be at least 10 seconds")
     last_signature = None

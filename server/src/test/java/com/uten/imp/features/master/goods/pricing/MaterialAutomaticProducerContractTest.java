@@ -1,6 +1,7 @@
 package com.uten.imp.features.master.goods.pricing;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.config.props.MaterialForecastProperties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import java.nio.file.*;

@@ -10,8 +10,12 @@ for f in host_operations.py operations_storage.py update_schedule.py uten-imp-up
   [ -f "$SRC/$f" ] && [ ! -L "$SRC/$f" ] || { echo "Missing reviewed source: $f" >&2; exit 1; }
 done
 PAIRED_SOURCE="$SRC/../postgres/backup/paired_internal_backup.py"
+MARKET_BACKUP_SOURCE="$SRC/../postgres/backup/market_state_backup.py"
 [ -f "$PAIRED_SOURCE" ] && [ ! -L "$PAIRED_SOURCE" ] || {
   echo 'Missing reviewed paired backup helper from the same source checkout' >&2; exit 1
+}
+[ -f "$MARKET_BACKUP_SOURCE" ] && [ ! -L "$MARKET_BACKUP_SOURCE" ] || {
+  echo 'Missing reviewed market-state backup helper from the same source checkout' >&2; exit 1
 }
 getent passwd uten-imp >/dev/null
 getent group uten-imp >/dev/null
@@ -106,6 +110,7 @@ for f in /usr/local/sbin/uten-imp-updater /etc/systemd/system/uten-imp-updater.s
   /usr/local/lib/uten-imp/host_operations.py /usr/local/lib/uten-imp/operations_storage.py \
   /usr/local/lib/uten-imp/update_schedule.py \
   /usr/local/lib/uten-imp/paired_internal_backup.py \
+  /usr/local/lib/uten-imp/market_state_backup.py \
   /etc/systemd/system/uten-imp-updater.timer /etc/systemd/system/uten-imp-operations.service \
   /etc/systemd/system/uten-imp-update-job.service; do
   [ ! -f "$f" ] || cp -a -- "$f" "$backup_dir/"
@@ -155,6 +160,7 @@ fi
 for helper in host_operations.py operations_storage.py update_schedule.py; do
   atomic_install "$SRC/$helper" "/usr/local/lib/uten-imp/$helper" 0644
 done
+atomic_install "$MARKET_BACKUP_SOURCE" /usr/local/lib/uten-imp/market_state_backup.py 0644
 atomic_install "$PAIRED_SOURCE" /usr/local/lib/uten-imp/paired_internal_backup.py 0644
 atomic_install "$SRC/uten-imp-updater.sh" /usr/local/sbin/uten-imp-updater 0755
 for unit in uten-imp-operations.service uten-imp-update-job.service; do

@@ -18,6 +18,10 @@ void main() {
     'admin->employee',
     'basic_data->department',
     'basic_data->employee',
+    // Existing warehouse master projection reuses the authoritative stock query,
+    // inventory columns and server report totals; exact source is pinned below.
+    'basic_data->stock',
+    'basic_data->report',
     'dashboard->admin',
     'dashboard->notice',
     // 2026-09-11：dashboard->finance / dashboard->sales 随徽章累加收敛到注册表而消失;
@@ -140,6 +144,7 @@ void main() {
     final libRoot = Directory('lib').absolute;
     final featuresRoot = Directory('lib/features').absolute;
     final actualEdges = <String>{};
+    final warehouseProjectionSources = <String>{};
     final directive = RegExp(
       r'''^(?:import|export)\s+['"]([^'"]+)['"]''',
       multiLine: true,
@@ -172,6 +177,15 @@ void main() {
         }
         if (sourceFeature != targetFeature) {
           actualEdges.add('$sourceFeature->$targetFeature');
+          if (sourceFeature == 'basic_data' &&
+              (targetFeature == 'stock' || targetFeature == 'report')) {
+            final source = entity.absolute.path
+                .substring(libRoot.path.length + 1)
+                .replaceAll(r'\', '/');
+            warehouseProjectionSources.add(
+              '$sourceFeature->$targetFeature:$source',
+            );
+          }
         }
       }
     }
@@ -183,6 +197,14 @@ void main() {
       reason:
           '检测到新的跨 feature 依赖方向。请改用 shared/components 或公开契约：'
           '\n${unapproved.join('\n')}',
+    );
+    expect(
+      warehouseProjectionSources,
+      {
+        'basic_data->stock:features/basic_data/widgets/warehouse_inventory_panel.dart',
+        'basic_data->report:features/basic_data/widgets/warehouse_inventory_panel.dart',
+      },
+      reason: '仓库资料只读投影的依赖登记只适用于既有面板，不能扩展到其它主档或复制业务取数逻辑',
     );
 
     final staleBaseline = baselineEdges.difference(actualEdges).toList()

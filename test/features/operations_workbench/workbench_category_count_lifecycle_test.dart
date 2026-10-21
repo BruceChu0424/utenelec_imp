@@ -140,7 +140,7 @@ void main() {
                 'previous authority counts are invalid even when the draft rows are empty',
           );
           fresh.complete(_page(subcontract, 2, null));
-          await tester.pumpAndSettle();
+          await _pumpWithOlderRefreshPending(tester);
           expect(_progressCounts(tester), (2, null));
           expect(gateway.queries.last['status'], isNull);
           old.complete(_page(subcontract, 9, null));
@@ -219,7 +219,7 @@ void main() {
         await tester.pump();
         expect(_progressCounts(tester), (null, null));
         nextApi.gate!.complete(_jsonPage(2));
-        await tester.pumpAndSettle();
+        await _pumpWithOlderRefreshPending(tester);
         expect(_progressCounts(tester), (2, null));
         oldApi.gate!.complete(_jsonPage(9));
         await tester.pumpAndSettle();
@@ -270,6 +270,14 @@ void main() {
       },
     );
   }
+}
+
+// The superseded user-triggered refresh deliberately remains unresolved. Its
+// shared action feedback keeps animating until the old future is completed.
+Future<void> _pumpWithOlderRefreshPending(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+  await tester.pump();
 }
 
 UtenFilterToolbar<dynamic> _toolbar(WidgetTester tester) => tester.widget(

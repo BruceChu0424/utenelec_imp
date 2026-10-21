@@ -44,6 +44,12 @@ void main() {
       );
       await tester.pump();
       await tester.pump();
+      if (subcontract) {
+        expect(
+          tester.widget<UtenRefreshButton>(find.byType(UtenRefreshButton)).busy,
+          isTrue,
+        );
+      }
       expect(
         find.text('PRIVATE-A'),
         findsNothing,
@@ -65,6 +71,12 @@ void main() {
       );
       a.complete(_page('FRESH-A'));
       await tester.pumpAndSettle();
+      if (subcontract) {
+        expect(
+          tester.widget<UtenRefreshButton>(find.byType(UtenRefreshButton)).busy,
+          isFalse,
+        );
+      }
       expect(find.text('FRESH-A'), findsOneWidget);
       expect(find.text('PRIVATE-A'), findsNothing);
       expect(tester.takeException(), isNull);

@@ -2,9 +2,11 @@
 import copy
 import json
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 
 import osv_scan_gate as gate
@@ -118,6 +120,38 @@ class OsvScanGateTest(unittest.TestCase):
 
 
 class OsvWorkflowContractTest(unittest.TestCase):
+    def test_complete_forecast_closure_is_staged_and_scanned_with_explicit_pip_parser(self):
+        workflow = (ROOT / ".github/workflows/osv-scanner.yml").read_text(encoding="utf-8")
+        step = "      - name: Prepare complete material forecast scan input\n"
+        body = workflow.split(step, 1)[1].split("\n      - ", 1)[0]
+        self.assertIn("shell: python", body)
+        script = textwrap.dedent(body.split("        run: |\n", 1)[1])
+        self.assertIn("--lockfile\n            requirements.txt:./build/osv-material-forecast/requirements.txt", workflow)
+        artifact = workflow.split("name: osv-inputs", 1)[1].split("retention-days:", 1)[0]
+        self.assertIn("build/osv-material-forecast/requirements.txt", artifact)
+        self.assertLess(workflow.index(step), workflow.index("name: osv-inputs"))
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "services/material_forecast"
+            source.mkdir(parents=True)
+            for name in ("requirements.txt", "requirements.runtime.txt", "build_payload.py"):
+                shutil.copyfile(ROOT / "services/material_forecast" / name, source / name)
+            shutil.copytree(ROOT / "services/material_forecast/runtime-locks", source / "runtime-locks")
+            result = subprocess.run([sys.executable, "-B", "-c", script], cwd=root, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            staged = root / "build/osv-material-forecast/requirements.txt"
+            self.assertEqual(staged.read_bytes(), (source / "requirements.runtime.txt").read_bytes())
+            direct = [line for line in (source / "requirements.txt").read_text().splitlines() if line and not line.startswith("#")]
+            closure = [line for line in staged.read_text().splitlines() if line and not line.startswith("#")]
+            self.assertGreater(len(closure), len(direct), "scan must include the complete transitive runtime closure")
+            # A direct candidate without the matching closure/locks cannot stage
+            # stale versions and then claim those different inputs were audited.
+            staged.unlink()
+            (source / "requirements.txt").write_text("statsforecast==999.0\n", encoding="utf-8")
+            failed = subprocess.run([sys.executable, "-B", "-c", script], cwd=root, capture_output=True, text=True)
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertFalse(staged.exists())
+
     def test_original_scanner_and_reporter_use_supported_flags_in_the_input_workspace(self):
         workflow = (ROOT / ".github/workflows/osv-scanner.yml").read_text(encoding="utf-8")
         # 与 osv-scanner.yml 的钉版 action 哈希同步更新（2026-10-19 v2.3.8）。

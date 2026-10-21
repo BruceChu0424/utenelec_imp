@@ -373,6 +373,16 @@ class SimpleReleaseWebAssemblyTest(unittest.TestCase):
         self.root = Path(self.temporary.name)
         for directory in ("server/target", "server/src/main/resources/db/migration", "build/web", "deploy/release"):
             (self.root / directory).mkdir(parents=True)
+        # Exercise mandatory recursive payload assembly without building or
+        # downloading an executable runtime in this isolated shell fixture.
+        self.synthetic_market_payload = {
+            "SYNTHETIC-TEST-ONLY.txt": b"Synthetic release assembly fixture; not an executable runtime.\n",
+            "worker/synthetic-module.txt": b"Synthetic nested payload content.\n",
+        }
+        for name, content in self.synthetic_market_payload.items():
+            path = self.root / "build/material_forecast_payload" / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content)
         spec = importlib.util.spec_from_file_location("assembly_release_tools", ROOT / "deploy/release/release_tools.py")
         tools = importlib.util.module_from_spec(spec)
         sys.modules[spec.name] = tools
@@ -430,6 +440,10 @@ class SimpleReleaseWebAssemblyTest(unittest.TestCase):
         self.assertIn('src="update_check.js"', index)
         checksums = dict(line.split("  ", 1)[::-1]
                          for line in (dist / "SHA256SUMS").read_text().splitlines())
+        for name, content in self.synthetic_market_payload.items():
+            self.assertEqual(content, (dist / "server/material_forecast" / name).read_bytes())
+            self.assertEqual(hashlib.sha256(content).hexdigest(),
+                             checksums["./server/material_forecast/" + name])
         actual = {"./" + path.relative_to(dist).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
                   for path in dist.rglob("*") if path.is_file() and path.name != "SHA256SUMS"}
         self.assertEqual(actual, checksums)

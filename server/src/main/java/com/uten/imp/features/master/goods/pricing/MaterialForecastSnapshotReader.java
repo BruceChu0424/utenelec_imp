@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.config.props.MaterialForecastProperties;
+import com.uten.imp.application.port.MaterialForecastRuntimePort;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import java.io.IOException;
@@ -28,20 +30,25 @@ public class MaterialForecastSnapshotReader {
     private final ObjectMapper json;
     private final Clock clock;
     private final MaterialBenchmarkCatalog benchmarks;
+    private final MaterialForecastRuntimePort runtime;
 
     public record Read(String status,Snapshot snapshot,List<String> reasons) {}
 
     @Autowired
-    public MaterialForecastSnapshotReader(MaterialForecastProperties properties,ObjectMapper json,MaterialBenchmarkCatalog benchmarks) {
-        this(properties,json,Clock.systemUTC(),benchmarks);
+    public MaterialForecastSnapshotReader(MaterialForecastProperties properties,ObjectMapper json,MaterialBenchmarkCatalog benchmarks,MaterialForecastRuntimePort runtime) {
+        this(properties,json,Clock.systemUTC(),benchmarks,runtime);
     }
     MaterialForecastSnapshotReader(MaterialForecastProperties properties,ObjectMapper json,Clock clock) {
         this(properties,json,clock,new MaterialBenchmarkCatalog(json));
     }
     MaterialForecastSnapshotReader(MaterialForecastProperties properties,ObjectMapper json,Clock clock,MaterialBenchmarkCatalog benchmarks) {
-        this.properties=properties;this.json=json;this.clock=clock;this.benchmarks=benchmarks;
+        this(properties,json,clock,benchmarks,null);
     }
-    public boolean enabled(){return properties.getSnapshotDirectory()!=null&&!properties.getSnapshotDirectory().isBlank();}
+    MaterialForecastSnapshotReader(MaterialForecastProperties properties,ObjectMapper json,Clock clock,MaterialBenchmarkCatalog benchmarks,MaterialForecastRuntimePort runtime) {
+        this.properties=properties;this.json=json;this.clock=clock;this.benchmarks=benchmarks;this.runtime=runtime;
+    }
+    private String directory(){if(properties.getSnapshotDirectory()!=null&&!properties.getSnapshotDirectory().isBlank())return properties.getSnapshotDirectory();return runtime==null?"":runtime.snapshotDirectory().toString();}
+    public boolean enabled(){try{return !directory().isBlank();}catch(RuntimeException unavailable){return false;}}
     static boolean validSeries(String id){return id!=null&&id.matches("[a-z0-9][a-z0-9_-]{0,63}");}
 
     public Read read(String seriesId) {
@@ -49,7 +56,7 @@ public class MaterialForecastSnapshotReader {
         if(!validSeries(seriesId))return unavailable();
         try {
             Benchmark benchmark=benchmarks.find(seriesId);
-            Path configured=Path.of(properties.getSnapshotDirectory());
+            Path configured=Path.of(directory());
             if(benchmark!=null&&configured.isAbsolute()&&Files.notExists(configured,LinkOption.NOFOLLOW_LINKS))return pending();
             Path root=root();
             if(benchmark!=null&&Files.notExists(root.resolve(seriesId+".json"),LinkOption.NOFOLLOW_LINKS))return pending();
@@ -97,7 +104,7 @@ public class MaterialForecastSnapshotReader {
     private Read unavailable(){return new Read("UNAVAILABLE",null,List.of("MARKET_SNAPSHOT_UNAVAILABLE"));}
     private Read pending(){return new Read("SYNC_PENDING",null,List.of("MARKET_DATA_PENDING"));}
     private Path root() throws IOException {
-        Path configured=Path.of(properties.getSnapshotDirectory());
+        Path configured=Path.of(directory());
         if(!configured.isAbsolute())throw new IOException("Absolute directory required");
         Path normalized=configured.normalize();
         if(!Files.isDirectory(normalized,LinkOption.NOFOLLOW_LINKS)||Files.isSymbolicLink(normalized))throw new IOException("Directory unavailable");
@@ -127,7 +134,7 @@ public class MaterialForecastSnapshotReader {
     }
     private void validate(JsonNode n,String id) {
         if (n == null || !n.isObject()) {
-            bad();
+            throw new IllegalArgumentException("Invalid market snapshot");
         }
         int schema=n.path("schemaVersion").intValue();
         var required=new HashSet<>(FIELDS);if(schema==2)required.addAll(V2_FIELDS);
@@ -173,10 +180,10 @@ public class MaterialForecastSnapshotReader {
         if(coverage!=null&&coverage.compareTo(BigDecimal.ONE)>0)bad();
         LocalDate start=optionalDate(v,"backtestStart"),end=optionalDate(v,"backtestEnd");
         if ((start == null) != (end == null)) {
-            bad();
+            throw new IllegalArgumentException("Invalid market snapshot");
         }
         if (start != null && end != null && (start.isAfter(end) || end.isAfter(asOf))) {
-            bad();
+            throw new IllegalArgumentException("Invalid market snapshot");
         }
         boolean ready="READY".equals(status),research="RESEARCH_ONLY".equals(status),validated=ready||research;
         if(validated&&(!v.path("passed").booleanValue()||folds<20||baseline==null||model==null||coverage==null||baseline.signum()<=0||model.compareTo(baseline)>=0||coverage.compareTo(new BigDecimal("0.70"))<0||start==null))bad();
@@ -213,7 +220,7 @@ public class MaterialForecastSnapshotReader {
     }
     static void fields(JsonNode n,Set<String> required,Set<String> optional) {
         if (n == null || !n.isObject()) {
-            bad();
+            throw new IllegalArgumentException("Invalid market snapshot");
         }
         Set<String> actual = new HashSet<>();
         n.fieldNames().forEachRemaining(actual::add);
@@ -225,7 +232,7 @@ public class MaterialForecastSnapshotReader {
     static String text(JsonNode n,String key,int max,boolean blank) {
         JsonNode value = n.get(key);
         if (value == null || !value.isTextual()) {
-            bad();
+            throw new IllegalArgumentException("Invalid market snapshot");
         }
         String text = value.asText();
         if (text.length() > max || !blank && text.isBlank()
@@ -251,7 +258,8 @@ public class MaterialForecastSnapshotReader {
         return amount;
     }
     private static LocalDate optionalDate(JsonNode n, String key) {
-        return n.get(key).isNull() ? null : LocalDate.parse(text(n, key, 10, false));
+        JsonNode value = n.get(key);
+        return value != null && value.isNull() ? null : LocalDate.parse(text(n, key, 10, false));
     }
     static Instant utcInstant(JsonNode n,String key,boolean nullable) {
         JsonNode node = n.get(key);

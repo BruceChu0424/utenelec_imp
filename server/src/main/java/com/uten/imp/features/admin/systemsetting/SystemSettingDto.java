@@ -53,6 +53,7 @@ public record SystemSettingDto(
             case JWT_ACCESS_TTL_MINUTES, JWT_REFRESH_TTL_DAYS, TEMP_PASSWORD_TTL_HOURS,
                     IMPERSONATION_WINDOW_MINUTES, SMS_CODE_TTL_MINUTES -> "NEXT_ISSUANCE";
             case CELEBRATION_AUTO_ENABLED, CELEBRATION_AUTO_TYPES, CELEBRATION_PUBLISHER_NAME,
+                    MATERIAL_FORECAST_ENABLED, MATERIAL_FORECAST_INTERVAL_MINUTES, MATERIAL_FORECAST_HISTORY_DAYS, MATERIAL_FORECAST_BACKFILL_BUDGET,
                     AUDIT_HOT_RETENTION_MONTHS, AUDIT_ARCHIVE_RETENTION_MONTHS -> "NEXT_SCHEDULED_RUN";
             default -> "NEXT_REQUEST";
         };
@@ -62,6 +63,7 @@ public record SystemSettingDto(
             case "NEXT_SCHEDULED_RUN" -> "后续任务执行时读取此值；审计保全模式仍由服务器决定，修改月份不会开启清除。";
             default -> "后续请求或业务判断读取此值；既有锁定与业务记录不会追溯改写。";
         };
+        if(key.category()==SystemSettingKey.Category.MATERIAL_MARKET)note="保存配置后由后台监督器应用；以自动采集状态中的配置回执确认，保存成功不代表进程已经运行。";
         return new SystemSettingDto(
                 key.key(), row.getValue(), key.type().wire(), key.category().wire(),
                 key.label(), key.description(), key.unit(), key.sortOrder(), row.getUpdatedAt(),

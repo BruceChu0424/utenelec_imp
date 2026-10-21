@@ -1,4 +1,4 @@
-package com.uten.imp.features.master.goods.pricing;
+package com.uten.imp.config.props;
 
 import lombok.Getter;
 import lombok.Setter;
@@ -10,7 +10,11 @@ import org.springframework.stereotype.Component;
 @Component
 @ConfigurationProperties(prefix="uten.material-forecast")
 public class MaterialForecastProperties {
-    /** Operator controlled absolute directory. Empty disables the integration. */
+    /** Optional host bootstrap override; empty derives state from durable attachment storage. */
     private String snapshotDirectory="";
     private int maxDataAgeDays=3;
+    private boolean manageRuntime=true;
+    private String payloadDirectory="";
+    private String cacheDirectory="";
+    private String basePythonExecutable="";
 }

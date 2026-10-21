@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import signal
+import sys
 import threading
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
@@ -12,21 +13,25 @@ from pathlib import Path
 from . import __version__
 from .cli import atomic_json, series_lock
 from .data import BUSINESS_ZONE, instant, utc_text
+from .locking import register_write_barrier
 from .shfe import ReportCache, ShfeClient, SourceError, chain_points, load_benchmarks, price
 
 
 class AutoFeed:
     def __init__(self, output_directory: Path, *, client=None, now=None,
                  history_days: int = 1200, backfill_budget: int = 30,
-                 interval: int = 900, continuous: bool = False):
+                 interval: int = 900, continuous: bool = False,
+                 config_revision: str | None = None, run_id: str | None = None):
         self.output = output_directory
         output_directory.mkdir(parents=True, exist_ok=True)
+        register_write_barrier(output_directory)
         self.cache = ReportCache(output_directory / ".auto-feed")
         self.now = now or (lambda: datetime.now(timezone.utc))
         self.stop = threading.Event()
         self.client = client or ShfeClient(stop=self.stop)
         self.history_days, self.budget, self.interval = history_days, backfill_budget, interval
         self.continuous = continuous
+        self.config_revision, self.run_id = config_revision, run_id
         self.benchmarks = load_benchmarks()
         self.state_path = self.cache.root / "state.json"
         self.state = json.loads(self.state_path.read_text(encoding="utf-8")) if self.state_path.exists() else {}
@@ -45,11 +50,22 @@ class AutoFeed:
                 "schemaVersion": 1, "workerVersion": __version__, "generatedAt": utc_text(self.now()),
                 "autoUpdateEnabled": self.continuous and not self.stop.is_set(),
                 "series": list(self.health.values()),
+                **({"configRevision": self.config_revision, "runId": self.run_id} if self.config_revision else {}),
             })
 
     def _heartbeat_loop(self) -> None:
         while not self.stop.wait(30):
             self.heartbeat()
+
+    def _managed_stop_loop(self) -> None:
+        expected = ("STOP " + self.run_id).encode("ascii")
+        while not self.stop.is_set():
+            line = sys.stdin.buffer.readline(80)
+            if not line:
+                return
+            if line.rstrip(b"\r\n") == expected:
+                self.stop.set()
+                return
 
     def daily(self, day: date, *, refresh: bool = False) -> dict | None:
         old = self.cache.daily(day)
@@ -261,6 +277,8 @@ class AutoFeed:
         with series_lock(self.cache.root / "collector.lock"):
             heartbeat = threading.Thread(target=self._heartbeat_loop, name="market-feed-heartbeat", daemon=True)
             heartbeat.start()
+            if self.run_id:
+                threading.Thread(target=self._managed_stop_loop, name="market-feed-stop", daemon=True).start()
             try:
                 while not self.stop.is_set():
                     success = self.run_cycle()
@@ -277,7 +295,8 @@ class AutoFeed:
 
 def run_auto(args) -> int:
     worker = AutoFeed(args.output_directory, history_days=args.history_days,
-                      backfill_budget=args.backfill_budget, interval=args.interval, continuous=not args.once)
+                      backfill_budget=args.backfill_budget, interval=args.interval, continuous=not args.once,
+                      config_revision=args.configuration_revision, run_id=args.run_id)
     for name in ("SIGINT", "SIGTERM"):
         if hasattr(signal, name):
             signal.signal(getattr(signal, name), lambda *_: worker.stop.set())

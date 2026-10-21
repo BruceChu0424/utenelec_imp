@@ -1,6 +1,7 @@
 package com.uten.imp.features.master.goods.pricing;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.uten.imp.application.port.MaterialForecastRuntimePort;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import java.io.IOException;
@@ -20,15 +21,21 @@ public class MaterialMarketFeedReader {
     private final MaterialForecastSnapshotReader files;
     private final MaterialBenchmarkCatalog benchmarks;
     private final Clock clock;
-    @Autowired public MaterialMarketFeedReader(MaterialForecastSnapshotReader files,MaterialBenchmarkCatalog benchmarks){this(files,benchmarks,Clock.systemUTC());}
-    MaterialMarketFeedReader(MaterialForecastSnapshotReader files,MaterialBenchmarkCatalog benchmarks,Clock clock){this.files=files;this.benchmarks=benchmarks;this.clock=clock;}
+    private final MaterialForecastRuntimePort runtime;
+    @Autowired public MaterialMarketFeedReader(MaterialForecastSnapshotReader files,MaterialBenchmarkCatalog benchmarks,MaterialForecastRuntimePort runtime){this(files,benchmarks,Clock.systemUTC(),runtime);}
+    MaterialMarketFeedReader(MaterialForecastSnapshotReader files,MaterialBenchmarkCatalog benchmarks,Clock clock){this(files,benchmarks,clock,null);}
+    MaterialMarketFeedReader(MaterialForecastSnapshotReader files,MaterialBenchmarkCatalog benchmarks,Clock clock,MaterialForecastRuntimePort runtime){this.files=files;this.benchmarks=benchmarks;this.clock=clock;this.runtime=runtime;}
     public Sync offline(){return new Sync("OFFLINE",false,null,null,null,null);}
     public Sync sync(String seriesId) {
         if(!files.enabled()||benchmarks.find(seriesId)==null)return offline();
         try {
-            JsonNode n=files.localJson("auto-feed-health.json");fields(n,HEALTH_FIELDS,Set.of());version(n);
+            JsonNode n=files.localJson("auto-feed-health.json");fields(n,HEALTH_FIELDS,Set.of("configRevision","runId"));version(n);
             text(n,"workerVersion",128,false);Instant generated=utcInstant(n,"generatedAt",false);
             if(generated.isAfter(clock.instant())||!generated.isAfter(clock.instant().minus(Duration.ofMinutes(10)))||!n.path("autoUpdateEnabled").isBoolean())bad();
+            if(n.has("configRevision")!=n.has("runId"))bad();
+            String revision=n.has("configRevision")?text(n,"configRevision",64,false):null,runId=n.has("runId")?text(n,"runId",36,false):null;
+            if(revision!=null&&(!revision.matches("[0-9a-f]{64}")||!java.util.UUID.fromString(runId).toString().equals(runId)))bad();
+            if(runtime!=null&&(n.path("autoUpdateEnabled").booleanValue()||revision!=null)&&!runtime.acknowledges(generated,revision,runId))return offline();
             JsonNode rows=n.get("series");if(!rows.isArray()||rows.size()>3)bad();
             Set<String> found=new HashSet<>();Sync selected=null;
             for(JsonNode row:rows) {

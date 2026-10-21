@@ -197,7 +197,14 @@ Future<void> _pump(
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  if (repo.firstStatus != null) {
+    // This fixture deliberately keeps a read pending, including its spinner.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+  } else {
+    await tester.pumpAndSettle();
+  }
 }
 
 class _Repository implements SystemSettingRepository {

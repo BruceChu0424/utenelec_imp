@@ -76,7 +76,7 @@ Nginx：web 静态 + /api 反代 127.0.0.1:8080（deploy/nginx/uten-imp-http-lan
 
 ```bash
 # 1. 系统包与账号
-apt update && apt install -y openjdk-21-jre-headless nginx curl python3
+apt update && apt install -y openjdk-21-jre-headless nginx curl python3 python3-venv
 # 1b. 附件办公文档在线预览（可选）：LibreOffice 无头转换 + 中日韩字体，缺失时预览接口回落为下载原件
 #     writer=doc/docx/rtf/odt，calc=xls/xlsx/ods，impress=ppt/pptx/odp，draw=svg（2026-09-11 起需要）
 apt install -y --no-install-recommends libreoffice-core libreoffice-writer libreoffice-calc \
@@ -157,6 +157,32 @@ bash deploy/simple/install-server-operations.sh deploy/simple
 LAN 模板仅代理两个 GET（`/api/system-test/business-data/preview`、`/api/system-test/business-data/last-result`）和一个 POST（`/api/system-test/business-data/reset`）；只读路径也允许 HEAD，三个路径均转发 OPTIONS，由现有 Spring CORS 白名单决定合法来源、方法和请求头，不在 Nginx 增加通配许可。其它方法返回 405，其余 `system-test` 路径仍为 404。三处沿用普通 `/api/` 的 LAN 范围、安全头、请求限流、代理头和 2 MiB 请求体上限，只有清空路径的收发超时设为 600 秒，与客户端十分钟等待对齐；真正的清空动作仍只接受 POST。Nginx 只恢复正确转发，不能替代服务端超管本人、权限、再认证、逐字确认、文件核对和排水检查。不要使用已删除的停机清空脚本或手工截断表来绕过这些规则。
 
 ## 数据与附件备份
+
+### 原材料行情服务随发行托管（2026-10-21）
+
+公司 Ubuntu 24.04 业务主服务运行一次行情 worker。`simple-release` 在 Ubuntu 24.04 / Python 3.12
+构建 `server/material_forecast/`，包含三品种目录、代码、完整 Linux x86_64 哈希锁和 27 个离线 wheel；
+全部文件纳入原有 `SHA256SUMS` 签名。应用启动后由 Java supervisor 验证并安装到
+`/var/cache/uten-imp/material-forecast`，启动时使用 `--no-index --require-hashes --no-deps`，不访问 PyPI。
+系统基线只需前面的一次性 `python3 python3-venv`；现役 `uten-imp.service` 的 `CacheDirectory=uten-imp`
+与显式缓存目录允许应用账号写入，不能把可执行 venv 放在 `noexec` 媒体卷。
+升级、回滚和新主机恢复均使用已签名发行中的 payload，不需逐版本手建 venv 或复制脚本。
+Windows 本地 `server/dev.ps1` 自动发现已安装的 PythonCore 3.12 并构建私有开发 payload；开发首次构建
+允许下载锁定 wheel，正式服务启动安装全程离线。Windows 私有 payload 不进入 Linux 生产发行。
+
+系统设置中的原材料行情开关、轮询分钟、历史天数、每轮回填预算保存在数据库。默认启用、15 分钟、
+1200 天、30 次；原有 `false` 不被默认值覆盖。货品关联行情只选择一次，后续自动更新。
+数据路径从当前应用 Storage 根派生为 `material-forecast/`，路径与可执行缓存属于本机配置，
+不写入可移机的四项业务设置。无需为铜、铝、银分别配置服务；云端入口不运行第二个采集器。
+系统设置可读取真实准备/运行状态；仅存在历史 health 文件不表示当前 worker 已运行或设置已应用。
+SHFE 历史回放预测属于 `RESEARCH_ONLY`，不产生主动采购信号，PC 本轮没有同等内置来源。
+
+已有服务器首次换装本功能时还需从同一受审源码安装 `paired_internal_backup.py` 和
+`market_state_backup.py` 到 `/usr/local/lib/uten-imp/`（root:root，0644）；
+`install-server-operations.sh` 已将两者作为同组受审组件原子安装。
+这属于一次主机组件升级，不由应用账号或发行 payload 执行 root 操作。
+后续配套备份自动收集 Storage 根下的 `material-forecast/`，不再另填备份路径；
+换机恢复与 health 复位见[配套备份手册](../postgres/backup/PAIRED_INTERNAL_BACKUP.zh-CN.md#原材料行情状态与换机恢复)。
 
 日常备份统一使用[配套备份](../postgres/backup/PAIRED_INTERNAL_BACKUP.zh-CN.md)，以同一数据库快照和原件校验生成可恢复集合；数据库另有 pgBackRest 全量 + WAL。旧 `uten-backup-daily` 入口及 `uten-backup.{service,timer}` 已于 2026-10-06 从仓库删除，服务器上按整改计划同步删除。安装配套备份前必须配齐 `/usr/local/lib/uten-imp/paired_internal_backup.py`、系统依赖和 `/etc/uten-imp/paired-internal-backup.json`；配置保持 root:root、0600，备份集合保持私有权限。现役单元只来自 `deploy/simple/units/` (`uten-pgbackup.{service,timer}` 与 `uten-paired-internal-backup.{service,timer}`，整文件安装到 `/etc/systemd/system/` 后 `daemon-reload`、`enable --now` 两个 timer；用 `deploy/setup/phase2-postgres.sh` 新装的专用主机沿用它自己的备份单元，不混装)。修改前查实际 unit、最后成功时间与恢复结果，不能从脚本存在推断已生效。
 

@@ -45,6 +45,7 @@ import '../widgets/ai_settings_entry_card.dart';
 import '../widgets/platform_settings_entry_card.dart';
 import '../widgets/remote_access_entry_card.dart';
 import '../widgets/system_updater_status_card.dart';
+import '../widgets/material_forecast_runtime_status_card.dart';
 
 class AdminSystemSettingsPage extends ConsumerWidget {
   const AdminSystemSettingsPage({super.key});
@@ -90,6 +91,7 @@ class _AdminSystemSettingsPageState
     ('token', '登录令牌', Icons.vpn_key_outlined),
     ('sms', '短信验证', Icons.sms_outlined),
     ('business', '业务限制', Icons.assessment_outlined),
+    ('material_market', '原材料行情与预测', Icons.insights_outlined),
     ('audit', '审计与留存', Icons.policy_outlined),
     ('updates', '系统更新', Icons.system_update_alt_outlined),
   ];
@@ -359,7 +361,16 @@ class _AdminSystemSettingsPageState
                                     isDirty: (k) => _dirty.contains(k),
                                     onChanged: _markDirty,
                                     enabled: !_saving && !_loading,
-                                    footer: g.$1 == 'updates'
+                                    footer: g.$1 == 'material_market'
+                                        ? MaterialForecastRuntimeStatusCard(
+                                            savedSettings: {
+                                              for (final entry in _all!)
+                                                if (entry.category ==
+                                                    'material_market')
+                                                  entry.key: entry.value,
+                                            },
+                                          )
+                                        : g.$1 == 'updates'
                                         ? Column(
                                             crossAxisAlignment:
                                                 CrossAxisAlignment.stretch,
@@ -532,10 +543,12 @@ class _SettingGroupCard extends StatelessWidget {
               children: [
                 Icon(group.$3, size: 20, color: theme.colorScheme.primary),
                 const SizedBox(width: 8),
-                Text(
-                  group.$2,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
+                Expanded(
+                  child: Text(
+                    group.$2,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],

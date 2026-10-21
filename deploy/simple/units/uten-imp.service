@@ -69,6 +69,9 @@ ReadWritePaths=/var/lib/uten-imp-media/attachments /var/log/uten-imp
 # 放行写入; XDG_CACHE_HOME 让 fontconfig 用它建缓存。沙箱内探针已验证缓存文件落盘且报错消失。
 CacheDirectory=uten-imp
 Environment=XDG_CACHE_HOME=/var/cache/uten-imp
+# Executable scientific runtime cache stays on the system filesystem, never the
+# noexec media volume. Portable enable/interval/history settings remain in DB.
+Environment=UTEN_MATERIAL_FORECAST_CACHE_DIRECTORY=/var/cache/uten-imp/material-forecast
 ProtectProc=invisible
 ProtectKernelTunables=true
 ProtectKernelModules=true

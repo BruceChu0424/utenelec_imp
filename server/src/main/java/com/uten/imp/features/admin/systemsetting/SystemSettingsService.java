@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.Arrays;
 import java.util.Comparator;
@@ -33,12 +34,15 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class SystemSettingsService {
 
     private final SystemSettingRepository repo;
     private final AuditService audit;
     private final TxSessionVars tx;
+    private final SystemSettingsWriteAuthority authority;
+    @Autowired public SystemSettingsService(SystemSettingRepository repo,AuditService audit,TxSessionVars tx,SystemSettingsWriteAuthority authority){this.repo=repo;this.audit=audit;this.tx=tx;this.authority=authority;}
+    /** Existing narrow unit/upgrade probes do not issue authenticated writes. */
+    public SystemSettingsService(SystemSettingRepository repo,AuditService audit,TxSessionVars tx){this(repo,audit,tx,null);}
 
     public int readInt(SystemSettingKey key) {
         requireType(key, SystemSettingKey.Type.INT);
@@ -59,6 +63,25 @@ public class SystemSettingsService {
         if ("true".equalsIgnoreCase(raw)) return true;
         if ("false".equalsIgnoreCase(raw)) return false;
         return Boolean.parseBoolean(key.defaultValue());
+    }
+
+    /** One source query, so a background policy cannot combine values from two committed batches. */
+    @Transactional(readOnly=true)
+    public Map<SystemSettingKey,String> readSnapshot(java.util.Set<SystemSettingKey> keys) {
+        var rows=repo.findAllById(keys.stream().map(SystemSettingKey::key).toList());
+        Map<String,String> raw=rows.stream().collect(Collectors.toMap(SystemSetting::getKey,SystemSetting::getValue));
+        Map<SystemSettingKey,String> values=new java.util.EnumMap<>(SystemSettingKey.class);
+        for(var key:keys) {
+            String value=raw.get(key.key());
+            if(key.numeric()) {
+                values.put(key,Long.toString(effectiveNumber(key,value)));
+            }else {
+                String normalized=value==null?key.defaultValue():value.trim();
+                if(normalized.isBlank()||validationError(key,normalized)!=null) { normalized=key.defaultValue(); }
+                values.put(key,key.type()==SystemSettingKey.Type.BOOL?Boolean.toString(Boolean.parseBoolean(normalized)):normalized);
+            }
+        }
+        return Map.copyOf(values);
     }
 
     public String readString(SystemSettingKey key) {
@@ -94,6 +117,7 @@ public class SystemSettingsService {
     @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
     public List<SystemSettingDto> writeBatch(
             SystemSettingDto.BatchUpdate request, UUID actorId, String actorAccount) {
+        if(authority!=null)authority.require(actorId,true);
         if (request == null || request.changes() == null || request.changes().isEmpty()
                 || request.changes().size() > 50) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "一次须修改 1 至 50 项设置");
@@ -109,6 +133,9 @@ public class SystemSettingsService {
             }
             if (SystemSettingKey.of(change.key()).isEmpty()) {
                 throw new ApiException(ErrorCode.NOT_FOUND, "设置项不存在，请刷新后重试");
+            }
+            if(authority==null&&SystemSettingKey.of(change.key()).orElseThrow().category()==SystemSettingKey.Category.MATERIAL_MARKET) {
+                throw new ApiException(ErrorCode.FORBIDDEN,"行情配置缺少管理员身份核对");
             }
             requireEditable(SystemSettingKey.of(change.key()).orElseThrow());
         }
@@ -171,6 +198,7 @@ public class SystemSettingsService {
     @Transactional
     public void writeDelegated(SystemSettingKey key, String value,
                                UUID actorId, String actorAccount, String auditAction) {
+        if(key.category()==SystemSettingKey.Category.MATERIAL_MARKET)throw new ApiException(ErrorCode.FORBIDDEN,"行情后台配置只能由管理员确认密码后保存");
         String normalized = value == null ? "" : value.trim();
         requireEditable(key);
         requireValid(key, normalized);

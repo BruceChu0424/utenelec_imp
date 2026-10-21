@@ -36,6 +36,12 @@ jobs:
       - name: Install pinned inference dependencies
         run: |
           python3 -m venv .venv-material-forecast
-          .venv-material-forecast/bin/python -m pip install -r services/material_forecast/requirements.txt
+          .venv-material-forecast/bin/python -m pip install --require-hashes --no-deps --only-binary=:all: -r services/material_forecast/runtime-locks/linux-x86_64.lock
       - name: Verify point-in-time replay, model gates and real library inference
         run: .venv-material-forecast/bin/python -m unittest discover -s services/material_forecast/tests -v
+      - name: Verify market-state backup and restore contracts
+        run: .venv-material-forecast/bin/python -m unittest discover -s deploy/postgres/backup -p 'test_market_state*.py' -v
+      - name: Build and prepare the complete offline managed runtime
+        run: |
+          .venv-material-forecast/bin/python services/material_forecast/build_payload.py --platform linux-x86_64 --output "$RUNNER_TEMP/material-forecast-payload"
+          .venv-material-forecast/bin/python "$RUNNER_TEMP/material-forecast-payload/prepare_runtime.py" --payload "$RUNNER_TEMP/material-forecast-payload" --cache "$RUNNER_TEMP/material-forecast-cache"

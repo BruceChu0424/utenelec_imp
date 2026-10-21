@@ -609,7 +609,7 @@ cleanup_runtime_nginx_mask() {
 systemctl mask --runtime nginx.service >/dev/null
 trap cleanup_runtime_nginx_mask EXIT
 apt-get install -y -qq \
-  openjdk-21-jre-headless nginx postgresql-client-16 curl jq util-linux iproute2 ca-certificates openssl >/dev/null
+  openjdk-21-jre-headless nginx postgresql-client-16 curl jq util-linux iproute2 ca-certificates openssl python3-venv >/dev/null
 [[ -x /usr/bin/pg_conftool ]] \
   || die 'postgresql-common pg_conftool is required to prove the 16/main data_directory before PostgreSQL starts'
 systemctl unmask --runtime nginx.service >/dev/null \

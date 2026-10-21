@@ -1,6 +1,7 @@
 package com.uten.imp.features.master.goods.pricing;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.config.props.MaterialForecastProperties;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;

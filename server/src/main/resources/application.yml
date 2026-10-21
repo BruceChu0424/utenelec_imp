@@ -106,6 +106,12 @@ server:
   forward-headers-strategy: none
 
 uten:
+  material-forecast:
+    manage-runtime: ${UTEN_MATERIAL_FORECAST_MANAGE_RUNTIME:true}
+    payload-directory: ${UTEN_MATERIAL_FORECAST_PAYLOAD_DIRECTORY:}
+    cache-directory: ${UTEN_MATERIAL_FORECAST_CACHE_DIRECTORY:}
+    base-python-executable: ${UTEN_MATERIAL_FORECAST_BASE_PYTHON_EXECUTABLE:}
+    snapshot-directory: ${UTEN_MATERIAL_FORECAST_SNAPSHOT_DIRECTORY:}
   database:
     jit-enabled: ${UTEN_DB_JIT:false}
     # 应用连接的数据库侧截止时间(ADR-107)。lock_timeout: 等行锁/表锁/咨询锁的上限;

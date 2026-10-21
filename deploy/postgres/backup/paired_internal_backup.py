@@ -14,6 +14,7 @@ import dataclasses
 import errno
 import gzip
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -47,6 +48,7 @@ UNPUBLISHED_NAME = re.compile(r"\.(incomplete|expired)-(([0-9]{8}T[0-9]{6}Z)-[a-
 SET_FORMATS = ("uten-paired-internal-v1", "uten-paired-internal-v2")
 OPERATIONS_CONFIG = Path('/etc/uten-imp/operations.json')
 RECOVERY_PROOFS = Path('/var/lib/uten-imp-operations/recovery-proofs.json')
+_MARKET_BACKUP_MODULE = None
 CONSISTENCY_SQL = """
 SELECT EXISTS (
   SELECT 1 FROM attachments a JOIN attachment_object_outbox o
@@ -184,6 +186,69 @@ class Budget:
             time.sleep(min(delay, 0.25))
             delay = self.copied / self.config.bytes_per_second - (time.monotonic() - self.started)
         self.check()
+
+
+def market_backup_module():
+    """The installed root-owned sibling is a host component, never release code."""
+    global _MARKET_BACKUP_MODULE
+    if _MARKET_BACKUP_MODULE is None:
+        path = Path(__file__).resolve().with_name("market_state_backup.py")
+        details = path.lstat()
+        if not stat.S_ISREG(details.st_mode) or path.is_symlink() or details.st_size > 256 * 1024:
+            raise ValueError("Market-state backup helper is missing or unsafe")
+        if os.name == "posix" and str(path).startswith("/usr/local/") and (details.st_uid != 0 or details.st_mode & 0o022):
+            raise ValueError("Market-state backup helper must remain root controlled")
+        spec = importlib.util.spec_from_file_location("uten_installed_market_state_backup", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _MARKET_BACKUP_MODULE = module
+    return _MARKET_BACKUP_MODULE
+
+
+def export_market_states(config: Config, work: Path, budget: Budget) -> dict:
+    result = {}
+    sources = {"internal": Path(config.media_root)}
+    if config.local_media_root:
+        sources["local"] = Path(config.local_media_root)
+    for provider, media_root in sources.items():
+        source = media_root / "material-forecast"
+        if not source.exists() and not source.is_symlink():
+            continue
+        parent = work / "market-state"
+        parent.mkdir(mode=0o700, exist_ok=True)
+        def copied(count):
+            budget.check(count)
+            budget.written(count)
+        result[provider] = market_backup_module().export_market_state(source, parent / provider, copy_budget=copied)
+    return result
+
+
+def verify_market_states(directory: Path, summary: dict) -> None:
+    expected = summary.get("market_state", {})
+    if not isinstance(expected, dict) or not set(expected).issubset({"internal", "local"}):
+        raise ValueError("Invalid paired market-state summary")
+    root = directory / "market-state"
+    if expected:
+        real_directory(root)
+        if {path.name for path in root.iterdir()} != set(expected):
+            raise ValueError("Paired market-state set is incomplete")
+    elif root.exists() or root.is_symlink():
+        raise ValueError("Unbound paired market-state data")
+    for provider, record in expected.items():
+        if market_backup_module().verify_market_state(root / provider) != record:
+            raise ValueError("Paired market-state manifest digest/count/bytes differ")
+
+
+def restore_market_states(directory: Path, media_root: Path, local_media_root: Path | None = None) -> dict:
+    summary = verify_set(directory)
+    result = {}
+    roots = {"internal": media_root, "local": local_media_root}
+    for provider in summary.get("market_state", {}):
+        root = roots[provider]
+        if root is None:
+            raise ValueError("A local media root is required to restore its market state")
+        result[provider] = market_backup_module().restore_market_state(directory / "market-state" / provider, Path(root) / "material-forecast")
+    return result
 
 
 def check_envelope(path: Path, metadata: dict, max_original: int) -> dict:
@@ -632,6 +697,7 @@ def _backup_locked(config: Config) -> Path:
     finally:
         connection.close()
     budget.check()
+    market_state = export_market_states(config, work, budget)
     dump_size = (work / "database.dump").stat().st_size
     summary = {"format": "uten-paired-internal-v2", "set_id": set_id, "database": config.database,
                "started_at": started_at, "completed_at": now(),
@@ -642,7 +708,8 @@ def _backup_locked(config: Config) -> Path:
                "media_objects": len(objects), "original_bytes": original_bytes, "stored_bytes": stored_bytes,
                "reused_media_objects": reused_objects, "reused_media_bytes": reused_bytes,
                "copied_media_objects": len(objects) - reused_objects,
-               "database_dump_bytes": dump_size, "data_bytes": dump_size + stored_bytes,
+               "database_dump_bytes": dump_size, "data_bytes": dump_size + stored_bytes + sum(item["bytes"] for item in market_state.values()),
+               "market_state": market_state,
                "database_dump_sha256": digest_file(work / "database.dump"),
                "objects_manifest_sha256": digest_file(work / "objects.jsonl"),
                "references_manifest_sha256": digest_file(work / "references.jsonl"),
@@ -1082,6 +1149,7 @@ def verify_set(directory: Path) -> dict:
         raise ValueError("Backup set manifest/dump integrity failed")
     if summary["format"] == "uten-paired-internal-v2":
         verify_media(directory, summary)
+        verify_market_states(directory, summary)
         return summary
     count = stored = original = 0
     real_directory(directory / "media" / "final")
@@ -1109,7 +1177,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path)
     parser.add_argument("--verify", type=Path)
+    parser.add_argument("--restore-market", type=Path, help="verified paired set; only restores market state into new/empty media children")
+    parser.add_argument("--target-media-root", type=Path)
+    parser.add_argument("--target-local-media-root", type=Path)
     args = parser.parse_args()
+    if args.restore_market:
+        if args.target_media_root is None:
+            parser.error("--target-media-root is required for market-state restore")
+        print(json.dumps({"marketRestored": restore_market_states(args.restore_market, args.target_media_root, args.target_local_media_root)}))
+        return
     if args.verify:
         print(json.dumps({"verified": str(args.verify), "objects": verify_set(args.verify)["clean_objects"]}))
         return

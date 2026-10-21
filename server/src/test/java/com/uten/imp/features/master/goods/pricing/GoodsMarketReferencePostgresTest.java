@@ -43,8 +43,27 @@ class GoodsMarketReferencePostgresTest {
     @Test void twoConcurrentFirstWritersCannotBothWin()throws Exception{
         var start=new CountDownLatch(1);var pool=Executors.newFixedThreadPool(2);
         try{
-            List<Future<Boolean>> writes=new ArrayList<>();for(String series:List.of("copper","silver"))writes.add(pool.submit(()->{start.await();try{run(()->{store.compareAndSet(goods,series,"a".repeat(64),0,actor);return null;});return true;}catch(com.uten.imp.common.web.ApiException conflict){return false;}}));
-            start.countDown();int successes=0;for(var write:writes)if(write.get(30,TimeUnit.SECONDS))successes++;assertThat(successes).isEqualTo(1);assertThat(store.find(goods).version()).isEqualTo(1);
+            List<Future<Boolean>> writes=new ArrayList<>();
+            for(String series:List.of("copper","silver")) {
+                writes.add(pool.submit(()->{
+                    start.await();
+                    try {
+                        run(()->{store.compareAndSet(goods,series,"a".repeat(64),0,actor);return null;});
+                        return true;
+                    } catch(com.uten.imp.common.web.ApiException conflict) {
+                        return false;
+                    }
+                }));
+            }
+            start.countDown();
+            int successes=0;
+            for(var write:writes) {
+                if(write.get(30,TimeUnit.SECONDS)) {
+                    successes++;
+                }
+            }
+            assertThat(successes).isEqualTo(1);
+            assertThat(store.find(goods).version()).isEqualTo(1);
         }finally{pool.shutdownNow();}
     }
 }

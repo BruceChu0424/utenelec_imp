@@ -1122,6 +1122,7 @@ abstract class _MaterialAnalysisMaterialTableState
         tableKey:
             'features.production.pages.material_analysis_material_table.MaterialAnalysisMaterialTableState._materialAnalysisTable.2',
         key: const Key('material-analysis-material-table'),
+        dataCellVerticalPadding: _materialTableCellVerticalPadding,
         bodyPresentationBuilder: _materialViewTransitionBody,
         columns: _materialTableColumns(
           theme,
@@ -1260,6 +1261,13 @@ abstract class _MaterialAnalysisMaterialTableState
       ),
     );
   }
+
+  // Controls retain their shared 32px desktop / 48px touch role; only the
+  // surrounding cell whitespace is compacted. Intrinsic rows can still grow
+  // for large text, validation messages and real multiline aggregate content.
+  static const _materialTableCellVerticalPadding = UtenSpacing.s4;
+  static const _materialTableDesktopToggleExtent =
+      UtenControlMetrics.cellHeight;
 
   // ===== 表头筛选（2026-09-10 F2a：稳定桶键 + 投影级过滤）=====
   //
@@ -1767,13 +1775,20 @@ abstract class _MaterialAnalysisMaterialTableState
       label: _bomAggregateByMaterial
           ? _l10n.materialIdentityByMaterial
           : _l10n.materialIdentityByProduct,
-      width: 360 + UtenTreeTableCell.toggleExtentOf(context) - 48,
+      width:
+          360 +
+          UtenTreeTableCell.toggleExtentOf(
+            context,
+            desktop: _materialTableDesktopToggleExtent,
+          ) -
+          _materialTableDesktopToggleExtent,
       minimumWidthOf: (context) => math.max(
         72,
         UtenTreeTableCell.prefixWidthOf(
               context,
               depth: identityMaxDepth,
               indent: 24,
+              desktopToggleExtent: _materialTableDesktopToggleExtent,
             ) +
             UtenSpacing.s24 +
             UtenSpacing.s24,
@@ -1784,7 +1799,10 @@ abstract class _MaterialAnalysisMaterialTableState
       measureWidthOf: _materialTableIdentityMeasureWidth,
       measureWidthScope: (
         Directionality.of(context),
-        UtenTreeTableCell.toggleExtentOf(context),
+        UtenTreeTableCell.toggleExtentOf(
+          context,
+          desktop: _materialTableDesktopToggleExtent,
+        ),
       ),
       cellBuilderHandlesSemantics: true,
       // 树列自己吃满整行高度：同一行里只要别的列换了两行，这一格若被竖向
@@ -2196,7 +2214,12 @@ abstract class _MaterialAnalysisMaterialTableState
     painter.layout();
     final width =
         painter.width +
-        UtenTreeTableCell.prefixWidthOf(context, depth: row.depth, indent: 24) +
+        UtenTreeTableCell.prefixWidthOf(
+          context,
+          depth: row.depth,
+          indent: 24,
+          desktopToggleExtent: _materialTableDesktopToggleExtent,
+        ) +
         UtenSpacing.s8;
     painter.dispose();
     // The shared fitter adds the ordinary cell insets and applies the same
@@ -2351,15 +2374,14 @@ abstract class _MaterialAnalysisMaterialTableState
       // 同口径「下面的箭头跟线挨在一起」：每级缩进 16→24，祖先竖线与箭头
       // 圆底的间隙从 2px 放到 10px。两个视图一致传 24，切视图名称列不跳位。
       indent: 24,
+      desktopToggleExtent: _materialTableDesktopToggleExtent,
       // 2026-10-09 用户口径「没有子层级的行也在前面加个展开 icon，灰色不可
       // 点，统一好看」：无下级行（含汇总视图顶层产品行——2026-10-08「展开位
       // 让出来顶到左缘」随之退役）与有下级行同一位置画灰底粗箭头占位，两个
       // 视图一致；点击无反应、不进语义。
       mutedToggleWhenChildless: true,
-      // 连线要跨过宿主给每个数据格的纵向内边距，否则行与行之间空出 2×8px，
-      // 整列看着像虚线（2026-09-15：这里原来没传，默认 0，与级联页观感不同的
-      // 一大来源）。数值取自表格组件自己公开的常量，不在调用点抄魔数。
-      guideBleed: MasterDataTableView.cellVerticalPadding,
+      // Tree guides cross the same whitespace that this table gives each cell.
+      guideBleed: _materialTableCellVerticalPadding,
       title: title,
       titleBadge: _bomAggregateByMaterial && product != null
           ? const MaterialTopLevelBadge()
@@ -5025,13 +5047,7 @@ abstract class _MaterialAnalysisMaterialTableState
     if (text != null) return text;
     final group = _tableEditableGroup(row);
     if (group == null) return '—';
-    // 汇总视图顶层产品行：已下单后由撤回 / 车间计划口径渲染（格子里是按钮
-    // 与状态文案），文本取「已下单」；未下单与按产品视图同一调拨取值。
-    // 聚合行不在这条取值上（办理格由 _MaterialAggregateActions 渲染）。
-    if (_bomAggregateByMaterial && row.product != null) {
-      if (_tableGroupIssuedQty(group) > 0.000000001) return '已下单';
-      return _tableTransferBlockedReason(group) == null ? '可调拨' : '暂不可办理';
-    }
+    if (_tableGroupIssuedPositive(group)) return '已下单';
     return _tableTransferBlockedReason(group) == null ? '可调拨' : '暂不可办理';
   }
 
@@ -5046,41 +5062,44 @@ abstract class _MaterialAnalysisMaterialTableState
     if (_aggregateTable.ownsLine(group.representative.materialLineId)) {
       return _aggregateTable.lockedText('汇总草稿中');
     }
-    // 2026-10-09 用户口径「明明已下单，按物料汇总看顶层的物料办理不该还是
-    // 调拨」：汇总视图顶层产品行已下单后与聚合行同一撤回口径（沿同一精确
-    // 来源图找真实单据）。2026-10-10 二次修订（用户）：未下单时与按产品视图
-    // 同一枚调拨按钮——服务端已开放根供给行（node_role='ROOT_SUPPLY'）跨计划
-    // 调拨，别的计划多锁的成品合格批次可调入顶层；无可调来源时按钮置灰并
-    // 说明原因，不再显示横杠。
-    if (_bomAggregateByMaterial && row.product != null) {
-      final withdrawCell = _aggregateTable.topLevelWithdrawCell(group);
-      if (withdrawCell != null) return withdrawCell;
-      return _materialTableTransferCell(theme, row, group);
+    // An active order's authoritative quantity controls transfer visibility.
+    // A withdrawal entry can also represent a stock/future claim; its presence
+    // alone does not prove this source placed an order. After cancellation the
+    // refreshed quantity is zero, so the ordinary transfer entry returns.
+    final issued = _tableGroupIssuedPositive(group);
+    // Aggregate sources keep their existing read-only operation surface; the
+    // aggregate row owns the batch withdrawal and its complete source check.
+    if (row.isAggregateSource) {
+      return issued
+          ? const Text('已下单')
+          : _materialTableTransferCell(theme, row, group);
     }
-    if (!_bomAggregateByMaterial) {
-      final withdrawal = _aggregateTable.withdrawCell(
-        materialLineIds: group.paths.map((path) => path.materialLineId),
-        hasOrdered: _tableGroupIssuedQty(group) > 0.000000001,
-        keyPrefix: 'material-product-${group.representative.materialLineId}',
-        groups: [group],
+    final withdrawal = _bomAggregateByMaterial && row.product != null
+        ? _aggregateTable.topLevelWithdrawCell(group)
+        : _aggregateTable.withdrawCell(
+            materialLineIds: group.paths.map((path) => path.materialLineId),
+            hasOrdered: issued,
+            keyPrefix:
+                'material-product-${group.representative.materialLineId}',
+            groups: [group],
+          );
+    if (issued) return withdrawal ?? const Text('已下单');
+    if (withdrawal != null) {
+      return Semantics(
+        container: true,
+        explicitChildNodes: true,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            withdrawal,
+            Semantics(
+              container: true,
+              child: _materialTableTransferCell(theme, row, group),
+            ),
+          ],
+        ),
       );
-      if (withdrawal != null) {
-        return Semantics(
-          container: true,
-          explicitChildNodes: true,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              withdrawal,
-              Semantics(
-                container: true,
-                child: _materialTableTransferCell(theme, row, group),
-              ),
-            ],
-          ),
-        );
-      }
     }
     return _materialTableTransferCell(theme, row, group);
   }

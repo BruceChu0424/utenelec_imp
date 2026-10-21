@@ -385,6 +385,7 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.rowColor,
     this.rowForegroundColor,
     this.rowDecorationBuilder,
+    this.dataCellVerticalPadding = cellVerticalPadding,
     this.leadingGroups,
     this.selectable = false,
     this.showSelectionColumn = true,
@@ -415,6 +416,7 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.singleTapRows = false,
   }) : assert(maxRetainedPages >= 2),
        assert(maxRetainedRows > 0),
+       assert(dataCellVerticalPadding >= 0),
        assert(
          !embedded || !virtualized,
          'virtualized=true requires a bounded, non-embedded table',
@@ -432,6 +434,11 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 全屏态变化通知（进入/退出各回调一次）。宿主页可借此把搜索框等控件
   /// 在全屏时放回表格工具条（正常态放页面头部卡片），两处共享同一控制器。
   final ValueChanged<bool>? onFullscreenChanged;
+
+  /// Vertical space around body-cell content. Dense hosts may opt in without
+  /// reducing control hit targets or imposing a fixed row height. Tree guides
+  /// must use the same value as their [UtenTreeTableCell.guideBleed].
+  final double dataCellVerticalPadding;
 
   /// Picker lists share the table's paging, request fencing and scroll anchors,
   /// while keeping their existing tiles and confirmation interactions.
@@ -6299,7 +6306,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         child: Padding(
           padding: EdgeInsets.symmetric(
             horizontal: _columnHorizontalPadding(context, column),
-            vertical: MasterDataTableView.cellVerticalPadding,
+            vertical: widget.dataCellVerticalPadding,
           ),
           child: _dataCell(column, item, cellStyle, selected),
         ),

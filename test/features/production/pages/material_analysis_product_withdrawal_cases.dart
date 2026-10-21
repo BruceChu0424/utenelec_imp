@@ -9,7 +9,7 @@ Finder _productWithdrawal(String line, String target) =>
     find.byKey(ValueKey('material-product-$line-cancel-$target'));
 
 void materialProductWithdrawalCases() {
-  testWidgets('按产品撤回：可用撤回与禁用调拨拥有独立辅助语义并可语义点击', (tester) async {
+  testWidgets('按产品撤回：已下单只保留可语义点击的准确撤回入口', (tester) async {
     final semantics = tester.ensureSemantics();
     try {
       await _pump(
@@ -21,16 +21,12 @@ void materialProductWithdrawalCases() {
       final withdrawal = tester.getSemantics(
         _productWithdrawal('root-0', 'plan'),
       );
-      final transfer = tester.getSemantics(_transferButton('root-0'));
       final withdrawalData = withdrawal.getSemanticsData();
-      final transferData = transfer.getSemanticsData();
-      expect(withdrawal.id, isNot(transfer.id));
+      expect(_transferButton('root-0'), findsNothing);
       expect(withdrawalData.flagsCollection.isEnabled, ui.Tristate.isTrue);
       expect(withdrawalData.hasAction(ui.SemanticsAction.tap), isTrue);
       expect(withdrawalData.label, contains('SJ-ROOT-001'));
       expect(withdrawalData.label, isNot(contains('调拨')));
-      expect(transferData.flagsCollection.isEnabled, ui.Tristate.isFalse);
-      expect(transferData.hasAction(ui.SemanticsAction.tap), isFalse);
       for (
         var parent = withdrawal.parent;
         parent != null;
@@ -60,7 +56,7 @@ void materialProductWithdrawalCases() {
     ('root-0', 'plan', 'plan-root'),
     ('ordinary-component', 'plan', 'plan-component'),
   ]) {
-    testWidgets('按产品撤回：${entry.$1}只撤准确计划并保留调拨', (tester) async {
+    testWidgets('按产品撤回：${entry.$1}只撤准确计划且下单后不显示调拨', (tester) async {
       await _pump(
         tester,
         permissions: _unifiedHandlingPermissions,
@@ -69,7 +65,7 @@ void materialProductWithdrawalCases() {
       await _showProductWithdrawalLayout(tester);
       final button = _productWithdrawal(entry.$1, entry.$2);
       expect(button, findsOneWidget);
-      expect(_transferButton(entry.$1), findsOneWidget);
+      expect(_transferButton(entry.$1), findsNothing);
       await tester.tap(button);
       await tester.pumpAndSettle();
       expect(
@@ -157,7 +153,7 @@ void materialProductWithdrawalCases() {
     );
   });
 
-  testWidgets('按产品撤回：缺少反审权限时入口置灰，调拨仍保留', (tester) async {
+  testWidgets('按产品撤回：缺少反审权限时入口置灰，已下单仍不显示调拨', (tester) async {
     await _pump(
       tester,
       permissions: {..._unifiedHandlingPermissions}
@@ -168,7 +164,7 @@ void materialProductWithdrawalCases() {
     final button = _productWithdrawal('root-0', 'plan');
     expect(button, findsOneWidget);
     expect(tester.widget<TextButton>(button).onPressed, isNull);
-    expect(_transferButton('root-0'), findsOneWidget);
+    expect(_transferButton('root-0'), findsNothing);
   });
 
   testWidgets('按产品撤回：关闭整批确认不发送任何撤回请求', (tester) async {

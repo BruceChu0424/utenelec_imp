@@ -47,6 +47,7 @@ part 'material_analysis_product_withdrawal_cases.dart';
 part 'material_analysis_presentation_work_cases.dart';
 part 'material_analysis_view_transition_cases.dart';
 part 'material_analysis_append_quantity_cases.dart';
+part 'material_analysis_handling_density_cases.dart';
 
 const _permissions = {
   Perm.productionMaterialAnalysisView,
@@ -269,6 +270,7 @@ void main() {
   materialSharedSourceCases();
   materialUnifiedHandlingCases();
   materialProductWithdrawalCases();
+  materialHandlingDensityCases();
   materialOrderAuthorityCases();
   materialQuantityPresentationCases();
   materialPolicyCases();
@@ -7576,6 +7578,7 @@ Future<void> _pump(
   WidgetTester tester, {
   TargetPlatform? platform,
   double fontFactor = 1,
+  TextScaler? textScaler,
   Set<String> permissions = _permissions,
   _OrderAuthoritySession? session,
   // 夹具已有十几行物料, 视口给高一点: 页面级滚动下看不见的行不会被建出来,
@@ -7930,9 +7933,17 @@ Future<void> _pump(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         theme: buildLightTheme().copyWith(platform: platform),
-        builder: (context, child) => fontFactor == 1
-            ? child!
-            : UtenDisplayZoomBox(fontFactor: fontFactor, child: child!),
+        builder: (context, child) {
+          final content = fontFactor == 1
+              ? child!
+              : UtenDisplayZoomBox(fontFactor: fontFactor, child: child!);
+          return textScaler == null
+              ? content
+              : MediaQuery(
+                  data: MediaQuery.of(context).copyWith(textScaler: textScaler),
+                  child: content,
+                );
+        },
         home: const ProductionMaterialAnalysisPage(
           seed: ProductionMaterialAnalysisSeed(
             analysisId: 'analysis-1',

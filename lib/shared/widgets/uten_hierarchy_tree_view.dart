@@ -10,6 +10,7 @@
 // ([rowMenuBuilder]，与表格行同一机制、右键即选中)。
 //
 // 放在 shared：部门与基础资料两个 feature 都用它，谁都不反向依赖谁(节点契约同理在 shared)。
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import '../../components/data_display/uten_selection_lifecycle.dart';
@@ -173,7 +174,9 @@ class UtenHierarchyTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
   /// 五档梯度（UtenColors.treeLevelRow）——一级深绿实底白字、往下逐档降饱和降
   /// 明度、四档起转中性灰，4 及更深固定第五档（至少 5 个层级色差、最深一层固定
   /// 一色、色差拉开且协调，2026-09-24 第二轮口径）；行距收紧、行间 1px 分隔线。
-  /// 选中以加粗标题和行末圆形对勾表达；勾从右侧短距离滑入，旧项从右侧退出。
+  /// 选中色块从左缘滑入，覆盖箭头和标题，旧色块向左退出；文字与箭头取对比色。
+  /// 色块受实际标题槽约束，不覆盖行尾业务标记或选择控件。
+  /// 行末圆形对勾同时从右侧短距离滑入，旧勾从右侧退出。
   /// 标记槽宽度固定，切换选中不推动文字；减少动画和 lite 档立即切换。
   /// 完整祖先路径由名称提示与外部选中路径表达；行内只保留单行节点标题。
   /// 2026-10-18：整列视作一块卡片——首行上两角、末行下两角用系统圆角
@@ -217,6 +220,27 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
 
   bool get _searching => _query.trim().isNotEmpty;
 
+  final _labelWidthCache =
+      <(String, TextStyle, TextScaler, TextDirection, Locale?), double>{};
+
+  double _labelWidth(BuildContext context, String label, TextStyle style) {
+    final scaler = MediaQuery.textScalerOf(context);
+    final direction = Directionality.of(context);
+    final locale = Localizations.maybeLocaleOf(context);
+    return _labelWidthCache[(label, style, scaler, direction, locale)] ??= () {
+      final painter = TextPainter(
+        text: TextSpan(text: label, style: style),
+        textScaler: scaler,
+        textDirection: direction,
+        locale: locale,
+        maxLines: 1,
+      )..layout();
+      final width = painter.maxIntrinsicWidth;
+      painter.dispose();
+      return width;
+    }();
+  }
+
   bool _enabled(T node) => widget.nodeEnabledPredicate?.call(node) ?? true;
 
   bool _passes(T node) => widget.passThrough?.call(node) ?? false;
@@ -252,6 +276,7 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
   @override
   void didUpdateWidget(UtenHierarchyTreeView<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(widget.nodes, oldWidget.nodes)) _labelWidthCache.clear();
     if (oldWidget.externalSearchQuery != widget.externalSearchQuery ||
         oldWidget.visibleFilterIds != widget.visibleFilterIds) {
       _stopBranchMotions();
@@ -284,6 +309,7 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
   void _onSystemFontsChanged() {
     _fontRevision++;
     _forestWidthKey = null;
+    _labelWidthCache.clear();
     if (mounted) setState(() {});
   }
 
@@ -659,7 +685,16 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
           desktop: 32,
         );
         final label = widget.labelOf?.call(node) ?? node.name;
-        final toggleColor = onDarkRow
+        final flatSelected = flat && isSelected;
+        final blockColor = onDarkRow
+            ? Colors.white
+            : _flatRowBackground(theme, 0);
+        final selectedForeground = onDarkRow
+            ? _flatRowBackground(theme, 0)
+            : Colors.white;
+        final toggleColor = flatSelected
+            ? selectedForeground
+            : onDarkRow
             ? Colors.white
             : theme.colorScheme.onSurfaceVariant;
         final minHeight = flat
@@ -754,7 +789,9 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
                           ? FontWeight.w700
                           : (onDarkRow ? FontWeight.w600 : FontWeight.w400),
                       color: enabled
-                          ? (onDarkRow
+                          ? (flatSelected
+                                ? selectedForeground
+                                : onDarkRow
                                 ? Colors.white
                                 : isSelected
                                 ? theme.colorScheme.primary
@@ -780,16 +817,61 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
         final Widget body;
         if (flat) {
           final hasControls = trailing != null || selection != null;
-          // Keep the title, protection markers and selection in separate slots.
+          // Measure only the space left after trailing controls/checks. The
+          // fill translates rigidly under the title; both feedbacks coexist.
           body = Row(
             children: [
               Expanded(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: verticalPadding,
-                  ),
-                  child: Row(children: titleCluster),
+                child: LayoutBuilder(
+                  builder: (context, titleConstraints) {
+                    final nameWidth = _labelWidth(
+                      context,
+                      label,
+                      DefaultTextStyle.of(context).style
+                          .merge(theme.textTheme.bodyMedium)
+                          .copyWith(fontWeight: FontWeight.w700),
+                    );
+                    final blockWidth = leading == null
+                        ? math.min(
+                            titleConstraints.maxWidth,
+                            8 + hitExtent + 4 + nameWidth + 8,
+                          )
+                        : titleConstraints.maxWidth;
+                    return ConstrainedBox(
+                      constraints: BoxConstraints(minHeight: minHeight),
+                      child: Stack(
+                        alignment: Alignment.centerLeft,
+                        children: [
+                          AnimatedPositioned(
+                            duration: animDuration,
+                            curve: UtenAnim.standard,
+                            top: 0,
+                            bottom: 0,
+                            left: flatSelected ? 0 : -blockWidth,
+                            width: blockWidth,
+                            child: DecoratedBox(
+                              key: ValueKey(
+                                'hierarchy-selection-fill-${node.id}',
+                              ),
+                              decoration: BoxDecoration(
+                                color: blockColor,
+                                borderRadius: const BorderRadius.horizontal(
+                                  right: Radius.circular(UtenRadius.control),
+                                ),
+                              ),
+                            ),
+                          ),
+                          Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: verticalPadding,
+                            ),
+                            child: Row(children: titleCluster),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
               ),
               ?trailing,

@@ -14,20 +14,29 @@ extension _MaterialAggregateActions on _MaterialAggregateTableController {
               key: ValueKey('material-aggregate-split-${aggregate.key}'),
             ),
           );
+    final hasOrdered = orderedQty(aggregate) > 0;
     final withdraw = withdrawCell(
       materialLineIds: aggregate.paths.map((path) => path.materialLineId),
-      hasOrdered: orderedQty(aggregate) > 0.000000001,
-      note: note,
+      hasOrdered: hasOrdered,
+      note: hasOrdered ? note : null,
       groups: groupsOf(aggregate).toList(growable: false),
     );
-    if (withdraw != null) return withdraw;
-    // 一张单都没下：只给调拨入口（2026-10-10 用户口径二次修订——「勾选后下单」
-    // 提示文字删除，分单说明保留）。调拨是「不买现货先从别的计划调入」的替代
-    // 路线，放在与下单同级的办理列。
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [aggregateTransferCell(aggregate), ?note],
+    if (hasOrdered) return withdraw ?? const Text('已下单');
+    // Claims can be withdrawn without an order ever having been placed. Keep
+    // their reversal entry alongside transfer until authoritative ordered
+    // quantity becomes positive; neither history nor a claim locks transfer.
+    return Semantics(
+      container: true,
+      explicitChildNodes: true,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (withdraw != null) Semantics(container: true, child: withdraw),
+          Semantics(container: true, child: aggregateTransferCell(aggregate)),
+          ?note,
+        ],
+      ),
     );
   }
 
@@ -167,7 +176,7 @@ extension _MaterialAggregateActions on _MaterialAggregateTableController {
   /// 跨计划调拨后与按产品视图同一枚按钮）。
   Widget? topLevelWithdrawCell(_MaterialGroup group) => withdrawCell(
     materialLineIds: group.paths.map((path) => path.materialLineId),
-    hasOrdered: owner._tableGroupIssuedQty(group) > 0.000000001,
+    hasOrdered: owner._tableGroupIssuedPositive(group),
     keyPrefix: 'material-top-level',
     groups: [group],
   );

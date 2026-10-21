@@ -4,7 +4,11 @@ import com.uten.imp.config.props.*;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.*;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import static org.assertj.core.api.Assertions.*;
 
 class MaterialForecastHostPathsTest {
@@ -29,6 +33,22 @@ class MaterialForecastHostPathsTest {
         var builder=MaterialForecastProcessLauncher.builder(List.of("fixed-python","fixed-worker"),directory);
         assertThat(builder.environment()).doesNotContainKeys("PATH","PYTHONPATH","PYTHONHOME","SPRING_DATASOURCE_PASSWORD","UTEN_JWT_SECRET","UTEN_CRYPTO_KEY","AWS_SECRET_ACCESS_KEY");
         assertThat(builder.environment()).containsEntry("NUMBA_NUM_THREADS","1").containsEntry("PYTHONUTF8","1");
+    }
+    @Test @EnabledOnOs(OS.WINDOWS)
+    void windowsChildExpandsTheSystemDriveWithoutCreatingALiteralRelativeDirectory()throws Exception {
+        Path systemRoot=Path.of(System.getenv().getOrDefault("SystemRoot","C:\\Windows"));
+        var builder=MaterialForecastProcessLauncher.builder(List.of(systemRoot.resolve("System32/cmd.exe").toString(),"/d","/c","echo %SystemDrive%"),directory);
+        Process child=builder.start();
+        try {
+            assertThat(child.waitFor(10,TimeUnit.SECONDS)).isTrue();
+            assertThat(child.exitValue()).isZero();
+            String expanded=new String(child.getInputStream().readAllBytes(),StandardCharsets.UTF_8).strip();
+            assertThat(expanded).isEqualTo(systemRoot.getRoot().toString().substring(0,2));
+            assertThat(Path.of(expanded+"/ProgramData").isAbsolute()).isTrue();
+            assertThat(Files.exists(directory.resolve("%SystemDrive%"))).isFalse();
+        } finally {
+            if(child.isAlive())MaterialForecastProcessLauncher.terminate(child);
+        }
     }
     @Test void structuredPreparationFailuresExposeOnlyTheFixedSafeCode()throws Exception {
         var json=new com.fasterxml.jackson.databind.ObjectMapper();

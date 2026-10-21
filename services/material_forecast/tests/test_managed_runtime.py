@@ -159,6 +159,8 @@ class ManagedRuntimeTests(unittest.TestCase):
         self.assertNotIn("DB_PASSWORD", env)
         self.assertNotIn("JWT_SECRET", env)
         self.assertNotIn("PIP_EXTRA_INDEX_URL", env)
+        if os.name == "nt":
+            self.assertEqual(env["SystemDrive"], Path(os.environ["SystemRoot"]).drive)
 
     def test_payload_inventory_detects_tamper_extra_file_and_network_lock_directive(self):
         with tempfile.TemporaryDirectory() as temporary:

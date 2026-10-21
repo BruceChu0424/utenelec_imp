@@ -41,6 +41,7 @@ class MaterialForecastRuntimePreparationSmokeTest {
         Files.createDirectories(log.getParent());
         try {
             var ready=new MaterialForecastProcessLauncher(paths,properties,json).prepare(()->false);
+            if(Files.exists(paths.payloadDirectory().resolve("%SystemDrive%")))throw new AssertionError("Isolated preparation polluted the signed payload");
             evidence.put("state","READY");
             evidence.put("python",ready.python().toString());
             evidence.put("worker",ready.worker().toString());

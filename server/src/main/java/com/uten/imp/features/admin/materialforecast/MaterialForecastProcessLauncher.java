@@ -107,6 +107,14 @@ public class MaterialForecastProcessLauncher {
         for(String name:List.of("SystemRoot","WINDIR","COMSPEC","TEMP","TMP","TMPDIR","LANG","LC_ALL","SSL_CERT_FILE","SSL_CERT_DIR")) {
             String value=original.get(name);if(value!=null)builder.environment().put(name,value);
         }
+        if(MaterialForecastHostPaths.windows()) {
+            Path systemRoot=MaterialForecastHostPaths.absolute(System.getenv().getOrDefault("SystemRoot","C:\\Windows"));
+            Path drive=systemRoot.getRoot();
+            if(drive==null||!drive.toString().matches("[A-Za-z]:[\\\\/]"))throw new IllegalStateException("Invalid Windows system drive");
+            // Known-folder registry values expand this minimal OS variable even
+            // when no application credentials or PATH are inherited by the child.
+            builder.environment().put("SystemDrive",drive.toString().substring(0,2));
+        }
         builder.environment().put("PYTHONUTF8","1");builder.environment().put("PYTHONIOENCODING","utf-8");
         for(String name:List.of("OMP_NUM_THREADS","OPENBLAS_NUM_THREADS","MKL_NUM_THREADS","NUMBA_NUM_THREADS"))builder.environment().put(name,"1");
         return builder;

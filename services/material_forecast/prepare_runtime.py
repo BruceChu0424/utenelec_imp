@@ -103,6 +103,14 @@ def validate(payload: Path) -> dict:
 def child_environment() -> dict:
     keep = ("SYSTEMROOT", "WINDIR", "COMSPEC", "TEMP", "TMP", "HOME", "LANG", "LC_ALL", "SSL_CERT_FILE", "SSL_CERT_DIR")
     result = {key: os.environ[key] for key in keep if key in os.environ}
+    if os.name == "nt":
+        # Windows PowerShell/.NET requires this OS token even in an otherwise
+        # cleared environment; leaving it absent creates literal %SystemDrive%
+        # cache paths. Derive it from the fixed Windows directory, not app env.
+        system_root = result.get("SYSTEMROOT") or result.get("WINDIR") or r"C:\Windows"
+        drive = Path(system_root).drive
+        if re.fullmatch(r"[A-Za-z]:", drive):
+            result["SystemDrive"] = drive
     result.update(PIP_CONFIG_FILE=os.devnull, PIP_NO_INPUT="1", PIP_DISABLE_PIP_VERSION_CHECK="1",
                   PYTHONDONTWRITEBYTECODE="1", OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1", MKL_NUM_THREADS="1")
     return result

@@ -1,7 +1,8 @@
-[CmdletBinding()]
+[CmdletBinding(DefaultParameterSetName='Runtime')]
 param(
-    [Parameter(Mandatory=$true)][string]$Payload,
-    [Parameter(Mandatory=$true)][string]$Cache,
+    [Parameter(Mandatory=$true,ParameterSetName='Runtime')][string]$Payload,
+    [Parameter(Mandatory=$true,ParameterSetName='Runtime')][string]$Cache,
+    [Parameter(Mandatory=$true,ParameterSetName='Development')][switch]$DevelopmentCache,
     [string]$BasePython
 )
 $ErrorActionPreference = 'Stop'
@@ -29,6 +30,10 @@ try {
         if ($LASTEXITCODE -eq 0) { $selected = $candidate; break }
     }
     if (-not $selected) { throw 'Base interpreter unavailable' }
+    if ($DevelopmentCache) {
+        & $selected -I (Join-Path $PSScriptRoot 'build_payload.py') --development-cache
+        exit $LASTEXITCODE
+    }
     & $selected -I (Join-Path $PSScriptRoot 'prepare_runtime.py') --payload $Payload --cache $Cache
     exit $LASTEXITCODE
 } catch {

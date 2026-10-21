@@ -493,7 +493,8 @@ def build(repo: Path, output: Path, version: str, commit: str, offline_wheel_cac
             source = ["--no-index", "--find-links", str(offline_wheel_cache.resolve())]
         result = subprocess.run([sys.executable, "-I", "-m", "pip", "--isolated", "download", *source,
                                  "--disable-pip-version-check", "--require-hashes", "--only-binary=:all:",
-                                 "--dest", str(wheelhouse), "--requirement", str(lock)], check=False)
+                                 "--dest", str(wheelhouse), "--requirement", str(lock)],
+                                check=False, stdout=sys.stderr)
         require(result.returncode == 0, "complete hashed binary wheel download failed")
         wheels = [inspect_wheel(path, selected, target) for path in wheelhouse.iterdir()]
         (payload / "runtime-requirements.txt").write_bytes(runtime_requirements(wheels))

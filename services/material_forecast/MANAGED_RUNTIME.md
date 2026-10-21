@@ -82,6 +82,18 @@ the authority and source identity; every hit also verifies the complete payload.
 The release entry point retains whole-checkout clean-HEAD enforcement. Neither
 mode reads uncommitted executable runtime code or fetches data during validation.
 
+Spring `dev` source launches (including `mvn spring-boot:run`) invoke this same
+development-cache builder automatically when no explicit payload directory is
+configured. Source discovery is anchored to the application's `server/.../classes`
+directory and its own Git checkout, rather than the shell's current directory.
+Every startup preparation revalidates the reviewed source identity and complete
+cached payload. Windows reuses the preparation wrapper's Python 3.12 discovery;
+Linux uses `/usr/bin/python3`, with the existing absolute base-Python override
+available on either host. The first development build may download only the
+reviewed hash-locked wheels; subsequent runtime installation remains offline.
+Packaged JARs keep the immutable release payload path and never invoke this
+development builder, even when the `dev` profile is selected.
+
 The payload preparation protocol (paths are operator/bootstrap data only):
 
 ```

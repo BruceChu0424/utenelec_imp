@@ -50,7 +50,7 @@ public class MaterialForecastProcessLauncher {
     public Prepared prepare(BooleanSupplier abort) {
         var diagnostic=new PreparationDiagnostic();
         try {
-            Path configuredPayload=paths.payloadDirectory(),cache=paths.cacheDirectory();
+            Path configuredPayload=paths.payloadDirectory(abort),cache=paths.cacheDirectory();
             if(!Files.isDirectory(configuredPayload)){diagnostic.reason=PreparationReason.PAYLOAD_MISSING;throw new Failure("RUNTIME_MISSING");}
             diagnostic.reason=PreparationReason.PAYLOAD_REAL_PATH_FAILED;
             Path payload=configuredPayload.toRealPath();
@@ -119,7 +119,7 @@ public class MaterialForecastProcessLauncher {
                 "--backfill-budget",Integer.toString(policy.backfillBudget()),"--configuration-revision",policy.revision(),"--run-id",runId);
         return builder(command,paths.stateDirectory()).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
     }
-    public void cancelPreparation(){Process process=preparation;if(process!=null)terminate(process);}
+    public void cancelPreparation(){paths.cancelDevelopmentPreparation();Process process=preparation;if(process!=null)terminate(process);}
     static String failureCode(com.fasterxml.jackson.databind.JsonNode node) {
         if(node!=null&&node.isObject()&&node.path("schemaVersion").isIntegralNumber()&&node.path("schemaVersion").canConvertToInt()&&node.path("schemaVersion").intValue()==1
                 &&"ERROR".equals(node.path("state").asText())&&node.path("errorCode").isTextual()) {
@@ -169,7 +169,7 @@ public class MaterialForecastProcessLauncher {
         }
         catch(InterruptedException interrupted){children.stream().filter(ProcessHandle::isAlive).forEach(ProcessHandle::destroyForcibly);process.destroyForcibly();Thread.currentThread().interrupt();}
     }
-    private static final class BoundedOutput implements Runnable {
+    static final class BoundedOutput implements Runnable {
         final InputStream input;final ByteArrayOutputStream bytes=new ByteArrayOutputStream();volatile boolean failed;
         BoundedOutput(InputStream input){this.input=input;}
         @Override public void run() {

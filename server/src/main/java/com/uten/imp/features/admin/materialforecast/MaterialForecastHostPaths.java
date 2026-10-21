@@ -15,6 +15,12 @@ import java.util.Locale;
 public class MaterialForecastHostPaths {
     private final StorageProperties storage;
     private final MaterialForecastProperties properties;
+    private MaterialForecastDevelopmentPayload developmentPayload;
+    private volatile Path preparedDevelopmentPayload;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    void setDevelopmentPayload(MaterialForecastDevelopmentPayload developmentPayload) {
+        this.developmentPayload=developmentPayload;
+    }
     public Path stateDirectory() {
         String override=properties.getSnapshotDirectory();
         if(override!=null&&!override.isBlank())return absolute(override);
@@ -40,8 +46,20 @@ public class MaterialForecastHostPaths {
     }
     public Path payloadDirectory() {
         if(nonblank(properties.getPayloadDirectory()))return absolute(properties.getPayloadDirectory());
-        return packagedPayload(new ApplicationHome(MaterialForecastHostPaths.class).getDir().toPath().toAbsolutePath().normalize());
+        Path prepared=preparedDevelopmentPayload;
+        return prepared!=null?prepared:packagedPayload(applicationHome());
     }
+    Path payloadDirectory(java.util.function.BooleanSupplier abort) {
+        if(nonblank(properties.getPayloadDirectory()))return absolute(properties.getPayloadDirectory());
+        Path home=applicationHome();
+        if(developmentPayload!=null) {
+            Path development=developmentPayload.resolve(home,abort);
+            if(development!=null){preparedDevelopmentPayload=development;return development;}
+        }
+        return packagedPayload(home);
+    }
+    private static Path applicationHome(){return new ApplicationHome(MaterialForecastHostPaths.class).getDir().toPath().toAbsolutePath().normalize();}
+    void cancelDevelopmentPreparation(){if(developmentPayload!=null)developmentPayload.cancel();}
     static Path packagedPayload(Path applicationHome) {
         if(applicationHome.getFileName()!=null&&applicationHome.getFileName().toString().equals("server")) {
             return applicationHome.resolve("material_forecast");

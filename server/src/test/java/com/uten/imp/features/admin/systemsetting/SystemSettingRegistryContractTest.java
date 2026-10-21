@@ -103,6 +103,15 @@ class SystemSettingRegistryContractTest {
                 """, Integer.class));
         assertThat(jdbc.queryForObject("""
                 SELECT pg_get_functiondef('business_data_reset()'::regprocedure)
-                """, String.class)).contains("('auth_sessions', 'CLEAR')", "('auth_step_up_states', 'CLEAR')");
+                """, String.class)).contains("('auth_sessions', 'CLEAR')", "('auth_step_up_states', 'PRESERVE')");
+        // V889 signs staff out through sessions while preserving reauthentication lockouts.
+        Map<String, String> resetPolicy = new TreeMap<>();
+        jdbc.query("""
+                SELECT table_name, disposition FROM fn_business_reset_table_policy()
+                WHERE table_name IN ('auth_sessions', 'auth_step_up_states')
+                """, rs -> {
+            resetPolicy.put(rs.getString("table_name"), rs.getString("disposition"));
+        });
+        assertEquals(Map.of("auth_sessions", "CLEAR", "auth_step_up_states", "PRESERVE"), resetPolicy);
     }
 }

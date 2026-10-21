@@ -26,4 +26,20 @@ class MaterialForecastRuntimeAccessTest {
         var port=new MaterialForecastRuntimeAccess(policy,mock(MaterialForecastHostPaths.class),owner,new DeploymentProperties());
         assertThat(port.runtime(desired).configurationApplied()).isTrue();verify(supervisor,never()).start();verifyNoInteractions(policy);
     }
+    @Test void malformedTypedPolicyValuesFailWithoutFallbackOrLeakingTheParserCause() {
+        var settings=mock(com.uten.imp.features.admin.systemsetting.SystemSettingsService.class);
+        var keys=java.util.EnumSet.of(com.uten.imp.features.admin.systemsetting.SystemSettingKey.MATERIAL_FORECAST_ENABLED,
+                com.uten.imp.features.admin.systemsetting.SystemSettingKey.MATERIAL_FORECAST_INTERVAL_MINUTES,
+                com.uten.imp.features.admin.systemsetting.SystemSettingKey.MATERIAL_FORECAST_HISTORY_DAYS,
+                com.uten.imp.features.admin.systemsetting.SystemSettingKey.MATERIAL_FORECAST_BACKFILL_BUDGET);
+        var policy=new MaterialForecastPolicyService(settings);
+        for(var key:keys) {
+            var values=new java.util.EnumMap<com.uten.imp.features.admin.systemsetting.SystemSettingKey,String>(com.uten.imp.features.admin.systemsetting.SystemSettingKey.class);
+            keys.forEach(item->values.put(item,item.defaultValue()));
+            values.put(key,"private-invalid-policy-value");
+            when(settings.readMaterialForecastSnapshotStrict()).thenReturn(values);
+            assertThatThrownBy(policy::current).isInstanceOf(IllegalStateException.class)
+                    .hasMessage("Invalid persisted material market policy").hasNoCause();
+        }
+    }
 }

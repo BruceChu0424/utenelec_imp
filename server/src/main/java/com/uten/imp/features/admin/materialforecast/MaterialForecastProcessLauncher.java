@@ -172,6 +172,21 @@ public class MaterialForecastProcessLauncher {
     private static final class BoundedOutput implements Runnable {
         final InputStream input;final ByteArrayOutputStream bytes=new ByteArrayOutputStream();volatile boolean failed;
         BoundedOutput(InputStream input){this.input=input;}
-        @Override public void run(){try(input){byte[] buffer=new byte[4096];int count;while((count=input.read(buffer))!=-1){if(bytes.size()+count>65536){failed=true;return;}bytes.write(buffer,0,count);}}catch(IOException invalid){failed=true;}}
+        @Override public void run() {
+            // Only this reader appends. Keep its budget local rather than checking
+            // shared stream state separately from a subsequent synchronized write.
+            int written=0;
+            try(input) {
+                byte[] buffer=new byte[4096];int count;
+                while((count=input.read(buffer))!=-1) {
+                    if(count>65536-written) {
+                        failed=true;
+                        return;
+                    }
+                    bytes.write(buffer,0,count);
+                    written+=count;
+                }
+            }catch(IOException invalid){failed=true;}
+        }
     }
 }

@@ -56,6 +56,11 @@ public class MaterialBenchmarkCatalog {
     private List<String> identity(Benchmark b){return List.of(b.seriesId(),b.name(),b.commodity(),b.market(),b.grade(),b.region(),b.currency(),b.unit(),b.priceBasis(),b.sourceName(),b.sourceUrl(),b.rollPolicy());}
     static boolean validContract(Benchmark b,String value) {
         if(value==null||!value.matches(b.symbol()+"[0-9]{4}"))return false;
-        int month=Integer.parseInt(value.substring(value.length()-2));return month>=1&&month<=12;
+        // The matched suffix has exactly four ASCII digits. Decode its two
+        // month digits directly; malformed contract text never reaches a
+        // throwing numeric parser or receives a default delivery month.
+        int end=value.length();
+        int month=(value.charAt(end-2)-'0')*10+(value.charAt(end-1)-'0');
+        return month>=1&&month<=12;
     }
 }

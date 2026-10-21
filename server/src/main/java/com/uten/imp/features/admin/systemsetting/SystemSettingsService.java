@@ -84,6 +84,27 @@ public class SystemSettingsService {
         return Map.copyOf(values);
     }
 
+    /** Material collection must stop on corrupt persisted policy rather than silently enable a default. */
+    @Transactional(readOnly=true)
+    public Map<SystemSettingKey,String> readMaterialForecastSnapshotStrict() {
+        var keys=java.util.EnumSet.of(SystemSettingKey.MATERIAL_FORECAST_ENABLED,
+                SystemSettingKey.MATERIAL_FORECAST_INTERVAL_MINUTES,SystemSettingKey.MATERIAL_FORECAST_HISTORY_DAYS,
+                SystemSettingKey.MATERIAL_FORECAST_BACKFILL_BUDGET);
+        var rows=repo.findAllById(keys.stream().map(SystemSettingKey::key).toList());
+        Map<String,SystemSetting> stored=rows.stream().collect(Collectors.toMap(SystemSetting::getKey,Function.identity()));
+        Map<SystemSettingKey,String> values=new java.util.EnumMap<>(SystemSettingKey.class);
+        for(var key:keys) {
+            SystemSetting row=stored.get(key.key());
+            String value=row==null?key.defaultValue():row.getValue();
+            if(value==null||validationError(key,value.trim())!=null) {
+                throw new IllegalStateException("Invalid persisted material market policy");
+            }
+            String normalized=value.trim();
+            values.put(key,key.type()==SystemSettingKey.Type.BOOL?Boolean.toString(Boolean.parseBoolean(normalized)):normalized);
+        }
+        return Map.copyOf(values);
+    }
+
     public String readString(SystemSettingKey key) {
         requireType(key, SystemSettingKey.Type.STRING);
         String raw = rawValue(key);

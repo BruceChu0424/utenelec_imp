@@ -92,7 +92,18 @@ class MaterialForecastSnapshotReaderTest {
         writeAutomatic(automaticFixture());var result=reader().read("shfe_cu_main_daily");assertThat(result.status()).isEqualTo("RESEARCH_ONLY");assertThat(result.snapshot().validation().passed()).isTrue();assertThat(result.snapshot().procurementSignal()).isEqualTo("INSUFFICIENT");assertThat(result.snapshot().forecasts()).allMatch(f->f.direction().equals("UP"));
         for(String field:List.of("status","procurementSignal","validationBasis")){var n=automaticFixture();n.put(field,switch(field){case "status"->"READY";case "procurementSignal"->"RISING";default->"POINT_IN_TIME";});writeAutomatic(n);assertThat(reader().read("shfe_cu_main_daily").snapshot()).as(field).isNull();}
     }
-    @Test void researchStillRequiresTheHeldoutAccuracyGates()throws Exception{for(String field:List.of("folds","modelMAE","coverage80")){var n=automaticFixture();var v=(ObjectNode)n.get("validation");if(field.equals("folds"))v.put(field,19);else v.put(field,field.equals("modelMAE")?"4":"0.69");writeAutomatic(n);assertThat(reader().read("shfe_cu_main_daily").snapshot()).as(field).isNull();}}
+    @Test void researchStillRequiresTheHeldoutAccuracyGates()throws Exception {
+        for(String field:List.of("folds","modelMAE","coverage80")) {
+            var n=automaticFixture();var v=(ObjectNode)n.get("validation");
+            if(field.equals("folds")) {
+                v.put(field,19);
+            }else {
+                v.put(field,field.equals("modelMAE")?"4":"0.69");
+            }
+            writeAutomatic(n);
+            assertThat(reader().read("shfe_cu_main_daily").snapshot()).as(field).isNull();
+        }
+    }
     @Test void matchingSeriesIdCannotSubstituteAnotherCommodityOrUnit()throws Exception{for(String field:List.of("commodity","unit","sourceName","quoteContract")){var n=automaticFixture();n.put(field,switch(field){case "commodity"->"SILVER";case "unit"->"千克";case "sourceName"->"Unverified source";default->"ag2611";});writeAutomatic(n);assertThat(reader().read("shfe_cu_main_daily").snapshot()).as(field).isNull();}}
     @Test void automaticEvidenceRejectsFutureFetchAndNonIntegerHistorySize()throws Exception{
         var n=automaticFixture();n.put("sourceFetchedAt","2026-10-20T16:30:01Z");writeAutomatic(n);assertThat(reader().read("shfe_cu_main_daily").snapshot()).isNull();

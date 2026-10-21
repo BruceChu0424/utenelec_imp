@@ -17,12 +17,21 @@ public class MaterialForecastPolicyService {
     private final SystemSettingsService settings;
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public Policy current() {
-        var values=settings.readSnapshot(java.util.EnumSet.of(SystemSettingKey.MATERIAL_FORECAST_ENABLED,
-                SystemSettingKey.MATERIAL_FORECAST_INTERVAL_MINUTES,SystemSettingKey.MATERIAL_FORECAST_HISTORY_DAYS,SystemSettingKey.MATERIAL_FORECAST_BACKFILL_BUDGET));
-        return policy(Boolean.parseBoolean(values.get(SystemSettingKey.MATERIAL_FORECAST_ENABLED)),
-                Integer.parseInt(values.get(SystemSettingKey.MATERIAL_FORECAST_INTERVAL_MINUTES)),
-                Integer.parseInt(values.get(SystemSettingKey.MATERIAL_FORECAST_HISTORY_DAYS)),
-                Integer.parseInt(values.get(SystemSettingKey.MATERIAL_FORECAST_BACKFILL_BUDGET)));
+        var values=settings.readMaterialForecastSnapshotStrict();
+        String enabled=values.get(SystemSettingKey.MATERIAL_FORECAST_ENABLED);
+        if(!"true".equalsIgnoreCase(enabled)&&!"false".equalsIgnoreCase(enabled)) {
+            throw new IllegalStateException("Invalid persisted material market policy");
+        }
+        try {
+            return policy(Boolean.parseBoolean(enabled),
+                    Integer.parseInt(values.get(SystemSettingKey.MATERIAL_FORECAST_INTERVAL_MINUTES)),
+                    Integer.parseInt(values.get(SystemSettingKey.MATERIAL_FORECAST_HISTORY_DAYS)),
+                    Integer.parseInt(values.get(SystemSettingKey.MATERIAL_FORECAST_BACKFILL_BUDGET)));
+        }catch(NumberFormatException invalid) {
+            throw new IllegalStateException("Invalid persisted material market policy");
+        }catch(IllegalArgumentException invalid) {
+            throw new IllegalStateException("Invalid persisted material market policy");
+        }
     }
     public static Policy policy(boolean enabled,int minutes,int days,int budget) {
         if(minutes<15||minutes>60||days<3||days>3650||budget<0||budget>1000)throw new IllegalArgumentException("Invalid market policy");

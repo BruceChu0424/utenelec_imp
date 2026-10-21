@@ -55,4 +55,27 @@ class MaterialForecastHostPathsTest {
         assertThat(MaterialForecastProcessLauncher.failureCode(json.readTree("{\"schemaVersion\":1,\"state\":\"ERROR\",\"errorCode\":\"BASE_PYTHON_UNAVAILABLE\"}"))).isEqualTo("BASE_PYTHON_UNAVAILABLE");
         assertThat(MaterialForecastProcessLauncher.failureCode(json.readTree("{\"schemaVersion\":1,\"state\":\"ERROR\",\"errorCode\":\"private path and raw traceback\"}"))).isEqualTo("PREPARATION_FAILED");
     }
+    @Test void helperOutputAcceptsExactly64KiBAndRejectsOverflowBeforeAppendingIt()throws Exception {
+        Class<?> type=Class.forName(MaterialForecastProcessLauncher.class.getName()+"$BoundedOutput");
+        var constructor=type.getDeclaredConstructor(java.io.InputStream.class);
+        constructor.setAccessible(true);
+        for(int size:List.of(0,65536,65537,131072)) {
+            byte[] data=new byte[size];java.util.Arrays.fill(data,(byte)'x');
+            var closed=new java.util.concurrent.atomic.AtomicBoolean();
+            var input=new java.io.ByteArrayInputStream(data) {
+                @Override public void close() {closed.set(true);}
+            };
+            Object collector=constructor.newInstance(input);
+            ((Runnable)collector).run();
+            var bytes=java.util.Objects.requireNonNull((java.io.ByteArrayOutputStream)org.springframework.test.util.ReflectionTestUtils.getField(collector,"bytes"));
+            assertThat((Boolean)org.springframework.test.util.ReflectionTestUtils.getField(collector,"failed")).as("input size %s",size).isEqualTo(size>65536);
+            assertThat(bytes.size()).isLessThanOrEqualTo(65536);
+            assertThat(closed).isTrue();
+            if(size<=65536) {
+                assertThat(bytes.toByteArray()).containsExactly(data);
+            }else {
+                assertThat(bytes.size()).isEqualTo(65536);
+            }
+        }
+    }
 }

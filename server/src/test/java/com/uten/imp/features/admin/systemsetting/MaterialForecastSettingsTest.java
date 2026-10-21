@@ -37,4 +37,53 @@ class MaterialForecastSettingsTest {
         assertThatThrownBy(()->service.writeDelegated(SystemSettingKey.MATERIAL_FORECAST_ENABLED,"false",actor,"admin","test")).isInstanceOf(com.uten.imp.common.web.ApiException.class);
         verifyNoInteractions(repo,audit);
     }
+    @Test void strictPolicyDefaultsOnlyMissingRowsAndPreservesAnExplicitFalse() {
+        var policy=new com.uten.imp.features.admin.materialforecast.MaterialForecastPolicyService(service);
+        when(repo.findAllById(any())).thenReturn(List.of());
+        assertThat(policy.current()).isEqualTo(com.uten.imp.features.admin.materialforecast.MaterialForecastPolicyService.policy(true,15,1200,30));
+        when(repo.findAllById(any())).thenReturn(List.of(row(SystemSettingKey.MATERIAL_FORECAST_ENABLED," false "),row(SystemSettingKey.MATERIAL_FORECAST_INTERVAL_MINUTES,"30")));
+        assertThat(policy.current()).isEqualTo(com.uten.imp.features.admin.materialforecast.MaterialForecastPolicyService.policy(false,30,1200,30));
+        verify(repo,times(2)).findAllById(any());verify(repo,never()).findById(any());
+        verifyNoInteractions(audit,authority);
+    }
+    @Test void strictPolicyRejectsPresentNullMalformedOverflowAndOutOfRangeNumericRows() {
+        var policy=new com.uten.imp.features.admin.materialforecast.MaterialForecastPolicyService(service);
+        for(var key:List.of(SystemSettingKey.MATERIAL_FORECAST_INTERVAL_MINUTES,SystemSettingKey.MATERIAL_FORECAST_HISTORY_DAYS,SystemSettingKey.MATERIAL_FORECAST_BACKFILL_BUDGET)) {
+            for(String corrupt:Arrays.asList(null,"","private-non-numeric-value","2147483648",Long.toString(key.min()-1),Long.toString(key.max()+1))) {
+                when(repo.findAllById(any())).thenReturn(List.of(row(key,corrupt)));
+                assertThatThrownBy(policy::current).as("invalid persisted %s",key.key()).isInstanceOf(IllegalStateException.class)
+                        .hasMessage("Invalid persisted material market policy").hasNoCause();
+            }
+        }
+        verify(repo,never()).save(any());verifyNoInteractions(audit,authority);
+    }
+    @Test void strictPolicyRejectsPresentCorruptBooleansInsteadOfEnablingTheDefault() {
+        var policy=new com.uten.imp.features.admin.materialforecast.MaterialForecastPolicyService(service);
+        for(String corrupt:Arrays.asList(null,"","private-invalid-switch","0","yes")) {
+            when(repo.findAllById(any())).thenReturn(List.of(row(SystemSettingKey.MATERIAL_FORECAST_ENABLED,corrupt)));
+            assertThatThrownBy(policy::current).isInstanceOf(IllegalStateException.class)
+                    .hasMessage("Invalid persisted material market policy").hasNoCause();
+        }
+        verify(repo,never()).save(any());verifyNoInteractions(audit,authority);
+    }
+    @Test void strictPolicyAcceptsRegisteredNumericBoundaries() {
+        var policy=new com.uten.imp.features.admin.materialforecast.MaterialForecastPolicyService(service);
+        for(var expected:List.of(com.uten.imp.features.admin.materialforecast.MaterialForecastPolicyService.policy(false,15,3,0),
+                com.uten.imp.features.admin.materialforecast.MaterialForecastPolicyService.policy(false,60,3650,1000))) {
+            when(repo.findAllById(any())).thenReturn(List.of(row(SystemSettingKey.MATERIAL_FORECAST_ENABLED,"FALSE"),
+                    row(SystemSettingKey.MATERIAL_FORECAST_INTERVAL_MINUTES,Integer.toString(expected.intervalMinutes())),
+                    row(SystemSettingKey.MATERIAL_FORECAST_HISTORY_DAYS,Integer.toString(expected.historyDays())),
+                    row(SystemSettingKey.MATERIAL_FORECAST_BACKFILL_BUDGET,Integer.toString(expected.backfillBudget()))));
+            assertThat(policy.current()).isEqualTo(expected);
+        }
+    }
+    @Test void legacyTolerantSnapshotStillUsesDefaultsForCorruptStoredValues() {
+        when(repo.findAllById(any())).thenReturn(List.of(row(SystemSettingKey.MATERIAL_FORECAST_ENABLED,"broken-switch"),
+                row(SystemSettingKey.MATERIAL_FORECAST_INTERVAL_MINUTES,"broken-integer")));
+        assertThat(service.readSnapshot(keys)).containsEntry(SystemSettingKey.MATERIAL_FORECAST_ENABLED,"true")
+                .containsEntry(SystemSettingKey.MATERIAL_FORECAST_INTERVAL_MINUTES,"15");
+        assertThatThrownBy(service::readMaterialForecastSnapshotStrict).isInstanceOf(IllegalStateException.class)
+                .hasMessage("Invalid persisted material market policy").hasNoCause();
+        verify(repo,never()).save(any());verifyNoInteractions(audit,authority);
+    }
 }

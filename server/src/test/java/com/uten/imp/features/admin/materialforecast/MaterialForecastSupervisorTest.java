@@ -75,6 +75,19 @@ class MaterialForecastSupervisorTest {
         assertThat(supervisor.state(desired.get()).configurationApplied()).isFalse();supervisor.reconcile();
         var state=supervisor.state(desired.get());assertThat(state.state()).isEqualTo("DISABLED");assertThat(state.processRunning()).isFalse();assertThat(state.configurationApplied()).isTrue();assertThat(state.appliedRevision()).isEqualTo(desired.get().revision());
     }
+    @Test void invalidPersistedPolicyStopsTheOwnedWorkerInsteadOfApplyingADefault()throws Exception {
+        var supervisor=supervisor();supervisor.reconcile();String firstRun=run.get();
+        heartbeat(desired.get().revision(),firstRun,clock.instant());
+        assertThat(supervisor.state(desired.get()).configurationApplied()).isTrue();
+        when(policies.current()).thenThrow(new IllegalStateException("Invalid persisted material market policy"));
+        ReflectionTestUtils.invokeMethod(supervisor,"reconcileSafely");
+        assertThat(children).hasSize(1);assertThat(children.getFirst().alive).isFalse();
+        assertThat(children.getFirst().commands.toString()).startsWith("STOP "+firstRun);
+        var state=supervisor.state(desired.get());
+        assertThat(state.state()).isEqualTo("UNAVAILABLE");assertThat(state.lastErrorCode()).isEqualTo("CONFIGURATION_PENDING");
+        assertThat(state.processRunning()).isFalse();assertThat(state.configurationApplied()).isFalse();
+        verify(launcher,times(1)).start(any(),any(),anyString());
+    }
     @Test void anUnknownCollectorLeasePreventsFalseDisabledAcknowledgementWithoutKillingAnything()throws Exception {
         desired.set(MaterialForecastPolicyService.policy(false,15,1200,30));Path lock=paths.stateDirectory().resolve(".auto-feed/collector.lock");Files.createDirectories(lock.getParent());
         var supervisor=supervisor();

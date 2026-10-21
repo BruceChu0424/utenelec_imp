@@ -452,6 +452,23 @@ class CoverageTests(unittest.TestCase):
         self.assertFalse(runner.audit_cases(plan([other]), 0,
                          [testcase(status="skipped", reason=f"System property [{runner.WORKBOOK_PROPERTY}] does not exist")], 0)["complete"])
 
+    def test_runtime_preparation_skip_is_limited_to_its_dedicated_workflow_input(self):
+        classname, methodname = runner.MARKET_RUNTIME_PREPARATION.split("#")
+        gate = runner.MARKET_RUNTIME_GATE
+        cls = test_class(classname, (methodname,), gates=(gate,))
+        reason = f"Environment variable [{gate}] does not exist"
+        case = testcase(methodname, classname, "skipped", reason)
+        self.assertTrue(runner.audit_cases(plan([cls]), 0, [case], 0)["complete"])
+        for declared in ([], [gate, "unknown.input"], ["unknown.input"]):
+            cls["methods"][0]["environment_gates"] = declared
+            self.assertFalse(runner.audit_cases(plan([cls]), 0, [case], 0)["complete"])
+        cls["methods"][0]["environment_gates"] = [gate]
+        case["skip_reason"] = f"Environment variable [{gate}] with value [false] does not match regular expression [(?i)true]"
+        self.assertFalse(runner.audit_cases(plan([cls]), 0, [case], 0)["complete"])
+        other = test_class(gates=(gate,))
+        self.assertFalse(runner.audit_cases(plan([other]), 0,
+                         [testcase(status="skipped", reason=reason)], 0)["complete"])
+
     def test_os_skip_requires_annotation_xml_os_and_actual_execution_platform(self):
         cls = test_class()
         method = cls["methods"][0]

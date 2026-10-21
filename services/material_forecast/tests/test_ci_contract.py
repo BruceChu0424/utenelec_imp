@@ -67,6 +67,19 @@ class InferenceSupplyChainContractTests(unittest.TestCase):
                 self.assertIn("-r services/material_forecast/requirements.txt", command)
         self.assertEqual(len(installs), sum(" -m pip check" in line for line in readme.splitlines()))
 
+    def test_opt_in_java_preparation_is_mandatory_after_the_real_payload_build(self):
+        workflow = (ROOT / ".github/workflows/material-forecast.yml").read_text(encoding="utf-8")
+        build = workflow.index("      - name: Build and prepare the complete offline managed runtime")
+        verify = workflow.index("      - name: Verify Java preparation of the offline runtime")
+        self.assertLess(build, verify)
+        step = workflow[verify + len("      - name:"):].split("      - name:", 1)[0]
+        self.assertIn('UTEN_RUN_MARKET_PREPARATION_SMOKE: "true"', step)
+        self.assertIn("-Dtest=MaterialForecastRuntimePreparationSmokeTest", step)
+        for setting in ("payload", "cache", "python", "preparationEvidence"):
+            self.assertIn("-Duten.market.test." + setting + "=", step)
+        self.assertNotIn("continue-on-error", step)
+        self.assertNotIn("        if:", step)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -46,6 +46,8 @@ OPTIONAL_GATES = {
 EXPORTER = "com.uten.imp.migration.FlywayChecksumManifestExporterTest#exportsCanonicalFlywayChecksumsOnlyWhenExplicitlyRequested"
 WORKBOOK_PROPERTY = "uten.cost.companyWorkbook"
 WORKBOOK_REVIEW = "com.uten.imp.features.master.goods.costing.CostCompanyWorkbookReviewTest#preservesFortyDetailBlocksIncludingProductsAbsentFromTheThirtySevenRowSummary"
+MARKET_RUNTIME_PREPARATION = "com.uten.imp.features.admin.materialforecast.MaterialForecastRuntimePreparationSmokeTest#actualProductionLauncherPreparesTheReviewedPayload"
+MARKET_RUNTIME_GATE = "UTEN_RUN_MARKET_PREPARATION_SMOKE"
 
 
 def read_json(path):
@@ -366,6 +368,13 @@ def allowed_skip(case, method, runtime_platform=None):
         return (method.get("system_property_gates") == [{"named": WORKBOOK_PROPERTY, "matches": ".+"}]
                 and not case.get("workbook_property_present", False)
                 and reason == f"System property [{WORKBOOK_PROPERTY}] does not exist")
+    if method["id"] == MARKET_RUNTIME_PREPARATION:
+        # The required material-forecast workflow builds the real offline wheel
+        # payload and executes this exact Java launcher test with the gate true.
+        # Ordinary DB partitions have no such payload. Only its declared absence
+        # is permitted here; a false/changed gate or a different test still fails.
+        return (method.get("environment_gates") == [MARKET_RUNTIME_GATE]
+                and reason == f"Environment variable [{MARKET_RUNTIME_GATE}] does not exist")
     os_name = case.get("os_name", "")
     current_os = os_family(os_name)
     actual_os = {"linux": "LINUX", "win32": "WINDOWS", "darwin": "MAC"}.get(runtime_platform)

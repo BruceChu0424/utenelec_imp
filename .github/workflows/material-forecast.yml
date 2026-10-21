@@ -41,3 +41,27 @@ jobs:
         run: |
           .venv-material-forecast/bin/python services/material_forecast/build_payload.py --platform linux-x86_64 --output "$RUNNER_TEMP/material-forecast-payload"
           .venv-material-forecast/bin/python "$RUNNER_TEMP/material-forecast-payload/prepare_runtime.py" --payload "$RUNNER_TEMP/material-forecast-payload" --cache "$RUNNER_TEMP/material-forecast-cache"
+      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: server/pom.xml
+      - name: Verify Java preparation of the offline runtime
+        id: java_runtime
+        working-directory: server
+        env:
+          UTEN_RUN_MARKET_PREPARATION_SMOKE: "true"
+        run: |
+          mvn -B -ntp -Dtest=MaterialForecastRuntimePreparationSmokeTest \
+            -Duten.market.test.payload="$RUNNER_TEMP/material-forecast-payload" \
+            -Duten.market.test.cache="$RUNNER_TEMP/material-forecast-java-cache" \
+            -Duten.market.test.python="$(command -v python3.12)" \
+            -Duten.market.test.preparationEvidence="$RUNNER_TEMP/material-forecast-java-evidence.json" test
+      - name: Keep Java runtime preparation evidence
+        if: ${{ !cancelled() && steps.java_runtime.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: material-forecast-java-preparation
+          path: ${{ runner.temp }}/material-forecast-java-evidence.json
+          if-no-files-found: error

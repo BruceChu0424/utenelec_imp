@@ -5,6 +5,7 @@ import '../data_display/uten_selection_lifecycle.dart';
 import '../../shared/platform_tables/platform_table_binding.dart';
 import '../../shared/platform_tables/platform_table_controller.dart';
 import '../../shared/platform_tables/platform_table_picker.dart';
+import '../../shared/platform_tables/platform_column_header_actions.dart';
 import '../../shared/platform_tables/platform_table_widgets.dart';
 import '../../shared/platform_tables/table_column_projection.dart';
 import '../../core/router/page_search_lifecycle.dart';
@@ -1152,6 +1153,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
       _visibleRowsFilterKey = null;
     }
     if (_platform.layout.order.isNotEmpty ||
+        _platform.layout.hidden.isNotEmpty ||
         _platform.binding?.defaultColumnOrder != null ||
         _platform.binding?.defaultVisibleColumnKeys != null) {
       // localLayout has already appended unknown columns. Compare against the
@@ -2112,31 +2114,34 @@ class _UtenEditableGridState<T extends EditableGridRow>
       canHide: columnCanDragHide(i),
     );
     final pinAllowed = cap.canPin && (cap.pinned || hasSnapshotSource);
-    return utenColumnHeaderMenuEntries(
-      UtenColumnHeaderMenuSpec(
-        pinned: cap.pinned,
-        canPin: pinAllowed,
-        canHide: cap.canHide,
-        canMoveLeft: cap.canMoveLeft,
-        canMoveRight: cap.canMoveRight,
-        canMoveToFront: cap.canMoveToFront,
-        canMoveToBack: cap.canMoveToBack,
-        onTogglePin: pinAllowed ? () => _toggleColumnPin(key) : null,
-        onHide: cap.canHide ? () => _toggleColumn(key) : null,
-        onMoveLeft: cap.canMoveLeft
-            ? () => _moveColumnTo(key, UtenColumnHeaderMove.left)
-            : null,
-        onMoveRight: cap.canMoveRight
-            ? () => _moveColumnTo(key, UtenColumnHeaderMove.right)
-            : null,
-        onMoveToFront: cap.canMoveToFront
-            ? () => _moveColumnTo(key, UtenColumnHeaderMove.front)
-            : null,
-        onMoveToBack: cap.canMoveToBack
-            ? () => _moveColumnTo(key, UtenColumnHeaderMove.back)
-            : null,
+    return [
+      ...utenColumnHeaderMenuEntries(
+        UtenColumnHeaderMenuSpec(
+          pinned: cap.pinned,
+          canPin: pinAllowed,
+          canHide: cap.canHide,
+          canMoveLeft: cap.canMoveLeft,
+          canMoveRight: cap.canMoveRight,
+          canMoveToFront: cap.canMoveToFront,
+          canMoveToBack: cap.canMoveToBack,
+          onTogglePin: pinAllowed ? () => _toggleColumnPin(key) : null,
+          onHide: cap.canHide ? () => _toggleColumn(key) : null,
+          onMoveLeft: cap.canMoveLeft
+              ? () => _moveColumnTo(key, UtenColumnHeaderMove.left)
+              : null,
+          onMoveRight: cap.canMoveRight
+              ? () => _moveColumnTo(key, UtenColumnHeaderMove.right)
+              : null,
+          onMoveToFront: cap.canMoveToFront
+              ? () => _moveColumnTo(key, UtenColumnHeaderMove.front)
+              : null,
+          onMoveToBack: cap.canMoveToBack
+              ? () => _moveColumnTo(key, UtenColumnHeaderMove.back)
+              : null,
+        ),
       ),
-    );
+      ...platformColumnHeaderDeleteEntries(context, _platform, key),
+    ];
   }
 
   /// 双向横滚同步：表头 / 表体 任一滚动 → 另一个 jumpTo 跟随（[_syncing] 防回环；

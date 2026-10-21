@@ -359,15 +359,18 @@ class PlatformTableController<T> extends ChangeNotifier {
                   !key.startsWith('extra:'))
                 key,
           };
-    final hidden = savedOrder.isEmpty
-        ? hiddenByDefault
-        : {
-            for (final key in layout.hidden)
-              if (byCanonical.containsKey(canonicalKey(key)))
-                byCanonical[canonicalKey(key)]!,
-            for (final key in hiddenByDefault)
-              if (!savedOrder.contains(canonicalKey(key))) key,
-          };
+    final hidden = {
+      // A deleted selected column may still have saved record values. Honor
+      // that explicit removal even before the user has customized column order.
+      for (final key in layout.hidden)
+        if (byCanonical.containsKey(canonicalKey(key)))
+          byCanonical[canonicalKey(key)]!,
+      if (savedOrder.isEmpty)
+        ...hiddenByDefault
+      else
+        for (final key in hiddenByDefault)
+          if (!savedOrder.contains(canonicalKey(key))) key,
+    };
     return layout.copyWith(
       filters: {
         for (final entry in layout.filters.entries)
@@ -498,6 +501,16 @@ class PlatformTableController<T> extends ChangeNotifier {
       );
     }
     unawaited(reload());
+  }
+
+  /// Layouts and document snapshots deliberately omit deletion authority.
+  /// Header actions resolve the current catalog metadata without replacing any
+  /// saved cell's name, formula or value with today's definition.
+  PlatformColumnDefinition? columnForDeletion(String key) {
+    if (!key.startsWith('platform:') || historical) return null;
+    final id = key.substring('platform:'.length);
+    final column = _catalogDefinitions[id] ?? _definitions[id];
+    return column != null && canDeleteColumn(column) ? column : null;
   }
 
   bool canDeleteColumn(PlatformColumnDefinition column) =>

@@ -1,9 +1,12 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/shared/platform_tables/platform_row_draft.dart';
+import 'package:uten_imp/shared/platform_tables/platform_column_header_actions.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_binding.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_controller.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_layout.dart';
@@ -79,6 +82,73 @@ class _Controller extends PlatformTableController<String> {
 }
 
 void main() {
+  test('删除未调整过列顺序的自建列仍隐藏历史记录上的同名列', () async {
+    final controller = _Controller(_Repository());
+    addTearDown(controller.dispose);
+    controller.updateLayout(_layout.copyWith(order: const []));
+    await controller.deleteColumn(_own);
+    expect(
+      controller.localLayout([
+        'name',
+        _own.key,
+        _other.key,
+      ], defaultHidden: const {}).hidden,
+      contains(_own.key),
+    );
+  });
+
+  for (final authorizationChange in [false, true]) {
+    testWidgets(
+      'header confirmation rejects ${authorizationChange ? "an account A-B-A transition" : "a page becoming read-only"}',
+      (tester) async {
+        final repository = _Repository();
+        final controller = _Controller(repository);
+        addTearDown(controller.dispose);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Builder(
+                builder: (context) => TextButton(
+                  onPressed: () => platformColumnHeaderDeleteEntries(
+                    context,
+                    controller,
+                    _own.key,
+                  ).whereType<UtenMenuItem>().single.onTap(),
+                  child: const Text('打开删除'),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('打开删除'));
+        await tester.pumpAndSettle();
+        if (authorizationChange) {
+          controller.revision += 2;
+        } else {
+          controller.editing = false;
+        }
+        await tester.tap(find.text('删除'));
+        await tester.pumpAndSettle();
+        expect(repository.deletes, isEmpty);
+        expect(controller.layout.toJson(), _layout.toJson());
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  test('表头删除读取当前目录权限，布局重放不丢失权限且系统列没有删除入口', () {
+    final controller = _Controller(_Repository());
+    addTearDown(controller.dispose);
+    controller.rememberCatalogResults([_own, _other]);
+    controller.updateLayout(PlatformTableLayout.fromJson(_layout.toJson()));
+    expect(controller.definitions.first.canDelete, isFalse);
+    expect(controller.columnForDeletion(_own.key), same(_own));
+    expect(controller.columnForDeletion(_other.key), isNull);
+    expect(controller.columnForDeletion('name'), isNull);
+    controller.editing = false;
+    expect(controller.columnForDeletion(_own.key), isNull);
+  });
+
   test('删除能力只接受本次服务端元数据，不写入布局和草稿缓存', () {
     expect(_own.canDelete, isTrue);
     expect(_other.canDelete, isFalse);

@@ -5,6 +5,7 @@ import '../../../components/data_display/uten_table_row_drag.dart';
 import '../../../shared/platform_tables/platform_table_binding.dart';
 import '../../../shared/platform_tables/platform_table_controller.dart';
 import '../../../shared/platform_tables/platform_table_picker.dart';
+import '../../../shared/platform_tables/platform_column_header_actions.dart';
 import '../../../shared/platform_tables/platform_table_widgets.dart';
 import '../../../shared/platform_tables/table_column_projection.dart';
 import '../../../core/router/page_search_lifecycle.dart';
@@ -2639,33 +2640,36 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       key: key,
       canHide: columnCanDragHide(i),
     );
-    return utenColumnHeaderMenuEntries(
-      UtenColumnHeaderMenuSpec(
-        pinned: cap.pinned,
-        canPin: cap.canPin && !required,
-        canHide: cap.canHide,
-        canMoveLeft: cap.canMoveLeft && !required,
-        canMoveRight: cap.canMoveRight && !required,
-        canMoveToFront: cap.canMoveToFront && !required,
-        canMoveToBack: cap.canMoveToBack && !required,
-        onTogglePin: cap.canPin && !required
-            ? () => _toggleColumnPin(key)
-            : null,
-        onHide: cap.canHide ? () => _toggleColumn(key) : null,
-        onMoveLeft: cap.canMoveLeft && !required
-            ? () => _moveColumnTo(key, UtenColumnHeaderMove.left)
-            : null,
-        onMoveRight: cap.canMoveRight && !required
-            ? () => _moveColumnTo(key, UtenColumnHeaderMove.right)
-            : null,
-        onMoveToFront: cap.canMoveToFront && !required
-            ? () => _moveColumnTo(key, UtenColumnHeaderMove.front)
-            : null,
-        onMoveToBack: cap.canMoveToBack && !required
-            ? () => _moveColumnTo(key, UtenColumnHeaderMove.back)
-            : null,
+    return [
+      ...utenColumnHeaderMenuEntries(
+        UtenColumnHeaderMenuSpec(
+          pinned: cap.pinned,
+          canPin: cap.canPin && !required,
+          canHide: cap.canHide,
+          canMoveLeft: cap.canMoveLeft && !required,
+          canMoveRight: cap.canMoveRight && !required,
+          canMoveToFront: cap.canMoveToFront && !required,
+          canMoveToBack: cap.canMoveToBack && !required,
+          onTogglePin: cap.canPin && !required
+              ? () => _toggleColumnPin(key)
+              : null,
+          onHide: cap.canHide ? () => _toggleColumn(key) : null,
+          onMoveLeft: cap.canMoveLeft && !required
+              ? () => _moveColumnTo(key, UtenColumnHeaderMove.left)
+              : null,
+          onMoveRight: cap.canMoveRight && !required
+              ? () => _moveColumnTo(key, UtenColumnHeaderMove.right)
+              : null,
+          onMoveToFront: cap.canMoveToFront && !required
+              ? () => _moveColumnTo(key, UtenColumnHeaderMove.front)
+              : null,
+          onMoveToBack: cap.canMoveToBack && !required
+              ? () => _moveColumnTo(key, UtenColumnHeaderMove.back)
+              : null,
+        ),
       ),
-    );
+      ...platformColumnHeaderDeleteEntries(context, _platform, key),
+    ];
   }
 
   // —— 列宽自动适配 / 手动拖拽 常量 ——

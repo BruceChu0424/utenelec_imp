@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -152,6 +153,24 @@ class _Repository extends PlatformTableRepository {
   }
 }
 
+class _OwnedColumnRepository extends _Repository {
+  final deletions = <String>[];
+
+  @override
+  Future<List<PlatformColumnDefinition>> search(
+    String scope,
+    String query, {
+    List<String>? ids,
+  }) async => [
+    PlatformColumnDefinition.fromJson({..._note.toJson(), 'canDelete': true}),
+  ];
+
+  @override
+  Future<void> deleteDefinition(String scope, String id) async {
+    deletions.add('$scope/$id');
+  }
+}
+
 final _pricePermission = StateProvider<bool>((_) => true);
 
 class _PermissionRepository extends _Repository {
@@ -224,6 +243,97 @@ Future<void> _pump(
 }
 
 void main() {
+  for (final editable in [false, true]) {
+    testWidgets(
+      '${editable ? "editable grid" : "master table"} deletes an owned custom header with confirmation and preserves system columns',
+      (tester) async {
+        final repository = _OwnedColumnRepository();
+        final row = _Row('record');
+        final grid = UtenEditableGridController<_Row>(initial: [row]);
+        addTearDown(grid.dispose);
+        final binding = PlatformTableBinding<_Row>(
+          tableKey: 'test.items',
+          scope: 'resource',
+          recordIdOf: (row) => row.id,
+          canEditValues: true,
+        );
+        final table = editable
+            ? UtenEditableGrid<_Row>(
+                tableKey: 'test.items',
+                columnEditingEnabled: true,
+                platformBinding: binding,
+                controller: grid,
+                columns: [
+                  EditableGridColumn(
+                    key: 'name',
+                    label: '名称',
+                    width: 180,
+                    cellBuilder: (_, _) => const Text('产品'),
+                  ),
+                ],
+                showAddRow: false,
+                showRowDelete: false,
+              )
+            : MasterDataTableView<_Row>(
+                tableKey: 'test.items',
+                columnEditingEnabled: true,
+                embedded: true,
+                platformBinding: binding,
+                columns: [
+                  MasterColumnDef(
+                    key: 'name',
+                    label: '名称',
+                    width: 180,
+                    value: (_) => '产品',
+                  ),
+                ],
+                items: [row],
+                facets: const {},
+                nullCounts: const {},
+                filters: const {},
+                onFilterChanged: (_, _) {},
+              );
+        await _pump(
+          tester,
+          repository,
+          table,
+          seed: const PlatformTableLayout(added: [_note]),
+        );
+        Future<void> menu(String label) async {
+          final gesture = await tester.startGesture(
+            tester.getCenter(find.text(label).hitTestable().first),
+            kind: PointerDeviceKind.mouse,
+            buttons: kSecondaryButton,
+          );
+          await gesture.up();
+          await tester.pumpAndSettle();
+        }
+
+        await menu('名称');
+        expect(find.text('删除列'), findsNothing);
+        await tester.tapAt(const Offset(5, 5));
+        await tester.pumpAndSettle();
+        await menu('补充说明');
+        await tester.tap(find.text('删除列'));
+        await tester.pumpAndSettle();
+        expect(repository.deletions, isEmpty);
+        await tester.tap(find.text('取消'));
+        await tester.pumpAndSettle();
+        expect(repository.deletions, isEmpty);
+        await menu('补充说明');
+        await tester.tap(find.text('删除列'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('删除'));
+        await tester.pumpAndSettle();
+        expect(repository.deletions, ['resource/note']);
+        expect(find.text('补充说明'), findsNothing);
+        expect(find.text('名称'), findsOneWidget);
+        expect(repository.writes, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   test(
     'repository capabilities are invalidated for same-user permission changes',
     () {

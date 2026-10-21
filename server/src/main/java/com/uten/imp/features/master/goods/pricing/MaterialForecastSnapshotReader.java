@@ -135,7 +135,12 @@ public class MaterialForecastSnapshotReader {
         BigDecimal baseline=decimal(v,"baselineMAE",false,true),model=decimal(v,"modelMAE",false,true),coverage=decimal(v,"coverage80",false,true);
         if(coverage!=null&&coverage.compareTo(BigDecimal.ONE)>0)bad();
         LocalDate start=optionalDate(v,"backtestStart"),end=optionalDate(v,"backtestEnd");
-        if((start==null)!=(end==null)||start!=null&&(start.isAfter(end)||end.isAfter(asOf)))bad();
+        if ((start == null) != (end == null)) {
+            bad();
+        }
+        if (start != null && end != null && (start.isAfter(end) || end.isAfter(asOf))) {
+            bad();
+        }
         boolean ready="READY".equals(status);
         if(ready&&(!v.path("passed").booleanValue()||folds<20||baseline==null||model==null||coverage==null||baseline.signum()<=0||model.compareTo(baseline)>=0||coverage.compareTo(new BigDecimal("0.70"))<0||start==null))bad();
         if(!ready&&(!"INSUFFICIENT".equals(signal)||v.path("passed").booleanValue()))bad();
@@ -170,18 +175,46 @@ public class MaterialForecastSnapshotReader {
         return new Snapshot(s.schemaVersion(),s.seriesId(),s.name(),s.commodity(),s.market(),s.grade(),s.region(),s.currency(),s.unit(),s.priceBasis(),s.sourceName(),s.sourceUrl(),s.authorized(),s.rollPolicy(),s.dataAsOf(),s.generatedAt(),s.latestPrice(),"INSUFFICIENT",List.copyOf(reasons),s.modelVersion(),s.libraryVersion(),s.datasetDigest(),s.validation(),s.forecasts().stream().map(f->new Forecast(f.horizon(),f.price(),f.lower80(),f.upper80(),"UNCERTAIN")).toList(),"INSUFFICIENT");
     }
     private static void fields(JsonNode n,Set<String> required,Set<String> optional) {
-        if(n==null||!n.isObject())bad();Set<String> actual=new HashSet<>();n.fieldNames().forEachRemaining(actual::add);
-        if(!actual.containsAll(required)||actual.stream().anyMatch(f->!required.contains(f)&&!optional.contains(f)))bad();
+        if (n == null || !n.isObject()) {
+            bad();
+        }
+        Set<String> actual = new HashSet<>();
+        n.fieldNames().forEachRemaining(actual::add);
+        if (!actual.containsAll(required)
+                || actual.stream().anyMatch(f -> !required.contains(f) && !optional.contains(f))) {
+            bad();
+        }
     }
     private static String text(JsonNode n,String key,int max,boolean blank) {
-        JsonNode value=n.get(key);if(value==null||!value.isTextual())bad();String text=value.asText();
-        if(text.length()>max||!blank&&text.isBlank()||text.codePoints().anyMatch(c->Character.isISOControl(c)))bad();return text;
+        JsonNode value = n.get(key);
+        if (value == null || !value.isTextual()) {
+            bad();
+        }
+        String text = value.asText();
+        if (text.length() > max || !blank && text.isBlank()
+                || text.codePoints().anyMatch(Character::isISOControl)) {
+            bad();
+        }
+        return text;
     }
     private static BigDecimal decimal(JsonNode n,String key,boolean positive,boolean nullable) {
-        JsonNode value=n.get(key);if(nullable&&value!=null&&value.isNull())return null;
-        String text=text(n,key,80,false);if(!text.matches("(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?"))bad();
-        BigDecimal amount=new BigDecimal(text);if(amount.precision()>36||amount.scale()>18||positive&&amount.signum()<=0||amount.compareTo(new BigDecimal("1000000000000000"))>0)bad();return amount;
+        JsonNode value = n.get(key);
+        if (nullable && value != null && value.isNull()) {
+            return null;
+        }
+        String text = text(n, key, 80, false);
+        if (!text.matches("(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?")) {
+            bad();
+        }
+        BigDecimal amount = new BigDecimal(text);
+        if (amount.precision() > 36 || amount.scale() > 18 || positive && amount.signum() <= 0
+                || amount.compareTo(new BigDecimal("1000000000000000")) > 0) {
+            bad();
+        }
+        return amount;
     }
-    private static LocalDate optionalDate(JsonNode n,String key){return n.get(key).isNull()?null:LocalDate.parse(text(n,key,10,false));}
+    private static LocalDate optionalDate(JsonNode n, String key) {
+        return n.get(key).isNull() ? null : LocalDate.parse(text(n, key, 10, false));
+    }
     private static void bad(){throw new IllegalArgumentException("Invalid market snapshot");}
 }

@@ -50,18 +50,20 @@ class QualifiedSourceWarehouseEndToEndTest {
     @Autowired com.uten.imp.application.port.ProductionMutationFootprintPort footprints;
     @Autowired com.uten.imp.application.port.PreplanInboundAllocationReadPort inboundAllocations;
     @Autowired com.uten.imp.features.production.fulfillment.ProductionReadinessReconciler readinessReconciler;
+    @Autowired com.uten.imp.features.notice.outbox.BusinessOutboxProcessor businessOutbox;
     @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
     com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService readiness;
     private FullChainEndToEndTest fixture;
     @BeforeEach void prepare(){fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);}
 
-    @Test void missedArrivalCallbackIsReconciledBySystemWithoutReorderingOrDuplicateNotices(){
+    @Test void missedArrivalCallbackIsReconciledBySystemWithoutReorderingOrDuplicateNotices() throws InterruptedException {
         var world=fixture.seedWorld("missed-readiness-callback");
         UUID main=warehouse("reconcile-main",false);
         db.update("UPDATE warehouses SET parent_id=? WHERE id=?",main,world.warehouseId());
         UUID actual=warehouse("reconcile-actual-location",false);
         db.update("UPDATE warehouses SET parent_id=? WHERE id=?",main,actual);
         Case c=create(world,new BigDecimal("10000"),main);
+        UUID recipient=workshopNoticeRecipient(c);
         UUID receipt=receive(c,actual,"10000");
         // Reproduce a missed callback only; receipt, quality, physical stock and
         // exact entitlement still execute their real services and constraints.
@@ -82,11 +84,18 @@ class QualifiedSourceWarehouseEndToEndTest {
         // 只比「系统自动核对备料」自己的审计行：全库 audit_log 计数会被同一容器里
         // 其它用例与后台调度（通知 outbox 投递等）异步写入干扰，单跑绿、全量红
         //（2026-09-11 实测）。本用例要锁的是「重跑一轮不产生重复系统动作」。
+        drainThisSegmentNotices(c);
+        var notices=segmentNotices(c);
+        assertFalse(notices.isEmpty(),"本段的真实车间收件人必须已收到通知，不能空集合验证幂等");
+        notices.forEach(notice->assertNotNull(notice.get("audience_user_id")));
+        assertTrue(notices.stream().anyMatch(notice->recipient.equals(notice.get("audience_user_id"))));
+        assertEquals(1,readyEventCount(c),"本次齐套必须形成一个可追溯的 READY 事件");
         long audit=db.queryForObject(SYSTEM_RECHECK_AUDIT_SQL,Long.class);
-        long notices=db.queryForObject("SELECT count(*) FROM notices",Long.class);
         readinessReconciler.runBatch();
+        drainThisSegmentNotices(c);
         assertEquals(audit,db.queryForObject(SYSTEM_RECHECK_AUDIT_SQL,Long.class));
-        assertEquals(notices,db.queryForObject("SELECT count(*) FROM notices",Long.class));
+        assertEquals(notices,segmentNotices(c),"重跑不能为本段任何收件人新增重复通知");
+        assertEquals(1,readyEventCount(c),"重跑不能再生成同一段的 READY 事件");
         assertEquals(purchases,db.queryForObject("SELECT count(*) FROM purchase_receipts",Long.class));
         assertEquals(1,drawCount(c));
         assertSystemActorGuards(c,world.superAdminUserId());
@@ -436,6 +445,62 @@ class QualifiedSourceWarehouseEndToEndTest {
         UUID id=UUID.randomUUID();db.update("INSERT INTO warehouses(id,code,name,status,is_accountable,is_defective) VALUES(?,?,?,'使用',TRUE,?)",id,"WH-"+id,name,defective);return id;
     }
     private String status(Case c){return db.queryForObject("SELECT status FROM production_execution_segments WHERE id=?",String.class,c.segment());}
+
+    private List<java.util.Map<String,Object>> segmentNotices(Case c){
+        return db.queryForList("""
+                SELECT id,audience_user_id,source_event
+                FROM notices
+                WHERE aggregate_kind='PRODUCTION_EXECUTION_SEGMENT' AND aggregate_id=?
+                  AND source_event='PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED'
+                ORDER BY audience_user_id,id
+                """,c.segment());
+    }
+
+    /** The generic planning fixture assigns an employee without a login. Give
+     * that exact responsible employee an explicitly authorized account and the
+     * workshop-manager relationship, preserving the task and material identities. */
+    private UUID workshopNoticeRecipient(Case c){
+        var assigned=db.queryForMap("SELECT responsible_employee_id,workshop_department_id FROM production_execution_segments WHERE id=?",c.segment());
+        UUID employee=(UUID)assigned.get("responsible_employee_id"),workshop=(UUID)assigned.get("workshop_department_id");
+        UUID user=UUID.randomUUID();
+        db.update("""
+                INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,is_super_admin,status)
+                VALUES(?,?,?,'x',false,false,'active')
+                """,user,employee,"USR-reconcile-recipient-"+c.segment());
+        for(String code:List.of("notice:read","production_execution:view","production_execution:start",
+                "production_daily_report:view","production_daily_report:create")){
+            assertEquals(1,db.update("""
+                    INSERT INTO user_permission_overrides(user_id,permission_id,effect)
+                    SELECT ?,id,'grant' FROM permissions WHERE code=?
+                    """,user,code),"fixture permission must exist: "+code);
+        }
+        db.update("UPDATE departments SET manager_id=? WHERE id=?",employee,workshop);
+        return user;
+    }
+
+    private int readyEventCount(Case c){
+        return db.queryForObject("""
+                SELECT count(*) FROM business_outbox
+                WHERE aggregate_type='PRODUCTION_EXECUTION_SEGMENT' AND aggregate_id=?
+                  AND event_type='PRODUCTION_SEGMENT_READY'
+                """,Integer.class,c.segment());
+    }
+
+    /** Assignment and READY deliveries may already be claimed by the scheduler.
+     * Drain with a finite budget, then wait for this plan/segment to commit; other
+     * tests' notifications never participate in the idempotence comparison. */
+    private void drainThisSegmentNotices(Case c) throws InterruptedException {
+        for(int attempt=0;attempt<100;attempt++){
+            for(int event=0;event<64 && businessOutbox.processNext();event++){ }
+            int pending=db.queryForObject("""
+                    SELECT count(*) FROM business_outbox
+                    WHERE aggregate_id IN(?,?) AND status<>1
+                    """,Integer.class,c.plan(),c.segment());
+            if(pending==0 && !segmentNotices(c).isEmpty())return;
+            Thread.sleep(20);
+        }
+        fail("本计划与执行段的通知未在有限轮次内完成送达");
+    }
 
     /** runBatch 每轮按段 id 顺序只处理 25 个候选；全量套件的共享库会积压早前用例的
      *  WAITING 段，单轮轮不到新建段（单跑绿、全量红的根源）。循环到本段就绪，有界。 */

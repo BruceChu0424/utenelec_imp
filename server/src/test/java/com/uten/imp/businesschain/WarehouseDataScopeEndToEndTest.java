@@ -108,6 +108,8 @@ class WarehouseDataScopeEndToEndTest {
     @Autowired StockDocController stockDocs;
     @Autowired StockDocService stock;
     @Autowired WarehouseInboundController inbound;
+    @Autowired com.uten.imp.features.warehouse.taskcenter.WarehouseInboundTaskCenterController inboundTasks;
+    @Autowired com.uten.imp.features.warehouse.taskcenter.WarehouseOutboundTaskCenterController outboundTasks;
     @Autowired WarehouseSalesOutboundController salesOutbound;
     @Autowired WarehouseSubcontractOutboundController subcontractOutbound;
     @Autowired ProductionFinishedInboundTaskController finishedInbound;
@@ -477,31 +479,31 @@ class WarehouseDataScopeEndToEndTest {
         assertThat(summary.staleSources()).as(label).isEmpty();
         Map<String, Long> facts = summary.facts();
         assertThat(facts.get("warehouseInboundExpectation.count")).as(label + " expectation").isEqualTo(
-                inbound.expectations(1, 1, "", "", null, selected, null, null, null).getTotal());
+                expectationTaskRows(selected));
         assertThat(facts.get("warehouseArrivalException.count")).as(label + " arrival exception").isEqualTo(
-                inbound.arrivalExceptions(1, 1, null, false, null, null, null, selected, null, null, null, null).getTotal());
+                arrivalExceptionTaskRows(selected));
         assertThat(facts.get("finishedInbound.count")).as(label + " finished inbound").isEqualTo(
-                finishedInbound.tasks("", null, null, 1, 1, selected, null, null, null, null).getTotal());
+                inboundTaskRows("FINISHED",selected,"FINISHED_READY_REGISTER","FINISHED_READY_COUNT","FINISHED_RESIDUAL_COUNT"));
         assertThat(facts.get("warehouseSalesOutbound.PENDING_PICK")).as(label + " sales outbound").isEqualTo(
-                salesOutbound.list(null, "PENDING_PICK", null, null, 1, 1, selected, null, null, null).getTotal());
-        // ADR-143: 委外出库红数 = 待发料的领料草稿张数, 所在仓 = 草稿发出仓; 与待发料列表同一谓词。
+                outboundTaskRows("SALES",selected,"SALES_PENDING"));
+        // The current warehouse frontend reads physical task-center rows;
+        // document-page totals lose repeated items from the same document.
         assertThat(facts.get("subcontractOutbound.count")).as(label + " subcontract outbound").isEqualTo(
-                subcontractOutbound.tasks(1, 1, "", selected).getTotal());
+                outboundTaskRows("SUBCONTRACT",selected,"SUBCONTRACT_PENDING"));
         assertThat(facts.get("productionDraw.count")).as(label + " production draw").isEqualTo(
-                fulfillment.warehouse("OPEN_ANY", "", "", null, null, 1, 1, "", "asc", selected, Map.of()).total());
+                actionableDrawRows(selected));
         assertThat(facts.get("productionReturn.count")).as(label + " production return").isEqualTo(
-                stockDocs.list(null, null, null, (short) 0, null, null, null, null, true, null, 1, 1, null, null,
-                        selected, null, false, false, null, "ACTIVE").getTotal());
+                inboundTaskRows("RETURN",selected,"RETURN_PENDING_RECEIVE"));
         assertThat(facts.get("workshopMaterial.pendingIssue")).as(label + " workshop issue").isEqualTo(
                 requisitions.list("PENDING", "ACTIVE", "ISSUE", null, selected, 1, 1, null).getTotal());
         assertThat(facts.get("workshopMaterial.pendingReturn")).as(label + " workshop return").isEqualTo(
                 requisitions.list("PENDING", "ACTIVE", "RETURN", null, selected, 1, 1, null).getTotal());
         assertThat(facts.get("stockCountWarehouse.count")).as(label + " stock count").isEqualTo(
                 stockCounts.list("WAREHOUSE", "PENDING", null, selected, null, 1, 1).getTotal());
-        // 品质检查结果: 红 + 黄 = 列表里没完结的张数; 每个状态段 = 带该状态筛选的列表 total。
+        // 红黄徽章属于当前个人任务；未加 TASK_ 的分布属于浏览列表，另逐状态核对。
         Map<String, Long> statuses = qualityResults.statusCounts("ALL", "", selected);
-        long open = statuses.entrySet().stream().filter(e -> !e.getKey().startsWith("TASK_") && !"COMPLETED".equals(e.getKey()))
-                .mapToLong(Map.Entry::getValue).sum();
+        long open = java.util.stream.Stream.of("WAITING_INSPECTION","ALL_PASSED","PARTIAL_PASSED","RETURN_REQUIRED")
+                .mapToLong(status->statuses.getOrDefault("TASK_"+status,0L)).sum();
         long typed = facts.entrySet().stream().filter(e -> e.getKey().startsWith("qualityResult."))
                 .mapToLong(Map.Entry::getValue).sum();
         assertThat(typed).as(label + " quality result").isEqualTo(open);
@@ -517,6 +519,51 @@ class WarehouseDataScopeEndToEndTest {
         assertThat(documentCounts.statusCounts("stockDocument", null, "OTHER_OUT", selected).get("DRAFT"))
                 .as(label + " other-out drafts").isEqualTo(stockDocs.list("OTHER_OUT", null, null, (short) 0, null,
                         null, null, null, null, null, 1, 1, null, null, selected, null, false, false, null, "ACTIVE").getTotal());
+    }
+
+    /** Sum the actual page totals for the same source/status/identity/scope that
+     * the frontend requests; size=1 proves this is not a sum of visible items. */
+    private long inboundTaskRows(String source,UUID selected,String... statuses){
+        return Arrays.stream(statuses).mapToLong(status->inboundTasks.list(source,"ACTIVE",status,"",null,
+                null,null,selected,null,null,1,1).total()).sum();
+    }
+
+    private long outboundTaskRows(String source,UUID selected,String... statuses){
+        return Arrays.stream(statuses).mapToLong(status->outboundTasks.list(source,"ACTIVE",status,"",null,
+                null,null,selected,1,1,null,null).total()).sum();
+    }
+
+    /** DRAW status alone is insufficient: a partially issued document can have
+     * no remaining requested quantity. Count the frontend's actionable physical
+     * rows across every page, preserving the same grants and selected scope. */
+    private long actionableDrawRows(UUID selected){
+        long actionable=0,visited=0;
+        var identities=new java.util.HashSet<String>();
+        var page=outboundTasks.list("DRAW","ACTIVE",null,"",null,null,null,selected,1,100,null,null);
+        long total=page.total();
+        for(int number=1;;number++){
+            if(number>1)page=outboundTasks.list("DRAW","ACTIVE",null,"",null,null,null,selected,number,100,null,null);
+            assertThat(page.total()).as("same DRAW physical page relation").isEqualTo(total);
+            visited+=page.items().size();
+            for(var row:page.items())assertThat(identities.add(row.rowKey())).as("unique physical DRAW identity "+row.rowKey()).isTrue();
+            actionable+=page.items().stream().filter(row->row.canHandle()
+                    && (row.action().equals("PRODUCTION_DRAW")||row.action().equals("MATERIAL_DISCOVERY"))).count();
+            if(number>=page.totalPages())break;
+        }
+        assertThat(visited).as("all DRAW physical rows, not only the current page").isEqualTo(total);
+        assertThat((long)identities.size()).as("unique DRAW identities cover the physical total").isEqualTo(total);
+        return actionable;
+    }
+
+    private long expectationTaskRows(UUID selected){
+        return java.util.stream.Stream.of("PURCHASE","SUBCONTRACT").mapToLong(source->inboundTaskRows(source,selected,
+                source+"_READY_REGISTER",source+"_BLOCKED",source+"_CONTINUE_INSPECTION",source+"_EXCESS_PENDING_FINANCE")).sum();
+    }
+
+    private long arrivalExceptionTaskRows(UUID selected){
+        return java.util.stream.Stream.of("PURCHASE","SUBCONTRACT").mapToLong(source->inboundTaskRows(source,selected,
+                source+"_EXCEPTION_PENDING_FINANCE",source+"_EXCEPTION_RECEIPT_ADJUSTED",
+                source+"_EXCEPTION_RETURN_REQUIRED",source+"_EXCEPTION_RECEIPT_POSTED")).sum();
     }
 
     private List<UUID> otherOutDrafts(UUID selected) {

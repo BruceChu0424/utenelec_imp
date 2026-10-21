@@ -3,6 +3,8 @@ package com.uten.imp.businesschain;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.UtenImpApplication;
+import com.uten.imp.config.props.MaterialForecastProperties;
+import com.uten.imp.features.admin.materialforecast.MaterialForecastHostPaths;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Timeout;
@@ -15,6 +17,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import org.testcontainers.utility.MountableFile;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -25,9 +28,11 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
@@ -51,11 +56,13 @@ class MaterialForecastManagedRuntimeSmokeTest {
     private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
 
     @Test
-    @Timeout(value = 20, unit = TimeUnit.MINUTES)
+    // A measured empty-database run took 1,310 seconds; this also starts a second host.
+    @Timeout(value = 35, unit = TimeUnit.MINUTES)
     void oneBindingAndPortablePolicyWorkAfterRealCollectionRestartAndDatabaseRestore() throws Exception {
         Path payload = requiredPath("uten.market.test.payload");
         Path cache = requiredPath("uten.market.test.cache");
         Path python = requiredPath("uten.market.test.python");
+        Path databaseSeed = optionalDatabaseSeed();
         Path project = Path.of("").toAbsolutePath().normalize().getParent();
         Path evidenceRoot = project.resolve(".local-artifacts/material-managed");
         Files.createDirectories(evidenceRoot);
@@ -64,72 +71,121 @@ class MaterialForecastManagedRuntimeSmokeTest {
         Path nextHost = work.resolve("restored-host");
         Map<String, Object> evidence = new LinkedHashMap<>();
         evidence.put("startedAt", Instant.now().toString());
+        evidence.put("privateTestDatabase", true);
+        evidence.put("databaseSeedRequested", databaseSeed != null);
+        evidence.put("databaseSeedUsed", false);
+        System.out.println("Managed market acceptance work: " + work + "; database seed requested: " + (databaseSeed != null));
         UUID goods;
         String firstRun;
         String revision;
         try (PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:16-alpine")
                 .withDatabaseName("uten_imp").withUsername("uten").withPassword("uten")) {
             postgres.start();
-            try (ConfigurableApplicationContext context = start(postgres.getJdbcUrl(), firstHost, payload, cache, python)) {
-                String base = base(context);
-                String token = login(base, true);
-                save(base, token, Map.of("material_forecast.interval_minutes", "16",
-                        "material_forecast.history_days", "1200", "material_forecast.backfill_budget", "0"));
-                goods = goods(context);
-                String market = "/api/master/goods/" + goods + "/price-analysis/market";
-                JsonNode binding = request(base, "PUT", market,
-                        Map.of("seriesId", SERIES, "expectedVersion", 0), token, null);
-                assertEquals(1, binding.path("bindingVersion").asInt());
-                JsonNode collected = await("real SHFE publication", () -> {
-                    JsonNode status = request(base, "GET", SETTINGS + "/material-forecast-status", null, token, null);
-                    JSON.writerWithDefaultPrettyPrinter().writeValue(work.resolve("last-status.json").toFile(), status);
-                    JsonNode read = request(base, "GET", market, null, token, null);
-                    return status.path("runtime").path("configurationApplied").asBoolean()
-                            && read.path("current").path("latestPrice").asDouble() > 0 ? status : null;
-                });
-                evidence.put("firstCollection", collected);
-                assertEquals(1, request(base, "GET", market, null, token, null).path("bindingVersion").asInt());
-                Path firstState = firstHost.resolve("media/material-forecast");
-                firstRun = health(firstState).path("runId").asText();
-                revision = collected.path("configuration").path("revision").asText();
-                assertTrue(firstRun.matches("[0-9a-f-]{36}"));
-                assertEquals(revision, health(firstState).path("configRevision").asText());
+            Throwable firstFailure = null;
+            try {
+                if (databaseSeed != null) {
+                    postgres.copyFileToContainer(MountableFile.forHostPath(databaseSeed.toString()), "/tmp/market-seed.dump");
+                    check(postgres.execInContainer("pg_restore", "--exit-on-error", "-U", "uten", "-d", "uten_imp", "/tmp/market-seed.dump"));
+                    evidence.put("databaseSeedUsed", true);
+                    evidence.put("databaseSeedDump", databaseSeed.toString());
+                    System.out.println("Managed market private database seed restored; normal Flyway validation and pending migrations remain enabled");
+                }
+                try (ConfigurableApplicationContext context = start(postgres.getJdbcUrl(), firstHost, payload, cache, python)) {
+                    recordBootstrap(context, work, evidence, "firstHost");
+                    String base = base(context);
+                    String token = login(base, true);
+                    save(base, token, Map.of("material_forecast.enabled", "true", "material_forecast.interval_minutes", "16",
+                            "material_forecast.history_days", "1200", "material_forecast.backfill_budget", "0"));
+                    goods = goods(context);
+                    String market = "/api/master/goods/" + goods + "/price-analysis/market";
+                    JsonNode binding = request(base, "PUT", market,
+                            Map.of("seriesId", SERIES, "expectedVersion", 0), token, null);
+                    assertEquals(1, binding.path("bindingVersion").asInt());
+                    JsonNode collected = await("real SHFE publication", () -> {
+                        JsonNode status = request(base, "GET", SETTINGS + "/material-forecast-status", null, token, null);
+                        JSON.writerWithDefaultPrettyPrinter().writeValue(work.resolve("last-status.json").toFile(), status);
+                        JsonNode read = request(base, "GET", market, null, token, null);
+                        return status.path("runtime").path("configurationApplied").asBoolean()
+                                && read.path("current").path("latestPrice").asDouble() > 0
+                                && allBenchmarksPublished(status) ? status : null;
+                    });
+                    evidence.put("firstCollection", collected);
+                    assertEquals(1, request(base, "GET", market, null, token, null).path("bindingVersion").asInt());
+                    Path firstState = firstHost.resolve("media/material-forecast");
+                    firstRun = health(firstState).path("runId").asText();
+                    revision = collected.path("configuration").path("revision").asText();
+                    assertTrue(firstRun.matches("[0-9a-f-]{36}"));
+                    assertEquals(revision, health(firstState).path("configRevision").asText());
 
-                // Destroy only the worker that this test's JVM owns for this private state directory.
-                ProcessHandle child = ProcessHandle.current().children().filter(process -> {
-                    String[] arguments = process.info().arguments().orElse(new String[0]);
-                    return List.of(arguments).contains(firstState.toString()) && List.of(arguments).contains("--auto");
-                }).findFirst().orElseThrow(() -> new AssertionError("Owned market worker missing"));
-                crashTestChildren.addAll(child.descendants().toList());
-                child.destroyForcibly();
-                String beforeCrash = firstRun;
-                await("worker crash recovery", () -> {
-                    JsonNode status = request(base, "GET", SETTINGS + "/material-forecast-status", null, token, null);
-                    JSON.writerWithDefaultPrettyPrinter().writeValue(work.resolve("last-status.json").toFile(), status);
-                    return status.path("runtime").path("configurationApplied").asBoolean()
-                            && !beforeCrash.equals(health(firstState).path("runId").asText()) ? status : null;
-                });
-                evidence.put("crashRecovered", true);
-                save(base, token, Map.of("material_forecast.enabled", "false"));
-                await("disabled acknowledgement", () -> {
-                    JsonNode status = request(base, "GET", SETTINGS + "/material-forecast-status", null, token, null);
-                    return "DISABLED".equals(status.path("runtime").path("state").asText())
-                            && status.path("runtime").path("configurationApplied").asBoolean()
-                            && !status.path("runtime").path("processRunning").asBoolean() ? status : null;
-                });
-                save(base, token, Map.of("material_forecast.enabled", "true"));
-                await("enabled acknowledgement", () -> {
-                    JsonNode status = request(base, "GET", SETTINGS + "/material-forecast-status", null, token, null);
-                    return status.path("runtime").path("configurationApplied").asBoolean() ? status : null;
-                });
-                evidence.put("disableAndEnableApplied", true);
-                firstRun = health(firstState).path("runId").asText();
-                // Export while the collector is alive: the helper and writer share a short OS barrier.
-                evidence.put("marketBackup", helper(project, python, "export", firstState, work.resolve("market-backup")));
-                check(postgres.execInContainer("pg_dump", "-U", "uten", "-Fc", "-d", "uten_imp", "-f", "/tmp/market-smoke.dump"));
+                    // Destroy only the worker that this test's JVM owns for this private state directory.
+                    ProcessHandle child = ProcessHandle.current().children().filter(process -> {
+                        String[] arguments = process.info().arguments().orElse(new String[0]);
+                        return List.of(arguments).contains(firstState.toString()) && List.of(arguments).contains("--auto");
+                    }).findFirst().orElseThrow(() -> new AssertionError("Owned market worker missing"));
+                    crashTestChildren.addAll(child.descendants().toList());
+                    child.destroyForcibly();
+                    String beforeCrash = firstRun;
+                    await("worker crash recovery", () -> {
+                        JsonNode status = request(base, "GET", SETTINGS + "/material-forecast-status", null, token, null);
+                        JSON.writerWithDefaultPrettyPrinter().writeValue(work.resolve("last-status.json").toFile(), status);
+                        return status.path("runtime").path("configurationApplied").asBoolean()
+                                && !beforeCrash.equals(health(firstState).path("runId").asText()) ? status : null;
+                    });
+                    evidence.put("crashRecovered", true);
+                    save(base, token, Map.of("material_forecast.enabled", "false"));
+                    await("disabled acknowledgement", () -> {
+                        JsonNode status = request(base, "GET", SETTINGS + "/material-forecast-status", null, token, null);
+                        return "DISABLED".equals(status.path("runtime").path("state").asText())
+                                && status.path("runtime").path("configurationApplied").asBoolean()
+                                && !status.path("runtime").path("processRunning").asBoolean() ? status : null;
+                    });
+                    save(base, token, Map.of("material_forecast.enabled", "true"));
+                    await("enabled acknowledgement", () -> {
+                        JsonNode status = request(base, "GET", SETTINGS + "/material-forecast-status", null, token, null);
+                        return status.path("runtime").path("configurationApplied").asBoolean() ? status : null;
+                    });
+                    evidence.put("disableAndEnableApplied", true);
+                    firstRun = health(firstState).path("runId").asText();
+                    // Export while the collector is alive: the helper and writer share a short OS barrier.
+                    evidence.put("marketBackup", helper(project, python, "export", firstState, work.resolve("market-backup")));
+                }
+            } catch (Exception | Error failure) {
+                firstFailure = failure;
+                evidence.put("firstContextFailureType", failure.getClass().getSimpleName());
+                throw failure;
+            } finally {
+                // This runs before the private container is closed, including when
+                // startup/collection/assertions fail. A checkpoint failure must not
+                // replace the original acceptance failure.
+                try {
+                    check(postgres.execInContainer("pg_dump", "-U", "uten", "-Fc", "-d", "uten_imp", "-f", "/tmp/market-smoke.dump"));
+                    Path checkpoint = work.resolve("first-host.database.dump");
+                    postgres.copyFileFromContainer("/tmp/market-smoke.dump", checkpoint.toString());
+                    assertTrue(Files.size(checkpoint) > 0, "Private database checkpoint is empty");
+                    evidence.put("firstDatabaseDump", checkpoint.toString());
+                    evidence.put("firstDatabaseDumpBytes", Files.size(checkpoint));
+                    System.out.println("Managed market private database checkpoint: " + checkpoint);
+                } catch (Exception | Error checkpointFailure) {
+                    evidence.put("databaseCheckpointFailureType", checkpointFailure.getClass().getSimpleName());
+                    if (firstFailure == null) {
+                        firstFailure = checkpointFailure;
+                        throw checkpointFailure;
+                    }
+                    firstFailure.addSuppressed(checkpointFailure);
+                } finally {
+                    evidence.put("firstContextFinishedAt", Instant.now().toString());
+                    try {
+                        JSON.writerWithDefaultPrettyPrinter().writeValue(work.resolve("evidence.json").toFile(), evidence);
+                    } catch (Exception | Error evidenceFailure) {
+                        if (firstFailure == null) {
+                            throw evidenceFailure;
+                        }
+                        firstFailure.addSuppressed(evidenceFailure);
+                    }
+                }
             }
             check(postgres.execInContainer("createdb", "-U", "uten", "restored_market"));
-            check(postgres.execInContainer("pg_restore", "-U", "uten", "-d", "restored_market", "/tmp/market-smoke.dump"));
+            check(postgres.execInContainer("pg_restore", "--exit-on-error", "-U", "uten", "-d", "restored_market", "/tmp/market-smoke.dump"));
             Files.createDirectories(nextHost.resolve("media"));
             evidence.put("marketRestore", helper(project, python, "restore", work.resolve("market-backup"),
                     nextHost.resolve("media/material-forecast")));
@@ -139,6 +195,7 @@ class MaterialForecastManagedRuntimeSmokeTest {
             assertFalse(offline.has("configRevision"));
             String restoredUrl = postgres.getJdbcUrl().replace("/uten_imp", "/restored_market");
             try (ConfigurableApplicationContext context = start(restoredUrl, nextHost, payload, cache, python)) {
+                recordBootstrap(context, work, evidence, "restoredHost");
                 String base = base(context);
                 String token = login(base, false);
                 String oldRun = firstRun;
@@ -180,6 +237,8 @@ class MaterialForecastManagedRuntimeSmokeTest {
         return new SpringApplicationBuilder(UtenImpApplication.class).web(WebApplicationType.SERVLET).run(
                 "--spring.profiles.active=dev", "--server.port=0", "--spring.datasource.url=" + database,
                 "--spring.datasource.username=uten", "--spring.datasource.password=uten",
+                "--spring.flyway.enabled=true", "--spring.flyway.validate-on-migrate=true",
+                "--spring.flyway.baseline-on-migrate=false", "--spring.flyway.clean-disabled=true",
                 "--uten.jwt.secret=market-runtime-jwt-secret-0123456789-test-only",
                 "--uten.crypto.pgp-master-key=market-runtime-pgp-key-0123456789-test-only",
                 "--uten.crypto.hmac-key=market-runtime-hmac-key-0123456789-test-only",
@@ -195,13 +254,48 @@ class MaterialForecastManagedRuntimeSmokeTest {
         return "http://127.0.0.1:" + ((WebServerApplicationContext) context).getWebServer().getPort();
     }
 
-    private static String login(String base, boolean initial) throws Exception {
-        JsonNode result = request(base, "POST", "/api/auth/login",
-                Map.of("loginAccount", LOGIN, "password", initial ? INITIAL_PASSWORD : PASSWORD), null, null);
-        String token = result.path("accessToken").asText();
-        if (initial) {
-            token = request(base, "POST", "/api/auth/change-password", Map.of("oldPassword", INITIAL_PASSWORD,
-                    "newPassword", PASSWORD), token, null).path("accessToken").asText();
+    /** Private test evidence only: inspect the exact injected bootstrap beans. */
+    private static void recordBootstrap(ConfigurableApplicationContext context, Path work,
+                                        Map<String, Object> evidence, String phase) throws Exception {
+        var properties = context.getBean(MaterialForecastProperties.class);
+        var paths = context.getBean(MaterialForecastHostPaths.class);
+        Map<String, String> selected = new LinkedHashMap<>();
+        selected.put("snapshotDirectory", resolvedPath(properties.getSnapshotDirectory()));
+        selected.put("payloadDirectory", resolvedPath(properties.getPayloadDirectory()));
+        selected.put("cacheDirectory", resolvedPath(properties.getCacheDirectory()));
+        selected.put("basePythonExecutable", resolvedPath(properties.getBasePythonExecutable()));
+        selected.put("resolvedStateDirectory", resolvedPath(paths.stateDirectory().toString()));
+        selected.put("resolvedPayloadDirectory", resolvedPath(paths.payloadDirectory().toString()));
+        selected.put("resolvedCacheDirectory", resolvedPath(paths.cacheDirectory().toString()));
+        selected.put("objectMapperClass", context.getBean(ObjectMapper.class).getClass().getName());
+        evidence.put(phase + "Bootstrap", selected);
+        JSON.writerWithDefaultPrettyPrinter().writeValue(work.resolve(phase + "-bootstrap.json").toFile(), selected);
+    }
+
+    private static String resolvedPath(String value) throws Exception {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        Path path = Path.of(value).toAbsolutePath().normalize();
+        return (Files.exists(path) ? path.toRealPath() : path).toString();
+    }
+
+    private static String login(String base, boolean allowInitialPassword) throws Exception {
+        String token;
+        if (allowInitialPassword) {
+            var changed = exchange(base, "POST", "/api/auth/login",
+                    Map.of("loginAccount", LOGIN, "password", PASSWORD), null, null);
+            if (changed.statusCode() == 200) {
+                token = JSON.readTree(changed.body()).path("accessToken").asText();
+            } else {
+                token = request(base, "POST", "/api/auth/login",
+                        Map.of("loginAccount", LOGIN, "password", INITIAL_PASSWORD), null, null).path("accessToken").asText();
+                token = request(base, "POST", "/api/auth/change-password", Map.of("oldPassword", INITIAL_PASSWORD,
+                        "newPassword", PASSWORD), token, null).path("accessToken").asText();
+            }
+        } else {
+            token = request(base, "POST", "/api/auth/login",
+                    Map.of("loginAccount", LOGIN, "password", PASSWORD), null, null).path("accessToken").asText();
         }
         assertFalse(token.isBlank());
         return token;
@@ -235,6 +329,12 @@ class MaterialForecastManagedRuntimeSmokeTest {
     }
 
     private static JsonNode request(String base, String method, String path, Object body, String token, String stepUp) throws Exception {
+        var response = exchange(base, method, path, body, token, stepUp);
+        assertEquals(200, response.statusCode(), method + " " + path + " => " + new String(response.body(), java.nio.charset.StandardCharsets.UTF_8));
+        return JSON.readTree(response.body());
+    }
+
+    private static HttpResponse<byte[]> exchange(String base, String method, String path, Object body, String token, String stepUp) throws Exception {
         var builder = HttpRequest.newBuilder(URI.create(base + path)).timeout(Duration.ofSeconds(30))
                 .header("Content-Type", "application/json");
         if (token != null) {
@@ -245,9 +345,7 @@ class MaterialForecastManagedRuntimeSmokeTest {
         }
         builder.method(method, body == null ? HttpRequest.BodyPublishers.noBody()
                 : HttpRequest.BodyPublishers.ofByteArray(JSON.writeValueAsBytes(body)));
-        var response = HTTP.send(builder.build(), HttpResponse.BodyHandlers.ofByteArray());
-        assertEquals(200, response.statusCode(), method + " " + path + " => " + new String(response.body(), java.nio.charset.StandardCharsets.UTF_8));
-        return JSON.readTree(response.body());
+        return HTTP.send(builder.build(), HttpResponse.BodyHandlers.ofByteArray());
     }
 
     private static JsonNode await(String description, Callable<JsonNode> probe) throws Exception {
@@ -260,6 +358,27 @@ class MaterialForecastManagedRuntimeSmokeTest {
             Thread.sleep(1000);
         }
         throw new AssertionError("Timed out: " + description);
+    }
+
+    private static boolean allBenchmarksPublished(JsonNode status) {
+        JsonNode feeds = status.path("feeds");
+        if (!feeds.isArray() || feeds.size() != 3) {
+            return false;
+        }
+        Set<String> published = new HashSet<>();
+        for (JsonNode feed : feeds) {
+            JsonNode dataAsOf = feed.path("dataAsOf");
+            JsonNode history = feed.path("historyRecordCount");
+            if (!"IDLE".equals(feed.path("sync").path("status").asText())
+                    || !dataAsOf.isTextual() || dataAsOf.asText().isBlank()
+                    || !Set.of("READY", "RESEARCH_ONLY", "BASELINE_ONLY", "INSUFFICIENT", "STALE")
+                            .contains(feed.path("snapshotStatus").asText())
+                    || !history.isIntegralNumber() || !history.canConvertToInt() || history.asInt() < 1
+                    || !published.add(feed.path("seriesId").asText())) {
+                return false;
+            }
+        }
+        return published.equals(Set.of(SERIES, "shfe_al_main_daily", "shfe_ag_main_daily"));
     }
 
     private static JsonNode health(Path state) throws Exception {
@@ -275,14 +394,33 @@ class MaterialForecastManagedRuntimeSmokeTest {
         return path;
     }
 
+    private static Path optionalDatabaseSeed() {
+        String value = System.getProperty("uten.market.test.databaseSeedDump");
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        Path path = Path.of(value).normalize();
+        assertTrue(path.isAbsolute(), "Private database seed must be an absolute file path");
+        assertTrue(Files.isRegularFile(path), "Missing private database seed dump");
+        return path;
+    }
+
     private static JsonNode helper(Path project, Path python, String action, Path source, Path target) throws Exception {
         Process process = new ProcessBuilder(python.toString(), "-I", project.resolve("deploy/postgres/backup/market_state_backup.py").toString(),
                 action, source.toString(), target.toString()).redirectError(ProcessBuilder.Redirect.INHERIT).start();
-        byte[] output = process.getInputStream().readNBytes(65537);
-        assertTrue(process.waitFor(60, TimeUnit.SECONDS));
-        assertEquals(0, process.exitValue(), "Market-state helper failed");
-        assertTrue(output.length < 65537);
-        return JSON.readTree(output);
+        try {
+            // This stdlib-only helper emits a small JSON result and spawns no
+            // descendants. Bound its lifetime before attempting the pipe read.
+            assertTrue(process.waitFor(60, TimeUnit.SECONDS), "Market-state helper timed out");
+            byte[] output = process.getInputStream().readNBytes(65537);
+            assertEquals(0, process.exitValue(), "Market-state helper failed");
+            assertTrue(output.length < 65537);
+            return JSON.readTree(output);
+        } finally {
+            if (process.isAlive()) {
+                process.destroyForcibly();
+            }
+        }
     }
 
     private static void check(org.testcontainers.containers.Container.ExecResult result) {

@@ -17,6 +17,26 @@ import java.util.function.BooleanSupplier;
 @Component
 @RequiredArgsConstructor
 public class MaterialForecastProcessLauncher {
+    private static final org.slf4j.Logger LOG=org.slf4j.LoggerFactory.getLogger(MaterialForecastProcessLauncher.class);
+    private enum PreparationStage { PRECHECK, COMMAND_SETUP, PROCESS_START, PROCESS_WAIT, OUTPUT_READ, JSON_PROTOCOL, RECEIPT_VALIDATION, PATH_VALIDATION }
+    private enum PreparationReason { PATH_DISCOVERY_FAILED, PAYLOAD_MISSING, PAYLOAD_REAL_PATH_FAILED, HELPER_MISSING, CACHE_SETUP_FAILED,
+        COMMAND_SETUP_FAILED, BASE_PYTHON_UNAVAILABLE, CONFIGURATION_CHANGED, PROCESS_START_FAILED, PROCESS_WAIT_FAILED, DEADLINE_EXCEEDED,
+        OUTPUT_READ_FAILED, OUTPUT_READER_NOT_FINISHED, INVALID_JSON, HELPER_NONZERO_EXIT, RECEIPT_SHAPE_INVALID, RECEIPT_FIELD_TYPE_INVALID,
+        RECEIPT_PATH_INVALID, PYTHON_OUTSIDE_CACHE, FIXED_SCRIPT_MISMATCH, RECEIPT_FILE_INVALID, RECEIPT_METADATA_INVALID, INTERRUPTED }
+    private static final class PreparationDiagnostic {
+        final long started=System.nanoTime();
+        PreparationStage stage=PreparationStage.PRECHECK;
+        PreparationReason reason=PreparationReason.PATH_DISCOVERY_FAILED;
+        Integer exitCode;
+        int stdoutBytes=-1;
+        boolean readerAlive,readerFailed;
+        Boolean pythonWithinCache,workerMatchesFixed,catalogMatchesFixed,regularFilesValid;
+        void warn() {
+            LOG.warn("Material forecast preparation failed: stage={}, reason={}, elapsedMs={}, exitCode={}, stdoutBytes={}, readerAlive={}, readerFailed={}, pythonWithinCache={}, workerMatchesFixed={}, catalogMatchesFixed={}, regularFilesValid={}",
+                    stage,reason,TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-started),exitCode,stdoutBytes,readerAlive,readerFailed,
+                    pythonWithinCache,workerMatchesFixed,catalogMatchesFixed,regularFilesValid);
+        }
+    }
     public record Prepared(Path python,Path worker,Path catalog,String lockDigest,String workerVersion) {}
     public static class Failure extends RuntimeException {
         private final String code;
@@ -28,15 +48,19 @@ public class MaterialForecastProcessLauncher {
     private final ObjectMapper json;
     private volatile Process preparation;
     public Prepared prepare(BooleanSupplier abort) {
+        var diagnostic=new PreparationDiagnostic();
         try {
             Path configuredPayload=paths.payloadDirectory(),cache=paths.cacheDirectory();
-            if(!Files.isDirectory(configuredPayload))throw new Failure("RUNTIME_MISSING");
+            if(!Files.isDirectory(configuredPayload)){diagnostic.reason=PreparationReason.PAYLOAD_MISSING;throw new Failure("RUNTIME_MISSING");}
+            diagnostic.reason=PreparationReason.PAYLOAD_REAL_PATH_FAILED;
             Path payload=configuredPayload.toRealPath();
-            if(!Files.isRegularFile(payload.resolve("prepare_runtime.py"),LinkOption.NOFOLLOW_LINKS))throw new Failure("RUNTIME_MISSING");
+            if(!Files.isRegularFile(payload.resolve("prepare_runtime.py"),LinkOption.NOFOLLOW_LINKS)){diagnostic.reason=PreparationReason.HELPER_MISSING;throw new Failure("RUNTIME_MISSING");}
+            diagnostic.reason=PreparationReason.CACHE_SETUP_FAILED;
             MaterialForecastHostPaths.rejectLinks(cache);
             Files.createDirectories(cache);
             Path realCache=cache.toRealPath();
             MaterialForecastHostPaths.rejectLinks(realCache);
+            diagnostic.stage=PreparationStage.COMMAND_SETUP;diagnostic.reason=PreparationReason.COMMAND_SETUP_FAILED;
             List<String> command=new ArrayList<>();
             if(MaterialForecastHostPaths.windows()) {
                 Path powershell=Path.of(System.getenv().getOrDefault("SystemRoot","C:\\Windows"),"System32/WindowsPowerShell/v1.0/powershell.exe");
@@ -44,34 +68,48 @@ public class MaterialForecastProcessLauncher {
                 if(!properties.getBasePythonExecutable().isBlank())command.addAll(List.of("-BasePython",MaterialForecastHostPaths.absolute(properties.getBasePythonExecutable()).toString()));
             }else {
                 String base=properties.getBasePythonExecutable().isBlank()?"/usr/bin/python3":MaterialForecastHostPaths.absolute(properties.getBasePythonExecutable()).toString();
-                if(!Files.isExecutable(Path.of(base)))throw new Failure("BASE_PYTHON_UNAVAILABLE");
+                if(!Files.isExecutable(Path.of(base))){diagnostic.reason=PreparationReason.BASE_PYTHON_UNAVAILABLE;throw new Failure("BASE_PYTHON_UNAVAILABLE");}
                 command.addAll(List.of(base,"-I",payload.resolve("prepare_runtime.py").toString(),"--payload",payload.toString(),"--cache",cache.toString()));
             }
-            if(abort.getAsBoolean())throw new Failure("CONFIGURATION_PENDING");
+            if(abort.getAsBoolean()){diagnostic.reason=PreparationReason.CONFIGURATION_CHANGED;throw new Failure("CONFIGURATION_PENDING");}
+            diagnostic.stage=PreparationStage.PROCESS_START;diagnostic.reason=PreparationReason.PROCESS_START_FAILED;
             Process process=builder(command,payload).start();preparation=process;
             var output=new BoundedOutput(process.getInputStream());Thread reader=new Thread(output,"material-runtime-preparation-output");reader.setDaemon(true);reader.start();
+            diagnostic.stage=PreparationStage.PROCESS_WAIT;diagnostic.reason=PreparationReason.PROCESS_WAIT_FAILED;
             long deadline=System.nanoTime()+Duration.ofMinutes(15).toNanos();
             while(!process.waitFor(250,TimeUnit.MILLISECONDS)) {
-                if(abort.getAsBoolean()||System.nanoTime()>deadline){terminate(process);throw new Failure(abort.getAsBoolean()?"CONFIGURATION_PENDING":"PREPARATION_FAILED");}
+                if(abort.getAsBoolean()||System.nanoTime()>deadline){terminate(process);boolean changed=abort.getAsBoolean();diagnostic.reason=changed?PreparationReason.CONFIGURATION_CHANGED:PreparationReason.DEADLINE_EXCEEDED;throw new Failure(changed?"CONFIGURATION_PENDING":"PREPARATION_FAILED");}
             }
+            diagnostic.exitCode=process.exitValue();diagnostic.stage=PreparationStage.OUTPUT_READ;diagnostic.reason=PreparationReason.OUTPUT_READ_FAILED;
             reader.join(2000);
-            if(output.failed||reader.isAlive())throw new Failure("PREPARATION_FAILED");
+            diagnostic.stdoutBytes=output.bytes.size();diagnostic.readerAlive=reader.isAlive();diagnostic.readerFailed=output.failed;
+            if(output.failed)throw new Failure("PREPARATION_FAILED");
+            if(reader.isAlive()){diagnostic.reason=PreparationReason.OUTPUT_READER_NOT_FINISHED;throw new Failure("PREPARATION_FAILED");}
+            diagnostic.stage=PreparationStage.JSON_PROTOCOL;diagnostic.reason=PreparationReason.INVALID_JSON;
             var n=json.reader().with(DeserializationFeature.FAIL_ON_READING_DUP_TREE_KEY,DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(output.bytes.toByteArray());
-            if(process.exitValue()!=0)throw new Failure(failureCode(n));
+            if(process.exitValue()!=0){diagnostic.reason=PreparationReason.HELPER_NONZERO_EXIT;throw new Failure(failureCode(n));}
+            diagnostic.stage=PreparationStage.RECEIPT_VALIDATION;diagnostic.reason=PreparationReason.RECEIPT_SHAPE_INVALID;
             Set<String> expected=Set.of("schemaVersion","state","platform","pythonExecutable","workerScript","catalog","lockDigest","workerVersion");
             Set<String> actual=new HashSet<>();n.fieldNames().forEachRemaining(actual::add);
             if(!actual.equals(expected)||!n.path("schemaVersion").isIntegralNumber()||!n.path("schemaVersion").canConvertToInt()||n.path("schemaVersion").intValue()!=1||!"READY".equals(n.path("state").asText())
                     ||!n.path("platform").asText().equals(MaterialForecastHostPaths.windows()?"windows-x86_64":"linux-x86_64"))throw new Failure("PREPARATION_FAILED");
             for(String field:List.of("pythonExecutable","workerScript","catalog","lockDigest","workerVersion")) {
-                if(!n.path(field).isTextual())throw new Failure("PREPARATION_FAILED");
+                if(!n.path(field).isTextual()){diagnostic.reason=PreparationReason.RECEIPT_FIELD_TYPE_INVALID;throw new Failure("PREPARATION_FAILED");}
             }
+            diagnostic.stage=PreparationStage.PATH_VALIDATION;diagnostic.reason=PreparationReason.RECEIPT_PATH_INVALID;
             Path python=MaterialForecastHostPaths.absolute(n.path("pythonExecutable").asText()),worker=MaterialForecastHostPaths.absolute(n.path("workerScript").asText()),catalog=MaterialForecastHostPaths.absolute(n.path("catalog").asText());
             String digest=n.path("lockDigest").asText(),version=n.path("workerVersion").asText();
-            if(python.getParent()==null||!python.getParent().toRealPath().startsWith(realCache)||!Files.isRegularFile(python)||!worker.equals(payload.resolve("worker.py"))||!catalog.equals(payload.resolve("material-benchmarks.json"))
-                    ||!Files.isRegularFile(worker,LinkOption.NOFOLLOW_LINKS)||!Files.isRegularFile(catalog,LinkOption.NOFOLLOW_LINKS)||!digest.matches("[0-9a-f]{64}")||version.isBlank()||version.length()>128)throw new Failure("PREPARATION_FAILED");
+            diagnostic.pythonWithinCache=python.getParent()!=null&&python.getParent().toRealPath().startsWith(realCache);
+            diagnostic.workerMatchesFixed=worker.equals(payload.resolve("worker.py"));
+            diagnostic.catalogMatchesFixed=catalog.equals(payload.resolve("material-benchmarks.json"));
+            diagnostic.regularFilesValid=Files.isRegularFile(python)&&Files.isRegularFile(worker,LinkOption.NOFOLLOW_LINKS)&&Files.isRegularFile(catalog,LinkOption.NOFOLLOW_LINKS);
+            if(!diagnostic.pythonWithinCache){diagnostic.reason=PreparationReason.PYTHON_OUTSIDE_CACHE;throw new Failure("PREPARATION_FAILED");}
+            if(!diagnostic.workerMatchesFixed||!diagnostic.catalogMatchesFixed){diagnostic.reason=PreparationReason.FIXED_SCRIPT_MISMATCH;throw new Failure("PREPARATION_FAILED");}
+            if(!diagnostic.regularFilesValid){diagnostic.reason=PreparationReason.RECEIPT_FILE_INVALID;throw new Failure("PREPARATION_FAILED");}
+            if(!digest.matches("[0-9a-f]{64}")||version.isBlank()||version.length()>128){diagnostic.reason=PreparationReason.RECEIPT_METADATA_INVALID;throw new Failure("PREPARATION_FAILED");}
             return new Prepared(python,worker,catalog,digest,version);
-        }catch(Failure known){throw known;}catch(InterruptedException interrupted){Thread.currentThread().interrupt();throw new Failure("CONFIGURATION_PENDING");}
-        catch(Exception invalid){throw new Failure("PREPARATION_FAILED");}
+        }catch(Failure known){diagnostic.warn();throw known;}catch(InterruptedException interrupted){diagnostic.reason=PreparationReason.INTERRUPTED;diagnostic.warn();Thread.currentThread().interrupt();throw new Failure("CONFIGURATION_PENDING");}
+        catch(Exception invalid){diagnostic.warn();throw new Failure("PREPARATION_FAILED");}
         finally{Process process=preparation;preparation=null;if(process!=null&&process.isAlive())terminate(process);}
     }
     public Process start(Prepared runtime,Policy policy,String runId)throws IOException {

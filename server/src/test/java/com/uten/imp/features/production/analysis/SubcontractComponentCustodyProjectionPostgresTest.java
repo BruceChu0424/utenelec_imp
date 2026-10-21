@@ -241,13 +241,16 @@ class SubcontractComponentCustodyProjectionPostgresTest {
         w.stockedReceipt(item, "2");
 
         String authoritativeSql = "SELECT " + MaterialAnalysisService.allocationBudgetShareSql("1")
-                + " FROM (" + MaterialAnalysisService.allocationBudgetRowsSql("source.action_id='" + action + "'::uuid")
-                + ") allocation JOIN preplan_supply_actions action ON action.id=allocation.action_id WHERE allocation.id='"
-                + allocationA + "'::uuid";
+                + " FROM (" + MaterialAnalysisService.allocationBudgetRowsSql("source.action_id=?")
+                + ") allocation JOIN preplan_supply_actions action ON action.id=allocation.action_id WHERE allocation.id=?";
         BigDecimal authoritative;
-        try (var query = connection.createStatement(); var rows = query.executeQuery(authoritativeSql)) {
-            assertThat(rows.next()).isTrue();
-            authoritative = rows.getBigDecimal(1);
+        try (var query = connection.prepareStatement(authoritativeSql)) {
+            query.setObject(1,action);
+            query.setObject(2,allocationA);
+            try(var rows = query.executeQuery()) {
+                assertThat(rows.next()).isTrue();
+                authoritative = rows.getBigDecimal(1);
+            }
         }
         assertThat(authoritative).isEqualByComparingTo("0.3333");
         BigDecimal[] actual = coverage(w.analysis).get(child);

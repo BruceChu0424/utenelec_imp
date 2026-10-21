@@ -54,8 +54,9 @@ public final class PreplanFutureSupplyTransfer {
         }
     }
     private static java.util.Map<String,String> exact(Object... values) {
+        if(values.length%2!=0)throw new IllegalArgumentException("Exact quantity facts require key/value pairs");
         var result=new java.util.LinkedHashMap<String,String>();
-        for(int i=0;i<values.length;i+=2) if(values[i+1] instanceof BigDecimal quantity)
+        for(int i=0;i+1<values.length;i+=2) if(values[i+1] instanceof BigDecimal quantity)
             result.put((String)values[i],quantity.toPlainString());
         return java.util.Collections.unmodifiableMap(result);
     }

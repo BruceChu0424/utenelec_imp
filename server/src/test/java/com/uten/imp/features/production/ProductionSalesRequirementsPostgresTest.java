@@ -45,7 +45,12 @@ class ProductionSalesRequirementsPostgresTest {
                 .setProperty("hibernate.hbm2ddl.auto", "none").buildSessionFactory();
     }
 
-    @AfterAll static void stop() { if (factory != null) factory.close(); POSTGRES.stop(); }
+    @AfterAll static void stop() {
+        if (factory != null) {
+            factory.close();
+        }
+        POSTGRES.stop();
+    }
 
     @Test void proofWorkIsBoundedForOneContextAndForTheWholeAnalysis() throws Exception {
         UUID analysis=UUID.randomUUID(),root=UUID.randomUUID(),goods=UUID.randomUUID(),unit=UUID.randomUUID();

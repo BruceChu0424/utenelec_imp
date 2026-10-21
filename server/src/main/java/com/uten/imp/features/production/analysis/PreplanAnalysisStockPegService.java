@@ -317,7 +317,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 if (take.signum() <= 0) {
                     continue;
                 }
-                var retained=retainedByAnalysis.computeIfAbsent(analysisId,id->retainedReceiptSources(id,null)).get(allocationId);
+                var retained=retainedByAnalysis.computeIfAbsent(analysisId,this::retainedReceiptSources).get(allocationId);
                 if(retained==null) {
                     requireNoUnprovenCancelledMaterial(analysisMaterialId);
                     origins.add(insertExactReservation(allocationId, analysisId, analysisMaterialId,
@@ -555,7 +555,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
         Map<UUID, BigDecimal> formalRemainingByPlanItem = new HashMap<>();
         Map<UUID, BigDecimal> legacyRemainingByAnalysis = new HashMap<>();
         List<PreplanStockEntitlementService.OriginAppendResult> origins = new ArrayList<>();
-        Map<UUID,List<RetainedReceiptSource>> retainedSources=aggregateMake?retainedReceiptSources(analysisId,stockDocumentId):Map.of();
+        Map<UUID,List<RetainedReceiptSource>> retainedSources=aggregateMake?retainedReceiptSources(analysisId):Map.of();
         if(!aggregateMake&&parentAnalysisMaterialId!=null)requireNoUnprovenCancelledMaterial(parentAnalysisMaterialId);
         for (FinishedInboundSlice line : lines) {
             if (line.baseQty() == null || line.baseQty().signum() <= 0) continue;
@@ -1868,7 +1868,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
     }
 
     /** One read for the whole receipt, reused across its allocations and lines. */
-    private Map<UUID,List<RetainedReceiptSource>> retainedReceiptSources(UUID analysisId,UUID currentDocument) {
+    private Map<UUID,List<RetainedReceiptSource>> retainedReceiptSources(UUID analysisId) {
         Map<UUID,List<RetainedReceiptSource>> result=new LinkedHashMap<>();
         for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT retained.allocation_id,retained.original_material_id,retained.current_qty,

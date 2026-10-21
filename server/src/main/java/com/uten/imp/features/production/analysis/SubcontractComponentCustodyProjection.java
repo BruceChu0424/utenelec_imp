@@ -131,14 +131,15 @@ final class SubcontractComponentCustodyProjection {
      * 直属节点，覆盖全部记到路径最靠前的那个。</p>
      */
     static List<ChildCoverage> coverageForAnalysis(EntityManager em, UUID analysisId) {
-        return NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+        return NativeQueryResults.objectArrayRows(em.createNativeQuery(("""
                 WITH live_actions AS MATERIALIZED (
                     SELECT action.id,action.requested_qty,action.public_surplus_qty,
                            action.public_surplus_external_item_id
                     FROM preplan_supply_actions action
                     WHERE action.analysis_id=:analysisId AND action.route='SUBCONTRACT'
                       AND action.operation_type='SUPPLY' AND action.status IN ('OPEN','CREATED','IN_PROGRESS')
-                      AND action.external_document_type='SUBCONTRACT_APPLICATION' AND action.requested_qty>0
+                      AND action.external_document_type='SUBCONTRACT_APPLICATION'
+                      AND (action.requested_qty>0 OR action.public_surplus_qty>0)
                 ), live_items AS MATERIALIZED (
                     SELECT allocation.action_id,allocation.external_item_id AS application_item_id
                     FROM live_actions action
@@ -168,7 +169,16 @@ final class SubcontractComponentCustodyProjection {
                     JOIN sources source ON source.application_item_id=live.application_item_id
                     JOIN stocked ON stocked.order_item_id=source.order_item_id
                     GROUP BY live.action_id
-                ), parent_output AS (
+                ), public_owners AS MATERIALIZED (
+                    SELECT responsibility.*
+                    FROM preplan_supply_actions action
+                    CROSS JOIN LATERAL (
+                """ + SubcontractPublicResponsibilityProjection.OWNERS_FOR_ACTION_SQL + """
+                    ) responsibility
+                    WHERE action.route='SUBCONTRACT' AND action.operation_type='SUPPLY'
+                      AND action.status<>'CANCELLED' AND action.requested_qty=0 AND action.public_surplus_qty>0
+                      AND action.public_surplus_external_item_id IN (SELECT application_item_id FROM sources)
+                ), parent_output_parts AS (
                     SELECT allocation.analysis_material_id AS parent_material_id,
                            SUM(GREATEST(allocation.allocated_qty
                                *(action.requested_qty+action.public_surplus_qty-COALESCE(received.qty,0))
@@ -177,7 +187,18 @@ final class SubcontractComponentCustodyProjection {
                     JOIN preplan_supply_action_allocations allocation ON allocation.action_id=action.id
                       AND allocation.analysis_id=:analysisId AND allocation.allocated_qty>0
                     LEFT JOIN received ON received.action_id=action.id
+                    WHERE action.requested_qty>0
                     GROUP BY allocation.analysis_material_id
+                    UNION ALL
+                    SELECT responsibility.analysis_material_id,
+                """ + SubcontractPublicResponsibilityProjection.remainingShareSql(
+                        "action.public_surplus_qty-COALESCE(received.qty,0)") + """
+                    FROM public_owners responsibility
+                    JOIN live_actions action ON action.id=responsibility.action_id
+                    LEFT JOIN received ON received.action_id=action.id
+                ), parent_output AS (
+                    SELECT parent_material_id,SUM(remaining_qty) AS remaining_qty
+                    FROM parent_output_parts GROUP BY parent_material_id
                 ), owner_allocations AS (
                     SELECT source.order_item_id,source.application_item_id,source.alloc_qty,
                            allocation.id AS allocation_id,allocation.analysis_id,
@@ -200,6 +221,14 @@ final class SubcontractComponentCustodyProjection {
                       AND action.status<>'CANCELLED' AND action.external_document_type='SUBCONTRACT_APPLICATION'
                     JOIN preplan_supply_action_allocations allocation ON allocation.action_id=action.id
                       AND allocation.analysis_id=action.analysis_id AND allocation.allocated_qty>0
+                    UNION ALL
+                    -- No private allocation is manufactured: this public-only physical
+                    -- source has company-material responsibility from its frozen intent.
+                    SELECT source.order_item_id,source.application_item_id,source.alloc_qty,
+                           responsibility.analysis_material_id,responsibility.analysis_id,
+                           responsibility.analysis_material_id,responsibility.qty
+                    FROM sources source
+                    JOIN public_owners responsibility ON responsibility.external_item_id=source.application_item_id
                 ), owner_shares AS (
                     SELECT owner.order_item_id,owner.analysis_id,owner.analysis_material_id AS parent_material_id,
                            owner.allocated_qty/NULLIF(SUM(owner.allocated_qty) OVER(
@@ -298,7 +327,7 @@ final class SubcontractComponentCustodyProjection {
                 GROUP BY parent.analysis_item_id,child.node_key,child.id,nets.goods_id,nets.color_id
                 HAVING SUM(nets.net_qty)>0
                 ORDER BY parent.analysis_item_id,child.node_key
-                """.formatted(ORDER_ITEM_STOCKED_BASE_SQL)).setParameter("analysisId", analysisId))
+                """).formatted(ORDER_ITEM_STOCKED_BASE_SQL)).setParameter("analysisId", analysisId))
                 .stream()
                 .map(row -> new ChildCoverage((UUID) row[0], (String) row[1], (UUID) row[2],
                         (UUID) row[3], (UUID) row[4], decimal(row[5]), decimal(row[6])))

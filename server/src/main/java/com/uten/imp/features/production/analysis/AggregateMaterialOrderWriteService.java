@@ -275,7 +275,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         List<GroupPreview> groups=previews.resolve(analysisId,step,current).groups();
         if(independentExternalPrefix(groups,inputs,current).size()!=groups.size())
             throw conflict("汇总来源或可用供给已变化，请重新核对");
-        Map<String,Batch> batches=new HashMap<>();List<BatchInput> newBatches=new ArrayList<>();
+        Map<String,Batch> batches=new HashMap<>();Map<String,External> grownExternals=new HashMap<>();List<BatchInput> newBatches=new ArrayList<>();
         for(GroupPreview group:groups) {
             requireExecutableGroup(group,request);
             GroupInput input=inputs.get(group.clientGroupKey());
@@ -283,7 +283,10 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
             Map<UUID,BigDecimal> privateProof=flow==null||!hasOriginalBeneficiaryProof(input,current)?null:originalFlowTotals(input,flow);
             Batch existing=findReusable(analysisId,group,false,request.approveNow());
             if(existing==null)newBatches.add(new BatchInput(group,input,privateProof,flow));
-            else {appendBatch(existing,group,input,request,hash,privateProof,flow);batches.put(group.clientGroupKey(),existing);}
+            else {
+                grownExternals.put(group.clientGroupKey(),appendExternalBatch(existing,group,input,request,hash,privateProof,flow));
+                batches.put(group.clientGroupKey(),existing);
+            }
         }
         Map<String,Batch> created=createBatches(analysisId,newBatches,request,hash,false,current);
         batches.putAll(created);List<BatchResult> results=new ArrayList<>();List<ExternalLink> links=new ArrayList<>();
@@ -293,7 +296,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
             External external;
             if(created.containsKey(group.clientGroupKey())) {
                 ExternalLink link=createExternalDocument(batch,group,request.warehouseId(),source);links.add(link);external=link.external();
-            } else external=growExternal(batch,group);
+            } else external=grownExternals.get(group.clientGroupKey());
             results.add(new BatchResult(batch.id(),group.clientGroupKey(),group.route(),external.type(),external.id(),external.no(),
                     null,null,group.requestedQty().add(group.safetyQty()),group.publicExtraQty(),group.sources()));
         }
@@ -307,13 +310,26 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
     private BatchResult writeExternalBatch(UUID analysisId,SubmitRequest request,GroupPreview group,GroupInput intent,
             AnalysisView current,String hash,Map<UUID,BigDecimal> privateProof,Map<UUID,Map<UUID,BigDecimal>> privateFlow) {
         Batch batch=findReusable(analysisId,group,false,request.approveNow());
-        boolean append=batch!=null;
-        if(batch==null)batch=createBatch(analysisId,group,intent,request,hash,false,current,privateProof,privateFlow);
-        else appendBatch(batch,group,intent,request,hash,privateProof,privateFlow);
-        External external=append?growExternal(batch,group):createExternal(batch,group,request.warehouseId());
+        External external;
+        if(batch==null) {
+            batch=createBatch(analysisId,group,intent,request,hash,false,current,privateProof,privateFlow);
+            external=createExternal(batch,group,request.warehouseId());
+        } else external=appendExternalBatch(batch,group,intent,request,hash,privateProof,privateFlow);
         notices.notifyPreplanSupplyDocumentCreated(external.id(),external.type());
         return new BatchResult(batch.id(),group.clientGroupKey(),group.route(),external.type(),external.id(),external.no(),
                 null,null,group.requestedQty().add(group.safetyQty()),group.publicExtraQty(),group.sources());
+    }
+
+    /**
+     * The immediate public-source shape guard compares the action with its real item.
+     * Grow that unordered item before advancing the mirror, event and batch version;
+     * the existing command locks and transaction make all of them commit or roll back together.
+     */
+    private External appendExternalBatch(Batch batch,GroupPreview group,GroupInput intent,SubmitRequest request,
+            String hash,Map<UUID,BigDecimal> privateProof,Map<UUID,Map<UUID,BigDecimal>> privateFlow) {
+        External external=growExternal(batch,group);
+        appendBatch(batch,group,intent,request,hash,privateProof,privateFlow);
+        return external;
     }
 
     private boolean requireExecutableGroup(GroupPreview group,SubmitRequest request) {
@@ -662,9 +678,13 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
     }
     private void appendBatch(Batch batch,GroupPreview group,GroupInput original,SubmitRequest request,String hash,Map<UUID,BigDecimal> privateProof,Map<UUID,Map<UUID,BigDecimal>> privateFlow) {
         event(batch,"APPEND",group,original,request.idempotencyKey(),hash,privateProof,privateFlow);
+        // An external pure-public batch can gain its first private share. Establish
+        // that share before the mirror so the immediate public-item shape guard
+        // sees the shared item; V712 checks the final allocation total at commit.
+        if(batch.anchor()==null)allocations(batch,group.sources(),true);
         em.createNativeQuery("UPDATE preplan_supply_actions SET requested_qty=requested_qty+:qty,public_surplus_qty=public_surplus_qty+:public,public_surplus_external_item_id=CASE WHEN :public>0 THEN COALESCE(public_surplus_external_item_id,CAST(:publicItem AS uuid)) ELSE public_surplus_external_item_id END,updated_at=now() WHERE id=:id")
                 .setParameter("qty",sum(group.sources())).setParameter("public",group.publicExtraQty()).setParameter("publicItem",batch.anchor()==null?externalItem(batch):null).setParameter("id",batch.action()).executeUpdate();
-        allocations(batch,group.sources(),true);
+        if(batch.anchor()!=null)allocations(batch,group.sources(),true);
         if(batch.anchor()!=null)em.createNativeQuery("UPDATE production_material_analysis_items SET requested_qty=requested_qty+:qty,updated_at=now(),updated_by=:actor WHERE id=:id")
                 .setParameter("qty",sum(group.sources())).setParameter("actor",user.requireId()).setParameter("id",batch.anchor()).executeUpdate();
     }
@@ -737,7 +757,6 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
     private External growExternal(Batch batch,GroupPreview group) {
         Object[] row=NativeQueryResults.objectArrayRows(em.createNativeQuery("SELECT external_document_type,external_document_id,external_document_no FROM preplan_supply_actions WHERE id=:id").setParameter("id",batch.action())).getFirst();UUID item=externalItem(batch);
         if("BUY".equals(group.route()))purchases.increaseProductionDraftLine((UUID)row[1],item,group.requestedQty());else subcontract.increaseProductionDraftLine((UUID)row[1],item,group.requestedQty());
-        if(group.publicExtraQty().signum()>0)em.createNativeQuery("UPDATE preplan_supply_actions SET public_surplus_external_item_id=COALESCE(public_surplus_external_item_id,:item) WHERE id=:id").setParameter("item",item).setParameter("id",batch.action()).executeUpdate();
         return new External((String)row[0],(UUID)row[1],(String)row[2],item);
     }
     private void markExternals(List<ExternalLink> links) {

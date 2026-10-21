@@ -50,6 +50,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static com.uten.imp.features.production.analysis.MaterialAnalysisContracts.*;
+import static com.uten.imp.features.production.analysis.PurchaseActionLifecycleProjection.*;
 
 /**
  * Persistent, non-authoritative pre-plan material analysis.
@@ -2199,9 +2200,7 @@ public class MaterialAnalysisService {
                   AND application.is_closed = TRUE)
              AND EXISTS (
                 SELECT 1
-                FROM preplan_supply_action_allocations allocation
-                JOIN subcontract_order_item_sources src
-                  ON src.application_item_id = allocation.external_item_id
+                FROM subcontract_order_item_sources src
                 JOIN subcontract_order_items order_item
                   ON order_item.id = src.order_item_id
                  AND order_item.is_deleted = FALSE
@@ -2209,12 +2208,12 @@ public class MaterialAnalysisService {
                   ON subcontract_order.id = order_item.order_id
                  AND subcontract_order.status = 1
                  AND subcontract_order.is_deleted = FALSE
-                WHERE allocation.action_id = action.id)
+                WHERE src.alloc_qty>0 AND src.application_item_id IN (
+            """ + REGULAR_ITEM_IDS_SQL + """
+                ))
              AND NOT EXISTS (
                 SELECT 1
-                FROM preplan_supply_action_allocations allocation
-                JOIN subcontract_order_item_sources src
-                  ON src.application_item_id = allocation.external_item_id
+                FROM subcontract_order_item_sources src
                 JOIN subcontract_order_items order_item
                   ON order_item.id = src.order_item_id
                  AND order_item.is_deleted = FALSE
@@ -2222,14 +2221,13 @@ public class MaterialAnalysisService {
                   ON subcontract_order.id = order_item.order_id
                  AND subcontract_order.status = 1
                  AND subcontract_order.is_deleted = FALSE
-                WHERE allocation.action_id = action.id
-                  AND fn_procurement_order_source_remaining_qty(
+                WHERE src.alloc_qty>0 AND src.application_item_id IN (
+            """ + REGULAR_ITEM_IDS_SQL + """
+                ) AND fn_procurement_order_source_remaining_qty(
                       'SUBCONTRACT', order_item.id, src.application_item_id) > 0)
              AND NOT EXISTS (
                 SELECT 1
-                FROM preplan_supply_action_allocations allocation
-                JOIN subcontract_order_item_sources src
-                  ON src.application_item_id = allocation.external_item_id
+                FROM subcontract_order_item_sources src
                 JOIN subcontract_order_items order_item
                   ON order_item.id = src.order_item_id
                  AND order_item.is_deleted = FALSE
@@ -2246,7 +2244,9 @@ public class MaterialAnalysisService {
                  AND (inspection.status NOT IN ('RESOLVED','REVERSED')
                       OR (inspection.status <> 'REVERSED'
                           AND inspection.passed_base_qty > inspection.warehouse_stocked_base_qty))
-                WHERE allocation.action_id = action.id))
+                WHERE src.alloc_qty>0 AND src.application_item_id IN (
+            """ + REGULAR_ITEM_IDS_SQL + """
+                )))
             """;
 
     /** Reconcile actionable coverage from authoritative downstream lifecycle facts. */
@@ -2269,7 +2269,30 @@ public class MaterialAnalysisService {
         boolean hasSubcontract = kinds.stream().anyMatch(row -> "SUBCONTRACT_APPLICATION".equals(row[0]));
         boolean hasMake = kinds.stream().anyMatch(row -> "PREPLAN_MAKE_TASK".equals(row[0]));
         UUID actorId = currentUser.requireId();
+        if (hasPurchase) {
+            // Older aggregate BUY actions could become DONE after only their private
+            // quantity (or zero) arrived. Reopen only a proven unfulfilled obligation;
+            // fully stocked historical facts stay terminal even if the header changes.
+            em.createNativeQuery("""
+                UPDATE preplan_supply_actions action SET status='IN_PROGRESS',updated_at=now()
+                WHERE action.analysis_id=:analysisId AND action.status='DONE'
+                  AND action.external_document_type='PURCHASE_REQUEST'
+                  AND NOT fn_preplan_action_has_future_transfer(action.id)
+                  AND action.operation_type<>'SHARED_FUTURE_CLAIM'
+                  AND (action.requested_qty+action.public_surplus_qty > (
+                """ + REGULAR_STOCKED_BASE_SQL + """
+                  ) OR action.safety_replenishment_qty > COALESCE((
+                      SELECT progress.safety_qualified_qty FROM v_preplan_buy_action_slice_progress progress
+                      WHERE progress.action_id=action.id),0))
+                """).setParameter("analysisId",analysisId).executeUpdate();
+        }
         if (hasPurchase || hasSubcontract || hasMake) {
+            // Aggregate append can have only a public slice and legitimately no private
+            // allocations. Prove every nonzero slice against its own document instead
+            // of treating an empty private slice as a deleted application. Conversely,
+            // one surviving private item must not conceal another missing item (the BUY
+            // progress view intentionally omits null item references). Closed, fully
+            // ordered documents remain valid; the later execution/IQC guards own them.
             em.createNativeQuery("""
                 UPDATE preplan_supply_actions action
                 SET status = 'CANCELLED', cancelled_by = :actorId,
@@ -2279,25 +2302,58 @@ public class MaterialAnalysisService {
                 WHERE action.analysis_id = :analysisId AND NOT fn_preplan_action_has_future_transfer(action.id) AND NOT fn_preplan_action_has_shared_claims(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
                   AND action.status IN ('CREATED','IN_PROGRESS')
                   AND (
-                    (action.external_document_type = 'PURCHASE_REQUEST' AND NOT EXISTS (
+                    (action.external_document_type = 'PURCHASE_REQUEST' AND (NOT EXISTS (
                         SELECT 1
                         FROM v_preplan_buy_action_slice_progress progress
                         WHERE progress.action_id = action.id
                           AND progress.demand_source_valid = TRUE
-                          AND progress.safety_source_valid = TRUE))
+                          AND progress.safety_source_valid = TRUE)
+                      OR (action.requested_qty > 0 AND (
+                        NOT EXISTS (SELECT 1 FROM preplan_supply_action_allocations allocation
+                                    WHERE allocation.action_id = action.id)
+                        OR EXISTS (
+                            SELECT 1 FROM preplan_supply_action_allocations allocation
+                            WHERE allocation.action_id = action.id AND NOT EXISTS (
+                                SELECT 1 FROM purchase_request_items item
+                                JOIN purchase_requests request ON request.id = item.request_id
+                                WHERE item.id = allocation.external_item_id
+                                  AND item.is_deleted = FALSE
+                                  AND request.id = action.external_document_id
+                                  AND request.is_deleted = FALSE
+                                  AND request.status IN (0,1)
+                                  AND request.is_stopped = FALSE))))
+                      OR (action.public_surplus_qty > 0 AND NOT EXISTS (
+                        SELECT 1 FROM purchase_request_items item
+                        JOIN purchase_requests request ON request.id = item.request_id
+                        WHERE item.id = action.public_surplus_external_item_id
+                          AND item.is_deleted = FALSE
+                          AND request.id = action.external_document_id
+                          AND request.is_deleted = FALSE
+                          AND request.status IN (0,1)
+                          AND request.is_stopped = FALSE))))
                     OR
-                    (action.external_document_type = 'SUBCONTRACT_APPLICATION' AND NOT EXISTS (
-                        SELECT 1
-                        FROM preplan_supply_action_allocations allocation
-                        JOIN subcontract_application_items item
-                          ON item.id = allocation.external_item_id
-                         AND item.is_deleted = FALSE
-                        JOIN subcontract_applications application
-                          ON application.id = item.application_id
-                         AND application.id = action.external_document_id
-                         AND application.is_deleted = FALSE
-                         AND application.status IN (0,1)
-                        WHERE allocation.action_id = action.id))
+                    (action.external_document_type = 'SUBCONTRACT_APPLICATION' AND (
+                      (action.requested_qty > 0 AND (
+                        NOT EXISTS (SELECT 1 FROM preplan_supply_action_allocations allocation
+                                    WHERE allocation.action_id = action.id)
+                        OR EXISTS (
+                            SELECT 1 FROM preplan_supply_action_allocations allocation
+                            WHERE allocation.action_id = action.id AND NOT EXISTS (
+                                SELECT 1 FROM subcontract_application_items item
+                                JOIN subcontract_applications application ON application.id = item.application_id
+                                WHERE item.id = allocation.external_item_id
+                                  AND item.is_deleted = FALSE
+                                  AND application.id = action.external_document_id
+                                  AND application.is_deleted = FALSE
+                                  AND application.status IN (0,1)))))
+                      OR (action.public_surplus_qty > 0 AND NOT EXISTS (
+                        SELECT 1 FROM subcontract_application_items item
+                        JOIN subcontract_applications application ON application.id = item.application_id
+                        WHERE item.id = action.public_surplus_external_item_id
+                          AND item.is_deleted = FALSE
+                          AND application.id = action.external_document_id
+                          AND application.is_deleted = FALSE
+                          AND application.status IN (0,1)))))
                     OR
                     (action.external_document_type = 'PREPLAN_MAKE_TASK' AND NOT EXISTS (
                         SELECT 1 FROM production_material_analysis_items child
@@ -2344,6 +2400,9 @@ public class MaterialAnalysisService {
                   AND progress.demand_failed_qty + progress.safety_failed_qty > 0
                   AND progress.demand_future_qty = 0
                   AND progress.safety_future_qty = 0
+                  AND (action.public_surplus_qty=0 OR NOT (
+                """ + REGULAR_FUTURE_SUPPLY_EXISTS_SQL + """
+                  ))
                 """).setParameter("actorId", actorId)
                 .setParameter("analysisId", analysisId).executeUpdate();
         }
@@ -2354,134 +2413,31 @@ public class MaterialAnalysisService {
         // the shortage and prevent a replacement notification. Keep every commercial and
         // inspection fact, but release only the planning projection after every linked
         // receipt is terminal and no approved order quantity remains in transit.
-        if (hasOrdinaryPurchase) {
+
+        if (hasPurchase) {
             em.createNativeQuery("""
                 UPDATE preplan_supply_actions action
-                SET status = 'CANCELLED', cancelled_by = :actorId,
-                    cancelled_at = now(),
-                    cancellation_reason = '到货质检存在不合格且原采购需求已无在途，需重新通知补采',
-                    updated_at = now()
-                WHERE action.analysis_id = :analysisId AND NOT fn_preplan_action_has_future_transfer(action.id) AND NOT fn_preplan_action_has_shared_claims(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
+                SET status='CANCELLED',cancelled_by=:actorId,cancelled_at=now(),
+                    cancellation_reason='到货质检存在不合格且原采购需求已无在途，需重新通知补采',updated_at=now()
+                WHERE action.analysis_id=:analysisId AND NOT fn_preplan_action_has_future_transfer(action.id)
+                  AND NOT fn_preplan_action_has_shared_claims(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
                   AND action.status IN ('CREATED','IN_PROGRESS','DONE')
-                  AND action.external_document_type = 'PURCHASE_REQUEST'
-                  AND action.safety_replenishment_qty = 0
-                  AND EXISTS (
-                      SELECT 1
-                      FROM purchase_requests request
-                      WHERE request.id = action.external_document_id
-                        AND request.is_deleted = FALSE
-                        AND request.status IN (0,1)
-                        AND request.is_stopped = FALSE
-                        AND request.is_closed = TRUE)
-                  AND action.requested_qty > COALESCE((
-                      -- V463：合并订货行按来源 FIFO 分摊到各申请行后再汇总。
-                      SELECT SUM(fn_purchase_order_source_share(
-                          order_item.id, src.request_item_id,
-                          GREATEST(
-                              COALESCE((
-                                  SELECT SUM(CASE
-                                      WHEN inspection.id IS NULL
-                                      THEN receipt_item.qty
-                                          * COALESCE(receipt_item.unit_rate,1)
-                                      WHEN inspection.status IN ('PARTIAL','RESOLVED')
-                                      THEN inspection.warehouse_stocked_base_qty
-                                      ELSE 0
-                                  END)
-                                  FROM purchase_receipt_items receipt_item
-                                  JOIN purchase_receipts receipt
-                                    ON receipt.id = receipt_item.receipt_id
-                                   AND receipt.status = 1
-                                   AND receipt.is_deleted = FALSE
-                                  LEFT JOIN procurement_inspection_items inspection
-                                    ON inspection.receipt_type = 'PURCHASE'
-                                   AND inspection.receipt_item_id = receipt_item.id
-                                  WHERE receipt_item.order_item_id = order_item.id
-                                    AND receipt_item.is_deleted = FALSE
-                              ),0) - COALESCE(order_item.returned_qty,0)
-                                  * COALESCE(order_item.unit_rate,1), 0)))
-                      FROM purchase_order_item_sources src
-                      JOIN purchase_order_items order_item
-                        ON order_item.id = src.order_item_id
-                       AND order_item.is_deleted = FALSE
-                      JOIN purchase_orders purchase_order
-                        ON purchase_order.id = order_item.order_id
-                       AND purchase_order.status = 1
-                       AND purchase_order.is_deleted = FALSE
-                      WHERE src.request_item_id IN (
-                          SELECT allocation.external_item_id
-                          FROM preplan_supply_action_allocations allocation
-                          WHERE allocation.action_id = action.id
-                            AND allocation.external_item_id IS NOT NULL)
-                  ),0)
-                  AND EXISTS (
-                      SELECT 1
-                      FROM preplan_supply_action_allocations allocation
-                      JOIN purchase_order_item_sources src
-                        ON src.request_item_id = allocation.external_item_id
-                      JOIN purchase_order_items order_item
-                        ON order_item.id = src.order_item_id
-                       AND order_item.is_deleted = FALSE
-                      JOIN purchase_orders purchase_order
-                        ON purchase_order.id = order_item.order_id
-                       AND purchase_order.status = 1
-                       AND purchase_order.is_deleted = FALSE
-                      JOIN purchase_receipt_items receipt_item
-                        ON receipt_item.order_item_id = order_item.id
-                       AND receipt_item.is_deleted = FALSE
-                      JOIN purchase_receipts receipt
-                        ON receipt.id = receipt_item.receipt_id
-                       AND receipt.status = 1
-                       AND receipt.is_deleted = FALSE
-                      JOIN procurement_inspection_items inspection
-                        ON inspection.receipt_type = 'PURCHASE'
-                       AND inspection.receipt_item_id = receipt_item.id
-                       AND inspection.status = 'RESOLVED'
-                       AND inspection.failed_base_qty > 0
-                      WHERE allocation.action_id = action.id)
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM preplan_supply_action_allocations allocation
-                      JOIN purchase_order_item_sources src
-                        ON src.request_item_id = allocation.external_item_id
-                      JOIN purchase_order_items order_item
-                        ON order_item.id = src.order_item_id
-                       AND order_item.is_deleted = FALSE
-                      JOIN purchase_orders purchase_order
-                        ON purchase_order.id = order_item.order_id
-                       AND purchase_order.status = 1
-                       AND purchase_order.is_deleted = FALSE
-                      WHERE allocation.action_id = action.id
-                        AND fn_procurement_order_source_remaining_qty(
-                            'PURCHASE', order_item.id, src.request_item_id) > 0)
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM preplan_supply_action_allocations allocation
-                      JOIN purchase_order_item_sources src
-                        ON src.request_item_id = allocation.external_item_id
-                      JOIN purchase_order_items order_item
-                        ON order_item.id = src.order_item_id
-                       AND order_item.is_deleted = FALSE
-                      JOIN purchase_receipt_items receipt_item
-                        ON receipt_item.order_item_id = order_item.id
-                       AND receipt_item.is_deleted = FALSE
-                      JOIN purchase_receipts receipt
-                        ON receipt.id = receipt_item.receipt_id
-                       AND receipt.status = 1
-                       AND receipt.is_deleted = FALSE
-                      JOIN procurement_inspection_items inspection
-                        ON inspection.receipt_type = 'PURCHASE'
-                       AND inspection.receipt_item_id = receipt_item.id
-                       AND (
-                           inspection.status NOT IN ('RESOLVED','REVERSED')
-                           OR (
-                               inspection.status <> 'REVERSED'
-                               AND inspection.passed_base_qty
-                                   > inspection.warehouse_stocked_base_qty
-                           )
-                       )
-                      WHERE allocation.action_id = action.id)
-                """).setParameter("actorId", actorId)
-                .setParameter("analysisId", analysisId).executeUpdate();
+                  AND action.external_document_type='PURCHASE_REQUEST'
+                  AND (action.safety_replenishment_qty=0 OR action.public_surplus_qty>0)
+                  AND EXISTS (SELECT 1 FROM purchase_requests request WHERE request.id=action.external_document_id
+                      AND NOT request.is_deleted AND request.status IN (0,1) AND NOT request.is_stopped AND request.is_closed)
+                  AND action.requested_qty+action.public_surplus_qty > (
+                """ + REGULAR_STOCKED_BASE_SQL + """
+                  ) AND (
+                """ + REGULAR_FAILED_INSPECTION_EXISTS_SQL + """
+                  ) AND NOT (
+                """ + REGULAR_FUTURE_ORDER_EXISTS_SQL + """
+                  ) AND NOT (
+                """ + REGULAR_PENDING_INSPECTION_EXISTS_SQL + """
+                  ) AND (action.safety_replenishment_qty=0 OR EXISTS (
+                      SELECT 1 FROM v_preplan_buy_action_slice_progress progress
+                      WHERE progress.action_id=action.id AND progress.safety_future_qty=0))
+                """).setParameter("actorId",actorId).setParameter("analysisId",analysisId).executeUpdate();
         }
 
         if (hasSubcontract) {
@@ -2501,7 +2457,7 @@ public class MaterialAnalysisService {
                         AND application.is_deleted = FALSE
                         AND application.status IN (0,1)
                         AND application.is_closed = TRUE)
-                  AND action.requested_qty > COALESCE((
+                  AND action.requested_qty+action.public_surplus_qty > COALESCE((
                       -- V463：合并订货行按来源 FIFO 分摊到各申请行后再汇总。
                       SELECT SUM(fn_subcontract_order_source_share(
                           order_item.id, src.application_item_id,
@@ -2539,13 +2495,13 @@ public class MaterialAnalysisService {
                           SELECT allocation.external_item_id
                           FROM preplan_supply_action_allocations allocation
                           WHERE allocation.action_id = action.id
-                            AND allocation.external_item_id IS NOT NULL)
+                            AND allocation.external_item_id IS NOT NULL
+                          UNION SELECT action.public_surplus_external_item_id
+                          WHERE action.public_surplus_external_item_id IS NOT NULL)
                   ),0)
                   AND EXISTS (
                       SELECT 1
-                      FROM preplan_supply_action_allocations allocation
-                      JOIN subcontract_order_item_sources src
-                        ON src.application_item_id = allocation.external_item_id
+                      FROM subcontract_order_item_sources src
                       JOIN subcontract_order_items order_item
                         ON order_item.id = src.order_item_id
                        AND order_item.is_deleted = FALSE
@@ -2565,12 +2521,12 @@ public class MaterialAnalysisService {
                        AND inspection.receipt_item_id = receipt_item.id
                        AND inspection.status = 'RESOLVED'
                        AND inspection.failed_base_qty > 0
-                      WHERE allocation.action_id = action.id)
+                      WHERE src.alloc_qty>0 AND src.application_item_id IN (
+                """ + REGULAR_ITEM_IDS_SQL + """
+                      ))
                   AND NOT EXISTS (
                       SELECT 1
-                      FROM preplan_supply_action_allocations allocation
-                      JOIN subcontract_order_item_sources src
-                        ON src.application_item_id = allocation.external_item_id
+                      FROM subcontract_order_item_sources src
                       JOIN subcontract_order_items order_item
                         ON order_item.id = src.order_item_id
                        AND order_item.is_deleted = FALSE
@@ -2578,14 +2534,13 @@ public class MaterialAnalysisService {
                         ON subcontract_order.id = order_item.order_id
                        AND subcontract_order.status = 1
                        AND subcontract_order.is_deleted = FALSE
-                      WHERE allocation.action_id = action.id
-                        AND fn_procurement_order_source_remaining_qty(
+                      WHERE src.alloc_qty>0 AND src.application_item_id IN (
+                """ + REGULAR_ITEM_IDS_SQL + """
+                      ) AND fn_procurement_order_source_remaining_qty(
                             'SUBCONTRACT', order_item.id, src.application_item_id) > 0)
                   AND NOT EXISTS (
                       SELECT 1
-                      FROM preplan_supply_action_allocations allocation
-                      JOIN subcontract_order_item_sources src
-                        ON src.application_item_id = allocation.external_item_id
+                      FROM subcontract_order_item_sources src
                       JOIN subcontract_order_items order_item
                         ON order_item.id = src.order_item_id
                        AND order_item.is_deleted = FALSE
@@ -2607,93 +2562,44 @@ public class MaterialAnalysisService {
                                    > inspection.warehouse_stocked_base_qty
                            )
                        )
-                      WHERE allocation.action_id = action.id)
+                      WHERE src.alloc_qty>0 AND src.application_item_id IN (
+                """ + REGULAR_ITEM_IDS_SQL + """
+                      ))
                 """).setParameter("actorId", actorId)
                 .setParameter("analysisId", analysisId).executeUpdate();
         }
 
+
         if (hasSafetyPurchase) {
             em.createNativeQuery("""
-                UPDATE preplan_supply_actions action
-                SET status = 'IN_PROGRESS', updated_at = now()
+                UPDATE preplan_supply_actions action SET status='IN_PROGRESS',updated_at=now()
                 FROM v_preplan_buy_action_slice_progress progress
-                WHERE action.id = progress.action_id
-                  AND action.analysis_id = :analysisId AND NOT fn_preplan_action_has_future_transfer(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
-                  AND action.status IN ('CREATED','DONE')
-                  AND action.external_document_type = 'PURCHASE_REQUEST'
-                  AND action.safety_replenishment_qty > 0
-                  AND (
-                      progress.demand_qualified_qty
-                          < progress.demand_requested_qty
-                      OR progress.safety_qualified_qty
-                          < progress.safety_requested_qty)
-                  AND (progress.demand_order_exists OR progress.safety_order_exists)
-                """).setParameter("analysisId", analysisId).executeUpdate();
+                WHERE action.id=progress.action_id AND action.analysis_id=:analysisId
+                  AND NOT fn_preplan_action_has_future_transfer(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
+                  AND action.status IN ('CREATED','DONE') AND action.external_document_type='PURCHASE_REQUEST'
+                  AND action.safety_replenishment_qty>0
+                  AND (progress.demand_qualified_qty<progress.demand_requested_qty
+                    OR progress.safety_qualified_qty<progress.safety_requested_qty
+                    OR (action.public_surplus_qty>0 AND action.requested_qty+action.public_surplus_qty > (
+                """ + REGULAR_STOCKED_BASE_SQL + """
+                    ))) AND (progress.demand_order_exists OR progress.safety_order_exists OR (
+                """ + REGULAR_APPROVED_ORDER_EXISTS_SQL + """
+                  ))
+                """).setParameter("analysisId",analysisId).executeUpdate();
         }
 
         if (hasOrdinaryPurchase) {
             em.createNativeQuery("""
-                UPDATE preplan_supply_actions action
-                SET status = 'IN_PROGRESS', updated_at = now()
-                WHERE action.analysis_id = :analysisId AND NOT fn_preplan_action_has_future_transfer(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
-                  AND action.status IN ('CREATED','DONE')
-                  AND action.external_document_type = 'PURCHASE_REQUEST'
-                  AND action.safety_replenishment_qty = 0
-                  AND action.requested_qty > COALESCE((
-                      -- V463：合并订货行按来源 FIFO 分摊到各申请行后再汇总。
-                      SELECT SUM(fn_purchase_order_source_share(
-                          item.id, src.request_item_id,
-                          GREATEST(
-                              COALESCE((
-                                  SELECT SUM(CASE
-                                      WHEN inspection.id IS NULL
-                                      THEN receipt_item.qty * COALESCE(
-                                          receipt_item.unit_rate,1)
-                                      WHEN inspection.status IN ('PARTIAL','RESOLVED')
-                                      THEN inspection.warehouse_stocked_base_qty
-                                      ELSE 0
-                                  END)
-                                  FROM purchase_receipt_items receipt_item
-                                  JOIN purchase_receipts receipt
-                                    ON receipt.id = receipt_item.receipt_id
-                                   AND receipt.status = 1
-                                   AND receipt.is_deleted = FALSE
-                                  LEFT JOIN procurement_inspection_items inspection
-                                    ON inspection.receipt_type = 'PURCHASE'
-                                   AND inspection.receipt_item_id = receipt_item.id
-                                  WHERE receipt_item.order_item_id = item.id
-                                    AND receipt_item.is_deleted = FALSE
-                              ),0) - COALESCE(item.returned_qty,0)
-                                  * COALESCE(item.unit_rate,1), 0)))
-                      FROM purchase_order_item_sources src
-                      JOIN purchase_order_items item
-                        ON item.id = src.order_item_id
-                       AND item.is_deleted = FALSE
-                      JOIN purchase_orders purchase_order
-                        ON purchase_order.id = item.order_id
-                       AND purchase_order.status = 1
-                       AND purchase_order.is_deleted = FALSE
-                      WHERE src.request_item_id IN (
-                          SELECT allocation.external_item_id
-                          FROM preplan_supply_action_allocations allocation
-                          WHERE allocation.action_id = action.id
-                            AND allocation.external_item_id IS NOT NULL)
-                  ),0)
-                  AND (action.status = 'DONE' OR EXISTS (
-                      SELECT 1 FROM purchase_order_item_sources src
-                      JOIN purchase_order_items item
-                        ON item.id = src.order_item_id
-                       AND item.is_deleted = FALSE
-                      JOIN purchase_orders purchase_order
-                        ON purchase_order.id = item.order_id
-                       AND purchase_order.status = 1
-                       AND purchase_order.is_deleted = FALSE
-                      WHERE src.request_item_id IN (
-                          SELECT allocation.external_item_id
-                          FROM preplan_supply_action_allocations allocation
-                          WHERE allocation.action_id = action.id
-                            AND allocation.external_item_id IS NOT NULL)))
-                """).setParameter("analysisId", analysisId).executeUpdate();
+                UPDATE preplan_supply_actions action SET status='IN_PROGRESS',updated_at=now()
+                WHERE action.analysis_id=:analysisId AND NOT fn_preplan_action_has_future_transfer(action.id)
+                  AND action.operation_type<>'SHARED_FUTURE_CLAIM' AND action.status IN ('CREATED','DONE')
+                  AND action.external_document_type='PURCHASE_REQUEST' AND action.safety_replenishment_qty=0
+                  AND action.requested_qty+action.public_surplus_qty > (
+                """ + REGULAR_STOCKED_BASE_SQL + """
+                  ) AND (action.status='DONE' OR (
+                """ + REGULAR_APPROVED_ORDER_EXISTS_SQL + """
+                  ))
+                """).setParameter("analysisId",analysisId).executeUpdate();
         }
 
         if (hasSubcontract) {
@@ -2722,7 +2628,9 @@ public class MaterialAnalysisService {
                           SELECT allocation.external_item_id
                           FROM preplan_supply_action_allocations allocation
                           WHERE allocation.action_id = action.id
-                            AND allocation.external_item_id IS NOT NULL)))
+                            AND allocation.external_item_id IS NOT NULL
+                          UNION SELECT action.public_surplus_external_item_id
+                          WHERE action.public_surplus_external_item_id IS NOT NULL)))
                 """).setParameter("analysisId", analysisId).executeUpdate();
         }
 
@@ -2765,72 +2673,33 @@ public class MaterialAnalysisService {
                 """).setParameter("analysisId", analysisId).executeUpdate();
         }
 
+
         if (hasSafetyPurchase) {
             em.createNativeQuery("""
-                UPDATE preplan_supply_actions action
-                SET status = 'DONE', updated_at = now()
+                UPDATE preplan_supply_actions action SET status='DONE',updated_at=now()
                 FROM v_preplan_buy_action_slice_progress progress
-                WHERE action.id = progress.action_id
-                  AND action.analysis_id = :analysisId AND NOT fn_preplan_action_has_future_transfer(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
-                  AND action.status IN ('CREATED','IN_PROGRESS')
-                  AND action.external_document_type = 'PURCHASE_REQUEST'
-                  AND action.safety_replenishment_qty > 0
-                  AND progress.demand_qualified_qty
-                      >= progress.demand_requested_qty
-                  AND progress.safety_qualified_qty
-                      >= progress.safety_requested_qty
-                """).setParameter("analysisId", analysisId).executeUpdate();
+                WHERE action.id=progress.action_id AND action.analysis_id=:analysisId
+                  AND NOT fn_preplan_action_has_future_transfer(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
+                  AND action.status IN ('CREATED','IN_PROGRESS') AND action.external_document_type='PURCHASE_REQUEST'
+                  AND action.safety_replenishment_qty>0
+                  AND progress.demand_qualified_qty>=progress.demand_requested_qty
+                  AND progress.safety_qualified_qty>=progress.safety_requested_qty
+                  AND (action.public_surplus_qty=0 OR action.requested_qty+action.public_surplus_qty <= (
+                """ + REGULAR_STOCKED_BASE_SQL + """
+                  ))
+                """).setParameter("analysisId",analysisId).executeUpdate();
         }
 
         if (hasOrdinaryPurchase) {
             em.createNativeQuery("""
-                UPDATE preplan_supply_actions action
-                SET status = 'DONE', updated_at = now()
-                WHERE action.analysis_id = :analysisId AND NOT fn_preplan_action_has_future_transfer(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
-                  AND action.status IN ('CREATED','IN_PROGRESS')
-                  AND action.external_document_type = 'PURCHASE_REQUEST'
-                  AND action.safety_replenishment_qty = 0
-                  AND action.requested_qty <= COALESCE((
-                      -- V463：合并订货行按来源 FIFO 分摊到各申请行后再汇总。
-                      SELECT SUM(fn_purchase_order_source_share(
-                          item.id, src.request_item_id,
-                          GREATEST(
-                              COALESCE((
-                                  SELECT SUM(CASE
-                                      WHEN inspection.id IS NULL
-                                      THEN receipt_item.qty * COALESCE(
-                                          receipt_item.unit_rate,1)
-                                      WHEN inspection.status IN ('PARTIAL','RESOLVED')
-                                      THEN inspection.warehouse_stocked_base_qty
-                                      ELSE 0
-                                  END)
-                                  FROM purchase_receipt_items receipt_item
-                                  JOIN purchase_receipts receipt
-                                    ON receipt.id = receipt_item.receipt_id
-                                   AND receipt.status = 1
-                                   AND receipt.is_deleted = FALSE
-                                  LEFT JOIN procurement_inspection_items inspection
-                                    ON inspection.receipt_type = 'PURCHASE'
-                                   AND inspection.receipt_item_id = receipt_item.id
-                                  WHERE receipt_item.order_item_id = item.id
-                                    AND receipt_item.is_deleted = FALSE
-                              ),0) - COALESCE(item.returned_qty,0)
-                                  * COALESCE(item.unit_rate,1), 0)))
-                      FROM purchase_order_item_sources src
-                      JOIN purchase_order_items item
-                        ON item.id = src.order_item_id
-                       AND item.is_deleted = FALSE
-                      JOIN purchase_orders purchase_order
-                        ON purchase_order.id = item.order_id
-                       AND purchase_order.status = 1
-                       AND purchase_order.is_deleted = FALSE
-                      WHERE src.request_item_id IN (
-                          SELECT allocation.external_item_id
-                          FROM preplan_supply_action_allocations allocation
-                          WHERE allocation.action_id = action.id
-                            AND allocation.external_item_id IS NOT NULL)
-                  ),0)
-                """).setParameter("analysisId", analysisId).executeUpdate();
+                UPDATE preplan_supply_actions action SET status='DONE',updated_at=now()
+                WHERE action.analysis_id=:analysisId AND NOT fn_preplan_action_has_future_transfer(action.id)
+                  AND action.operation_type<>'SHARED_FUTURE_CLAIM' AND action.status IN ('CREATED','IN_PROGRESS')
+                  AND action.external_document_type='PURCHASE_REQUEST' AND action.safety_replenishment_qty=0
+                  AND action.requested_qty+action.public_surplus_qty <= (
+                """ + REGULAR_STOCKED_BASE_SQL + """
+                  )
+                """).setParameter("analysisId",analysisId).executeUpdate();
         }
 
         if (hasSubcontract) {
@@ -7382,6 +7251,10 @@ public class MaterialAnalysisService {
      * 与计划冻结同一判定)。还没挂上申请明细的行动只看现时直属边。
      */
     static String subcontractDrawQuantitySql(String quantitySql) {
+        return subcontractDrawQuantitySql(quantitySql,"allocation.external_item_id");
+    }
+
+    private static String subcontractDrawQuantitySql(String quantitySql,String externalItemSql) {
         return """
                 (SELECT ROUND(COALESCE((
                     SELECT CASE
@@ -7411,14 +7284,14 @@ public class MaterialAnalysisService {
                              AND subcontract_order.is_deleted = FALSE
                             WHERE src.application_item_id = application_item.id
                         ) ordered ON TRUE
-                        WHERE application_item.id = allocation.external_item_id
+                        WHERE application_item.id = %s
                         GROUP BY application_item.id, application_item.goods_id,
                                  application_item.qty, application_item.unit_rate
                     ) split),
                     CASE WHEN EXISTS (SELECT 1 FROM fn_subcontract_draw_edges(action.goods_id))
                          THEN quantity.qty ELSE 0 END),4)
                  FROM (SELECT (%s)::numeric AS qty) quantity)
-                """.formatted(quantitySql);
+                """.formatted(externalItemSql,quantitySql);
     }
 
     /** Compute source prefixes once for the admitted analysis, not once per allocation. */
@@ -7893,6 +7766,35 @@ public class MaterialAnalysisService {
                 GROUP BY 1
                 """).setParameter("analysisId", analysisId))) {
             planned.merge(string(row[0]), decimal(row[1]), BigDecimal::add);
+        }
+        // An independent public-only aggregate has no customer allocation. Its
+        // immutable intent still owns the company materials needed to make that
+        // public output. Use the same responsibility as actual vendor custody.
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                WITH public_actions AS MATERIALIZED (
+                    SELECT action.*,GREATEST(action.public_surplus_qty-(
+                """ + SubcontractComponentCustodyProjection.ACTION_STOCKED_BASE_SQL + """
+                    ),0) AS public_pending_qty
+                    FROM preplan_supply_actions action
+                    WHERE action.analysis_id=:analysisId AND action.operation_type='SUPPLY'
+                      AND action.route='SUBCONTRACT' AND action.requested_qty=0 AND action.public_surplus_qty>0
+                      AND action.external_document_type='SUBCONTRACT_APPLICATION'
+                      AND action.status IN ('OPEN','CREATED','IN_PROGRESS')
+                )
+                SELECT material.analysis_item_id || '|' || material.node_key,SUM(
+                """ + subcontractDrawQuantitySql(
+                        SubcontractPublicResponsibilityProjection.remainingShareSql("action.public_pending_qty"),
+                        "responsibility.external_item_id") + """
+                )::numeric
+                FROM public_actions action
+                CROSS JOIN LATERAL (
+                """ + SubcontractPublicResponsibilityProjection.OWNERS_FOR_ACTION_SQL + """
+                ) responsibility
+                JOIN production_material_analysis_materials material ON material.id=responsibility.analysis_material_id
+                  AND material.analysis_id=:analysisId AND material.active
+                GROUP BY material.analysis_item_id,material.node_key
+                """).setParameter("analysisId",analysisId))) {
+            planned.merge(string(row[0]),decimal(row[1]),BigDecimal::add);
         }
         if (!overlay.isNone()) {
             overlay.plannedOutputByNode().forEach((key, qty) -> planned.merge(key, qty, BigDecimal::add));

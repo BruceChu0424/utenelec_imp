@@ -79,6 +79,7 @@ public class AuditEventInterpreter {
             Map.entry("view_account_detail", "查看资金账户档案"),
             Map.entry("view_goods_detail", "查看货品详情"),
             Map.entry("view_goods_price_analysis", "查看货品价格分析"),
+            Map.entry("update_goods_market_reference", "修改货品市场参考关联"),
             Map.entry("view_goods_price_analysis_history", "查看货品价格历史"),
             Map.entry("view_goods_price_detail", "查看货品价格详情"),
             Map.entry("view_goods_subcontract_supplier_loss", "查看货品委外商损耗"),

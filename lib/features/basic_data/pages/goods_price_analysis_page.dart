@@ -12,6 +12,7 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../widgets/goods_price_history_chart.dart';
+import '../widgets/goods_material_market_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -729,6 +730,15 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
                             ),
                             const SizedBox(height: UtenSpacing.s12),
                             _controls(context),
+                            if (_kind == 'PURCHASE' &&
+                                nativeReadAccessConfirmed) ...[
+                              const SizedBox(height: UtenSpacing.s12),
+                              GoodsMaterialMarketPanel(
+                                key: ValueKey('material-market-$_identity'),
+                                goodsId: widget.goodsId,
+                                contextIdentity: _identity,
+                              ),
+                            ],
                             if (_kind == 'SUBCONTRACT' &&
                                 _supplierApplicable) ...[
                               const SizedBox(height: UtenSpacing.s12),

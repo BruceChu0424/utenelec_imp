@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "seriesId": "synthetic_demo",
+  "name": "SYNTHETIC - not market data",
+  "commodity": "COPPER",
+  "market": "SPOT",
+  "grade": "SYNTHETIC",
+  "region": "SYNTHETIC",
+  "currency": "CNY",
+  "unit": "元/吨",
+  "priceBasis": "SYNTHETIC demonstration; no commercial meaning",
+  "sourceName": "SYNTHETIC deterministic test generator",
+  "sourceUrl": "https://example.invalid/SYNTHETIC",
+  "authorized": true,
+  "rollPolicy": null,
+  "dataAsOf": "2026-10-20",
+  "generatedAt": "2026-10-21T03:41:20.399522Z",
+  "latestPrice": "60788.997825",
+  "status": "READY",
+  "reasonCodes": [],
+  "modelVersion": "AutoETS/worker-1.0.0",
+  "libraryVersion": "2.1.1",
+  "datasetDigest": "e8bc568bad5086dca0bb29ec3385fc33cd2c49edd9b0c5b8940f54a0cdcc4b95",
+  "validation": {
+    "passed": true,
+    "baselineMAE": "103.708185300000167217",
+    "modelMAE": "0.901833515690345311",
+    "folds": 30,
+    "coverage80": "0.822222222222222299",
+    "backtestStart": "2024-07-02",
+    "backtestEnd": "2026-10-20"
+  },
+  "forecasts": [
+    {
+      "horizon": 1,
+      "price": "60800.017828833217208739",
+      "lower80": "60798.492623663529229816",
+      "upper80": "60801.543034002905187663",
+      "direction": "UP"
+    },
+    {
+      "horizon": 5,
+      "price": "60848.019801509006356355",
+      "lower80": "60846.494595927513728384",
+      "upper80": "60849.545007090498984326",
+      "direction": "UP"
+    },
+    {
+      "horizon": 20,
+      "price": "61028.027199043215659913",
+      "lower80": "61026.501971994613995776",
+      "upper80": "61029.55242609181732405",
+      "direction": "UP"
+    }
+  ],
+  "procurementSignal": "RISING",
+  "synthetic": true
+}

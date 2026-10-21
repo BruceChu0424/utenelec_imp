@@ -1,6 +1,16 @@
 version: 2
 
 updates:
+  # Upgrade candidates are tested in material-forecast.yml before release.
+  - package-ecosystem: "pip"
+    directory: "/services/material_forecast"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "02:30"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 3
+
   - package-ecosystem: "pub"
     directory: "/"
     schedule:

@@ -45,6 +45,8 @@ import 'package:uten_imp/shared/pricing/price_analysis_l10n.dart';
 import 'package:uten_imp/shared/pricing/price_summary_value.dart';
 
 import 'package:uten_imp/shared/pricing/price_analysis_repository.dart';
+import 'package:uten_imp/shared/pricing/material_market_repository.dart';
+import 'package:uten_imp/shared/pricing/material_market_models.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -87,6 +89,32 @@ class _Snapshots extends SessionSnapshotNotifier {
   @override
   Future<SessionSnapshot?> build() async =>
       ref.watch(authenticatedScopeProvider) == null ? null : SessionSnapshot();
+}
+
+class _MarketRepository implements MaterialMarketRepository {
+  final reads = <String>[];
+  bool fail = false;
+  @override
+  Future<MaterialMarketAnalysis> analysis(String goodsId) async {
+    reads.add(goodsId);
+    if (fail) throw StateError('market is offline');
+    return MaterialMarketAnalysis({
+      'status': 'UNMAPPED',
+      'seriesId': null,
+      'bindingVersion': 0,
+      'current': null,
+      'canManage': false,
+    });
+  }
+
+  @override
+  Future<List<MaterialMarketSnapshot>> catalog(String goodsId) async => [];
+  @override
+  Future<MaterialMarketAnalysis> bind(
+    String goodsId, {
+    required String? seriesId,
+    required int expectedVersion,
+  }) => throw StateError('read-only test');
 }
 
 class _Repository implements PriceAnalysisRepository {
@@ -378,6 +406,7 @@ void main() {
     double factor = 1,
     TextScaler? scaler,
     Locale locale = const Locale('zh'),
+    MaterialMarketRepository? marketRepository,
   }) async {
     await loadAuditScreenshotFonts(tester);
     final koreanFont = locale.languageCode == 'ko'
@@ -407,6 +436,10 @@ void main() {
       ProviderScope(
         overrides: [
           priceAnalysisRepositoryProvider.overrideWithValue(repository),
+          if (marketRepository != null)
+            materialMarketRepositoryProvider.overrideWithValue(
+              marketRepository,
+            ),
           sessionProvider.overrideWith(_Session.new),
           if (permissions != null) _grants.overrideWith((_) => permissions),
           currentPermissionsProvider.overrideWith((ref) => ref.watch(_grants)),
@@ -844,6 +877,58 @@ void main() {
       expect(find.byType(PriceHistoryChart), findsNothing);
     },
   );
+
+  testWidgets(
+    'market failure stays optional and does not require category permission',
+    (tester) async {
+      final market = _MarketRepository()..fail = true;
+      await pump(
+        tester,
+        _Repository(),
+        permissions: {
+          Perm.goodsView,
+          Perm.goodsPriceAnalysisView,
+          Perm.purchaseOrderView,
+          Perm.purchaseOrderPriceView,
+        },
+        marketRepository: market,
+      );
+      await tester.pumpAndSettle();
+      expect(market.reads, ['a']);
+      expect(find.byKey(const Key('material-market-error')), findsOneWidget);
+      expect(find.byType(PriceHistoryChart), findsOneWidget);
+      expect(find.byKey(const ValueKey('price-summary-today')), findsOneWidget);
+      expect(find.textContaining('≈12.3457'), findsOneWidget);
+    },
+  );
+
+  testWidgets('market enrichment is mounted only for the purchase pool', (
+    tester,
+  ) async {
+    final market = _MarketRepository();
+    await pump(
+      tester,
+      _Repository(),
+      permissions: {
+        Perm.goodsView,
+        Perm.goodsPriceAnalysisView,
+        Perm.financeOrderApprovalView,
+        Perm.financeViewAll,
+      },
+      marketRepository: market,
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('material-market-panel')), findsOneWidget);
+    expect(market.reads, ['a']);
+    await tester.tap(find.text('销售价格').first);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('material-market-panel')), findsNothing);
+    expect(market.reads, ['a']);
+    await tester.tap(find.text('采购价格').first);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('material-market-panel')), findsOneWidget);
+    expect(market.reads, ['a', 'a']);
+  });
 
   testWidgets('desktop shows real records and the declared reference basis', (
     tester,

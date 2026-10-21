@@ -74,11 +74,11 @@ class GlPostingLegacyCashScopePostgresTest {
         assertThat(jdbc.queryForObject("SELECT legacy_import_run_id FROM finance_expenses WHERE id=?",UUID.class,OLD_EXPENSE))
                 .as("A forward schema extension must not invent new source proof for old data").isNull();
         expense(NEW_EXPENSE,null,"YF20250102000001","7",0);
-        sessions=new Configuration().setProperty("hibernate.connection.url",DATABASE.getJdbcUrl())
-                .setProperty("hibernate.connection.username",DATABASE.getUsername())
-                .setProperty("hibernate.connection.password",DATABASE.getPassword())
+        var fixtureConfiguration = new Configuration()
                 .setProperty("hibernate.hbm2ddl.auto","none")
-                .setProperty("hibernate.show_sql","false").buildSessionFactory();
+                .setProperty("hibernate.show_sql","false");
+        fixtureConfiguration.getProperties().put("hibernate.connection.datasource", jdbc.getDataSource());
+        sessions = fixtureConfiguration.buildSessionFactory();
     }
 
     @AfterAll static void stop() {

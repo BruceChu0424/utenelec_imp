@@ -57,7 +57,7 @@ class ReviewPendingLoginPopupPostgresTest {
         jdbc.execute("CREATE FUNCTION fn_notice_business_action_visible(uuid,text,text,uuid,text,text,text,text,text,text) RETURNS boolean LANGUAGE sql AS 'SELECT TRUE'");
         // 仓库创建时整体校验所有 @Query：SCOPED_VISIBILITY 引用 SalesOrder（V825 计划
         // 提醒补投的 EXISTS 子句）与 fn_notice_production_over_limit_visible。
-        factory = new Configuration()
+        var fixtureConfiguration = new Configuration()
                 .addAnnotatedClass(Notice.class)
                 .addAnnotatedClass(NoticeUserState.class)
                 .addAnnotatedClass(NoticeAcknowledgment.class)
@@ -66,12 +66,9 @@ class ReviewPendingLoginPopupPostgresTest {
                 .addAnnotatedClass(com.uten.imp.features.org.position.Position.class)
                 .addAnnotatedClass(com.uten.imp.features.sales.order.SalesOrder.class)
                 .addAnnotatedClass(com.uten.imp.features.production.fulfillment.ProductionExecutionSegment.class)
-                .setProperty("hibernate.connection.driver_class", "org.postgresql.Driver")
-                .setProperty("hibernate.connection.url", DB.getJdbcUrl())
-                .setProperty("hibernate.connection.username", DB.getUsername())
-                .setProperty("hibernate.connection.password", DB.getPassword())
-                .setProperty("hibernate.hbm2ddl.auto", "create")
-                .buildSessionFactory();
+                .setProperty("hibernate.hbm2ddl.auto", "create");
+        fixtureConfiguration.getProperties().put("hibernate.connection.datasource", jdbc.getDataSource());
+        factory = fixtureConfiguration.buildSessionFactory();
         // 只装载真函数本体；非超限事件在触碰生产表之前提前返回（与
         // WorkshopNoticeScopePostgresTest 同一抽取方式）。
         String migration = java.nio.file.Path.of(

@@ -70,17 +70,15 @@ class WorkshopNoticeScopePostgresTest {
         jdbc.execute("CREATE FUNCTION fn_notice_business_action_visible(uuid,text,text,uuid,text,text,text,text,text,text) RETURNS boolean LANGUAGE sql AS 'SELECT TRUE'");
         // NoticeAcknowledgment：findVisiblePendingManualNotices（人工通知登录弹窗）的 JPQL 引用，
         // 仓库创建时整体校验所有 @Query，故须一并注册。
-        factory=new Configuration().addAnnotatedClass(Notice.class).addAnnotatedClass(NoticeUserState.class)
+        var fixtureConfiguration = new Configuration().addAnnotatedClass(Notice.class).addAnnotatedClass(NoticeUserState.class)
                 .addAnnotatedClass(NoticeAcknowledgment.class)
                 .addAnnotatedClass(ProductionExecutionSegment.class).addAnnotatedClass(Department.class)
                 .addAnnotatedClass(Employee.class).addAnnotatedClass(Position.class)
                 // V825 计划提醒补投：SCOPED_VISIBILITY 的 EXISTS 子查询引用 SalesOrder。
                 .addAnnotatedClass(com.uten.imp.features.sales.order.SalesOrder.class)
-                .setProperty("hibernate.connection.driver_class","org.postgresql.Driver")
-                .setProperty("hibernate.connection.url",DB.getJdbcUrl())
-                .setProperty("hibernate.connection.username",DB.getUsername())
-                .setProperty("hibernate.connection.password",DB.getPassword())
-                .setProperty("hibernate.hbm2ddl.auto","create").buildSessionFactory();
+                .setProperty("hibernate.hbm2ddl.auto","create");
+        fixtureConfiguration.getProperties().put("hibernate.connection.datasource", jdbc.getDataSource());
+        factory = fixtureConfiguration.buildSessionFactory();
         jdbc.execute("CREATE TABLE users(id uuid PRIMARY KEY,employee_id uuid,status text,is_deleted boolean DEFAULT FALSE)");
         jdbc.execute("CREATE TABLE employee_secondary_departments(employee_id uuid,department_id uuid)");
         for (var entry : List.of(new Object[]{ROOT,null,"ROOT"},new Object[]{A,ROOT,"ACTUAL_WORKSHOP_A"},

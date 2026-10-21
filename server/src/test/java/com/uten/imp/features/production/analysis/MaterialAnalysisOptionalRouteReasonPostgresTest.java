@@ -88,13 +88,10 @@ class MaterialAnalysisOptionalRouteReasonPostgresTest {
         // read by the current service. V477 preservation is verified first.
         com.uten.imp.testsupport.TestFlyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").load().migrate();
-        factory = new Configuration()
-                .setProperty("hibernate.connection.driver_class", "org.postgresql.Driver")
-                .setProperty("hibernate.connection.url", POSTGRES.getJdbcUrl())
-                .setProperty("hibernate.connection.username", POSTGRES.getUsername())
-                .setProperty("hibernate.connection.password", POSTGRES.getPassword())
-                .setProperty("hibernate.hbm2ddl.auto", "none")
-                .buildSessionFactory();
+        var fixtureConfiguration = new Configuration()
+                .setProperty("hibernate.hbm2ddl.auto", "none");
+        fixtureConfiguration.getProperties().put("hibernate.connection.datasource", jdbc.getDataSource());
+        factory = fixtureConfiguration.buildSessionFactory();
         em = factory.createEntityManager();
         SecurityContextCurrentUser current = mock(SecurityContextCurrentUser.class);
         when(current.requireId()).thenReturn(actor);

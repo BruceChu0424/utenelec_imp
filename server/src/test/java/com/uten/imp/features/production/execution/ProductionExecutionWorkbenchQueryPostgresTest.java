@@ -267,12 +267,10 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 UUID.randomUUID(), new UUID(1, 3), settlementEvent);
         jdbc.update("INSERT INTO production_material_stock_postings(id,demand_id,posting_type,qty_base) VALUES (?,?,'ISSUE_REVERSE',10)",
                 UUID.randomUUID(), new UUID(1, 4));
-        factory = new Configuration()
-                .setProperty("hibernate.connection.driver_class", "org.postgresql.Driver")
-                .setProperty("hibernate.connection.url", POSTGRES.getJdbcUrl())
-                .setProperty("hibernate.connection.username", POSTGRES.getUsername())
-                .setProperty("hibernate.connection.password", POSTGRES.getPassword())
-                .setProperty("hibernate.hbm2ddl.auto", "none").buildSessionFactory();
+        var fixtureConfiguration = new Configuration()
+                .setProperty("hibernate.hbm2ddl.auto", "none");
+        fixtureConfiguration.getProperties().put("hibernate.connection.datasource", jdbc.getDataSource());
+        factory = fixtureConfiguration.buildSessionFactory();
     }
     private static void insertSegment(int number, String status, String preparation, boolean reportable, UUID workshop) {
         jdbc.update("INSERT INTO production_execution_segments(id,status,plan_id,package_id,workshop_department_id,responsible_employee_id) VALUES (?, ?,?,?,?,?)", new UUID(0, number), status,PLAN,PLAN,workshop,EMPLOYEE);

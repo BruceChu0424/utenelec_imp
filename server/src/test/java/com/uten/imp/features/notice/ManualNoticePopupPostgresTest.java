@@ -46,7 +46,7 @@ class ManualNoticePopupPostgresTest {
         DB.start();
         // NoticeRepository 的全部 @Query 在仓库创建时整体校验：车间对象范围子句引用
         // ProductionExecutionSegment/Department，故与 WorkshopNoticeScopePostgresTest 同样注册。
-        factory = new Configuration()
+        var fixtureConfiguration = new Configuration()
                 .addAnnotatedClass(Notice.class)
                 .addAnnotatedClass(NoticeUserState.class)
                 .addAnnotatedClass(NoticeAcknowledgment.class)
@@ -56,12 +56,9 @@ class ManualNoticePopupPostgresTest {
                 .addAnnotatedClass(Position.class)
                 // V825 计划提醒补投：SCOPED_VISIBILITY 的 EXISTS 子查询引用 SalesOrder。
                 .addAnnotatedClass(com.uten.imp.features.sales.order.SalesOrder.class)
-                .setProperty("hibernate.connection.driver_class", "org.postgresql.Driver")
-                .setProperty("hibernate.connection.url", DB.getJdbcUrl())
-                .setProperty("hibernate.connection.username", DB.getUsername())
-                .setProperty("hibernate.connection.password", DB.getPassword())
-                .setProperty("hibernate.hbm2ddl.auto", "create")
-                .buildSessionFactory();
+                .setProperty("hibernate.hbm2ddl.auto", "create");
+        fixtureConfiguration.getProperties().put("hibernate.connection.datasource", new org.springframework.jdbc.datasource.DriverManagerDataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword()));
+        factory = fixtureConfiguration.buildSessionFactory();
     }
 
     @BeforeEach

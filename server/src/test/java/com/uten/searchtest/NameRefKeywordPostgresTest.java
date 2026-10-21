@@ -31,12 +31,10 @@ class NameRefKeywordPostgresTest {
 
     @BeforeAll static void start() {
         DATABASE.start();
-        factory = new Configuration().addAnnotatedClass(Document.class).addAnnotatedClass(Party.class)
-                .setProperty("hibernate.connection.url", DATABASE.getJdbcUrl())
-                .setProperty("hibernate.connection.username", DATABASE.getUsername())
-                .setProperty("hibernate.connection.password", DATABASE.getPassword())
-                .setProperty("hibernate.hbm2ddl.auto", "create-drop")
-                .buildSessionFactory();
+        var fixtureConfiguration = new Configuration().addAnnotatedClass(Document.class).addAnnotatedClass(Party.class)
+                .setProperty("hibernate.hbm2ddl.auto", "create-drop");
+        fixtureConfiguration.getProperties().put("hibernate.connection.datasource", new org.springframework.jdbc.datasource.DriverManagerDataSource(DATABASE.getJdbcUrl(), DATABASE.getUsername(), DATABASE.getPassword()));
+        factory = fixtureConfiguration.buildSessionFactory();
     }
 
     @AfterAll static void stop() {

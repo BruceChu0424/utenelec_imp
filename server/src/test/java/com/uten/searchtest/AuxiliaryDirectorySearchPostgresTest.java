@@ -36,11 +36,10 @@ class AuxiliaryDirectorySearchPostgresTest {
         PG.start();
         var source = new DriverManagerDataSource(PG.getJdbcUrl(), PG.getUsername(), PG.getPassword());
         db = new NamedParameterJdbcTemplate(source);
-        factory = new Configuration().addAnnotatedClass(WebsiteInquiry.class)
-                .setProperty("hibernate.connection.url", PG.getJdbcUrl())
-                .setProperty("hibernate.connection.username", PG.getUsername())
-                .setProperty("hibernate.connection.password", PG.getPassword())
-                .setProperty("hibernate.hbm2ddl.auto", "create-drop").buildSessionFactory();
+        var fixtureConfiguration = new Configuration().addAnnotatedClass(WebsiteInquiry.class)
+                .setProperty("hibernate.hbm2ddl.auto", "create-drop");
+        fixtureConfiguration.getProperties().put("hibernate.connection.datasource", source);
+        factory = fixtureConfiguration.buildSessionFactory();
         // Query-only fixtures retain the complete current migration column shapes;
         // the projection intentionally omits unrelated business CHECK/FK/triggers.
         MigratedProjectionSchema.createCurrentTables(db.getJdbcTemplate(),

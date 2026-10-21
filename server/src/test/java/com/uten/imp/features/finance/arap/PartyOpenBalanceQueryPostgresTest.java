@@ -41,10 +41,10 @@ class PartyOpenBalanceQueryPostgresTest {
         PG.start();
         jdbc = new JdbcTemplate(new DriverManagerDataSource(PG.getJdbcUrl(), PG.getUsername(), PG.getPassword()));
         MigratedProjectionSchema.createCurrentTables(jdbc, "currencies", "ar_ap_ledger", "legacy_finance_import_sources");
-        sessions = new Configuration().setProperty("hibernate.connection.url", PG.getJdbcUrl())
-                .setProperty("hibernate.connection.username", PG.getUsername())
-                .setProperty("hibernate.connection.password", PG.getPassword())
-                .setProperty("hibernate.hbm2ddl.auto", "none").buildSessionFactory();
+        var fixtureConfiguration = new Configuration()
+                .setProperty("hibernate.hbm2ddl.auto", "none");
+        fixtureConfiguration.getProperties().put("hibernate.connection.datasource", jdbc.getDataSource());
+        sessions = fixtureConfiguration.buildSessionFactory();
     }
 
     @AfterAll

@@ -53,9 +53,10 @@ class FinanceLegacyOpeningSummaryPostgresTest {
                 "customer_open_item_offsets",
                 "customer_open_item_offset_batches",
                 "supplier_open_item_offsets");
-        sessions=new Configuration().setProperty("hibernate.connection.url",PG.getJdbcUrl())
-                .setProperty("hibernate.connection.username",PG.getUsername()).setProperty("hibernate.connection.password",PG.getPassword())
-                .setProperty("hibernate.hbm2ddl.auto","none").buildSessionFactory();
+        var fixtureConfiguration = new Configuration()
+                .setProperty("hibernate.hbm2ddl.auto","none");
+        fixtureConfiguration.getProperties().put("hibernate.connection.datasource", jdbc.getDataSource());
+        sessions = fixtureConfiguration.buildSessionFactory();
     }
     @AfterAll static void stop(){if(sessions!=null){ sessions.close(); }PG.stop();}
     @BeforeEach void clear() {

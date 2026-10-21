@@ -42,9 +42,10 @@ class FinanceLegacyOpeningStatementPostgresTest {
         PG.start();
         jdbc=new JdbcTemplate(new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword()));
         MigratedProjectionSchema.createCurrentTables(jdbc,TABLES);
-        sessions=new Configuration().setProperty("hibernate.connection.url",PG.getJdbcUrl())
-                .setProperty("hibernate.connection.username",PG.getUsername()).setProperty("hibernate.connection.password",PG.getPassword())
-                .setProperty("hibernate.hbm2ddl.auto","none").buildSessionFactory();
+        var fixtureConfiguration = new Configuration()
+                .setProperty("hibernate.hbm2ddl.auto","none");
+        fixtureConfiguration.getProperties().put("hibernate.connection.datasource", jdbc.getDataSource());
+        sessions = fixtureConfiguration.buildSessionFactory();
     }
     @AfterAll static void stop(){if(sessions!=null){ sessions.close(); }PG.stop();}
     @BeforeEach void clear() {

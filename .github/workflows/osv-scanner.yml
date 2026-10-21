@@ -36,12 +36,25 @@ jobs:
         working-directory: server
         run: mvn --batch-mode --no-transfer-progress -DskipTests verify
 
+      - name: Prepare complete material forecast scan input
+        shell: python
+        run: |
+          import pathlib
+          import runpy
+          import shutil
+          source = pathlib.Path("services/material_forecast")
+          runpy.run_path(str(source / "build_payload.py"))["validate_requirement_versions"](source)
+          target = pathlib.Path("build/osv-material-forecast/requirements.txt")
+          target.parent.mkdir(parents=True, exist_ok=True)
+          shutil.copyfile(source / "requirements.runtime.txt", target)
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: osv-inputs
           path: |
             server/target/classes/META-INF/sbom/application.cdx.json
             pubspec.lock
+            build/osv-material-forecast/requirements.txt
             osv-scanner.toml
           if-no-files-found: error
           retention-days: 1
@@ -66,6 +79,8 @@ jobs:
             ./server/target/classes/META-INF/sbom/application.cdx.json
             --lockfile
             ./pubspec.lock
+            --lockfile
+            requirements.txt:./build/osv-material-forecast/requirements.txt
 
       - name: Generate OSV SARIF
         id: osv-report

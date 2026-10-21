@@ -631,66 +631,66 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
-  testWidgets(
-    'return to the task center reloads once and drops stale answers',
-    (tester) async {
-      _desktop(tester, const Size(1600, 1000));
-      final gateway = _Gateway(_data(capability: true));
-      final draw = FakeSubcontractDrawGateway(count: 3);
-      await tester.pumpWidget(
-        _scope(
-          child: MaterialApp(
-            home: SubcontractDecompositionPage(
-              repository: gateway,
-              drawRepository: draw,
-            ),
+  testWidgets('return to the task center reloads once and drops stale answers', (
+    tester,
+  ) async {
+    _desktop(tester, const Size(1600, 1000));
+    final gateway = _Gateway(_data(capability: true));
+    final draw = FakeSubcontractDrawGateway(count: 3);
+    await tester.pumpWidget(
+      _scope(
+        child: MaterialApp(
+          home: SubcontractDecompositionPage(
+            repository: gateway,
+            drawRepository: draw,
           ),
         ),
-      );
-      await tester.pumpAndSettle();
-      final container = ProviderScope.containerOf(
-        tester.element(find.byType(SubcontractDecompositionPage)),
-      );
-      final resume = container.read(pageResumeProvider.notifier);
-      bumpPageResumeState(resume, RouteName.operationsSubcontractWorkbench);
-      await tester.pumpAndSettle();
-      // 2026-10-04 起红数「待处理」分类进页面自动选中：概览 + WAITING_ORDER 两次；
-      // 领料红数单独按 /draw-tasks/count 取一次(ADR-171 起挂在待处理子分类行)。
-      expect(gateway.queries, hasLength(2));
-      expect(draw.countCalls, 1);
-      // 再点已选中的「待处理」不重复发请求。
-      await tester.tap(find.text('待处理'));
-      await tester.pumpAndSettle();
-      expect(gateway.queries, hasLength(2));
-      expect(find.text('FG-task-2'), findsOneWidget);
+      ),
+    );
+    await tester.pumpAndSettle();
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(SubcontractDecompositionPage)),
+    );
+    final resume = container.read(pageResumeProvider.notifier);
+    bumpPageResumeState(resume, RouteName.operationsSubcontractWorkbench);
+    await tester.pumpAndSettle();
+    // 2026-10-04 起红数「待处理」分类进页面自动选中：概览 + WAITING_ORDER 两次；
+    // 领料红数单独按 /draw-tasks/count 取一次(ADR-171 起挂在待处理子分类行)。
+    expect(gateway.queries, hasLength(2));
+    expect(draw.countCalls, 1);
+    // 再点已选中的「待处理」不重复发请求。
+    await tester.tap(find.text('待处理'));
+    await tester.pumpAndSettle();
+    expect(gateway.queries, hasLength(2));
+    expect(find.text('FG-task-2'), findsOneWidget);
 
-      // One older refresh remains in flight while stock-in finishes elsewhere.
-      final stale = Completer<OperationsWorkbenchData>();
-      gateway.response = () => stale.future;
-      await tester.tap(find.byTooltip('刷新委外任务'));
-      await tester.pump();
-      bumpPageResumeState(resume, '/warehouse/stock-in');
-      // 入库是本端写操作(网络层推进写修订号, ADR-108), 返回任务中心时才按需重拉。
-      container.read(dataWriteRevisionProvider.notifier).state++;
-      gateway.response = null;
-      gateway.data = _data(capability: true, onlyFirst: true);
-      bumpPageResumeState(resume, RouteName.operationsSubcontractWorkbench);
-      // The older button refresh still owns a real pending request. Its busy
-      // indicator must keep animating while the resumed list accepts new data.
-      for (var frame = 0; frame < 5; frame++) {
-        await tester.pump(const Duration(milliseconds: 16));
-      }
-      expect(gateway.queries, hasLength(4));
-      expect(gateway.queries.last['status'], 'WAITING_ORDER');
-      expect(find.text('FG-task-2'), findsNothing);
-      expect(stale.isCompleted, isFalse);
-      expect(find.byType(CircularProgressIndicator), findsWidgets);
-      stale.complete(_data(capability: true));
-      await tester.pumpAndSettle();
-      expect(find.text('FG-task-2'), findsNothing);
-      expect(tester.takeException(), isNull);
-    },
-  );
+    // One older refresh remains in flight while stock-in finishes elsewhere.
+    final stale = Completer<OperationsWorkbenchData>();
+    gateway.response = () => stale.future;
+    await tester.tap(find.byTooltip('刷新委外任务'));
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsWidgets);
+    bumpPageResumeState(resume, '/warehouse/stock-in');
+    // 入库是本端写操作(网络层推进写修订号, ADR-108), 返回任务中心时才按需重拉。
+    container.read(dataWriteRevisionProvider.notifier).state++;
+    gateway.response = null;
+    gateway.data = _data(capability: true, onlyFirst: true);
+    bumpPageResumeState(resume, RouteName.operationsSubcontractWorkbench);
+    // The resumed query replaces the old refresh participant. Its accepted
+    // response releases busy even while the obsolete network future remains pending.
+    for (var frame = 0; frame < 5; frame++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(gateway.queries, hasLength(4));
+    expect(gateway.queries.last['status'], 'WAITING_ORDER');
+    expect(find.text('FG-task-2'), findsNothing);
+    expect(stale.isCompleted, isFalse);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    stale.complete(_data(capability: true));
+    await tester.pumpAndSettle();
+    expect(find.text('FG-task-2'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'shared headers send server sort and full-scope facet filters with true planning issue date',

@@ -3,6 +3,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import '../../../shared/search/keyword_search.dart';
+import '../widgets/production_sales_requirements.dart';
+import '../models/production_sales_requirement.dart';
 
 import 'package:dio/dio.dart' show CancelToken;
 import 'package:flutter/foundation.dart' show listEquals, mapEquals, setEquals;
@@ -935,7 +937,7 @@ abstract class _MaterialAnalysisPageBase
     }
     final ordered = permissions.toList()..sort();
     _sessionScopeIdentity = identity;
-    _sessionScopePermissions = permissions;
+    _sessionScopePermissions = Set<String>.unmodifiable(permissions);
     return _sessionComputedScope = '$identity|${ordered.join(',')}';
   }
 
@@ -2800,6 +2802,18 @@ class _ProductionMaterialAnalysisPageState
     final orders = _linkedSalesOrders(analysis);
     if (orders.isEmpty) return const [];
     return [
+      if (analysis.salesRequirements.isNotEmpty) ...[
+        const SizedBox(height: UtenSpacing.s8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: ProductionSalesRequirementsButton(
+            key: const ValueKey('material-analysis-sales-requirements'),
+            requirements: analysis.salesRequirements.values
+                .expand((requirements) => requirements)
+                .toList(growable: false),
+          ),
+        ),
+      ],
       const SizedBox(height: UtenSpacing.s8),
       Align(
         key: const Key('material-analysis-linked-sales-orders'),
@@ -2930,6 +2944,19 @@ class _ProductionMaterialAnalysisPageState
       (view.allowedActions.toList()..sort()).join(','),
       view.warehouseId ?? '',
       (view.warehouseIds.toList()..sort()).join(','),
+      jsonEncode({
+        for (final id in (view.salesRequirements.keys.toList()..sort()))
+          id: [
+            for (final note in view.salesRequirements[id]!)
+              [
+                note.salesOrderItemId,
+                note.salesOrderNo,
+                note.productName,
+                note.orderRemark,
+                note.itemRemark,
+              ],
+          ],
+      }),
       // 超产默认比例是页面要跟着刷新的读侧事实(ADR-129 预填/汇总格跟随):
       // 版本指纹都不变、只变了默认时也要套用, 否则没人改过的格子停在旧默认。
       (view.overproductionDefaults.entries.toList()

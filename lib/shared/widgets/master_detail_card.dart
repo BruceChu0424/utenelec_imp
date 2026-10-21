@@ -1,19 +1,16 @@
-// MasterDetailCard - 通用「分组详情卡 + 操作按钮」（分类/部门 共用）。
-//
-// 泛化自原 basic_data 的 CategoryDetailCard：不再绑定具体领域模型（ProductCategoryDetail），
-// 调用方传入标题/副标题/stats/path 与三按钮（新增子项/编辑/删除），外加可选的
-// [extraActions]（领域扩展，如部门「岗位管理」）。
-//
-// 标题一行 + 统一操作条一行：管理类（新增/编辑/删除 + extraActions）与数据类
-// （secondaryActions，如导入/导出/预览）合并到同一组，中间竖线分组；
-// 大屏（medium+）操作条右对齐、窄屏（compact）居中，按钮多自动换行——三档断点一致。
-// 改样式只改这里一处——分类页与部门页共用。
+// MasterDetailCard - 分类、部门和账户的共享详情摘要。
+// 管理动作集中在标题右侧菜单；分类宿主可用 UtenHierarchyDetailMenu 提供
+// 与左树右键相同的即时动作，其他宿主继续传领域回调，由卡片统一生成菜单。
 import 'package:flutter/material.dart';
 
 import '../../components/buttons/uten_button.dart';
 import '../../components/cards/uten_card.dart';
 import '../../core/responsive/breakpoint.dart';
 import '../../core/theme/uten_tokens.dart';
+import '../../core/l10n/gen/app_localizations.dart';
+import '../../core/l10n/gen/app_localizations_zh.dart';
+import '../../components/feedback/uten_context_menu.dart';
+import 'uten_hierarchy_detail_menu.dart';
 
 /// 详情卡的一个统计项；[value] 为 null/空时该统计自动隐藏（省去调用方逐个判空）。
 class MasterDetailStat {
@@ -23,7 +20,7 @@ class MasterDetailStat {
   final String? value;
 }
 
-/// 详情卡的额外操作按钮（三按钮之外的领域扩展，如部门「岗位管理」）。
+/// 详情卡菜单中的领域扩展动作，如部门「岗位管理」。
 class MasterDetailCardAction {
   const MasterDetailCardAction({
     required this.icon,
@@ -80,9 +77,7 @@ class MasterDetailCard extends StatelessWidget {
   bool get _canAddChild => canAddChild ?? canEdit;
   bool get _canDelete => canDelete ?? canEdit;
 
-  /// 「新增子项」回调（分类=新增子分类；部门=新增子部门）。null = 不渲染该按钮
-  /// （2026-10-19 起基础资料分类卡的 CRUD 移到左树行内，卡片只留标题/说明，
-  /// 部门/账户页继续传回调）。
+  /// 新增子项回调；null时不生成对应菜单项。分类宿主也可统一传入菜单scope。
   final VoidCallback? onAddChild;
 
   /// 「新增子项」按钮文案。
@@ -94,7 +89,7 @@ class MasterDetailCard extends StatelessWidget {
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
 
-  /// 额外操作（追加在三按钮之后）。
+  /// 额外菜单操作。
   final List<MasterDetailCardAction> extraActions;
 
   /// 次级操作（渲染在主操作行下方单独一行，如「导入/导出/预览打印」）；空则不渲染。
@@ -111,11 +106,8 @@ class MasterDetailCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _titleRow(theme, context),
-          // 统一操作条：管理类（新增/编辑/删除 + 扩展）与数据类（导入/导出/预览）按钮
-          // 合并到同一组，取代原先「主操作挂标题右侧、secondaryActions 单独左对齐一行」
-          // 的割裂布局；大屏右对齐、窄屏居中，自动换行适配。三管理回调全 null 且无
-          // 扩展/次级动作时整条不渲染（2026-10-19 起基础资料分类卡即此形态）。
-          if (_buildButtons().isNotEmpty || secondaryActions.isNotEmpty) ...[
+          // 状态或数据操作仍可使用独立可换行区域，不挤占标题和菜单。
+          if (secondaryActions.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s12),
             _actionBar(theme, context),
           ],
@@ -143,10 +135,13 @@ class MasterDetailCard extends StatelessWidget {
     );
   }
 
-  /// 标题行：前置图标徽标 + 标题/副标题。操作按钮统一移到 [_actionBar]，
-  /// 不再挤在标题旁——大屏小屏都是「标题一行 + 操作条一行」，布局一致好适配。
-  /// 无权限时也保留图标徽标 + 标题（stats/path 照常），仅少了操作条。
+  /// 标题自然换行，操作菜单保持明确的点击区域。
   Widget _titleRow(ThemeData theme, BuildContext context) {
+    final inheritedMenu = UtenHierarchyDetailMenu.maybeOf(context);
+    final ownEntries = _managementMenu(context);
+    final entriesBuilder =
+        inheritedMenu?.entriesBuilder ??
+        (ownEntries.isEmpty ? null : () => _managementMenu(context));
     final titleColumn = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -181,76 +176,57 @@ class MasterDetailCard extends StatelessWidget {
         leading,
         const SizedBox(width: UtenSpacing.s12),
         Expanded(child: titleColumn),
+        if (entriesBuilder != null) ...[
+          const SizedBox(width: UtenSpacing.s12),
+          UtenHierarchyMenuButton(entriesBuilder: entriesBuilder),
+        ],
       ],
     );
   }
 
-  UtenButton _action({
-    required IconData icon,
-    required String label,
-    required UtenButtonType type,
-    required VoidCallback onPressed,
-  }) {
-    return UtenButton(
-      type: type,
-      icon: icon,
-      onPressed: onPressed,
-      child: Text(label),
-    );
-  }
-
-  /// 三按钮 + 额外操作，按顺序排列；回调为 null 的按钮不渲染。
-  List<Widget> _buildButtons() {
+  List<UtenContextMenuEntry> _managementMenu(BuildContext context) {
+    final l10n =
+        Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+        AppLocalizationsZh();
     return [
       if (_canAddChild && onAddChild != null)
-        _action(
+        UtenMenuItem(
           icon: Icons.add_rounded,
           label: addChildLabel,
-          type: UtenButtonType.tonal,
-          onPressed: onAddChild!,
+          onTap: onAddChild!,
         ),
       if (canEdit && onEdit != null)
-        _action(
+        UtenMenuItem(
           icon: Icons.edit_outlined,
-          label: '编辑', // TODO(l10n): 补 arb
-          type: UtenButtonType.tonal,
-          onPressed: onEdit!,
-        ),
-      if (_canDelete && onDelete != null)
-        _action(
-          icon: Icons.delete_outline,
-          label: deleteLabel,
-          type: UtenButtonType.danger,
-          onPressed: onDelete!,
+          label: l10n.hierarchyEdit,
+          onTap: onEdit!,
         ),
       for (final e in extraActions)
-        _action(
+        UtenMenuItem(
           icon: e.icon,
           label: e.label,
-          type: e.type,
-          onPressed: e.onPressed,
+          destructive: e.type == UtenButtonType.danger,
+          onTap: e.onPressed,
         ),
+      if (_canDelete && onDelete != null) ...[
+        if ((_canAddChild && onAddChild != null) ||
+            (canEdit && onEdit != null) ||
+            extraActions.isNotEmpty)
+          const UtenMenuDivider(),
+        UtenMenuItem(
+          icon: Icons.delete_outline,
+          label: deleteLabel,
+          destructive: true,
+          onTap: onDelete!,
+        ),
+      ],
     ];
   }
 
-  /// 统一操作条：管理类（新增/编辑/删除 + 扩展 extraActions）与数据类
-  /// （secondaryActions，如导入/导出/预览打印）合并到同一行。
-  /// 两组都非空时中间插一条竖向分隔线，明确「管理 | 数据」两组。
-  /// 大屏（medium+）右对齐、窄屏（compact）居中；按钮多时自动换行，三档断点都适配。
+  /// 数据操作及状态标记按可用宽度换行。
   Widget _actionBar(ThemeData theme, BuildContext context) {
-    final manage = _buildButtons();
     final data = secondaryActions;
     final children = <Widget>[];
-    children.addAll(manage);
-    if (manage.isNotEmpty && data.isNotEmpty) {
-      children.add(
-        Container(
-          width: 1,
-          height: 22,
-          color: theme.colorScheme.outlineVariant,
-        ),
-      );
-    }
     children.addAll(data);
 
     final alignEnd = context.breakpoint.atLeastMedium;

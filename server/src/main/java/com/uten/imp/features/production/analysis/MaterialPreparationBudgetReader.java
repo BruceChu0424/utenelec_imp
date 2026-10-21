@@ -29,9 +29,12 @@ final class MaterialPreparationBudgetReader {
         if (materials.isEmpty()) return new Facts(Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
         String scope = selectedWarehouseIds.stream().map(UUID::toString).sorted().collect(Collectors.joining(","));
         Map<UUID, String> keys = new HashMap<>();
+        Map<MaterialAnalysisService.MaterialDimension,String> poolsByDimension=new HashMap<>();
         Map<String, Map<UUID, BigDecimal>> leaves = new HashMap<>();
         for (MaterialView material : materials) {
-            String key = poolKey(warehouseId, material.goodsId(), material.colorId(), material.unitId(), scope);
+            String key = poolsByDimension.computeIfAbsent(new MaterialAnalysisService.MaterialDimension(
+                    material.goodsId(),material.colorId(),material.unitId()),
+                    dimension->poolKey(warehouseId,dimension.goodsId(),dimension.colorId(),dimension.unitId(),scope));
             keys.put(material.materialLineId(), key);
             for (var leaf : material.warehouseBreakdown()) {
                 if (!selectedWarehouseIds.contains(leaf.warehouseId())) continue;
@@ -43,16 +46,22 @@ final class MaterialPreparationBudgetReader {
             }
         }
         Map<String,Map<String,BigDecimal>> quantitiesByPool = new HashMap<>();
+        Map<String,PreparationSharedSupplySlice> physicalByPool=new HashMap<>();
+        // Physical availability and its opaque identity belong to a pool, not to each repeated BOM occurrence.
+        leaves.forEach((pool,warehouses)-> {
+            BigDecimal physical=warehouses.values().stream().reduce(BigDecimal.ZERO,BigDecimal::add);
+            if(physical.signum()>0) {
+                String key=CanonicalFingerprint.sha256(List.of("PREPARATION-STOCK",pool));
+                physicalByPool.put(pool,new PreparationSharedSupplySlice(key,physical,true));
+                quantitiesByPool.computeIfAbsent(pool,ignored->new LinkedHashMap<>()).put(key,physical);
+            }
+        });
         Map<UUID,Map<String,PreparationSharedSupplySlice>> slices = new HashMap<>();
         for(MaterialView material:materials) {
             String pool=keys.get(material.materialLineId());
-            BigDecimal physical=leaves.getOrDefault(pool,Map.of()).values().stream().reduce(BigDecimal.ZERO,BigDecimal::add);
-            String key=CanonicalFingerprint.sha256(List.of("PREPARATION-STOCK",pool));
             Map<String,PreparationSharedSupplySlice> row=new LinkedHashMap<>();
-            if(physical.signum()>0) {
-                row.put(key,new PreparationSharedSupplySlice(key,physical,true));
-                quantitiesByPool.computeIfAbsent(pool,ignored->new LinkedHashMap<>()).put(key,physical);
-            }
+            PreparationSharedSupplySlice physical=physicalByPool.get(pool);
+            if(physical!=null) row.put(physical.key(),physical);
             slices.put(material.materialLineId(),row);
         }
         String goodsIds = materials.stream().map(MaterialView::goodsId).distinct()

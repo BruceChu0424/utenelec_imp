@@ -9,6 +9,8 @@
 //   （去掉 is 前缀）；日期为 yyyy-MM-dd 字符串；数量/金额 NUMERIC(18,4) 按 num? 容错。
 // 容错助手 _asInt/_asDouble 同时处理 int/double/String（记忆 flutter-int-cast-fromjson）。
 
+import 'production_sales_requirement.dart';
+
 /// 生产单据状态常量（plan/daily 共用；与后端 status SMALLINT 0/1/-1 对齐）。
 const int kProductionStatusDraft = 0;
 const int kProductionStatusApproved = 1;
@@ -147,6 +149,7 @@ class ProductionPlanItem {
     this.unitRateText,
     this.salesOrderItemId,
     this.salesOrderNo,
+    this.salesRequirements = const [],
     this.clientName,
     this.clientNo,
     this.oqty,
@@ -198,6 +201,7 @@ class ProductionPlanItem {
   final String? unitRateText;
   final String? salesOrderItemId;
   final String? salesOrderNo;
+  final List<ProductionSalesRequirement> salesRequirements;
   final String? clientName;
   final String? clientNo;
 
@@ -255,6 +259,9 @@ class ProductionPlanItem {
         unitRateText: (json['unitRateExact'] ?? json['unitRate'])?.toString(),
         salesOrderItemId: json['salesOrderItemId'] as String?,
         salesOrderNo: json['salesOrderNo'] as String?,
+        salesRequirements: ProductionSalesRequirement.parseList(
+          json['salesRequirements'],
+        ),
         clientName: json['clientName'] as String?,
         clientNo: json['clientNo'] as String?,
         oqty: _asDouble(json['oqty']),

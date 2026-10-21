@@ -11462,4 +11462,139 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get filterAllCategoriesSummary => '全部分类';
+
+  @override
+  String get permissionTemplateTab => '按模板';
+
+  @override
+  String get permissionTemplateNew => '新建模板';
+
+  @override
+  String get permissionTemplateSaveFromUser => '存为模板';
+
+  @override
+  String get permissionTemplateApply => '应用模板';
+
+  @override
+  String get permissionTemplateEdit => '编辑模板';
+
+  @override
+  String get permissionTemplateDelete => '删除模板';
+
+  @override
+  String get permissionTemplateName => '模板名称';
+
+  @override
+  String get permissionTemplateDescription => '用途说明';
+
+  @override
+  String get permissionTemplateEmpty => '还没有权限模板';
+
+  @override
+  String get permissionTemplateEmptyHint => '新建模板，或从员工已生效的操作权限保存。';
+
+  @override
+  String get permissionTemplateSnapshotNote =>
+      '模板保存操作权限快照；以后编辑或删除模板，不会改动已应用的账号。';
+
+  @override
+  String get permissionTemplateScopeNote => '只设置操作权限。数据范围、部门、账号身份及外网访问资格仍分别管理。';
+
+  @override
+  String get permissionTemplateSelect => '选择权限模板';
+
+  @override
+  String get permissionTemplateMerge => '补充权限';
+
+  @override
+  String get permissionTemplateReplace => '覆盖为模板';
+
+  @override
+  String get permissionTemplateMergeHint => '保留现有权限，补充模板权限；不会恢复已明确收回的权限。';
+
+  @override
+  String get permissionTemplateReplaceHint => '将操作权限设置为模板内容；会收回模板外的现有权限，请核对差量。';
+
+  @override
+  String get permissionTemplatePreview => '预览变更';
+
+  @override
+  String get permissionTemplateSaved => '权限模板已保存';
+
+  @override
+  String get permissionTemplateDeleted => '权限模板已删除';
+
+  @override
+  String get permissionTemplateApplied => '权限模板已应用';
+
+  @override
+  String get permissionTemplateCancel => '取消';
+
+  @override
+  String get permissionTemplateSave => '保存模板';
+
+  @override
+  String get permissionTemplateClose => '关闭';
+
+  @override
+  String get permissionTemplateDeleteHint => '仅删除这个模板。已经应用模板的账号权限会保留。';
+
+  @override
+  String get permissionTemplateInvalidName => '名称不能为空，且最多 80 字；用途说明最多 1000 字。';
+
+  @override
+  String get permissionTemplateBoundaryChanged => '登录身份、授权或服务器已变化，请关闭后重新打开。';
+
+  @override
+  String get permissionTemplateUncertain => '请求结果尚未确认。请关闭窗口，刷新并核对结果后再操作。';
+
+  @override
+  String get permissionTemplateLoadFailed => '无法读取权限模板，请重试。';
+
+  @override
+  String get permissionTemplateRetry => '重新加载';
+
+  @override
+  String permissionTemplateSelectedCount(int count) {
+    return '已选 $count 项权限';
+  }
+
+  @override
+  String get permissionTemplateUnknownCodes => '模板含有当前目录未提供的权限码，请核对后移除或重新创建。';
+
+  @override
+  String get permissionTemplateClearUnknown => '移除失效权限码';
+
+  @override
+  String get permissionTemplateSensitiveNote => '敏感权限可以保存；应用到每位员工时仍须逐项确认。';
+
+  @override
+  String get permissionTemplateNoSelection => '选择一个模板查看权限';
+
+  @override
+  String get hierarchyActions => '更多操作';
+
+  @override
+  String get hierarchyEdit => '编辑';
+
+  @override
+  String get hierarchyCopyName => '复制名称';
+
+  @override
+  String get hierarchyCopyPath => '复制分类路径';
+
+  @override
+  String get productionOrderRequirement => '订单统一备注';
+
+  @override
+  String get productionProductRequirement => '产品单独备注';
+
+  @override
+  String get productionRequirementsClose => '关闭';
+
+  @override
+  String get productionSalesRequirements => '销售生产要求';
+
+  @override
+  String get materialTransferContextChanged => '账号、权限或计划状态已变化，请关闭后重新核对调拨。';
 }

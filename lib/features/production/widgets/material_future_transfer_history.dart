@@ -8,7 +8,10 @@ import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../models/material_future_transfer.dart';
+import '../models/material_transfer_quantity.dart';
 import '../models/production_material_analysis.dart';
 import '../repositories/production_repository.dart';
 
@@ -24,6 +27,7 @@ class MaterialFutureTransferHistory extends StatefulWidget {
     required this.canReplenish,
     required this.onChanged,
     required this.onReplenish,
+    this.commandIsCurrent,
   });
   final ProductionPlanRepository repository;
   final String analysisId;
@@ -33,6 +37,7 @@ class MaterialFutureTransferHistory extends StatefulWidget {
   final bool canReplenish;
   final ValueChanged<ProductionMaterialAnalysisView> onChanged;
   final ValueChanged<MaterialFutureTransferRecord> onReplenish;
+  final bool Function()? commandIsCurrent;
   @override
   State<MaterialFutureTransferHistory> createState() =>
       _MaterialFutureTransferHistoryState();
@@ -90,16 +95,29 @@ class _MaterialFutureTransferHistoryState
   }
 
   Future<void> _cancel(MaterialFutureTransferRecord record) async {
+    final analysisId = widget.analysisId;
+    final materialId = widget.materialId;
+    final epoch = _epoch;
+    final ownerGuard = widget.commandIsCurrent;
+    bool current() =>
+        mounted &&
+        widget.canWrite &&
+        widget.analysisId == analysisId &&
+        widget.materialId == materialId &&
+        epoch == _epoch &&
+        (ownerGuard?.call() ?? true);
+    if (!current()) return;
     final result = await showDialog<ProductionMaterialAnalysisView>(
       context: context,
       barrierDismissible: false,
       builder: (_) => _CancelFutureTransferDialog(
         repository: widget.repository,
-        analysisId: widget.analysisId,
+        analysisId: analysisId,
         record: record,
+        commandIsCurrent: current,
       ),
     );
-    if (!mounted || result == null) return;
+    if (!current() || result == null) return;
     widget.onChanged(result);
     await _load();
   }
@@ -149,14 +167,14 @@ class _MaterialFutureTransferHistoryState
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  '${record.outbound ? '已让出专属在途' : '已调入专属在途'} ${_qty(record.qty)} · ${record.statusLabel}',
+                  '${record.outbound ? '已让出专属在途' : '已调入专属在途'} ${_fact(record, 'qty', record.qty)} · ${record.statusLabel}',
                   style: theme.textTheme.labelLarge,
                 ),
                 Text(
                   '${record.sourceLabel ?? '原供料计划'} → ${record.targetLabel ?? '接受计划'}',
                 ),
                 Text(
-                  '已实收 ${_qty(record.receivedQty)} · 待实收 ${_qty(record.remainingQty)} · 已撤销 ${_qty(record.cancelledQty)}',
+                  '已实收 ${_fact(record, 'receivedQty', record.receivedQty)} · 待实收 ${_fact(record, 'remainingQty', record.remainingQty)} · 已撤销 ${_fact(record, 'cancelledQty', record.cancelledQty)}',
                 ),
                 Text(
                   '预计到货：${record.expectedDate ?? '交期尚未明确'}'
@@ -166,7 +184,7 @@ class _MaterialFutureTransferHistoryState
                     record.supplyWarning?.isNotEmpty == true)
                   Text(
                     record.supplyWarning ??
-                        '原供给尚缺 ${_qty(record.sourceSupplyShortfallQty)}，请核对补供或撤销未实收份额',
+                        '原供给尚缺 ${_fact(record, 'sourceSupplyShortfallQty', record.sourceSupplyShortfallQty)}，请核对补供或撤销未实收份额',
                     key: ValueKey(
                       'future-transfer-supply-warning-${record.id}',
                     ),
@@ -192,7 +210,8 @@ class _MaterialFutureTransferHistoryState
                       ),
                     if (widget.canWrite &&
                         record.canCancel &&
-                        record.maxCancelableQty > 0 &&
+                        (record.maxCancelableUnits ?? BigInt.zero) >
+                            BigInt.zero &&
                         _error == null &&
                         !_loading)
                       UtenButton(
@@ -211,8 +230,10 @@ class _MaterialFutureTransferHistoryState
   }
 }
 
-String _qty(double value) =>
-    value.toStringAsFixed(4).replaceFirst(RegExp(r'\.?0+$'), '');
+String _fact(MaterialFutureTransferRecord record, String key, double legacy) {
+  final units = materialTransferUnits(record.quantityFactsExact[key] ?? legacy);
+  return units == null ? '待核对' : materialTransferText(units);
+}
 
 /// 经办人与办理时间；服务端未返回时静默省略。
 String _operatorLine(MaterialFutureTransferRecord record) {
@@ -231,10 +252,12 @@ class _CancelFutureTransferDialog extends StatefulWidget {
     required this.repository,
     required this.analysisId,
     required this.record,
+    required this.commandIsCurrent,
   });
   final ProductionPlanRepository repository;
   final String analysisId;
   final MaterialFutureTransferRecord record;
+  final bool Function() commandIsCurrent;
   @override
   State<_CancelFutureTransferDialog> createState() =>
       _CancelFutureTransferDialogState();
@@ -253,20 +276,24 @@ class _CancelFutureTransferDialogState
   bool _needsReview = false;
   bool _allowPop = false;
   bool _acceptPublicRelease = false;
-  double get _requestedQty => double.tryParse(_quantity.text.trim()) ?? 0;
-  double get _restoreQty =>
-      _requestedQty.clamp(0, _record.maxRestoreToSourceQty);
-  double get _publicQty => double.parse(
-    (_requestedQty - _restoreQty)
-        .clamp(0, _requestedQty > 0 ? _requestedQty : 0)
-        .toStringAsFixed(4),
-  );
+  BigInt get _requestedQty =>
+      materialTransferUnits(_quantity.text) ?? BigInt.zero;
+  BigInt get _restoreQty {
+    final max = _record.maxRestoreUnits ?? BigInt.zero;
+    return _requestedQty < max ? _requestedQty : max;
+  }
+
+  BigInt get _publicQty => _requestedQty - _restoreQty;
   bool get _locked => _saving || _uncertain;
   @override
   void initState() {
     super.initState();
     _record = widget.record;
-    _quantity = TextEditingController(text: _qty(_record.maxCancelableQty));
+    _quantity = TextEditingController(
+      text: _record.maxCancelableUnits == null
+          ? ''
+          : materialTransferText(_record.maxCancelableUnits!),
+    );
   }
 
   @override
@@ -285,6 +312,7 @@ class _CancelFutureTransferDialogState
 
   Future<void> _refresh() async {
     if (_locked) return;
+    if (!_validateOwner()) return;
     setState(() {
       _saving = true;
       _needsReview = true;
@@ -295,7 +323,7 @@ class _CancelFutureTransferDialogState
       );
       final record = records.where((r) => r.id == _record.id).firstOrNull;
       if (record == null) throw StateError('调拨记录已不可见，请返回计划重新核对');
-      if (!mounted) return;
+      if (!mounted || !_validateOwner()) return;
       setState(() {
         _record = record;
         _acceptPublicRelease = false;
@@ -320,13 +348,18 @@ class _CancelFutureTransferDialogState
   }
 
   Future<void> _submit() async {
+    if (!_validateOwner()) return;
     if (_saving ||
         _needsReview ||
         !_record.canCancel ||
         _formKey.currentState?.validate() != true) {
       return;
     }
-    if (_publicQty > 0 && !_acceptPublicRelease) {
+    if (_record.maxCancelableUnits == null || _record.maxRestoreUnits == null) {
+      setState(() => _error = '缺少精确可撤销数量，请重新读取');
+      return;
+    }
+    if (_publicQty > BigInt.zero && !_acceptPublicRelease) {
       setState(() => _error = '请明确确认：超出原计划当前缺口的份额释放为公共供给。');
       return;
     }
@@ -338,14 +371,17 @@ class _CancelFutureTransferDialogState
       final view = await widget.repository.cancelMaterialFutureTransfer(
         analysisId: widget.analysisId,
         transfer: _record,
-        qty: double.parse(_quantity.text.trim()),
+        qty: materialTransferText(_requestedQty),
         reason: _reason.text.trim(),
         idempotencyKey: _key,
-        acceptPublicRelease: _publicQty > 0 && _acceptPublicRelease,
+        acceptPublicRelease: _publicQty > BigInt.zero && _acceptPublicRelease,
       );
-      if (mounted) _close(view);
+      if (mounted) {
+        if (!_validateOwner()) return;
+        _close(view);
+      }
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || !_validateOwner()) return;
       final uncertain =
           error is! ApiException ||
           error is NetworkException ||
@@ -361,6 +397,22 @@ class _CancelFutureTransferDialogState
             : productionErrorMessage(error, fallback: '当前状态已变化，请重新核对');
       });
     }
+  }
+
+  bool _validateOwner() {
+    if (widget.commandIsCurrent()) return true;
+    if (mounted) {
+      setState(() {
+        _saving = false;
+        _uncertain = false;
+        _needsReview = true;
+        _error =
+            (Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+                    AppLocalizationsZh())
+                .materialTransferContextChanged;
+      });
+    }
+    return false;
   }
 
   @override
@@ -393,7 +445,7 @@ class _CancelFutureTransferDialogState
                   '${_record.sourceLabel ?? '原供料计划'} ← ${_record.targetLabel ?? '接受计划'}',
                 ),
                 Text(
-                  '已实收 ${_qty(_record.receivedQty)} 不可撤销；当前可撤销 ${_qty(_record.maxCancelableQty)}。两边供给归属与公共余量以正式回执为准。',
+                  '已实收 ${_fact(_record, 'receivedQty', _record.receivedQty)} 不可撤销；当前可撤销 ${_record.maxCancelableUnits == null ? '待核对' : materialTransferText(_record.maxCancelableUnits!)}。两边供给归属与公共余量以正式回执为准。',
                 ),
                 const SizedBox(height: UtenSpacing.s12),
                 TextFormField(
@@ -409,24 +461,23 @@ class _CancelFutureTransferDialogState
                     InputDecoration(labelText: '本次撤销数量'),
                   ),
                   validator: (raw) {
-                    final value = double.tryParse(raw?.trim() ?? '');
-                    if (value == null ||
-                        !value.isFinite ||
-                        value <= 0 ||
-                        !RegExp(r'^\d+(\.\d{1,4})?$').hasMatch(raw!.trim())) {
-                      return '请输入大于 0、最多 4 位小数的数量';
+                    final value = materialTransferUnits(raw, positive: true);
+                    if (value == null) {
+                      return '请输入大于0、最多14位整数和4位小数的数量';
                     }
-                    if (value > _record.maxCancelableQty + .000001) {
-                      return '不能超过当前可撤销净量 ${_qty(_record.maxCancelableQty)}';
+                    final max = _record.maxCancelableUnits;
+                    if (max == null) return '缺少精确可撤销数量，请重新读取';
+                    if (value > max) {
+                      return '不能超过当前可撤销净量 ${materialTransferText(max)}';
                     }
                     return null;
                   },
                 ),
                 const SizedBox(height: UtenSpacing.s12),
                 Text(
-                  '本次恢复原计划 ${_qty(_restoreQty)} · 释放公共供给 ${_qty(_publicQty)}',
+                  '本次恢复原计划 ${materialTransferText(_restoreQty)} · 释放公共供给 ${materialTransferText(_publicQty)}',
                 ),
-                if (_publicQty > 0)
+                if (_publicQty > BigInt.zero)
                   CheckboxListTile(
                     key: const Key('future-transfer-cancel-public-release'),
                     contentPadding: EdgeInsets.zero,

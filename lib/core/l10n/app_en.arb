@@ -135,7 +135,13 @@
   "platformColumnDeleteTitle": "Delete column",
   "platformColumnDeleteAction": "Delete",
   "platformColumnDeleteConfirm": "Delete “{name}” from the available columns? Saved document data and existing formula references will be retained. You can only delete columns you created.",
-  "@platformColumnDeleteConfirm": {"placeholders":{"name":{"type":"String"}}},
+  "@platformColumnDeleteConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "platformColumnDeleteForbidden": "You can only delete columns you created and have permission to manage.",
   "platformColumnDeleteUnavailable": "This column can no longer be deleted. Reload and try again.",
   "platformColumnDeleteReferenced": "Other calculated columns still reference this column. Delete those calculated columns first.",
@@ -4923,21 +4929,54 @@
   "bomEditSaving": "Saving assembly information",
   "bomEditProcessing": "Processing this operation. Please wait.",
   "goodsBomBatchWeightUnit": "Unit weight ({unit})",
-  "@goodsBomBatchWeightUnit": {"placeholders":{"unit":{"type":"String"}}},
+  "@goodsBomBatchWeightUnit": {
+    "placeholders": {
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
   "goodsBomBatchInvalidQuantity": "{label} for \"{name}\" must be greater than 0.",
-  "@goodsBomBatchInvalidQuantity": {"placeholders":{"name":{"type":"String"},"label":{"type":"String"}}},
+  "@goodsBomBatchInvalidQuantity": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "label": {
+        "type": "String"
+      }
+    }
+  },
   "goodsBomBatchSharedPeriodicNotAllowed": "\"{name}\" is auxiliary material or workshop overhead material and cannot be added to the assembly list.",
-  "@goodsBomBatchSharedPeriodicNotAllowed": {"placeholders":{"name":{"type":"String"}}},
+  "@goodsBomBatchSharedPeriodicNotAllowed": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "goodsBomBatchSelectFirst": "Select components first.",
   "goodsBomBatchComponentLimit": "Select up to {limit} components at a time.",
-  "@goodsBomBatchComponentLimit": {"placeholders":{"limit":{"type":"int"}}},
+  "@goodsBomBatchComponentLimit": {
+    "placeholders": {
+      "limit": {
+        "type": "int"
+      }
+    }
+  },
   "goodsBomBatchCommitUncertain": "The submission result is not yet confirmed. Inputs are locked. Retry this submission to check its original result.",
   "goodsBomBatchFailed": "Assembly maintenance did not complete. Preview again before retrying.",
   "goodsBomBatchAddTitle": "Add components in bulk",
   "goodsBomBatchRemoveTitle": "Remove selected components in bulk",
   "goodsBomBatchOverwriteTitle": "Overwrite the entire assembly list",
   "goodsBomBatchTargets": "{count} goods selected. Only each good's top-level assembly list will be maintained.",
-  "@goodsBomBatchTargets": {"placeholders":{"count":{"type":"int"}}},
+  "@goodsBomBatchTargets": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "goodsBomBatchOverwriteDescription": "Overwrite this good's top-level assembly list with the copied components. Existing top-level components absent from the new list will be removed. Nested shared subassemblies retain their own assembly lists.",
   "goodsBomBatchRemoveDescription": "Remove matching components only from the selected goods' top level. Skip goods without a match. Components inside nested subassemblies are retained.",
   "goodsBomBatchAddDescription": "Append the specified components to the selected goods' top level. Skip existing components and retain their quantities and other fields.",
@@ -4946,26 +4985,101 @@
   "goodsBomBatchUnselectComponent": "Deselect this component",
   "goodsBomBatchCollapseComponents": "Collapse components",
   "goodsBomBatchExpandComponents": "Expand all {count} components",
-  "@goodsBomBatchExpandComponents": {"placeholders":{"count":{"type":"int"}}},
+  "@goodsBomBatchExpandComponents": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "goodsBomBatchSummary": "Will change {targets} goods: add {added}, update {updated}, remove {removed}, skip {skipped}.",
-  "@goodsBomBatchSummary": {"placeholders":{"targets":{"type":"int"},"added":{"type":"int"},"updated":{"type":"int"},"removed":{"type":"int"},"skipped":{"type":"int"}}},
+  "@goodsBomBatchSummary": {
+    "placeholders": {
+      "targets": {
+        "type": "int"
+      },
+      "added": {
+        "type": "int"
+      },
+      "updated": {
+        "type": "int"
+      },
+      "removed": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
   "goodsBomBatchTargetCounts": "Add {added} / Update {updated} / Remove {removed} / Skip {skipped}",
-  "@goodsBomBatchTargetCounts": {"placeholders":{"added":{"type":"int"},"updated":{"type":"int"},"removed":{"type":"int"},"skipped":{"type":"int"}}},
+  "@goodsBomBatchTargetCounts": {
+    "placeholders": {
+      "added": {
+        "type": "int"
+      },
+      "updated": {
+        "type": "int"
+      },
+      "removed": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
   "goodsBomBatchSharedImpact": "Another {count} reference locations will change with the shared good's assembly list.",
-  "@goodsBomBatchSharedImpact": {"placeholders":{"count":{"type":"int"}}},
+  "@goodsBomBatchSharedImpact": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "goodsBomBatchHiddenImpact": "{count} of these reference locations are restricted by viewing permissions; only their count is shown.",
-  "@goodsBomBatchHiddenImpact": {"placeholders":{"count":{"type":"int"}}},
+  "@goodsBomBatchHiddenImpact": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "goodsBomBatchConfirmImpact": "Review the selected goods, skipped items and shared impact. Confirm to save the whole batch. If any item fails, nothing will be changed.",
   "goodsBomBatchCloseVerify": "Close and refresh to verify",
   "goodsBomBatchRetryCommit": "Retry this submission",
   "goodsBomBatchPreview": "Preview impact",
   "goodsBomBatchConfirmCommit": "Confirm batch changes",
   "goodsBomBatchCompleted": "Processed {targets} goods: added {added}, updated {updated}, removed {removed}, skipped {skipped}.",
-  "@goodsBomBatchCompleted": {"placeholders":{"targets":{"type":"int"},"added":{"type":"int"},"updated":{"type":"int"},"removed":{"type":"int"},"skipped":{"type":"int"}}},
+  "@goodsBomBatchCompleted": {
+    "placeholders": {
+      "targets": {
+        "type": "int"
+      },
+      "added": {
+        "type": "int"
+      },
+      "updated": {
+        "type": "int"
+      },
+      "removed": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
   "goodsBomBatchClearTopTitle": "Clear the top-level assembly list",
   "goodsBomBatchOverwriteCopied": "Overwrite the entire assembly list (using copied components)",
   "goodsBomBatchMoreProblems": "There are {count} more issues. Correct them and preview again.",
-  "@goodsBomBatchMoreProblems": {"placeholders":{"count":{"type":"int"}}},
+  "@goodsBomBatchMoreProblems": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "exportPdfDialogTitle": "Export PDF",
   "whereUsedReplacementTitle": "Replace component",
   "whereUsedReplacementConfirmTitle": "Confirm shared replacement",
@@ -5032,5 +5146,56 @@
   "warehouseMasterDelete": "Delete warehouse",
   "bomEditDiscardAndExit": "Exit without saving",
   "masterEditDiscardRemainingNote": "Discard only the remaining unsaved changes. Successfully saved changes will be kept.",
-  "filterAllCategoriesSummary": "All categories"
+  "filterAllCategoriesSummary": "All categories",
+  "permissionTemplateTab": "Templates",
+  "permissionTemplateNew": "New template",
+  "permissionTemplateSaveFromUser": "Save as template",
+  "permissionTemplateApply": "Apply template",
+  "permissionTemplateEdit": "Edit template",
+  "permissionTemplateDelete": "Delete template",
+  "permissionTemplateName": "Template name",
+  "permissionTemplateDescription": "Description",
+  "permissionTemplateEmpty": "No permission templates yet",
+  "permissionTemplateEmptyHint": "Create a template, or save an employee's effective permissions.",
+  "permissionTemplateSnapshotNote": "Templates save permission snapshots. Editing or deleting a template does not change accounts already configured.",
+  "permissionTemplateScopeNote": "Only operation permissions are configured. Data scope, department, account identity and remote access are managed separately.",
+  "permissionTemplateSelect": "Select a permission template",
+  "permissionTemplateMerge": "Add permissions",
+  "permissionTemplateReplace": "Replace with template",
+  "permissionTemplateMergeHint": "Keep current permissions and add template permissions. Explicit revocations are never silently restored.",
+  "permissionTemplateReplaceHint": "Set effective permissions to the template, revoking permissions outside it. Review the changes carefully.",
+  "permissionTemplatePreview": "Preview changes",
+  "permissionTemplateSaved": "Permission template saved",
+  "permissionTemplateDeleted": "Permission template deleted",
+  "permissionTemplateApplied": "Permission template applied",
+  "permissionTemplateCancel": "Cancel",
+  "permissionTemplateSave": "Save template",
+  "permissionTemplateClose": "Close",
+  "permissionTemplateDeleteHint": "Delete this template only. Permissions already applied to accounts are retained.",
+  "permissionTemplateInvalidName": "Enter a name of up to 80 characters and a description of up to 1000 characters.",
+  "permissionTemplateBoundaryChanged": "Your identity, authorization or server changed. Close and reopen this window.",
+  "permissionTemplateUncertain": "The request outcome is unknown. Close this window, refresh and verify the result before trying again.",
+  "permissionTemplateLoadFailed": "Could not load permission templates. Try again.",
+  "permissionTemplateRetry": "Reload",
+  "permissionTemplateSelectedCount": "{count} permissions selected",
+  "permissionTemplateUnknownCodes": "The template contains codes absent from the current catalog. Review and remove them, or recreate the template.",
+  "permissionTemplateClearUnknown": "Remove unavailable codes",
+  "permissionTemplateSensitiveNote": "Sensitive permissions may be saved. Applying them to each employee still requires individual confirmation.",
+  "permissionTemplateNoSelection": "Select a template to view its permissions",
+  "@permissionTemplateSelectedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hierarchyActions": "More actions",
+  "hierarchyEdit": "Edit",
+  "hierarchyCopyName": "Copy name",
+  "hierarchyCopyPath": "Copy category path",
+  "productionOrderRequirement": "Order instructions",
+  "productionProductRequirement": "Product instructions",
+  "productionRequirementsClose": "Close",
+  "productionSalesRequirements": "Sales production instructions",
+  "materialTransferContextChanged": "Your account, permissions, or plan changed. Close this window and review the transfer again."
 }

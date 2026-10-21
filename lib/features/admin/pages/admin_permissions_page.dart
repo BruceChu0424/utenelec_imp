@@ -10,6 +10,8 @@
 // 路由守卫与工作台显隐共用 permission_by_path.dart。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
+import '../widgets/admin_permission_templates.dart';
 
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
@@ -53,7 +55,7 @@ class AdminPermissionsPage extends ConsumerStatefulWidget {
 }
 
 class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
-  /// 0=按员工，1=按部门，2=全员基础包。
+  /// 0=按员工，1=按部门，2=全员基础包，3=权限模板。
   int _segment = 0;
   String _employeeSearch = '';
   final _pendingPermissionChanges = <int, bool>{};
@@ -101,10 +103,14 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
             ),
             child: UtenSegmentedFilter<int>(
               key: const ValueKey('admin-permission-modules'),
-              segments: const [
-                UtenSegment(value: 0, label: '按员工'),
-                UtenSegment(value: 1, label: '按部门'),
-                UtenSegment(value: 2, label: '全员基础包'),
+              segments: [
+                const UtenSegment(value: 0, label: '按员工'),
+                const UtenSegment(value: 1, label: '按部门'),
+                const UtenSegment(value: 2, label: '全员基础包'),
+                UtenSegment(
+                  value: 3,
+                  label: AppLocalizations.of(context).permissionTemplateTab,
+                ),
               ],
               selected: segment,
               onChanged: (value) => setState(() => _segment = value),
@@ -166,6 +172,10 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
                 onPermissionDirtyChanged: (pending) =>
                     _permissionPendingChanged(2, pending),
               ),
+            if (canManageAuthorization)
+              segment == 3
+                  ? AdminPermissionTemplatesView(navigation: categoryNavigation)
+                  : const SizedBox.shrink(),
           ],
         ),
       ),

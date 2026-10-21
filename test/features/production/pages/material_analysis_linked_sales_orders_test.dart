@@ -58,6 +58,22 @@ void main() {
     expect(find.text('只读清单 analysis-1/order-a'), findsOneWidget);
     expect(find.textContaining('销售订单详情'), findsNothing);
   });
+
+  testWidgets('摘要提供完整生产要求入口，父子件重复来源只显示一次', (tester) async {
+    await _pump(tester);
+    final button = find.byKey(
+      const ValueKey('material-analysis-sales-requirements'),
+    );
+    expect(button, findsOneWidget);
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    expect(find.text('订单统一不要打字'), findsOneWidget);
+    expect(find.text('甲产品采用白色面板'), findsOneWidget);
+    expect(find.text('订单统一备注'), findsOneWidget);
+    expect(find.text('产品单独备注'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 Future<void> _pump(WidgetTester tester) async {
@@ -176,6 +192,18 @@ Map<String, dynamic> _analysis() => {
   'warehouseId': 'warehouse-1',
   'warehouseIds': ['warehouse-1'],
   'allowedActions': ['VIEW'],
+  'salesRequirements': {
+    for (final id in ['alpha', 'delta'])
+      id: [
+        {
+          'salesOrderItemId': 'sales-alpha',
+          'salesOrderNo': 'SO-A',
+          'productName': '甲产品',
+          'orderRemark': '订单统一不要打字',
+          'itemRemark': '甲产品采用白色面板',
+        },
+      ],
+  },
   'products': [
     _product('alpha', '甲产品', 'SALES_ORDER_ITEM', 'order-a', 'SO-A', '客户甲'),
     _product('beta', '乙产品', 'SALES_ORDER_ITEM', 'order-b', 'SO-B', '客户乙'),

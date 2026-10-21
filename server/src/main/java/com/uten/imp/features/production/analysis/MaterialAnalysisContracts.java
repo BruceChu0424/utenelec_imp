@@ -454,6 +454,10 @@ public final class MaterialAnalysisContracts {
             LocalDate deliveryDate,
             BigDecimal sourceLendableQty,
             BigDecimal shortageQty) {
+        @JsonProperty(value="quantityFactsExact", access=JsonProperty.Access.READ_ONLY)
+        public Map<String,String> quantityFactsExact() {
+            return Map.of("sourceLendableQty", sourceLendableQty.toPlainString(), "shortageQty", shortageQty.toPlainString());
+        }
     }
 
     /** 缺料分析反向查询可让料来源；仓库为计划范围，实物仍属于原始叶仓 lot。 */
@@ -469,6 +473,10 @@ public final class MaterialAnalysisContracts {
             LocalDate deliveryDate,
             BigDecimal sourceLendableQty,
             BigDecimal shortageQty) {
+        @JsonProperty(value="quantityFactsExact", access=JsonProperty.Access.READ_ONLY)
+        public Map<String,String> quantityFactsExact() {
+            return Map.of("sourceLendableQty", sourceLendableQty.toPlainString(), "shortageQty", shortageQty.toPlainString());
+        }
     }
 
     /** Read-only follow-up for the original donor; opening it never orders supply. */
@@ -488,6 +496,16 @@ public final class MaterialAnalysisContracts {
             UUID existingChildAnalysisLineId,
             BigDecimal safetyReplenishmentQty,
             String blockedReason) {
+        @JsonProperty(value="quantityFactsExact", access=JsonProperty.Access.READ_ONLY)
+        public Map<String,String> quantityFactsExact() {
+            var values=new java.util.LinkedHashMap<String,String>();
+            if(transferredQty!=null)values.put("transferredQty",transferredQty.toPlainString());
+            if(priorityPendingQty!=null)values.put("priorityPendingQty",priorityPendingQty.toPlainString());
+            if(remainingSupplementQty!=null)values.put("remainingSupplementQty",remainingSupplementQty.toPlainString());
+            if(defaultQty!=null)values.put("defaultQty",defaultQty.toPlainString());
+            if(safetyReplenishmentQty!=null)values.put("safetyReplenishmentQty",safetyReplenishmentQty.toPlainString());
+            return java.util.Collections.unmodifiableMap(values);
+        }
     }
 
     /** 一次优先补齐来源；用于计划员解释“哪一批新供给补回了来源计划”。 */
@@ -563,10 +581,28 @@ public final class MaterialAnalysisContracts {
             int pendingAutoConfirmRouteCount,
             Map<UUID, BigDecimal> overproductionDefaults,
             /** 分析编号 WL+YYYYMMDD+6位日流水（V719）；历史夹具行可能为 null。 */
-            String analysisNo) {
+            String analysisNo,
+            Map<UUID, List<com.uten.imp.features.production.ProductionSalesRequirements.Requirement>> salesRequirements) {
         public AnalysisView {
             planningBlockedReasons = Map.copyOf(planningBlockedReasons);
             overproductionDefaults = Map.copyOf(overproductionDefaults);
+            salesRequirements = salesRequirements == null ? Map.of() : Map.copyOf(salesRequirements);
+        }
+
+        public AnalysisView(UUID analysisId, String status, long version,
+                String fingerprint, String analysisFingerprint, UUID warehouseId,
+                List<UUID> warehouseIds, OffsetDateTime analyzedAt,
+                List<ProductView> products, List<MaterialView> flatMaterials,
+                List<WarehouseView> warehouses, List<SupplyActionView> supplyActions,
+                List<String> allowedActions, boolean fqcReplenishmentOnly,
+                UUID fqcRecoveryAuthorizationId, Map<UUID, String> planningBlockedReasons,
+                int routeResetCount, int autoConfirmedRouteCount, int pendingAutoConfirmRouteCount,
+                Map<UUID, BigDecimal> overproductionDefaults, String analysisNo) {
+            this(analysisId, status, version, fingerprint, analysisFingerprint, warehouseId,
+                    warehouseIds, analyzedAt, products, flatMaterials, warehouses, supplyActions,
+                    allowedActions, fqcReplenishmentOnly, fqcRecoveryAuthorizationId,
+                    planningBlockedReasons, routeResetCount, autoConfirmedRouteCount,
+                    pendingAutoConfirmRouteCount, overproductionDefaults, analysisNo, Map.of());
         }
 
         public AnalysisView(UUID analysisId, String status, long version,
@@ -617,7 +653,7 @@ public final class MaterialAnalysisContracts {
                     warehouseId, warehouseIds, analyzedAt, products, flatMaterials,
                     warehouses, supplyActions, allowedActions, fqcReplenishmentOnly,
                     fqcRecoveryAuthorizationId, planningBlockedReasons, resetCount, autoConfirmedCount,
-                    pendingAutoConfirmRouteCount, overproductionDefaults, analysisNo);
+                    pendingAutoConfirmRouteCount, overproductionDefaults, analysisNo, salesRequirements);
         }
     }
 
@@ -1094,6 +1130,8 @@ public final class MaterialAnalysisContracts {
         public Map<String,String> quantityFactsExact() {
             var values=new java.util.LinkedHashMap<String,String>();
             if(additionalSupplyRecommendedQty!=null)values.put("additionalSupplyRecommendedQty",additionalSupplyRecommendedQty.toPlainString());
+            if(allocatedAvailableQty!=null)values.put("allocatedAvailableQty",allocatedAvailableQty.toPlainString());
+            if(shortageQty!=null)values.put("shortageQty",shortageQty.toPlainString());
             if(priorityMakeSupplementQty!=null)values.put("priorityMakeSupplementQty",priorityMakeSupplementQty.toPlainString());
             if(minOrderQty!=null)values.put("minOrderQty",minOrderQty.toPlainString());
             if(orderMultipleQty!=null)values.put("orderMultipleQty",orderMultipleQty.toPlainString());

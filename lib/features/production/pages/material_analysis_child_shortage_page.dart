@@ -380,7 +380,9 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
     final material = root.group.representative;
     final unit = material.unitName ?? '';
     final fromOrder = widget.rootKeys != null;
-    final orderedLabel = fromOrder
+    final orderedLabel = !root.quantityKnown
+        ? '${fromOrder ? '本次' : ''}已下单，数量见关联单据'
+        : fromOrder
         ? '${root.appended ? '刚追加' : '刚下单'} ${_host._qty(root.orderedQty)}$unit'
         : '已下单 ${_host._qty(root.orderedQty)}$unit';
     return DecoratedBox(

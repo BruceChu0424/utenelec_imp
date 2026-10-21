@@ -15,7 +15,12 @@ public final class PreplanFutureSupplyTransfer {
                          UUID colorId,UUID unitId,String unitName,BigDecimal availableQty,BigDecimal receivedQty,
                          LocalDate expectedDate,LocalDate targetNeedDate,boolean lateOrUnknown,String stage,
                          long sourceVersion,String sourceFingerprint,long targetVersion,String targetFingerprint,BigDecimal targetUncoveredQty,
-                         String documentNo,UUID documentId,String documentRoute) {}
+                         String documentNo,UUID documentId,String documentRoute) {
+        @com.fasterxml.jackson.annotation.JsonProperty(value="quantityFactsExact", access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+        public java.util.Map<String,String> quantityFactsExact() {
+            return exact("availableQty",availableQty,"receivedQty",receivedQty,"targetUncoveredQty",targetUncoveredQty);
+        }
+    }
     public record Create(@NotNull UUID sourceAllocationId,@NotNull UUID targetMaterialId,
                          @NotNull @DecimalMin("0.0001") @Digits(integer=14,fraction=4) BigDecimal qty,
                          @NotNull Long sourceVersion,@NotBlank String sourceFingerprint,
@@ -41,5 +46,17 @@ public final class PreplanFutureSupplyTransfer {
                            BigDecimal sourceSupplyShortfallQty,String supplyWarning,
                            String createdByName,OffsetDateTime createdAt) {
         @com.fasterxml.jackson.annotation.JsonProperty("transferId") public UUID transferId(){return id;}
+        @com.fasterxml.jackson.annotation.JsonProperty(value="quantityFactsExact", access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+        public java.util.Map<String,String> quantityFactsExact() {
+            return exact("qty",qty,"cancelledQty",cancelledQty,"receivedQty",receivedQty,"remainingQty",remainingQty,
+                    "cancelableQty",cancelableQty,"cancelRestoreToSourceQty",cancelRestoreToSourceQty,
+                    "cancelPublicReleaseQty",cancelPublicReleaseQty,"sourceSupplyShortfallQty",sourceSupplyShortfallQty);
+        }
+    }
+    private static java.util.Map<String,String> exact(Object... values) {
+        var result=new java.util.LinkedHashMap<String,String>();
+        for(int i=0;i<values.length;i+=2) if(values[i+1] instanceof BigDecimal quantity)
+            result.put((String)values[i],quantity.toPlainString());
+        return java.util.Collections.unmodifiableMap(result);
     }
 }

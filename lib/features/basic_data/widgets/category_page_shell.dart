@@ -2,7 +2,7 @@
 //
 // client/mould/product/supplier 四个 *_category_page 的顶层 State 曾逐字重复
 // 约 460 行编排：树加载、顶部统一搜索四件套（输入/提交/应用/选分类）、
-// 分类增改删（CategoryEditDialog + prefix 预览）、树渲染（行内增/改/删图标与
+// 分类增改删(CategoryEditDialog + prefix 预览)、树渲染(详情卡菜单与
 // 右键菜单）、loading/error/empty 与按局部宽度切换的两栏/完整目录。
 // 本 mixin 收敛这些编排；页面只声明配置钩子（文案/图标/权限/仓储调用）
 // 并提供右栏 DetailPane 构造。
@@ -37,6 +37,7 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../shared/hierarchy/uten_tree_path.dart';
 import '../../../shared/widgets/uten_hierarchy_search_header.dart';
 import '../../../shared/widgets/uten_hierarchy_node_actions.dart';
+import '../../../shared/widgets/uten_hierarchy_detail_menu.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -485,7 +486,9 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   }
 
   Future<void> _deleteCategoryAfterDraft(ProductCategoryNode node) async {
+    if (!shellCanDelete) return;
     if (!await confirmMasterInlineLeave(context) || !mounted) return;
+    if (!shellCanDelete) return;
     await shellDeleteNode(node);
   }
 
@@ -717,6 +720,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   /// 树行「编辑」动作：先按 id 拉分类详情（编辑弹窗要 Detail，树节点没有），
   /// 拉取失败走统一错误提示；成功后再开 [shellShowEditDialog]。
   Future<void> _editCategoryNode(ProductCategoryNode node) async {
+    if (!shellCanEdit) return;
     if (!await confirmMasterInlineLeave(context) || !mounted) return;
     ProductCategoryDetail? loaded;
     final ok = await context.guardRun(
@@ -727,7 +731,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     );
     // 闭包里赋值的局部变量不做流提升，先落非空再传。
     final detail = loaded;
-    if (!ok || detail == null || !mounted) return;
+    if (!ok || detail == null || !mounted || !shellCanEdit) return;
     shellShowEditDialog(detail);
   }
 
@@ -809,21 +813,13 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   /// （如模具页「全部模具」）真实分类整体下沉一层，覆写为 2 保持原有初始视野。
   int get shellInitiallyExpandDepth => 1;
 
-  // ---- 树行分类动作（2026-10-19 用户口径）-----------------------------------
-  //
-  // 右侧详情卡的「新增子分类/编辑/删除」三按钮退役：增/改/删改为左树行内图标
-  // （与原删除图标同规格常显）+ 行右键/长按菜单（UtenContextMenuRegion，与表格
-  // 行同一机制；右键先把该行置为选中再弹菜单，不触发展开/收起）。
-  // 系统根（未分类）保新增、禁改删、挂锁提示；虚拟节点（[shellIsVirtualNode]，
-  // 模具「全部模具」系统视图）无任何动作。
-
+  // ---- 分类动作 ---------------------------------------------------------
+  // 管理动作在详情卡右上角菜单与树右键/长按菜单复用；左树只留系统保护提示。
+  // 系统根保留新增，禁止改删；虚拟节点没有写动作。
   bool _isSystemRoot(ProductCategoryNode node) =>
       isSystemUncategorizedCategory(systemManaged: node.systemManaged);
 
-  /// 行尾动作缓存（2026-10-19 点击跟手）：选中/展开等 shell setState 会整树
-  /// 重建，行尾三图标（IconButton+Tooltip 造价不低）按 (树快照, 明暗, 权限,
-  /// 节点) 复用同一 widget 实例——identical 子树让 element 直接短路跳过 update，
-  /// 点击帧不再重配全树图标；树重载/权限/主题变化时换键重配。
+  /// 保护提示按树快照和权限缓存，菜单在打开时重新解析当前动作。
   final _rowActionsCache = <String, Widget>{};
   final _rowOperationsCache = <String, UtenHierarchyNodeOperations>{};
   List<ProductCategoryNode>? _rowActionsTree;
@@ -846,7 +842,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
         operations: _treeOperationsCached(node),
       );
 
-  /// 权限、系统保护与编辑/草稿离开流程只定义一次，行内和右键共享同一动作。
+  /// 权限、系统保护与草稿离开流程只定义一次，详情卡和右键共享同一动作。
   UtenHierarchyNodeOperations _treeOperations(ProductCategoryNode node) {
     if (shellIsVirtualNode(node)) return const UtenHierarchyNodeOperations();
     final systemRoot = _isSystemRoot(node);
@@ -885,14 +881,22 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     );
   }
 
-  List<UtenContextMenuEntry> _treeRowMenu(ProductCategoryNode node) =>
-      _treeOperationsCached(node).menuEntries;
+  List<UtenContextMenuEntry> _treeRowMenu(ProductCategoryNode node) => [
+    ..._treeOperations(node).menuEntries,
+    if (_treeOperations(node).menuEntries.isNotEmpty) const UtenMenuDivider(),
+    ...utenHierarchyCopyEntries(
+      context,
+      name: node.name,
+      path: utenTreeSelectionPath(
+        _tree ?? const <ProductCategoryNode>[],
+        node.id,
+      ),
+    ),
+  ];
 
   // ---- build 骨架 ---------------------------------------------------------
 
-  /// 页面 build 主体。[detailPaneBuilder] 构造选中分类的右栏（页面私有
-  /// DetailPane）；分类增/改/删动作统一在左树行内（图标 + 右键菜单，见
-  /// [_treeRowActions]/[_treeRowMenu]），详情卡不再持有分类 CRUD 按钮。
+  /// 页面 build 主体；选中分类的详情卡与左树复用同一份分类操作菜单。
   Widget buildShell(
     BuildContext context, {
     required Widget Function(ProductCategoryNode selected) detailPaneBuilder,
@@ -935,7 +939,10 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
       // 壳层代际重挂（shellReloadAll 递增）：右栏随刷新按钮整体重拉，
       // 各分类页私有的 detail epoch 机制保留不动（保存后局部重挂仍有效）。
       key: ValueKey('shell-detail-${selectedNode.id}-$_shellDetailEpoch'),
-      child: detailPaneBuilder(selectedNode),
+      child: UtenHierarchyDetailMenu(
+        entriesBuilder: () => _treeRowMenu(selectedNode),
+        child: detailPaneBuilder(selectedNode),
+      ),
     );
 
     Widget mainLayout() {

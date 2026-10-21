@@ -37,6 +37,7 @@ import '../repositories/permission_configuration_repository.dart';
 import '../../employee/widgets/employee_credential_dialog.dart';
 import 'admin_data_scope_section.dart';
 import 'admin_permission_transfer_actions.dart';
+import 'admin_permission_templates.dart';
 import 'permission_catalog_browser.dart';
 import 'permission_action_badge.dart';
 import 'set_temporary_password_dialog.dart';
@@ -670,6 +671,16 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         !_savingOverrides &&
         !_acting;
     final actions = <Widget>[
+      AdminPermissionTemplateActions(
+        user: widget.user,
+        enabled: bulkEnabled && _dirtyCount(data) == 0,
+        onApplied: () {
+          if (!mounted) return;
+          _discardPermissionDraftAfterAccountAction();
+          ref.invalidate(adminEffectivePermissionsProvider(widget.user.id));
+          widget.onAccountChanged();
+        },
+      ),
       AdminPermissionCopyActions(
         user: widget.user,
         enabled: bulkEnabled && _dirtyCount(data) == 0,

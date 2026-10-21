@@ -10,13 +10,12 @@
 
 import '../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/performance/performance_tier.dart';
+import '../../core/theme/uten_anim.dart';
 import '../../core/theme/uten_colors.dart';
-import '../../shared/providers/performance_provider.dart';
 import '../buttons/uten_button.dart';
 import 'uten_dialog.dart';
+import 'uten_motion.dart';
 
 /// 居中弹窗紧急级别。
 ///
@@ -79,7 +78,7 @@ abstract final class UtenCenterAlert {
     bool blockSystemBack = false,
     Listenable? interruptSignal,
     IconData? icon,
-    double maxWidth = 400,
+    double maxWidth = 520,
     double maxHeight = 520,
     VoidCallback? onConfirm,
     VoidCallback? onCancel,
@@ -87,13 +86,8 @@ abstract final class UtenCenterAlert {
     assert(message != null || content != null, 'message 与 content 至少传一个');
 
     // 性能档：lite 档压缩进场动画时长（读一次即可，弹窗不需要监听）
-    final tier = ProviderScope.containerOf(
-      context,
-      listen: false,
-    ).read(performanceProvider);
     final dismissible = barrierDismissible ?? (level != UtenAlertLevel.urgent);
-    final disableAnimations =
-        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final duration = utenMotionDurationOf(context, UtenAnim.fast);
 
     return showGeneralDialog<bool>(
       context: context,
@@ -102,9 +96,7 @@ abstract final class UtenCenterAlert {
       barrierColor: Colors.black.withValues(
         alpha: level == UtenAlertLevel.urgent ? 0.55 : 0.4,
       ),
-      transitionDuration: disableAnimations
-          ? Duration.zero
-          : Duration(milliseconds: (280 * tier.durationFactor).round()),
+      transitionDuration: duration,
       pageBuilder: (ctx, _, _) => _InterruptibleAlertRoute(
         interruptSignal: interruptSignal,
         child: PopScope(
@@ -125,15 +117,12 @@ abstract final class UtenCenterAlert {
         ),
       ),
       transitionBuilder: (ctx, anim, _, child) {
-        if (disableAnimations) return child;
-        final curved = CurvedAnimation(
-          parent: anim,
-          curve: Curves.easeOutCubic,
-        );
+        if (duration == Duration.zero) return child;
+        final curved = CurvedAnimation(parent: anim, curve: UtenAnim.standard);
         return FadeTransition(
           opacity: curved,
           child: ScaleTransition(
-            scale: Tween<double>(begin: 0.92, end: 1).animate(curved),
+            scale: Tween<double>(begin: 0.98, end: 1).animate(curved),
             child: child,
           ),
         );
@@ -245,7 +234,7 @@ class _CenterAlertDialog extends StatelessWidget {
     this.confirmLabel,
     this.cancelLabel,
     this.icon,
-    this.maxWidth = 400,
+    this.maxWidth = 520,
     this.maxHeight = 520,
     this.onConfirm,
     this.onCancel,
@@ -277,30 +266,18 @@ class _CenterAlertDialog extends StatelessWidget {
             ? BorderSide(color: accent.withValues(alpha: 0.5), width: 1.5)
             : BorderSide.none,
       ),
-      icon: Center(
-        child: Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            color: accent.withValues(alpha: 0.12),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon ?? level.icon, color: accent, size: 30),
-        ),
-      ),
-      title: Text(
-        title,
-        textAlign: TextAlign.center,
-        style: theme.textTheme.titleMedium?.copyWith(
-          fontWeight: FontWeight.w700,
-        ),
+      title: UtenDialogHeading(
+        title: Text(title),
+        icon: icon ?? level.icon,
+        accent: accent,
+        danger: isUrgent,
       ),
       content:
           content ??
           Text(
             message!,
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium?.copyWith(
+            textAlign: TextAlign.start,
+            style: theme.textTheme.bodyLarge?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
               height: 1.5,
             ),
@@ -310,6 +287,7 @@ class _CenterAlertDialog extends StatelessWidget {
         if (cancelLabel != null)
           UtenButton(
             type: UtenButtonType.ghost,
+            size: UtenButtonSize.large,
             onPressed: () {
               Navigator.pop(context, false);
               onCancel?.call();
@@ -318,6 +296,7 @@ class _CenterAlertDialog extends StatelessWidget {
           ),
         UtenButton(
           type: isUrgent ? UtenButtonType.danger : UtenButtonType.primary,
+          size: UtenButtonSize.large,
           onPressed: () {
             Navigator.pop(context, true);
             onConfirm?.call();

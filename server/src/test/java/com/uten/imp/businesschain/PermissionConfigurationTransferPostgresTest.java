@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.admin.PermissionConfigurationTransferService;
+import com.uten.imp.features.admin.PermissionTemplateService;
+import com.uten.imp.features.admin.dto.PermissionTemplateDtos;
 import com.uten.imp.features.admin.dto.PermissionTransferDtos.*;
 import com.uten.imp.features.auth.PermissionResolver;
 import com.uten.imp.features.auth.model.UserAccountRepository;
@@ -51,6 +53,7 @@ class PermissionConfigurationTransferPostgresTest {
     }
     @Autowired JdbcTemplate jdbc;
     @Autowired PermissionConfigurationTransferService transfer;
+    @Autowired PermissionTemplateService templates;
     @Autowired PermissionResolver resolver;
     @Autowired UserAccountRepository users;
     @Autowired ObjectMapper mapper;
@@ -331,6 +334,108 @@ class PermissionConfigurationTransferPostgresTest {
     }
 
     private List<String> confirmations(Preview preview){return preview.sensitiveAdditions().stream().map(SensitiveAddition::key).toList();}
+
+    @Test void savedTemplateIsAnIndependentVersionedSnapshotAndNeverARole() {
+        assertThat(jdbc.queryForObject("SELECT disposition FROM fn_business_reset_table_policy() WHERE table_name='permission_templates'",String.class)).isEqualTo("PRESERVE");
+        UUID target=account(department(),"模板快照");
+        var created=templates.create(new PermissionTemplateDtos.Save("模板-"+UUID.randomUUID(),"采购用途",List.of("goods:view"),0L));
+        assertThat(templates.list()).anyMatch(row->row.id().equals(created.id()) && row.permissions().contains("goods:view"));
+        var request=new PermissionTemplateDtos.Apply(created.id(),created.version(),PermissionTemplateDtos.ApplyMode.MERGE);
+        var preview=templates.preview(target,request);
+        assertThat(preview.canApply()).as(preview.issues().toString()).isTrue();
+        templates.apply(target,new PermissionTemplateDtos.Commit(request,preview.fingerprint(),confirmations(preview)));
+        assertThat(effective(target)).contains("goods:view");
+        var updated=templates.update(created.id(),new PermissionTemplateDtos.Save(created.name(),"新用途",List.of("supplier:view"),created.version()));
+        assertThat(updated.version()).isEqualTo(created.version()+1);
+        assertThat(effective(target)).contains("goods:view").doesNotContain("supplier:view");
+        assertThatThrownBy(()->templates.update(created.id(),new PermissionTemplateDtos.Save(created.name(),"过期",List.of(),created.version())))
+                .isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT));
+        templates.delete(updated.id(),new PermissionTemplateDtos.Delete(updated.version()));
+        assertThat(effective(target)).contains("goods:view");
+        assertThat(templates.list()).noneMatch(row->row.id().equals(created.id()));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE action='permission_template_apply' AND target_id=?",Long.class,target.toString())).isEqualTo(1);
+    }
+
+    @Test void mergePreservesExistingRightsAndNeverSilentlyRestoresExplicitRevocations() {
+        UUID target=account(department(),"模板补充");personal(target,"supplier:view");
+        var template=templates.create(new PermissionTemplateDtos.Save("补充-"+UUID.randomUUID(),"",List.of("goods:view"),0L));
+        var request=new PermissionTemplateDtos.Apply(template.id(),template.version(),PermissionTemplateDtos.ApplyMode.MERGE);
+        var preview=templates.preview(target,request);
+        assertThat(preview.canApply()).as(preview.issues().toString()).isTrue();
+        templates.apply(target,new PermissionTemplateDtos.Commit(request,preview.fingerprint(),confirmations(preview)));
+        assertThat(effective(target)).contains("goods:view","supplier:view");
+        UUID revoked=account(department(),"明确收回");revoke(revoked,"goods:view");
+        var blocked=templates.preview(revoked,request);
+        assertThat(blocked.canApply()).isFalse();
+        assertThat(blocked.issues()).anyMatch(message->message.contains("已明确收回"));
+        assertThatThrownBy(()->templates.apply(revoked,new PermissionTemplateDtos.Commit(request,blocked.fingerprint(),confirmations(blocked))))
+                .isInstanceOf(ApiException.class);
+        assertThat(activeEffects(revoked)).contains("goods:view=revoke");
+    }
+
+    @Test void replacementShowsAndRevokesExtraInheritedRightsAndCanDeliberatelyRestoreACentralRevoke() {
+        UUID dept=department(),target=account(dept,"模板覆盖");departmentGrant(dept,"supplier:view");revoke(target,"goods:view");
+        var template=templates.create(new PermissionTemplateDtos.Save("覆盖-"+UUID.randomUUID(),"",List.of("goods:view"),0L));
+        var request=new PermissionTemplateDtos.Apply(template.id(),template.version(),PermissionTemplateDtos.ApplyMode.REPLACE);
+        var preview=templates.preview(target,request);
+        assertThat(preview.canApply()).as(preview.issues().toString()).isTrue();
+        assertThat(preview.changes().getFirst().removed()).contains("supplier:view");
+        templates.apply(target,new PermissionTemplateDtos.Commit(request,preview.fingerprint(),confirmations(preview)));
+        assertThat(effective(target)).containsExactly("goods:view");
+        assertThat(activeEffects(target)).contains("goods:view=grant","supplier:view=revoke");
+    }
+
+    @Test void templateSensitiveRightsRequirePerEmployeeReviewAndStaleAuthorityOrTemplateNeverWrites() {
+        UUID target=account(department(),"模板敏感");
+        var template=templates.create(new PermissionTemplateDtos.Save("敏感-"+UUID.randomUUID(),"",List.of("goods:price:view"),0L));
+        var request=new PermissionTemplateDtos.Apply(template.id(),template.version(),PermissionTemplateDtos.ApplyMode.MERGE);
+        var preview=templates.preview(target,request);
+        assertThat(preview.sensitiveAdditions()).extracting(SensitiveAddition::permissionCode).contains("goods:price:view");
+        assertThatThrownBy(()->templates.apply(target,new PermissionTemplateDtos.Commit(request,preview.fingerprint(),List.of())))
+                .isInstanceOf(ApiException.class).hasMessageContaining("逐项确认");
+        personal(target,"supplier:view");
+        assertThatThrownBy(()->templates.apply(target,new PermissionTemplateDtos.Commit(request,preview.fingerprint(),confirmations(preview))))
+                .isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT));
+        var fresh=templates.preview(target,request);
+        templates.update(template.id(),new PermissionTemplateDtos.Save(template.name(),"变化",template.permissions(),template.version()));
+        assertThatThrownBy(()->templates.apply(target,new PermissionTemplateDtos.Commit(request,fresh.fingerprint(),confirmations(fresh))))
+                .isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT));
+        assertThat(effective(target)).doesNotContain("goods:price:view");
+    }
+
+    @Test void templateRejectsUnknownAndSuperadminOnlyCodesAndInvalidTargets() {
+        assertThatThrownBy(()->templates.create(new PermissionTemplateDtos.Save("未知-"+UUID.randomUUID(),"",List.of("nonexistent:permission"),0L)))
+                .isInstanceOf(ApiException.class).hasMessageContaining("不存在");
+        String restricted=jdbc.queryForObject("SELECT code FROM permissions WHERE 'SUPERADMIN_ONLY'=ANY(grant_policy) ORDER BY code LIMIT 1",String.class);
+        assertThatThrownBy(()->templates.create(new PermissionTemplateDtos.Save("超管-"+UUID.randomUUID(),"",List.of(restricted),0L))).isInstanceOf(ApiException.class);
+        var template=templates.create(new PermissionTemplateDtos.Save("目标校验-"+UUID.randomUUID(),"",List.of("goods:view"),0L));
+        var request=new PermissionTemplateDtos.Apply(template.id(),template.version(),PermissionTemplateDtos.ApplyMode.MERGE);
+        assertThat(templates.preview(admin,request).canApply()).isFalse();
+        UUID disabled=account(department(),"停用模板目标");jdbc.update("UPDATE users SET status='disabled' WHERE id=?",disabled);
+        assertThat(templates.preview(disabled,request).canApply()).isFalse();
+        UUID ordinary=account(department(),"普通操作者");var account=users.findById(ordinary).orElseThrow();
+        AuthUser principal=new AuthUser(ordinary,account.getEmployeeId(),account.getLoginAccount(),Set.of("authorization:manage"),false,true,false);
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(principal,null,principal.getAuthorities()));
+        assertThatThrownBy(()->templates.list()).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+    }
+
+    @Test void deletingATemplateOrConcurrentTemplateEditorInvalidatesApplication() throws Exception {
+        UUID target=account(department(),"模板并发");
+        var template=templates.create(new PermissionTemplateDtos.Save("并发-"+UUID.randomUUID(),"",List.of("goods:view"),0L));
+        var request=new PermissionTemplateDtos.Apply(template.id(),template.version(),PermissionTemplateDtos.ApplyMode.MERGE);
+        var preview=templates.preview(target,request);
+        try(Connection connection=DATABASE.createConnection("")) {
+            connection.setAutoCommit(false);
+            try(var statement=connection.prepareStatement("SELECT id FROM permission_templates WHERE id=? FOR UPDATE")) { statement.setObject(1,template.id());statement.execute(); }
+            assertThatThrownBy(()->templates.apply(target,new PermissionTemplateDtos.Commit(request,preview.fingerprint(),confirmations(preview))))
+                    .isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT));
+            connection.rollback();
+        }
+        assertThat(effective(target)).doesNotContain("goods:view");
+        templates.delete(template.id(),new PermissionTemplateDtos.Delete(template.version()));
+        assertThatThrownBy(()->templates.apply(target,new PermissionTemplateDtos.Commit(request,preview.fingerprint(),confirmations(preview))))
+                .isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode()).isEqualTo(ErrorCode.NOT_FOUND));
+    }
     private PermissionResolver.PermBreakdown breakdown(UUID user){
         return new org.springframework.transaction.support.TransactionTemplate(transactionManager)
                 .execute(status->resolver.breakdownOf(users.findById(user).orElseThrow()));

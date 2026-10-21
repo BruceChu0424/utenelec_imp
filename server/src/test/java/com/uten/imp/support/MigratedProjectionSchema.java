@@ -24,8 +24,9 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class MigratedProjectionSchema {
     private static final String CURRENT = "current";
-    private static final Map<String, Map<String, Shape>> CATALOGS = new ConcurrentHashMap<>();
+    private static final Map<String, Catalog> CATALOGS = new ConcurrentHashMap<>();
     private record Shape(List<String> columns, List<String> keys) { }
+    private record Catalog(Map<String, Shape> tables, Map<String, List<String>> functions) { }
 
     private MigratedProjectionSchema() { }
 
@@ -67,11 +68,21 @@ public final class MigratedProjectionSchema {
         createTables(target, CURRENT, tables);
     }
 
+    /** Copies real current definitions into the same isolated projection fixture, in dependency order. */
+    public static void createCurrentFunctions(JdbcTemplate target, String... names) {
+        Catalog catalog = CATALOGS.computeIfAbsent(CURRENT, MigratedProjectionSchema::readCatalog);
+        for (String name : names) {
+            List<String> definitions = catalog.functions().get(name);
+            if (definitions == null) throw new IllegalArgumentException("No migrated function: " + name);
+            definitions.forEach(target::execute);
+        }
+    }
+
     public static void createTables(JdbcTemplate target, String version, String... tables) {
         if (!CURRENT.equals(version) && !version.matches("[1-9][0-9]*")) {
             throw new IllegalArgumentException("Explicit migration version required");
         }
-        Map<String, Shape> catalog = CATALOGS.computeIfAbsent(version, MigratedProjectionSchema::readCatalog);
+        Map<String, Shape> catalog = CATALOGS.computeIfAbsent(version, MigratedProjectionSchema::readCatalog).tables();
         for (String table : tables) {
             Shape shape = catalog.get(table);
             if (shape == null) throw new IllegalArgumentException("No migrated relation at V" + version + ": " + table);
@@ -81,7 +92,7 @@ public final class MigratedProjectionSchema {
         }
     }
 
-    private static Map<String, Shape> readCatalog(String version) {
+    private static Catalog readCatalog(String version) {
         try (PostgreSQLContainer source = new PostgreSQLContainer("postgres:16-alpine")) {
             source.start();
             var migration = com.uten.imp.testsupport.TestFlyway.configure().dataSource(source.getJdbcUrl(), source.getUsername(), source.getPassword())
@@ -127,7 +138,19 @@ public final class MigratedProjectionSchema {
             Map<String, Shape> shapes = new LinkedHashMap<>();
             columns.forEach((table, fields) -> shapes.put(table,
                     new Shape(List.copyOf(fields), List.copyOf(keys.getOrDefault(table, List.of())))));
-            return Map.copyOf(shapes);
+            Map<String, List<String>> functions = new LinkedHashMap<>();
+            db.query("""
+                    SELECT procedure.proname, pg_catalog.pg_get_functiondef(procedure.oid)
+                    FROM pg_catalog.pg_proc procedure
+                    JOIN pg_catalog.pg_namespace namespace ON namespace.oid=procedure.pronamespace
+                    WHERE namespace.nspname='public' AND procedure.prokind='f'
+                      AND procedure.proname LIKE 'fn_%'
+                    ORDER BY procedure.proname, procedure.pronargs DESC, procedure.oid
+                    """, row -> {
+                functions.computeIfAbsent(row.getString(1), ignored -> new ArrayList<>()).add(row.getString(2));
+            });
+            functions.replaceAll((name, definitions) -> List.copyOf(definitions));
+            return new Catalog(Map.copyOf(shapes), Map.copyOf(functions));
         }
     }
 

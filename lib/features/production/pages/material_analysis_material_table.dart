@@ -1667,6 +1667,28 @@ abstract class _MaterialAnalysisMaterialTableState
     });
   }
 
+  List<ProductionSalesRequirement> _salesRequirementsForRow(
+    _MaterialTableRow row,
+  ) {
+    final contexts = <String>{
+      if (row.product != null) row.product!.analysisLineId,
+      if (row.material?.analysisLineId != null) row.material!.analysisLineId!,
+      if (row.rootAnalysisLineId != null) row.rootAnalysisLineId!,
+      for (final path
+          in row.aggregate?.paths ?? <ProductionMaterialAnalysisMaterial>[])
+        if (path.analysisLineId != null) path.analysisLineId!,
+    };
+    final bySource = <String, ProductionSalesRequirement>{};
+    for (final id in contexts) {
+      for (final requirement
+          in _analysis?.salesRequirements[id] ??
+              <ProductionSalesRequirement>[]) {
+        bySource[requirement.salesOrderItemId] = requirement;
+      }
+    }
+    return bySource.values.toList(growable: false);
+  }
+
   /// 主表列定稿(ADR-102 一张表)。
   ///
   /// 列顺序按用户口径：进度 / 待办 最前（2026-10-08「状态或进度列默认放
@@ -1771,6 +1793,22 @@ abstract class _MaterialAnalysisMaterialTableState
       // 纯展示列不进导出投影（本页暂无表格投影导出，防患于同类页面踩同坑）。
       exportable: false,
       cellBuilder: (_, row) => _materialTableIdentityCell(theme, row),
+    ),
+    MasterColumnDef(
+      key: 'salesRequirements',
+      label: AppLocalizations.of(context).productionSalesRequirements,
+      width: 190,
+      value: (row) => _salesRequirementsForRow(row)
+          .map(
+            (note) => [
+              note.orderRemark,
+              note.itemRemark,
+            ].whereType<String>().join(' / '),
+          )
+          .join('\n'),
+      cellBuilder: (_, row) => ProductionSalesRequirementsButton(
+        requirements: _salesRequirementsForRow(row),
+      ),
     ),
     // 2026-09-14 用户口径：编号 / 颜色从身份格副行提升为独立列，紧跟
     // 「物料名称」。同名不同色的行在这里一眼分得开，也能各自筛选、导出。
@@ -4975,18 +5013,16 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 下单数量/追加下单两格与车间负责人两列的权威判据。它产出的人话原因原本只挂在
   /// 置灰的下达按钮上, 现在改挂到「下单数量」格的悬浮说明里。
   String? _materialTableHandleText(_MaterialTableRow row) {
-    if (_bomAggregateByMaterial) {
-      final groups = row.aggregate == null
-          ? <_MaterialGroup>[?_tableEditableGroup(row)]
-          : _aggregateTable.groupsOf(row.aggregate!);
-      final text = _aggregateTable.planText(
-        materialLineIds: groups.expand(
-          (group) => group.paths.map((path) => path.materialLineId),
-        ),
-        groups: groups,
-      );
-      if (text != null) return text;
-    }
+    final groups = row.aggregate == null
+        ? <_MaterialGroup>[?_tableEditableGroup(row)]
+        : _aggregateTable.groupsOf(row.aggregate!);
+    final text = _aggregateTable.planText(
+      materialLineIds: groups.expand(
+        (group) => group.paths.map((path) => path.materialLineId),
+      ),
+      groups: groups,
+    );
+    if (text != null) return text;
     final group = _tableEditableGroup(row);
     if (group == null) return '—';
     // 汇总视图顶层产品行：已下单后由撤回 / 车间计划口径渲染（格子里是按钮
@@ -5015,11 +5051,36 @@ abstract class _MaterialAnalysisMaterialTableState
     // 来源图找真实单据）。2026-10-10 二次修订（用户）：未下单时与按产品视图
     // 同一枚调拨按钮——服务端已开放根供给行（node_role='ROOT_SUPPLY'）跨计划
     // 调拨，别的计划多锁的成品合格批次可调入顶层；无可调来源时按钮置灰并
-    // 说明原因，不再显示横杠。按产品视图本就统一只给调拨，撤回走进度弹窗。
+    // 说明原因，不再显示横杠。
     if (_bomAggregateByMaterial && row.product != null) {
       final withdrawCell = _aggregateTable.topLevelWithdrawCell(group);
       if (withdrawCell != null) return withdrawCell;
       return _materialTableTransferCell(theme, row, group);
+    }
+    if (!_bomAggregateByMaterial) {
+      final withdrawal = _aggregateTable.withdrawCell(
+        materialLineIds: group.paths.map((path) => path.materialLineId),
+        hasOrdered: _tableGroupIssuedQty(group) > 0.000000001,
+        keyPrefix: 'material-product-${group.representative.materialLineId}',
+        groups: [group],
+      );
+      if (withdrawal != null) {
+        return Semantics(
+          container: true,
+          explicitChildNodes: true,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              withdrawal,
+              Semantics(
+                container: true,
+                child: _materialTableTransferCell(theme, row, group),
+              ),
+            ],
+          ),
+        );
+      }
     }
     return _materialTableTransferCell(theme, row, group);
   }
@@ -6641,6 +6702,15 @@ abstract class _MaterialAnalysisMaterialTableState
     final kinds = <String>{
       for (final group in pending.keys) _aggregateKeyOf(group.representative),
     }.length;
+    final analysis = _analysis;
+    final hasParentMaterials =
+        analysis != null &&
+        pending.keys.any(
+          (group) =>
+              (_draftRoute(group) == MaterialSupplyRoute.make ||
+                  _draftRoute(group) == MaterialSupplyRoute.subcontract) &&
+              _hasProductionBomChildren(group.representative, analysis),
+        );
     final routeLine = [
       for (final label in const ['下达车间', '下达委外', '下达采购'])
         if (routeKinds[label] != null)
@@ -6686,6 +6756,11 @@ abstract class _MaterialAnalysisMaterialTableState
                   fontSize: 13,
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
+              ),
+            if (hasParentMaterials)
+              TextSpan(
+                text: '\n\n未选中的下层物料会在下单后重新核对。仍需补充时，会提醒你继续下单。',
+                style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
               ),
             if (warnings.isNotEmpty)
               TextSpan(

@@ -103,6 +103,136 @@ class ProductionMaterialAnalysisScalePostgresTest {
     @BeforeEach void setUp() { factory = new ProductionChainDataFactory(beans, jdbc, sales, finance); }
     @AfterEach void clearActor() { SecurityContextHolder.clearContext(); ProductionJdbcMeasurement.end(); }
 
+    /** Read hot paths are measured separately from refresh writes and diagnostic serialization. */
+    @Test
+    void readProjectionQueryBudgetAndSalesRequirementsAreBatched() throws Exception {
+        for (int size : List.of(2,30)) {
+            var scenario=factory.sharedTree("read-budget-"+size+"-"+suffix(),size);
+            jdbc.update("UPDATE sales_orders SET remark='统一生产要求' WHERE id=?",scenario.orderId());
+            jdbc.update("UPDATE sales_order_items SET remark='产品生产要求' WHERE order_id=?",scenario.orderId());
+            var view=analysis.preview(request(scenario,null,"read-budget-"+suffix()));
+            assertInitialDemand(scenario,view);
+            assertEquals(size,view.salesRequirements().size());
+            List<UUID> itemIds=view.products().stream().map(ProductView::analysisLineId).toList();
+            var reader=new com.uten.imp.features.production.ProductionSalesRequirements(em);
+            analysis.detail(view.analysisId()); reader.analysisItems(itemIds); // JIT/statement warmup, excluded.
+            for(int sampleIndex=0;sampleIndex<3;sampleIndex++) {
+                final UUID id=view.analysisId();
+                AnalysisView read=measured("SERVICE","analysis.detail.read-budget",size,()->analysis.detail(id));
+                assertEquals(view.version(),read.version());
+                assertEquals(view.fingerprint(),read.fingerprint());
+                assertEquals(view.salesRequirements(),read.salesRequirements());
+                Map<UUID,List<com.uten.imp.features.production.ProductionSalesRequirements.Requirement>> requirements=
+                        measured("SERVICE","analysis.sales-requirements.read-budget",size,()->reader.analysisItems(itemIds));
+                assertEquals(view.salesRequirements(),requirements);
+            }
+            var previous=view;
+            Map<String,String> beforeVersions=projectionRowVersions(view.analysisId());
+            AnalysisView refreshed=measured("SERVICE","analysis.refresh.unchanged-input-budget",size,
+                    ()->analysis.preview(request(scenario,previous,"read-budget-refresh-"+suffix())));
+            assertTrue(refreshed.version()>previous.version(),"Explicit refresh still advances its header and records its command");
+            assertEquals(beforeVersions,projectionRowVersions(view.analysisId()),
+                    "An unchanged refresh must not rewrite source readiness, root quantities or BOM rows");
+            List<PreviewItem> changedSources=new ArrayList<>(scenario.sources());
+            PreviewItem changed=changedSources.getFirst();
+            changedSources.set(0,new PreviewItem(changed.sourceType(),changed.salesOrderItemId(),changed.goodsId(),changed.colorId(),changed.unitId(),
+                    changed.sourceRef(),changed.sourceReason(),changed.deliveryDate(),new BigDecimal("9")));
+            var changedView=analysis.preview(new PreviewRequest(refreshed.analysisId(),refreshed.version(),refreshed.fingerprint(),
+                    scenario.world().warehouseId(),"read-budget-real-change-"+suffix(),changedSources));
+            assertEquals(0,new BigDecimal("9").compareTo(changedView.products().stream()
+                    .filter(row->changed.salesOrderItemId().equals(row.salesOrderItemId())).findFirst().orElseThrow().requestedQty()));
+            assertEquals(0,new BigDecimal("9").compareTo(changedView.flatMaterials().stream()
+                    .filter(row->row.level()==0 && row.goodsId().equals(changedView.products().stream()
+                            .filter(source->changed.salesOrderItemId().equals(source.salesOrderItemId())).findFirst().orElseThrow().goodsId()))
+                    .findFirst().orElseThrow().requiredQty()),"Real quantity changes must still persist and reach the root projection");
+        }
+    }
+
+    private Map<String,String> projectionRowVersions(UUID analysisId) {
+        return jdbc.query("""
+                SELECT 'SOURCE:'||id::text AS row_id,xmin::text AS row_version
+                FROM production_material_analysis_items WHERE analysis_id=? AND NOT is_deleted
+                UNION ALL
+                SELECT 'MATERIAL:'||id::text,xmin::text
+                FROM production_material_analysis_materials WHERE analysis_id=? AND active
+                """,(row,index)->Map.entry(row.getString(1),row.getString(2)),analysisId,analysisId).stream()
+                .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey,Map.Entry::getValue));
+    }
+
+    @Test
+    void detailKeepsHeaderAndSourceFactsInOneCommittedSnapshot() throws Exception {
+        var scenario=factory.sharedTree("read-snapshot-"+suffix(),1);
+        var before=analysis.preview(request(scenario,null,"read-snapshot-"+suffix()));
+        var source=before.products().getFirst();
+        var workers=Executors.newSingleThreadExecutor();
+        try(var writer=dataSource.getConnection()) {
+            writer.setAutoCommit(false);
+            try(var lock=writer.createStatement()) {
+                lock.execute("LOCK TABLE production_material_analysis_items IN ACCESS EXCLUSIVE MODE");
+            }
+            var pending=workers.submit(()-> {
+                factory.login(scenario);
+                try { return analysis.detail(before.analysisId()); }
+                finally { SecurityContextHolder.clearContext(); }
+            });
+            long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(20);
+            boolean blocked=false;
+            while(System.nanoTime()<deadline) {
+                blocked=Boolean.TRUE.equals(jdbc.queryForObject("""
+                        SELECT EXISTS(SELECT 1 FROM pg_stat_activity
+                        WHERE datname=current_database() AND pid<>pg_backend_pid()
+                          AND wait_event_type='Lock' AND query LIKE '%subcontract_budget_allocations%')
+                        """,Boolean.class));
+                if(blocked) break;
+                Thread.sleep(25);
+            }
+            assertTrue(blocked,"Pause after reading the analysis header and before reading its source rows");
+            try(var update=writer.prepareStatement("UPDATE production_material_analyses SET version=version+1 WHERE id=?")) {
+                update.setObject(1,before.analysisId()); update.executeUpdate();
+            }
+            try(var update=writer.prepareStatement("UPDATE production_material_analysis_items SET line_priority=line_priority+1000 WHERE id=?")) {
+                update.setObject(1,source.analysisLineId()); update.executeUpdate();
+            }
+            writer.commit();
+            var read=pending.get(30,TimeUnit.SECONDS);
+            assertEquals(before.version(),read.version());
+            assertEquals(source.allocationPriority(),read.products().stream()
+                    .filter(row->row.analysisLineId().equals(source.analysisLineId())).findFirst().orElseThrow().allocationPriority(),
+                    "A header from the earlier commit must never describe source facts from a later commit");
+            assertEquals(before.version()+1,jdbc.queryForObject("SELECT version FROM production_material_analyses WHERE id=?",Long.class,before.analysisId()));
+        } finally { workers.shutdownNow(); }
+    }
+
+    @Test
+    void salesSourceAdmissionAndDefaultDeliveryUseBoundedMasterReads() throws Exception {
+        String trace=System.getProperty("uten.jdbc.measurement.trace-directory");
+        if(trace==null) System.setProperty("uten.jdbc.measurement.trace-directory",
+                Path.of(System.getProperty("uten.build.directory","target"),"source-admission-traces").toString());
+        try {
+            for(int size:List.of(2,30)) {
+                var scenario=factory.sharedTree("source-admission-"+size+"-"+suffix(),size);
+                var initial=measured("SERVICE","analysis.source-admission.initial",size,
+                        ()->analysis.preview(request(scenario,null,"source-admission-"+suffix())));
+                List<PreviewItem> defaults=scenario.sources().stream().map(item->new PreviewItem(item.sourceType(),item.salesOrderItemId(),
+                        item.goodsId(),item.colorId(),item.unitId(),item.sourceRef(),item.sourceReason(),null,item.requestedQty())).toList();
+                var current=analysis.preview(new PreviewRequest(initial.analysisId(),initial.version(),initial.fingerprint(),
+                        scenario.world().warehouseId(),"source-defaults-warmup-"+suffix(),defaults));
+                Map<String,String> beforeVersions=projectionRowVersions(current.analysisId());
+                for(int sampleIndex=0;sampleIndex<3;sampleIndex++) {
+                    var previous=current;
+                    current=measured("SERVICE","analysis.source-admission.default-delivery",size,()->analysis.preview(new PreviewRequest(
+                            previous.analysisId(),previous.version(),previous.fingerprint(),scenario.world().warehouseId(),
+                            "source-defaults-"+suffix(),defaults)));
+                    assertEquals(beforeVersions,projectionRowVersions(current.analysisId()));
+                    LocalDate expected=jdbc.queryForObject("SELECT COALESCE(item.deliver_date,orders.deliver_date) FROM sales_order_items item JOIN sales_orders orders ON orders.id=item.order_id WHERE item.id=?",LocalDate.class,defaults.getFirst().salesOrderItemId());
+                    assertTrue(current.products().stream().allMatch(product->java.util.Objects.equals(expected,product.deliveryDate())));
+                }
+            }
+        } finally {
+            if(trace==null) System.clearProperty("uten.jdbc.measurement.trace-directory");
+        }
+    }
+
     @Test
     void twoProductsSharedTreeKeepsIndependentDemandAndConcurrentIssueIsIdempotent() throws Exception {
         var scenario = factory.sharedTree("scale-small-" + suffix(), 2);
@@ -811,6 +941,7 @@ class ProductionMaterialAnalysisScalePostgresTest {
     private <T> T measuredProfiled(String transport,String operation,int products,Work<T> work,
                                   ProductionOperationProfile profile) throws Exception {
         JvmGc gcBefore = jvmGc();
+        var resources=CommandResourceMeasurement.begin();
         ProductionJdbcMeasurement.Sample sample = ProductionJdbcMeasurement.begin();
         long started = System.nanoTime();
         Map<String, Object> row = new LinkedHashMap<>();
@@ -819,6 +950,34 @@ class ProductionMaterialAnalysisScalePostgresTest {
             T result = work.run();
             row.put("elapsedMillis", (System.nanoTime() - started) / 1_000_000.0);
             row.put("success", true);
+            row.putAll(resources.finish());
+            if(operation.startsWith("analysis.source-admission.")) {
+                long masterReads=sample.statementOrigins.stream().filter(origin->((List<?>)origin.get("locations")).stream()
+                        .map(Object::toString).anyMatch(location->location.contains("MaterialAnalysisService#salesSourceMaster:")
+                                || location.contains("MaterialAnalysisService#salesSourceMasters:")
+                                || location.contains("MaterialAnalysisSalesSourceReader#read:"))).count();
+                row.put("salesSourceMasterQueries",masterReads);
+                long reuseReads=sample.statementOrigins.stream().filter(origin->((List<?>)origin.get("locations")).stream()
+                        .map(Object::toString).anyMatch(location->location.contains("MaterialAnalysisSalesSourceReader#activeAnalyses:"))).count();
+                row.put("sourceReuseQueries",reuseReads);
+                assertFalse(sample.statementOrigins.isEmpty(),"Source admission must retain SQL-shape evidence for its query budget");
+                if(Boolean.parseBoolean(System.getProperty("uten.production.enforceSalesSourceBatchBudget","true"))) {
+                    assertEquals(1,masterReads,"Sales master reads must be one bounded projection, including omitted delivery dates");
+                    if(operation.endsWith(".initial")) assertTrue(reuseReads>=1 && reuseReads<=3,
+                            "Each original source discovery/verification phase must use one bounded lookup: "+reuseReads);
+                }
+            }
+            if(operation.equals("analysis.detail.read-budget") || operation.equals("analysis.sales-requirements.read-budget")) {
+                assertTrue(sample.affectedRowsByFingerprint.isEmpty() && sample.zeroDmlCallsByFingerprint.isEmpty(),
+                        "Polling and requirements projection must remain strictly read only");
+                assertTrue(sample.logicalStatements<=(operation.equals("analysis.detail.read-budget")?45:1),
+                        "Read query count must not grow with repeated BOM/source occurrences: "+sample.logicalStatements);
+                if(operation.equals("analysis.detail.read-budget") && Boolean.TRUE.equals(row.get("threadAllocatedBytesAvailable"))) {
+                    long allocation=((Number)row.get("threadAllocatedBytes")).longValue();
+                    assertTrue(allocation<=(products==2?32L:128L)*1024*1024,
+                            "Bound the warmed 198/2970-node read allocation instead of tolerating quadratic growth: "+allocation);
+                }
+            }
             // Separate the real endpoint from the diagnostic serialization of
             // both compatibility representations, which allocates extra buffers.
             JvmGc operationGc = jvmGc();

@@ -10,6 +10,72 @@ import 'package:uten_imp/shared/models/paged_result.dart';
 
 void main() {
   testWidgets(
+    'exact large candidate capacity and typed fractional quantities avoid doubles',
+    (tester) async {
+      const maximum = '99999999999999.9999';
+      for (final quantity in ['0.0001', '1.2345', maximum]) {
+        final repository = _FakeRepository(exactCapacity: maximum);
+        await _pumpLauncher(tester, repository, size: const Size(1200, 900));
+        await tester.tap(find.byKey(const Key('open-cross-reallocation')));
+        await tester.pumpAndSettle();
+        expect(
+          _fieldText(tester, const Key('cross-reallocation-qty')),
+          maximum,
+        );
+        await tester.enterText(
+          find.byKey(const Key('cross-reallocation-qty')),
+          quantity,
+        );
+        await tester.tap(find.byKey(const Key('cross-reallocation-confirm')));
+        await tester.pumpAndSettle();
+        expect(repository.lastRawQty, quantity);
+        expect(repository.createCalls, 1);
+      }
+    },
+  );
+  testWidgets(
+    'transfer stops when its host authority changes before confirmation',
+    (tester) async {
+      var allowed = true;
+      final repository = _FakeRepository();
+      await _pumpLauncher(
+        tester,
+        repository,
+        size: const Size(1200, 900),
+        commandIsCurrent: () => allowed,
+      );
+      await tester.tap(find.byKey(const Key('open-cross-reallocation')));
+      await tester.pumpAndSettle();
+      allowed = false;
+      await tester.tap(find.byKey(const Key('cross-reallocation-confirm')));
+      await tester.pumpAndSettle();
+      expect(repository.createCalls, 0);
+      expect(find.textContaining('账号、权限或计划状态已变化'), findsOneWidget);
+    },
+  );
+
+  testWidgets('a late transfer result cannot notify a replaced host', (
+    tester,
+  ) async {
+    var allowed = true;
+    var completions = 0;
+    final repository = _FakeRepository(onWrite: () => allowed = false);
+    await _pumpLauncher(
+      tester,
+      repository,
+      size: const Size(1200, 900),
+      commandIsCurrent: () => allowed,
+      onCompleted: (_) => completions++,
+    );
+    await tester.tap(find.byKey(const Key('open-cross-reallocation')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('cross-reallocation-confirm')));
+    await tester.pumpAndSettle();
+    expect(repository.createCalls, 1);
+    expect(completions, 0);
+    expect(find.textContaining('账号、权限或计划状态已变化'), findsOneWidget);
+  });
+  testWidgets(
     'deficient plan selects donor and rebases both snapshots without losing quantity',
     (tester) async {
       final repository = _FakeRepository(conflictOnce: true);
@@ -213,6 +279,8 @@ Future<void> _pumpLauncher(
   double textScale = 1,
   bool dark = false,
   bool receiveIntoCurrent = false,
+  bool Function()? commandIsCurrent,
+  ValueChanged<MaterialReallocationCompletion>? onCompleted,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -245,6 +313,8 @@ Future<void> _pumpLauncher(
                 sourceProductLabel: '来源计划产品',
                 qtyText: _qty,
                 receiveIntoCurrent: receiveIntoCurrent,
+                commandIsCurrent: commandIsCurrent,
+                onCompleted: onCompleted,
               ),
               child: const Text('打开'),
             ),
@@ -305,32 +375,42 @@ ProductionMaterialAnalysisView _latestSource() =>
       allowedActions: {'REALLOCATE'},
     );
 
-MaterialCrossReallocationCandidate _candidate(int version) =>
-    MaterialCrossReallocationCandidate(
-      targetAnalysisId: 'target-analysis',
-      targetVersion: version,
-      targetFingerprint: version == 3 ? 'c' * 64 : 'd' * 64,
-      targetMaterialLineId: 'target-material',
-      analysisLabel: '订单 XS-002',
-      productLabel: '加急产品',
-      pathLabel: '加急产品 / 共享电机',
-      warehouseId: 'warehouse-1',
-      warehouseName: '主仓',
-      deliveryDate: '2026-08-25',
-      shortageQty: 5,
-      sourceLendableQty: 4,
-    );
+MaterialCrossReallocationCandidate _candidate(
+  int version, {
+  String? exactCapacity,
+}) => MaterialCrossReallocationCandidate(
+  targetAnalysisId: 'target-analysis',
+  targetVersion: version,
+  targetFingerprint: version == 3 ? 'c' * 64 : 'd' * 64,
+  targetMaterialLineId: 'target-material',
+  analysisLabel: '订单 XS-002',
+  productLabel: '加急产品',
+  pathLabel: '加急产品 / 共享电机',
+  warehouseId: 'warehouse-1',
+  warehouseName: '主仓',
+  deliveryDate: '2026-08-25',
+  shortageQty: exactCapacity == null ? 5 : double.parse(exactCapacity),
+  sourceLendableQty: exactCapacity == null ? 4 : double.parse(exactCapacity),
+  quantityFactsExact: exactCapacity == null
+      ? const {}
+      : {'shortageQty': exactCapacity, 'sourceLendableQty': exactCapacity},
+);
 
 class _FakeRepository extends ProductionPlanRepository {
   _FakeRepository({
     this.conflictOnce = false,
     this.candidateFailures = 0,
     this.emptyAfterFailure = false,
+    this.onWrite,
+    this.exactCapacity,
   }) : super(ApiClient(Dio()));
 
   final bool conflictOnce;
   int candidateFailures;
   final bool emptyAfterFailure;
+  final VoidCallback? onWrite;
+  final String? exactCapacity;
+  Object? lastRawQty;
   int candidateCalls = 0;
   int createCalls = 0;
   int detailCalls = 0;
@@ -357,7 +437,12 @@ class _FakeRepository extends ProductionPlanRepository {
     }
     final items = emptyAfterFailure
         ? const <MaterialCrossReallocationCandidate>[]
-        : [_candidate(candidateCalls > 1 ? 4 : 3)];
+        : [
+            _candidate(
+              candidateCalls > 1 ? 4 : 3,
+              exactCapacity: exactCapacity,
+            ),
+          ];
     return PagedResult(
       items: items,
       page: 1,
@@ -372,18 +457,20 @@ class _FakeRepository extends ProductionPlanRepository {
     required ProductionMaterialAnalysisView sourceAnalysis,
     required MaterialCrossReallocationCandidate target,
     required String sourceMaterialLineId,
-    required double qty,
+    required Object qty,
     required String reason,
     required String idempotencyKey,
   }) async {
     createCalls++;
     lastSource = sourceAnalysis;
+    lastRawQty = qty;
     lastTarget = target;
-    lastQty = qty;
+    lastQty = double.parse(qty.toString());
     lastReason = reason;
     if (conflictOnce && createCalls == 1) {
       throw ApiException('CONFLICT', '两份物料分析已更新，请重新加载');
     }
+    onWrite?.call();
     return _latestSource();
   }
 
@@ -423,14 +510,14 @@ class _FakeRepository extends ProductionPlanRepository {
     required ProductionMaterialAnalysisView targetAnalysis,
     required String targetMaterialLineId,
     required MaterialCrossReallocationSourceCandidate source,
-    required double qty,
+    required Object qty,
     required String reason,
     required String idempotencyKey,
   }) async {
     createCalls++;
     lastDonor = source;
     lastReceiver = targetAnalysis;
-    lastQty = qty;
+    lastQty = double.parse(qty.toString());
     lastReason = reason;
     if (conflictOnce && createCalls == 1) {
       throw ApiException('CONFLICT', '供料计划已变化');

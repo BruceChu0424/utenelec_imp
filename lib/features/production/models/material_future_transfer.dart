@@ -1,4 +1,5 @@
 import 'production_material_analysis.dart';
+import 'material_transfer_quantity.dart';
 
 class MaterialFutureTransferSource
     implements MaterialReallocationEndpointCandidate {
@@ -26,6 +27,7 @@ class MaterialFutureTransferSource
     this.documentNo,
     this.documentId,
     this.documentRoute,
+    this.quantityFactsExact = const {},
   });
   final String sourceAllocationId;
   final String sourceAnalysisId;
@@ -54,6 +56,8 @@ class MaterialFutureTransferSource
   final String? documentId;
   final String? documentRoute;
   @override
+  final Map<String, String> quantityFactsExact;
+  @override
   String get analysisId => sourceAnalysisId;
   @override
   String get materialLineId => sourceMaterialId;
@@ -76,33 +80,34 @@ class MaterialFutureTransferSource
   String get stageLabel => stage == 'PARTIAL_STOCK_IN'
       ? '部分已入库；当前可调的是尚未实收部分'
       : '已下单，尚未合格入库；到货与检验进度以原单为准';
-  factory MaterialFutureTransferSource.fromJson(Map<String, dynamic> json) =>
-      MaterialFutureTransferSource(
-        sourceAllocationId: json['sourceAllocationId'] as String,
-        sourceAnalysisId: json['sourceAnalysisId'] as String,
-        sourceMaterialId: json['sourceMaterialId'] as String,
-        sourceLabel: json['sourceLabel'] as String? ?? '供料计划',
-        availableQty: (json['availableQty'] as num?)?.toDouble() ?? 0,
-        receivedQty: (json['receivedQty'] as num?)?.toDouble() ?? 0,
-        sourceVersion: (json['sourceVersion'] as num).toInt(),
-        sourceFingerprint: json['sourceFingerprint'] as String,
-        targetVersion: (json['targetVersion'] as num).toInt(),
-        targetFingerprint: json['targetFingerprint'] as String,
-        targetUncoveredQty:
-            (json['targetUncoveredQty'] as num?)?.toDouble() ?? 0,
-        expectedDate: json['expectedDate'] as String?,
-        targetNeedDate: json['targetNeedDate'] as String?,
-        lateOrUnknown: json['lateOrUnknown'] == true,
-        stage: json['stage'] as String?,
-        route: MaterialSupplyRoute.fromWire(json['route']),
-        warehouseId: json['warehouseId'] as String?,
-        warehouseName: json['warehouseName'] as String?,
-        goodsCode: json['goodsCode'] as String?,
-        goodsName: json['goodsName'] as String?,
-        documentNo: json['documentNo'] as String?,
-        documentId: json['documentId'] as String?,
-        documentRoute: json['documentRoute'] as String?,
-      );
+  factory MaterialFutureTransferSource.fromJson(
+    Map<String, dynamic> json,
+  ) => MaterialFutureTransferSource(
+    sourceAllocationId: json['sourceAllocationId'] as String,
+    sourceAnalysisId: json['sourceAnalysisId'] as String,
+    sourceMaterialId: json['sourceMaterialId'] as String,
+    sourceLabel: json['sourceLabel'] as String? ?? '供料计划',
+    availableQty: (json['availableQty'] as num?)?.toDouble() ?? 0,
+    receivedQty: (json['receivedQty'] as num?)?.toDouble() ?? 0,
+    sourceVersion: (json['sourceVersion'] as num).toInt(),
+    sourceFingerprint: json['sourceFingerprint'] as String,
+    targetVersion: (json['targetVersion'] as num).toInt(),
+    targetFingerprint: json['targetFingerprint'] as String,
+    targetUncoveredQty: (json['targetUncoveredQty'] as num?)?.toDouble() ?? 0,
+    expectedDate: json['expectedDate'] as String?,
+    targetNeedDate: json['targetNeedDate'] as String?,
+    lateOrUnknown: json['lateOrUnknown'] == true,
+    stage: json['stage'] as String?,
+    route: MaterialSupplyRoute.fromWire(json['route']),
+    warehouseId: json['warehouseId'] as String?,
+    warehouseName: json['warehouseName'] as String?,
+    goodsCode: json['goodsCode'] as String?,
+    goodsName: json['goodsName'] as String?,
+    documentNo: json['documentNo'] as String?,
+    documentId: json['documentId'] as String?,
+    documentRoute: json['documentRoute'] as String?,
+    quantityFactsExact: materialTransferExactFacts(json['quantityFactsExact']),
+  );
 }
 
 class MaterialFutureTransferRecord {
@@ -137,6 +142,7 @@ class MaterialFutureTransferRecord {
     this.reason,
     this.createdByName,
     this.createdAt,
+    this.quantityFactsExact = const {},
   });
   final String id;
   final String sourceAllocationId;
@@ -161,6 +167,11 @@ class MaterialFutureTransferRecord {
   final bool canCancel;
   final double? cancelableQty;
   double get maxCancelableQty => cancelableQty ?? remainingQty;
+  BigInt? get maxCancelableUnits => materialTransferUnits(
+    quantityFactsExact['cancelableQty'] ??
+        quantityFactsExact['remainingQty'] ??
+        maxCancelableQty,
+  );
   final double? cancelRestoreToSourceQty;
   final double cancelPublicReleaseQty;
   final double sourceSupplyShortfallQty;
@@ -168,12 +179,32 @@ class MaterialFutureTransferRecord {
   double get maxRestoreToSourceQty =>
       cancelRestoreToSourceQty ??
       (remainingQty - cancelPublicReleaseQty).clamp(0, remainingQty);
+  BigInt? get maxRestoreUnits {
+    if (quantityFactsExact['cancelRestoreToSourceQty'] case final value?) {
+      return materialTransferUnits(value);
+    }
+    if (cancelRestoreToSourceQty != null) {
+      return materialTransferUnits(cancelRestoreToSourceQty);
+    }
+    final remaining = materialTransferUnits(
+      quantityFactsExact['remainingQty'] ?? remainingQty,
+    );
+    final released = materialTransferUnits(
+      quantityFactsExact['cancelPublicReleaseQty'] ?? cancelPublicReleaseQty,
+    );
+    if (remaining == null || released == null || released > remaining) {
+      return null;
+    }
+    return remaining - released;
+  }
+
   final String? blockedReason;
   final String? reason;
 
   /// 经办人与办理时间；用于记录展示，不影响业务判断。
   final String? createdByName;
   final String? createdAt;
+  final Map<String, String> quantityFactsExact;
   bool get outbound => direction == 'OUT';
   String get statusLabel => switch (status) {
     'WAITING_RECEIPT' => '尚未实收',
@@ -217,5 +248,8 @@ class MaterialFutureTransferRecord {
         reason: json['reason'] as String?,
         createdByName: json['createdByName'] as String?,
         createdAt: json['createdAt'] as String?,
+        quantityFactsExact: materialTransferExactFacts(
+          json['quantityFactsExact'],
+        ),
       );
 }

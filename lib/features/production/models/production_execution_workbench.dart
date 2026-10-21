@@ -1,4 +1,5 @@
 import 'production_exact_quantity.dart';
+import 'production_sales_requirement.dart';
 
 class ProductionExecutionWorkbenchGroup {
   const ProductionExecutionWorkbenchGroup({
@@ -271,6 +272,7 @@ class ProductionExecutionWorkbenchSegment {
     this.planEndDate,
     this.binMaterialState,
     this.needsStartConfirmation = false,
+    this.salesRequirements = const [],
     this.allowedActions = const [],
   }) : hasAvailableMaterial = hasAvailableMaterial ?? hasUnregisteredMaterial,
        plannedInboundQty = plannedInboundQty ?? inboundQty;
@@ -293,6 +295,7 @@ class ProductionExecutionWorkbenchSegment {
   final String planNo;
   final String segmentCode;
   final String? salesOrderNos;
+  final List<ProductionSalesRequirement> salesRequirements;
 
   /// 来源计划（V719）：ANALYSIS 根的 WL 分析编号；历史计划根为 null。
   final String? analysisNo;
@@ -521,6 +524,9 @@ class ProductionExecutionWorkbenchSegment {
     planNo: json['planNo'] as String? ?? '—',
     segmentCode: json['segmentCode'] as String? ?? '—',
     salesOrderNos: json['salesOrderNos'] as String?,
+    salesRequirements: ProductionSalesRequirement.parseList(
+      json['salesRequirements'],
+    ),
     analysisNo: json['analysisNo'] as String?,
     workshopDepartmentId: json['workshopDepartmentId'] as String?,
     workshopName: json['workshopName'] as String?,

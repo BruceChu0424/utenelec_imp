@@ -13,6 +13,8 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../department/models/department_node.dart';
@@ -20,9 +22,10 @@ import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../models/material_priority_replenishment.dart';
 import '../models/production_material_analysis.dart';
+import '../models/material_transfer_quantity.dart';
+import '../models/production_exact_quantity.dart';
 import '../providers/production_department_provider.dart';
 import '../repositories/production_repository.dart';
-import 'material_supply_submit_confirm.dart';
 import '../../employee/repositories/employee_picker_candidates.dart';
 
 Future<ProductionMaterialAnalysisView?>
@@ -35,6 +38,7 @@ showMaterialPriorityReplenishmentDialog({
   bool futureTransfer = false,
   required String sourceLabel,
   Future<void> Function(ProductionMaterialAnalysisView)? onOpenSource,
+  bool Function()? commandIsCurrent,
 }) {
   final body = MaterialPriorityReplenishmentDialog(
     sourceAnalysisId: sourceAnalysisId,
@@ -44,6 +48,7 @@ showMaterialPriorityReplenishmentDialog({
     futureTransfer: futureTransfer,
     sourceLabel: sourceLabel,
     onOpenSource: onOpenSource,
+    commandIsCurrent: commandIsCurrent,
   );
   if (context.breakpoint.isCompact) {
     return showModalBottomSheet<ProductionMaterialAnalysisView>(
@@ -82,6 +87,7 @@ class MaterialPriorityReplenishmentDialog extends ConsumerStatefulWidget {
     this.futureTransfer = false,
     required this.sourceLabel,
     this.onOpenSource,
+    this.commandIsCurrent,
   });
   final String sourceAnalysisId;
   final String sourceMaterialLineId;
@@ -90,6 +96,7 @@ class MaterialPriorityReplenishmentDialog extends ConsumerStatefulWidget {
   final bool futureTransfer;
   final String sourceLabel;
   final Future<void> Function(ProductionMaterialAnalysisView)? onOpenSource;
+  final bool Function()? commandIsCurrent;
 
   @override
   ConsumerState<MaterialPriorityReplenishmentDialog> createState() =>
@@ -115,6 +122,13 @@ class _MaterialPriorityReplenishmentDialogState
   UtenEmployeePickerItem? _worker;
 
   bool get _locked => _saving || _uncertain;
+  BigInt? _units(String key, double legacy) =>
+      materialTransferUnits(_preview?.quantityFactsExact[key] ?? legacy);
+  String _fact(String key, double legacy) {
+    final value = _units(key, legacy);
+    return value == null ? '待核对' : materialTransferText(value);
+  }
+
   bool _has(String permission) =>
       ref.read(isSuperAdminProvider) ||
       ref.read(currentPermissionsProvider).contains(permission);
@@ -146,6 +160,7 @@ class _MaterialPriorityReplenishmentDialogState
 
   Future<void> _load({bool preserveQuantity = false}) async {
     if (_locked || !mounted) return;
+    if (!_validateOwner()) return;
     setState(() {
       _loading = true;
       _needsReview = true;
@@ -168,7 +183,12 @@ class _MaterialPriorityReplenishmentDialogState
       setState(() {
         _preview = preview;
         _route = preview.route;
-        if (!preserveQuantity) _quantity.text = _number(preview.defaultQty);
+        if (!preserveQuantity) {
+          final units = materialTransferUnits(
+            preview.quantityFactsExact['defaultQty'] ?? preview.defaultQty,
+          );
+          _quantity.text = units == null ? '' : materialTransferText(units);
+        }
         _quantityError = null;
         _needsReview = false;
         _key = const Uuid().v4();
@@ -212,24 +232,30 @@ class _MaterialPriorityReplenishmentDialogState
   }
 
   String? _validateQuantity() {
-    final value = double.tryParse(_quantity.text.trim());
-    if (value == null ||
-        !value.isFinite ||
-        value <= 0 ||
-        !RegExp(r'^\d+(\.\d{1,4})?$').hasMatch(_quantity.text.trim())) {
-      return '请输入大于 0、最多 4 位小数的数量';
+    final value = materialTransferUnits(_quantity.text, positive: true);
+    if (value == null) {
+      return '请输入大于0、最多14位整数和4位小数的数量';
     }
     final preview = _preview!;
-    if (value > preview.remainingSupplementQty + .000001 &&
-        (!_canExtra || !_allowExtra)) {
+    final remaining = _units(
+      'remainingSupplementQty',
+      preview.remainingSupplementQty,
+    );
+    if (remaining == null ||
+        _units('safetyReplenishmentQty', preview.safetyReplenishmentQty) ==
+            null) {
+      return '缺少精确补供数量，请重新读取';
+    }
+    if (value > remaining && (!_canExtra || !_allowExtra)) {
       return _canExtra
           ? '超出待补量的部分须勾选公共备货'
-          : '当前补供最多 ${_number(preview.remainingSupplementQty)}，额外备货请另建完整任务';
+          : '当前补供最多 ${materialTransferText(remaining)}，额外备货请另建完整任务';
     }
     return null;
   }
 
   Future<void> _submit() async {
+    if (!_validateOwner()) return;
     final preview = _preview;
     if (_saving ||
         _loading ||
@@ -250,7 +276,11 @@ class _MaterialPriorityReplenishmentDialogState
       setState(() => _error = '请核对补自制的生产车间和负责人');
       return;
     }
-    final total = double.parse(_quantity.text.trim());
+    final totalText = materialTransferText(
+      materialTransferUnits(_quantity.text, positive: true)!,
+    );
+    final total = double.parse(totalText);
+    final wire = productionQuantityWire(totalText);
     setState(() {
       _saving = true;
       _error = null;
@@ -276,6 +306,7 @@ class _MaterialPriorityReplenishmentDialogState
                   : null,
               analysisLineId: preview.existingChildAnalysisLineId,
               qty: total,
+              qtyExact: wire is String ? wire : null,
               departmentId: _departmentId,
               workshopName: _departmentName,
               workerId: _worker!.id,
@@ -284,22 +315,10 @@ class _MaterialPriorityReplenishmentDialogState
         );
         source = result.analysis;
       } else {
-        final material = preview.material;
-        final entry = MaterialSupplyQuantityEntry(
-          actionGroupKey: null,
-          materialLineId: preview.sourceMaterialLineId,
-          label: material?.goodsName ?? '原计划物料',
-          dimensionKey: preview.sourceMaterialLineId,
-          openQty: 0,
-          maxQty: preview.remainingSupplementQty,
-          safetyStockQty: 0,
-          publicAvailableQty: 0,
-          openSafetySupplyQty: 0,
-          safetyReplenishmentGapQty: 0,
-          safetyReplenishmentQty: preview.safetyReplenishmentQty,
-          allowPublicExtra: _canExtra,
+        final safetyText = materialTransferText(
+          _units('safetyReplenishmentQty', preview.safetyReplenishmentQty)!,
         );
-        final input = entry.toInput(total);
+        final safetyWire = productionQuantityWire(safetyText);
         source = await repository.notifyMaterialAnalysis(
           analysis: preview.sourceAnalysis,
           idempotencyKey: _key,
@@ -308,15 +327,19 @@ class _MaterialPriorityReplenishmentDialogState
           quantities: [
             MaterialSupplyQuantityInput(
               materialLineId: preview.sourceMaterialLineId,
-              qty: _round(input.qty),
-              safetyReplenishmentQty: _round(input.safetyReplenishmentQty),
+              qty: total,
+              qtyExact: wire is String ? wire : null,
+              safetyReplenishmentQty: double.parse(safetyText),
+              safetyQtyExact: safetyWire is String ? safetyWire : null,
             ),
           ],
         );
       }
-      if (mounted) Navigator.of(context, rootNavigator: true).pop(source);
+      if (mounted && _validateOwner()) {
+        Navigator.of(context, rootNavigator: true).pop(source);
+      }
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!mounted || !_validateOwner()) return;
       final uncertain =
           error is NetworkException ||
           error is NetworkTimeoutException ||
@@ -330,7 +353,7 @@ class _MaterialPriorityReplenishmentDialogState
             : '${error.message}。请重新核对补供信息；已完成的调拨不受影响。';
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || !_validateOwner()) return;
       setState(() {
         _uncertain = error is! FormatException;
         _needsReview = !_uncertain;
@@ -341,6 +364,23 @@ class _MaterialPriorityReplenishmentDialogState
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  bool _validateOwner() {
+    if (widget.commandIsCurrent?.call() ?? true) return true;
+    if (mounted) {
+      setState(() {
+        _saving = false;
+        _loading = false;
+        _uncertain = false;
+        _needsReview = true;
+        _error =
+            (Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+                    AppLocalizationsZh())
+                .materialTransferContextChanged;
+      });
+    }
+    return false;
   }
 
   Future<void> _pickWorkshop() async {
@@ -385,14 +425,17 @@ class _MaterialPriorityReplenishmentDialogState
     ref.watch(isSuperAdminProvider);
     final preview = _preview;
     final theme = Theme.of(context);
-    final parsed = double.tryParse(_quantity.text.trim());
-    final total = parsed?.isFinite == true ? parsed! : 0.0;
+    final total = materialTransferUnits(_quantity.text) ?? BigInt.zero;
+    final capacity = preview == null
+        ? BigInt.zero
+        : _units('remainingSupplementQty', preview.remainingSupplementQty) ??
+              BigInt.zero;
     final assigned = preview == null
-        ? 0.0
-        : total.clamp(0, preview.remainingSupplementQty).toDouble();
-    final extra = preview == null
-        ? 0.0
-        : (total - assigned).clamp(0, double.infinity).toDouble();
+        ? BigInt.zero
+        : total < capacity
+        ? total
+        : capacity;
+    final extra = preview == null ? BigInt.zero : total - assigned;
     final blocked =
         preview?.blockedReason ??
         (!_canSubmit && preview != null ? '当前账号无权为原计划提交补供，可稍后由原计划负责人办理' : null);
@@ -455,7 +498,7 @@ class _MaterialPriorityReplenishmentDialogState
                                   '物料：${preview.material?.goodsName ?? preview.material?.goodsCode ?? '原计划物料'}',
                                 ),
                                 Text(
-                                  '本次调用 ${_number(preview.transferredQty)} · 原计划待补 ${_number(preview.priorityPendingQty)} · 当前可补 ${_number(preview.remainingSupplementQty)}',
+                                  '本次调用 ${_fact('transferredQty', preview.transferredQty)} · 原计划待补 ${_fact('priorityPendingQty', preview.priorityPendingQty)} · 当前可补 ${_fact('remainingSupplementQty', preview.remainingSupplementQty)}',
                                 ),
                                 const SizedBox(height: UtenSpacing.s12),
                                 UtenDropdownField(
@@ -508,7 +551,7 @@ class _MaterialPriorityReplenishmentDialogState
                                     ),
                                     info: _canExtra
                                         ? '先补原计划，超出当前待补量的部分单独进入公共余量。'
-                                        : '最多 ${_number(preview.remainingSupplementQty)}；额外备货请另建完整任务。',
+                                        : '最多 ${_fact('remainingSupplementQty', preview.remainingSupplementQty)}；额外备货请另建完整任务。',
                                   ),
                                   onChanged: (_) => setState(() {
                                     _quantityError = _validateQuantity();
@@ -532,7 +575,7 @@ class _MaterialPriorityReplenishmentDialogState
                                   ),
                                 const SizedBox(height: UtenSpacing.s8),
                                 Text(
-                                  '补原计划 ${_number(assigned)} · 公共余量 ${_number(extra)}${preview.safetyReplenishmentQty > 0 ? ' · 另加安全补库 ${_number(preview.safetyReplenishmentQty)}' : ''}',
+                                  '补原计划 ${materialTransferText(assigned)} · 公共余量 ${materialTransferText(extra)}${preview.safetyReplenishmentQty > 0 ? ' · 另加安全补库 ${_fact('safetyReplenishmentQty', preview.safetyReplenishmentQty)}' : ''}',
                                 ),
                                 if (preview.createsProductionPlan) ...[
                                   const SizedBox(height: UtenSpacing.s12),
@@ -684,7 +727,3 @@ class _MaterialPriorityReplenishmentDialogState
     );
   }
 }
-
-double _round(double value) => double.parse(value.toStringAsFixed(4));
-String _number(double value) =>
-    value.toStringAsFixed(4).replaceFirst(RegExp(r'\.?0+$'), '');

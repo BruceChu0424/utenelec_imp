@@ -806,10 +806,12 @@ public class ProductionExecutionWorkbenchService {
         // ADR-131 段级动作(认料、换料)：服务端按权限码算好，页面只看 allowedActions。
         boolean canChooseMaterial = activeOperator
                 && productionAccess.hasAuthority(WORKSHOP_MATERIAL_CHOOSE);
+        var requirements = new com.uten.imp.features.production.ProductionSalesRequirements(em)
+                .segments(rows.stream().map(row -> uuid(row[0])).toList());
         List<ProductionExecutionWorkbenchSegment> items = rows.stream()
                         .map(row -> segmentRow(row, usage.getOrDefault(uuid(row[0]), ProductionMaterialUsageReadPort.UsageFlags.NONE),
                                 operatorRouteMemory, planning.getOrDefault(uuid(row[0]), PlanningFacts.NONE),
-                                canChooseMaterial))
+                                canChooseMaterial, requirements.getOrDefault(uuid(row[0]), List.of())))
                         .toList();
         return new PageResponse<>(items, page, size, total, totalPages);
     }
@@ -1465,7 +1467,8 @@ public class ProductionExecutionWorkbenchService {
 
     private static ProductionExecutionWorkbenchSegment segmentRow(Object[] row, ProductionMaterialUsageReadPort.UsageFlags usage,
                                                                   String operatorRouteMemory, PlanningFacts planning,
-                                                                  boolean canChooseMaterial) {
+                                                                  boolean canChooseMaterial,
+                                                                  List<com.uten.imp.features.production.ProductionSalesRequirements.Requirement> requirements) {
         // The same current plan/package facts gate every command capability. Compute once
         // per projected task, so historical or paused rows do not advertise rejected actions.
         boolean executable = bool(row[46]);
@@ -1507,7 +1510,7 @@ public class ProductionExecutionWorkbenchService {
                 bool(row[71]), uuid(row[72]), text(row[73]), executable && bool(row[74]),
                 text(row[75]),
                 binMaterialState, needsStartConfirmation, allowedActions,
-                decimal(row[78]),uuid(row[79]));
+                decimal(row[78]),uuid(row[79]), requirements);
     }
 
     /**

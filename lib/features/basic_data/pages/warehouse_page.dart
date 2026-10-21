@@ -45,6 +45,8 @@ import '../../../shared/models/uten_tree_node.dart';
 import '../../../shared/search/keyword_search.dart';
 import '../../../shared/widgets/master_detail_card.dart';
 import '../../../shared/widgets/uten_hierarchy_node_actions.dart';
+import '../../../shared/widgets/uten_hierarchy_detail_menu.dart';
+import '../../../components/feedback/uten_context_menu.dart';
 import '../../../shared/widgets/uten_hierarchy_search_header.dart';
 import '../models/master_facet.dart';
 import '../../../shared/providers/master_name_provider.dart';
@@ -843,7 +845,6 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
           UtenHierarchyNodeOperation(
             label: l10n.warehouseMasterSetKeepers,
             icon: Icons.manage_accounts_outlined,
-            showInline: false,
             onInvoke: () => _directoryAction(warehouse, _editKeepers),
           ),
         if (_canStatus && !warehouse.lineSide && !warehouse.isMain)
@@ -852,11 +853,33 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
                 ? l10n.warehouseMasterDisable
                 : l10n.warehouseMasterEnable,
             icon: Icons.power_settings_new,
-            showInline: false,
             onInvoke: () => _directoryAction(warehouse, _toggleDetailStatus),
           ),
       ],
     );
+  }
+
+  List<UtenContextMenuEntry> _directoryMenu(_WarehouseTreeNode node) {
+    final operations = _directoryOperations(node).menuEntries;
+    return [
+      ...operations,
+      if (operations.isNotEmpty) const UtenMenuDivider(),
+      ...utenHierarchyCopyEntries(context, name: node.name),
+    ];
+  }
+
+  List<UtenContextMenuEntry> _detailDirectoryMenu(String id) {
+    _WarehouseTreeNode? find(List<_WarehouseTreeNode> nodes) {
+      for (final node in nodes) {
+        if (node.id == id) return node;
+        final child = find(node.children);
+        if (child != null) return child;
+      }
+      return null;
+    }
+
+    final node = find(_directoryNodes);
+    return node == null ? const [] : _directoryMenu(node);
   }
 
   Widget _directoryHeader(BuildContext context) {
@@ -983,7 +1006,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
       },
       trailingBuilder: (node) =>
           UtenHierarchyNodeActions(operations: _directoryOperations(node)),
-      rowMenuBuilder: (node) => _directoryOperations(node).menuEntries,
+      rowMenuBuilder: _directoryMenu,
     );
   }
 
@@ -1030,19 +1053,22 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              MasterDetailCard(
-                key: const Key('warehouse-master-summary'),
-                title: remark == null || remark.isEmpty
-                    ? name
-                    : '$name ($remark)',
-                subtitle: [
-                  facts,
-                  if (detail.isMain) l10n.warehouseMasterParentSelf,
-                  if (detail.lineSide) l10n.warehouseMasterLineSideManaged,
-                ].join('\n'),
-                icon: Icons.warehouse_outlined,
-                stats: const [],
-                canEdit: false,
+              UtenHierarchyDetailMenu(
+                entriesBuilder: () => _detailDirectoryMenu(detail.id),
+                child: MasterDetailCard(
+                  key: const Key('warehouse-master-summary'),
+                  title: remark == null || remark.isEmpty
+                      ? name
+                      : '$name ($remark)',
+                  subtitle: [
+                    facts,
+                    if (detail.isMain) l10n.warehouseMasterParentSelf,
+                    if (detail.lineSide) l10n.warehouseMasterLineSideManaged,
+                  ].join('\n'),
+                  icon: Icons.warehouse_outlined,
+                  stats: const [],
+                  canEdit: false,
+                ),
               ),
               if (inlineEdit.active && !detail.lineSide) ...[
                 const SizedBox(height: UtenSpacing.s16),

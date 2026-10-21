@@ -12191,4 +12191,152 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get filterAllCategoriesSummary => 'All categories';
+
+  @override
+  String get permissionTemplateTab => 'Templates';
+
+  @override
+  String get permissionTemplateNew => 'New template';
+
+  @override
+  String get permissionTemplateSaveFromUser => 'Save as template';
+
+  @override
+  String get permissionTemplateApply => 'Apply template';
+
+  @override
+  String get permissionTemplateEdit => 'Edit template';
+
+  @override
+  String get permissionTemplateDelete => 'Delete template';
+
+  @override
+  String get permissionTemplateName => 'Template name';
+
+  @override
+  String get permissionTemplateDescription => 'Description';
+
+  @override
+  String get permissionTemplateEmpty => 'No permission templates yet';
+
+  @override
+  String get permissionTemplateEmptyHint =>
+      'Create a template, or save an employee\'s effective permissions.';
+
+  @override
+  String get permissionTemplateSnapshotNote =>
+      'Templates save permission snapshots. Editing or deleting a template does not change accounts already configured.';
+
+  @override
+  String get permissionTemplateScopeNote =>
+      'Only operation permissions are configured. Data scope, department, account identity and remote access are managed separately.';
+
+  @override
+  String get permissionTemplateSelect => 'Select a permission template';
+
+  @override
+  String get permissionTemplateMerge => 'Add permissions';
+
+  @override
+  String get permissionTemplateReplace => 'Replace with template';
+
+  @override
+  String get permissionTemplateMergeHint =>
+      'Keep current permissions and add template permissions. Explicit revocations are never silently restored.';
+
+  @override
+  String get permissionTemplateReplaceHint =>
+      'Set effective permissions to the template, revoking permissions outside it. Review the changes carefully.';
+
+  @override
+  String get permissionTemplatePreview => 'Preview changes';
+
+  @override
+  String get permissionTemplateSaved => 'Permission template saved';
+
+  @override
+  String get permissionTemplateDeleted => 'Permission template deleted';
+
+  @override
+  String get permissionTemplateApplied => 'Permission template applied';
+
+  @override
+  String get permissionTemplateCancel => 'Cancel';
+
+  @override
+  String get permissionTemplateSave => 'Save template';
+
+  @override
+  String get permissionTemplateClose => 'Close';
+
+  @override
+  String get permissionTemplateDeleteHint =>
+      'Delete this template only. Permissions already applied to accounts are retained.';
+
+  @override
+  String get permissionTemplateInvalidName =>
+      'Enter a name of up to 80 characters and a description of up to 1000 characters.';
+
+  @override
+  String get permissionTemplateBoundaryChanged =>
+      'Your identity, authorization or server changed. Close and reopen this window.';
+
+  @override
+  String get permissionTemplateUncertain =>
+      'The request outcome is unknown. Close this window, refresh and verify the result before trying again.';
+
+  @override
+  String get permissionTemplateLoadFailed =>
+      'Could not load permission templates. Try again.';
+
+  @override
+  String get permissionTemplateRetry => 'Reload';
+
+  @override
+  String permissionTemplateSelectedCount(int count) {
+    return '$count permissions selected';
+  }
+
+  @override
+  String get permissionTemplateUnknownCodes =>
+      'The template contains codes absent from the current catalog. Review and remove them, or recreate the template.';
+
+  @override
+  String get permissionTemplateClearUnknown => 'Remove unavailable codes';
+
+  @override
+  String get permissionTemplateSensitiveNote =>
+      'Sensitive permissions may be saved. Applying them to each employee still requires individual confirmation.';
+
+  @override
+  String get permissionTemplateNoSelection =>
+      'Select a template to view its permissions';
+
+  @override
+  String get hierarchyActions => 'More actions';
+
+  @override
+  String get hierarchyEdit => 'Edit';
+
+  @override
+  String get hierarchyCopyName => 'Copy name';
+
+  @override
+  String get hierarchyCopyPath => 'Copy category path';
+
+  @override
+  String get productionOrderRequirement => 'Order instructions';
+
+  @override
+  String get productionProductRequirement => 'Product instructions';
+
+  @override
+  String get productionRequirementsClose => 'Close';
+
+  @override
+  String get productionSalesRequirements => 'Sales production instructions';
+
+  @override
+  String get materialTransferContextChanged =>
+      'Your account, permissions, or plan changed. Close this window and review the transfer again.';
 }

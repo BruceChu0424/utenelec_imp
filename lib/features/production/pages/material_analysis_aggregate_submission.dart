@@ -57,6 +57,7 @@ final class _MaterialAggregateSubmission {
     if (running || table.saving || selected.isEmpty) return false;
     final sessionScope = owner._sessionScopeKey();
     final analysis = owner._analysis;
+    final issuedBefore = owner._issuedQtySnapshot();
     if (analysis == null || !owner._preparationSubmissionStillCurrent) {
       return false;
     }
@@ -120,7 +121,6 @@ final class _MaterialAggregateSubmission {
     });
     final remaining = {...keys};
     final completed = <String>{};
-    final createdChildren = <String>{};
     var confirmedIntent = confirmed || table.uncertain;
     try {
       // ADR-120 §2.4「统一依赖编排先父后子，同一层合批；只确认一次」：汇总视图
@@ -234,11 +234,6 @@ final class _MaterialAggregateSubmission {
         completed.addAll(active);
         remaining.removeAll(active);
         final result = table.lastStageResult!;
-        createdChildren.addAll(
-          result.materialIdentityBridges.map(
-            (bridge) => bridge.toMaterialLineId,
-          ),
-        );
         owner._mutateAggregateTable(() {
           for (final key in remaining) {
             final draft = table.drafts[key];
@@ -254,9 +249,6 @@ final class _MaterialAggregateSubmission {
             );
           }
         });
-      }
-      if (createdChildren.isNotEmpty) {
-        unawaited(_offerRemainingChildren(createdChildren));
       }
       // 成功一轮整单即重置扣量选择（与产品视图入口同口径），下次提交重新询问。
       owner._setPreparationSupplyUsage(null);
@@ -304,6 +296,15 @@ final class _MaterialAggregateSubmission {
           }
           running = false;
         });
+        // The main product flow checks after its final stage. The standalone
+        // aggregate entry uses the same facts, including a successful parent
+        // before a later failure. SUBCONTRACT creates no MAKE identity bridge.
+        if (!confirmed &&
+            confirmedIntent &&
+            currentSession() &&
+            owner._orderedSince(issuedBefore)) {
+          unawaited(owner._checkChildShortagesAfterOrder(issuedBefore));
+        }
       }
     }
   }
@@ -590,42 +591,6 @@ final class _MaterialAggregateSubmission {
       owner._tableUserTypedQty.remove(entry.key);
       owner._selectedMaterialGroupKeys.remove(entry.value.groupKey);
     }
-  }
-
-  Future<void> _offerRemainingChildren(Set<String> ids) async {
-    final analysis = owner._analysis;
-    if (!owner.mounted || analysis == null || table.hasDrafts) return;
-    final sessionScope = owner._sessionScopeKey();
-    final indexes = owner._analysisIndexes(analysis);
-    final originalIds = {
-      for (final material in analysis.materials)
-        if (material.aggregatePreparation?.targetMaterialLineIds.any(
-              ids.contains,
-            ) ==
-            true)
-          material.materialLineId,
-    };
-    final groups = [
-      for (final id in originalIds.isEmpty ? ids : originalIds)
-        if (indexes.groupsByLine[id] case final group?)
-          if (table.selectableForOrder(group) &&
-              owner._tableGroupResidual(group, authoritative: true) >
-                  0.000000001)
-            group,
-    ];
-    if (groups.isEmpty) return;
-    final confirm = await UtenDialog.show(
-      owner.context,
-      title: '下层还有物料待下达',
-      content: Text('还有 ${groups.length} 条下层物料需要补充，是否继续核对下单？'),
-      confirmLabel: '核对下层物料',
-    );
-    if (confirm != true ||
-        !owner.mounted ||
-        !owner._sameAnalysisSnapshot(analysis, sessionScope)) {
-      return;
-    }
-    await owner._submitPreparationGroups(groups, append: false);
   }
 }
 

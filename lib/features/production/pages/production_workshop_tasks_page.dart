@@ -1,4 +1,5 @@
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
+import '../widgets/production_sales_requirements.dart';
 // 我的车间任务（车间视角的执行工单办理台）。
 //
 // 2026-09-20 用户口径（终版，勿再改回弹窗流）：等待物料的「下一步」就是选定
@@ -3565,6 +3566,22 @@ class _ProductionWorkshopTasksPageState
       label: '关联订单',
       width: 180,
       value: (task) => task.salesOrderNos,
+    ),
+    MasterColumnDef(
+      key: 'salesRequirements',
+      label: AppLocalizations.of(context).productionSalesRequirements,
+      width: 190,
+      value: (task) => task.salesRequirements
+          .map(
+            (note) => [
+              note.orderRemark,
+              note.itemRemark,
+            ].whereType<String>().join(' / '),
+          )
+          .join('\n'),
+      cellBuilder: (_, task) => ProductionSalesRequirementsButton(
+        requirements: task.salesRequirements,
+      ),
     ),
     MasterColumnDef(
       key: 'segment',

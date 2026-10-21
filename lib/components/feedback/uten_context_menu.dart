@@ -243,90 +243,100 @@ class _UtenContextMenuOverlay extends StatelessWidget {
   static const double _edge = 8;
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final size = MediaQuery.sizeOf(context);
-    final media = MediaQuery.of(context);
-    final leftEdge =
-        _edge + math.max(media.padding.left, media.viewInsets.left);
-    final rightEdge =
-        _edge + math.max(media.padding.right, media.viewInsets.right);
-    final topEdge = _edge + math.max(media.padding.top, media.viewInsets.top);
-    final bottomEdge =
-        _edge + math.max(media.padding.bottom, media.viewInsets.bottom);
-    final menuWidth = math.min(
-      _menuWidth,
-      math.max(1.0, size.width - leftEdge - rightEdge),
-    );
-    final availableHeight = math.max(1.0, size.height - topEdge - bottomEdge);
-    final itemHeight = UtenControlMetrics.minimumHitExtent(context);
-    // 按最小点击高度估算翻转位置；长标签可增高，剩余视口由菜单滚动处理。
-    var height = _verticalPad * 2;
-    for (final e in entries) {
-      height += e is UtenMenuDivider ? 9 : itemHeight;
-    }
-    height = math.min(height, math.min(420, availableHeight));
-    final maxLeft = math.max(leftEdge, size.width - menuWidth - rightEdge);
-    final maxTop = math.max(topEdge, size.height - height - bottomEdge);
-    // 水平：右边不够宽就贴到指针左侧；垂直：下边不够高就向上翻。
-    final left = (position.dx + menuWidth + rightEdge > size.width)
-        ? (position.dx - menuWidth).clamp(leftEdge, maxLeft)
-        : position.dx.clamp(leftEdge, maxLeft);
-    final top = (position.dy + height + bottomEdge > size.height)
-        ? (position.dy - height).clamp(topEdge, maxTop)
-        : position.dy.clamp(topEdge, maxTop);
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final theme = Theme.of(context);
+      final media = MediaQuery.of(context);
+      // Positioned uses the root overlay's local canvas. MediaQuery may describe
+      // a differently sized page or the physical window during display zoom and
+      // embedded previews, so it must not clamp the popup away from its anchor.
+      final size = Size(
+        constraints.hasBoundedWidth ? constraints.maxWidth : media.size.width,
+        constraints.hasBoundedHeight
+            ? constraints.maxHeight
+            : media.size.height,
+      );
+      final leftEdge =
+          _edge + math.max(media.padding.left, media.viewInsets.left);
+      final rightEdge =
+          _edge + math.max(media.padding.right, media.viewInsets.right);
+      final topEdge = _edge + math.max(media.padding.top, media.viewInsets.top);
+      final bottomEdge =
+          _edge + math.max(media.padding.bottom, media.viewInsets.bottom);
+      final menuWidth = math.min(
+        _menuWidth,
+        math.max(1.0, size.width - leftEdge - rightEdge),
+      );
+      final availableHeight = math.max(1.0, size.height - topEdge - bottomEdge);
+      final itemHeight = UtenControlMetrics.minimumHitExtent(context);
+      // 按最小点击高度估算翻转位置；长标签可增高，剩余视口由菜单滚动处理。
+      var height = _verticalPad * 2;
+      for (final e in entries) {
+        height += e is UtenMenuDivider ? 9 : itemHeight;
+      }
+      height = math.min(height, math.min(420, availableHeight));
+      final maxLeft = math.max(leftEdge, size.width - menuWidth - rightEdge);
+      final maxTop = math.max(topEdge, size.height - height - bottomEdge);
+      // 水平：右边不够宽就贴到指针左侧；垂直：下边不够高就向上翻。
+      final left = (position.dx + menuWidth + rightEdge > size.width)
+          ? (position.dx - menuWidth).clamp(leftEdge, maxLeft)
+          : position.dx.clamp(leftEdge, maxLeft);
+      final top = (position.dy + height + bottomEdge > size.height)
+          ? (position.dy - height).clamp(topEdge, maxTop)
+          : position.dy.clamp(topEdge, maxTop);
 
-    return Stack(
-      children: [
-        // 点菜单外任意位置关闭（左键/右键都关，与系统右键菜单行为一致）。
-        Positioned.fill(
-          child: Listener(
-            behavior: HitTestBehavior.translucent,
-            onPointerDown: (event) {
-              if (event.buttons & kSecondaryButton != 0) onDismiss();
-            },
-            child: GestureDetector(
+      return Stack(
+        children: [
+          // 点菜单外任意位置关闭（左键/右键都关，与系统右键菜单行为一致）。
+          Positioned.fill(
+            child: Listener(
               behavior: HitTestBehavior.translucent,
-              onTap: onDismiss,
+              onPointerDown: (event) {
+                if (event.buttons & kSecondaryButton != 0) onDismiss();
+              },
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: onDismiss,
+              ),
             ),
           ),
-        ),
-        Positioned(
-          left: left,
-          top: top,
-          child: Material(
-            color: theme.colorScheme.surfaceContainerHigh,
-            elevation: 8,
-            borderRadius: BorderRadius.circular(UtenRadius.md),
-            clipBehavior: Clip.antiAlias,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minWidth: menuWidth,
-                maxWidth: menuWidth,
-                maxHeight: math.max(
-                  1.0,
-                  math.min(420, size.height - top - bottomEdge),
+          Positioned(
+            left: left,
+            top: top,
+            child: Material(
+              color: theme.colorScheme.surfaceContainerHigh,
+              elevation: 8,
+              borderRadius: BorderRadius.circular(UtenRadius.md),
+              clipBehavior: Clip.antiAlias,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minWidth: menuWidth,
+                  maxWidth: menuWidth,
+                  maxHeight: math.max(
+                    1.0,
+                    math.min(420, size.height - top - bottomEdge),
+                  ),
+                ),
+                child: ListView(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.symmetric(vertical: _verticalPad),
+                  children: [
+                    for (final e in entries)
+                      e is UtenMenuDivider
+                          ? const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 4),
+                              child: Divider(height: 1, thickness: 1),
+                            )
+                          : _buildItem(context, theme, e as UtenMenuItem),
+                  ],
                 ),
               ),
-              child: ListView(
-                shrinkWrap: true,
-                padding: const EdgeInsets.symmetric(vertical: _verticalPad),
-                children: [
-                  for (final e in entries)
-                    e is UtenMenuDivider
-                        ? const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 4),
-                            child: Divider(height: 1, thickness: 1),
-                          )
-                        : _buildItem(context, theme, e as UtenMenuItem),
-                ],
-              ),
             ),
           ),
-        ),
-      ],
-    );
-  }
+        ],
+      );
+    },
+  );
 
   Widget _buildItem(BuildContext context, ThemeData theme, UtenMenuItem item) {
     final color = !item.enabled

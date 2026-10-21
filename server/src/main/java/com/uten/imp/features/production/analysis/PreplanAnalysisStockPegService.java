@@ -85,6 +85,8 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
     private final InventoryMutationLock inventoryLock;
     private final PreplanStockEntitlementService entitlement;
     private final ObjectProvider<PreplanOriginEntitlementHook> originHooks;
+    @org.springframework.beans.factory.annotation.Autowired
+    private ObjectProvider<MaterialAnalysisService> admissionSnapshots;
 
     // ============================ 收货入库绑定 ============================
 
@@ -216,12 +218,16 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
             lockClaimantAnalyses(
                     (UUID) anchor[3], goodsId, colorId);
         }
+        if(admissionSnapshots!=null)refreshRetainedReceiptSnapshots(NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT DISTINCT analysis_id FROM preplan_supply_action_allocations WHERE external_item_id IN(:items)
+                """).setParameter("items",anchors.stream().map(row->(UUID)row[3]).distinct().toList()),UUID.class));
 
         // 精确归属候选：按供应行动分摊行（analysis_material_id）逐行锁定容量。
         // V307 之前只有 analysis_id 粒度；现在每次 PASS 建一条物理预留及其
         // 一对一 exact-peg 子账，避免同分析内相同物料的兄弟产品抢占。
         BigDecimal remaining = stockedBaseQty;
         Map<UUID, BigDecimal> legacyRemainingByAnalysis = new LinkedHashMap<>();
+        Map<UUID,Map<UUID,List<RetainedReceiptSource>>> retainedByAnalysis=new HashMap<>();
         List<PreplanStockEntitlementService.OriginAppendResult> origins = new ArrayList<>();
         for (Object[] anchor : anchors) {
             if (remaining.signum() <= 0) {
@@ -311,11 +317,18 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 if (take.signum() <= 0) {
                     continue;
                 }
-                origins.add(insertExactReservation(
-                        allocationId, analysisId, analysisMaterialId,
-                        warehouseId, goodsId, colorId, take,
-                        supplyType, externalItemId, receiptType, receiptId,
-                        dispositionEventId, warehouseStockInItemId));
+                var retained=retainedByAnalysis.computeIfAbsent(analysisId,id->retainedReceiptSources(id,null)).get(allocationId);
+                if(retained==null) {
+                    requireNoUnprovenCancelledMaterial(analysisMaterialId);
+                    origins.add(insertExactReservation(allocationId, analysisId, analysisMaterialId,
+                            warehouseId, goodsId, colorId, take,supplyType, externalItemId, receiptType, receiptId,
+                            dispositionEventId, warehouseStockInItemId));
+                } else {
+                    requireRetainedSourcesWritable(retained);
+                    var slices=retainedReceiptSlices(retained,take);take=slices.stream().map(RetainedReceiptSource::remaining).reduce(BigDecimal.ZERO,BigDecimal::add);
+                    for(var slice:slices)origins.add(insertExactReservation(allocationId,analysisId,slice.original(),warehouseId,
+                            goodsId,colorId,slice.remaining(),supplyType,externalItemId,receiptType,receiptId,dispositionEventId,warehouseStockInItemId,true));
+                }
                 remaining = remaining.subtract(take);
                 if (sharedClaim) {
                     sharedOrderBudget = sharedOrderBudget.subtract(take);
@@ -342,6 +355,9 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
         tx.bind();
         if (lines == null || lines.isEmpty() || planId == null
                 || warehouseId == null || stockDocumentId == null) return;
+        if(admissionSnapshots!=null)refreshRetainedReceiptSnapshots(NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT material_analysis_id FROM production_plans WHERE id=:plan AND material_analysis_id IS NOT NULL
+                """).setParameter("plan",planId),UUID.class));
         MakeInboundSplit split = splitMakeInbound(stockDocumentId, lines);
         // Establish all claimed public ownership before readiness can consume
         // unassigned stock from this same physical movement batch.
@@ -539,6 +555,8 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
         Map<UUID, BigDecimal> formalRemainingByPlanItem = new HashMap<>();
         Map<UUID, BigDecimal> legacyRemainingByAnalysis = new HashMap<>();
         List<PreplanStockEntitlementService.OriginAppendResult> origins = new ArrayList<>();
+        Map<UUID,List<RetainedReceiptSource>> retainedSources=aggregateMake?retainedReceiptSources(analysisId,stockDocumentId):Map.of();
+        if(!aggregateMake&&parentAnalysisMaterialId!=null)requireNoUnprovenCancelledMaterial(parentAnalysisMaterialId);
         for (FinishedInboundSlice line : lines) {
             if (line.baseQty() == null || line.baseQty().signum() <= 0) continue;
             inventoryLock.lock(new InventoryKey(line.goodsId(), line.colorId()));
@@ -630,11 +648,17 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                         .max(BigDecimal.ZERO).min(remaining);
                 if(!directMembers.isEmpty())take=take.min(directMembers.get(allocationId));
                 if (take.signum() <= 0) continue;
-                origins.add(insertExactMakeReservation(
-                        allocationId, null, analysisId, materialId,
-                        warehouseId, line.goodsId(), line.colorId(), take,
-                        line.planItemId(), stockDocumentId,
-                        line.stockDocumentItemId()));
+                var retained=retainedSources.get(allocationId);
+                if(retained==null) {
+                    requireNoUnprovenCancelledMaterial(materialId);
+                    origins.add(insertExactMakeReservation(allocationId, null, analysisId, materialId,
+                            warehouseId, line.goodsId(), line.colorId(), take,line.planItemId(), stockDocumentId,line.stockDocumentItemId()));
+                } else {
+                    requireRetainedSourcesWritable(retained);
+                    var slices=retainedReceiptSlices(retained,take);take=slices.stream().map(RetainedReceiptSource::remaining).reduce(BigDecimal.ZERO,BigDecimal::add);
+                    for(var slice:slices)origins.add(insertExactMakeReservation(allocationId,null,analysisId,slice.original(),
+                            warehouseId,line.goodsId(),line.colorId(),slice.remaining(),line.planItemId(),stockDocumentId,line.stockDocumentItemId(),null,true));
+                }
                 remaining = remaining.subtract(take);
             }
             if (remaining.signum() > 0 && parentAnalysisMaterialId != null && !aggregateMake) {
@@ -1641,6 +1665,14 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
             UUID warehouseId, UUID goodsId, UUID colorId, BigDecimal qtyBase,
             UUID planItemId, UUID stockDocumentId, UUID stockDocumentItemId,
             UUID makePublicClaimId) {
+        return insertExactMakeReservation(allocationId,makeSourceAnalysisItemId,analysisId,analysisMaterialId,warehouseId,goodsId,colorId,
+                qtyBase,planItemId,stockDocumentId,stockDocumentItemId,makePublicClaimId,false);
+    }
+
+    private PreplanStockEntitlementService.OriginAppendResult insertExactMakeReservation(
+            UUID allocationId,UUID makeSourceAnalysisItemId,UUID analysisId,UUID analysisMaterialId,UUID warehouseId,
+            UUID goodsId,UUID colorId,BigDecimal qtyBase,UUID planItemId,UUID stockDocumentId,UUID stockDocumentItemId,
+            UUID makePublicClaimId,boolean retainedOriginal) {
         // The FINISHED_IN header becomes APPROVED later in the same approve
         // transaction. Defer the exact-provenance constraint so V312 observes
         // the committed status without publishing an intermediate header state.
@@ -1652,7 +1684,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 ? "PREPLAN-MAKE-PUBLIC:" + stockDocumentItemId + ":" + makePublicClaimId
                 : allocationId == null
                 ? "PREPLAN-MAKE-ANCHOR:" + stockDocumentItemId + ":" + makeSourceAnalysisItemId
-                : "PREPLAN-MAKE-EXACT:" + stockDocumentItemId + ":" + allocationId;
+                : "PREPLAN-MAKE-EXACT:" + stockDocumentItemId + ":" + allocationId + (retainedOriginal?":"+analysisMaterialId:"");
         insertReservation(
                 analysisId, warehouseId, goodsId, colorId, qtyBase,
                 SUPPLY_PRODUCTION_PLAN_ITEM, planItemId,
@@ -1714,7 +1746,8 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 analysisId, analysisMaterialId, qtyBase,
                 exactPegId, stockDocumentId, stockDocumentItemId,
                 "PREPLAN-ENTITLEMENT-MAKE:" + stockDocumentItemId
-                        + ":" + (makePublicClaimId == null ? allocationId : makePublicClaimId));
+                        + ":" + (makePublicClaimId == null ? allocationId : makePublicClaimId)
+                        + (retainedOriginal?":"+analysisMaterialId:""));
     }
 
     BigDecimal legacyAttributed(
@@ -1761,7 +1794,14 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
             UUID receiptId,
             UUID dispositionEventId,
             UUID warehouseStockInItemId) {
-        String key = "PREPLAN-EXACT-PEG:" + warehouseStockInItemId + ":" + allocationId;
+        return insertExactReservation(allocationId,analysisId,analysisMaterialId,warehouseId,goodsId,colorId,qtyBase,supplyType,
+                supplyId,receiptType,receiptId,dispositionEventId,warehouseStockInItemId,false);
+    }
+
+    private PreplanStockEntitlementService.OriginAppendResult insertExactReservation(UUID allocationId,UUID analysisId,UUID analysisMaterialId,
+            UUID warehouseId,UUID goodsId,UUID colorId,BigDecimal qtyBase,String supplyType,UUID supplyId,String receiptType,UUID receiptId,
+            UUID dispositionEventId,UUID warehouseStockInItemId,boolean retainedOriginal) {
+        String key = "PREPLAN-EXACT-PEG:" + warehouseStockInItemId + ":" + allocationId + (retainedOriginal?":"+analysisMaterialId:"");
         insertReservation(
                 analysisId, warehouseId, goodsId, colorId, qtyBase,
                 supplyType, supplyId, receiptType + "_RECEIPT", receiptId, key);
@@ -1820,7 +1860,86 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 analysisId, analysisMaterialId, qtyBase,
                 exactPegId, receiptType, receiptId, dispositionEventId,
                 "PREPLAN-ENTITLEMENT-IQC:" + warehouseStockInItemId
-                        + ":" + allocationId);
+                        + ":" + allocationId + (retainedOriginal?":"+analysisMaterialId:""));
+    }
+
+    private record RetainedReceiptSource(UUID original,BigDecimal remaining,BigDecimal capacity,BigDecimal received,boolean sourceValid) {
+        RetainedReceiptSource(UUID original,BigDecimal remaining){this(original,remaining,remaining,BigDecimal.ZERO,true);}
+    }
+
+    /** One read for the whole receipt, reused across its allocations and lines. */
+    private Map<UUID,List<RetainedReceiptSource>> retainedReceiptSources(UUID analysisId,UUID currentDocument) {
+        Map<UUID,List<RetainedReceiptSource>> result=new LinkedHashMap<>();
+        for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT retained.allocation_id,retained.original_material_id,retained.current_qty,
+                    retained.received_qty,GREATEST(retained.current_qty-retained.received_qty,0),retained.source_valid
+                FROM fn_preplan_aggregate_retained_private_sources(:analysis) retained
+                JOIN production_material_analysis_materials original ON original.id=retained.original_material_id
+                JOIN production_material_analysis_items owner ON owner.id=original.analysis_item_id
+                ORDER BY original.id
+                """).setParameter("analysis",analysisId)))
+            result.computeIfAbsent((UUID)row[0],ignored->new ArrayList<>()).add(new RetainedReceiptSource((UUID)row[1],decimal(row[4]),decimal(row[2]),decimal(row[3]),Boolean.TRUE.equals(row[5])));
+        return result;
+    }
+
+    /** Cumulative weighted boundaries conserve even one ten-thousandth. */
+    private static List<RetainedReceiptSource> retainedReceiptSlices(List<RetainedReceiptSource> sources,BigDecimal requested) {
+        BigDecimal total=sources.stream().map(RetainedReceiptSource::remaining).reduce(BigDecimal.ZERO,BigDecimal::add);
+        if(total.signum()==0)return List.of();
+        BigDecimal take=requested.min(total).setScale(4,java.math.RoundingMode.DOWN);
+        BigDecimal capacity=sources.stream().map(RetainedReceiptSource::capacity).reduce(BigDecimal.ZERO,BigDecimal::add);
+        BigDecimal received=sources.stream().map(RetainedReceiptSource::received).reduce(BigDecimal.ZERO,BigDecimal::add);
+        BigDecimal cumulative=received.add(take).min(capacity),prefix=BigDecimal.ZERO,previous=BigDecimal.ZERO;
+        List<BigDecimal> deficits=new ArrayList<>();
+        for(var source:sources) {
+            prefix=prefix.add(source.capacity());
+            BigDecimal boundary=cumulative.multiply(prefix).divide(capacity,4,java.math.RoundingMode.DOWN);
+            deficits.add(boundary.subtract(previous).subtract(source.received()).max(BigDecimal.ZERO).min(source.remaining()));
+            previous=boundary;
+        }
+        BigDecimal deficitTotal=deficits.stream().reduce(BigDecimal.ZERO,BigDecimal::add);
+        // Current source caps may have changed after older receipts. Preserve
+        // every historical share and use only each owner's remaining right.
+        if(deficitTotal.compareTo(take)<0) {deficits=sources.stream().map(RetainedReceiptSource::remaining).toList();deficitTotal=total;}
+        prefix=BigDecimal.ZERO;previous=BigDecimal.ZERO;
+        List<RetainedReceiptSource> slices=new ArrayList<>();
+        for(int index=0;index<sources.size();index++) {
+            var source=sources.get(index);prefix=prefix.add(deficits.get(index));
+            BigDecimal boundary=take.multiply(prefix).divide(deficitTotal,4,java.math.RoundingMode.DOWN);
+            BigDecimal qty=boundary.subtract(previous);previous=boundary;
+            if(qty.signum()>0)slices.add(new RetainedReceiptSource(source.original(),qty));
+            sources.set(index,new RetainedReceiptSource(source.original(),source.remaining().subtract(qty),source.capacity(),source.received().add(qty),source.sourceValid()));
+        }
+        return slices;
+    }
+
+    private void requireNoUnprovenCancelledMaterial(UUID material) {
+        if(Boolean.TRUE.equals(em.createNativeQuery("""
+                SELECT EXISTS(SELECT 1 FROM production_material_analysis_materials material
+                  JOIN preplan_aggregate_batches parent ON parent.anchor_analysis_item_id=material.analysis_item_id
+                  JOIN preplan_supply_actions action ON action.id=parent.action_id AND action.status='CANCELLED'
+                  WHERE material.id=:material)
+                """).setParameter("material",material).getSingleResult()))
+            throw new ApiException(ErrorCode.CONFLICT,"原共享父批次已撤回，子供给缺少可验证的原始私有来源；请先核对责任后收货");
+    }
+
+    private static void requireRetainedSourcesWritable(List<RetainedReceiptSource> sources) {
+        if(sources.stream().anyMatch(source->!source.sourceValid()))
+            throw new ApiException(ErrorCode.CONFLICT,"独立子供给的原始来源、BOM或旧路径实收需先核对；本次收货未改变库存及私有归属");
+    }
+
+    /** Same prelocked document/analysis/inventory footprint as the existing
+     * receipt wakeup. Refresh before reading any new private/public quota;
+     * current physical output never determines its own node requirement. */
+    private void refreshRetainedReceiptSnapshots(List<UUID> analyses) {
+        for(UUID id:analyses.stream().distinct().sorted().toList()) {
+            boolean retained=Boolean.TRUE.equals(em.createNativeQuery("""
+                    SELECT EXISTS(SELECT 1 FROM preplan_aggregate_batches parent
+                      JOIN preplan_supply_actions action ON action.id=parent.action_id AND action.analysis_id=:analysis AND action.status='CANCELLED'
+                      WHERE parent.analysis_id=:analysis)
+                    """).setParameter("analysis",id).getSingleResult());
+            if(retained)admissionSnapshots.getObject().refreshLocked(id);
+        }
     }
 
     private void insertReservation(

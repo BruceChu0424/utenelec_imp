@@ -17,6 +17,7 @@ import '../../../shared/platform_branding/platform_branding.dart';
 import '../../../shared/platform_branding/platform_branding_provider.dart';
 import '../models/production_execution_planning.dart';
 import '../models/production_work_card.dart';
+import 'production_sales_requirements.dart';
 
 typedef ProductionPdfPrinter =
     Future<bool> Function(Uint8List bytes, String filename);
@@ -648,6 +649,10 @@ class _ProductionExecutionCardPrintDialogState
                 style: theme.textTheme.bodySmall,
               ),
             ],
+            if (card.salesRequirements.isNotEmpty) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              ProductionSalesRequirements(requirements: card.salesRequirements),
+            ],
           ],
         ),
       ),
@@ -814,7 +819,10 @@ Future<Uint8List> _buildProductionExecutionCardPdf(
           pw.SizedBox(height: 8),
           _pdfMaterialTable(entry.card),
           pw.SizedBox(height: 8),
-          _pdfNotes(entry.card),
+          ..._pdfNotes(entry.card),
+          // Keep signatures and the fixed writing area together before any
+          // non-spanning child is laid out in a short page remainder.
+          pw.NewPage(freeSpace: 160),
           pw.SizedBox(height: 14),
           _pdfSignatures(),
           pw.SizedBox(height: 12),
@@ -1084,19 +1092,41 @@ pw.Widget _pdfMaterialTable(ProductionWorkCard card) {
   );
 }
 
-pw.Widget _pdfNotes(ProductionWorkCard card) {
-  final notes = [card.requestNote, card.remark].where(_present).join('；');
-  return pw.Container(
-    width: double.infinity,
-    padding: const pw.EdgeInsets.all(6),
-    decoration: pw.BoxDecoration(
-      border: pw.Border.all(width: 0.5, color: PdfColors.grey700),
+List<pw.Widget> _pdfNotes(ProductionWorkCard card) {
+  final notes = [
+    ...[card.requestNote, card.remark].where(_present),
+    for (final source in card.salesRequirements)
+      [
+        [source.salesOrderNo, source.productName].where(_present).join(' · '),
+        if (_present(source.orderRemark)) '订单统一备注：${source.orderRemark}',
+        if (_present(source.itemRemark)) '产品单独备注：${source.itemRemark}',
+      ].join('\n'),
+  ].join('\n');
+  // Each bounded Unicode paragraph is a separate MultiPage child. A single
+  // container cannot span pages; a giant spanning Text also couples following
+  // form fields to its saved layout state. Keep the normal page flow instead.
+  final paragraphs = <String>[];
+  for (final line in (notes.isEmpty ? '—' : notes).split(RegExp(r'\r\n?|\n'))) {
+    final characters = line.runes.toList();
+    if (characters.isEmpty) {
+      paragraphs.add('');
+    } else {
+      for (var start = 0; start < characters.length; start += 240) {
+        final end = start + 240 < characters.length
+            ? start + 240
+            : characters.length;
+        paragraphs.add(String.fromCharCodes(characters.sublist(start, end)));
+      }
+    }
+  }
+  return [
+    pw.Text(
+      '生产要求 / 备注',
+      style: const pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold),
     ),
-    child: pw.Text(
-      '生产要求 / 备注：${notes.isEmpty ? '—' : notes}',
-      style: const pw.TextStyle(fontSize: 8.5),
-    ),
-  );
+    for (final paragraph in paragraphs)
+      pw.Text(paragraph, style: const pw.TextStyle(fontSize: 8.5)),
+  ];
 }
 
 pw.Widget _pdfSignatures() {

@@ -215,6 +215,36 @@ class MaterialAnalysisServiceBehaviorTest {
     }
 
     @Test
+    void actualBatchMaterialCoverageIsNotClippedToTheOriginalSourceDemandBeforeNestedExpansion() {
+        UUID itemId=UUID.randomUUID();
+        var original=bomNode(itemId,UUID.randomUUID(),UUID.randomUUID(),"component","100",
+                "START","PER_UNIT","1","1",true);
+        var tuning=MaterialAnalysisService.planFormalCoverage(List.of(
+                new MaterialAnalysisService.FormalMaterialCoverage(UUID.randomUUID(),itemId,
+                        "component",bd("110"),bd("110"))),List.of(original));
+        assertThat(tuning.securedTotal(itemId+"|component")).isEqualByComparingTo("110");
+        // It is real custody, not reusable warehouse stock; no public pool is created.
+        assertThat(tuning.earmarkedByDimension()).isEmpty();
+        var ended=MaterialAnalysisService.planFormalCoverage(List.of(
+                new MaterialAnalysisService.FormalMaterialCoverage(UUID.randomUUID(),itemId,
+                        "component",bd("110"),BigDecimal.ZERO)),List.of(original));
+        assertThat(ended.securedTotal(itemId+"|component")).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void enlargedFormalBatchesRespectTheSameWholePackageAndFixedBatchCurves() {
+        for (String basis:List.of("PER_PACKAGE","FIXED_BATCH")) {
+            UUID itemId=UUID.randomUUID();
+            var original=bomNode(itemId,UUID.randomUUID(),UUID.randomUUID(),"component","10",
+                    "START",basis,"10","100",false);
+            var tuning=MaterialAnalysisService.planFormalCoverage(List.of(
+                    new MaterialAnalysisService.FormalMaterialCoverage(UUID.randomUUID(),itemId,
+                            "component",bd("20"),bd("110"))),List.of(original));
+            assertThat(tuning.securedTotal(itemId+"|component")).as(basis).isEqualByComparingTo("20");
+        }
+    }
+
+    @Test
     void siblingWarehousesKeepTheirOwnSafetyFloorAndCannotLendExactPriority() {
         UUID itemId=UUID.randomUUID();
         UUID warehouseA=UUID.randomUUID();
@@ -257,6 +287,23 @@ class MaterialAnalysisServiceBehaviorTest {
                 List.of(missingReference)));
 
         assertThat(error.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
+    }
+
+    @Test
+    void sourceShapeValidationKeepsManualNullIdsAndRejectsInvalidSalesBeforeReadingMasters() {
+        EntityManager em=mock(EntityManager.class);
+        MaterialAnalysisService service=service(em,mock(ProductionDocumentAccessPolicy.class));
+        var missingSales=new PreviewItem("SALES_ORDER_ITEM",null,null,null,null,null,null,null,BigDecimal.ONE);
+        var unknown=new PreviewItem("UNKNOWN",null,UUID.randomUUID(),null,UUID.randomUUID(),"REQ-1","说明",null,BigDecimal.ONE);
+        UUID salesId=UUID.randomUUID();
+        var sales=new PreviewItem("SALES_ORDER_ITEM",salesId,null,null,null,null,null,null,BigDecimal.ONE);
+        for(List<PreviewItem> invalid:List.of(List.of(missingSales),List.of(unknown),List.of(sales,sales))) {
+            ApiException error=assertThrows(ApiException.class,()->service.normalizePreviewItems(invalid));
+            assertThat(error.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
+        }
+        var manual=new PreviewItem("REWORK",null,UUID.randomUUID(),null,UUID.randomUUID(),"RW-1","补产",null,BigDecimal.ONE);
+        assertThat(service.normalizePreviewItems(List.of(manual)).getFirst().salesOrderItemId()).isNull();
+        org.mockito.Mockito.verifyNoInteractions(em);
     }
 
     @Test
@@ -1626,10 +1673,12 @@ class MaterialAnalysisServiceBehaviorTest {
         MaterialAnalysisService service = service(
                 em, mock(ProductionDocumentAccessPolicy.class));
 
+        UUID analysisId=UUID.randomUUID();
+        List<Object[]> custodySnapshot=SubcontractComponentCustodyProjection.held(em,analysisId);
         Map<UUID, BigDecimal> exact = invokePrivate(
                 service, "exactPeggedByMaterial",
-                new Class<?>[]{UUID.class, UUID.class},
-                UUID.randomUUID(), UUID.randomUUID());
+                new Class<?>[]{UUID.class, UUID.class, List.class},
+                analysisId, UUID.randomUUID(), custodySnapshot);
 
         assertThat(exact.get(ownerMaterialId)).isEqualByComparingTo("10");
         assertThat(exact.getOrDefault(siblingMaterialId, BigDecimal.ZERO))

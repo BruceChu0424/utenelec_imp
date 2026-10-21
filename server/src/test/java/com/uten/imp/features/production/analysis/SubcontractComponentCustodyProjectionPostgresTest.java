@@ -56,7 +56,11 @@ class SubcontractComponentCustodyProjectionPostgresTest {
         execute("""
                 CREATE TABLE preplan_supply_actions(id uuid PRIMARY KEY, analysis_id uuid, route text,
                     operation_type text, status text, external_document_type text, requested_qty numeric,
-                    public_surplus_qty numeric NOT NULL DEFAULT 0, public_surplus_external_item_id uuid);
+                    public_surplus_qty numeric NOT NULL DEFAULT 0, public_surplus_external_item_id uuid,
+                    goods_id uuid,color_id uuid,unit_id uuid);
+                CREATE TABLE preplan_aggregate_batches(id uuid PRIMARY KEY,analysis_id uuid,action_id uuid);
+                CREATE TABLE preplan_aggregate_batch_events(id uuid PRIMARY KEY,batch_id uuid,event_type text,
+                    public_delta numeric,intent_snapshot jsonb);
                 CREATE TABLE preplan_supply_action_allocations(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
                     action_id uuid, analysis_id uuid, analysis_material_id uuid, allocated_qty numeric,
                     external_item_id uuid);
@@ -86,7 +90,7 @@ class SubcontractComponentCustodyProjectionPostgresTest {
                     created_at timestamptz DEFAULT now());
                 CREATE TABLE production_material_analysis_materials(id uuid PRIMARY KEY, analysis_id uuid,
                     analysis_item_id uuid, node_key text, parent_node_key text, node_role text, depth int,
-                    path text, goods_id uuid, color_id uuid, active boolean DEFAULT true);
+                    path text, goods_id uuid, color_id uuid, active boolean DEFAULT true,unit_id uuid);
                 CREATE FUNCTION fn_subcontract_draw_f(p_sets numeric, p_bom_unit_qty numeric)
                 RETURNS numeric LANGUAGE sql IMMUTABLE AS $$ SELECT CEIL(p_sets * p_bom_unit_qty * 10000) / 10000 $$;
                 CREATE FUNCTION fn_subcontract_order_source_share(p_order_item_id uuid, p_application_item_id uuid,
@@ -370,7 +374,7 @@ class SubcontractComponentCustodyProjectionPostgresTest {
         Parent parent(String nodeKey, boolean root) throws SQLException {
             UUID id = UUID.randomUUID();
             UUID item = UUID.randomUUID();
-            update("INSERT INTO production_material_analysis_materials VALUES (?,?,?,?,?,?,?,?,?,NULL,true)",
+            update("INSERT INTO production_material_analysis_materials(id,analysis_id,analysis_item_id,node_key,parent_node_key,node_role,depth,path,goods_id,color_id,active) VALUES (?,?,?,?,?,?,?,?,?,NULL,true)",
                     id, analysis, item, nodeKey, null, root ? "ROOT_SUPPLY" : "BOM_COMPONENT",
                     root ? 0 : 1, nodeKey, UUID.randomUUID());
             return new Parent(id, item, nodeKey, root);
@@ -379,7 +383,7 @@ class SubcontractComponentCustodyProjectionPostgresTest {
         UUID child(Parent parent, String nodeKey, UUID goods) throws SQLException {
             UUID id = UUID.randomUUID();
             String key = parent.nodeKey() + "/" + nodeKey;
-            update("INSERT INTO production_material_analysis_materials VALUES (?,?,?,?,?,?,?,?,?,NULL,true)",
+            update("INSERT INTO production_material_analysis_materials(id,analysis_id,analysis_item_id,node_key,parent_node_key,node_role,depth,path,goods_id,color_id,active) VALUES (?,?,?,?,?,?,?,?,?,NULL,true)",
                     id, analysis, parent.analysisItemId(), key, parent.root() ? null : parent.nodeKey(),
                     "BOM_COMPONENT", parent.root() ? 1 : 2, key, goods);
             return id;
@@ -387,7 +391,7 @@ class SubcontractComponentCustodyProjectionPostgresTest {
 
         UUID action(String requested, String publicSurplus) throws SQLException {
             UUID id = UUID.randomUUID();
-            update("INSERT INTO preplan_supply_actions VALUES (?,?,'SUBCONTRACT','SUPPLY','CREATED','SUBCONTRACT_APPLICATION',?,?,NULL)",
+            update("INSERT INTO preplan_supply_actions(id,analysis_id,route,operation_type,status,external_document_type,requested_qty,public_surplus_qty,public_surplus_external_item_id) VALUES (?,?,'SUBCONTRACT','SUPPLY','CREATED','SUBCONTRACT_APPLICATION',?,?,NULL)",
                     id, analysis, new BigDecimal(requested), new BigDecimal(publicSurplus));
             return id;
         }

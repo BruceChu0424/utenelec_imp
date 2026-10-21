@@ -14,19 +14,16 @@ import com.uten.imp.features.master.warehouse.WarehouseKeeperService;
 import com.uten.imp.features.master.warehouse.dto.MyWarehouseScope;
 import com.uten.imp.features.master.warehouse.dto.WarehouseKeeperSaveRequest;
 import com.uten.imp.features.notice.WarehouseNoticeRouter;
-import com.uten.imp.features.operations.workbench.FulfillmentWorkbenchController;
-import com.uten.imp.features.sales.shipment.warehouse.WarehouseSalesOutboundController;
 import com.uten.imp.features.stock.StockDocController;
 import com.uten.imp.features.stock.StockDocService;
-import com.uten.imp.features.stock.allocation.ProductionMaterialReturnRequestController;
 import com.uten.imp.features.stock.count.StockCountRequestController;
 import com.uten.imp.features.stock.dto.StockDocItemLine;
 import com.uten.imp.features.stock.dto.StockDocSaveRequest;
-import com.uten.imp.features.warehouse.finishedin.ProductionFinishedInboundTaskController;
 import com.uten.imp.features.warehouse.inbound.WarehouseInboundController;
 import com.uten.imp.features.warehouse.inbound.WarehouseQualityResultController;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialRequisitionController;
-import com.uten.imp.features.warehouse.outbound.WarehouseSubcontractOutboundController;
+import com.uten.imp.features.warehouse.taskcenter.WarehouseInboundTaskCenterController;
+import com.uten.imp.features.warehouse.taskcenter.WarehouseOutboundTaskCenterController;
 import com.uten.imp.features.workbench.badge.WorkbenchBadgeController;
 import com.uten.imp.features.workbench.badge.WorkbenchBadgeSummary;
 import com.uten.imp.security.ProductionStockTaskAccessPolicy;
@@ -108,12 +105,9 @@ class WarehouseDataScopeEndToEndTest {
     @Autowired StockDocController stockDocs;
     @Autowired StockDocService stock;
     @Autowired WarehouseInboundController inbound;
-    @Autowired WarehouseSalesOutboundController salesOutbound;
-    @Autowired WarehouseSubcontractOutboundController subcontractOutbound;
-    @Autowired ProductionFinishedInboundTaskController finishedInbound;
+    @Autowired WarehouseInboundTaskCenterController inboundCenter;
+    @Autowired WarehouseOutboundTaskCenterController outboundCenter;
     @Autowired WarehouseQualityResultController qualityResults;
-    @Autowired FulfillmentWorkbenchController fulfillment;
-    @Autowired ProductionMaterialReturnRequestController productionReturns;
     @Autowired WorkshopMaterialRequisitionController requisitions;
     @Autowired StockCountRequestController stockCounts;
     @Autowired DocumentDraftCountController documentCounts;
@@ -335,6 +329,63 @@ class WarehouseDataScopeEndToEndTest {
         }
     }
 
+    @Test void repeatedPurchaseLinesKeepTheirPhysicalIdentityAndWarehouseInBadgeLists() {
+        fixture.loginAs(admin);
+        UUID reviewer = org.springframework.test.util.ReflectionTestUtils.invokeMethod(fixture, "createApprover", world);
+        UUID settlement = org.springframework.test.util.ReflectionTestUtils.invokeMethod(fixture, "activeSettlementMethodId");
+        UUID hiddenGoods = UUID.randomUUID();
+        fixture.insertGoods(hiddenGoods, "SCOPE-LINE-" + hiddenGoods, "Outside purchase line", "采购",
+                world.unitId(), world.unitLegacy());
+        db.update("UPDATE goods SET owning_warehouse_id=? WHERE id=?", warehouseA, world.goodsD());
+        db.update("UPDATE goods SET owning_warehouse_id=? WHERE id=?", warehouseB, hiddenGoods);
+        var order = new com.uten.imp.features.purchase.order.dto.OrderSaveRequest();
+        order.setBillDate(BusinessTime.today());
+        order.setSupplierId(world.supplierId());
+        order.setCurrencyId(world.currencyId());
+        order.setExchangeRate(BigDecimal.ONE);
+        order.setTaxRate(BigDecimal.ZERO);
+        order.setSettlementMethodId(settlement);
+        var lines = new ArrayList<com.uten.imp.features.purchase.order.dto.OrderItemLine>();
+        for (UUID goods : List.of(world.goodsD(), world.goodsD(), hiddenGoods)) {
+            var line = new com.uten.imp.features.purchase.order.dto.OrderItemLine();
+            line.setGoodsId(goods);
+            line.setUnitId(world.unitId());
+            line.setUnitRate(BigDecimal.ONE);
+            line.setQty(BigDecimal.TEN);
+            line.setPrice(BigDecimal.ONE);
+            lines.add(line);
+        }
+        order.setItems(lines);
+        var created = beans.getBean(com.uten.imp.features.purchase.order.PurchaseOrderService.class).createBatch(order);
+        assertThat(created).hasSize(1);
+        UUID orderId = created.getFirst().getId();
+        beans.getBean(com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService.class)
+                .submit("PURCHASE", orderId);
+        fixture.loginAs(reviewer);
+        fixture.approvePendingFinance("PURCHASE", orderId);
+        String billNo = db.queryForObject("SELECT bill_no FROM purchase_orders WHERE id=?", String.class, orderId);
+        fixture.loginAs(keeperA);
+        var visible = inboundCenter.list("PURCHASE", "ACTIVE", "", "", billNo, null, null,
+                warehouseA, null, null, 1, 100);
+        assertThat(visible.total()).isEqualTo(2);
+        assertThat(visible.items()).extracting(row -> row.line().goodsCode()).containsOnly(
+                db.queryForObject("SELECT code FROM goods WHERE id=?", String.class, world.goodsD()));
+        assertThat(visible.items()).extracting(row -> row.line().itemId()).doesNotHaveDuplicates();
+        assertForbidden(() -> inboundCenter.list("PURCHASE", "ACTIVE", "", "", billNo, null, null,
+                warehouseB, null, null, 1, 100));
+        assertBadgeEqualsLists(keeperA, warehouseA);
+        fixture.loginAs(keeperAB);
+        assertThat(inboundCenter.list("PURCHASE", "ACTIVE", "", "", billNo, null, null,
+                null, null, null, 1, 100).total()).isEqualTo(3);
+        assertThat(inbound.expectations(1, 100, "PURCHASE", "", null, null, null, null, billNo).getTotal())
+                .as("the legacy registration source remains one header, not the task-center grain").isEqualTo(1);
+        assertBadgeEqualsLists(keeperAB, null);
+        fixture.loginAs(member);
+        assertThat(inboundCenter.list("PURCHASE", "ACTIVE", "", "", billNo, null, null,
+                null, null, null, 1, 100).total()).isZero();
+        assertBadgeEqualsLists(member, null);
+    }
+
     /**
      * 建单不限仓: 子仓负责人顶班在范围外的仓建了草稿, 这张草稿不能从他自己的列表、草稿徽章和分段草稿数里消失
      * (本人默认范围里自己的草稿不论仓都算); 挑了某个仓就只看那个仓; 别人在范围外的草稿照样看不到。
@@ -477,21 +528,23 @@ class WarehouseDataScopeEndToEndTest {
         assertThat(summary.staleSources()).as(label).isEmpty();
         Map<String, Long> facts = summary.facts();
         assertThat(facts.get("warehouseInboundExpectation.count")).as(label + " expectation").isEqualTo(
-                inbound.expectations(1, 1, "", "", null, selected, null, null, null).getTotal());
+                inboundTaskTotal(selected, "PURCHASE", "PURCHASE_READY_REGISTER", "PURCHASE_BLOCKED",
+                        "PURCHASE_CONTINUE_INSPECTION", "PURCHASE_EXCESS_PENDING_FINANCE")
+                        + inboundTaskTotal(selected, "SUBCONTRACT", "SUBCONTRACT_READY_REGISTER", "SUBCONTRACT_BLOCKED",
+                        "SUBCONTRACT_CONTINUE_INSPECTION", "SUBCONTRACT_EXCESS_PENDING_FINANCE"));
         assertThat(facts.get("warehouseArrivalException.count")).as(label + " arrival exception").isEqualTo(
                 inbound.arrivalExceptions(1, 1, null, false, null, null, null, selected, null, null, null, null).getTotal());
         assertThat(facts.get("finishedInbound.count")).as(label + " finished inbound").isEqualTo(
-                finishedInbound.tasks("", null, null, 1, 1, selected, null, null, null, null).getTotal());
+                inboundTaskTotal(selected, "FINISHED", "FINISHED_READY_REGISTER", "FINISHED_READY_COUNT", "FINISHED_RESIDUAL_COUNT"));
         assertThat(facts.get("warehouseSalesOutbound.PENDING_PICK")).as(label + " sales outbound").isEqualTo(
-                salesOutbound.list(null, "PENDING_PICK", null, null, 1, 1, selected, null, null, null).getTotal());
-        // ADR-143: 委外出库红数 = 待发料的领料草稿张数, 所在仓 = 草稿发出仓; 与待发料列表同一谓词。
+                outboundTaskTotal(selected, "SALES", "SALES_PENDING"));
+        // The task center and its badges count physical items, retaining each item's warehouse.
         assertThat(facts.get("subcontractOutbound.count")).as(label + " subcontract outbound").isEqualTo(
-                subcontractOutbound.tasks(1, 1, "", selected).getTotal());
+                outboundTaskTotal(selected, "SUBCONTRACT", "SUBCONTRACT_PENDING"));
         assertThat(facts.get("productionDraw.count")).as(label + " production draw").isEqualTo(
-                fulfillment.warehouse("OPEN_ANY", "", "", null, null, 1, 1, "", "asc", selected, Map.of()).total());
+                outboundTaskTotal(selected, "DRAW", "DRAW_PENDING", "DRAW_PARTIAL", "DRAW_DISCOVERY_PENDING"));
         assertThat(facts.get("productionReturn.count")).as(label + " production return").isEqualTo(
-                stockDocs.list(null, null, null, (short) 0, null, null, null, null, true, null, 1, 1, null, null,
-                        selected, null, false, false, null, "ACTIVE").getTotal());
+                inboundTaskTotal(selected, "RETURN", "RETURN_PENDING_RECEIVE"));
         assertThat(facts.get("workshopMaterial.pendingIssue")).as(label + " workshop issue").isEqualTo(
                 requisitions.list("PENDING", "ACTIVE", "ISSUE", null, selected, 1, 1, null).getTotal());
         assertThat(facts.get("workshopMaterial.pendingReturn")).as(label + " workshop return").isEqualTo(
@@ -517,6 +570,24 @@ class WarehouseDataScopeEndToEndTest {
         assertThat(documentCounts.statusCounts("stockDocument", null, "OTHER_OUT", selected).get("DRAFT"))
                 .as(label + " other-out drafts").isEqualTo(stockDocs.list("OTHER_OUT", null, null, (short) 0, null,
                         null, null, null, null, null, 1, 1, null, null, selected, null, false, false, null, "ACTIVE").getTotal());
+    }
+
+    private long inboundTaskTotal(UUID selected, String source, String... statuses) {
+        long total = 0;
+        for (String status : statuses) {
+            total += inboundCenter.list(source, "ACTIVE", status, "", null, null, null,
+                    selected, null, null, 1, 1).total();
+        }
+        return total;
+    }
+
+    private long outboundTaskTotal(UUID selected, String source, String... statuses) {
+        long total = 0;
+        for (String status : statuses) {
+            total += outboundCenter.list(source, "ACTIVE", status, "", null, null, null,
+                    selected, 1, 1, null, null).total();
+        }
+        return total;
     }
 
     private List<UUID> otherOutDrafts(UUID selected) {

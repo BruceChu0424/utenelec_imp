@@ -28,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.MOCK,properties={
         "spring.profiles.active=dev","uten.audit.retention.enabled=false","uten.reporting.materialized-view-refresh.enabled=false",
+        "uten.production.readiness-reconcile.enabled=false",
         "uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=true",
         "uten.storage.malware-scan.provider=test-only","uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
         "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789","uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
@@ -36,10 +37,12 @@ class QualifiedSourceWarehouseEndToEndTest {
 
     private static final String SYSTEM_RECHECK_AUDIT_SQL =
             "SELECT count(*) FROM audit_log WHERE actor_id IS NULL"
-                    + " AND actor_account='系统自动核对备料'";
+                    + " AND actor_account='系统自动核对备料'"
+                    + " AND target_type='production_execution_segments' AND target_id=?";
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry){FullChainEndToEndTest.registerDataSource(registry);}
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
+    @Autowired com.uten.imp.features.notice.outbox.BusinessOutboxProcessor outbox;
     @Autowired MaterialAnalysisService analyses;
     @Autowired MaterialAnalysisCommandService commands;
     @Autowired ProductionPlanService plans;
@@ -62,6 +65,7 @@ class QualifiedSourceWarehouseEndToEndTest {
         UUID actual=warehouse("reconcile-actual-location",false);
         db.update("UPDATE warehouses SET parent_id=? WHERE id=?",main,actual);
         Case c=create(world,new BigDecimal("10000"),main);
+        UUID recipient=assignNotifiableWorker(c);
         UUID receipt=receive(c,actual,"10000");
         // Reproduce a missed callback only; receipt, quality, physical stock and
         // exact entitlement still execute their real services and constraints.
@@ -69,7 +73,7 @@ class QualifiedSourceWarehouseEndToEndTest {
         try {pass(c,actual,receipt,"10000");}
         finally {org.mockito.Mockito.doCallRealMethod().when(readinessTarget()).applyPriorityForOriginEvent(org.mockito.ArgumentMatchers.any());}
         assertEquals("WAITING",status(c));assertEquals(0,drawCount(c));
-        long purchases=db.queryForObject("SELECT count(*) FROM purchase_receipts",Long.class);
+        long purchases=purchaseReceiptCount(c);
         org.springframework.security.core.context.SecurityContextHolder.clearContext();
         runReconcilerUntilReady(c);
         assertEquals("READY",status(c));assertEquals(1,drawCount(c));
@@ -79,15 +83,25 @@ class QualifiedSourceWarehouseEndToEndTest {
                     AND event.created_by IS NULL AND event.system_reason='AUTOMATIC_READINESS_RECHECK'
                 """,BigDecimal.class,c.packageId()));
         assertTrue(db.queryForObject("SELECT count(*) FROM audit_log WHERE actor_id IS NULL AND actor_account='系统自动核对备料'",Long.class)>0);
-        // 只比「系统自动核对备料」自己的审计行：全库 audit_log 计数会被同一容器里
-        // 其它用例与后台调度（通知 outbox 投递等）异步写入干扰，单跑绿、全量红
-        //（2026-09-11 实测）。本用例要锁的是「重跑一轮不产生重复系统动作」。
-        long audit=db.queryForObject(SYSTEM_RECHECK_AUDIT_SQL,Long.class);
-        long notices=db.queryForObject("SELECT count(*) FROM notices",Long.class);
+        // Wait for this aggregate's durable READY event, not for unrelated
+        // suite deliveries to stop changing the global notices table.
+        UUID readyEvent=db.queryForObject("SELECT id FROM business_outbox WHERE aggregate_id=? AND event_type='PRODUCTION_SEGMENT_READY'",
+                UUID.class,c.segment());
+        awaitCaseDeliveries(c);
+        long audit=db.queryForObject(SYSTEM_RECHECK_AUDIT_SQL,Long.class,c.segment().toString());
+        assertTrue(audit>0);
+        var events=readyEvents(c);
+        assertEquals(List.of(readyEvent),events);
+        var notices=segmentNotices(c);
+        assertFalse(notices.isEmpty(),"the actual READY delivery must publish the assigned worker's card");
+        assertEquals(1,activeSegmentNotices(c,recipient));
         readinessReconciler.runBatch();
-        assertEquals(audit,db.queryForObject(SYSTEM_RECHECK_AUDIT_SQL,Long.class));
-        assertEquals(notices,db.queryForObject("SELECT count(*) FROM notices",Long.class));
-        assertEquals(purchases,db.queryForObject("SELECT count(*) FROM purchase_receipts",Long.class));
+        awaitCaseDeliveries(c);
+        assertEquals(audit,db.queryForObject(SYSTEM_RECHECK_AUDIT_SQL,Long.class,c.segment().toString()));
+        assertEquals(events,readyEvents(c),"rechecking one READY segment must not append a second committed event");
+        assertEquals(notices,segmentNotices(c),"rechecking must not insert or replace this segment's delivered notices");
+        assertEquals(1,activeSegmentNotices(c,recipient));
+        assertEquals(purchases,purchaseReceiptCount(c));
         assertEquals(1,drawCount(c));
         assertSystemActorGuards(c,world.superAdminUserId());
         fixture.loginAs(world.superAdminUserId());
@@ -378,7 +392,7 @@ class QualifiedSourceWarehouseEndToEndTest {
 
     private void assertSystemActorGuards(Case c,UUID unrelatedActor){
         UUID original=db.queryForObject("SELECT id FROM preplan_stock_entitlement_events WHERE target_package_id=? AND created_by IS NULL AND event_type='FORMALIZE'",UUID.class,c.packageId());
-        long before=db.queryForObject("SELECT count(*) FROM preplan_stock_entitlement_events",Long.class);
+        long before=db.queryForObject("SELECT count(*) FROM preplan_stock_entitlement_events WHERE target_package_id=?",Long.class,c.packageId());
         var transaction=new org.springframework.transaction.support.TransactionTemplate(transactionManager);
         for(String attack:List.of("missing-marker","fake-human-actor","wrong-event-type")){
             RuntimeException error=assertThrows(RuntimeException.class,()->transaction.executeWithoutResult(ignored->{
@@ -398,7 +412,7 @@ class QualifiedSourceWarehouseEndToEndTest {
             var postgres=(org.postgresql.util.PSQLException)cause;
             assertEquals("23514",postgres.getSQLState());
             assertEquals("preplan_system_formalize_actor_guard",postgres.getServerErrorMessage().getConstraint());
-            assertEquals(before,db.queryForObject("SELECT count(*) FROM preplan_stock_entitlement_events",Long.class));
+            assertEquals(before,db.queryForObject("SELECT count(*) FROM preplan_stock_entitlement_events WHERE target_package_id=?",Long.class,c.packageId()));
         }
     }
 
@@ -436,6 +450,62 @@ class QualifiedSourceWarehouseEndToEndTest {
         UUID id=UUID.randomUUID();db.update("INSERT INTO warehouses(id,code,name,status,is_accountable,is_defective) VALUES(?,?,?,'使用',TRUE,?)",id,"WH-"+id,name,defective);return id;
     }
     private String status(Case c){return db.queryForObject("SELECT status FROM production_execution_segments WHERE id=?",String.class,c.segment());}
+
+    private UUID assignNotifiableWorker(Case c) {
+        var current=execution.list(c.plan()).stream().filter(segment->segment.id().equals(c.segment())).findFirst().orElseThrow();
+        UUID user=fixture.createUserWithPerms(c.world(),"ready-card-"+UUID.randomUUID().toString().substring(0,8),
+                "notice:read","production_execution:view","production_execution:start",
+                "production_daily_report:view","production_daily_report:create");
+        UUID employee=db.queryForObject("SELECT employee_id FROM users WHERE id=?",UUID.class,user);
+        db.update("UPDATE employees SET department_id=? WHERE id=?",current.workshopDepartmentId(),employee);
+        execution.assign(c.plan(),c.segment(),new com.uten.imp.features.production.execution.SegmentAssignmentRequest(
+                current.lockVersion(),"ready-card-assignment-"+c.segment(),current.workshopDepartmentId(),
+                current.teamDepartmentId(),employee,current.planBeginDate(),current.planEndDate()));
+        return user;
+    }
+    private long activeSegmentNotices(Case c,UUID user) {
+        return db.queryForObject("SELECT count(*) FROM notices WHERE aggregate_kind='PRODUCTION_EXECUTION_SEGMENT' AND aggregate_id=?"
+                +" AND audience_user_id=? AND source_event='PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED' AND resolved_at IS NULL",
+                Long.class,c.segment(),user);
+    }
+    private List<UUID> readyEvents(Case c) {
+        return db.queryForList("SELECT id FROM business_outbox WHERE aggregate_id=? AND event_type='PRODUCTION_SEGMENT_READY' ORDER BY id",
+                UUID.class,c.segment());
+    }
+    private List<UUID> segmentNotices(Case c) {
+        return db.queryForList("SELECT id FROM notices WHERE aggregate_kind='PRODUCTION_EXECUTION_SEGMENT' AND aggregate_id=? ORDER BY id",
+                UUID.class,c.segment());
+    }
+    private long purchaseReceiptCount(Case c) {
+        return db.queryForObject("SELECT count(DISTINCT receipt_id) FROM purchase_receipt_items WHERE order_item_id=? AND NOT is_deleted",
+                Long.class,c.orderItem());
+    }
+    private void awaitCaseDeliveries(Case c) {
+        // Older plan/assignment events may also rebuild this segment's card.
+        // Let the real processor commit those case-owned events before taking
+        // the notice identity snapshot; unrelated aggregates remain irrelevant.
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
+        do {
+            List<Short> statuses = db.queryForList(
+                    "SELECT status FROM business_outbox WHERE aggregate_id IN (?,?,?)",
+                    Short.class, c.plan(), c.segment(), c.packageId());
+            assertFalse(statuses.contains((short) 2), "case-owned outbox delivery must not be exhausted");
+            if (statuses.stream().allMatch(status -> status == 1)) {
+                return;
+            }
+            outbox.processNext();
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(error);
+            }
+        } while (System.nanoTime() < deadline);
+        assertEquals(0, db.queryForObject(
+                "SELECT count(*) FROM business_outbox WHERE aggregate_id IN (?,?,?) AND status<>1",
+                Integer.class, c.plan(), c.segment(), c.packageId()),
+                "case-owned events must commit delivery before notice identity is compared");
+    }
 
     /** runBatch 每轮按段 id 顺序只处理 25 个候选；全量套件的共享库会积压早前用例的
      *  WAITING 段，单轮轮不到新建段（单跑绿、全量红的根源）。循环到本段就绪，有界。 */

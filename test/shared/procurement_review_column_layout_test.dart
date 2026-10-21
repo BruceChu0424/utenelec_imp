@@ -42,7 +42,7 @@ void main() {
         expect(upgraded.widths, seed.widths);
         expect(upgraded.hidden, seed.hidden);
         expect(upgraded.pinned, seed.pinned);
-        expect(upgraded.filters, seed.filters);
+        expect(upgraded.filters, isEmpty);
         expect(upgraded.sortColumn, seed.sortColumn);
         expect(upgraded.sortAscending, isFalse);
         expect(upgraded.layoutVersion, 1);

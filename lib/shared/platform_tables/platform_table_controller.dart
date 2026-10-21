@@ -47,9 +47,11 @@ class PlatformTableController<T> extends ChangeNotifier {
   ProviderSubscription<AuthenticatedScope?>? _queryScopeSubscription;
   ProviderSubscription<String>? _queryServerSubscription;
   int _queryLifecycle = 0;
+  bool _hasSessionQueryPreferences = false;
   int _authorizationRevision = 0;
   int get authorizationRevision => _authorizationRevision;
   int get queryLifecycle => _queryLifecycle;
+  bool get hasSessionQueryPreferences => _hasSessionQueryPreferences;
   ProviderContainer? _container;
   final Map<String, PlatformColumnDefinition> _definitions = {};
   final Set<String> _recordColumnIds = {};
@@ -148,6 +150,7 @@ class PlatformTableController<T> extends ChangeNotifier {
     final dataChanged = _sourceRevision != descriptor.revision;
     _sourceRevision = descriptor.revision;
     if (changed) {
+      _hasSessionQueryPreferences = false;
       _authorizationRevision++;
       _generation++;
       _signature = '';
@@ -168,6 +171,7 @@ class PlatformTableController<T> extends ChangeNotifier {
       void ownerChanged() {
         if (disposed) return;
         _queryLifecycle++;
+        _hasSessionQueryPreferences = false;
         layoutTouched = false;
         layout = _defaultLayout;
         _invalidateAccess();
@@ -194,7 +198,8 @@ class PlatformTableController<T> extends ChangeNotifier {
               unawaited(reload());
             });
       layout =
-          container?.read(platformTableLayoutProvider(key)) ?? _defaultLayout;
+          (container?.read(platformTableLayoutProvider(key)) ?? _defaultLayout)
+              .copyWith(filters: const {});
       _adoptDefinitions();
       _layoutSubscription = container?.listen(
         platformTableLayoutProvider(key),
@@ -203,7 +208,9 @@ class PlatformTableController<T> extends ChangeNotifier {
             return;
           }
           final priorIds = layout.added.map((column) => column.id).join('|');
-          layout = next;
+          // Other instances and late preference loads may change layout/sort,
+          // but their query must never replace this table's current search.
+          layout = next.copyWith(filters: layout.filters);
           _adoptDefinitions();
           _emit();
           if (priorIds != next.added.map((column) => column.id).join('|')) {
@@ -299,7 +306,7 @@ class PlatformTableController<T> extends ChangeNotifier {
     _adoptDefinitions();
     _container
         ?.read(platformTableLayoutProvider(_tableKey).notifier)
-        .update(value);
+        .update(value.copyWith(filters: const {}));
   }
 
   Set<String> get availableFactKeys => {
@@ -420,6 +427,7 @@ class PlatformTableController<T> extends ChangeNotifier {
   }
 
   void resetLayout() {
+    _hasSessionQueryPreferences = false;
     updateLayout(_defaultLayout);
     _signature = '';
     _emit();
@@ -431,6 +439,7 @@ class PlatformTableController<T> extends ChangeNotifier {
     String? sortColumn,
     bool sortAscending = true,
   }) {
+    _hasSessionQueryPreferences = true;
     updateLayout(
       layout.copyWith(
         filters: {
@@ -443,6 +452,16 @@ class PlatformTableController<T> extends ChangeNotifier {
         hasQueryPreferences: true,
       ),
     );
+  }
+
+  /// A page return starts a fresh query while retaining personal column/sort
+  /// preferences. The lifecycle also invalidates already-open search menus.
+  void clearSessionQuery() {
+    if (disposed) return;
+    _queryLifecycle++;
+    _hasSessionQueryPreferences = false;
+    layout = layout.copyWith(filters: const {});
+    _emit();
   }
 
   void select(PlatformColumnDefinition column) {

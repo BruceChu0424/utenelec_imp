@@ -169,8 +169,8 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('B1'), findsOneWidget);
-      expect(find.text('A1'), findsNothing);
-      expect(find.text('B2'), findsNothing);
+      expect(find.text('A1'), findsOneWidget);
+      expect(find.text('B2'), findsOneWidget);
       updateHost(() => activeKey = secondKey);
       await tester.pumpAndSettle();
       for (final id in ['A1', 'B1', 'B2']) {
@@ -188,8 +188,8 @@ void main() {
       updateHost(() => activeKey = firstKey);
       await tester.pumpAndSettle();
       expect(find.text('B1'), findsOneWidget);
-      expect(find.text('A1'), findsNothing);
-      expect(find.text('B2'), findsNothing);
+      expect(find.text('A1'), findsOneWidget);
+      expect(find.text('B2'), findsOneWidget);
       expect(changes, isEmpty);
       expect(tester.takeException(), isNull);
     },
@@ -263,8 +263,8 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(kind, 'A-stored');
-      expect(changes, [(firstKey, 'kind', 'A-stored')]);
+      expect(kind, 'A-default');
+      expect(changes, isEmpty);
       changes.clear();
       final oldResponse = Completer<PlatformTableLayout>();
       final firstLayout =
@@ -292,12 +292,12 @@ void main() {
         kind = 'A-default';
       });
       await tester.pumpAndSettle();
-      expect(kind, 'A-late');
-      expect(changes, [(firstKey, 'kind', 'A-late')]);
+      expect(kind, 'A-default');
+      expect(changes, isEmpty);
       firstLayout.replaceQuery(const PlatformTableLayout());
       await tester.pumpAndSettle();
-      expect(kind, isNull);
-      expect(changes.last, (firstKey, 'kind', null));
+      expect(kind, 'A-default');
+      expect(changes, isEmpty);
       expect(changes.where((change) => change.$1 == secondKey), isEmpty);
       expect(tester.takeException(), isNull);
     },
@@ -471,12 +471,7 @@ void main() {
         expect(find.text('B1'), findsOneWidget);
         expect(find.text('B2'), findsOneWidget);
         expect(changes.where((change) => change.$2 != null), isEmpty);
-        if (server) {
-          expect(
-            changes,
-            containsAll([('search.status', null), ('search.date', null)]),
-          );
-        }
+        expect(changes, isEmpty);
         expect(tester.takeException(), isNull);
       },
     );
@@ -535,7 +530,7 @@ void main() {
   );
 
   testWidgets(
-    'same-column keyword replaces exact choice, keeps other choices and survives remount',
+    'same-column keyword replaces exact choice and stays through rebuild but clears on remount',
     (tester) async {
       final container = ProviderContainer(
         overrides: [
@@ -568,10 +563,15 @@ void main() {
       expect(find.text('A1'), findsNothing);
       expect(find.text('B1'), findsOneWidget);
       expect(find.text('B2'), findsNothing);
-      expect(container.read(platformTableLayoutProvider(_tableKey)).filters, {
-        'search.name': '电视',
-        'color': '白色',
-      });
+      expect(
+        container.read(platformTableLayoutProvider(_tableKey)).filters,
+        isEmpty,
+      );
+      await tester.pumpWidget(_tableHost(container));
+      await tester.pumpAndSettle();
+      expect(find.text('B1'), findsOneWidget);
+      expect(find.text('A1'), findsNothing);
+      expect(find.text('B2'), findsNothing);
       await tester.pumpWidget(
         UncontrolledProviderScope(
           container: container,
@@ -582,9 +582,9 @@ void main() {
       await tester.pumpWidget(_tableHost(container));
       await tester.pumpAndSettle();
       expect(find.text('B1'), findsOneWidget);
-      expect(find.text('A1'), findsNothing);
-      expect(find.text('B2'), findsNothing);
-      expect(find.text('货品名称：电视'), findsOneWidget);
+      expect(find.text('A1'), findsOneWidget);
+      expect(find.text('B2'), findsOneWidget);
+      expect(find.text('货品名称：电视'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );

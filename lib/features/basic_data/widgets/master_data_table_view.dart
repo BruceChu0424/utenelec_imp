@@ -7,6 +7,7 @@ import '../../../shared/platform_tables/platform_table_controller.dart';
 import '../../../shared/platform_tables/platform_table_picker.dart';
 import '../../../shared/platform_tables/platform_table_widgets.dart';
 import '../../../shared/platform_tables/table_column_projection.dart';
+import '../../../core/router/page_search_lifecycle.dart';
 // MasterDataTableView - 基础资料主档通用表格视图（货品/模具/客户/供应商 共用）。
 //
 // Excel 风格：横排 autofilter 列头（表头跟随表体横滚，无滚动条）+ 逐行数据（列对齐，
@@ -1553,6 +1554,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   );
 
   final _platform = PlatformTableController<T>();
+  late final _searchLifecycle = PageSearchLifecycle(
+    onLeave: () => _queryRestoreRevision++,
+    onReturn: _platform.clearSessionQuery,
+  );
   List<MasterColumnDef<T>>? _platformColumnCache;
   List<MasterColumnDef<T>>? _platformBaseCache;
   TableColumnProjectionController? _projection;
@@ -1967,6 +1972,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     sort,
     ascending,
     present,
+    _platform.hasSessionQueryPreferences,
     _columns.where(_ownsHeaderFilter).map((column) => column.key).toList()
       ..sort(),
   ]);
@@ -1986,7 +1992,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         _queryPreferenceTableKey == tableKey && _queryPreferencesPresent;
     _queryPreferenceSignature = signature;
     _queryPreferenceTableKey = tableKey;
-    _queryPreferencesPresent = present;
+    final filtersPresent = _platform.hasSessionQueryPreferences;
+    _queryPreferencesPresent = filtersPresent;
     final revision = ++_queryRestoreRevision;
     final lifecycle = _platform.queryLifecycle;
     if (tableChanged) {
@@ -1998,33 +2005,35 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // A changed column set is not a removed preference. It still invalidates
     // pending restores, but must not clear a page's controlled query when no
     // stored query existed. An actual true -> false reset continues below.
-    if (!present && !previouslyPresent) return;
+    if (!present && !filtersPresent && !previouslyPresent) return;
     final local = <String, String?>{};
     final server = <String, String?>{};
-    _columnSearches.clear();
-    for (final column in _columns) {
-      if (!_ownsHeaderFilter(column)) continue;
-      final searchKey = 'search.${column.key}';
-      final search = present && column.supportsKeywordSearch
-          ? filters[searchKey]
-          : null;
-      if (_serverSearchFor(column.key)) {
-        if (widget.filters[searchKey] != search) server[searchKey] = search;
-      } else if (search != null && search.isNotEmpty) {
-        _columnSearches[column.key] = search;
+    if (filtersPresent || previouslyPresent) {
+      _columnSearches.clear();
+      for (final column in _columns) {
+        if (!_ownsHeaderFilter(column)) continue;
+        final searchKey = 'search.${column.key}';
+        final search = filtersPresent && column.supportsKeywordSearch
+            ? filters[searchKey]
+            : null;
+        if (_serverSearchFor(column.key)) {
+          if (widget.filters[searchKey] != search) server[searchKey] = search;
+        } else if (search != null && search.isNotEmpty) {
+          _columnSearches[column.key] = search;
+        }
+        final value = filtersPresent ? filters[column.key] : null;
+        if (!_serverPaged &&
+            column.filterFromRows &&
+            !widget.facets.containsKey(column.key)) {
+          if (value != null) local[column.key] = value;
+        } else if (widget.filters[column.key] != value) {
+          server[column.key] = value;
+        }
       }
-      final value = present ? filters[column.key] : null;
-      if (!_serverPaged &&
-          column.filterFromRows &&
-          !widget.facets.containsKey(column.key)) {
-        if (value != null) local[column.key] = value;
-      } else if (widget.filters[column.key] != value) {
-        server[column.key] = value;
-      }
+      _rowFilters
+        ..clear()
+        ..addAll(local);
     }
-    _rowFilters
-      ..clear()
-      ..addAll(local);
     final validSort = _columns.any(
       (column) => column.key == sort && column.sortable,
     );
@@ -2105,6 +2114,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       chosenAscending,
       true,
     );
+    _queryPreferencesPresent = true;
     _queryRestoreRevision++;
   }
 
@@ -2762,6 +2772,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _searchLifecycle.attach(context);
     _configurePlatform();
     if (widget.listItemBuilder == null) {
       _aiSlot.attach(context, _aiTableSource);
@@ -3266,7 +3277,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                 child: SafeArea(
                   child: Padding(
                     padding: const EdgeInsets.all(UtenSpacing.s12),
-                    child: _buildBoundedPresentation(ctx2),
+                    child: _searchLifecycle.wrap(
+                      _buildBoundedPresentation(ctx2),
+                    ),
                   ),
                 ),
               );
@@ -3626,6 +3639,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   @override
   void dispose() {
     // 拖拽中表被卸载（翻页/切路由）：清计时器、键监听与幽灵卡，防止悬挂。
+    _searchLifecycle.dispose();
     _textSelection.dispose();
     _dragAutoScroll?.cancel();
     _dragHoverTimer?.cancel();
@@ -6053,6 +6067,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final serverSort = widget.onSortChange != null;
     final sortKey = _columns[i].key;
     final localSortActive = !serverSort && _localSortColumn == sortKey;
+    final queryRevision = _queryRestoreRevision;
     final filterCell = _FilterCell(
       label: _columns[i].label,
       selectedBucket: _selectedFacetBuckets[sortKey],
@@ -6068,7 +6083,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                 ? null
                 : (search, page) => widget.loadFacetPage!(sortKey, search, page)
           : null,
-      searchScope: widget.facetSearchScope ?? widget.paginationScope,
+      searchScope: (
+        widget.facetSearchScope ?? widget.paginationScope,
+        _platform.queryLifecycle,
+      ),
+      isCurrent: () => mounted && queryRevision == _queryRestoreRevision,
       search: _columns[i].supportsKeywordSearch
           ? _columnSearch(_columns[i].key)
           : null,
@@ -6866,6 +6885,7 @@ class _FilterCell extends StatefulWidget {
     required this.onChanged,
     this.loadFacetPage,
     this.searchScope,
+    this.isCurrent,
     this.selectedBucket,
     this.onBucketSelected,
     required this.onSearch,
@@ -6888,6 +6908,7 @@ class _FilterCell extends StatefulWidget {
   final Future<MasterFacetPage> Function(String search, int page)?
   loadFacetPage;
   final Object? searchScope;
+  final bool Function()? isCurrent;
   final MasterFacetBucket? selectedBucket;
   final ValueChanged<MasterFacetBucket?>? onBucketSelected;
   final ValueChanged<String?>? onSearch;
@@ -6944,6 +6965,7 @@ class _FilterCellState extends State<_FilterCell> {
   }
 
   void _open() {
+    if (!(widget.isCurrent?.call() ?? true)) return;
     if (_overlay != null) return;
     _searchCtl = TextEditingController(text: widget.search ?? '');
     _remoteComposing = false;
@@ -6980,6 +7002,7 @@ class _FilterCellState extends State<_FilterCell> {
   }
 
   void _searchRemote(String value, {bool immediate = false}) {
+    if (!(widget.isCurrent?.call() ?? true)) return;
     _searchDebounce?.cancel();
     final revision = ++_searchRevision;
     _remoteQuery = value.trim();
@@ -7022,6 +7045,7 @@ class _FilterCellState extends State<_FilterCell> {
   }
 
   Future<void> _fetchRemote(int revision, int page) async {
+    if (!(widget.isCurrent?.call() ?? true)) return;
     if (_fetchingRevision == revision) return;
     _fetchingRevision = revision;
     _remoteLoading = true;
@@ -7029,7 +7053,12 @@ class _FilterCellState extends State<_FilterCell> {
     _overlay?.markNeedsBuild();
     try {
       final result = await widget.loadFacetPage!(_remoteQuery, page);
-      if (!mounted || _overlay == null || revision != _searchRevision) return;
+      if (!mounted ||
+          _overlay == null ||
+          revision != _searchRevision ||
+          !(widget.isCurrent?.call() ?? true)) {
+        return;
+      }
       _fetchingRevision = null;
       final byValue = <String, MasterFacetBucket>{
         if (page > 1)
@@ -7042,7 +7071,12 @@ class _FilterCellState extends State<_FilterCell> {
       _remoteLoading = false;
       _overlay?.markNeedsBuild();
     } catch (_) {
-      if (!mounted || _overlay == null || revision != _searchRevision) return;
+      if (!mounted ||
+          _overlay == null ||
+          revision != _searchRevision ||
+          !(widget.isCurrent?.call() ?? true)) {
+        return;
+      }
       _fetchingRevision = null;
       _remoteLoading = false;
       _remoteFailed = true;
@@ -7051,7 +7085,9 @@ class _FilterCellState extends State<_FilterCell> {
   }
 
   void _select(String? value, {MasterFacetBucket? bucket}) {
-    if (!mounted || _overlay == null) return;
+    if (!mounted || _overlay == null || !(widget.isCurrent?.call() ?? true)) {
+      return;
+    }
     widget.onBucketSelected?.call(widget.loadFacetPage == null ? null : bucket);
     widget.onChanged(value);
     _close();
@@ -7062,6 +7098,7 @@ class _FilterCellState extends State<_FilterCell> {
     final submit = widget.onSearch;
     if (!mounted ||
         _overlay == null ||
+        !(widget.isCurrent?.call() ?? true) ||
         submit == null ||
         value == null ||
         (value.composing.isValid && !value.composing.isCollapsed)) {
@@ -7212,6 +7249,7 @@ class _FilterCellState extends State<_FilterCell> {
   String get _sortDescLabel => widget.type == 'date' ? '从近到远' : '从大到小';
 
   void _sortSelect(String? column, bool ascending) {
+    if (!(widget.isCurrent?.call() ?? true)) return;
     widget.onSort?.call(column, ascending);
     _close();
   }

@@ -30,7 +30,7 @@ void goFrom(BuildContext context, String path) {
 
 /// 全站唯一返回契约（2026-09-10 收敛，docs/05-架构/路由设计.md「返回键契约」）：
 /// 1. 能 pop 就 pop——被 push 进来的页面（任务中心→列表→详情、详情→关联页）
-///    返回到上一页，栈下页面保留筛选/页码/未保存状态；
+///    返回到上一页，栈下页面保留业务分类与未保存状态，搜索按页面生命周期清空；
 /// 2. 栈空（深链、hub 卡片 goFrom/context.go 直达）读 ?returnTo 回来源页；
 /// 3. 再没有则回 [defaultPath]（模块 hub / 工作台）。
 ///

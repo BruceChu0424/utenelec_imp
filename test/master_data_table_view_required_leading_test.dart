@@ -127,7 +127,7 @@ void main() {
     expect(find.text('备注'), findsNothing);
     expect(
       filters.any((entry) => entry.key == 'billNo' && entry.value == 'DOC-1'),
-      isTrue,
+      isFalse,
     );
     final stored = container.read(platformTableLayoutProvider(_tableKey));
     expect(stored.widths, _oldLayout.widths);

@@ -7,6 +7,7 @@ import '../../shared/platform_tables/platform_table_controller.dart';
 import '../../shared/platform_tables/platform_table_picker.dart';
 import '../../shared/platform_tables/platform_table_widgets.dart';
 import '../../shared/platform_tables/table_column_projection.dart';
+import '../../core/router/page_search_lifecycle.dart';
 import '../../shared/platform_tables/platform_row_draft.dart';
 import '../../shared/search/column_keyword_policy.dart';
 import '../../shared/search/keyword_search.dart';
@@ -1021,6 +1022,10 @@ class _UtenEditableGridState<T extends EditableGridRow>
     extends State<UtenEditableGrid<T>>
     with UtenColumnHeaderDragHost<UtenEditableGrid<T>> {
   final _platform = PlatformTableController<T>();
+  late final _searchLifecycle = PageSearchLifecycle(
+    onLeave: () => _headerQueryScope++,
+    onReturn: _platform.clearSessionQuery,
+  );
   List<EditableGridColumn<T>>? _platformColumnCache;
   List<EditableGridColumn<T>>? _platformBaseCache;
   TableColumnProjectionController? _projection;
@@ -1784,6 +1789,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _searchLifecycle.attach(context);
     _configurePlatform();
     _aiSlot.attach(context, _aiTableSource);
     // 页面上下滑（最近的祖先 Scrollable）时：先同帧快路径（锚点+pixels 纯算术，
@@ -2453,6 +2459,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
   @override
   void dispose() {
     _projection?.remove(this);
+    _searchLifecycle.dispose();
     _textSelection.dispose();
     _aiSlot.detach();
     _platform.dispose();

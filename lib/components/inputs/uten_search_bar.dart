@@ -27,6 +27,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../core/router/page_search_lifecycle.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
 
@@ -82,6 +83,10 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
   late final TextEditingController _controller;
   Timer? _debounce;
   bool _ownsController = false;
+  late final _searchLifecycle = PageSearchLifecycle(
+    onLeave: _cancelPendingSearch,
+    onReturn: _clear,
+  );
 
   /// 非 null = 有一段 IME 组合（拼音未上屏）被挂起，等组合结束后补发回调。
   /// 其值是挂起期间的最新文本；组合结束若文本已变（选字上屏会走
@@ -94,6 +99,7 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _searchLifecycle.attach(context);
     _aiSlot.attach(
       context,
       widget.onChanged == null && widget.onSubmitted == null
@@ -169,6 +175,7 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
 
   @override
   void dispose() {
+    _searchLifecycle.dispose();
     _controller.removeListener(_onControllerValueChanged);
     _aiSlot.detach();
     _debounce?.cancel();
@@ -204,17 +211,27 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
     _debounce?.cancel();
     widget.onInputChanged?.call(value);
     _debounce = Timer(widget.debounce, () {
+      if (!mounted) return;
       widget.onChanged?.call(value);
     });
     setState(() {});
   }
 
-  void _clear() {
+  void _cancelPendingSearch() {
     _debounce?.cancel();
     _heldByComposition = null;
+  }
+
+  void _clear() {
+    if (!mounted) return;
+    _cancelPendingSearch();
     _controller.clear();
     widget.onInputChanged?.call('');
-    widget.onChanged?.call('');
+    if (widget.onChanged != null) {
+      widget.onChanged!('');
+    } else {
+      widget.onSubmitted?.call('');
+    }
     setState(() {});
   }
 

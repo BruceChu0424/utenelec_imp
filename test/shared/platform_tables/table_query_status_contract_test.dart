@@ -35,7 +35,7 @@ class _Row extends EditableGridRow {
 
 void main() {
   test(
-    'layout keeps filters and sort with the original order/visibility and no session credentials',
+    'layout keeps sort and columns while discarding all transient search filters',
     () {
       const original = PlatformTableLayout(
         order: ['billNo', 'status'],
@@ -47,7 +47,7 @@ void main() {
         hasQueryPreferences: true,
       );
       final value = PlatformTableLayout.fromJson(original.toJson());
-      expect(value.filters, original.filters);
+      expect(value.filters, isEmpty);
       expect(value.sortColumn, 'billNo');
       expect(value.sortAscending, isFalse);
       expect(value.order, original.order);
@@ -58,12 +58,12 @@ void main() {
         PlatformTableLayout.fromJson({
           'filters': {'field': 123, 'safe': '0'},
         }).filters,
-        {'safe': '0'},
+        isEmpty,
       );
     },
   );
   testWidgets(
-    'persisted server filter and sort use host requests and preserve the entire matching grain',
+    'persisted server sort uses host requests without restoring an old filter',
     (tester) async {
       final requests = <Map<String, Object?>>[];
       final container = ProviderContainer(
@@ -94,7 +94,7 @@ void main() {
       expect(
         requests.where(
           (request) =>
-              request['kind'] == 'beta' &&
+              request['kind'] == null &&
               request['sort'] == 'name' &&
               request['ascending'] == false,
         ),
@@ -145,7 +145,7 @@ void main() {
     },
   );
   testWidgets(
-    'editable grid restores whole-row view filter while retaining all writable rows',
+    'editable grid ignores old filters and keeps all source rows during live filtering',
     (tester) async {
       final rows = UtenEditableGridController<_Row>(
         initial: [_Row('alpha'), _Row('beta')],
@@ -197,6 +197,12 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('明细-beta'), findsOneWidget);
+      expect(find.text('明细-alpha'), findsOneWidget);
+      expect(rows.rows.map((row) => row.kind), ['alpha', 'beta']);
+      await tester.tap(find.byIcon(Icons.arrow_drop_down_rounded).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('beta（1）'));
+      await tester.pumpAndSettle();
       expect(find.text('明细-alpha'), findsNothing);
       expect(rows.rows.map((row) => row.kind), ['alpha', 'beta']);
       await tester.tap(find.byIcon(Icons.arrow_drop_down_rounded).first);

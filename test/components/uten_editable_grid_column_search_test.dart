@@ -441,7 +441,7 @@ void main() {
     },
   );
 
-  testWidgets('saved keyword and facet restore without resetting saved sort', (
+  testWidgets('old queries are ignored and new queries survive rebuild only', (
     tester,
   ) async {
     final rows = UtenEditableGridController<_Row>(initial: _rows());
@@ -473,17 +473,39 @@ void main() {
       ),
     );
     expect(find.byTooltip('名称包含全部关键词'), findsOneWidget);
+    _visibleIds(['a', 'b', 'c', 'd'], []);
+    await _apply(tester, '货品名称', '开关');
+    await _open(tester, '颜色');
+    await tester.tap(find.text('白色（1）'));
+    await tester.pumpAndSettle();
     _visibleIds(['a'], ['b', 'c', 'd']);
     await _apply(tester, '系列', '80');
     final saved = container.read(platformTableLayoutProvider(tableKey));
-    expect(saved.filters, {
-      'search.name': '开关',
-      'color': '白色',
-      'search.series': '80',
-    });
+    expect(saved.filters, isEmpty);
     expect(saved.sortColumn, 'name');
     expect(saved.sortAscending, isFalse);
     expect(rows.rows.map((row) => row.id), ['a', 'b', 'c', 'd']);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: _page(rows, tableKey: tableKey),
+      ),
+    );
+    await tester.pumpAndSettle();
+    _visibleIds(['a'], ['b', 'c', 'd']);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: _page(rows, tableKey: tableKey),
+      ),
+    );
+    await tester.pumpAndSettle();
+    _visibleIds(['a', 'b', 'c', 'd'], []);
+    expect(
+      container.read(platformTableLayoutProvider(tableKey)).sortColumn,
+      'name',
+    );
   });
 
   testWidgets(

@@ -100,7 +100,7 @@ void main() {
         expect(decoded.hidden, seed.hidden);
         expect(decoded.widths, seed.widths);
         expect(decoded.added.single.toJson(), seed.added.single.toJson());
-        expect(decoded.filters, seed.filters);
+        expect(decoded.filters, isEmpty);
         expect(decoded.sortColumn, seed.sortColumn);
         expect(decoded.sortAscending, isFalse);
         expect(decoded.hasQueryPreferences, isTrue);

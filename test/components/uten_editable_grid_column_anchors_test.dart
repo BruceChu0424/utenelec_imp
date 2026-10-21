@@ -237,7 +237,7 @@ void main() {
 
   for (final savedDestination in [false, true]) {
     testWidgets(
-      'platform replay ${savedDestination ? 'preserves the saved destination position' : 'anchors an unseen destination'} and preserves width/filter',
+      'platform replay ${savedDestination ? 'preserves the saved destination position' : 'anchors an unseen destination'} and preserves width without old filters',
       (tester) async {
         largeViewport(tester);
         final rows = UtenEditableGridController<_Row>(
@@ -284,7 +284,7 @@ void main() {
         );
         expect(tester.getSize(_headerCell('Quantity')).width, 240);
         expect(find.text('row-keep'), findsOneWidget);
-        expect(find.text('row-other'), findsNothing);
+        expect(find.text('row-other'), findsOneWidget);
         expect(tester.takeException(), isNull);
       },
     );

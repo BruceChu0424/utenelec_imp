@@ -30,6 +30,8 @@ class PlatformTableLayout {
   final Map<String, double> widths;
   final List<PlatformColumnDefinition> added;
   final int? sourceInstance;
+
+  /// Transient table-session query. Never serialized as a layout preference.
   final Map<String, String?> filters;
   final String? sortColumn;
   final bool sortAscending;
@@ -41,16 +43,6 @@ class PlatformTableLayout {
             ? json['layoutVersion'] as int
             : 0,
         order: (json['order'] as List? ?? []).whereType<String>().toList(),
-        filters: {
-          for (final entry
-              in (json['filters'] as Map? ?? const {}).entries.take(64))
-            if (entry.key is String &&
-                (entry.key as String).length <= 256 &&
-                (entry.value == null ||
-                    entry.value is String &&
-                        (entry.value as String).length <= 1000))
-              entry.key as String: entry.value as String?,
-        },
         sortColumn:
             json['sortColumn'] is String &&
                 (json['sortColumn'] as String).length <= 256
@@ -88,7 +80,6 @@ class PlatformTableLayout {
               : ({...d.toJson()}..remove('formula')),
         )
         .toList(),
-    'filters': filters,
     'sortColumn': sortColumn,
     'sortAscending': sortAscending,
     'hasQueryPreferences': hasQueryPreferences,

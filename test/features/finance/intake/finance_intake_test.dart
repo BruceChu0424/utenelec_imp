@@ -226,9 +226,12 @@ void main() {
       );
       await tester.tap(find.text('start'));
       await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const ValueKey('finance-intake-field-accountAmount')),
+      final amountField = find.byKey(
+        const ValueKey('finance-intake-field-accountAmount'),
       );
+      await tester.ensureVisible(amountField);
+      await tester.pumpAndSettle();
+      await tester.tap(amountField);
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('finance-intake-confirm')));
       await tester.pumpAndSettle();

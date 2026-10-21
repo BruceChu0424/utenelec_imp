@@ -44,10 +44,18 @@ void main() {
     expect(clients.listCalls, greaterThan(0));
     expect(find.text('成品类'), findsWidgets);
 
-    // 打开编辑弹窗：改名 + 改前缀 → 保存。编辑入口是左树行内图标（2026-10-19
-    // 起分类 CRUD 在树行内，详情卡无按钮）；点开先拉一次详情（编辑弹窗要 Detail）。
-    await tester.tap(find.byTooltip('编辑成品类'));
+    // 详情菜单与树右键共用分类操作；编辑前读取当前详情。
+    await tester.tap(find.byKey(const ValueKey('hierarchy-detail-menu')));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('编辑分类'));
+    await tester.pumpAndSettle();
+    // Initial prefix availability has a 300 ms debounce, independent of frames.
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pumpAndSettle();
+    expect(categories.prefixChecks.last, (
+      prefix: 'CP',
+      categoryId: 'finished',
+    ));
     await tester.enterText(
       find.byWidgetPredicate(
         (w) => w is TextField && w.decoration?.labelText == '名称',
@@ -56,10 +64,11 @@ void main() {
     );
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
+    expect(categories.updateCalls, 1);
 
     // 保存后：详情卡重拉显示新名称；内容列表也重拉
     // （前缀变更会影响客户编号）；分类树同步显示新名称。
-    // detail 计数：选中 1 次 + 树行编辑图标 1 次 + 保存后重挂 1 次 = 3。
+    // detail 计数：选中 1 次 + 菜单编辑 1 次 + 保存后重挂 1 次 = 3。
     expect(categories.detailCalls('finished'), 3);
     expect(find.text('成品类Pro'), findsWidgets);
     expect(clients.listCallsAfterSave, isTrue);
@@ -268,6 +277,7 @@ Future<void> _pumpPage(
 
 /// 记录 detail 调用次数的假分类仓储：update 会真实改名，模拟服务端已生效。
 class _FakeClientCategoryRepository implements ClientCategoryRepository {
+  int updateCalls = 0;
   final prefixChecks = <({String prefix, String? categoryId})>[];
 
   @override
@@ -320,6 +330,7 @@ class _FakeClientCategoryRepository implements ClientCategoryRepository {
     String id,
     ProductCategoryUpdateInput input,
   ) async {
+    updateCalls++;
     final i = _tree.indexWhere((n) => n.id == id);
     _tree[i] = ProductCategoryNode(
       id: id,

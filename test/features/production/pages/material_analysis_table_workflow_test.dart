@@ -43,7 +43,10 @@ void main() {
       //   且不再有条件列——列集合恒定，列宽列序不会被清空。
       //   2026-09-29「归属车间」列并入「生产车间」：17→16。
       //   2026-10-10 T9「单位」列退役（单位内联进数量列）：16→15。
-      expect(find.text('表头设置 15/15'), findsOneWidget);
+      expect(
+        find.byKey(const Key('platform-table-add-column')).hitTestable(),
+        findsOneWidget,
+      );
       expect(find.text('处理'), findsNothing);
       // 2026-09-25 确认路线退役：按钮没了。2026-09-27 起自动确认在服务端建分析
       // 时就做完了(夹具行已确认 SUBCONTRACT)，进页零写入。

@@ -49,7 +49,9 @@ void main() {
     await tester.tap(find.text('成品类'));
     await tester.pumpAndSettle();
     // 编辑入口是左树行内图标（2026-10-19 起分类 CRUD 在树行内，详情卡无按钮）。
-    await tester.tap(find.byTooltip('编辑成品类'));
+    await tester.tap(find.byKey(const ValueKey('hierarchy-detail-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('编辑分类'));
     await tester.pumpAndSettle();
     expect(find.byType(CategoryEditDialog), findsOneWidget);
 

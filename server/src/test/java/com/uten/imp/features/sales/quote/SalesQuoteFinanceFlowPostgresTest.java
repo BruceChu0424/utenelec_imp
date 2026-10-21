@@ -1,6 +1,7 @@
 package com.uten.imp.features.sales.quote;
 
 import com.uten.imp.application.port.SalesMasterLearningPort;
+import com.uten.imp.application.port.SalesLearningReceiptPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.auth.PermissionResolver;
@@ -53,6 +54,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -110,6 +112,7 @@ class SalesQuoteFinanceFlowPostgresTest {
     @Autowired private DocumentDraftCountController documentCounts;
     @Autowired private ApplicationEvents events;
     @Autowired private com.uten.imp.common.columns.BusinessColumnService businessColumns;
+    @Autowired private SalesLearningReceiptPort learningReceipts;
 
     /** 学习出口由主档包实现; 这里替换成可核对入参的替身(ADR-134: 保存事务内调用一次)。 */
     @MockitoBean private SalesMasterLearningPort learning;
@@ -1058,6 +1061,9 @@ class SalesQuoteFinanceFlowPostgresTest {
         UUID plain = goods("学习普通货品", BigDecimal.TEN);
         loginAs(f.sales());
         clearInvocations(learning);
+        // The capture double must preserve registration before the real post-commit listeners run.
+        doAnswer(invocation->{learningReceipts.register(invocation.getArgument(0));return null;})
+                .when(learning).learnAfterCommit(any());
 
         UUID jobId = UUID.randomUUID();
         QuoteSaveRequest request = quoteRequest(f.client(),
@@ -1092,6 +1098,12 @@ class SalesQuoteFinanceFlowPostgresTest {
         assertThat(sent.lines().getFirst().userConfirmed()).isTrue();
         assertThat(sent.lines().getFirst().setNameEn()).isTrue();
         assertThat(sent.learningReceiptId()).isNotNull();
+        assertThat(jdbc.queryForList("""
+                SELECT value->>'status' FROM sales_document_learning_receipts receipt,
+                    jsonb_each(receipt.steps) WHERE receipt.id=? AND key IN (?,?) ORDER BY key
+                """,String.class,sent.learningReceiptId(),"LAYOUT:"+jobId,"TEMPLATE:"+jobId))
+                .as("a synthetic intake without server evidence skips learning safely")
+                .containsExactly("SKIPPED","SKIPPED");
         assertThat(events.stream(SalesIntakeUsedEvent.class))
                 .containsExactly(new SalesIntakeUsedEvent(jobId, f.sales(), "quote", created.getId(), f.client(),
                         List.of("S1R9"), sent.learningReceiptId()));

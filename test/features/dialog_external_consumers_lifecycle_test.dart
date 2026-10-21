@@ -38,6 +38,12 @@ void main() {
             'scarcity' => '让单',
             _ => '确认出库',
           };
+          if (kind == 'account') {
+            await tester.tap(
+              find.byKey(const ValueKey('hierarchy-detail-menu')),
+            );
+            await tester.pumpAndSettle();
+          }
           await tester.tap(find.text(openLabel));
           await tester.pumpAndSettle();
           final dialog = find.byType(AlertDialog).last;
@@ -122,6 +128,8 @@ void main() {
   ) async {
     final api = _Api();
     final container = await _mount(tester, api, 'account');
+    await tester.tap(find.byKey(const ValueKey('hierarchy-detail-menu')));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('设置警戒线'));
     await tester.pumpAndSettle();
     final dialog = find.byType(AlertDialog).last;

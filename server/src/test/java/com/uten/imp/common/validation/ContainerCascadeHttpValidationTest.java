@@ -41,10 +41,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 import org.springframework.validation.beanvalidation.MethodValidationPostProcessor;
-import org.springframework.validation.beanvalidation.MethodValidationInterceptor;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.aop.framework.Advised;
-import org.springframework.aop.support.AopUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -123,17 +120,15 @@ class ContainerCascadeHttpValidationTest {
     }
 
     @Test
-    void selfServiceVehicleAndPhoneArraysUseTheConfiguredMethodValidationProxy() throws Exception {
+    void selfServiceVehicleAndPhoneArraysUseMvcArgumentValidation() throws Exception {
         var controller = new MyVehiclePhoneController(mock(EmployeeVehiclePhoneService.class),
                 mock(SecurityContextCurrentUser.class), mock(TxSessionVars.class));
+        assertThat(controller.getClass().isAnnotationPresent(Validated.class)).isFalse();
         for (String method : List.of("replaceMyVehicles", "replaceMyPhones")) {
             var handler = new HandlerMethod(controller, controller.getClass().getMethod(method, List.class))
                     .createWithValidateFlags();
-            assertThat(handler.shouldValidateArguments()).as("Class-level @Validated delegates "+method+" to AOP").isFalse();
+            assertThat(handler.shouldValidateArguments()).as("MVC validates array elements for " + method).isTrue();
         }
-        Object proxy=validatedController(controller);
-        assertThat(AopUtils.isAopProxy(proxy)).isTrue();
-        assertThat(((Advised)proxy).getAdvisors()).anyMatch(advisor->advisor.getAdvice() instanceof MethodValidationInterceptor);
     }
 
     @Test

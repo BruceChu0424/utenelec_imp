@@ -45,7 +45,7 @@ class SubcontractPublicResponsibilityEndToEndTest {
 
     @Test void aDifferentDatePublicBatchAddsItsRealBomWithoutAddingPrivateDemand() {
         var c=prepare(false,false);var publicBatch=submitPublic(c,"2",Map.of());
-        assertPublicBudget(c,publicBatch,"2",1);
+        assertPublicBudget(publicBatch,"2",1);
         assertChildren(c,publicBatch);
         var refreshed=refresh(c.c());assertChildren(c,publicBatch);assertEquals(c.salesDemand(),salesDemand(refreshed));
     }
@@ -55,7 +55,7 @@ class SubcontractPublicResponsibilityEndToEndTest {
         var c=prepare(true,aliases);
         Map<UUID,BigDecimal> intent=aliases?scaledIntent(c,"3"):Map.of();
         var publicBatch=submitPublic(c,"3",intent);
-        assertPublicBudget(c,publicBatch,"3",aliases?1:2);
+        assertPublicBudget(publicBatch,"3",aliases?1:2);
         assertChildren(c,publicBatch);
         if(!aliases) {
             var shares=responsibilities(action(publicBatch)).values().stream().sorted().toList();
@@ -68,7 +68,7 @@ class SubcontractPublicResponsibilityEndToEndTest {
         var c=prepare(true,false);List<UUID> ids=c.originals();
         var first=submitPublic(c,"3",Map.of(ids.get(0),new BigDecimal("3"),ids.get(1),BigDecimal.ZERO));
         var second=submitPublic(c,"3",Map.of(ids.get(0),BigDecimal.ZERO,ids.get(1),new BigDecimal("3")));
-        assertEquals(first.batchId(),second.batchId());assertPublicBudget(c,second,"6",2);
+        assertEquals(first.batchId(),second.batchId());assertPublicBudget(second,"6",2);
         responsibilities(action(second)).values().forEach(qty->amount("3",qty));
         assertChildren(c,second);assertEquals(c.salesDemand(),salesDemand(refresh(c.c())));
     }
@@ -161,7 +161,7 @@ class SubcontractPublicResponsibilityEndToEndTest {
                     row->{out.put(row.getObject(1,UUID.class),row.getBigDecimal(2));},action);return out;
         } catch(ClassNotFoundException error) { throw new AssertionError(error); }
     }
-    private void assertPublicBudget(Prepared c,BatchResult batch,String expected,int owners) {
+    private void assertPublicBudget(BatchResult batch,String expected,int owners) {
         UUID action=action(batch);var shares=responsibilities(action);assertEquals(owners,shares.size());
         amount(expected,shares.values().stream().reduce(BigDecimal.ZERO,BigDecimal::add));
         amount("0",h.db.queryForObject("SELECT requested_qty FROM preplan_supply_actions WHERE id=?",BigDecimal.class,action));

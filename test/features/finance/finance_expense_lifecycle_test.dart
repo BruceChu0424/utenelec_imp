@@ -35,15 +35,31 @@ void main() {
         hub: true,
       );
       expect(api.lists, isEmpty);
+      final hubState = tester.state(find.byType(FinanceHubPage));
       await tester.tap(find.text('费用单财务确认'));
       await tester.pumpAndSettle();
-      expect(
-        router.routeInformationProvider.value.uri.queryParameters['status'],
-        'pending-gl-confirmation',
-      );
+      // Imperative pushes retain the hub URL; inspect the active page's route.
+      final listUri = GoRouterState.of(
+        tester.element(find.byType(FinanceDocListPage)),
+      ).uri;
+      expect(listUri.path, '/finance/expenses');
+      expect(listUri.queryParameters['status'], 'pending-gl-confirmation');
+      expect(listUri.queryParameters['returnTo'], '/finance');
       expect(api.lists.last['view'], 'ACTIVE');
       expect(api.lists.last['status'], 1);
       expect(_table(tester).items.single.glStatus, 1);
+      expect(router.canPop(), isTrue);
+
+      await tester.tap(find.byTooltip('返回'));
+      await tester.pumpAndSettle();
+      expect(find.byType(FinanceDocListPage), findsNothing);
+      expect(tester.state(find.byType(FinanceHubPage)), same(hubState));
+      expect(
+        GoRouterState.of(tester.element(find.byType(FinanceHubPage))).uri.path,
+        '/finance',
+      );
+      expect(router.canPop(), isFalse);
+      expect(tester.takeException(), isNull);
     },
   );
 

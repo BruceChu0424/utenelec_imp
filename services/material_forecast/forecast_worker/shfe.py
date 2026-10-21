@@ -36,6 +36,10 @@ class SourceError(RuntimeError):
         self.code, self.retry_after = code, retry_after
 
 
+class SourceCancelled(Exception):
+    """The owner stopped this request; no source failure or retry is implied."""
+
+
 def allowed_url(url: str) -> bool:
     parsed = urllib.parse.urlsplit(url)
     return (parsed.scheme == "https" and parsed.netloc == HOST and not parsed.query
@@ -58,13 +62,17 @@ class ShfeClient:
         self._next_request = 0.0
         self._opener = urllib.request.build_opener(_SafeRedirect())
 
+    def _check_cancelled(self) -> None:
+        if self.stop.is_set():
+            raise SourceCancelled()
+
     def get(self, path: str) -> dict | None:
         url = "https://" + HOST + path
         if not allowed_url(url):
             raise SourceError("INVALID_SOURCE")
         wait = max(0.0, self._next_request - time.monotonic())
         if self.stop.wait(wait):
-            raise SourceError("NETWORK_ERROR")
+            raise SourceCancelled()
         self._next_request = time.monotonic() + self.minimum_interval
         request = urllib.request.Request(url, headers={
             "User-Agent": "UtenIMP-MaterialForecast/2.0 public-report-client",
@@ -72,6 +80,7 @@ class ShfeClient:
         })
         try:
             with self._opener.open(request, timeout=10) as response:
+                self._check_cancelled()
                 if response.status != 200 or not allowed_url(response.url):
                     raise SourceError("INVALID_SOURCE")
                 length = response.headers.get("Content-Length")
@@ -84,9 +93,13 @@ class ShfeClient:
                 chunks, compressed, expanded = [], 0, 0
                 deadline = time.monotonic() + 30
                 while True:
-                    if self.stop.is_set() or time.monotonic() > deadline:
+                    self._check_cancelled()
+                    if time.monotonic() > deadline:
                         raise SourceError("NETWORK_ERROR")
                     chunk = response.read(65536)
+                    self._check_cancelled()
+                    if time.monotonic() > deadline:
+                        raise SourceError("NETWORK_ERROR")
                     if not chunk:
                         break
                     compressed += len(chunk)
@@ -100,19 +113,24 @@ class ShfeClient:
                 if decoder and (not decoder.eof or decoder.unused_data):
                     raise SourceError("INVALID_SOURCE")
                 value = json.loads(b"".join(chunks).decode("utf-8-sig"))
+                self._check_cancelled()
                 if not isinstance(value, dict):
                     raise SourceError("INVALID_SOURCE")
                 return value
         except urllib.error.HTTPError as exc:
-            if exc.code == 404:
-                return None
             if exc.code in (403, 429):
+                # An observed throttle remains authoritative even if STOP raced
+                # its headers; the next owned run must honor the source delay.
                 retry = exc.headers.get("Retry-After", "0")
                 raise SourceError("RATE_LIMITED", min(21600, int(retry)) if retry.isdigit() else 0) from exc
+            self._check_cancelled()
+            if exc.code == 404:
+                return None
             raise SourceError("NETWORK_ERROR") from exc
         except SourceError:
             raise
         except (OSError, ValueError, zlib.error) as exc:
+            self._check_cancelled()
             raise SourceError("INVALID_SOURCE" if isinstance(exc, (ValueError, zlib.error)) else "NETWORK_ERROR") from exc
 
 

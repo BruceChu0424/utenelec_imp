@@ -14,7 +14,7 @@ from . import __version__
 from .cli import atomic_json, series_lock
 from .data import BUSINESS_ZONE, instant, utc_text
 from .locking import register_write_barrier
-from .shfe import ReportCache, ShfeClient, SourceError, chain_points, load_benchmarks, price
+from .shfe import ReportCache, ShfeClient, SourceCancelled, SourceError, chain_points, load_benchmarks, price
 
 
 class AutoFeed:
@@ -71,7 +71,12 @@ class AutoFeed:
                 self.stop.set()
                 return
 
+    def _check_cancelled(self) -> None:
+        if self.stop.is_set():
+            raise SourceCancelled()
+
     def daily(self, day: date, *, refresh: bool = False) -> dict | None:
+        self._check_cancelled()
         old = self.cache.daily(day)
         if old and not refresh:
             return old
@@ -107,6 +112,7 @@ class AutoFeed:
             raise SourceError("INVALID_SOURCE")
         # Only prior-day OI may choose a contract. Find that completed trading day.
         for offset in range(1, 20):
+            self._check_cancelled()
             day = latest - timedelta(days=offset)
             if day.weekday() >= 5:
                 continue
@@ -118,6 +124,7 @@ class AutoFeed:
         indices = []
         day, start = latest, latest - timedelta(days=self.history_days)
         while day >= start:
+            self._check_cancelled()
             cached = self.cache.daily(day)
             if cached:
                 indices.append(cached)
@@ -136,18 +143,21 @@ class AutoFeed:
                 self.daily(day)
                 requested += 1
             day -= timedelta(days=1)
+        self._check_cancelled()
         self.state["backfillCursor"] = day.isoformat()
         self.state["historyStart"] = start.isoformat()
         return requested > 0
 
     def archive_manifest(self) -> None:
         """Discover official archives without downloading/extracting the large all-product ZIPs."""
+        self._check_cancelled()
         path = self.cache.root / "metadata" / "download-manifest.json"
         if path.exists():
             cached = json.loads(path.read_text(encoding="utf-8"))
             if self.now() - instant(cached["fetchedAt"]) < timedelta(days=7):
                 return
         value = self.client.get("/reports/tradedata/datadownload/download.json")
+        self._check_cancelled()
         if value is None or not isinstance(value.get("data"), dict):
             raise SourceError("INVALID_SOURCE")
         self.cache.record_document("download-manifest", value, self.now())
@@ -160,6 +170,7 @@ class AutoFeed:
         digest = hashlib.sha256(json.dumps([(item["date"], item["sha256"]) for item in indices]).encode()).hexdigest()
         selected = {}
         for benchmark in self.benchmarks:
+            self._check_cancelled()
             points = chain_points(indices, benchmark["symbol"])
             if not points:
                 continue
@@ -172,6 +183,7 @@ class AutoFeed:
             if due:
                 try:
                     snapshot = build_automatic_snapshot(benchmark, points, self.now(), digest, instant(indices[-1]["fetchedAt"]))
+                    self._check_cancelled()
                     if snapshot.get("schemaVersion") != 2 or snapshot.get("status") == "READY" or snapshot.get("procurementSignal") != "INSUFFICIENT":
                         raise ValueError("automatic model contract violated")
                     issued_digest = hashlib.sha256(json.dumps(snapshot, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
@@ -193,11 +205,13 @@ class AutoFeed:
     def publish_quotes(self, selected: dict[str, str]) -> None:
         self.heartbeat(status="FETCHING")
         for benchmark in self.benchmarks:
+            self._check_cancelled()
             series = benchmark["seriesId"]
             contract = selected.get(series)
             if not contract:
                 continue
             payload = self.client.get("/data/tradedata/future/delaymarket/delaymarket_" + benchmark["symbol"] + ".dat")
+            self._check_cancelled()
             if payload is None or not isinstance(payload.get("delaymarket"), list) or len(payload["delaymarket"]) > 1000:
                 raise SourceError("INVALID_SOURCE")
             rows = [item for item in payload["delaymarket"] if isinstance(item, dict) and str(item.get("contractname", "")).strip() == contract]
@@ -221,6 +235,8 @@ class AutoFeed:
                 self.health[series]["lastSuccessAt"] = utc_text(now)
 
     def run_cycle(self) -> bool:
+        if self.stop.is_set():
+            return False
         now = self.now()
         retry_at = self.state.get("retryNotBefore")
         if retry_at and now < instant(retry_at):
@@ -229,6 +245,7 @@ class AutoFeed:
             return False
         self.heartbeat(status="FETCHING", lastAttemptAt=utc_text(now), nextSyncAt=None, errorCode=None)
         try:
+            self._check_cancelled()
             latest = self.latest_pair()
             indices = self.contiguous_indices(latest)
             selected = self.publish_models(indices)  # Publish completed prices before historical work.
@@ -240,15 +257,22 @@ class AutoFeed:
                 # A source throttle still stops every request to that host immediately.
                 if isinstance(warning, SourceError) and warning.code == "RATE_LIMITED":
                     raise
+                self._check_cancelled()
                 print(json.dumps({"event": "archive_discovery_unavailable", "errorCode":
                                   warning.code if isinstance(warning, SourceError) else "INVALID_SOURCE"}), flush=True)
-            if self.backfill(latest):
+            backfilled = self.backfill(latest)
+            self._check_cancelled()
+            if backfilled:
                 self.publish_models(self.contiguous_indices(latest))
             # Revisiting one cached prior date per cycle detects later source corrections.
             cursor = self.state.get("revisionDay", 1)
             review = latest - timedelta(days=cursor)
             if review.weekday() < 5 and (self.cache.daily(review) or self.cache.missing(review)):
                 self.daily(review, refresh=True)
+            history_reports = len(self.contiguous_indices(latest))
+            # Commit success only after all work completed without cancellation.
+            # Reports already saved by a partial backfill remain reusable.
+            self._check_cancelled()
             self.state["revisionDay"] = 1 if cursor >= 7 else cursor + 1
             self.state["failures"] = 0
             self.state.pop("retryNotBefore", None)
@@ -259,10 +283,15 @@ class AutoFeed:
             self.heartbeat(status="IDLE", errorCode=None,
                            nextSyncAt=utc_text(self.now() + timedelta(seconds=self.interval)) if self.continuous else None)
             print(json.dumps({"event": "source_sync_complete", "dataAsOf": latest.isoformat(),
-                              "historyReports": len(self.contiguous_indices(latest)),
+                              "historyReports": history_reports,
                               "backfillCursor": self.state["backfillCursor"]}), flush=True)
             return True
+        except SourceCancelled:
+            self.stop.set()
+            return False
         except (SourceError, OSError, ValueError, KeyError) as exc:
+            if self.stop.is_set() and not (isinstance(exc, SourceError) and exc.code == "RATE_LIMITED"):
+                return False
             code = exc.code if isinstance(exc, SourceError) else "INVALID_SOURCE"
             self.state["failures"] = min(6, self.state.get("failures", 0) + 1)
             delay = min(21600, self.interval * 2 ** self.state["failures"])
@@ -286,6 +315,8 @@ class AutoFeed:
             try:
                 while not self.stop.is_set():
                     success = self.run_cycle()
+                    if self.stop.is_set():
+                        break
                     if not self.continuous:
                         return 0 if success else 2
                     if self.stop.wait(self.state.get("nextDelay", self.interval)):

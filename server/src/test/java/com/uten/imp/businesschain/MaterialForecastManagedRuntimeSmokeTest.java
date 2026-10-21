@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.UtenImpApplication;
 import com.uten.imp.config.props.MaterialForecastProperties;
 import com.uten.imp.features.admin.materialforecast.MaterialForecastHostPaths;
+import com.uten.imp.features.admin.materialforecast.MaterialForecastSupervisor;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Timeout;
@@ -16,6 +17,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.MountableFile;
 
@@ -27,6 +29,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -118,10 +121,12 @@ class MaterialForecastManagedRuntimeSmokeTest {
                     assertEquals(revision, health(firstState).path("configRevision").asText());
 
                     // Destroy only the worker that this test's JVM owns for this private state directory.
-                    ProcessHandle child = ProcessHandle.current().children().filter(process -> {
-                        String[] arguments = process.info().arguments().orElse(new String[0]);
-                        return List.of(arguments).contains(firstState.toString()) && List.of(arguments).contains("--auto");
-                    }).findFirst().orElseThrow(() -> new AssertionError("Owned market worker missing"));
+                    Process owned = assertInstanceOf(Process.class, ReflectionTestUtils.getField(
+                            context.getBean(MaterialForecastSupervisor.class), "worker"));
+                    assertTrue(owned.isAlive(), "Owned market worker must be alive before the crash");
+                    ProcessHandle child = owned.toHandle();
+                    assertEquals(ProcessHandle.current().pid(), child.parent()
+                            .orElseThrow(() -> new AssertionError("Owned worker parent missing")).pid());
                     crashTestChildren.addAll(child.descendants().toList());
                     child.destroyForcibly();
                     String beforeCrash = firstRun;
@@ -129,7 +134,8 @@ class MaterialForecastManagedRuntimeSmokeTest {
                         JsonNode status = request(base, "GET", SETTINGS + "/material-forecast-status", null, token, null);
                         JSON.writerWithDefaultPrettyPrinter().writeValue(work.resolve("last-status.json").toFile(), status);
                         return status.path("runtime").path("configurationApplied").asBoolean()
-                                && !beforeCrash.equals(health(firstState).path("runId").asText()) ? status : null;
+                                && !beforeCrash.equals(health(firstState).path("runId").asText())
+                                && crashTestChildren.stream().noneMatch(ProcessHandle::isAlive) ? status : null;
                     });
                     evidence.put("crashRecovered", true);
                     save(base, token, Map.of("material_forecast.enabled", "false"));
@@ -199,11 +205,12 @@ class MaterialForecastManagedRuntimeSmokeTest {
                 String base = base(context);
                 String token = login(base, false);
                 String oldRun = firstRun;
-                JsonNode restored = await("restored host automatic acknowledgement", () -> {
+                JsonNode restored = await("restored host complete fresh collection", () -> {
                     JsonNode status = request(base, "GET", SETTINGS + "/material-forecast-status", null, token, null);
                     JSON.writerWithDefaultPrettyPrinter().writeValue(work.resolve("last-status.json").toFile(), status);
                     return status.path("runtime").path("configurationApplied").asBoolean()
-                            && !oldRun.equals(health(nextHost.resolve("media/material-forecast")).path("runId").asText()) ? status : null;
+                            && !oldRun.equals(health(nextHost.resolve("media/material-forecast")).path("runId").asText())
+                            && allBenchmarksRefreshedThisRun(status) ? status : null;
                 });
                 assertEquals(revision, restored.path("configuration").path("revision").asText());
                 assertEquals(16, restored.path("configuration").path("intervalMinutes").asInt());
@@ -215,6 +222,7 @@ class MaterialForecastManagedRuntimeSmokeTest {
                 evidence.put("restoredCollection", restored);
                 evidence.put("restoredBindingVersion", read.path("bindingVersion").asInt());
                 evidence.put("restoredPolicyRevisionUnchanged", true);
+                evidence.put("restoredFreshCollectionConfirmed", true);
                 evidence.put("migrationCount", context.getBean(JdbcTemplate.class).queryForObject(
                         "SELECT count(*) FROM flyway_schema_history WHERE success", Long.class));
             }
@@ -379,6 +387,24 @@ class MaterialForecastManagedRuntimeSmokeTest {
             }
         }
         return published.equals(Set.of(SERIES, "shfe_al_main_daily", "shfe_ag_main_daily"));
+    }
+
+    private static boolean allBenchmarksRefreshedThisRun(JsonNode status) {
+        if (!allBenchmarksPublished(status)) {
+            return false;
+        }
+        try {
+            Instant started = Instant.parse(status.path("runtime").path("startedAt").asText(""));
+            for (JsonNode feed : status.path("feeds")) {
+                Instant succeeded = Instant.parse(feed.path("sync").path("lastSuccessAt").asText(""));
+                if (succeeded.isBefore(started)) {
+                    return false;
+                }
+            }
+            return true;
+        } catch (DateTimeParseException unavailable) {
+            return false;
+        }
     }
 
     private static JsonNode health(Path state) throws Exception {

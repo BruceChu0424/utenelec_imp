@@ -525,6 +525,14 @@ class _WarehouseQualityResultsPageState
     List<String>? inspectionItemIds,
   }) async {
     if (_loading) return;
+    final List<String>? selectedItems;
+    try {
+      selectedItems =
+          inspectionItemIds ?? warehouseQualityInspectionSelection([task]);
+    } on ApiException catch (error) {
+      context.appError(error.message);
+      return;
+    }
     final drafts = _taskDrafts(task);
     if (drafts.isNotEmpty) {
       await resumeTaskFormDraft(context, ref, drafts);
@@ -538,8 +546,8 @@ class _WarehouseQualityResultsPageState
           task.receiptId,
         ),
         queryParameters: {
-          if (inspectionItemIds != null)
-            'inspectionItemIds': inspectionItemIds.join(','),
+          if (selectedItems != null)
+            'inspectionItemIds': selectedItems.join(','),
         },
       ).toString(),
     );

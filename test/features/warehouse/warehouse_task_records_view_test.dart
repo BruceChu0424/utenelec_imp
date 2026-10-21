@@ -196,6 +196,7 @@ class _Api extends ApiClient {
   _Api() : super(Dio());
   String? lastPath;
   Map<String, dynamic>? lastQuery;
+  Map<String, dynamic>? physicalDetail;
   @override
   Future<Map<String, dynamic>> get(
     String path, {
@@ -214,6 +215,9 @@ class _Api extends ApiClient {
     }
     lastPath = path;
     lastQuery = Map.of(query ?? const {});
+    if (path.endsWith('/detail') && physicalDetail != null) {
+      return physicalDetail!;
+    }
     return const {
       'items': <Map<String, dynamic>>[],
       'page': 1,
@@ -283,6 +287,7 @@ Future<_Harness> _pump(
   bool settle = true,
   Set<String>? permissions,
   bool readOnly = false,
+  ApiClient? api,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1440, 800));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -310,7 +315,7 @@ Future<_Harness> _pump(
             },
       ),
       warehouseTaskCenterRepositoryProvider.overrideWithValue(gateway),
-      apiClientProvider.overrideWithValue(_Api()),
+      apiClientProvider.overrideWithValue(api ?? _Api()),
       apiBaseUrlProvider.overrideWith((ref) => ref.watch(_server)),
       authenticatedScopeProvider.overrideWith((ref) => ref.watch(_actor)),
       warehouseTaskScopeProvider.overrideWith((ref) => ref.watch(_warehouse)),
@@ -384,6 +389,10 @@ Future<_Harness> _pump(
         path: '/warehouse/subcontract-outbound/:id',
         builder: (_, state) => target(state),
       ),
+      GoRoute(
+        path: '/warehouse/quality-results/:receiptType/:receiptId',
+        builder: (_, state) => target(state),
+      ),
     ],
   );
   addTearDown(router.dispose);
@@ -417,6 +426,179 @@ Future<void> _doubleTap(WidgetTester tester, String text) async {
 }
 
 void main() {
+  testWidgets(
+    'finished registered A opens its exact detail beside pending B on the same report',
+    (tester) async {
+      final registered = warehouseTestRecord(
+        source: 'FINISHED',
+        record: 'FINISHED_REGISTRATION',
+        id: 'registration-a',
+        billNo: 'REPORT-SAME',
+        action: 'FINISHED_ARRIVAL_DETAIL',
+        data: {
+          'registrationId': 'registration-a',
+          'registrationItemId': 'registered-item-a',
+          'reportId': 'report-same',
+          'sourceReportItemId': 'source-item-a',
+          'reversible': false,
+        },
+        line: const WarehouseTaskLine(
+          key: 'registered-item-a',
+          itemId: 'registered-item-a',
+          goodsName: '已登记实物A',
+          quantity: 4,
+        ),
+      );
+      final pending = warehouseTestRecord(
+        source: 'FINISHED',
+        record: 'FINISHED_REPORT',
+        id: 'report-same',
+        billNo: 'REPORT-SAME',
+        action: 'FINISHED_REGISTER',
+        canHandle: true,
+        data: {'reportId': 'report-same', 'lotId': 'lot-b'},
+        line: const WarehouseTaskLine(
+          key: 'lot-b',
+          itemId: 'source-item-b',
+          goodsName: '同报工待登记实物B',
+          quantity: 9,
+        ),
+      );
+      final api = _Api()
+        ..physicalDetail = {
+          'row': {
+            'rowKey': 'FINISHED:FINISHED_REGISTRATION:registration-a',
+            'id': 'registration-a',
+            'sourceType': 'FINISHED',
+            'recordType': 'FINISHED_REGISTRATION',
+            'status': 'FINISHED_WAITING_FQC',
+            'statusLabel': '已登记 · 等待品质检查',
+            'targetId': 'registration-a',
+            'action': 'FINISHED_ARRIVAL_DETAIL',
+            'actionData': {
+              'registrationId': 'registration-a',
+              'reportId': 'report-same',
+              'reversible': false,
+            },
+          },
+          'lines': [
+            {
+              'registrationId': 'registration-a',
+              'sourceReportItemId': 'source-item-a',
+              'goodsName': '已登记实物A',
+              'quantity': 4,
+            },
+          ],
+          'page': 1,
+          'totalPages': 1,
+          'total': 1,
+        };
+      final harness = await _pump(
+        tester,
+        WarehouseTaskRecordsFakeGateway([registered, pending]),
+        spec: const _ViewSpec(
+          direction: WarehouseTaskDirection.inbound,
+          source: 'FINISHED',
+          sources: warehouseTestInboundSources,
+        ),
+        api: api,
+      );
+      _table(tester).onRowTap!(registered);
+      // The task view deliberately stays busy while its modal is open.
+      for (var frame = 0; frame < 10; frame++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(harness.opened, isEmpty);
+      expect(
+        api.lastPath,
+        '/warehouse/task-center/inbound/FINISHED%3AFINISHED_REGISTRATION%3Aregistration-a/detail',
+      );
+      expect(api.lastQuery, {
+        'scopeWarehouseId': 'warehouse-a',
+        'linePage': 1,
+        'lineSize': 100,
+      });
+      final detail = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        find.byType(MasterDataTableView<Map<String, dynamic>>),
+      );
+      expect(detail.items.single['sourceReportItemId'], 'source-item-a');
+      expect(
+        detail.items.any(
+          (item) => item['sourceReportItemId'] == 'source-item-b',
+        ),
+        isFalse,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text('关闭'));
+      await tester.pumpAndSettle();
+    },
+  );
+  for (final source in ['PURCHASE', 'SUBCONTRACT']) {
+    for (final scenario in [
+      'valid',
+      'missing',
+      'empty',
+      'blank',
+      'wrong-type',
+      'legacy',
+    ]) {
+      testWidgets('quality record physical scope $source $scenario', (
+        tester,
+      ) async {
+        final row = warehouseTestRecord(
+          source: source,
+          record: 'RECEIPT',
+          id: 'receipt-1',
+          billNo: 'RECEIPT-1',
+          action: 'QUALITY_RESULT',
+          canHandle: true,
+          data: {
+            'receiptType': source,
+            if (scenario == 'valid')
+              'inspectionItemIds': ['inspection-a', 'inspection-b'],
+            if (scenario == 'empty') 'inspectionItemIds': <String>[],
+            if (scenario == 'blank') 'inspectionItemIds': ['inspection-a', ' '],
+            if (scenario == 'wrong-type')
+              'inspectionItemIds': ['inspection-a', 7],
+          },
+          line: scenario == 'legacy'
+              ? null
+              : const WarehouseTaskLine(
+                  key: 'receipt-item-a',
+                  itemId: 'receipt-item-a',
+                  goodsCode: 'SAME-GOODS',
+                ),
+        );
+        final harness = await _pump(
+          tester,
+          WarehouseTaskRecordsFakeGateway([row]),
+          spec: _ViewSpec(
+            direction: WarehouseTaskDirection.inbound,
+            source: source,
+            sources: warehouseTestInboundSources,
+          ),
+        );
+        _table(tester).onRowTap!(row);
+        await tester.pumpAndSettle();
+        if (scenario == 'valid') {
+          expect(
+            harness.opened.single.queryParameters['inspectionItemIds'],
+            'inspection-a,inspection-b',
+          );
+        } else if (scenario == 'legacy') {
+          expect(
+            harness.opened.single.queryParameters.containsKey(
+              'inspectionItemIds',
+            ),
+            isFalse,
+          );
+        } else {
+          expect(harness.opened, isEmpty);
+        }
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
   for (final selectedLots in <List<String>>[
     ['lot-a'],
     ['lot-a', 'lot-b'],

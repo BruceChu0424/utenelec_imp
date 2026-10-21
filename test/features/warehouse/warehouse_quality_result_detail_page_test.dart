@@ -1,9 +1,13 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_app_bar_action_button.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_iqc_return.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_iqc_stock_in.dart';
@@ -20,6 +24,311 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets(
+    'original unknown quality confirmation survives unavailable scope reload',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1800, 1500);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final detail = _detailJson();
+      final stock = _StockInGateway(unknownOnce: true);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(ApiClient(Dio())),
+            warehouseQualityResultRepositoryProvider.overrideWithValue(
+              _QualityGateway(detail),
+            ),
+            warehouseIqcStockInRepositoryProvider.overrideWithValue(stock),
+            warehouseIqcReturnRepositoryProvider.overrideWithValue(
+              _FailingReturnGateway(),
+            ),
+            sharedPreferencesProvider.overrideWithValue(
+              await SharedPreferences.getInstance(),
+            ),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.warehouseIqcStockInView,
+              Perm.warehouseIqcStockInConfirm,
+            }),
+          ],
+          child: const MaterialApp(
+            home: WarehouseQualityResultDetailPage(
+              receiptType: 'PURCHASE',
+              receiptId: 'receipt-1',
+              inspectionItemIds: ['inspection-1'],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('warehouse-quality-detail-confirm')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('warehouse-inbound-allocation-confirm')),
+      );
+      await tester.pumpAndSettle();
+      final editor =
+          tester.state(find.byType(WarehouseQualityResultDetailPage))
+              as FormDraftMixin<WarehouseQualityResultDetailPage>;
+      final original = editor.captureFormDraft()['pendingCommand'];
+      expect(original, isNotNull);
+      expect(stock.confirmCalls, 1);
+      detail['lines'] = (detail['lines'] as List)
+          .cast<Map<String, dynamic>>()
+          .where((line) => line['inspectionItemId'] != 'inspection-1')
+          .toList();
+      await tester.tap(
+        find.byKey(const Key('warehouse-quality-detail-refresh')),
+      );
+      await tester.pumpAndSettle();
+      expect(editor.captureFormDraft()['pendingCommand'], original);
+      expect(
+        find.byKey(const Key('warehouse-quality-detail-confirm')),
+        findsNothing,
+      );
+      final recovery = editor.formDraftSubmissionRecoveryAction as UtenButton;
+      expect(recovery.onPressed, isNotNull);
+      recovery.onPressed!();
+      await tester.pumpAndSettle();
+      expect(stock.confirmCalls, 2);
+      expect(stock.lastCommand!.toJson(), original);
+      expect(editor.captureFormDraft()['pendingCommand'], isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'quality confirmation cannot submit after its source scope reloads',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1800, 1500);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final detail = _detailJson();
+      final stock = _StockInGateway();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(ApiClient(Dio())),
+            warehouseQualityResultRepositoryProvider.overrideWithValue(
+              _QualityGateway(detail),
+            ),
+            warehouseIqcStockInRepositoryProvider.overrideWithValue(stock),
+            warehouseIqcReturnRepositoryProvider.overrideWithValue(
+              _FailingReturnGateway(),
+            ),
+            sharedPreferencesProvider.overrideWithValue(
+              await SharedPreferences.getInstance(),
+            ),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.warehouseIqcStockInView,
+              Perm.warehouseIqcStockInConfirm,
+            }),
+          ],
+          child: const MaterialApp(
+            home: WarehouseQualityResultDetailPage(
+              receiptType: 'PURCHASE',
+              receiptId: 'receipt-1',
+              inspectionItemIds: ['inspection-1'],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final refresh = tester
+          .widget<UtenAppBarActionButton>(
+            find.byKey(const Key('warehouse-quality-detail-refresh')),
+          )
+          .onPressed!;
+      await tester.tap(
+        find.byKey(const Key('warehouse-quality-detail-confirm')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('warehouse-inbound-allocation-confirm')),
+        findsOneWidget,
+      );
+      detail['lines'] = (detail['lines'] as List)
+          .cast<Map<String, dynamic>>()
+          .where((line) => line['inspectionItemId'] != 'inspection-1')
+          .toList();
+      refresh();
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('warehouse-inbound-allocation-confirm')),
+      );
+      await tester.pumpAndSettle();
+      expect(stock.confirmCalls, 0);
+      expect(
+        find.byKey(const Key('warehouse-quality-detail-confirm')),
+        findsNothing,
+      );
+      final editor =
+          tester.state(find.byType(WarehouseQualityResultDetailPage))
+              as FormDraftMixin<WarehouseQualityResultDetailPage>;
+      expect(editor.captureFormDraft()['pendingCommand'], isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final scenario in [
+    'unselected',
+    'selected',
+    'stale',
+    'network',
+    'version',
+  ]) {
+    final selectedRejection = scenario != 'unselected';
+    testWidgets(
+      'scoped mixed quality detail keeps return selection $scenario',
+      (tester) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = const Size(1800, 1500);
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final returns = _RecordingReturnGateway();
+        final detail = {
+          ..._detailJson(),
+          'rejections': [
+            {
+              'id': 'rejection-c',
+              'inspectionItemId': 'inspection-2',
+              'goodsId': 'goods-2',
+              'goodsName': '未合格产品C',
+              'failedQty': 10,
+              'physicalStatus': 'PENDING_RETURN',
+              'rowVersion': 7,
+              'canRecordReturn': true,
+            },
+          ],
+        };
+        final quality = _QualityGateway(detail);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              apiClientProvider.overrideWithValue(ApiClient(Dio())),
+              warehouseQualityResultRepositoryProvider.overrideWithValue(
+                quality,
+              ),
+              warehouseIqcStockInRepositoryProvider.overrideWithValue(
+                _StockInGateway(),
+              ),
+              warehouseIqcReturnRepositoryProvider.overrideWithValue(returns),
+              sharedPreferencesProvider.overrideWithValue(
+                await SharedPreferences.getInstance(),
+              ),
+              currentPermissionsProvider.overrideWithValue(const {
+                Perm.warehouseIqcStockInView,
+                Perm.warehouseIqcStockInConfirm,
+                Perm.warehouseIqcReturnView,
+                Perm.procurementIqcRejectionRecordReturn,
+              }),
+            ],
+            child: MaterialApp(
+              home: WarehouseQualityResultDetailPage(
+                receiptType: 'PURCHASE',
+                receiptId: 'receipt-1',
+                inspectionItemIds: [
+                  selectedRejection ? 'inspection-2' : 'inspection-0',
+                ],
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final card = find.byKey(
+          const ValueKey('quality-rejection-rejection-c'),
+        );
+        if (!selectedRejection) {
+          expect(card, findsNothing);
+          expect(find.text('登记退回'), findsNothing);
+        } else {
+          expect(card, findsOneWidget);
+          if (scenario == 'stale' || scenario == 'network') {
+            final stale = tester
+                .widget<UtenButton>(find.widgetWithText(UtenButton, '登记退回'))
+                .onPressed!;
+            final originalLines = detail['lines'];
+            if (scenario == 'stale') {
+              detail['lines'] = (detail['lines'] as List)
+                  .cast<Map<String, dynamic>>()
+                  .where((line) => line['inspectionItemId'] != 'inspection-2')
+                  .toList();
+            } else {
+              quality.nextError = ApiException('NETWORK_ERROR', '离线读取失败');
+            }
+            await tester.tap(
+              find.byKey(const Key('warehouse-quality-detail-refresh')),
+            );
+            await tester.pumpAndSettle();
+            expect(
+              find.textContaining(
+                scenario == 'stale' ? '所选品质放行明细已变化' : '离线读取失败',
+              ),
+              findsOneWidget,
+            );
+            expect(find.text('登记退回'), findsNothing);
+            stale();
+            await tester.pumpAndSettle();
+            expect(find.byType(TextFormField), findsNothing);
+            expect(returns.ids, isEmpty);
+            detail['lines'] = originalLines;
+            await tester.tap(
+              find.byKey(const Key('warehouse-quality-detail-refresh')),
+            );
+            await tester.pumpAndSettle();
+            expect(find.text('登记退回'), findsOneWidget);
+          }
+          final refresh = tester
+              .widget<UtenAppBarActionButton>(
+                find.byKey(const Key('warehouse-quality-detail-refresh')),
+              )
+              .onPressed!;
+          await tester.ensureVisible(find.text('登记退回'));
+          await tester.tap(find.text('登记退回'));
+          await tester.pumpAndSettle();
+          if (scenario == 'version') {
+            (detail['rejections'] as List)
+                    .cast<Map<String, dynamic>>()
+                    .single['rowVersion'] =
+                8;
+            refresh();
+            await tester.pumpAndSettle();
+            await tester.enterText(
+              find.byType(TextFormField).at(0),
+              'OLD-RETURN-C',
+            );
+            await tester.enterText(
+              find.byType(TextFormField).at(1),
+              '旧版本确认不能写入',
+            );
+            await tester.tap(find.text('确认登记'));
+            await tester.pumpAndSettle();
+            expect(returns.ids, isEmpty);
+            await tester.ensureVisible(find.text('登记退回'));
+            await tester.tap(find.text('登记退回'));
+            await tester.pumpAndSettle();
+          }
+          final fields = find.byType(TextFormField);
+          await tester.enterText(fields.at(0), 'RETURN-C-001');
+          await tester.enterText(fields.at(1), '核对物料C实物退回');
+          await tester.tap(find.text('确认登记'));
+          await tester.pumpAndSettle();
+          expect(returns.ids, ['rejection-c']);
+          expect(
+            returns.lastCommand!.expectedVersion,
+            scenario == 'version' ? 8 : 7,
+          );
+        }
+        expect(returns.ids, selectedRejection ? ['rejection-c'] : isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets(
     'physical inspection selection displays and posts only its release slices',
@@ -899,6 +1208,7 @@ class _QualityGateway implements WarehouseQualityResultGateway {
 
   final Map<String, dynamic> detailJson;
   int detailCalls = 0;
+  Object? nextError;
 
   @override
   Future<WarehouseQualityResultDetail> detail(
@@ -906,6 +1216,9 @@ class _QualityGateway implements WarehouseQualityResultGateway {
     String receiptId,
   ) async {
     detailCalls++;
+    final error = nextError;
+    nextError = null;
+    if (error != null) throw error;
     return WarehouseQualityResultDetail.fromJson(detailJson);
   }
 
@@ -950,9 +1263,14 @@ class _QualityGateway implements WarehouseQualityResultGateway {
 }
 
 class _StockInGateway implements WarehouseIqcStockInGateway {
-  _StockInGateway({this.conflictOnce = false, this.allocations = const []});
+  _StockInGateway({
+    this.conflictOnce = false,
+    this.unknownOnce = false,
+    this.allocations = const [],
+  });
 
   final bool conflictOnce;
+  final bool unknownOnce;
   final List<WarehouseInboundAllocation> allocations;
   int confirmCalls = 0;
   WarehouseIqcStockInConfirmCommand? lastCommand;
@@ -965,12 +1283,15 @@ class _StockInGateway implements WarehouseIqcStockInGateway {
   ) async {
     confirmCalls++;
     lastCommand = command;
+    if (unknownOnce && confirmCalls == 1) {
+      throw ApiException('NETWORK_ERROR', '未取得原入库回执');
+    }
     if (conflictOnce && confirmCalls == 1) {
       throw ApiException('CONFLICT', '品质放行待入库余量已变化');
     }
     return WarehouseIqcStockInConfirmResult(
       batchId: 'batch-1',
-      replayed: false,
+      replayed: unknownOnce,
       confirmedCount: command.items.length,
       confirmedAt: '2026-09-01T10:00:00Z',
       allocations: allocations,
@@ -1063,4 +1384,18 @@ class _FailingReturnGateway implements WarehouseIqcReturnGateway {
     String rejectionId,
     WarehouseIqcRecordReturnCommand command,
   ) async => throw StateError('unexpected record return');
+}
+
+class _RecordingReturnGateway implements WarehouseIqcReturnGateway {
+  final ids = <String>[];
+  WarehouseIqcRecordReturnCommand? lastCommand;
+  @override
+  Future<WarehouseIqcReturnTask> recordReturn(
+    String id,
+    WarehouseIqcRecordReturnCommand command,
+  ) async {
+    ids.add(id);
+    lastCommand = command;
+    return WarehouseIqcReturnTask(id: id, version: 8, allowedActions: const {});
+  }
 }

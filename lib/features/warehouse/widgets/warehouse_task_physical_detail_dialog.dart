@@ -1,15 +1,44 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/network/server_config.dart';
+import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/drafts/form_draft_store.dart' show describeSubmitError;
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/warehouse/warehouse_task_scope.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/warehouse_task_center_record.dart';
+import '../providers/warehouse_count_refresh.dart';
+import '../repositories/production_finished_inbound_task_repository.dart';
+import 'arrival_registration_failure.dart' show isDefiniteArrivalRejection;
+import 'arrival_registration_reversal_dialog.dart';
+
+/// Only an explicitly confirmed reversal returns true. Historical browsing stays read-only.
+Future<bool> showWarehouseTaskPhysicalDetailDialog(
+  BuildContext context, {
+  required WarehouseTaskCenterRecord row,
+  required WarehouseTaskScope warehouseScope,
+  bool allowFinishedRegistrationReversal = false,
+}) async =>
+    await showDialog<bool>(
+      context: context,
+      barrierDismissible: !allowFinishedRegistrationReversal,
+      builder: (_) => WarehouseTaskPhysicalDetailDialog(
+        row: row,
+        warehouseScope: warehouseScope,
+        allowFinishedRegistrationReversal: allowFinishedRegistrationReversal,
+      ),
+    ) ??
+    false;
 
 /// History reads keep the same source identity and warehouse authorization as the list.
 class WarehouseTaskPhysicalDetailDialog extends ConsumerStatefulWidget {
@@ -17,9 +46,11 @@ class WarehouseTaskPhysicalDetailDialog extends ConsumerStatefulWidget {
     super.key,
     required this.row,
     required this.warehouseScope,
+    this.allowFinishedRegistrationReversal = false,
   });
   final WarehouseTaskCenterRecord row;
   final WarehouseTaskScope warehouseScope;
+  final bool allowFinishedRegistrationReversal;
 
   @override
   ConsumerState<WarehouseTaskPhysicalDetailDialog> createState() =>
@@ -33,6 +64,151 @@ class _WarehouseTaskPhysicalDetailDialogState
   bool _loading = true;
   bool _invalidated = false;
   int _revision = 0;
+  bool _reversing = false;
+  String? _reversalMessage;
+  String? _pendingReason;
+  String? _pendingKey;
+  bool _uncertain = false;
+
+  WarehouseTaskCenterRecord? _registrationRow(Map<String, dynamic>? detail) {
+    final original = widget.row;
+    if (!widget.allowFinishedRegistrationReversal ||
+        original.action != 'FINISHED_ARRIVAL_DETAIL' ||
+        original.sourceType != 'FINISHED' ||
+        original.recordType != 'FINISHED_REGISTRATION' ||
+        original.dataId('reportId') == null ||
+        original.dataId('registrationId') != original.id) {
+      return null;
+    }
+    final document = detail?['row'];
+    if (document is! Map<String, dynamic>) return null;
+    final current = WarehouseTaskCenterRecord.fromJson(document);
+    if (current.sourceType != 'FINISHED' ||
+        current.recordType != 'FINISHED_REGISTRATION' ||
+        current.id != original.id ||
+        current.targetId != original.id ||
+        current.dataId('reportId') != original.dataId('reportId') ||
+        current.dataId('registrationId') != original.id) {
+      return null;
+    }
+    return current;
+  }
+
+  bool get _canReverseRegistration {
+    if (_invalidated || _loading || _error != null) return false;
+    final actor = ref.read(authenticatedScopeProvider);
+    final permissions = ref.read(currentPermissionsProvider);
+    final row = _registrationRow(_detail);
+    return actor != null &&
+        !actor.readOnly &&
+        actor.actorId == null &&
+        permissions.contains(Perm.stockDocView) &&
+        permissions.contains(Perm.stockDocApprove) &&
+        row != null &&
+        row.action == 'FINISHED_ARRIVAL_DETAIL' &&
+        row.canHandle &&
+        row.actionData['reversible'] == true;
+  }
+
+  Future<void> _reverseRegistration({bool recover = false}) async {
+    if (_reversing || !_canReverseRegistration) return;
+    final row = _registrationRow(_detail)!;
+    final originalDetail = _detail;
+    final revision = _revision;
+    final actor = ref.read(authenticatedScopeProvider);
+    final server = ref.read(apiBaseUrlProvider);
+    final permissions = ref.read(currentPermissionsProvider);
+    final warehouse = ref.read(warehouseTaskScopeProvider);
+    final hadUncertainResult = _uncertain;
+    var attemptedPost = false;
+    bool isCurrent() =>
+        mounted &&
+        !_invalidated &&
+        revision == _revision &&
+        identical(originalDetail, _detail) &&
+        actor == ref.read(authenticatedScopeProvider) &&
+        server == ref.read(apiBaseUrlProvider) &&
+        permissions == ref.read(currentPermissionsProvider) &&
+        warehouse == ref.read(warehouseTaskScopeProvider) &&
+        _canReverseRegistration;
+    setState(() => _reversing = true);
+    try {
+      final scope = await ref
+          .read(apiClientProvider)
+          .captureRequestScope(isCurrent: isCurrent);
+      if (!mounted || !isCurrent()) return;
+      final reason = recover
+          ? _pendingReason
+          : await showArrivalRegistrationReversalDialog(
+              context,
+              title: '撤回本登记批（仅品质未处理）',
+              summary:
+                  '报工单 ${row.billNo ?? '—'} · ${row.warehouseName ?? '—'} · '
+                  '${row.sourceDocNo == null ? '' : '检查单 ${row.sourceDocNo} · '}'
+                  '撤回整个原登记批（包含当前未显示的明细），'
+                  '当前可见 ${_detail?['total'] ?? 0} 行。',
+            );
+      if (!mounted || reason == null || !isCurrent()) return;
+      // An immutable registration can be reversed only once. Re-entering with
+      // the same actor, registration and reason also retains the original key.
+      final key = recover
+          ? _pendingKey
+          : businessIdempotencyKey(
+              'arrival-reverse',
+              jsonEncode([actor!.userId, row.id, reason]),
+            );
+      if (key == null) return;
+      _pendingReason = reason;
+      _pendingKey = key;
+      final result = await scope.run(() {
+        if (!isCurrent()) throw AuthenticatedRequestScope.changed();
+        attemptedPost = true;
+        return ref
+            .read(productionFinishedInboundTaskRepositoryProvider)
+            .reverseArrivalRegistration(
+              row.id,
+              reason: reason,
+              idempotencyKey: key,
+            );
+      });
+      if (!mounted || !isCurrent()) return;
+      if (result.registrationId != row.id ||
+          result.reportId != row.dataId('reportId') ||
+          result.reversedAt == null) {
+        throw const FormatException('服务端未确认原登记批的撤回结果');
+      }
+      context.appSuccess('本登记批已撤回，相关待检任务已取消');
+      unawaited(
+        invalidateWarehouseTaskCounts(ref).catchError((Object error) {
+          debugPrint('登记撤回后的任务计数刷新失败: $error');
+        }),
+      );
+      Navigator.of(context).pop(true);
+    } catch (error) {
+      if (!mounted || _invalidated) return;
+      final definite =
+          error is ApiException &&
+          !isSessionBoundaryError(error) &&
+          isDefiniteArrivalRejection(error);
+      final uncertain = hadUncertainResult || (attemptedPost && !definite);
+      final message = uncertain
+          ? '撤回结果未确认，请核对原登记批；原原因和请求标识已保留，'
+                '可使用原请求恢复结果。'
+                '${describeSubmitError(error, fallback: '服务器响应暂时无法确认')}'
+          : attemptedPost
+          ? describeSubmitError(error, fallback: '撤回被拒绝，请重新核对原登记批')
+          : '尚未发送撤回请求。'
+                '${describeSubmitError(error, fallback: '请核对身份后重试')}';
+      setState(() {
+        _uncertain = uncertain && _pendingKey != null;
+        _reversalMessage = message;
+      });
+      context.appError(message);
+      if (definite) await _load(1);
+    } finally {
+      if (mounted) setState(() => _reversing = false);
+    }
+  }
 
   @override
   void initState() {
@@ -98,6 +274,18 @@ class _WarehouseTaskPhysicalDetailDialogState
             },
           );
       if (!mounted || _invalidated || revision != _revision) return;
+      if (widget.allowFinishedRegistrationReversal) {
+        final row = _registrationRow(detail);
+        final lines = detail['lines'] ?? detail['items'];
+        if (row == null ||
+            lines is! List ||
+            lines.isEmpty ||
+            lines.any(
+              (line) => line is! Map || line['registrationId'] != row.id,
+            )) {
+          throw ApiException('CONFLICT', '原登记批身份或明细已变化，请关闭后刷新重选');
+        }
+      }
       setState(() {
         _detail = detail;
         _loading = false;
@@ -161,101 +349,126 @@ class _WarehouseTaskPhysicalDetailDialogState
             ]
             .where((field) => lines.any((line) => line[field.$1] != null))
             .toList(growable: false);
-    return UtenAlertDialog(
-      maxWidth: 920,
-      scrollable: false,
-      title: Text(_invalidated ? '单据详情' : row.statusLabel),
-      content: SizedBox(
-        width: 920,
-        height: 480,
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : _error != null
-            ? Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+    return PopScope<bool>(
+      canPop: !_reversing,
+      child: UtenAlertDialog(
+        maxWidth: 920,
+        scrollable: false,
+        title: Text(_invalidated ? '单据详情' : row.statusLabel),
+        content: SizedBox(
+          width: 920,
+          height: 480,
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _error != null
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(_error!),
+                      if (!_invalidated)
+                        TextButton(
+                          onPressed: () => _load(page),
+                          child: const Text('重试'),
+                        ),
+                    ],
+                  ),
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(_error!),
-                    if (!_invalidated)
-                      TextButton(
-                        onPressed: () => _load(page),
-                        child: const Text('重试'),
+                    Text(
+                      '单据：${row.billNo ?? '—'}    来源：${row.sourceDocNo ?? '—'}',
+                    ),
+                    Text('仓库：${row.warehouseName ?? '未确定'}    明细：$total 行'),
+                    if (_reversalMessage != null) ...[
+                      Text(_reversalMessage!),
+                      if (_uncertain && _pendingReason != null)
+                        Text('原撤回原因：$_pendingReason'),
+                    ],
+                    if (row.recordType == 'ARRIVAL_EXCEPTION' && row.canHandle)
+                      const Text('请在队列勾选本条，按财务批准量处理；提交时会再次核对原异常版本。'),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: fields.isEmpty
+                          ? const Center(child: Text('当前记录没有物料明细'))
+                          : MasterDataTableView<Map<String, dynamic>>(
+                              tableKey:
+                                  'warehouse.task-center.physical-detail.${row.recordType}',
+                              columns: [
+                                for (final field in fields)
+                                  MasterColumnDef(
+                                    key: field.$1,
+                                    label: field.$2,
+                                    width: switch (field.$1) {
+                                      'goodsName' || 'decisionReason' => 240,
+                                      'lotId' ||
+                                      'sourceReportItemId' ||
+                                      'stockDocumentNos' => 220,
+                                      _ => 140,
+                                    },
+                                    value: (line) {
+                                      final value = line[field.$1];
+                                      return value is List
+                                          ? value
+                                                .map((item) => item.toString())
+                                                .join('、')
+                                          : value?.toString();
+                                    },
+                                  ),
+                              ],
+                              items: lines,
+                              facets: const {},
+                              nullCounts: const {},
+                              filters: const {},
+                              onFilterChanged: (_, _) {},
+                              emptyMessage: '当前记录没有物料明细',
+                            ),
+                    ),
+                    if (pages > 1)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: page > 1 && !_reversing
+                                ? () => _load(page - 1)
+                                : null,
+                            child: const Text('上一页'),
+                          ),
+                          Text('$page / $pages'),
+                          TextButton(
+                            onPressed: page < pages && !_reversing
+                                ? () => _load(page + 1)
+                                : null,
+                            child: const Text('下一页'),
+                          ),
+                        ],
                       ),
                   ],
                 ),
-              )
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '单据：${row.billNo ?? '—'}    来源：${row.sourceDocNo ?? '—'}',
-                  ),
-                  Text('仓库：${row.warehouseName ?? '未确定'}    明细：$total 行'),
-                  if (row.recordType == 'ARRIVAL_EXCEPTION' && row.canHandle)
-                    const Text('请在队列勾选本条，按财务批准量处理；提交时会再次核对原异常版本。'),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    child: fields.isEmpty
-                        ? const Center(child: Text('当前记录没有物料明细'))
-                        : MasterDataTableView<Map<String, dynamic>>(
-                            tableKey:
-                                'warehouse.task-center.physical-detail.${row.recordType}',
-                            columns: [
-                              for (final field in fields)
-                                MasterColumnDef(
-                                  key: field.$1,
-                                  label: field.$2,
-                                  width: switch (field.$1) {
-                                    'goodsName' || 'decisionReason' => 240,
-                                    'lotId' ||
-                                    'sourceReportItemId' ||
-                                    'stockDocumentNos' => 220,
-                                    _ => 140,
-                                  },
-                                  value: (line) {
-                                    final value = line[field.$1];
-                                    return value is List
-                                        ? value
-                                              .map((item) => item.toString())
-                                              .join('、')
-                                        : value?.toString();
-                                  },
-                                ),
-                            ],
-                            items: lines,
-                            facets: const {},
-                            nullCounts: const {},
-                            filters: const {},
-                            onFilterChanged: (_, _) {},
-                            emptyMessage: '当前记录没有物料明细',
-                          ),
-                  ),
-                  if (pages > 1)
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(
-                          onPressed: page > 1 ? () => _load(page - 1) : null,
-                          child: const Text('上一页'),
-                        ),
-                        Text('$page / $pages'),
-                        TextButton(
-                          onPressed: page < pages
-                              ? () => _load(page + 1)
-                              : null,
-                          child: const Text('下一页'),
-                        ),
-                      ],
-                    ),
-                ],
-              ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('关闭'),
         ),
-      ],
+        actions: [
+          if (_canReverseRegistration)
+            FilledButton.icon(
+              key: const Key('finished-registration-detail-reverse'),
+              onPressed: _reversing
+                  ? null
+                  : () => _reverseRegistration(recover: _uncertain),
+              icon: const Icon(Icons.undo_rounded),
+              label: Text(
+                _reversing
+                    ? '正在核对撤回结果'
+                    : _uncertain
+                    ? '使用原请求恢复结果'
+                    : '撤回本登记批',
+              ),
+            ),
+          TextButton(
+            onPressed: _reversing ? null : () => Navigator.pop(context, false),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
     );
   }
 }

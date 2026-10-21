@@ -29,6 +29,163 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 // - 到货登记结果：STOCKED_PENDING_INSPECTION 解析为已上架待检。
 
 void main() {
+  for (final ids in [
+    ['inspection-passed'],
+    ['inspection-pending'],
+    ['inspection-passed', 'inspection-pending'],
+    <String>[],
+    ['missing-inspection'],
+  ]) {
+    testWidgets('scoped mixed quality detail keeps shelf selection $ids', (
+      tester,
+    ) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1800, 1400);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final detail = _detailJson();
+      final pending = Map<String, dynamic>.from(
+        (detail['lines'] as List).cast<Map<String, dynamic>>().firstWhere(
+          (line) => line['inspectionItemId'] == 'inspection-pending',
+        ),
+      );
+      detail['lines'] = [
+        ...(detail['lines'] as List),
+        {...pending, 'inspectionItemId': 'unselected-pending'},
+        {
+          ...pending,
+          'inspectionItemId': 'inspection-passed',
+          'lineStatus': 'RESOLVED',
+          'passedBaseQty': 5,
+          'pendingStockBaseQty': 5,
+        },
+      ];
+      detail['allowedActions'] = ['CONFIRM', 'PRE_STOCK_IN'];
+      detail['items'] = [
+        {
+          'passEventId': 'pass-a',
+          'inspectionItemId': 'inspection-passed',
+          'goodsId': 'goods-2',
+          'receivedBaseQty': 5,
+          'qualityPassedBaseQty': 5,
+          'warehouseStockedBaseQty': 0,
+          'releasedBaseQty': 5,
+          'stockedForReleaseBaseQty': 0,
+          'remainingBaseQty': 5,
+          'warehouseId': 'warehouse-1',
+          'warehouseName': '原料仓',
+          'placeHint': 'A-01',
+        },
+      ];
+      final stock = _StockInGateway();
+      final opened = <Uri>[];
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (_, _) => WarehouseQualityResultDetailPage(
+              receiptType: 'PURCHASE',
+              receiptId: 'receipt-1',
+              inspectionItemIds: ids,
+            ),
+          ),
+          GoRoute(
+            path: '/warehouse/quality-results/pre-stock-in/:type/:id',
+            builder: (_, state) {
+              opened.add(state.uri);
+              return WarehouseQualityPreStockInPage(
+                receiptType: 'PURCHASE',
+                receiptId: 'receipt-1',
+                inspectionItemIds:
+                    state.uri.queryParameters.containsKey('inspectionItemIds')
+                    ? state.uri.queryParameters['inspectionItemIds']!.split(',')
+                    : null,
+              );
+            },
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        await _app(
+          const SizedBox.shrink(),
+          quality: _QualityGateway(detail),
+          stockIn: stock,
+          permissions: const {
+            Perm.warehouseIqcStockInView,
+            Perm.warehouseIqcStockInConfirm,
+            Perm.warehouseIqcStockInBeforeInspection,
+          },
+          router: router,
+        ),
+      );
+      await tester.pumpAndSettle();
+      final action = find.byKey(
+        const Key('warehouse-quality-detail-pre-stock'),
+      );
+      if (!ids.contains('inspection-pending')) {
+        expect(action, findsNothing);
+        expect(stock.preStockCalls, 0);
+        if (ids.isEmpty || ids.contains('missing-inspection')) {
+          expect(find.textContaining('所选品质放行明细已变化'), findsOneWidget);
+          expect(
+            find.byKey(const Key('warehouse-quality-detail-confirm')),
+            findsNothing,
+          );
+        }
+      } else {
+        expect(find.text('先入库上架(1)'), findsOneWidget);
+        if (ids.length == 1) {
+          final stale = tester.widget<UtenButton>(action).onPressed!;
+          final originalLines = detail['lines'];
+          detail['lines'] = (detail['lines'] as List)
+              .cast<Map<String, dynamic>>()
+              .where((line) => line['inspectionItemId'] != 'inspection-pending')
+              .toList();
+          await tester.tap(
+            find.byKey(const Key('warehouse-quality-detail-refresh')),
+          );
+          await tester.pumpAndSettle();
+          expect(action, findsNothing);
+          stale();
+          await tester.pumpAndSettle();
+          expect(opened, isEmpty);
+          expect(stock.preStockCalls, 0);
+          detail['lines'] = originalLines;
+          await tester.tap(
+            find.byKey(const Key('warehouse-quality-detail-refresh')),
+          );
+          await tester.pumpAndSettle();
+          expect(find.text('先入库上架(1)'), findsOneWidget);
+        }
+        await tester.tap(action);
+        await tester.pumpAndSettle();
+        expect(
+          opened.single.queryParameters['inspectionItemIds'],
+          ids.join(','),
+        );
+        expect(
+          find.byKey(const Key('pre-stock-place-unselected-pending')),
+          findsNothing,
+        );
+        await tester.enterText(
+          find.byKey(const Key('pre-stock-place-inspection-pending')),
+          'D-08',
+        );
+        tester
+            .widget<UtenButton>(
+              find.byKey(const Key('warehouse-quality-pre-stock-confirm')),
+            )
+            .onPressed!();
+        await tester.pumpAndSettle();
+        expect(stock.lastPreStock!.items.map((item) => item.inspectionItemId), [
+          'inspection-pending',
+        ]);
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets(
     'physical pending selection shelves only its original inspection item',
     (tester) async {
@@ -447,6 +604,7 @@ Future<Widget> _app(
   bool superAdmin = false,
   bool livePermissions = false,
   bool liveScope = false,
+  GoRouter? router,
 }) async {
   final preferences = await SharedPreferences.getInstance();
   return ProviderScope(
@@ -469,9 +627,11 @@ Future<Widget> _app(
     ],
     // 带 GoRouter 壳：页面成功后走 context.canPop()/pop(go_router 扩展)，无路由会抛错。
     child: MaterialApp.router(
-      routerConfig: GoRouter(
-        routes: [GoRoute(path: '/', builder: (_, _) => page)],
-      ),
+      routerConfig:
+          router ??
+          GoRouter(
+            routes: [GoRoute(path: '/', builder: (_, _) => page)],
+          ),
     ),
   );
 }

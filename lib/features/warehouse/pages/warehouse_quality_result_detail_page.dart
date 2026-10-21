@@ -142,7 +142,7 @@ class _WarehouseQualityResultDetailPageState
       : UtenButton(
           onPressed: _saving || _loading || !_hasConfirmPermission
               ? null
-              : () => _executeStockIn(_pendingCommand!),
+              : () => _executeStockIn(_pendingCommand!, recoverOriginal: true),
           icon: Icons.refresh_rounded,
           child: const Text('核对原入库提交'),
         );
@@ -152,6 +152,7 @@ class _WarehouseQualityResultDetailPageState
       UtenEditableGridController<WarehouseQualityMergedRow>();
   bool _loading = true;
   bool _saving = false;
+  bool _sourceSelectionCurrent = false;
   String? _error;
   String? _conflictMessage;
   int _requestVersion = 0;
@@ -204,16 +205,68 @@ class _WarehouseQualityResultDetailPageState
   }
 
   bool get _canConfirm =>
+      _sourceSelectionCurrent &&
       _pendingCommand == null &&
       _detail?.canConfirm == true &&
       _hasConfirmPermission;
+
+  bool _includesInspection(String id) =>
+      widget.inspectionItemIds == null ||
+      widget.inspectionItemIds!.contains(id);
+
+  List<WarehouseQualityInspectionLine> _preStockableLines(
+    WarehouseQualityResultDetail detail,
+  ) => [
+    for (final line in detail.preStockableLines)
+      if (_includesInspection(line.inspectionItemId)) line,
+  ];
+
+  bool get _canPreStockIn {
+    if (!_sourceSelectionCurrent ||
+        ref.read(authenticatedScopeProvider)?.readOnly == true) {
+      return false;
+    }
+    final permissions = ref.read(currentPermissionsProvider);
+    final detail = _detail;
+    return permissions.contains(Perm.warehouseIqcStockInView) &&
+        permissions.contains(Perm.warehouseIqcStockInBeforeInspection) &&
+        detail?.canPreStockIn == true &&
+        _preStockableLines(detail!).isNotEmpty;
+  }
+
+  List<WarehouseQualityRejectionCase> _rejections(
+    WarehouseQualityResultDetail detail,
+  ) => [
+    for (final rejection in detail.rejections)
+      if (_includesInspection(rejection.inspectionItemId)) rejection,
+  ];
+
+  bool _canHandleRejection(WarehouseQualityRejectionCase rejection) =>
+      _sourceSelectionCurrent &&
+      !_loading &&
+      _canRecordReturn &&
+      rejection.canRecordReturn &&
+      _includesInspection(rejection.inspectionItemId) &&
+      _detail?.rejections.any(
+            (current) =>
+                current.id == rejection.id &&
+                current.inspectionItemId == rejection.inspectionItemId &&
+                current.rowVersion == rejection.rowVersion &&
+                current.canRecordReturn,
+          ) ==
+          true;
 
   Future<void> _load({bool preserveInputs = false}) async {
     final version = ++_requestVersion;
     final snapshots = preserveInputs
         ? {for (final draft in _drafts) draft.snapshotKey: draft.snapshot}
         : const <String, WarehouseQualitySliceSnapshot>{};
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      // A failed scope reload may retain inputs, but cannot authorize new work.
+      // Unknown submissions retain their separate original-command recovery.
+      _sourceSelectionCurrent = false;
+    });
     try {
       final detail = await ref
           .read(warehouseQualityResultRepositoryProvider)
@@ -259,6 +312,7 @@ class _WarehouseQualityResultDetailPageState
         _drafts = nextDrafts;
         _grid.replaceAll(nextRows);
         _loading = false;
+        _sourceSelectionCurrent = true;
         _error = null;
       });
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -301,6 +355,7 @@ class _WarehouseQualityResultDetailPageState
 
   Future<void> _confirmStockIn() async {
     if (_saving || _loading || !_canConfirm) return;
+    final sourceVersion = _requestVersion;
     final selected = _drafts.where((draft) => draft.selected).toList();
     if (selected.isEmpty) {
       context.appWarning('请至少勾选一条品质放行明细');
@@ -346,16 +401,53 @@ class _WarehouseQualityResultDetailPageState
           : '本次将确认 ${items.length} 条品质放行切片的实收数量与实际库位，'
                 '提交成功后才会增加可用库存并推进对应生产供给。',
     );
-    if (!approved || !mounted) return;
-    await _executeStockIn(
-      WarehouseIqcStockInConfirmCommand(idempotencyKey: key, items: items),
+    final command = WarehouseIqcStockInConfirmCommand(
+      idempotencyKey: key,
+      items: items,
     );
+    if (!approved ||
+        !mounted ||
+        !_stockInIntentCurrent(command, sourceVersion)) {
+      return;
+    }
+    await _executeStockIn(command, expectedSourceVersion: sourceVersion);
+  }
+
+  bool _stockInIntentCurrent(
+    WarehouseIqcStockInConfirmCommand command,
+    int? sourceVersion,
+  ) {
+    if (!_sourceSelectionCurrent ||
+        _loading ||
+        sourceVersion != _requestVersion ||
+        _detail?.canConfirm != true) {
+      return false;
+    }
+    final selected = _drafts.where((draft) => draft.selected).toList();
+    if (selected.isEmpty ||
+        selected.length != command.items.length ||
+        selected.any((draft) => draft.validate() != null)) {
+      return false;
+    }
+    return warehouseQualitySliceFingerprint([
+          for (final draft in selected) draft.toConfirmItem(),
+        ]) ==
+        warehouseQualitySliceFingerprint(command.items);
   }
 
   Future<void> _executeStockIn(
-    WarehouseIqcStockInConfirmCommand command,
-  ) async {
-    if (_saving || !_hasConfirmPermission) return;
+    WarehouseIqcStockInConfirmCommand command, {
+    int? expectedSourceVersion,
+    bool recoverOriginal = false,
+  }) async {
+    if (_saving ||
+        !_hasConfirmPermission ||
+        (recoverOriginal
+            ? !identical(_pendingCommand, command)
+            : _pendingCommand != null ||
+                  !_stockInIntentCurrent(command, expectedSourceVersion))) {
+      return;
+    }
     final previousPending = _pendingCommand;
     var locallyRejected = false;
     _pendingCommand = command;
@@ -374,6 +466,16 @@ class _WarehouseQualityResultDetailPageState
               'FORBIDDEN',
               '当前账号不能确认入库，请重新核对权限',
               httpStatus: 403,
+            );
+          }
+          if (!recoverOriginal &&
+              !_stockInIntentCurrent(command, expectedSourceVersion)) {
+            locallyRejected = true;
+            _pendingCommand = previousPending;
+            throw ApiException(
+              'CONFLICT',
+              '所选品质放行明细或输入已变化，请重新核对后确认入库',
+              httpStatus: 409,
             );
           }
           return ref
@@ -440,7 +542,7 @@ class _WarehouseQualityResultDetailPageState
   }
 
   Future<void> _recordReturn(WarehouseQualityRejectionCase rejection) async {
-    if (_saving || !_canRecordReturn || !rejection.canRecordReturn) return;
+    if (_saving || !_canHandleRejection(rejection)) return;
     final AuthenticatedRequestScope requestScope;
     try {
       requestScope = await captureFormDraftRequestScope();
@@ -450,7 +552,11 @@ class _WarehouseQualityResultDetailPageState
       }
       return;
     }
-    if (!mounted || !requestScope.isCurrent || !_canRecordReturn) return;
+    if (!mounted ||
+        !requestScope.isCurrent ||
+        !_canHandleRejection(rejection)) {
+      return;
+    }
     final command = await showDialog<WarehouseIqcRecordReturnCommand>(
       context: context,
       builder: (_) => _RecordReturnDialog(rejection: rejection),
@@ -459,7 +565,7 @@ class _WarehouseQualityResultDetailPageState
         !mounted ||
         !requestScope.isCurrent ||
         !formDraftIdentityIsCurrent ||
-        !_canRecordReturn) {
+        !_canHandleRejection(rejection)) {
       return;
     }
     setState(() {
@@ -468,7 +574,7 @@ class _WarehouseQualityResultDetailPageState
     });
     try {
       await requestScope.run(() {
-        if (!_canRecordReturn || !formDraftIdentityIsCurrent) {
+        if (!_canHandleRejection(rejection) || !formDraftIdentityIsCurrent) {
           throw ApiException(
             'FORBIDDEN',
             '当前账号不能登记实物退回，请重新核对权限',
@@ -550,7 +656,7 @@ class _WarehouseQualityResultDetailPageState
         floatingActionButton:
             detail != null &&
                 ((_canConfirm && _drafts.isNotEmpty) ||
-                    detail.canPreStockIn ||
+                    _canPreStockIn ||
                     (_pendingCommand != null && _hasConfirmPermission))
             ? _floatingActions()
             : null,
@@ -561,12 +667,18 @@ class _WarehouseQualityResultDetailPageState
   /// 先入库后检(V596)：跳到逐行上架页；回来后重拉详情(保留已填的入库输入)。
   Future<void> _openPreStockIn() async {
     final detail = _detail;
-    if (detail == null || _saving) return;
+    if (detail == null || _saving || _loading || !_canPreStockIn) return;
     final done = await context.push<bool>(
-      RouteName.warehouseQualityPreStockIn(
-        detail.receiptType.apiValue,
-        detail.receiptId,
-      ),
+      Uri(
+        path: RouteName.warehouseQualityPreStockIn(
+          detail.receiptType.apiValue,
+          detail.receiptId,
+        ),
+        queryParameters: {
+          if (widget.inspectionItemIds != null)
+            'inspectionItemIds': widget.inspectionItemIds!.join(','),
+        },
+      ).toString(),
     );
     if (!mounted) return;
     if (done == true) await _load(preserveInputs: true);
@@ -624,7 +736,7 @@ class _WarehouseQualityResultDetailPageState
             ],
             const SizedBox(height: UtenSpacing.s20),
             _mergedSection(detail),
-            if (detail.rejections.isNotEmpty) ...[
+            if (_rejections(detail).isNotEmpty) ...[
               const SizedBox(height: UtenSpacing.s20),
               _rejectionsSection(detail),
             ],
@@ -777,7 +889,7 @@ class _WarehouseQualityResultDetailPageState
       children: [
         _sectionTitle('不合格实物退回', '核对该批不合格货品后登记真实退回凭证、日期与说明。'),
         const SizedBox(height: UtenSpacing.s8),
-        for (final rejection in detail.rejections)
+        for (final rejection in _rejections(detail))
           Card(
             key: ValueKey('quality-rejection-${rejection.id}'),
             margin: const EdgeInsets.only(bottom: UtenSpacing.s8),
@@ -840,7 +952,7 @@ class _WarehouseQualityResultDetailPageState
                         ? UtenStatusBadgeType.success
                         : UtenStatusBadgeType.neutral,
                   ),
-                  if (rejection.canRecordReturn && _canRecordReturn) ...[
+                  if (_canHandleRejection(rejection)) ...[
                     const SizedBox(width: UtenSpacing.s8),
                     UtenButton(
                       size: UtenButtonSize.large,
@@ -934,7 +1046,7 @@ class _WarehouseQualityResultDetailPageState
     }
     final detail = _detail;
     final canConfirmHere = _canConfirm && _drafts.isNotEmpty;
-    final preStockable = detail?.preStockableLines.length ?? 0;
+    final preStockable = detail == null ? 0 : _preStockableLines(detail).length;
     final selected = _drafts.where((draft) => draft.selected).length;
     return UtenFloatingActionGroup(
       children: [
@@ -951,7 +1063,7 @@ class _WarehouseQualityResultDetailPageState
                   }),
           ),
         // 先入库后检(V596)：等结论且未上架的行可以先落库位(独立权限，服务端给动作码)。
-        if (detail?.canPreStockIn == true)
+        if (_canPreStockIn)
           UtenButton(
             key: const Key('warehouse-quality-detail-pre-stock'),
             type: canConfirmHere ? UtenButtonType.tonal : UtenButtonType.danger,

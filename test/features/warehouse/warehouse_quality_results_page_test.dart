@@ -46,6 +46,63 @@ Future<void> _showStatusChoices(WidgetTester tester) async {
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  for (final menu in [false, true]) {
+    testWidgets('physical quality detail entry keeps row scope (menu=$menu)', (
+      tester,
+    ) async {
+      _viewport(tester, const Size(1440, 1000));
+      final task = WarehouseQualityResultTask.fromJson({
+        ..._summaryJson('ALL_PASSED', pendingSliceCount: 1),
+        'line': {'key': 'inspection-1', 'itemId': 'inspection-1'},
+      });
+      final opened = <Uri>[];
+      final router = GoRouter(
+        initialLocation: '/warehouse/quality-results',
+        routes: [
+          GoRoute(
+            path: '/warehouse/quality-results',
+            builder: (_, _) => const WarehouseQualityResultsPage(),
+          ),
+          GoRoute(
+            path: '/warehouse/quality-results/:receiptType/:receiptId',
+            builder: (_, state) {
+              opened.add(state.uri);
+              return const Scaffold(body: Text('精确品质详情'));
+            },
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        _app(
+          null,
+          _QualityGateway([task]),
+          await SharedPreferences.getInstance(),
+          router: router,
+        ),
+      );
+      await tester.pumpAndSettle();
+      final table = tester
+          .widget<MasterDataTableView<WarehouseQualityResultTask>>(
+            find.byKey(const Key('warehouse-quality-result-table')),
+          );
+      if (menu) {
+        final entry = table.rowMenuBuilder!(task)
+            .whereType<UtenMenuItem>()
+            .first;
+        entry.onTap();
+      } else {
+        table.onRowTap!(task);
+      }
+      await tester.pumpAndSettle();
+      expect(
+        opened.single.queryParameters['inspectionItemIds'],
+        'inspection-1',
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   test(
     'explicit empty, unknown and mixed physical quality identities fail closed',
     () {

@@ -254,17 +254,46 @@ Future<void> openWarehouseTaskRecord(
       }
     case 'QUALITY_RESULT':
       final type = row.dataId('receiptType') ?? row.sourceType;
+      final rawItems = row.actionData['inspectionItemIds'];
+      final hasItemScope = row.actionData.containsKey('inspectionItemIds');
+      if ((row.line != null && !hasItemScope) ||
+          (hasItemScope &&
+              (rawItems is! List ||
+                  rawItems.isEmpty ||
+                  rawItems.length > 100 ||
+                  rawItems.any(
+                    (item) => item is! String || item.trim().isEmpty,
+                  )))) {
+        context.appWarning(
+          AppLocalizations.of(context).warehouseTaskSelectionChanged,
+        );
+        return;
+      }
+      // A receipt row's line.itemId is the receipt item, not an inspection UUID.
+      // Only the server's exact inspection identities may scope these commands.
+      final items = hasItemScope
+          ? (rawItems as List).cast<String>().map((id) => id.trim()).toSet()
+          : null;
       await context.push<void>(
-        RouteName.warehouseQualityResultDetail(
-          type,
-          row.dataId('receiptId') ?? id,
-        ),
+        Uri(
+          path: RouteName.warehouseQualityResultDetail(
+            type,
+            row.dataId('receiptId') ?? id,
+          ),
+          queryParameters: {
+            if (items != null) 'inspectionItemIds': items.join(','),
+          },
+        ).toString(),
       );
     case 'FINISHED_ARRIVAL_DETAIL':
-      // The registration page reads all original batches and their immutable identities.
-      await _openFinishedArrivalRegistration(context, [
-        row.dataId('reportId') ?? id,
-      ]);
+      // A registered arrival belongs to one registration, not every pending
+      // output of its report. The original task view refreshes when it closes.
+      await showWarehouseTaskPhysicalDetailDialog(
+        context,
+        row: row,
+        warehouseScope: WarehouseListScope.of(context),
+        allowFinishedRegistrationReversal: true,
+      );
     case 'HISTORY_DETAIL':
       if (row.actionData['retained'] == true) {
         await _openRetained(context, ref, row);

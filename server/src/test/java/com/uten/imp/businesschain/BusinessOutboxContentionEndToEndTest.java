@@ -150,6 +150,7 @@ class BusinessOutboxContentionEndToEndTest {
         postponeOthers(event);
         var discovered = new CountDownLatch(1); var changed = new CountDownLatch(1);
         var pauseOnce = new AtomicBoolean(true);
+        ProcurementMutationFootprint targetSpy = org.springframework.test.util.AopTestUtils.getUltimateTargetObject(footprints);
         doAnswer(invocation -> {
             Object plan = invocation.callRealMethod();
             Collection<ProcurementMutationFootprint.ReceiptRef> refs = invocation.getArgument(0);
@@ -159,7 +160,7 @@ class BusinessOutboxContentionEndToEndTest {
                 if (!changed.await(15,TimeUnit.SECONDS)) { throw new AssertionError("The real sibling command must commit after discovery"); }
             }
             return plan;
-        }).when(footprints).receipts(anyCollection());
+        }).when(targetSpy).receipts(anyCollection());
         var meters = new SimpleMeterRegistry();
         try (var worker = worker(meters)) {
             worker.drain();

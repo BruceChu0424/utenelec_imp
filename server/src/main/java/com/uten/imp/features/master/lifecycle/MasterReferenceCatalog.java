@@ -608,6 +608,10 @@ final class MasterReferenceCatalog {
         exempt(out, ExemptReason.LEGACY, "老库生产计划成本(只读，按年分区)", "production_plan_costs",
                 "goods_id", "master_goods_id", "color_id", "master_color_id", "supplier_id");
 
+        // V890: explicit market selection belongs to this master, not an open business document.
+        // Soft deletion retains the binding and its unlink/CAS revision; live goods access gates its use.
+        exempt(out, ExemptReason.OWN_CONFIG, "货品自己的市场参考配置；软删后保留关联与解除墓碑版本，有效货品权限守卫阻止继续使用",
+                "goods_market_reference_bindings", "goods_id");
         exempt(out, ExemptReason.OWN_CONFIG, "成本费用模板仅匹配有效主档；已实例化费用由成本快照保留，单位只保存快照不锁主档计量", "goods_cost_templates", "goods_id", "client_id");
         exempt(out, ExemptReason.HISTORY, "成本导入原文件及映射证据；正式成本引用由成本单守卫覆盖", "goods_cost_imports", "goods_id");
         exempt(out, ExemptReason.HISTORY, "成本导入映射的产品身份快照；正式成本引用由成本单守卫覆盖", "goods_cost_import_mappings", "goods_id");

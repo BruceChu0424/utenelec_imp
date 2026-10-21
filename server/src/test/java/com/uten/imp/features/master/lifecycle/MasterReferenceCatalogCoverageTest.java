@@ -325,6 +325,106 @@ class MasterReferenceCatalogCoverageTest {
         return out;
     }
 
+    @Test
+    void marketAssociationsAreOwnConfigurationAndSoftDeletionRetainsTheirCasTombstones() throws SQLException {
+        assertThat(MasterReferenceCatalog.exemptions().stream()
+                .filter(exemption -> exemption.table().equals("goods_market_reference_bindings")).toList())
+                .singleElement().satisfies(exemption -> {
+                    assertThat(exemption.column()).isEqualTo("goods_id");
+                    assertThat(exemption.reason()).isEqualTo(MasterReferenceCatalog.ExemptReason.OWN_CONFIG);
+                });
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            try {
+                UUID employee = UUID.randomUUID(), actor = UUID.randomUUID();
+                // Flyway seeds the administrator employee only; BootstrapRunner creates its user.
+                // This SQL fixture must create its own real audited actor and employee FK.
+                try (var insert = connection.prepareStatement("""
+                        INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)
+                        SELECT ?,?,'market lifecycle','其他',id,current_date,'active','regular'
+                        FROM departments WHERE code='DEPT_FIN'
+                        """)) {
+                    insert.setObject(1, employee);
+                    insert.setString(2, "MARKET-" + employee);
+                    assertThat(insert.executeUpdate()).isEqualTo(1);
+                }
+                try (var insert = connection.prepareStatement("""
+                        INSERT INTO users(id,employee_id,login_account,password_hash,status,must_change_password)
+                        VALUES(?,?,?,'test-only','active',false)
+                        """)) {
+                    insert.setObject(1, actor);
+                    insert.setObject(2, employee);
+                    insert.setString(3, "market-" + actor);
+                    assertThat(insert.executeUpdate()).isEqualTo(1);
+                }
+                try (var bindActor = connection.prepareStatement("SELECT set_config('app.actor_id',?,true)")) {
+                    bindActor.setString(1, actor.toString());
+                    bindActor.execute();
+                }
+                for (String series : new String[]{"copper", null}) {
+                    UUID goodsId = UUID.randomUUID();
+                    try (var insert = connection.prepareStatement("""
+                            INSERT INTO goods(id,code,name,code_sequence)
+                            VALUES(?,?,'market configuration lifecycle',
+                                   (SELECT coalesce(max(code_sequence),0)+1 FROM goods))
+                            """)) {
+                        insert.setObject(1, goodsId);
+                        insert.setString(2, "MARKET-CONFIG-" + goodsId);
+                        insert.executeUpdate();
+                    }
+                    try (var insert = connection.prepareStatement("""
+                            INSERT INTO goods_market_reference_bindings(goods_id,series_id,identity_digest,version,updated_by)
+                            VALUES(?,?,?,1,CAST(current_setting('app.actor_id') AS uuid))
+                            """)) {
+                        insert.setObject(1, goodsId);
+                        insert.setString(2, series);
+                        insert.setString(3, series == null ? null : "a".repeat(64));
+                        insert.executeUpdate();
+                    }
+                    String before;
+                    try (var snapshot = connection.prepareStatement(
+                            "SELECT to_jsonb(b)::text FROM goods_market_reference_bindings b WHERE goods_id=?")) {
+                        snapshot.setObject(1, goodsId);
+                        try (var rows = snapshot.executeQuery()) {
+                            assertThat(rows.next()).isTrue();
+                            before = rows.getString(1);
+                        }
+                    }
+                    try (var guard = connection.prepareStatement(MasterReferenceGuard.sql(MasterEntityKind.GOODS)
+                            .replace(":ids", "?").replace(":excluded", "?"))) {
+                        guard.setString(1, goodsId.toString());
+                        guard.setString(2, "");
+                        try (var rows = guard.executeQuery()) {
+                            assertThat(rows.next()).as("master configuration must not become an open business reference").isFalse();
+                        }
+                    }
+                    // The real lifecycle uses soft deletion, never deleting the preserved binding row.
+                    try (var delete = connection.prepareStatement("""
+                            UPDATE goods SET is_deleted=true,deleted_at=now(),updated_at=now(),version=version+1,
+                              updated_by=CAST(current_setting('app.actor_id') AS uuid) WHERE id=?
+                            """)) {
+                        delete.setObject(1, goodsId);
+                        assertThat(delete.executeUpdate()).isEqualTo(1);
+                    }
+                    try (var snapshot = connection.prepareStatement("""
+                            SELECT to_jsonb(b)::text,g.is_deleted
+                            FROM goods_market_reference_bindings b JOIN goods g ON g.id=b.goods_id
+                            WHERE b.goods_id=?
+                            """)) {
+                        snapshot.setObject(1, goodsId);
+                        try (var rows = snapshot.executeQuery()) {
+                            assertThat(rows.next()).isTrue();
+                            assertThat(rows.getString(1)).as("binding identity, revision and audit facts remain exact").isEqualTo(before);
+                            assertThat(rows.getBoolean(2)).isTrue();
+                        }
+                    }
+                }
+            } finally {
+                connection.rollback();
+            }
+        }
+    }
+
     private static Connection connection() throws SQLException {
         return DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
     }

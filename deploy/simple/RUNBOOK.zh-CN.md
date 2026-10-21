@@ -161,7 +161,7 @@ LAN 模板仅代理两个 GET（`/api/system-test/business-data/preview`、`/api
 ### 原材料行情服务随发行托管（2026-10-21）
 
 公司 Ubuntu 24.04 业务主服务运行一次行情 worker。`simple-release` 在 Ubuntu 24.04 / Python 3.12
-构建 `server/material_forecast/`，包含三品种目录、代码、完整 Linux x86_64 哈希锁和 27 个离线 wheel；
+构建 `server/material_forecast/`，包含三品种目录、代码、完整 Linux x86_64 哈希锁和 26 个离线 wheel；
 全部文件纳入原有 `SHA256SUMS` 签名。应用启动后由 Java supervisor 验证并安装到
 `/var/cache/uten-imp/material-forecast`，启动时使用 `--no-index --require-hashes --no-deps`，不访问 PyPI。
 系统基线只需前面的一次性 `python3 python3-venv`；现役 `uten-imp.service` 的 `CacheDirectory=uten-imp`
@@ -264,11 +264,12 @@ Simple Release现在在构建前强制核验实际检出提交SHA对应的四个
 原材料自动行情程序也随同一版本签名交付。发布在 Ubuntu 24.04、CPython 3.12 上，
 先从通过门禁的干净提交构建 `build/material-forecast`，只复制固定运行源码与内置品种目录，
 按完整 SHA-256 依赖锁下载 Linux 二进制 wheel。打包前再次核对提交、应用版本、文件清单、
-wheel 名称/版本/摘要及目标平台，然后把整个 `material-forecast/` 放入原有 `SHA256SUMS` 签名。
+wheel 名称/版本/摘要及目标平台，然后把唯一运行包复制到 `server/material_forecast/`，全部纳入原有 `SHA256SUMS` 签名。
 服务器仍先按既有发布公钥验签，独立组件校验不能替代这一步；运行程序不在启动时联网安装依赖。
-程序使用独立系统身份，ERP 只读共享的公开快照、报价和心跳；私有缓存、历史发布档案及锁文件
-保持仅采集身份可读写。常驻安装、目录配置和备份需按 [worker 说明](../../services/material_forecast/README.md)
-单独验收，单纯激活 server/web 不代表行情程序已经运行。
+Java supervisor 以业务主服务身份唯一监管采集子进程，状态写入当前 Storage 根的 `material-forecast/`，
+不另装第二个常驻服务。公开快照保持 0640，私有缓存、历史发布档案及锁文件保持 0600；
+备份使用同一 OS 写锁保护状态一致性。按 [托管说明](../../services/material_forecast/MANAGED_RUNTIME.md)
+核对实际进程、当前 runId 心跳、配置版本确认及配套备份，单纯激活 server/web 不代表采集已运行。
 
 ```bash
 git tag v1.4.1 && git push origin v1.4.1

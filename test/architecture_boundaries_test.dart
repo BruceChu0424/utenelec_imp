@@ -18,10 +18,8 @@ void main() {
     'admin->employee',
     'basic_data->department',
     'basic_data->employee',
-    // Existing warehouse master projection reuses the authoritative stock query,
-    // inventory columns and server report totals; exact source is pinned below.
-    'basic_data->stock',
-    'basic_data->report',
+    // Warehouse projections now consume shared contracts; no private stock or
+    // report feature dependency remains in master data.
     'dashboard->admin',
     'dashboard->notice',
     // 2026-09-11：dashboard->finance / dashboard->sales 随徽章累加收敛到注册表而消失;
@@ -200,11 +198,8 @@ void main() {
     );
     expect(
       warehouseProjectionSources,
-      {
-        'basic_data->stock:features/basic_data/widgets/warehouse_inventory_panel.dart',
-        'basic_data->report:features/basic_data/widgets/warehouse_inventory_panel.dart',
-      },
-      reason: '仓库资料只读投影的依赖登记只适用于既有面板，不能扩展到其它主档或复制业务取数逻辑',
+      <String>{},
+      reason: '仓库资料只读投影必须复用 shared 契约，主档不能重新引入 stock/report 私有依赖',
     );
 
     final staleBaseline = baselineEdges.difference(actualEdges).toList()

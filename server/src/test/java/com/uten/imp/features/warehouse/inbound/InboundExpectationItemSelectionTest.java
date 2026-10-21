@@ -71,6 +71,15 @@ class InboundExpectationItemSelectionTest {
                 .isInstanceOfSatisfying(ApiException.class, error -> assertThat(error.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
     }
 
+    @Test void sourceSelectionCannotBeEmptyOrContainNull() {
+        var service = mock(ProcurementArrivalControlService.class, org.mockito.Mockito.CALLS_REAL_METHODS);
+        for (List<UUID> ids : java.util.Arrays.asList(null, List.<UUID>of(), java.util.Arrays.asList((UUID) null))) {
+            assertThatThrownBy(() -> service.expectationsByIds(ids, null))
+                    .isInstanceOfSatisfying(ApiException.class,
+                            error -> assertThat(error.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
+        }
+    }
+
     private static InboundExpectationItem item(UUID goods, String qty) {
         return new InboundExpectationItem(UUID.randomUUID(), UUID.randomUUID(), 1,
                 goods, "UT3128", "产品外箱", null, null, null, null, null, null,

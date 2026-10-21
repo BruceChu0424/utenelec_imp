@@ -1349,7 +1349,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         return expectations(page, size, orderType, keyword, supplierId, warehouseScope, sort, order, billNo, List.of());
     }
 
-    /** 登记页按来源身份读取预计到货(ADR-151 §5)：与列表同一投影、同一可见范围，最多 50 个。 */
+    /** 登记页按来源身份读取预计到货(ADR-151 §5)，最多 50 个。
+     * 任务列表范围不替代业务详情/办理权限(ADR-149)：保留 ALL 业务读取，显式 itemIds 只裁选中的实物行。 */
     @Transactional(readOnly = true)
     public List<InboundExpectationTask> expectationsByIds(List<UUID> ids) {
         return expectationsByIds(ids, null);
@@ -1358,14 +1359,20 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     /** A physical-row entry never widens to every item on its source order. */
     @Transactional(readOnly = true)
     public List<InboundExpectationTask> expectationsByIds(List<UUID> ids, List<UUID> itemIds) {
-        List<UUID> distinct = ids == null ? List.of()
-                : ids.stream().filter(java.util.Objects::nonNull).distinct().toList();
-        if (distinct.isEmpty()) return selectedExpectationItems(List.of(), itemIds);
+        if (ids == null || ids.isEmpty() || ids.stream().anyMatch(Objects::isNull)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请选择有效的到货任务后再登记");
+        }
+        List<UUID> distinct = ids.stream().distinct().toList();
         if (distinct.size() > 50) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "一次最多登记 50 个预计到货任务");
         }
-        return selectedExpectationItems(expectations(1, distinct.size(), "", "", null,
-                WarehouseTaskScope.ALL, null, null, null, distinct).getItems(), itemIds);
+        List<InboundExpectationTask> sources = expectations(1, distinct.size(), "", "", null,
+                WarehouseTaskScope.ALL, null, null, null, distinct).getItems();
+        if (!sources.stream().map(InboundExpectationTask::id).collect(java.util.stream.Collectors.toSet())
+                .equals(new java.util.HashSet<>(distinct))) {
+            throw new ApiException(ErrorCode.CONFLICT, "所选到货任务已变化，请返回任务中心重新选择");
+        }
+        return selectedExpectationItems(sources, itemIds);
     }
 
     static List<InboundExpectationTask> selectedExpectationItems(

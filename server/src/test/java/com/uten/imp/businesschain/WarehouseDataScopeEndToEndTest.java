@@ -60,6 +60,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 /**
  * ADR-149 仓库数据范围服务端强制, 走真实服务与真实 PG(V804 fn_user_warehouse_access):
@@ -112,6 +113,7 @@ class WarehouseDataScopeEndToEndTest {
     @Autowired StockCountRequestController stockCounts;
     @Autowired DocumentDraftCountController documentCounts;
     @Autowired MockMvc http;
+    @Autowired ObjectMapper json;
 
     /** Keep this warehouse-scope fixture independent of an installed root daemon.
      * The real status controller and its permissions still execute; only the host
@@ -330,40 +332,8 @@ class WarehouseDataScopeEndToEndTest {
     }
 
     @Test void repeatedPurchaseLinesKeepTheirPhysicalIdentityAndWarehouseInBadgeLists() {
-        fixture.loginAs(admin);
-        UUID reviewer = org.springframework.test.util.ReflectionTestUtils.invokeMethod(fixture, "createApprover", world);
-        UUID settlement = org.springframework.test.util.ReflectionTestUtils.invokeMethod(fixture, "activeSettlementMethodId");
-        UUID hiddenGoods = UUID.randomUUID();
-        fixture.insertGoods(hiddenGoods, "SCOPE-LINE-" + hiddenGoods, "Outside purchase line", "采购",
-                world.unitId(), world.unitLegacy());
-        db.update("UPDATE goods SET owning_warehouse_id=? WHERE id=?", warehouseA, world.goodsD());
-        db.update("UPDATE goods SET owning_warehouse_id=? WHERE id=?", warehouseB, hiddenGoods);
-        var order = new com.uten.imp.features.purchase.order.dto.OrderSaveRequest();
-        order.setBillDate(BusinessTime.today());
-        order.setSupplierId(world.supplierId());
-        order.setCurrencyId(world.currencyId());
-        order.setExchangeRate(BigDecimal.ONE);
-        order.setTaxRate(BigDecimal.ZERO);
-        order.setSettlementMethodId(settlement);
-        var lines = new ArrayList<com.uten.imp.features.purchase.order.dto.OrderItemLine>();
-        for (UUID goods : List.of(world.goodsD(), world.goodsD(), hiddenGoods)) {
-            var line = new com.uten.imp.features.purchase.order.dto.OrderItemLine();
-            line.setGoodsId(goods);
-            line.setUnitId(world.unitId());
-            line.setUnitRate(BigDecimal.ONE);
-            line.setQty(BigDecimal.TEN);
-            line.setPrice(BigDecimal.ONE);
-            lines.add(line);
-        }
-        order.setItems(lines);
-        var created = beans.getBean(com.uten.imp.features.purchase.order.PurchaseOrderService.class).createBatch(order);
-        assertThat(created).hasSize(1);
-        UUID orderId = created.getFirst().getId();
-        beans.getBean(com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService.class)
-                .submit("PURCHASE", orderId);
-        fixture.loginAs(reviewer);
-        fixture.approvePendingFinance("PURCHASE", orderId);
-        String billNo = db.queryForObject("SELECT bill_no FROM purchase_orders WHERE id=?", String.class, orderId);
+        var source = mixedWarehousePurchase();
+        String billNo = source.billNo();
         fixture.loginAs(keeperA);
         var visible = inboundCenter.list("PURCHASE", "ACTIVE", "", "", billNo, null, null,
                 warehouseA, null, null, 1, 100);
@@ -650,4 +620,146 @@ class WarehouseDataScopeEndToEndTest {
             assertThat(error.getMessage()).contains("所选仓库不在你可见的范围内");
         });
     }
+    @Test void exactBusinessSelectionPreservesCrossWarehousePermissionsAndRejectsIncompleteSources() throws Exception {
+        var source = mixedWarehousePurchase();
+        fixture.loginAs(keeperA);
+        assertThat(scopes.current(null).warehouseIds()).contains(warehouseA).doesNotContain(warehouseB);
+        assertThat(inboundCenter.list("PURCHASE", "ACTIVE", "", "", source.billNo(), null, null,
+                null, null, null, 1, 100).total()).isEqualTo(2);
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        // Task subscription scope is not commercial-document authority (ADR-149/151).
+        var selected = http.perform(get("/api/warehouse/inbound/expectations/by-ids")
+                .param("ids", source.expectation().toString()).param("itemIds", source.itemIds().getLast().toString())
+                .with(authentication(auth))).andReturn().getResponse();
+        assertThat(selected.getStatus()).isEqualTo(200);
+        var selectedBody = json.readTree(selected.getContentAsString()).get(0);
+        assertThat(selectedBody.get("items").size()).isEqualTo(1);
+        assertThat(selectedBody.get("items").get(0).get("id").asText()).isEqualTo(source.itemIds().getLast().toString());
+        assertThat(selectedBody.get("remainingQty").decimalValue()).isEqualByComparingTo("10");
+        var repeatedGoods = http.perform(get("/api/warehouse/inbound/expectations/by-ids")
+                .param("ids", source.expectation().toString()).param("itemIds", source.itemIds().get(1).toString())
+                .with(authentication(auth))).andReturn().getResponse();
+        assertThat(repeatedGoods.getStatus()).isEqualTo(200);
+        var repeatedBody = json.readTree(repeatedGoods.getContentAsString()).get(0);
+        assertThat(repeatedBody.get("items").size()).isEqualTo(1);
+        assertThat(repeatedBody.get("items").get(0).get("orderItemId").asText()).isEqualTo(source.orderItems().get(1).toString());
+        assertThat(http.perform(get("/api/warehouse/inbound/expectations/by-ids")
+                .param("ids", "").with(authentication(auth))).andReturn().getResponse().getStatus()).isEqualTo(422);
+        assertThat(http.perform(get("/api/warehouse/inbound/expectations/by-ids")
+                .param("ids", source.expectation().toString(), UUID.randomUUID().toString())
+                .param("itemIds", source.itemIds().getLast().toString()).with(authentication(auth)))
+                .andReturn().getResponse().getStatus()).isEqualTo(409);
+        assertThat(http.perform(get("/api/warehouse/inbound/expectations/by-ids")
+                .param("ids", source.expectation().toString()).param("itemIds", "")
+                .with(authentication(auth))).andReturn().getResponse().getStatus()).isEqualTo(422);
+        assertThat(http.perform(get("/api/warehouse/inbound/expectations/by-ids")
+                .param("ids", source.expectation().toString()).param("itemIds", UUID.randomUUID().toString())
+                .with(authentication(auth))).andReturn().getResponse().getStatus()).isEqualTo(409);
+        var legacy = http.perform(get("/api/warehouse/inbound/expectations/by-ids")
+                .param("ids", source.expectation().toString()).with(authentication(auth)))
+                .andReturn().getResponse();
+        assertThat(legacy.getStatus()).isEqualTo(200);
+        assertThat(json.readTree(legacy.getContentAsString()).get(0).get("items").size()).isEqualTo(3);
+    }
+
+    @Test void crossWarehouseRegistrationRetainsBusinessOwnerAndActionPermissionOnReplay() {
+        var source = mixedWarehousePurchase();
+        new TransactionTemplate(transactions).executeWithoutResult(status -> {
+            try {
+                fixture.loginAs(keeperA);
+                var auth = SecurityContextHolder.getContext().getAuthentication();
+                assertThat(scopes.current(null).warehouseIds()).doesNotContain(warehouseB);
+                String key = "business-cross-warehouse-" + UUID.randomUUID();
+                Map<String, Object> line = Map.of("orderType", "PURCHASE", "warehouseId", warehouseB,
+                        "goodsId", source.hiddenGoods(), "qty", BigDecimal.ONE, "orderItemId", source.orderItems().getLast(),
+                        "unitId", world.unitId(), "unitRate", BigDecimal.ONE);
+                byte[] request = json.writeValueAsBytes(Map.of("idempotencyKey", key,
+                        "billDate", BusinessTime.today().toString(), "receiverEmployeeId",
+                        ((com.uten.imp.security.AuthUser) auth.getPrincipal()).getEmployeeId(), "lines", List.of(line)));
+                var first = postBusinessArrival(request, auth);
+                assertThat(first.getStatus()).isEqualTo(200);
+                var result = json.readTree(first.getContentAsString());
+                assertThat(result.get("items").size()).isEqualTo(1);
+                UUID receipt = UUID.fromString(result.get("items").get(0).get("receiptId").asText());
+                assertThat(db.queryForObject("SELECT count(*) FROM purchase_receipt_items WHERE receipt_id=? AND NOT is_deleted",
+                        Integer.class, receipt)).isEqualTo(1);
+                assertThat(db.queryForObject("SELECT order_item_id FROM purchase_receipt_items WHERE receipt_id=? AND NOT is_deleted",
+                        UUID.class, receipt)).isEqualTo(source.orderItems().getLast());
+                var replay = postBusinessArrival(request, auth);
+                assertThat(replay.getStatus()).isEqualTo(200);
+                assertThat(json.readTree(replay.getContentAsString()).get("replay").booleanValue()).isTrue();
+                fixture.loginAs(keeperAB);
+                assertThatThrownBy(() -> beans.getBean(com.uten.imp.features.purchase.receipt.PurchaseReceiptService.class)
+                        .approveFromWarehouseDecision(receipt)).isInstanceOfSatisfying(ApiException.class, error -> {
+                    assertThat(error.getCode()).isEqualTo(ErrorCode.FORBIDDEN);
+                    assertThat(error.getMessage()).contains("只能操作本人负责的采购收货单");
+                });
+                // Removing an action permission must still deny even an otherwise valid cached result.
+                db.update("UPDATE user_permission_overrides SET effect='revoke',active=TRUE WHERE user_id=? "
+                        + "AND permission_id=(SELECT id FROM permissions WHERE code='warehouse_inbound:stock_in')", keeperA);
+                fixture.loginAs(keeperA);
+                var revoked = SecurityContextHolder.getContext().getAuthentication();
+                assertThat(revoked.getAuthorities()).extracting(org.springframework.security.core.GrantedAuthority::getAuthority)
+                        .contains("warehouse_inbound:view").doesNotContain("warehouse_inbound:stock_in");
+                assertThat(postBusinessArrival(request, revoked).getStatus()).isEqualTo(403);
+                assertThat(db.queryForObject("SELECT received_qty FROM purchase_order_items WHERE id=?", BigDecimal.class,
+                        source.orderItems().getLast())).isEqualByComparingTo("1");
+            } catch (Exception error) {
+                throw new IllegalStateException(error);
+            } finally { status.setRollbackOnly(); }
+        });
+    }
+
+    private org.springframework.mock.web.MockHttpServletResponse postBusinessArrival(
+            byte[] request, org.springframework.security.core.Authentication auth) throws Exception {
+        return http.perform(post("/api/warehouse/inbound/arrivals/batch").with(authentication(auth))
+                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf().asHeader())
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON).content(request)).andReturn().getResponse();
+    }
+
+    private MixedWarehousePurchase mixedWarehousePurchase() {
+        fixture.loginAs(admin);
+        UUID reviewer = org.springframework.test.util.ReflectionTestUtils.invokeMethod(fixture, "createApprover", world);
+        UUID settlement = org.springframework.test.util.ReflectionTestUtils.invokeMethod(fixture, "activeSettlementMethodId");
+        UUID hiddenGoods = UUID.randomUUID();
+        fixture.insertGoods(hiddenGoods, "SCOPE-LINE-" + hiddenGoods, "Outside purchase line", "采购",
+                world.unitId(), world.unitLegacy());
+        db.update("UPDATE goods SET owning_warehouse_id=? WHERE id=?", warehouseA, world.goodsD());
+        db.update("UPDATE goods SET owning_warehouse_id=? WHERE id=?", warehouseB, hiddenGoods);
+        var order = new com.uten.imp.features.purchase.order.dto.OrderSaveRequest();
+        order.setBillDate(BusinessTime.today());
+        order.setSupplierId(world.supplierId());
+        order.setCurrencyId(world.currencyId());
+        order.setExchangeRate(BigDecimal.ONE);
+        order.setTaxRate(BigDecimal.ZERO);
+        order.setSettlementMethodId(settlement);
+        var lines = new ArrayList<com.uten.imp.features.purchase.order.dto.OrderItemLine>();
+        for (UUID goods : List.of(world.goodsD(), world.goodsD(), hiddenGoods)) {
+            var line = new com.uten.imp.features.purchase.order.dto.OrderItemLine();
+            line.setGoodsId(goods);
+            line.setUnitId(world.unitId());
+            line.setUnitRate(BigDecimal.ONE);
+            line.setQty(BigDecimal.TEN);
+            line.setPrice(BigDecimal.ONE);
+            lines.add(line);
+        }
+        order.setItems(lines);
+        var created = beans.getBean(com.uten.imp.features.purchase.order.PurchaseOrderService.class).createBatch(order);
+        assertThat(created).hasSize(1);
+        UUID orderId = created.getFirst().getId();
+        beans.getBean(com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService.class)
+                .submit("PURCHASE", orderId);
+        fixture.loginAs(reviewer);
+        fixture.approvePendingFinance("PURCHASE", orderId);
+        String billNo = db.queryForObject("SELECT bill_no FROM purchase_orders WHERE id=?", String.class, orderId);
+        UUID expectation = db.queryForObject("SELECT id FROM inbound_expectations WHERE order_type='PURCHASE' AND order_id=?", UUID.class, orderId);
+        List<UUID> itemIds = db.queryForList("SELECT id FROM inbound_expectation_items WHERE expectation_id=? ORDER BY line_no", UUID.class, expectation);
+        List<UUID> orderItems = db.queryForList("SELECT order_item_id FROM inbound_expectation_items WHERE expectation_id=? ORDER BY line_no", UUID.class, expectation);
+        return new MixedWarehousePurchase(expectation, billNo, hiddenGoods, itemIds, orderItems, reviewer);
+    }
+
+    private record MixedWarehousePurchase(UUID expectation, String billNo, UUID hiddenGoods,
+                                          List<UUID> itemIds, List<UUID> orderItems, UUID reviewer) {}
+
+
 }

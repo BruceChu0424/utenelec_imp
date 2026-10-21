@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_refresh_scope.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -59,7 +60,8 @@ class GoodsProductionTraceView extends ConsumerStatefulWidget {
   ConsumerState<GoodsProductionTraceView> createState() => _TraceState();
 }
 
-class _TraceState extends ConsumerState<GoodsProductionTraceView> {
+class _TraceState extends ConsumerState<GoodsProductionTraceView>
+    with UtenRefreshParticipant<GoodsProductionTraceView> {
   String _direction = 'usage';
   PagedResult<GoodsProductionTraceRow>? _data;
   MaterialTraceResult? _result;
@@ -89,7 +91,7 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView> {
         if (mounted) _load(1);
       });
     });
-    _load(1);
+    trackRefresh(_load(1));
   }
 
   void _closeDetails() {
@@ -128,7 +130,7 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView> {
       }
       _data = null;
       _result = null;
-      _load(1);
+      trackRefresh(_load(1));
     }
   }
 

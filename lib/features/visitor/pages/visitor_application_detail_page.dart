@@ -3,6 +3,8 @@
 // 响应式：访客流程不经主外壳，全断点自套 UtenContentContainer.narrow
 //（详情页宜窄，宽屏居中不拉宽，水平 gutter 由容器提供）。
 import 'package:flutter/material.dart';
+
+import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/cards/uten_card.dart';
@@ -35,10 +37,18 @@ class VisitorApplicationDetailPage extends ConsumerWidget {
         title: l10n.visitorDetailTitle,
         showBackButton: true,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            onPressed: () =>
-                ref.invalidate(visitorApplicationDetailProvider(applicationId)),
+          UtenRefreshButton(
+            busy: detail.isLoading,
+            onRefresh: () async {
+              try {
+                ref.invalidate(visitorApplicationDetailProvider(applicationId));
+                await ref.read(
+                  visitorApplicationDetailProvider(applicationId).future,
+                );
+              } catch (_) {
+                // The provider exposes the request failure in the page body.
+              }
+            },
           ),
         ],
       ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -16,9 +17,53 @@ import 'package:uten_imp/shared/drafts/form_draft_category.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
+import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets(
+    'header refresh waits for both visited ledgers and skips unopened tabs',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repository = _FakeAssetRepository();
+      await _pumpWorkbench(tester, repository: repository);
+      await tester.tap(find.text('长期待摊'));
+      await tester.pumpAndSettle();
+      final fixed = Completer<PagedResult<FinanceAssetSummary>>();
+      final deferred = Completer<PagedResult<FinanceAssetSummary>>();
+      repository.nextLists.addAll({
+        FinanceAssetLedger.fixedAsset: fixed,
+        FinanceAssetLedger.deferredExpense: deferred,
+      });
+      final refresh = tester.widget<UtenRefreshButton>(
+        find.byKey(const Key('finance-asset-refresh')),
+      );
+      var finished = false;
+      final operation = Future<void>.sync(refresh.onRefresh).then((_) {
+        finished = true;
+      });
+      await tester.pump();
+      await tester.pump();
+      expect(finished, isFalse);
+      PagedResult<FinanceAssetSummary> empty() => const PagedResult(
+        items: [],
+        page: 1,
+        size: 20,
+        total: 0,
+        totalPages: 1,
+      );
+      fixed.complete(empty());
+      await tester.pump();
+      expect(finished, isFalse);
+      deferred.complete(empty());
+      await tester.pumpAndSettle();
+      await operation;
+      expect(finished, isTrue);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'draft deletion needs its own grant and rechecks revocation after confirmation',
@@ -643,6 +688,8 @@ class _FakeAssetRepository implements FinanceAssetWorkbenchRepository {
   int deleteCalls = 0;
   int listCalls = 0;
   final listQueries = <FinanceAssetQuery>[];
+  final nextLists =
+      <FinanceAssetLedger, Completer<PagedResult<FinanceAssetSummary>>>{};
   int createCalls = 0;
   int postingActionCalls = 0;
   final List<int?> postingExpectedVersions = <int?>[];
@@ -654,6 +701,10 @@ class _FakeAssetRepository implements FinanceAssetWorkbenchRepository {
   }) async {
     listQueries.add(query);
     listCalls++;
+    if (query.size != 1) {
+      final pending = nextLists.remove(ledger);
+      if (pending != null) return pending.future;
+    }
     if (failFirstList && listCalls == 1) throw StateError('offline');
     return PagedResult<FinanceAssetSummary>(
       items: items,

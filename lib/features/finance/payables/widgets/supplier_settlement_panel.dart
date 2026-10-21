@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../components/buttons/uten_refresh_button.dart';
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/feedback/uten_busy_overlay.dart';
 import '../../../../components/inputs/uten_search_bar.dart';
@@ -483,9 +484,10 @@ class _SupplierSettlementDetailPanelState
           onPressed: _writing ? null : () => Navigator.of(context).pop(),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            onPressed: _loading || _writing ? null : _load,
+          UtenRefreshButton(
+            enabled: !_writing,
+            busy: _loading,
+            onRefresh: _load,
           ),
         ],
       ),

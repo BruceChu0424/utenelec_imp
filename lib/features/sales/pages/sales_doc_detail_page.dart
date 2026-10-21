@@ -38,6 +38,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
@@ -1381,16 +1382,15 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
         actions: [
           // 整页刷新（2026-09-05 用户口径：右上角刷新=刷新整个页面）——2026-09-26
           // 起产品进度经 scope 一并重读（面板自带刷新按钮已随工具条退役）。
-          IconButton(
-            tooltip: '刷新',
-            onPressed: _loading
-                ? null
-                : () => Future.wait([
-                    _load(),
-                    // 审核并发认领等流程里面板可能未挂载，reload 已解绑时是空操作。
-                    _shipmentActions.reload(),
-                  ]),
-            icon: const Icon(Icons.refresh_rounded, size: 20),
+          UtenRefreshButton(
+            busy: _loading,
+            onRefresh: () async {
+              await Future.wait([
+                _load(),
+                // 审核并发认领等流程里面板可能未挂载，reload 已解绑时是空操作。
+                _shipmentActions.reload(),
+              ]);
+            },
           ),
         ],
       ),

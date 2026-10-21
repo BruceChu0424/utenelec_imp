@@ -4,6 +4,7 @@ import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/drafts/form_draft_catalog.dart';
 import 'package:uten_imp/shared/drafts/form_draft_category.dart';
 import 'package:uten_imp/shared/drafts/task_form_drafts.dart';
+import 'package:uten_imp/features/warehouse/models/warehouse_task_form_drafts.dart';
 
 FormDraft _draft(
   FormDraftSpec spec, {
@@ -21,6 +22,61 @@ FormDraft _draft(
 );
 
 void main() {
+  test(
+    'finished arrival drafts match the selected lot within the source report',
+    () {
+      final scoped = _draft(
+        FormDraftCatalog.finishedArrival.spec(
+          route:
+              '/warehouse/production-finished-in/arrival-registrations?reportIds=report-a&lotIds=lot-a',
+        ),
+      );
+      expect(
+        finishedInboundTaskDrafts(
+          [scoped],
+          reportId: 'report-a',
+          lotId: 'lot-a',
+        ),
+        [scoped],
+      );
+      expect(
+        finishedInboundTaskDrafts(
+          [scoped],
+          reportId: 'report-a',
+          lotId: 'lot-b',
+        ),
+        isEmpty,
+      );
+      final legacy = _draft(
+        FormDraftCatalog.finishedArrival.spec(
+          route:
+              '/warehouse/production-finished-in/arrival-registrations?reportIds=report-a',
+        ),
+        data: {
+          'rows': [
+            {'lotId': 'lot-a'},
+          ],
+        },
+      );
+      expect(
+        finishedInboundTaskDrafts(
+          [legacy],
+          reportId: 'report-a',
+          lotId: 'lot-a',
+        ),
+        [legacy],
+      );
+      expect(
+        finishedInboundTaskDrafts(
+          [legacy],
+          reportId: 'report-a',
+          lotId: 'lot-b',
+        ),
+        isEmpty,
+      );
+    },
+  );
+
   test(
     'old task permission labels cannot create a second todo or authorize restore',
     () {

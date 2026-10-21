@@ -458,6 +458,7 @@ public class StockReportService {
                 ReportColumn.text("name", "货品名称", 220),
                 ReportColumn.text("goodsCode", "物料编码", 120),
                 ReportColumn.text("color", "颜色", 90),
+                ReportColumn.text("owningWarehouse", "归属仓库", 140),
                 ReportColumn.text("series", "物料系列", 90),
                 ReportColumn.text("stockPlace", "库位号", 90),
                 ReportColumn.text("model", "型号", 110),
@@ -486,7 +487,7 @@ public class StockReportService {
      * 走只取行的 {@code instantInventoryRows}(不重跑合计与 facet)分页循环全量 → ExportPayload。
      *
      * <p>参数：categoryId/warehouseId/includeDefective(默认 true)/includeLineSide(默认 false)/keyword/
-     * owningWarehouse/owningWarehouseNull/colorId/series/unitId + weightUnit(G/KG/T/JIN/LB/OZ，
+     * owningWarehouse/owningWarehouseNull/colorId/series/unitId/warehouseRelatedOnly(默认 false) + weightUnit(G/KG/T/JIN/LB/OZ，
      * 不给按 KG；文件不做自动单位，前端把「自动」换成具体单位再传)+ sort/order。
      */
     private ExportPayload exportInstantInventory(Map<String, String> p, String sort, String order) {
@@ -502,7 +503,8 @@ public class StockReportService {
                 ReportQueryKit.parseUuid(params.get("colorId")),
                 params.get("series"),
                 ReportQueryKit.parseUuid(params.get("unitId")),
-                params.get("attention"), null, false, true, "true".equalsIgnoreCase(params.get("includeRelated")));
+                params.get("attention"), null, false, true, "true".equalsIgnoreCase(params.get("includeRelated")),
+                "true".equalsIgnoreCase(params.get("warehouseRelatedOnly")));
         WeightUnit weightUnit = exportWeightUnit(params.get("weightUnit"));
         boolean canViewCost = costMasker.canView();
         List<ReportColumn> columns = instantExportColumns(weightUnit, canViewCost);
@@ -520,6 +522,7 @@ public class StockReportService {
                 m.put("name", it.getName());
                 m.put("spec", it.getSpec());
                 m.put("color", it.getColorName());
+                m.put("owningWarehouse", it.getOwningWarehouseName());
                 m.put("unit", it.getUnitName());
                 m.put("remark", it.getRemark());
                 m.put("qty", it.getQty());

@@ -1,6 +1,8 @@
 package com.uten.imp.businesschain;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.goods.GoodsBomService;
 import com.uten.imp.features.master.goods.GoodsInlineEditService;
 import com.uten.imp.features.master.goods.GoodsService;
@@ -18,6 +20,8 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
@@ -47,6 +51,7 @@ class MasterInlineEditRuntimeEndToEndTest {
     @Autowired GoodsBomService bom;
     @Autowired JdbcTemplate db;
     @Autowired ObjectMapper json;
+    @Autowired PlatformTransactionManager transactions;
     UUID actor;
 
     @BeforeEach void login() {
@@ -55,7 +60,7 @@ class MasterInlineEditRuntimeEndToEndTest {
         UUID employee = db.queryForObject("SELECT employee_id FROM users WHERE id=?", UUID.class, actor);
         var principal = new AuthUser(actor, employee, "inline-runtime-test", Set.of(
                 "goods:view", "goods:edit", "goods:price:view", "goods:price:edit", "goods:discount:view",
-                "color:view", "color:edit"), false, true, false, false, null, UUID.randomUUID());
+                "color:view", "color:edit", "warehouse:view", "warehouse:edit", "warehouse:status"), false, true, false, false, null, UUID.randomUUID());
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(principal, "", principal.getAuthorities()));
     }
@@ -105,6 +110,94 @@ class MasterInlineEditRuntimeEndToEndTest {
         assertTrue(bom.list(id).isEmpty());
         assertEquals(goodsBefore, history("goods_operation_history"));
         assertEquals(masterBefore, history("master_operation_history"));
+    }
+
+    @Test void warehouseInlinePatchPreservesOtherValuesAndCapturesHistoryWithoutOverwritingAStaleField() {
+        UUID id = warehouse();
+        long before = history("master_operation_history");
+        route("/api/master/inline-edit/warehouses/" + id, "PATCH");
+        masterInline.patch("warehouses", id, Map.of("name", "runtime warehouse " + id),
+                Map.of("name", "runtime warehouse changed " + id));
+        assertEquals("原位置", db.queryForObject("SELECT location FROM warehouses WHERE id=?", String.class, id));
+        assertEquals("原备注", db.queryForObject("SELECT remark FROM warehouses WHERE id=?", String.class, id));
+        assertEquals(rootWarehouse(), db.queryForObject("SELECT parent_id FROM warehouses WHERE id=?", UUID.class, id));
+        assertEquals(before + 1, history("master_operation_history"));
+        assertEquals("warehouses", db.queryForObject(
+                "SELECT entity_type FROM master_operation_history WHERE actor_id=? ORDER BY created_at DESC LIMIT 1",
+                String.class, actor));
+        assertTrue(audits(id) > 0);
+        ApiException stale = assertThrows(ApiException.class, () -> masterInline.patch("warehouses", id,
+                Map.of("name", "runtime warehouse " + id), Map.of("name", "stale overwrite")));
+        assertEquals(ErrorCode.CONFLICT, stale.getCode());
+        assertEquals("runtime warehouse changed " + id,
+                db.queryForObject("SELECT name FROM warehouses WHERE id=?", String.class, id));
+        assertEquals(before + 1, history("master_operation_history"));
+    }
+
+    @Test void warehouseInlinePatchCannotDisableTheMainOrChangeALineSideWarehouse() {
+        UUID root = rootWarehouse();
+        route("/api/master/inline-edit/warehouses/" + root, "PATCH");
+        ApiException main = assertThrows(ApiException.class, () -> masterInline.patch("warehouses", root,
+                Map.of("status", "使用"), Map.of("status", "禁用")));
+        assertTrue(main.getMessage().contains("主仓"));
+        assertEquals("使用", db.queryForObject("SELECT status FROM warehouses WHERE id=?", String.class, root));
+        ApiException mainUse = assertThrows(ApiException.class, () -> masterInline.patch("warehouses", root,
+                Map.of("defective", false), Map.of("defective", true)));
+        assertTrue(mainUse.getMessage().contains("主仓"));
+        assertFalse(db.queryForObject("SELECT is_defective FROM warehouses WHERE id=?", Boolean.class, root));
+
+        UUID bin = UUID.randomUUID(), workshop = UUID.randomUUID();
+        UUID production = db.queryForObject("SELECT id FROM departments WHERE code='DEPT_PROD'", UUID.class);
+        new TransactionTemplate(transactions).executeWithoutResult(status -> {
+            db.update("INSERT INTO departments(id,code,name,parent_id,level) VALUES(?,?,?,?,'二级班组')",
+                    workshop, "RT-WS-" + workshop, "runtime workshop " + workshop, production);
+            db.update("""
+                    INSERT INTO warehouses(id,code,name,parent_id,status,is_accountable,is_line_side,workshop_department_id)
+                    VALUES(?,?,?,?,'使用',true,true,?)
+                    """, bin, "RT-BIN-" + bin, "runtime bin " + bin, root, workshop);
+            db.update("INSERT INTO workshop_bins(workshop_department_id,bin_warehouse_id,opened_by) VALUES(?,?,?)",
+                    workshop, bin, actor);
+        });
+        route("/api/master/inline-edit/warehouses/" + bin, "PATCH");
+        ApiException lineSide = assertThrows(ApiException.class, () -> masterInline.patch("warehouses", bin,
+                Map.of("name", "runtime bin " + bin), Map.of("name", "forbidden line side rename")));
+        assertTrue(lineSide.getMessage().contains("只读"));
+        assertEquals("runtime bin " + bin, db.queryForObject("SELECT name FROM warehouses WHERE id=?", String.class, bin));
+    }
+
+    @Test void warehouseInlineStatusChangesStillRequireStatusPermission() {
+        UUID id = warehouse();
+        UUID employee = db.queryForObject("SELECT employee_id FROM users WHERE id=?", UUID.class, actor);
+        var principal = new AuthUser(actor, employee, "inline-warehouse-editor",
+                Set.of("warehouse:view", "warehouse:edit"), false, true, false, false, null, UUID.randomUUID());
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(principal, "", principal.getAuthorities()));
+        route("/api/master/inline-edit/warehouses/" + id, "PATCH");
+        ApiException denied = assertThrows(ApiException.class, () -> masterInline.patch("warehouses", id,
+                Map.of("status", "使用"), Map.of("status", "禁用")));
+        assertEquals(ErrorCode.FORBIDDEN, denied.getCode());
+        assertTrue(denied.getMessage().contains("warehouse:status"));
+        masterInline.patch("warehouses", id, Map.of("remark", "原备注"), Map.of("remark", "无状态权限仍可维护备注"));
+        assertEquals("无状态权限仍可维护备注", db.queryForObject("SELECT remark FROM warehouses WHERE id=?", String.class, id));
+        assertEquals("使用", db.queryForObject("SELECT status FROM warehouses WHERE id=?", String.class, id));
+    }
+
+    private UUID warehouse() {
+        UUID id = UUID.randomUUID(), root = rootWarehouse();
+        db.update("""
+                INSERT INTO warehouses(id,code,name,parent_id,status,is_accountable,location,remark)
+                VALUES(?,?,?,?,'使用',true,'原位置','原备注')
+                """, id, "RT-WH-" + id, "runtime warehouse " + id, root);
+        return id;
+    }
+
+    private UUID rootWarehouse() {
+        var roots = db.queryForList("SELECT id FROM warehouses WHERE code='001' AND NOT is_deleted", UUID.class);
+        if (!roots.isEmpty()) return roots.getFirst();
+        UUID root = UUID.randomUUID();
+        db.update("INSERT INTO warehouses(id,code,name,status,is_accountable) VALUES(?,'001',?,'使用',false)",
+                root, "runtime main warehouse " + root);
+        return root;
     }
 
     private UUID goods() {

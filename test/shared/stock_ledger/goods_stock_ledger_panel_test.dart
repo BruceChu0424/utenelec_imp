@@ -34,6 +34,7 @@ class _PanelApi extends ApiClient {
   _PanelApi() : super(Dio());
 
   Future<Map<String, dynamic>>? contextResponse;
+  final heldGets = <String, Future<Map<String, dynamic>>>{};
   String contextName = '螺丝';
 
   final ledgerQueries = <Map<String, dynamic>>[];
@@ -74,6 +75,8 @@ class _PanelApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    final held = heldGets[path];
+    if (held != null) return held;
     if (path.endsWith('/production-trace')) {
       traceCalls++;
       return {'items': <Object>[], 'page': 1, 'size': 50, 'total': 0};
@@ -416,6 +419,79 @@ Future<_PanelApi> _pump(
 }
 
 void main() {
+  for (final (segment, paths) in [
+    (
+      GoodsStockLedgerSegment.balance,
+      ['/stock/balances', '/stock/insights/goods/g1'],
+    ),
+    (GoodsStockLedgerSegment.ledger, ['/stock/goods/g1/ledger']),
+    (
+      GoodsStockLedgerSegment.weight,
+      ['/stock/weight/goods/g1', '/stock/weight/goods/g1/observations'],
+    ),
+    (GoodsStockLedgerSegment.trace, ['/stock/goods/g1/production-trace']),
+  ]) {
+    testWidgets('reload waits for every visible ${segment.key} request', (
+      tester,
+    ) async {
+      final api = await _pump(
+        tester,
+        initialSegment: segment,
+        permissions: const {Perm.stockView, Perm.productionPlanView},
+      );
+      final held = {
+        for (final path in paths) path: Completer<Map<String, dynamic>>(),
+      };
+      for (final entry in held.entries) {
+        api.heldGets[entry.key] = entry.value.future;
+      }
+      var finished = false;
+      final refresh = tester
+          .state<GoodsStockLedgerPanelState>(find.byType(GoodsStockLedgerPanel))
+          .reload()
+          .then((_) => finished = true);
+      await tester.pump();
+      await tester.pump();
+      expect(finished, isFalse);
+      for (var index = 0; index < paths.length; index++) {
+        final path = paths[index];
+        api.heldGets.remove(path);
+        held[path]!.complete(await api.get(path));
+        await tester.pump();
+        await tester.pump();
+        if (index < paths.length - 1) expect(finished, isFalse);
+      }
+      await tester.pumpAndSettle();
+      await refresh;
+      expect(finished, isTrue);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('leaving a visible segment releases its old refresh request', (
+    tester,
+  ) async {
+    final api = await _pump(tester);
+    final held = Completer<Map<String, dynamic>>();
+    api.heldGets['/stock/balances'] = held.future;
+    final panel = tester.state<GoodsStockLedgerPanelState>(
+      find.byType(GoodsStockLedgerPanel),
+    );
+    var finished = false;
+    final refresh = panel.reload().then((_) => finished = true);
+    await tester.pump();
+    await tester.pump();
+    expect(finished, isFalse);
+    panel.selectSegment(GoodsStockLedgerSegment.ledger);
+    await tester.pumpAndSettle();
+    await refresh;
+    expect(finished, isTrue);
+    api.heldGets.remove('/stock/balances');
+    held.complete(await api.get('/stock/balances'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'warehouse-only trace waits for participation and hides during revocation',
     (tester) async {
@@ -464,14 +540,19 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(GoodsProductionTraceView), findsOneWidget);
       expect(api.traceCalls, 1);
-      tester
+      var refreshFinished = false;
+      final refresh = tester
           .state<GoodsStockLedgerPanelState>(find.byType(GoodsStockLedgerPanel))
-          .reload();
+          .reload()
+          .then((_) => refreshFinished = true);
       await tester.pumpAndSettle();
+      expect(refreshFinished, isFalse);
       expect(find.text('用料追溯'), findsNothing);
       expect(find.byType(GoodsProductionTraceView), findsNothing);
       refreshed.complete(MyWarehouseScope.empty);
       await tester.pumpAndSettle();
+      await refresh;
+      expect(refreshFinished, isTrue);
       expect(find.byType(GoodsProductionTraceView), findsNothing);
       expect(api.traceCalls, 1);
       expect(tester.takeException(), isNull);

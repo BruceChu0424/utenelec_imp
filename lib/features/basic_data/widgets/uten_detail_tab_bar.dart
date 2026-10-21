@@ -41,7 +41,8 @@ class _DetailCategories extends StatelessWidget {
     return AnimatedBuilder(
       animation: selectedController,
       builder: (context, _) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        // 页面容器统一提供水平留白，页签与正文共用左缘。
+        padding: const EdgeInsets.symmetric(vertical: 8),
         child: Align(
           alignment: Alignment.centerLeft,
           child: UtenSegmentRow<int>(

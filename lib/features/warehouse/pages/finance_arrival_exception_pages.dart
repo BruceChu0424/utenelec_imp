@@ -1,4 +1,5 @@
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -40,6 +41,7 @@ class FinanceArrivalExceptionTasksPage extends ConsumerStatefulWidget {
     super.key,
     this.embedded = false,
     this.refreshTick = 0,
+    this.refreshCompletion,
     this.externalHeader,
   });
 
@@ -49,6 +51,7 @@ class FinanceArrivalExceptionTasksPage extends ConsumerStatefulWidget {
 
   /// 外层（业务审核中心）触发的刷新信号；数值变化时重拉当前页。
   final int refreshTick;
+  final Completer<void>? refreshCompletion;
 
   /// 宿主（业务审核中心）的大类行：挂在列表顶部随页一起滚走
   /// （2026-09-24 用户口径「表格滑到顶」）。
@@ -73,15 +76,37 @@ class _FinanceArrivalExceptionTasksPageState
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final completion = widget.refreshCompletion;
+      _load(1).whenComplete(() {
+        if (completion != null && !completion.isCompleted) {
+          completion.complete();
+        }
+      });
+    });
   }
 
   @override
   void didUpdateWidget(FinanceArrivalExceptionTasksPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.refreshTick != oldWidget.refreshTick) {
-      _load(_result?.page ?? 1);
+      final completion = widget.refreshCompletion;
+      _load(_result?.page ?? 1).whenComplete(() {
+        if (completion != null && !completion.isCompleted) {
+          completion.complete();
+        }
+      });
     }
+  }
+
+  @override
+  void dispose() {
+    final completion = widget.refreshCompletion;
+    if (completion != null && !completion.isCompleted) {
+      completion.complete();
+    }
+    super.dispose();
   }
 
   Future<void> _load(int page) async {
@@ -152,7 +177,7 @@ class _FinanceArrivalExceptionTasksPageState
             key: const Key('finance-arrival-refresh'),
             label: '刷新',
             icon: Icons.refresh_rounded,
-            isLoading: _loading && result != null,
+            isLoading: _loading,
             onPressed: _loading ? null : () => _load(1),
           ),
         ],
@@ -601,6 +626,7 @@ class _FinanceArrivalExceptionDetailPageState
                 UtenAppBarActionButton(
                   label: '刷新',
                   icon: Icons.refresh_rounded,
+                  isLoading: _loading,
                   onPressed: _loading || _saving ? null : _load,
                 ),
               ],

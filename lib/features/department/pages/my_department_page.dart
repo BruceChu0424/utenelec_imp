@@ -12,6 +12,8 @@
 // 花名册：负责人/管理人排最前；仅安全联系字段；明确负责人看到“去业务页使用本页权限”的说明，
 // 不再在此处维护全目录或中央个人覆盖。
 import 'package:flutter/material.dart';
+
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -152,7 +154,7 @@ class _MyDepartmentPageState extends ConsumerState<MyDepartmentPage> {
     }
   }
 
-  void _refresh() {
+  Future<void> _refresh() async {
     _searchRequest++;
     _acceptPendingSearch = false;
     setState(() {
@@ -165,6 +167,15 @@ class _MyDepartmentPageState extends ConsumerState<MyDepartmentPage> {
     });
     ref.invalidate(myDepartmentTreeProvider);
     ref.invalidate(myDepartmentRosterProvider);
+    try {
+      final tree = await ref.read(myDepartmentTreeProvider.future);
+      if (!mounted || tree.isEmpty) return;
+      final selected =
+          _findNode(tree, _selectedId ?? tree.first.id) ?? tree.first;
+      await ref.read(myDepartmentRosterProvider(selected.id).future);
+    } catch (_) {
+      // Each provider renders its own error and retry state in the page.
+    }
   }
 
   @override
@@ -227,11 +238,7 @@ class _MyDepartmentPageState extends ConsumerState<MyDepartmentPage> {
           onPressed: () => backTo(context, defaultPath: RouteName.profile),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新',
-            onPressed: _refresh,
-          ),
+          UtenRefreshButton(busy: treeAsync.isLoading, onRefresh: _refresh),
         ],
       ),
       body: SafeArea(child: body),

@@ -78,6 +78,8 @@ class OpenAiChatClientTest {
         assertThat(response.inputTokens()).isEqualTo(321);
         assertThat(response.outputTokens()).isEqualTo(12);
         assertThat(response.truncated()).isFalse();
+        assertThat(response.stopReason()).isEqualTo("stop");
+        assertThat(response.thinkingOnly()).isFalse();
         FakeAiProviderServer.RecordedRequest sent = fake.lastChatRequest();
         assertThat(sent.path()).isEqualTo("/v1/chat/completions");
         assertThat(sent.header("Authorization")).isEqualTo("Bearer " + KEY);
@@ -199,6 +201,38 @@ class OpenAiChatClientTest {
         assertThat(client.chat(AiTestRuntimes.openAi(fake, KEY), request("x")).content()).isEmpty();
     }
 
+    @Test
+    void reasoningOnlyResponseRetainsLengthStopWithoutUsingItsReasoningAsTheAnswer() {
+        fake.enqueue(FakeAiProviderServer.json(200, """
+                {"choices":[{"message":{"content":null,"reasoning_content":"{}"},
+                "finish_reason":"length"}],"usage":{"prompt_tokens":2818,"completion_tokens":1360}}
+                """));
+
+        var response = client.chat(AiTestRuntimes.openAi(fake, KEY), request("x"));
+
+        assertThat(response.content()).isEmpty();
+        assertThat(response.thinkingOnly()).isTrue();
+        assertThat(response.truncated()).isTrue();
+        assertThat(response.stopReason()).isEqualTo("length");
+        assertThat(response.outputTokens()).isEqualTo(1360);
+    }
+
+    @Test
+    void unknownFinishReasonCannotEchoAnArbitraryUpstreamField() {
+        fake.enqueue(FakeAiProviderServer.openAiContent("{}", 10, 1, "private prompt " + KEY));
+        var response = client.chat(AiTestRuntimes.openAi(fake, KEY), request("x"));
+        assertThat(response.stopReason()).isEqualTo("unknown");
+    }
+
+    @Test void contentFilterRemainsContentFilteredEvenWhenTheProviderOmitsItsPayload() {
+        fake.enqueue(FakeAiProviderServer.json(200, "{\"choices\":[{\"finish_reason\":\"content_filter\"}]}"));
+        assertThatThrownBy(() -> client.chat(AiTestRuntimes.openAi(fake, KEY), request("x")))
+                .isInstanceOf(AiCallException.class).satisfies(error -> {
+                    assertThat(((AiCallException) error).isContentFiltered()).isTrue();
+                    assertThat(((AiCallException) error).httpStatus()).isEqualTo(200);
+                });
+    }
+
     @Test void httpSuccessWithBusinessFailureIsNotEmptyJsonAndNeverEchoesPrivateMessage() {
         fake.enqueue(FakeAiProviderServer.json(200, "{\"code\":500,\"msg\":\"private prompt " + KEY + "\",\"success\":false}"));
         assertThatThrownBy(() -> client.chat(AiTestRuntimes.openAi(fake, KEY), request("hello")))
@@ -269,8 +303,11 @@ class OpenAiChatClientTest {
 
         assertThatThrownBy(() -> client.chat(AiTestRuntimes.openAi(fake, KEY), request("x")))
                 .isInstanceOf(AiCallException.class)
-                .extracting(error -> ((AiCallException) error).category())
-                .isEqualTo(AiErrorCategory.INVALID_RESPONSE);
+                .satisfies(error -> {
+                    assertThat(((AiCallException) error).category()).isEqualTo(AiErrorCategory.INVALID_RESPONSE);
+                    assertThat(((AiCallException) error).httpStatus()).isEqualTo(200);
+                    assertThat(error.getMessage()).doesNotContain("<html>", "gateway");
+                });
     }
 
     @Test

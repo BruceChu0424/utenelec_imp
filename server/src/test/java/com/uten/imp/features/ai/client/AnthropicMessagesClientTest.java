@@ -22,6 +22,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 import java.util.Map;
@@ -75,6 +76,8 @@ class AnthropicMessagesClientTest {
         assertThat(response.content()).isEqualTo("{\"ok\":true}");
         assertThat(response.inputTokens()).isEqualTo(77);
         assertThat(response.outputTokens()).isEqualTo(9);
+        assertThat(response.stopReason()).isEqualTo("end_turn");
+        assertThat(response.thinkingOnly()).isFalse();
         FakeAiProviderServer.RecordedRequest sent = fake.lastChatRequest();
         assertThat(sent.path()).isEqualTo("/anthropic/v1/messages");
         assertThat(sent.header("x-api-key")).isEqualTo(KEY);
@@ -106,13 +109,79 @@ class AnthropicMessagesClientTest {
         assertThat(fake.lastChatRequest().path()).isEqualTo("/v1/messages");
     }
 
-    @Test
-    void reportsMaxTokensStopAsTruncated() {
-        fake.enqueue(FakeAiProviderServer.anthropicContent("{\"lines\":[", 5, 64, "max_tokens"));
+    @ParameterizedTest
+    @ValueSource(strings = {"max_tokens", "model_context_window_exceeded"})
+    void reportsTokenAndContextLimitsAsTruncated(String stopReason) {
+        fake.enqueue(FakeAiProviderServer.anthropicContent("{\"lines\":[", 5, 64, stopReason));
 
         assertThat(client.chat(AiTestRuntimes.anthropic(fake, KEY, AiJsonMode.JSON_OBJECT, false),
                 new AiProtocolClient.ChatRequest("s", List.of(new AiText("x", false)), null, null, 64)).truncated())
                 .isTrue();
+    }
+
+    @Test void refusalRemainsContentFilteredEvenWhenTheProviderOmitsItsPayload() {
+        fake.enqueue(FakeAiProviderServer.json(200, "{\"stop_reason\":\"refusal\"}"));
+        assertThatThrownBy(() -> client.chat(AiTestRuntimes.anthropic(fake, KEY, AiJsonMode.JSON_OBJECT, false),
+                new AiProtocolClient.ChatRequest("s", List.of(new AiText("x", false)), null, null, 64)))
+                .isInstanceOf(AiCallException.class).satisfies(error -> {
+                    assertThat(((AiCallException) error).isContentFiltered()).isTrue();
+                    assertThat(((AiCallException) error).httpStatus()).isEqualTo(200);
+                });
+    }
+
+    @Test
+    void thinkingOnlyAtTheOutputLimitNeverBecomesBusinessJson() {
+        fake.enqueue(FakeAiProviderServer.json(200, """
+                {"content":[{"type":"thinking","thinking":"{}"}],
+                 "stop_reason":"max_tokens","usage":{"input_tokens":2818,"output_tokens":1360}}
+                """));
+
+        var response = client.chat(AiTestRuntimes.anthropic(fake, KEY, AiJsonMode.JSON_OBJECT, false),
+                new AiProtocolClient.ChatRequest("s", List.of(new AiText("x", false)), null, null, 1360));
+
+        assertThat(response.content()).isEmpty();
+        assertThat(response.thinkingOnly()).isTrue();
+        assertThat(response.truncated()).isTrue();
+        assertThat(response.stopReason()).isEqualTo("max_tokens");
+        assertThat(response.httpStatus()).isEqualTo(200);
+        assertThat(response.outputTokens()).isEqualTo(1360);
+    }
+
+    @Test
+    void separatesThinkingFromTheFinalTextAndBoundsDiagnosticStopReasons() {
+        fake.enqueue(FakeAiProviderServer.json(200, """
+                {"content":[{"type":"thinking","thinking":"private reasoning"},
+                 {"type":"text","text":"{}"}],"stop_reason":"end_turn"}
+                """), FakeAiProviderServer.json(200, """
+                {"content":[{"type":"redacted_thinking","data":"private reasoning"}],
+                 "stop_reason":"private upstream prompt"}
+                """));
+        var runtime = AiTestRuntimes.anthropic(fake, KEY, AiJsonMode.JSON_OBJECT, false);
+        var request = new AiProtocolClient.ChatRequest("s", List.of(new AiText("x", false)), null, null, 1360);
+
+        var answered = client.chat(runtime, request);
+        assertThat(answered.content()).isEqualTo("{}");
+        assertThat(answered.thinkingOnly()).isFalse();
+        assertThat(answered.stopReason()).isEqualTo("end_turn");
+        var redactedOnly = client.chat(runtime, request);
+        assertThat(redactedOnly.content()).isEmpty();
+        assertThat(redactedOnly.thinkingOnly()).isTrue();
+        assertThat(redactedOnly.stopReason()).isEqualTo("unknown");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"<html>private upstream response</html>", "[]", "null", "{\"content\":\"wrong envelope\"}"})
+    void malformedSuccessResponseRetainsItsHttpStatusWithoutItsBody(String body) {
+        fake.enqueue(FakeAiProviderServer.raw(200, body));
+
+        assertThatThrownBy(() -> client.chat(AiTestRuntimes.anthropic(fake, KEY, AiJsonMode.JSON_OBJECT, false),
+                new AiProtocolClient.ChatRequest("s", List.of(new AiText("x", false)), null, null, 64)))
+                .isInstanceOf(AiCallException.class).satisfies(error -> {
+                    AiCallException ai = (AiCallException) error;
+                    assertThat(ai.category()).isEqualTo(AiErrorCategory.INVALID_RESPONSE);
+                    assertThat(ai.httpStatus()).isEqualTo(200);
+                    assertThat(ai.getMessage()).doesNotContain("private upstream", "wrong envelope");
+                });
     }
 
     @Test void httpSuccessWithBusinessFailureIsAConfigurationErrorWithoutLeakingItsBody() {

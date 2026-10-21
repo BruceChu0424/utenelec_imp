@@ -10,6 +10,8 @@ import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+
+import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -214,11 +216,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
                   : l10n.employeePermissionSettingsTooltip,
               onPressed: _openPermissionSettings,
             ),
-          IconButton(
-            tooltip: '刷新',
-            onPressed: _load,
-            icon: const Icon(Icons.refresh_rounded),
-          ),
+          UtenRefreshButton(busy: _loading, onRefresh: _load),
         ],
       ),
       body: Stack(

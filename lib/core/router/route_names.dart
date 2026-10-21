@@ -718,9 +718,11 @@ abstract final class RoutePath {
   }
 
   /// 产成品登记页深链(单张 = 1 个来源、多选 = N 个来源)：reportIds 逗号拼接进 query(可恢复)；
+  /// [lotIds] 保留所选实物批，省略时使用整张报工的原有入口。
   /// [stockInBeforeInspection] = 任务中心多选时点的路线(`preStock=1|0`)，双击进来为空(两条路线并排)。
   static String warehouseProductionFinishedArrivalRegistration(
     List<String> reportIds, {
+    List<String>? lotIds,
     String? returnTo,
     bool? stockInBeforeInspection,
   }) {
@@ -728,6 +730,13 @@ abstract final class RoutePath {
         .map((id) => id.trim())
         .where((id) => id.isNotEmpty)
         .join(',');
+    final lots =
+        lotIds
+            ?.map((id) => id.trim())
+            .where((id) => id.isNotEmpty)
+            .toSet()
+            .toList()
+          ?..sort();
     final safeReturnTo = sanitizeReturnTo(
       returnTo,
       scope: ReturnToScope.employee,
@@ -736,6 +745,7 @@ abstract final class RoutePath {
       path: RouteName.warehouseProductionFinishedArrivalRegistration,
       queryParameters: {
         'reportIds': ids,
+        if (lots != null) 'lotIds': lots.join(','),
         if (stockInBeforeInspection != null)
           'preStock': stockInBeforeInspection ? '1' : '0',
         'returnTo': ?safeReturnTo,

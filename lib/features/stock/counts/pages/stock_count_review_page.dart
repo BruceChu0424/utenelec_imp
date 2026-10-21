@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../components/buttons/uten_back_button.dart';
+import '../../../../components/buttons/uten_refresh_button.dart';
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/data_display/uten_status_badge.dart';
 import '../../../../components/data_display/uten_selection_summary_pill.dart';
@@ -608,12 +609,10 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
                 },
               ),
               actions: [
-                IconButton(
-                  tooltip: '刷新',
-                  onPressed: !allowed || _working
-                      ? null
-                      : () => _detail == null ? _load() : _open(_detail!.id),
-                  icon: const Icon(Icons.refresh),
+                UtenRefreshButton(
+                  enabled: allowed && !_working,
+                  onRefresh: () =>
+                      _detail == null ? _load() : _open(_detail!.id),
                 ),
               ],
             ),

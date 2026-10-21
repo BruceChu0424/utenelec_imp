@@ -54,6 +54,7 @@ class FinanceProcurementApprovalTasksPage extends ConsumerStatefulWidget {
     this.embedded = false,
     this.externalHeader,
     this.refreshTick = 0,
+    this.refreshCompletion,
     this.initialStatus,
   });
 
@@ -65,6 +66,7 @@ class FinanceProcurementApprovalTasksPage extends ConsumerStatefulWidget {
 
   /// 外层（业务审核中心）触发的刷新信号；数值变化时重拉当前页。
   final int refreshTick;
+  final Completer<void>? refreshCompletion;
   final String? initialStatus;
 
   @override
@@ -100,6 +102,10 @@ class _FinanceProcurementApprovalTasksPageState
 
   @override
   void dispose() {
+    final completion = widget.refreshCompletion;
+    if (completion != null && !completion.isCompleted) {
+      completion.complete();
+    }
     _batchClaim?.releaseAll().ignore();
     super.dispose();
   }
@@ -188,7 +194,15 @@ class _FinanceProcurementApprovalTasksPageState
     ref.listenManual(currentPermissionsProvider, (previous, next) {
       if (!setEquals(previous, next)) _invalidateScope();
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final completion = widget.refreshCompletion;
+      _load(1).whenComplete(() {
+        if (completion != null && !completion.isCompleted) {
+          completion.complete();
+        }
+      });
+    });
   }
 
   void _invalidateScope() {
@@ -220,7 +234,14 @@ class _FinanceProcurementApprovalTasksPageState
             : 'PENDING',
       );
     }
-    if (widget.refreshTick != oldWidget.refreshTick) _refreshCurrent();
+    if (widget.refreshTick != oldWidget.refreshTick) {
+      final completion = widget.refreshCompletion;
+      _refreshCurrent().whenComplete(() {
+        if (completion != null && !completion.isCompleted) {
+          completion.complete();
+        }
+      });
+    }
   }
 
   void _selectType(FinanceProcurementOrderType? type) {
@@ -262,9 +283,9 @@ class _FinanceProcurementApprovalTasksPageState
     _selectedTasksById.clear();
   }
 
-  void _refreshCurrent() {
+  Future<void> _refreshCurrent() async {
     setState(_clearSelectionState);
-    _load(_result?.page ?? 1);
+    await _load(_result?.page ?? 1);
   }
 
   Future<void> _load(int page) async {
@@ -697,7 +718,7 @@ class _FinanceProcurementApprovalTasksPageState
                   key: const Key('finance-approval-refresh'),
                   label: '刷新',
                   icon: Icons.refresh_rounded,
-                  isLoading: _loading && _result != null,
+                  isLoading: _loading,
                   onPressed: _loading || _busyDecision ? null : _refreshCurrent,
                 ),
               ]

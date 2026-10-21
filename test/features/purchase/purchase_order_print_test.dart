@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/purchase/models/purchase_order_print_document.dart';
 import 'package:uten_imp/features/purchase/widgets/purchase_order_print_preview.dart';
 
@@ -84,6 +85,26 @@ void main() {
     final json = fixture(status: '等待财务审核')..['reviewerName'] = '旧审核员';
     expect(PurchaseOrderPrintDocument.fromJson(json).reviewerName, isEmpty);
   });
+
+  for (final status in ['等待财务审核', '改量待财务复核', '财务退回', '已取消', '已反审', '已审']) {
+    test(
+      'PDF generation rejects a document without finance approval: $status',
+      () async {
+        await expectLater(
+          buildPurchaseOrderPdf(
+            PurchaseOrderPrintDocument.fromJson(fixture(status: status)),
+          ),
+          throwsA(
+            isA<ApiException>().having(
+              (error) => error.code,
+              'code',
+              'FINANCE_APPROVAL_REQUIRED',
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   test(
     'RMB capitals keep cents exact above the binary integer precision boundary',

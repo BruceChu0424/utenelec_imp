@@ -24,6 +24,14 @@ final class AiDocumentFixtures {
     private static final String[] GIVEN = {"一", "二", "三", "四", "五", "六", "七", "八", "九", "十"};
     private static final String[] DEPARTMENTS = {"注塑一部", "装配二部", "品质三部", "仓储四部", "采购五部", "行政六部", "研发七部", "销售八部", "财务九部"};
 
+    static void initializeLegacyMetadata(Workbook book) {
+        if (book instanceof HSSFWorkbook legacy) {
+            legacy.createInformationProperties();
+            legacy.getSummaryInformation().getSections().forEach(section -> section.setCodepage(org.apache.poi.util.CodePageUtil.CP_UTF16));
+            legacy.getDocumentSummaryInformation().getSections().forEach(section -> section.setCodepage(org.apache.poi.util.CodePageUtil.CP_UTF16));
+        }
+    }
+
     /** One fabricated employee row; the department is merged vertically per group of ten. */
     record Person(String name, String gender, String department, String position, LocalDate hired, String idNumber, long phone) {}
 
@@ -90,6 +98,7 @@ final class AiDocumentFixtures {
             Row total = sheet.createRow(r);
             total.createCell(0).setCellValue("合计");
             total.createCell(1).setCellValue("共" + count + "人");
+            initializeLegacyMetadata(book);
             book.write(out);
             return out.toByteArray();
         }
@@ -112,6 +121,7 @@ final class AiDocumentFixtures {
                     else cell.setCellValue(value.toString());
                 }
             }
+            initializeLegacyMetadata(book);
             book.write(out);
             return out.toByteArray();
         }

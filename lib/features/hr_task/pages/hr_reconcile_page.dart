@@ -2,6 +2,8 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+
+import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -1003,12 +1005,11 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
                   icon: const Icon(Icons.history_rounded),
                   onPressed: _busy ? null : _openRecords,
                 ),
-              IconButton(
+              UtenRefreshButton(
                 tooltip: l10n.hrReconcileRefresh,
-                icon: const Icon(Icons.refresh_rounded),
-                onPressed: _busy || _activePlanId == null
-                    ? null
-                    : () => _loadPlan(_activePlanId!),
+                busy: _loading,
+                enabled: !_busy && _activePlanId != null,
+                onRefresh: () => _loadPlan(_activePlanId!),
               ),
             ],
           ),

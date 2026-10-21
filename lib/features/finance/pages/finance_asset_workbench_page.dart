@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import '../../../shared/drafts/form_draft_category.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -41,6 +43,7 @@ class _FinanceAssetWorkbenchPageState
   bool _overviewLoading = true;
   String? _overviewError;
   int _refreshToken = 0;
+  Map<int, Completer<void>> _refreshCompletions = {};
 
   @override
   void initState() {
@@ -52,6 +55,9 @@ class _FinanceAssetWorkbenchPageState
 
   @override
   void dispose() {
+    for (final completion in _refreshCompletions.values) {
+      if (!completion.isCompleted) completion.complete();
+    }
     _tabs
       ..removeListener(_handleTabChanged)
       ..dispose();
@@ -104,8 +110,18 @@ class _FinanceAssetWorkbenchPageState
   }
 
   Future<void> _refreshAll() async {
-    setState(() => _refreshToken++);
-    await _loadOverview();
+    final completions = {
+      for (final tab in _visitedTabs)
+        if (tab < 3) tab: Completer<void>(),
+    };
+    setState(() {
+      _refreshCompletions = completions;
+      _refreshToken++;
+    });
+    await Future.wait([
+      _loadOverview(),
+      for (final completion in completions.values) completion.future,
+    ]);
   }
 
   Future<void> _configurePolicy(FinanceAssetCapabilities capabilities) async {
@@ -134,6 +150,9 @@ class _FinanceAssetWorkbenchPageState
   Widget _buildPolicyDraftHost(BuildContext context) {
     final capabilities = _capabilities();
     if (!capabilities.canView) {
+      for (final completion in _refreshCompletions.values) {
+        if (!completion.isCompleted) completion.complete();
+      }
       return Scaffold(
         appBar: const UtenAppBar(title: '资产与待摊'),
         body: UtenEmpty.error(
@@ -177,12 +196,11 @@ class _FinanceAssetWorkbenchPageState
           onPressed: () => backTo(context, defaultPath: RouteName.finance),
         ),
         actions: [
-          IconButton(
+          UtenRefreshButton(
+            busy: _overviewLoading,
             key: const Key('finance-asset-refresh'),
-            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
             tooltip: '刷新资产工作台',
-            onPressed: _overviewLoading ? null : _refreshAll,
-            icon: const Icon(Icons.refresh_rounded),
+            onRefresh: _refreshAll,
           ),
         ],
       ),
@@ -219,6 +237,7 @@ class _FinanceAssetWorkbenchPageState
                         capabilities: capabilities,
                         policyReady: policyReady,
                         refreshToken: _refreshToken,
+                        refreshCompletion: _refreshCompletions[0],
                       ),
                       if (_visitedTabs.contains(1))
                         FinanceAssetLedgerPanel(
@@ -227,6 +246,7 @@ class _FinanceAssetWorkbenchPageState
                           capabilities: capabilities,
                           policyReady: policyReady,
                           refreshToken: _refreshToken,
+                          refreshCompletion: _refreshCompletions[1],
                         )
                       else
                         const SizedBox.shrink(),
@@ -234,6 +254,7 @@ class _FinanceAssetWorkbenchPageState
                         FinanceAssetPostingPanel(
                           key: ValueKey('asset-posting-$_refreshToken'),
                           capabilities: capabilities,
+                          refreshCompletion: _refreshCompletions[2],
                         )
                       else
                         const SizedBox.shrink(),

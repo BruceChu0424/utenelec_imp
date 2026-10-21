@@ -273,14 +273,21 @@ class WarehouseDataScopeEndToEndTest {
         assertThat(ab.defaultWarehouseId()).isNull();
 
         fixture.loginAs(member);
-        assertForbidden(() -> scopes.current(warehouseC));
-        assertThat(dataScope.myScope().selectable()).isEmpty();
+        assertThat(scopes.current(warehouseC).warehouseIds()).containsExactly(warehouseC);
+        assertThat(dataScope.myScope().selectable()).extracting(MyWarehouseScope.Option::id)
+                .contains(root, warehouseC).doesNotContain(warehouseA, warehouseB);
+        assertThat(dataScope.myScope().canSelectAll()).isFalse();
+        assertThat(scopes.current(root).warehouseIds()).contains(root, warehouseC)
+                .doesNotContain(warehouseA, warehouseB);
+        assertForbidden(() -> scopes.current(warehouseA));
         assertThat(dataScope.myScope().role()).isEqualTo("OTHER");
         assertThat(dataScope.myScope().warehouseParticipant()).isTrue();
 
         fixture.loginAs(outsider);
         assertThat(dataScope.myScope().role()).isEqualTo("OTHER");
         assertThat(dataScope.myScope().warehouseParticipant()).isFalse();
+        assertThat(scopes.current(warehouseC).warehouseIds()).containsExactly(warehouseC);
+        assertForbidden(() -> scopes.current(warehouseA));
 
         fixture.loginAs(manager);
         assertThat(scopes.current(warehouseC).warehouseIds()).containsExactly(warehouseC);
@@ -321,7 +328,7 @@ class WarehouseDataScopeEndToEndTest {
         selections.put(manager, Arrays.asList(null, warehouseC));
         selections.put(keeperA, Arrays.asList((UUID) null));
         selections.put(keeperAB, Arrays.asList(null, warehouseB));
-        selections.put(member, Arrays.asList((UUID) null));
+        selections.put(member, Arrays.asList(null, warehouseC, root));
         for (var entry : selections.entrySet()) {
             fixture.loginAs(entry.getKey());
             for (UUID selected : entry.getValue()) assertBadgeEqualsLists(entry.getKey(), selected);
@@ -569,7 +576,7 @@ class WarehouseDataScopeEndToEndTest {
     private static void assertForbidden(org.assertj.core.api.ThrowableAssert.ThrowingCallable call) {
         assertThatThrownBy(call).isInstanceOfSatisfying(ApiException.class, error -> {
             assertThat(error.getCode()).isEqualTo(ErrorCode.FORBIDDEN);
-            assertThat(error.getMessage()).contains("所选仓库不在你负责的范围内");
+            assertThat(error.getMessage()).contains("所选仓库不在你可见的范围内");
         });
     }
 }

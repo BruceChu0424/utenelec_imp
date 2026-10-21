@@ -6,6 +6,8 @@
 // 「不良复判转回」(能不能办由服务端 options 下发, 页面不拼权限)。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../components/layout/uten_refresh_scope.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/uten_tokens.dart';
@@ -54,7 +56,8 @@ class GoodsStockBalanceView extends ConsumerStatefulWidget {
       _GoodsStockBalanceViewState();
 }
 
-class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView> {
+class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
+    with UtenRefreshParticipant<GoodsStockBalanceView> {
   static const _pageSize = 50;
 
   PagedResult<BalanceRow>? _balances;
@@ -69,8 +72,9 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _load(1);
-      _loadWeightParams();
+      if (!mounted) return;
+      trackRefresh(_load(1));
+      trackRefresh(_loadWeightParams());
     });
   }
 
@@ -81,7 +85,7 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView> {
         oldWidget.goodsId != widget.goodsId ||
         oldWidget.scope != widget.scope) {
       if (oldWidget.scope != widget.scope) _balances = null;
-      _load(_balances?.page ?? 1);
+      trackRefresh(_load(_balances?.page ?? 1));
     }
   }
 

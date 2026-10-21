@@ -14,8 +14,10 @@
 //   · 旧队列路由（/finance/sales-order-confirmations 等）全部保留：通知深链与
 //     其它模块入口仍直达具体队列，页面与本页分段共用同一组件（embedded 模式）。
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -25,6 +27,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart';
 import '../../sales/widgets/sales_shipment_task_workbench.dart';
@@ -66,6 +69,9 @@ class _FinanceAuditCenterPageState
     extends ConsumerState<FinanceAuditCenterPage> {
   String? _segment;
   int _refreshTick = 0;
+  bool _refreshing = false;
+  String? _visibleSegment;
+  Completer<void>? _refreshCompletion;
   String? _myLocation;
 
   @override
@@ -76,10 +82,39 @@ class _FinanceAuditCenterPageState
         : widget.initialSegment;
   }
 
-  void _refresh() {
-    setState(() => _refreshTick++);
-    refreshBadges(ref);
+  Future<void> _refresh() async {
+    if (_refreshing) return;
+    final completion = _visibleSegment == null ? null : Completer<void>();
+    setState(() {
+      _refreshing = true;
+      _refreshCompletion = completion;
+      _refreshTick++;
+    });
     ref.invalidate(salesOrderFinanceQueueCountProvider);
+    try {
+      await Future.wait([
+        refreshBadges(ref),
+        if (completion != null) completion.future,
+      ]);
+    } catch (error) {
+      if (mounted) context.appApiError(error);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _refreshing = false;
+          _refreshCompletion = null;
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    final completion = _refreshCompletion;
+    if (completion != null && !completion.isCompleted) {
+      completion.complete();
+    }
+    super.dispose();
   }
 
   @override
@@ -131,6 +166,15 @@ class _FinanceAuditCenterPageState
         ),
     ];
 
+    _visibleSegment = segments.any((segment) => segment.value == _segment)
+        ? _segment
+        : null;
+    if (_visibleSegment == null) {
+      final completion = _refreshCompletion;
+      if (completion != null && !completion.isCompleted) {
+        completion.complete();
+      }
+    }
     return Scaffold(
       appBar: UtenAppBar(
         title: '业务审核中心',
@@ -138,11 +182,10 @@ class _FinanceAuditCenterPageState
           onPressed: () => backTo(context, defaultPath: RouteName.finance),
         ),
         actions: [
-          IconButton(
+          UtenRefreshButton(
+            busy: _refreshing,
             key: const Key('finance-audit-center-refresh'),
-            tooltip: '刷新',
-            onPressed: _refresh,
-            icon: const Icon(Icons.refresh_rounded),
+            onRefresh: _refresh,
           ),
         ],
       ),
@@ -217,29 +260,34 @@ class _FinanceAuditCenterPageState
               (widget.initialSegment == 'salesChanges' ? 'changes' : null),
           embedded: true,
           refreshTick: _refreshTick,
+          refreshCompletion: _refreshCompletion,
           externalHeader: externalHeader,
         ),
         'shipment' => SalesShipmentTaskWorkbench(
           mode: SalesShipmentTaskWorkbenchMode.financeAudit,
           embedded: true,
           refreshTick: _refreshTick,
+          refreshCompletion: _refreshCompletion,
           externalHeader: externalHeader,
         ),
         'procurement' => FinanceProcurementApprovalTasksPage(
           initialStatus: widget.initialProcurementStatus,
           embedded: true,
           refreshTick: _refreshTick,
+          refreshCompletion: _refreshCompletion,
           externalHeader: externalHeader,
         ),
         'arrival' => FinanceArrivalExceptionTasksPage(
           embedded: true,
           refreshTick: _refreshTick,
+          refreshCompletion: _refreshCompletion,
           externalHeader: externalHeader,
         ),
         _ => ProcurementIqcRejectionListPage(
           source: 'finance',
           embedded: true,
           refreshTick: _refreshTick,
+          refreshCompletion: _refreshCompletion,
           externalHeader: externalHeader,
         ),
       };

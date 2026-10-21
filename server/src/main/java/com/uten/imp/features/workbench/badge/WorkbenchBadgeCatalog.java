@@ -83,18 +83,18 @@ enum WorkbenchBadgeCatalog {
     rdTaskCenter(Module.rd, facts("rdTask.open"), facts("rdTask.inProgress")),
 
     // —— 仓库(一张任务中心卡一个入口; 卡内分段用事实数) ——
-    /** 出库任务中心: 销售待出库 + 委外出库(委外人员已提交、仓库未发出的领料草稿张数, 按调用者仓库范围)。 */
+    /** 出库任务中心: 销售待出库 + 委外待发料 + 生产待领，按任务列表的实物明细行及调用者仓库范围计数。 */
     warehouseOutboundCenter(Module.warehouse, facts(
             "warehouseSalesOutbound.PENDING_PICK",
             "subcontractOutbound.count",
             "productionDraw.count"), none()),
-    /** 入库任务中心: 预计到货 + 到货异常(仓库侧) + 产成品待点收。 */
+    /** 入库任务中心: 预计到货实物行 + 到货异常行(仓库侧) + 产成品待点收实物行 + 生产退料实物行。 */
     warehouseInboundCenter(Module.warehouse, facts(
             "warehouseInboundExpectation.count",
             "warehouseArrivalException.count",
             "finishedInbound.count",
             "productionReturn.count"), none()),
-    /** 生产领料任务中心: 待领任务 + 车间已提交待仓库确认实收的退料。 */
+    /** 生产领料旧入口别名: 待领实物行 + 车间已提交待仓库确认实收的退料实物行。 */
     warehouseDrawCenter(Module.warehouse, facts(
             "productionDraw.count",
             "productionReturn.count"), none()),

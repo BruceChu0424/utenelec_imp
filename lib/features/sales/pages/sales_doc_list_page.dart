@@ -15,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/doc_status_badge.dart';
 import '../../../components/data_display/paged_list_controller.dart';
@@ -1202,12 +1203,9 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
           onPressed: () => backTo(context, defaultPath: SalesRoutePath.hub),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新',
-            onPressed: () {
-              _reload();
-              if (_isOrder) _loadStats();
+          UtenRefreshButton(
+            onRefresh: () async {
+              await Future.wait([_reload(), if (_isOrder) _loadStats()]);
             },
           ),
         ],

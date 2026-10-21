@@ -55,10 +55,36 @@ class WarehouseDirectionBadgeContractTest {
         assertThat(entries.staleEntries()).isEmpty();
     }
 
+    @Test void physicalLineFactsPropagateThroughDirectionQualityModuleAndNavigationCounts() throws Exception {
+        Harness harness = harness(Map.of(
+                "warehouseInboundExpectation", Map.of("count",2L,"PURCHASE",2L,"SUBCONTRACT",0L),
+                "finishedInbound", Map.of("count",3L),
+                "productionReturn", Map.of("count",2L),
+                "warehouseSalesOutbound", Map.of("PENDING_PICK",2L),
+                "subcontractOutbound", Map.of("count",2L),
+                "productionDraw", Map.of("count",3L),
+                "qualityResult", Map.of("actionable.PURCHASE",2L,"inProgress.PURCHASE",3L)));
+        var summary=harness.service.summary(Set.of("warehouseOutboundCenter","warehouseInboundCenter",
+                "warehouseDrawCenter","warehouseQualityResult"));
+        assertThat(summary.entries().get("warehouseInboundCenter").todo()).isEqualTo(7);
+        assertThat(summary.entries().get("warehouseOutboundCenter").todo()).isEqualTo(7);
+        assertThat(summary.entries().get("warehouseDrawCenter").todo()).isEqualTo(5);
+        assertThat(summary.entries().get("warehouseQualityResult").todo()).isEqualTo(2);
+        assertThat(summary.entries().get("warehouseQualityResult").inProgress()).isEqualTo(3);
+        assertThat(summary.modules().get("warehouse").todo()).isEqualTo(16);
+        assertThat(summary.total().todo()).isEqualTo(16);
+        assertThat(summary.total().inProgress()).isEqualTo(3);
+        assertThat(summary.facts()).containsEntry("warehouseInboundExpectation.PURCHASE",2L);
+    }
+
     private record Harness(WorkbenchBadgeService service, WarehouseTaskScopePort scopes,
                            AtomicInteger drawReads, AtomicInteger returnReads) {}
 
     private static Harness harness() throws Exception {
+        return harness(Map.of());
+    }
+
+    private static Harness harness(Map<String,Map<String,Long>> facts) throws Exception {
         DataSource dataSource = mock(DataSource.class);
         when(dataSource.getConnection()).thenAnswer(call -> {
             Connection connection = mock(Connection.class);
@@ -72,6 +98,7 @@ class WarehouseDirectionBadgeContractTest {
                 .flatMap(entry -> Stream.concat(entry.todoFacts().stream(), entry.inProgressFacts().stream()))
                 .map(WorkbenchBadgeCatalog::sourceOf).distinct()
                 .map(key -> new WorkbenchBadgeSources.Source(key, () -> {
+                    if (facts.containsKey(key)) return facts.get(key);
                     if (key.equals("productionDraw")) { draw.incrementAndGet(); return Map.of("count", 4L); }
                     if (key.equals("productionReturn")) { returned.incrementAndGet(); return Map.of("count", 1L); }
                     return Map.of("count", 0L);

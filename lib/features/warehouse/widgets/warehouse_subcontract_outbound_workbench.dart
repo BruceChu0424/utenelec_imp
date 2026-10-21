@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 // 委外出仓工作台(可嵌入; ADR-143 §4.3)：一行 = 委外人员在委外任务中心提交、
 // 仓库还没发出的一张委外领料单(按调用者仓库范围)。仓库核对实际仓与库位后审核
 // 出仓; 数量只能改少不能改多。仓库视角只有数量/重量/库位/委外商名，无价格金额。
@@ -68,7 +69,8 @@ class WarehouseSubcontractOutboundWorkbench extends ConsumerStatefulWidget {
 }
 
 class _WarehouseSubcontractOutboundWorkbenchState
-    extends ConsumerState<WarehouseSubcontractOutboundWorkbench> {
+    extends ConsumerState<WarehouseSubcontractOutboundWorkbench>
+    with UtenRefreshParticipant<WarehouseSubcontractOutboundWorkbench> {
   PagedResult<OutboundTask>? _result;
   bool _loading = false;
   String? _error;
@@ -94,7 +96,7 @@ class _WarehouseSubcontractOutboundWorkbenchState
   void initState() {
     super.initState();
     _keyword = widget.keyword;
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+    WidgetsBinding.instance.addPostFrameCallback((_) => trackRefresh(_load(1)));
   }
 
   @override
@@ -103,7 +105,9 @@ class _WarehouseSubcontractOutboundWorkbenchState
     if (oldWidget.keyword != widget.keyword ||
         oldWidget.refreshTick != widget.refreshTick) {
       _keyword = widget.keyword;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => trackRefresh(_load(1)),
+      );
     }
   }
 

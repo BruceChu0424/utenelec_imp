@@ -51,19 +51,26 @@ public class OpenAiChatClient implements AiProtocolClient {
         if (!exchange.success()) {
             throw AiErrorMapper.fromStatus(exchange.status(), exchange.body(), runtime.apiKey());
         }
-        JsonNode root = parse(exchange.body());
+        JsonNode root = parse(exchange.body(), exchange.status());
         AiProtocolEnvelope.requireSuccess(root, exchange.status(), root.path("choices").path(0).path("message").isObject());
         JsonNode choice = root.path("choices").path(0);
         // 服务商的内容审核截断了回答(智谱 sensitive, OpenAI/Azure content_filter): 不是格式错误。
         if (Set.of("sensitive", "content_filter").contains(choice.path("finish_reason").asText(""))) {
             throw AiCallException.contentFiltered(exchange.status());
         }
+        if (!choice.path("message").isObject()) {
+            throw new AiCallException(AiErrorCategory.INVALID_RESPONSE, "AI 服务返回的内容无法识别", exchange.status());
+        }
         JsonNode content = choice.path("message").path("content");
         String text = contentText(content);
-        boolean truncated = "length".equals(choice.path("finish_reason").asText(""));
+        String stopReason = choice.path("finish_reason").asText(null);
+        boolean truncated = "length".equals(stopReason);
+        JsonNode reasoning = choice.path("message").path("reasoning_content");
+        boolean thinkingOnly = text.isBlank() && reasoning.isTextual() && !reasoning.asText().isBlank();
         JsonNode usage = root.path("usage");
         return new ChatResponse(text, AiProtocolClient.tokenCount(usage, "prompt_tokens"),
-                AiProtocolClient.tokenCount(usage, "completion_tokens"), exchange.status(), truncated, exchange.latencyMs());
+                AiProtocolClient.tokenCount(usage, "completion_tokens"), exchange.status(), truncated, exchange.latencyMs(),
+                stopReason, thinkingOnly);
     }
 
     @Override
@@ -73,7 +80,7 @@ public class OpenAiChatClient implements AiProtocolClient {
             throw AiErrorMapper.fromStatus(exchange.status(), exchange.body(), runtime.apiKey());
         }
         List<String> models = new ArrayList<>();
-        JsonNode root = parse(exchange.body());
+        JsonNode root = parse(exchange.body(), exchange.status());
         AiProtocolEnvelope.requireSuccess(root, exchange.status(), root.path("data").isArray());
         for (JsonNode item : root.path("data")) {
             String id = item.path("id").asText("");
@@ -227,17 +234,17 @@ public class OpenAiChatClient implements AiProtocolClient {
         return "";
     }
 
-    private JsonNode parse(byte[] body) {
+    private JsonNode parse(byte[] body, int httpStatus) {
         try {
             JsonNode node = json.readTree(body);
             if (node == null || !node.isObject()) {
-                throw new AiCallException(AiErrorCategory.INVALID_RESPONSE, "AI 服务返回的内容无法识别");
+                throw new AiCallException(AiErrorCategory.INVALID_RESPONSE, "AI 服务返回的内容无法识别", httpStatus);
             }
             return node;
         } catch (AiCallException e) {
             throw e;
         } catch (Exception e) {
-            throw new AiCallException(AiErrorCategory.INVALID_RESPONSE, "AI 服务返回的内容无法识别");
+            throw new AiCallException(AiErrorCategory.INVALID_RESPONSE, "AI 服务返回的内容无法识别", httpStatus);
         }
     }
 }

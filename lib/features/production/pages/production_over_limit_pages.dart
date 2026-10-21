@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -115,10 +116,10 @@ class _OverLimitListState extends ConsumerState<ProductionOverLimitListPage> {
               popOrBackTo(context, defaultPath: RouteName.productionPlanList),
         ),
         actions: [
-          IconButton(
-            onPressed: _loading ? null : () => _load(_data?.page ?? 1),
-            icon: const Icon(Icons.refresh),
-            tooltip: '刷新',
+          UtenRefreshButton(
+            enabled: !(_loading),
+            busy: _loading,
+            onRefresh: () => _load(_data?.page ?? 1),
           ),
         ],
       ),
@@ -448,10 +449,10 @@ class _OverLimitDetailState
           onPressed: () => popOrBackTo(context, defaultPath: backRoute),
         ),
         actions: [
-          IconButton(
-            onPressed: _busy || _loading ? null : _load,
-            icon: const Icon(Icons.refresh),
-            tooltip: '刷新',
+          UtenRefreshButton(
+            enabled: !(_busy || _loading),
+            busy: _loading,
+            onRefresh: _load,
           ),
         ],
       ),

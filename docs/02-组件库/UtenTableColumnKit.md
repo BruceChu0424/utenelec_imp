@@ -1,5 +1,28 @@
 # UtenTableColumnKit（表格表头列管理共用套件）
 
+## 2026-10-20 表格输入随内容自动加宽
+
+界面与交互按 `frontend-design` 维护，沿用 Uten 主题与紧凑输入尺度。
+`UtenEditableGrid` 和 `MasterDataTableView` 共用
+[`UtenTableCellAutoWidth`](../../lib/components/inputs/uten_table_cell_auto_width.dart)
+反馈表格单元格真实内容所需宽度，宿主按列合并并同步表头、表体及冻结区域。
+空输入保留既有紧凑宽度，文字增加或选值变长时扩大整列，页面无需仅为自动增长
+逐列提供 `textOf` / `listenableOf`。
+
+量宽覆盖裸 `TextField` / `TextFormField`、`UtenInput`、数字金额、日期月份、下拉
+（含 flat）、选择器及复合输入，按当前可见值、字体与文字缩放、内边距和附属控件
+计算。占位、错误说明、菜单未选候选不参与。宽度只增不减，自动增长通常封顶 480。
+`UtenEditableGrid` 保留大于上限的声明宽度，`MasterDataTableView` 的声明宽度继续遵循
+原有自动拟合规则；两者均保留手动设置的更大宽度。超限仍按原输入内部滚动、选值省略和表格横滚处理。
+卡片视图按可用宽度布局，不向表格反馈列宽。
+
+列宽手柄的横拖仍优先于换位手势；拖动后锁定手动宽度，输入与刷新不覆盖用户选择。
+双击手柄清除手动宽度并恢复当前内容的自动适配。测量不替换原有输入控件，不改变
+控制器、焦点与选区、校验、输入回调、业务值或权限。
+
+列定义的 `textOf` / `listenableOf` 继续服务早期宽度预估、实时筛选、冻结文本快照和
+AI 等已有能力；不能因自动量宽而删除这些可读文本来源。
+
 ## 2026-10-17 编辑网格列关键词
 
 `UtenEditableGrid` 与 `MasterDataTableView` 共用

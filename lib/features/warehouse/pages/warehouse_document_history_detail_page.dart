@@ -138,19 +138,14 @@ class _WarehouseDocumentHistoryDetailPageState
               popOrBackTo(context, defaultPath: widget.type.listPath()),
         ),
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: UtenSpacing.s8),
-            child: UtenButton(
-              key: Key(
-                'warehouse-history-detail-refresh-${widget.type.segment}',
-              ),
-              size: UtenButtonSize.large,
-              type: UtenButtonType.tonal,
-              icon: Icons.refresh_rounded,
-              isLoading: _loading && detail != null,
-              onPressed: _loading ? null : _load,
-              child: const Text('刷新'),
-            ),
+          UtenButton(
+            key: Key('warehouse-history-detail-refresh-${widget.type.segment}'),
+            size: UtenButtonSize.large,
+            type: UtenButtonType.tonal,
+            icon: Icons.refresh_rounded,
+            isLoading: _loading && detail != null,
+            onPressed: _loading ? null : _load,
+            child: const Text('刷新'),
           ),
         ],
       ),

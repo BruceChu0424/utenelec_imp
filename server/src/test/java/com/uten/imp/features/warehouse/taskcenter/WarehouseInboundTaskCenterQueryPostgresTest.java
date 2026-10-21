@@ -6,6 +6,7 @@ import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.stock.StockDocAccessPolicy;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegistrationService;
+import com.uten.imp.features.warehouse.finishedin.ProductionFinishedInboundTaskService;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInPermissions;
 import com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.Filter;
 import com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.Row;
@@ -70,7 +71,7 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
                 "production_finished_in_confirmations","procurement_arrival_exceptions","goods",
                 "inbound_expectations","inbound_expectation_items","production_fqc_legacy_exemptions",
                 "procurement_inspection_items","procurement_inspection_events","procurement_iqc_stock_in_batch_items","procurement_iqc_stock_in_batches",
-                "procurement_iqc_rejection_cases");
+                "procurement_iqc_rejection_cases","production_material_return_requests");
         // PostgreSQL views bind source relation OIDs. Rebind the actual migrated
         // predicate to these rollback-only facts instead of accidentally reading
         // public reports when exercising a populated FINISHED_REGISTER detail.
@@ -178,6 +179,75 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
         assertThat(otherScope.list(filter("OTHER","",1,20)).total()).isEqualTo(1);
     }
 
+    @Test void finishedRegistrationScopesSharesBeforeSummingAndRetainsEachPhysicalRowQuantity() {
+        UUID report=UUID.randomUUID(),warehouse=UUID.randomUUID(),outside=UUID.randomUUID();
+        UUID goods=UUID.randomUUID(),hiddenGoods=UUID.randomUUID(),lot=UUID.randomUUID();
+        UUID normal=UUID.randomUUID(),publicShare=UUID.randomUUID(),surplus=UUID.randomUUID(),hidden=UUID.randomUUID(),workshop=UUID.randomUUID();
+        execute("INSERT INTO goods(id,code,name,owning_warehouse_id) VALUES(:id,'VISIBLE-FINISHED','本仓成品',:warehouse)",
+                "id",goods,"warehouse",warehouse);
+        execute("INSERT INTO goods(id,code,name,owning_warehouse_id) VALUES(:id,'HIDDEN-FINISHED','别仓成品',:warehouse)",
+                "id",hiddenGoods,"warehouse",outside);
+        report(report,"TWO-WAREHOUSE-REPORT");
+        reportItem(normal,report,goods,100);
+        reportItem(publicShare,report,goods,20);
+        reportItem(surplus,report,goods,10);
+        reportItem(hidden,report,hiddenGoods,200);
+        reportItem(workshop,report,goods,300);
+        execute("UPDATE production_daily_report_items SET destination='WORKSHOP' WHERE id=:id","id",workshop);
+        execute("UPDATE production_daily_report_items SET output_lot_id=:lot,"
+                +" is_public_output=(id<>:normal),is_actual_surplus=(id=:surplus) WHERE id IN(:normal,:public,:surplus)",
+                "lot",lot,"normal",normal,"public",publicShare,"surplus",surplus);
+
+        var scope=new WarehouseTaskScope(true,List.of(warehouse),false);
+        var service=service(Set.of("stock_doc:view"),scope,true);
+        var page=service.list(new Filter("FINISHED","","",null,null,null,warehouse,1,20));
+        assertThat(page.total()).isEqualTo(3);
+        assertThat(taskRowCounts().finishedInbound(scope)).isEqualTo(page.total());
+        assertThat(taskRowCounts().finishedInbound(WarehouseTaskScope.ALL)).isEqualTo(4);
+        assertThat(page.items()).extracting(row->row.line().itemId()).containsExactlyInAnyOrder(normal,publicShare,surplus);
+        assertThat(page.facets().get("status")).singleElement().satisfies(facet->assertThat(facet.count()).isEqualTo(3));
+        assertThat(page.facets().get("billNo")).singleElement().satisfies(facet->assertThat(facet.count()).isEqualTo(3));
+        assertThat(service.list(new Filter("FINISHED","","别仓成品",null,null,null,warehouse,1,20)).total()).isZero();
+        assertThat(service.detail("FINISHED:FINISHED_REGISTER:"+report,warehouse).get("total")).isEqualTo(3L);
+        assertThatThrownBy(()->service.detail("FINISHED:FINISHED_REGISTER:"+report+":"+hidden,warehouse))
+                .isInstanceOf(ApiException.class);
+        assertThat(page.items()).allSatisfy(row->{
+            assertThat(new java.math.BigDecimal(row.actionData().get("pendingQty").toString()))
+                    .isEqualByComparingTo(row.line().quantity());
+            assertThat(new java.math.BigDecimal(row.actionData().get("publicQty").toString()))
+                    .isEqualByComparingTo(row.line().itemId().equals(publicShare)?"20":"0");
+            assertThat(new java.math.BigDecimal(row.actionData().get("actualSurplusQty").toString()))
+                    .isEqualByComparingTo(row.line().itemId().equals(surplus)?"10":"0");
+        });
+
+        var access=mock(ProductionStockTaskAccessPolicy.class);
+        when(access.canAccessWarehouseTasks()).thenReturn(true);
+        var legacy=new ProductionFinishedInboundTaskService(executingEntityManager(),access);
+        var scoped=legacy.list("","ARRIVAL_REGISTRATION",null,1,20,scope);
+        assertThat(scoped.getTotal()).isEqualTo(1);
+        assertThat(scoped.getItems()).singleElement().satisfies(task->{
+            assertThat(task.goodsSummary()).contains("本仓成品").doesNotContain("别仓成品");
+            assertThat(task.lineCount()).isEqualTo(1);
+            assertThat(task.pendingQty()).isEqualByComparingTo("130");
+            assertThat(task.publicQty()).isEqualByComparingTo("20");
+            assertThat(task.actualSurplusQty()).isEqualByComparingTo("10");
+        });
+        assertThat(legacy.list("别仓成品","",null,1,20,scope).getTotal()).isZero();
+        assertThat(legacy.facets("别仓成品","",null,scope).get("taskNo")).isEmpty();
+        assertThat(legacy.countPending(scope)).isEqualTo(scoped.getTotal());
+        assertThat(legacy.list("","ARRIVAL_REGISTRATION",null,1,20,WarehouseTaskScope.ALL).getItems())
+                .singleElement().satisfies(task->{
+                    assertThat(task.lineCount()).isEqualTo(2);
+                    assertThat(task.pendingQty()).isEqualByComparingTo("330");
+                });
+        var outsideScope=new WarehouseTaskScope(true,List.of(outside),false);
+        assertThat(legacy.list("","ARRIVAL_REGISTRATION",null,1,20,outsideScope).getItems())
+                .singleElement().satisfies(task->{
+                    assertThat(task.goodsSummary()).contains("别仓成品").doesNotContain("本仓成品");
+                    assertThat(task.pendingQty()).isEqualByComparingTo("200");
+                });
+    }
+
     @Test void receiptItemLifecycleAndInspectionWarehouseDoNotMergeAcrossSiblingGoods() {
         for(String type:List.of("PURCHASE","SUBCONTRACT")) {
             String table=type.equals("PURCHASE")?"purchase_receipts":"subcontract_receipts";
@@ -259,7 +329,7 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
         assertThat(quality.statusCounts("PURCHASE","Repeat goods",WarehouseTaskScope.ALL)).containsEntry("WAITING_INSPECTION",2L);
         assertThat(quality.statusCounts("PURCHASE","",WarehouseTaskScope.ALL))
                 .containsEntry("WAITING_INSPECTION",2L).containsEntry("COMPLETED",1L);
-        assertThat(quality.typeCounts(WarehouseTaskScope.ALL).inProgress()).containsEntry("PURCHASE",1L);
+        assertThat(quality.typeCounts(WarehouseTaskScope.ALL).inProgress()).containsEntry("PURCHASE",2L);
         assertThat(quality.facets("Repeat goods","PURCHASE","",null,null,WarehouseTaskScope.ALL).get("billNo"))
                 .singleElement().satisfies(bucket->assertThat(((Number)bucket.get("count")).longValue()).isEqualTo(2));
         var history=quality.list("Completed outside goods","PURCHASE","",null,null,1,1,null,null,"QUALITY-ITEMS",
@@ -279,7 +349,7 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
         } finally { org.springframework.security.core.context.SecurityContextHolder.clearContext(); }
     }
 
-    @Test void qualityBadgesAggregateOnlyVisibleInspectionReleaseAndReturnFactsThenCountReceiptOnce() {
+    @Test void qualityBadgesCountVisibleInspectionReleaseAndReturnRowsIndividually() {
         UUID receipt=UUID.randomUUID(),warehouseA=UUID.randomUUID(),warehouseB=UUID.randomUUID();
         UUID waiting=UUID.randomUUID(),released=UUID.randomUUID(),rejected=UUID.randomUUID();
         receipt("purchase_receipts",receipt,"SCOPED-QUALITY-BADGE","2026-10-12",warehouseA);
@@ -319,6 +389,16 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
         assertThat(quality.typeCounts(scopeA).inProgress()).containsEntry("PURCHASE",1L);
         assertThat(quality.typeCounts(scopeA).actionable()).containsEntry("PURCHASE",0L);
         assertThat(quality.typeCounts(scopeB).actionable()).containsEntry("PURCHASE",1L);
+        UUID secondReturn=UUID.randomUUID();
+        execute("INSERT INTO procurement_inspection_items(id,receipt_type,receipt_id,warehouse_id,status,received_base_qty,"
+                +" passed_base_qty,failed_base_qty,warehouse_stocked_base_qty) VALUES(:id,'PURCHASE',:receipt,:warehouse,'RESOLVED',2,0,2,0)",
+                "id",secondReturn,"receipt",receipt,"warehouse",warehouseB);
+        execute("INSERT INTO procurement_iqc_rejection_cases(id,inspection_item_id,receipt_type,receipt_id,status,is_deleted)"
+                +" VALUES(:id,:inspection,'PURCHASE',:receipt,'OPEN',FALSE)",
+                "id",UUID.randomUUID(),"inspection",secondReturn,"receipt",receipt);
+        assertThat(quality.typeCounts(scopeB).actionable()).containsEntry("PURCHASE",2L);
+        assertThat(quality.typeCounts(WarehouseTaskScope.ALL).inProgress()).containsEntry("PURCHASE",1L);
+        assertThat(quality.typeCounts(WarehouseTaskScope.ALL).actionable()).containsEntry("PURCHASE",2L);
         } finally { org.springframework.security.core.context.SecurityContextHolder.clearContext(); }
     }
 
@@ -812,7 +892,8 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
                 mock(com.uten.imp.features.purchase.receipt.PurchaseReceiptService.class),
                 mock(com.uten.imp.features.subcontract.receipt.SubcontractReceiptService.class),
                 mock(com.uten.imp.features.warehouse.inbound.WarehouseArrivalRegistrationService.class),
-                mock(com.uten.imp.features.warehouse.inbound.WarehouseArrivalExceptionStockInBatchService.class),scopes);
+                mock(com.uten.imp.features.warehouse.inbound.WarehouseArrivalExceptionStockInBatchService.class),scopes,
+                mock(com.uten.imp.application.port.WarehouseTaskRowCountPort.class));
         assertThat(controller.arrivalExceptionCount(warehouse)).containsEntry("count",3L)
                 .containsEntry("PURCHASE",1L).containsEntry("SUBCONTRACT",2L);
         assertThat(actual.countWarehouseExceptions(scope)).isEqualTo(3L);
@@ -824,6 +905,58 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
                 +" VALUES(:id,:type,:status,:warehouse,:goods)","id",id,"type",type,
                 "status",status,"warehouse",warehouse,"goods",goods);
         return id;
+    }
+
+    @Test void inboundBadgeCountsRepeatGoodsOnOneOrderAndKeepTheSamePhysicalWarehouseScope() {
+        UUID warehouse=UUID.randomUUID(),outside=UUID.randomUUID(),expectation=UUID.randomUUID();
+        UUID goods=UUID.randomUUID(),hiddenGoods=UUID.randomUUID();
+        execute("INSERT INTO goods(id,code,name,owning_warehouse_id) VALUES(:id,'BADGE-VISIBLE','Visible purchase line',:warehouse)",
+                "id",goods,"warehouse",warehouse);
+        execute("INSERT INTO goods(id,code,name,owning_warehouse_id) VALUES(:id,'BADGE-HIDDEN','Outside purchase line',:warehouse)",
+                "id",hiddenGoods,"warehouse",outside);
+        execute("INSERT INTO inbound_expectations(id,order_type,order_id,bill_no_snapshot,status,created_at)"
+                +" VALUES(:id,'PURCHASE',:order,'BADGE-TWO-LINES','OPEN',now())",
+                "id",expectation,"order",UUID.randomUUID());
+        for(int line=1;line<=4;line++) execute("INSERT INTO inbound_expectation_items(id,expectation_id,order_item_id,line_no,goods_id,ordered_qty,accepted_qty,unit_rate)"
+                +" VALUES(:id,:expectation,:orderItem,:line,:goods,5,:accepted,1)",
+                "id",UUID.randomUUID(),"expectation",expectation,"orderItem",UUID.randomUUID(),
+                "line",line,"goods",line==3?hiddenGoods:goods,"accepted",line==4?5:0);
+        var scope=new WarehouseTaskScope(true,List.of(warehouse),false);
+        var physical=service(Set.of("warehouse_inbound:view"),scope,false);
+        var first=physical.list(new Filter("PURCHASE","","Visible purchase",null,null,null,warehouse,1,1));
+        assertThat(first.total()).isEqualTo(2);
+        assertThat(first.totalPages()).isEqualTo(2);
+        assertThat(first.facets().get("billNo")).singleElement().satisfies(facet->assertThat(facet.count()).isEqualTo(2));
+        assertThat(physical.list(new Filter("PURCHASE","","Outside",null,null,null,warehouse,1,20)).total()).isZero();
+        assertThat(taskRowCounts().inboundExpectations(scope)).containsEntry("PURCHASE",2L).containsEntry("SUBCONTRACT",0L);
+        assertThat(taskRowCounts().inboundExpectations(WarehouseTaskScope.ALL)).containsEntry("PURCHASE",3L);
+        assertThat(taskRowCounts().inboundExpectations(WarehouseTaskScope.NONE)).containsEntry("PURCHASE",0L);
+        assertThat(taskRowCounts().finishedInbound(WarehouseTaskScope.NONE)).isZero();
+        assertThat(taskRowCounts().productionReturn(WarehouseTaskScope.NONE)).isZero();
+        assertThat(taskRowCounts().finishedInbound(scope)).isZero();
+        assertThat(taskRowCounts().productionReturn(scope)).isZero();
+    }
+
+    private WarehouseTaskRowCountService taskRowCounts() {
+        var access=mock(ProductionStockTaskAccessPolicy.class);
+        when(access.canAccessWarehouseTasks()).thenReturn(true);
+        return new WarehouseTaskRowCountService(jdbc,access,mock(SecurityContextCurrentUser.class));
+    }
+
+    @Test void productionReturnBadgesUseVisiblePhysicalLinesInsteadOfRequestHeaders() {
+        UUID document=UUID.randomUUID(),warehouse=UUID.randomUUID(),outside=UUID.randomUUID();
+        stock(document,"WDRAW","TWO-RETURN-LINES","2026-10-12",null);
+        execute("INSERT INTO production_material_return_requests(id) VALUES(:id)","id",document);
+        for(int line=1;line<=3;line++) execute("INSERT INTO stock_document_items(id,doc_id,line_no,warehouse_id,qty,is_deleted)"
+                +" VALUES(:id,:document,:line,:warehouse,2,FALSE)","id",UUID.randomUUID(),
+                "document",document,"line",line,"warehouse",line==3?outside:warehouse);
+        var scope=new WarehouseTaskScope(true,List.of(warehouse),false);
+        var page=service(Set.of("stock_doc:view"),scope,true).list(new Filter("RETURN","","",null,null,null,warehouse,1,20));
+        assertThat(page.total()).isEqualTo(2);
+        assertThat(taskRowCounts().productionReturn(scope)).isEqualTo(page.total());
+        assertThat(taskRowCounts().productionReturn(WarehouseTaskScope.ALL)).isEqualTo(3);
+        execute("UPDATE stock_documents SET status=1 WHERE id=:id","id",document);
+        assertThat(taskRowCounts().productionReturn(scope)).isZero();
     }
 
     private WarehouseInboundTaskCenterQueryService service(Set<String> permissions,WarehouseTaskScope scope,boolean pool) {

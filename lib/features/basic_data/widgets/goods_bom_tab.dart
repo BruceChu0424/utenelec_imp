@@ -145,6 +145,8 @@ class _BomDeleteTarget {
   final bool learned;
 }
 
+enum _BomEditExitAction { continueEditing, discard, save }
+
 /// 「添加组件」弹窗里的选货入口(组件范围、多选)。独立成 provider，组件测试可以换成
 /// 固定结果，而不必驱动整套分类树 + 分页选货面板。
 class GoodsBomTab extends ConsumerStatefulWidget {
@@ -365,7 +367,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         setState(() => _switchingMode = false);
         await WidgetsBinding.instance.endOfFrame;
         if (!mounted || !_canEdit || !identical(draft, _draft)) return false;
-        final confirmed = await showDialog<bool>(
+        final action = await showDialog<_BomEditExitAction>(
           context: context,
           builder: (dialogContext) => UtenAlertDialog(
             title: Text(_l10n.bomEditSaveTitle),
@@ -404,6 +406,13 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
                         ),
                       ),
                     const SizedBox(height: UtenSpacing.s12),
+                    if (draft.isCommitRecoveryPending) ...[
+                      UtenInlineNotice(
+                        level: UtenInlineNoticeLevel.warning,
+                        message: _l10n.bomEditSaveUnknown,
+                      ),
+                      const SizedBox(height: UtenSpacing.s12),
+                    ],
                     UtenInlineNotice(
                       level: preview.otherUsageCount > 0
                           ? UtenInlineNoticeLevel.warning
@@ -418,12 +427,26 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
+                onPressed: () => Navigator.pop(
+                  dialogContext,
+                  _BomEditExitAction.continueEditing,
+                ),
                 child: Text(_l10n.bomEditContinue),
+              ),
+              OutlinedButton(
+                key: const Key('goods-bom-discard-and-exit'),
+                onPressed: () =>
+                    Navigator.pop(dialogContext, _BomEditExitAction.discard),
+                child: Text(
+                  draft.isCommitRecoveryPending
+                      ? _l10n.bomEditDiscardRefresh
+                      : _l10n.bomEditDiscardAndExit,
+                ),
               ),
               FilledButton(
                 key: const Key('goods-bom-save-confirm'),
-                onPressed: () => Navigator.pop(dialogContext, true),
+                onPressed: () =>
+                    Navigator.pop(dialogContext, _BomEditExitAction.save),
                 child: Text(
                   preview.otherUsageCount > 0
                       ? _l10n.bomEditConfirmShared
@@ -433,12 +456,19 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
             ],
           ),
         );
-        if (confirmed != true ||
-            !mounted ||
-            !_canEdit ||
+        if (!mounted ||
+            modeRevision != _modeRevision ||
             !identical(draft, _draft)) {
           return false;
         }
+        if (action == _BomEditExitAction.discard) {
+          return await _exitEditSession(
+            draft,
+            modeRevision: modeRevision,
+            discard: true,
+          );
+        }
+        if (action != _BomEditExitAction.save || !_canEdit) return false;
         setState(() {
           _switchingMode = true;
           _checkingChanges = false;
@@ -478,24 +508,48 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         }
       }
     }
-    if (!mounted) return false;
+    return _exitEditSession(draft, modeRevision: modeRevision);
+  }
+
+  Future<bool> _exitEditSession(
+    GoodsBomEditDraft? draft, {
+    required int modeRevision,
+    bool discard = false,
+  }) async {
+    bool current() =>
+        mounted && modeRevision == _modeRevision && identical(draft, _draft);
+    if (!current()) return false;
     _closeAddComponentWindow();
     draft?.close();
     setState(() {
       _editMode = false;
       _editBoundary = null;
       _draft = null;
+      if (discard) {
+        // A read failure must never leave the discarded draft looking like
+        // saved data. The table owns loading/retry while canonical rows load.
+        _roots = null;
+        _visibleRowsCache = null;
+        _selectedRowIds = <String>{};
+      }
     });
     widget.onEditModeChanged?.call(false);
     await _load();
-    return true;
+    return mounted && modeRevision == _modeRevision && !_editMode;
   }
 
   Future<bool> _offerDiscardDraft(String message) async {
-    if (!mounted || !_editMode) return false;
+    final draft = _draft;
+    final modeRevision = _modeRevision;
+    bool current() =>
+        mounted &&
+        _editMode &&
+        modeRevision == _modeRevision &&
+        identical(draft, _draft);
+    if (!current()) return false;
     setState(() => _switchingMode = false);
     await WidgetsBinding.instance.endOfFrame;
-    if (!mounted || !_editMode) return false;
+    if (!mounted || !current()) return false;
     final discard = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => UtenAlertDialog(
@@ -517,18 +571,8 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         ],
       ),
     );
-    if (discard != true || !mounted) return false;
-    _draft?.close();
-    _closeAddComponentWindow();
-    setState(() {
-      _draft = null;
-      _editBoundary = null;
-      _editMode = false;
-      _selectedRowIds = <String>{};
-    });
-    widget.onEditModeChanged?.call(false);
-    await _load();
-    return true;
+    if (discard != true || !current()) return false;
+    return _exitEditSession(draft, modeRevision: modeRevision, discard: true);
   }
 
   Future<void> _toggleEditMode() async {
@@ -1646,6 +1690,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
           _pruneSelection();
         }
       });
+      widget.onDataChanged?.call();
     } on ApiException catch (e) {
       if (!mounted || boundary != ref.read(sensitiveReadBoundaryProvider)) {
         return;

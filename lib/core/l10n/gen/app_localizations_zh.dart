@@ -428,6 +428,29 @@ class AppLocalizationsZh extends AppLocalizations {
       '移除后，这列在各行的内容会清掉，金额重新算；保存单子后生效，其他单子不受影响。';
 
   @override
+  String get platformColumnDeleteTitle => '删除列';
+
+  @override
+  String get platformColumnDeleteAction => '删除';
+
+  @override
+  String platformColumnDeleteConfirm(String name) {
+    return '删除“$name”后，这列将不再出现在可选列中。已保存的单据数据和已有公式引用会保留。只能删除自己创建的列。';
+  }
+
+  @override
+  String get platformColumnDeleteForbidden => '只能删除自己创建且有管理权限的列。';
+
+  @override
+  String get platformColumnDeleteUnavailable => '当前列已不可删除，请重新加载后再试。';
+
+  @override
+  String get platformColumnDeleteReferenced => '该列仍被其他计算列引用，请先删除引用它的计算列。';
+
+  @override
+  String get platformColumnDeleteBusy => '正在删除此列，请等待回执。';
+
+  @override
   String get businessColumnUseExisting => '使用已有列';
 
   @override
@@ -9156,7 +9179,7 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get warehouseScopePickerTitle => '选择仓库范围';
+  String get warehouseScopePickerTitle => '筛选仓库';
 
   @override
   String get warehouseScopeSupervisorTooltip =>
@@ -11330,4 +11353,113 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get bomEditPrepareFailed => '准备编辑失败，请重试。';
+
+  @override
+  String get warehouseScopeAllVisible => '全部可见仓库';
+
+  @override
+  String warehouseScopeIncludingChildren(String name) {
+    return '$name(含下级)';
+  }
+
+  @override
+  String get warehouseScopeIncludesVisibleChildren => '包含可见的下级仓库';
+
+  @override
+  String get warehouseScopeLoadFailedRetry => '仓库筛选加载失败，重试';
+
+  @override
+  String get warehouseScopeVisibleTooltip => '可在本人可见的仓库内筛选。';
+
+  @override
+  String warehouseScopeTaskFilter(String name) {
+    return '任务筛选：$name';
+  }
+
+  @override
+  String get warehouseScopeClearFilter => '清除筛选';
+
+  @override
+  String get warehouseTaskSelectionChanged => '所选任务已变化，请刷新后重新选择';
+
+  @override
+  String get warehouseFinishedLotsChanged => '所选批次已变化或已由他人办理，请返回任务中心刷新后重新选择';
+
+  @override
+  String get warehouseMasterTitle => '仓库资料';
+
+  @override
+  String get warehouseMasterSearchHint => '搜索仓库名称 / 编号';
+
+  @override
+  String get warehouseMasterSelectHint => '选择仓库查看资料与即时库存';
+
+  @override
+  String get warehouseMasterDetailsLoadFailed => '仓库资料加载失败，请重试';
+
+  @override
+  String get warehouseMasterInventorySummaryHint => '包含下级核算仓的即时库存';
+
+  @override
+  String get warehouseInventorySearchHint => '搜索货品名称 / 编号';
+
+  @override
+  String get warehouseInventoryNoAccess => '没有库存查看权限';
+
+  @override
+  String get warehouseInventoryLoadFailed => '库存加载失败，请重试';
+
+  @override
+  String get warehouseInventoryEmpty => '此仓库暂无库存记录';
+
+  @override
+  String get warehouseInventoryOpenLedger => '双击货品查看出入库流水';
+
+  @override
+  String get warehouseInventoryQuantity => '库存数量';
+
+  @override
+  String get warehouseInventoryPendingInspection => '待检量';
+
+  @override
+  String get warehouseInventoryPendingStockIn => '合格待入库';
+
+  @override
+  String get warehouseMasterStatusLabel => '状态';
+
+  @override
+  String get warehouseMasterDisable => '停用';
+
+  @override
+  String get warehouseMasterEnable => '启用';
+
+  @override
+  String get warehouseMasterSetKeepers => '设置负责人';
+
+  @override
+  String get warehouseMasterWarehouseLabel => '仓库';
+
+  @override
+  String get warehouseMasterAdd => '添加仓库';
+
+  @override
+  String get warehouseMasterAddChild => '新增子仓库';
+
+  @override
+  String get warehouseMasterAddPeer => '新增同级仓库';
+
+  @override
+  String get warehouseMasterEdit => '编辑仓库';
+
+  @override
+  String get warehouseMasterDelete => '删除仓库';
+
+  @override
+  String get bomEditDiscardAndExit => '不保存并退出';
+
+  @override
+  String get masterEditDiscardRemainingNote => '仅放弃尚未保存的修改，已保存成功的修改会保留。';
+
+  @override
+  String get filterAllCategoriesSummary => '全部分类';
 }

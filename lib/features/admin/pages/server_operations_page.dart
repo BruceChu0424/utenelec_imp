@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
+import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
@@ -480,11 +482,12 @@ class _ServerOperationsState extends ConsumerState<_ServerOperationsSession>
         showBackButton: true,
         showPagePermissionAction: false,
         actions: [
-          IconButton(
+          UtenRefreshButton(
             key: const ValueKey('server-operations-refresh'),
             tooltip: l.serverUpdateRefresh,
-            onPressed: allowed && !_loading && !_starting ? _load : null,
-            icon: const Icon(Icons.refresh_rounded),
+            busy: _loading,
+            enabled: allowed && !_starting,
+            onRefresh: _load,
           ),
         ],
       ),

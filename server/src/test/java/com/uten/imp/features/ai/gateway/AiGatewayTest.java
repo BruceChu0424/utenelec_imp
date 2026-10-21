@@ -248,6 +248,101 @@ class AiGatewayTest {
     }
 
     @Test
+    void truncatedResponseCannotSucceedByExtractingACompleteInnerObject() throws Exception {
+        fake.enqueue(FakeAiProviderServer.openAiContent("{\"choices\":[{\"lineKey\":\"r1\"},", 10, 500, "length"),
+                FakeAiProviderServer.openAiContent("{\"choices\":[]}", 10, 20, "stop"));
+        var request = new AiCompletionRequest("SALES_INTAKE_MATCH", "Match catalog references",
+                List.of(new AiText("customer rows", true)), null, null, 500, UUID.randomUUID());
+
+        assertThat(gateway.completeJson(request).json()).isEqualTo("{\"choices\":[]}");
+        assertThat(fake.chatRequestCount()).isEqualTo(2);
+        var attempts = fake.requests().stream().filter(r -> r.method().equals("POST")).toList();
+        assertThat(json.readTree(attempts.get(0).body()).path("max_tokens").asInt()).isEqualTo(500);
+        assertThat(json.readTree(attempts.get(1).body()).path("max_tokens").asInt()).isEqualTo(2548);
+        var records = ArgumentCaptor.forClass(AiCallLogService.CallRecord.class);
+        verify(callLogs, times(2)).record(records.capture());
+        assertThat(records.getAllValues()).extracting(AiCallLogService.CallRecord::ok).containsExactly(false, true);
+    }
+
+    @Test
+    void exhaustedProviderCapDoesNotReplayTheSameTruncatedRequest() {
+        fake.enqueue(FakeAiProviderServer.openAiContent("{\"partial\":true}", 10, 4096, "length"));
+        var request = new AiCompletionRequest("SALES_INTAKE_MATCH", "Match catalog references",
+                List.of(new AiText("customer rows", true)), null, null, 4096, UUID.randomUUID());
+
+        assertThatThrownBy(() -> gateway.completeJson(request)).isInstanceOf(AiCallException.class)
+                .hasMessageContaining("最大输出长度")
+                .satisfies(error -> assertThat(((AiCallException) error).httpStatus()).isEqualTo(200));
+        assertThat(fake.chatRequestCount()).isEqualTo(1);
+        verify(callLogs).record(any());
+    }
+
+    @Test
+    void exhaustedContextCannotBeRecoveredByIncreasingTheOutputBudget() {
+        var base = AiTestRuntimes.anthropic(fake, KEY, AiJsonMode.JSON_OBJECT, true);
+        when(providers.resolveDefault()).thenReturn(resolution(base, null));
+        fake.enqueue(FakeAiProviderServer.anthropicContent("{\"partial\":true}", 10, 20,
+                "model_context_window_exceeded"));
+        var request = new AiCompletionRequest("SALES_INTAKE_MATCH", "Match catalog references",
+                List.of(new AiText("customer rows", true)), null, null, 500, UUID.randomUUID());
+
+        assertThatThrownBy(() -> gateway.completeJson(request)).isInstanceOf(AiCallException.class)
+                .hasMessageContaining("上下文容量");
+        assertThat(fake.chatRequestCount()).isEqualTo(1);
+    }
+
+    @Test
+    void glmStructuredMatchReservesThinkingBudgetAndRetriesWithinConfiguredCap() throws Exception {
+        var base = AiTestRuntimes.anthropic(fake, KEY, AiJsonMode.JSON_OBJECT, true);
+        runtime = new AiProviderRuntime(base.id(), base.name(), base.preset(), base.region(), base.protocol(),
+                base.endpoint(), "glm-5.3", base.apiKey(), base.jsonMode(), AiThinkingControl.ZHIPU,
+                base.sendTemperature(), base.supportsVision(), 8192, base.timeoutSeconds());
+        when(providers.resolveDefault()).thenReturn(resolution(runtime, null));
+        fake.enqueue(FakeAiProviderServer.json(200, """
+                {"type":"message","content":[{"type":"thinking","thinking":"private reasoning"}],
+                 "stop_reason":"max_tokens","usage":{"input_tokens":2818,"output_tokens":3408}}
+                """), FakeAiProviderServer.anthropicContent("{\"choices\":[]}"));
+        var request = new AiCompletionRequest("SALES_INTAKE_MATCH", "Match catalog references",
+                List.of(new AiText("private customer rows", true)), null, null, 1360, UUID.randomUUID());
+
+        assertThat(gateway.completeJson(request).json()).isEqualTo("{\"choices\":[]}");
+        var attempts = fake.requests().stream().filter(r -> r.method().equals("POST")).toList();
+        assertThat(attempts).hasSize(2);
+        var first = json.readTree(attempts.get(0).body());
+        var retry = json.readTree(attempts.get(1).body());
+        assertThat(first.path("max_tokens").asInt()).isEqualTo(3408);
+        assertThat(first.path("output_config").path("effort").asText()).isEqualTo("low");
+        assertThat(retry.path("max_tokens").asInt()).isEqualTo(6816).isLessThanOrEqualTo(8192);
+        assertThat(retry.path("output_config").path("effort").asText()).isEqualTo("low");
+    }
+
+    @Test
+    void invalidJsonDiagnosticsRetainHttpStatusWithoutLeakingInputResponseOrKey() {
+        var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(AiGateway.class);
+        var appender = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            fake.enqueue(FakeAiProviderServer.openAiContent("private response data"),
+                    FakeAiProviderServer.openAiContent("private response data"));
+            assertThatThrownBy(() -> gateway.completeJson(request(UUID.randomUUID(),
+                    new AiText("private customer input", true))))
+                    .isInstanceOf(AiCallException.class)
+                    .satisfies(error -> assertThat(((AiCallException) error).httpStatus()).isEqualTo(200));
+            var logs = appender.list.stream().map(ch.qos.logback.classic.spi.ILoggingEvent::getFormattedMessage)
+                    .filter(message -> message.startsWith("AI call failed:")).toList();
+            assertThat(logs).hasSize(2).allSatisfy(message -> assertThat(message)
+                    .contains("status=200", "reason=INVALID_JSON", "stopReason=stop", "latencyMs=", "jobId=")
+                    .doesNotContain("private customer input", "private response data", KEY));
+            assertThat(logs.get(0)).contains("attempt=1");
+            assertThat(logs.get(1)).contains("attempt=2");
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+    }
+
+    @Test
     void unavailableProviderFailsWithoutNetwork() {
         when(providers.resolveDefault()).thenReturn(resolution(null, "默认的 AI 服务已停用"));
 

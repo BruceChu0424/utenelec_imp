@@ -4,6 +4,7 @@ import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
@@ -861,10 +862,9 @@ class _AccountPageState extends ConsumerState<AccountPage>
               entityType: 'accounts',
               onChanged: _refresh,
             ),
-            IconButton(
-              tooltip: '刷新',
-              onPressed: _loading ? null : () => inlineNavigate(_refresh),
-              icon: const Icon(Icons.refresh_rounded),
+            UtenRefreshButton(
+              busy: _loading,
+              onRefresh: () => inlineNavigate(_refresh),
             ),
           ],
         ),

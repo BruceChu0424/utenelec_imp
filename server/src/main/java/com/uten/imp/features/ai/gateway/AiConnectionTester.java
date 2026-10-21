@@ -26,9 +26,9 @@ import java.util.concurrent.TimeUnit;
  * <ol>
  *   <li>先取模型列表(不耗 token): 连得上 = 网络通; 200 = 密钥有效; 列表里没有配置的模型只提示不判失败;
  *       服务商没有列表接口(404)就跳过, 直接用对话测试。</li>
- *   <li>再发一次很小的对话: {@code Reply in JSON: {"ok": true}}, 最多 512 个输出 token、关闭深度思考。
- *       预算要容得下思考型模型的思考块(智谱 Anthropic 端点收到 thinking disabled 也照样思考),
- *       64 会被偶尔吃光导致正文为空、JSON 步误报。
+ *   <li>再发一次很小的对话: {@code Reply in JSON: {"ok": true}}, 正文预算 512 token。
+ *       与业务调用共用 DEFAULT 思考策略和预算: 强制思考模型取 low 并预留思考额度,
+ *       总额仍受服务商硬上限约束, 避免连通正常却因正文额度耗尽而误报 JSON 失败。
  *       成功 = 模型可用; 回复能解析出 ok=true 的 JSON = JSON 输出正常。</li>
  *   <li>这个配置能调整思考程度时(ADR-152), 再按 AI 对话的默认档「标准」带上思考参数发一次同样的小对话:
  *       服务商拒绝(400/404) = 这个模型不认思考参数, AI 对话会全部失败, 判失败并告诉管理员怎么改;
@@ -104,7 +104,8 @@ public class AiConnectionTester {
         // 第 2 步: 很小的 JSON 对话。
         started = System.nanoTime();
         AiProtocolClient.ChatRequest ping = new AiProtocolClient.ChatRequest(PING_SYSTEM,
-                List.of(new AiText(PING_USER, false)), null, null, 512);
+                List.of(new AiText(PING_USER, false)), null, null,
+                AiReasoningParams.maxOutputTokens(runtime, 512, AiReasoningEffort.DEFAULT));
         AiProtocolClient.ChatResponse response;
         try {
             response = gateway.probeChat(runtime, ping, "CONNECTION_TEST");
@@ -177,6 +178,10 @@ public class AiConnectionTester {
     }
 
     private TestStep jsonStep(AiProtocolClient.ChatResponse response, long latency) {
+        if (response.truncated() || response.thinkingOnly()) {
+            return new TestStep(STEP_JSON, "FAILED",
+                    "服务能用, 但输出额度耗尽或只返回思考过程; 请核对最大输出长度与思考参数设置", latency);
+        }
         try {
             JsonNode node = JSON.readTree(AiJsonExtractor.extractObject(response.content()));
             if (node.path("ok").asBoolean(false)) {

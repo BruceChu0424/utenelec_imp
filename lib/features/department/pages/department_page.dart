@@ -4,6 +4,8 @@
 //   宽度收敛由 MainShell 统一处理
 // 文档：docs/03-页面/部门管理页.md
 import 'package:flutter/material.dart';
+
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
@@ -664,10 +666,10 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
         title: l10n.departmentTitle,
         showBackButton: true,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
+          UtenRefreshButton(
             tooltip: l10n.departmentTooltipRefresh,
-            onPressed: _load,
+            busy: _loading,
+            onRefresh: _load,
           ),
         ],
       ),

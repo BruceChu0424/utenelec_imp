@@ -12,6 +12,7 @@ import '../../shared/platform_tables/table_column_projection.dart';
 import '../../shared/platform_tables/platform_table_models.dart';
 import '../../shared/platform_tables/platform_table_repository.dart';
 import '../../shared/business_columns/business_column.dart';
+import '../../shared/providers/sensitive_read_boundary_provider.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
 import 'package:pdf/pdf.dart';
@@ -236,33 +237,44 @@ Future<void> showUtenPrintPreview({
     context.appError('当前页面有多张表格，请明确选择要预览的表头');
     return Future<void>.value();
   }
+  ProviderContainer? container;
+  try {
+    container = ProviderScope.containerOf(context, listen: false);
+  } on StateError {
+    // Standalone paper previews also work outside the authenticated app shell.
+  }
+  final readBoundary = container?.read(sensitiveReadBoundaryProvider);
   PlatformTableRepository? repository;
   if (projection?.columns.any((column) => column.key.startsWith('platform:')) ==
       true) {
     try {
-      repository = ProviderScope.containerOf(
-        context,
-        listen: false,
-      ).read(platformTableRepositoryProvider);
+      repository = container?.read(platformTableRepositoryProvider);
     } on StateError {
       /* Standalone projections fail visibly if required dynamic data has no repository. */
     }
   }
   return showDialog<void>(
     context: context,
-    builder: (_) => _UtenPrintPreviewDialog(
-      title: title,
-      subtitle: subtitle,
-      loader: loader,
-      exportEndpoint: exportEndpoint,
-      exportReport: exportReport,
-      exportQuery: exportQuery,
-      exportBody: exportBody,
-      exportFilename: exportFilename,
-      exportPermission: exportPermission,
-      projection: projection,
-      repository: repository,
-    ),
+    builder: (_) {
+      final dialog = _UtenPrintPreviewDialog(
+        title: title,
+        subtitle: subtitle,
+        loader: loader,
+        exportEndpoint: exportEndpoint,
+        exportReport: exportReport,
+        exportQuery: exportQuery,
+        exportBody: exportBody,
+        exportFilename: exportFilename,
+        exportPermission: exportPermission,
+        projection: projection,
+        repository: repository,
+        providerContainer: container,
+        readBoundary: readBoundary,
+      );
+      return container == null
+          ? dialog
+          : UncontrolledProviderScope(container: container, child: dialog);
+    },
   );
 }
 
@@ -360,6 +372,8 @@ class _UtenPrintPreviewDialog extends StatefulWidget {
     this.exportPermission,
     this.projection,
     this.repository,
+    this.providerContainer,
+    this.readBoundary,
   });
 
   final String title;
@@ -375,6 +389,8 @@ class _UtenPrintPreviewDialog extends StatefulWidget {
   final String? exportPermission;
   final TableColumnProjection? projection;
   final PlatformTableRepository? repository;
+  final ProviderContainer? providerContainer;
+  final SensitiveReadBoundary? readBoundary;
 
   @override
   State<_UtenPrintPreviewDialog> createState() =>
@@ -384,25 +400,64 @@ class _UtenPrintPreviewDialog extends StatefulWidget {
 class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
   UtenPrintTable? _table;
   String? _error;
+  ProviderSubscription<SensitiveReadBoundary>? _boundarySubscription;
+  int _contextVersion = 0;
+  bool _invalidated = false;
+  bool _printing = false;
 
   @override
   void initState() {
     super.initState();
+    _boundarySubscription = widget.providerContainer?.listen(
+      sensitiveReadBoundaryProvider,
+      (_, next) {
+        if (next == widget.readBoundary || _invalidated || !mounted) return;
+        setState(() {
+          _contextVersion++;
+          _invalidated = true;
+          _printing = false;
+          _table = null;
+          _error = '账号、服务器或权限已变化，请关闭后重新预览';
+        });
+      },
+      fireImmediately: true,
+    );
     _load();
   }
 
+  bool _isCurrent(int version) {
+    if (!mounted || _invalidated || version != _contextVersion) return false;
+    try {
+      return widget.providerContainer == null ||
+          widget.readBoundary ==
+              widget.providerContainer!.read(sensitiveReadBoundaryProvider);
+    } on StateError {
+      return false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _contextVersion++;
+    _boundarySubscription?.close();
+    super.dispose();
+  }
+
   Future<void> _load() async {
+    final version = _contextVersion;
+    if (!_isCurrent(version)) return;
     try {
       final loaded = await widget.loader();
+      if (!_isCurrent(version)) return;
       final t = await projectUtenPrintTable(
         loaded,
         widget.projection,
         repository: widget.repository,
       );
-      if (!mounted) return;
+      if (!_isCurrent(version)) return;
       setState(() => _table = t);
     } catch (error) {
-      if (!mounted) return;
+      if (!_isCurrent(version)) return;
       setState(
         () => _error = error is FormatException ? error.message : '加载数据失败，请重试',
       ); // TODO(l10n): 补 arb
@@ -412,11 +467,14 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
   // ---- 打印（pdf 包生成 A4 横版，NotoSansSC 中文字体） ----------------------
 
   Future<void> _print() async {
+    final version = _contextVersion;
     final t = _table;
-    if (t == null) return;
+    if (t == null || _printing || !_isCurrent(version)) return;
+    setState(() => _printing = true);
     try {
       // UI 使用常用字子集降低首屏体积；打印按需加载完整字体，确保业务数据中的生僻字不丢失。
       final fontData = await rootBundle.load('assets/fonts/NotoSansSCFull.ttf');
+      if (!_isCurrent(version)) return;
       final font = pw.Font.ttf(fontData);
       final doc = pw.Document();
       doc.addPage(
@@ -469,10 +527,14 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
           ],
         ),
       );
-      await printPdfBytes(await doc.save(), '${widget.title}.pdf');
+      final bytes = await doc.save();
+      if (!_isCurrent(version)) return;
+      await printPdfBytes(bytes, '${widget.title}.pdf');
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_isCurrent(version)) return;
       context.appError('生成打印件失败，请稍后重试'); // TODO(l10n): 补 arb
+    } finally {
+      if (_isCurrent(version)) setState(() => _printing = false);
     }
   }
 
@@ -516,7 +578,7 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    '预览 · ${widget.title}',
+                    _invalidated ? '预览已失效' : '预览 · ${widget.title}',
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
@@ -531,7 +593,9 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
                         type: UtenButtonType.tonal,
                         size: UtenButtonSize.small,
                         icon: Icons.print_outlined,
-                        onPressed: (table == null || table.rows.isEmpty)
+                        isLoading: _printing,
+                        onPressed:
+                            (table == null || table.rows.isEmpty || _printing)
                             ? null
                             : _print,
                         child: const Text('打印'),
@@ -548,6 +612,13 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
                           },
                           filename: widget.exportFilename ?? widget.title,
                           requiredPermission: widget.exportPermission,
+                          enabled: !_invalidated,
+                          prepareExport: () async {
+                            final version = _contextVersion;
+                            return UtenExportSelection(
+                              stillCurrent: () => _isCurrent(version),
+                            );
+                          },
                           label: '下载Excel',
                         ),
                       UtenButton(

@@ -18,7 +18,8 @@ package com.uten.imp.features.ai.provider;
  * </ul>
  *
  * <p>调用方不要求思考程度({@code DEFAULT}, 识别类用途)时保持原有行为: DeepSeek/通义/OpenAI 写法关掉思考
- * (识别客户文件不需要推理, 关掉更快更省), 智谱与 Anthropic 写法不发参数。
+ * (识别客户文件不需要推理, 关掉更快更省); GLM-5.3 系列不能关闭思考, 使用 low 并预留思考额度,
+ * 其余智谱与 Anthropic 模型不发参数。所有额度仍受服务商配置的单次输出硬上限约束。
  */
 public enum AiThinkingControl {
     NONE,

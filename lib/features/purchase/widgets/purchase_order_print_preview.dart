@@ -8,6 +8,7 @@ import 'package:pdf/widgets.dart' as pw;
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../core/print/pdf_printer.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../models/purchase_order_print_document.dart';
@@ -17,14 +18,20 @@ Future<void> showPurchaseOrderPrintPreview(
   PurchaseOrderPrintDocument document, {
   required Future<PurchaseOrderPrintDocument> Function() loader,
   Future<bool> Function(Uint8List, String)? printer,
-}) => showDialog<void>(
-  context: context,
-  builder: (_) => _PurchaseOrderPrintDialog(
-    document: document,
-    loader: loader,
-    printer: printer ?? printPdfBytes,
-  ),
-);
+}) async {
+  if (!document.financeApproved) {
+    context.appWarning('采购单须财务审核通过后才能打印');
+    return;
+  }
+  await showDialog<void>(
+    context: context,
+    builder: (_) => _PurchaseOrderPrintDialog(
+      document: document,
+      loader: loader,
+      printer: printer ?? printPdfBytes,
+    ),
+  );
+}
 
 class _PurchaseOrderPrintDialog extends StatefulWidget {
   const _PurchaseOrderPrintDialog({
@@ -49,6 +56,11 @@ class _PurchaseOrderPrintDialogState extends State<_PurchaseOrderPrintDialog> {
     try {
       final current = await widget.loader();
       if (!mounted) return;
+      if (!current.financeApproved) {
+        setState(() => _document = current);
+        context.appWarning('采购单须财务审核通过后才能打印');
+        return;
+      }
       if (current.signature != _document.signature) {
         setState(() => _document = current);
         context.appInfo('单据已变化，已刷新预览，请核对后再打印');
@@ -56,6 +68,8 @@ class _PurchaseOrderPrintDialogState extends State<_PurchaseOrderPrintDialog> {
       }
       final bytes = await buildPurchaseOrderPdf(current);
       await widget.printer(bytes, '采购单-${current.billNo}.pdf');
+    } on ApiException catch (error) {
+      if (mounted) context.appError(error.message);
     } catch (_) {
       if (mounted) context.appError('生成采购单失败，请稍后重试');
     } finally {
@@ -79,7 +93,7 @@ class _PurchaseOrderPrintDialogState extends State<_PurchaseOrderPrintDialog> {
             key: const Key('purchase-print-preview-print'),
             icon: Icons.print_outlined,
             isLoading: _printing,
-            onPressed: _printing ? null : _print,
+            onPressed: _printing || !_document.financeApproved ? null : _print,
             child: const Text('打印'),
           ),
         ],
@@ -241,6 +255,9 @@ Future<Uint8List> buildPurchaseOrderPdf(
   PurchaseOrderPrintDocument document, {
   pw.Font? font,
 }) async {
+  if (!document.financeApproved) {
+    throw ApiException('FINANCE_APPROVAL_REQUIRED', '采购单须财务审核通过后才能导出或打印');
+  }
   // 批量导出场景传入复用字体：NotoSansSCFull 有 17MB，逐份重复
   // rootBundle.load + TTF 解析会让几十份的批量导出线性变慢。
   final typeface =

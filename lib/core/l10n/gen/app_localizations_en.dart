@@ -470,6 +470,33 @@ class AppLocalizationsEn extends AppLocalizations {
       'Removing clears this column\'s values from all lines and recalculates amounts. Save the document to persist the change. Other documents and reusable definitions are unaffected.';
 
   @override
+  String get platformColumnDeleteTitle => 'Delete column';
+
+  @override
+  String get platformColumnDeleteAction => 'Delete';
+
+  @override
+  String platformColumnDeleteConfirm(String name) {
+    return 'Delete “$name” from the available columns? Saved document data and existing formula references will be retained. You can only delete columns you created.';
+  }
+
+  @override
+  String get platformColumnDeleteForbidden =>
+      'You can only delete columns you created and have permission to manage.';
+
+  @override
+  String get platformColumnDeleteUnavailable =>
+      'This column can no longer be deleted. Reload and try again.';
+
+  @override
+  String get platformColumnDeleteReferenced =>
+      'Other calculated columns still reference this column. Delete those calculated columns first.';
+
+  @override
+  String get platformColumnDeleteBusy =>
+      'This column is being deleted. Wait for the response.';
+
+  @override
   String get businessColumnUseExisting => 'Use existing column';
 
   @override
@@ -9719,7 +9746,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get warehouseScopePickerTitle => 'Choose warehouse scope';
+  String get warehouseScopePickerTitle => 'Filter warehouses';
 
   @override
   String get warehouseScopeSupervisorTooltip =>
@@ -12043,4 +12070,125 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get bomEditPrepareFailed =>
       'Could not prepare editing. Please try again.';
+
+  @override
+  String get warehouseScopeAllVisible => 'All visible warehouses';
+
+  @override
+  String warehouseScopeIncludingChildren(String name) {
+    return '$name (incl. sub-warehouses)';
+  }
+
+  @override
+  String get warehouseScopeIncludesVisibleChildren =>
+      'Includes visible sub-warehouses';
+
+  @override
+  String get warehouseScopeLoadFailedRetry => 'Warehouse filter failed. Retry';
+
+  @override
+  String get warehouseScopeVisibleTooltip =>
+      'Filter within warehouses you can view.';
+
+  @override
+  String warehouseScopeTaskFilter(String name) {
+    return 'Task filter: $name';
+  }
+
+  @override
+  String get warehouseScopeClearFilter => 'Clear filter';
+
+  @override
+  String get warehouseTaskSelectionChanged =>
+      'The selected tasks have changed. Refresh and select them again.';
+
+  @override
+  String get warehouseFinishedLotsChanged =>
+      'The selected lots have changed or have been handled by someone else. Return to the task center, refresh and select them again.';
+
+  @override
+  String get warehouseMasterTitle => 'Warehouse records';
+
+  @override
+  String get warehouseMasterSearchHint => 'Search warehouse name / code';
+
+  @override
+  String get warehouseMasterSelectHint =>
+      'Select a warehouse to view its details and live inventory';
+
+  @override
+  String get warehouseMasterDetailsLoadFailed =>
+      'Failed to load warehouse details. Please retry.';
+
+  @override
+  String get warehouseMasterInventorySummaryHint =>
+      'Includes live inventory from child accounting warehouses';
+
+  @override
+  String get warehouseInventorySearchHint => 'Search goods name / code';
+
+  @override
+  String get warehouseInventoryNoAccess =>
+      'You do not have permission to view inventory';
+
+  @override
+  String get warehouseInventoryLoadFailed =>
+      'Failed to load inventory. Please retry.';
+
+  @override
+  String get warehouseInventoryEmpty =>
+      'This warehouse has no inventory records';
+
+  @override
+  String get warehouseInventoryOpenLedger =>
+      'Double-click goods to view stock movements';
+
+  @override
+  String get warehouseInventoryQuantity => 'Stock quantity';
+
+  @override
+  String get warehouseInventoryPendingInspection => 'Awaiting inspection';
+
+  @override
+  String get warehouseInventoryPendingStockIn => 'Released, awaiting stock-in';
+
+  @override
+  String get warehouseMasterStatusLabel => 'Status';
+
+  @override
+  String get warehouseMasterDisable => 'Disable';
+
+  @override
+  String get warehouseMasterEnable => 'Enable';
+
+  @override
+  String get warehouseMasterSetKeepers => 'Assign keepers';
+
+  @override
+  String get warehouseMasterWarehouseLabel => 'Warehouse';
+
+  @override
+  String get warehouseMasterAdd => 'Add warehouse';
+
+  @override
+  String get warehouseMasterAddChild => 'Add child warehouse';
+
+  @override
+  String get warehouseMasterAddPeer => 'Add peer warehouse';
+
+  @override
+  String get warehouseMasterEdit => 'Edit warehouse';
+
+  @override
+  String get warehouseMasterDelete => 'Delete warehouse';
+
+  @override
+  String get bomEditDiscardAndExit => 'Exit without saving';
+
+  @override
+  String get masterEditDiscardRemainingNote =>
+      'Discard only the remaining unsaved changes. Successfully saved changes will be kept.';
+
+  @override
+  String get filterAllCategoriesSummary => 'All categories';
 }

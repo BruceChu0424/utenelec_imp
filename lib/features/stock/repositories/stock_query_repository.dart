@@ -119,6 +119,8 @@ class StockQueryRepository {
   /// 2026-09-16 起表头筛选：owningWarehouse=归属仓库 UUID；colorId/series/unitId=颜色/
   /// 物料系列/单位列筛选（值为颜色 UUID / 系列文本 / 单位 UUID，桶由列表响应 facets 下发）。
   /// attention 为服务器白名单行动规则；明细和 totals 包含规则筛选，facets 保持基础范围。
+  /// warehouseRelatedOnly 仅保留所选仓范围内有余额或收货记录的货品+颜色，
+  /// 用于仓库资料内的库存表，避免全公司零库存货品占位。
   /// 行动清单使用专用路由，旧服务端必须明确失败，不能把忽略规则的全量数据当风险。
   Future<PagedResult<InstantInventoryRow>> instantInventory({
     int page = 1,
@@ -127,6 +129,7 @@ class StockQueryRepository {
     String? warehouseId,
     bool includeDefective = false,
     bool includeLineSide = false,
+    bool warehouseRelatedOnly = false,
     String? keyword,
     bool includeRelated = false,
     String? owningWarehouse,
@@ -150,6 +153,7 @@ class StockQueryRepository {
         'includeDefective': includeDefective,
         // V595：线边仓(车间直送料架)默认不算进现实库存，显式打开才计入。
         if (includeLineSide) 'includeLineSide': true,
+        if (warehouseRelatedOnly) 'warehouseRelatedOnly': true,
         if (keyword != null && keyword.isNotEmpty) 'keyword': keyword,
         if (includeRelated && keyword?.trim().isNotEmpty == true)
           'includeRelated': true,

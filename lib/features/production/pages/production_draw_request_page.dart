@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -406,13 +407,13 @@ class _ProductionDrawRequestPageState
               onPressed: _saving || _uncertain ? null : _back,
             ),
             actions: [
-              IconButton(
+              UtenRefreshButton(
                 key: const Key('production-draw-request-refresh'),
                 tooltip: _uncertain ? '请先重试领料，确认本批结果' : '刷新领料汇总',
-                onPressed: _loading || _saving || _uncertain || !_hasPermission
-                    ? null
-                    : () => _load(currentVersions: true),
-                icon: const Icon(Icons.refresh),
+                enabled:
+                    !(_loading || _saving || _uncertain || !_hasPermission),
+                busy: _loading,
+                onRefresh: () => _load(currentVersions: true),
               ),
             ],
           ),

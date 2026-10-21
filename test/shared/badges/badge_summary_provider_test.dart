@@ -75,13 +75,15 @@ final _scope = StateProvider<AuthenticatedScope?>(
   (ref) => const AuthenticatedScope(userId: 'user-1'),
 );
 
-(ProviderContainer, _BadgeApi) _container() {
+(ProviderContainer, _BadgeApi) _container({WarehouseTaskScope? taskScope}) {
   final api = _BadgeApi();
   final container = ProviderContainer(
     overrides: [
       sharedPreferencesProvider.overrideWithValue(_prefs),
       apiClientProvider.overrideWithValue(api),
       authenticatedScopeProvider.overrideWith((ref) => ref.watch(_scope)),
+      if (taskScope != null)
+        warehouseTaskScopeProvider.overrideWithValue(taskScope),
     ],
   );
   // 保持订阅, 与页面 watch 一致。
@@ -96,6 +98,72 @@ Future<void> _settle(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('所选仓两条货品完整更新分段与入口，全局卡片和导航保持本人范围', (tester) async {
+    Map<String, dynamic> inboundSnapshot(int count) => {
+      'entries': {
+        'warehouseInboundCenter': {'todo': count, 'inProgress': 0},
+      },
+      'modules': {
+        'warehouse': {'todo': count, 'inProgress': 0},
+      },
+      'total': {'todo': count, 'inProgress': 0},
+      'facts': {
+        BadgeFact.warehouseInboundExpectationPurchase: count,
+        BadgeFact.warehouseArrivalExceptionPurchase: 0,
+      },
+    };
+    final (container, api) = _container(
+      taskScope: const WarehouseTaskScope.warehouse('hw'),
+    );
+    api.body = inboundSnapshot(9);
+    api.scopedBodies['hw'] = inboundSnapshot(2);
+    final subscription = container.listen(
+      warehouseTaskBadgesProvider,
+      (_, _) {},
+      fireImmediately: true,
+    );
+    await _settle(tester);
+    await _settle(tester);
+
+    void expectCounts({required int selected, required int global}) {
+      expect(
+        container.read(
+          warehouseTaskFactOrNullProvider(
+            BadgeFact.warehouseInboundExpectationPurchase,
+          ),
+        ),
+        selected,
+      );
+      expect(
+        container.read(
+          warehouseTaskEntryTodoProvider(BadgeEntry.warehouseInboundCenter),
+        ),
+        selected,
+      );
+      expect(
+        container.read(
+          badgeEntryTodoProvider(BadgeEntry.warehouseInboundCenter),
+        ),
+        global,
+      );
+      expect(
+        container.read(badgeModuleTodoProvider(BadgeModule.warehouse)),
+        global,
+      );
+      expect(container.read(badgeTotalTodoProvider), global);
+    }
+
+    expectCounts(selected: 2, global: 9);
+    api.body = inboundSnapshot(7);
+    api.scopedBodies['hw'] = inboundSnapshot(0);
+    await container.read(badgeSummaryProvider.notifier).refresh();
+    await _settle(tester);
+    expectCounts(selected: 0, global: 7);
+    subscription.close();
+    container.dispose();
+    await _settle(tester);
+  });
+
   testWidgets(
     'unchanged global totals still refresh a changed warehouse queue',
     (tester) async {

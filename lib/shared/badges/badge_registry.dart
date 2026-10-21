@@ -277,7 +277,7 @@ abstract final class BadgeFact {
   static const warehouseSalesOutboundLegacyPending =
       'warehouseSalesOutbound.LEGACY_PENDING';
 
-  /// 调用者仓库范围内待发料的委外领料单张数(ADR-143 §4.3)。
+  /// 调用者仓库范围内待发料的委外货品明细行数，与任务列表逐行一致。
   static const subcontractOutbound = 'subcontractOutbound.count';
 
   /// 品质结果「轮到仓库动手」按来源大类(后缀 = 收货单类型 apiValue)。

@@ -302,7 +302,13 @@ class _ExpenseApprovalListPageState
       appBar: UtenAppBar(
         title: '报销审批',
         showBackButton: true,
-        actions: [UtenRefreshButton(onRefresh: _refreshQueue)],
+        actions: [
+          UtenRefreshButton(
+            enabled: !_batchBusy,
+            busy: listAsync.isLoading,
+            onRefresh: _refreshQueue,
+          ),
+        ],
       ),
       body: body,
     );
@@ -539,13 +545,23 @@ class _ExpenseApprovalListPageState
   }
 
   /// 批量动作后列表、筛选桶与汇总一起刷新（计数随队列变化）。
-  void _refreshQueue() {
-    refreshBadges(ref);
-    ref.invalidate(expenseApprovalListProvider);
-    ref.invalidate(
-      expenseApprovalFacetsProvider(ref.read(approvalQueueProvider)),
+  Future<void> _refreshQueue() async {
+    final facets = expenseApprovalFacetsProvider(
+      ref.read(approvalQueueProvider),
     );
+    ref.invalidate(expenseApprovalListProvider);
+    ref.invalidate(facets);
     ref.invalidate(expenseQueueSummaryProvider);
+    try {
+      await Future.wait([
+        refreshBadges(ref),
+        ref.read(expenseApprovalListProvider.future),
+        ref.read(facets.future),
+        ref.read(expenseQueueSummaryProvider.future),
+      ]);
+    } catch (error) {
+      if (mounted) context.appApiError(error);
+    }
   }
 }
 

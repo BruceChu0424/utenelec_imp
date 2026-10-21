@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
@@ -80,6 +81,16 @@ class _ExpenseSettingsPageState extends ConsumerState<ExpenseSettingsPage> {
     }
   }
 
+  Future<void> _refresh() async {
+    _loaded = null;
+    ref.invalidate(expenseSettingsProvider);
+    try {
+      await ref.read(expenseSettingsProvider.future);
+    } catch (error) {
+      if (mounted) context.appApiError(error);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -92,16 +103,11 @@ class _ExpenseSettingsPageState extends ConsumerState<ExpenseSettingsPage> {
         title: l10n.expenseFlowSettingsTitle,
         showBackButton: true,
         actions: [
-          UtenButton(
-            type: UtenButtonType.tonal,
-            icon: Icons.refresh,
-            onPressed: _saving
-                ? null
-                : () {
-                    _loaded = null;
-                    ref.invalidate(expenseSettingsProvider);
-                  },
-            child: Text(l10n.commonRefresh),
+          UtenRefreshButton(
+            enabled: !_saving,
+            busy: settings.isLoading,
+            tooltip: l10n.commonRefresh,
+            onRefresh: _refresh,
           ),
         ],
       ),

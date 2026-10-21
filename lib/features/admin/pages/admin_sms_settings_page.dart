@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
@@ -224,10 +226,11 @@ class _SmsEditorState extends ConsumerState<_SmsEditor> {
         showBackButton: true,
         showPagePermissionAction: false,
         actions: [
-          IconButton(
+          UtenRefreshButton(
             tooltip: '重新读取服务器配置',
-            onPressed: _loading || _saving ? null : _load,
-            icon: const Icon(Icons.refresh_rounded),
+            busy: _loading,
+            enabled: !_saving,
+            onRefresh: _load,
           ),
         ],
       ),

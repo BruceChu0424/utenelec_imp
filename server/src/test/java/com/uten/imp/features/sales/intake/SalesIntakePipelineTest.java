@@ -17,8 +17,7 @@ import com.uten.imp.common.web.ApiException;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
-import org.apache.pdfbox.pdmodel.font.PDType1Font;
-import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
 
@@ -213,13 +212,16 @@ class SalesIntakePipelineTest {
     }
 
     static byte[] pdf(List<String> lines) throws IOException {
-        try (PDDocument doc = new PDDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+        try (PDDocument doc = new PDDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream();
+             var fontFile = SalesIntakePipelineTest.class.getResourceAsStream("/fonts/NotoSansSCFullPdf.ttf")) {
+            if (fontFile == null) throw new IOException("Dedicated PDF fixture font is missing");
             PDPage page = new PDPage();
             doc.addPage(page);
             if (!lines.isEmpty()) {
+                PDType0Font font = PDType0Font.load(doc, fontFile, true);
                 try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
                     cs.beginText();
-                    cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 10);
+                    cs.setFont(font, 10);
                     cs.newLineAtOffset(40, 740);
                     for (String l : lines) {
                         cs.showText(l);

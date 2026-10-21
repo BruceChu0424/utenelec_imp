@@ -17,6 +17,8 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+
+import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -120,10 +122,9 @@ class HrWorkbenchPage extends ConsumerWidget {
               icon: const Icon(Icons.history_rounded),
               onPressed: () => context.push(RouteName.hrReconcile),
             ),
-          IconButton(
-            tooltip: '刷新',
-            onPressed: () => ref.read(hrTaskSummaryProvider.notifier).refresh(),
-            icon: const Icon(Icons.refresh_rounded),
+          UtenRefreshButton(
+            busy: async.isLoading,
+            onRefresh: () => ref.read(hrTaskSummaryProvider.notifier).refresh(),
           ),
           // 草稿入口走右上角按钮（2026-09-27），不再在左上角占一行分段栏。
           const FormDraftsAppBarButton(categoryId: 'hr'),

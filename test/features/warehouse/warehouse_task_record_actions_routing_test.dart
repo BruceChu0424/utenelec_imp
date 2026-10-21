@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/router/nav_helpers.dart';
 import 'package:uten_imp/core/router/route_access_policy.dart';
 import 'package:uten_imp/core/router/route_names.dart';
@@ -22,6 +23,8 @@ WarehouseTaskCenterRecord _record({
   String action = 'FINISHED_REGISTER',
   String id = 'projection-id',
   String reportId = 'report-original',
+  String? lotId,
+  bool physical = false,
   bool canHandle = true,
 }) => WarehouseTaskCenterRecord(
   rowKey: 'FINISHED:REPORT:$id',
@@ -33,7 +36,14 @@ WarehouseTaskCenterRecord _record({
   statusLabel: '待登记',
   action: action,
   canHandle: canHandle,
-  actionData: {'reportId': reportId},
+  actionData: {
+    'reportId': reportId,
+    'lotId': ?lotId,
+    if (physical) 'sourceReportItemId': 'item-$id',
+  },
+  line: physical
+      ? WarehouseTaskLine(key: 'item-$id', itemId: 'item-$id')
+      : null,
 );
 
 class _ActionButton extends ConsumerStatefulWidget {
@@ -165,7 +175,14 @@ class _RouterHarness {
   Future<void> pump(WidgetTester tester) async {
     addTearDown(router.dispose);
     await tester.pumpWidget(
-      ProviderScope(child: MaterialApp.router(routerConfig: router)),
+      ProviderScope(
+        child: MaterialApp.router(
+          routerConfig: router,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('zh'),
+        ),
+      ),
     );
     await tester.pumpAndSettle();
     if (mount != _Mount.page) {
@@ -176,6 +193,88 @@ class _RouterHarness {
 }
 
 void main() {
+  for (final mount in _Mount.values) {
+    testWidgets(
+      'physical finished row from ${mount.name} retains only its selected lot',
+      (tester) async {
+        final harness = _RouterHarness(
+          rows: [_record(physical: true, lotId: 'lot-selected')],
+          mount: mount,
+        );
+        await harness.pump(tester);
+        await tester.tap(find.byKey(const Key('open-record')));
+        await tester.pumpAndSettle();
+
+        expect(harness.errors, isEmpty);
+        expect(harness.arrivals.last.queryParameters, {
+          'reportIds': 'report-original',
+          'lotIds': 'lot-selected',
+          'returnTo': _source,
+        });
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
+  }
+
+  for (final batch in [false, true]) {
+    testWidgets(
+      'physical finished row without a lot cannot open with batch=$batch',
+      (tester) async {
+        final harness = _RouterHarness(
+          rows: [_record(physical: true)],
+          batch: batch,
+        );
+        await harness.pump(tester);
+        await tester.tap(find.byKey(const Key('open-record')));
+        await tester.pumpAndSettle();
+
+        expect(harness.arrivals, isEmpty);
+        expect(harness.router.state.uri.toString(), _source);
+        expect(harness.errors, isEmpty);
+        final container = ProviderScope.containerOf(
+          tester.element(find.byKey(const Key('open-record'))),
+        );
+        final notice = container.read(appNotificationProvider).single;
+        expect(notice.kind, AppNotificationKind.warning);
+        expect(notice.message, '所选任务已变化，请刷新后重新选择');
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
+  }
+
+  for (final physical in [false, true]) {
+    testWidgets(
+      'finished batch cannot mix scoped and unscoped rows with physical=$physical',
+      (tester) async {
+        final harness = _RouterHarness(
+          rows: [
+            _record(id: 'selected', physical: true, lotId: 'lot-selected'),
+            _record(id: 'missing-lot', physical: physical),
+          ],
+          batch: true,
+          mount: _Mount.imperative,
+        );
+        await harness.pump(tester);
+        await tester.tap(find.byKey(const Key('open-record')));
+        await tester.pumpAndSettle();
+
+        expect(harness.arrivals, isEmpty);
+        expect(harness.router.state.uri.toString(), _source);
+        expect(harness.errors, isEmpty);
+        final container = ProviderScope.containerOf(
+          tester.element(find.byKey(const Key('open-record'))),
+        );
+        final notice = container.read(appNotificationProvider).single;
+        expect(notice.kind, AppNotificationKind.warning);
+        expect(notice.message, '所选任务已变化，请刷新后重新选择');
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
+  }
+
   for (final action in ['FINISHED_REGISTER', 'FINISHED_ARRIVAL_DETAIL']) {
     for (final mount in _Mount.values) {
       testWidgets(

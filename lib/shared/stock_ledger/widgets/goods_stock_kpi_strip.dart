@@ -6,6 +6,8 @@
 // 不影响下面的余额/流水/单重学习。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../components/layout/uten_refresh_scope.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/theme/uten_tokens.dart';
@@ -37,7 +39,8 @@ class GoodsStockKpiStrip extends ConsumerStatefulWidget {
   ConsumerState<GoodsStockKpiStrip> createState() => _GoodsStockKpiStripState();
 }
 
-class _GoodsStockKpiStripState extends ConsumerState<GoodsStockKpiStrip> {
+class _GoodsStockKpiStripState extends ConsumerState<GoodsStockKpiStrip>
+    with UtenRefreshParticipant<GoodsStockKpiStrip> {
   GoodsStockInsight? _insight;
   int _version = 0;
   bool _loading = false;
@@ -46,7 +49,7 @@ class _GoodsStockKpiStripState extends ConsumerState<GoodsStockKpiStrip> {
   @override
   void initState() {
     super.initState();
-    _load();
+    trackRefresh(_load());
   }
 
   @override
@@ -54,7 +57,7 @@ class _GoodsStockKpiStripState extends ConsumerState<GoodsStockKpiStrip> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.reloadTick != widget.reloadTick ||
         oldWidget.goodsId != widget.goodsId) {
-      _load();
+      trackRefresh(_load());
     }
   }
 

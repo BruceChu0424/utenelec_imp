@@ -64,6 +64,114 @@ class PlatformColumnServicePostgresTest {
         assertThatThrownBy(()->sql.update("UPDATE platform_column_definitions SET name='改变历史' WHERE id=?",column.id())).isInstanceOf(Exception.class);
     }
 
+    @Test void creatorCanDeleteCatalogEntryIdempotentlyWithoutChangingStoredValuesFormulasOrHistory() {
+        var number=define("goods","可删除数字","NUMBER",false,null);
+        var calculated=define("goods","保留公式","CALCULATED",false,new Formula(new Operand(number.id(),null,null),List.of(new Step("MULTIPLY",new Operand(null,null,"2")))));
+        assertThat(number.canDelete()).isTrue();
+        tx(()->service.write("goods",record,new Write(0,List.of(new CellInput(number.id(),"7"),new CellInput(calculated.id(),null)))));
+        var stored=sql.queryForMap("SELECT version,cells::text FROM platform_record_fields WHERE scope='goods' AND record_id=?",record);
+        tx(()->{service.delete("goods",number.id());service.delete("goods",number.id());return null;});
+        assertThat(service.search("goods","")).extracting(Definition::id).containsExactly(calculated.id());
+        assertThat(service.definitions("goods",List.of(number.id())).getFirst().canDelete()).isFalse();
+        assertThat(read("goods",calculated.id()).cells()).anySatisfy(cell->{assertThat(cell.columnId()).isEqualTo(calculated.id());assertThat(cell.value()).isEqualTo("14");});
+        assertThat(service.history("goods",record,null,20).getFirst().row().cells()).anySatisfy(cell->{assertThat(cell.columnId()).isEqualTo(number.id());assertThat(cell.value()).isEqualTo("7");});
+        assertThat(sql.queryForMap("SELECT version,cells::text FROM platform_record_fields WHERE scope='goods' AND record_id=?",record)).isEqualTo(stored);
+        assertThat(sql.queryForObject("SELECT count(*) FROM platform_column_definition_deletions WHERE definition_id=?",Integer.class,number.id())).isEqualTo(1);
+        assertThat(sql.queryForObject("SELECT deleted_by FROM platform_column_definition_deletions WHERE definition_id=?",UUID.class,number.id())).isEqualTo(actor);
+        assertThat(sql.queryForObject("SELECT count(*) FROM audit_log WHERE target_type='platform_column_definition_deletions'",Integer.class)).isEqualTo(1);
+        assertThatThrownBy(()->sql.update("DELETE FROM platform_column_definitions WHERE id=?",number.id())).isInstanceOf(Exception.class);
+    }
+
+    @Test void deletionRequiresOriginalCreatorAndCurrentModuleAndPriceAuthority() {
+        UUID creator=actor;
+        var ordinary=define("goods","本人列","TEXT",false,null);
+        var sensitive=define("goods","本人敏感列","NUMBER",true,null);
+        actor=UUID.randomUUID();
+        assertThat(service.search("goods","")).allSatisfy(definition->assertThat(definition.canDelete()).isFalse());
+        assertThatThrownBy(()->tx(()->{service.delete("goods",ordinary.id());return null;})).isInstanceOf(ApiException.class).hasMessageContaining("自己创建");
+        actor=creator;master.canDefine=false;
+        assertThat(service.search("goods","")).allSatisfy(definition->assertThat(definition.canDelete()).isFalse());
+        assertThatThrownBy(()->tx(()->{service.delete("goods",ordinary.id());return null;})).isInstanceOf(ApiException.class).hasMessageContaining("编辑权限");
+        master.canDefine=true;master.priceVisible=false;
+        assertThatThrownBy(()->tx(()->{service.delete("goods",sensitive.id());return null;})).isInstanceOf(ApiException.class).hasMessageContaining("价格权限");
+        assertThatThrownBy(()->tx(()->{service.delete("sales_order",ordinary.id());return null;})).isInstanceOf(ApiException.class).hasMessageContaining("当前模块");
+        assertThat(sql.queryForObject("SELECT count(*) FROM platform_column_definition_deletions",Integer.class)).isZero();
+    }
+
+    @Test void onlyOriginalCreatorCanRestoreAnIdenticalDeletedDefinitionByCreatingItAgain() {
+        UUID creator=actor;
+        var original=define("goods","重新创建","TEXT",false,null);
+        tx(()->{service.delete("goods",original.id());return null;});
+        actor=UUID.randomUUID();
+        assertThatThrownBy(()->define("goods","重新创建","TEXT",false,null)).isInstanceOf(ApiException.class).hasMessageContaining("已由创建人删除");
+        assertThat(service.search("goods","")).isEmpty();
+        actor=creator;
+        var restored=define("goods","重新创建","TEXT",false,null);
+        assertThat(restored.id()).isEqualTo(original.id());assertThat(restored.canDelete()).isTrue();
+        assertThat(service.search("goods","")).extracting(Definition::id).containsExactly(original.id());
+        assertThat(sql.queryForObject("SELECT count(*) FROM platform_column_definitions",Integer.class)).isEqualTo(1);
+        assertThat(sql.queryForObject("SELECT count(*) FROM platform_column_definition_deletions",Integer.class)).isZero();
+    }
+
+    @Test void personalRelatedDeletionUsesItsOwnDefinitionAuthorityAndOtherAccountsCannotDeleteIt() {
+        master.canDefine=false;
+        var related=tx(()->service.create("goods",new CreateDefinition("本人关联列","RELATED",false,null,"mouldName")));
+        UUID creator=actor;
+        assertThat(related.canDelete()).isTrue();
+        actor=UUID.randomUUID();
+        assertThatThrownBy(()->tx(()->{service.delete("goods",related.id());return null;})).isInstanceOf(ApiException.class);
+        actor=creator;master.targetVisible=false;
+        assertThatThrownBy(()->tx(()->{service.delete("goods",related.id());return null;})).isInstanceOf(ApiException.class).hasMessageContaining("关联列");
+        master.targetVisible=true;
+        tx(()->{service.delete("goods",related.id());return null;});
+        assertThat(service.search("goods","")).isEmpty();
+        assertThat(service.definitions("goods",List.of(related.id())).getFirst().canDelete()).isFalse();
+        assertThat(sql.queryForObject("SELECT count(*) FROM platform_record_fields",Integer.class)).isZero();
+    }
+
+    @Test void identicalCreateAfterWaitingForDeletionReadsTheCommittedTombstoneBeforeRestoring() throws Exception {
+        assertWaitingCreateSeesCommittedDeletion(true);
+    }
+
+    @Test void anotherCreatorsWaitingIdenticalCreateCannotReintroduceTheDeletedCatalogEntry() throws Exception {
+        assertWaitingCreateSeesCommittedDeletion(false);
+    }
+
+    private void assertWaitingCreateSeesCommittedDeletion(boolean sameCreator) throws Exception {
+        var definition=define("goods","交错删除后创建","TEXT",false,null);
+        String application="column_create_"+UUID.randomUUID().toString().replace("-","");
+        var ds=new DriverManagerDataSource(connection.getMetaData().getURL(),postgres.getUsername(),postgres.getPassword());
+        var properties=new Properties();properties.setProperty("ApplicationName",application);ds.setConnectionProperties(properties);
+        var workerUser=mock(SecurityContextCurrentUser.class);when(workerUser.requireId()).thenReturn(sameCreator?actor:UUID.randomUUID());
+        var concurrent=new PlatformColumnService(List.of(master),new NamedParameterJdbcTemplate(ds),new ObjectMapper(),workerUser,mock(TxSessionVars.class));
+        var workerTransaction=new TransactionTemplate(new DataSourceTransactionManager(ds));
+        try(var blocker=ds.getConnection();var pool=Executors.newSingleThreadExecutor()) {
+            blocker.setAutoCommit(false);
+            var blockerSql=new JdbcTemplate(new SingleConnectionDataSource(blocker,true));
+            blockerSql.queryForObject("SELECT id FROM platform_column_definitions WHERE id=? FOR UPDATE",UUID.class,definition.id());
+            blockerSql.update("INSERT INTO platform_column_definition_deletions(definition_id,deleted_by) VALUES(?,?)",definition.id(),actor);
+            var waiting=pool.submit(()->workerTransaction.execute(status->concurrent.create("goods",new CreateDefinition("交错删除后创建","TEXT",false,null))));
+            try {
+                long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(10);
+                boolean locked=false;
+                while(System.nanoTime()<deadline) {
+                    locked=Boolean.TRUE.equals(sql.queryForObject("SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND application_name=? AND wait_event_type='Lock' AND query LIKE '%FOR UPDATE OF d%')",Boolean.class,application));
+                    if(locked)break;
+                    Thread.sleep(20);
+                }
+                assertThat(locked).as("Create must wait on the definition identity before deletion commits").isTrue();
+                blocker.commit();
+                if(sameCreator) {
+                    assertThat(waiting.get(10,TimeUnit.SECONDS).id()).isEqualTo(definition.id());
+                    assertThat(service.search("goods","")).extracting(Definition::id).containsExactly(definition.id());
+                } else {
+                    assertThatThrownBy(()->waiting.get(10,TimeUnit.SECONDS)).isInstanceOf(ExecutionException.class).hasCauseInstanceOf(ApiException.class).hasRootCauseMessage("相同定义的列已由创建人删除，请调整列名或定义后创建");
+                    assertThat(service.search("goods","")).isEmpty();
+                }
+            } finally {blocker.rollback();}
+        }
+    }
+
     @Test void readonlyProjectionCalculatesWithoutCreatingRowsAndNeverChangesBusinessFacts() {
         var formula=define("goods","展示数量","CALCULATED",false,factFormula("qty","MULTIPLY","2"));
         master.writable=false;
@@ -190,12 +298,15 @@ class PlatformColumnServicePostgresTest {
             .isInstanceOf(org.springframework.dao.DataAccessException.class).hasMessageContaining("permanent");
         assertThatThrownBy(()->sql.update("UPDATE platform_column_definitions SET name='changed' WHERE id=?",masterColumn.id()))
             .isInstanceOf(org.springframework.dao.DataAccessException.class);
+        tx(()->{service.delete("goods",masterColumn.id());return null;});
         transaction.execute(status->sql.queryForList("SELECT * FROM business_data_reset()"));
         assertThat(sql.queryForList("SELECT scope,record_id,version,cells::text FROM platform_record_fields WHERE scope='goods'")).isEqualTo(masterBefore);
         assertThat(sql.queryForObject("SELECT count(*) FROM platform_record_fields WHERE scope='sales_order'",Integer.class)).isZero();
         assertThat(sql.queryForObject("SELECT count(*) FROM platform_record_field_versions",Integer.class)).isZero();
         assertThat(sql.queryForObject("SELECT count(*) FROM platform_column_definitions",Integer.class)).isEqualTo(2);
         assertThat(sql.queryForObject("SELECT name FROM platform_column_definitions WHERE id=?",String.class,masterColumn.id())).isEqualTo("保留主档");
+        assertThat(sql.queryForObject("SELECT count(*) FROM platform_column_definition_deletions WHERE definition_id=?",Integer.class,masterColumn.id())).isEqualTo(1);
+        assertThat(service.search("goods","")).isEmpty();
         assertThatThrownBy(()->sql.update("DELETE FROM platform_column_definitions WHERE id=?",masterColumn.id()))
             .isInstanceOf(org.springframework.dao.DataAccessException.class);
     }

@@ -38,6 +38,7 @@ public class WarehouseSubcontractOutboundController {
     private final SubcontractMaterialPlanService planService;
     private final SubcontractDrawCommandService drawCommands;
     private final com.uten.imp.application.port.WarehouseTaskScopePort warehouseScopes;
+    private final com.uten.imp.application.port.WarehouseTaskRowCountPort taskRowCounts;
 
     /** 待发料任务分页(出仓单号/订货单号/委外商关键字; 仓库数据范围 ADR-149)。 */
     @GetMapping("/tasks")
@@ -51,12 +52,12 @@ public class WarehouseSubcontractOutboundController {
         return planService.tasks(page, size, keyword, warehouseScopes.current(scopeWarehouseId));
     }
 
-    /** 委外出库红数: 待仓库发出的领料草稿张数(与待发料列表同一仓库数据范围谓词与口径, ADR-149)。 */
+    /** 委外出库红数: 待仓库发出的领料实物行数(与合并任务中心列表同一仓库数据范围及明细关系)。 */
     @GetMapping("/tasks/count")
     @com.uten.imp.security.BusinessTaskRead
     @PreAuthorize("hasAuthority('subcontract_outbound:view') and hasAuthority('subcontract_outbound:execute')")
     public Map<String, Long> taskCount(@RequestParam(required = false) UUID scopeWarehouseId) {
-        return Map.of("count", planService.countTasks(warehouseScopes.current(scopeWarehouseId)));
+        return Map.of("count", taskRowCounts.subcontractOutbound(warehouseScopes.current(scopeWarehouseId)));
     }
 
     /** 拣货页: 草稿头 + 每行提交的领料数量/当前拣货量/该仓可拣量/库位。 */

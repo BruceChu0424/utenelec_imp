@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
@@ -154,17 +155,11 @@ class _AdminAuditSessionDetailPageState
               () => popOrBackTo(context, defaultPath: RouteName.adminAuditLogs),
         ),
         actions: [
-          IconButton(
+          UtenRefreshButton(
             key: const ValueKey('audit-session-detail-refresh'),
             tooltip: '刷新会话',
-            onPressed: _loadingSummary ? null : _refresh,
-            icon: _loadingSummary
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.refresh_rounded),
+            busy: _loadingSummary,
+            onRefresh: _refresh,
           ),
         ],
         showPagePermissionAction: false,

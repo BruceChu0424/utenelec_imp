@@ -12,6 +12,8 @@ import 'dart:math' as math;
 
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
+
+import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -321,11 +323,11 @@ class _AdminAiUsagePageState extends ConsumerState<_AdminAiUsageSession> {
         title: l10n.aiUsageTitle,
         leading: const UtenBackButton(),
         actions: [
-          IconButton(
+          UtenRefreshButton(
             key: const ValueKey('ai-usage-refresh'),
             tooltip: l10n.aiSettingsRefresh,
-            icon: const Icon(Icons.refresh_rounded),
-            onPressed: _loading ? null : _refresh,
+            busy: _loading,
+            onRefresh: _refresh,
           ),
         ],
       ),

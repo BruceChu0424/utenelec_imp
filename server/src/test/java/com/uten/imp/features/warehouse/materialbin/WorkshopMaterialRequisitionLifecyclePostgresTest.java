@@ -69,8 +69,13 @@ class WorkshopMaterialRequisitionLifecyclePostgresTest {
                     mock(WorkshopMaterialCommandLedger.class),scope,mock(WorkshopMaterialPermissions.class),mock(WorkshopMaterialCountService.class),
                     mock(DocNumberService.class),mock(WorkshopMaterialNoticePort.class),current,mock(WorkshopMaterialSetupPort.class));
             var warehouses=new WarehouseTaskScope(true,List.of(warehouse),false);
+            var badgePermissions=mock(WorkshopMaterialPermissions.class);
+            when(badgePermissions.has(WorkshopMaterialPermissions.ISSUE)).thenReturn(true);
+            var badges=new WorkshopMaterialPositionQueryService(jdbc,null,scope,badgePermissions,null,null);
             var active=service.list(null,null,null,warehouses,1,1);
             assertThat(active.getTotal()).isEqualTo(2);
+            assertThat(badges.badgeCounts(warehouses).pendingIssue()).isEqualTo(active.getTotal());
+            assertThat(badges.badgeCounts(warehouses).pendingReturn()).isZero();
             assertThat(active.getTotalPages()).isEqualTo(2);
             assertThat(active.getItems().getFirst().lines()).hasSize(1);
             var activeSecond=service.list(null,null,null,warehouses,2,1);
@@ -105,6 +110,10 @@ class WorkshopMaterialRequisitionLifecyclePostgresTest {
             assertThat(onlyMatchingLine.getTotal()).isEqualTo(1);
             assertThat(onlyMatchingLine.getItems().getFirst().lines()).hasSize(1);
             assertThat(onlyMatchingLine.getItems().getFirst().lines().getFirst().goodsId()).isEqualTo(secondGoods);
+            jdbc.update("UPDATE workshop_material_requisitions SET kind='RETURN' WHERE status='PENDING'",Map.of());
+            assertThat(badges.badgeCounts(warehouses).pendingIssue()).isZero();
+            assertThat(badges.badgeCounts(warehouses).pendingReturn()).isEqualTo(2);
+            assertThat(badges.badgeCounts(new WarehouseTaskScope(true,List.of(outside),false)).pendingReturn()).isZero();
             connection.rollback();
         }
     }

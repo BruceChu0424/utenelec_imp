@@ -1,10 +1,9 @@
 // 仓库任务中心顶栏的仓库范围(ADR-149)。
 //
 // 谁能看哪些仓由服务端判定(my-scope)，这里只按结论显示:
-//   · 主管：小标签(当前范围)，点开右侧滑窗(先主仓后子仓)，首行「全部仓库」；
+//   · 主管：主题色描边选择器(当前范围)，点开右侧滑窗(先主仓后子仓)，首行「全部仓库」；
 //   · 负责多个仓的子仓负责人：同上，首行「我负责的全部仓库」，只列自己负责的仓；
-//   · 只负责一个仓：只读标签「我负责：包材仓库」；
-//   · 其他人：不显示(列表照样由服务端按本人范围过滤)。
+//   · 单仓负责人和其他人：同一个入口，只能在服务端给出的可见仓内缩小筛选。
 // 选择按账号记忆；范围变化时任务中心骨架推进 refreshTick，各分段列表连同分段计数一起重拉。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,13 +25,21 @@ class WarehouseScopeSelector extends ConsumerWidget {
     WarehouseTaskScope scope,
   ) {
     if (!scope.isAll) {
-      return scope.warehouseName ??
+      final name =
+          scope.warehouseName ??
           mine.option(scope.warehouseId!)?.name ??
           l10n.warehouseScopeAllWarehouses;
+      return mine.selectable.any(
+            (option) => option.parentId == scope.warehouseId,
+          )
+          ? l10n.warehouseScopeIncludingChildren(name)
+          : name;
     }
     return mine.isSupervisor
         ? l10n.warehouseScopeAllWarehouses
-        : l10n.warehouseScopeAllMine;
+        : mine.isKeeper
+        ? l10n.warehouseScopeAllMine
+        : l10n.warehouseScopeAllVisible;
   }
 
   /// 可选范围按层级(先主仓后子仓)交给全站仓库滑窗；选择器只认服务端给的可选清单。
@@ -57,48 +64,26 @@ class WarehouseScopeSelector extends ConsumerWidget {
         Localizations.of<AppLocalizations>(context, AppLocalizations) ??
         lookupAppLocalizations(const Locale('zh'));
     final theme = Theme.of(context);
-    final mine = confirmedMyWarehouseScope(ref.watch(myWarehouseScopeProvider));
-    if (mine == null) return const SizedBox.shrink();
-    final only = mine.onlyWarehouse;
-    if (only != null) {
-      return Tooltip(
-        message: l10n.warehouseScopeKeeperTooltip,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: UtenSpacing.s8,
-            vertical: UtenSpacing.s4,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.warehouse_outlined,
-                size: 18,
-                color: theme.colorScheme.primary,
-              ),
-              const SizedBox(width: UtenSpacing.s4),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 180),
-                child: Text(
-                  l10n.warehouseScopeKeeperLabel(only.name),
-                  key: const Key('warehouse-scope-keeper-label'),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelLarge,
-                ),
-              ),
-            ],
-          ),
-        ),
+    final scopeState = ref.watch(myWarehouseScopeProvider);
+    if (scopeState.hasError) {
+      return TextButton.icon(
+        key: const Key('warehouse-scope-retry'),
+        onPressed: () => ref.invalidate(myWarehouseScopeProvider),
+        icon: const Icon(Icons.refresh, size: 18),
+        label: Text(l10n.warehouseScopeLoadFailedRetry),
       );
     }
+    final mine = confirmedMyWarehouseScope(scopeState);
+    if (mine == null) return const SizedBox.shrink();
     if (!mine.showsSelector) return const SizedBox.shrink();
     final scope = ref.watch(warehouseTaskScopeProvider);
     final label = labelOf(l10n, mine, scope);
     return Tooltip(
       message: mine.isSupervisor
           ? l10n.warehouseScopeSupervisorTooltip
-          : l10n.warehouseScopeKeeperTooltip,
+          : mine.isKeeper
+          ? l10n.warehouseScopeKeeperTooltip
+          : l10n.warehouseScopeVisibleTooltip,
       child: InkWell(
         key: const Key('warehouse-scope-selector'),
         borderRadius: BorderRadius.circular(UtenRadius.control),
@@ -109,12 +94,21 @@ class WarehouseScopeSelector extends ConsumerWidget {
             use: WarehouseUse.query,
             title: l10n.warehouseScopePickerTitle,
             includeAll: true,
-            allLabel: mine.isSupervisor
-                ? l10n.warehouseScopeAllWarehouses
-                : l10n.warehouseScopeAllMine,
+            allLabel: labelOf(l10n, mine, const WarehouseTaskScope.all()),
             initialWarehouseId: scope.warehouseId,
+            subtitleOf: (entry) =>
+                mine.selectable.any((option) => option.parentId == entry.id)
+                ? l10n.warehouseScopeIncludesVisibleChildren
+                : null,
           );
-          if (picked == null) return;
+          if (picked == null || !context.mounted) return;
+          final current = confirmedMyWarehouseScope(
+            ref.read(myWarehouseScopeProvider),
+          );
+          if (current == null ||
+              (!picked.isAll && !current.canSelect(picked.id))) {
+            return;
+          }
           ref
               .read(warehouseTaskScopePrefProvider.notifier)
               .select(
@@ -122,73 +116,57 @@ class WarehouseScopeSelector extends ConsumerWidget {
                     ? const WarehouseTaskScope.all()
                     : WarehouseTaskScope.warehouse(
                         picked.id,
-                        name: mine.option(picked.id)?.name,
+                        name: current.option(picked.id)?.name,
                       ),
               );
         },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: UtenSpacing.s8,
-            vertical: UtenSpacing.s4,
+        child: Ink(
+          key: const Key('warehouse-scope-selector-border'),
+          decoration: BoxDecoration(
+            border: Border.all(color: theme.colorScheme.primary),
+            borderRadius: UtenRadius.controlAll,
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.warehouse_outlined,
-                size: 18,
-                color: scope.isAll
-                    ? theme.colorScheme.onSurfaceVariant
-                    : theme.colorScheme.primary,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: UtenControlMetrics.minimumHitExtent(
+                context,
+                desktop: UtenControlMetrics.compactHeight,
               ),
-              const SizedBox(width: UtenSpacing.s4),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 160),
-                child: Text(
-                  label,
-                  key: const Key('warehouse-scope-label'),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: scope.isAll ? null : theme.colorScheme.primary,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: UtenSpacing.s8,
+                vertical: UtenSpacing.s4,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.warehouse_outlined,
+                    size: 18,
+                    color: scope.isAll
+                        ? theme.colorScheme.onSurfaceVariant
+                        : theme.colorScheme.primary,
                   ),
-                ),
+                  const SizedBox(width: UtenSpacing.s4),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 160),
+                    child: Text(
+                      label,
+                      key: const Key('warehouse-scope-label'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: scope.isAll ? null : theme.colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                  const Icon(Icons.arrow_drop_down_rounded, size: 20),
+                ],
               ),
-              const Icon(Icons.arrow_drop_down_rounded, size: 20),
-            ],
+            ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// A restored narrow scope must stay visible beside the task categories.
-/// Independent drafts have their own explicitly labelled all-warehouse entry.
-class WarehouseScopeFilterNotice extends ConsumerWidget {
-  const WarehouseScopeFilterNotice({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final scope = ref.watch(warehouseTaskScopeProvider);
-    if (scope.isAll) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-      child: Wrap(
-        key: const Key('warehouse-task-scope-filter-notice'),
-        spacing: UtenSpacing.s8,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          Text('任务筛选：${scope.warehouseName ?? '所选仓库'}'),
-          TextButton(
-            key: const Key('warehouse-task-clear-scope'),
-            onPressed: () => ref
-                .read(warehouseTaskScopePrefProvider.notifier)
-                .select(const WarehouseTaskScope.all()),
-            child: const Text('查看本人全部仓库'),
-          ),
-          const Text('仓库草稿按本人全部可见范围显示'),
-        ],
       ),
     );
   }

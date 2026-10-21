@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
  *   <li>子仓负责人 KEEPER: 登记在主仓以外的仓上。只看自己负责的仓(含下级), 不含未定仓的任务;
  *       负责多个仓时可在这些仓之间切换。</li>
  *   <li>其他人 OTHER: 有任务权限但没登记负责人。看没有有效子仓负责人的仓 + 未定仓的任务;
- *       全公司还没有任何有效子仓负责人时等于全部。不能挑仓。</li>
+ *       全公司还没有任何有效子仓负责人时等于全部。可在本人可见范围内挑仓。</li>
  * </ul>
  *
  * <p>范围限制仓库任务列表、计数、徽章与通知，以及任务中心/仓库专用物理历史详情。
@@ -29,7 +29,7 @@ import java.util.stream.Collectors;
 public interface WarehouseTaskScopePort {
 
     /** 越界选仓的统一提示(403)。 */
-    String OUT_OF_SCOPE_MESSAGE = "所选仓库不在你负责的范围内";
+    String OUT_OF_SCOPE_MESSAGE = "所选仓库不在你可见的范围内";
 
     /** 三种角色。 */
     enum Role { SUPERVISOR, KEEPER, OTHER }

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_refresh_scope.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -26,6 +27,13 @@ class _WarehouseArrivalExceptionsPageState
     extends ConsumerState<WarehouseArrivalExceptionsPage> {
   String? _myLocation;
   int _refreshTick = 0;
+  final _refreshController = UtenRefreshController();
+
+  @override
+  void dispose() {
+    _refreshController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,25 +44,29 @@ class _WarehouseArrivalExceptionsPageState
     ref.onPageResume(_myLocation!, () {
       setState(() => _refreshTick++);
     });
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: '到货异常任务中心',
-        leading: UtenBackButton(
-          onPressed: () => backTo(context, defaultPath: RouteName.warehouse),
-        ),
-        actions: [
-          UtenAppBarActionButton(
-            label: '刷新',
-            icon: Icons.refresh_rounded,
-            onPressed: () => setState(() => _refreshTick++),
+    return UtenRefreshScope(
+      controller: _refreshController,
+      child: Scaffold(
+        appBar: UtenAppBar(
+          title: '到货异常任务中心',
+          leading: UtenBackButton(
+            onPressed: () => backTo(context, defaultPath: RouteName.warehouse),
           ),
-        ],
-      ),
-      body: SafeArea(
-        child: UtenContentContainer.wide(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-            child: WarehouseArrivalExceptionsView(refreshTick: _refreshTick),
+          actions: [
+            UtenAppBarActionButton(
+              label: '刷新',
+              icon: Icons.refresh_rounded,
+              onPressed: () =>
+                  _refreshController.run(() => setState(() => _refreshTick++)),
+            ),
+          ],
+        ),
+        body: SafeArea(
+          child: UtenContentContainer.wide(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+              child: WarehouseArrivalExceptionsView(refreshTick: _refreshTick),
+            ),
           ),
         ),
       ),

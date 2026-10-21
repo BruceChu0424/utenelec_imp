@@ -27,14 +27,17 @@ public class WarehouseSalesOutboundController {
     private final WarehouseSalesOutboundProjectionService service;
     private final AuditDetailViewRecorder auditViews;
     private final com.uten.imp.application.port.WarehouseTaskScopePort warehouseScopes;
+    private final com.uten.imp.application.port.WarehouseTaskRowCountPort taskRowCounts;
 
     public WarehouseSalesOutboundController(
             WarehouseSalesOutboundProjectionService service,
             AuditDetailViewRecorder auditViews,
-            com.uten.imp.application.port.WarehouseTaskScopePort warehouseScopes) {
+            com.uten.imp.application.port.WarehouseTaskScopePort warehouseScopes,
+            com.uten.imp.application.port.WarehouseTaskRowCountPort taskRowCounts) {
         this.service = service;
         this.auditViews = auditViews;
         this.warehouseScopes = warehouseScopes;
+        this.taskRowCounts = taskRowCounts;
     }
 
     @GetMapping
@@ -60,7 +63,7 @@ public class WarehouseSalesOutboundController {
     @com.uten.imp.security.BusinessTaskRead
     @PreAuthorize("hasAuthority('warehouse_sales_outbound:view') and hasAuthority('warehouse_sales_outbound:execute')")
     public Map<String, Long> pendingCount(@RequestParam(required = false) UUID scopeWarehouseId) {
-        return Map.of("count", service.pendingCount(warehouseScopes.current(scopeWarehouseId)));
+        return Map.of("count", taskRowCounts.salesOutbound(warehouseScopes.current(scopeWarehouseId)).getOrDefault("PENDING_PICK", 0L));
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
@@ -81,7 +84,7 @@ public class WarehouseSalesOutboundController {
     @com.uten.imp.security.BusinessTaskRead
     @PreAuthorize("hasAuthority('warehouse_sales_outbound:view') and hasAuthority('warehouse_sales_outbound:execute')")
     public Map<String, Long> counts(@RequestParam(required = false) UUID scopeWarehouseId) {
-        return service.counts(warehouseScopes.current(scopeWarehouseId));
+        return taskRowCounts.salesOutbound(warehouseScopes.current(scopeWarehouseId));
     }
 
     @GetMapping("/{id}")

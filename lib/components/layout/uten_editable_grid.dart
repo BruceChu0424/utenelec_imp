@@ -28,9 +28,9 @@ import '../../shared/widgets/column_editor_dialog.dart';
 //   （2026-09-25 用户口径「添加行/汇总要跟着表格一起上移」）。
 // - Excel 交互：表头全左对齐；每个单元格右竖线分隔；按住列右边界竖线左右拖拽调宽窄
 //   （复用 MasterDataTableView 的 grip 范式，下限 48 防拖没）。
-// - 列宽随内容自动加宽（2026-08-27）：列定义提供 textOf（+listenableOf）的列，输入/换值
-//   内容变宽时列自动加长——只增不减、封顶 480；用户手动拖拽过的列锁定用户宽度，不再
-//   自动加宽（列集合变化才解锁）。详见 EditableGridColumn.textOf 文档。
+// - 列宽随内容自动加宽：实际输入/选择控件自动报告可见内容所需宽度；textOf
+//   （+listenableOf）另提供初始估宽及未挂载行的补充。只增不减、封顶480；
+//   用户手动拖拽后锁宽，双击列边界重置恢复自动。
 // - "添加行"(加1) + "添加多行"(对话框填 N，1-50)；行尾删除。
 // - 表头体系与 MasterDataTableView 共用同一份实现（2026-09-05 收敛，见
 //   uten_table_column_kit.dart）：可选表头设置（按钮处锚定的浮层勾选列表：勾选显隐、
@@ -54,6 +54,7 @@ import '../data_display/uten_status_cell_color.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../inputs/uten_table_cell_hints.dart';
 import '../inputs/uten_table_cell_spec.dart';
+import '../inputs/uten_table_cell_auto_width.dart';
 import '../feedback/uten_context_menu.dart';
 import '../feedback/uten_dialog.dart';
 import 'uten_grid_header_filter_cell.dart';
@@ -126,7 +127,7 @@ mixin AmountRowMixin on EditableGridRow {
 /// 一列定义：[key]（标识）、[label]（表头）、[width]（初始列宽，可被用户拖拽覆盖）、
 /// [cellBuilder]（单元格控件，从行 model 取控制器/通知器）、[numeric]（金额/数量→tabular
 /// 等宽数字；2026-10-10 全站口径：单元格内容一律左对齐，不再右对齐）、
-/// [textOf]+[listenableOf]（可选，随内容自动加宽）。
+/// [textOf]+[listenableOf]（可选，初始估宽及真实文本来源）。
 class EditableGridColumn<T extends EditableGridRow> {
   const EditableGridColumn({
     required this.key,
@@ -211,13 +212,15 @@ class EditableGridColumn<T extends EditableGridRow> {
   ///
   /// 提供后该列参与自动加宽：初始行/整批换行时量前若干行最宽文本撑列（只增不减，
   /// 封顶 480，超出后单元内滚动）；同时提供 [listenableOf] 则敲字/换值实时加宽。
-  /// 用户手动拖过的列锁定用户宽度，不再自动加宽。null（默认）= 固定列宽。
+  /// 用户手动拖过的列锁定用户宽度，不再自动加宽。null 时仍由公共单元格层
+  /// 按实际输入控件自动加宽；纯文本列则保留既有列宽。
   final String Function(T row)? textOf;
 
   /// 「随内容自动加宽」的变更源：该列单元绑定的 TextEditingController / ValueNotifier
   /// （须与 cellBuilder 里绑定的是同一个）。任一格内容变化 → 量 [textOf] 的新文本 →
   /// 超宽自动加列宽。仅提供 [textOf] 而不提供本字段时，只在行集变化时整体量一次
-  /// （适合行model普通字段的只读列）。数值/日期等短内容列建议不接，保持固定宽。
+  /// （适合行model普通字段的只读列）。数值/日期等输入不必重复声明，公共单元格
+  /// 层直接测量真实控件；此源仍用于筛选、冻结快照等显式文本契约。
   final Listenable? Function(T row)? listenableOf;
 
   /// 表头筛选（可选，2026-09-05）：返回该列在 [row] 上的当前取值（如车间名、
@@ -1583,6 +1586,11 @@ class _UtenEditableGridState<T extends EditableGridRow>
   List<T> _wiredRows = const [];
   List<VoidCallback> _autoGrowUnsubs = const [];
 
+  // Actual controls supplement textOf: numeric/date/picker cells should not
+  // need a second, page-specific description of their displayed value.
+  final Map<String, double> _pendingInputWidths = {};
+  bool _inputWidthGrowthScheduled = false;
+
   /// 自动加宽上限：超长文本（如备注）封顶后单元内横向滚动，用户可再手动拖宽。
   static const double _maxColWidth = 480;
 
@@ -2300,6 +2308,43 @@ class _UtenEditableGridState<T extends EditableGridRow>
     if (next > _widths[index]) {
       setState(() => _widths[index] = next);
     }
+  }
+
+  void _onInputWidthNeeded(String key, double contentWidth) {
+    if (!mounted || !contentWidth.isFinite || contentWidth <= 0) return;
+    final index = _columns.indexWhere((column) => column.key == key);
+    if (index < 0 || index >= _widths.length || _manualResized.contains(key)) {
+      return;
+    }
+    final needed = contentWidth + UtenSpacing.s8 * 2;
+    if (needed <= _widths[index] + 0.5 || _widths[index] >= _maxColWidth) {
+      return;
+    }
+    final pending = _pendingInputWidths[key] ?? 0;
+    if (needed > pending) _pendingInputWidths[key] = needed;
+    if (_inputWidthGrowthScheduled) return;
+    _inputWidthGrowthScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _inputWidthGrowthScheduled = false;
+      if (!mounted) return;
+      var changed = false;
+      for (final entry in _pendingInputWidths.entries) {
+        final i = _columns.indexWhere((column) => column.key == entry.key);
+        if (i < 0 ||
+            i >= _widths.length ||
+            _manualResized.contains(entry.key)) {
+          continue;
+        }
+        final next = _growOnly(_widths[i], entry.value + _autoGrowBuffer);
+        if (next > _widths[i] + 0.5) {
+          _widths[i] = next;
+          changed = true;
+        }
+      }
+      _pendingInputWidths.clear();
+      if (changed) setState(() {});
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   /// 自动加宽量宽入口（build 首行调用）：首帧 / 行集变化 / 字号档变化时，对所有
@@ -3043,6 +3088,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
           columns: _columns,
           columnIndices: visibleColumnIndices,
           widths: _widths,
+          onInputWidthNeeded: _onInputWidthNeeded,
           showSelect: widget._showSelect,
           // 门控为 false 时整格不画方框(只留空位对齐)，不是画一个灰框。
           renderSelectionBox: widget.showRowSelection?.call(row) ?? true,
@@ -3841,6 +3887,7 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
     required this.columns,
     required this.columnIndices,
     required this.widths,
+    required this.onInputWidthNeeded,
     required this.showDelete,
     required this.deleteColWidth,
     required this.divider,
@@ -3863,6 +3910,7 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
   final List<EditableGridColumn<T>> columns;
   final List<int> columnIndices;
   final List<double> widths;
+  final void Function(String columnKey, double contentWidth) onInputWidthNeeded;
   final bool showDelete;
   final double deleteColWidth;
   final BorderSide divider;
@@ -4148,12 +4196,16 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
               ),
               child: UtenTableCellHints(
                 aiCell: _aiCellOf(context, column),
-                child: Builder(
-                  builder: (cellContext) => UtenStatusCellScope(
-                    enabled: utenIsStatusColumn(column.key, column.label),
-                    child: Builder(
-                      builder: (statusContext) =>
-                          column.cellBuilder(statusContext, row),
+                child: UtenTableCellAutoWidth(
+                  onWidthNeeded: (width) =>
+                      onInputWidthNeeded(column.key, width),
+                  child: Builder(
+                    builder: (cellContext) => UtenStatusCellScope(
+                      enabled: utenIsStatusColumn(column.key, column.label),
+                      child: Builder(
+                        builder: (statusContext) =>
+                            column.cellBuilder(statusContext, row),
+                      ),
                     ),
                   ),
                 ),

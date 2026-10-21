@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
@@ -516,10 +517,9 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
               entityType: 'reference-methods',
               onChanged: _refresh,
             ),
-            IconButton(
-              icon: const Icon(Icons.refresh_rounded),
-              tooltip: '刷新',
-              onPressed: () => inlineNavigate(_refresh),
+            UtenRefreshButton(
+              busy: _loading,
+              onRefresh: () => inlineNavigate(_refresh),
             ),
           ],
         ),

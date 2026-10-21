@@ -2,10 +2,14 @@ package com.uten.imp.businesschain;
 
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.common.taskclaim.TaskClaimService;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.BatchDecisionItem;
+import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.OrderQtyChangeItem;
+import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.OrderQtyChangeRequest;
 import com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService;
 import com.uten.imp.features.purchase.order.PurchaseOrderService;
+import com.uten.imp.features.purchase.order.PurchaseOrderPrintService;
 import com.uten.imp.features.purchase.order.dto.OrderItemLine;
 import com.uten.imp.features.purchase.order.dto.OrderSaveRequest;
 import com.uten.imp.features.purchase.request.PurchaseRequestService;
@@ -48,6 +52,7 @@ class ProcurementFinanceReviewReadOnlyEndToEndTest {
     @Autowired JdbcTemplate db;
     @Autowired PurchaseRequestService requests;
     @Autowired PurchaseOrderService orders;
+    @Autowired PurchaseOrderPrintService prints;
     @Autowired ProcurementFinanceApprovalService finance;
     @Autowired TaskClaimService claims;
     @Autowired SubcontractOrderService subcontractOrders;
@@ -96,9 +101,11 @@ class ProcurementFinanceReviewReadOnlyEndToEndTest {
         line.setRequestItemId(source.getItems().getFirst().getId());
         orderRequest.setItems(List.of(line));
         var order = orders.create(orderRequest);
+        assertExportBlocked(order.getId());
         UUID itemId = order.getItems().getFirst().getId();
         UUID reviewer = ReflectionTestUtils.invokeMethod(fixture, "createApprover", w);
         var submitted = finance.submit("PURCHASE", order.getId());
+        assertExportBlocked(order.getId());
         String original = snapshot(submitted.caseId());
 
         line.setPrice(BigDecimal.ZERO);
@@ -127,6 +134,32 @@ class ProcurementFinanceReviewReadOnlyEndToEndTest {
         assertThatThrownBy(() -> finance.approveBatch(List.of(decision), null)).isInstanceOf(ApiException.class);
         assertThat(db.queryForObject("SELECT ordered_qty FROM purchase_request_items WHERE id=?", BigDecimal.class, line.getRequestItemId())).isEqualByComparingTo("3");
         assertThat(db.queryForObject("SELECT COUNT(*) FROM procurement_order_approval_events WHERE case_id=? AND event_type='FINANCE_EDIT'", Integer.class, submitted.caseId())).isZero();
+
+        fixture.loginAs(w.superAdminUserId());
+        assertThat(prints.read(order.getId()).id()).isEqualTo(order.getId());
+        UUID outsider = fixture.createUserWithPerms(w, "purchase-print-outsider", "purchase_order:view");
+        fixture.loginAs(outsider);
+        assertThatThrownBy(() -> prints.read(order.getId()))
+                .isInstanceOfSatisfying(ApiException.class, failure ->
+                        assertThat(failure.getCode()).isEqualTo(ErrorCode.NOT_FOUND));
+
+        fixture.loginAs(w.superAdminUserId());
+        var changed = orders.changeQty(order.getId(), new OrderQtyChangeRequest(
+                List.of(new OrderQtyChangeItem(itemId, new BigDecimal("2")))));
+        assertThat(changed.getStatus()).isEqualTo((short) 1);
+        assertThat(changed.getFinanceApproval().status()).isEqualTo("PENDING");
+        assertExportBlocked(order.getId());
+
+        fixture.loginAs(reviewer);
+        var reconfirmation = changed.getFinanceApproval();
+        var reconfirmationClaim = claims.claim("PROCUREMENT_FINANCE_APPROVE", reconfirmation.caseId().toString());
+        finance.approveBatch(List.of(new BatchDecisionItem(reconfirmation.caseId(),
+                reconfirmation.version(), reconfirmationClaim.claimId())), "复核通过", BigDecimal.ONE);
+        fixture.loginAs(w.superAdminUserId());
+        assertThat(new BigDecimal(prints.read(order.getId()).lines().getFirst().chargedQty()))
+                .isEqualByComparingTo("2");
+        orders.reverse(order.getId());
+        assertExportBlocked(order.getId());
     }
 
     @Test void independentSubcontractCanBeReviewedAndRejectedWithoutChangingTotalInputOrMaterialIdentity() {
@@ -184,5 +217,13 @@ class ProcurementFinanceReviewReadOnlyEndToEndTest {
 
     private String snapshot(UUID caseId) {
         return db.queryForObject("SELECT submission_snapshot::text FROM procurement_order_approval_cases WHERE id=?", String.class, caseId);
+    }
+
+    private void assertExportBlocked(UUID orderId) {
+        assertThatThrownBy(() -> prints.read(orderId))
+                .isInstanceOfSatisfying(ApiException.class, failure -> {
+                    assertThat(failure.getCode()).isEqualTo(ErrorCode.BUSINESS);
+                    assertThat(failure.getMessage()).isEqualTo("仅财务审核通过的采购单可导出单据");
+                });
     }
 }

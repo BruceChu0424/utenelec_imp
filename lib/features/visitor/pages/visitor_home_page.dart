@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_app_bar_action_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -24,6 +25,7 @@ import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/visitor_application.dart';
 import '../providers/visitor_providers.dart';
@@ -42,6 +44,7 @@ class VisitorHomePage extends ConsumerStatefulWidget {
 }
 
 class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
+  bool _loggingOut = false;
   VisitorFilter _filter = VisitorFilter.pending;
   int _page = 1;
   final _retainedPage = RetainedAsyncPage<PagedResult<VisitorApplication>>();
@@ -55,8 +58,16 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
   VisitorApplicationsQuery get _query => (status: _status, page: _page);
 
   Future<void> _logout() async {
-    await ref.read(visitorSessionProvider.notifier).logout();
-    if (mounted) context.go(RouteName.entry);
+    if (_loggingOut) return;
+    setState(() => _loggingOut = true);
+    try {
+      await ref.read(visitorSessionProvider.notifier).logout();
+      if (mounted) context.go(RouteName.entry);
+    } catch (_) {
+      if (mounted) context.appError('退出失败，请稍后重试');
+    } finally {
+      if (mounted) setState(() => _loggingOut = false);
+    }
   }
 
   @override
@@ -79,10 +90,12 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
             tooltip: l10n.visitorSettingsTooltip,
             onPressed: () => context.go(RouteName.visitorSettings),
           ),
-          IconButton(
-            icon: const Icon(Icons.logout_rounded),
+          UtenAppBarActionButton(
+            icon: Icons.logout_rounded,
+            label: l10n.visitorLogout,
             tooltip: l10n.visitorLogout,
-            onPressed: _logout,
+            isLoading: _loggingOut,
+            onPressed: _loggingOut ? null : _logout,
           ),
         ],
       ),

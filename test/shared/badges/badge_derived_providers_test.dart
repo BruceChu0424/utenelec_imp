@@ -12,6 +12,8 @@ import 'package:uten_imp/features/warehouse/providers/warehouse_quality_result_c
 import 'package:uten_imp/features/warehouse/providers/warehouse_sales_outbound_count_provider.dart';
 import 'package:uten_imp/features/warehouse/repositories/warehouse_subcontract_outbound_repository.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
+import 'package:uten_imp/shared/badges/badge_scope.dart';
+import 'package:uten_imp/shared/warehouse/warehouse_task_badges.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 
@@ -56,7 +58,7 @@ void main() {
     expect(breakdown.inProgress, 6);
   });
 
-  test('委外领料待发料: 无该来源时为 null(分段不渲染数字); 有则取待发领料单张数', () {
+  test('委外领料待发料: 无该来源时为 null; 有则取待发货品明细行数', () {
     expect(
       _container({}).read(warehouseSubcontractOutboundCountProvider),
       isNull,
@@ -87,6 +89,88 @@ void main() {
     }).read(warehouseQualityResultTypeCountsProvider);
     expect(counts.actionable[purchase], 2);
     expect(counts.inProgress[purchase], 5);
+  });
+
+  test('同单多条货品的服务端行数完整传到分段、入口、模块与工作台导航', () {
+    final summary = badgeSummaryFixture(
+      entries: const {
+        BadgeEntry.warehouseInboundCenter: (2, 0),
+        BadgeEntry.warehouseOutboundCenter: (6, 0),
+        BadgeEntry.warehouseDrawCenter: (2, 0),
+        BadgeEntry.warehouseQualityResult: (4, 4),
+        BadgeEntry.warehouseWorkshopMaterial: (4, 2),
+      },
+      facts: {
+        BadgeFact.warehouseInboundExpectationPurchase: 2,
+        BadgeFact.warehouseInboundExpectationSubcontract: 0,
+        BadgeFact.warehouseArrivalExceptionPurchase: 0,
+        BadgeFact.warehouseArrivalExceptionSubcontract: 0,
+        BadgeFact.warehouseSalesOutboundPendingPick: 2,
+        BadgeFact.subcontractOutbound: 2,
+        BadgeFact.productionDraw: 2,
+        BadgeFact.workshopMaterialPendingIssue: 2,
+        BadgeFact.workshopMaterialPendingReturn: 2,
+        BadgeFact.workshopMaterialCounting: 2,
+        for (final type in WarehouseIqcStockInReceiptType.values)
+          BadgeFact.qualityResultActionable(type.apiValue): 2,
+        for (final type in WarehouseIqcStockInReceiptType.values)
+          BadgeFact.qualityResultInProgress(type.apiValue): 2,
+      },
+    );
+    final container = ProviderContainer(
+      overrides: [fixedBadgeSummaryOverride(summary)],
+    );
+    addTearDown(container.dispose);
+
+    expect(
+      container.read(
+        warehouseTaskFactOrNullProvider(
+          BadgeFact.warehouseInboundExpectationPurchase,
+        ),
+      ),
+      2,
+    );
+    expect(
+      container.read(
+        warehouseTaskEntryTodoProvider(BadgeEntry.warehouseInboundCenter),
+      ),
+      2,
+    );
+    expect(
+      container.read(warehouseSalesOutboundCountsProvider)?.pendingPick,
+      2,
+    );
+    expect(container.read(warehouseSubcontractOutboundCountProvider), 2);
+    final quality = container.read(warehouseQualityResultTypeCountsProvider);
+    for (final type in WarehouseIqcStockInReceiptType.values) {
+      expect(quality.actionable[type], 2);
+      expect(quality.inProgress[type], 2);
+    }
+    for (final key in [
+      BadgeFact.productionDraw,
+      BadgeFact.workshopMaterialPendingIssue,
+      BadgeFact.workshopMaterialPendingReturn,
+      BadgeFact.workshopMaterialCounting,
+    ]) {
+      expect(container.read(warehouseTaskFactOrNullProvider(key)), 2);
+    }
+
+    // The legacy draw entry is readable for old links; outbound already owns
+    // those rows, so module cards and navigation must not add them twice.
+    expect(
+      container.read(badgeEntryTodoProvider(BadgeEntry.warehouseDrawCenter)),
+      2,
+    );
+    expect(container.read(badgeModuleTodoProvider(BadgeModule.warehouse)), 16);
+    expect(container.read(badgeTotalTodoProvider), 16);
+    expect(
+      container.read(
+        badgeScopeCountsProvider(
+          const BadgeScope.module(BadgeModule.warehouse),
+        ),
+      ),
+      const BadgeCounts(16, 6),
+    );
   });
 
   test('我的访客四档取自汇总', () {

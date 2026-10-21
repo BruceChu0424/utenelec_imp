@@ -2,6 +2,7 @@ import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../components/buttons/uten_refresh_button.dart';
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/data_display/uten_status_badge.dart';
 import '../../../../components/data_display/uten_detail_summary_card.dart';
@@ -275,10 +276,10 @@ class _SubcontractLossClaimDetailPanelState
           onPressed: _writing ? null : () => Navigator.of(context).pop(),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新',
-            onPressed: _loading || _writing ? null : _load,
+          UtenRefreshButton(
+            enabled: !_writing,
+            busy: _loading,
+            onRefresh: _load,
           ),
         ],
       ),

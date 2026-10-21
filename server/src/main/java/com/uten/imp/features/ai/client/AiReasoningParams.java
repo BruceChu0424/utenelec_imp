@@ -18,6 +18,7 @@ import java.util.regex.Pattern;
  *
  * <p>「能否调整」({@link #supported}) 是唯一的判定: 写法 + 生效协议 + 模型三者都接受思考程度参数时才算。
  * 不能调整时一律按 {@code DEFAULT} 写请求体(与识别类用途完全相同), 所以账号里存的任何档位都不会让请求被拒。
+ * GLM-5.3 系列强制思考且默认 max; 识别类 DEFAULT 明确使用 low, 并在服务商硬上限内给思考留出额度。
  *
  * <p>参数依据各家公开文档(2026-10): DeepSeek {@code thinking.type} + {@code reasoning_effort}(low/high/max,
  * 关思考时不能同时带 reasoning_effort); 智谱 {@code thinking.type} + {@code reasoning_effort}(GLM-5.3 只认
@@ -40,6 +41,8 @@ public final class AiReasoningParams {
             "(?:^|[./:@])claude-(?:3|haiku-4|sonnet-4-5|sonnet-4(?:-\\d{8})?(?![0-9-])|opus-4-1"
                     + "|opus-4(?:-\\d{8})?(?![0-9-]))");
 
+    private static final Pattern FORCED_THINKING_GLM = Pattern.compile("glm-5\\.3(?:-flashx?)?(?:-\\d{8})?");
+
     private AiReasoningParams() {
     }
 
@@ -61,9 +64,18 @@ public final class AiReasoningParams {
         return effort != null && effort.explicit() && supported(runtime);
     }
 
-    /** 实际生效的档位: 不能调整时退回 DEFAULT(请求体与识别类用途一致)。 */
+    /** DEFAULT 识别调用在已知强制思考模型上取 low, 避免继承上游 max 却只有正文额度。 */
     static AiReasoningEffort effective(AiProviderRuntime runtime, AiReasoningEffort effort) {
+        if ((effort == null || effort == AiReasoningEffort.DEFAULT)
+                && forcedThinkingGlm(runtime)) {
+            return AiReasoningEffort.LOW;
+        }
         return adjustable(runtime, effort) ? effort : AiReasoningEffort.DEFAULT;
+    }
+
+    private static boolean forcedThinkingGlm(AiProviderRuntime runtime) {
+        return runtime.thinkingControl() == AiThinkingControl.ZHIPU && supported(runtime)
+                && FORCED_THINKING_GLM.matcher(runtime.model() == null ? "" : runtime.model().toLowerCase(Locale.ROOT)).matches();
     }
 
     /** OpenAI 兼容协议的请求体字段(顶层)。 */
@@ -156,15 +168,17 @@ public final class AiReasoningParams {
         openAi(runtime, effort).forEach((key, value) -> body.set(key, JSON.valueToTree(value)));
     }
 
-    /** 思考额度: 回答上限之外希望多给的输出额度(不调整时为 0)。 */
+    /** 思考额度: 包括强制思考模型 DEFAULT / OFF 实际使用的 low; 最终受服务商硬上限约束。 */
     public static int thinkingAllowance(AiProviderRuntime runtime, AiReasoningEffort effort) {
-        if (!adjustable(runtime, effort)) {
+        AiReasoningEffort level = effective(runtime, effort);
+        if (!level.explicit()) {
             return 0;
         }
-        return switch (effort) {
+        return switch (level) {
             case LOW -> 2048;
             case MEDIUM -> 4096;
             case HIGH -> 16384;
+            case OFF -> forcedThinkingGlm(runtime) ? 2048 : 0;
             default -> 0;
         };
     }
@@ -199,7 +213,7 @@ public final class AiReasoningParams {
 
     /** 调用日志里的一句话(只有参数名和档位, 没有业务数据)。 */
     public static String describe(AiProviderRuntime runtime, AiReasoningEffort effort) {
-        if (!adjustable(runtime, effort)) {
+        if (!effective(runtime, effort).explicit()) {
             return "none";
         }
         if (runtime.protocol() == AiProtocol.ANTHROPIC_MESSAGES) {

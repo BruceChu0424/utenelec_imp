@@ -16,6 +16,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
@@ -602,13 +603,11 @@ class _FinanceArApOverviewPageState
           onPressed: () => backTo(context, defaultPath: RouteName.finance),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新',
+          UtenRefreshButton(
+            busy: _loading || _treeLoading,
             // 整页刷新：分类树 + 台账（与 initState 同口径）。
-            onPressed: () {
-              _loadTree();
-              _load();
+            onRefresh: () async {
+              await Future.wait([_loadTree(), _load()]);
             },
           ),
         ],

@@ -185,6 +185,8 @@ class MasterEntityPaneConfig<TItem, TDetail> {
     this.loadLeadingGroups,
     this.inlineFields = const {},
     this.onInlineSave,
+    this.inlineCancelLabel,
+    this.inlineDiscardNote,
     this.readStableWritePermission,
   });
 
@@ -194,6 +196,8 @@ class MasterEntityPaneConfig<TItem, TDetail> {
   final String defaultCodePrefix;
   final List<MasterColumnDef<TItem>> columns;
   final Map<String, MasterInlineField<TItem>> inlineFields;
+  final String? inlineCancelLabel;
+  final String? inlineDiscardNote;
   final String? readStableWritePermission;
   final Future<void> Function(
     String id,
@@ -1172,6 +1176,8 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
         controller: _inlineEdit,
         canEdit: _c.canEdit && !_busy && !_listLoading && _listError == null,
         onSave: _saveInlineRow,
+        cancelLabel: _c.inlineCancelLabel,
+        discardNote: _c.inlineDiscardNote,
         additionalActions: additional,
         embedded: true,
       ),

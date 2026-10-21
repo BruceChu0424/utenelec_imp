@@ -31,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * ADR-152 provider-neutral thinking depth mapped to each provider's own parameters, and the request body
- * the two protocol clients actually send (DEFAULT keeps the earlier behaviour for recognition purposes).
+ * the two protocol clients actually send, including bounded low thinking for forced-thinking GLM recognition calls.
  */
 class AiReasoningParamsTest {
     private static FakeAiProviderServer fake;
@@ -67,7 +67,7 @@ class AiReasoningParamsTest {
         var openAi = openAi(AiThinkingControl.OPENAI_REASONING);
         assertThat(AiReasoningParams.openAi(openAi, DEFAULT)).isEqualTo(Map.of("reasoning_effort", "none"));
         assertThat(AiReasoningParams.openAi(openAi, MEDIUM)).isEqualTo(Map.of("reasoning_effort", "medium"));
-        // GLM-5.3 cannot switch thinking off: "no thinking" is its lightest level; DEFAULT sends nothing as before.
+        // Unknown model behaviour remains unchanged; only verified forced-thinking model names get an automatic low.
         var zhipu = openAi(AiThinkingControl.ZHIPU);
         assertThat(AiReasoningParams.openAi(zhipu, DEFAULT)).isEmpty();
         assertThat(AiReasoningParams.openAi(zhipu, OFF))
@@ -105,6 +105,70 @@ class AiReasoningParamsTest {
         assertThat(AiReasoningParams.anthropicEffort(claude, HIGH)).isEqualTo("high");
         assertThat(AiReasoningParams.anthropicEffort(runtime(AiProtocol.ANTHROPIC_MESSAGES, AiThinkingControl.DEEPSEEK, 120), HIGH)).isNull();
         assertThat(AiReasoningParams.anthropicEffort(runtime(AiProtocol.ANTHROPIC_MESSAGES, AiThinkingControl.NONE, 120), HIGH)).isNull();
+    }
+
+    @Test void forcedThinkingGlmDefaultsUseLowAndLeaveBoundedRoomForTheAnswer() {
+        for (AiProtocol protocol : AiProtocol.values()) {
+            for (String model : List.of("glm-5.3", "GLM-5.3", "glm-5.3-flash", "glm-5.3-flashx", "glm-5.3-20261001")) {
+                var runtime = runtime(protocol, AiThinkingControl.ZHIPU, model, false, 8192, 120);
+                assertThat(AiReasoningParams.effective(runtime, DEFAULT)).as(model).isEqualTo(LOW);
+                assertThat(AiReasoningParams.thinkingAllowance(runtime, DEFAULT)).isEqualTo(2048);
+                // The observed eight-line match previously gave thinking and the answer only 1360 tokens combined.
+                assertThat(AiReasoningParams.maxOutputTokens(runtime, 1360, DEFAULT)).isEqualTo(3408);
+                assertThat(AiReasoningParams.maxOutputTokens(runtime, 1360, OFF)).isEqualTo(3408);
+                assertThat(AiReasoningParams.maxOutputTokens(runtime, 8000, DEFAULT)).isEqualTo(8192);
+                assertThat(AiReasoningParams.maxOutputTokens(runtime, 8000, OFF)).isEqualTo(8192);
+                assertThat(AiReasoningParams.maxOutputTokens(runtime, Integer.MAX_VALUE, DEFAULT)).isEqualTo(8192);
+                assertThat(AiReasoningParams.timeoutSeconds(runtime, DEFAULT)).isEqualTo(120);
+                if (protocol == AiProtocol.ANTHROPIC_MESSAGES) {
+                    assertThat(AiReasoningParams.anthropicEffort(runtime, DEFAULT)).isEqualTo("low");
+                    assertThat(AiReasoningParams.describe(runtime, DEFAULT)).isEqualTo("output_config.effort=low");
+                } else {
+                    assertThat(AiReasoningParams.openAi(runtime, DEFAULT))
+                            .isEqualTo(Map.of("thinking", Map.of("type", "enabled"), "reasoning_effort", "low"));
+                }
+            }
+        }
+    }
+
+    @Test void automaticThinkingNeverChangesUnknownModelsOrAnAdministratorsHardCap() {
+        for (String model : List.of("glm-5.2", "glm-4.7", "glm-5.30", "other-glm-5.3", "m")) {
+            var runtime = runtime(AiProtocol.ANTHROPIC_MESSAGES, AiThinkingControl.ZHIPU, model, false, 8192, 120);
+            assertThat(AiReasoningParams.maxOutputTokens(runtime, 1360, DEFAULT)).as(model).isEqualTo(1360);
+            assertThat(AiReasoningParams.anthropicEffort(runtime, DEFAULT)).isNull();
+        }
+        var disabled = runtime(AiProtocol.ANTHROPIC_MESSAGES, AiThinkingControl.NONE, "glm-5.3", false, 8192, 120);
+        assertThat(AiReasoningParams.maxOutputTokens(disabled, 1360, DEFAULT)).isEqualTo(1360);
+        assertThat(AiReasoningParams.anthropicEffort(disabled, DEFAULT)).isNull();
+        var capped = runtime(AiProtocol.ANTHROPIC_MESSAGES, AiThinkingControl.ZHIPU, "glm-5.3", false, 1360, 120);
+        assertThat(AiReasoningParams.maxOutputTokens(capped, 1360, DEFAULT)).isEqualTo(1360);
+        assertThat(AiReasoningParams.maxOutputTokens(capped, 1360, OFF)).isEqualTo(1360);
+    }
+
+    @Test void actualGlmRecognitionRequestsSendLowEffortWithThePreparedBudgetOnBothProtocols() throws Exception {
+        for (AiProtocol protocol : AiProtocol.values()) {
+            var runtime = runtime(protocol, AiThinkingControl.ZHIPU, "glm-5.3", false, 8192, 120);
+            var request = new AiProtocolClient.ChatRequest("Return JSON", List.of(new AiText("eight pending lines", false)),
+                    null, null, AiReasoningParams.maxOutputTokens(runtime, 1360, DEFAULT));
+            AiProtocolClient client = protocol == AiProtocol.ANTHROPIC_MESSAGES
+                    ? new AnthropicMessagesClient(new AiHttpTransport(new AiProperties()))
+                    : new OpenAiChatClient(new AiHttpTransport(new AiProperties()));
+            fake.enqueue(protocol == AiProtocol.ANTHROPIC_MESSAGES ? FakeAiProviderServer.anthropicContent("{}")
+                    : FakeAiProviderServer.openAiContent("{}"));
+
+            assertThat(client.chat(runtime, request).content()).isEqualTo("{}");
+
+            JsonNode body = json.readTree(fake.lastChatRequest().body());
+            assertThat(body.path("max_tokens").asInt()).isEqualTo(3408);
+            assertThat(body.has("budget_tokens")).isFalse();
+            if (protocol == AiProtocol.ANTHROPIC_MESSAGES) {
+                assertThat(body.path("output_config").path("effort").asText()).isEqualTo("low");
+                assertThat(body.has("thinking")).isFalse();
+            } else {
+                assertThat(body.path("thinking").path("type").asText()).isEqualTo("enabled");
+                assertThat(body.path("reasoning_effort").asText()).isEqualTo("low");
+            }
+        }
     }
 
     /** Haiku 4.5, Sonnet 4.5 and older Claude models reject output_config.effort: no setting may send it. */

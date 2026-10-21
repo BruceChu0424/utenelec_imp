@@ -37,12 +37,14 @@ class FinanceAssetLedgerPanel extends ConsumerStatefulWidget {
     required this.capabilities,
     required this.policyReady,
     required this.refreshToken,
+    this.refreshCompletion,
   });
 
   final FinanceAssetLedger ledger;
   final FinanceAssetCapabilities capabilities;
   final bool policyReady;
   final int refreshToken;
+  final Completer<void>? refreshCompletion;
 
   @override
   ConsumerState<FinanceAssetLedgerPanel> createState() =>
@@ -66,17 +68,35 @@ class _FinanceAssetLedgerPanelState
   @override
   void initState() {
     super.initState();
-    _load();
-    _loadCategories();
+    _refresh();
   }
 
   @override
   void didUpdateWidget(covariant FinanceAssetLedgerPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.refreshToken != widget.refreshToken) {
-      _load();
-      _loadCategories();
+      _refresh();
     }
+  }
+
+  Future<void> _refresh() async {
+    final completion = widget.refreshCompletion;
+    try {
+      await Future.wait([_load(), _loadCategories()]);
+    } finally {
+      if (completion != null && !completion.isCompleted) {
+        completion.complete();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    final completion = widget.refreshCompletion;
+    if (completion != null && !completion.isCompleted) {
+      completion.complete();
+    }
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -105,7 +125,7 @@ class _FinanceAssetLedgerPanelState
         if (_query.status == 'DRAFT') _draftTotal = result.total;
       });
       if (_query.status != 'DRAFT') {
-        unawaited(_loadDraftTotal(generation, _query));
+        await _loadDraftTotal(generation, _query);
       }
     } catch (_) {
       if (!mounted || !_requestGuard.isCurrent(generation)) return;

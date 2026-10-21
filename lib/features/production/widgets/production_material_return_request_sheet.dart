@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -380,10 +381,11 @@ class _MaterialReturnRequestState
           showPagePermissionAction: false,
           title: '核对余料退仓',
           actions: [
-            IconButton(
+            UtenRefreshButton(
               tooltip: '刷新可退明细',
-              onPressed: _locked || _loading ? null : _load,
-              icon: const Icon(Icons.refresh),
+              enabled: !(_locked || _loading),
+              busy: _loading,
+              onRefresh: _load,
             ),
             IconButton(
               tooltip: '关闭',

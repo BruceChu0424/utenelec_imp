@@ -26,6 +26,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/inputs/uten_filter_picker_field.dart';
@@ -46,7 +47,6 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
 import '../../../shared/models/paged_result.dart';
@@ -67,6 +67,7 @@ import '../../basic_data/models/master_facet.dart';
 import '../providers/instant_inventory_prefs_provider.dart';
 import '../repositories/stock_query_repository.dart';
 import '../widgets/instant_inventory_summary_bar.dart';
+import '../widgets/instant_inventory_columns.dart';
 import '../counts/models/stock_count_request.dart';
 
 class InstantInventoryPage extends ConsumerStatefulWidget {
@@ -401,19 +402,6 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
     if (_sortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
   };
 
-  /// 数字格式化：最多 2 位小数，去掉无意义的尾随 0（1.50→1.5；0→0）。
-  static String _num(double? v) {
-    if (v == null) return '—';
-    final s = v.toStringAsFixed(2);
-    return s.contains('.')
-        ? s.replaceAll(RegExp(r'0+$'), '').replaceAll(RegExp(r'\.$'), '')
-        : s;
-  }
-
-  /// 库存重量没有值时的文案：有库存却没称过 =「未称」；本行本就没有库存 =「—」。
-  static String _unknownWeightText(InstantInventoryRow r) =>
-      r.weightUnknown || (r.qty ?? 0) != 0 ? weightUnknownText : '—';
-
   /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
   Future<UtenPrintTable> _printLoader() async {
     final contextVersion = _queryContextVersion;
@@ -461,176 +449,11 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
     );
   }
 
-  /// 主档归属由 stock:view 投影直接下发，不能把实物仓库或另一个字典当归属。
-  String? _owningWarehouseName(InstantInventoryRow row) {
-    final onRow = row.owningWarehouseName?.trim();
-    if (onRow != null && onRow.isNotEmpty) return onRow;
-    return null;
-  }
-
-  List<MasterColumnDef<InstantInventoryRow>> _columns() {
-    final weightDisplay = ref.read(warehouseWeightUnitsPrefsProvider).display;
-    return <MasterColumnDef<InstantInventoryRow>>[
-      MasterColumnDef(
-        key: 'category',
-        label: '所属类型',
-        width: 120,
-        value: (r) => r.categoryName ?? '—',
-      ),
-      // 2026-09-14 全站表格统一：名称 → 编号 → 颜色 三列排在最前，
-      // 型号/系列/库位等次要属性排在后面。
-      MasterColumnDef(
-        key: 'name',
-        label: '货品名称',
-        width: 220,
-        sortable: true,
-        value: (r) => r.name ?? '',
-        cellBuilder: (context, r) => Row(
-          children: [
-            Expanded(
-              child: Text(
-                r.name ?? '',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            if (r.isRelatedSearchMatch) ...[
-              const SizedBox(width: UtenSpacing.s8),
-              Text('相关', style: Theme.of(context).textTheme.labelSmall),
-            ],
-          ],
-        ),
-      ),
-      MasterColumnDef(
-        key: 'goodsCode',
-        label: '编号',
-        width: 130,
-        value: (r) => r.goodsCode ?? '',
-      ),
-      MasterColumnDef(
-        key: 'color',
-        label: '颜色',
-        width: 90,
-        value: (r) => r.colorName ?? '',
-      ),
-      MasterColumnDef(
-        key: 'series',
-        label: '物料系列',
-        width: 90,
-        value: (r) => r.series ?? '',
-      ),
-      MasterColumnDef(
-        key: 'stockPlace',
-        label: '库位号',
-        width: 90,
-        value: (r) => r.stockPlace ?? '',
-      ),
-      // 所属仓库 (V587)：货品平时归哪个仓管的主档归属，只读。
-      // 列 key 是 owningWarehouse，不能叫 warehouse —— 本页顶部的仓库筛选是
-      // 另一回事 (那是本次看盘的范围仓)，两者绝不是同一个概念。
-      MasterColumnDef(
-        key: 'owningWarehouse',
-        label: '主档归属仓库',
-        width: 120,
-        info: '货品平时归哪个仓管的主档归属，不是这行库存所在的仓，也不是上面的仓库筛选值。',
-        value: (r) => _owningWarehouseName(r) ?? '',
-      ),
-      MasterColumnDef(
-        key: 'model',
-        label: '型号',
-        width: 110,
-        value: (r) => r.model ?? '',
-      ),
-      MasterColumnDef(
-        key: 'cNumber',
-        label: '客户型号',
-        width: 120,
-        value: (r) => r.cNumber ?? '',
-      ),
-      MasterColumnDef(
-        key: 'spec',
-        label: '规格',
-        width: 120,
-        value: (r) => r.spec ?? '',
-      ),
-      MasterColumnDef(
-        key: 'remark',
-        label: '备注',
-        width: 90,
-        value: (r) => r.remark ?? '',
-      ),
-      // 2026-10-10「数量+单位」全站口径：单位内联在数字后（12 PCS），独立
-      // 「单位」列退役；实盘数量输入格的后缀在共享输入格（stock_count_inline_editor）。
-      MasterColumnDef(
-        key: 'qty',
-        label: '库存数量',
-        width: 185,
-        type: 'number',
-        sortable: true,
-        value: (r) => formatQtyWithUnit(r.qty, r.unitName),
-        // ADR-146: 打开「含不良品仓」时, 数量里在不良品仓的部分另标出来。
-        cellBuilder: (context, r) {
-          final qty = formatQtyWithUnit(r.qty, r.unitName);
-          final defective = r.defectiveQty ?? 0;
-          if (defective <= 0) return Text(qty);
-          return Text(
-            '$qty (${AppLocalizations.of(context).instantInventoryDefectivePart(_num(defective))})',
-            key: ValueKey(
-              'instant-inventory-defective-${r.goodsId}-${r.colorId}',
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          );
-        },
-      ),
-      // 重量紧跟数量 (ADR-135)：千克按用户显示单位换算，估算「≈」、没称「未称」。
-      MasterColumnDef(
-        key: 'weight',
-        label: '库存重量',
-        width: 120,
-        type: 'weight',
-        sortable: true,
-        value: (r) => formatWeightValue(
-          r.weight,
-          display: weightDisplay,
-          estimated: r.weightEstimated,
-          unknownText: _unknownWeightText(r),
-        ),
-        cellBuilder: (_, r) => WeightText(
-          kg: r.weight,
-          estimated: r.weightEstimated,
-          display: weightDisplay,
-          unknownText: _unknownWeightText(r),
-        ),
-      ),
-      MasterColumnDef(
-        key: 'pendingQty',
-        label: '待检量',
-        width: 135,
-        type: 'number',
-        sortable: true,
-        // 待检量>0 = 采购/委外已收货但 IQC 未放行（货在待检隔离区，不在库存内）。
-        value: (r) => formatQtyWithUnit(r.pendingQty, r.unitName),
-      ),
-      MasterColumnDef(
-        key: 'pendingStockInQty',
-        label: '合格待入库',
-        width: 150,
-        type: 'number',
-        sortable: true,
-        // 品质 PASS 只形成仓库任务；仓库确认前不进入库存数量。
-        value: (r) => formatQtyWithUnit(r.pendingStockInQty, r.unitName),
-      ),
-      MasterColumnDef(
-        key: 'moreQty',
-        label: '多排数量',
-        width: 135,
-        type: 'number',
-        sortable: true,
-        value: (r) => formatQtyWithUnit(r.moreQty, r.unitName),
-      ),
-    ];
-  }
+  List<MasterColumnDef<InstantInventoryRow>> _columns() =>
+      instantInventoryColumns(
+        context,
+        weightDisplay: ref.read(warehouseWeightUnitsPrefsProvider).display,
+      );
 
   void _onSearchInput(String raw) {
     _queryContextVersion++;
@@ -1179,10 +1002,9 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
           onPressed: () => backTo(context, defaultPath: RouteName.warehouse),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新', // TODO(l10n): 补 arb
-            onPressed: _refresh,
+          UtenRefreshButton(
+            // TODO(l10n): 补 arb
+            onRefresh: _refresh,
           ),
           if (_compactActions && canCount) ..._countActions(),
         ],

@@ -8,6 +8,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
@@ -415,13 +416,14 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
           onPressed: () => backTo(context, defaultPath: RouteName.finance),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新',
+          UtenRefreshButton(
+            busy: _loading,
             // 整页刷新：字典重拉 + 回第 1 页（与 initState 同口径）。
-            onPressed: () {
-              ref.read(financeNameServiceProvider).ensureLoaded();
-              _load(1);
+            onRefresh: () async {
+              await Future.wait([
+                ref.read(financeNameServiceProvider).ensureLoaded(),
+                _load(1),
+              ]);
             },
           ),
         ],

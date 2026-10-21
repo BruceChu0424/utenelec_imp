@@ -1,4 +1,5 @@
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../components/layout/uten_segment_row.dart';
 
@@ -21,9 +22,14 @@ import '../repositories/finance_asset_workbench_repository.dart';
 import 'finance_asset_ui.dart';
 
 class FinanceAssetPostingPanel extends ConsumerStatefulWidget {
-  const FinanceAssetPostingPanel({super.key, required this.capabilities});
+  const FinanceAssetPostingPanel({
+    super.key,
+    required this.capabilities,
+    this.refreshCompletion,
+  });
 
   final FinanceAssetCapabilities capabilities;
+  final Completer<void>? refreshCompletion;
 
   @override
   ConsumerState<FinanceAssetPostingPanel> createState() =>
@@ -64,12 +70,20 @@ class _FinanceAssetPostingPanelState
   @override
   void initState() {
     super.initState();
-    _loadRuns();
-    _loadPeriods();
+    final completion = widget.refreshCompletion;
+    Future.wait([_loadRuns(), _loadPeriods()]).whenComplete(() {
+      if (completion != null && !completion.isCompleted) {
+        completion.complete();
+      }
+    });
   }
 
   @override
   void dispose() {
+    final completion = widget.refreshCompletion;
+    if (completion != null && !completion.isCompleted) {
+      completion.complete();
+    }
     _periodController.dispose();
     super.dispose();
   }

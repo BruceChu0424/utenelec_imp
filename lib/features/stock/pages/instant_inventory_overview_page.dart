@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -231,11 +232,11 @@ class _InstantInventoryOverviewPageState
               backTo(context, defaultPath: RouteName.stockInstantInventory),
         ),
         actions: [
-          IconButton(
+          UtenRefreshButton(
             key: const Key('inventory-overview-refresh'),
             tooltip: '刷新统计',
-            onPressed: _loading ? null : _refresh,
-            icon: const Icon(Icons.refresh_rounded),
+            busy: _loading,
+            onRefresh: _refresh,
           ),
         ],
       ),

@@ -76,6 +76,9 @@ class PlatformTableRepository {
     await api.post('/platform-columns/$scope/definitions/$id/use');
   }
 
+  Future<void> deleteDefinition(String scope, String id) =>
+      api.delete('/platform-columns/$scope/definitions/$id');
+
   Future<PlatformRowValues> save(
     String scope,
     String recordId, {

@@ -109,6 +109,23 @@ final class WarehouseInboundTaskCenterSql {
                 +" AND bill_no IS NOT NULL GROUP BY bill_no ORDER BY bill_no LIMIT 500";
     }
 
+    static String expectationBadgeSql(WarehouseTaskScope scope) {
+        return "WITH " + DRAFT_CTES + " SELECT source_type, COUNT(*) FROM (" + expectations(scope)
+                + ") task_rows GROUP BY source_type";
+    }
+
+    static String finishedBadgeSql(WarehouseTaskScope scope) {
+        return "WITH " + ProductionFinishedInboundTaskService.taskCenterFactCtes()
+                + " SELECT COUNT(*) FROM (" + finishedTasks(scope) + ") task_rows";
+    }
+
+    static String returnBadgeSql(WarehouseTaskScope scope) {
+        var access = new Access(false, false, false, false, true, true, "FALSE");
+        return "WITH " + ProductionFinishedInboundTaskService.taskCenterFactCtes()
+                + " SELECT COUNT(*) FROM (" + stockDocuments(access, scope)
+                + ") task_rows WHERE workflow_status='RETURN_PENDING_RECEIVE'";
+    }
+
     private static String scope(WarehouseTaskScope scope, String array) {
         return scope.active() ? " AND " + scope.predicateAny(array, ":warehouseScope") : "";
     }
@@ -363,7 +380,10 @@ final class WarehouseInboundTaskCenterSql {
                 CROSS JOIN LATERAL (
                     SELECT goods.code AS goods_code,goods.name AS goods_name,warehouse.name AS warehouse_name,
                            ARRAY[goods.owning_warehouse_id] AS warehouse_ids,
-                           jsonb_build_object('sourceReportItemId',item.id,'lotId',item.output_lot_id) AS action_data,
+                           jsonb_build_object('sourceReportItemId',item.id,'lotId',item.output_lot_id,
+                               'pendingQty',item.qty,
+                               'publicQty',CASE WHEN item.is_public_output AND NOT item.is_actual_surplus THEN item.qty ELSE 0 END,
+                               'actualSurplusQty',CASE WHEN item.is_actual_surplus THEN item.qty ELSE 0 END) AS action_data,
                            jsonb_build_object('key',item.id,'itemId',item.id,'lineNo',item.line_no,
                                'goodsCode',goods.code,'goodsName',goods.name,'specification',goods.spec,
                                'colorName',color.name,'unitName',unit.name,'quantity',item.qty,'weight',item.weight) AS line_data
@@ -374,6 +394,7 @@ final class WarehouseInboundTaskCenterSql {
                     LEFT JOIN units unit ON unit.id=COALESCE(item.unit_id,goods.unit_id)
                     LEFT JOIN warehouses warehouse ON warehouse.id=goods.owning_warehouse_id
                     WHERE task.task_stage='ARRIVAL_REGISTRATION' AND item.report_id=task.report_id
+                      AND item.destination='WAREHOUSE'
                     UNION ALL
                     SELECT COALESCE(NULLIF(item.goods_code_snapshot,''),goods.code),
                            COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name),warehouse.name,

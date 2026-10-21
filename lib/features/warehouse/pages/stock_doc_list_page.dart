@@ -465,8 +465,17 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
         actions: [
           UtenRefreshButton(
             onRefresh: () async {
-              _reload();
+              final reload = _reload();
               _loadBadge();
+              await Future.wait([
+                reload,
+                ref
+                    .read(documentStatusCountsProvider(_statusScope).future)
+                    .then<void>(
+                      (_) {},
+                      onError: (Object error, StackTrace stack) {},
+                    ),
+              ]);
             },
           ),
         ],

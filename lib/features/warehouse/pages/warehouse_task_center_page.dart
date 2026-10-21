@@ -9,6 +9,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_refresh_scope.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -81,6 +82,14 @@ class _WarehouseTaskCenterPageState
   String _keyword = '';
   String? _myLocation;
   int _refreshTick = 0;
+  final _refreshController = UtenRefreshController();
+
+  @override
+  void dispose() {
+    _refreshController.dispose();
+    super.dispose();
+  }
+
   String? _workshopMaterialSection;
   int _workshopMaterialSelection = 0;
 
@@ -125,6 +134,7 @@ class _WarehouseTaskCenterPageState
     _myLocation ??= currentLocationOr(context, RouteName.warehouseTasks);
     // 返回本页：重拉任务中心各计数（大类徽章/模块药丸同源）并推进分段刷新。
     ref.onPageResume(_myLocation!, () {
+      ref.invalidate(myWarehouseScopeProvider);
       setState(() => _refreshTick++);
       invalidateWarehouseTaskCounts(ref);
     });
@@ -226,7 +236,6 @@ class _WarehouseTaskCenterPageState
     final categoryBar = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const WarehouseScopeFilterNotice(),
         const TaskDraftRecoveryNotice(
           scope: FormDraftCategoryScope(module: BadgeModule.warehouse),
         ),
@@ -268,48 +277,60 @@ class _WarehouseTaskCenterPageState
       );
     }
 
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: '仓库任务中心',
-        leading: UtenBackButton(
-          onPressed: () => backTo(context, defaultPath: RouteName.warehouse),
-        ),
-        actions: [
-          if (canMasterDrafts)
-            const FormDraftsAppBarButton(
-              categoryId: 'warehouse-master',
-              label: '资料草稿',
-            ),
-          if (canDocumentDrafts)
-            const FormDraftsAppBarButton(
-              categoryId: 'warehouse',
-              label: '仓库草稿',
-            ),
-          const WarehouseScopeSelector(),
-          UtenRefreshButton(
-            onRefresh: () async {
-              setState(() => _refreshTick++);
-              invalidateWarehouseTaskCounts(ref);
-            },
+    return UtenRefreshScope(
+      controller: _refreshController,
+      child: Scaffold(
+        appBar: UtenAppBar(
+          title: '仓库任务中心',
+          leading: UtenBackButton(
+            onPressed: () => backTo(context, defaultPath: RouteName.warehouse),
           ),
-        ],
-      ),
-      body: SafeArea(
-        child: UtenContentContainer.wide(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-            // 选中大类：大类行随正文进分段视图折叠头（滑到头只剩表格工具条）；
-            // 未选大类：大类行钉在占位区上方。
-            child: activeGroup == null
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      categoryBar,
-                      const SizedBox(height: UtenSpacing.s8),
-                      const Expanded(child: _GroupPlaceholder()),
-                    ],
-                  )
-                : _buildGroupBody(activeGroup, categoryBar),
+          actions: [
+            const WarehouseScopeSelector(),
+            if (canMasterDrafts)
+              const FormDraftsAppBarButton(
+                categoryId: 'warehouse-master',
+                label: '资料草稿',
+              ),
+            if (canDocumentDrafts)
+              const FormDraftsAppBarButton(
+                categoryId: 'warehouse',
+                label: '仓库草稿',
+              ),
+            UtenRefreshButton(
+              onRefresh: () => _refreshController.run(() {
+                ref.invalidate(myWarehouseScopeProvider);
+                _refreshController.track(
+                  ref
+                      .read(myWarehouseScopeProvider.future)
+                      .then<void>(
+                        (_) {},
+                        onError: (Object error, StackTrace stack) {},
+                      ),
+                );
+                setState(() => _refreshTick++);
+                _refreshController.track(invalidateWarehouseTaskCounts(ref));
+              }),
+            ),
+          ],
+        ),
+        body: SafeArea(
+          child: UtenContentContainer.wide(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+              // 选中大类：大类行随正文进分段视图折叠头（滑到头只剩表格工具条）；
+              // 未选大类：大类行钉在占位区上方。
+              child: activeGroup == null
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        categoryBar,
+                        const SizedBox(height: UtenSpacing.s8),
+                        const Expanded(child: _GroupPlaceholder()),
+                      ],
+                    )
+                  : _buildGroupBody(activeGroup, categoryBar),
+            ),
           ),
         ),
       ),

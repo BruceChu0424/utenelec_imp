@@ -1,5 +1,15 @@
 # ER 草图
 
+## 本人自定义列删除 (V888)
+
+```mermaid
+erDiagram
+    platform_column_definitions ||--o| platform_column_definition_deletions : catalog_removal
+    business_column_definitions ||--o| business_column_deletions : catalog_removal
+```
+
+删除标记与原列定义一对零或一关联，外键禁止删除被引用定义。原定义及业务行快照保持原身份，只有目录检索排除标记项；现有公式、历史查询和单据复制继续按原 ID 读取。
+
 ## 货品操作历史 (V871)
 
 ```mermaid

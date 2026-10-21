@@ -23,6 +23,7 @@ import '../../../components/feedback/uten_dialog.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -35,6 +36,7 @@ import '../../../core/network/latest_request_guard.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../shared/hierarchy/uten_tree_path.dart';
 import '../../../shared/widgets/uten_hierarchy_search_header.dart';
+import '../../../shared/widgets/uten_hierarchy_node_actions.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -47,8 +49,6 @@ import '../models/product_category_node.dart';
 import '../widgets/category_edit_dialog.dart';
 import '../widgets/category_tree_search.dart';
 import '../widgets/system_master_category_guard.dart';
-import '../../../shared/widgets/uten_hierarchy_tree_view.dart'
-    show UtenHierarchyRowSkin;
 import '../widgets/uten_category_tree_view.dart';
 import 'basic_data_l10n.dart';
 import 'master_inline_edit.dart';
@@ -825,113 +825,68 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   /// 节点) 复用同一 widget 实例——identical 子树让 element 直接短路跳过 update，
   /// 点击帧不再重配全树图标；树重载/权限/主题变化时换键重配。
   final _rowActionsCache = <String, Widget>{};
+  final _rowOperationsCache = <String, UtenHierarchyNodeOperations>{};
   List<ProductCategoryNode>? _rowActionsTree;
 
-  Widget _treeRowActionsCached(ProductCategoryNode node) {
-    final tree = _tree;
-    if (tree == null) return _treeRowActions(node);
-    if (!identical(_rowActionsTree, tree)) {
-      _rowActionsTree = tree;
+  String _treeRowCacheKey(ProductCategoryNode node) {
+    if (!identical(_rowActionsTree, _tree)) {
+      _rowActionsTree = _tree;
       _rowActionsCache.clear();
+      _rowOperationsCache.clear();
     }
-    final key =
-        '${Theme.of(context).brightness}'
+    return '${Theme.of(context).brightness}'
         '|$shellCanCreate|$shellCanEdit|$shellCanDelete|${node.id}';
-    return _rowActionsCache[key] ??= _treeRowActions(node);
   }
 
-  /// 行尾图标簇：新增子分类 / 编辑（系统根与虚拟节点除外）/ 删除或锁；
-  /// 子类计数退役（2026-10-19 用户口径：数值统计不显示，结构走展开箭头与子行）。
-  Widget _treeRowActions(ProductCategoryNode node) {
-    final theme = Theme.of(context);
-    final virtual = shellIsVirtualNode(node);
+  UtenHierarchyNodeOperations _treeOperationsCached(ProductCategoryNode node) =>
+      _rowOperationsCache[_treeRowCacheKey(node)] ??= _treeOperations(node);
+
+  Widget _treeRowActionsCached(ProductCategoryNode node) =>
+      _rowActionsCache[_treeRowCacheKey(node)] ??= UtenHierarchyNodeActions(
+        operations: _treeOperationsCached(node),
+      );
+
+  /// 权限、系统保护与编辑/草稿离开流程只定义一次，行内和右键共享同一动作。
+  UtenHierarchyNodeOperations _treeOperations(ProductCategoryNode node) {
+    if (shellIsVirtualNode(node)) return const UtenHierarchyNodeOperations();
     final systemRoot = _isSystemRoot(node);
-    final hitExtent = UtenControlMetrics.minimumHitExtent(context, desktop: 32);
-    Widget action(
-      Key key,
-      String tooltip,
-      IconData icon,
-      VoidCallback onPressed,
-    ) => Builder(
-      // 图标颜色读树组件的行皮肤（2026-10-19 用户口径「深色行图标应反白、
-      // 颜色写在组件里」）：深绿一级行拿白色、浅色行拿 onSurfaceVariant，
-      // Builder 挂进行子树里才能读到 InheritedWidget；无皮肤上游回落旧色。
-      builder: (rowContext) => IconButton(
-        key: key,
-        tooltip: tooltip,
-        constraints: BoxConstraints.tightFor(
-          width: hitExtent,
-          height: hitExtent,
-        ),
-        padding: EdgeInsets.zero,
-        onPressed: onPressed,
-        icon: Icon(
-          icon,
-          size: 16,
-          color:
-              UtenHierarchyRowSkin.maybeOf(rowContext)?.foreground ??
-              theme.colorScheme.onSurfaceVariant,
-        ),
-      ),
-    );
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (shellCanCreate && !virtual)
-          action(
-            const ValueKey('category-node-add'),
-            '新增${node.name}的子分类', // TODO(l10n): 补 arb
-            Icons.add_outlined,
-            () => shellShowCreateDialog(parent: node),
-          ),
-        if (shellCanEdit && !systemRoot && !virtual)
-          action(
-            const ValueKey('category-node-edit'),
-            '编辑${node.name}', // TODO(l10n): 补 arb
-            Icons.edit_outlined,
-            () => _editCategoryNode(node),
-          ),
-        if (shellCanDelete && systemRoot && !virtual)
-          const SystemMasterCategoryProtectionNotice(compact: true),
-        if (shellCanDelete && !systemRoot && !virtual)
-          action(
-            const ValueKey('category-node-delete'),
-            '删除${node.name}', // TODO(l10n): 补 arb
-            Icons.delete_outline,
-            () => _deleteCategoryAfterDraft(node),
-          ),
-      ],
+    return UtenHierarchyNodeOperations(
+      add: shellCanCreate
+          ? UtenHierarchyNodeOperation(
+              label: '新增子分类', // TODO(l10n): 补 arb
+              tooltip: '新增${node.name}的子分类', // TODO(l10n): 补 arb
+              buttonKey: const ValueKey('category-node-add'),
+              icon: Icons.add_outlined,
+              onInvoke: () => shellShowCreateDialog(parent: node),
+            )
+          : null,
+      edit: shellCanEdit && !systemRoot
+          ? UtenHierarchyNodeOperation(
+              label: '编辑分类', // TODO(l10n): 补 arb
+              tooltip: '编辑${node.name}', // TODO(l10n): 补 arb
+              buttonKey: const ValueKey('category-node-edit'),
+              icon: Icons.edit_outlined,
+              onInvoke: () => _editCategoryNode(node),
+            )
+          : null,
+      delete: shellCanDelete && !systemRoot
+          ? UtenHierarchyNodeOperation(
+              label: '删除分类', // TODO(l10n): 补 arb
+              tooltip: '删除${node.name}', // TODO(l10n): 补 arb
+              buttonKey: const ValueKey('category-node-delete'),
+              icon: Icons.delete_outline,
+              destructive: true,
+              onInvoke: () => _deleteCategoryAfterDraft(node),
+            )
+          : null,
+      deleteReplacement: shellCanDelete && systemRoot
+          ? const SystemMasterCategoryProtectionNotice(compact: true)
+          : null,
     );
   }
 
-  /// 行右键/长按菜单：与图标簇同一套动作与门控；无可用动作时返回空（不弹）。
-  List<UtenContextMenuEntry> _treeRowMenu(ProductCategoryNode node) {
-    if (shellIsVirtualNode(node)) return const [];
-    final systemRoot = _isSystemRoot(node);
-    return [
-      if (shellCanCreate)
-        UtenMenuItem(
-          label: '新增子分类', // TODO(l10n): 补 arb
-          icon: Icons.add_outlined,
-          onTap: () => shellShowCreateDialog(parent: node),
-        ),
-      if (shellCanEdit && !systemRoot)
-        UtenMenuItem(
-          label: '编辑分类', // TODO(l10n): 补 arb
-          icon: Icons.edit_outlined,
-          onTap: () => _editCategoryNode(node),
-        ),
-      if (shellCanDelete && !systemRoot) ...[
-        const UtenMenuDivider(),
-        UtenMenuItem(
-          label: '删除分类', // TODO(l10n): 补 arb
-          icon: Icons.delete_outline,
-          destructive: true,
-          onTap: () => _deleteCategoryAfterDraft(node),
-        ),
-      ],
-    ];
-  }
+  List<UtenContextMenuEntry> _treeRowMenu(ProductCategoryNode node) =>
+      _treeOperationsCached(node).menuEntries;
 
   // ---- build 骨架 ---------------------------------------------------------
 
@@ -1103,11 +1058,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
             compact: bp == UtenBreakpoint.compact,
             treeNotEmpty: tree.isNotEmpty,
           ),
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新', // TODO(l10n): 补 arb
-            onPressed: shellReloadAll,
-          ),
+          UtenRefreshButton(busy: _loading, onRefresh: shellReloadAll),
         ],
       ),
       // 页面级局部 SelectionArea：分类树/详情面板/空态文字可框选复制（准则 §3.4）。

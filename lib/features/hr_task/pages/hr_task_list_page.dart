@@ -34,6 +34,8 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+
+import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -264,10 +266,9 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
                 ),
               ),
             ),
-          IconButton(
-            tooltip: '刷新',
-            onPressed: () => ref.read(hrTaskSummaryProvider.notifier).refresh(),
-            icon: const Icon(Icons.refresh_rounded),
+          UtenRefreshButton(
+            busy: async.isLoading,
+            onRefresh: () => ref.read(hrTaskSummaryProvider.notifier).refresh(),
           ),
         ],
       ),

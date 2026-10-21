@@ -167,6 +167,28 @@ class WarehouseDataScopeResolutionTest {
     }
 
     @Test
+    void ordinaryStaffCanNarrowVisibleWarehousesWithoutAddingAssignedChildren() {
+        database.set(member());
+        JdbcClient.StatementSpec subtree = jdbc.sql("SELECT unnest(" + SUBTREE_SQL + "(ARRAY[CAST(:id AS uuid)]))");
+        JdbcClient.MappedQuerySpec<UUID> ids = subtree.query(UUID.class);
+        when(ids.list()).thenReturn(List.of(other, warehouse));
+
+        WarehouseTaskScope narrowed = service.current(other);
+        assertThat(narrowed.active()).isTrue();
+        assertThat(narrowed.warehouseIds()).containsExactly(other);
+        assertThat(narrowed.includeUnassigned()).isFalse();
+        assertThatThrownBy(() -> service.current(warehouse)).isInstanceOf(ApiException.class);
+        assertThat(service.current(null).includeUnassigned()).isTrue();
+    }
+
+    @Test
+    void ordinaryStaffWithoutConfiguredKeepersCanStillPickAVisibleWarehouse() {
+        database.set(new WarehouseAccess(Role.OTHER, List.of(), WarehouseTaskScope.ALL, true));
+        assertThat(service.current(warehouse).warehouseIds()).containsExactly(warehouse);
+        assertThat(service.current(warehouse).includeUnassigned()).isFalse();
+    }
+
+    @Test
     void queryLeaseSharesNestedReadersAndKeepsAnExistingCommandWindow() {
         database.set(member());
         service.withQueryScopeCache(() -> {

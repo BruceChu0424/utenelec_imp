@@ -36,6 +36,7 @@ import '../../../components/layout/uten_prepend_scroll_anchor.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/inputs/uten_table_cell_auto_width.dart';
 import '../../../components/inputs/uten_table_cell_hints.dart';
 import '../../../components/inputs/uten_table_cell_spec.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
@@ -2289,6 +2290,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   // Bound each batch by cells so wide tables also leave time for input/paint.
   static const _widthMeasureCellBudget = 256;
 
+  /// 输入控制器的内容可以先于业务 value 改变。按列键合并本帧各输入格需要的宽度，
+  /// 避免逐格重建表格；列集合改变后丢弃旧格子的延迟回调。
+  final Map<String, double> _inputWidthRequests = {};
+  bool _inputWidthGrowthScheduled = false;
+  int _inputWidthGeneration = 0;
+
   /// 上次量宽时生效的字号系数（textScaler.scale(1)）。用户在系统设置改字号档后，
   /// 渲染文字按新字号铺，但列宽缓存不会自动失效——[_ensureWidths] 据此比较触发重算，
   /// 保证字号变大列也跟着变宽（与 floating_capsule_nav_bar 同款 textScaler 处理）。
@@ -2328,6 +2335,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   /// 被拖的行（按下时一次定格；宿主重载/展开后行对象重建，拖拽中不再跟随）。
   List<T>? _dragRows;
+  // Only the pressed row owns the active gesture recognizer. Expansion or
+  // edge scrolling may move it out of the viewport before pointer up arrives.
+  final ValueNotifier<String?> _dragOriginKey = ValueNotifier(null);
   Set<String> _dragRowKeys = const <String>{};
   String? _dragLabel;
 
@@ -3101,6 +3111,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     }
     // 列集合变了（数量或 key 序列不同，如报表切 docType）→ 清手动标记、全量重算列宽。
     if (!_sameColumnKeys(oldWidget.columns, widget.columns)) {
+      _inputWidthGeneration++;
+      _inputWidthRequests.clear();
       _manualResized.clear();
       _widthsDirty = true;
       _textMeasures.clear(); // 换了一套列：旧列的量宽结果不沿用。
@@ -3532,6 +3544,67 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     });
   }
 
+  void _requestInputWidth(
+    String columnKey,
+    double contentWidth,
+    int generation,
+  ) {
+    if (!mounted ||
+        generation != _inputWidthGeneration ||
+        !contentWidth.isFinite ||
+        contentWidth <= 0) {
+      return;
+    }
+    final index = _columns.indexWhere((column) => column.key == columnKey);
+    if (index < 0 ||
+        index >= _widths.length ||
+        _manualResized.contains(index)) {
+      return;
+    }
+    final column = _columns[index];
+    final minimum = _minimumColumnWidth(context, column);
+    // Container 的竖向格线也占内侧宽度；不能让同一输入因最后半像素反复加宽。
+    final width =
+        (contentWidth + _columnHorizontalPadding(context, column) * 2 + 0.5)
+            .clamp(minimum, math.max(minimum, _maxColWidth))
+            .toDouble();
+    if (width <= _widths[index] + 0.5) return;
+    _inputWidthRequests.update(
+      columnKey,
+      (previous) => math.max(previous, width),
+      ifAbsent: () => width,
+    );
+    if (_inputWidthGrowthScheduled) return;
+    _inputWidthGrowthScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _inputWidthGrowthScheduled = false;
+      if (!mounted || _inputWidthRequests.isEmpty) return;
+      final requests = Map<String, double>.of(_inputWidthRequests);
+      _inputWidthRequests.clear();
+      final next = List<double>.of(_widths);
+      var grown = false;
+      for (final request in requests.entries) {
+        final index = _columns.indexWhere(
+          (column) => column.key == request.key,
+        );
+        if (index < 0 ||
+            index >= next.length ||
+            _manualResized.contains(index)) {
+          continue;
+        }
+        if (request.value > next[index] + 0.5) {
+          next[index] = request.value;
+          grown = true;
+        }
+      }
+      if (grown) {
+        setState(() => _widths = next);
+        if (_fullscreen) _fsTick.value++;
+      }
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
   /// 测量单行文本渲染宽度（TextPainter，maxLines:1）。测完 dispose 防泄漏。
   ///
   /// [textScaler] 必须传当前生效的字号系数（来自 MediaQuery.textScalerOf）——单元格里
@@ -3565,6 +3638,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     _dragGhost = null;
     _dragPointerPos.dispose();
     _dragIndicator.dispose();
+    _dragOriginKey.dispose();
     widget.rowsController?.detachPagination(this);
     _projection?.remove(this);
     _aiSlot.detach();
@@ -3911,6 +3985,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       return _dataCellText(column.value(item) ?? '', textStyle);
     }
     final value = column.value(item)?.trim();
+    final inputWidthGeneration = _inputWidthGeneration;
     final custom = MasterDataTableCellScope(
       selected: selected,
       foregroundColor: textStyle.color,
@@ -3924,8 +3999,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             child: UtenStatusCellScope(
               enabled: utenIsStatusColumn(column.key, column.label),
               child: UtenTableCellHints(
-                child: Builder(
-                  builder: (cellContext) => builder(cellContext, item),
+                child: UtenTableCellAutoWidth(
+                  onWidthNeeded: (width) => _requestInputWidth(
+                    column.key,
+                    width,
+                    inputWidthGeneration,
+                  ),
+                  child: Builder(
+                    builder: (cellContext) => builder(cellContext, item),
+                  ),
                 ),
               ),
             ),
@@ -5170,6 +5252,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       slotKey: key,
       item: item,
       registry: _dragSlots,
+      dragOriginKey: _dragOriginKey,
       child: child,
     );
   }
@@ -5181,6 +5264,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     if (rows.isEmpty) return;
     // 拖行让位：清文字框选，避免选区与行拖拽在表体上并存。
     if (_textSelection.hasSelection) _textSelection.clear();
+    _dragOriginKey.value = _dragKeyOf(item);
     // 用户口径「长按首先是选中这一行」：把按下的行纳入勾选（已在勾选集中
     // 或不可勾选则不动；多选拖整批、单行拖单行）。
     _toggleRow(item, true);
@@ -5525,6 +5609,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     _dragMode = null;
     _dragAutoExpandedKey = null;
     _dragSource = null;
+    _dragOriginKey.value = null;
     setState(() {
       _dragRows = null;
       _dragRowKeys = const <String>{};
@@ -7714,22 +7799,31 @@ class _RowDragSlot<T> extends StatefulWidget {
     required this.slotKey,
     required this.item,
     required this.registry,
+    required this.dragOriginKey,
     required this.child,
   });
 
   final String slotKey;
   final T item;
   final Map<String, _RowDragSlotEntry<T>> registry;
+  final ValueListenable<String?> dragOriginKey;
   final Widget child;
 
   @override
   State<_RowDragSlot<T>> createState() => _RowDragSlotState<T>();
 }
 
-class _RowDragSlotState<T> extends State<_RowDragSlot<T>> {
+class _RowDragSlotState<T> extends State<_RowDragSlot<T>>
+    with AutomaticKeepAliveClientMixin<_RowDragSlot<T>> {
+  @override
+  bool get wantKeepAlive => widget.dragOriginKey.value == widget.slotKey;
+
+  void _updateDragKeepAlive() => updateKeepAlive();
+
   @override
   void initState() {
     super.initState();
+    widget.dragOriginKey.addListener(_updateDragKeepAlive);
     _register();
   }
 
@@ -7744,7 +7838,13 @@ class _RowDragSlotState<T> extends State<_RowDragSlot<T>> {
   @override
   void didUpdateWidget(_RowDragSlot<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.dragOriginKey, widget.dragOriginKey)) {
+      oldWidget.dragOriginKey.removeListener(_updateDragKeepAlive);
+      widget.dragOriginKey.addListener(_updateDragKeepAlive);
+      updateKeepAlive();
+    }
     if (oldWidget.slotKey != widget.slotKey) {
+      updateKeepAlive();
       if (identical(widget.registry[oldWidget.slotKey]?.context, context)) {
         widget.registry.remove(oldWidget.slotKey);
       }
@@ -7757,6 +7857,7 @@ class _RowDragSlotState<T> extends State<_RowDragSlot<T>> {
 
   @override
   void dispose() {
+    widget.dragOriginKey.removeListener(_updateDragKeepAlive);
     if (identical(widget.registry[widget.slotKey]?.context, context)) {
       widget.registry.remove(widget.slotKey);
     }
@@ -7764,7 +7865,10 @@ class _RowDragSlotState<T> extends State<_RowDragSlot<T>> {
   }
 
   @override
-  Widget build(BuildContext context) => widget.child;
+  Widget build(BuildContext context) {
+    super.build(context);
+    return widget.child;
+  }
 }
 
 /// 落点指示条的几何（表体 Stack 本地坐标）与形态。

@@ -643,13 +643,16 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
             ],
           );
           final actions = Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: UtenSpacing.s4,
+            runSpacing: UtenSpacing.s4,
             children: [
-              OutlinedButton.icon(
+              UtenButton(
+                type: UtenButtonType.secondary,
+                size: UtenButtonSize.small,
+                isLoading: _loading,
                 onPressed: _busy ? null : () => _load(connectionOnly: true),
-                icon: const Icon(Icons.refresh),
-                label: const Text('重新检测'),
+                icon: Icons.refresh,
+                child: const Text('重新检测'),
               ),
               TextButton.icon(
                 onPressed: _busy ? null : _switchServer,

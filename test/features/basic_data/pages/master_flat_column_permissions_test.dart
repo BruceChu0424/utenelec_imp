@@ -15,13 +15,13 @@ import 'package:uten_imp/features/basic_data/pages/color_page.dart';
 import 'package:uten_imp/features/basic_data/pages/currency_page.dart';
 import 'package:uten_imp/features/basic_data/pages/settlement_method_page.dart';
 import 'package:uten_imp/features/basic_data/pages/unit_page.dart';
-import 'package:uten_imp/features/basic_data/pages/warehouse_page.dart';
 import 'package:uten_imp/features/basic_data/repositories/account_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
+  // 仓库已改为目录 + 只读库存；目录动作与库存列权限分别由仓库页面/面板测试覆盖。
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
@@ -48,13 +48,6 @@ void main() {
       edit: Perm.unitEdit,
     ),
     (
-      name: '仓库',
-      page: const WarehousePage(),
-      view: Perm.warehouseView,
-      create: Perm.warehouseCreate,
-      edit: Perm.warehouseEdit,
-    ),
-    (
       name: '账户',
       page: const AccountPage(),
       view: Perm.accountView,
@@ -73,7 +66,6 @@ void main() {
     '颜色': '添加颜色',
     '币种': '添加币种',
     '基本单位': '添加单位',
-    '仓库': '添加仓库',
     '结算方式': '添加结算方式',
   };
 

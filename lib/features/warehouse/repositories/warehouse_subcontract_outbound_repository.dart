@@ -60,7 +60,7 @@ final warehouseSubcontractOutboundRepositoryProvider =
           WarehouseSubcontractOutboundRepository(ref.watch(apiClientProvider)),
     );
 
-/// 红: 调用者仓库范围内待发料的委外领料单张数(轮到仓库动手)。
+/// 红: 调用者仓库范围内待发料的委外货品明细行数(轮到仓库动手)。
 ///
 /// 随工作台徽章汇总一次带回(ADR-108, 原端点 /warehouse/subcontract-outbound/tasks/count),
 /// 与列表同一服务端仓库范围(ADR-149); 汇总未到/无权为 null。hub「出库任务中心」卡的红数由服务端目录算好。

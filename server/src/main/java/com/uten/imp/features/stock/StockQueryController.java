@@ -89,12 +89,14 @@ public class StockQueryController {
             // 风险/跟进行动清单，白名单校验在共享查询入口执行。
             @RequestParam(required = false) String attention,
             @RequestParam(defaultValue = "false") boolean includeRelated,
+            @RequestParam(defaultValue = "false") boolean warehouseRelatedOnly,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.instantInventory(categoryId, warehouseId, includeDefective, includeLineSide, keyword,
-                owningWarehouse, owningWarehouseNull, colorId, series, unitId, attention, page, size, sort, order, includeRelated);
+                owningWarehouse, owningWarehouseNull, colorId, series, unitId, attention, page, size, sort, order,
+                includeRelated, warehouseRelatedOnly);
     }
 
     /**
@@ -116,12 +118,14 @@ public class StockQueryController {
             @RequestParam(required = false) UUID unitId,
             @RequestParam String attention,
             @RequestParam(defaultValue = "false") boolean includeRelated,
+            @RequestParam(defaultValue = "false") boolean warehouseRelatedOnly,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.instantInventory(categoryId, warehouseId, includeDefective, includeLineSide, keyword,
-                owningWarehouse, owningWarehouseNull, colorId, series, unitId, attention, page, size, sort, order, includeRelated);
+                owningWarehouse, owningWarehouseNull, colorId, series, unitId, attention, page, size, sort, order,
+                includeRelated, warehouseRelatedOnly);
     }
 
     /**
@@ -143,10 +147,11 @@ public class StockQueryController {
             @RequestParam(required = false) String series,
             @RequestParam(required = false) UUID unitId,
             @RequestParam(required = false) String attention,
-            @RequestParam(defaultValue = "false") boolean includeRelated) {
+            @RequestParam(defaultValue = "false") boolean includeRelated,
+            @RequestParam(defaultValue = "false") boolean warehouseRelatedOnly) {
         var filter = new StockQueryService.InstantInventoryFilter(categoryId, warehouseId, includeDefective,
                 includeLineSide, keyword, owningWarehouse, owningWarehouseNull, colorId, series, unitId,
-                attention, null, false, true, includeRelated);
+                attention, null, false, true, includeRelated, warehouseRelatedOnly);
         return service.instantInventoryMatchingCategoryIds(filter, categoryRootIds);
     }
 

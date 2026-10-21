@@ -14,6 +14,7 @@ import java.util.UUID;
 public class ProductionMaterialReturnRequestController {
     private final ProductionMaterialReturnRequestService service;
     private final com.uten.imp.application.port.WarehouseTaskScopePort warehouseScopes;
+    private final com.uten.imp.application.port.WarehouseTaskRowCountPort taskRowCounts;
 
     @GetMapping("/plans/{planId}/return-requests/sources")
     @PreAuthorize("hasAnyAuthority('production_plan:view','stock_doc:view','production_execution:view')")
@@ -40,6 +41,6 @@ public class ProductionMaterialReturnRequestController {
     @com.uten.imp.security.BusinessTaskRead
     @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:approve')")
     public Map<String, Long> count(@RequestParam(required = false) UUID scopeWarehouseId) {
-        return Map.of("count", service.warehousePendingCount(warehouseScopes.current(scopeWarehouseId)));
+        return Map.of("count", taskRowCounts.productionReturn(warehouseScopes.current(scopeWarehouseId)));
     }
 }

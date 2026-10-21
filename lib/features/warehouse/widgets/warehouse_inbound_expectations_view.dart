@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 // 预计到货工作台（可嵌入）：与财务「订货审批任务中心」同款表格工作台——列表只放
 // 单据级概要（单号/供应商/数量/预计到货日/步骤），双击行按当前步骤直达对应办理
 // 页（待登记→登记实际到货；已登记→继续送检；超量→到货异常；已送检→品质检查
@@ -86,7 +87,8 @@ class WarehouseInboundExpectationsView extends ConsumerStatefulWidget {
 }
 
 class _WarehouseInboundExpectationsViewState
-    extends ConsumerState<WarehouseInboundExpectationsView> {
+    extends ConsumerState<WarehouseInboundExpectationsView>
+    with UtenRefreshParticipant<WarehouseInboundExpectationsView> {
   PagedResult<InboundExpectation>? _result;
   bool _loading = false;
   String? _error;
@@ -131,7 +133,7 @@ class _WarehouseInboundExpectationsViewState
           .read(masterNameServiceProvider)
           .ensureLoaded()
           .then((_) => mounted ? setState(() {}) : null);
-      if (mounted) _load(1);
+      if (mounted) trackRefresh(_load(1));
     });
   }
 
@@ -147,7 +149,7 @@ class _WarehouseInboundExpectationsViewState
         _selectedIds.clear();
       }
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _load(1);
+        if (mounted) trackRefresh(_load(1));
       });
     }
   }

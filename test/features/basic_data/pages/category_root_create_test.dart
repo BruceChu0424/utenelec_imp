@@ -6,11 +6,13 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
+import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/models/payment_style_node.dart';
+import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/pages/client_category_page.dart';
 import 'package:uten_imp/features/basic_data/pages/mould_category_page.dart';
 import 'package:uten_imp/features/basic_data/pages/payment_style_page.dart';
@@ -21,6 +23,7 @@ import 'package:uten_imp/features/basic_data/widgets/uten_category_tree_view.dar
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/widgets/uten_location_field.dart';
+import 'package:uten_imp/shared/widgets/uten_hierarchy_node_actions.dart';
 import '../../../support/filter_segment_tap.dart';
 import '../../../support/audit_screenshot_support.dart';
 
@@ -164,6 +167,33 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('分类行图标与右键菜单复用同一权限和创建回调', (tester) async {
+    await _pump(tester, _CategoryApi('client'));
+    final tree = tester.widget<UtenCategoryTreeView<ProductCategoryNode>>(
+      find.byWidgetPredicate((widget) => widget is UtenCategoryTreeView),
+    );
+    final node = tree.nodes.first;
+    final actions = tree.trailingBuilder!(node) as UtenHierarchyNodeActions;
+    final operation = actions.operations.add!;
+    final menu = tree.rowMenuBuilder!(node).whereType<UtenMenuItem>().toList();
+    expect(menu.single.label, operation.label);
+    expect(identical(menu.single.onTap, operation.onInvoke), isTrue);
+    expect(actions.operations.edit, isNull);
+    expect(actions.operations.delete, isNull);
+
+    await _pump(tester, _CategoryApi('client'), canCreate: false);
+    final readonlyTree = tester
+        .widget<UtenCategoryTreeView<ProductCategoryNode>>(
+          find.byWidgetPredicate((widget) => widget is UtenCategoryTreeView),
+        );
+    final readonlyNode = readonlyTree.nodes.first;
+    final readonlyActions =
+        readonlyTree.trailingBuilder!(readonlyNode) as UtenHierarchyNodeActions;
+    expect(readonlyActions.operations.add, isNull);
+    expect(readonlyTree.rowMenuBuilder!(readonlyNode), isEmpty);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('空树窄屏大字号仍可从搜索右侧创建第一个根', (tester) async {
     final fixture = _CategoryApi('client', empty: true);

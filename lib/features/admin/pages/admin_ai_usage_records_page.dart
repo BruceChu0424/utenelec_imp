@@ -10,6 +10,8 @@
 //     页内再叠超管门禁(会话/快照/服务器/权限任一变化即失效, 与用量看板同款)。
 //   * 读端点不写数据; 保存计费走抽屉(服务端要求再认证, 网络层弹统一密码框)。
 import 'package:flutter/material.dart';
+
+import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
@@ -296,12 +298,11 @@ class _AdminAiUsageRecordsPageState
             onPressed: _providers.isEmpty ? null : _openBilling,
             child: Text(l10n.aiRecordsBillingOpen),
           ),
-          const SizedBox(width: UtenSpacing.s4),
-          IconButton(
+          UtenRefreshButton(
             key: const ValueKey('ai-records-refresh'),
             tooltip: l10n.aiAuditRefresh,
-            icon: const Icon(Icons.refresh_rounded),
-            onPressed: _loading ? null : _refresh,
+            busy: _loading,
+            onRefresh: _refresh,
           ),
         ],
       ),

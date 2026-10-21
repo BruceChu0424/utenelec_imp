@@ -26,6 +26,7 @@ import 'uten_field_message.dart';
 import 'uten_field_placeholder.dart';
 import 'uten_input_decoration.dart';
 import 'uten_table_cell_spec.dart';
+import 'uten_table_cell_auto_width.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
 
 /// 单选项：[value]（null=清空/不选）+ [label]（展示文本）。
@@ -685,20 +686,23 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
             mainAxisSize: MainAxisSize.min,
             children: [
               Flexible(
-                child: Text(
-                  display,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: !widget.enabled
-                        ? theme.colorScheme.onSurfaceVariant
-                        : widget.errorMessage != null || requiredEmpty
-                        ? theme.colorScheme.error
-                        : !hasValue
-                        ? theme.colorScheme.onSurfaceVariant
-                        : autofillHint
-                        ? UtenColors.warning
-                        : null,
+                child: UtenTableInputContent(
+                  enabled: hasValue,
+                  child: Text(
+                    display,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: !widget.enabled
+                          ? theme.colorScheme.onSurfaceVariant
+                          : widget.errorMessage != null || requiredEmpty
+                          ? theme.colorScheme.error
+                          : !hasValue
+                          ? theme.colorScheme.onSurfaceVariant
+                          : autofillHint
+                          ? UtenColors.warning
+                          : null,
+                    ),
                   ),
                 ),
               ),

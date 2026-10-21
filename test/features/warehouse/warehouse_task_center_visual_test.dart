@@ -18,6 +18,7 @@ import 'package:uten_imp/features/warehouse/models/warehouse_task_center_record.
 import 'package:uten_imp/features/warehouse/pages/warehouse_task_center_page.dart';
 import 'package:uten_imp/features/warehouse/repositories/warehouse_task_center_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/drafts/form_draft.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
@@ -306,6 +307,7 @@ void main() {
               (_) async => const MyWarehouseScope(
                 role: WarehouseScopeRole.supervisor,
                 canSelectAll: true,
+                selectable: [WarehouseScopeOption(id: 'main', name: '原料主仓')],
               ),
             ),
             currentPermissionsProvider.overrideWithValue({
@@ -316,7 +318,19 @@ void main() {
             isSuperAdminProvider.overrideWithValue(true),
             formDraftsProvider.overrideWith(_NoDrafts.new),
             sharedPreferencesProvider.overrideWithValue(preferences),
-            fixedBadgeSummaryOverride(badgeSummaryFixture()),
+            fixedBadgeSummaryOverride(
+              badgeSummaryFixture(
+                entries: {
+                  BadgeEntry.warehouseInboundCenter: (2, 0),
+                  BadgeEntry.warehouseOutboundCenter: (2, 0),
+                },
+                facts: {
+                  BadgeFact.warehouseInboundExpectationPurchase: 2,
+                  BadgeFact.warehouseArrivalExceptionPurchase: 0,
+                  BadgeFact.warehouseSalesOutboundPendingPick: 2,
+                },
+              ),
+            ),
           ],
           child: RepaintBoundary(
             key: boundary,
@@ -336,6 +350,10 @@ void main() {
       expect(gateway.calls.last.source, 'ALL');
       expect(find.text('委外损耗'), findsNothing);
       expect(find.textContaining('金额'), findsNothing);
+      expect(
+        find.byKey(const Key('warehouse-task-scope-filter-notice')),
+        findsNothing,
+      );
       expect(tester.takeException(), isNull);
       final repaint =
           boundary.currentContext!.findRenderObject()! as RenderRepaintBoundary;

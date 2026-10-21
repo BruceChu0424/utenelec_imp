@@ -46,6 +46,7 @@ import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_refresh_scope.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
@@ -91,6 +92,13 @@ class ProductionBoardPage extends ConsumerStatefulWidget {
 class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
   /// 顶栏刷新与返回刷新共同推进；当前草稿/待排产/进行中/历史面板接收此代际。
   int _refreshRevision = 0;
+  final _refreshController = UtenRefreshController();
+
+  @override
+  void dispose() {
+    _refreshController.dispose();
+    super.dispose();
+  }
 
   /// 当前大类分段：pending/progress/history；null = 未选择引导态（不发请求）。
   String? _segment;
@@ -132,165 +140,172 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
     // null/0 一律不渲染。
     final pendingCount = ref.watch(productionPendingCountProvider).count;
     final ongoingCount = ref.watch(productionExecutionGroupCountProvider);
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: '生产调度与进度',
-        leading: UtenBackButton(
-          onPressed: () => backTo(context, defaultPath: RouteName.production),
-        ),
-        // 2026-09-12 用户口径：刷新按钮移到右上角顶栏（自动注入的「权限设置」
-        // 左边，actions 先于 PagePermissionAction 渲染）；表格工具条与窄屏
-        // 列表顶部的旧刷新入口随之撤除。
-        actions: [
-          UtenAppBarActionButton(
-            key: const Key('production-pending-refresh'),
-            label: '刷新',
-            icon: Icons.refresh_rounded,
-            onPressed: () => setState(() => _refreshRevision++),
+    return UtenRefreshScope(
+      controller: _refreshController,
+      child: Scaffold(
+        appBar: UtenAppBar(
+          title: '生产调度与进度',
+          leading: UtenBackButton(
+            onPressed: () => backTo(context, defaultPath: RouteName.production),
           ),
-        ],
-      ),
-      body: SafeArea(
-        child: UtenContentContainer.wide(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  0,
-                  UtenSpacing.s12,
-                  0,
-                  UtenSpacing.s8,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // 大类行：待排产/进行中/历史记录 + 页级搜索；默认不选。
-                    UtenFilterToolbar<String>(
-                      segmentsKey: const Key('production-board-segments'),
-                      segments: [
-                        UtenFilterSegment(
-                          value: 'drafts',
-                          label: '草稿',
-                          // 2026-09-26 全站草稿口径：本段展示服务端草稿（生产计划
-                          // draft + 生产日报 status=0），计数用同一份「服务端草稿 +
-                          // 本地表单草稿」投影（draftCountsProvider，随徽章汇总带回，
-                          // 不额外请求）。此前 module=production 没有任何本地草稿
-                          // 来源，本段恒空恒 0（死段）。
-                          count: ref.watch(draftCountsProvider).sumOf(const [
-                            DraftDocKind.productionPlan,
-                            DraftDocKind.productionDailyReport,
-                          ]),
-                          countForm: UtenSegmentCountForm.actionable,
-                        ),
-                        // 待排产挂红徽章(调度员必须清空的队列); 进行中挂黄徽章
-                        // (ADR-100): 这些批次已经排下去在跑了, 调度员只是看着,
-                        // 但它们也没结束, 所以中性括号同样不对 —— 括号留给
-                        // 历史/已完成。历史记录段不挂数字。
-                        UtenFilterSegment(
-                          value: 'pending',
-                          label: '待排产',
-                          count: pendingCount,
-                          countForm: UtenSegmentCountForm.actionable,
-                        ),
-                        UtenFilterSegment(
-                          value: 'progress',
-                          label: '进行中',
-                          count: ongoingCount,
-                          countForm: UtenSegmentCountForm.inProgress,
-                        ),
-                        const UtenFilterSegment(
-                          value: 'history',
-                          label: '历史记录',
+          // 2026-09-12 用户口径：刷新按钮移到右上角顶栏（自动注入的「权限设置」
+          // 左边，actions 先于 PagePermissionAction 渲染）；表格工具条与窄屏
+          // 列表顶部的旧刷新入口随之撤除。
+          actions: [
+            UtenAppBarActionButton(
+              key: const Key('production-pending-refresh'),
+              label: '刷新',
+              icon: Icons.refresh_rounded,
+              onPressed: () => _refreshController.run(
+                () => setState(() => _refreshRevision++),
+              ),
+            ),
+          ],
+        ),
+        body: SafeArea(
+          child: UtenContentContainer.wide(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    0,
+                    UtenSpacing.s12,
+                    0,
+                    UtenSpacing.s8,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // 大类行：待排产/进行中/历史记录 + 页级搜索；默认不选。
+                      UtenFilterToolbar<String>(
+                        segmentsKey: const Key('production-board-segments'),
+                        segments: [
+                          UtenFilterSegment(
+                            value: 'drafts',
+                            label: '草稿',
+                            // 2026-09-26 全站草稿口径：本段展示服务端草稿（生产计划
+                            // draft + 生产日报 status=0），计数用同一份「服务端草稿 +
+                            // 本地表单草稿」投影（draftCountsProvider，随徽章汇总带回，
+                            // 不额外请求）。此前 module=production 没有任何本地草稿
+                            // 来源，本段恒空恒 0（死段）。
+                            count: ref.watch(draftCountsProvider).sumOf(const [
+                              DraftDocKind.productionPlan,
+                              DraftDocKind.productionDailyReport,
+                            ]),
+                            countForm: UtenSegmentCountForm.actionable,
+                          ),
+                          // 待排产挂红徽章(调度员必须清空的队列); 进行中挂黄徽章
+                          // (ADR-100): 这些批次已经排下去在跑了, 调度员只是看着,
+                          // 但它们也没结束, 所以中性括号同样不对 —— 括号留给
+                          // 历史/已完成。历史记录段不挂数字。
+                          UtenFilterSegment(
+                            value: 'pending',
+                            label: '待排产',
+                            count: pendingCount,
+                            countForm: UtenSegmentCountForm.actionable,
+                          ),
+                          UtenFilterSegment(
+                            value: 'progress',
+                            label: '进行中',
+                            count: ongoingCount,
+                            countForm: UtenSegmentCountForm.inProgress,
+                          ),
+                          const UtenFilterSegment(
+                            value: 'history',
+                            label: '历史记录',
+                          ),
+                        ],
+                        selected: segment == null ? const {} : {segment},
+                        onSelectionChanged: (value) => setState(() {
+                          _segment = value;
+                          if (value != 'history') {
+                            _historyTime = const UtenHistoryTimeValue.all();
+                          }
+                        }),
+                        searchHint: '搜索订单号 / 计划单号 / 客户 / 货品',
+                        onSearchChanged: (v) =>
+                            setState(() => _keyword = v.trim()),
+                      ),
+                      if (segment == 'history') ...[
+                        const SizedBox(height: UtenSpacing.s8),
+                        UtenHistoryTimeFilter(
+                          key: const Key('production-board-history-time'),
+                          value: _historyTime,
+                          onChanged: (value) =>
+                              setState(() => _historyTime = value),
                         ),
                       ],
-                      selected: segment == null ? const {} : {segment},
-                      onSelectionChanged: (value) => setState(() {
-                        _segment = value;
-                        if (value != 'history') {
-                          _historyTime = const UtenHistoryTimeValue.all();
-                        }
-                      }),
-                      searchHint: '搜索订单号 / 计划单号 / 客户 / 货品',
-                      onSearchChanged: (v) =>
-                          setState(() => _keyword = v.trim()),
-                    ),
-                    if (segment == 'history') ...[
-                      const SizedBox(height: UtenSpacing.s8),
-                      UtenHistoryTimeFilter(
-                        key: const Key('production-board-history-time'),
-                        value: _historyTime,
-                        onChanged: (value) =>
-                            setState(() => _historyTime = value),
-                      ),
                     ],
-                  ],
+                  ),
                 ),
-              ),
-              Expanded(
-                child: switch (segment) {
-                  'drafts' => Padding(
-                    padding: EdgeInsets.zero,
-                    child: _BoardDraftsPanel(
-                      key: const Key('production-board-drafts'),
-                      search: _keyword,
-                      refreshRevision: _refreshRevision,
+                Expanded(
+                  child: switch (segment) {
+                    'drafts' => Padding(
+                      padding: EdgeInsets.zero,
+                      child: _BoardDraftsPanel(
+                        key: const Key('production-board-drafts'),
+                        search: _keyword,
+                        refreshRevision: _refreshRevision,
+                      ),
                     ),
-                  ),
-                  'pending' => _PendingPanel(
-                    key: const Key('production-board-pending'),
-                    keyword: _keyword,
-                    refreshTick: _refreshRevision,
-                  ),
-                  // ADR-088：已被分析承接的订单行只在本段出现，所以「看不见进行中」
-                  // 就等于「那批量从这个账号的世界里消失」。缺 production_execution:overview
-                  // 时给明确的权限引导，而不是让面板去撞一个 403 错误态。
-                  'progress' =>
-                    ref
-                            .watch(currentPermissionsProvider)
-                            .contains(Perm.productionExecutionOverview)
-                        ? ProductionExecutionGroupPanel(
-                            key: const Key('production-board-progress'),
-                            keyword: _keyword,
-                            refreshRevision: _refreshRevision,
-                          )
-                        : const UtenFilterPlaceholder(
-                            key: Key('production-board-progress-no-permission'),
-                            message: '当前账号没有「生产进度总览」权限',
-                            description:
-                                '已做过物料分析的订单行统一在本段按分析批次跟踪。'
-                                '请联系管理员授予 production_execution:overview 后查看。',
-                          ),
-                  'history' =>
-                    historyReady
-                        ? _PlanPanel(
-                            key: Key(
-                              'production-board-history-'
-                              '${_historyTime.all ? 'all' : ChinaDateTime.formatDate(_historyTime.range!.start)}'
-                              '-${_historyTime.all ? '' : ChinaDateTime.formatDate(_historyTime.range!.end)}',
+                    'pending' => _PendingPanel(
+                      key: const Key('production-board-pending'),
+                      keyword: _keyword,
+                      refreshTick: _refreshRevision,
+                    ),
+                    // ADR-088：已被分析承接的订单行只在本段出现，所以「看不见进行中」
+                    // 就等于「那批量从这个账号的世界里消失」。缺 production_execution:overview
+                    // 时给明确的权限引导，而不是让面板去撞一个 403 错误态。
+                    'progress' =>
+                      ref
+                              .watch(currentPermissionsProvider)
+                              .contains(Perm.productionExecutionOverview)
+                          ? ProductionExecutionGroupPanel(
+                              key: const Key('production-board-progress'),
+                              keyword: _keyword,
+                              refreshRevision: _refreshRevision,
+                            )
+                          : const UtenFilterPlaceholder(
+                              key: Key(
+                                'production-board-progress-no-permission',
+                              ),
+                              message: '当前账号没有「生产进度总览」权限',
+                              description:
+                                  '已做过物料分析的订单行统一在本段按分析批次跟踪。'
+                                  '请联系管理员授予 production_execution:overview 后查看。',
                             ),
-                            closed: true,
-                            keyword: _keyword,
-                            refreshRevision: _refreshRevision,
-                            forcedDateFrom: _historyTime.range == null
-                                ? null
-                                : ChinaDateTime.formatDate(
-                                    _historyTime.range!.start,
-                                  ),
-                            forcedDateTo: _historyTime.range == null
-                                ? null
-                                : ChinaDateTime.formatDate(
-                                    _historyTime.range!.end,
-                                  ),
-                          )
-                        : const UtenHistoryTimePlaceholder(),
-                  _ => const UtenFilterPlaceholder(
-                    message: '在上方选择分类后开始办理',
-                    description: '大类默认不选中；历史记录需先选时间段或「全部」',
-                  ),
-                },
-              ),
-            ],
+                    'history' =>
+                      historyReady
+                          ? _PlanPanel(
+                              key: Key(
+                                'production-board-history-'
+                                '${_historyTime.all ? 'all' : ChinaDateTime.formatDate(_historyTime.range!.start)}'
+                                '-${_historyTime.all ? '' : ChinaDateTime.formatDate(_historyTime.range!.end)}',
+                              ),
+                              closed: true,
+                              keyword: _keyword,
+                              refreshRevision: _refreshRevision,
+                              forcedDateFrom: _historyTime.range == null
+                                  ? null
+                                  : ChinaDateTime.formatDate(
+                                      _historyTime.range!.start,
+                                    ),
+                              forcedDateTo: _historyTime.range == null
+                                  ? null
+                                  : ChinaDateTime.formatDate(
+                                      _historyTime.range!.end,
+                                    ),
+                            )
+                          : const UtenHistoryTimePlaceholder(),
+                    _ => const UtenFilterPlaceholder(
+                      message: '在上方选择分类后开始办理',
+                      description: '大类默认不选中；历史记录需先选时间段或「全部」',
+                    ),
+                  },
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -558,7 +573,8 @@ class _PendingPanel extends ConsumerStatefulWidget {
   ConsumerState<_PendingPanel> createState() => _PendingPanelState();
 }
 
-class _PendingPanelState extends ConsumerState<_PendingPanel> {
+class _PendingPanelState extends ConsumerState<_PendingPanel>
+    with UtenRefreshParticipant<_PendingPanel> {
   static const int _maxAnalysisItems = 500;
   PagedResult<SchedulePendingRow>? _page;
   bool _loading = false;
@@ -596,7 +612,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _load();
+      if (mounted) trackRefresh(_load());
     });
   }
 
@@ -604,7 +620,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   void didUpdateWidget(covariant _PendingPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.refreshTick != widget.refreshTick) {
-      _refreshAll();
+      trackRefresh(_refreshAll());
       return;
     }
     if (oldWidget.keyword != widget.keyword && _hasLoaded) {
@@ -655,9 +671,9 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   /// 筛选/每页条数变化：回到第一页重新加载。
-  void _reload() {
+  Future<void> _reload() {
     _pageNo = 1;
-    _load();
+    return _load();
   }
 
   Future<void> _load() async {
@@ -936,9 +952,8 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
 
   /// 页面右上角刷新信号的处理入口。
   /// 整页刷新(2026-09-05 用户口径)：列表回第 1 页 + 大类行计数(徽章汇总)一并重拉。
-  void _refreshAll() {
-    refreshBadges(ref);
-    _reload();
+  Future<void> _refreshAll() async {
+    await Future.wait([refreshBadges(ref), _reload()]);
   }
 
   /// 分页条已改用 MasterDataTableView 内置分页（见 _list）。
@@ -1209,7 +1224,8 @@ class _PlanPanel extends ConsumerStatefulWidget {
   ConsumerState<_PlanPanel> createState() => _PlanPanelState();
 }
 
-class _PlanPanelState extends ConsumerState<_PlanPanel> {
+class _PlanPanelState extends ConsumerState<_PlanPanel>
+    with UtenRefreshParticipant<_PlanPanel> {
   PagedResult<PlanProgressRow>? _page;
   Map<String, dynamic>? _summary;
   List<String> _workshops = const [];
@@ -1250,7 +1266,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _load();
+      if (mounted) trackRefresh(_load());
     });
   }
 
@@ -1266,9 +1282,9 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || generation != _loadGeneration) return;
         if (refreshChanged) {
-          _refreshAll();
+          trackRefresh(_refreshAll());
         } else {
-          _reload();
+          trackRefresh(_reload());
         }
       });
     }
@@ -1278,9 +1294,9 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   /// 筛选/排序/每页条数变化：回到第一页重新加载。
-  void _reload() {
+  Future<void> _reload() {
     _pageNo = 1;
-    _load();
+    return _load();
   }
 
   Future<void> _load() async {
@@ -1582,9 +1598,8 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
   }
 
   /// 整页刷新：列表回第 1 页 + 大类行计数(徽章汇总)一并重拉。
-  void _refreshAll() {
-    refreshBadges(ref);
-    _reload();
+  Future<void> _refreshAll() async {
+    await Future.wait([refreshBadges(ref), _reload()]);
   }
 
   PopupMenuItem<void> _checkItem(

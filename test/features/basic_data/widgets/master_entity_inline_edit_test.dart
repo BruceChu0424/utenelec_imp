@@ -39,6 +39,8 @@ Future<void> _pump(
   Future<PagedResult<_Row>> Function(MasterPaneQuery)? loadPage,
   Size size = const Size(1200, 850),
   double textScale = 1,
+  String? inlineCancelLabel,
+  String? inlineDiscardNote,
   required Future<void> Function(String, Map<String, dynamic>, _Row) save,
 }) async {
   SharedPreferences.setMockInitialValues({});
@@ -135,6 +137,8 @@ Future<void> _pump(
                     ),
                   },
                   onInlineSave: save,
+                  inlineCancelLabel: inlineCancelLabel,
+                  inlineDiscardNote: inlineDiscardNote,
                 ),
               ),
             ),
@@ -528,6 +532,146 @@ void main() {
     expect(_nameInput(), findsNothing);
     expect(saves, 0);
   });
+
+  testWidgets(
+    'goods discard exits a clean edit session without writes or reloading the table',
+    (tester) async {
+      var saves = 0;
+      var reads = 0;
+      await _pump(
+        tester,
+        inlineCancelLabel: '不保存并退出',
+        inlineDiscardNote: '仅放弃尚未保存的修改，已保存成功的修改会保留。',
+        loadPage: (_) async {
+          reads++;
+          return const PagedResult(
+            items: [
+              (id: 'g1', code: 'G1', name: '原名称', version: 7, writable: true),
+            ],
+            page: 1,
+            size: 20,
+            total: 1,
+            totalPages: 1,
+          );
+        },
+        save: (_, _, _) async => saves++,
+      );
+      final tableState = tester.state(find.byType(MasterDataTableView<_Row>));
+      await tester.tap(find.text('编辑模式'));
+      await tester.pumpAndSettle();
+      expect(find.text('取消编辑'), findsNothing);
+      await tester.tap(find.text('不保存并退出'));
+      await tester.pumpAndSettle();
+      expect(find.text('编辑模式'), findsOneWidget);
+      expect(find.text('放弃未保存的修改？'), findsNothing);
+      expect(tester.state(find.byType(MasterDataTableView<_Row>)), tableState);
+      expect(saves, 0);
+      expect(reads, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'goods discard asks once and continuing preserves the draft before explicit discard',
+    (tester) async {
+      var saves = 0;
+      await _pump(
+        tester,
+        inlineCancelLabel: '不保存并退出',
+        inlineDiscardNote: '仅放弃尚未保存的修改，已保存成功的修改会保留。',
+        save: (_, _, _) async => saves++,
+      );
+      await tester.tap(find.text('编辑模式'));
+      await tester.pumpAndSettle();
+      await _activateName(tester);
+      await tester.enterText(_nameInput(), '本次未保存');
+      await tester.tap(find.widgetWithText(UtenButton, '不保存并退出'));
+      await tester.pumpAndSettle();
+      expect(find.text('放弃未保存的修改？'), findsOneWidget);
+      expect(find.text('仅放弃尚未保存的修改，已保存成功的修改会保留。'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, '不保存并退出'), findsOneWidget);
+      await tester.tap(find.text('继续编辑'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(_nameInput()).controller!.text, '本次未保存');
+      await tester.tap(find.widgetWithText(UtenButton, '不保存并退出'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, '不保存并退出'));
+      await tester.pumpAndSettle();
+      expect(find.text('编辑模式'), findsOneWidget);
+      expect(find.text('原名称'), findsOneWidget);
+      expect(find.text('本次未保存'), findsNothing);
+      expect(saves, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'goods discard after a partial save keeps committed rows and drops only remaining drafts',
+    (tester) async {
+      var rows = <_Row>[
+        (id: 'g1', code: 'G1', name: '第一行', version: 7, writable: true),
+        (id: 'g2', code: 'G2', name: '第二行', version: 9, writable: true),
+      ];
+      var reads = 0;
+      final saved = <String>[];
+      await _pump(
+        tester,
+        inlineCancelLabel: '不保存并退出',
+        inlineDiscardNote: '仅放弃尚未保存的修改，已保存成功的修改会保留。',
+        loadPage: (_) async {
+          reads++;
+          return PagedResult(
+            items: rows,
+            page: 1,
+            size: 20,
+            total: 2,
+            totalPages: 1,
+          );
+        },
+        save: (id, patch, original) async {
+          saved.add(id);
+          if (id == 'g2') throw ApiException('CONFLICT', '第二行保存失败');
+          rows = [
+            for (final row in rows)
+              if (row.id == id)
+                (
+                  id: row.id,
+                  code: row.code,
+                  name: patch['name'] as String,
+                  version: row.version + 1,
+                  writable: true,
+                )
+              else
+                row,
+          ];
+        },
+      );
+      await tester.tap(find.text('编辑模式'));
+      await tester.pumpAndSettle();
+      await _activateName(tester);
+      await tester.enterText(_nameInput(), '第一行已保存');
+      await _activateName(tester, 'g2');
+      await tester.enterText(_nameInput().at(1), '第二行未保存');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('保存 2 行修改'));
+      await tester.pumpAndSettle();
+      expect(saved, ['g1', 'g2']);
+      expect(find.text('保存 1 行修改'), findsOneWidget);
+      final readsBeforeDiscard = reads;
+      await tester.tap(find.widgetWithText(UtenButton, '不保存并退出'));
+      await tester.pumpAndSettle();
+      expect(find.text('仅放弃尚未保存的修改，已保存成功的修改会保留。'), findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, '不保存并退出'));
+      await tester.pumpAndSettle();
+      expect(find.text('第一行已保存'), findsOneWidget);
+      expect(find.text('第二行'), findsOneWidget);
+      expect(find.text('第二行未保存'), findsNothing);
+      expect(find.text('编辑模式'), findsOneWidget);
+      expect(saved, ['g1', 'g2']);
+      expect(reads, readsBeforeDiscard);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('view-only and object read-only rows cannot expose cell inputs', (
     tester,

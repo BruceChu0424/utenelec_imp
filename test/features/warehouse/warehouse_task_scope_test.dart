@@ -1,10 +1,11 @@
 // 仓库数据范围(ADR-149) 的前端契约：
 //   · 主管：顶栏小标签 + 右侧滑窗(先主仓后子仓)，首行「全部仓库」；选一个仓 → 各分段按新范围重拉；
 //   · 负责多个仓：同样的滑窗，首行「我负责的全部仓库」，只列自己负责的仓；
-//   · 只负责一个仓：只读标签「我负责：xx」，不显示选择器，请求不带参数(服务端按本人范围过滤)；
-//   · 其他人：不显示；
+//   · 单仓负责人及其他人：使用相同入口，只能从服务端给出的可见仓中缩小筛选；
 //   · 记忆的仓不在当前可选范围内(负责关系变了)时回到本人默认范围；
 //   · 范围只经骨架往下传：骨架外的同一视图不带参数。
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/uten_tokens.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/components/layout/uten_segment_row.dart';
@@ -71,13 +73,25 @@ const _supervisor = MyWarehouseScope(
 Widget _app({
   required MyWarehouseScope mine,
   required List<(WarehouseTaskScope, int)> seen,
+  Future<MyWarehouseScope> Function()? loadScope,
+  ThemeData? theme,
+  double textScale = 1,
 }) => ProviderScope(
   overrides: [
     sharedPreferencesProvider.overrideWithValue(_preferences),
     apiClientProvider.overrideWithValue(_SilentApi()),
-    myWarehouseScopeProvider.overrideWith((ref) async => mine),
+    myWarehouseScopeProvider.overrideWith(
+      (ref) async => loadScope == null ? mine : await loadScope(),
+    ),
   ],
   child: MaterialApp(
+    theme: theme,
+    builder: (context, child) => MediaQuery(
+      data: MediaQuery.of(
+        context,
+      ).copyWith(textScaler: TextScaler.linear(textScale)),
+      child: child!,
+    ),
     locale: const Locale('zh'),
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
@@ -142,6 +156,51 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     _preferences = await SharedPreferences.getInstance();
   });
+
+  for (final brightness in Brightness.values) {
+    for (final width in [390.0, 760.0, 1500.0]) {
+      testWidgets(
+        'warehouse selector keeps its theme border at $width in $brightness with large text',
+        (tester) async {
+          tester.view.physicalSize = Size(width, 1000);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          final theme =
+              (brightness == Brightness.dark
+                      ? buildDarkTheme()
+                      : buildLightTheme())
+                  .copyWith(platform: TargetPlatform.windows);
+          await tester.pumpWidget(
+            _app(mine: _supervisor, seen: [], theme: theme, textScale: 2),
+          );
+          await tester.pumpAndSettle();
+          final selector = find.byKey(const Key('warehouse-scope-selector'));
+          if (selector.hitTestable().evaluate().isEmpty) {
+            await tester.tap(
+              find.byKey(const Key('uten-app-bar-more-actions')),
+            );
+            await tester.pumpAndSettle();
+          }
+          expect(selector.hitTestable(), findsOneWidget);
+          final border = tester.widget<Ink>(
+            find
+                .byKey(const Key('warehouse-scope-selector-border'))
+                .hitTestable(),
+          );
+          expect(
+            (border.decoration! as BoxDecoration).border,
+            Border.all(color: theme.colorScheme.primary),
+          );
+          expect(
+            tester.getSize(selector.hitTestable()).height,
+            greaterThanOrEqualTo(UtenControlMetrics.compactHeight),
+          );
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
 
   testWidgets(
     'embedded parent and child categories share one compact gap and keep IDs',
@@ -290,30 +349,38 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   });
 
-  testWidgets(
-    'keeper of one warehouse sees a read-only label and no selector',
-    (tester) async {
-      final seen = <(WarehouseTaskScope, int)>[];
-      await tester.pumpWidget(
-        _app(
-          mine: const MyWarehouseScope(
-            role: WarehouseScopeRole.keeper,
-            selectable: [_fg],
-            keeperWarehouses: [_fg],
-            defaultWarehouseId: 'fg',
-          ),
-          seen: seen,
+  testWidgets('keeper of one warehouse can explicitly filter that warehouse', (
+    tester,
+  ) async {
+    final seen = <(WarehouseTaskScope, int)>[];
+    await tester.pumpWidget(
+      _app(
+        mine: const MyWarehouseScope(
+          role: WarehouseScopeRole.keeper,
+          selectable: [_fg],
+          keeperWarehouses: [_fg],
+          defaultWarehouseId: 'fg',
         ),
-      );
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('warehouse-scope-selector')), findsNothing);
-      expect(find.text('我负责：成品仓'), findsOneWidget);
-      // 默认范围由服务端按本人负责的仓强制, 请求不带参数。
-      expect(seen.last.$1.queryParameters, isEmpty);
-    },
-  );
+        seen: seen,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('warehouse-scope-selector')), findsOneWidget);
+    // 默认范围由服务端按本人负责的仓强制, 请求不带参数。
+    expect(seen.last.$1.queryParameters, isEmpty);
+    await tester.tap(find.byKey(const Key('warehouse-scope-selector')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('成品仓'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
+    await tester.pumpAndSettle();
+    expect(seen.last.$1.queryParameters, {'scopeWarehouseId': 'fg'});
+    await tester.pump(const Duration(seconds: 1));
+  });
 
-  testWidgets('other people see no selector at all', (tester) async {
+  testWidgets('an account without visible warehouses has no selector', (
+    tester,
+  ) async {
     final seen = <(WarehouseTaskScope, int)>[];
     await tester.pumpWidget(_app(mine: MyWarehouseScope.empty, seen: seen));
     await tester.pumpAndSettle();
@@ -321,6 +388,102 @@ void main() {
     expect(find.byKey(const Key('warehouse-scope-keeper-label')), findsNothing);
     expect(seen.last.$1, const WarehouseTaskScope.all());
   });
+
+  testWidgets('ordinary warehouse staff can filter within visible warehouses', (
+    tester,
+  ) async {
+    final seen = <(WarehouseTaskScope, int)>[];
+    await tester.pumpWidget(
+      _app(
+        mine: const MyWarehouseScope(selectable: [_hw]),
+        seen: seen,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('全部可见仓库'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('warehouse-scope-selector')));
+    await tester.pumpAndSettle();
+    expect(find.text('主仓'), findsNothing);
+    expect(find.text('成品仓'), findsNothing);
+    await tester.tap(find.text('五金仓'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
+    await tester.pumpAndSettle();
+    expect(seen.last.$1.queryParameters, {'scopeWarehouseId': 'hw'});
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('parent warehouse filter makes visible descendants explicit', (
+    tester,
+  ) async {
+    final seen = <(WarehouseTaskScope, int)>[];
+    await tester.pumpWidget(_app(mine: _supervisor, seen: seen));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('warehouse-scope-selector')));
+    await tester.pumpAndSettle();
+    expect(find.text('包含可见的下级仓库'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('warehouse-picker-entry-main')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
+    await tester.pumpAndSettle();
+    expect(find.text('主仓(含下级)'), findsOneWidget);
+    expect(seen.last.$1.queryParameters, {'scopeWarehouseId': 'main'});
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('failed scope read exposes an inline retry', (tester) async {
+    var attempts = 0;
+    await tester.pumpWidget(
+      _app(
+        mine: MyWarehouseScope.empty,
+        seen: [],
+        loadScope: () async {
+          if (++attempts == 1) throw StateError('offline');
+          return const MyWarehouseScope(selectable: [_hw]);
+        },
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(const Key('warehouse-scope-retry')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('warehouse-scope-retry')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('warehouse-scope-selector')), findsOneWidget);
+    expect(find.text('全部可见仓库'), findsOneWidget);
+  });
+
+  test(
+    'refreshing a selected scope never briefly expands to the default',
+    () async {
+      var response = Future.value(_supervisor);
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(_preferences),
+          apiClientProvider.overrideWithValue(_SilentApi()),
+          myWarehouseScopeProvider.overrideWith((ref) => response),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.listen(warehouseTaskScopeProvider, (_, _) {});
+      await container.read(myWarehouseScopeProvider.future);
+      container
+          .read(warehouseTaskScopePrefProvider.notifier)
+          .select(const WarehouseTaskScope.warehouse('hw'));
+      final refresh = Completer<MyWarehouseScope>();
+      response = refresh.future;
+      container.invalidate(myWarehouseScopeProvider);
+      expect(container.read(myWarehouseScopeProvider).isLoading, isTrue);
+      expect(container.read(warehouseTaskScopeProvider).warehouseId, 'hw');
+      refresh.complete(const MyWarehouseScope(selectable: [_fg]));
+      await container.read(myWarehouseScopeProvider.future);
+      expect(container.read(warehouseTaskScopeProvider).isAll, isTrue);
+      await container.pump();
+      expect(
+        container.read(warehouseTaskScopePrefProvider).warehouseId,
+        isNull,
+      );
+    },
+  );
 
   test('a remembered warehouse outside the current scope falls back', () async {
     SharedPreferences.setMockInitialValues({});

@@ -92,7 +92,9 @@ class _StockItemDetailPageState extends ConsumerState<StockItemDetailPage> {
         ),
         actions: [
           UtenRefreshButton(
-            onRefresh: () async => _panelKey.currentState?.reload(),
+            onRefresh: () async {
+              await _panelKey.currentState?.reload();
+            },
           ),
         ],
       ),

@@ -301,7 +301,7 @@ void main() {
   );
 
   testWidgets(
-    'restored warehouse filter is explicit and clearable while drafts remain all authorized warehouses',
+    'restored scope stays left of drafts and clears through the selector without a filter notice',
     (tester) async {
       final scope = await container(
         tester,
@@ -311,9 +311,16 @@ void main() {
       );
       expect(
         find.byKey(const Key('warehouse-task-scope-filter-notice')),
-        findsOneWidget,
+        findsNothing,
       );
-      expect(find.text('任务筛选：已记忆的成品仓'), findsOneWidget);
+      expect(find.text('任务筛选：已记忆的成品仓'), findsNothing);
+      final selector = find.byKey(const Key('warehouse-scope-selector'));
+      expect(selector, findsOneWidget);
+      expect(
+        tester.getRect(selector).right,
+        lessThan(tester.getRect(find.text('资料草稿')).left),
+      );
+      expect(find.text('已记忆的成品仓'), findsOneWidget);
       expect(scope.read(warehouseTaskScopeProvider).warehouseId, 'chosen');
       expect(
         scope.read(
@@ -322,7 +329,10 @@ void main() {
         0,
       );
       expect(scope.read(formDraftsPageCountProvider('warehouse')), 1);
-      await tester.tap(find.byKey(const Key('warehouse-task-clear-scope')));
+      await tester.tap(selector);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('warehouse-picker-all')));
+      await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
       await tester.pump(const Duration(seconds: 1));
       await tester.pumpAndSettle();
       expect(scope.read(warehouseTaskScopeProvider).isAll, isTrue);

@@ -50,8 +50,9 @@
   [UtenCollapsingHeaderScrollView](UtenCollapsingHeaderScrollView.md) 内（联动折叠页）按
   `UtenInnerScrollActiveScope` 门控——外层收头部阶段（表格未置顶）隐藏，进入表体内滚后
   显示（thumb 与表体内容对应）；独立表格（不在该容器内）查不到 scope，维持常显。
-- **列宽自动适配**（默认）：测量表头与已加载行的内容宽度，加上内边距和图标空间；按每批 256 个单元格的预算在帧间推进，最终覆盖完整已加载行集，不固定截取前 30/100 行。超长文本（如备注）封顶 480px + 省略号，可再拖宽。
-- **列宽手动拖拽**：拖任一列右边界 8px 命中区改宽/改窄（桌面悬停显 resize 光标）；已手动拖过的列在数据刷新时保留用户宽度，其余列按新数据重新适配。
+- **列宽自动适配**（默认）：表头与已加载文本值先作宽度预估，实际表格单元格再通过 `UtenTableCellAutoWidth` 按可见内容补量。输入框从既有紧凑宽度随输入或选值扩大整列，同列表头、表体及冻结区域保持对齐；自动宽度只增不减，通常封顶 480px，声明宽度沿用既有自动拟合规则。手动设置的大于 480px 宽度保留，超限内容沿用内部滚动或省略，整表保留横向滚动。
+  文本及富内容预估按每批 256 个单元格在帧间推进，最终覆盖完整已加载行集。
+- **列宽手动拖拽**：拖任一列右边界 8px 命中区改宽/改窄（桌面悬停显 resize 光标）；已手动拖过的列在输入、选值及数据刷新时保留用户宽度。双击该手柄清除手动宽度并按当前内容恢复自动适配。
 - **表头设置 + 拖出隐藏 + 长按排序（共用 UtenTableColumnKit，2026-09-05 起）**：「表头设置 x/y」深绿
   实心按钮点开**按钮处锚定的浮层勾选列表**（全选行/勾选显隐/拖拽排序把手，点弹层外关闭）；按住表头纵向
   拖出隐藏 = root Overlay 最顶层**跟手浮层**（原格变淡、过阈值红底红×、拖回取消、末列不隐）；**长按
@@ -146,12 +147,15 @@
   落点按目标行内位置分三档：上缘带=同层上方插入、下缘带=同层下方插入、中部=移入
   子级(`canDropInto` 放行时，指示框+「移入「名称」」标签)；悬停约 700ms 触发一次
   `onHoverAutoExpand`（树表悬停自动展开/懒加载由宿主管）；拖到视口上下缘自动滚动。
+  自动展开或滚动把源行移出视口时，仅保活当前按住行的槽和手势识别器，保证后续移动与松手仍可接收。
+  松手、ESC、权限变化或卸载时释放，不保活整批选中行，也不关闭列表懒构建。
   按下已勾选行拖整批勾选行；拾起即把按下行纳入勾选。持久化/加载遮罩/失败提示
   归宿主 `onDrop`。**默认不挂**：普通清单页与自带服务端排序口径的表不传——
   目前全站只有货品「组装信息」接（见 goods_bom_tab.dart）；触屏长按仍是行右键
   菜单等价物（UtenContextMenuRegion 长按已限定触屏类设备，鼠标长按让给拖拽）。
   测试：`test/master_data_table_view_row_drag_test.dart`、
-  `test/features/basic_data/goods_bom_row_drag_move_test.dart`。
+  `test/features/basic_data/goods_bom_row_drag_move_test.dart`、
+  `test/features/basic_data/goods_bom_drag_expand_responsiveness_test.dart`。
 - **分页（2026-10-18 起位于表头上方工具条右上角）**：紧凑形态「‹ [页码框] / 总页数 ›」，
   与「表头设置 / 全屏」同一行、恒排工具条最右（原表格下方翻页条退役）；列表形态（picker
   列表，无表头工具条）把同一分页钉在列表上方右角。跳页框桌面 40 宽；按钮桌面 32、触屏
@@ -281,7 +285,7 @@ MasterDataTableView<T>(
 )
 ```
 
-`MasterColumnDef<T>`：`key`(与后端 query/排序参数对齐)、`label`(列头)、`width`(**仅作初始参考**；默认按内容自动适配，见 §二，已不直接用于布局)、`value`(文本真值，继续用于列宽测算/排序/稳定行键/无障碍标签回退)、`cellBuilder`(可选自定义单元格；外层仍管列宽、内边距、网格线和选中底色，builder 只管内部内容)、`type`(`text`/`date`/`number`/`money`/`bool`，对齐后端 `ReportColumn.type`)、`sortable`(日期/金额/数量列置 true)、`cellColor`(单元格语义底色，列级；**底色与文字双向保证对比度**——`ThemeData.estimateBrightnessForColor` 判定，深色底自动切白字、**浅色底强制深字**（2026-09-05 修订：暗色主题下 `colorScheme.error/primary/tertiary` 是浅色，作底色时原先保留默认前景=白字不可读），缺口列传 `colorScheme.error` 即得红底白字，浅色底如 `errorContainer` 半透明保持默认前景色)。
+`MasterColumnDef<T>`：`key`(与后端 query/排序参数对齐)、`label`(列头)、`width`(**仅作初始参考**；默认按内容自动适配，见 §二，已不直接用于布局)、`value`(文本真值，继续用于列宽预估/排序/稳定行键/无障碍标签回退)、`cellBuilder`(可选自定义单元格；外层仍管列宽、内边距、网格线和选中底色，builder 只管内部内容，当前可见输入值由公共量宽组件反馈)、`type`(`text`/`date`/`number`/`money`/`bool`，对齐后端 `ReportColumn.type`)、`sortable`(日期/金额/数量列置 true)、`cellColor`(单元格语义底色，列级；**底色与文字双向保证对比度**——`ThemeData.estimateBrightnessForColor` 判定，深色底自动切白字、**浅色底强制深字**（2026-09-05 修订：暗色主题下 `colorScheme.error/primary/tertiary` 是浅色，作底色时原先保留默认前景=白字不可读），缺口列传 `colorScheme.error` 即得红底白字，浅色底如 `errorContainer` 半透明保持默认前景色)。
 
 自绘单元格的`cellBuilder`现在接收位于实际行样式之下的context，可通过`MasterDataTableCellScope.maybeOf(context)`读取`selected`与`foregroundColor`，同时继承正确的`DefaultTextStyle`和`IconTheme`。只读列表的单行高亮与可勾选列表的业务多选统一从此域取选中态；不要用页面`selectedIds`推测只读行是否高亮。自绘数量、输入值、单位与提示文字在选中时使用该域前景色，未选中仍保留业务语义颜色。
 
@@ -484,6 +488,8 @@ return MasterDataTableView<Map<String, dynamic>>(
 - 测试钩子 `debugMasterTableMeasureTextCount`；回归：`test/master_data_table_view_width_cache_test.dart`、
   `test/master_data_table_view_rich_width_budget_test.dart`；物料页 500 产品/2000 行与 1.0/1.6 缩放见
   `test/features/production/pages/material_analysis_presentation_work_cases.dart`。
+- 表格单元格的 `UtenTableCellAutoWidth` 在布局后补量真实可见内容，覆盖裸文本输入、Uten 输入、数字金额、日期月份、下拉（含 flat）、选择器和复合输入；`cellBuilder` 不必另写宽度监听。当前字体、完整 `TextScaler`、内边距、图标与单位一并计入，占位、错误说明及菜单候选不计入。卡片模式继续按响应式可用宽度布局，不反馈列宽。
+- 输入内容变化同样只在超过当前宽度时增长，自动上限为 480px，声明宽度沿用既有自动拟合规则，手动设置的更大宽度保留。拖动锁定手动宽度，双击列宽手柄恢复自动；测量不替换原输入控件，不改变控制器、焦点、选区、校验、回调、值或权限。
 
 ## 2026-09-25 单号列统一三件套
 

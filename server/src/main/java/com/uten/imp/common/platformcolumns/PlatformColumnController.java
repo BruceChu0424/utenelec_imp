@@ -16,6 +16,7 @@ public class PlatformColumnController {
     @GetMapping("/{scope}/definitions") public List<Definition> definitions(@PathVariable String scope, @RequestParam(required=false) String q,
             @RequestParam(required=false) List<UUID> ids) { return ids==null?service.search(scope,q):service.definitions(scope,ids); }
     @PostMapping("/{scope}/definitions") public Definition create(@PathVariable String scope,@RequestBody CreateDefinition request) { return service.create(scope,request); }
+    @DeleteMapping("/{scope}/definitions/{definitionId}") public void delete(@PathVariable String scope,@PathVariable UUID definitionId) { service.delete(scope,definitionId); }
     @PostMapping("/{scope}/values:batch") public List<Row> read(@PathVariable String scope,@RequestBody BatchRead request) { return service.read(scope,request); }
     @PutMapping("/{scope}/values/{recordId}") public Row write(@PathVariable String scope,@PathVariable UUID recordId,@RequestBody Write request) { return service.write(scope,recordId,request); }
     @GetMapping("/{scope}/values/{recordId}/history") public List<HistoryRow> history(@PathVariable String scope,@PathVariable UUID recordId,

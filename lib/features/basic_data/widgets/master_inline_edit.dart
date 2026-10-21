@@ -6,6 +6,7 @@ import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/drafts/form_draft_navigation.dart';
@@ -96,7 +97,12 @@ class MasterInlineEditController<T> extends ChangeNotifier {
   int get changedRows => _patches.length;
   T? baselineOf(String id) => _baselines[id];
   void rememberBaseline(String id, T row) {
-    if (active && !busy) _baselines.putIfAbsent(id, () => row);
+    if (!active || busy) return;
+    if (!_patches.containsKey(id)) {
+      _baselines[id] = row;
+      _originals.remove(id);
+      _fields.remove(id);
+    }
   }
 
   Map<String, dynamic> patchFor(String id) =>
@@ -109,14 +115,14 @@ class MasterInlineEditController<T> extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> prepareToBegin(Future<void> Function() paintFeedback) async {
+  Future<void> prepareToBegin([Future<void> Function()? paintFeedback]) async {
     if (busy || active || preparing) return;
     final epoch = _epoch;
     preparing = true;
     error = null;
     notifyListeners();
     try {
-      await paintFeedback();
+      await (paintFeedback ?? _paintFeedback)();
       if (epoch == _epoch) begin();
     } finally {
       if (epoch == _epoch) {
@@ -176,21 +182,40 @@ class MasterInlineEditController<T> extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> confirmLeave(BuildContext context) {
+  Future<bool> confirmLeave(
+    BuildContext context, {
+    String? discardLabel,
+    String? discardNote,
+  }) {
     final pending = _leaveDecision;
     // One navigation intent owns the dialog. A second caller must not consume
     // the same positive result and navigate twice or open two history panels.
     if (pending != null) return Future<bool>.value(false);
-    if (!dirty) return _confirmLeave(context);
+    if (!dirty) {
+      return _confirmLeave(
+        context,
+        discardLabel: discardLabel,
+        discardNote: discardNote,
+      );
+    }
     late final Future<bool> decision;
-    decision = _confirmLeave(context).whenComplete(() {
-      if (identical(_leaveDecision, decision)) _leaveDecision = null;
-    });
+    decision =
+        _confirmLeave(
+          context,
+          discardLabel: discardLabel,
+          discardNote: discardNote,
+        ).whenComplete(() {
+          if (identical(_leaveDecision, decision)) _leaveDecision = null;
+        });
     _leaveDecision = decision;
     return decision;
   }
 
-  Future<bool> _confirmLeave(BuildContext context) async {
+  Future<bool> _confirmLeave(
+    BuildContext context, {
+    String? discardLabel,
+    String? discardNote,
+  }) async {
     if (busy || preparing) return false;
     if (!dirty) {
       if (active) cancel();
@@ -216,12 +241,13 @@ class MasterInlineEditController<T> extends ChangeNotifier {
           ),
         ),
         content: Text(
-          masterEditText(
-            context,
-            '表格中的修改尚未保存。放弃后不会写入资料。',
-            'Changes in this table have not been saved.',
-            '표의 변경 사항이 아직 저장되지 않았습니다.',
-          ),
+          discardNote ??
+              masterEditText(
+                context,
+                '表格中的修改尚未保存。放弃后不会写入资料。',
+                'Changes in this table have not been saved.',
+                '표의 변경 사항이 아직 저장되지 않았습니다.',
+              ),
         ),
         actions: [
           TextButton(
@@ -233,7 +259,13 @@ class MasterInlineEditController<T> extends ChangeNotifier {
           FilledButton(
             onPressed: () => decide(dialogContext, true),
             child: Text(
-              masterEditText(context, '放弃修改', 'Discard changes', '변경 사항 버리기'),
+              discardLabel ??
+                  masterEditText(
+                    context,
+                    '放弃修改',
+                    'Discard changes',
+                    '변경 사항 버리기',
+                  ),
             ),
           ),
         ],
@@ -385,7 +417,7 @@ class MasterInlineEditController<T> extends ChangeNotifier {
                   Text(column.value(row) ?? '—');
             }
             final id = idOf(row);
-            _baselines.putIfAbsent(id, () => row);
+            rememberBaseline(id, row);
             return _MasterInlineCell<T>(
               key: ValueKey('inline-$id-${field.key}'),
               controller: this,
@@ -399,6 +431,55 @@ class MasterInlineEditController<T> extends ChangeNotifier {
           },
         ),
   ];
+}
+
+/// A record inspector uses the same lazy field cells, drafts and save contract
+/// as a master table. Only the layout changes from columns to a field grid.
+class MasterInlineRecordEditor<T> extends StatelessWidget {
+  const MasterInlineRecordEditor({
+    super.key,
+    required this.controller,
+    required this.row,
+    required this.idOf,
+    required this.columns,
+    required this.fields,
+  });
+
+  final MasterInlineEditController<T> controller;
+  final T row;
+  final String Function(T) idOf;
+  final List<MasterColumnDef<T>> columns;
+  final Map<String, MasterInlineField<T>> fields;
+
+  @override
+  Widget build(BuildContext context) {
+    final editors = controller.columns(
+      columns: columns,
+      idOf: idOf,
+      fields: fields,
+    );
+    return UtenFormGrid(
+      columns: 4,
+      maxColumns: 4,
+      minFieldWidth: 260,
+      children: [
+        for (final column in editors)
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                column.label,
+                style: Theme.of(context).textTheme.labelMedium,
+              ),
+              const SizedBox(height: UtenSpacing.s4),
+              column.cellBuilder?.call(context, row) ??
+                  Text(column.value(row) ?? '—'),
+            ],
+          ),
+      ],
+    );
+  }
 }
 
 class _MasterInlineCell<T> extends StatefulWidget {
@@ -652,11 +733,15 @@ class MasterInlineEditActions<T> extends StatelessWidget {
     required this.onSave,
     this.additionalActions = const [],
     this.embedded = false,
+    this.cancelLabel,
+    this.discardNote,
   });
   final MasterInlineEditController<T> controller;
   final bool canEdit;
   final Future<void> Function(String, Map<String, dynamic>) onSave;
   final List<Widget> additionalActions;
+  final String? cancelLabel;
+  final String? discardNote;
 
   /// The master table already owns the outer floating group and selection count.
   final bool embedded;
@@ -725,9 +810,18 @@ class MasterInlineEditActions<T> extends StatelessWidget {
         onPressed: controller.busy
             ? null
             : () async {
-                if (await controller.confirmLeave(context)) controller.cancel();
+                if (await controller.confirmLeave(
+                  context,
+                  discardLabel: cancelLabel,
+                  discardNote: discardNote,
+                )) {
+                  controller.cancel();
+                }
               },
-        child: Text(masterEditText(context, '取消编辑', 'Cancel editing', '편집 취소')),
+        child: Text(
+          cancelLabel ??
+              masterEditText(context, '取消编辑', 'Cancel editing', '편집 취소'),
+        ),
       ),
       UtenButton(
         size: UtenButtonSize.large,

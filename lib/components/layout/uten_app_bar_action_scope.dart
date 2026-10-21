@@ -150,11 +150,8 @@ class UtenAppBarNativeActionButton extends ButtonStyleButton {
       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       visualDensity: VisualDensity.standard,
       shape: const RoundedRectangleBorder(borderRadius: UtenRadius.controlAll),
-      textStyle: const TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w600,
-        height: 1.2,
-      ),
+      textStyle: (Theme.of(context).textTheme.labelLarge ?? const TextStyle())
+          .copyWith(fontSize: 14, fontWeight: FontWeight.w600, height: 1.2),
     );
     return source
         .defaultStyleOf(context)

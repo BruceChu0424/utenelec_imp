@@ -96,7 +96,7 @@ void main() {
       ),
     );
 
-    expect(redCounts(tester, '仓库任务中心'), [30]);
+    expect(redCounts(tester, '仓库任务中心'), [25]);
     // 2026-10 口径：任务中心卡只展示待办（进行中是另一种状态，不与待办相加
     // 造成重复），本模块「进行中 11」由 hub 顶栏黄签 UtenModuleProgressChip 呈现。
     expect(
@@ -107,7 +107,7 @@ void main() {
       findsNothing,
     );
     expect(find.text('进行中 11'), findsOneWidget);
-    expect(find.text('待办 30'), findsOneWidget);
+    expect(find.text('待办 25'), findsOneWidget);
     expectNewCardsWithoutCounts(tester);
   });
 

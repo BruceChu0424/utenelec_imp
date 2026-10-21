@@ -329,7 +329,7 @@ public class FulfillmentWorkbenchQueryService {
         String normalizedKeyword = KeywordSearch.phrase(keyword);
         String normalizedException = exception == null ? "" : exception.strip().toUpperCase();
         // Display every real application/order item before filtering and pagination.
-        // Document identities remain available for original workflow commands and badge counts.
+        // Document identities remain available for original workflow commands; badges count these item rows.
         String sourceView = "WAREHOUSE".equals(department)
                 ? WAREHOUSE_DOCUMENT_ROWS
                 : "PURCHASE".equals(department) ? PURCHASE_ITEM_ROWS : SUBCONTRACT_ITEM_ROWS;
@@ -422,14 +422,13 @@ public class FulfillmentWorkbenchQueryService {
         String statusKey = "SUBCONTRACT".equals(department)
                 ? "CASE WHEN display_stage = 'BOM_MISSING' THEN 'BOM_MISSING' ELSE task_status END"
                 : "task_status";
-        String documentCount = usesDecompositionProjection(department) ? "COUNT(DISTINCT action_doc_id)" : "COUNT(*)";
         Query statusQuery = em.createNativeQuery("""
-                SELECT %s AS status_key, %s
+                SELECT %s AS status_key, COUNT(*)
                 FROM %s
                 WHERE %s
                 GROUP BY 1
                 ORDER BY 1
-                """.formatted(statusKey, documentCount, sourceView, filters));
+                """.formatted(statusKey, sourceView, filters));
         // Status cards always describe the whole department/keyword result so
         // selecting one card never makes the other card counts disappear.
         bind(statusQuery, department, "", normalizedKeyword, normalizedException, null, null);
@@ -465,12 +464,12 @@ public class FulfillmentWorkbenchQueryService {
 
         // 「待完成」卡计数：open_line_count > 0，部门×关键字全量口径（与状态卡一致，
         // 不受当前状态卡筛选影响——否则选中「已完成」时待完成卡会被错误清零）。
-        // 列表按明细展示；采购/委外待办仍按「含未完成明细的原单据数」计数。
+        // 与列表及分段分布一致，逐条统计未完成的来源明细。
         Query pendingQuery = em.createNativeQuery("""
-                SELECT %s FILTER (WHERE open_line_count > 0)
+                SELECT COUNT(*) FILTER (WHERE open_line_count > 0)
                 FROM %s
                 WHERE %s
-                """.formatted(documentCount, sourceView, filters));
+                """.formatted(sourceView, filters));
         bind(pendingQuery, department, "", normalizedKeyword, normalizedException, null, null);
         bindScope.accept(pendingQuery);
         long pendingTasks = ((Number) pendingQuery.getSingleResult()).longValue();
@@ -721,13 +720,14 @@ public class FulfillmentWorkbenchQueryService {
             scopes.add(scope);
             stages.add("(decomposition.task_status = 'FINANCE_APPROVED' AND decomposition.open_qty > 0"
                     + " AND decomposition.action_doc_type = 'SUBCONTRACT_ORDER' AND "
-                    + SHORT_DELIVERY_PENDING_EXISTS.formatted("decomposition.action_doc_id", " AND " + scope.predicate()) + ")");
+                    + SHORT_DELIVERY_PENDING_EXISTS.formatted("decomposition.action_doc_id",
+                            " AND short_case.order_item_id = decomposition.action_item_id AND " + scope.predicate()) + ")");
         }
         Query query = em.createNativeQuery("""
-                SELECT COUNT(DISTINCT decomposition.action_doc_id),
-                       COUNT(DISTINCT decomposition.action_doc_id) FILTER (WHERE decomposition.task_status = 'WAITING_ORDER'),
-                       COUNT(DISTINCT decomposition.action_doc_id) FILTER (WHERE decomposition.task_status = 'FINANCE_REJECTED'),
-                       COUNT(DISTINCT decomposition.action_doc_id) FILTER (WHERE decomposition.task_status = 'FINANCE_APPROVED')
+                SELECT COUNT(*),
+                       COUNT(*) FILTER (WHERE decomposition.task_status = 'WAITING_ORDER'),
+                       COUNT(*) FILTER (WHERE decomposition.task_status = 'FINANCE_REJECTED'),
+                       COUNT(*) FILTER (WHERE decomposition.task_status = 'FINANCE_APPROVED')
                 FROM v_procurement_decomposition_tasks decomposition
                 WHERE decomposition.department = :department AND (%s)
                 """.formatted(String.join(" OR ", stages)));
@@ -750,8 +750,8 @@ public class FulfillmentWorkbenchQueryService {
      * 等待财务审核 / 财务已通过 / 财务已退回三档，但只计真实具备办理资格且在可写责任范围内的订单。
      * 普通列表的 {@code summary.statusCounts.IN_PROGRESS} 是浏览分布，不代表本人的任务归属。
      *
-     * <p>黄数保留单据量纲 (action_doc_type + action_doc_id + task_status)。
-     * 列表按明细展示，分页总数与表头分面按货品行计数，不能与单据徽章相加。
+     * <p>红黄数与列表均按真实来源明细行计数；同一订单的两条货品行计为两条任务。
+     * 动作资格和可写责任范围仍沿用原判据，不能使用全部浏览分布替代。
      *
      * <p>刻意不套 {@code open_qty > 0}：回厂净量已到齐、订货单还没关闭的单子仍在
      * 进行中列表里看得见，黄数漏掉它就会与列表行数对不上。
@@ -775,16 +775,11 @@ public class FulfillmentWorkbenchQueryService {
                 && !(subcontract && accessPolicy.canDecideSubcontractShortDelivery())) return 0;
         NativeReadScope scope = accessPolicy.orderTaskScope(department, "task_order.maker_id", "task_order_owners");
         Query query = em.createNativeQuery("""
-                SELECT COUNT(*) FROM (
-                    SELECT decomposition.action_doc_type, decomposition.action_doc_id,
-                           decomposition.task_status
-                    FROM v_procurement_decomposition_tasks decomposition
-                    WHERE decomposition.department = :department
-                      AND decomposition.task_status IN (%s)
-                      AND %s
-                    GROUP BY decomposition.action_doc_type, decomposition.action_doc_id,
-                             decomposition.task_status
-                ) documents
+                SELECT COUNT(*)
+                FROM v_procurement_decomposition_tasks decomposition
+                WHERE decomposition.department = :department
+                  AND decomposition.task_status IN (%s)
+                  AND %s
                 """.formatted(IN_PROGRESS_STATUS_SQL, ownedOrderExists(department, scope)));
         query.setParameter("department", department);
         scope.bind(query);

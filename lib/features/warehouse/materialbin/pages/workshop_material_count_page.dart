@@ -15,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../components/buttons/uten_back_button.dart';
+import '../../../../components/buttons/uten_refresh_button.dart';
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/feedback/uten_busy_overlay.dart';
 import '../../../../components/feedback/uten_dialog.dart';
@@ -784,11 +785,10 @@ class _WorkshopMaterialCountPageState
                 backTo(context, defaultPath: RouteName.workshopMaterialBin),
           ),
           actions: [
-            IconButton(
+            UtenRefreshButton(
               key: const Key('wm-count-refresh'),
-              icon: const Icon(Icons.refresh_rounded),
-              tooltip: '刷新',
-              onPressed: _busyTitle == null ? _load : null,
+              enabled: _busyTitle == null,
+              onRefresh: _load,
             ),
           ],
         ),

@@ -1,6 +1,8 @@
 package com.uten.imp.businesschain;
 
 import com.uten.imp.features.purchase.receipt.PurchaseReceiptService;
+import com.uten.imp.features.visitor.sms.SmsGatewaySecretRewrap;
+import com.uten.imp.security.SecretCipher;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,12 +17,14 @@ import org.springframework.test.context.TestContext;
 import org.springframework.test.context.TestExecutionListeners;
 import org.springframework.test.context.support.AbstractTestExecutionListener;
 import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verify;
 import static com.uten.imp.migration.MigrationRehearsalSupport.CURRENT_HEAD_VERSION;
 import static com.uten.imp.migration.MigrationRehearsalSupport.CURRENT_MIGRATION_COUNT;
 import static com.uten.imp.migration.MigrationRehearsalSupport.migrationFileCountUpTo;
@@ -51,8 +55,15 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
     @Autowired PurchaseReceiptService receipts;
     @Autowired EntityManagerFactoryBuilder entityManagerFactoryBuilder;
     @Autowired javax.sql.DataSource dataSource;
+    @Autowired SecretCipher cipher;
+    // The SMS settings table starts at V867. Its current-schema startup task is
+    // unrelated to this real V854 fixture; keep encryption and migration beans real.
+    @MockitoBean(enforceOverride = true) SmsGatewaySecretRewrap smsGatewaySecretRewrap;
 
     @Test void realExistingSourcesAndAppliedHistoryRemainByteForByteAndTheirReversalStillWorks() {
+        assertThat(cipher.available()).isTrue();
+        verify(smsGatewaySecretRewrap).onStartup();
+        assertThat(db.queryForObject("SELECT to_regclass('public.sms_gateway_settings') IS NULL", Boolean.class)).isTrue();
         var support=new RootSupplyActualWarehouseEndToEndTest();beans.autowireBean(support);support.prepare();
         try {
             // Prepare versioned V854 procurement facts, then run real receipt/IQC/stock
@@ -87,6 +98,7 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
             currentMigration.validate();assertThat(currentMigration.migrate().migrationsExecuted).isZero();
             assertThat(db.queryForObject("SELECT max(version::integer) FROM flyway_schema_history WHERE success",Integer.class))
                     .isEqualTo(com.uten.imp.testsupport.FixtureNumbers.integer(CURRENT_HEAD_VERSION));
+            assertThat(db.queryForObject("SELECT to_regclass('public.sms_gateway_settings') IS NOT NULL", Boolean.class)).isTrue();
             assertThat(db.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE version IS NOT NULL AND success",Integer.class))
                     .isEqualTo(CURRENT_MIGRATION_COUNT);
             assertThat(db.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE NOT success",Integer.class)).isZero();

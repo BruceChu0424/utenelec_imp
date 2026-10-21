@@ -3,6 +3,7 @@ package com.uten.imp.common.columns;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/business-columns")
@@ -17,4 +18,6 @@ public class BusinessColumnController {
     public BusinessColumnService.Capabilities capabilities(@RequestParam String scope) { return service.capabilities(scope); }
     @PostMapping
     public BusinessColumnService.Definition create(@RequestBody BusinessColumnService.Create request) { return service.create(request); }
+    @DeleteMapping("/{scope}/{id}")
+    public void delete(@PathVariable String scope, @PathVariable UUID id) { service.delete(scope, id); }
 }

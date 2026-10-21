@@ -5,10 +5,11 @@ import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 
 // UtenFilterToolbar 的分段计数形态契约（docs/00-项目准则/14-徽章与计数口径.md）：
 // 默认中性括号 `(N)`（新调用方不会凭空造出假警报），红徽章必须显式挑；
-// 窄屏 + 大字号下分段行横向滚动，不换行也不溢出。
+// 窄屏 + 大字号下分段收进完整分类面板，入口明确标注全部分类合计。
 
 Widget _wrap(Widget child, {double textScale = 1.0}) => MaterialApp(
   theme: ThemeData(useMaterial3: true),
@@ -38,6 +39,28 @@ UtenFilterToolbar<String> _toolbar() => UtenFilterToolbar<String>(
 );
 
 void main() {
+  for (final (language, summaryLabel) in [
+    ('en', 'All categories'),
+    ('ko', '전체 분류'),
+  ]) {
+    testWidgets('折叠分类合计使用当前语言 $language', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(160, 812));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: Locale(language),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(body: _toolbar()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text(summaryLabel), findsOneWidget);
+      expect(find.text('全部分类'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('默认形态是中性括号，红徽章只出现在显式挑了 actionable 的分段', (tester) async {
     await tester.pumpWidget(_wrap(_toolbar()));
 
@@ -104,6 +127,7 @@ void main() {
     expect(scroller, findsNothing);
     // 按钮文案 = 当前选中的分段；红徽章 = actionable 分段计数总量（3）。
     expect(find.text('等待下达车间'), findsOneWidget);
+    expect(find.text('全部分类'), findsOneWidget);
     expect(find.byType(UtenNotificationBadge), findsOneWidget);
     expect(find.text('3'), findsOneWidget);
     // 点开下拉：逐项展示分类与计数（口径不变），选中项打勾；点选回调换选。
@@ -115,6 +139,61 @@ void main() {
     await tester.tap(find.text('历史记录'));
     await tester.pumpAndSettle();
     expect(picked, 'history');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('折叠入口明确区分当前入库分类与全部分类合计', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(375, 812));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      _wrap(
+        UtenFilterToolbar<String>(
+          autoSelectBadge: false,
+          segments: const [
+            UtenFilterSegment(
+              value: 'outbound',
+              label: '出库',
+              count: 2,
+              countForm: UtenSegmentCountForm.actionable,
+            ),
+            UtenFilterSegment(
+              value: 'inbound',
+              label: '入库',
+              count: 2,
+              countForm: UtenSegmentCountForm.actionable,
+            ),
+            UtenFilterSegment(value: 'quality', label: '品质检查结果'),
+            UtenFilterSegment(value: 'workshop', label: '车间内料仓'),
+            UtenFilterSegment(value: 'returns', label: '委外成品退货'),
+          ],
+          selected: const {'inbound'},
+          onSelectionChanged: (_) {},
+        ),
+        textScale: 1.5,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('入库'), findsOneWidget);
+    expect(find.text('全部分类'), findsOneWidget);
+    expect(
+      tester
+          .widget<UtenNotificationBadge>(find.byType(UtenNotificationBadge))
+          .count,
+      4,
+    );
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded));
+    await tester.pumpAndSettle();
+    final categories = tester.widgetList<UtenSegmentBadgeLabel>(
+      find.byType(UtenSegmentBadgeLabel),
+    );
+    expect({
+      for (final category in categories) category.label: category.count,
+    }, containsPair('入库', 2));
+    expect({
+      for (final category in categories) category.label: category.count,
+    }, containsPair('出库', 2));
     expect(tester.takeException(), isNull);
   });
 

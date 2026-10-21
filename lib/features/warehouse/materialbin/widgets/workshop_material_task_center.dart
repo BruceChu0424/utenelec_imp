@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 // 仓库任务中心 · 「车间内料仓」大类正文 (ADR-131 §8.1)。
 //
 // 小类: 待发料 / 待收退回 / 盘点审核 (红) / 周期盘点 (黄 = 盘点中) / 记录。
@@ -267,7 +268,8 @@ class WmRequisitionSegment extends ConsumerStatefulWidget {
       _WmRequisitionSegmentState();
 }
 
-class _WmRequisitionSegmentState extends ConsumerState<WmRequisitionSegment> {
+class _WmRequisitionSegmentState extends ConsumerState<WmRequisitionSegment>
+    with UtenRefreshParticipant<WmRequisitionSegment> {
   PagedResult<WmRequisition>? _result;
   bool _loading = false;
   String? _error;
@@ -280,7 +282,7 @@ class _WmRequisitionSegmentState extends ConsumerState<WmRequisitionSegment> {
     super.initState();
     _statusFilter = widget.status;
     _kindFilter = widget.kind;
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+    WidgetsBinding.instance.addPostFrameCallback((_) => trackRefresh(_load(1)));
   }
 
   @override
@@ -298,7 +300,7 @@ class _WmRequisitionSegmentState extends ConsumerState<WmRequisitionSegment> {
         _kindFilter = widget.kind;
         _result = null;
       }
-      _load(1);
+      trackRefresh(_load(1));
     }
   }
 
@@ -607,7 +609,8 @@ class WmBinStatusSegment extends ConsumerStatefulWidget {
   ConsumerState<WmBinStatusSegment> createState() => _WmBinStatusSegmentState();
 }
 
-class _WmBinStatusSegmentState extends ConsumerState<WmBinStatusSegment> {
+class _WmBinStatusSegmentState extends ConsumerState<WmBinStatusSegment>
+    with UtenRefreshParticipant<WmBinStatusSegment> {
   List<_BinStatusRow>? _rows;
   bool _loading = false;
   String? _error;
@@ -615,13 +618,13 @@ class _WmBinStatusSegmentState extends ConsumerState<WmBinStatusSegment> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) => trackRefresh(_load()));
   }
 
   @override
   void didUpdateWidget(covariant WmBinStatusSegment oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.refreshTick != widget.refreshTick) _load();
+    if (oldWidget.refreshTick != widget.refreshTick) trackRefresh(_load());
   }
 
   Future<void> _load() async {

@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 // 生产领料任务中心 · 待领任务分段：仓库履约（备料/领取）任务队列。
 //
 // 数据源与 /operations/workbench/warehouse 履约工作台同源（生产物料需求 ×
@@ -83,7 +84,8 @@ class WarehouseDrawTaskSegment extends ConsumerStatefulWidget {
 }
 
 class _WarehouseDrawTaskSegmentState
-    extends ConsumerState<WarehouseDrawTaskSegment> {
+    extends ConsumerState<WarehouseDrawTaskSegment>
+    with UtenRefreshParticipant<WarehouseDrawTaskSegment> {
   PagedResult<WarehouseDrawTask>? _result;
   bool _loading = false;
   String? _error;
@@ -110,7 +112,7 @@ class _WarehouseDrawTaskSegmentState
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+    WidgetsBinding.instance.addPostFrameCallback((_) => trackRefresh(_load(1)));
   }
 
   @override
@@ -122,7 +124,9 @@ class _WarehouseDrawTaskSegmentState
     }
     if (oldWidget.keyword != widget.keyword ||
         oldWidget.refreshTick != widget.refreshTick) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => trackRefresh(_load(1)),
+      );
     }
   }
 

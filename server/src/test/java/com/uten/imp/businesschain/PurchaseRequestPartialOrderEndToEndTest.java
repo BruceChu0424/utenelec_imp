@@ -166,11 +166,10 @@ class PurchaseRequestPartialOrderEndToEndTest {
         assertReturnedOrderMaterialRows(returned);
         var allRunning=workbench.query("PURCHASE","IN_PROGRESS","","",null,null,1,100);
         assertThat(allRunning.items()).hasSize(Math.toIntExact(allRunning.total()));
-        long runningDocuments=allRunning.items().stream().map(row->row.actionDocId()).distinct().count();
-        assertThat(workbench.countInProgress("PURCHASE")).isEqualTo(runningDocuments);
-        assertThat(allRunning.summary().statusCounts().get("IN_PROGRESS")).isEqualTo(runningDocuments);
+        assertThat(workbench.countInProgress("PURCHASE")).isEqualTo(allRunning.total());
+        assertThat(allRunning.summary().statusCounts().get("IN_PROGRESS")).isEqualTo(allRunning.total());
         assertThat(workbench.countPending("PURCHASE")).isEqualTo(db.queryForObject("""
-                SELECT COUNT(DISTINCT action_doc_id) FROM v_procurement_decomposition_tasks
+                SELECT COUNT(*) FROM v_procurement_decomposition_tasks
                 WHERE department='PURCHASE' AND open_qty>0 AND task_status IN ('WAITING_ORDER','FINANCE_REJECTED')
                 """,Long.class));
 
@@ -551,7 +550,7 @@ class PurchaseRequestPartialOrderEndToEndTest {
             assertThat(row.fulfilledQty()).isEqualByComparingTo(BigDecimal.ZERO);
             assertThat(row.openQty()).isEqualByComparingTo(physical);
         }
-        assertThat(page.summary().statusCounts().get("IN_PROGRESS")).isEqualTo(1L);
+        assertThat(page.summary().statusCounts().get("IN_PROGRESS")).isEqualTo((long)expectedItems.size());
     }
     private void assertRequestOpen(Fixture f,String remaining) {
         assertThat(db.queryForObject("SELECT COALESCE(SUM(open_qty),0) FROM v_procurement_decomposition_tasks WHERE action_doc_type='PURCHASE_REQUEST' AND action_doc_id=?",BigDecimal.class,f.request())).isEqualByComparingTo(remaining);

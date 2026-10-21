@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 // 销售出库工作台（可嵌入）：仓库侧对财务已放行的销售出货一步确认出库。
 //
 // 2026-09-01 起「出库任务中心 · 销售出库」分段内嵌本组件（embedded=true 时不带
@@ -109,7 +110,8 @@ class WarehouseSalesOutboundWorkbench extends ConsumerStatefulWidget {
 }
 
 class _WarehouseSalesOutboundWorkbenchState
-    extends ConsumerState<WarehouseSalesOutboundWorkbench> {
+    extends ConsumerState<WarehouseSalesOutboundWorkbench>
+    with UtenRefreshParticipant<WarehouseSalesOutboundWorkbench> {
   PagedResult<WarehouseSalesOutboundSummary>? _result;
   bool _loading = false;
   String? _error;
@@ -156,7 +158,9 @@ class _WarehouseSalesOutboundWorkbenchState
       _selectedIds.clear();
       _loading = _shouldLoad;
       ++_requestVersion;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => trackRefresh(_load(1)),
+      );
     }
   }
 

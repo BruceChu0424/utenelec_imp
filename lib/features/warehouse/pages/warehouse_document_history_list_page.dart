@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_refresh_scope.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -29,6 +30,13 @@ class _WarehouseDocumentHistoryListPageState
     extends ConsumerState<WarehouseDocumentHistoryListPage> {
   String? _myLocation;
   int _refreshTick = 0;
+  final _refreshController = UtenRefreshController();
+
+  @override
+  void dispose() {
+    _refreshController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,33 +44,34 @@ class _WarehouseDocumentHistoryListPageState
     ref.onPageResume(_myLocation!, () {
       setState(() => _refreshTick++);
     });
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: widget.type.title,
-        leading: UtenBackButton(
-          onPressed: () => popOrBackTo(context, defaultPath: '/warehouse'),
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: UtenSpacing.s8),
-            child: UtenButton(
+    return UtenRefreshScope(
+      controller: _refreshController,
+      child: Scaffold(
+        appBar: UtenAppBar(
+          title: widget.type.title,
+          leading: UtenBackButton(
+            onPressed: () => popOrBackTo(context, defaultPath: '/warehouse'),
+          ),
+          actions: [
+            UtenButton(
               key: Key('warehouse-history-refresh-${widget.type.segment}'),
               size: UtenButtonSize.large,
               type: UtenButtonType.tonal,
               icon: Icons.refresh_rounded,
-              onPressed: () => setState(() => _refreshTick++),
+              onPressed: () =>
+                  _refreshController.run(() => setState(() => _refreshTick++)),
               child: const Text('刷新'),
             ),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: UtenContentContainer.wide(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-            child: WarehouseDocumentHistoryView(
-              type: widget.type,
-              refreshTick: _refreshTick,
+          ],
+        ),
+        body: SafeArea(
+          child: UtenContentContainer.wide(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+              child: WarehouseDocumentHistoryView(
+                type: widget.type,
+                refreshTick: _refreshTick,
+              ),
             ),
           ),
         ),

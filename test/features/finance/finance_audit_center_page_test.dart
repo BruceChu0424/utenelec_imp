@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
@@ -12,6 +13,7 @@ import 'package:uten_imp/features/finance/repositories/sales_order_finance_confi
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
+import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 import '../../support/filter_segment_tap.dart';
@@ -22,6 +24,85 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     _preferences = await SharedPreferences.getInstance();
+  });
+
+  testWidgets(
+    'header refresh waits for the visible queue and prevents repeats',
+    (tester) async {
+      final repository = _EmptyConfirmationRepository();
+      await tester.pumpWidget(
+        _app(
+          const FinanceAuditCenterPage(initialSegment: 'salesConfirm'),
+          const {Perm.salesOrderFinanceView},
+          repository: repository,
+        ),
+      );
+      await tester.pumpAndSettle();
+      final pending = Completer<SalesOrderFinancePendingPage>();
+      repository.nextPending = pending;
+      final refresh = find.byKey(const Key('finance-audit-center-refresh'));
+      await tester.tap(refresh);
+      await tester.pump();
+      await tester.pump();
+      final requests = repository.pendingQueries.length;
+      expect(tester.widget<UtenRefreshButton>(refresh).busy, isTrue);
+      await tester.tap(refresh);
+      await tester.pump();
+      expect(repository.pendingQueries.length, requests);
+
+      pending.complete(
+        const SalesOrderFinancePendingPage(
+          items: [],
+          page: 1,
+          size: 20,
+          total: 0,
+          totalPages: 1,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.widget<UtenRefreshButton>(refresh).busy, isFalse);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('leaving a refreshing queue releases the header wait', (
+    tester,
+  ) async {
+    final repository = _EmptyConfirmationRepository();
+    await tester.pumpWidget(
+      _app(
+        const FinanceAuditCenterPage(initialSegment: 'salesConfirm'),
+        const {Perm.salesOrderFinanceView},
+        repository: repository,
+      ),
+    );
+    await tester.pumpAndSettle();
+    final pending = Completer<SalesOrderFinancePendingPage>();
+    repository.nextPending = pending;
+    final refresh = tester.widget<UtenRefreshButton>(
+      find.byKey(const Key('finance-audit-center-refresh')),
+    );
+    var finished = false;
+    final operation = Future<void>.sync(refresh.onRefresh).then((_) {
+      finished = true;
+    });
+    await tester.pump();
+    expect(finished, isFalse);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    await operation;
+    expect(finished, isTrue);
+    pending.complete(
+      const SalesOrderFinancePendingPage(
+        items: [],
+        page: 1,
+        size: 20,
+        total: 0,
+        totalPages: 1,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('segments follow permissions; first red queue auto-selected', (
@@ -165,6 +246,7 @@ class _EmptyConfirmationRepository
     implements SalesOrderFinanceConfirmationRepository {
   final List<bool?> changesFilters = [];
   final pendingQueries = <(bool?, bool, bool?)>[];
+  Completer<SalesOrderFinancePendingPage>? nextPending;
   @override
   Future<List<MasterFacetBucket>> billNoFacets({
     bool? rejected,
@@ -186,6 +268,11 @@ class _EmptyConfirmationRepository
   }) async {
     changesFilters.add(changesOnly);
     pendingQueries.add((rejected, confirmed, changesOnly));
+    if (size != 1) {
+      final pending = nextPending;
+      nextPending = null;
+      if (pending != null) return pending.future;
+    }
     return const SalesOrderFinancePendingPage(
       items: [],
       page: 1,

@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
@@ -277,10 +278,10 @@ class _AiBillingEditorState extends ConsumerState<AiBillingEditor> {
                       ),
                     ),
                   ),
-                  IconButton(
+                  UtenRefreshButton(
                     tooltip: l10n.aiAuditReloadBilling,
-                    onPressed: _busy ? null : _load,
-                    icon: const Icon(Icons.refresh_rounded),
+                    busy: _busy,
+                    onRefresh: _load,
                   ),
                 ],
               ),

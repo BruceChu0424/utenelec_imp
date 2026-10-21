@@ -24,6 +24,7 @@ public class FulfillmentWorkbenchController {
 
     private final FulfillmentWorkbenchQueryService queryService;
     private final WarehouseTaskScopePort warehouseScopes;
+    private final com.uten.imp.application.port.WarehouseTaskRowCountPort taskRowCounts;
 
     @GetMapping("/warehouse")
     @PreAuthorize("hasAnyAuthority('stock_doc:view')")
@@ -54,7 +55,7 @@ public class FulfillmentWorkbenchController {
     @GetMapping("/warehouse/count")
     @PreAuthorize("hasAuthority('stock_doc:view')")
     public Map<String, Long> warehouseCount(@RequestParam(required = false) UUID scopeWarehouseId) {
-        var stages = queryService.warehouseStatusBreakdown(warehouseScopes.current(scopeWarehouseId));
+        var stages = taskRowCounts.productionDraw(warehouseScopes.current(scopeWarehouseId));
         long pending = stages.getOrDefault("OPEN_ANY", 0L);
         return Map.of("count", pending, "pending", pending, "inProgress", 0L,
                 "READY_TO_PICK", stages.getOrDefault("READY_TO_PICK", 0L),
@@ -67,7 +68,7 @@ public class FulfillmentWorkbenchController {
     @PreAuthorize("hasAuthority('stock_doc:view')")
     public Map<String, Long> warehouseStatusBreakdown(
             @RequestParam(required = false) UUID scopeWarehouseId) {
-        return queryService.warehouseStatusBreakdown(warehouseScopes.current(scopeWarehouseId));
+        return taskRowCounts.productionDraw(warehouseScopes.current(scopeWarehouseId));
     }
 
     @GetMapping("/purchase")

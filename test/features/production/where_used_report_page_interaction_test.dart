@@ -1314,11 +1314,11 @@ void main() {
       final direction = tester.getRect(
         find.byKey(const Key('where-used-trace-direction')),
       );
-      expect(mode.left, closeTo(entry.left, 0.5));
+      final trace = find.byType(GoodsProductionTraceView);
+      expect(mode.left, closeTo(tester.getRect(trace).left, 0.5));
       expect(mode.top, greaterThan(entry.bottom));
       expect(direction.center.dy, closeTo(mode.center.dy, 0.5));
       expect(direction.left, greaterThan(mode.right));
-      final trace = find.byType(GoodsProductionTraceView);
       expect(
         tester.widget<GoodsProductionTraceView>(trace).showDirectionSelector,
         isFalse,

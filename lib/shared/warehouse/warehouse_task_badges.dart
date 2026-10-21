@@ -89,3 +89,21 @@ int? warehouseFactOrNull(BadgeSummary summary, String key) {
 /// 仓库写操作成功后让「选了某个仓」的汇总也重拉(全站汇总由 refreshBadges 负责)。
 void invalidateSelectedWarehouseBadges(WidgetRef ref) =>
     ref.invalidate(_selectedWarehouseBadgesProvider);
+
+/// Wait for the selected warehouse's authoritative summary. Callers which
+/// already invalidated it while refreshing the global summary can reuse that
+/// request instead of starting another one at the end of the refresh.
+Future<void> refreshSelectedWarehouseBadges(
+  WidgetRef ref, {
+  bool invalidate = true,
+}) async {
+  final warehouseId = ref.read(warehouseTaskScopeProvider).warehouseId;
+  if (warehouseId == null) return;
+  final provider = _selectedWarehouseBadgesProvider(warehouseId);
+  if (invalidate) ref.invalidate(provider);
+  try {
+    await ref.read(provider.future);
+  } catch (_) {
+    // Keep the provider's existing unknown/error projection; never invent zero.
+  }
+}

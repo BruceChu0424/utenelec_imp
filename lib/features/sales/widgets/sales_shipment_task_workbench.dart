@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
@@ -67,6 +68,7 @@ class SalesShipmentTaskWorkbench extends ConsumerStatefulWidget {
     this.embedded = false,
     this.externalHeader,
     this.refreshTick = 0,
+    this.refreshCompletion,
   });
 
   final SalesShipmentTaskWorkbenchMode mode;
@@ -78,6 +80,7 @@ class SalesShipmentTaskWorkbench extends ConsumerStatefulWidget {
 
   /// 外层（业务审核中心）触发的刷新信号；数值变化时重拉当前页。
   final int refreshTick;
+  final Completer<void>? refreshCompletion;
 
   @override
   ConsumerState<SalesShipmentTaskWorkbench> createState() =>
@@ -166,7 +169,14 @@ class _SalesShipmentTaskWorkbenchState
       _warehouseWorkStatus = SalesWarehouseWorkStatus.pendingPick;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_hasRequiredPermission) return;
+      if (!mounted) return;
+      if (!_hasRequiredPermission) {
+        final completion = widget.refreshCompletion;
+        if (completion != null && !completion.isCompleted) {
+          completion.complete();
+        }
+        return;
+      }
       unawaited(
         ref.read(salesMasterNameServiceProvider).ensureLoaded().whenComplete(
           () {
@@ -174,18 +184,32 @@ class _SalesShipmentTaskWorkbenchState
           },
         ),
       );
-      _load(1);
+      final completion = widget.refreshCompletion;
+      _load(1).whenComplete(() {
+        if (completion != null && !completion.isCompleted) {
+          completion.complete();
+        }
+      });
     });
   }
 
   @override
   void didUpdateWidget(SalesShipmentTaskWorkbench oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.refreshTick != oldWidget.refreshTick) _load();
+    if (widget.refreshTick != oldWidget.refreshTick) {
+      final completion = widget.refreshCompletion;
+      _load().whenComplete(() {
+        if (completion != null && !completion.isCompleted) {
+          completion.complete();
+        }
+      });
+    }
   }
 
   @override
   void dispose() {
+    final completion = widget.refreshCompletion;
+    if (completion != null && !completion.isCompleted) completion.complete();
     _batchClaim?.releaseAll().ignore();
     super.dispose();
   }
@@ -733,11 +757,10 @@ class _SalesShipmentTaskWorkbenchState
         ),
         actions: allowed
             ? [
-                IconButton(
+                UtenRefreshButton(
                   key: const Key('sales-shipment-task-refresh'),
-                  tooltip: '刷新',
-                  onPressed: _loading ? null : () => _load(1),
-                  icon: const Icon(Icons.refresh_rounded),
+                  busy: _loading,
+                  onRefresh: () => _load(1),
                 ),
               ]
             : null,

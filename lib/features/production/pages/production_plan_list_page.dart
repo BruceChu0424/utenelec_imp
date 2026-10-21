@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 // 生产计划单列表页（生产管理 / production_plan:view）。
 //
 // 标题/返回/页级操作统一在 UtenAppBar；正文从分类/搜索开始，新建放右下悬浮区。
@@ -470,11 +471,7 @@ class _ProductionPlanListPageState
               child: const Text('超限产出处置'),
             ),
           ],
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新',
-            onPressed: () => _reload(1),
-          ),
+          UtenRefreshButton(onRefresh: () => _reload(1)),
         ],
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,

@@ -330,7 +330,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
                       Text('• ${preview.goodsCount} 个货品'), // TODO(l10n): 补 arb
                     const SizedBox(height: UtenSpacing.s4),
                     const Text(
-                      '以上将随该分类一并删除，且不可恢复。', // TODO(l10n): 补 arb
+                      '以上将随该分类一并删除。可在操作记录中撤回，仍需满足当前权限和引用规则。', // TODO(l10n): 补 arb
                       style: TextStyle(color: UtenColors.error),
                     ),
                   ],
@@ -614,6 +614,10 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       canEdit: canInlineEdit,
       writableOf: (row) => row.writable,
       inlineFields: canInlineEdit ? goodsInlineFields(context, ref) : const {},
+      inlineCancelLabel: AppLocalizations.of(context).bomEditDiscardAndExit,
+      inlineDiscardNote: AppLocalizations.of(
+        context,
+      ).masterEditDiscardRemainingNote,
       readStableWritePermission: shellReadStableWritePermission,
       onInlineSave: (id, patch, row) async {
         final version = row.version;

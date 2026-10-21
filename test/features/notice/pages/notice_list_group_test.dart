@@ -3,7 +3,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uten_imp/components/layout/uten_segmented_filter.dart';
+import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/components/cards/uten_card.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/server_config.dart';
@@ -150,10 +150,10 @@ void main() {
     await _mount(tester, repository);
 
     expect(repository.listCalls.first['onlyUnread'], isTrue);
-    final segment = tester.widget<UtenSegmentedFilter<NoticeFilter>>(
-      find.byType(UtenSegmentedFilter<NoticeFilter>),
+    final segment = tester.widget<UtenFilterToolbar<NoticeFilter>>(
+      find.byType(UtenFilterToolbar<NoticeFilter>),
     );
-    expect(segment.selected, NoticeFilter.unread);
+    expect(segment.selected, {NoticeFilter.unread});
   });
 
   testWidgets('stacks same-object notices with pill and opens group dialog', (

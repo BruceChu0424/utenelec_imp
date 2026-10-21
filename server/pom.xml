@@ -585,6 +585,16 @@
     </build>
     <profiles>
         <profile>
+            <id>dev-run</id>
+            <properties>
+                <!-- Boot run forks test-compile even though it uses only main classes.
+                     Opt in only for local startup; ordinary test/verify retain all checks. -->
+                <maven.test.skip>true</maven.test.skip>
+                <!-- Do not let a concurrent ordinary clean/test remove live app classes. -->
+                <uten.build.directory>${project.basedir}/target-dev</uten.build.directory>
+            </properties>
+        </profile>
+        <profile>
             <id>isolated-test-temp</id>
             <activation>
                 <property><name>uten.test.tmpdir</name></property>

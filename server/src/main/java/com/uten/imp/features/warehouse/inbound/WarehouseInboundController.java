@@ -41,6 +41,7 @@ public class WarehouseInboundController {
     private final WarehouseArrivalRegistrationService arrivalRegistration;
     private final WarehouseArrivalExceptionStockInBatchService batchStockIn;
     private final WarehouseTaskScopePort warehouseScopes;
+    private final com.uten.imp.application.port.WarehouseTaskRowCountPort taskRowCounts;
 
     @GetMapping("/expectations")
     public PageResponse<InboundExpectationTask> expectations(
@@ -73,14 +74,14 @@ public class WarehouseInboundController {
 
     /**
      * 预计到货待办数(徽章来源 warehouseInboundExpectation): count = 合计, PURCHASE / SUBCONTRACT = 分来源
-     * (入库任务中心「采购入库 / 委外入库」分段与列表里的类型筛选卡都读这两个事实数)。与列表同一过滤基座
-     * 与仓库范围(ADR-149), 一条 SQL 按订货类型分组, 合计 = 两类之和; 不再另开 type-counts 端点。
+     * (入库任务中心「采购入库 / 委外入库」分段都读这两个事实数)。直接复用任务中心实物行关系，
+     * 同一订货单的多条明细分别计数；范围包含逐行入库仓，合计 = 两类之和。
      */
     @GetMapping("/expectations/count")
     @com.uten.imp.security.BusinessTaskRead
     @PreAuthorize("hasAuthority('warehouse_inbound:view') and hasAuthority('warehouse_inbound:stock_in')")
     public Map<String, Long> expectationCount(@RequestParam(required = false) UUID scopeWarehouseId) {
-        Map<String, Long> byType = service.countExpectationsByType(warehouseScopes.current(scopeWarehouseId));
+        Map<String, Long> byType = taskRowCounts.inboundExpectations(warehouseScopes.current(scopeWarehouseId));
         long purchase = byType.getOrDefault(ProcurementArrivalControlPort.PURCHASE, 0L);
         long subcontract = byType.getOrDefault(ProcurementArrivalControlPort.SUBCONTRACT, 0L);
         Map<String, Long> counts = new java.util.LinkedHashMap<>();

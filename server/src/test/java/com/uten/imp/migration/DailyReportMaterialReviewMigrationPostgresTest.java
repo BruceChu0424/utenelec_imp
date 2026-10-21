@@ -27,6 +27,11 @@ class DailyReportMaterialReviewMigrationPostgresTest {
             "goods_operation_history","goods_operation_history_rows","goods_operation_history_events");
     private static final List<String> V885_HISTORY_TABLES=List.of(
             "master_operation_history","master_operation_history_rows","master_operation_history_events");
+    private static final List<String> V888_COLUMN_DELETION_TABLES=List.of(
+            "platform_column_definition_deletions","business_column_deletions");
+    private static final Map<String,String> V888_INDEX_ADDITIONS=Map.ofEntries(
+            Map.entry("platform_column_definition_deletions_pkey","CREATE UNIQUE INDEX platform_column_definition_deletions_pkey ON public.platform_column_definition_deletions USING btree (definition_id)"),
+            Map.entry("business_column_deletions_pkey","CREATE UNIQUE INDEX business_column_deletions_pkey ON public.business_column_deletions USING btree (column_id)"));
     private static final Map<String,String> V885_INDEX_ADDITIONS=Map.ofEntries(
             Map.entry("master_operation_history_pkey","CREATE UNIQUE INDEX master_operation_history_pkey ON public.master_operation_history USING btree (id)"),
             Map.entry("master_operation_history_actor_id_request_id_transaction_id_key","CREATE UNIQUE INDEX master_operation_history_actor_id_request_id_transaction_id_key ON public.master_operation_history USING btree (actor_id, request_id, transaction_id)"),
@@ -101,6 +106,8 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertTrue(expectedTables.add("website_bridge_status"));
         V871_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         V885_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
+        V888_COLUMN_DELETION_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
+        assertTrue(expectedTables.add("goods_market_reference_bindings")); // V890: explicit goods master association.
         assertEquals(expectedTables.stream().toList(),tables());
         TreeMap<String,String> expectedIndexes=catalogMap(indexesAfterV840);
         assertEquals("CREATE UNIQUE INDEX procurement_inspection_items_item_uk ON public.procurement_inspection_items USING btree (receipt_type, receipt_item_id)",
@@ -131,6 +138,10 @@ class DailyReportMaterialReviewMigrationPostgresTest {
                 "A history index must not replace an existing index: "+name));
         V885_INDEX_ADDITIONS.forEach((name,definition)->assertNull(expectedIndexes.put(name,definition),
                 "A master history index must not replace an existing index: "+name));
+        V888_INDEX_ADDITIONS.forEach((name,definition)->assertNull(expectedIndexes.put(name,definition),
+                "A column-deletion primary key must not replace an existing index: "+name));
+        assertNull(expectedIndexes.put("goods_market_reference_bindings_pkey",
+                "CREATE UNIQUE INDEX goods_market_reference_bindings_pkey ON public.goods_market_reference_bindings USING btree (goods_id)"));
         assertEquals(expectedIndexes,catalogMap(indexes()));
         TreeMap<String,String> expectedPolicy=catalogMap(resetPolicyAfterV840);
         assertNull(expectedPolicy.put("document_unapprovals","CLEAR"));
@@ -145,6 +156,10 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertNull(expectedPolicy.put("website_inquiry_events","CLEAR"));
         V871_HISTORY_TABLES.forEach(table->assertNull(expectedPolicy.put(table,"PRESERVE")));
         V885_HISTORY_TABLES.forEach(table->assertNull(expectedPolicy.put(table,"PRESERVE")));
+        V888_COLUMN_DELETION_TABLES.forEach(table->assertNull(expectedPolicy.put(table,"PRESERVE")));
+        // V889 preserves reauthentication lockouts while clearing server-side sessions.
+        assertEquals("CLEAR",expectedPolicy.put("auth_step_up_states","PRESERVE"));
+        assertNull(expectedPolicy.put("goods_market_reference_bindings","PRESERVE"));
         assertEquals(expectedPolicy,catalogMap(resetPolicy()));
         assertEquals(MigrationRehearsalSupport.CURRENT_HEAD_VERSION,
                 db.queryForObject("SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1",String.class));

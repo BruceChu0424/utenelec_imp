@@ -46,6 +46,18 @@ OPTIONAL_GATES = {
 EXPORTER = "com.uten.imp.migration.FlywayChecksumManifestExporterTest#exportsCanonicalFlywayChecksumsOnlyWhenExplicitlyRequested"
 WORKBOOK_PROPERTY = "uten.cost.companyWorkbook"
 WORKBOOK_REVIEW = "com.uten.imp.features.master.goods.costing.CostCompanyWorkbookReviewTest#preservesFortyDetailBlocksIncludingProductsAbsentFromTheThirtySevenRowSummary"
+MATERIAL_PRODUCER_PROPERTY = "uten.materialForecast.contractDirectory"
+MATERIAL_PRODUCER_REVIEW = ("com.uten.imp.features.master.goods.pricing.MaterialAutomaticProducerContractTest"
+                            "#actualAutomaticCollectorFilesInteroperateWithTheProductionReaders")
+# These two acceptance methods require a reviewed local runtime payload (and,
+# for the full lifecycle test, public SHFE). Their gates are not reusable by
+# other tests: only the declared gate's exact absence may explain their skip.
+METHOD_OPTIONAL_GATES = {
+    "com.uten.imp.features.admin.materialforecast.MaterialForecastRuntimePreparationSmokeTest"
+    "#actualProductionLauncherPreparesTheReviewedPayload": "UTEN_RUN_MARKET_PREPARATION_SMOKE",
+    "com.uten.imp.businesschain.MaterialForecastManagedRuntimeSmokeTest"
+    "#oneBindingAndPortablePolicyWorkAfterRealCollectionRestartAndDatabaseRestore": "UTEN_RUN_MARKET_RUNTIME_SMOKE",
+}
 
 
 def read_json(path):
@@ -334,6 +346,7 @@ def xml_cases(directory):
                                     "os_name": properties.get("os.name", ""),
                                     # Record presence only; private local workbook paths never enter summaries.
                                     "workbook_property_present": WORKBOOK_PROPERTY in properties,
+                                    "material_producer_property_present": MATERIAL_PRODUCER_PROPERTY in properties,
                                     "skip_reason": (skipped.attrib.get("message", "") + " " + (skipped.text or "")).strip() if skipped is not None else ""})
             except (ET.ParseError, OSError, ValueError) as exc:
                 errors.append(f"Unreadable XML {path.name}: {exc}")
@@ -366,6 +379,13 @@ def allowed_skip(case, method, runtime_platform=None):
         return (method.get("system_property_gates") == [{"named": WORKBOOK_PROPERTY, "matches": ".+"}]
                 and not case.get("workbook_property_present", False)
                 and reason == f"System property [{WORKBOOK_PROPERTY}] does not exist")
+    if gate := METHOD_OPTIONAL_GATES.get(method["id"]):
+        return (method.get("environment_gates") == [gate]
+                and reason == f"Environment variable [{gate}] does not exist")
+    if method["id"] == MATERIAL_PRODUCER_REVIEW:
+        return (method.get("system_property_gates") == [{"named": MATERIAL_PRODUCER_PROPERTY, "matches": ".+"}]
+                and not case.get("material_producer_property_present", False)
+                and reason == f"System property [{MATERIAL_PRODUCER_PROPERTY}] does not exist")
     os_name = case.get("os_name", "")
     current_os = os_family(os_name)
     actual_os = {"linux": "LINUX", "win32": "WINDOWS", "darwin": "MAC"}.get(runtime_platform)
@@ -413,7 +433,9 @@ def audit_cases(plan, shard_id, cases, maven_exit, runtime_platform=None):
             permitted = allowed_skip(case, method, runtime_platform)
             skipped.append({"id": identifier, "reason": case["skip_reason"], "permitted": permitted,
                             "os_name": case.get("os_name", ""),
-                            "workbook_property_present": case.get("workbook_property_present", False)})
+                            "workbook_property_present": case.get("workbook_property_present", False),
+                            **({"material_producer_property_present": case.get("material_producer_property_present", False)}
+                               if identifier == MATERIAL_PRODUCER_REVIEW else {})})
             if not permitted:
                 errors.append(f"Unexpected skip: {identifier}: {case['skip_reason']}")
     for exact, count in testcase_ids.items():

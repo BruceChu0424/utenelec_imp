@@ -631,6 +631,8 @@ final class MasterReferenceCatalog {
         // 货品基本单位的快照(与当前单位不一致即作废), 不算「还在用」这个单位。
         exempt(out, ExemptReason.OWN_CONFIG, "货品称重设置", "goods_weight_profiles",
                 "goods_id", "manual_unit_id");
+        exempt(out, ExemptReason.OWN_CONFIG, "货品自身的市场参考配置及解除关联的CAS墓碑，保留配置与审计，不是在办业务引用",
+                "goods_market_reference_bindings", "goods_id");
         exempt(out, ExemptReason.OWN_CONFIG, "单重学习结果", "goods_weight_estimates",
                 "goods_id", "supplier_id");
         exempt(out, ExemptReason.OWN_CONFIG, "父件自己的组装清单(删父件时同一事务软删)", "goods_bom_items",

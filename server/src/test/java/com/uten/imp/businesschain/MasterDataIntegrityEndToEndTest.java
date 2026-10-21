@@ -5,6 +5,8 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.goods.GoodsBomPasteService;
 import com.uten.imp.features.master.goods.GoodsService;
+import com.uten.imp.features.master.goods.pricing.GoodsMarketReferenceService;
+import com.uten.imp.features.master.goods.pricing.MaterialForecastContracts.BindingRequest;
 import com.uten.imp.features.master.goods.dto.BomItemSaveRequest;
 import com.uten.imp.features.master.goods.dto.BomPasteRequest;
 import com.uten.imp.features.master.goods.dto.BomPasteResult;
@@ -20,6 +22,8 @@ import com.uten.imp.features.sales.order.SalesOrderService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -86,6 +90,7 @@ class MasterDataIntegrityEndToEndTest {
     @Autowired GoodsBomPasteService paste;
     @Autowired com.uten.imp.features.master.goods.GoodsBomService bomService;
     @Autowired GoodsService goodsService;
+    @Autowired GoodsMarketReferenceService marketReferences;
     @Autowired MaterialCategoryService categories;
     @Autowired MaterialAnalysisService analyses;
     @Autowired SalesOrderService salesOrders;
@@ -249,6 +254,53 @@ class MasterDataIntegrityEndToEndTest {
     }
 
     // ---- 5) 批量启停：一次请求、固定语句数、逐条版本 ------------------------------------
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void marketReferenceConfigurationAndUnlinkTombstoneDoNotBlockGoodsRetirement(boolean unlinked) {
+        var w = world("market-own-config-" + unlinked);
+        UUID goods = UUID.randomUUID();
+        fixture.insertGoods(goods, "MARKET-OWN-" + goods, "市场参考设置所属货品", "采购", w.unitId(), w.unitLegacy());
+        var linked = marketReferences.put(goods, new BindingRequest("shfe_cu_main_daily", 0L));
+        assertEquals(1, linked.bindingVersion());
+        assertEquals("shfe_cu_main_daily", linked.seriesId());
+        long bindingVersion = 1;
+        if (unlinked) {
+            var tombstone = marketReferences.put(goods, new BindingRequest(null, 1L));
+            assertEquals(2, tombstone.bindingVersion());
+            assertThat(tombstone.seriesId()).isNull();
+            bindingVersion = 2;
+        }
+
+        // The retained configuration still enforces its real physical FK.
+        DataAccessException hardDelete = assertThrows(DataAccessException.class,
+                () -> new TransactionTemplate(transactions).executeWithoutResult(state -> {
+                    db.queryForObject("SELECT set_config('app.actor_id', ?, true)", String.class, w.superAdminUserId().toString());
+                    db.update("DELETE FROM goods WHERE id = ?", goods);
+                }));
+        Throwable cause = hardDelete;
+        while (cause.getCause() != null) cause = cause.getCause();
+        assertThat(cause).isInstanceOf(SQLException.class);
+        assertEquals("23503", ((SQLException) cause).getSQLState());
+        assertThat(cause.getMessage()).contains("goods_market_reference_bindings");
+
+        MasterBatchResult disabled = lifecycle.batchStatus(MasterEntityKind.GOODS, "禁用",
+                List.of(new MasterBatchRequests.Item(goods, version(goods))));
+        assertEquals(1, disabled.succeeded(), disabled.toString());
+        assertEquals("禁用", db.queryForObject("SELECT status FROM goods WHERE id = ?", String.class, goods));
+        // Disabling has always retained readable own settings; no new status-specific write rule is introduced.
+        assertEquals(bindingVersion, marketReferences.get(goods).bindingVersion());
+
+        lifecycle.delete(MasterEntityKind.GOODS, goods);
+        assertTrue(deleted(goods), "自身配置不是阻断软删除的在办业务");
+        assertEquals(bindingVersion, db.queryForObject(
+                "SELECT version FROM goods_market_reference_bindings WHERE goods_id = ?", Long.class, goods));
+        assertEquals(unlinked ? null : "shfe_cu_main_daily", db.queryForObject(
+                "SELECT series_id FROM goods_market_reference_bindings WHERE goods_id = ?", String.class, goods));
+        ApiException deletedRead = assertThrows(ApiException.class, () -> marketReferences.get(goods));
+        assertEquals(ErrorCode.VALIDATION_FAILED, deletedRead.getCode());
+        assertThat(deletedRead.getMessage()).contains("货品不存在或不是正式货品");
+    }
 
     @Test
     void batchStatusOfOneHundredGoodsIsOneTransactionWithAFixedStatementCount() throws Exception {

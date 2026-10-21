@@ -19,7 +19,7 @@ class WorkshopMaterialReturnValueDagEndToEndTest extends WorkshopMaterialReturnA
   FullChainEndToEndTest.World world=read(c,"world");UUID worker=read(c,"workerUser"),warehouse=read(c,"leaf"),goods=read(c,"child");
   // Each real report below supplies its actual use. Do not pre-consume the same ten inputs twice.
   read(this,"transferTo",c,target[2],"5");read(this,"transferTo",c,target[2],"5");
-  if(valued)read(this,"drainValue",c,List.of(goods,db.queryForObject("SELECT goods_id FROM production_material_demands WHERE execution_segment_id=?",UUID.class,(Object)read(c,"childSegment"))));
+  if(valued)read(this,"drainValue",List.of(goods,db.queryForObject("SELECT goods_id FROM production_material_demands WHERE execution_segment_id=?",UUID.class,(Object)read(c,"childSegment"))));
   read(this,"confirmRoute",target[0],target[1],"CONTINUOUS");fixture.loginAs(worker);
   segments.start(target[0],target[1],new SegmentTransitionRequest(db.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,target[1]),tag+"-start"));
   var ids=db.queryForList("SELECT source.id FROM production_workshop_direct_source_allocations source JOIN stock_reservations held ON held.id=source.stock_reservation_id WHERE held.demand_id=? ORDER BY allocation_no",UUID.class,target[2]);
@@ -52,7 +52,7 @@ class WorkshopMaterialReturnValueDagEndToEndTest extends WorkshopMaterialReturnA
    beans.getBean(com.uten.imp.application.port.InventoryValuationPort.class).adjustSource(new com.uten.imp.application.port.InventoryValuationPort.SourceAdjustment(
       context,(UUID)incoming.get("result_node_id"),BigDecimal.TEN,true));
   });
-  read(this,"drainValue",c,List.of(goods));
+  read(this,"drainValue",List.of(goods));
   read(this,"poolValue",warehouse,goods,"10","1000");
   assertTrue(db.queryForObject("SELECT COALESCE(MAX(children),0) FROM (SELECT COUNT(*) children FROM stock_value_edges GROUP BY parent_node_id) counts",Integer.class)<=2);
  }

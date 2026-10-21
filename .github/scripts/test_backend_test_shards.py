@@ -429,6 +429,169 @@ class CoverageTests(unittest.TestCase):
         self.assertTrue(allowed["skipped"][0]["permitted"])
         self.assertFalse(runner.audit_cases(plan(), 0, [case], 0)["complete"])
 
+    def test_reviewed_material_smoke_absence_is_bound_to_two_exact_declared_methods(self):
+        expected = {
+            "com.uten.imp.features.admin.materialforecast.MaterialForecastRuntimePreparationSmokeTest"
+            "#actualProductionLauncherPreparesTheReviewedPayload": "UTEN_RUN_MARKET_PREPARATION_SMOKE",
+            "com.uten.imp.businesschain.MaterialForecastManagedRuntimeSmokeTest"
+            "#oneBindingAndPortablePolicyWorkAfterRealCollectionRestartAndDatabaseRestore": "UTEN_RUN_MARKET_RUNTIME_SMOKE",
+        }
+        self.assertEqual(expected, runner.METHOD_OPTIONAL_GATES)
+        for identity, gate in expected.items():
+            with self.subTest(method=identity):
+                self.assertNotIn(gate, runner.OPTIONAL_GATES)
+                classname, methodname = identity.split("#")
+                cls = test_class(classname, (methodname,), gates=(gate,))
+                case = testcase(methodname, classname, "skipped", f"Environment variable [{gate}] does not exist")
+                result = runner.audit_cases(plan([cls]), 0, [case], 0)
+                self.assertTrue(result["complete"], result["errors"])
+                self.assertTrue(result["skipped"][0]["permitted"])
+
+    def test_material_smoke_skip_rejects_unknown_method_or_reuse_of_its_gate(self):
+        for identity, gate in runner.METHOD_OPTIONAL_GATES.items():
+            classname, methodname = identity.split("#")
+            for declared_class, declared_method in (("example.OtherTest", methodname), (classname, "otherMethod")):
+                with self.subTest(method=identity, declared=(declared_class, declared_method)):
+                    cls = test_class(declared_class, (declared_method,), gates=(gate,))
+                    case = testcase(declared_method, declared_class, "skipped", f"Environment variable [{gate}] does not exist")
+                    self.assertFalse(runner.audit_cases(plan([cls]), 0, [case], 0)["complete"])
+
+    def test_material_smoke_skip_rejects_missing_or_changed_declared_gate(self):
+        for identity, gate in runner.METHOD_OPTIONAL_GATES.items():
+            classname, methodname = identity.split("#")
+            case = testcase(methodname, classname, "skipped", f"Environment variable [{gate}] does not exist")
+            for gates in ((), ("UTEN_RUN_DB_TESTS",), (gate, "UTEN_RUN_DB_TESTS")):
+                with self.subTest(method=identity, declared=gates):
+                    cls = test_class(classname, (methodname,), gates=gates)
+                    self.assertFalse(runner.audit_cases(plan([cls]), 0, [case], 0)["complete"])
+
+    def test_material_smoke_skip_rejects_other_reasons_including_disabled_database(self):
+        for identity, gate in runner.METHOD_OPTIONAL_GATES.items():
+            classname, methodname = identity.split("#")
+            cls = test_class(classname, (methodname,), gates=(gate,))
+            reasons = ("disabled temporarily", "Environment variable [UTEN_RUN_DB_TESTS] does not exist",
+                       f"Environment variable [{gate}] with value [false] does not match regular expression [(?i)true]",
+                       f"Environment variable [{gate}] does not exist extra",
+                       f"Environment variable [{gate.lower()}] does not exist")
+            for reason in reasons:
+                with self.subTest(method=identity, reason=reason):
+                    case = testcase(methodname, classname, "skipped", reason)
+                    self.assertFalse(runner.audit_cases(plan([cls]), 0, [case], 0)["complete"])
+
+    def test_material_smoke_absence_cannot_hide_maven_or_another_test_failure(self):
+        for identity, gate in runner.METHOD_OPTIONAL_GATES.items():
+            with self.subTest(method=identity):
+                classname, methodname = identity.split("#")
+                cls = test_class(classname, (methodname,), gates=(gate,))
+                case = testcase(methodname, classname, "skipped", f"Environment variable [{gate}] does not exist")
+                self.assertFalse(runner.audit_cases(plan([cls]), 0, [case], 1)["complete"])
+                manifest = plan([cls, test_class()])
+                result = runner.audit_cases(manifest, 0, [case, testcase(status="failed")], 0)
+                self.assertFalse(result["complete"])
+                self.assertEqual(["example.AtestTest"], result["failed_classes"])
+
+    def test_material_producer_skip_requires_exact_method_property_pattern_and_absence(self):
+        classname, methodname = runner.MATERIAL_PRODUCER_REVIEW.split("#")
+        cls = test_class(classname, (methodname,))
+        method = cls["methods"][0]
+        declaration = [{"named": runner.MATERIAL_PRODUCER_PROPERTY, "matches": ".+"}]
+        method["system_property_gates"] = declaration
+        case = testcase(methodname, classname, "skipped", f"System property [{runner.MATERIAL_PRODUCER_PROPERTY}] does not exist")
+        allowed = runner.audit_cases(plan([cls]), 0, [case], 0)
+        self.assertTrue(allowed["complete"])
+        self.assertFalse(allowed["skipped"][0]["material_producer_property_present"])
+        for declared in ([], [{"named": "unknown.input", "matches": ".+"}],
+                         [{"named": runner.MATERIAL_PRODUCER_PROPERTY, "matches": ".*"}]):
+            with self.subTest(declared=declared):
+                method["system_property_gates"] = declared
+                self.assertFalse(runner.audit_cases(plan([cls]), 0, [case], 0)["complete"])
+        method["system_property_gates"] = declaration
+        case["material_producer_property_present"] = True
+        self.assertFalse(runner.audit_cases(plan([cls]), 0, [case], 0)["complete"])
+        case["material_producer_property_present"] = False
+        for reason in ("disabled temporarily", "Environment variable [UTEN_RUN_DB_TESTS] does not exist",
+                       f"System property [{runner.MATERIAL_PRODUCER_PROPERTY}] with value [] does not match regular expression [.+]",
+                       f"System property [{runner.MATERIAL_PRODUCER_PROPERTY}] does not exist extra"):
+            with self.subTest(reason=reason):
+                case["skip_reason"] = reason
+                self.assertFalse(runner.audit_cases(plan([cls]), 0, [case], 0)["complete"])
+        other = test_class()
+        other["methods"][0]["system_property_gates"] = declaration
+        self.assertFalse(runner.audit_cases(plan([other]), 0,
+                         [testcase(status="skipped", reason=f"System property [{runner.MATERIAL_PRODUCER_PROPERTY}] does not exist")], 0)["complete"])
+
+    def test_material_producer_xml_records_presence_without_paths_including_empty_property(self):
+        classname, methodname = runner.MATERIAL_PRODUCER_REVIEW.split("#")
+        cls = test_class(classname, (methodname,))
+        cls["methods"][0]["system_property_gates"] = [{"named": runner.MATERIAL_PRODUCER_PROPERTY, "matches": ".+"}]
+        reason = f"System property [{runner.MATERIAL_PRODUCER_PROPERTY}] does not exist"
+        for value in (None, "", "private-official-market-files-do-not-copy"):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as temp:
+                directory = Path(temp)
+                save_xml(directory, [testcase(methodname, classname, "skipped", reason)])
+                path = next((directory / "surefire-reports").glob("TEST-*.xml"))
+                if value is not None:
+                    tree = ET.parse(path)
+                    properties = ET.SubElement(tree.getroot(), "properties")
+                    ET.SubElement(properties, "property", name=runner.MATERIAL_PRODUCER_PROPERTY, value=value)
+                    tree.write(path, encoding="utf-8")
+                records, errors = runner.xml_cases(directory)
+                self.assertEqual([], errors)
+                self.assertEqual(value is not None, records[0]["material_producer_property_present"])
+                result = runner.audit_cases(plan([cls]), 0, records, 0)
+                self.assertEqual(value is None, result["complete"])
+                self.assertNotIn("private-official-market-files-do-not-copy", json.dumps(records) + json.dumps(result))
+
+    def test_real_material_condition_sources_match_the_exact_reviewed_input_methods(self):
+        java = runner.ROOT / "server/src/test/java/com/uten/imp"
+        sources = set((java / "features/admin/materialforecast").glob("*.java"))
+        sources.update((java / "features/master/goods/pricing").glob("*.java"))
+        sources.update((java / "businesschain").glob("MaterialForecast*.java"))
+        sources.update((java / "features/admin/systemsetting").glob("MaterialForecast*.java"))
+        self.assertTrue(sources)
+        environment, properties = {}, {}
+        # A bounded source check complements compiled JUnit discovery. Preserve
+        # strings while removing comments; unsupported condition shapes fail.
+        lexical = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|//[^\r\n]*|/\*[\s\S]*?\*/')
+        condition = re.compile(r'@(EnabledIfEnvironmentVariable|EnabledIfSystemProperty)\s*\('
+                               r'\s*named\s*=\s*"([^"\\]+)"\s*,\s*matches\s*=\s*"([^"\\]+)"\s*\)')
+        for path in sorted(sources):
+            source = lexical.sub(lambda match: " " if match[0].startswith(("//", "/*")) else match[0],
+                                 path.read_text(encoding="utf-8"))
+            with self.subTest(source=path.name):
+                self.assertNotRegex(source, r'@Disabled\w*\b|\bAssumptions\s*\.|\bassume(?:True|False|That)\s*\(')
+                declarations = list(condition.finditer(source))
+                self.assertEqual(len(re.findall(r'@(?:EnabledIfEnvironmentVariable|EnabledIfSystemProperty)\b', source)),
+                                 len(declarations), "New condition syntax needs explicit source-contract support")
+                if not declarations:
+                    continue
+                header = re.search(r'\bclass\s+' + re.escape(path.stem) + r'\b', source)
+                self.assertIsNotNone(header)
+                self.assertTrue(all(row.end() < header.start() for row in declarations),
+                                "New method-level conditions require an explicit reviewed registration")
+                gates = [(row[1], row[2], row[3]) for row in declarations]
+                if gates == [("EnabledIfEnvironmentVariable", "UTEN_RUN_DB_TESTS", "(?i)true")]:
+                    continue  # Mandatory DB tests remain forbidden skips in the runner.
+                self.assertEqual(1, len(gates))
+                package = re.search(r'\bpackage\s+([\w.]+)\s*;', source)[1]
+                methods = re.findall(r'@Test\b(?:(?![;{}]).)*?\bvoid\s+(\w+)\s*\(', source, re.DOTALL)
+                self.assertEqual(len(re.findall(r'@(?:Test|ParameterizedTest|RepeatedTest|TestFactory|TestTemplate)\b', source)),
+                                 len(methods), "All conditional methods must be named in the source contract")
+                self.assertTrue(methods)
+                kind, name, pattern = gates[0]
+                for method in methods:
+                    identity = package + "." + path.stem + "#" + method
+                    if kind == "EnabledIfEnvironmentVariable":
+                        self.assertEqual("(?i)true", pattern)
+                        self.assertNotIn(identity, environment)
+                        environment[identity] = name
+                    else:
+                        self.assertNotIn(identity, properties)
+                        properties[identity] = {"named": name, "matches": pattern}
+        self.assertEqual(runner.METHOD_OPTIONAL_GATES, environment)
+        self.assertEqual({runner.MATERIAL_PRODUCER_REVIEW:
+                          {"named": runner.MATERIAL_PRODUCER_PROPERTY, "matches": ".+"}}, properties)
+
     def test_private_workbook_skip_requires_the_exact_method_property_pattern_and_absence(self):
         classname, methodname = runner.WORKBOOK_REVIEW.split("#")
         cls = test_class(classname, (methodname,))

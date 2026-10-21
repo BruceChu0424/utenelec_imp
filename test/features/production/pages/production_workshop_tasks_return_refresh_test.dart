@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:go_router/go_router.dart';
@@ -28,6 +29,13 @@ import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 
 import '../../../helpers/badge_summary_fixture.dart';
 import '../../../support/filter_segment_tap.dart';
+
+Widget _localizedApp(GoRouter router) => MaterialApp.router(
+  routerConfig: router,
+  locale: const Locale('zh'),
+  localizationsDelegates: AppLocalizations.localizationsDelegates,
+  supportedLocales: AppLocalizations.supportedLocales,
+);
 
 late SharedPreferences _preferences;
 
@@ -113,7 +121,7 @@ void main() {
         await tester.pumpWidget(
           UncontrolledProviderScope(
             container: container,
-            child: MaterialApp.router(routerConfig: router),
+            child: _localizedApp(router),
           ),
         );
         await tester.pumpAndSettle();
@@ -202,7 +210,7 @@ void main() {
       await tester.pumpWidget(
         UncontrolledProviderScope(
           container: container,
-          child: MaterialApp.router(routerConfig: router),
+          child: _localizedApp(router),
         ),
       );
       await tester.pumpAndSettle();
@@ -319,7 +327,7 @@ void main() {
       await tester.pumpWidget(
         UncontrolledProviderScope(
           container: container,
-          child: MaterialApp.router(routerConfig: router),
+          child: _localizedApp(router),
         ),
       );
       await tester.pumpAndSettle();
@@ -425,7 +433,7 @@ void main() {
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
-        child: MaterialApp.router(routerConfig: router),
+        child: _localizedApp(router),
       ),
     );
     await tester.pumpAndSettle();
@@ -514,7 +522,7 @@ void main() {
         await tester.pumpWidget(
           UncontrolledProviderScope(
             container: container,
-            child: MaterialApp.router(routerConfig: router),
+            child: _localizedApp(router),
           ),
         );
         await tester.pumpAndSettle();
@@ -649,7 +657,7 @@ void main() {
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
-        child: MaterialApp.router(routerConfig: router),
+        child: _localizedApp(router),
       ),
     );
     await tester.pumpAndSettle();

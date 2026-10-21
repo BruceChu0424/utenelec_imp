@@ -909,6 +909,9 @@ void main() {
             ).copyWith(textScaler: const TextScaler.linear(1.3)),
             child: child!,
           ),
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
         ),
       ),
     );

@@ -10,6 +10,7 @@ import 'dart:ui' as ui;
 
 import 'package:dio/dio.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/foundation.dart' show precisionErrorTolerance;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:uten_imp/core/theme/uten_tokens.dart';
@@ -4741,10 +4742,13 @@ void main() {
     await _pump(tester);
     // 夹具只给 m-2 返回了可调拨量。
     expect(_enabled(tester, _transferButton('m-2')), isTrue);
-    expect(_enabled(tester, _transferButton('m-3')), isFalse);
+    // m-3 already has an active order, so it owns the withdrawal surface.
+    // m-4 is unissued and has no transfer pool, exercising the disabled action.
+    expect(_transferButton('m-3'), findsNothing);
+    expect(_enabled(tester, _transferButton('m-4')), isFalse);
     expect(
       find.ancestor(
-        of: _transferButton('m-3'),
+        of: _transferButton('m-4'),
         matching: find.byWidgetPredicate(
           (widget) =>
               widget is Tooltip &&
@@ -5580,8 +5584,15 @@ void main() {
           axis: Axis.horizontal,
         ).position.ensureVisible(tester.renderObject(actions), alignment: 1);
         await tester.pumpAndSettle();
-        expect(tester.getRect(actions).width, greaterThanOrEqualTo(48));
-        expect(tester.getRect(actions).height, greaterThanOrEqualTo(48));
+        // Global transforms can round an exact 48 to 47.99999999999994.
+        expect(
+          tester.getRect(actions).width,
+          greaterThanOrEqualTo(48 - precisionErrorTolerance),
+        );
+        expect(
+          tester.getRect(actions).height,
+          greaterThanOrEqualTo(48 - precisionErrorTolerance),
+        );
         expect(
           find.byKey(const ValueKey('material-top-level-view-plan')),
           findsNothing,

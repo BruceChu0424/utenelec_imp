@@ -119,116 +119,113 @@ class _InspectionReportConfirmDialogState
           (line) => (double.tryParse(line.failText.trim()) ?? 0) > 0,
         );
     return UtenAlertDialog(
-      scrollable: false,
       title: const Text('确认提交检验报告'),
       content: SizedBox(
         width: 520,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const UtenReviewerResponsibilityNotice(
-                actionLabel: '提交检验报告',
-                description:
-                    '系统将记录检验员、结论数量与时间；已上架的合格部分自动点收入库，'
-                    '其余合格部分转仓库待入库，不合格部分记质量事实与待处理台账。',
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              if (widget.atomicReport) ...[
-                const Text(
-                  '本次勾选行一起提交；任一行失败，本次新增决定全部回滚。已登记的原决定不重复执行。',
-                  key: Key('inspection-report-atomic-notice'),
-                ),
-                const SizedBox(height: UtenSpacing.s8),
-              ],
-              Text(
-                '共 ${widget.lineCount} 行明细'
-                '${widget.fqcTaskCount > 0 ? '、${widget.fqcTaskCount} 项自制产成品任务全部合格' : ''}，'
-                '合格 ${widget.passTotalText}、不合格 ${widget.failTotalText}。',
-                key: const Key('inspection-report-confirm-total'),
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              if (hasFail) ...[
-                const SizedBox(height: UtenSpacing.s8),
-                Text(
-                  '本批含不合格数量：提交后不合格部分仅记质量事实与待处理台账，'
-                  '不会生成仓库入库任务。',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.error,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-              const SizedBox(height: UtenSpacing.s12),
-              TextField(
-                controller: _reason,
-                onChanged: (_) {
-                  if (_reasonError != null) setState(() => _reasonError = null);
-                },
-                maxLines: 3,
-                maxLength: 500,
-                decoration: UtenInputDecoration(
-                  InputDecoration(
-                    labelText: hasFail ? '结论原因(必填)' : '结论原因(选填)',
-                    error: _reasonError == null
-                        ? null
-                        : UtenFieldMessage.error(_reasonError!),
-                  ),
-                  info: hasFail
-                      ? '请说明不合格原因，便于后续退货、返工或其它处置。'
-                      : '可补充检验依据或需要仓库注意的事项。',
-                ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const UtenReviewerResponsibilityNotice(
+              actionLabel: '提交检验报告',
+              description:
+                  '系统将记录检验员、结论数量与时间；已上架的合格部分自动点收入库，'
+                  '其余合格部分转仓库待入库，不合格部分记质量事实与待处理台账。',
+            ),
+            const SizedBox(height: UtenSpacing.s12),
+            if (widget.atomicReport) ...[
+              const Text(
+                '本次勾选行一起提交；任一行失败，本次新增决定全部回滚。已登记的原决定不重复执行。',
+                key: Key('inspection-report-atomic-notice'),
               ),
               const SizedBox(height: UtenSpacing.s8),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 260),
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: widget.lines.length,
-                  itemBuilder: (context, index) {
-                    final line = widget.lines[index];
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(line.label, style: theme.textTheme.bodySmall),
-                          const SizedBox(height: UtenSpacing.s4),
-                          Wrap(
-                            spacing: UtenSpacing.s8,
-                            runSpacing: UtenSpacing.s4,
-                            children: [
-                              Text(
-                                line.passText.isEmpty
-                                    ? '全部合格'
-                                    : '合格 ${line.passText}'
-                                          '${line.dim == null ? '' : ' ${line.dim}'}',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.primary,
-                                ),
-                              ),
-                              if (line.failText.isNotEmpty &&
-                                  line.failText.trim() != '0')
-                                Text(
-                                  '不合格 ${line.failText}'
-                                  '${line.dim == null ? '' : ' ${line.dim}'}',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: theme.colorScheme.error,
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    );
-                  },
+            ],
+            Text(
+              '共 ${widget.lineCount} 行明细'
+              '${widget.fqcTaskCount > 0 ? '、${widget.fqcTaskCount} 项自制产成品任务全部合格' : ''}，'
+              '合格 ${widget.passTotalText}、不合格 ${widget.failTotalText}。',
+              key: const Key('inspection-report-confirm-total'),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            if (hasFail) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              Text(
+                '本批含不合格数量：提交后不合格部分仅记质量事实与待处理台账，'
+                '不会生成仓库入库任务。',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.error,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
-          ),
+            const SizedBox(height: UtenSpacing.s12),
+            TextField(
+              controller: _reason,
+              onChanged: (_) {
+                if (_reasonError != null) setState(() => _reasonError = null);
+              },
+              maxLines: 3,
+              maxLength: 500,
+              decoration: UtenInputDecoration(
+                InputDecoration(
+                  labelText: hasFail ? '结论原因(必填)' : '结论原因(选填)',
+                  error: _reasonError == null
+                      ? null
+                      : UtenFieldMessage.error(_reasonError!),
+                ),
+                info: hasFail
+                    ? '请说明不合格原因，便于后续退货、返工或其它处置。'
+                    : '可补充检验依据或需要仓库注意的事项。',
+              ),
+            ),
+            const SizedBox(height: UtenSpacing.s8),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 260),
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: widget.lines.length,
+                itemBuilder: (context, index) {
+                  final line = widget.lines[index];
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(line.label, style: theme.textTheme.bodySmall),
+                        const SizedBox(height: UtenSpacing.s4),
+                        Wrap(
+                          spacing: UtenSpacing.s8,
+                          runSpacing: UtenSpacing.s4,
+                          children: [
+                            Text(
+                              line.passText.isEmpty
+                                  ? '全部合格'
+                                  : '合格 ${line.passText}'
+                                        '${line.dim == null ? '' : ' ${line.dim}'}',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.primary,
+                              ),
+                            ),
+                            if (line.failText.isNotEmpty &&
+                                line.failText.trim() != '0')
+                              Text(
+                                '不合格 ${line.failText}'
+                                '${line.dim == null ? '' : ' ${line.dim}'}',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.error,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
       actions: [

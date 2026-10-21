@@ -177,7 +177,17 @@ void main() {
 
     await tester.drag(_categoryGutter(), const Offset(-1200, 0));
     await tester.pumpAndSettle();
-    expect(_categoryWidth(tester), 220);
+    // Content-aware panes retain the row actions and a readable label. The
+    // plain pane above still proves the configured 220px absolute minimum.
+    final narrowedWidth = _categoryWidth(tester);
+    expect(narrowedWidth, inInclusiveRange(220, 300));
+    expect(
+      tester.getSize(find.text(_longCategory)).width,
+      greaterThanOrEqualTo(64),
+    );
+    await tester.drag(_categoryGutter(), const Offset(-1200, 0));
+    await tester.pumpAndSettle();
+    expect(_categoryWidth(tester), narrowedWidth);
     expect(
       tester
           .renderObject<RenderParagraph>(find.text(_longCategory))
@@ -197,7 +207,7 @@ void main() {
     await tester.drag(_categoryGutter(), const Offset(100, 0));
     await tester.pumpAndSettle();
     final wider = _categoryWidth(tester);
-    expect(wider, greaterThan(220));
+    expect(wider, greaterThan(narrowedWidth));
     await tester.tap(_categoryGutter());
     await tester.pump(const Duration(milliseconds: 350));
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
@@ -221,14 +231,16 @@ void main() {
 
     await tester.drag(_categoryGutter(), const Offset(-1200, 0));
     await tester.pumpAndSettle();
-    expect(_categoryWidth(tester), 220);
+    final narrowedWidth = _categoryWidth(tester);
+    expect(narrowedWidth, inInclusiveRange(220, 300));
+    expect(narrowedWidth, lessThan(naturalWidth));
     final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getDouble(storedKey), 220);
+    expect(prefs.getDouble(storedKey), narrowedWidth);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpWidget(_categoryHost(persistenceKey: persistenceKey));
     await tester.pumpAndSettle();
-    expect(_categoryWidth(tester), 220);
+    expect(_categoryWidth(tester), narrowedWidth);
 
     await tester.tap(_categoryGutter());
     await tester.pump(const Duration(milliseconds: 60));
@@ -326,7 +338,7 @@ void main() {
     await saveAuditScreenshot(tester, captureKey, 'split-width-before');
     await tester.drag(_categoryGutter(), const Offset(-1000, 0));
     await tester.pumpAndSettle();
-    expect(_categoryWidth(tester), 220);
+    expect(_categoryWidth(tester), inInclusiveRange(220, 300));
     expect(tester.takeException(), isNull);
     await saveAuditScreenshot(tester, captureKey, 'split-width-after');
     await tester.runAsync(() async {

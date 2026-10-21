@@ -280,10 +280,10 @@ void main() {
 
       // 普通页面（单根组）：不重复分组头，族行直接铺开。
       expect(find.text('销售管理 · 本页'), findsNothing);
-      // 族折叠态：只看到族行（查看/编辑合并/执行·办理），明细行不可见。
+      // 族折叠态：只看到族行（查看/编辑合并/办理），明细行不可见。
       expect(find.text('查看'), findsOneWidget);
       expect(find.text('编辑(含新增与修改)'), findsOneWidget);
-      expect(find.text('执行·办理'), findsOneWidget);
+      expect(find.text('办理'), findsOneWidget);
       expect(find.text('销售订货编辑'), findsNothing);
 
       // 展开编辑族：新增与修改两颗明细开关都在里面。
@@ -292,8 +292,8 @@ void main() {
       expect(find.text('销售订货编辑'), findsOneWidget);
       expect(find.text('销售订贷新增'), findsOneWidget);
 
-      // 历史委派行在「执行·办理」族里，同样先展开。
-      await tester.tap(find.text('执行·办理'));
+      // 历史委派行在「办理」族里，同样先展开。
+      await tester.tap(find.text('办理'));
       await tester.pumpAndSettle();
       final historical = tester.widget<Switch>(
         find.byKey(

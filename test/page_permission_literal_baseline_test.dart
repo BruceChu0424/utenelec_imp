@@ -106,11 +106,53 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
     legacyCount: 0,
     tokens: {'Perm.authorizationManage': 1},
   ),
+  // PermissionTemplateController requires this authority AND superAdmin;
+  // the UI repeats both before preview/apply, without granting permissions.
+  'lib/features/admin/widgets/admin_permission_templates.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.authorizationManage': 1},
+  ),
+  // FixedAssetController separates reverse from post; server-authorized
+  // posting capabilities and object/version checks remain required.
+  'lib/features/finance/pages/finance_asset_workbench_page.dart': (
+    legacyCount: 7,
+    tokens: {
+      'Perm.financeAssetView': 1,
+      'Perm.financeAssetEdit': 1,
+      'Perm.financeAssetDelete': 1,
+      'Perm.financeAssetApprove': 1,
+      'Perm.financeAssetPost': 1,
+      'Perm.financeAssetReverse': 1,
+      'Perm.financeAssetDispose': 1,
+      'Perm.financeAssetPeriodManage': 1,
+    },
+  ),
+  // Pre-stock intersects VIEW + BEFORE_INSPECTION with server canPreStockIn
+  // and current pre-stockable lines; native read-only sessions cannot submit.
+  'lib/features/warehouse/pages/warehouse_quality_result_detail_page.dart': (
+    legacyCount: 3,
+    tokens: {
+      'Perm.warehouseIqcStockInView': 2,
+      'Perm.warehouseIqcStockInConfirm': 1,
+      'Perm.procurementIqcRejectionRecordReturn': 1,
+      'Perm.warehouseIqcStockInBeforeInspection': 1,
+    },
+  ),
+  // ProductionFinishedInboundTaskController's registration reversal requires
+  // VIEW + APPROVE. The UI also requires the native actor and reversible row.
+  'lib/features/warehouse/widgets/warehouse_task_physical_detail_dialog.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.stockDocView': 1, 'Perm.stockDocApprove': 1},
+  ),
+  // V896 splits return/reopen from pricing confirmation. These guards only
+  // narrow the server's financeActions and are rechecked before claim/write.
   'lib/features/finance/pages/finance_quote_review_page.dart': (
     legacyCount: 4,
     tokens: {
       'Perm.attachmentView': 1,
       'Perm.salesQuoteFinanceConfirm': 2,
+      'Perm.salesQuoteFinanceReject': 1,
+      'Perm.salesQuoteFinanceReverse': 1,
       'Perm.salesQuoteFinanceView': 2,
     },
   ),
@@ -526,7 +568,7 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
         (sum, entry) =>
             sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
       ),
-      133, // Previous 132 + one managed-runtime read guard. Global baseline remains 677.
+      141, // Previous 133 + eight individually reviewed guards; baseline stays 677.
     );
   });
 

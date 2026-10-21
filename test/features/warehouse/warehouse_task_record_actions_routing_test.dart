@@ -1,16 +1,21 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/router/nav_helpers.dart';
 import 'package:uten_imp/core/router/route_access_policy.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_task_center_record.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_task_record_actions.dart';
+import 'package:uten_imp/features/warehouse/widgets/warehouse_task_physical_detail_dialog.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/user.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 
 const _source =
     '/warehouse/tasks?kind=inbound&source=FINISHED'
@@ -27,17 +32,21 @@ WarehouseTaskCenterRecord _record({
   bool physical = false,
   bool canHandle = true,
 }) => WarehouseTaskCenterRecord(
-  rowKey: 'FINISHED:REPORT:$id',
+  rowKey:
+      'FINISHED:${action == 'FINISHED_ARRIVAL_DETAIL' ? 'REGISTRATION' : 'REPORT'}:$id',
   id: id,
-  targetId: 'target-$id',
+  targetId: action == 'FINISHED_ARRIVAL_DETAIL' ? id : 'target-$id',
   sourceType: 'FINISHED',
-  recordType: 'PRODUCTION_REPORT',
+  recordType: action == 'FINISHED_ARRIVAL_DETAIL'
+      ? 'FINISHED_REGISTRATION'
+      : 'PRODUCTION_REPORT',
   status: 'FINISHED_REGISTER',
   statusLabel: '待登记',
   action: action,
   canHandle: canHandle,
   actionData: {
     'reportId': reportId,
+    if (action == 'FINISHED_ARRIVAL_DETAIL') 'registrationId': id,
     'lotId': ?lotId,
     if (physical) 'sourceReportItemId': 'item-$id',
   },
@@ -45,6 +54,46 @@ WarehouseTaskCenterRecord _record({
       ? WarehouseTaskLine(key: 'item-$id', itemId: 'item-$id')
       : null,
 );
+
+class _PhysicalDetailApi extends ApiClient {
+  _PhysicalDetailApi(this.row) : super(Dio());
+
+  final WarehouseTaskCenterRecord row;
+  final calls = <({String path, Map<String, dynamic> query})>[];
+
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    if (!path.startsWith('/warehouse/task-center/')) return {};
+    calls.add((path: path, query: {...?query}));
+    return {
+      'row': {
+        'rowKey': row.rowKey,
+        'id': row.id,
+        'targetId': row.targetId,
+        'sourceType': row.sourceType,
+        'recordType': row.recordType,
+        'status': row.status,
+        'statusLabel': row.statusLabel,
+        'action': row.action,
+        'canHandle': false,
+        'actionData': row.actionData,
+      },
+      'lines': [
+        {
+          'registrationId': row.id,
+          'goodsCode': 'REGISTERED-ONLY',
+          'quantity': 3,
+        },
+      ],
+      'page': 1,
+      'totalPages': 1,
+      'total': 1,
+    };
+  }
+}
 
 class _ActionButton extends ConsumerStatefulWidget {
   const _ActionButton({
@@ -97,6 +146,7 @@ class _RouterHarness {
     this.batch = false,
     this.preStock,
   }) {
+    detailApi = _PhysicalDetailApi(rows.first);
     router = GoRouter(
       initialLocation: _source,
       redirect: (_, state) =>
@@ -163,19 +213,33 @@ class _RouterHarness {
     permissions: [Perm.stockDocView],
   );
   late final GoRouter router;
+  late final _PhysicalDetailApi detailApi;
 
-  Widget actionButton() => _ActionButton(
-    rows: rows,
-    errors: errors,
-    onMount: () => actionMounts++,
-    batch: batch,
-    preStock: preStock,
+  Widget actionButton() => WarehouseListScope(
+    scope: const WarehouseTaskScope.warehouse('warehouse-original'),
+    child: _ActionButton(
+      rows: rows,
+      errors: errors,
+      onMount: () => actionMounts++,
+      batch: batch,
+      preStock: preStock,
+    ),
   );
 
   Future<void> pump(WidgetTester tester) async {
     addTearDown(router.dispose);
     await tester.pumpWidget(
       ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(detailApi),
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'warehouse-actor'),
+          ),
+          currentPermissionsProvider.overrideWithValue({Perm.stockDocView}),
+          warehouseTaskScopeProvider.overrideWithValue(
+            const WarehouseTaskScope.warehouse('warehouse-original'),
+          ),
+        ],
         child: MaterialApp.router(
           routerConfig: router,
           localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -275,7 +339,7 @@ void main() {
     );
   }
 
-  for (final action in ['FINISHED_REGISTER', 'FINISHED_ARRIVAL_DETAIL']) {
+  for (final action in ['FINISHED_REGISTER']) {
     for (final mount in _Mount.values) {
       testWidgets(
         '$action from ${mount.name} retains original report and center query',
@@ -312,6 +376,48 @@ void main() {
         },
       );
     }
+  }
+
+  for (final mount in _Mount.values) {
+    testWidgets(
+      'registered arrival detail from ${mount.name} reads only its exact batch and preserves the source',
+      (tester) async {
+        final harness = _RouterHarness(
+          rows: [_record(action: 'FINISHED_ARRIVAL_DETAIL', canHandle: false)],
+          mount: mount,
+        );
+        await harness.pump(tester);
+        await tester.tap(find.byKey(const Key('open-record')));
+        await tester.pumpAndSettle();
+
+        expect(harness.errors, isEmpty);
+        expect(harness.arrivals, isEmpty);
+        expect(harness.router.state.uri.toString(), _source);
+        expect(
+          harness.detailApi.calls.single.path,
+          '/warehouse/task-center/inbound/FINISHED%3AFINISHED_REGISTRATION%3Aprojection-id/detail',
+        );
+        expect(harness.detailApi.calls.single.query, {
+          'scopeWarehouseId': 'warehouse-original',
+          'linePage': 1,
+          'lineSize': 100,
+        });
+        expect(find.text('REGISTERED-ONLY'), findsOneWidget);
+        expect(find.text('撤回本登记批'), findsNothing);
+        expect(harness.actionMounts, 1);
+
+        final dialog = find.byType(WarehouseTaskPhysicalDetailDialog);
+        await tester.tap(
+          find.descendant(of: dialog, matching: find.text('关闭')),
+        );
+        await tester.pumpAndSettle();
+        expect(dialog, findsNothing);
+        expect(harness.router.state.uri.toString(), _source);
+        expect(harness.actionMounts, 1);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
   }
 
   for (final preStock in [false, true]) {
@@ -386,7 +492,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  for (final action in ['FINISHED_REGISTER', 'FINISHED_ARRIVAL_DETAIL']) {
+  for (final action in ['FINISHED_REGISTER']) {
     testWidgets(
       '$action without a router fails closed with an actionable notice',
       (tester) async {
@@ -419,4 +525,62 @@ void main() {
       },
     );
   }
+
+  testWidgets(
+    'registered arrival detail uses its modal without requiring a router',
+    (tester) async {
+      final row = _record(action: 'FINISHED_ARRIVAL_DETAIL', canHandle: false);
+      final api = _PhysicalDetailApi(row);
+      final container = ProviderContainer(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'warehouse-actor'),
+          ),
+          currentPermissionsProvider.overrideWithValue({Perm.stockDocView}),
+          warehouseTaskScopeProvider.overrideWithValue(
+            const WarehouseTaskScope.all(),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      final errors = <Object>[];
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('zh'),
+            home: Scaffold(
+              body: _ActionButton(rows: [row], errors: errors, onMount: () {}),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.byKey(const Key('open-record')));
+      await tester.pumpAndSettle();
+      expect(
+        api.calls.single.path,
+        '/warehouse/task-center/inbound/FINISHED%3AFINISHED_REGISTRATION%3Aprojection-id/detail',
+      );
+      expect(api.calls.single.query, {'linePage': 1, 'lineSize': 100});
+      expect(find.text('REGISTERED-ONLY'), findsOneWidget);
+      expect(errors, isEmpty);
+      expect(container.read(appNotificationProvider), isEmpty);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(WarehouseTaskPhysicalDetailDialog),
+          matching: find.text('关闭'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(WarehouseTaskPhysicalDetailDialog), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      // This scope is externally owned; release its session retry timer before
+      // the widget binding checks for pending timers at the end of the test.
+      container.dispose();
+    },
+  );
 }

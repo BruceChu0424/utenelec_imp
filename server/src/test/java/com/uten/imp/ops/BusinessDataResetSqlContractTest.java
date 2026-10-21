@@ -204,6 +204,8 @@ public class BusinessDataResetSqlContractTest {
      */
     private static final Map<String, Integer> PRESERVE_RESET_EXTENSIONS = Map.ofEntries(
             Map.entry("goods_market_reference_bindings", 890),
+            Map.entry("platform_column_definition_deletions", 888),
+            Map.entry("business_column_deletions", 888),
             Map.entry("staff_mfa", 873),
             Map.entry("remote_access_policy", 874),
             // V879 官网管理与桥接：连接配置与投递诊断跨业务清空保留。
@@ -357,6 +359,16 @@ public class BusinessDataResetSqlContractTest {
         StringBuilder extensions = new StringBuilder();
         for (int version : versions) extensions.append(extensionSql(version)).append('\n');
         extensionSql = extensions.toString();
+    }
+
+    @Test
+    void creatorOwnedColumnDeletionHistoryKeepsItsReviewedPreserveClassification() throws IOException {
+        String migration = extensionSql(888);
+        for (String table : List.of("platform_column_definition_deletions", "business_column_deletions")) {
+            assertThat(PRESERVE_RESET_EXTENSIONS).containsEntry(table, 888);
+            assertThat(migration).contains("(''" + table + "'', ''PRESERVE'')");
+            assertThat(expectedCurrentPolicy()).containsEntry(table, "PRESERVE");
+        }
     }
 
     @Test

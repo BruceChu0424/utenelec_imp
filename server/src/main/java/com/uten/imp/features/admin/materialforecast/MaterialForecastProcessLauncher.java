@@ -99,7 +99,7 @@ public class MaterialForecastProcessLauncher {
             diagnostic.stage=PreparationStage.PATH_VALIDATION;diagnostic.reason=PreparationReason.RECEIPT_PATH_INVALID;
             Path python=MaterialForecastHostPaths.absolute(n.path("pythonExecutable").asText()),worker=MaterialForecastHostPaths.absolute(n.path("workerScript").asText()),catalog=MaterialForecastHostPaths.absolute(n.path("catalog").asText());
             String digest=n.path("lockDigest").asText(),version=n.path("workerVersion").asText();
-            diagnostic.pythonWithinCache=python.getParent()!=null&&python.getParent().toRealPath().startsWith(realCache);
+            diagnostic.pythonWithinCache=MaterialForecastHostPaths.containsManagedInterpreter(realCache,python);
             diagnostic.workerMatchesFixed=worker.equals(payload.resolve("worker.py"));
             diagnostic.catalogMatchesFixed=catalog.equals(payload.resolve("material-benchmarks.json"));
             diagnostic.regularFilesValid=Files.isRegularFile(python)&&Files.isRegularFile(worker,LinkOption.NOFOLLOW_LINKS)&&Files.isRegularFile(catalog,LinkOption.NOFOLLOW_LINKS);

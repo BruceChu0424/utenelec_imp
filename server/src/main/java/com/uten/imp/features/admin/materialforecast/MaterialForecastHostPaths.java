@@ -62,6 +62,22 @@ public class MaterialForecastHostPaths {
             current=current.getParent();
         }
     }
+    static boolean containsManagedInterpreter(Path cache,Path interpreter)throws IOException {
+        Path parent=interpreter.getParent();
+        if(parent==null)return false;
+        rejectLinks(interpreter);
+        Path realParent=parent.toRealPath();
+        // A receipt must name an actual directory, not a junction/link into the
+        // cache. Windows packaged hosts can expose two unlinked names for that
+        // same directory; toRealPath alone does not unify those OS aliases.
+        if(!realParent.equals(parent))return false;
+        if(realParent.startsWith(cache))return true;
+        if(!windows())return false;
+        for(Path ancestor=realParent;ancestor!=null;ancestor=ancestor.getParent()) {
+            if(Files.isSameFile(cache,ancestor))return true;
+        }
+        return false;
+    }
     static Path absolute(String value) {
         Path path=Path.of(value).normalize();
         if(!path.isAbsolute())throw new IllegalStateException("Market bootstrap path must be absolute");

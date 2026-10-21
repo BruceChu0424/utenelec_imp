@@ -29,14 +29,18 @@ class MaterialForecastRuntimePreparationSmokeTest {
     private static void run() throws Exception {
         var properties=new MaterialForecastProperties();
         properties.setPayloadDirectory(required("uten.market.test.payload").toString());
-        properties.setCacheDirectory(required("uten.market.test.cache").toString());
-        properties.setBasePythonExecutable(required("uten.market.test.python").toString());
+        String cache=System.getProperty("uten.market.test.cache","");
+        String python=System.getProperty("uten.market.test.python","");
+        if(!cache.isBlank())properties.setCacheDirectory(required("uten.market.test.cache").toString());
+        if(!python.isBlank())properties.setBasePythonExecutable(required("uten.market.test.python").toString());
         var paths=new MaterialForecastHostPaths(new StorageProperties(),properties);
         var json=new ObjectMapper();
         var evidence=new LinkedHashMap<String,Object>();
         evidence.put("observedAt",Instant.now().toString());
         evidence.put("payload",paths.payloadDirectory().toRealPath().toString());
         evidence.put("cache",paths.cacheDirectory().toString());
+        evidence.put("cacheOverride",!properties.getCacheDirectory().isBlank());
+        evidence.put("basePythonOverride",!properties.getBasePythonExecutable().isBlank());
         Path log=required("uten.market.test.preparationEvidence");
         Files.createDirectories(log.getParent());
         try {
@@ -47,6 +51,14 @@ class MaterialForecastRuntimePreparationSmokeTest {
             evidence.put("worker",ready.worker().toString());
             evidence.put("catalog",ready.catalog().toString());
             evidence.put("lockDigest",ready.lockDigest());
+            Path realCache=paths.cacheDirectory().toRealPath();
+            Path pythonParent=ready.python().getParent().toRealPath();
+            evidence.put("pythonLexicallyWithinCache",pythonParent.startsWith(realCache));
+            Path cacheIdentity=pythonParent;
+            while(cacheIdentity!=null&&!Files.isSameFile(realCache,cacheIdentity))cacheIdentity=cacheIdentity.getParent();
+            if(cacheIdentity==null)throw new AssertionError("Prepared interpreter lacks the exact managed cache identity");
+            evidence.put("pythonWithinSameCacheIdentity",true);
+            evidence.put("actualCacheIdentityDirectory",cacheIdentity.toString());
         } catch(MaterialForecastProcessLauncher.Failure failure) {
             evidence.put("state","ERROR");evidence.put("code",failure.code());
             // Only in this opt-in local diagnostic: reproduce the exact production
@@ -56,8 +68,9 @@ class MaterialForecastRuntimePreparationSmokeTest {
             if(MaterialForecastHostPaths.windows()) {
                 command.addAll(List.of(Path.of(System.getenv().getOrDefault("SystemRoot","C:\\Windows"),"System32/WindowsPowerShell/v1.0/powershell.exe").toString(),
                     "-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-File",payload.resolve("prepare_runtime.ps1").toString(),
-                    "-Payload",payload.toString(),"-Cache",paths.cacheDirectory().toString(),"-BasePython",properties.getBasePythonExecutable()));
-            } else command.addAll(List.of(properties.getBasePythonExecutable(),"-I",payload.resolve("prepare_runtime.py").toString(),"--payload",payload.toString(),"--cache",paths.cacheDirectory().toString()));
+                    "-Payload",payload.toString(),"-Cache",paths.cacheDirectory().toString()));
+                if(!properties.getBasePythonExecutable().isBlank())command.addAll(List.of("-BasePython",properties.getBasePythonExecutable()));
+            } else command.addAll(List.of(properties.getBasePythonExecutable().isBlank()?"/usr/bin/python3":properties.getBasePythonExecutable(),"-I",payload.resolve("prepare_runtime.py").toString(),"--payload",payload.toString(),"--cache",paths.cacheDirectory().toString()));
             Path raw=Files.createTempFile(log.getParent(),"preparation-probe-",".stdout");
             try {
                 Process probe=MaterialForecastProcessLauncher.builder(command,payload).redirectOutput(raw.toFile()).start();

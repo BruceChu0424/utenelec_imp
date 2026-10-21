@@ -55,6 +55,44 @@ class MaterialForecastHostPathsTest {
         assertThat(MaterialForecastProcessLauncher.failureCode(json.readTree("{\"schemaVersion\":1,\"state\":\"ERROR\",\"errorCode\":\"BASE_PYTHON_UNAVAILABLE\"}"))).isEqualTo("BASE_PYTHON_UNAVAILABLE");
         assertThat(MaterialForecastProcessLauncher.failureCode(json.readTree("{\"schemaVersion\":1,\"state\":\"ERROR\",\"errorCode\":\"private path and raw traceback\"}"))).isEqualTo("PREPARATION_FAILED");
     }
+    @Test void interpreterMustBelongToTheExactManagedDirectoryNotASiblingWithTheSamePrefix()throws Exception {
+        Path cache=Files.createDirectory(directory.resolve("cache")).toRealPath();
+        Path managed=Files.createDirectories(cache.resolve("key/venv/bin")).resolve("python");
+        Files.writeString(managed,"managed");
+        Path outside=Files.createDirectories(directory.resolve("cache-elsewhere/key/venv/bin")).resolve("python");
+        Files.writeString(outside,"outside");
+        assertThat(MaterialForecastHostPaths.containsManagedInterpreter(cache,managed)).isTrue();
+        assertThat(MaterialForecastHostPaths.containsManagedInterpreter(cache,outside)).isFalse();
+    }
+    @Test @EnabledOnOs({OS.LINUX,OS.MAC})
+    void linkedInterpreterAndDirectoryNeverAcquireManagedCacheOwnership()throws Exception {
+        Path cache=Files.createDirectory(directory.resolve("cache")).toRealPath();
+        Path outside=Files.writeString(directory.resolve("outside-python"),"outside");
+        Path linked=Files.createSymbolicLink(cache.resolve("python"),outside);
+        assertThatThrownBy(()->MaterialForecastHostPaths.containsManagedInterpreter(cache,linked)).isInstanceOf(java.io.IOException.class);
+        Path external=Files.createDirectories(directory.resolve("external/bin"));
+        Files.writeString(external.resolve("python"),"outside");
+        Path linkedDirectory=Files.createSymbolicLink(cache.resolve("linked-directory"),external);
+        assertThatThrownBy(()->MaterialForecastHostPaths.containsManagedInterpreter(cache,linkedDirectory.resolve("python"))).isInstanceOf(java.io.IOException.class);
+    }
+    @Test @EnabledOnOs(OS.WINDOWS)
+    void windowsDirectoryJunctionCannotMasqueradeAsAnUnlinkedManagedReceipt()throws Exception {
+        Path cache=Files.createDirectory(directory.resolve("cache")).toRealPath();
+        Path scripts=Files.createDirectories(cache.resolve("key/venv/Scripts"));
+        Files.writeString(scripts.resolve("python.exe"),"managed");
+        Path junction=directory.resolve("outside-junction");
+        Path cmd=Path.of(System.getenv().getOrDefault("SystemRoot","C:\\Windows"),"System32/cmd.exe");
+        Process child=new ProcessBuilder(cmd.toString(),"/d","/c","mklink","/J",junction.toString(),cache.toString()).redirectErrorStream(true).start();
+        assertThat(child.waitFor(10,TimeUnit.SECONDS)).isTrue();
+        assertThat(child.exitValue()).as(new String(child.getInputStream().readAllBytes(),StandardCharsets.UTF_8)).isZero();
+        try {
+            Path aliasedPython=junction.resolve("key/venv/Scripts/python.exe");
+            assertThat(Files.isSameFile(cache,junction)).as("A link has the same identity too; identity alone is insufficient").isTrue();
+            assertThat(MaterialForecastHostPaths.containsManagedInterpreter(cache,aliasedPython)).isFalse();
+        }finally {
+            Files.delete(junction);
+        }
+    }
     @Test void helperOutputAcceptsExactly64KiBAndRejectsOverflowBeforeAppendingIt()throws Exception {
         Class<?> type=Class.forName(MaterialForecastProcessLauncher.class.getName()+"$BoundedOutput");
         var constructor=type.getDeclaredConstructor(java.io.InputStream.class);

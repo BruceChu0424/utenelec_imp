@@ -64,7 +64,7 @@ class MaterialAnalysisPublicSafetyWorkflowContractTest {
                 .contains("progress.demand_failed_qty + progress.safety_failed_qty > 0")
                 .contains("progress.demand_order_exists OR progress.safety_order_exists")
                 .contains("progress.safety_qualified_qty")
-                .contains("action.safety_replenishment_qty = 0");
+                .containsPattern("action\\.safety_replenishment_qty\\s*=\\s*0");
         assertThat(command)
                 .contains("progress.demand_future_qty")
                 .contains("new ActionDraft(")

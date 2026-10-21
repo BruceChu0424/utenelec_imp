@@ -32,16 +32,13 @@ public class GeneratePlanningPackageRequest {
     @Pattern(regexp = "(?i)[0-9a-f]{64}")
     private String previewFingerprint;
 
-    @Valid
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<GenerateSubplansRequest.Line> items = List.of();
+    private List<GenerateSubplansRequest.@Valid Line> items = List.of();
 
-    @Valid
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<MaterialRoute> routes = List.of();
-    @Valid
+    private List<@Valid MaterialRoute> routes = List.of();
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<ExecutionSegment> segments = List.of();
+    private List<@Valid ExecutionSegment> segments = List.of();
 
 
     /** 为 true 时同时按采购总净缺口生成采购申请；没有外购净缺口时返回 null。 */

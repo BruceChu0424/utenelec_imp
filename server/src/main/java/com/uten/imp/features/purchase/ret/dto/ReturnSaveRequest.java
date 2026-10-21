@@ -27,8 +27,7 @@ public class ReturnSaveRequest {
     private Integer settlementStyleLegacy;
     private String remark;
     private boolean confirmGiftSemantics;
-    @Valid
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<ReturnItemLine> items;
+    private List<@Valid ReturnItemLine> items;
 }

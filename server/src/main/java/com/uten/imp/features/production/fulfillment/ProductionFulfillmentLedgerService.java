@@ -373,7 +373,7 @@ public class ProductionFulfillmentLedgerService {
         ProductionMaterialAllocationFacade.ReleaseResult released =
                 stockAllocation.releaseByDemands(demandIds, reason);
         preplanAnalysisPeg.restorePlanDemandTransfers(
-                released.reservationIds(), reason);
+                released.reservationIds());
 
         Object consumed = em.createNativeQuery("""
                         SELECT COUNT(*)

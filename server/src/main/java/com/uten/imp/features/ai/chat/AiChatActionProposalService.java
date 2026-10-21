@@ -349,9 +349,13 @@ public class AiChatActionProposalService implements AiChatActionProposalPort {
 
     private Stamp stamp(Map<String, Object> values) {
         AuthUser actor = access.requireChat();
-        return new Stamp(actor.getId(), actor.getUsername(), Long.parseLong(String.valueOf(values.get("authVersion"))),
-                Long.parseLong(String.valueOf(values.get("epoch"))),
-                sha256Hex(String.valueOf(values.get("memberships"))));
+        try {
+            return new Stamp(actor.getId(), actor.getUsername(), Long.parseLong(String.valueOf(values.get("authVersion"))),
+                    Long.parseLong(String.valueOf(values.get("epoch"))),
+                    sha256Hex(String.valueOf(values.get("memberships"))));
+        } catch (NumberFormatException invalidVersion) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "当前权限版本无法核验，请刷新后重试");
+        }
     }
 
     private Optional<Row> load(UUID id, UUID actor) {

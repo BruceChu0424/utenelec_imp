@@ -64,7 +64,7 @@ class BusinessOutboxDeadLetterMigrationPostgresTest {
         return db.queryForList("""
                 SELECT version||':'||checksum FROM flyway_schema_history
                 WHERE success AND version::integer<=? ORDER BY installed_rank
-                """, String.class, Integer.parseInt(predecessor));
+                """, String.class, com.uten.imp.testsupport.FixtureNumbers.integer(predecessor));
     }
 
     private static List<String> unresolved(JdbcTemplate db) {
@@ -75,8 +75,8 @@ class BusinessOutboxDeadLetterMigrationPostgresTest {
     }
 
     private static Flyway flyway(PostgreSQLContainer postgres, String target) {
-        return Flyway.configure().dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+        return com.uten.imp.testsupport.TestFlyway.configure().dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                 .locations("classpath:db/migration").target(target)
-                .initSql("SET client_min_messages = WARNING").load();
+                .load();
     }
 }

@@ -79,6 +79,9 @@ public interface WarehouseTaskScopePort {
         T read();
     }
 
+    /** Applies a selected warehouse to a read projection without entering the command callback boundary. */
+    <T> T withRequestedWarehouseQuery(UUID requestedWarehouseId, ReadQuery<T> query);
+
     /** Reuses the same scope window for a read projection without adapting it to a command callback. */
     default <T> T withQueryScopeCache(ReadQuery<T> query) {
         return query.read();

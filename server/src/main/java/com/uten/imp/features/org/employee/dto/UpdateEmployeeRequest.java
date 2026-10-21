@@ -44,19 +44,15 @@ public record UpdateEmployeeRequest(
         String allowanceStandard,
         String socialInsuranceLocation,
         // 子集合（非 null 则整体替换；空数组 = 清空）
-        @Valid
         @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS)
-        List<OnboardingRequest.CredentialInput> certificates,
-        @Valid
+        List<OnboardingRequest.@Valid CredentialInput> certificates,
         @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS)
-        List<OnboardingRequest.EducationInput> educations,
+        List<OnboardingRequest.@Valid EducationInput> educations,
         // 车辆 / 备用手机号（非 null 则整体替换；空数组 = 清空）—— ADR-021
-        @Valid
         @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS)
-        List<NestedDtos.VehicleInput> vehicles,
-        @Valid
+        List<NestedDtos.@Valid VehicleInput> vehicles,
         @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS)
-        List<NestedDtos.PhoneInput> phones,
+        List<NestedDtos.@Valid PhoneInput> phones,
         // 入职日期更正使用旧值做并发比较；原因记入追加的任职更正记录。
         LocalDate hireDate,
         LocalDate expectedHireDate,

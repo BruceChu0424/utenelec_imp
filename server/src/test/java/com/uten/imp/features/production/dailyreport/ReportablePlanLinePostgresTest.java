@@ -4,7 +4,6 @@ import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.dailyreport.dto.ReportablePlanLine;
 import com.uten.imp.security.OwnerVisibility;
 import com.uten.imp.security.SecurityContextCurrentUser;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -88,7 +87,7 @@ class ReportablePlanLinePostgresTest {
     @BeforeAll
     static void migrate() {
         POSTGRES.start();
-        Flyway.configure()
+        com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(
                         POSTGRES.getJdbcUrl(),
                         POSTGRES.getUsername(),

@@ -66,7 +66,7 @@ public class ProductionChainHealthService {
         out.add(reportOrInboundOverflow(capped));
         out.add(completedSegmentViolation(capped));
         out.add(fqcQuantityMismatch(capped));
-        out.add(fqcRecoveryMismatch(capped));
+        out.add(fqcRecoveryMismatch());
         return out;
     }
 
@@ -603,7 +603,7 @@ public class ProductionChainHealthService {
 
     // ===== 10. FQC recovery / legacy cutover conservation =====
 
-    private ChainHealthCategory fqcRecoveryMismatch(int limit) {
+    private ChainHealthCategory fqcRecoveryMismatch() {
         var scope = productionAccess.nativeReadScope(
                 "plan.maker_id", "fqcRecoveryHealthOwners");
         String sql = """

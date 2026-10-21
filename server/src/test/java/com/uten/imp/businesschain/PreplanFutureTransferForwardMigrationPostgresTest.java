@@ -1,7 +1,6 @@
 package com.uten.imp.businesschain;
 
 import com.uten.imp.migration.MigrationRehearsalSupport;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -22,7 +21,7 @@ class PreplanFutureTransferForwardMigrationPostgresTest {
     @Test void oldCancellationKeepsItsWholeRestorationAndNewWritesRequireAnExplicitSplit() {
         try(var postgres=new PostgreSQLContainer("postgres:16-alpine")) {
             postgres.start();
-            var config=Flyway.configure().dataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword())
+            var config=com.uten.imp.testsupport.TestFlyway.configure().dataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword())
                     .locations("classpath:db/migration");
             config.target("569").load().migrate();
             var dataSource=new DriverManagerDataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword());
@@ -40,7 +39,7 @@ class PreplanFutureTransferForwardMigrationPostgresTest {
             qty(db,"24.5","SELECT fn_preplan_allocation_admitted_qty(?)",state.targetAllocation());
             assertEquals(1,db.queryForObject("SELECT count(*) FROM preplan_future_supply_transfer_cancellations",Integer.class));
 
-            var upgrade=Flyway.configure().dataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword())
+            var upgrade=com.uten.imp.testsupport.TestFlyway.configure().dataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword())
                     .locations("classpath:db/migration").load().migrate();
             // 从 V569 升到当前目录头应当只跑 V569 之后的迁移，且都不触碰本测试的事实行
             // （V570-V600 的逐条说明见 docs/数据迁移/README.md 索引）。

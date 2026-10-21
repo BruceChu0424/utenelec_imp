@@ -32,10 +32,9 @@ public class FinishedInboundConfirmRequest {
     @Size(max = 1_000)
     private String varianceReason;
 
-    @Valid
     @NotNull
     @Size(min = 1, max = RequestLimits.DOCUMENT_LINES)
-    private List<Lot> lots;
+    private List<@Valid Lot> lots;
 
     @Getter
     @Setter

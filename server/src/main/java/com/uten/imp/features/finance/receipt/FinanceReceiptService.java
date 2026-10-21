@@ -204,7 +204,7 @@ public class FinanceReceiptService {
         requirePrepaymentView(r);
         List<FinanceReceiptLineDto> items = lineRepo.findByReceiptIdOrderByLineNoAsc(id).stream()
                 .map(this::toLineDto).toList();
-        return finishHistory(toDetail(r, lineRepo.findByReceiptIdOrderByLineNoAsc(r.getId()).stream().map(this::toLineDto).toList()), r, historyRead);
+        return finishHistory(toDetail(r, items), r, historyRead);
     }
 
     @Transactional
@@ -262,9 +262,15 @@ public class FinanceReceiptService {
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
-        if (req.getExpectedVersion() == null
-                || r.getVersion() == null
-                || req.getExpectedVersion().longValue() != r.getVersion().longValue()) {
+        if (req.getExpectedVersion() == null) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "收款草稿已被其他操作更新，请刷新后重试");
+        }
+        if (r.getVersion() == null) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "收款草稿已被其他操作更新，请刷新后重试");
+        }
+        if (req.getExpectedVersion().longValue() != r.getVersion().longValue()) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "收款草稿已被其他操作更新，请刷新后重试");
         }
@@ -1686,7 +1692,7 @@ public class FinanceReceiptService {
 
     @Transactional(readOnly = true)
     public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
-        var document=detailHistory(id);
+        detailHistory(id);
         return retainedRecords.children("finance_receipts",id,beforeId,size);
     }
 }

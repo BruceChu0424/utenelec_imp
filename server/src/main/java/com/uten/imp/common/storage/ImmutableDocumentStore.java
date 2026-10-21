@@ -29,7 +29,7 @@ public class ImmutableDocumentStore {
         String key = active.presignUpload(new StorageService.UploadRequest(category, filename, contentType, bytes.length)).storageKey();
         Reference reference;
         try {
-            blobs.store(key, new ByteArrayInputStream(bytes), bytes.length, contentType);
+            blobs.store(key, new ByteArrayInputStream(bytes), bytes.length);
             var staged = active.describe(key);
             if (!staged.exists() || staged.size() != bytes.length) throw new IllegalStateException("文件写入不完整");
             var stored = active.promoteToFinal(key, staged);

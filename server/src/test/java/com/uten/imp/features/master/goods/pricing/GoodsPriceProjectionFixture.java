@@ -18,9 +18,10 @@ final class GoodsPriceProjectionFixture {
                 "permissions", "permission_surfaces", "permission_surface_permissions",
                 "departments", "department_permissions");
         for (String kind : new String[]{"purchase", "subcontract", "sales"}) {
-            db.execute("ALTER TABLE " + kind + "_orders ALTER COLUMN status SET DEFAULT 1");
-            db.execute("ALTER TABLE " + kind + "_order_items ALTER COLUMN goods_code_snapshot SET DEFAULT '"
-                    + frozenCode.replace("'", "''") + "', ALTER COLUMN goods_name_snapshot SET DEFAULT 'Frozen item'");
+            db.execute(db.queryForObject("SELECT format('ALTER TABLE %I ALTER COLUMN status SET DEFAULT 1', CAST(? AS text))",
+                    String.class, kind + "_orders"));
+            db.execute(db.queryForObject("SELECT format('ALTER TABLE %I ALTER COLUMN goods_code_snapshot SET DEFAULT %L, ALTER COLUMN goods_name_snapshot SET DEFAULT %L', CAST(? AS text), CAST(? AS text), CAST(? AS text))",
+                    String.class, kind + "_order_items", frozenCode, "Frozen item"));
         }
         db.execute("ALTER TABLE sales_orders ALTER COLUMN approved_at SET DEFAULT now()");
         db.execute("ALTER TABLE procurement_order_approval_cases ALTER COLUMN decided_at SET DEFAULT now()");

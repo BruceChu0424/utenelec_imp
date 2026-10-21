@@ -30,7 +30,7 @@ public final class FinishedArrivalTestSupport {
             ProductionFinishedArrivalRegistrationService service, UUID reportId,
             String key, UUID warehouseId, String place, String remark, boolean preStock) {
         ArrivalRegistrationView pending = service.batchDetail(List.of(reportId)).getFirst();
-        return single(register(service, key, warehouseId,
+        return single(register(service, key,
                 pending.lots().stream().map(lot -> lot(lot, warehouseId, place, preStock)).toList(),
                 remark, preStock), reportId, warehouseId);
     }
@@ -40,8 +40,7 @@ public final class FinishedArrivalTestSupport {
             ProductionFinishedArrivalRegistrationService service, UUID reportId,
             String key, UUID warehouseId, Collection<UUID> reportItemIds,
             Function<UUID, String> placeOf, String remark, boolean preStock) {
-        return single(register(service, key, warehouseId,
-                lotsOf(service, reportId, warehouseId, reportItemIds, placeOf, preStock), remark, preStock),
+        return single(register(service, key, lotsOf(service, reportId, warehouseId, reportItemIds, placeOf, preStock), remark, preStock),
                 reportId, warehouseId);
     }
 
@@ -72,9 +71,7 @@ public final class FinishedArrivalTestSupport {
                 preStock ? lot.reportedQty() : null, null);
     }
 
-    public static BatchArrivalRegistrationResult register(
-            ProductionFinishedArrivalRegistrationService service, String key, UUID warehouseId,
-            List<ArrivalLotRequest> lots, String remark, boolean preStock) {
+    public static BatchArrivalRegistrationResult register(ProductionFinishedArrivalRegistrationService service, String key, List<ArrivalLotRequest> lots, String remark, boolean preStock) {
         return service.batchRegister(new BatchArrivalRegistrationRequest(key, lots, remark, preStock ? Boolean.TRUE : null));
     }
 

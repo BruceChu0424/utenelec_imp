@@ -169,7 +169,6 @@ class FinanceBankTransferServiceTest {
         UUID outAccount = UUID.randomUUID();
         UUID inAccount = UUID.randomUUID();
         UUID outCurrency = UUID.randomUUID();
-        UUID inCurrency = UUID.randomUUID();
         FinanceBankTransfer transfer =
                 transfer((short) 1, outAccount, outCurrency, "0");
         transfer.setAmountLocal(new BigDecimal("100.0000"));

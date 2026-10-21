@@ -42,17 +42,17 @@ public class WorkshopMaterialReportGuardAdapter implements WorkshopMaterialRepor
 
     @Override
     @Transactional(readOnly=true,propagation=Propagation.MANDATORY,noRollbackFor=ApiException.class)
-    public void requireReversibleReadOnly(UUID reportId,LocalDate billDate,Collection<UUID> segmentIds) {
-        check(reportId,billDate,segmentIds,Operation.REVERSE,false);
+    public void requireReversibleReadOnly(LocalDate billDate, Collection<UUID> segmentIds) {
+        check(billDate, segmentIds, Operation.REVERSE, false);
     }
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
-    public void lockAndCheck(UUID reportId, LocalDate billDate, Collection<UUID> segmentIds, Operation op) {
-        check(reportId,billDate,segmentIds,op,true);
+    public void lockAndCheck(LocalDate billDate, Collection<UUID> segmentIds, Operation op) {
+        check(billDate, segmentIds, op, true);
     }
 
-    private void check(UUID reportId,LocalDate billDate,Collection<UUID> segmentIds,Operation op,boolean lock) {
+    private void check(LocalDate billDate, Collection<UUID> segmentIds, Operation op, boolean lock) {
         if (billDate == null || segmentIds == null || segmentIds.isEmpty()) return;
         List<UUID> segments = List.copyOf(new LinkedHashSet<>(segmentIds));
         List<Map<String, Object>> periods = db.queryForList("""

@@ -1,6 +1,5 @@
 package com.uten.imp.features.stock.valuation;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -20,7 +19,7 @@ class InventoryValueOpeningMigrationPostgresTest {
         try(var postgres=new PostgreSQLContainer("postgres:16-alpine")){
             postgres.start();
             var ds=new DriverManagerDataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword());
-            Flyway.configure().dataSource(ds).locations("classpath:db/migration").target("505").load().migrate();
+            com.uten.imp.testsupport.TestFlyway.configure().dataSource(ds).locations("classpath:db/migration").target("505").load().migrate();
             var db=new JdbcTemplate(ds);
             db.update("INSERT INTO units(id,code,name) VALUES ('00500506-0000-0000-0000-000000000001','OPENING-UNIT','opening piece')");
             db.update("INSERT INTO goods(id,code,name,unit_id,code_sequence) VALUES ('00500506-0000-0000-0000-000000000002','OPENING-GOODS','opening material','00500506-0000-0000-0000-000000000001',(SELECT COALESCE(max(code_sequence),0)+1 FROM goods))");
@@ -29,7 +28,7 @@ class InventoryValueOpeningMigrationPostgresTest {
             db.update("INSERT INTO stock_value_pools(id,warehouse_id,goods_id,state,legacy_balance_id,legacy_qty,legacy_amount_local) VALUES ('00500506-0000-0000-0000-000000000005','00500506-0000-0000-0000-000000000003','00500506-0000-0000-0000-000000000002','LEGACY_UNVERIFIED','00500506-0000-0000-0000-000000000004',7,999)");
             List<String> tables=db.queryForList("SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename<>'flyway_schema_history' ORDER BY tablename",String.class);
             Map<String,String> before=digest(db,tables);
-            Flyway.configure().dataSource(ds).locations("classpath:db/migration").target("506").load().migrate();
+            com.uten.imp.testsupport.TestFlyway.configure().dataSource(ds).locations("classpath:db/migration").target("506").load().migrate();
             assertThat(digest(db,tables)).isEqualTo(before);
             for(String added:List.of("stock_value_openings","stock_value_legacy_balance_cases","stock_value_legacy_balance_case_events")){
                 assertThat(db.queryForObject("SELECT count(*) FROM "+added,Integer.class)).isZero();

@@ -64,7 +64,7 @@ class AuditFreshStartGuardPostgresTest {
     }
 
     private org.flywaydb.core.api.configuration.FluentConfiguration base(String schema) {
-        return Flyway.configure()
+        return com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(
                         jdbcUrl(schema),
                         POSTGRES.getUsername(),

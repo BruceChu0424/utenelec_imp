@@ -24,6 +24,7 @@ class InternalStorageServiceTest {
     @Test void presignedObjectsUsePrivateBusinessAndMonthPartitionsAndExactDeletion() throws Exception {
         var store=store();byte[] bytes="original private attachment".getBytes(StandardCharsets.UTF_8);
         var grant=store.presignUpload(new StorageService.UploadRequest("EMPLOYEE","original.txt","text/plain",bytes.length));
+        assertEquals("text/plain", grant.headers().get("Content-Type"));
         assertTrue(grant.storageKey().matches("i1_EMPLOYEE_[0-9]{6}_[a-f0-9]{32}\\.txt"));
         var object=upload(store,grant.storageKey(),bytes);
         String month=grant.storageKey().split("_")[2];
@@ -46,11 +47,11 @@ class InternalStorageServiceTest {
     }
 
     @Test void precompressedFormatsAndIncompressibleBytesStayIdentity() throws Exception {
-        var store=store();byte[] bytes=new byte[160000];new Random(913).nextBytes(bytes);
+        var store=store();byte[] bytes=new byte[160000];var random=new Random(913);random.nextBytes(bytes);
         String png="1123456789abcdef0123456789abcdef.png";
         byte[] signature={(byte)137,80,78,71,13,10,26,10};System.arraycopy(signature,0,bytes,0,signature.length);
         var pngObject=upload(store,png,bytes);assertEquals("IDENTITY",pngObject.encoding());
-        new Random(117).nextBytes(bytes);bytes[0]=(byte)0xab;
+        random.setSeed(117);random.nextBytes(bytes);bytes[0]=(byte)0xab;
         var randomObject=upload(store,KEY,bytes);assertEquals("IDENTITY",randomObject.encoding());
         try(var input=store.read(KEY,randomObject.versionId())) { assertArrayEquals(bytes,input.readAllBytes()); }
         assertEquals(bytes.length+57,randomObject.storedSize());assertEquals(0,scratchCount());
@@ -61,17 +62,17 @@ class InternalStorageServiceTest {
         InputStream endless=new InputStream() {
             @Override public int read() { reads.incrementAndGet();return 65; }
         };
-        assertThrows(IllegalStateException.class,()->store.store(KEY,endless,10,"text/plain"));
+        assertThrows(IllegalStateException.class,()->store.store(KEY,endless,10));
         assertEquals(11,reads.get());assertFalse(store.describe(KEY).exists());assertEquals(0,scratchCount());
-        assertThrows(IllegalStateException.class,()->store.store(KEY,new ByteArrayInputStream(new byte[2]),10,"text/plain"));
+        assertThrows(IllegalStateException.class,()->store.store(KEY,new ByteArrayInputStream(new byte[2]),10));
         assertFalse(store.describe(KEY).exists());
     }
 
     @Test void refusesOverwriteWrongVersionTraversalAndUnconfirmedDownload() throws Exception {
         var store=store();byte[] bytes="actual".getBytes(StandardCharsets.UTF_8);
-        store.store(KEY,new ByteArrayInputStream(bytes),bytes.length,"text/plain");
+        store.store(KEY,new ByteArrayInputStream(bytes),bytes.length);
         assertThrows(IllegalStateException.class,()->store.read(KEY,store.describe(KEY).versionId()));
-        assertThrows(IllegalStateException.class,()->store.store(KEY,new ByteArrayInputStream(bytes),bytes.length,"text/plain"));
+        assertThrows(IllegalStateException.class,()->store.store(KEY,new ByteArrayInputStream(bytes),bytes.length));
         var object=store.promoteToFinal(KEY,store.describe(KEY));
         assertThrows(IllegalArgumentException.class,()->store.read(KEY));
         assertThrows(IllegalStateException.class,()->store.read(KEY,"internal-v1:"+"0".repeat(64)));
@@ -98,7 +99,7 @@ class InternalStorageServiceTest {
         };
         String version = "internal-v1:" + "a".repeat(64);
         for (String key : unsafeKeys) {
-            assertThrows(IllegalArgumentException.class, () -> store.store(key, body, 1, "text/plain"));
+            assertThrows(IllegalArgumentException.class, () -> store.store(key, body, 1));
             assertThrows(IllegalArgumentException.class, () -> store.describe(key));
             assertThrows(IllegalArgumentException.class,
                     () -> store.inspectObject(StorageService.ObjectLocation.FINAL, key));
@@ -154,7 +155,7 @@ class InternalStorageServiceTest {
 
     @Test void lowDiskSpaceAndOversizedDeclarationsFailBeforeIntake() throws Exception {
         var props=properties();props.getInternal().setMinFreeBytes(Long.MAX_VALUE);var store=store(props);
-        assertThrows(StorageResourceUnavailableException.class,()->store.store(KEY,new ByteArrayInputStream(new byte[]{1}),1,"text/plain"));
+        assertThrows(StorageResourceUnavailableException.class,()->store.store(KEY,new ByteArrayInputStream(new byte[]{1}),1));
         assertThrows(IllegalArgumentException.class,()->store.presignUpload(new StorageService.UploadRequest("EMPLOYEE","x.txt","text/plain",props.getMaxBytes()+1)));
         assertEquals(0,scratchCount());
     }
@@ -283,7 +284,7 @@ class InternalStorageServiceTest {
         var store=new InternalStorageService(properties,path->{});store.init();return store;
     }
     private StorageService.StoredObject upload(InternalStorageService store,String key,byte[] bytes) {
-        store.store(key,new ByteArrayInputStream(bytes),bytes.length,"text/plain");
+        store.store(key,new ByteArrayInputStream(bytes),bytes.length);
         return store.promoteToFinal(key,store.describe(key));
     }
     private long scratchCount() throws IOException { try(var paths=Files.list(directory.resolve("scratch"))) { return paths.count(); } }

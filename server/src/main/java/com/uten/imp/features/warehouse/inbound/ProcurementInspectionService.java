@@ -712,14 +712,14 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     }
 
     private void requireInspectionConcluded(String receiptType,UUID receiptId){
-        Integer pending = ((Number) em.createNativeQuery("""
+        long pending = ((Number) em.createNativeQuery("""
                         SELECT COUNT(*) FROM procurement_inspection_items
                         WHERE receipt_type = :rt AND receipt_id = :rid
                           AND status IN ('PENDING', 'PARTIAL')
                         """)
                 .setParameter("rt", receiptType)
                 .setParameter("rid", receiptId)
-                .getSingleResult()).intValue();
+                .getSingleResult()).longValue();
         if (pending > 0) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "收货单尚有未完成质检结论的明细，请先质检结案再红冲");
@@ -987,7 +987,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     }
 
     private boolean alreadyReceiptResolved(String receiptType, UUID receiptId) {
-        Integer resolved = ((Number) em.createNativeQuery("""
+        long resolved = ((Number) em.createNativeQuery("""
                         SELECT COUNT(*) FROM procurement_inspection_events e
                         JOIN procurement_inspection_items i ON i.id = e.inspection_item_id
                         WHERE e.action IN ('PRODUCTION_WOKEN', 'RECEIPT_RESOLVED')
@@ -995,7 +995,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                         """)
                 .setParameter("rt", receiptType)
                 .setParameter("rid", receiptId)
-                .getSingleResult()).intValue();
+                .getSingleResult()).longValue();
         return resolved > 0;
     }
 

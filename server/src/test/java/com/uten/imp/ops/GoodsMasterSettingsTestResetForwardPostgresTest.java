@@ -1,6 +1,7 @@
 package com.uten.imp.ops;
 
-import org.flywaydb.core.Flyway;
+import com.uten.imp.testsupport.BoundTestSql;
+
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -31,13 +32,13 @@ class GoodsMasterSettingsTestResetForwardPostgresTest {
             // A real restricted runtime role exercises the existing V625 authorization contract.
             sql.execute("CREATE ROLE uten NOLOGIN NOSUPERUSER NOINHERIT");
         }
-        Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").target("783").load().migrate();
         try (var connection = connect(); var sql = connection.createStatement()) {
             predecessor = function(sql);
             securityBefore = security(sql);
         }
-        assertThat(Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+        assertThat(com.uten.imp.testsupport.TestFlyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").target("784").load().migrate().migrationsExecuted).isEqualTo(1);
         try (var connection = connect(); var sql = connection.createStatement()) {
             forward = function(sql);
@@ -76,7 +77,7 @@ class GoodsMasterSettingsTestResetForwardPostgresTest {
             sql.execute("SELECT * FROM public.business_data_reset()");
             for (UUID id : List.of(nulls, zeros, nonzeros)) {
                 assertThat(snapshot(id, true)).as("all non-opening columns, including the 21 master parameters").isEqualTo(before.get(id));
-                try (var row = sql.executeQuery("SELECT init_stock,init_count,init_weight,version,updated_at > TIMESTAMPTZ '2001-01-01 00:00:00+00' FROM goods WHERE id='" + id + "'")) {
+                try (var boundSql1 = BoundTestSql.prepare(sql, "SELECT init_stock,init_count,init_weight,version,updated_at > TIMESTAMPTZ '2001-01-01 00:00:00+00' FROM goods WHERE id=?", id); var row = boundSql1.executeQuery()) {
                     assertThat(row.next()).isTrue();
                     assertThat(row.getInt(1)).isZero();
                     assertThat(row.getBigDecimal(2)).isEqualByComparingTo(BigDecimal.ZERO);
@@ -94,7 +95,7 @@ class GoodsMasterSettingsTestResetForwardPostgresTest {
     @Test void zeroOrNullOpeningsDoNotUpdateNullZeroOrNonzeroMasterSettingsVersionOrTimestamp() throws Exception {
         UUID nulls = seed(null, false), zeros = seed(BigDecimal.ZERO, false), nonzeros = seed(new BigDecimal("2.3456"), false);
         try (var sql = connection.createStatement()) {
-            sql.execute("UPDATE goods SET init_stock=NULL,init_count=NULL,init_weight=NULL WHERE id='" + nulls + "'");
+            BoundTestSql.execute(sql, "UPDATE goods SET init_stock=NULL,init_count=NULL,init_weight=NULL WHERE id=?", nulls);
         }
         Map<UUID, String> before = new LinkedHashMap<>();
         for (UUID id : List.of(nulls, zeros, nonzeros)) before.put(id, snapshot(id, false));

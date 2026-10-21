@@ -119,7 +119,7 @@ public class PlatformColumnService {
         Map<UUID,Definition> dependencies=loadDefinitions(scope,refs);
         boolean protectedPrice=input.priceProtected()||isPriceProtected(formula,dependencies,adapter);
         if(protectedPrice&&!adapter.canViewPrice())throw forbidden("没有价格权限，不能定义费用或敏感计算列");
-        requireDependencyDepth(formula,dependencies,new HashSet<>(),0);
+        requireDependencyDepth(formula,dependencies,new HashSet<>());
         tx.bind();
         Map<String,Object> parameters=params(scope);
         if(related)parameters.put("owner",currentUser.requireId());
@@ -326,7 +326,7 @@ public class PlatformColumnService {
         if(adapter.personalDefinitions())throw forbidden("个人计算展示不允许写入业务记录");
         if(documentCreate&&sourceId!=null)throw invalid("新建单据不能借用既有记录的扩展字段");
         if(expectedVersion<0||(!preserve&&cells==null)||(cells!=null&&cells.size()>MAX_COLUMNS))throw invalid("请提供当前版本及最多32个扩展字段");
-        var access=sourceId==null?new PlatformColumnResourceAdapter.RecordAccess(true,adapter.canViewPrice()):authorize(adapter,Set.of(sourceId),!allowUnchanged).get(sourceId);
+        var access=fieldWriteAccess(adapter,sourceId,allowUnchanged);
         tx.bind();
         Map<String,Object> parameters=params(scope);parameters.put("record",sourceId);
         List<Stored> rows=sourceId==null?List.of():jdbc.query("SELECT version,cells::text FROM platform_record_fields WHERE scope=:scope AND record_id=:record FOR UPDATE",
@@ -570,7 +570,7 @@ public class PlatformColumnService {
         }
         return new Formula(normalizeOperand(formula.base()),List.copyOf(steps));
     }
-    private static void requireDependencyDepth(Formula formula,Map<UUID,Definition> definitions,Set<UUID> path,int depth) {
+    private static void requireDependencyDepth(Formula formula,Map<UUID,Definition> definitions,Set<UUID> path) {
         if(formulaDepth(formula,definitions,path,new HashMap<>())>MAX_DEPTH)throw invalid("计算列依赖过深");
     }
     private static int formulaDepth(Formula formula,Map<UUID,Definition> definitions,Set<UUID> path,Map<UUID,Integer> cache) {
@@ -619,6 +619,12 @@ public class PlatformColumnService {
                 SELECT :actor,d.id,1,now() FROM platform_column_definitions d WHERE d.scope=:scope AND (d.owner_user_id=:owner OR (d.value_type='RELATED' AND d.owner_user_id=:actor)) AND d.id IN(:ids)
                 ON CONFLICT(user_id,definition_id) DO UPDATE SET usage_count=platform_column_usage.usage_count+1,last_used_at=now()
                 """,parameters);
+    }
+    private PlatformColumnResourceAdapter.RecordAccess fieldWriteAccess(
+            PlatformColumnResourceAdapter adapter,UUID sourceId,boolean allowUnchanged) {
+        // New records have no persisted object scope; module save access has already been required.
+        if(sourceId==null)return new PlatformColumnResourceAdapter.RecordAccess(true,adapter.canViewPrice());
+        return authorize(adapter,Set.of(sourceId),!allowUnchanged).get(sourceId);
     }
     private Map<UUID,PlatformColumnResourceAdapter.RecordAccess> authorize(PlatformColumnResourceAdapter adapter,Set<UUID> ids,boolean write) {
         var access=adapter.authorize(ids,write);

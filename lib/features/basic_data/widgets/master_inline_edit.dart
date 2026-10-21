@@ -783,6 +783,11 @@ class _MasterInlineEditGuardState<T> extends State<MasterInlineEditGuard<T>> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    // Imperative routes have no independent GoRouter page identity. Resolve
+    // that boundary before the lookup can subscribe to a parent registry.
+    FormDraftNavigation.unregister(this);
+    _routerGuard = false;
+    if (ModalRoute.of(context)?.settings is! Page) return;
     try {
       final state = GoRouterState.of(context);
       FormDraftNavigation.register(

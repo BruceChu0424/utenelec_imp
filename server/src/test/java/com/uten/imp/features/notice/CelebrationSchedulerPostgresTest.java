@@ -3,7 +3,6 @@ package com.uten.imp.features.notice;
 import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.notice.NoticeService.CelebrationSubject;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -65,7 +64,7 @@ class CelebrationSchedulerPostgresTest {
     @BeforeAll
     static void migrate() {
         POSTGRES.start();
-        Flyway.configure()
+        com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(
                         POSTGRES.getJdbcUrl(),
                         POSTGRES.getUsername(),
@@ -271,7 +270,7 @@ class CelebrationSchedulerPostgresTest {
     /** 从「入职N周年」标签提取 N（缺失/畸形 → -1）。 */
     private static int yearsOf(String label) {
         var m = java.util.regex.Pattern.compile("入职(\\d+)周年").matcher(label);
-        return m.find() ? Integer.parseInt(m.group(1)) : -1;
+        return m.find() ? com.uten.imp.testsupport.FixtureNumbers.integer(m.group(1)) : -1;
     }
 
     private static String todayMonthDay() {

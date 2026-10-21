@@ -4,7 +4,6 @@ import com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.Inventor
 import com.uten.imp.application.port.ProductionMutationFootprintPort.WarehouseDimension;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -36,7 +35,7 @@ class ProductionMutationFootprintPostgresTest {
     @BeforeAll
     static void start() {
         DATABASE.start();
-        Flyway.configure().dataSource(DATABASE.getJdbcUrl(),DATABASE.getUsername(),DATABASE.getPassword())
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(DATABASE.getJdbcUrl(),DATABASE.getUsername(),DATABASE.getPassword())
                 .locations("classpath:db/migration").load().migrate();
         var dataSource = new DriverManagerDataSource(DATABASE.getJdbcUrl(),DATABASE.getUsername(),DATABASE.getPassword());
         jdbc = new JdbcTemplate(dataSource);

@@ -5,7 +5,6 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.uten.imp.security.TxSessionVars;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -73,7 +72,7 @@ class EmployeeIdentityCheckRunnerPostgresTest {
     @BeforeAll
     static void migrate() {
         POSTGRES.start();
-        Flyway.configure()
+        com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration")
                 .load()

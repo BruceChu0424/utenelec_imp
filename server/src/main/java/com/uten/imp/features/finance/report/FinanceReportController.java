@@ -134,12 +134,9 @@ public class FinanceReportController {
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) Map<String, String> allParams,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "50") int size,
-            @RequestParam(required = false) String sort,
-            @RequestParam(required = false) String order) {
-        return service.arApSummary(direction, dateFrom, dateTo, keyword, ReportQueryKit.facetsOf(allParams), page, size, sort, order);
+            @RequestParam(defaultValue = "50") int size) {
+        return service.arApSummary(direction, dateFrom, dateTo, keyword, page, size);
     }
 
     /** Customer advance arrival/application/reversal dated subledger; also the statement alias. */
@@ -187,13 +184,10 @@ public class FinanceReportController {
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) Map<String, String> allParams,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "50") int size,
-            @RequestParam(required = false) String sort,
-            @RequestParam(required = false) String order) {
+            @RequestParam(defaultValue = "50") int size) {
         return service.receiptSummary(billNo, clientId, status, dateFrom, dateTo, keyword,
-                ReportQueryKit.facetsOf(allParams), page, size, sort, order);
+                page, size);
     }
 
     /** G 采购付款明细。 */

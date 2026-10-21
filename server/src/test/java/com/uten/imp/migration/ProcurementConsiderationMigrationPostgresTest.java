@@ -1,7 +1,6 @@
 package com.uten.imp.migration;
 
 import java.sql.DriverManager;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import static org.junit.jupiter.api.Assertions.*;
@@ -12,9 +11,9 @@ class ProcurementConsiderationMigrationPostgresTest {
         try(var pg=new PostgreSQLContainer("postgres:16-alpine")
                 .withDatabaseName("iqc_consideration").withUsername("uten").withPassword("test-only")){
             pg.start();
-            Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword())
+            com.uten.imp.testsupport.TestFlyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword())
                     .locations("classpath:db/migration").target("516").load().migrate();
-            Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword())
+            com.uten.imp.testsupport.TestFlyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword())
                     .locations("classpath:db/migration").target("518").load().migrate();
             try(var c=DriverManager.getConnection(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword());var s=c.createStatement()){
                 try(var r=s.executeQuery("SELECT atttypmod,attnotnull FROM pg_attribute WHERE attrelid='procurement_iqc_credit_slices'::regclass AND attname='amount_original'")){

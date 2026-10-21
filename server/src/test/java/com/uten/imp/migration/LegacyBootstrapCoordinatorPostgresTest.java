@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.Location;
 import org.flywaydb.core.internal.resolver.ChecksumCalculator;
 import org.flywaydb.core.internal.resource.filesystem.FileSystemResource;
@@ -88,7 +87,7 @@ class LegacyBootstrapCoordinatorPostgresTest {
                 .withCommand("postgres", "-c", "max_locks_per_transaction=512");
         postgres.start();
         activeDatabase = postgres.getDatabaseName();
-        Flyway.configure().dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                 .locations("filesystem:" + migrationDirectory).load().migrate();
         clusterId = scalar("SELECT system_identifier FROM pg_control_system()");
         shell("createdb -U uten -T legacy_bootstrap_rehearsal legacy_bootstrap_template");
@@ -471,8 +470,12 @@ class LegacyBootstrapCoordinatorPostgresTest {
                  var executor = Executors.newVirtualThreadPerTaskExecutor()) {
                 claimBarrier.setAutoCommit(false);
                 businessBarrier.setAutoCommit(false);
-                claimBarrier.createStatement().execute("SELECT pg_advisory_xact_lock(91624001)");
-                businessBarrier.createStatement().execute("SELECT pg_advisory_xact_lock(91624002)");
+                try (var statement = claimBarrier.createStatement()) {
+                    statement.execute("SELECT pg_advisory_xact_lock(91624001)");
+                }
+                try (var statement = businessBarrier.createStatement()) {
+                    statement.execute("SELECT pg_advisory_xact_lock(91624002)");
+                }
                 var first = executor.submit(() -> coordinator());
                 try {
                     for (int barrierKey : List.of(91624001, 91624002)) {
@@ -634,6 +637,6 @@ class LegacyBootstrapCoordinatorPostgresTest {
 
     private static int version(Path file) {
         String name = file.getFileName().toString();
-        return Integer.parseInt(name.substring(1, name.indexOf("__")));
+        return com.uten.imp.testsupport.FixtureNumbers.integer(name.substring(1, name.indexOf("__")));
     }
 }

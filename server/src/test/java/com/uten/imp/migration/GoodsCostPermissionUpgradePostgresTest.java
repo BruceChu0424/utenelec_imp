@@ -1,7 +1,6 @@
 package com.uten.imp.migration;
 
 import java.util.UUID;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -39,7 +38,7 @@ class GoodsCostPermissionUpgradePostgresTest {
     }
 
     private static void migrate(PostgreSQLContainer postgres, String version) {
-        Flyway.configure().dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
-                .locations("classpath:db/migration").initSql("SET client_min_messages = WARNING").target(version).load().migrate();
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+                .locations("classpath:db/migration").target(version).load().migrate();
     }
 }

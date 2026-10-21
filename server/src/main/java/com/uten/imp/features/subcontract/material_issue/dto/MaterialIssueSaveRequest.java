@@ -40,8 +40,7 @@ public class MaterialIssueSaveRequest {
     private Integer approverLegacyId;
     private String approverName;
 
-    @Valid
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<MaterialIssueItemLine> items;
+    private List<@Valid MaterialIssueItemLine> items;
 }

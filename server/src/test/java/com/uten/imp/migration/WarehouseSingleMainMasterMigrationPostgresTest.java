@@ -1,6 +1,7 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
+import com.uten.imp.testsupport.BoundTestSql;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.ConnectionCallback;
@@ -164,7 +165,7 @@ class WarehouseSingleMainMasterMigrationPostgresTest {
             jdbc.execute((ConnectionCallback<Void>) connection -> {
                 connection.setAutoCommit(false);
                 try (var statement = connection.createStatement()) {
-                    statement.execute("UPDATE warehouses SET code='ROOT-RENAMED' WHERE id='" + root + "'");
+                    BoundTestSql.execute(statement, "UPDATE warehouses SET code='ROOT-RENAMED' WHERE id=?", root);
                     try (var rows = statement.executeQuery("SELECT fn_warehouse_root_id()")) {
                         rows.next();
                         assertThat(rows.getObject(1, UUID.class)).isEqualTo(root);
@@ -194,7 +195,7 @@ class WarehouseSingleMainMasterMigrationPostgresTest {
     }
 
     private static void migrate(PostgreSQLContainer db, String target) {
-        Flyway.configure().dataSource(db.getJdbcUrl(), db.getUsername(), db.getPassword())
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(db.getJdbcUrl(), db.getUsername(), db.getPassword())
                 .locations("classpath:db/migration").target(target).load().migrate();
     }
 

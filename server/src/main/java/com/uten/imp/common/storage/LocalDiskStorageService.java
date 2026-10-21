@@ -181,7 +181,7 @@ public class LocalDiskStorageService implements StorageService, BlobStore {
     }
 
     @Override
-    public void store(String storageKey, InputStream in, long contentLength, String contentType) {
+    public void store(String storageKey, InputStream in, long contentLength) {
         if (contentLength <= 0) {
             throw new IllegalArgumentException("Attachment Content-Length must be positive");
         }

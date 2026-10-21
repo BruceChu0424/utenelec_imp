@@ -19,12 +19,21 @@ class AiChatPageSnapshotTest {
         return json.convertValue(raw, AiChatPageSnapshot.class);
     }
     private static Map<String, Object> table(Object... entries) {
+        if (entries.length % 2 != 0) {
+            throw new IllegalArgumentException("table fixture needs complete key/value pairs");
+        }
         Map<String, Object> table = new LinkedHashMap<>();
         table.put("title", "车间任务");
         table.put("columns", List.of(Map.of("label", "货品"), Map.of("label", "状态", "info", "按物料齐套情况显示")));
         table.put("rows", List.of(Map.of("no", 1, "cells", List.of("A001 螺丝", "可开工"))));
-        for (int i = 0; i < entries.length; i += 2) table.put((String) entries[i], entries[i + 1]);
+        for (int i = 0; i < entries.length - 1; i += 2) table.put((String) entries[i], entries[i + 1]);
         return table;
+    }
+
+    @Test void tableFixtureRejectsIncompleteKeyValuePairs() {
+        assertThatThrownBy(() -> table("legend"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("complete key/value pairs");
     }
 
     @Test void validSnapshotIsKeptAsDataAndSerializedWithinBounds() {

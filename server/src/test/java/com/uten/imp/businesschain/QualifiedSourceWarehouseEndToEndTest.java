@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.BoundTestSql;
+
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.production.analysis.MaterialAnalysisCommandService;
@@ -59,7 +61,7 @@ class QualifiedSourceWarehouseEndToEndTest {
         db.update("UPDATE warehouses SET parent_id=? WHERE id=?",main,world.warehouseId());
         UUID actual=warehouse("reconcile-actual-location",false);
         db.update("UPDATE warehouses SET parent_id=? WHERE id=?",main,actual);
-        Case c=create(world,"missed",new BigDecimal("10000"),main);
+        Case c=create(world,new BigDecimal("10000"),main);
         UUID receipt=receive(c,actual,"10000");
         // Reproduce a missed callback only; receipt, quality, physical stock and
         // exact entitlement still execute their real services and constraints.
@@ -104,7 +106,7 @@ class QualifiedSourceWarehouseEndToEndTest {
         UUID actual=warehouse("existing-disabled-storage",false);
         db.update("UPDATE warehouses SET parent_id=? WHERE id=?",main,actual);
         db.update("UPDATE goods SET min_qty=0 WHERE id=?",world.goodsD());
-        Case c=create(world,"disabled",new BigDecimal("10000"),main);
+        Case c=create(world,new BigDecimal("10000"),main);
         UUID receipt=receive(c,actual,"10000");
         assertEquals("WAITING",status(c));assertEquals(0,drawCount(c));
         org.mockito.Mockito.doNothing().when(readinessTarget()).applyPriorityForOriginEvent(org.mockito.ArgumentMatchers.any());
@@ -148,7 +150,7 @@ class QualifiedSourceWarehouseEndToEndTest {
     @Test void qualifiedReceiptsStillCoverDemandWhenPublicSafetyThresholdExceedsTheWholeBatch(){
         for(boolean special:List.of(false,true)){
             var w=fixture.seedWorld("qualified-with-safety-"+special);
-            Case c=create(w,"safety");
+            Case c=create(w);
             db.update("UPDATE goods SET min_qty=20 WHERE id=?",c.material());
             UUID actual=special?warehouse("qualified-safety-special",false):w.warehouseId();
             UUID receipt=receive(c,actual,"10");pass(c,actual,receipt,"10");
@@ -159,7 +161,7 @@ class QualifiedSourceWarehouseEndToEndTest {
 
     @Test void qualifiedSourceAcrossTwoOtherMainWarehousesPromotesOnlyWhenCompleteAndCreatesActualDraws(){
         var w=fixture.seedWorld("qualified-two-warehouses");
-        Case c=create(w,"split");UUID b=warehouse("qualified-B",false),d=warehouse("qualified-C",false);
+        Case c=create(w);UUID b=warehouse("qualified-B",false),d=warehouse("qualified-C",false);
         UUID first=receive(c,b,"5");pass(c,b,first,"5");
         assertEquals("WAITING",status(c));assertEquals(0,drawCount(c));
         var partial=material(c);
@@ -193,7 +195,7 @@ class QualifiedSourceWarehouseEndToEndTest {
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
     void qualifiedCrossLogicalMainMaterialKeepsItsActualScopeWhenReturnedToNormalSibling(boolean pickAgain){
-        var world=fixture.seedWorld("qualified-normal-return-"+pickAgain);Case c=create(world,"return-custody");
+        var world=fixture.seedWorld("qualified-normal-return-"+pickAgain);Case c=create(world);
         UUID actualMain=warehouse("qualified-return-actual-main",false);
         UUID actual=warehouse("qualified-return-original-leaf",false),received=warehouse("qualified-return-normal-leaf",false);
         db.update("UPDATE warehouses SET parent_id=? WHERE id IN (?,?)",actualMain,actual,received);
@@ -237,7 +239,7 @@ class QualifiedSourceWarehouseEndToEndTest {
      */
     @Test void qualifiedArrivalCannotEnterADefectiveWarehouseAndDefectiveStockNeverCoversDemand(){
         var w=fixture.seedWorld("qualified-defective-refused");
-        Case c=create(w,"defective");
+        Case c=create(w);
         UUID defective=warehouse("qualified-defective-target",true);
         db.update("UPDATE warehouses SET parent_id=(SELECT parent_id FROM warehouses WHERE id=?) WHERE id=?",
                 w.warehouseId(),defective);
@@ -250,7 +252,7 @@ class QualifiedSourceWarehouseEndToEndTest {
         db.execute((org.springframework.jdbc.core.ConnectionCallback<Void>)connection->{
             try(var statement=connection.createStatement()){
                 statement.execute("SET session_replication_role = replica");
-                statement.execute("INSERT INTO stock_balances(goods_id,warehouse_id,qty) VALUES ('"+c.material()+"','"+defective+"',100)");
+                BoundTestSql.execute(statement, "INSERT INTO stock_balances(goods_id,warehouse_id,qty) VALUES (?,?,100)", c.material(), defective);
                 statement.execute("SET session_replication_role = origin");
             }
             return null;
@@ -264,7 +266,7 @@ class QualifiedSourceWarehouseEndToEndTest {
         db.execute((org.springframework.jdbc.core.ConnectionCallback<Void>)connection->{
             try(var statement=connection.createStatement()){
                 statement.execute("SET session_replication_role = replica");
-                statement.execute("DELETE FROM stock_balances WHERE warehouse_id='"+defective+"'");
+                BoundTestSql.execute(statement, "DELETE FROM stock_balances WHERE warehouse_id=?", defective);
                 statement.execute("SET session_replication_role = origin");
             }
             return null;
@@ -273,12 +275,12 @@ class QualifiedSourceWarehouseEndToEndTest {
 
     @Test void publicUninspectedAndOtherAnalysisStockCannotFillTheQualifiedSourceShortage(){
         var w=fixture.seedWorld("qualified-boundaries");
-        Case c=create(w,"primary");UUID b=warehouse("qualified-isolated",false);
+        Case c=create(w);UUID b=warehouse("qualified-isolated",false);
         // This is a real unrelated OTHER_IN, not a fabricated balance or a PASS event.
         call("putDirectTargetStock",withWarehouse(w,b),c.material(),"100");
         UUID first=receive(c,b,"5");pass(c,b,first,"5");
         assertEquals("WAITING",status(c));assertEquals(0,drawCount(c));
-        Case other=create(w,"other-analysis");
+        Case other=create(w);
         UUID otherReceipt=receive(other,b,"10");pass(other,b,otherReceipt,"10");
         assertEquals("READY",status(other));assertEquals("WAITING",status(c));
         UUID uninspected=receive(c,b,"5");
@@ -291,7 +293,7 @@ class QualifiedSourceWarehouseEndToEndTest {
     }
 
     @Test void cancellingUnusedPackageRestoresEachQualifiedLotInItsActualWarehouse(){
-        var w=fixture.seedWorld("qualified-reverse");Case c=create(w,"reverse");
+        var w=fixture.seedWorld("qualified-reverse");Case c=create(w);
         UUID b=warehouse("restore-B",false),d=warehouse("restore-C",false);
         pass(c,b,receive(c,b,"4"),"4");pass(c,d,receive(c,d,"6"),"6");
         assertEquals("READY",status(c));
@@ -366,8 +368,8 @@ class QualifiedSourceWarehouseEndToEndTest {
 
     private String segmentStatus(UUID plan){return db.queryForObject("SELECT status FROM production_execution_segments WHERE plan_id=?",String.class,plan);}
 
-    private Case create(FullChainEndToEndTest.World w,String suffix){
-        return create(w,suffix,BigDecimal.TEN,w.warehouseId());
+    private Case create(FullChainEndToEndTest.World w){
+        return create(w,BigDecimal.TEN,w.warehouseId());
     }
 
     private com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService readinessTarget(){
@@ -400,7 +402,7 @@ class QualifiedSourceWarehouseEndToEndTest {
         }
     }
 
-    private Case create(FullChainEndToEndTest.World w,String suffix,BigDecimal quantity,UUID plannedWarehouse){
+    private Case create(FullChainEndToEndTest.World w,BigDecimal quantity,UUID plannedWarehouse){
         fixture.loginAs(w.superAdminUserId());UUID product=UUID.randomUUID();
         fixture.insertGoods(product,"QUAL-"+product,"按原需求跨仓领料","自制",w.unitId(),w.unitLegacy());
         fixture.insertBom(product,w.goodsD(),"1");

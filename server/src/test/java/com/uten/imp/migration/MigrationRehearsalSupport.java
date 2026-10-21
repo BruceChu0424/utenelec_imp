@@ -131,7 +131,7 @@ public final class MigrationRehearsalSupport {
 
     static Snapshot snapshot(Connection connection) throws SQLException {
         return new Snapshot(
-                Integer.parseInt(latestSuccessfulVersion(connection)),
+                com.uten.imp.testsupport.FixtureNumbers.integer(latestSuccessfulVersion(connection)),
                 tableRows(connection),
                 scalarText(connection, """
                         SELECT count(*) || '|' ||

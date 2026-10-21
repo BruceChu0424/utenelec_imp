@@ -3,7 +3,6 @@ package com.uten.imp.migration;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.support.LegacyFinanceImportFixture;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.dao.DataAccessException;
@@ -28,9 +27,8 @@ class LegacyFinanceSourceProvenancePostgresTest {
     @BeforeAll static void start() {
         PG.start();
         admin=new JdbcTemplate(new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword()));
-        admin.execute("CREATE ROLE uten LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD '"+PASSWORD+"'; "
-                +"CREATE ROLE uten_migrator LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD '"+PASSWORD+"'");
-        Flyway.configure().dataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword()).load().migrate();
+        admin.execute(admin.queryForObject("SELECT format('CREATE ROLE uten LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD %1$L; CREATE ROLE uten_migrator LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD %1$L', CAST(? AS text))", String.class, PASSWORD));
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword()).load().migrate();
         LegacyFinanceImportFixture.seed(admin);
         admin.update("""
                 INSERT INTO users(employee_id,login_account,password_hash,status)

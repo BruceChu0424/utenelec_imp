@@ -39,10 +39,9 @@ public class DailyReportSaveRequest {
     private String remark;
     private String sourceDocNo;
 
-    @Valid
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<DailyReportItemLine> items;
+    private List<@Valid DailyReportItemLine> items;
 
     /**
      * 报工同页登记的本次实际用料(V583)。整单一条需求只登记一次，所以放在请求头而不是
@@ -50,9 +49,8 @@ public class DailyReportSaveRequest {
      *
      * <p>草稿阶段只是事实登记，审核时才转成 CONSUMED 结算。
      */
-    @Valid
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<DailyReportMaterialUsageLine> materialLines;
+    private List<@Valid DailyReportMaterialUsageLine> materialLines;
 
     /**
      * 收尾余料退仓意愿：最后一次报工时车间确认「剩下的料退回仓库」。审核时先结实耗、

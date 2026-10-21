@@ -213,8 +213,16 @@ public class StockService {
 
     private PostedMovement recordMovementInternal(UUID reservedMovementId,MovementRequest req){
         tx.bind();
-        if (req == null || req.goodsId() == null || req.warehouseId() == null
-                || req.sourceDocType() == null || req.sourceDocType().isBlank()) {
+        if (req == null) {
+            throw new IllegalArgumentException("inventory movement identity is incomplete");
+        }
+        if (req.goodsId() == null) {
+            throw new IllegalArgumentException("inventory movement identity is incomplete");
+        }
+        if (req.warehouseId() == null) {
+            throw new IllegalArgumentException("inventory movement identity is incomplete");
+        }
+        if (req.sourceDocType() == null || req.sourceDocType().isBlank()) {
             throw new IllegalArgumentException("inventory movement identity is incomplete");
         }
         if (req.direction() != DIR_IN && req.direction() != DIR_OUT) {

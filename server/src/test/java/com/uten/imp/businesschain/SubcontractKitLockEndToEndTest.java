@@ -491,19 +491,19 @@ class SubcontractKitLockEndToEndTest {
         return n == null ? 0 : n;
     }
 
-    private static void qty(String expected, BigDecimal actual, String what) {
+    private static void qtyDecimal(String expected, BigDecimal actual, String what) {
         assertNotNull(actual, what + ": 现状 null, 期望 " + expected);
         assertEquals(0, new BigDecimal(expected).compareTo(actual), what + ": 现状 " + actual + " 期望 " + expected);
     }
 
     private static void qty(String expected, Object actual, String what) {
         assertNotNull(actual, what + ": 现状 null, 期望 " + expected);
-        qty(expected, actual instanceof BigDecimal decimal ? decimal : new BigDecimal(actual.toString()), what);
+        qtyDecimal(expected, actual instanceof BigDecimal decimal ? decimal : new BigDecimal(actual.toString()), what);
     }
     /** Real Hibernate/native query, full migrations, global shared stock and existing action masking. */
     @Test
     void batchWorkbenchKeepsListTotalsStatusFacetsAndActionPermissionsBeforePagination() {
-        assertEquals(Integer.parseInt(com.uten.imp.migration.MigrationRehearsalSupport.CURRENT_HEAD_VERSION),
+        assertEquals(com.uten.imp.testsupport.FixtureNumbers.integer(com.uten.imp.migration.MigrationRehearsalSupport.CURRENT_HEAD_VERSION),
                 db.queryForObject("SELECT max(version::int) FROM flyway_schema_history WHERE success",Integer.class));
         String tag="sckit-batch-wb";
         var w=fixture.seedWorld(tag);fixture.loginAs(w.superAdminUserId());

@@ -37,8 +37,7 @@ public class ReturnSaveRequest {
     /** 退货原因（销售退货专属）。 */
     private String returnReason;
 
-    @Valid
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<ReturnItemLine> items;
+    private List<@Valid ReturnItemLine> items;
 }

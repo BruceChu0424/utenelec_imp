@@ -627,7 +627,8 @@ public class PurchaseReceiptService {
     }
 
     private List<ReceiptItemDto> saveItems(PurchaseReceipt r, List<ReceiptItemLine> lines) {
-        if(lines!=null) r.setExchangeRate(com.uten.imp.common.finance.ProcurementApprovedExchangeRate.receiptRate(
+        if (lines == null || lines.stream().anyMatch(java.util.Objects::isNull)) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请填写完整的采购收货明细");
+        r.setExchangeRate(com.uten.imp.common.finance.ProcurementApprovedExchangeRate.receiptRate(
                 em,"PURCHASE",lines.stream().filter(java.util.Objects::nonNull).map(ReceiptItemLine::getOrderItemId).toList(),
                 r.getCurrencyId(),r.getExchangeRate()));
         List<ReceiptItemDto> out = new ArrayList<>(lines.size());

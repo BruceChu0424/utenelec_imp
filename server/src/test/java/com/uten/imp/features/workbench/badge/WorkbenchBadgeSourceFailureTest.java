@@ -58,7 +58,7 @@ class WorkbenchBadgeSourceFailureTest {
         var transactions = mock(PlatformTransactionManager.class);
         when(transactions.getTransaction(any())).thenAnswer(call -> new SimpleTransactionStatus());
         var scopes = mock(WarehouseTaskScopePort.class);
-        when(scopes.withScopeCache(any())).thenAnswer(call -> ((Supplier<?>) call.getArgument(0)).get());
+        when(scopes.withQueryScopeCache(any())).thenAnswer(call -> ((WarehouseTaskScopePort.ReadQuery<?>) call.getArgument(0)).read());
         service = new WorkbenchBadgeService(List.of(contributor), transactions, scopes, com.uten.imp.testsupport.TaskAudienceTestSupport.direct());
 
         Session session = mock(Session.class);

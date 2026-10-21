@@ -193,10 +193,7 @@ public class ProfileChangeSubmitService {
         if (!createdIds.isEmpty()) {
             // 需审核字段进批次 → 通知 HR（弹卡 + 通知；2026-09-09 人事通知接入）
             hrNotice.notifyProfileChangeSubmitted(
-                    batchId,
-                    emp.getFullName(),
-                    pendingFieldLabels,
-                    employeeId);
+                    batchId, emp.getFullName(), pendingFieldLabels);
         }
         return new ProfileChangeDto.SubmitResponse(batchId, createdIds, createdIds.size());
     }

@@ -288,8 +288,16 @@ public class DataHandoverService {
 
     private DataHandoverResult execute(
             DataHandoverRequest request, String mode, boolean includeWholePersonExtras) {
-        if (request == null || request.requestId() == null
-                || request.sourceEmployeeId() == null || request.targetEmployeeId() == null) {
+        if (request == null) {
+            throw validation("requestId、sourceEmployeeId、targetEmployeeId 必填");
+        }
+        if (request.requestId() == null) {
+            throw validation("requestId、sourceEmployeeId、targetEmployeeId 必填");
+        }
+        if (request.sourceEmployeeId() == null) {
+            throw validation("requestId、sourceEmployeeId、targetEmployeeId 必填");
+        }
+        if (request.targetEmployeeId() == null) {
             throw validation("requestId、sourceEmployeeId、targetEmployeeId 必填");
         }
         if (request.sourceEmployeeId().equals(request.targetEmployeeId())) {
@@ -414,7 +422,7 @@ public class DataHandoverService {
         clientEvents.revokeViewerForOffboarding(
                 sourceEmployeeId, actorUserId,
                 "员工离职：撤销离职员工的客户只读可见权限");
-        rejectPendingProfileChanges(sourceEmployeeId, actorEmployeeId, actorUserId);
+        rejectPendingProfileChanges(sourceEmployeeId, actorEmployeeId);
         releaseClaims(sourceEmployeeId, actorUserId, actorEmployeeId);
     }
 
@@ -753,19 +761,19 @@ public class DataHandoverService {
                     UPDATE goods SET owner_employee_id=:target, version=version+1,
                         updated_at=now(), updated_by=:actor
                     WHERE owner_employee_id=:source AND is_deleted=false
-                    """, source.id(), target, targetAccount, actorUserId), expected, result);
+                    """, source.id(), target, actorUserId), expected, result);
             changed("mould.keeper", update("""
                     UPDATE moulds SET keeper_id=:target, keeper=:targetName,
                         updated_at=now(), updated_by=:actor
                     WHERE keeper_id=:source AND is_deleted=false
-                    """, source.id(), target, targetAccount, actorUserId), expected, result);
+                    """, source.id(), target, actorUserId), expected, result);
         }
         if (scopes.contains("purchase")) {
             changed("supplier.owner", update("""
                     UPDATE suppliers SET owner_employee_id=:target, emp_id=:legacy,
                         version=version+1, updated_at=now(), updated_by=:actor
                     WHERE owner_employee_id=:source AND is_deleted=false
-                    """, source.id(), target, targetAccount, actorUserId), expected, result);
+                    """, source.id(), target, actorUserId), expected, result);
             changed("supplierReturn.purchase", updateReturnTasks(
                     source.id(), target.id(), targetAccount.userId(), "PURCHASE"), expected, result);
             changed("inboundExpectation.purchase", updateInboundExpectations(
@@ -786,27 +794,27 @@ public class DataHandoverService {
                     UPDATE website_inquiries SET assignee_employee_id=:target,
                         updated_at=now(), updated_by=:actor
                     WHERE assignee_employee_id=:source AND status IN ('new','following')
-                    """, source.id(), target, targetAccount, actorUserId), expected, result);
+                    """, source.id(), target, actorUserId), expected, result);
             changed("visitor.host", update("""
                     UPDATE visitor_applications SET host_employee_id=:target,
                         host_department_id=:targetDepartment, updated_at=now(), updated_by=:actor
                     WHERE host_employee_id=:source AND status IN ('pending','hostReviewing')
                       AND planned_visit_at > current_timestamp AND is_deleted=false
-                    """, source.id(), target, targetAccount, actorUserId), expected, result);
+                    """, source.id(), target, actorUserId), expected, result);
         }
         if (scopes.contains("production_plan")) {
             changed("rdTask.assignee", update("""
                     UPDATE rd_tasks SET assignee_employee_id=:target, row_version=row_version+1,
                         updated_at=now(), updated_by=:actor
                     WHERE assignee_employee_id=:source AND status IN ('OPEN','IN_PROGRESS') AND is_deleted=false
-                    """, source.id(), target, targetAccount, actorUserId), expected, result);
+                    """, source.id(), target, actorUserId), expected, result);
             changed("productionPlan.worker", update("""
                     UPDATE production_plans
                     SET seller_id=CASE WHEN seller_id=:source THEN :target ELSE seller_id END,
                         worker_id=CASE WHEN worker_id=:source THEN :target ELSE worker_id END,
                         updated_at=now(), updated_by=:actor
                     WHERE status=0 AND is_deleted=false AND (seller_id=:source OR worker_id=:source)
-                    """, source.id(), target, targetAccount, actorUserId), expected, result);
+                    """, source.id(), target, actorUserId), expected, result);
             changed("productionSegment.assignable", updateCompatibleSegments(
                     source.id(), target.id(), actorUserId), expected, result);
         }
@@ -815,7 +823,7 @@ public class DataHandoverService {
                     UPDATE employees SET supervisor_id=:target, version=version+1,
                         updated_at=now(), updated_by=:actor
                     WHERE supervisor_id=:source AND is_deleted=false
-                    """, source.id(), target, targetAccount, actorUserId), expected, result);
+                    """, source.id(), target, actorUserId), expected, result);
             long released = releaseClaims(source.id(), actorUserId, actorEmployeeId);
             changed("workflow.claims", released, expected, result);
         }
@@ -837,17 +845,17 @@ public class DataHandoverService {
         Map<String, Long> result = new LinkedHashMap<>();
         if (expected.getOrDefault("organization.supervisor", 0L) > 0) {
             if (defaultTarget == null) throw conflict("直属下级仍需指定默认接手人");
+            activeAccount(defaultTarget.id(), false);
             changed("organization.supervisor", update("""
                     UPDATE employees SET supervisor_id=:target, version=version+1,
                         updated_at=now(), updated_by=:actor
                     WHERE supervisor_id=:source AND is_deleted=false
-                    """, source.id(), defaultTarget,
-                    activeAccount(defaultTarget.id(), false), actorUserId), expected, result);
+                    """, source.id(), defaultTarget, actorUserId), expected, result);
         }
         changed("workflow.claims",
                 releaseClaims(source.id(), actorUserId, actorEmployeeId), expected, result);
         changed("workflow.profileChanges",
-                rejectPendingProfileChanges(source.id(), actorEmployeeId, actorUserId),
+                rejectPendingProfileChanges(source.id(), actorEmployeeId),
                 expected, result);
         changed("access.personalOverrides",
                 disablePersonalOverrides(source.id()), expected, result);
@@ -866,8 +874,7 @@ public class DataHandoverService {
         return result;
     }
 
-    private int update(String sql, UUID sourceId, EmployeeFact target,
-                       AccountFact targetAccount, UUID actorUserId) {
+    private int update(String sql, UUID sourceId, EmployeeFact target, UUID actorUserId) {
         Query query = em.createNativeQuery(sql)
                 .setParameter("source", sourceId)
                 .setParameter("target", target.id())
@@ -1456,7 +1463,7 @@ public class DataHandoverService {
     }
 
     private int rejectPendingProfileChanges(
-            UUID sourceEmployeeId, UUID actorEmployeeId, UUID actorUserId) {
+            UUID sourceEmployeeId, UUID actorEmployeeId) {
         return em.createNativeQuery("""
                         UPDATE profile_change_requests
                         SET status='rejected', reviewed_by=:actorEmployee,

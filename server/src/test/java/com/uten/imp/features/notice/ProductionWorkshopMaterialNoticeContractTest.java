@@ -49,7 +49,7 @@ class ProductionWorkshopMaterialNoticeContractTest {
                 StandardCharsets.UTF_8);
         assertThat(source)
                 .contains("BigDecimal capacity = workshopArrivalCapacity(segmentId, task, status, route, missingRows, arrivedByDemand)")
-                .contains("arrivalProgressWarrantsNotice(task, status, route, capacity)")
+                .contains("arrivalProgressWarrantsNotice(task, route, capacity)")
                 .contains("（现有物料可支撑生产 ")
                 .contains("syncArrivalCapacityWatermark(segmentId, capacity)")
                 .contains("ON CONFLICT (segment_id) DO UPDATE")

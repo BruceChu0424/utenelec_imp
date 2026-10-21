@@ -62,7 +62,7 @@ public class AiGoodsCostTool implements AiChatToolPort {
         if (arguments == null || !Set.of("goodsKeyword", "basis", "dateFrom", "dateTo").containsAll(arguments.keySet())) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "成本查询只能包含货品名称或编码");
         }
-        Object raw = arguments == null ? null : arguments.get("goodsKeyword");
+        Object raw = arguments.get("goodsKeyword");
         if (!(raw instanceof String keyword) || keyword.isBlank() || keyword.length() > 100) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请提供明确的物料名称或编码");
         }

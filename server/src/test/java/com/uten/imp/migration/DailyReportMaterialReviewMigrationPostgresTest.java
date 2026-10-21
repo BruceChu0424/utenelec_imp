@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -26,6 +25,16 @@ class DailyReportMaterialReviewMigrationPostgresTest {
     private static List<String> tablesAfterV840,indexesAfterV840,resetPolicyAfterV840;
     private static final List<String> V871_HISTORY_TABLES=List.of(
             "goods_operation_history","goods_operation_history_rows","goods_operation_history_events");
+    private static final List<String> V885_HISTORY_TABLES=List.of(
+            "master_operation_history","master_operation_history_rows","master_operation_history_events");
+    private static final Map<String,String> V885_INDEX_ADDITIONS=Map.ofEntries(
+            Map.entry("master_operation_history_pkey","CREATE UNIQUE INDEX master_operation_history_pkey ON public.master_operation_history USING btree (id)"),
+            Map.entry("master_operation_history_actor_id_request_id_transaction_id_key","CREATE UNIQUE INDEX master_operation_history_actor_id_request_id_transaction_id_key ON public.master_operation_history USING btree (actor_id, request_id, transaction_id)"),
+            Map.entry("idx_master_history_actor","CREATE INDEX idx_master_history_actor ON public.master_operation_history USING btree (actor_id, entity_type, created_at DESC, id DESC)"),
+            Map.entry("master_operation_history_rows_pkey","CREATE UNIQUE INDEX master_operation_history_rows_pkey ON public.master_operation_history_rows USING btree (operation_id, table_name, row_id)"),
+            Map.entry("idx_master_history_lineage","CREATE INDEX idx_master_history_lineage ON public.master_operation_history_rows USING btree (table_name, row_id)"),
+            Map.entry("master_operation_history_events_pkey","CREATE UNIQUE INDEX master_operation_history_events_pkey ON public.master_operation_history_events USING btree (id)"),
+            Map.entry("idx_master_history_events_actor","CREATE INDEX idx_master_history_events_actor ON public.master_operation_history_events USING btree (actor_id, id DESC)"));
     private static final Map<String,String> V871_INDEX_ADDITIONS=Map.ofEntries(
             Map.entry("goods_operation_history_pkey","CREATE UNIQUE INDEX goods_operation_history_pkey ON public.goods_operation_history USING btree (id)"),
             Map.entry("goods_operation_history_actor_id_request_id_transaction_id_key","CREATE UNIQUE INDEX goods_operation_history_actor_id_request_id_transaction_id_key ON public.goods_operation_history USING btree (actor_id, request_id, transaction_id)"),
@@ -54,7 +63,7 @@ class DailyReportMaterialReviewMigrationPostgresTest {
             Map.entry("idx_so_price_period","CREATE INDEX idx_so_price_period ON public.sales_orders USING btree (bill_date DESC, id) WHERE ((status = 1) AND (NOT is_deleted))"),
             Map.entry("idx_procurement_price_history_snapshot","CREATE INDEX idx_procurement_price_history_snapshot ON public.procurement_order_approval_cases USING gin (submission_snapshot jsonb_path_ops)"));
     @BeforeAll static void migrate() {
-        pg.start();Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()).locations("classpath:db/migration").target("839").load().migrate();
+        pg.start();com.uten.imp.testsupport.TestFlyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()).locations("classpath:db/migration").target("839").load().migrate();
         db=new JdbcTemplate(new DriverManagerDataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()));
         actor=UUID.randomUUID();UUID department=UUID.randomUUID(),employee=UUID.randomUUID(),report=UUID.randomUUID();
         db.update("INSERT INTO departments(id,code,name,level) VALUES(?,?,?,'一级部门')",department,"MAT-V3-D","材料审核迁移车间");
@@ -64,11 +73,11 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         db.update("INSERT INTO production_daily_report_commands(actor_user_id,idempotency_key,request_hash,report_id,created_by,command_kind,approval_protocol_version,reviewed_row_version) VALUES(?,? ,repeat('a',64),?,?,'APPROVE',2,0)",actor,"old-reviewed-material-key",report,actor);
         old=db.queryForMap("SELECT report_id,request_hash,approval_protocol_version,reviewed_row_version,xmin::text row_xmin FROM production_daily_report_commands WHERE actor_user_id=?",actor);
         tables=tables();indexes=indexes();resetPolicy=resetPolicy();
-        Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()).locations("classpath:db/migration").target("840").load().migrate();
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()).locations("classpath:db/migration").target("840").load().migrate();
         afterV840=oldCommand();
         oldMaterialSnapshotAfterV840=db.queryForObject("SELECT material_review_snapshot FROM production_daily_report_commands WHERE actor_user_id=?",Object.class,actor);
         tablesAfterV840=tables();indexesAfterV840=indexes();resetPolicyAfterV840=resetPolicy();
-        Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()).locations("classpath:db/migration").load().migrate();
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()).locations("classpath:db/migration").load().migrate();
     }
     @AfterAll static void stop(){pg.stop();}
     @Test void oldApprovalBytesAndReviewMeaningStayExactlyTheSame() {
@@ -91,6 +100,7 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertTrue(expectedTables.add("website_management_settings"));
         assertTrue(expectedTables.add("website_bridge_status"));
         V871_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
+        V885_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         assertEquals(expectedTables.stream().toList(),tables());
         TreeMap<String,String> expectedIndexes=catalogMap(indexesAfterV840);
         assertEquals("CREATE UNIQUE INDEX procurement_inspection_items_item_uk ON public.procurement_inspection_items USING btree (receipt_type, receipt_item_id)",
@@ -119,6 +129,8 @@ class DailyReportMaterialReviewMigrationPostgresTest {
                 "CREATE INDEX idx_employment_history_correction_source ON public.employment_history USING btree (corrects_history_id) WHERE (corrects_history_id IS NOT NULL)"));
         V871_INDEX_ADDITIONS.forEach((name,definition)->assertNull(expectedIndexes.put(name,definition),
                 "A history index must not replace an existing index: "+name));
+        V885_INDEX_ADDITIONS.forEach((name,definition)->assertNull(expectedIndexes.put(name,definition),
+                "A master history index must not replace an existing index: "+name));
         assertEquals(expectedIndexes,catalogMap(indexes()));
         TreeMap<String,String> expectedPolicy=catalogMap(resetPolicyAfterV840);
         assertNull(expectedPolicy.put("document_unapprovals","CLEAR"));
@@ -132,6 +144,7 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertNull(expectedPolicy.put("website_bridge_status","PRESERVE"));
         assertNull(expectedPolicy.put("website_inquiry_events","CLEAR"));
         V871_HISTORY_TABLES.forEach(table->assertNull(expectedPolicy.put(table,"PRESERVE")));
+        V885_HISTORY_TABLES.forEach(table->assertNull(expectedPolicy.put(table,"PRESERVE")));
         assertEquals(expectedPolicy,catalogMap(resetPolicy()));
         assertEquals(MigrationRehearsalSupport.CURRENT_HEAD_VERSION,
                 db.queryForObject("SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1",String.class));

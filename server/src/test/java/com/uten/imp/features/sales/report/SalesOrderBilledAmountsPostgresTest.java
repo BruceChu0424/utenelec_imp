@@ -38,11 +38,11 @@ class SalesOrderBilledAmountsPostgresTest {
                 UUID.randomUUID(), id, ITEM, local == null ? null : new BigDecimal(local));
     }
     BigDecimal read(boolean item) {
-        String id = "'" + (item ? ITEM : ORDER) + "'::uuid";
+        UUID id = item ? ITEM : ORDER;
         String body = item ? SalesOrderBilledAmounts.forItem("source.id", "source.currency_id")
                 : SalesOrderBilledAmounts.forOrder("source.id", "source.currency_id");
-        return db.queryForObject("SELECT billed.amount FROM (SELECT " + id + " AS id,'" + CURRENCY
-                + "'::uuid AS currency_id) source CROSS JOIN LATERAL (" + body + ") billed", BigDecimal.class);
+        return db.queryForObject("SELECT billed.amount FROM (SELECT CAST(? AS uuid) AS id, CAST(? AS uuid) AS currency_id) source CROSS JOIN LATERAL ("
+                + body + ") billed", BigDecimal.class, id, CURRENCY);
     }
 
     @Test void sumUsesActualPartialShipmentRatesAndExcludesPendingReversedAndOtherCurrencies() {

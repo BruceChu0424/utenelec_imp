@@ -370,7 +370,9 @@ class BusinessDataResetRefusalsPostgresTest {
         long generation = f.generation();
         try (Connection writer = f.dataSource.getConnection()) {
             writer.setAutoCommit(false);
-            writer.createStatement().execute("LOCK TABLE public.attachments IN ROW EXCLUSIVE MODE");
+            try (var statement = writer.createStatement()) {
+                statement.execute("LOCK TABLE public.attachments IN ROW EXCLUSIVE MODE");
+            }
             assertRefused(patient, UUID.randomUUID(), ErrorCode.CONFLICT,
                     "有其他程序正在使用附件相关数据(可能是后台任务或另一台服务器)，等了 1 秒仍没有结束；本次没有删除任何文件，也没有清空数据。请稍后重新点「确认清空」。");
             writer.rollback();
@@ -432,7 +434,10 @@ class BusinessDataResetRefusalsPostgresTest {
                 Duration.ofSeconds(20), Duration.ofSeconds(45), Duration.ofSeconds(1)));
         try (Connection reader = f.dataSource.getConnection()) {
             reader.setAutoCommit(false);
-            reader.createStatement().executeQuery("SELECT count(*) FROM public.sales_orders").close();
+            try (var statement = reader.createStatement();
+                 var rows = statement.executeQuery("SELECT count(*) FROM public.sales_orders")) {
+                assertThat(rows.next()).isTrue();
+            }
             assertRefused(patient, UUID.randomUUID(), ErrorCode.CONFLICT,
                     "本次已经物理删除了 1 个测试文件(无法恢复)，但业务数据没有清空，所以这些测试单据上的附件现在打不开。"
                             + "原因：清空数据时有其他程序占用了数据表，等了 1 秒仍没有结束。请稍后重新点「确认清空」；如果再次出现，请联系开发人员。"
@@ -513,7 +518,9 @@ class BusinessDataResetRefusalsPostgresTest {
             try {
                 assertThat(reached.await(60, TimeUnit.SECONDS)).isTrue();
                 adopt.setAutoCommit(false);
-                adopt.createStatement().execute("SET LOCAL lock_timeout = '60s'");
+                try (var statement = adopt.createStatement()) {
+                    statement.execute("SET LOCAL lock_timeout = '60s'");
+                }
                 adoption = executor.submit(() -> {
                     try (var select = adopt.prepareStatement("SELECT c.storage_key FROM sales_quote_template_candidates c WHERE c.job_id=? FOR UPDATE OF c")) {
                         select.setObject(1, intake.job());

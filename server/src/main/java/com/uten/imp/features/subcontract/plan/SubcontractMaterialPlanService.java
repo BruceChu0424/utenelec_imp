@@ -847,13 +847,11 @@ public class SubcontractMaterialPlanService {
     /**
      * 批准后改量(与订货 changeQty 同事务, 订货明细已写成新数量): 每条冻结计划行按新订货量整体重算
      * {@code planned = f(新Q)}, 不做增量累加。已发外或「已发外 + 待仓库发」超过新计划量的拒绝并
-     * 列出物料与待发领料单(先撤回); 不建、不删草稿。参数里的增量/换算率/货品仅用于确定改了哪些明细。
+     * 列出物料与待发领料单(先撤回); 不建、不删草稿。参数里的增量仅用于确定改了哪些明细；计划量取持久订货量与冻结 BOM 整体重算。
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void applyOrderQtyChange(
-            UUID orderId, Map<UUID, BigDecimal> baseDeltaByOrderItemId,
-            Map<UUID, BigDecimal> unitRateByOrderItemId,
-            Map<UUID, UUID> goodsColorByOrderItemId) {
+            UUID orderId, Map<UUID, BigDecimal> baseDeltaByOrderItemId) {
         List<UUID> changed = baseDeltaByOrderItemId.entrySet().stream()
                 .filter(entry -> entry.getValue() != null && entry.getValue().signum() != 0)
                 .map(Map.Entry::getKey).filter(Objects::nonNull).distinct().sorted().toList();
@@ -1097,7 +1095,7 @@ public class SubcontractMaterialPlanService {
     public OutboundTaskDetail taskDetail(UUID issueId) {
         List<Object[]> head = rows("""
                 SELECT issue.id, issue.bill_no, plan.id, plan.order_id, plan.order_bill_no, supplier.name,
-                       issue.warehouse_id, warehouse.name, issue.xmin::text
+                       issue.warehouse_id, warehouse.name, issue.xmin::text::bigint
                 FROM subcontract_material_issues issue
                 JOIN LATERAL (
                     SELECT (array_agg(line.plan_id ORDER BY line.plan_id))[1] AS plan_id
@@ -1152,7 +1150,7 @@ public class SubcontractMaterialPlanService {
                     decimal(row[12]), (String) row[13]));
         }
         return new OutboundTaskDetail((UUID) h[0], (String) h[1], (UUID) h[2], (UUID) h[3], (String) h[4],
-                (String) h[5], (UUID) h[6], (String) h[7], Long.parseLong(h[8].toString()), lines);
+                (String) h[5], (UUID) h[6], (String) h[7], ((Number) h[8]).longValue(), lines);
     }
 
     // ==================== 内部 ====================

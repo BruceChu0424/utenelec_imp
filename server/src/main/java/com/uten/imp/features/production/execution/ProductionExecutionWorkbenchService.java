@@ -263,8 +263,8 @@ public class ProductionExecutionWorkbenchService {
     }
 
     /**
-     * @param routeFilter 「下一步」表头筛选(ADR-095)：UNCONFIRMED(待选路线) / FULL_KIT /
-     *                    CONTINUOUS / BATCH；空=不筛。与其它筛选一样在分页前于服务端生效。
+     * 「下一步」表头筛选(ADR-095)由完整重载接收 routeFilter：UNCONFIRMED(待选路线) / FULL_KIT /
+     * CONTINUOUS / BATCH；当前兼容入口不指定路线，其余筛选仍在分页前于服务端生效。
      */
     @Transactional(readOnly = true)
     public PageResponse<ProductionExecutionWorkbenchSegment> workshopTasks(
@@ -292,9 +292,7 @@ public class ProductionExecutionWorkbenchService {
             return new PageResponse<>(List.of(), 1, size, 0, 0);
         }
         String status = normalizeTaskStatus(rawStatus);
-        String predicate = workshopTaskPredicate(status, workshopDepartmentId,
-                keyword, dateFrom, dateTo, preparationFilter, routeFilter,
-                analysisNo, segmentCode);
+        String predicate = workshopTaskPredicate(status, workshopDepartmentId, keyword, preparationFilter, routeFilter, analysisNo, segmentCode);
         boolean history = "COMPLETED".equals(status);
         // 我的车间任务「等待物料」（2026-09-15 用户口径）：可开工的排最前，
         // 进度越接近可开工越靠前——档位与状态筛选四桶一一对应。
@@ -320,11 +318,7 @@ public class ProductionExecutionWorkbenchService {
     }
 
     /** workshopTasks/workshopTaskFacets 共用的 WHERE 谓词（单号值筛选也在此拼接）。 */
-    private String workshopTaskPredicate(String status, UUID workshopDepartmentId,
-            String keyword, LocalDate dateFrom, LocalDate dateTo,
-            String preparationFilter, String routeFilter,
-            String analysisNo, String segmentCode) {
-        UUID employeeId = currentUser.employeeId().orElse(null);
+    private String workshopTaskPredicate(String status, UUID workshopDepartmentId, String keyword, String preparationFilter, String routeFilter, String analysisNo, String segmentCode) {
         boolean seeAll = currentUser.get().map(AuthUser::isSuperAdmin).orElse(false);
         boolean history = "COMPLETED".equals(status);
         String statuses = history
@@ -454,8 +448,7 @@ public class ProductionExecutionWorkbenchService {
             return java.util.Map.of();
         }
         String status = normalizeTaskStatus(rawStatus);
-        String predicate = workshopTaskPredicate(status, workshopDepartmentId,
-                keyword, dateFrom, dateTo, preparationFilter, routeFilter, null, null);
+        String predicate = workshopTaskPredicate(status, workshopDepartmentId, keyword, preparationFilter, routeFilter, null, null);
         boolean history = "COMPLETED".equals(status);
         String from = " FROM v_production_execution_workbench_segments task WHERE "
                 + predicate;

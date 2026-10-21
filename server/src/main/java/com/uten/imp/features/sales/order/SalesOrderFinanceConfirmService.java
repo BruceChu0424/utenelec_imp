@@ -784,7 +784,8 @@ public class SalesOrderFinanceConfirmService {
         tx.bind();
         requireEligibleConfirmer();
         SalesOrder order = requireDecisionOrderForUpdate(orderId);
-        requireReviewRevision(order, request == null ? null : request.expectedRevision());
+        if (request == null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请填写财务驳回原因");
+        requireReviewRevision(order, request.expectedRevision());
         if (order.getStatus() == null || order.getStatus() != 1) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核的销售订货单可做财务驳回");
         }
@@ -794,7 +795,7 @@ public class SalesOrderFinanceConfirmService {
         if (order.isFinanceConfirmed()) {
             throw new ApiException(ErrorCode.BUSINESS, "该订单已财务确认，不能驳回");
         }
-        String reason = request == null || request.reason() == null
+        String reason = request.reason() == null
                 ? "" : request.reason().trim();
         if (reason.isEmpty() || reason.length() > 500) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "驳回原因不能为空且不能超过 500 个字符");

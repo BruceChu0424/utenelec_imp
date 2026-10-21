@@ -42,7 +42,7 @@ public class BusinessOutboxPublisher implements BusinessEventPublisher {
             JdbcTemplate jdbc,
             ObjectMapper objectMapper,
             SecurityContextCurrentUser currentUser) {
-        this(jdbc, objectMapper, currentUser, event -> { });
+        this(jdbc, objectMapper, currentUser, null);
     }
 
     @Autowired
@@ -104,7 +104,7 @@ public class BusinessOutboxPublisher implements BusinessEventPublisher {
         if (inserted == 1) {
             // The listener only enqueues AFTER_COMMIT. The durable row remains
             // authoritative if shutdown or a lost wake-up prevents immediate work.
-            events.publishEvent(new BusinessOutboxReady(eventId));
+            if (events != null) events.publishEvent(new BusinessOutboxReady(eventId));
             return eventId;
         }
         ExistingEvent existing = jdbc.queryForObject("""

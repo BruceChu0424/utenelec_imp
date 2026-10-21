@@ -5,7 +5,6 @@ import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -50,7 +49,7 @@ class MaterialAnalysisProductChildrenProjectionPostgresTest {
     @BeforeAll
     static void migrateAndCreateHibernateHarness() {
         POSTGRES.start();
-        Flyway.configure()
+        com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(
                         POSTGRES.getJdbcUrl(),
                         POSTGRES.getUsername(),

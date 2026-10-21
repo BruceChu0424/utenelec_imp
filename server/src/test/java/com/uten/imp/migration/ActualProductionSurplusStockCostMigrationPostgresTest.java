@@ -29,7 +29,7 @@ class ActualProductionSurplusStockCostMigrationPostgresTest {
         assertEquals(0, migration("697").migrate().migrationsExecuted);
     }
     static Flyway migration(String version) {
-        return Flyway.configure().dataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword())
+        return com.uten.imp.testsupport.TestFlyway.configure().dataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword())
                 .locations("classpath:db/migration").target(version).load();
     }
     @AfterAll static void stop() { POSTGRES.stop(); }

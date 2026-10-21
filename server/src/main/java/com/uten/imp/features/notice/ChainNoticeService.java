@@ -1110,9 +1110,12 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                             "/production/plans");
                 }
             }
+            Map<UUID, List<UUID>> workshopSegments = lockWorkshopSegmentsForPlans(
+                    jdbc, plans.stream().map(PlanScheduled::planId).toList());
             for (PlanScheduled ps : plans) {
-                publishWorkshopTasksForPlan(
-                        ps.planId(), "生产计划已审核下达");
+                for (UUID segmentId : workshopSegments.getOrDefault(ps.planId(), List.of())) {
+                    publishWorkshopTask(segmentId, "生产计划已审核下达");
+                }
             }
         });
     }
@@ -1891,7 +1894,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             long pendingLines = pending == null
                     ? 0L
                     : ((Number) pending.get("pending_lines")).longValue();
-            if (pendingLines == 0L) return;
+            if (pending == null || pendingLines == 0L) return;
             BigDecimal pendingQty = bd(pending.get("pending_base_qty"));
             String billNo = str(receipt.get("bill_no"));
             String supplier = str(receipt.get("supplier_name"));
@@ -2256,15 +2259,11 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     EVENT_IQC_RESOLVED);
         }
         notifySubcontractAnalysisMakersIqcResolved(
-                receiptId, receiptBillNo, passed, failed, result);
+                receiptId, receiptBillNo, failed, result);
     }
 
     private void notifySubcontractAnalysisMakersIqcResolved(
-            UUID receiptId,
-            String receiptBillNo,
-            BigDecimal passed,
-            BigDecimal failed,
-            String result) {
+            UUID receiptId, String receiptBillNo, BigDecimal failed, String result) {
         for (Map<String, Object> analysis : jdbc.queryForList("""
                 SELECT DISTINCT material_analysis.id AS analysis_id,
                        material_analysis.maker_id
@@ -2856,7 +2855,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         BigDecimal drawable = task == null ? BigDecimal.ZERO : bd(task.get("drawable_qty"));
         resolveReviewNotices(AGGREGATE_SUBCONTRACT_ORDER_ITEM, orderItemId,
                 drawable.signum() > 0 ? "STATE_CHANGED" : "NOT_DRAWABLE");
-        if (drawable.signum() <= 0) return BigDecimal.ZERO;
+        if (task == null || drawable.signum() <= 0) return BigDecimal.ZERO;
         String orderNo = str(task.get("order_bill_no"));
         String target = subcontractTargetName(task);
         String quantity = qtyWithUnit(drawable, task.get("unit_name"));
@@ -2930,7 +2929,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         BigDecimal orderable = task == null ? BigDecimal.ZERO : bd(task.get("orderable_qty"));
         resolveReviewNotices(AGGREGATE_SUBCONTRACT_APPLICATION_ITEM, applicationItemId,
                 orderable.signum() > 0 ? "STATE_CHANGED" : "NOT_ORDERABLE");
-        if (orderable.signum() <= 0) return BigDecimal.ZERO;
+        if (task == null || orderable.signum() <= 0) return BigDecimal.ZERO;
         String billNo = str(task.get("bill_no"));
         String target = subcontractTargetName(task);
         BigDecimal open = bd(task.get("open_qty"));
@@ -3734,24 +3733,35 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 publishWorkshopTask(segmentId, "生产任务已分配到您的车间"));
     }
 
-    private void publishWorkshopTasksForPlan(
-            UUID planId, String triggerDescription) {
-        List<UUID> segmentIds = jdbc.queryForList("""
-                SELECT segment.id
+    /**
+     * A merged plan event must lock its complete existing eligible segment set in the same UUID order
+     * as a workshop draw batch. Event order is unrelated to segment order. Keep this frozen
+     * set through delivery; a later split owns its own durable workshop-assignment event.
+     * No parent plan or additional outbox row is locked after entering this segment phase.
+     */
+    static Map<UUID, List<UUID>> lockWorkshopSegmentsForPlans(JdbcTemplate jdbc, List<UUID> planIds) {
+        if (planIds.isEmpty()) return Map.of();
+        String ids = planIds.stream().filter(Objects::nonNull).distinct().sorted()
+                .map(UUID::toString).collect(java.util.stream.Collectors.joining(","));
+        if (ids.isEmpty()) return Map.of();
+        List<Map.Entry<UUID, UUID>> rows = jdbc.query("""
+                SELECT segment.plan_id, segment.id
                 FROM production_execution_segments segment
                 JOIN production_planning_packages package
-                  ON package.id = segment.package_id
-                 AND package.is_deleted = FALSE
-                 AND package.status = 'CONFIRMED'
-                WHERE segment.plan_id = ?
-                  AND segment.is_deleted = FALSE
-                  AND segment.status IN (
-                      'WAITING','READY','DISPATCHED','IN_PROGRESS')
+                  ON package.id=segment.package_id AND NOT package.is_deleted AND package.status='CONFIRMED'
+                WHERE segment.plan_id=ANY(CAST(string_to_array(?, ',') AS uuid[]))
+                  AND NOT segment.is_deleted
+                  AND segment.status IN ('WAITING','READY','DISPATCHED','IN_PROGRESS')
                 ORDER BY segment.id
-                """, UUID.class, planId);
-        for (UUID segmentId : segmentIds) {
-            publishWorkshopTask(segmentId, triggerDescription);
+                FOR UPDATE OF segment
+                """, (row, index) -> Map.entry(row.getObject("plan_id", UUID.class), row.getObject("id", UUID.class)), ids);
+        Map<UUID, List<UUID>> grouped = new LinkedHashMap<>();
+        for (Map.Entry<UUID, UUID> row : rows) {
+            grouped.computeIfAbsent(row.getKey(), key -> new ArrayList<>()).add(row.getValue());
         }
+        Map<UUID, List<UUID>> frozen = new LinkedHashMap<>();
+        grouped.forEach((plan, segments) -> frozen.put(plan, List.copyOf(segments)));
+        return Map.copyOf(frozen);
     }
 
     private void publishWorkshopTasksForDraw(
@@ -4046,7 +4056,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             return;
         }
         BigDecimal capacity = workshopArrivalCapacity(segmentId, task, status, route, missingRows, arrivedByDemand);
-        if (validArrival && !arrivalProgressWarrantsNotice(task, status, route, capacity)) {
+        if (validArrival && !arrivalProgressWarrantsNotice(task, route, capacity)) {
             syncArrivalCapacityWatermark(segmentId, capacity);
             return;
         }
@@ -4136,8 +4146,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
      *       「可以生产 X 件」；后续到货产能不涨不弹；涨了（扣已领）才再弹。</li>
      * </ul>
      */
-    boolean arrivalProgressWarrantsNotice(Map<String, Object> task, String status, String route,
-            BigDecimal capacity) {
+    boolean arrivalProgressWarrantsNotice(Map<String, Object> task, String route, BigDecimal capacity) {
         if (route.isBlank() || capacity == null) return false;
         return capacity.compareTo(bd(task.get("arrival_notice_capacity"))) > 0;
     }
@@ -5420,11 +5429,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                                 + " 已形成持久任务。请完成实物退回后在本人任务中确认；通知不能代替任务台账。",
                         "/procurement/arrival-exceptions", eventType, null, exceptionId);
                 broadcastToProcurementReturnFollowers(
-                        str(arrival.get("order_type")), ownerUser,
-                        TYPE_TASK, "供应商退回任务：" + orderNo,
-                        orderLabel + " " + orderNo + " 有未接收数量 " + returnQty
-                                + " 待退回，请跟进实物退回。",
-                        "/procurement/arrival-exceptions");
+                        ownerUser, "供应商退回任务：" + orderNo, orderLabel + " " + orderNo + " 有未接收数量 " + returnQty
+                                + " 待退回，请跟进实物退回。", "/procurement/arrival-exceptions");
                 return;
             }
             if (EVENT_PROCUREMENT_ARRIVAL_RECEIPT_POSTED.equals(eventType)) {
@@ -5439,9 +5445,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 sendToUser(ownerUser, TYPE_TASK, "到货已入库，余量待退：" + orderNo,
                         content, "/procurement/arrival-exceptions", eventType, null, exceptionId);
                 broadcastToProcurementReturnFollowers(
-                        str(arrival.get("order_type")), ownerUser, TYPE_TASK,
-                        "到货已入库，余量待退：" + orderNo, content,
-                        "/procurement/arrival-exceptions");
+                        ownerUser, "到货已入库，余量待退：" + orderNo, content, "/procurement/arrival-exceptions");
                 return;
             }
             if (EVENT_PROCUREMENT_RETURN_COMPLETED.equals(eventType)) {
@@ -5479,12 +5483,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
 
     /** 采购沿用采购池；委外按当前有效任务权限解析，不再硬编码到采购部。 */
     private void broadcastToProcurementReturnFollowers(
-            String orderType,
-            UUID excludeUser,
-            String type,
-            String title,
-            String content,
-            String route) {
+            UUID excludeUser, String title, String content, String route) {
         Set<UUID> targets = userIdsWithPermissions("supplier_return_task:view", NOTICE_READ_AUTHORITY);
         for (UUID uid : targets) {
             if (excludeUser != null && excludeUser.equals(uid)) continue;

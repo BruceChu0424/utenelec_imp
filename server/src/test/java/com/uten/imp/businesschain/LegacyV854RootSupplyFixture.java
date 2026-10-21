@@ -81,7 +81,7 @@ final class LegacyV854RootSupplyFixture {
         UUID settlement = ReflectionTestUtils.invokeMethod(harness, "activeSettlementMethodId");
         var order = seedDraftAndSubmission(world, leaf, settlement, reviewer, reviewerEmployee, sources);
         harness.loginAs(reviewer);
-        approveHistoricalOrder(world, reviewer, reviewerEmployee, order, sources);
+        approveHistoricalOrder(reviewer, reviewerEmployee, order, sources);
         harness.loginAs(world.superAdminUserId());
 
         RootSupplyActualWarehouseEndToEndTest.Fixture fixture;
@@ -178,8 +178,7 @@ final class LegacyV854RootSupplyFixture {
         });
     }
 
-    private void approveHistoricalOrder(FullChainEndToEndTest.World world, UUID reviewer, UUID reviewerEmployee,
-            LegacyOrder order, List<Map<String, Object>> sources) {
+    private void approveHistoricalOrder(UUID reviewer, UUID reviewerEmployee, LegacyOrder order, List<Map<String, Object>> sources) {
         support.transactions.executeWithoutResult(ignored -> {
             support.beans.getBean(TxSessionVars.class).bind();
             support.db.update("""

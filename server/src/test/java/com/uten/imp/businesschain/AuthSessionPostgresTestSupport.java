@@ -41,7 +41,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
  * 一个 Spring 上下文与一个数据库。
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
-@SpringBootTest(properties = {
+@SpringBootTest(classes = com.uten.imp.UtenImpApplication.class, properties = {
         "spring.profiles.active=dev",
         "uten.audit.retention.enabled=false",
         "uten.reporting.materialized-view-refresh.enabled=false",

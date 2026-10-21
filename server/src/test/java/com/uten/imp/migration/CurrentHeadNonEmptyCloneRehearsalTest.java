@@ -100,7 +100,7 @@ class CurrentHeadNonEmptyCloneRehearsalTest {
             }
         }
 
-        Flyway flyway = Flyway.configure()
+        Flyway flyway = com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(url, user, password)
                 .locations("classpath:db/migration")
                 .baselineOnMigrate(false)

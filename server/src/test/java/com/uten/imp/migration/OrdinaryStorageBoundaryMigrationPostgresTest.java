@@ -1,6 +1,7 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
+import com.uten.imp.testsupport.BoundTestSql;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.core.io.ClassPathResource;
@@ -20,7 +21,7 @@ class OrdinaryStorageBoundaryMigrationPostgresTest {
     void upgradesHistoricalDefaultsAndProtectsBothSidesOfStorageIdentity() throws Exception {
         try (var db = new PostgreSQLContainer("postgres:16-alpine")) {
             db.start();
-            Flyway.configure().dataSource(db.getJdbcUrl(), db.getUsername(), db.getPassword())
+            com.uten.imp.testsupport.TestFlyway.configure().dataSource(db.getJdbcUrl(), db.getUsername(), db.getPassword())
                     .locations("classpath:db/migration").target("608").load().migrate();
             var jdbc = new JdbcTemplate(new DriverManagerDataSource(
                     db.getJdbcUrl(), db.getUsername(), db.getPassword()));
@@ -41,14 +42,8 @@ class OrdinaryStorageBoundaryMigrationPostgresTest {
             jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
                 try (var statement = connection.createStatement()) {
                     statement.execute("SET session_replication_role = replica");
-                    statement.execute("INSERT INTO stock_movements(goods_id,warehouse_id,transaction_date,"
-                            + "movement_type,source_doc_type,direction,qty) VALUES ('" + latestInbound + "','"
-                            + ordinary + "','2026-09-01',11,'OTHER_IN',1,10), ('" + latestInbound + "','"
-                            + newer + "','2026-09-02',11,'OTHER_IN',1,5), ('" + latestInbound + "','"
-                            + line + "','2026-09-03',11,'OTHER_IN',1,3)");
-                    statement.execute("INSERT INTO stock_balances(goods_id,warehouse_id,qty) VALUES ('"
-                            + fromBalance + "','" + ordinary + "',10), ('" + fromBalance + "','"
-                            + newer + "',20), ('" + unknown + "','" + line + "',99)");
+                    BoundTestSql.execute(statement, "INSERT INTO stock_movements(goods_id,warehouse_id,transaction_date,movement_type,source_doc_type,direction,qty) VALUES (?,?,'2026-09-01',11,'OTHER_IN',1,10), (?,?,'2026-09-02',11,'OTHER_IN',1,5), (?,?,'2026-09-03',11,'OTHER_IN',1,3)", latestInbound, ordinary, latestInbound, newer, latestInbound, line);
+                    BoundTestSql.execute(statement, "INSERT INTO stock_balances(goods_id,warehouse_id,qty) VALUES (?,?,10), (?,?,20), (?,?,99)", fromBalance, ordinary, fromBalance, newer, unknown, line);
                     statement.execute("SET session_replication_role = origin");
                 }
                 return null;
@@ -103,13 +98,11 @@ class OrdinaryStorageBoundaryMigrationPostgresTest {
                     statement.execute("CREATE TEMP TABLE warehouse_inbound_probe(warehouse_id uuid)");
                     statement.execute("CREATE TRIGGER guard BEFORE INSERT ON warehouse_inbound_probe "
                             + "FOR EACH ROW EXECUTE FUNCTION fn_guard_iqc_actual_warehouse_selection()");
-                    statement.execute("INSERT INTO warehouse_inbound_probe VALUES ('" + ordinary + "')");
+                    BoundTestSql.execute(statement, "INSERT INTO warehouse_inbound_probe VALUES (?)", ordinary);
                     statement.execute("CREATE TEMP TABLE warehouse_outbound_probe AS SELECT * FROM sales_shipments WITH NO DATA");
                     statement.execute("CREATE TRIGGER guard BEFORE INSERT OR UPDATE ON warehouse_outbound_probe "
                             + "FOR EACH ROW EXECUTE FUNCTION fn_guard_sales_shipment_picking_warehouse()");
-                    statement.execute("INSERT INTO warehouse_outbound_probe(warehouse_id,warehouse_chosen_at_pick,shipment_kind,"
-                            + "status,warehouse_work_status,finance_audit,review_revision) VALUES ('" + ordinary
-                            + "',true,'CUSTOMER',0,'PENDING_PICK',1,0)");
+                    BoundTestSql.execute(statement, "INSERT INTO warehouse_outbound_probe(warehouse_id,warehouse_chosen_at_pick,shipment_kind,status,warehouse_work_status,finance_audit,review_revision) VALUES (?,true,'CUSTOMER',0,'PENDING_PICK',1,0)", ordinary);
                     statement.execute("UPDATE warehouse_outbound_probe SET status=1,warehouse_work_status='SHIPPED'");
                 }
                 return null;
@@ -134,52 +127,40 @@ class OrdinaryStorageBoundaryMigrationPostgresTest {
                 UUID plan = UUID.randomUUID(), pack = UUID.randomUUID(), receiving = UUID.randomUUID();
                 UUID producing = UUID.randomUUID(), demand = UUID.randomUUID(), reportItem = UUID.randomUUID();
                 UUID transfer = UUID.randomUUID();
-                statement.execute("INSERT INTO production_plans(id,status,is_deleted,is_stopped,is_closed,is_canceled) "
-                        + "VALUES ('" + plan + "',1,false,false,false,false)");
-                statement.execute("INSERT INTO production_planning_packages(id,plan_id,status,is_deleted) VALUES ('"
-                        + pack + "','" + plan + "','CONFIRMED',false)");
-                statement.execute("INSERT INTO production_execution_segments(id,plan_id,package_id,workshop_department_id,"
-                        + "status,continuous_supply,is_deleted) VALUES ('" + receiving + "','" + plan + "','" + pack
-                        + "','" + workshop + "','WAITING',false,false), ('" + producing + "','" + plan + "','" + pack
-                        + "','" + workshop + "','IN_PROGRESS',false,false)");
-                statement.execute("INSERT INTO production_material_demands(id,execution_segment_id,goods_id,warehouse_id,"
-                        + "required_qty,status,is_deleted) VALUES ('" + demand + "','" + receiving + "','" + goods
-                        + "','" + ordinary + "',100,'OPEN',false)");
-                statement.execute("INSERT INTO production_daily_report_items(id,execution_segment_id,goods_id,destination,"
-                        + "qty,unit_rate,is_deleted) VALUES ('" + reportItem + "','" + producing + "','" + goods
-                        + "','WORKSHOP',2,1,false)");
-                statement.execute("INSERT INTO production_workshop_direct_transfers(id,line_side_warehouse_id,workshop_department_id) "
-                        + "VALUES ('" + transfer + "','" + lineSide + "','" + workshop + "')");
+                BoundTestSql.execute(statement, "INSERT INTO production_plans(id,status,is_deleted,is_stopped,is_closed,is_canceled) VALUES (?,1,false,false,false,false)", plan);
+                BoundTestSql.execute(statement, "INSERT INTO production_planning_packages(id,plan_id,status,is_deleted) VALUES (?,?,'CONFIRMED',false)", pack, plan);
+                BoundTestSql.execute(statement, "INSERT INTO production_execution_segments(id,plan_id,package_id,workshop_department_id,status,continuous_supply,is_deleted) VALUES (?,?,?,?,'WAITING',false,false), (?,?,?,?,'IN_PROGRESS',false,false)", receiving, plan, pack, workshop, producing, plan, pack, workshop);
+                BoundTestSql.execute(statement, "INSERT INTO production_material_demands(id,execution_segment_id,goods_id,warehouse_id,required_qty,status,is_deleted) VALUES (?,?,?,?,100,'OPEN',false)", demand, receiving, goods, ordinary);
+                BoundTestSql.execute(statement, "INSERT INTO production_daily_report_items(id,execution_segment_id,goods_id,destination,qty,unit_rate,is_deleted) VALUES (?,?,?,'WORKSHOP',2,1,false)", reportItem, producing, goods);
+                BoundTestSql.execute(statement, "INSERT INTO production_workshop_direct_transfers(id,line_side_warehouse_id,workshop_department_id) VALUES (?,?,?)", transfer, lineSide, workshop);
                 statement.execute("CREATE TRIGGER guard BEFORE INSERT OR UPDATE OR DELETE ON production_workshop_direct_transfer_items "
                         + "FOR EACH ROW EXECUTE FUNCTION fn_guard_workshop_direct_transfer_item()");
                 String insert = "INSERT INTO production_workshop_direct_transfer_items(transfer_id,source_report_item_id,"
-                        + "to_execution_segment_id,to_demand_id,qty) VALUES ('" + transfer + "','" + reportItem + "','"
-                        + receiving + "','" + demand + "',2)";
+                        + "to_execution_segment_id,to_demand_id,qty) VALUES (?,?,?,?,2)";
                 for (String[] change : java.util.List.of(
-                        new String[]{"production_plans", "is_stopped=true", "is_stopped=false"},
-                        new String[]{"production_plans", "is_closed=true", "is_closed=false"},
-                        new String[]{"production_plans", "is_canceled=true", "is_canceled=false"},
-                        new String[]{"production_plans", "is_deleted=true", "is_deleted=false"},
-                        new String[]{"production_plans", "status=0", "status=1"},
-                        new String[]{"production_planning_packages", "status='DRAFT'", "status='CONFIRMED'"},
-                        new String[]{"production_planning_packages", "is_deleted=true", "is_deleted=false"},
-                        new String[]{"production_execution_segments", "status='IN_PROGRESS'", "status='WAITING'"},
-                        new String[]{"production_execution_segments", "status='COMPLETED'", "status='WAITING'"},
-                        new String[]{"production_execution_segments", "status='CANCELLED'", "status='WAITING'"},
-                        new String[]{"production_execution_segments", "is_deleted=true", "is_deleted=false"})) {
-                    statement.execute("UPDATE " + change[0] + " SET " + change[1]);
-                    assertThatThrownBy(() -> statement.execute(insert))
+                        new String[]{"production_plans", "UPDATE production_plans SET is_stopped=true", "UPDATE production_plans SET is_stopped=false"},
+                        new String[]{"production_plans", "UPDATE production_plans SET is_closed=true", "UPDATE production_plans SET is_closed=false"},
+                        new String[]{"production_plans", "UPDATE production_plans SET is_canceled=true", "UPDATE production_plans SET is_canceled=false"},
+                        new String[]{"production_plans", "UPDATE production_plans SET is_deleted=true", "UPDATE production_plans SET is_deleted=false"},
+                        new String[]{"production_plans", "UPDATE production_plans SET status=0", "UPDATE production_plans SET status=1"},
+                        new String[]{"production_planning_packages", "UPDATE production_planning_packages SET status='DRAFT'", "UPDATE production_planning_packages SET status='CONFIRMED'"},
+                        new String[]{"production_planning_packages", "UPDATE production_planning_packages SET is_deleted=true", "UPDATE production_planning_packages SET is_deleted=false"},
+                        new String[]{"production_execution_segments", "UPDATE production_execution_segments SET status='IN_PROGRESS'", "UPDATE production_execution_segments SET status='WAITING'"},
+                        new String[]{"production_execution_segments", "UPDATE production_execution_segments SET status='COMPLETED'", "UPDATE production_execution_segments SET status='WAITING'"},
+                        new String[]{"production_execution_segments", "UPDATE production_execution_segments SET status='CANCELLED'", "UPDATE production_execution_segments SET status='WAITING'"},
+                        new String[]{"production_execution_segments", "UPDATE production_execution_segments SET is_deleted=true", "UPDATE production_execution_segments SET is_deleted=false"})) {
+                    statement.execute(change[1]);
+                    assertThatThrownBy(() -> BoundTestSql.execute(statement, insert, transfer, reportItem, receiving, demand))
                             .as("reject stale recipient: %s %s", change[0], change[1])
                             .hasMessageContaining("requires an active receiving plan, package and execution task");
-                    statement.execute("UPDATE " + change[0] + " SET " + change[2]);
+                    statement.execute(change[2]);
                 }
                 for (String state : java.util.List.of("WAITING", "READY", "DISPATCHED", "IN_PROGRESS")) {
-                    statement.execute("UPDATE production_execution_segments SET status='" + state
-                            + "',continuous_supply=" + state.equals("IN_PROGRESS") + " WHERE id='" + receiving + "'");
-                    statement.execute(insert);
+                    BoundTestSql.execute(statement, "UPDATE production_execution_segments SET status=?,continuous_supply=? WHERE id=?",
+                            state, state.equals("IN_PROGRESS"), receiving);
+                    BoundTestSql.execute(statement, insert, transfer, reportItem, receiving, demand);
                     statement.execute("UPDATE production_plans SET is_stopped=true,is_closed=true");
-                    statement.execute("UPDATE production_workshop_direct_transfer_items SET reversal_id='"
-                            + UUID.randomUUID() + "' WHERE reversal_id IS NULL");
+                    BoundTestSql.execute(statement, "UPDATE production_workshop_direct_transfer_items SET reversal_id=? WHERE reversal_id IS NULL", UUID.randomUUID());
                     statement.execute("UPDATE production_plans SET is_stopped=false,is_closed=false");
                 }
             }

@@ -231,7 +231,8 @@ class GoodsSearchPolicyPostgresTest extends AuthSessionPostgresTestSupport {
                 .param("categoryId",sockets.toString()).param("categoryRootIds",root.toString()));
         assertEquals(List.of(sockets.toString()),strings(locations));
         assertTrue(ids(search(token,root,sockets,"螺丝",false,1,100)).contains(feature.toString()));
-        UUID child=category(sockets,"子类"), filteredOut=goods(child,"Y-"+UUID.randomUUID(),"子类插座（螺丝接线式）","Y",null);
+        UUID child=category(sockets,"子类");
+        goods(child,"Y-"+UUID.randomUUID(),"子类插座（螺丝接线式）","Y",null);
         JsonNode filteredLocations=request(token,get("/api/master/goods/search-category-ids").param("keyword","螺丝").param("model","X")
                 .param("categoryId",sockets.toString()).param("categoryRootIds",root.toString()));
         assertEquals(List.of(sockets.toString()),strings(filteredLocations));
@@ -290,7 +291,7 @@ class GoodsSearchPolicyPostgresTest extends AuthSessionPostgresTestSupport {
         merged.sort(java.util.Comparator.comparingInt((JsonNode row)->row.path("searchRank").asInt())
                 .thenComparing(row->row.path("code").asText()).thenComparing(row->row.path("id").asText()));
         assertEquals(35,total);assertEquals(35,merged.stream().map(row->row.path("id").asText()).distinct().count());
-        assertEquals(exact.toString(),merged.getFirst().path("id").asText());
+        assertEquals(java.util.Objects.requireNonNull(exact, "last business root must seed an exact match").toString(),merged.getFirst().path("id").asText());
         assertEquals(related.toString(),merged.getLast().path("id").asText());
         assertEquals("RELATED",merged.getLast().path("searchMatchKind").asText());
         assertEquals(1,selectedTotal,"Business-root batches intersect the explicitly selected category; no root union may widen it");
@@ -344,7 +345,8 @@ class GoodsSearchPolicyPostgresTest extends AuthSessionPostgresTestSupport {
         prefer.path("items").forEach(row->assertEquals("PRIMARY",row.path("searchMatchKind").asText()));
         Map<String,Integer> preferRanks=new HashMap<>();prefer.path("items").forEach(row->preferRanks.put(row.path("id").asText(),row.path("searchRank").asInt()));
         assertNativeParity(root,"螺丝",false,ids(prefer),preferRanks,GoodsSearchPolicy.SubjectMode.PREFER);
-        UUID locks=category(null,"lock类"),clocks=category(null,"其他计时器");
+        category(null,"lock类");
+        UUID clocks=category(null,"其他计时器");
         UUID lock=goods(null,"LOCK-"+UUID.randomUUID(),"lock",null,null),clock=goods(clocks,"CLOCK-"+UUID.randomUUID(),"clock",null,null);
         JsonNode english=request(token,get("/api/master/goods").param("keyword","lock").param("size","100"));
         assertEquals(List.of(lock.toString()),ids(english));

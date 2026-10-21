@@ -356,7 +356,7 @@ class SubcontractStepDrawEndToEndTest {
         Set<UUID> mine = new LinkedHashSet<>(List.of(p, a, b));
 
         // ① B 已下采购订货 200(在途); 委外订货 P 100 获财务批准: 按可发外直属边冻结两条计划行, 不建草稿。
-        PurchaseLine purchase = approvedPurchase(w, w2, b, "200", tag);
+        PurchaseLine purchase = approvedPurchase(w, w2, b, "200");
         UUID orderId = subcontractOrder(w, p, "100", BusinessTime.today().plusDays(10), null);
         assertEquals(0, count("SELECT COUNT(*) FROM subcontract_material_plans WHERE order_id=?", orderId),
                 "送审前不建领料计划");
@@ -503,6 +503,10 @@ class SubcontractStepDrawEndToEndTest {
         assertEquals(2, plans.tasks(1, 50, orderNo, null).getItems().size(), "仓库委外出仓工作台一张草稿一行");
         OutboundTaskDetail pick = plans.taskDetail(draftB);
         qty("80", pick.lines().getFirst().requestedQty(), "拣货页显示委外人员提交的数量");
+        Long draftVersion = db.queryForObject(
+                "SELECT xmin::text::bigint FROM subcontract_material_issues WHERE id=?", Long.class, draftB);
+        assertNotNull(draftVersion);
+        assertEquals(draftVersion.longValue(), pick.version(), "拣货页版本必须保持数据库草稿行的真实 xmin");
 
         // ⑦ 仓库少发 B: 只能改少(80 → 60), 改多被拒; 改少后只占 60, 释放的 20 又够 10 套。
         ApiException raised = assertThrows(ApiException.class, () -> warehousePick(draftB, b, "81"));
@@ -1599,8 +1603,7 @@ class SubcontractStepDrawEndToEndTest {
     }
 
     /** 已审核采购申请 → 采购订货单 → 财务批准。 */
-    private PurchaseLine approvedPurchase(FullChainEndToEndTest.World w, UUID warehouseId, UUID goodsId, String qty,
-                                          String tag) {
+    private PurchaseLine approvedPurchase(FullChainEndToEndTest.World w, UUID warehouseId, UUID goodsId, String qty) {
         var request = new RequestSaveRequest();
         request.setBillDate(BusinessTime.today());
         request.setWarehouseId(warehouseId);
@@ -2135,7 +2138,7 @@ class SubcontractStepDrawEndToEndTest {
         return n == null ? 0 : n;
     }
 
-    private static void qty(String expected, BigDecimal actual, String what) {
+    private static void qtyDecimal(String expected, BigDecimal actual, String what) {
         assertNotNull(actual, what + ": 现状 null, 期望 " + expected);
         assertEquals(0, new BigDecimal(expected).compareTo(actual), what + ": 现状 " + actual + " 期望 " + expected);
     }
@@ -2143,6 +2146,6 @@ class SubcontractStepDrawEndToEndTest {
     private static void qty(String expected, Object actual, String what) {
         assertNotNull(actual, what + ": 现状 null, 期望 " + expected);
         BigDecimal value = actual instanceof BigDecimal decimal ? decimal : new BigDecimal(actual.toString());
-        qty(expected, value, what);
+        qtyDecimal(expected, value, what);
     }
 }

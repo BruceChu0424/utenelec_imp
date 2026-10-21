@@ -67,8 +67,8 @@ class AuditClassificationMigrationPostgresTest {
         try (Connection c = connection(MIGRATED)) {
             c.setAutoCommit(false);
             execute(c, "SET LOCAL statement_timeout='15s'; SET LOCAL jit=off");
-            execute(c, "CREATE TEMPORARY TABLE classification_cases(id bigint,action text,result text,target_type text,http_path text,target_id text,status_code integer,"
-                    + "risk_level text GENERATED ALWAYS AS (" + riskExpression + ") STORED,"
+            execute(c, "CREATE TEMPORARY TABLE classification_cases(id bigint,action text,result text,target_type text,http_path text,target_id text,status_code integer, "
+                    + "risk_level text GENERATED ALWAYS AS (" + riskExpression + ") STORED, "
                     + "event_category text GENERATED ALWAYS AS (" + categoryExpression + ") STORED) ON COMMIT DROP");
             List<Object[]> cases = AuditClassificationCases.create();
             assertTrue(cases.size() >= 33000);
@@ -205,6 +205,6 @@ class AuditClassificationMigrationPostgresTest {
     private static void execute(Connection c,String sql) throws SQLException { try(var s=c.createStatement()) { s.execute(sql); } }
     private static Connection connection(String database) throws SQLException { return DriverManager.getConnection(url(database),POSTGRES.getUsername(),POSTGRES.getPassword()); }
     private static String url(String database) { String url=POSTGRES.getJdbcUrl(); int query=url.indexOf('?'); String base=query<0?url:url.substring(0,query);return base.substring(0,base.lastIndexOf('/')+1)+database+"?reWriteBatchedInserts=true"; }
-    private static Flyway flyway(String database,String target) { return Flyway.configure().dataSource(url(database),POSTGRES.getUsername(),POSTGRES.getPassword()).locations("classpath:db/migration").target(target).cleanDisabled(true).callbacks(new AppliedMigrationCompatibilityCallback(),new AuditFreshStartGuardCallback()).load(); }
+    private static Flyway flyway(String database,String target) { return com.uten.imp.testsupport.TestFlyway.configure().dataSource(url(database),POSTGRES.getUsername(),POSTGRES.getPassword()).locations("classpath:db/migration").target(target).cleanDisabled(true).callbacks(new AppliedMigrationCompatibilityCallback(),new AuditFreshStartGuardCallback()).load(); }
     private static void cloneDatabase(String database) throws SQLException { try(Connection c=connection("postgres")) { execute(c,"CREATE DATABASE \""+database+"\" TEMPLATE \""+POSTGRES.getDatabaseName()+"\""); } }
 }

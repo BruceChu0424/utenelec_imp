@@ -24,9 +24,8 @@ import java.util.UUID;
 public class GenerateSubplansRequest {
 
     @NotEmpty(message = "至少选择一行自制件")
-    @Valid
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<Line> items;
+    private List<@Valid Line> items;
 
     @Getter
     @Setter

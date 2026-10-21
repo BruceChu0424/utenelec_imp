@@ -233,7 +233,7 @@ class AttachmentRetainedHistoryPostgresTest {
     }
     private Attachment create(byte[] bytes,AttachmentLifecycleState state,boolean withDigest) throws Exception {
         String key=UUID.randomUUID().toString().replace("-","")+".txt";
-        storage.store(key,new ByteArrayInputStream(bytes),bytes.length,"text/plain");storage.promoteToFinal(key,storage.describe(key));
+        storage.store(key,new ByteArrayInputStream(bytes),bytes.length);storage.promoteToFinal(key,storage.describe(key));
         var row=new Attachment();row.setOwnerType("SALES_QUOTE");row.setOwnerId(owner);row.setStorageKey(key);row.setStorageProvider("local");
         row.setOriginalName("原始报价.txt");row.setContentType("text/plain");row.setSizeBytes(bytes.length);
         row.setSha256(withDigest?HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)):null);

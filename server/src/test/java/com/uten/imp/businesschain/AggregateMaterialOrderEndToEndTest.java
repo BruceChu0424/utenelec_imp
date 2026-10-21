@@ -210,7 +210,7 @@ class AggregateMaterialOrderEndToEndTest {
     @Test void sharedMakeActuallyIssuesReportsPassesFqcAndPreservesThreePrivateOutputSources(){
         Case c=create(true,true,"1");var batch=writer.submit(c.analysis(),command(c,List.of(input(c,c.common(),"MAKE","3",false)))).batches().getFirst();
         UUID inbound=produce(c,batch);
-        amount("3",db.queryForObject("SELECT SUM(qty) FROM stock_balances WHERE warehouse_id=? AND goods_id='"+c.common()+"'",BigDecimal.class,c.world().warehouseId()));
+        amount("3",db.queryForObject("SELECT SUM(qty) FROM stock_balances WHERE warehouse_id=? AND goods_id=?",BigDecimal.class,c.world().warehouseId(),c.common()));
         amount("0",db.queryForObject("SELECT COALESCE(SUM(qty),0) FROM stock_document_items WHERE doc_id=? AND fn_finished_in_is_public_output(id)",BigDecimal.class,inbound));
         assertEquals(3,count("SELECT COUNT(DISTINCT origin_analysis_material_id) FROM preplan_analysis_stock_exact_pegs WHERE source_receipt_id=?",inbound));
         amount("3",db.queryForObject("SELECT SUM(qty) FROM preplan_analysis_stock_exact_pegs WHERE source_receipt_id=?",BigDecimal.class,inbound));
@@ -275,7 +275,7 @@ class AggregateMaterialOrderEndToEndTest {
         Case c=createWithChild("1");
         var raw=input(c,c.common(),"MAKE","3",false);
         var group=new GroupInput(raw.clientGroupKey(),raw.materialLineIds(),raw.route(),raw.qty(),false,c.workshop(),c.worker(),null,null,null,null,BigDecimal.ZERO,BigDecimal.ZERO);
-        var shared=writer.submit(c.analysis(),command(c,List.of(group))).batches().getFirst();
+        assertFalse(writer.submit(c.analysis(),command(c,List.of(group))).batches().isEmpty());
         // 全选下单的其余两层也走汇总：子件(制造批)与采购料各成一批，嵌套共享批次。
         writer.submit(c.analysis(),command(c,List.of(input(c,c.child(),"MAKE","3",false),input(c,c.material(),"BUY","6",false))));
         AnalysisView view=analyses.detail(c.analysis());
@@ -933,16 +933,23 @@ class AggregateMaterialOrderEndToEndTest {
         CohortCase cohort=createIndependentCohort();Case c=cohort.c();receive(c,c.material(),"1");
         List<GroupInput> groups=cohort.outputs().stream().map(output->input(c,output,"MAKE","1",false)).toList();
         SubmitRequest intent=command(c,groups);
-        String outputs=cohort.outputs().stream().map(id->"'"+id+"'::uuid").collect(java.util.stream.Collectors.joining(","));
+        String outputs=cohort.outputs().stream().map(UUID::toString).collect(java.util.stream.Collectors.joining(",", "{", "}"));
         String fault="test_aggregate_second_"+UUID.randomUUID().toString().replace("-","");
-        db.execute("CREATE FUNCTION "+fault+"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.goods_id IN("+outputs+") AND EXISTS(SELECT 1 FROM production_plans p WHERE p.material_analysis_id='"+c.analysis()+"'::uuid AND p.status=1 AND NOT p.is_deleted) THEN RAISE EXCEPTION 'TEST_SECOND_PLAN_AFTER_FIRST_APPROVED' USING ERRCODE='23514'; END IF; RETURN NEW; END $$");
-        db.execute("CREATE TRIGGER "+fault+" BEFORE INSERT ON production_plan_items FOR EACH ROW EXECUTE FUNCTION "+fault+"()");
+        db.execute(db.queryForObject("""
+                SELECT format($ddl$CREATE FUNCTION %I() RETURNS trigger LANGUAGE plpgsql AS $body$
+                BEGIN IF NEW.goods_id=ANY(%L::uuid[]) AND EXISTS(SELECT 1 FROM production_plans p
+                WHERE p.material_analysis_id=%L::uuid AND p.status=1 AND NOT p.is_deleted)
+                THEN RAISE EXCEPTION 'TEST_SECOND_PLAN_AFTER_FIRST_APPROVED' USING ERRCODE='23514';
+                END IF; RETURN NEW; END $body$ $ddl$, CAST(? AS text), CAST(? AS text), CAST(? AS uuid))
+                """, String.class, fault, outputs, c.analysis()));
+        db.execute(db.queryForObject("SELECT format('CREATE TRIGGER %I BEFORE INSERT ON production_plan_items FOR EACH ROW EXECUTE FUNCTION %I()', CAST(? AS text), CAST(? AS text))", String.class, fault, fault));
         try {
             RuntimeException rejected=assertThrows(RuntimeException.class,()->writer.submit(c.analysis(),intent));
             StringBuilder causes=new StringBuilder();for(Throwable current=rejected;current!=null;current=current.getCause())causes.append(current.getMessage());
             assertTrue(causes.toString().contains("TEST_SECOND_PLAN_AFTER_FIRST_APPROVED"),causes.toString());
         } finally {
-            db.execute("DROP TRIGGER "+fault+" ON production_plan_items");db.execute("DROP FUNCTION "+fault+"()");
+            db.execute(db.queryForObject("SELECT format('DROP TRIGGER %I ON production_plan_items', CAST(? AS text))", String.class, fault));
+            db.execute(db.queryForObject("SELECT format('DROP FUNCTION %I()', CAST(? AS text))", String.class, fault));
         }
         assertEquals(0,count("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));
         assertEquals(0,count("SELECT COUNT(*) FROM preplan_supply_actions WHERE analysis_id=?",c.analysis()));

@@ -30,8 +30,7 @@ public class PlanSaveRequest {
     private String remark;
     private String sourceDocNo;
 
-    @Valid
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<PlanItemLine> items;
+    private List<@Valid PlanItemLine> items;
 }

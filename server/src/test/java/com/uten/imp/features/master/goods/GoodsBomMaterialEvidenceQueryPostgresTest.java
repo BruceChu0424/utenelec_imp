@@ -3,7 +3,6 @@ package com.uten.imp.features.master.goods;
 import com.uten.imp.support.MigratedProjectionSchema;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -27,7 +26,7 @@ class GoodsBomMaterialEvidenceQueryPostgresTest {
 
     @BeforeAll static void migrate() {
         DATABASE.start();
-        Flyway.configure().dataSource(DATABASE.getJdbcUrl(), DATABASE.getUsername(), DATABASE.getPassword())
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(DATABASE.getJdbcUrl(), DATABASE.getUsername(), DATABASE.getPassword())
                 .locations("classpath:db/migration").load().migrate();
     }
     @AfterAll static void stop() { DATABASE.stop(); }

@@ -469,7 +469,8 @@ public class ExpenseClaimService {
     public ExpenseClaimFacetsDto facets(String queue, boolean includeDeleted, boolean onlyDeleted) {
         AuthUser user = requireStaff();
         Set<String> statuses;
-        switch (queue == null ? "" : queue.trim().toLowerCase(Locale.ROOT)) {
+        String normalizedQueue = queue == null ? "" : queue.trim().toLowerCase(Locale.ROOT);
+        switch (normalizedQueue) {
             case "pending" -> {
                 require(user, "expense:approve");
                 statuses = Set.of("SUBMITTED", "REVIEWING");
@@ -486,7 +487,7 @@ public class ExpenseClaimService {
             // 桶是审批/打款队列口径，个人列表不需要），其余桶恒空。
             case "mineactive", "minehistory" -> {
                 require(user, "expense:apply");
-                boolean historyOnly = "minehistory".equals(queue.trim().toLowerCase(Locale.ROOT));
+                boolean historyOnly = "minehistory".equals(normalizedQueue);
                 return new ExpenseClaimFacetsDto(List.of(), List.of(), List.of(),
                         toBuckets(applicantQuery.mineClaimNoFacets(user.getEmployeeId(), includeDeleted || onlyDeleted, onlyDeleted, historyOnly)));
             }
@@ -916,8 +917,7 @@ public class ExpenseClaimService {
             appendEvent(claim.getId(), "REJECTED", user, normalized);
             hrNotice.resolveExpenseClaim(claim.getId(), "REJECTED");
             hrNotice.notifyExpenseClaimRejected(
-                    claim.getId(), claim.getApplicantNameSnapshot(), normalized,
-                    userIdOfEmployee(claim.getApplicantId()));
+                    claim.getId(), normalized, userIdOfEmployee(claim.getApplicantId()));
         }
         return mapClaimWithItems(claim);
     }
@@ -973,9 +973,7 @@ public class ExpenseClaimService {
         appendEvent(claim.getId(), "PAID", user, "付款日期 " + request.paymentDate());
         // 打款完成 → 申请人回执 + 办结全部报销弹卡（2026-09-09 人事通知接入）
         hrNotice.notifyExpenseClaimPaid(
-                claim.getId(), claim.getApplicantNameSnapshot(),
-                claim.getTotalAmount().toPlainString() + " 元",
-                userIdOfEmployee(claim.getApplicantId()));
+                claim.getId(), claim.getTotalAmount().toPlainString() + " 元", userIdOfEmployee(claim.getApplicantId()));
         return mapClaimWithItems(claim);
     }
 

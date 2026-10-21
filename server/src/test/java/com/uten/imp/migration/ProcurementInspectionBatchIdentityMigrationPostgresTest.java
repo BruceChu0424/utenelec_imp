@@ -64,7 +64,7 @@ class ProcurementInspectionBatchIdentityMigrationPostgresTest {
     private static String digest(Connection connection,boolean migrated)throws SQLException {
         return scalar(connection,"SELECT md5(string_agg((to_jsonb(event)"+(migrated?"-'batch_request_hash'":"")+")::text,E'\n' ORDER BY id)) FROM procurement_inspection_events event");
     }
-    private static Flyway flyway(PostgreSQLContainer database,String version){return Flyway.configure().dataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword()).locations("classpath:db/migration").target(version).cleanDisabled(true).load();}
+    private static Flyway flyway(PostgreSQLContainer database,String version){return com.uten.imp.testsupport.TestFlyway.configure().dataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword()).locations("classpath:db/migration").target(version).cleanDisabled(true).load();}
     private static void execute(Connection connection,String sql)throws SQLException{try(var statement=connection.createStatement()){statement.execute(sql);}}
     private static String scalar(Connection connection,String sql)throws SQLException{try(var statement=connection.createStatement();var result=statement.executeQuery(sql)){assertTrue(result.next());return result.getString(1);}}
 }

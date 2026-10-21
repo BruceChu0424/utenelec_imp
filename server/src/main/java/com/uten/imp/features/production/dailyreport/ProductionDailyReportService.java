@@ -380,8 +380,7 @@ public class ProductionDailyReportService {
         // commands without that proof retain their original native-V3 replay contract.
         String fullPayloadHash = createFullPayloadHash(req);
         // ADR-131 §10 锁序：幂等顾问锁之后、写日报之前，锁住涉及的车间内料仓期间并核对日期。
-        guardWorkshopMaterialPeriods(null, req.getBillDate(), requestSegmentIds(req.getItems()),
-                WorkshopMaterialReportGuardPort.Operation.SAVE);
+        guardWorkshopMaterialPeriods(req.getBillDate(), requestSegmentIds(req.getItems()), WorkshopMaterialReportGuardPort.Operation.SAVE);
         validateWorkerIds(workerIds);
 
         ProductionDailyReport r = new ProductionDailyReport();
@@ -408,8 +407,7 @@ public class ProductionDailyReportService {
         if (req != null) DailyReportOutputAllocationService.rejectStaleRouteShape(req.getItems());
         // ADR-131 §10 锁序：车间内料仓期间的共享锁先于日报行锁；按请求里的新日期与明细段核对。
         if (req != null) {
-            guardWorkshopMaterialPeriods(id, req.getBillDate(), requestSegmentIds(req.getItems()),
-                    WorkshopMaterialReportGuardPort.Operation.SAVE);
+            guardWorkshopMaterialPeriods(req.getBillDate(), requestSegmentIds(req.getItems()), WorkshopMaterialReportGuardPort.Operation.SAVE);
         }
         ProductionDailyReport r = requireReportForUpdate(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的生产日报");
@@ -497,8 +495,7 @@ public class ProductionDailyReportService {
         }
         // ADR-131 §10 锁序：幂等顾问锁 → 预读本单日期与明细段 → 车间内料仓期间共享锁 → 原有足迹。
         ReportPeriodFacts periodFacts = reportPeriodFacts(id);
-        guardWorkshopMaterialPeriods(id, periodFacts.billDate(), periodFacts.segmentIds(),
-                WorkshopMaterialReportGuardPort.Operation.APPROVE);
+        guardWorkshopMaterialPeriods(periodFacts.billDate(), periodFacts.segmentIds(), WorkshopMaterialReportGuardPort.Operation.APPROVE);
         var sourceGuard = mutationFootprint.beginReport(id);
         ProductionDailyReport r = requireReportForUpdate(id);
         access.requireWritable(
@@ -768,7 +765,7 @@ public class ProductionDailyReportService {
             if(report.getStatus()==null||report.getStatus()!=STATUS_APPROVED)throw new ApiException(ErrorCode.BUSINESS,"仅已审核单据可反审");
             com.uten.imp.common.review.DailyReportApprovalReturnDependencies.requireResolved(em,id);
             var periods=reportPeriodFacts(id);
-            if(reportGuard!=null)reportGuard.requireReversibleReadOnly(id,periods.billDate(),periods.segmentIds());
+            if(reportGuard!=null)reportGuard.requireReversibleReadOnly(periods.billDate(), periods.segmentIds());
             requireReportDownstreamReversible(id);
             Set<UUID> reopened=new java.util.HashSet<>();
             for(UUID planId:NativeQueryResults.typedRows(em.createNativeQuery("SELECT DISTINCT plan_id FROM production_daily_report_material_usages WHERE report_id=:id ORDER BY 1")
@@ -791,7 +788,7 @@ public class ProductionDailyReportService {
                 if(contribution.signum()>0&&!isInternalExecutionReport(item))requireProducedContributionReversible(item,contribution,planLinks,produced);
                 if(item.isFinal())requireCapRestorable(id,item.getPlanItemId(),planLinks);
             }
-            requireContinuousMaterialRemainderRestorable(id,items);
+            requireContinuousMaterialRemainderRestorable(items);
             fqcRecovery.requireReportEffectsReversible(id);
         });
     }
@@ -886,8 +883,7 @@ public class ProductionDailyReportService {
         tx.bind();
         // ADR-131 §10 锁序：预读本单日期与明细段 → 车间内料仓期间共享锁 → 原有足迹 → 日报行。
         ReportPeriodFacts periodFacts = reportPeriodFacts(id);
-        guardWorkshopMaterialPeriods(id, periodFacts.billDate(), periodFacts.segmentIds(),
-                WorkshopMaterialReportGuardPort.Operation.REVERSE);
+        guardWorkshopMaterialPeriods(periodFacts.billDate(), periodFacts.segmentIds(), WorkshopMaterialReportGuardPort.Operation.REVERSE);
         var sourceGuard = mutationFootprint.beginReport(id);
         ProductionDailyReport r = requireReportForUpdate(id);
         qualityInspection.prelockForReportReversal(r.getId());
@@ -1429,7 +1425,6 @@ public class ProductionDailyReportService {
         if(openSupply.longValue()>0)throw new ApiException(ErrorCode.CONFLICT,
                 "仍有未兑现的采购、委外或生产供给承诺，请先按原供给链撤回或改派后提前完结；本次可继续普通分次报工");
 
-        UUID planId = (UUID) pi[1];
         String planNo = (String) pi[9];
         // Freeze the exact owner of the target change before updating its projection.
         em.createNativeQuery("""
@@ -2135,33 +2130,24 @@ public class ProductionDailyReportService {
 
     private static void addCanonical(
             List<String> parts, String path, Object value) {
-        String canonical;
-        if (value == null) {
-            canonical = "NULL";
-        } else if (value instanceof BigDecimal decimal) {
-            BigDecimal normalized = decimal.stripTrailingZeros();
-            // Compact exponent notation must not allocate an unbounded plain
-            // string before the field's quantity/rate validation gets to run.
-            // All supported native values retain exactly their old hash bytes.
-            if (normalized.precision() + Math.max(0L, -(long) normalized.scale()) > 10_000
-                    || normalized.scale() > 10_000) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "请求数值超出可处理范围，请核对原输入");
+        String canonical = switch (value) {
+            case null -> "NULL";
+            case BigDecimal decimal -> {
+                BigDecimal normalized = decimal.stripTrailingZeros();
+                // Keep the existing magnitude guard and canonical bytes used by persisted command fingerprints.
+                if (normalized.precision() + Math.max(0L, -(long) normalized.scale()) > 10_000
+                        || normalized.scale() > 10_000) {
+                    throw new ApiException(ErrorCode.VALIDATION_FAILED, "请求数值超出可处理范围，请核对原输入");
+                }
+                yield "DECIMAL:" + normalized.toPlainString();
             }
-            canonical = "DECIMAL:"
-                    + normalized.toPlainString();
-        } else if (value instanceof String text) {
-            canonical = "STRING:" + text;
-        } else if (value instanceof UUID uuid) {
-            canonical = "UUID:" + uuid;
-        } else if (value instanceof LocalDate date) {
-            canonical = "DATE:" + date;
-        } else if (value instanceof Boolean bool) {
-            canonical = "BOOLEAN:" + bool;
-        } else if (value instanceof Number number) {
-            canonical = "NUMBER:" + number;
-        } else {
-            canonical = "VALUE:" + value;
-        }
+            case String text -> "STRING:" + text;
+            case UUID uuid -> "UUID:" + uuid;
+            case LocalDate date -> "DATE:" + date;
+            case Boolean bool -> "BOOLEAN:" + bool;
+            case Number number -> "NUMBER:" + number;
+            default -> "VALUE:" + value;
+        };
         parts.add(path + "=" + canonical);
     }
 
@@ -2835,7 +2821,7 @@ public class ProductionDailyReportService {
         if (!released.isEmpty()) fulfillmentLedger.refreshDemandStatuses(released);
     }
 
-    private void requireContinuousMaterialRemainderRestorable(UUID reportId,List<ProductionDailyReportItem> items) {
+    private void requireContinuousMaterialRemainderRestorable(List<ProductionDailyReportItem> items) {
         List<UUID> segmentIds=items.stream().filter(ProductionDailyReportItem::isFinal)
                 .filter(item -> item.getFqcRecoveryAuthorizationId()==null)
                 .map(ProductionDailyReportItem::getExecutionSegmentId)
@@ -2854,7 +2840,7 @@ public class ProductionDailyReportService {
     }
 
     private void restoreContinuousMaterialRemainder(UUID reportId, List<ProductionDailyReportItem> items) {
-        requireContinuousMaterialRemainderRestorable(reportId,items);
+        requireContinuousMaterialRemainderRestorable(items);
         List<UUID> segmentIds=items.stream().filter(ProductionDailyReportItem::isFinal).filter(item->item.getFqcRecoveryAuthorizationId()==null)
             .map(ProductionDailyReportItem::getExecutionSegmentId).filter(Objects::nonNull).distinct().toList();
         if(segmentIds.isEmpty()||fulfillmentLedger==null)return;
@@ -2951,13 +2937,12 @@ public class ProductionDailyReportService {
      * 互斥)，已结算就拒绝。明细没有任务段或端口缺省(单测手工构造)时直接返回。
      */
     private void guardWorkshopMaterialPeriods(
-            UUID reportId, LocalDate billDate, java.util.Collection<UUID> segmentIds,
-            WorkshopMaterialReportGuardPort.Operation operation) {
+            LocalDate billDate, java.util.Collection<UUID> segmentIds, WorkshopMaterialReportGuardPort.Operation operation) {
         if (reportGuard == null || billDate == null
                 || segmentIds == null || segmentIds.isEmpty()) {
             return;
         }
-        reportGuard.lockAndCheck(reportId, billDate, segmentIds, operation);
+        reportGuard.lockAndCheck(billDate, segmentIds, operation);
     }
 
     /** 请求明细里的任务段(去重、保序)；报工截止守卫按它们找绑定的车间内料仓。 */

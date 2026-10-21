@@ -1,7 +1,6 @@
 package com.uten.imp.businesschain;
 
 import com.uten.imp.features.purchase.receipt.PurchaseReceiptService;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -65,7 +64,7 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
                     .contains("a.warehouse_id=NEW.warehouse_id");
             var before=businessFacts(fixture);
             var history=db.queryForList("SELECT row_to_json(history)::text FROM flyway_schema_history history WHERE version::integer<=854 ORDER BY installed_rank",String.class);
-            var migration=Flyway.configure().dataSource(DATABASE.getJdbcUrl(),DATABASE.getUsername(),DATABASE.getPassword())
+            var migration=com.uten.imp.testsupport.TestFlyway.configure().dataSource(DATABASE.getJdbcUrl(),DATABASE.getUsername(),DATABASE.getPassword())
                     .locations("classpath:db/migration").target("855").load();
             assertThat(migration.migrate().migrationsExecuted).isEqualTo(1);
             assertThat(businessFacts(fixture)).containsExactlyElementsOf(before);
@@ -81,13 +80,13 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
             assertThat(db.queryForObject("SELECT to_regprocedure('public.fn_preplan_make_public_supply_sources(uuid,uuid,uuid[])') IS NULL",Boolean.class))
                     .isTrue();
             var historyThrough855=db.queryForList("SELECT row_to_json(history)::text FROM flyway_schema_history history WHERE version::integer<=855 ORDER BY installed_rank",String.class);
-            var currentMigration=Flyway.configure().dataSource(DATABASE.getJdbcUrl(),DATABASE.getUsername(),DATABASE.getPassword())
+            var currentMigration=com.uten.imp.testsupport.TestFlyway.configure().dataSource(DATABASE.getJdbcUrl(),DATABASE.getUsername(),DATABASE.getPassword())
                     .locations("classpath:db/migration").target(CURRENT_HEAD_VERSION).load();
             assertThat(currentMigration.migrate().migrationsExecuted)
                     .isEqualTo(CURRENT_MIGRATION_COUNT-migrationFileCountUpTo(855));
             currentMigration.validate();assertThat(currentMigration.migrate().migrationsExecuted).isZero();
             assertThat(db.queryForObject("SELECT max(version::integer) FROM flyway_schema_history WHERE success",Integer.class))
-                    .isEqualTo(Integer.parseInt(CURRENT_HEAD_VERSION));
+                    .isEqualTo(com.uten.imp.testsupport.FixtureNumbers.integer(CURRENT_HEAD_VERSION));
             assertThat(db.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE version IS NOT NULL AND success",Integer.class))
                     .isEqualTo(CURRENT_MIGRATION_COUNT);
             assertThat(db.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE NOT success",Integer.class)).isZero();

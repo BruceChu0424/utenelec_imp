@@ -419,16 +419,22 @@ public final class IdRepairAdvisor {
 
     private static boolean passesFilters(Raw r, LocalDate today, IdRepairEvidence ev) {
         String v = r.value();
+        if (v == null || v.length() != 18) return false;
         if (!hasLegalProvince(v)) {
             return false;
         }
-        int year = Integer.parseInt(v.substring(6, 10));
+        LocalDate birth;
+        try {
+            birth = LocalDate.parse(v.substring(6, 14), DateTimeFormatter.BASIC_ISO_DATE);
+        } catch (java.time.DateTimeException malformed) {
+            return false;
+        }
+        int year = birth.getYear();
         if (year < MIN_BIRTH_YEAR || year > today.getYear() - 16) {
             return false;
         }
         if (ev.hireDate() != null) {
-            int ageAtHire = Period.between(LocalDate.parse(v.substring(6, 14),
-                    DateTimeFormatter.BASIC_ISO_DATE), ev.hireDate()).getYears();
+            int ageAtHire = Period.between(birth, ev.hireDate()).getYears();
             if (ageAtHire < MIN_HIRE_AGE || ageAtHire > MAX_HIRE_AGE) {
                 return false;
             }

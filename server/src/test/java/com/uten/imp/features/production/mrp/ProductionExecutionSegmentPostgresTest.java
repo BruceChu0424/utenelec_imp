@@ -1,7 +1,6 @@
 package com.uten.imp.features.production.mrp;
 
 import com.uten.imp.support.ProcurementReceiptFixtureSupport;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -53,7 +52,7 @@ class ProductionExecutionSegmentPostgresTest {
     @BeforeAll
     static void migrate() {
         POSTGRES.start();
-        Flyway.configure()
+        com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(
                         POSTGRES.getJdbcUrl(),
                         POSTGRES.getUsername(),
@@ -3133,7 +3132,7 @@ class ProductionExecutionSegmentPostgresTest {
             String sql,
             Object id,
             String expected) throws Exception {
-        assertQuantity(connection, sql, new Object[]{id}, expected);
+        assertBoundQuantity(connection, sql, new Object[]{id}, expected);
     }
 
     private static void assertQuantity(
@@ -3142,11 +3141,11 @@ class ProductionExecutionSegmentPostgresTest {
             Object first,
             Object second,
             String expected) throws Exception {
-        assertQuantity(
+        assertBoundQuantity(
                 connection, sql, new Object[]{first, second}, expected);
     }
 
-    private static void assertQuantity(
+    private static void assertBoundQuantity(
             Connection connection,
             String sql,
             Object[] values,

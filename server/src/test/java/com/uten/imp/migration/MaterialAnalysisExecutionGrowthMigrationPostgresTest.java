@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -64,7 +63,7 @@ class MaterialAnalysisExecutionGrowthMigrationPostgresTest {
     }
 
     private static void migrate(PostgreSQLContainer postgres, String target) {
-        Flyway.configure().dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                 .locations("classpath:db/migration").target(target).load().migrate();
     }
 

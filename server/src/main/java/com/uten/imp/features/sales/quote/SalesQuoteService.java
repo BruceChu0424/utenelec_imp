@@ -426,7 +426,7 @@ public class SalesQuoteService {
         q.setReviewRevision(q.getReviewRevision() + 1);
         quoteRepo.save(q);
         List<SalesQuoteItem> items = itemRepo.findByQuoteIdOrderByLineNoAsc(id);
-        revisionLog.append(q, items, SalesQuoteRevisionLog.WITHDRAW, actor, req == null ? null : req.reason());
+        revisionLog.append(q, items, SalesQuoteRevisionLog.WITHDRAW, actor, req.reason());
         notices.resolveReviewNotices(q.getId(), "WITHDRAWN");
         return toDetail(q, items, true);
     }
@@ -453,7 +453,7 @@ public class SalesQuoteService {
         q.setReviewRevision(q.getReviewRevision() + 1);
         quoteRepo.save(q);
         List<SalesQuoteItem> items = itemRepo.findByQuoteIdOrderByLineNoAsc(id);
-        revisionLog.append(q, items, SalesQuoteRevisionLog.REOPEN, actor, req == null ? null : req.reason());
+        revisionLog.append(q, items, SalesQuoteRevisionLog.REOPEN, actor, req.reason());
         return toDetail(q, items, true);
     }
 
@@ -496,7 +496,7 @@ public class SalesQuoteService {
         em.refresh(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         requireNotDeleted(q);
         requireRevision(q, req == null ? null : req.expectedRevision());
-        String reason = req == null ? null : blankToNull(req.reason());
+        String reason = blankToNull(req.reason());
         if (reason == null || reason.length() > 500) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请填写取消报价的原因（最多 500 字）");
         }
@@ -551,13 +551,13 @@ public class SalesQuoteService {
         requireUnexpired(q);
         // 防重复/并发转入：运行时只按报价 UUID；source_doc_no 仅保留可读快照。
         // 防重复——转入不改报价状态；此查询在 em.refresh 锁行后执行，见最新提交，并发也只一笔成功。
-        Integer existingFromQuote = ((Number) em.createNativeQuery("""
+        int existingFromQuote = ((Number) em.createNativeQuery("""
                 SELECT COUNT(*) FROM sales_orders
                 WHERE source_quote_id = :quoteId
                 """)
                 .setParameter("quoteId", q.getId())
                 .getSingleResult()).intValue();
-        if (existingFromQuote != null && existingFromQuote > 0) {
+        if (existingFromQuote > 0) {
             throw new ApiException(ErrorCode.CONFLICT, "该报价单已转入订货单，禁止重复转入");
         }
         List<SalesQuoteItem> qitems = itemRepo.findByQuoteIdOrderByLineNoAsc(id);
@@ -1057,6 +1057,14 @@ public class SalesQuoteService {
      */
     private List<String> allowedActions(SalesQuote q, ConvertedOrder converted, boolean hasItems,
                                         com.uten.imp.security.OwnerVisibility.OwnerScope scope) {
+        // Resolve the actor's grants once, independently of document fields used by this projection.
+        boolean canEdit = accessPolicy.hasAuthority("sales_quote:edit");
+        boolean canDelete = accessPolicy.hasAuthority("sales_quote:delete");
+        boolean canConvert = accessPolicy.hasAuthority("sales_quote:convert");
+        boolean canCreateOrder = accessPolicy.hasAuthority("sales_order:create");
+        boolean canReverse = accessPolicy.hasAuthority("sales_quote:reverse");
+        boolean canCreateQuote = accessPolicy.hasAuthority("sales_quote:create");
+        boolean canViewFinance = accessPolicy.hasAuthority(FINANCE_VIEW);
         List<String> actions = new ArrayList<>();
         short status = q.getStatus() == null ? STATUS_DRAFT : q.getStatus();
         boolean owner = accessPolicy.canWrite(q.getMakerId(), scope);
@@ -1065,26 +1073,25 @@ public class SalesQuoteService {
         // 转订货单只认财务确认过的(与「报价已核价待转订货」徽章、待转订货筛选、主档引用保护同口径)。
         boolean ready = open && q.getFinanceConfirmedAt() != null && !expired(q);
         boolean convertible = ready && customerAccepted(q);
-        if (owner && draft && accessPolicy.hasAuthority("sales_quote:edit")) {
+        if (owner && draft && canEdit) {
             actions.add("edit");
             if (hasItems) actions.add("submit");
         }
-        if (owner && draft && q.getSubmittedAt() == null && accessPolicy.hasAuthority("sales_quote:delete")) actions.add("delete");
-        if (owner && status == STATUS_PENDING_FINANCE && accessPolicy.hasAuthority("sales_quote:edit")) {
+        if (owner && draft && q.getSubmittedAt() == null && canDelete) actions.add("delete");
+        if (owner && status == STATUS_PENDING_FINANCE && canEdit) {
             actions.add("withdraw");
         }
-        if (owner && open && accessPolicy.hasAuthority("sales_quote:edit")) actions.add("reopen");
-        if (owner && ready && !customerAccepted(q) && accessPolicy.hasAuthority("sales_quote:edit")) actions.add("customerConfirm");
-        if (owner && convertible && accessPolicy.hasAuthority("sales_quote:convert")
-                && accessPolicy.hasAuthority("sales_order:create")) {
+        if (owner && open && canEdit) actions.add("reopen");
+        if (owner && ready && !customerAccepted(q) && canEdit) actions.add("customerConfirm");
+        if (owner && convertible && canConvert && canCreateOrder) {
             actions.add("convert");
         }
         if (owner && !q.isClosed() && status != STATUS_REVERSED && converted == null
-                && (accessPolicy.hasAuthority("sales_quote:edit") || accessPolicy.hasAuthority("sales_quote:reverse"))) actions.add("cancel");
+                && (canEdit || canReverse)) actions.add("cancel");
         if (owner && status == STATUS_CONFIRMED && converted != null
-                && accessPolicy.hasAuthority("sales_quote:create") && accessPolicy.hasAuthority("sales_quote:edit")
+                && canCreateQuote && canEdit
                 && canRequote(q.getId())) actions.add("requote");
-        if (accessPolicy.hasAuthority(FINANCE_VIEW) && financeVisible(q)) actions.add("financeReview");
+        if (canViewFinance && financeVisible(q)) actions.add("financeReview");
         return actions;
     }
 

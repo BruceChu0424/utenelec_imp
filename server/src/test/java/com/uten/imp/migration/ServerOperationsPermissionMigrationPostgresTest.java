@@ -13,7 +13,6 @@ import com.uten.imp.support.MigratedSchemaBaseline;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -120,7 +119,7 @@ class ServerOperationsPermissionMigrationPostgresTest {
         try(var upgrade=new PostgreSQLContainer("postgres:16-alpine")) {
             upgrade.start();
             var source=new DriverManagerDataSource(upgrade.getJdbcUrl(),upgrade.getUsername(),upgrade.getPassword());
-            Flyway.configure().dataSource(source).locations("classpath:db/migration").target("864").load().migrate();
+            com.uten.imp.testsupport.TestFlyway.configure().dataSource(source).locations("classpath:db/migration").target("864").load().migrate();
             var current=new JdbcTemplate(source);
             assertThat(current.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success",Long.class)).isEqualTo(790);
             current.update("UPDATE system_settings SET value='17' WHERE key='sms_code_ttl_minutes'");
@@ -133,7 +132,7 @@ class ServerOperationsPermissionMigrationPostgresTest {
                     SELECT string_agg(version||':'||checksum::text,'|' ORDER BY installed_rank)
                     FROM flyway_schema_history WHERE success
                     """,String.class);
-            var result=Flyway.configure().dataSource(source).locations("classpath:db/migration").target("867").load().migrate();
+            var result=com.uten.imp.testsupport.TestFlyway.configure().dataSource(source).locations("classpath:db/migration").target("867").load().migrate();
             assertThat(result.migrationsExecuted).isEqualTo(3);
             assertThat(current.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success",Long.class)).isEqualTo(793);
             assertThat(current.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE NOT success",Long.class)).isZero();
@@ -157,7 +156,7 @@ class ServerOperationsPermissionMigrationPostgresTest {
         try(var upgrade=new PostgreSQLContainer("postgres:16-alpine")) {
             upgrade.start();
             var source=new DriverManagerDataSource(upgrade.getJdbcUrl(),upgrade.getUsername(),upgrade.getPassword());
-            Flyway.configure().dataSource(source).locations("classpath:db/migration").target("864").load().migrate();
+            com.uten.imp.testsupport.TestFlyway.configure().dataSource(source).locations("classpath:db/migration").target("864").load().migrate();
             var current=new JdbcTemplate(source);
             assertThat(current.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success",Long.class)).isEqualTo(790);
             current.update("UPDATE system_settings SET value='17' WHERE key='sms_code_ttl_minutes'");
@@ -170,7 +169,7 @@ class ServerOperationsPermissionMigrationPostgresTest {
                     SELECT string_agg(version||':'||checksum::text,'|' ORDER BY installed_rank)
                     FROM flyway_schema_history WHERE success
                     """,String.class);
-            var result=Flyway.configure().dataSource(source).locations("classpath:db/migration").target("868").load().migrate();
+            var result=com.uten.imp.testsupport.TestFlyway.configure().dataSource(source).locations("classpath:db/migration").target("868").load().migrate();
             assertThat(result.migrationsExecuted).isEqualTo(4);
             assertThat(current.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success",Long.class)).isEqualTo(794);
             assertThat(current.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE NOT success",Long.class)).isZero();

@@ -63,11 +63,11 @@ public class SalesOrderTimelineService {
         addOrderEvents(order, events);
         addFinanceEvents(order, events);
         List<UUID> analysisIds = addMaterialAnalysisEvents(orderId, order, events);
-        boolean hasSupplyDocs = addSupplyEvents(analysisIds, events);
+        addSupplyEvents(analysisIds, events);
         boolean hasPlans = addProductionPlanEvents(orderId, events);
         addProductionProgressEvent(orderId, hasPlans, events);
         addShipmentEvents(orderId, events);
-        addClosureEvents(order, events, hasSupplyDocs, analysisIds);
+        addClosureEvents(order, events);
 
         events.sort(TIMELINE_ORDER);
         return events;
@@ -216,9 +216,9 @@ public class SalesOrderTimelineService {
 
     // ============================ 物料准备（采购 / 委外） ============================
 
-    /** @return 是否已存在采购/委外订货单。 */
-    private boolean addSupplyEvents(List<UUID> analysisIds, List<OrderProgressTimelineEvent> events) {
-        if (analysisIds.isEmpty()) return false;
+    /** Append both supply chains, or their pending placeholder when neither exists. */
+    private void addSupplyEvents(List<UUID> analysisIds, List<OrderProgressTimelineEvent> events) {
+        if (analysisIds.isEmpty()) return;
         boolean found = false;
         found |= addSupplyOrderEvents(analysisIds, true, events);
         found |= addSupplyOrderEvents(analysisIds, false, events);
@@ -227,7 +227,6 @@ public class SalesOrderTimelineService {
                     50, "SUPPLY_ORDER", "物料准备-采购/委外下单", null, null, null, PENDING,
                     "物料分析缺口待采购/委外在任务中心下单", null, null, null));
         }
-        return found;
     }
 
     /** purchase=true 走采购链（sources.request_item_id），false 走委外链（sources.application_item_id）。 */
@@ -498,8 +497,7 @@ public class SalesOrderTimelineService {
 
     // ============================ 结案 / 中止 ============================
 
-    private void addClosureEvents(SalesOrder order, List<OrderProgressTimelineEvent> events,
-                                  boolean hasSupplyDocs, List<UUID> analysisIds) {
+    private void addClosureEvents(SalesOrder order, List<OrderProgressTimelineEvent> events) {
         if (order.isStopped()) {
             events.add(new OrderProgressTimelineEvent(
                     90, "ORDER_STOPPED", "订单中止", null, null, null, REJECTED,

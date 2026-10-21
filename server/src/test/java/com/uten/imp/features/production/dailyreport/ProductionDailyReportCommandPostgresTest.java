@@ -1,6 +1,5 @@
 package com.uten.imp.features.production.dailyreport;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -43,7 +42,7 @@ class ProductionDailyReportCommandPostgresTest {
     @BeforeAll
     static void migrateAndSeedActor() throws Exception {
         POSTGRES.start();
-        Flyway.configure()
+        com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(
                         POSTGRES.getJdbcUrl(),
                         POSTGRES.getUsername(),
@@ -56,7 +55,7 @@ class ProductionDailyReportCommandPostgresTest {
         try (Connection connection = connection()) {
             insertReport(connection, legacyReportId, "legacy-before-v409");
         }
-        Flyway.configure()
+        com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(
                         POSTGRES.getJdbcUrl(),
                         POSTGRES.getUsername(),

@@ -241,6 +241,47 @@ class MasterReferenceCatalogCoverageTest {
         }
     }
 
+    @Test
+    void initialUnitReceiptKeepsHistoryWhileCurrentGoodsUnitStillBlocksRetirement() throws SQLException {
+        assertThat(MasterReferenceCatalog.exemptions().stream()
+                .filter(exemption -> exemption.table().equals("rd_tasks")
+                        && exemption.column().equals("initial_unit_id")).toList())
+                .singleElement().satisfies(exemption -> assertThat(exemption.reason())
+                        .isEqualTo(MasterReferenceCatalog.ExemptReason.HISTORY));
+        UUID currentUnit = UUID.randomUUID(), historicalUnit = UUID.randomUUID(), goods = UUID.randomUUID();
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            try {
+                // Use migrated shapes to distinguish a historical receipt from a live master identity.
+                try (var statement = connection.createStatement()) {
+                    statement.execute("CREATE TEMP TABLE goods ON COMMIT DROP AS SELECT * FROM public.goods WITH NO DATA");
+                    statement.execute("CREATE TEMP TABLE rd_tasks ON COMMIT DROP AS SELECT * FROM public.rd_tasks WITH NO DATA");
+                }
+                try (var insert = connection.prepareStatement(
+                        "INSERT INTO goods(id,code,name,unit_id,is_deleted) VALUES (?,'CURRENT-UNIT','current goods',?,false)")) {
+                    insert.setObject(1, goods); insert.setObject(2, currentUnit); insert.executeUpdate();
+                }
+                try (var insert = connection.prepareStatement(
+                        "INSERT INTO rd_tasks(id,goods_id,initial_unit_id,status,is_deleted) VALUES (gen_random_uuid(),?,?,'DONE',false)")) {
+                    insert.setObject(1, goods); insert.setObject(2, historicalUnit); insert.executeUpdate();
+                }
+                try (var query = connection.prepareStatement(MasterReferenceGuard.sql(MasterEntityKind.UNIT)
+                        .replace(":ids", "?").replace(":excluded", "?"))) {
+                    query.setString(1, currentUnit + "," + historicalUnit); query.setString(2, "");
+                    try (var rows = query.executeQuery()) {
+                        assertThat(rows.next()).isTrue();
+                        assertThat(rows.getObject(1, UUID.class)).isEqualTo(currentUnit);
+                        assertThat(rows.getString(2)).isEqualTo("GOODS");
+                        assertThat(rows.getString(3)).isEqualTo(goods.toString());
+                        assertThat(rows.next()).isFalse();
+                    }
+                }
+            } finally {
+                connection.rollback();
+            }
+        }
+    }
+
     /** 库里所有指向七种主档的列：外键列(分区子表并到父表) + 按命名约定却没外键的 uuid 列。 */
     private static Map<String, MasterEntityKind> inventory() throws SQLException {
         Map<String, MasterEntityKind> out = new TreeMap<>();

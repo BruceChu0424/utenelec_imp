@@ -29,7 +29,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static com.uten.imp.testsupport.BusinessHttpRequests.authenticated;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 /**
@@ -112,7 +112,7 @@ class IqcDecideReportBatchPostgresTest {
 
     private JsonNode call(Stage stage,Object body,int expected)throws Exception{
         var response=http.perform(post("/api/procurement/inspection/decide-report")
-                        .with(authentication(stage.actor())).contentType("application/json").content(json.writeValueAsBytes(body)))
+                        .with(authenticated(stage.actor())).contentType("application/json").content(json.writeValueAsBytes(body)))
                 .andReturn().getResponse();
         assertEquals(expected,response.getStatus(),response.getContentAsString());
         return response.getContentAsByteArray().length==0?json.createObjectNode():json.readTree(response.getContentAsByteArray());
@@ -155,7 +155,7 @@ class IqcDecideReportBatchPostgresTest {
                 new AuthUser(user.getId(),user.getEmployeeId(),"iqc-report-read",Set.of("procurement_inspection:view"),false,true,false),
                 null,java.util.Collections.emptyList());
         var response=http.perform(post("/api/procurement/inspection/decide-report")
-                        .with(authentication(read)).contentType("application/json")
+                        .with(authenticated(read)).contentType("application/json")
                         .content(json.writeValueAsBytes(report(stage,null))))
                 .andReturn().getResponse();
         assertEquals(403,response.getStatus());
@@ -192,7 +192,7 @@ class IqcDecideReportBatchPostgresTest {
                         "iqc-report-key-"+row.inspectionId())).toList(),
                 "整份检验报告一次提交");
         var response=http.perform(post("/api/procurement/inspection/"+singleType+"/"+first.getKey()+"/decide-batch")
-                        .with(authentication(stage.actor())).contentType("application/json").content(json.writeValueAsBytes(single)))
+                        .with(authenticated(stage.actor())).contentType("application/json").content(json.writeValueAsBytes(single)))
                 .andReturn().getResponse();
         assertEquals(200,response.getStatus(),response.getContentAsString());
         int firstReceiptEvents=db.queryForObject(

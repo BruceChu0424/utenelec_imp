@@ -1,6 +1,5 @@
 package com.uten.imp.features.production.analysis;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -26,7 +25,7 @@ class AggregateMaterialSourceCoveragePostgresTest {
 
     @BeforeAll static void migrate(){
         DATABASE.start();
-        var migration=Flyway.configure().dataSource(DATABASE.getJdbcUrl(),DATABASE.getUsername(),DATABASE.getPassword())
+        var migration=com.uten.imp.testsupport.TestFlyway.configure().dataSource(DATABASE.getJdbcUrl(),DATABASE.getUsername(),DATABASE.getPassword())
                 .locations("classpath:db/migration").target("713").load();
         migration.migrate();migration.validate();assertEquals(0,migration.migrate().migrationsExecuted);
     }

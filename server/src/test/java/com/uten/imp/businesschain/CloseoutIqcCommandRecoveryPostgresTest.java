@@ -33,6 +33,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 
 /** Actual commercial receipt/cost fixtures with immutable IQC actor, whole-report recovery and no new quantity on read. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
@@ -66,7 +67,7 @@ class CloseoutIqcCommandRecoveryPostgresTest {
         JsonNode result=call(path(source,"decide-batch/receipt"),read,request,200);
         assertEquals("COMMITTED",result.path("state").asText());assertEquals(6,result.path("events").size());
         assertEquals(facts,facts(source));call(path(source,"decide-batch"),read,request,403);
-        UUID foreign=anotherUser(source);UUID employee=db.queryForObject("SELECT employee_id FROM users WHERE id=?",UUID.class,foreign);
+        UUID foreign=anotherUser();UUID employee=db.queryForObject("SELECT employee_id FROM users WHERE id=?",UUID.class,foreign);
         Authentication other=principal(foreign,employee,Set.of("procurement_inspection:view","procurement_inspection:handle"));
         assertEquals("UNKNOWN",call(path(source,"decide-batch/receipt"),other,request,200).path("state").asText());
         call(path(source,"decide-batch"),other,request,409);assertEquals(facts,facts(source));
@@ -79,7 +80,7 @@ class CloseoutIqcCommandRecoveryPostgresTest {
         for(var item:items)inspections.dispose(source.type(),source.receipt(),item.inspectionItemId(),new InspectionDispositionRequest("PASS",item.expectedRemainingBaseQty(),null,item.idempotencyKey()));
         String original=facts(source);inspections.passBatch(source.type(),source.receipt(),pass);assertEquals(original,facts(source));
         assertEquals("LEGACY",call(path(source,"pass-batch/receipt"),source.actor(),pass,200).path("state").asText());
-        UUID foreign=anotherUser(source);UUID employee=db.queryForObject("SELECT employee_id FROM users WHERE id=?",UUID.class,foreign);
+        UUID foreign=anotherUser();UUID employee=db.queryForObject("SELECT employee_id FROM users WHERE id=?",UUID.class,foreign);
         Authentication other=principal(foreign,employee,Set.of("procurement_inspection:view","procurement_inspection:handle"));
         assertEquals("UNKNOWN",call(path(source,"pass-batch/receipt"),other,pass,200).path("state").asText());
         call(path(source,"pass-batch"),other,pass,409);assertEquals(original,facts(source));
@@ -112,9 +113,11 @@ class CloseoutIqcCommandRecoveryPostgresTest {
         var rows=fixture.receipts().stream().filter(receipt->receipt.type().equals(type)).toList();return new Source(type,rows.getFirst().id(),rows,SecurityContextHolder.getContext().getAuthentication());}
     private BatchInspectionDecideRequest report(Source source){return new BatchInspectionDecideRequest(source.rows().stream().map(row->new BatchInspectionDecideRequest.Item(row.inspectionId(),new BigDecimal("1.2500"),new BigDecimal("0.75"),new BigDecimal("0.50"),"closeout-iqc-key-"+row.inspectionId())).toList(),"真实原检验报告");}
     private String path(Source source,String action){return "/api/procurement/inspection/"+source.type()+"/"+source.receipt()+"/"+action;}
-    private UUID anotherUser(Source source){var fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);var world=fixture.seedWorld("closeout-foreign-"+UUID.randomUUID());return fixture.createUserWithPerms(world,"iqc-other-"+UUID.randomUUID(),"procurement_inspection:view","procurement_inspection:handle");}
+    private UUID anotherUser(){var fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);var world=fixture.seedWorld("closeout-foreign-"+UUID.randomUUID());return fixture.createUserWithPerms(world,"iqc-other-"+UUID.randomUUID(),"procurement_inspection:view","procurement_inspection:handle");}
     private Authentication principal(UUID id,UUID employee,Set<String> permissions){var user=new AuthUser(id,employee,"iqc-read-test",permissions,false,true,false);return new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(user,null,user.getAuthorities());}
-    private JsonNode call(String path,Authentication actor,Object body,int expected)throws Exception{var response=http.perform(post(path).with(authentication(actor)).contentType("application/json").content(json.writeValueAsBytes(body))).andReturn().getResponse();assertEquals(expected,response.getStatus(),response.getContentAsString());SecurityContextHolder.getContext().setAuthentication(actor);return response.getContentAsByteArray().length==0?json.createObjectNode():json.readTree(response.getContentAsByteArray());}
+    // This business-command harness supplies a synthetic authenticated actor
+    // with a valid CSRF token; transport authentication has separate tests.
+    private JsonNode call(String path,Authentication actor,Object body,int expected)throws Exception{var response=http.perform(post(path).with(authentication(actor)).with(csrf().asHeader()).contentType("application/json").content(json.writeValueAsBytes(body))).andReturn().getResponse();assertEquals(expected,response.getStatus(),response.getContentAsString());SecurityContextHolder.getContext().setAuthentication(actor);return response.getContentAsByteArray().length==0?json.createObjectNode():json.readTree(response.getContentAsByteArray());}
     private String facts(Source source){return db.queryForObject("""
             SELECT jsonb_build_object('inspections',(SELECT jsonb_agg(to_jsonb(i) ORDER BY id) FROM procurement_inspection_items i WHERE receipt_id=?),
                 'events',(SELECT jsonb_agg(to_jsonb(e) ORDER BY e.id) FROM procurement_inspection_events e JOIN procurement_inspection_items i ON i.id=e.inspection_item_id WHERE i.receipt_id=?),

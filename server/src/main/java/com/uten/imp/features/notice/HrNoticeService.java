@@ -86,8 +86,7 @@ public class HrNoticeService implements HrNoticePort {
     // ========================= 信息变更（HR 审核） =========================
 
     /** 员工提交需审核字段的修改 → 通知全体持 profile:review 的 HR（含提交人本人）。 */
-    @Override public void notifyProfileChangeSubmitted(UUID batchId, String submitterName,
-                                             List<String> fieldLabels, UUID submitterEmployeeId) {
+    @Override public void notifyProfileChangeSubmitted(UUID batchId, String submitterName, List<String> fieldLabels) {
         // 2026-09-29 不再跳过提交人本人：自审已放开（ProfileChangeReviewService），
         // 持 profile:review 的 HR 自己提交的修改正等着他本人审批，这张行动卡必须发给他。
         // 无 review 权限的普通提交人本来就不在收件集里。
@@ -200,8 +199,7 @@ public class HrNoticeService implements HrNoticePort {
     }
 
     /** 驳回 → 申请人回执（含原因）。 */
-    @Override public void notifyExpenseClaimRejected(UUID claimId, String applicantName,
-                                           String reason, UUID applicantUserId) {
+    @Override public void notifyExpenseClaimRejected(UUID claimId, String reason, UUID applicantUserId) {
         if (applicantUserId == null) return;
         sameTransaction(() -> noticeService.publishForUser(
                 applicantUserId, "报销单被驳回",
@@ -211,8 +209,7 @@ public class HrNoticeService implements HrNoticePort {
     }
 
     /** 打款完成 → 申请人回执 + 办结全部报销弹卡。 */
-    @Override public void notifyExpenseClaimPaid(UUID claimId, String applicantName,
-                                       String amountLabel, UUID applicantUserId) {
+    @Override public void notifyExpenseClaimPaid(UUID claimId, String amountLabel, UUID applicantUserId) {
         if (applicantUserId != null) {
             sameTransaction(() -> noticeService.publishForUser(
                     applicantUserId, "报销付款已登记",
@@ -286,7 +283,7 @@ public class HrNoticeService implements HrNoticePort {
     }
 
     /** 发布 → 持条员工逐人「工资条已发布」通知（普通，不弹卡）。 */
-    @Override public void notifyPayrollPublished(UUID batchId, String periodLabel, List<UUID> employeeIdsWithSlip) {
+    @Override public void notifyPayrollPublished(String periodLabel, List<UUID> employeeIdsWithSlip) {
         for (UUID employeeId : employeeIdsWithSlip) {
             for (UUID target : userRepo.findByEmployeeId(employeeId).stream()
                     .filter(u -> !u.isDeleted() && "active".equals(u.getStatus()))

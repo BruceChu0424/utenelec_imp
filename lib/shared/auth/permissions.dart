@@ -363,7 +363,6 @@ abstract final class Perm {
   static const productionPlanEdit = 'production_plan:edit';
   static const productionPlanApprove = 'production_plan:approve';
   static const productionPlanCreate = 'production_plan:create';
-  static const productionPlanForwardRd = 'production_plan:forward_rd';
 
   /// 追加用料 / 超产比例 / 追加生产计划三条申请通道（V694–V702）。
   static const productionExecutionRequestMaterialIncrement =

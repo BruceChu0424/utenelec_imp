@@ -93,10 +93,14 @@ class PlatformSettingsControllerSecurityTest {
         var admin = PlatformSettingsServiceTest.actor(true, null);
         mvc.perform(get("https://erp.test/api/admin/platform-settings").secure(true).with(user(admin))).andExpect(status().isOk());
         String body = json.writeValueAsString(PlatformSettingsServiceTest.request(4, null, false));
-        mvc.perform(put("https://erp.test/api/admin/platform-settings").secure(true).with(user(admin)).contentType("application/json").content(body))
+        mvc.perform(put("https://erp.test/api/admin/platform-settings").secure(true).with(user(admin))
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf().asHeader())
+                        .contentType("application/json").content(body))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("code").value("REAUTH_REQUIRED"));
         verify(service, never()).update(any());
-        mvc.perform(put("https://erp.test/api/admin/platform-settings").secure(true).with(user(admin)).header(StepUpInterceptor.HEADER, "valid-step-up")
+        mvc.perform(put("https://erp.test/api/admin/platform-settings").secure(true).with(user(admin))
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf().asHeader())
+                        .header(StepUpInterceptor.HEADER, "valid-step-up")
                         .contentType("application/json").content(body))
                 .andExpect(status().isOk()).andExpect(jsonPath("version").value(5));
         verify(service).update(any());
@@ -104,6 +108,7 @@ class PlatformSettingsControllerSecurityTest {
 
     @Test void unauthorizedSaveCannotConsumeStepUp() throws Exception {
         mvc.perform(put("https://erp.test/api/admin/platform-settings").secure(true).with(user(PlatformSettingsServiceTest.actor(false, null)))
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf().asHeader())
                         .header(StepUpInterceptor.HEADER, "valid-step-up").contentType("application/json")
                         .content(json.writeValueAsString(PlatformSettingsServiceTest.request(4, null, false))))
                 .andExpect(status().isForbidden());

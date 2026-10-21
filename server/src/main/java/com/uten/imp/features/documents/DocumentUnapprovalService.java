@@ -38,7 +38,9 @@ public class DocumentUnapprovalService {
 
     @Transactional
     public Object unapprove(String family, UUID originalId, UnapproveRequest request) {
-        if(originalId==null || request==null || request.idempotencyKey()==null || request.reason()==null
+        if (originalId == null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请填写有效的反审原因和提交编号");
+        if (request == null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请填写有效的反审原因和提交编号");
+        if(request.idempotencyKey()==null || request.reason()==null
                 || request.idempotencyKey().strip().length()<8 || request.idempotencyKey().strip().length()>128
                 || !request.idempotencyKey().strip().matches("[A-Za-z0-9._:-]+")
                 || request.reason().isBlank() || request.reason().strip().length()>500)

@@ -1,7 +1,6 @@
 package com.uten.imp.features.finance.gl;
 
 import com.uten.imp.security.TxSessionVars;
-import org.flywaydb.core.Flyway;
 import org.hibernate.SessionFactory;
 import org.hibernate.cfg.Configuration;
 import org.junit.jupiter.api.AfterAll;
@@ -38,14 +37,14 @@ class GlPostingLegacyCashScopePostgresTest {
     @BeforeAll static void start() {
         DATABASE.start();
         jdbc=new JdbcTemplate(new DriverManagerDataSource(DATABASE.getJdbcUrl(),DATABASE.getUsername(),DATABASE.getPassword()));
-        Flyway.configure().dataSource(DATABASE.getJdbcUrl(),DATABASE.getUsername(),DATABASE.getPassword()).target("265").load().migrate();
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(DATABASE.getJdbcUrl(),DATABASE.getUsername(),DATABASE.getPassword()).target("265").load().migrate();
         jdbc.update("INSERT INTO payment_styles(id,code,name,category,level) VALUES (?, 'GL-OLD-BANK','历史账户','ACCOUNT',0),(?,'GL-OLD-COST','历史费用','EXPENSE',0)",BANK_STYLE,EXPENSE_STYLE);
         jdbc.update("INSERT INTO gl_vouchers(id,voucher_no,period,voucher_date,source,source_type) VALUES (?,'unproven-old-cash','2025-01',?,'AUTO','EXPENSE')",UNPROVEN_VOUCHER,DATE);
         jdbc.update("""
                 INSERT INTO gl_entries(voucher_id,line_no,style_id,direction,amount,entry_date,period,source_doc_type)
                 VALUES (?,1,?,1,1,?,'2025-01','EXPENSE'),(?,2,?,-1,0,?,'2025-01','EXPENSE')
                 """,UNPROVEN_VOUCHER,EXPENSE_STYLE,DATE,UNPROVEN_VOUCHER,BANK_STYLE,DATE);
-        Flyway.configure().dataSource(DATABASE.getJdbcUrl(),DATABASE.getUsername(),DATABASE.getPassword()).target("625").load().migrate();
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(DATABASE.getJdbcUrl(),DATABASE.getUsername(),DATABASE.getPassword()).target("625").load().migrate();
         assertThat(jdbc.queryForObject("SELECT source_doc_id FROM gl_vouchers WHERE id=?",UUID.class,UNPROVEN_VOUCHER)).isNull();
         unprovenVoucher=jsonRows("gl_vouchers","id='"+UNPROVEN_VOUCHER+"'");
         unprovenEntries=jsonRows("gl_entries","voucher_id='"+UNPROVEN_VOUCHER+"'");
@@ -71,7 +70,7 @@ class GlPostingLegacyCashScopePostgresTest {
         originalHead=jsonRows("finance_expenses","id='"+OLD_EXPENSE+"'");
         originalVoucher=jsonRows("gl_vouchers","id='"+OLD_VOUCHER+"'");
         originalEntries=jsonRows("gl_entries","voucher_id='"+OLD_VOUCHER+"'");
-        Flyway.configure().dataSource(DATABASE.getJdbcUrl(),DATABASE.getUsername(),DATABASE.getPassword()).load().migrate();
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(DATABASE.getJdbcUrl(),DATABASE.getUsername(),DATABASE.getPassword()).load().migrate();
         assertThat(jdbc.queryForObject("SELECT legacy_import_run_id FROM finance_expenses WHERE id=?",UUID.class,OLD_EXPENSE))
                 .as("A forward schema extension must not invent new source proof for old data").isNull();
         expense(NEW_EXPENSE,null,"YF20250102000001","7",0);

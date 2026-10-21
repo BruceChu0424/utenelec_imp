@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.core.io.ClassPathResource;
@@ -27,7 +26,7 @@ class LegacySubcontractSettlementProvenancePostgresTest {
 
     @BeforeAll static void start() throws Exception {
         PG.start(); admin=db(PG.getUsername(),PG.getPassword());
-        admin.execute("CREATE ROLE uten LOGIN PASSWORD '"+PASSWORD+"'");
+        admin.execute(admin.queryForObject("SELECT format('CREATE ROLE uten LOGIN PASSWORD %L', CAST(? AS text))", String.class, PASSWORD));
         sql=new ClassPathResource(FILE).getContentAsString(StandardCharsets.UTF_8);
     }
     @AfterAll static void stop(){ PG.stop(); }
@@ -156,7 +155,7 @@ class LegacySubcontractSettlementProvenancePostgresTest {
     @Test void officialV623ToV624PreservesHistoricalRowsAndResetDefinition() {
         admin.execute("CREATE DATABASE v624_formal");
         String url=PG.getJdbcUrl().replace("/test?","/v624_formal?");
-        var flyway=Flyway.configure().dataSource(url,PG.getUsername(),PG.getPassword()).locations("classpath:db/migration");
+        var flyway=com.uten.imp.testsupport.TestFlyway.configure().dataSource(url,PG.getUsername(),PG.getPassword()).locations("classpath:db/migration");
         flyway.target("377").load().migrate();
         var db=new JdbcTemplate(new DriverManagerDataSource(url,PG.getUsername(),PG.getPassword()));
         UUID old=UUID.randomUUID();
@@ -194,7 +193,9 @@ class LegacySubcontractSettlementProvenancePostgresTest {
     }
     static void settings(JdbcTemplate db,UUID run){
         db.queryForObject("SELECT set_config('uten.bootstrap_run_id',?,true)",String.class,run.toString());
-        db.execute("SET LOCAL uten.bootstrap_mapping_version='bootstrap-v2'; SET LOCAL uten.bootstrap_repository_commit='"+"a".repeat(40)+"'; SET LOCAL uten.bootstrap_manifest_sha='"+"b".repeat(64)+"'");
+        db.execute("SET LOCAL uten.bootstrap_mapping_version='bootstrap-v2'");
+        db.queryForObject("SELECT set_config('uten.bootstrap_repository_commit', ?, true)", String.class, "a".repeat(40));
+        db.queryForObject("SELECT set_config('uten.bootstrap_manifest_sha', ?, true)", String.class, "b".repeat(64));
         db.execute("SELECT pg_advisory_xact_lock(hashtextextended('uten:legacy-bootstrap:'||current_database(),0))");
     }
     static UUID register(JdbcTemplate db,UUID run,int source){return db.queryForObject("SELECT fn_register_legacy_subcontract_order_source(?,?::jsonb)",UUID.class,run,source(source));}

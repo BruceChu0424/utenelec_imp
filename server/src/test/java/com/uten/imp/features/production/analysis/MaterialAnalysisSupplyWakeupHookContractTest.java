@@ -33,7 +33,7 @@ class MaterialAnalysisSupplyWakeupHookContractTest {
                 "afterSubcontractInspectionStockInConfirmed",
                 UUID.class, UUID.class, Collection.class).isDefault()).isTrue();
         assertThat(ProductionCompletionReversePort.class.getMethod(
-                "afterFinishedInboundReversed", UUID.class, UUID.class).isDefault()).isTrue();
+                "afterFinishedInboundReversed", UUID.class).isDefault()).isTrue();
     }
 
     @Test
@@ -55,7 +55,7 @@ class MaterialAnalysisSupplyWakeupHookContractTest {
                 UUID.class, UUID.class, Collection.class);
         assertMandatory(
                 ProductionCompletionReverseService.class,
-                "afterFinishedInboundReversed", UUID.class, UUID.class);
+                "afterFinishedInboundReversed", UUID.class);
     }
 
     @Test

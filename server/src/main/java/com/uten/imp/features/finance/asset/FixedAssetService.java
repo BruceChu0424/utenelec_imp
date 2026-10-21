@@ -380,6 +380,10 @@ public class FixedAssetService {
     private static Integer num(Map<String, Object> b, String k) {
         Object v = b.get(k);
         if (v == null) return null;
-        return v instanceof Number n ? n.intValue() : Integer.valueOf(v.toString());
+        try {
+            return new BigDecimal(v.toString()).intValueExact();
+        } catch (NumberFormatException | ArithmeticException invalid) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "使用月数必须为有效整数");
+        }
     }
 }

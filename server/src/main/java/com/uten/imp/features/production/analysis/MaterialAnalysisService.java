@@ -118,7 +118,7 @@ public class MaterialAnalysisService {
     private volatile org.springframework.transaction.support.TransactionTemplate committedReadTemplate;
 
     /** 分析的对象级范围：与生产单据同一套经手人可见规则(ADR-088)。 */
-    OwnerVisibility.OwnerScope scopeForAnalysis(AnalysisHeader header){
+    OwnerVisibility.OwnerScope scopeForAnalysis(){
         return access.scope();
     }
 
@@ -197,7 +197,7 @@ public class MaterialAnalysisService {
                 ? analysisByInitialIdempotencyKey(request.idempotencyKey()) : request.analysisId();
         if (completedPreview!=null && isCommandReplay(completedPreview,"PREVIEW",request.idempotencyKey(),requestHash)) {
             AnalysisHeader replayHeader = readHeader(completedPreview,false);
-            access.requireWritable(replayHeader.makerId(),"只能打开本人负责的物料分析",scopeForAnalysis(replayHeader));
+            access.requireWritable(replayHeader.makerId(),"只能打开本人负责的物料分析",scopeForAnalysis());
             return PreviewOutcome.replay(completedPreview);
         }
         previewGuard.verifyUnchanged();
@@ -216,7 +216,7 @@ public class MaterialAnalysisService {
             if (initialReplay != null) {
                 AnalysisHeader replayHeader = lockHeader(initialReplay);
                 access.requireWritable(replayHeader.makerId(),
-                        "只能打开本人负责的物料分析", scopeForAnalysis(replayHeader));
+                        "只能打开本人负责的物料分析", scopeForAnalysis());
                 if (!isCommandReplay(initialReplay, "PREVIEW",
                         request.idempotencyKey(), requestHash)) {
                     throw conflict("首次预览的结果记录缺失，不能自动给出结果，请重新预览");
@@ -232,7 +232,7 @@ public class MaterialAnalysisService {
             // the graph after source quantities or warehouse scope are written.
             AnalysisHeader requestedHeader = headerAfterPrelock(analysisId);
             access.requireWritable(requestedHeader.makerId(), "只能刷新本人负责的物料分析",
-                    scopeForAnalysis(requestedHeader));
+                    scopeForAnalysis());
             if (isCommandReplay(analysisId, "PREVIEW", request.idempotencyKey(), requestHash)) {
                 return PreviewOutcome.replay(analysisId);
             }
@@ -246,7 +246,7 @@ public class MaterialAnalysisService {
             if (analysisId != null) {
                 AnalysisHeader reusable = lockHeader(analysisId);
                 access.requireWritable(reusable.makerId(),
-                        "只能打开本人负责的进行中物料分析", scopeForAnalysis(reusable));
+                        "只能打开本人负责的进行中物料分析", scopeForAnalysis());
                 requireReusablePayloadMatches(
                         analysisId, reusable, request.warehouseId(),
                         participatingWarehouses, normalized);
@@ -298,7 +298,7 @@ public class MaterialAnalysisService {
         } else {
             AnalysisHeader header = headerAfterPrelock(analysisId);
             access.requireWritable(header.makerId(), "只能刷新本人负责的物料分析",
-                    scopeForAnalysis(header));
+                    scopeForAnalysis());
             previousMakeAnchorRequirements = makeAnchorParentRequirements(analysisId);
             boolean sameWarehouseScope = samePlanningWarehouseScope(header.warehouseId(),
                     participatingWarehouseIds(analysisId, header.warehouseId()),
@@ -535,7 +535,7 @@ public class MaterialAnalysisService {
         tx.bind();
         AnalysisHeader header = lockHeader(analysisId);
         access.requireWritable(header.makerId(), "只能维护本人负责的物料分析",
-                scopeForAnalysis(header));
+                scopeForAnalysis());
         String requestHash = routeRequestHash(analysisId, request);
         if (isCommandReplay(analysisId, "ROUTE", request.idempotencyKey(), requestHash)) {
             return RouteSaveOutcome.replay(analysisId);
@@ -609,7 +609,7 @@ public class MaterialAnalysisService {
                 && List.of(STATUS_ACTIVE, STATUS_PARTIAL).contains(header.status())
                 && access.hasAuthority("production_material_analysis:view")
                 && access.hasAuthority("production_material_analysis:route")
-                && access.canWrite(header.makerId(), scopeForAnalysis(header));
+                && access.canWrite(header.makerId(), scopeForAnalysis());
     }
 
     /**
@@ -674,7 +674,7 @@ public class MaterialAnalysisService {
         tx.bind();
         AnalysisHeader header = lockHeader(analysisId);
         access.requireWritable(header.makerId(),
-                "只能调整本人负责的物料分析分配顺序", scopeForAnalysis(header));
+                "只能调整本人负责的物料分析分配顺序", scopeForAnalysis());
         String requestHash = allocationPriorityRequestHash(analysisId, request);
         if (isCommandReplay(
                 analysisId, "REALLOCATE", request.idempotencyKey(), requestHash)) {
@@ -740,7 +740,7 @@ public class MaterialAnalysisService {
         tx.bind();
         AnalysisHeader header = lockHeader(analysisId);
         access.requireWritable(header.makerId(),
-                "只能调整本人负责的物料分析分配", scopeForAnalysis(header));
+                "只能调整本人负责的物料分析分配", scopeForAnalysis());
         String requestHash = borrowRequestHash(analysisId, request);
         if (isCommandReplay(
                 analysisId, "BORROW", request.idempotencyKey(), requestHash)) {
@@ -760,7 +760,7 @@ public class MaterialAnalysisService {
                 .filter(row -> row.id().equals(request.toMaterialLineId()))
                 .findFirst()
                 .orElseThrow(() -> validation("借入物料路径不存在或已失效，请刷新后重试"));
-        validateBorrowEndpoints(analysisId, from, to);
+        validateBorrowEndpoints(from, to);
         requirePlanningSources(analysisId, Set.of(to.analysisItemId()));
         BigDecimal qty = request.qty().setScale(4, RoundingMode.DOWN);
         if (qty.signum() <= 0) {
@@ -814,7 +814,7 @@ public class MaterialAnalysisService {
         tx.bind();
         AnalysisHeader header = lockHeader(analysisId);
         access.requireWritable(header.makerId(),
-                "只能调整本人负责的物料分析分配", scopeForAnalysis(header));
+                "只能调整本人负责的物料分析分配", scopeForAnalysis());
         String requestHash = PlanningPackageFingerprint.sha256(List.of(
                 "BORROW_REVOKE", analysisId.toString(), borrowId.toString(),
                 request.reason().strip()));
@@ -857,7 +857,7 @@ public class MaterialAnalysisService {
 
     /** 借用端点校验：同维度、跨产品、直接组件层、无在途任务、无 MAKE 委派。 */
     private void validateBorrowEndpoints(
-            UUID analysisId, MaterialRow from, MaterialRow to) {
+            MaterialRow from, MaterialRow to) {
         if (from.depth() != 1 || to.depth() != 1) {
             throw validation("目前只支持直接组件层的现货调拨");
         }
@@ -1590,7 +1590,7 @@ public class MaterialAnalysisService {
                         .collect(Collectors.joining(",")))
                 .executeUpdate();
         AvailabilitySnapshot availability = availability(
-                analysisId, header.warehouseId(), nodes, sources);
+                analysisId, header.warehouseId(), nodes);
         // 以单个明确字段类型的行数组分块提交；SQL和绑定数量不随节点数膨胀。
         // 冲突键、完整字段和「BOM 事实变更即清人工确认」条件保持原语义。
         // 写入前后各取一次已确认节点键，统计本次被清空的人工确认数（返回给刷新响应）。
@@ -4622,7 +4622,7 @@ public class MaterialAnalysisService {
                 BigDecimal securedTopUp = tuning == null
                         ? BigDecimal.ZERO
                         : tuning.securedHeadroomMain(nodeKey).min(residual);
-                tuning.consumeSecuredMain(nodeKey, securedTopUp);
+                if (tuning != null) tuning.consumeSecuredMain(nodeKey, securedTopUp);
                 BigDecimal available = pool.getOrDefault(
                         node.dimension(), BigDecimal.ZERO);
                 BigDecimal extra = residual.subtract(securedTopUp)
@@ -4664,17 +4664,17 @@ public class MaterialAnalysisService {
      */
     void requireReadableAnalysis(UUID analysisId) {
         AnalysisHeader header = readHeader(analysisId);
-        access.requireReadable(header.makerId(), "物料分析不存在", scopeForAnalysis(header));
+        access.requireReadable(header.makerId(), "物料分析不存在", scopeForAnalysis());
     }
 
     boolean canWriteAnalysis(UUID analysisId) {
         AnalysisHeader header=readHeader(analysisId);
-        return access.canWrite(header.makerId(),scopeForAnalysis(header));
+        return access.canWrite(header.makerId(),scopeForAnalysis());
     }
 
     void requireWritableAnalysis(UUID analysisId) {
         AnalysisHeader header=readHeader(analysisId);
-        access.requireWritable(header.makerId(),"只能修改本人负责的物料分析",scopeForAnalysis(header));
+        access.requireWritable(header.makerId(),"只能修改本人负责的物料分析",scopeForAnalysis());
     }
 
     private static Map<UUID, BigDecimal> sourceRequiredQuantities(
@@ -4716,7 +4716,7 @@ public class MaterialAnalysisService {
             UUID analysisId, boolean enforceAccess, MaterialAnalysisIssuePreviewOverlay overlay) {
         AnalysisHeader header = readHeader(analysisId);
         if (enforceAccess) {
-            access.requireReadable(header.makerId(), "物料分析不存在",scopeForAnalysis(header));
+            access.requireReadable(header.makerId(), "物料分析不存在",scopeForAnalysis());
         }
         List<SourceLine> sources = loadSourceLines(analysisId, false, overlay);
         List<MaterialRow> materialRows = loadMaterialRows(analysisId, overlay);
@@ -4810,7 +4810,6 @@ public class MaterialAnalysisService {
         }
         Map<UUID, String> routeByLine = new LinkedHashMap<>();
         Map<UUID, BigDecimal> shortageByLine = new LinkedHashMap<>();
-        Map<UUID, BigDecimal> requiredByLine = new LinkedHashMap<>();
         for (MaterialRow row : materialRows) {
             // ADR-102：depth>0 且还有需求的行，路线没确认就是「路线未定」——
             // 以前这里回落 suggestion，主档来源为空时 suggestion 是 REVIEW，
@@ -4825,11 +4824,9 @@ public class MaterialAnalysisService {
                     : (row.confirmedRoute() != null
                             ? row.confirmedRoute() : row.suggestion()));
             shortageByLine.put(row.id(), row.shortageQty());
-            requiredByLine.put(row.id(), row.requiredQty());
         }
         Map<UUID, String> lineFlowStages = flowStages.lineFlowStages(
-                analysisId, routeByLine, shortageByLine, requiredByLine,
-                childStatusByLine, childZeroByLine);
+                analysisId, routeByLine, shortageByLine, childStatusByLine, childZeroByLine);
         Set<UUID> productIdsWithMaterialChildren = materialRows.stream()
                 .filter(row -> row.depth() > 0)
                 .map(MaterialRow::analysisItemId)
@@ -5682,7 +5679,7 @@ public class MaterialAnalysisService {
             MaterialAnalysisIssuePreviewOverlay overlay, boolean requireStoredStructure) {
         RefreshTree tree = refreshTree(analysisId, false, typedOutputByMaterialLine, overlay);
         if (requireStoredStructure) requireStoredStructure(analysisId, tree.nodes());
-        AvailabilitySnapshot availability = availability(analysisId, warehouseId, tree.nodes(), tree.sources(), overlay);
+        AvailabilitySnapshot availability = availability(analysisId, warehouseId, tree.nodes(), overlay);
         List<NodeSnapshotRow> snapshotRows = nodeSnapshotRows(tree, availability);
         AllocationSnapshot allocation = computeAllocationSnapshot(analysisId, warehouseId, tree.sources(),
                 tree.nodes(), availability, snapshotRows, typedOutputByMaterialLine, overlay);
@@ -6617,12 +6614,11 @@ public class MaterialAnalysisService {
 
     private AvailabilitySnapshot availability(
             UUID analysisId, UUID warehouseId,
-            List<BomNode> nodes, List<SourceLine> sources) {
-        return availability(analysisId, warehouseId, nodes, sources, MaterialAnalysisIssuePreviewOverlay.NONE);
+            List<BomNode> nodes) {
+        return availability(analysisId, warehouseId, nodes, MaterialAnalysisIssuePreviewOverlay.NONE);
     }
 
-    private AvailabilitySnapshot availability(UUID analysisId, UUID warehouseId,
-            List<BomNode> nodes, List<SourceLine> sources, MaterialAnalysisIssuePreviewOverlay overlay) {
+    private AvailabilitySnapshot availability(UUID analysisId, UUID warehouseId, List<BomNode> nodes, MaterialAnalysisIssuePreviewOverlay overlay) {
         Set<UUID> goodsIds = nodes.stream().map(BomNode::goodsId)
                 .collect(Collectors.toCollection(TreeSet::new));
         if (goodsIds.isEmpty()) return new AvailabilitySnapshot(Map.of(), List.of());
@@ -8447,7 +8443,7 @@ public class MaterialAnalysisService {
         if (fqcReplenishmentOnly) {
             return List.of("VIEW", "FQC_REPLENISHMENT_CONFIRM");
         }
-        if (!access.canWrite(header.makerId(), scopeForAnalysis(header))) return List.of("VIEW", "VIEW_FUTURE_TRANSFERS");
+        if (!access.canWrite(header.makerId(), scopeForAnalysis())) return List.of("VIEW", "VIEW_FUTURE_TRANSFERS");
         List<String> result = new ArrayList<>(List.of("VIEW", "VIEW_FUTURE_TRANSFERS"));
         if (!"CANCELLED".equals(header.status()) && rootSupply != null
                 && access.hasAuthority("production_material_analysis:notify")

@@ -44,7 +44,7 @@ public class AggregateMaterialOrderPreviewService {
         if(request==null)throw invalid("汇总下单信息不完整");
         requireSourceScope(request.groups());
         MaterialAnalysisService.AnalysisHeader header=analysisService.readOnlyHeader(analysisId);
-        access.requireWritable(header.makerId(),"只能从本人负责的物料分析核对汇总下单",analysisService.scopeForAnalysis(header));
+        access.requireWritable(header.makerId(),"只能从本人负责的物料分析核对汇总下单",analysisService.scopeForAnalysis());
         analysisService.requireCurrent(header,request.version(),request.fingerprint());
         if(!Objects.equals(header.warehouseId(),request.warehouseId()))throw conflict("分析仓库已变化，请刷新后重新核对");
         MaterialAnalysisIssuePreviewOverlay overlay=MaterialAnalysisIssuePreviewOverlay.create();
@@ -161,6 +161,10 @@ public class AggregateMaterialOrderPreviewService {
     private GroupPreview resolveGroup(UUID analysisId,PreviewRequest request,GroupInput input,List<MaterialView> members,
             Map<UUID,ProductView> products,Map<UUID,SupplyActionView> actions,Map<String,List<MaterialView>> children,
             Map<UUID,BigDecimal> rateDefaults,Map<UUID,BigDecimal> makeBudget,Map<String,BigDecimal> externalBudget,Map<UUID,java.util.LinkedHashSet<UUID>> originalScope,Map<UUID,BigDecimal> requestedPrivateCaps,Map<UUID,MaterialView> originalMaterials) {
+        boolean canGenerate=access.hasAuthority("production_material_analysis:generate");
+        boolean canNotify=access.hasAuthority("production_material_analysis:notify");
+        boolean canApprovePlan=access.hasAuthority("production_plan:approve");
+        boolean canOverSupply=access.hasAuthority("production_material_analysis:over_supply");
         MaterialView first=members.getFirst();
         String reason=null;
         if(!Set.of("BUY","MAKE","SUBCONTRACT").contains(Objects.toString(input.route(),"")))throw invalid("汇总供应方式不正确");
@@ -228,12 +232,12 @@ public class AggregateMaterialOrderPreviewService {
         }
         if(number(input.qty()).signum()>0||number(input.safetyQty()).signum()>0) {
             if(manufacture&&(department==null||worker==null))reason="请为汇总批次填写生产车间和负责人";
-            String permission=manufacture?"production_material_analysis:generate":"production_material_analysis:notify";
-            if(!access.hasAuthority(permission))reason=manufacture?"缺少下达车间权限":"缺少下达采购或委外权限";
-            if(manufacture&&request.approveNow()&&!access.hasAuthority("production_plan:approve"))reason="生成并审核需要生产计划审核权限";
+            boolean canOrder=manufacture?canGenerate:canNotify;
+            if(!canOrder)reason=manufacture?"缺少下达车间权限":"缺少下达采购或委外权限";
+            if(manufacture&&request.approveNow()&&!canApprovePlan)reason="生成并审核需要生产计划审核权限";
         }
         if(allocation.publicExtraQty().signum()>0 && !input.allowPublicExtra())reason="本次超出待安排需求，请明确核对公共备货量";
-        if(allocation.publicExtraQty().signum()>0 && !manufacture && !access.hasAuthority("production_material_analysis:over_supply"))reason="公共超量备货需要超量下达权限";
+        if(allocation.publicExtraQty().signum()>0 && !manufacture && !canOverSupply)reason="公共超量备货需要超量下达权限";
         if(number(input.safetyQty()).signum()>0) {
             if(!"BUY".equals(input.route()))reason="公共安全补库仅支持采购路线";
             else if(input.safetyQty().compareTo(number(first.mainWarehouseSafetyReplenishmentGapQty()))>0)

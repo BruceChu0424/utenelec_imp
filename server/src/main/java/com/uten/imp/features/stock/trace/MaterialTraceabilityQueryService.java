@@ -129,7 +129,7 @@ public class MaterialTraceabilityQueryService implements MaterialTraceabilityRea
             case PRODUCTION_PLAN->documentSubject(type,"production_plans","document",planScope("document","subjectPlanOwners",c),planWarehouse("document.id",c));
             case PRODUCTION_REPORT->documentSubject(type,"production_daily_reports","document",reportScope("document","subjectReportOwners",c),warehouse("document.warehouse_id",c));
             case STOCK_DOC->documentSubject(type,"stock_documents","document",stockDocumentScope("document",c),stockDocumentWarehouse("document",c));
-            case PRODUCTION_OUTPUT_LOT->"SELECT 'PRODUCTION_OUTPUT_LOT'::text AS type,item.output_lot_id AS id,NULL::text AS code,"+
+            case PRODUCTION_OUTPUT_LOT->"SELECT 'PRODUCTION_OUTPUT_LOT'::text AS type,item.output_lot_id AS id,NULL::text AS code, "+
                     "report.bill_no||' · 第'||COALESCE(string_agg(DISTINCT item.line_no::text,'、'),'未编号')||'行产出批次' AS label,report.bill_date AS document_date,"+reportStatus("report")+" AS status,"+
                     "item.goods_id,g.code AS goods_code,g.name AS goods_name,'PRODUCTION_OUTPUT'::text AS basis "+
                     "FROM production_daily_report_items item JOIN production_daily_reports report ON report.id=item.report_id "+
@@ -303,7 +303,7 @@ public class MaterialTraceabilityQueryService implements MaterialTraceabilityRea
         }
         return "SELECT '"+type+"'::text AS type,"+alias+".id,item.id AS item_id,"+alias+".bill_no AS code,"+alias+".bill_date AS source_date,"+
                 "item.goods_id,g.code AS goods_code,g.name AS goods_name,item.color_id,color.name AS color_name,item.unit_id,unit.name AS unit_name,"+
-                qty+" AS qty,"+("production_daily_reports".equals(headers)?reportStatus(alias):status(alias))+" AS status,'"+basis+"'::text AS basis,"+noteSql+" AS note,"+
+                qty+" AS qty,"+("production_daily_reports".equals(headers)?reportStatus(alias):status(alias))+" AS status,'"+basis+"'::text AS basis,"+noteSql+" AS note, "+
                 "warehouse.name AS warehouse_name,"+supplierName+" AS supplier_name,"+relatedFields+","+
                 ("stock_documents".equals(headers)?alias+".doc_type":"NULL::text")+" AS doc_type FROM "+headers+" "+alias+" JOIN "+lines+" item ON item."+foreignKey+"="+alias+".id "+
                 "LEFT JOIN goods g ON g.id=item.goods_id LEFT JOIN colors color ON color.id=item.color_id LEFT JOIN units unit ON unit.id=item.unit_id "+

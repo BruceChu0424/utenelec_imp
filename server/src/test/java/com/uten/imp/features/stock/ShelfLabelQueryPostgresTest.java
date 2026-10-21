@@ -1,6 +1,5 @@
 package com.uten.imp.features.stock;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -47,7 +46,7 @@ class ShelfLabelQueryPostgresTest {
     @BeforeAll
     static void migrate() {
         POSTGRES.start();
-        Flyway.configure()
+        com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration")
                 .load()
@@ -199,7 +198,7 @@ class ShelfLabelQueryPostgresTest {
     void layoutAggregatesRacksAndAppendsUnparsedBucketLast() {
         assertTimeoutPreemptively(Duration.ofSeconds(30), () -> {
             try (Connection c = connection()) {
-                Fixture f = Fixture.create(c);
+                Fixture.create(c);
 
                 List<Map<String, Object>> layout = query(c, ShelfLabelSql.layout(false, true), Map.of());
                 Map<String, Object> a30 = layout.stream()
@@ -212,7 +211,7 @@ class ShelfLabelQueryPostgresTest {
                 assertEquals("", last.get("rack"), "未分层桶在末尾，rack 为空串");
                 assertNull(last.get("max_level"));
                 assertTrue(((Number) last.get("cnt")).longValue() >= 1, "残值 Y12 计入未分层桶");
-                assertEquals(1, layout.stream().filter(r -> "".equals(r.get("rack"))).count());
+                assertEquals(1, layout.stream().filter(r -> r.get("rack") instanceof String rack && rack.isEmpty()).count());
 
                 List<Map<String, Object>> racks = query(c, ShelfLabelSql.racks(false, false), Map.of());
                 List<Object> names = racks.stream().map(r -> r.get("rack")).toList();

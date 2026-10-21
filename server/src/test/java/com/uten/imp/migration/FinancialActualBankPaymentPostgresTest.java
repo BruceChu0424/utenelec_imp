@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -196,5 +195,5 @@ class FinancialActualBankPaymentPostgresTest {
     private record Part(UUID source,BigDecimal amount){}
     private record Planned(Part part,BigDecimal beforeA,BigDecimal beforeB,BigDecimal cash,BigDecimal sourceA,BigDecimal sourceB,BigDecimal book){}
     private static Connection connect(PostgreSQLContainer pg)throws SQLException{return DriverManager.getConnection(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword());}
-    private static void migrate(PostgreSQLContainer pg,String target){Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()).locations("classpath:db/migration").target(target).load().migrate();}
+    private static void migrate(PostgreSQLContainer pg,String target){com.uten.imp.testsupport.TestFlyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()).locations("classpath:db/migration").target(target).load().migrate();}
 }

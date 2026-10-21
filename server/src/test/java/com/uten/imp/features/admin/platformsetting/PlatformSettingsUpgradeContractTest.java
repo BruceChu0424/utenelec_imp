@@ -34,7 +34,7 @@ class PlatformSettingsUpgradeContractTest {
             assertTrue(current.numeric());
             assertEquals(values[0].startsWith("jwt_") ? SystemSettingKey.Type.LONG : SystemSettingKey.Type.INT, current.type(),
                     "Existing consumer/setting types need a reviewed compatibility conversion");
-            assertTrue(current.min() <= Long.parseLong(values[1]) && current.max() >= Long.parseLong(values[2]),
+            assertTrue(current.min() <= com.uten.imp.testsupport.FixtureNumbers.longInteger(values[1]) && current.max() >= com.uten.imp.testsupport.FixtureNumbers.longInteger(values[2]),
                     "Previously valid values must remain effective; review intentional restrictions before changing " + current.key());
             assertTrue(SystemSettingsUpgradeReadProbe.isValidStoredChoice(current, values[1]));
             assertTrue(SystemSettingsUpgradeReadProbe.isValidStoredChoice(current, values[2]));

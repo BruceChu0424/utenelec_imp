@@ -28,7 +28,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static com.uten.imp.testsupport.BusinessHttpRequests.authenticated;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
@@ -212,13 +212,13 @@ class DiscoveryApprovalShortCircuitPostgresTest {
         return new Case(task,pending,request,List.copyOf(warehouses));
     }
     private JsonNode issue(ProductionDrawDiscoveryBatchContracts.Request request,Authentication actor,int expected) throws Exception {
-        var response=http.perform(post(PATH).with(authentication(actor)).contentType("application/json")
+        var response=http.perform(post(PATH).with(authenticated(actor)).contentType("application/json")
                 .content(json.writeValueAsBytes(request))).andReturn().getResponse();
         assertEquals(expected,response.getStatus(),response.getContentAsString());
         return json.readTree(response.getContentAsByteArray());
     }
     private JsonNode readReceipt(String key,Authentication actor) throws Exception {
-        var response=http.perform(get(PATH+"/receipt").param("idempotencyKey",key).with(authentication(actor))).andReturn().getResponse();
+        var response=http.perform(get(PATH+"/receipt").param("idempotencyKey",key).with(authenticated(actor))).andReturn().getResponse();
         assertEquals(200,response.getStatus(),response.getContentAsString());
         return json.readTree(response.getContentAsByteArray());
     }

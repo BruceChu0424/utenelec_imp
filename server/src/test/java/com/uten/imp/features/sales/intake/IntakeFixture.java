@@ -149,7 +149,7 @@ final class IntakeFixture {
                     Cell cell = row.createCell(DocumentGrid.columnIndex(c.getKey()));
                     String v = c.getValue();
                     if (PLAIN_NUMBER.matcher(v).matches()) {
-                        cell.setCellValue(Double.parseDouble(v));
+                        cell.setCellValue(com.uten.imp.testsupport.FixtureNumbers.finiteDouble(v));
                     } else {
                         cell.setCellValue(v);
                     }

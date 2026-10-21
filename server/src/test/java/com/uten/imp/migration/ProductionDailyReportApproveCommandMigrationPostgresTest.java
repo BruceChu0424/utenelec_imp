@@ -181,7 +181,7 @@ class ProductionDailyReportApproveCommandMigrationPostgresTest {
     }
 
     private static Flyway flyway(String target) {
-        var configuration = Flyway.configure()
+        var configuration = com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(),
                         POSTGRES.getPassword())
                 .locations("classpath:db/migration");

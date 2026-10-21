@@ -17,6 +17,19 @@ final lastDataWriteProvider = StateProvider<({int seq, String path})?>(
   (ref) => null,
 );
 
+const _uuidPathSegment =
+    r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
+
+// These actions may persist fresh malware-scan evidence while leaving business
+// data unchanged. POST remains non-retriable in SafeRequestRetryInterceptor.
+final _scannedReadPostPaths = [
+  RegExp(r'^/(?:api/)?master/goods/cost-sheets/bootstrap$'),
+  RegExp(
+    '^/(?:api/)?sales/(quotes|orders)/$_uuidPathSegment'
+    '/input-originals/$_uuidPathSegment/download\$',
+  ),
+];
+
 /// 不代表业务数据变化的自动写请求(心跳、自动已读、偏好保存、令牌刷新、只算不存的预览)。
 final List<RegExp> _automaticWritePaths = [
   RegExp(r'/task-claims/[^/]+/[^/]+/heartbeat$'),
@@ -57,6 +70,10 @@ bool isBusinessWrite(RequestOptions options) {
   if (method == 'POST' &&
       (path == '/production/daily-reports/create-receipt' ||
           path == '/api/production/daily-reports/create-receipt')) {
+    return false;
+  }
+  if (method == 'POST' &&
+      _scannedReadPostPaths.any((pattern) => pattern.hasMatch(path))) {
     return false;
   }
   return !_automaticWritePaths.any((pattern) => pattern.hasMatch(path));

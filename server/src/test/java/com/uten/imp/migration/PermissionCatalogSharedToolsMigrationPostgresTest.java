@@ -15,7 +15,6 @@ import com.uten.imp.features.rbac.PermissionGrantPolicyCatalog;
 import com.uten.imp.features.rbac.PermissionRepository;
 import com.uten.imp.features.rbac.UserPermissionOverrideRepository;
 import com.uten.imp.security.PermissionDelegationPolicy;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -40,7 +39,7 @@ class PermissionCatalogSharedToolsMigrationPostgresTest {
         try (var database = new PostgreSQLContainer("postgres:16-alpine")) {
             database.start();
             var source = new DriverManagerDataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword());
-            Flyway.configure().dataSource(source).target("874").load().migrate();
+            com.uten.imp.testsupport.TestFlyway.configure().dataSource(source).target("874").load().migrate();
             var jdbc = new JdbcTemplate(source);
             UUID department = jdbc.queryForObject("SELECT id FROM departments WHERE code='DEPT_FIN'", UUID.class);
             UUID manager = account(jdbc, department, "manager");
@@ -86,7 +85,7 @@ class PermissionCatalogSharedToolsMigrationPostgresTest {
             String beforeDelegations = rows(jdbc, "manager_permission_delegations");
             long beforeEpoch = epoch(jdbc);
 
-            var migrated = Flyway.configure().dataSource(source).target("875").load().migrate();
+            var migrated = com.uten.imp.testsupport.TestFlyway.configure().dataSource(source).target("875").load().migrate();
 
             assertThat(migrated.migrationsExecuted).isEqualTo(1);
             assertThat(epoch(jdbc)).isEqualTo(beforeEpoch);

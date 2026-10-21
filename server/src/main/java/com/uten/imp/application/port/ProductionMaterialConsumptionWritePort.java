@@ -35,7 +35,8 @@ public interface ProductionMaterialConsumptionWritePort {
     MaterialReviewScope reviewForDailyReport(UUID planId, UUID executionSegmentId,
             List<ConsumptionLine> usages, boolean lockSources);
 
-    /** Only selected demands; quantities and ISSUE/DIRECT_LOT source IDs are server-derived. */
+    /** Only selected demands; quantities and ISSUE/DIRECT_LOT source IDs are server-derived.
+     * The implementation verifies the report's authoritative material-source segment, including prior batches. */
     int requestSelectedSurplusReturnForDailyReport(UUID planId, UUID executionSegmentId,
             UUID dailyReportId, String idempotencyKey, String reason, List<UUID> selectedDemandIds);
 
@@ -68,6 +69,7 @@ public interface ProductionMaterialConsumptionWritePort {
      * 先冻后结会让实耗登记撞「超过准确原领料未耗用数量」。
      *
      * <p>没有可退量时返回 0，不生成任何单据、不打扰仓库。
+     * 日报必须确实引用该计划的物料来源段；分批报工允许前批的原领料来源。
      */
     int requestSurplusReturnForDailyReport(
             UUID planId,

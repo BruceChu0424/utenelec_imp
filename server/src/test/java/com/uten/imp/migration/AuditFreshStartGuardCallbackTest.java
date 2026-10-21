@@ -61,10 +61,7 @@ class AuditFreshStartGuardCallbackTest {
     @Test
     void missingHistoryTableFailsClosedInsteadOfPretendingTheChainIsFresh()
             throws Exception {
-        Context context = context(0);
-        when(context.getConnection().createStatement().executeQuery(
-                "SELECT count(*) FROM \"public\".\"flyway_schema_history\""))
-                .thenThrow(new java.sql.SQLException("missing", "42P01"));
+        Context context = context(0, HistoryQuery.MISSING_TABLE);
 
         assertThrows(
                 FlywayException.class,
@@ -74,10 +71,7 @@ class AuditFreshStartGuardCallbackTest {
 
     @Test
     void historyCountWithoutARowFailsClosed() throws Exception {
-        Context context = context(0);
-        when(context.getConnection().createStatement().executeQuery(
-                "SELECT count(*) FROM \"public\".\"flyway_schema_history\""))
-                .thenReturn(mock(ResultSet.class));
+        Context context = context(0, HistoryQuery.NO_ROWS);
 
         assertThrows(
                 FlywayException.class,
@@ -86,6 +80,12 @@ class AuditFreshStartGuardCallbackTest {
     }
 
     private Context context(long appliedCount) throws Exception {
+        return context(appliedCount, HistoryQuery.HAS_ROWS);
+    }
+
+    private enum HistoryQuery { HAS_ROWS, NO_ROWS, MISSING_TABLE }
+
+    private Context context(long appliedCount, HistoryQuery query) throws Exception {
         Context context = mock(Context.class);
         Configuration configuration = mock(Configuration.class);
         Connection connection = mock(Connection.class);
@@ -97,10 +97,14 @@ class AuditFreshStartGuardCallbackTest {
         when(configuration.getDefaultSchema()).thenReturn("public");
         when(context.getConnection()).thenReturn(connection);
         when(connection.createStatement()).thenReturn(statement);
-        when(statement.executeQuery(
-                "SELECT count(*) FROM \"public\".\"flyway_schema_history\""))
-                .thenReturn(rows);
-        when(rows.next()).thenReturn(true);
+        if (query == HistoryQuery.MISSING_TABLE) {
+            when(statement.executeQuery("SELECT count(*) FROM \"public\".\"flyway_schema_history\""))
+                    .thenThrow(new java.sql.SQLException("missing", "42P01"));
+        } else {
+            when(statement.executeQuery("SELECT count(*) FROM \"public\".\"flyway_schema_history\""))
+                    .thenReturn(rows);
+            when(rows.next()).thenReturn(query == HistoryQuery.HAS_ROWS);
+        }
         when(rows.getLong(1)).thenReturn(appliedCount);
         when(context.getMigrationInfo()).thenReturn(migration);
         when(migration.getVersion()).thenReturn(MigrationVersion.fromVersion("425"));

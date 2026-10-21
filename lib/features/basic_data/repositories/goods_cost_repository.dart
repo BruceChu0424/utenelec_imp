@@ -74,7 +74,7 @@ class DioGoodsCostRepository implements GoodsCostRepository {
     String goodsId, {
     String? clientId,
   }) async => GoodsCostCalculation(
-    await api.get(
+    await api.post(
       '$base/bootstrap',
       query: {'goodsId': goodsId, 'clientId': ?clientId},
     ),

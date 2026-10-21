@@ -96,7 +96,8 @@ class InternalAttachmentLifecyclePostgresTest {
         // Boot 4 的 TestRestTemplate 默认挂 Jackson 3 转换器，反序列化 databind-2 的
         // JsonNode 会炸；在生产默认转换器集合之前插入同调校的 Jackson 2 转换器。
         http = new TestRestTemplate(new org.springframework.boot.restclient.RestTemplateBuilder()
-                .rootUri("http://127.0.0.1:" + localPort)
+                .uriTemplateHandler(new org.springframework.web.util.DefaultUriBuilderFactory(
+                        "http://127.0.0.1:" + localPort))
                 .customizers(template -> {
                     // Jackson 3 转换器造不出 databind-2 的 JsonNode，直接移除；
                     // byte[]（下载/上传）由 ByteArray 转换器处理，Jackson 转换器会把

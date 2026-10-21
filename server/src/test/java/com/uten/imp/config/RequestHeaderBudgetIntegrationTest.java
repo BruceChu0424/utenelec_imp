@@ -63,10 +63,11 @@ class RequestHeaderBudgetIntegrationTest {
             request.append("Connection: close\r\n\r\n");
             socket.getOutputStream().write(request.toString().getBytes(StandardCharsets.US_ASCII));
             socket.getOutputStream().flush();
-            BufferedReader reader = new BufferedReader(new InputStreamReader(
-                    socket.getInputStream(), StandardCharsets.US_ASCII));
-            String statusLine = reader.readLine();
-            return statusLine == null ? "connection closed without an HTTP status" : statusLine;
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                    socket.getInputStream(), StandardCharsets.US_ASCII))) {
+                String statusLine = reader.readLine();
+                return statusLine == null ? "connection closed without an HTTP status" : statusLine;
+            }
         }
     }
 

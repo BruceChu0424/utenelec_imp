@@ -1,6 +1,5 @@
 package com.uten.imp.features.finance.report;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -42,7 +41,7 @@ class AccountStatementScalePostgresTest {
     @BeforeAll
     static void migrateAndSeed() throws Exception {
         POSTGRES.start();
-        Flyway.configure()
+        com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword())
                 .locations("classpath:db/migration")
                 .load().migrate();
@@ -194,8 +193,8 @@ class AccountStatementScalePostgresTest {
         assertTrue(elapsed.compareTo(Duration.ofSeconds(5))<0,
                 "250k-row five-account statement exceeded 5s: "+elapsed+"\n"+plan);
 
-        Set<Long> firstPage=page(statementSql,account,0);
-        Set<Long> secondPage=page(statementSql+" OFFSET 100",account,0);
+        Set<Long> firstPage=page(statementSql, account);
+        Set<Long> secondPage=page(statementSql+" OFFSET 100", account);
         Set<Long> overlap=new HashSet<>(firstPage);
         overlap.retainAll(secondPage);
         assertTrue(overlap.isEmpty(),"stable posting_seq pages overlapped: "+overlap);
@@ -529,7 +528,7 @@ class AccountStatementScalePostgresTest {
         }
     }
 
-    private static Set<Long> page(String sql,UUID account,int ignored) throws Exception {
+    private static Set<Long> page(String sql, UUID account) throws Exception {
         Set<Long> result=new HashSet<>();
         try(Connection connection=connection();
             PreparedStatement query=connection.prepareStatement(sql)){

@@ -77,14 +77,14 @@ public class FinanceReportService {
     // ======================== 通用执行器（镜像销售/采购） ========================
 
     private ReportTableResponse execute(List<ReportColumn> columns, String dataSelect, String fromJoin,
-                                        WhereBuilder mainWhere, String orderBy, List<FacetSpec> specs,
+                                        FinanceWhereBuilder mainWhere, String orderBy, List<FacetSpec> specs,
                                         Map<String, String> activeFacets, int page, int size,
                                         String sort, String order) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
 
-        List<WhereBuilder.Clause> facetClauses = new ArrayList<>();
+        List<FinanceWhereBuilder.Clause> facetClauses = new ArrayList<>();
         if (activeFacets != null) {
             for (Map.Entry<String, String> e : activeFacets.entrySet()) {
                 FacetSpec spec = specs.stream().filter(s -> s.key().equals(e.getKey())).findFirst().orElse(null);
@@ -93,8 +93,8 @@ public class FinanceReportService {
                 }
             }
         }
-        WhereBuilder.Built full = mainWhere.build(facetClauses);
-        WhereBuilder.Built baseB = mainWhere.build(null);
+        FinanceWhereBuilder.Built full = mainWhere.build(facetClauses);
+        FinanceWhereBuilder.Built baseB = mainWhere.build(null);
 
         // 列排序：sort 必须命中 columns 的 key（白名单，防 SQL 注入）；命中则按投影别名排序，否则用默认 orderBy。
         var sortKeys = new java.util.HashSet<String>();
@@ -190,16 +190,16 @@ public class FinanceReportService {
         return v.toString();
     }
 
-    private static WhereBuilder.Clause facetClause(FacetSpec spec, String value) {
+    private static FinanceWhereBuilder.Clause facetClause(FacetSpec spec, String value) {
         String p = "facet_" + spec.key();
         if (ReportTableResponse.NULL_FACET.equals(value)) {
-            return new WhereBuilder.Clause("(" + spec.filterExpr() + ") IS NULL", null, null);
+            return new FinanceWhereBuilder.Clause("(" + spec.filterExpr() + ") IS NULL", null, null);
         }
         return switch (spec.filterType()) {
-            case "uuid"  -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS uuid)", p, UUID.fromString(value));
-            case "int"   -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS int)", p, Integer.valueOf(value));
-            case "bool"  -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS boolean)", p, Boolean.valueOf(value));
-            default      -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS text)", p, value);
+            case "uuid"  -> new FinanceWhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS uuid)", p, UUID.fromString(value));
+            case "int"   -> new FinanceWhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS int)", p, ReportQueryKit.parseRequiredInt(value));
+            case "bool"  -> new FinanceWhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS boolean)", p, Boolean.valueOf(value));
+            default      -> new FinanceWhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS text)", p, value);
         };
     }
 
@@ -274,7 +274,7 @@ public class FinanceReportService {
             default -> "";
         };
         // keyword 过滤
-        WhereBuilder w = new WhereBuilder(having + (having.isEmpty() ? " WHERE TRUE" : " AND TRUE"));
+        FinanceWhereBuilder w = new FinanceWhereBuilder(having + (having.isEmpty() ? " WHERE TRUE" : " AND TRUE"));
         w.search(keyword, parameter -> "(partyName ILIKE " + parameter + " ESCAPE '\\'"
                 + " OR partyCode ILIKE " + parameter + " ESCAPE '\\'"
                 + " OR (partyType='客户' AND " + CategoryKeywordSearch.nativeBranch("client_categories", "partyCategoryId",
@@ -289,7 +289,7 @@ public class FinanceReportService {
                 + union + ") z";
         String fromJoin = "";
         // arApOverview 用独立查询（带 category 递归 CTE 参数），不走通用 execute 的 facet；这里手写计数+分页
-        return executeOverview(cols, dataSelect, fromJoin, w, dateFrom, dateTo, keyword, categoryId,
+        return executeOverview(cols, dataSelect, fromJoin, w, dateFrom, dateTo, keyword,
                 onlyClient || onlySupplier ? categoryId : null, page, size);
     }
 
@@ -356,12 +356,12 @@ public class FinanceReportService {
 
     /** arApOverview 专用：带 category 递归 CTE 参数 + 计数 + 分页（无 facet）。 */
     private ReportTableResponse executeOverview(List<ReportColumn> cols, String dataSelect, String fromJoin,
-                                                WhereBuilder w, LocalDate dateFrom, LocalDate dateTo,
-                                                String keyword, UUID catId, UUID catParam, int page, int size) {
+                                                FinanceWhereBuilder w, LocalDate dateFrom, LocalDate dateTo,
+                                                String keyword, UUID catParam, int page, int size) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
-        WhereBuilder.Built full = w.build(null);
+        FinanceWhereBuilder.Built full = w.build(null);
         String relevance = KeywordSearch.terms(keyword).isEmpty() ? "" :
                 "CASE WHEN partyType='客户' THEN " + CategoryKeywordSearch.nativeRank(keyword, "kw", "client_categories",
                         "partyCategoryId", "partyCode", "partyName", "partyCode", "partyName")
@@ -487,7 +487,7 @@ public class FinanceReportService {
                     WHERE r.ledger_id=l.id AND r.source_type='SALES_ORDER'
                 ) refs ON TRUE
                 """;
-        WhereBuilder w = new WhereBuilder("WHERE COALESCE(l.is_deleted,false)=false AND l.direction=:dir AND l.status=1");
+        FinanceWhereBuilder w = new FinanceWhereBuilder("WHERE COALESCE(l.is_deleted,false)=false AND l.direction=:dir AND l.status=1");
         w.add("", "dir", dir);
         if (billNo != null && !billNo.isBlank()) w.add("l.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
         if (partyId != null) w.add(isAR ? "l.client_id=:pid" : "l.supplier_id=:pid", "pid", partyId);
@@ -578,7 +578,7 @@ public class FinanceReportService {
                       AND COALESCE(ledger.is_deleted,false)=false
                 ) recognized ON TRUE
                 """;
-        WhereBuilder w = new WhereBuilder("WHERE sales_order.status=1"
+        FinanceWhereBuilder w = new FinanceWhereBuilder("WHERE sales_order.status=1"
                 + " AND COALESCE(sales_order.is_deleted,false)=false"
                 + " AND COALESCE(client.is_deleted,false)=false");
         if (billNo != null && !billNo.isBlank()) {
@@ -597,21 +597,21 @@ public class FinanceReportService {
     /** B/D 应收/应付汇总（按往来单位 GROUP BY，含期初/本期立帐/核销/期末余额）。 */
     @Transactional(readOnly = true)
     public ReportTableResponse arApSummary(String direction, LocalDate dateFrom, LocalDate dateTo, String keyword,
-                                          Map<String, String> facets, int page, int size, String sort, String order) {
+                                          int page, int size) {
         requireCompanyWideReportAccess();
         return arApSummaryAuthorized(
-                direction, dateFrom, dateTo, keyword, facets, page, size, sort, order);
+                direction, dateFrom, dateTo, keyword, page, size);
     }
 
     private ReportTableResponse arApSummaryAuthorized(
             String direction, LocalDate dateFrom, LocalDate dateTo, String keyword,
-            Map<String, String> facets, int page, int size, String sort, String order) {
+            int page, int size) {
         String dir = normalizeDirection(direction);
         LocalDate from = dateFrom != null ? dateFrom : LocalDate.of(2010, 1, 1);
         LocalDate to = dateTo != null ? dateTo : BusinessTime.today();
         return "AR".equals(dir)
                 ? receivableSummaryAuthorized(keyword, from, to, page, size)
-                : payableSummaryAuthorized(keyword, from, to, facets, page, size, sort, order);
+                : payableSummaryAuthorized(keyword, from, to, page, size);
     }
 
     /** B 应收款汇总（按客户；期初/发货/回款/退货/期末 用「立帐 − 收款」时序一致口径，保证 期初+发货+退货−回款=期末）。
@@ -755,14 +755,14 @@ public class FinanceReportService {
      *  模具款四列（模具款/付款/冲销/余额）暂无模具立帐数据源，占位 NULL（注释见 SQL）。 */
     @Transactional(readOnly = true)
     public ReportTableResponse payableSummary(String keyword, LocalDate from, LocalDate to,
-                                              Map<String, String> facets, int page, int size, String sort, String order) {
+                                              int page, int size) {
         requireCompanyWideReportAccess();
-        return payableSummaryAuthorized(keyword, from, to, facets, page, size, sort, order);
+        return payableSummaryAuthorized(keyword, from, to, page, size);
     }
 
     private ReportTableResponse payableSummaryAuthorized(
             String keyword, LocalDate from, LocalDate to,
-            Map<String, String> facets, int page, int size, String sort, String order) {
+            int page, int size) {
         assertOpeningWindowReplayable("AP", keyword, from, to);
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("partyCode", "供应商编号", 110),
@@ -994,7 +994,7 @@ public class FinanceReportService {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
-        var search = new WhereBuilder("WHERE TRUE");
+        var search = new FinanceWhereBuilder("WHERE TRUE");
         search.search(keyword, partyAlias + ".name", partyAlias + ".code");
         String where = search.build(null).sql();
         var dq = em.createNativeQuery(coreSql + " " + where + " ORDER BY " + search.orderBy(orderBy) + " LIMIT :__l OFFSET :__o");
@@ -1125,7 +1125,7 @@ public class FinanceReportService {
                     WHERE ref.ledger_id=i.applied_ledger_id
                 ) orders ON TRUE
                 """;
-        WhereBuilder w = financeDocumentWhere(
+        FinanceWhereBuilder w = financeDocumentWhere(
                 "WHERE COALESCE(t.is_deleted,false)=false", "t.maker_id", readScope);
         addFinanceDocFilters(w, billNo, clientId, accountId, status, dateFrom, dateTo, keyword,
                 "t.client_id", "t.bill_no", "t.bill_date",
@@ -1137,15 +1137,14 @@ public class FinanceReportService {
     /** F 销售收款汇总（按客户 + 币别；原币金额禁止跨币种直接相加）。 */
     @Transactional(readOnly = true)
     public ReportTableResponse receiptSummary(String billNo, UUID clientId, Short status, LocalDate dateFrom,
-                                              LocalDate dateTo, String keyword, Map<String, String> facets, int page, int size, String sort, String order) {
+                                              LocalDate dateTo, String keyword, int page, int size) {
         return receiptSummaryAuthorized(billNo, clientId, status, dateFrom, dateTo,
-                keyword, facets, page, size, sort, order, access.scope());
+                keyword, page, size, access.scope());
     }
 
     private ReportTableResponse receiptSummaryAuthorized(
             String billNo, UUID clientId, Short status, LocalDate dateFrom,
-            LocalDate dateTo, String keyword, Map<String, String> facets,
-            int page, int size, String sort, String order, OwnerScope readScope) {
+            LocalDate dateTo, String keyword, int page, int size, OwnerScope readScope) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("clientCode", "客户编号", 110), ReportColumn.text("clientName", "客户名称", 160),
                 ReportColumn.text("clientFull", "客户全称", 200), ReportColumn.text("address", "客户地址", 200),
@@ -1190,7 +1189,7 @@ public class FinanceReportService {
                     WHERE i.receipt_id=t.id AND COALESCE(i.is_deleted,false)=false
                 ) lines ON TRUE
                 """;
-        WhereBuilder w = financeDocumentWhere(
+        FinanceWhereBuilder w = financeDocumentWhere(
                 "WHERE COALESCE(t.is_deleted,false)=false", "t.maker_id", readScope);
         addFinanceDocFilters(w, billNo, clientId, null, status, dateFrom, dateTo, keyword,
                 "t.client_id", "t.bill_no", "t.bill_date", "c.name");
@@ -1247,7 +1246,7 @@ public class FinanceReportService {
                 LEFT JOIN employees em_op ON em_op.id=t.operator_id
                     OR (t.operator_id IS NULL AND em_op.legacy_id=t.operator_legacy_id)
                 """;
-        WhereBuilder w = financeDocumentWhere(
+        FinanceWhereBuilder w = financeDocumentWhere(
                 "WHERE COALESCE(t.is_deleted,false)=false", "t.maker_id", readScope);
         addFinanceDocFilters(w, billNo, supplierId, accountId, status, dateFrom, dateTo, keyword,
                 "t.supplier_id", "t.bill_no", "t.bill_date", "s.name");
@@ -1317,7 +1316,7 @@ public class FinanceReportService {
                 LEFT JOIN employees em_ap ON em_ap.id=t.approver_id
                     OR (t.approver_id IS NULL AND em_ap.legacy_id=t.approver_legacy_id)
                 """;
-        WhereBuilder w = financeDocumentWhere(
+        FinanceWhereBuilder w = financeDocumentWhere(
                 "WHERE COALESCE(t.is_deleted,false)=false", "t.maker_id", readScope);
         addFinanceDocFilters(w, billNo, supplierId, null, status, dateFrom, dateTo, keyword,
                 "t.supplier_id", "t.bill_no", "t.bill_date", "s.name");
@@ -1381,7 +1380,7 @@ public class FinanceReportService {
                 LEFT JOIN employees em_op ON em_op.id=t.operator_id
                     OR (t.operator_id IS NULL AND em_op.legacy_id=t.operator_legacy_id)
                 """;
-        WhereBuilder w = financeDocumentWhere(
+        FinanceWhereBuilder w = financeDocumentWhere(
                 "WHERE COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false",
                 "t.maker_id", readScope);
         addFinanceItemFilters(w, billNo, accountId, departmentId, status, dateFrom, dateTo, keyword, "t.bill_no", "i.bill_date");
@@ -1438,7 +1437,7 @@ public class FinanceReportService {
                 LEFT JOIN employees em_ap ON em_ap.id=t.approver_id
                     OR (t.approver_id IS NULL AND em_ap.legacy_id=t.approver_legacy_id)
                 """;
-        WhereBuilder w = financeDocumentWhere(
+        FinanceWhereBuilder w = financeDocumentWhere(
                 "WHERE COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false",
                 "t.maker_id", readScope);
         addFinanceItemFilters(w, billNo, null, departmentId, status, dateFrom, dateTo, keyword, "t.bill_no", "i.bill_date");
@@ -1489,7 +1488,7 @@ public class FinanceReportService {
                 LEFT JOIN employees em_op ON em_op.id=t.operator_id
                     OR (t.operator_id IS NULL AND em_op.legacy_id=t.operator_legacy_id)
                 """;
-        WhereBuilder w = financeDocumentWhere(
+        FinanceWhereBuilder w = financeDocumentWhere(
                 "WHERE COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false",
                 "t.maker_id", readScope);
         addFinanceItemFilters(w, billNo, accountId, departmentId, status, dateFrom, dateTo, keyword, "t.bill_no", "i.bill_date");
@@ -1546,7 +1545,7 @@ public class FinanceReportService {
                 LEFT JOIN employees em_ap ON em_ap.id=t.approver_id
                     OR (t.approver_id IS NULL AND em_ap.legacy_id=t.approver_legacy_id)
                 """;
-        WhereBuilder w = financeDocumentWhere(
+        FinanceWhereBuilder w = financeDocumentWhere(
                 "WHERE COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false",
                 "t.maker_id", readScope);
         addFinanceItemFilters(w, billNo, null, departmentId, status, dateFrom, dateTo, keyword, "t.bill_no", "i.bill_date");
@@ -1637,7 +1636,7 @@ public class FinanceReportService {
                     WHERE ref.ledger_id=i.applied_ledger_id
                 ) orders ON TRUE
                 """;
-        WhereBuilder w = financeDocumentWhere("WHERE COALESCE(t.is_deleted,false)=false"
+        FinanceWhereBuilder w = financeDocumentWhere("WHERE COALESCE(t.is_deleted,false)=false"
                 + " AND (COALESCE(i.write_off_local,0)<>0 OR COALESCE(t.bank_fee,0)<>0 OR COALESCE(t.other_fee,0)<>0)",
                 "t.maker_id", readScope);
         addFinanceDocFilters(w, billNo, clientId, accountId, status, dateFrom, dateTo, keyword,
@@ -2154,20 +2153,20 @@ public class FinanceReportService {
      *
      * <p>普通用户只见本人及已委托归属人的单据(没有负责人的单据只对全量范围可见，ADR-109)；
      * 超级管理员或持 {@code finance:view:all} 时策略返回 {@code 1=1}。范围作为
-     * {@link WhereBuilder} 的普通参数加入，使 data/count/facet 以及复用这些方法的导出
+     * {@link FinanceWhereBuilder} 的普通参数加入，使 data/count/facet 以及复用这些方法的导出
      * 始终使用同一谓词和绑定，避免只过滤页面数据而泄漏总数或导出内容。
      * 公司级 AR/AP、GL、成本、固定资产及账户流水不会套用 maker 切片，而是在查询前
      * 通过 {@link #requireCompanyWideReportAccess()} 整体拒绝非全见用户。
      */
-    private WhereBuilder financeDocumentWhere(
+    private FinanceWhereBuilder financeDocumentWhere(
             String baseSql, String ownerColumn, OwnerScope readScope) {
-        WhereBuilder where = new WhereBuilder(baseSql);
+        FinanceWhereBuilder where = new FinanceWhereBuilder(baseSql);
         addFinanceDocumentScope(where, ownerColumn, readScope);
         return where;
     }
 
     private void addFinanceDocumentScope(
-            WhereBuilder where, String ownerColumn, OwnerScope readScope) {
+            FinanceWhereBuilder where, String ownerColumn, OwnerScope readScope) {
         NativeReadScope scope = financeDocumentScope(ownerColumn, readScope);
         where.add(scope.predicate(), scope.parameterName(), scope.owners());
     }
@@ -2182,16 +2181,16 @@ public class FinanceReportService {
      * <p>未审核的钱流单据没有过账，不构成收付事实。调用方显式传 status（含 status=0 查草稿）
      * 时按其口径走，不叠加本默认值。与 SalesReportService 同款（钱流单头别名为 {@code t}）。
      */
-    private static void addApprovedByDefault(WhereBuilder w, Short status) {
+    private static void addApprovedByDefault(FinanceWhereBuilder w, Short status) {
         if (status != null) {
             w.add("t.status=:status", "status", status);
         } else {
-            // 无具名参数的常量片段：WhereBuilder.build 对 param==null 的 Clause 只拼 SQL 不绑参。
+            // 无具名参数的常量片段：FinanceWhereBuilder.build 对 param==null 的 Clause 只拼 SQL 不绑参。
             w.add("t.status <> 0", null, null);
         }
     }
 
-    private static void addFinanceDocFilters(WhereBuilder w, String billNo, UUID partyId, UUID accountId,
+    private static void addFinanceDocFilters(FinanceWhereBuilder w, String billNo, UUID partyId, UUID accountId,
                                              Short status, LocalDate dateFrom, LocalDate dateTo, String kw,
                                              String partyIdCol, String billNoCol, String dateCol, String partyNameCol) {
         if (billNo != null && !billNo.isBlank()) w.add(billNoCol + " LIKE :billNo", "billNo", "%" + billNo + "%");
@@ -2204,7 +2203,7 @@ public class FinanceReportService {
             w.search(kw, billNoCol, partyNameCol);
     }
 
-    private static void addFinanceItemFilters(WhereBuilder w, String billNo, UUID accountId, UUID departmentId,
+    private static void addFinanceItemFilters(FinanceWhereBuilder w, String billNo, UUID accountId, UUID departmentId,
                                               Short status, LocalDate dateFrom, LocalDate dateTo, String kw,
                                               String billNoCol, String dateCol) {
         if (billNo != null && !billNo.isBlank()) w.add(billNoCol + " LIKE :billNo", "billNo", "%" + billNo + "%");
@@ -2425,11 +2424,11 @@ public class FinanceReportService {
 
     /** 按 GROUP BY 的聚合报表（如 F 销售收款汇总按客户）。 */
     private ReportTableResponse executeGrouped(List<ReportColumn> cols, String dataSelect, String fromJoin,
-                                               WhereBuilder w, String orderBy, String groupExpr, int page, int size) {
+                                               FinanceWhereBuilder w, String orderBy, String groupExpr, int page, int size) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
-        WhereBuilder.Built full = w.build(null);
+        FinanceWhereBuilder.Built full = w.build(null);
         String groupBy = " GROUP BY " + groupExpr;
         var dataQ = em.createNativeQuery(dataSelect + " " + fromJoin + " " + full.sql() + groupBy
                 + " ORDER BY " + w.groupedOrderBy(orderBy) + " LIMIT :__limit OFFSET :__offset");
@@ -2516,9 +2515,9 @@ public class FinanceReportService {
             case "ar-ap/overview"    -> (pg, sz) -> arApOverviewAuthorized(dateFrom, dateTo, displayMode, keyword, categoryType, categoryId, pg, sz);
             case "ar-ap/detail"      -> (pg, sz) -> arApDetailAuthorized(direction, billNo, partyId, settled, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
             case "ar-ap/order-plan"  -> (pg, sz) -> salesOrderReceivablePlanAuthorized(billNo, clientId, dateFrom, dateTo, keyword, pg, sz, sort, order);
-            case "ar-ap/summary"     -> (pg, sz) -> arApSummaryAuthorized(direction, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
+            case "ar-ap/summary"     -> (pg, sz) -> arApSummaryAuthorized(direction, dateFrom, dateTo, keyword, pg, sz);
             case "receipt/detail"    -> (pg, sz) -> receiptDetailAuthorized(billNo, clientId, accountId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order, exportDocumentScope);
-            case "receipt/summary"   -> (pg, sz) -> receiptSummaryAuthorized(billNo, clientId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order, exportDocumentScope);
+            case "receipt/summary"   -> (pg, sz) -> receiptSummaryAuthorized(billNo, clientId, status, dateFrom, dateTo, keyword, pg, sz, exportDocumentScope);
             case "payment/detail"    -> (pg, sz) -> paymentDetailAuthorized(billNo, supplierId, accountId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order, exportDocumentScope);
             case "payment/summary"   -> (pg, sz) -> paymentSummaryAuthorized(billNo, supplierId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order, exportDocumentScope);
             case "expense/detail"    -> (pg, sz) -> expenseDetailAuthorized(billNo, accountId, departmentId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order, exportDocumentScope);
@@ -2624,7 +2623,7 @@ public class FinanceReportService {
      * （{@code w.add("", "kw", ...)} / {@code w.add("", "dir", dir)}，Z 总览与 A·C 明细在用），
      * 与共享版逻辑有分歧，不强行合并。
      */
-    static final class WhereBuilder extends com.uten.imp.common.report.ReportQueryKit.WhereBuilder {
-        WhereBuilder(String base) { super(base); }
+    static final class FinanceWhereBuilder extends com.uten.imp.common.report.ReportQueryKit.WhereBuilder {
+        FinanceWhereBuilder(String base) { super(base); }
     }
 }

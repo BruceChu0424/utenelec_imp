@@ -84,6 +84,7 @@ public class VisitorGateService {
             }
         } else {
             // 6位短码：二维码扫不了时手动输入
+            if (passcode == null || passcode.isBlank()) return red("invalid", null);
             app = appRepo.findByPasscode(passcode.trim()).orElse(null);
         }
         if (app == null) {
@@ -131,7 +132,7 @@ public class VisitorGateService {
     /** 解除拉黑：账号回 active、清运营字段；行级历史由 fn_audit 触发器留痕。 */
     @Transactional
     public void unblacklist(UUID visitorId) {
-        UUID actorId = guard.requireStaff();
+        guard.requireStaff();
         tx.bind();
         VisitorAccount acc = accountRepo.findAndLockById(visitorId)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));

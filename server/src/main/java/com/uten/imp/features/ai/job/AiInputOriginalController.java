@@ -14,7 +14,7 @@ import java.util.UUID;
 public class AiInputOriginalController {
     private final AiInputOriginalStore originals;
     public AiInputOriginalController(AiInputOriginalStore originals){this.originals=originals;}
-    @GetMapping("/{jobId}/download")
+    @PostMapping("/{jobId}/download")
     public ResponseEntity<byte[]> download(@PathVariable String documentKind,@PathVariable UUID docId,@PathVariable UUID jobId) {
         var file=originals.download(type(documentKind),docId,jobId);
         return ResponseEntity.ok().contentType(MediaType.parseMediaType(file.contentType())).contentLength(file.bytes().length)

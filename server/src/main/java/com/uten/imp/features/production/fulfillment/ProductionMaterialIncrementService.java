@@ -145,7 +145,9 @@ public class ProductionMaterialIncrementService {
 
     @Transactional public RequestView cancel(UUID id,DecisionRequest request) {
         tx.bind();requirePermission(APPROVE_PERMISSION);membership.requireActiveOperator();
-        if(request==null||request.expectedVersion()==null||request.expectedVersion()<0)throw validation("撤销授权缺少申请版本");
+        if(request==null)throw validation("撤销授权缺少申请版本");
+        if(request.expectedVersion()==null)throw validation("撤销授权缺少申请版本");
+        if(request.expectedVersion()<0)throw validation("撤销授权缺少申请版本");
         UUID actor=currentUser.requireId();String key=key(request.idempotencyKey()),reason=reason(request.reason(),true);
         String hash=CanonicalFingerprint.sha256(List.of("MATERIAL-INCREMENT-CANCEL-V1",id.toString(),request.expectedVersion().toString(),reason));
         commandLock("CANCEL",actor,key);

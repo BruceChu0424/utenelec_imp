@@ -92,7 +92,8 @@ class StockCountCandidateCategoriesPostgresTest {
         UUID resin=category("RESIN","颗粒",raw),fasteners=category("FAST","紧固件",root);
         UUID empty=category("EMPTY","空分类",root),stubCategory=category("STUB","不明货品",root);
         UUID retired=category("RETIRED","老料",root);
-        UUID mass=goods("PP","PP 颗粒",resin,kg,null),count=goods("SCREW","螺丝",fasteners,pieces,null);
+        UUID mass=goods("PP","PP 颗粒",resin,kg,null);
+        goods("SCREW","螺丝",fasteners,pieces,null);
         // 停用货品且带主档默认色: 两个历史根因一起锁——禁用可盘, 候选行仍是无色(不是默认色)。
         UUID stub=goods("STUB-G","占位",stubCategory,kg,null),disabled=goods("OFF-G","停用",retired,kg,color("米白"));
         db.update("UPDATE goods SET auto_created=true WHERE id=?",stub);

@@ -1,6 +1,5 @@
 package com.uten.imp.features.finance.payables.warehouse;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -25,7 +24,7 @@ class WarehouseIqcReturnPostgresTest {
     @BeforeAll
     static void migrateCurrentHead() {
         POSTGRES.start();
-        Flyway.configure()
+        com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(
                         POSTGRES.getJdbcUrl(),
                         POSTGRES.getUsername(),

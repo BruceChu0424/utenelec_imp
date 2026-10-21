@@ -216,7 +216,7 @@ class AccountLegacyCurrencyBackfillPostgresTest {
     }
 
     private static Flyway flyway(String url, String target) {
-        return Flyway.configure()
+        return com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(url, POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration")
                 .target(target)

@@ -78,6 +78,12 @@ public final class FulfillmentLockState {
         return new FulfillmentSourceConflictException(internalReason, true);
     }
 
+    /** The first source fingerprint check, before the projection's first business write. */
+    static ApiException preWriteSourceChanged(String internalReason) {
+        LOG.debug("Fulfillment pre-write source changed: {}", internalReason);
+        return FulfillmentSourceConflictException.preWriteSourceChanged(internalReason);
+    }
+
     static final class State implements TransactionSynchronization {
         final Set<CommercialSource> sources = new HashSet<>();
         final Set<InventoryDimension> inventory = new HashSet<>();

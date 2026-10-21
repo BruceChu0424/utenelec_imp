@@ -12,7 +12,6 @@ import com.uten.imp.features.production.dailyreport.dto.DailyReportItemLine;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportOutputAllocationLine;
 import com.uten.imp.features.production.dailyreport.dto.ReportablePlanLine;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,7 +47,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static com.uten.imp.testsupport.BusinessHttpRequests.authenticated;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
@@ -78,14 +77,14 @@ class DailyReportApprovalV2PostgresTest {
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) throws Exception {
         POSTGRES.start();
-        var available = Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+        var available = com.uten.imp.testsupport.TestFlyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").load();
         var target = org.flywaydb.core.api.MigrationVersion.fromVersion("769");
         migrationFrom = java.util.Arrays.stream(available.info().all())
                 .map(org.flywaydb.core.api.MigrationInfo::getVersion)
                 .filter(java.util.Objects::nonNull).filter(version -> version.compareTo(target) < 0)
                 .max(java.util.Comparator.naturalOrder()).orElseThrow().getVersion();
-        Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").target(migrationFrom).load().migrate();
         System.out.println("DAILY-REPORT-REVIEW-MIGRATION " + migrationFrom + " -> 769");
         try (Connection c = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())) {
@@ -326,7 +325,7 @@ class DailyReportApprovalV2PostgresTest {
     private static String path(UUID id){return "/api/production/daily-reports/"+id;}
     private JsonNode body(MvcResult response)throws Exception{return json.readTree(response.getResponse().getContentAsByteArray());}
     private MvcResult request(MockHttpServletRequestBuilder request,Authentication actor,Object body,int expected)throws Exception {
-        request.with(authentication(actor));if(body!=null)request.contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(body));
+        request.with(authenticated(actor));if(body!=null)request.contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(body));
         MvcResult result=http.perform(request).andReturn();assertEquals(expected,result.getResponse().getStatus(),result.getResponse().getContentAsString());return result;
     }
     private static void update(Connection c,String sql,Object...args)throws Exception {try(var statement=c.prepareStatement(sql)){for(int i=0;i<args.length;i++){ statement.setObject(i+1,args[i]); }statement.executeUpdate();}}

@@ -6,7 +6,6 @@ import com.uten.imp.features.stock.ledger.dto.StockLedgerPage;
 import com.uten.imp.features.stock.ledger.dto.StockLedgerRow;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -50,7 +49,7 @@ class StockLedgerQueryPostgresTest {
     static void start() {
         container = new PostgreSQLContainer("postgres:16-alpine");
         container.start();
-        Flyway.configure()
+        com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(container.getJdbcUrl(), container.getUsername(), container.getPassword())
                 .locations("classpath:db/migration")
                 .load()

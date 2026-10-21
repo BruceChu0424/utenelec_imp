@@ -1310,7 +1310,10 @@ public class StockDocService implements ProductionPreStockedInboundPort {
     @Transactional
     @PreAuthorize("hasAuthority('stock_doc:approve')")
     public StockDocDetail confirmProductionMaterialReturn(UUID id, ProductionMaterialReturnConfirmRequest request) {
-        if (request==null || request.warehouseId()==null || request.idempotencyKey()==null
+        if (request==null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"请选择实际收料仓库并提供有效确认键");
+        }
+        if (request.warehouseId()==null || request.idempotencyKey()==null
                 || !request.idempotencyKey().matches("[A-Za-z0-9._:-]{8,128}")) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,"请选择实际收料仓库并提供有效确认键");
         }
@@ -1882,7 +1885,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             // reversed, then refresh affected material analyses.
             em.flush();
             productionCompletionReverse.afterFinishedInboundReversed(
-                    d.getId(), d.getWarehouseId());
+                    d.getId());
             if (finishedInboundReversal != null) {
                 chainNotice.notifyFinishedInboundPending(
                         finishedInboundReversal.documentId());
@@ -3449,6 +3452,9 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         }
         List<FinishedInLotView> result = new ArrayList<>(lots.size());
         for (Map.Entry<UUID, List<Object[]>> lot : lots.entrySet()) {
+            // A group exists only after a visible item has been added to it.
+            StockDocItemDto head = Objects.requireNonNull(
+                    byId.get((UUID) lot.getValue().getFirst()[1]), "finished lot has no visible item");
             BigDecimal total = BigDecimal.ZERO;
             BigDecimal demand = BigDecimal.ZERO;
             BigDecimal publicQty = BigDecimal.ZERO;
@@ -3457,10 +3463,8 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             BigDecimal weight = null;
             boolean weightKnown = true;
             List<UUID> itemIds = new ArrayList<>();
-            StockDocItemDto head = null;
             for (Object[] row : lot.getValue()) {
                 StockDocItemDto item = byId.get((UUID) row[1]);
-                if (head == null) head = item;
                 itemIds.add(item.getId());
                 BigDecimal qty = item.getQty() == null ? BigDecimal.ZERO : item.getQty();
                 total = total.add(qty);

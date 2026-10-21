@@ -105,7 +105,7 @@ class SubcontractLossValueEndToEndTest {
         var c=ready("normal-approved-target","5","5");
         assertThrows(ApiException.class,()->changeQty(c,"3"),"尚无实退或损耗时不能减少已实发五件的商业目标");
         money(decimal("select qty from subcontract_order_items where id=?",c.item()),"5");
-        UUID loss=loss(c,"2","2");
+        loss(c,"2","2");
         receive(c,"1");drain();money(stock(c),"51.4");money(normalHeld(c),"1.6");
         receive(c,"2");drain();money(stock(c),"154.2");money(normalHeld(c),"0.8");
         // ADR-143 §二.13/§二.14: 损耗独立结清不改订货量; 已发外 5 覆盖的物料需求不能被改量压到 f(3)=3。

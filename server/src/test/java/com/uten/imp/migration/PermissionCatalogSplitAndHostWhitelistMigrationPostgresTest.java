@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -102,7 +101,7 @@ class PermissionCatalogSplitAndHostWhitelistMigrationPostgresTest {
     }
 
     private static void migrateTo(String version) {
-        var config = Flyway.configure()
+        var config = com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration");
         if (version != null) {
@@ -118,7 +117,7 @@ class PermissionCatalogSplitAndHostWhitelistMigrationPostgresTest {
                         .getResources("classpath:db/migration/V*__*.sql"))
                 .map(resource -> name.matcher(resource.getFilename() == null ? "" : resource.getFilename()))
                 .filter(Matcher::matches)
-                .mapToInt(matcher -> Integer.parseInt(matcher.group(1)))
+                .mapToInt(matcher -> com.uten.imp.testsupport.FixtureNumbers.integer(matcher.group(1)))
                 .filter(candidate -> candidate < version)
                 .max()
                 .stream()

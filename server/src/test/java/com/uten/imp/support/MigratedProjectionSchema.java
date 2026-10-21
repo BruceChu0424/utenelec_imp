@@ -1,6 +1,5 @@
 package com.uten.imp.support;
 
-import org.flywaydb.core.Flyway;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -85,7 +84,7 @@ public final class MigratedProjectionSchema {
     private static Map<String, Shape> readCatalog(String version) {
         try (PostgreSQLContainer source = new PostgreSQLContainer("postgres:16-alpine")) {
             source.start();
-            var migration = Flyway.configure().dataSource(source.getJdbcUrl(), source.getUsername(), source.getPassword())
+            var migration = com.uten.imp.testsupport.TestFlyway.configure().dataSource(source.getJdbcUrl(), source.getUsername(), source.getPassword())
                     .locations("classpath:db/migration");
             if (!CURRENT.equals(version)) migration.target(version);
             migration.load().migrate();

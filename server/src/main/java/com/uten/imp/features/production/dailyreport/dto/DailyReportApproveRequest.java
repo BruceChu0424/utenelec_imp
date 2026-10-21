@@ -34,7 +34,6 @@ public class DailyReportApproveRequest {
     /** V3 also binds the exact pre-posting material balances and eligible return sources. */
     private String materialReviewFingerprint;
 
-    @Valid
     @Size(max = 2000)
-    private List<DailyReportMaterialDecision> materialDecisions;
+    private List<@Valid DailyReportMaterialDecision> materialDecisions;
 }

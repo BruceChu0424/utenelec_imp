@@ -104,7 +104,7 @@ class PlatformBrandingMigrationPostgresTest {
     }
 
     private static Flyway migration(String databaseName, String target) {
-        return Flyway.configure().dataSource(MigratedSchemaBaseline.jdbcUrlFor(POSTGRES, databaseName),
+        return com.uten.imp.testsupport.TestFlyway.configure().dataSource(MigratedSchemaBaseline.jdbcUrlFor(POSTGRES, databaseName),
                         POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").target(target).load();
     }

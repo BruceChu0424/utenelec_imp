@@ -116,7 +116,8 @@ public class AccountService {
 
     @Transactional(readOnly = true)
     public PageResponse<AccountListItem> list(AccountQueryFilter f, int page, int size, String sort, String order) {
-        if ("balanceCurrent".equals(sort) && !hasAuthority("account:balance:view")) {
+        boolean canViewBalance = hasAuthority("account:balance:view");
+        if ("balanceCurrent".equals(sort) && !canViewBalance) {
             throw new ApiException(ErrorCode.FORBIDDEN, "缺少账户余额查看权限，不能按余额排序");
         }
         Specification<Account> spec = (Root<Account> root, jakarta.persistence.criteria.CriteriaQuery<?> q,

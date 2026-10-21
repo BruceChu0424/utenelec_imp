@@ -108,13 +108,6 @@ public class PreplanMakePublicSupplyService {
         return result;
     }
 
-    /** Caller already owns the complete commercial/inventory/analysis prefix and has checked authority. */
-    Map<UUID,BigDecimal> adoptLocked(UUID analysisId,MaterialAnalysisContracts.AnalysisView view,
-            AggregateMaterialOrderContracts.GroupPreview group,String commandKey) {
-        Map<UUID,BigDecimal> desired=new HashMap<>();group.sources().forEach(source->desired.put(source.materialLineId(),source.allocatedQty()));
-        return adoptLocked(analysisId,desired,Map.of(),commandKey);
-    }
-
     Map<UUID,BigDecimal> adoptLocked(UUID analysisId,Map<UUID,BigDecimal> desired,Map<UUID,BigDecimal> baseQuanta,String commandKey) {
         return adoptLocked(analysisId,desired,baseQuanta,commandKey,ignored->{ });
     }

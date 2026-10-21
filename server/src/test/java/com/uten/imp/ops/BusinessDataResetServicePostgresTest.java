@@ -12,7 +12,6 @@ import com.uten.imp.features.admin.systemtest.BusinessDataResetDrainGate;
 import com.uten.imp.features.admin.systemtest.BusinessDataResetFeatureGate;
 import com.uten.imp.features.admin.systemtest.BusinessDataResetService;
 import com.uten.imp.features.attachment.ResetEndToEndFixture;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -84,7 +83,7 @@ class BusinessDataResetServicePostgresTest {
 
     @Test
     void resetsBusinessDataZeroesProjectionsRestartsIdentityAndKicksEveryone() throws Exception {
-        Flyway.configure()
+        com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration")
                 .load()
@@ -368,7 +367,7 @@ class BusinessDataResetServicePostgresTest {
     }
 
     private static SimpleDriverDataSource migratedDataSource() {
-        Flyway.configure()
+        com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration")
                 .load()

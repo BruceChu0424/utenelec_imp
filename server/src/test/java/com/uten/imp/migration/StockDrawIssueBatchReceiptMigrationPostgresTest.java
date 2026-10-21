@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -97,7 +96,7 @@ class StockDrawIssueBatchReceiptMigrationPostgresTest {
     }
 
     private static void migrate(String target) {
-        Flyway.configure().dataSource(DATABASE.getJdbcUrl(), DATABASE.getUsername(), DATABASE.getPassword())
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(DATABASE.getJdbcUrl(), DATABASE.getUsername(), DATABASE.getPassword())
                 .locations("classpath:db/migration").target(target).load().migrate();
     }
 

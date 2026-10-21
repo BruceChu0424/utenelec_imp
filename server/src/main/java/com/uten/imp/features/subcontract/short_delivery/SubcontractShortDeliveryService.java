@@ -698,7 +698,7 @@ public class SubcontractShortDeliveryService
         String predicate = segmentPredicate(normalized);
         // 列表 / 计数 / facets 同一过滤基座（2026-09-25 单号列统一）。
         String where = predicate + " AND "
-                + shortDeliveryWhere(scope, dateFrom, dateTo, orderBillNo);
+                + shortDeliveryWhere(scope, orderBillNo);
         Query rows = em.createNativeQuery(ROW_SELECT + " WHERE " + where
                 + " ORDER BY " + (KeywordSearch.terms(keyword).isEmpty() ? "" :
                     TaskKeywordSearch.rankNamesFirstParameter("keyword",
@@ -729,7 +729,7 @@ public class SubcontractShortDeliveryService
         String normalized = normalizeSegment(segment);
         var scope = access.nativeReadScope("c.owner_employee_id", "owners", VIEW_AUTHORITY);
         String where = segmentPredicate(normalized) + " AND "
-                + shortDeliveryWhere(scope, dateFrom, dateTo, null);
+                + shortDeliveryWhere(scope, null);
         Query query = em.createNativeQuery("SELECT COALESCE(c.order_bill_no_snapshot, ''), COUNT(*) "
                 + ROW_FROM + " WHERE " + where + " GROUP BY 1 ORDER BY 1")
                 .setMaxResults(500);
@@ -760,8 +760,7 @@ public class SubcontractShortDeliveryService
     /** 列表 / 计数 / facets 共用过滤基座（同一 WHERE 文本，2026-09-25 单号列统一；
      *  orderBillNo 等值筛选仅条件出现，未出现不绑定命名参数）。 */
     private static String shortDeliveryWhere(
-            com.uten.imp.security.DocumentAccessPolicy.NativeReadScope scope,
-            LocalDate dateFrom, LocalDate dateTo, String orderBillNo) {
+            com.uten.imp.security.DocumentAccessPolicy.NativeReadScope scope, String orderBillNo) {
         return """
                 %s
                  AND (CAST(:supplierId AS uuid) IS NULL OR c.supplier_id = CAST(:supplierId AS uuid))

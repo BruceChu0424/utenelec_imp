@@ -60,12 +60,13 @@ public class EmployeeSecondaryDepartmentService {
 
     @Transactional
     public List<SecondaryDepartmentDto> replace(UUID employeeId, List<SecondaryDepartmentInput> items) {
+        if (items == null) items = List.of();
         Employee e = employeeRepo.findById(employeeId)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "员工不存在"));
         UUID primaryDeptId = e.getDepartment() == null ? null : e.getDepartment().getId();
 
         Set<UUID> seen = new LinkedHashSet<>();
-        for (SecondaryDepartmentInput item : items == null ? List.<SecondaryDepartmentInput>of() : items) {
+        for (SecondaryDepartmentInput item : items) {
             if (item.departmentId() == null) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "兼职部门不能为空");
             }
@@ -76,7 +77,7 @@ public class EmployeeSecondaryDepartmentService {
                 throw new ApiException(
                         ErrorCode.VALIDATION_FAILED, "兼职部门不能与主部门相同（调岗请使用「调岗」功能）");
             }
-            Department d = deptRepo.findById(item.departmentId())
+            deptRepo.findById(item.departmentId())
                     .filter(x -> !x.isDeleted())
                     .orElseThrow(() -> new ApiException(ErrorCode.VALIDATION_FAILED, "部门不存在或已删除"));
             if (item.note() != null && item.note().length() > 200) {

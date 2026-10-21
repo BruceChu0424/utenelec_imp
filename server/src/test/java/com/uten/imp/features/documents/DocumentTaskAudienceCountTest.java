@@ -11,7 +11,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.Supplier;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -85,8 +84,8 @@ class DocumentTaskAudienceCountTest {
         when(tasks.getSingleResult()).thenReturn(new Object[] {2L, 1L, 1L, 2L});
         var service = new DocumentStatusCountQueryService(em, owners, current);
         ReflectionTestUtils.setField(service, "taskAudience", new TaskAudiencePort() {
-            @Override public <T> T read(Supplier<T> work) { return work.get(); }
-            @Override public <T> T browsingRead(Supplier<T> work) { return work.get(); }
+            @Override public <T> T read(com.uten.imp.application.port.TaskAudiencePort.ReadQuery<T> work) { return work.read(); }
+            @Override public <T> T browsingRead(com.uten.imp.application.port.TaskAudiencePort.ReadQuery<T> work) { return work.read(); }
         });
         assertThat(service.counts("salesShipment", "DIRECT_CUSTOMER", null))
                 .containsEntry("DRAFT", 4L).containsEntry("ACTIONABLE_DRAFT", 2L);
@@ -108,8 +107,8 @@ class DocumentTaskAudienceCountTest {
         when(tasks.getSingleResult()).thenReturn(new Object[] {2L, 3L, 1L});
         var service = new DocumentStatusCountQueryService(em, owners, current);
         ReflectionTestUtils.setField(service, "taskAudience", new TaskAudiencePort() {
-            @Override public <T> T read(Supplier<T> work) { return work.get(); }
-            @Override public <T> T browsingRead(Supplier<T> work) { return work.get(); }
+            @Override public <T> T read(com.uten.imp.application.port.TaskAudiencePort.ReadQuery<T> work) { return work.read(); }
+            @Override public <T> T browsingRead(com.uten.imp.application.port.TaskAudiencePort.ReadQuery<T> work) { return work.read(); }
         });
         var result = service.counts("salesQuote", null, null);
         assertThat(result).containsEntry("DRAFT", 9L).containsEntry("FINANCE_REJECTED", 5L)

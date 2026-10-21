@@ -123,10 +123,9 @@ public final class ProductionFinishedArrivalContracts {
             @Pattern(regexp = "[A-Za-z0-9._:-]+",
                     message = "防重复提交标识只能包含字母、数字或 ._:-")
             String idempotencyKey,
-            @Valid
             @NotNull
             @Size(min = 1, max = RequestLimits.DOCUMENT_LINES)
-            List<ArrivalLotRequest> lots,
+            List<@Valid ArrivalLotRequest> lots,
             @Size(max = 500, message = "备注不能超过 500 个字符")
             String remark,
             /** 先入库后质检(V597)：整批一个口径，逐组落到各自的登记头上。 */

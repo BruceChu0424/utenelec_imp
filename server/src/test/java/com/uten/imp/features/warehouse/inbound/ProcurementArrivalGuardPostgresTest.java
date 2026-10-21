@@ -8,7 +8,6 @@ import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
 import com.uten.imp.features.purchase.receipt.ReceiptPriceMasker;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
-import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationVersion;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -53,7 +52,7 @@ class ProcurementArrivalGuardPostgresTest {
     @BeforeAll
     static void migrate() {
         POSTGRES.start();
-        var configuration = Flyway.configure()
+        var configuration = com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration");
         String target = System.getProperty("uten.test.flyway.target");

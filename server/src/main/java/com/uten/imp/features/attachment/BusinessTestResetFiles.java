@@ -419,7 +419,8 @@ public class BusinessTestResetFiles implements BusinessTestResetFilesPort {
         for (Planned planned : inspection.planned()) {
             switch (planned.outcome()) {
                 case DELETE -> present++;
-                case ABSENT, SKIP_RECORDED -> absent++;
+                case ABSENT -> absent++;
+                case SKIP_RECORDED -> absent++;
                 case PROBLEM -> problems = true;
                 case SKIP_UNSUPPORTED -> { }
             }

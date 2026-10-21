@@ -93,7 +93,7 @@ public class ProductionCompletionReverseService
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void afterFinishedInboundReversed(
-            UUID stockDocumentId, UUID warehouseId) {
+            UUID stockDocumentId) {
         materialAnalysisWakeup.afterFinishedInboundReversed(stockDocumentId);
     }
 

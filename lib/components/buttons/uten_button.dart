@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import '../layout/uten_app_bar_action_scope.dart';
 
 import '../../core/theme/uten_colors.dart';
@@ -180,33 +182,11 @@ class UtenButton extends StatelessWidget {
                                 )
                               : _textStyle)
                           .copyWith(color: foreground),
-                  child: Row(
-                    mainAxisSize: isExpanded
-                        ? MainAxisSize.max
-                        : MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (isLoading)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: ExcludeSemantics(
-                            child: SizedBox(
-                              width: iconSize,
-                              height: iconSize,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: foreground,
-                              ),
-                            ),
-                          ),
-                        )
-                      else if (icon != null && !inAppBar)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 6),
-                          child: Icon(icon, size: iconSize, color: foreground),
-                        ),
-                      child is Flexible ? child : Flexible(child: child),
-                    ],
+                  child: _content(
+                    context: context,
+                    foreground: foreground,
+                    iconSize: iconSize,
+                    inAppBar: inAppBar,
                   ),
                 ),
               ),
@@ -226,6 +206,39 @@ class UtenButton extends StatelessWidget {
       );
     }
     return button;
+  }
+
+  Widget _content({
+    required BuildContext context,
+    required Color foreground,
+    required double iconSize,
+    required bool inAppBar,
+  }) {
+    final leading = isLoading
+        ? ExcludeSemantics(
+            child: SizedBox(
+              width: iconSize,
+              height: iconSize,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: foreground,
+              ),
+            ),
+          )
+        : icon != null && !inAppBar
+        ? Icon(icon, size: iconSize, color: foreground)
+        : null;
+    final gap = isLoading ? UtenSpacing.s8 : UtenSpacing.s6;
+    final label = child is Flexible ? (child as Flexible).child : child;
+    if (leading == null) {
+      return Align(widthFactor: 1, heightFactor: 1, child: label);
+    }
+    return _UtenButtonContent(
+      gap: gap,
+      textDirection: Directionality.of(context),
+      leading: FittedBox(fit: BoxFit.scaleDown, child: leading),
+      label: label,
+    );
   }
 
   (Color, Color, Color?) _resolveColors(
@@ -282,6 +295,206 @@ class UtenButton extends StatelessWidget {
     }
     return null;
   }
+}
+
+/// Keep normal-width labels beside the leading, with the same wrapping width
+/// as a flexible Row. Only move below it when even the label's minimum natural
+/// width cannot fit. A render layout preserves intrinsic sizing in dialogs.
+class _UtenButtonContent extends MultiChildRenderObjectWidget {
+  _UtenButtonContent({
+    required Widget leading,
+    required Widget label,
+    required this.gap,
+    required this.textDirection,
+  }) : super(children: [leading, label]);
+
+  final double gap;
+  final TextDirection textDirection;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderUtenButtonContent(gap, textDirection);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderUtenButtonContent renderObject,
+  ) {
+    renderObject
+      ..gap = gap
+      ..textDirection = textDirection;
+  }
+}
+
+typedef _ButtonContentGeometry = ({
+  Size size,
+  Offset leadingOffset,
+  Offset labelOffset,
+  BoxConstraints labelConstraints,
+});
+
+class _UtenButtonContentParentData extends ContainerBoxParentData<RenderBox> {}
+
+class _RenderUtenButtonContent extends RenderBox
+    with
+        ContainerRenderObjectMixin<RenderBox, _UtenButtonContentParentData>,
+        RenderBoxContainerDefaultsMixin<
+          RenderBox,
+          _UtenButtonContentParentData
+        > {
+  _RenderUtenButtonContent(this._gap, this._textDirection);
+
+  double _gap;
+  set gap(double value) {
+    if (value == _gap) return;
+    _gap = value;
+    markNeedsLayout();
+  }
+
+  TextDirection _textDirection;
+  set textDirection(TextDirection value) {
+    if (value == _textDirection) return;
+    _textDirection = value;
+    markNeedsLayout();
+  }
+
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! _UtenButtonContentParentData) {
+      child.parentData = _UtenButtonContentParentData();
+    }
+  }
+
+  _ButtonContentGeometry _layoutContent(
+    BoxConstraints constraints,
+    Size Function(RenderBox, BoxConstraints) layout,
+  ) {
+    final leading = firstChild!;
+    final label = lastChild!;
+    final leadingSize = layout(
+      leading,
+      BoxConstraints(maxWidth: constraints.maxWidth),
+    );
+    final horizontal =
+        leadingSize.width +
+            _gap +
+            label.getMinIntrinsicWidth(double.infinity) <=
+        constraints.maxWidth;
+    final labelConstraints = BoxConstraints(
+      maxWidth: horizontal
+          ? math.max(0.0, constraints.maxWidth - leadingSize.width - _gap)
+          : constraints.maxWidth,
+    );
+    final labelSize = layout(label, labelConstraints);
+    final contentSize = horizontal
+        ? Size(
+            leadingSize.width + _gap + labelSize.width,
+            math.max(leadingSize.height, labelSize.height),
+          )
+        : Size(
+            math.max(leadingSize.width, labelSize.width),
+            leadingSize.height + _gap + labelSize.height,
+          );
+    final size = constraints.constrain(contentSize);
+    final start = (size.width - contentSize.width) / 2;
+    final top = (size.height - contentSize.height) / 2;
+    return (
+      size: size,
+      leadingOffset: horizontal
+          ? Offset(
+              start +
+                  (_textDirection == TextDirection.rtl
+                      ? labelSize.width + _gap
+                      : 0),
+              (size.height - leadingSize.height) / 2,
+            )
+          : Offset((size.width - leadingSize.width) / 2, top),
+      labelOffset: horizontal
+          ? Offset(
+              start +
+                  (_textDirection == TextDirection.ltr
+                      ? leadingSize.width + _gap
+                      : 0),
+              (size.height - labelSize.height) / 2,
+            )
+          : Offset(
+              (size.width - labelSize.width) / 2,
+              top + leadingSize.height + _gap,
+            ),
+      labelConstraints: labelConstraints,
+    );
+  }
+
+  @override
+  void performLayout() {
+    final geometry = _layoutContent(constraints, (child, limits) {
+      child.layout(limits, parentUsesSize: true);
+      return child.size;
+    });
+    size = geometry.size;
+    (firstChild!.parentData! as _UtenButtonContentParentData).offset =
+        geometry.leadingOffset;
+    (lastChild!.parentData! as _UtenButtonContentParentData).offset =
+        geometry.labelOffset;
+  }
+
+  @override
+  Size computeDryLayout(BoxConstraints constraints) => _layoutContent(
+    constraints,
+    (child, limits) => child.getDryLayout(limits),
+  ).size;
+
+  @override
+  double computeMinIntrinsicWidth(double height) => math.max(
+    firstChild!.getMinIntrinsicWidth(height),
+    lastChild!.getMinIntrinsicWidth(height),
+  );
+
+  @override
+  double computeMaxIntrinsicWidth(double height) =>
+      firstChild!.getMaxIntrinsicWidth(height) +
+      _gap +
+      lastChild!.getMaxIntrinsicWidth(height);
+
+  @override
+  double computeMinIntrinsicHeight(double width) =>
+      computeDryLayout(BoxConstraints(maxWidth: width)).height;
+
+  @override
+  double computeMaxIntrinsicHeight(double width) =>
+      computeDryLayout(BoxConstraints(maxWidth: width)).height;
+
+  @override
+  double? computeDistanceToActualBaseline(TextBaseline baseline) {
+    final label = lastChild!;
+    final distance = label.getDistanceToBaseline(baseline, onlyReal: true);
+    final data = label.parentData! as _UtenButtonContentParentData;
+    return distance == null ? null : data.offset.dy + distance;
+  }
+
+  @override
+  double? computeDryBaseline(
+    BoxConstraints constraints,
+    TextBaseline baseline,
+  ) {
+    final geometry = _layoutContent(
+      constraints,
+      (child, limits) => child.getDryLayout(limits),
+    );
+    final distance = lastChild!.getDryBaseline(
+      geometry.labelConstraints,
+      baseline,
+    );
+    return distance == null ? null : geometry.labelOffset.dy + distance;
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) =>
+      defaultHitTestChildren(result, position: position);
+
+  @override
+  void paint(PaintingContext context, Offset offset) =>
+      defaultPaint(context, offset);
 }
 
 enum UtenButtonType { primary, secondary, tonal, ghost, success, danger }

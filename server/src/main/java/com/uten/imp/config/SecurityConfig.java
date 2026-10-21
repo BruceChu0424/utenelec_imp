@@ -27,7 +27,11 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -39,7 +43,7 @@ import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * 安全配置：无状态 JWT、CSRF 关闭（JWT 走 Authorization 头）、CORS 严格白名单、方法级 @PreAuthorize。
+ * 安全配置：无状态 JWT、默认 CSRF(仅明确 Bearer/凭证交换例外)、CORS 严格白名单、方法级 @PreAuthorize。
  * permitAll：登录/刷新/健康检查/文档；其余 authenticated。首登账号另由
  * {@link PasswordChangeRequiredFilter} 收口到改密所需的最小 HTTP 边界。
  *
@@ -87,8 +91,38 @@ public class SecurityConfig {
                         "/actuator/health",
                         "/actuator/health/**"
                 };
+        AuthenticationEntryPoint authenticationFailure = (req, resp, exception) -> {
+            try {
+                auditService.logSecurityEvent(req, null, null, "access_denied", "unauthorized", 401);
+            } catch (RuntimeException auditFailure) {
+                log.error("Failed to persist authentication-denied audit event", auditFailure);
+            }
+            resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            resp.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+            resp.getWriter().write(objectMapper.writeValueAsString(ApiError.of(ErrorCode.UNAUTHORIZED, null)));
+        };
+        AccessDeniedHandler accessDenied = (req, resp, exception) -> {
+            var authentication = org.springframework.security.core.context.SecurityContextHolder
+                    .getContext().getAuthentication();
+            if (authentication == null || !authentication.isAuthenticated()
+                    || authentication instanceof org.springframework.security.authentication.AnonymousAuthenticationToken) {
+                authenticationFailure.commence(req, resp,
+                        new org.springframework.security.authentication.InsufficientAuthenticationException("Authentication required"));
+                return;
+            }
+            resp.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            resp.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+            resp.getWriter().write(objectMapper.writeValueAsString(ApiError.of(ErrorCode.FORBIDDEN, null)));
+        };
+        // CSRF persistence must not create an authentication HttpSession in this stateless API.
+        // This cookie is an anti-forgery nonce only; JwtAuthFilter never authenticates from cookies.
+        CookieCsrfTokenRepository csrfTokens = new CookieCsrfTokenRepository();
+        csrfTokens.setCookieCustomizer(cookie -> cookie.httpOnly(true).sameSite("Strict"));
         http
-                .csrf(AbstractHttpConfigurer::disable)
+                .csrf(csrf -> csrf.csrfTokenRepository(csrfTokens)
+                        .ignoringRequestMatchers(new com.uten.imp.security.ApiCsrfPolicy()))
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable)
@@ -106,7 +140,7 @@ public class SecurityConfig {
                 // must execute before JWT parsing and every controller.
                 .addFilterBefore(
                         localNetworkGuardFilter,
-                        org.springframework.security.web.authentication.logout.LogoutFilter.class)
+                        CsrfFilter.class)
                 .addFilterAfter(remoteRequestBudgetFilter, LocalNetworkGuardFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 // 模拟身份只读守卫：主体解析（JwtAuthFilter）之后、进入控制器之前拦截写操作。
@@ -123,20 +157,7 @@ public class SecurityConfig {
                 // 未认证/匿名（access token 过期、缺失、伪造）→ 401 + ApiError(UNAUTHORIZED)，
                 // 让前端 AuthInterceptor 识别 401 后自动 refresh 续期（用户无感），而非被默认
                 // Http403ForbiddenEntryPoint 返 403 误判成「无权限」。
-                .exceptionHandling(e -> e.authenticationEntryPoint((req, resp, ex) -> {
-                    try {
-                        auditService.logSecurityEvent(
-                                req, null, null,
-                                "access_denied", "unauthorized", 401);
-                    } catch (RuntimeException auditFailure) {
-                        log.error("Failed to persist authentication-denied audit event", auditFailure);
-                    }
-                    resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-                    resp.setContentType(MediaType.APPLICATION_JSON_VALUE);
-                    resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-                    resp.getWriter().write(objectMapper.writeValueAsString(
-                            ApiError.of(ErrorCode.UNAUTHORIZED, null)));
-                }));
+                .exceptionHandling(e -> e.authenticationEntryPoint(authenticationFailure).accessDeniedHandler(accessDenied));
 
         if (securityProps.isRequireHttps()) {
             http.redirectToHttps(Customizer.withDefaults());

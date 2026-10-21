@@ -96,7 +96,7 @@ class FinanceReportUnitsPostgresTest {
     }
     private static ReportTableResponse summary(String type){
         return switch(type){
-            case "RECEIPT"->reports.receiptSummary("REPORT-RECEIPT",null,null,null,null,null,Map.of(),1,50,null,null);
+            case "RECEIPT"->reports.receiptSummary("REPORT-RECEIPT",null,null,null,null,null,1,50);
             case "PAYMENT"->reports.paymentSummary("REPORT-PAYMENT",null,null,null,null,null,Map.of(),1,50,null,null);
             case "EXPENSE"->reports.expenseSummary("REPORT-EXPENSE",null,null,null,null,null,Map.of(),1,50,null,null);
             default->reports.incomeSummary("REPORT-INCOME",null,null,null,null,null,Map.of(),1,50,null,null);

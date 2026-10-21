@@ -49,7 +49,6 @@ public class FinancePaymentSaveRequest implements ServerDerivedAmounts {
     private String sourceRemark;
     private String remark;
 
-    @Valid
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<FinancePaymentLineInput> items;
+    private List<@Valid FinancePaymentLineInput> items;
 }

@@ -52,7 +52,7 @@ class PreplanPublicFutureReplenishmentEndToEndTest {
         LocalDate need=BusinessTime.today().plusDays(10),eta=BusinessTime.today().plusDays(late?20:5);
         AnalysisView a=preview(w,w.warehouseId(),productA,goods,"A","100",need);
         MaterialView am=material(a,goods);
-        var notifiedA=commands.notifySupply(a.analysisId(),new NotifyRequest(a.version(),a.fingerprint(),"public-source-"+a.analysisId(),
+        commands.notifySupply(a.analysisId(),new NotifyRequest(a.version(),a.fingerprint(),"public-source-"+a.analysisId(),
                 "BUY",List.of(am.materialLineId()),List.of(),List.of(new SupplyQuantityInput(null,am.materialLineId(),new BigDecimal("100"),BigDecimal.ZERO))));
         var source=db.queryForMap("SELECT action.id,allocation.external_item_id FROM preplan_supply_actions action JOIN preplan_supply_action_allocations allocation ON allocation.action_id=action.id WHERE action.analysis_id=? AND action.route='BUY'",a.analysisId());
         UUID sourceAction=(UUID)source.get("id"),requestItem=(UUID)source.get("external_item_id");
@@ -79,6 +79,7 @@ class PreplanPublicFutureReplenishmentEndToEndTest {
         }
         b=commands.claimSharedFuture(b.analysisId(),first);commands.claimSharedFuture(b.analysisId(),first);
         if(failAndCancel) {
+            java.util.Objects.requireNonNull(pending, "failed receipt cancellation requires a received inspection fixture");
             var inspections=(com.uten.imp.features.warehouse.inbound.ProcurementInspectionService)ReflectionTestUtils.getField(fixture,"inspectionService");
             inspections.dispose("PURCHASE",pending.receiptId(),pending.inspectionId(),new com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest(
                     "FAIL",null,"实检整批不合格，撤回尚未取得实物的公共认领","public-pending-fail-"+pending.inspectionId()));
@@ -149,7 +150,7 @@ class PreplanPublicFutureReplenishmentEndToEndTest {
             qty("900",db.queryForObject("SELECT SUM(fn_preplan_shared_action_pending_qty(id)) FROM preplan_supply_actions WHERE analysis_id=? AND operation_type='SHARED_FUTURE_CLAIM'",BigDecimal.class,receiver));
             qty("0",db.queryForObject("SELECT fn_preplan_shared_action_pending_qty(?)",BigDecimal.class,sourceAction));
         }
-        var own=commands.notifySupply(receiver,new NotifyRequest(b.version(),b.fingerprint(),"public-residual-buy-"+receiver,"BUY",
+        commands.notifySupply(receiver,new NotifyRequest(b.version(),b.fingerprint(),"public-residual-buy-"+receiver,"BUY",
                 List.of(bm.materialLineId()),List.of(),List.of(new SupplyQuantityInput(null,bm.materialLineId(),new BigDecimal("100"),BigDecimal.ZERO))));
         var ownSource=db.queryForMap("SELECT action.id,allocation.external_item_id,allocation.allocated_qty FROM preplan_supply_actions action JOIN preplan_supply_action_allocations allocation ON allocation.action_id=action.id WHERE action.analysis_id=? AND action.operation_type='SUPPLY'",receiver);
         qty("100",(BigDecimal)ownSource.get("allocated_qty"));

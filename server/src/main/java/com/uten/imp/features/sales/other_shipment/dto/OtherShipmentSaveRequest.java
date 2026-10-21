@@ -38,8 +38,7 @@ public class OtherShipmentSaveRequest {
     private String outType;
     private String remark;
 
-    @Valid
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<OtherShipmentItemLine> items;
+    private List<@Valid OtherShipmentItemLine> items;
 }

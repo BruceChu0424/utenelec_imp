@@ -32,7 +32,7 @@ class SystemPostingStyleUuidRolePostgresTest {
     @BeforeAll
     static void migrate() {
         POSTGRES.start();
-        Flyway.configure()
+        com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration")
                 .target("278")
@@ -199,7 +199,7 @@ class SystemPostingStyleUuidRolePostgresTest {
     }
 
     private static Flyway flyway(String url, String target) {
-        return Flyway.configure()
+        return com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(url, POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration")
                 .target(target)

@@ -3,7 +3,6 @@ package com.uten.imp.common.platformcolumns;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.uten.imp.features.ai.AiPlatformPostgresTestSupport;
 import org.junit.jupiter.api.Test;
-import org.flywaydb.core.Flyway;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -45,7 +44,7 @@ class PlatformColumnHistoryHttpPostgresTest extends AiPlatformPostgresTestSuppor
         // The inherited AI container may already be at the current head in a full
         // suite. A dedicated primary/Flyway datasource makes this legacy premise real.
         LEGACY_DATABASE.start();
-        Flyway.configure().dataSource(LEGACY_DATABASE.getJdbcUrl(),LEGACY_DATABASE.getUsername(),LEGACY_DATABASE.getPassword()).target("774").load().migrate();
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(LEGACY_DATABASE.getJdbcUrl(),LEGACY_DATABASE.getUsername(),LEGACY_DATABASE.getPassword()).target("774").load().migrate();
         var sql=new JdbcTemplate(new DriverManagerDataSource(LEGACY_DATABASE.getJdbcUrl(),LEGACY_DATABASE.getUsername(),LEGACY_DATABASE.getPassword()));
         assertThat(sql.queryForObject("SELECT max(version::integer) FROM flyway_schema_history WHERE success",Integer.class)).isEqualTo(774);
         UUID employee=UUID.randomUUID(),actor=UUID.randomUUID(),client=UUID.randomUUID(),unit=UUID.randomUUID(),goods=UUID.randomUUID();

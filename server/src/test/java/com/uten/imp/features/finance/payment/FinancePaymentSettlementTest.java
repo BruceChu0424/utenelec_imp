@@ -192,11 +192,10 @@ class FinancePaymentSettlementTest {
     }
 
     @Test
-    void draftIgnoresClientDerivedAmountsAndUsesThePayableBookRate() {
+    void draftDerivesLocalAmountsAndUsesThePayableBookRate() {
         ArApLedger payable = payable("100.0000", "700.0000", "7.000000");
 
-        FinancePaymentDetail detail = service.create(request(
-                payable, CURRENCY_ID, "7.200000", "30.0000", "9999.0000", "-8888.0000"));
+        FinancePaymentDetail detail = service.create(request(payable, CURRENCY_ID, "7.200000", "30.0000"));
 
         assertMoney(detail.getAmountOriginal(), "30.0000");
         assertMoney(detail.getAmountLocal(), "216.0000");
@@ -208,10 +207,24 @@ class FinancePaymentSettlementTest {
     }
 
     @Test
+    void clientDerivedLineAmountsAreRejectedAtTheJsonBoundary() {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper()
+                .disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                .registerModule(new com.uten.imp.common.finance.ServerDerivedAmountsModule());
+        for (var forged : Map.of("amountLocal", "9999.0000", "exchangeDiff", "-8888.0000").entrySet()) {
+            var body = mapper.createObjectNode().put("amountOriginal", "30.0000")
+                    .put(forged.getKey(), forged.getValue());
+            assertThatThrownBy(() -> mapper.treeToValue(body, FinancePaymentLineInput.class))
+                    .isInstanceOf(com.fasterxml.jackson.databind.exc.MismatchedInputException.class)
+                    .hasMessageContaining(forged.getKey());
+        }
+        verify(paymentRepo, never()).save(any());
+    }
+
+    @Test
     void createRejectsAMissingExchangeRateInsteadOfUsingTheEntityDefault() {
         ArApLedger payable = payable("100.0000", "700.0000", "7.000000");
-        FinancePaymentSaveRequest request = request(
-                payable, CURRENCY_ID, "7.200000", "30.0000", "216.0000", "6.0000");
+        FinancePaymentSaveRequest request = request(payable, CURRENCY_ID, "7.200000", "30.0000");
         request.setExchangeRate(null);
 
         assertThatThrownBy(() -> service.create(request))
@@ -224,8 +237,7 @@ class FinancePaymentSettlementTest {
     @Test
     void createRejectsAMissingIdempotencyKeyBeforeSaving() {
         ArApLedger payable = payable("100.0000", "700.0000", "7.000000");
-        FinancePaymentSaveRequest request = request(
-                payable, CURRENCY_ID, "7.200000", "30.0000", "216.0000", "6.0000");
+        FinancePaymentSaveRequest request = request(payable, CURRENCY_ID, "7.200000", "30.0000");
         request.setCreateIdempotencyKey(null);
 
         assertThatThrownBy(() -> service.create(request))
@@ -237,14 +249,12 @@ class FinancePaymentSettlementTest {
     @Test
     void createIdempotencyReplaysTheSameCanonicalRequest() {
         ArApLedger payable = payable("100.0000", "700.0000", "7.000000");
-        FinancePaymentSaveRequest firstRequest = request(
-                payable, CURRENCY_ID, "7.200000", "30.0000", "216.0000", "6.0000");
+        FinancePaymentSaveRequest firstRequest = request(payable, CURRENCY_ID, "7.200000", "30.0000");
         firstRequest.setCreateIdempotencyKey("payment-retry-001");
         FinancePaymentDetail first = service.create(firstRequest);
         when(createReplay.getResultList()).thenReturn(List.of(first.getId()));
 
-        FinancePaymentSaveRequest retry = request(
-                payable, CURRENCY_ID, "7.2", "30.0", "9999.0000", "-8888.0000");
+        FinancePaymentSaveRequest retry = request(payable, CURRENCY_ID, "7.2", "30.0");
         retry.setCreateIdempotencyKey("payment-retry-001");
         FinancePaymentDetail replay = service.create(retry);
 
@@ -256,13 +266,11 @@ class FinancePaymentSettlementTest {
     @Test
     void createIdempotencyRejectsDifferentEffectiveContent() {
         ArApLedger payable = payable("100.0000", "700.0000", "7.000000");
-        FinancePaymentSaveRequest firstRequest = request(
-                payable, CURRENCY_ID, "7.200000", "30.0000", "216.0000", "6.0000");
+        FinancePaymentSaveRequest firstRequest = request(payable, CURRENCY_ID, "7.200000", "30.0000");
         firstRequest.setCreateIdempotencyKey("payment-retry-002");
         FinancePaymentDetail first = service.create(firstRequest);
         when(createReplay.getResultList()).thenReturn(List.of(first.getId()));
-        FinancePaymentSaveRequest changed = request(
-                payable, CURRENCY_ID, "7.200000", "31.0000", "223.2000", "6.2000");
+        FinancePaymentSaveRequest changed = request(payable, CURRENCY_ID, "7.200000", "31.0000");
         changed.setCreateIdempotencyKey("payment-retry-002");
 
         assertThatThrownBy(() -> service.create(changed))
@@ -274,11 +282,9 @@ class FinancePaymentSettlementTest {
     @Test
     void draftUpdateRequiresTheCurrentOptimisticVersion() {
         ArApLedger payable = payable("100.0000", "700.0000", "7.000000");
-        FinancePaymentDetail draft = service.create(request(
-                payable, CURRENCY_ID, "7.200000", "30.0000", "216.0000", "6.0000"));
+        FinancePaymentDetail draft = service.create(request(payable, CURRENCY_ID, "7.200000", "30.0000"));
         payments.get(draft.getId()).setVersion(4L);
-        FinancePaymentSaveRequest stale = request(
-                payable, CURRENCY_ID, "7.200000", "30.0000", "216.0000", "6.0000");
+        FinancePaymentSaveRequest stale = request(payable, CURRENCY_ID, "7.200000", "30.0000");
         stale.setExpectedVersion(3L);
 
         assertThatThrownBy(() -> service.update(draft.getId(), stale))
@@ -319,8 +325,7 @@ class FinancePaymentSettlementTest {
         UUID otherCurrency = UUID.randomUUID();
         payable.setCurrencyId(otherCurrency);
 
-        assertThatThrownBy(() -> service.create(request(
-                payable, CURRENCY_ID, "7.200000", "30.0000", "216.0000", "6.0000")))
+        assertThatThrownBy(() -> service.create(request(payable, CURRENCY_ID, "7.200000", "30.0000")))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("跨币种核销");
 
@@ -330,8 +335,7 @@ class FinancePaymentSettlementTest {
     @Test
     void approvalRechecksTheLockedBalanceAndRejectsConcurrentOverpayment() {
         ArApLedger payable = payable("100.0000", "700.0000", "7.000000");
-        FinancePaymentDetail draft = service.create(request(
-                payable, CURRENCY_ID, "7.200000", "30.0000", "216.0000", "6.0000"));
+        FinancePaymentDetail draft = service.create(request(payable, CURRENCY_ID, "7.200000", "30.0000"));
         payable.setAmountReceivedOriginal(new BigDecimal("80.0000"));
         payable.setAmountReceivedLocal(new BigDecimal("576.0000"));
         payable.setAmountBalanceOriginal(new BigDecimal("20.0000"));
@@ -350,8 +354,7 @@ class FinancePaymentSettlementTest {
     @Test
     void partialPaymentUsesTheConfirmedRemainingBookPoolRatherThanRecalculatingItsHistoricalQuote() {
         ArApLedger payable = payable("100.0000", "700.0000", "7.000000");
-        FinancePaymentDetail draft = service.create(request(
-                payable, CURRENCY_ID, "7.200000", "30.0000", "216.0000", "6.0000"));
+        FinancePaymentDetail draft = service.create(request(payable, CURRENCY_ID, "7.200000", "30.0000"));
         payable.setAmountBalanceOriginal(new BigDecimal("50.0000"));
         payable.setAmountReceivedOriginal(new BigDecimal("50.0000"));
         payable.setAmountReceivedLocal(new BigDecimal("600.0000"));
@@ -369,8 +372,7 @@ class FinancePaymentSettlementTest {
     @Test
     void approvalAndReverseUseServerCashAndBookAmountsSymmetrically() {
         ArApLedger payable = payable("100.0000", "700.0000", "7.000000");
-        FinancePaymentDetail draft = service.create(request(
-                payable, CURRENCY_ID, "7.200000", "30.0000", "9999.0000", "-8888.0000"));
+        FinancePaymentDetail draft = service.create(request(payable, CURRENCY_ID, "7.200000", "30.0000"));
         when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
         postingCounts.add(0L);
 
@@ -408,7 +410,7 @@ class FinancePaymentSettlementTest {
         UUID base=UUID.randomUUID();
         when(accountLock.getResultList()).thenReturn(List.<Object[]>of(
                 new Object[] {base, "USD", "美元", true,ACCOUNT_STYLE_ID}));
-        var req=request(payable,CURRENCY_ID,"7.200000","30.0000","9999.0000","-8888.0000");
+        var req=request(payable, CURRENCY_ID, "7.200000", "30.0000");
         req.setAccountCurrencyId(base);req.setAccountAmount(new BigDecimal("216.0000"));
         FinancePaymentDetail draft=service.create(req);
         when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
@@ -423,8 +425,7 @@ class FinancePaymentSettlementTest {
     @Test
     void foreignCurrencyUuidCannotMasqueradeAsRmbByEditableLabels() {
         ArApLedger payable = payable("100.0000", "700.0000", "7.000000");
-        FinancePaymentDetail draft = service.create(request(
-                payable, CURRENCY_ID, "7.200000", "30.0000", "9999.0000", "-8888.0000"));
+        FinancePaymentDetail draft = service.create(request(payable, CURRENCY_ID, "7.200000", "30.0000"));
         when(accountLock.getResultList()).thenReturn(List.<Object[]>of(
                 new Object[] {CURRENCY_ID, "CNY", "人民币", false,ACCOUNT_STYLE_ID}));
         when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
@@ -440,8 +441,7 @@ class FinancePaymentSettlementTest {
     @ValueSource(strings = {"missing-local", "insufficient-original", "insufficient-local"})
     void reverseFailsClosedWhenTheAuthoritativePaymentBreakdownIsIncomplete(String corruption) {
         ArApLedger payable = payable("100.0000", "700.0000", "7.000000");
-        FinancePaymentDetail draft = service.create(request(
-                payable, CURRENCY_ID, "7.200000", "30.0000", "216.0000", "6.0000"));
+        FinancePaymentDetail draft = service.create(request(payable, CURRENCY_ID, "7.200000", "30.0000"));
         when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
         postingCounts.add(0L);
         service.approve(draft.getId());
@@ -467,8 +467,7 @@ class FinancePaymentSettlementTest {
     @Test
     void reverseRejectsAnApprovedClientEraPaymentWithoutAnAuthorityMarker() {
         ArApLedger payable = payable("100.0000", "700.0000", "7.000000");
-        FinancePaymentDetail draft = service.create(request(
-                payable, CURRENCY_ID, "7.200000", "30.0000", "216.0000", "6.0000"));
+        FinancePaymentDetail draft = service.create(request(payable, CURRENCY_ID, "7.200000", "30.0000"));
         when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
         postingCounts.add(0L);
         service.approve(draft.getId());
@@ -494,8 +493,7 @@ class FinancePaymentSettlementTest {
         payable.setAmountSettled(new BigDecimal("224.0000"));
         payable.setAmountBalance(new BigDecimal("476.0001"));
 
-        FinancePaymentDetail detail = service.create(request(
-                payable, CURRENCY_ID, "7.200000", "68.0000", "1.0000", "1.0000"));
+        FinancePaymentDetail detail = service.create(request(payable, CURRENCY_ID, "7.200000", "68.0000"));
 
         assertMoney(detail.getItems().getFirst().getAmountLocal(), "489.6000");
         assertMoney(detail.getItems().getFirst().getAppliedAmountLocal(), "476.0001");
@@ -531,7 +529,7 @@ class FinancePaymentSettlementTest {
         ledger.setSourceDocType("DIRECT_PAYMENT");ledger.setOpenItemKind("LEGACY_UNVERIFIED");
         ledger.setAmountReceivedOriginal(new BigDecimal("8"));ledger.setAmountReceivedLocal(new BigDecimal("8"));
         ledger.setAmountSettled(new BigDecimal("8"));ledger.setAmountBalanceOriginal(new BigDecimal("12"));ledger.setAmountBalance(new BigDecimal("12"));
-        FinancePaymentDetail draft=service.create(request(ledger,CURRENCY_ID,"1","3","9999","9999"));
+        FinancePaymentDetail draft=service.create(request(ledger, CURRENCY_ID, "1", "3"));
         when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);postingCounts.add(0L);service.approve(draft.getId());
         assertMoney(ledger.getAmountReceivedOriginal(),"11");assertMoney(ledger.getAmountBalanceOriginal(),"9");assertMoney(ledger.getAmountBalance(),"9");
     }
@@ -542,18 +540,12 @@ class FinancePaymentSettlementTest {
         ledger.setSourceDocType("DIRECT_PAYMENT");ledger.setOpenItemKind("PREPAYMENT");
         ledger.setAmountReceivedOriginal(new BigDecimal("8"));ledger.setAmountReceivedLocal(new BigDecimal("8"));
         ledger.setAmountSettled(new BigDecimal("8"));ledger.setAmountBalanceOriginal(new BigDecimal("-8"));ledger.setAmountBalance(new BigDecimal("-8"));
-        assertThatThrownBy(()->service.create(request(ledger,CURRENCY_ID,"1","3","9999","9999")))
+        assertThatThrownBy(()->service.create(request(ledger, CURRENCY_ID, "1", "3")))
                 .isInstanceOf(ApiException.class).hasMessageContaining("供应商预付款不能作为普通应付引用");
         verify(accountUpdate,never()).executeUpdate();
     }
 
-    private FinancePaymentSaveRequest request(
-            ArApLedger ledger,
-            UUID currencyId,
-            String paymentRate,
-            String amountOriginal,
-            String clientAmountLocal,
-            String clientExchangeDiff) {
+    private FinancePaymentSaveRequest request(ArApLedger ledger, UUID currencyId, String paymentRate, String amountOriginal) {
         FinancePaymentLineInput line = new FinancePaymentLineInput();
         line.setAppliedLedgerId(ledger.getId());
         line.setAppliedBillNo("CLIENT-CONTROLLED");
@@ -589,7 +581,7 @@ class FinancePaymentSettlementTest {
     void actualBankDebitAndExplicitFeeOverrideTheReferenceQuoteAndReverseTheirOriginalSnapshots() {
         ArApLedger payable=payable("100","700","7");UUID base=UUID.randomUUID();
         when(accountLock.getResultList()).thenReturn(List.<Object[]>of(new Object[]{base,"CNY","人民币",true,ACCOUNT_STYLE_ID}));
-        var req=request(payable,CURRENCY_ID,"7.2","50.1234","999","999");
+        var req=request(payable, CURRENCY_ID, "7.2", "50.1234");
         req.setAccountCurrencyId(base);req.setAccountAmount(new BigDecimal("327.8885"));req.setBankFeeAccountAmount(new BigDecimal("3"));
         var draft=service.create(req);
         assertMoney(draft.getAmountLocal(),"324.8885");assertMoney(draft.getAccountAmount(),"327.8885");assertMoney(draft.getBankFee(),"3");
@@ -609,7 +601,7 @@ class FinancePaymentSettlementTest {
     @Test
     void sameCurrencyRequiresExactBankReconciliationAndRetainsThirtyDigitCashFeeAndFxSnapshots() {
         ArApLedger payable=payable("1","7","7");
-        var req=request(payable,CURRENCY_ID,"7.000001","0.000000000000000000000001","0","0");
+        var req=request(payable, CURRENCY_ID, "7.000001", "0.000000000000000000000001");
         req.setAccountAmount(new BigDecimal("0.000000000000000000000002"));
         assertThatThrownBy(()->service.create(req)).isInstanceOf(ApiException.class).hasMessageContaining("同币种实际银行扣款");
         req.setCreateIdempotencyKey(UUID.randomUUID().toString());req.setBankFeeAccountAmount(new BigDecimal("0.000000000000000000000001"));
@@ -630,7 +622,7 @@ class FinancePaymentSettlementTest {
     @Test
     void approvedV1PaymentStillReversesItsStoredCashAndBookSnapshots() {
         ArApLedger payable=payable("100","700","7");
-        var draft=service.create(request(payable,CURRENCY_ID,"7.2","30","0","0"));
+        var draft=service.create(request(payable, CURRENCY_ID, "7.2", "30"));
         FinancePayment payment=payments.get(draft.getId());payment.setAmountAuthorityVersion((short)1);payment.setStatus((short)1);
         payable.setAmountReceivedOriginal(new BigDecimal("30"));payable.setAmountReceivedLocal(new BigDecimal("216"));
         payable.setAmountSettled(new BigDecimal("210"));payable.setAmountBalanceOriginal(new BigDecimal("70"));payable.setAmountBalance(new BigDecimal("490"));
@@ -643,9 +635,9 @@ class FinancePaymentSettlementTest {
     @Test
     void theSameBankInstantAndRepresentationalZerosReplayOneActualPayment() {
         ArApLedger payable=payable("100","700","7");
-        var first=request(payable,CURRENCY_ID,"7.2","30","0","0");
+        var first=request(payable, CURRENCY_ID, "7.2", "30");
         var created=service.create(first);when(createReplay.getResultList()).thenReturn(List.of(created.getId()));
-        var retry=request(payable,CURRENCY_ID,"7.200000","30.0000","0","0");
+        var retry=request(payable, CURRENCY_ID, "7.200000", "30.0000");
         retry.setCreateIdempotencyKey(first.getCreateIdempotencyKey());
         retry.setBankBookedAt(first.getBankBookedAt().withOffsetSameInstant(java.time.ZoneOffset.UTC));
         retry.setBankReference("  BANK-PAYMENT-TEST  ");
@@ -655,7 +647,7 @@ class FinancePaymentSettlementTest {
     @Test
     void aFrozenV417RequestHashReplaysItsApprovedV1WithoutInventingBankAuthority() {
         var source=new ArApLedger();source.setId(UUID.fromString("70000000-0000-0000-0000-000000000007"));
-        var request=request(source,CURRENCY_ID,"7.2","30","0","0");
+        var request=request(source, CURRENCY_ID, "7.2", "30");
         request.setAccountAmount(null);request.setAccountCurrencyId(null);request.setBankFeeAccountAmount(null);
         request.setBankReference(null);request.setBankBookedAt(null);
         var original=new FinancePayment();original.setMakerId(MAKER_ID);original.setBillNo("CF-V1-HISTORY");

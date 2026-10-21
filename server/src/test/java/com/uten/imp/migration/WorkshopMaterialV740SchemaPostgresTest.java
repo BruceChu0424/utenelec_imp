@@ -1,5 +1,7 @@
 package com.uten.imp.migration;
 
+import com.uten.imp.testsupport.BoundTestSql;
+
 import com.uten.imp.support.MigratedSchemaBaseline;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
@@ -111,8 +113,8 @@ class WorkshopMaterialV740SchemaPostgresTest {
         // 一号主仓定为 001、挂在二号主仓下的内料仓改挂到主仓下 (V800 只把普通仓改挂, 内料仓要人工处理)。
         try (Connection connection = template(); Statement statement = connection.createStatement()) {
             statement.execute("SET session_replication_role = replica");
-            statement.execute("UPDATE warehouses SET code='001' WHERE id='" + MAIN_A + "'");
-            statement.execute("UPDATE warehouses SET parent_id='" + MAIN_A + "' WHERE id='" + BIN_OTHER_MAIN + "'");
+            BoundTestSql.execute(statement, "UPDATE warehouses SET code='001' WHERE id=?", MAIN_A);
+            BoundTestSql.execute(statement, "UPDATE warehouses SET parent_id=? WHERE id=?", MAIN_A, BIN_OTHER_MAIN);
             statement.execute("SET session_replication_role = origin");
         }
         flyway(null).migrate();
@@ -1475,7 +1477,7 @@ class WorkshopMaterialV740SchemaPostgresTest {
     }
 
     private long count(String sql, Object... args) throws SQLException {
-        return Long.parseLong(str(sql, args));
+        return com.uten.imp.testsupport.FixtureNumbers.longInteger(str(sql, args));
     }
 
     private void assertNum(String sql, String expected, Object... args) throws SQLException {
@@ -1493,7 +1495,7 @@ class WorkshopMaterialV740SchemaPostgresTest {
     }
 
     private static Flyway flyway(String target) {
-        var configuration = Flyway.configure()
+        var configuration = com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(TEMPLATE.getJdbcUrl(), TEMPLATE.getUsername(), TEMPLATE.getPassword())
                 .locations("classpath:db/migration");
         return (target == null ? configuration : configuration.target(target)).load();

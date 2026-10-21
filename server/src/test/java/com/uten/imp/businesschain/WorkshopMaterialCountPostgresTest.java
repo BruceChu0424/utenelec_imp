@@ -447,8 +447,7 @@ class WorkshopMaterialCountPostgresTest {
         assertEquals(WorkshopMaterialStatePort.NO_BIN, state.state(UUID.randomUUID()));
         assertTrue(state.startBlockMessage(UUID.randomUUID()).isEmpty());
         new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status ->
-                reportGuard.lockAndCheck(null, BusinessTime.today(), List.of(UUID.randomUUID()),
-                        WorkshopMaterialReportGuardPort.Operation.APPROVE));
+                reportGuard.lockAndCheck(BusinessTime.today(), List.of(UUID.randomUUID()), WorkshopMaterialReportGuardPort.Operation.APPROVE));
         fixture.loginAs(shop.counterA());
         assertTrue(choices.pending(List.of(UUID.randomUUID())).isEmpty());
     }

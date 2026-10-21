@@ -273,6 +273,7 @@ public class GlReportService {
 
     @Transactional(readOnly = true)
     public ReportTableResponse profitMonthly(int year, int month) {
+        requireMonth(month);
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("item", "项目", 200),
                 ReportColumn.money("monthAmount", "本月金额"),
@@ -320,7 +321,17 @@ public class GlReportService {
     }
 
     private static BigDecimal at(BigDecimal[] months, int month) {
-        return months == null || months[month] == null ? BigDecimal.ZERO : months[month];
+        requireMonth(month);
+        if (months == null) return BigDecimal.ZERO;
+        if (month < 0 || month >= months.length) throw new IllegalStateException("总账月度取数缺少完整月份");
+        return months[month] == null ? BigDecimal.ZERO : months[month];
+    }
+
+    private static void requireMonth(int month) {
+        if (month < 1 || month > 12) {
+            throw new com.uten.imp.common.web.ApiException(
+                    com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED, "月份必须在 1 至 12 之间");
+        }
     }
 
     // ======================== ⑤⑥⑦ 附 12/13/14 费用明细（行=项目 × 列=月） ========================
@@ -480,8 +491,9 @@ public class GlReportService {
                 WHERE movement_type = 13 AND transaction_date >= :from AND transaction_date < :to
                 GROUP BY 1
                 """);
-        q.setParameter("from", LocalDate.of(year, 1, 1).atStartOfDay(java.time.ZoneOffset.UTC).toOffsetDateTime());
-        q.setParameter("to", LocalDate.of(year + 1, 1, 1).atStartOfDay(java.time.ZoneOffset.UTC).toOffsetDateTime());
+        LocalDate firstDay = LocalDate.of(year, 1, 1);
+        q.setParameter("from", firstDay.atStartOfDay(java.time.ZoneOffset.UTC).toOffsetDateTime());
+        q.setParameter("to", firstDay.plusYears(1).atStartOfDay(java.time.ZoneOffset.UTC).toOffsetDateTime());
         return monthArray(NativeQueryResults.objectArrayRows(q));
     }
 
@@ -510,6 +522,7 @@ public class GlReportService {
 
     @Transactional(readOnly = true)
     public ReportTableResponse operatingPl(int year, int month) {
+        requireMonth(month);
         LocalDate from = LocalDate.of(year, month, 1);
         LocalDate to = from.plusMonths(1).minusDays(1);
         String period = String.format("%04d-%02d", year, month);
@@ -596,8 +609,7 @@ public class GlReportService {
     private static BigDecimal lineAmount(GlReportLine line, GlReportLineSource.Bindings bindings,
                                          Map<String, BigDecimal[]> data, int month) {
         if (!bindings.bound(line.key())) return null;
-        BigDecimal[] months = data.get(line.key());
-        return months == null || months[month] == null ? BigDecimal.ZERO : months[month];
+        return at(data.get(line.key()), month);
     }
 
     private BigDecimal subcontractMonth(int year, int month) {

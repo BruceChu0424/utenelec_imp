@@ -5,6 +5,115 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/theme/uten_colors.dart';
 
 void main() {
+  for (final direction in TextDirection.values) {
+    for (final loading in [false, true]) {
+      testWidgets(
+        'normal-width long action keeps horizontal leading with intrinsic sizing loading=$loading $direction',
+        (tester) async {
+          tester.view.physicalSize = const Size(375, 480);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          var presses = 0;
+          const label = '确认更正 128 人 256 处员工证件信息并提交';
+          await tester.pumpWidget(
+            MaterialApp(
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: const TextScaler.linear(1.6)),
+                child: child!,
+              ),
+              home: Scaffold(
+                body: Center(
+                  child: Directionality(
+                    textDirection: direction,
+                    child: IntrinsicWidth(
+                      child: SizedBox(
+                        width: 287,
+                        child: IntrinsicHeight(
+                          child: UtenButton(
+                            size: UtenButtonSize.large,
+                            icon: Icons.fact_check_outlined,
+                            isLoading: loading,
+                            onPressed: () => presses++,
+                            child: const Text(label),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+          await tester.pump();
+          final text = tester.getRect(find.text(label));
+          final leading = tester.getRect(
+            loading
+                ? find.byType(CircularProgressIndicator)
+                : find.byIcon(Icons.fact_check_outlined),
+          );
+          expect(leading.center.dy, closeTo(text.center.dy, 0.01));
+          if (direction == TextDirection.ltr) {
+            expect(leading.right, lessThanOrEqualTo(text.left));
+          } else {
+            expect(text.right, lessThanOrEqualTo(leading.left));
+          }
+          expect(find.text(label).hitTestable(), findsOneWidget);
+          await tester.tap(find.text(label));
+          await tester.pump();
+          expect(presses, loading ? 0 : 1);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
+  for (final brightness in Brightness.values) {
+    for (final loading in [false, true]) {
+      testWidgets(
+        '72px action keeps its label and interaction loading=$loading $brightness',
+        (tester) async {
+          var presses = 0;
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: ThemeData(brightness: brightness),
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: const TextScaler.linear(2)),
+                child: child!,
+              ),
+              home: Scaffold(
+                body: Center(
+                  child: SizedBox(
+                    width: 72,
+                    child: UtenButton(
+                      size: UtenButtonSize.large,
+                      isExpanded: true,
+                      isLoading: loading,
+                      icon: Icons.check_circle_outline_rounded,
+                      onPressed: () => presses++,
+                      child: const Text('标记完成'),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+          await tester.pump();
+          expect(tester.takeException(), isNull);
+          expect(find.text('标记完成').hitTestable(), findsOneWidget);
+          await tester.tap(find.text('标记完成'));
+          await tester.pump();
+          expect(presses, loading ? 0 : 1);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
   testWidgets('is keyboard operable and exposes enabled button semantics', (
     tester,
   ) async {

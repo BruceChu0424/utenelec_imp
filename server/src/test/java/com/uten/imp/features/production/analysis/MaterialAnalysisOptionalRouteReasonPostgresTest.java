@@ -6,7 +6,6 @@ import com.uten.imp.security.OwnerVisibility;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
-import org.flywaydb.core.Flyway;
 import org.hibernate.SessionFactory;
 import org.hibernate.cfg.Configuration;
 import org.junit.jupiter.api.AfterAll;
@@ -87,7 +86,7 @@ class MaterialAnalysisOptionalRouteReasonPostgresTest {
         assertThat(confirmation(historical.materialId())).isEqualTo(historicalConfirmation);
         // Later independently developed migrations may add product-route fields
         // read by the current service. V477 preservation is verified first.
-        Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").load().migrate();
         factory = new Configuration()
                 .setProperty("hibernate.connection.driver_class", "org.postgresql.Driver")
@@ -113,7 +112,7 @@ class MaterialAnalysisOptionalRouteReasonPostgresTest {
     }
 
     private static void migrate(String target) {
-        Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").target(target).load().migrate();
     }
 

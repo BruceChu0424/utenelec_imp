@@ -81,7 +81,7 @@ class WorkshopArrivalWatermarkPostgresTest {
         // No intermediate receipt was necessary to reset 100. A new batch of 50 is actionable.
         jdbc.update("UPDATE capacity_fixture SET remaining=50 WHERE segment_id=?", continuous);
         assertThat(service.arrivalProgressWarrantsNotice(
-                java.util.Map.of("arrival_notice_capacity", mark(continuous)), "IN_PROGRESS", "CONTINUOUS", new BigDecimal("50"))).isTrue();
+                java.util.Map.of("arrival_notice_capacity", mark(continuous)), "CONTINUOUS", new BigDecimal("50"))).isTrue();
         tx.executeWithoutResult(status -> service.lowerWorkshopArrivalCapacityAfterIssue(draw));
         assertThat(mark(continuous)).isZero(); // issue replay cannot consume a new receipt's notification
 

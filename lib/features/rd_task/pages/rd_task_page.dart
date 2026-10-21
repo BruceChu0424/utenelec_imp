@@ -936,20 +936,13 @@ class _ResolveBar extends StatelessWidget {
               child: Text(resolving ? '处理中…' : actionLabel),
             );
             if (compact) {
-              return ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.sizeOf(context).height * 0.35,
-                ),
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      summary,
-                      const SizedBox(height: UtenSpacing.s8),
-                      action,
-                    ],
-                  ),
-                ),
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  summary,
+                  const SizedBox(height: UtenSpacing.s8),
+                  action,
+                ],
               );
             }
             return Row(

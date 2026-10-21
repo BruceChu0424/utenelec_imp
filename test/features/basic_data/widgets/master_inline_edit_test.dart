@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_edit_dialog.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -11,6 +12,7 @@ import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/sensitive_read_boundary_provider.dart';
+import 'package:uten_imp/shared/drafts/form_draft_navigation.dart';
 
 typedef _Row = ({String id, String name, int? days});
 final _name = MasterInlineField<_Row>(
@@ -25,6 +27,119 @@ final _days = MasterInlineField<_Row>(
 );
 
 void main() {
+  testWidgets(
+    'imperative editor route keeps local dirty confirmation without parent registration',
+    (tester) async {
+      final controller = MasterInlineEditController<_Row>()..begin();
+      addTearDown(controller.dispose);
+      controller.setValue('1', _name, 'After', originalValue: 'Before');
+      final navigatorKey = GlobalKey<NavigatorState>();
+      final router = GoRouter(
+        navigatorKey: navigatorKey,
+        initialLocation: '/home',
+        routes: [
+          DraftAwareGoRoute(
+            path: '/home',
+            builder: (context, _) => Scaffold(
+              body: TextButton(
+                onPressed: () => Navigator.of(context).push<void>(
+                  MaterialPageRoute(
+                    builder: (_) => MasterInlineEditGuard<_Row>(
+                      controller: controller,
+                      authorityKey: 'editor',
+                      child: const Scaffold(body: Text('Imperative editor')),
+                    ),
+                  ),
+                ),
+                child: const Text('Open editor'),
+              ),
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: '/next',
+            builder: (_, _) => const Scaffold(body: Text('Next page')),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Open editor'));
+      await tester.pumpAndSettle(
+        const Duration(milliseconds: 100),
+        EnginePhase.sendSemanticsUpdate,
+        const Duration(seconds: 15),
+      );
+      expect(find.text('Imperative editor'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      // A MaterialPageRoute owns its own leave decision; it must neither
+      // inherit the underlying GoRouter page identity nor bypass dirty edits.
+      unawaited(navigatorKey.currentState!.maybePop());
+      await tester.pumpAndSettle();
+      expect(find.text('Discard unsaved changes?'), findsOneWidget);
+      await tester.tap(find.text('Keep editing'));
+      await tester.pumpAndSettle();
+      expect(controller.dirty, isTrue);
+      expect(find.text('Imperative editor'), findsOneWidget);
+
+      unawaited(navigatorKey.currentState!.maybePop());
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Discard changes'));
+      await tester.pumpAndSettle();
+      expect(controller.dirty, isFalse);
+      expect(controller.active, isFalse);
+      expect(find.text('Open editor'), findsOneWidget);
+      router.go('/next');
+      await tester.pumpAndSettle();
+      expect(find.text('Next page'), findsOneWidget);
+      expect(find.byType(UtenAlertDialog), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('declarative editor keeps its route exit confirmation', (
+    tester,
+  ) async {
+    final controller = MasterInlineEditController<_Row>()..begin();
+    addTearDown(controller.dispose);
+    controller.setValue('1', _name, 'After', originalValue: 'Before');
+    final router = GoRouter(
+      initialLocation: '/editor',
+      routes: [
+        DraftAwareGoRoute(
+          path: '/editor',
+          builder: (_, _) => MasterInlineEditGuard<_Row>(
+            controller: controller,
+            authorityKey: 'editor',
+            child: const Scaffold(body: Text('Declarative editor')),
+          ),
+        ),
+        DraftAwareGoRoute(
+          path: '/next',
+          builder: (_, _) => const Scaffold(body: Text('Next page')),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+    router.go('/next');
+    await tester.pumpAndSettle();
+    expect(find.text('Discard unsaved changes?'), findsOneWidget);
+    await tester.tap(find.text('Keep editing'));
+    await tester.pumpAndSettle();
+    expect(find.text('Declarative editor'), findsOneWidget);
+    expect(controller.dirty, isTrue);
+    router.go('/next');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Discard changes'));
+    await tester.pumpAndSettle();
+    expect(find.text('Next page'), findsOneWidget);
+    expect(controller.dirty, isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'inline rich geometry and scope changes resize real table columns',
     (tester) async {

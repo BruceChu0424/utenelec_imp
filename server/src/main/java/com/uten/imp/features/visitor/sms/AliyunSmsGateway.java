@@ -61,7 +61,7 @@ public class AliyunSmsGateway implements SmsGateway {
                 log.warn("Aliyun SMS response uncertain: phoneSuffix={}", ChinaMobileNumber.maskedSuffix(phone));
                 return SmsSendResult.UNCERTAIN;
             }
-            if (body != null && "OK".equals(body.getCode())) {
+            if ("OK".equals(body.getCode())) {
                 log.info(
                         "Aliyun SMS accepted: phoneSuffix={}, requestId={}, bizId={}",
                         ChinaMobileNumber.maskedSuffix(phone),
@@ -72,8 +72,8 @@ public class AliyunSmsGateway implements SmsGateway {
             log.warn(
                     "Aliyun SMS rejected: phoneSuffix={}, resultCode={}, requestId={}",
                     ChinaMobileNumber.maskedSuffix(phone),
-                    body == null ? "EMPTY_RESPONSE" : body.getCode(),
-                    body == null ? null : body.getRequestId());
+                    body.getCode(),
+                    body.getRequestId());
         } catch (JsonProcessingException e) {
             // code 是纯数字，正常不会到这里；仍按 fail-closed 处理且不记录模板参数。
             log.error("Aliyun SMS template serialization failed: type={}", e.getClass().getSimpleName());

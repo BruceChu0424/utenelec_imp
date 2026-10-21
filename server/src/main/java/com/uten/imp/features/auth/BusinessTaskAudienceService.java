@@ -11,7 +11,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.HashSet;
 import java.util.Set;
-import java.util.function.Supplier;
 
 /**
  * A bounded read scope; the request's original security context is always restored.
@@ -31,13 +30,13 @@ public class BusinessTaskAudienceService implements TaskAudiencePort {
     }
 
     @Override
-    public <T> T read(Supplier<T> work) {
-        if (Boolean.TRUE.equals(browsing.get()) || Boolean.TRUE.equals(reading.get())) return work.get();
+    public <T> T read(ReadQuery<T> work) {
+        if (Boolean.TRUE.equals(browsing.get()) || Boolean.TRUE.equals(reading.get())) return work.read();
         SecurityContext original = SecurityContextHolder.getContext();
         Authentication authentication = original.getAuthentication();
         if (authentication == null || !authentication.isAuthenticated()
                 || !(authentication.getPrincipal() instanceof AuthUser actor) || actor.isVisitor()) {
-            return work.get();
+            return work.read();
         }
         Set<String> granted = new HashSet<>(permissions.grantedPermsOf(actor.getId()));
         // A task read cannot resurrect authority absent from this authenticated session.
@@ -55,7 +54,7 @@ public class BusinessTaskAudienceService implements TaskAudiencePort {
         reading.set(true);
         SecurityContextHolder.setContext(context);
         try (var ignored = BusinessTaskContext.open()) {
-            return work.get();
+            return work.read();
         } finally {
             SecurityContextHolder.setContext(original);
             reading.remove();
@@ -63,11 +62,11 @@ public class BusinessTaskAudienceService implements TaskAudiencePort {
     }
 
     @Override
-    public <T> T browsingRead(Supplier<T> work) {
-        if (Boolean.TRUE.equals(browsing.get())) return work.get();
+    public <T> T browsingRead(ReadQuery<T> work) {
+        if (Boolean.TRUE.equals(browsing.get())) return work.read();
         browsing.set(true);
         try {
-            return work.get();
+            return work.read();
         } finally {
             browsing.remove();
         }

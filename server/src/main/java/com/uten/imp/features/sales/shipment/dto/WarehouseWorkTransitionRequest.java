@@ -28,9 +28,8 @@ public class WarehouseWorkTransitionRequest {
      * 或第一行的发出仓落定。V631 起发出仓按行选，这里只是缺省值。
      */
     private UUID warehouseId;
-    @Valid
     @Size(max = 500)
-    private List<StockPlace> stockPlaces;
+    private List<@Valid StockPlace> stockPlaces;
 
     /**
      * 逐行出库证据：实际库位 + 实际发出仓(V631) + 出库实称净重(ADR-135)。warehouseId 为空时依次取

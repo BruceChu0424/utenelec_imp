@@ -158,6 +158,9 @@ class ProcurementOrderSourceRequirementTest {
                     .normalizeAndValidate(any(), any(), any(), org.mockito.ArgumentMatchers.anyInt()))
                     .thenReturn(new PurchaseLineUnitPolicy.ResolvedUnit(line.getUnitId(), BigDecimal.ONE));
         }
+        java.util.Objects.requireNonNull(em, "PurchaseOrderService must retain its EntityManager dependency");
+        java.util.Objects.requireNonNull(items, "PurchaseOrderService must retain its item repository dependency");
+        java.util.Objects.requireNonNull(integrity, "PurchaseOrderService must retain its linked integrity dependency");
         when(em.find(com.uten.imp.features.purchase.order.PurchaseOrder.class, order.getId(), jakarta.persistence.LockModeType.PESSIMISTIC_WRITE))
                 .thenReturn(order);
         when(items.findByOrderIdOrderByLineNoAsc(order.getId())).thenReturn(List.of(line));

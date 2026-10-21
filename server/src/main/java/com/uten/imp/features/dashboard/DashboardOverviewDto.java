@@ -15,9 +15,13 @@ public record DashboardOverviewDto(
         List<MetricCard> metrics,
         List<TodoCard> todos) {
 
-    public DashboardOverviewDto {
-        metrics = metrics == null ? null : List.copyOf(metrics);
-        todos = todos == null ? null : List.copyOf(todos);
+    public DashboardOverviewDto(String departmentCode, String departmentName, Instant generatedAt,
+                                List<MetricCard> metrics, List<TodoCard> todos) {
+        this.departmentCode = departmentCode;
+        this.departmentName = departmentName;
+        this.generatedAt = generatedAt;
+        this.metrics = metrics == null ? null : List.copyOf(metrics);
+        this.todos = todos == null ? null : List.copyOf(todos);
     }
 
     public record MetricCard(

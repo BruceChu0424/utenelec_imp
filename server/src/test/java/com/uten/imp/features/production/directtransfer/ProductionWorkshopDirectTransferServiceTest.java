@@ -131,10 +131,8 @@ class ProductionWorkshopDirectTransferServiceTest {
         assertThat(heads).extracting(row -> row.get("warehouseId")).containsExactly(bin);
         assertThat(lines).extracting(row -> row.get("qty"))
                 .containsExactly(new BigDecimal("2"), new BigDecimal("3"));
-        verify(readiness).topUpDirectSupply(eq(firstReceiver), eq(firstDemand), eq(bin),
-                argThat(value -> value.compareTo(BigDecimal.TEN) == 0), anyString());
-        verify(readiness).topUpDirectSupply(eq(secondReceiver), eq(secondDemand), eq(bin),
-                argThat(value -> value.compareTo(new BigDecimal("12")) == 0), anyString());
+        verify(readiness).topUpDirectSupply(eq(firstReceiver), eq(firstDemand), eq(bin), argThat(value -> value.compareTo(BigDecimal.TEN) == 0));
+        verify(readiness).topUpDirectSupply(eq(secondReceiver), eq(secondDemand), eq(bin), argThat(value -> value.compareTo(new BigDecimal("12")) == 0));
         verify(locations, times(1)).ensureOpenedBinOf(eq(workshop), any(), any());
         verify(notices).notifyWorkshopMaterialArrival(eq(firstReceiver), eq("DT-" + first.getId()), contains("子件 10"),
                 eq("DIRECT_REPORT"), eq(List.of(report.getId())));
@@ -182,7 +180,7 @@ class ProductionWorkshopDirectTransferServiceTest {
         when(inspections.passWorkshopSelfInspection(any(), any())).thenReturn(UUID.randomUUID());
         var readiness = mock(ProductionExecutionReadinessService.class);
         doAnswer(call -> events.add("handover:" + receivers.indexOf(call.<UUID>getArgument(0))))
-                .when(readiness).topUpDirectSupply(any(), any(), any(), any(), anyString());
+                .when(readiness).topUpDirectSupply(any(), any(), any(), any());
         when(readiness.promoteAfterWorkshopDirectTransfer(any(),any())).thenAnswer(call->{
             events.add("handover:"+receivers.indexOf(call.<UUID>getArgument(0)));return lineSideIssueChecked;
         });

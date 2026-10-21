@@ -129,11 +129,12 @@ public class FulfillmentMutationLocks {
         try {
             lockPrefix(state, plan, discovery);
         } catch (RuntimeException failure) {
-            if (failure instanceof FulfillmentSourceConflictException || !lockTimedOut(failure)) throw failure;
+            SQLException timeout = lockTimeout(failure);
+            if (failure instanceof FulfillmentSourceConflictException || timeout == null) { throw failure; }
             // 预锁阶段排在别人后面超过 lock_timeout: 本命令还没写任何东西, 与主仓锁等不到同样处理——
             // 可重跑 409, 由最外层事务边界在重跑预算内再排一次队。
-            throw new FulfillmentSourceConflictException("预锁等锁超过 lock_timeout: " + plan.fingerprint(), true,
-                    SOURCE_BUSY_MESSAGE);
+            throw FulfillmentSourceConflictException.lockBusy("预锁等锁超过 lock_timeout: " + plan.fingerprint(),
+                    SOURCE_BUSY_MESSAGE, failure);
         }
         return new Guard(state, true);
     }
@@ -180,12 +181,12 @@ public class FulfillmentMutationLocks {
     }
 
     /** 沿异常链找 PostgreSQL 等锁超时(lock_timeout)。 */
-    private static boolean lockTimedOut(Throwable failure) {
+    private static SQLException lockTimeout(Throwable failure) {
         int depth = 0;
         for (Throwable cause = failure; cause != null && depth < 16; cause = cause.getCause(), depth++) {
-            if (cause instanceof SQLException sql && LOCK_NOT_AVAILABLE.equals(sql.getSQLState())) return true;
+            if (cause instanceof SQLException sql && LOCK_NOT_AVAILABLE.equals(sql.getSQLState())) return sql;
         }
-        return false;
+        return null;
     }
 
     /**
@@ -317,19 +318,19 @@ public class FulfillmentMutationLocks {
         String sql = "SELECT pg_advisory_xact_lock(hashtextextended(?,0))";
         for (UUID warehouse : sorted(mainWarehouses)) {
             String key = "MATERIAL-ANALYSIS-WAREHOUSE:" + warehouse;
-            boolean acquired = em.unwrap(Session.class).doReturningWork(connection -> {
+            SQLException unavailable = em.unwrap(Session.class).doReturningWork(connection -> {
                 try (var statement = connection.prepareStatement(sql)) {
                     statement.setString(1, key);
                     statement.executeQuery().close();
-                    return true;
+                    return null;
                 } catch (SQLException failure) {
-                    if (LOCK_NOT_AVAILABLE.equals(failure.getSQLState())) return false;
+                    if (LOCK_NOT_AVAILABLE.equals(failure.getSQLState())) return failure;
                     throw failure;
                 }
             });
-            if (!acquired) {
-                throw new FulfillmentSourceConflictException(
-                        "主仓协调锁等待超过 lock_timeout: " + warehouse, true, WAREHOUSE_BUSY_MESSAGE);
+            if (unavailable != null) {
+                throw FulfillmentSourceConflictException.lockBusy(
+                        "主仓协调锁等待超过 lock_timeout: " + warehouse, WAREHOUSE_BUSY_MESSAGE, unavailable);
             }
         }
     }
@@ -341,7 +342,8 @@ public class FulfillmentMutationLocks {
         // 用同一请求自动重跑(重新预读 + 重新按序拿锁), 客户端不必手工重试。
         FulfillmentMutationLockPlan current = FulfillmentDiscoveryRound.discover(state.prefixDiscovery);
         if (!state.prefixPlan.equals(current)) {
-            throw FulfillmentLockState.retryableConflict("来源集合在预读后变化，请刷新并重新提交；本次未补拿新锁");
+            throw FulfillmentLockState.preWriteSourceChanged("来源集合在预读后变化，请刷新并重新提交；本次未补拿新锁"
+                    + " (expected=" + state.prefixPlan.fingerprint() + ", observed=" + current.fingerprint() + ")");
         }
         state.prefixVerified = true;
         state.prefixRechecked = true;

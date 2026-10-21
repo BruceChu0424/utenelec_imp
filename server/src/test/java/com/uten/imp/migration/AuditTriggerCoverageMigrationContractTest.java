@@ -962,7 +962,7 @@ class AuditTriggerCoverageMigrationContractTest {
             for (Path path : files.filter(Files::isRegularFile).toList()) {
                 Matcher matcher = MIGRATION_FILE.matcher(path.getFileName().toString());
                 if (matcher.matches()) {
-                    result.add(new MigrationSource(Integer.parseInt(matcher.group(1)), path,
+                    result.add(new MigrationSource(com.uten.imp.testsupport.FixtureNumbers.integer(matcher.group(1)), path,
                             Files.readString(path, StandardCharsets.UTF_8)));
                 }
             }

@@ -1,6 +1,5 @@
 package com.uten.imp.businesschain;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -102,7 +101,7 @@ class WorkshopMaterialCustodyPostgresTest {
     }
 
     private static void migrate(PostgreSQLContainer pg,String target) {
-        Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()).locations("classpath:db/migration").target(target).load().migrate();
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()).locations("classpath:db/migration").target(target).load().migrate();
     }
     private static void actor(JdbcTemplate db,UUID actor){db.queryForObject("SELECT set_config('app.actor_id',?,true)",String.class,actor.toString());}
     private static UUID id(JdbcTemplate db,String sql,Object... args){return db.queryForObject(sql,UUID.class,args);}

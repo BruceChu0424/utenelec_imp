@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationVersion;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -147,7 +146,7 @@ class ProcurementIqcRejectionFinanceClosurePostgresTest {
     }
 
     private static void migrate(String database, String target) {
-        Flyway.configure()
+        com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(
                         jdbcUrl(database),
                         POSTGRES.getUsername(),

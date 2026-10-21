@@ -257,7 +257,7 @@ class WarehouseWorkshopUuidPostgresTest {
     }
 
     private static Flyway flyway(String target) {
-        return Flyway.configure()
+        return com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration")
                 .target(target)

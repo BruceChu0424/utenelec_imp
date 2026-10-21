@@ -1,6 +1,5 @@
 package com.uten.imp.features.stock.valuation;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -15,7 +14,7 @@ class InventoryValueAuthorityMigrationPostgresTest {
     @Test void exactValueExtensionPreservesOldRowsAndKeepsLegacyAmountsUnverified()throws Exception{
         try(var pg=new PostgreSQLContainer("postgres:16-alpine")){
             pg.start();var ds=new DriverManagerDataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword());
-            Flyway.configure().dataSource(ds).locations("classpath:db/migration").target("516").load().migrate();var db=new JdbcTemplate(ds);
+            com.uten.imp.testsupport.TestFlyway.configure().dataSource(ds).locations("classpath:db/migration").target("516").load().migrate();var db=new JdbcTemplate(ds);
             db.update("INSERT INTO units(id,code,name) VALUES ('00500509-0000-0000-0000-000000000001','VALUE-UNIT','value unit')");
             db.update("INSERT INTO goods(id,code,name,unit_id,code_sequence) VALUES ('00500509-0000-0000-0000-000000000002','VALUE-GOODS','value goods','00500509-0000-0000-0000-000000000001',(SELECT coalesce(max(code_sequence),0)+1 FROM goods))");
             db.update("INSERT INTO warehouses(id,code,name) VALUES ('00500509-0000-0000-0000-000000000003','VALUE-WAREHOUSE','value warehouse')");
@@ -23,7 +22,7 @@ class InventoryValueAuthorityMigrationPostgresTest {
             db.update("INSERT INTO stock_value_pools(id,warehouse_id,goods_id,state,legacy_qty,legacy_amount_local) VALUES ('00500509-0000-0000-0000-000000000005','00500509-0000-0000-0000-000000000003','00500509-0000-0000-0000-000000000002','LEGACY_UNVERIFIED',7,999)");
             List<String> tables=db.queryForList("SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename<>'flyway_schema_history' ORDER BY tablename",String.class);
             var before=digest(db,tables);
-            var migration=Flyway.configure().dataSource(ds).locations("classpath:db/migration")
+            var migration=com.uten.imp.testsupport.TestFlyway.configure().dataSource(ds).locations("classpath:db/migration")
                     .target("517").load().migrate();
             assertThat(migration.migrationsExecuted).isEqualTo(1);
             assertThat(digest(db,tables)).isEqualTo(before);

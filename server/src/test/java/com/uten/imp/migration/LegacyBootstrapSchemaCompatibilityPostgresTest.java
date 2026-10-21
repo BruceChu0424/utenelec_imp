@@ -65,7 +65,7 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
 
     @BeforeEach
     void resetDatabase() {
-        Flyway flyway = Flyway.configure()
+        Flyway flyway = com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration")
                 .cleanDisabled(false)
@@ -494,7 +494,7 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
             rows.next();
             assertEquals(CURRENT_MIGRATION_COUNT, rows.getInt(1));
             assertEquals(CURRENT_MIGRATION_COUNT, rows.getInt(2));
-            assertEquals(Integer.parseInt(CURRENT_HEAD_VERSION), rows.getInt(3));
+            assertEquals(com.uten.imp.testsupport.FixtureNumbers.integer(CURRENT_HEAD_VERSION), rows.getInt(3));
         }
     }
 }

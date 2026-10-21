@@ -110,7 +110,7 @@ public class AggregateMissingDeepAliasRepair {
                     if(path.size()==1)continue;
                     Material parent=nodesByItem.getOrDefault(source.item,Map.of()).get(source.parent);
                     BigDecimal parentQuota=parent==null?BigDecimal.ZERO:proven.getOrDefault(parent.id,BigDecimal.ZERO);
-                    if(parentQuota.signum()<=0)continue;
+                    if(parent==null||parentQuota.signum()<=0)continue;
                     BigDecimal parentOutgoing=outgoing.getOrDefault(parent.id,BigDecimal.ZERO).max(parentQuota);
                     BigDecimal retained=parent.required.max(parent.sourceCapacity.subtract(parentOutgoing).max(BigDecimal.ZERO));
                     BigDecimal childRetained=required(retained,source);

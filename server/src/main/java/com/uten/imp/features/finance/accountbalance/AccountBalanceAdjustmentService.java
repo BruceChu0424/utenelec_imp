@@ -99,13 +99,12 @@ public class AccountBalanceAdjustmentService {
 
         List<AccountSnapshot> accounts = lockAccounts(requestedIds);
         // 过账统一经账本(ADR-112): 同一批账户按主键顺序交给账本锁定, 余额与流水只在账本里写。
-        var ledgerAccounts = accounts.size() == requestedIds.size()
-                ? accountFlowLedger.lockActive(requestedIds, "校准账户") : null;
         if (accounts.size() != requestedIds.size()) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
                     "部分账户不存在、已删除或已停用，请刷新账户列表后重新核对");
         }
+        var ledgerAccounts = accountFlowLedger.lockActive(requestedIds, "校准账户");
         if (SCOPE_FULL.equals(normalized.scope())
                 && !activeBefore.equals(activeAccountIds())) {
             throw new ApiException(

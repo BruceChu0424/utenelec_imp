@@ -79,10 +79,13 @@ class WorkshopDirectTransferBatchEndToEndTest {
         var prepared=ControlledDailyReportInputs.prepare(beans,db,3,"direct-rollback-"+UUID.randomUUID());
         UUID secondItem=db.queryForObject("SELECT id FROM production_daily_report_items WHERE report_id=? ORDER BY line_no,id OFFSET 1 LIMIT 1",UUID.class,prepared.reportId());
         String probe="test_direct_failure_"+UUID.randomUUID().toString().replace("-","");
-        db.execute("CREATE FUNCTION "+probe+"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.source_report_item_id='"
-                +secondItem+"'::uuid THEN RAISE EXCEPTION 'synthetic second transfer failure' USING ERRCODE='23514'; END IF; RETURN NEW; END $$");
+        db.execute(db.queryForObject("""
+                SELECT format($ddl$CREATE FUNCTION %I() RETURNS trigger LANGUAGE plpgsql AS $body$
+                BEGIN IF NEW.source_report_item_id=%L::uuid THEN RAISE EXCEPTION 'synthetic second transfer failure'
+                USING ERRCODE='23514'; END IF; RETURN NEW; END $body$ $ddl$, CAST(? AS text), CAST(? AS uuid))
+                """, String.class, probe, secondItem));
         try {
-            db.execute("CREATE TRIGGER "+probe+" BEFORE INSERT ON production_workshop_direct_transfer_items FOR EACH ROW EXECUTE FUNCTION "+probe+"()");
+            db.execute(db.queryForObject("SELECT format('CREATE TRIGGER %I BEFORE INSERT ON production_workshop_direct_transfer_items FOR EACH ROW EXECUTE FUNCTION %I()', CAST(? AS text), CAST(? AS text))", String.class, probe, probe));
             assertThrows(RuntimeException.class,prepared.command()::get);
             assertEquals(0,db.queryForObject("SELECT status FROM production_daily_reports WHERE id=?",Integer.class,prepared.reportId()));
             assertEquals(0,db.queryForObject("SELECT count(*) FROM production_daily_report_commands WHERE report_id=? AND command_kind='APPROVE'",Integer.class,prepared.reportId()));
@@ -93,8 +96,8 @@ class WorkshopDirectTransferBatchEndToEndTest {
                     JOIN production_daily_report_items item ON item.id=transfer.source_report_item_id WHERE item.report_id=?
                     """,Integer.class,prepared.reportId()));
         } finally {
-            db.execute("DROP TRIGGER IF EXISTS "+probe+" ON production_workshop_direct_transfer_items");
-            db.execute("DROP FUNCTION "+probe+"()");
+            db.execute(db.queryForObject("SELECT format('DROP TRIGGER IF EXISTS %I ON production_workshop_direct_transfer_items', CAST(? AS text))", String.class, probe));
+            db.execute(db.queryForObject("SELECT format('DROP FUNCTION %I()', CAST(? AS text))", String.class, probe));
         }
         prepared.command().get();prepared.verify().run();
     }
@@ -237,7 +240,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
         List<UUID> parents = helper.issue(c, c.common(), "1");
         UUID source = helper.segment(shared.planId());
         flow.receive(c, c.material(), "6");
-        helper.start(c, source);
+        helper.start(source);
         UUID worker = helper.worker(c);
         fixture.loginAs(worker);
         var candidates = helper.direct().candidates(source, c.child(), null).candidates();
@@ -445,7 +448,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
                 "fn_check_subcontract_preparation_finished_source"));
 
         // 生产关联领料单：换仓照样拒；明细改数量照样拒；只动时间戳一次都不查。
-        rejected("UPDATE stock_documents SET warehouse_id=? WHERE id=?", new Object[]{c.leaf(), draw},
+        rejectedBound("UPDATE stock_documents SET warehouse_id=? WHERE id=?", new Object[]{c.leaf(), draw},
                 "production-linked stock document identity is immutable");
         rejected("UPDATE stock_document_items SET qty=qty+1 WHERE id=?", drawItem,
                 "production-linked stock document item is immutable");
@@ -564,7 +567,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
     }
 
     private void rejected(String sql, Object argument, String expected) {
-        rejected(sql, new Object[]{argument}, expected);
+        rejectedBound(sql, new Object[]{argument}, expected);
     }
 
     /**
@@ -572,7 +575,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
      * expected 是期望的报错原文片段或数据库约束名，二者命中其一——只看 SQLState 不够，普通 CHECK 约束也报 23514，
      * 证明不了拒绝来自被收窄的那条校验。
      */
-    private void rejected(String sql, Object[] arguments, String expected) {
+    private void rejectedBound(String sql, Object[] arguments, String expected) {
         rejected(sql, arguments, "ALL", expected);
     }
 

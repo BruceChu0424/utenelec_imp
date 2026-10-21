@@ -41,8 +41,7 @@ public class ReturnSaveRequest {
     private Integer approverLegacyId;
     private String approverName;
 
-    @Valid
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<ReturnItemLine> items;
+    private List<@Valid ReturnItemLine> items;
 }

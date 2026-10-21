@@ -107,9 +107,6 @@ class ProcurementInspectionDeterminismContractTest {
         String purchaseTransition = source(
                 "features/production/fulfillment/"
                         + "ProductionPurchaseSupplyTransitionService.java");
-        String readiness = source(
-                "features/production/fulfillment/"
-                        + "ProductionExecutionReadinessService.java");
         String analysis = source(
                 "features/production/analysis/MaterialAnalysisService.java");
         String commands = source(

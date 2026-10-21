@@ -415,11 +415,9 @@ class PurchaseRequestPartialOrderEndToEndTest {
         var numbers = beans.getBean(com.uten.imp.common.docnumber.DocNumberService.class);
         String workshop = "生命周期隔离车间-" + world.departmentId();
         UUID activePlan = null;
-        UUID stoppedPlan = null;
         for (int kind = 0; kind < 5; kind++) {
             UUID id = UUID.randomUUID();
             if (kind == 0) activePlan = id;
-            if (kind == 2) stoppedPlan = id;
             String bill = numbers.nextNumber(com.uten.imp.common.docnumber.DocNumberPrefix.PRODUCTION_PLAN);
             db.update("""
                     INSERT INTO production_plans(id,bill_no,bill_date,department_id,workshop_name,status,

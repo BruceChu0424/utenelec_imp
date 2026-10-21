@@ -488,7 +488,12 @@ final class AiChatAnswerGuard {
             }
             Matcher count = COUNT.matcher(line.group(2) + " " + (rest == null ? "" : rest));
             Integer stated = null;
-            while (count.find()) stated = Integer.valueOf(count.group(1));
+            try {
+                while (count.find()) stated = Integer.valueOf(count.group(1));
+            } catch (NumberFormatException malformed) {
+                problems.add("LEGEND_COUNT:" + colour + "=" + status);
+                continue;
+            }
             final Integer claimed = stated;
             if (claimed != null && paired.stream().noneMatch(fact -> fact.count() == null || fact.count().equals(claimed))) {
                 problems.add("LEGEND_COUNT:" + colour + "=" + status + "(" + claimed + ")");
@@ -510,17 +515,26 @@ final class AiChatAnswerGuard {
     static void checkArithmetic(String text, List<String> problems) {
         Matcher step = STEP.matcher(text);
         while (step.find()) {
-            double a = Double.parseDouble(step.group(1)) / (step.group(2).isEmpty() ? 1 : 100);
-            double b = Double.parseDouble(step.group(4)) / (step.group(5).isEmpty() ? 1 : 100);
+            double a, b, c;
             String result = step.group(7);
-            double c = Double.parseDouble(result);
+            try {
+                a = Double.parseDouble(step.group(1)) / (step.group(2).isEmpty() ? 1 : 100);
+                b = Double.parseDouble(step.group(4)) / (step.group(5).isEmpty() ? 1 : 100);
+                c = Double.parseDouble(result);
+            } catch (NumberFormatException malformed) {
+                problems.add("ARITHMETIC:" + step.group().strip());
+                continue;
+            }
             double value = switch (step.group(3)) {
                 case "×", "x", "*" -> a * b;
                 case "÷", "/" -> b == 0 ? Double.NaN : a / b;
                 case "+", "＋" -> a + b;
                 default -> a - b;
             };
-            if (Double.isNaN(value)) continue;
+            if (!Double.isFinite(a) || !Double.isFinite(b) || !Double.isFinite(c) || !Double.isFinite(value)) {
+                problems.add("ARITHMETIC:" + step.group().strip());
+                continue;
+            }
             int dot = result.indexOf('.');
             double precision = dot < 0 ? 0.5 : Math.pow(10, -(result.length() - dot - 1)) / 2;
             boolean approximate = "≈".equals(step.group(6));

@@ -40,7 +40,7 @@ import java.util.concurrent.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.*;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static com.uten.imp.testsupport.BusinessHttpRequests.authenticated;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 /** Exact quantities and original row receipts across one real FQC report transaction. */
@@ -290,7 +290,7 @@ class ProductionFqcReportBatchPostgresTest {
     }
     private ReportDecisionResult call(Authentication actor, ReportDecisionRequest request, int status) throws Exception {
         SecurityContextHolder.getContext().setAuthentication(actor);
-        var response = http.perform(post("/api/production/quality-inspections/decisions/report").with(authentication(actor))
+        var response = http.perform(post("/api/production/quality-inspections/decisions/report").with(authenticated(actor))
                 .contentType("application/json").content(json.writeValueAsBytes(request))).andReturn().getResponse();
         assertEquals(status, response.getStatus(), response.getContentAsString());
         SecurityContextHolder.getContext().setAuthentication(actor);

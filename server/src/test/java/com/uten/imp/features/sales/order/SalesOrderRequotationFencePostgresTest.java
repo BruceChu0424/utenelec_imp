@@ -1,5 +1,7 @@
 package com.uten.imp.features.sales.order;
 
+import com.uten.imp.testsupport.BoundTestSql;
+
 import com.uten.imp.support.MigratedSchemaBaseline;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -73,7 +75,7 @@ class SalesOrderRequotationFencePostgresTest {
             try {
                 statement.execute("SET ROLE " + role);
                 statement.execute("SET app.test_business_reset='CLEAR_TEST_BUSINESS_WITH_HISTORY'");
-                assertThatThrownBy(() -> statement.execute("UPDATE sales_orders SET is_stopped=false WHERE id='" + f.order() + "'"))
+                assertThatThrownBy(() -> BoundTestSql.execute(statement, "UPDATE sales_orders SET is_stopped=false WHERE id=?", f.order()))
                         .hasMessageContaining("permanently read-only");
             } finally {
                 statement.execute("RESET ROLE");

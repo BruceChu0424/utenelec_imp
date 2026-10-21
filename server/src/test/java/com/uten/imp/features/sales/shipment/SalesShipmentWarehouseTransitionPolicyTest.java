@@ -20,9 +20,7 @@ class SalesShipmentWarehouseTransitionPolicyTest {
     void acceptsOnlyTheOneStepPendingPickToShippedTransition() {
         assertDoesNotThrow(() ->
                 SalesShipmentService.validateWarehouseTransition(
-                        SalesShipment.WORK_PENDING_PICK,
-                        SalesShipment.WORK_SHIPPED,
-                        ""));
+                        SalesShipment.WORK_PENDING_PICK, SalesShipment.WORK_SHIPPED));
     }
 
     @Test
@@ -32,7 +30,7 @@ class SalesShipmentWarehouseTransitionPolicyTest {
             ApiException error = assertThrows(
                     ApiException.class,
                     () -> SalesShipmentService.validateWarehouseTransition(
-                            SalesShipment.WORK_PENDING_PICK, legacyTarget, ""));
+                            SalesShipment.WORK_PENDING_PICK, legacyTarget));
             assertEquals(ErrorCode.VALIDATION_FAILED, error.getCode());
         }
     }
@@ -42,17 +40,13 @@ class SalesShipmentWarehouseTransitionPolicyTest {
         ApiException cancelled = assertThrows(
                 ApiException.class,
                 () -> SalesShipmentService.validateWarehouseTransition(
-                        SalesShipment.WORK_PENDING_PICK,
-                        SalesShipment.WORK_CANCELLED,
-                        ""));
+                        SalesShipment.WORK_PENDING_PICK, SalesShipment.WORK_CANCELLED));
         assertEquals(ErrorCode.VALIDATION_FAILED, cancelled.getCode());
 
         ApiException reversed = assertThrows(
                 ApiException.class,
                 () -> SalesShipmentService.validateWarehouseTransition(
-                        SalesShipment.WORK_PENDING_PICK,
-                        SalesShipment.WORK_REVERSED,
-                        ""));
+                        SalesShipment.WORK_PENDING_PICK, SalesShipment.WORK_REVERSED));
         assertEquals(ErrorCode.VALIDATION_FAILED, reversed.getCode());
     }
 }

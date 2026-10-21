@@ -175,7 +175,7 @@ class PlatformSettingsUpgradePostgresTest {
         return new UserPreferenceService(repository, actor, new ObjectMapper(), tx);
     }
     private Flyway migration(String... locations) {
-        return Flyway.configure().dataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword())
+        return com.uten.imp.testsupport.TestFlyway.configure().dataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword())
                 .locations(locations).load();
     }
     private Snapshot snapshot() {

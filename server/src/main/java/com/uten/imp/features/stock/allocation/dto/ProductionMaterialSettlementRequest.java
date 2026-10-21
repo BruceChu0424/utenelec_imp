@@ -28,10 +28,9 @@ public class ProductionMaterialSettlementRequest {
     @Size(max = 500)
     private String reason;
 
-    @Valid
     @NotNull
     @Size(min = 1, max = RequestLimits.DOCUMENT_LINES)
-    private List<Line> lines;
+    private List<@Valid Line> lines;
 
     @Getter
     @Setter

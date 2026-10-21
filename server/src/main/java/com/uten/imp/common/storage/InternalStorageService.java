@@ -120,7 +120,7 @@ public class InternalStorageService implements StorageService, BlobStore {
                 Map.of(), Instant.now().plusSeconds(properties.getPresignedExpirySeconds()));
     }
 
-    @Override public void store(String key, InputStream input, long length, String contentType) {
+    @Override public void store(String key, InputStream input, long length) {
         requireLength(length, properties.getMaxBytes());
         Path target = resolve(staging, key);
         try (Lease lease = lease()) {

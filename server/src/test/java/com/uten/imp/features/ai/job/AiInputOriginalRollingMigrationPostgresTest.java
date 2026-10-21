@@ -1,6 +1,5 @@
 package com.uten.imp.features.ai.job;
 import com.uten.imp.common.storage.ImmutableDocumentStore;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -14,7 +13,7 @@ import static org.assertj.core.api.Assertions.*;
 class AiInputOriginalRollingMigrationPostgresTest {
     @Test void upgradePreservesPendingRunningLostAndConflictingHistoryThenFencesOldTerminalWriters() {
         try(var database=new PostgreSQLContainer("postgres:16-alpine").withDatabaseName("ai_original_pre773")) {
-            database.start();Flyway.configure().dataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword()).target("772").load().migrate();
+            database.start();com.uten.imp.testsupport.TestFlyway.configure().dataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword()).target("772").load().migrate();
             var jdbc=new JdbcTemplate(new DriverManagerDataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword()));
             UUID actor=UUID.randomUUID(),employee=UUID.randomUUID();
             jdbc.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) SELECT ?,?,'迁移测试','其他',id,CURRENT_DATE,'active','regular' FROM departments WHERE code='DEPT_FIN'",employee,"MIG-"+employee);
@@ -27,7 +26,7 @@ class AiInputOriginalRollingMigrationPostgresTest {
             UUID disappeared=UUID.randomUUID(),doc=UUID.randomUUID();
             jdbc.update("INSERT INTO sales_document_learning_receipts(id,doc_type,doc_id,actor_user_id,request_payload,steps) VALUES(?,'quote',?,?,jsonb_build_object('intakeJobId',CAST(? AS text),'lines','[]'::jsonb,'clientFields','{}'::jsonb),'{}'::jsonb)",UUID.randomUUID(),doc,actor,disappeared.toString());
             jdbc.update("INSERT INTO sales_document_learning_receipts(id,doc_type,doc_id,actor_user_id,request_payload,steps) VALUES(?,'quote',?,?, '{\"intakeJobId\":\"bad-legacy-value\",\"additionalIntakeJobIds\":[\"also-bad\"]}'::jsonb,'{}'::jsonb)",UUID.randomUUID(),UUID.randomUUID(),actor);
-            Flyway.configure().dataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword()).target("773").load().migrate();
+            com.uten.imp.testsupport.TestFlyway.configure().dataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword()).target("773").load().migrate();
             assertThat(jdbc.queryForObject("SELECT legacy_bytes FROM ai_input_originals WHERE job_id=?",byte[].class,pending)).isEqualTo(bytes);
             assertThat(jdbc.queryForObject("SELECT legacy_bytes FROM ai_input_originals WHERE job_id=?",byte[].class,running)).isEqualTo(bytes);
             assertThat(jdbc.queryForObject("SELECT availability FROM ai_input_originals WHERE job_id=?",String.class,conflict)).isEqualTo("LEGACY_CONFLICT");

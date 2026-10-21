@@ -578,15 +578,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                         .executeUpdate();
 
                 UUID reservationId = extendOrCreateReservation(
-                        receiptId,
-                        demandId,
-                        packageId,
-                        warehouseId,
-                        goodsId,
-                        colorId,
-                        balanceId,
-                        quantity,
-                        actorId);
+                        receiptId, demandId, warehouseId, goodsId, colorId, balanceId, quantity, actorId);
                 ReceiptPackage receiptPackage =
                         new ReceiptPackage(receiptId, packageId);
                 DrawHandle draw = draws.computeIfAbsent(
@@ -989,15 +981,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
     }
 
     private UUID extendOrCreateReservation(
-            UUID receiptId,
-            UUID demandId,
-            UUID packageId,
-            UUID warehouseId,
-            UUID goodsId,
-            UUID colorId,
-            UUID balanceId,
-            BigDecimal quantity,
-            UUID actorId) {
+            UUID receiptId, UUID demandId, UUID warehouseId, UUID goodsId, UUID colorId, UUID balanceId, BigDecimal quantity, UUID actorId) {
         List<UUID> existing = NativeQueryResults.typedRows(
                 em.createNativeQuery("""
                                 SELECT id

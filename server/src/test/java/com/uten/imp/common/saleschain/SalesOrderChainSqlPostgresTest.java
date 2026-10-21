@@ -155,8 +155,9 @@ class SalesOrderChainSqlPostgresTest {
             UUID full = insertRow(c, 913, 4, "10", "0", "0", "0", "0", "10", "0");
             UUID pendingAlready = insertRow(c, 914, 2, "10", "0", "0", "0", "0", "4", "0");
             UUID deleted = insertRow(c, 915, 4, "10", "0", "0", "0", "0", "4", "0");
-            try (Statement st = c.createStatement()) {
-                st.executeUpdate("UPDATE sales_order_items SET is_deleted = true WHERE id = '" + deleted + "'");
+            try (var update = c.prepareStatement("UPDATE sales_order_items SET is_deleted = true WHERE id = ?")) {
+                update.setObject(1, deleted);
+                update.executeUpdate();
             }
             String migration = new String(Objects.requireNonNull(
                     SalesOrderChainSqlPostgresTest.class.getResourceAsStream(

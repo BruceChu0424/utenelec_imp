@@ -39,7 +39,7 @@ class GoodsCostPermissionSurfaceMigrationPostgresTest {
             JdbcTemplate db = database(postgres);
             assertCatalog(db);
             assertThat(db.queryForObject("SELECT max(version::int) FROM flyway_schema_history WHERE success", Integer.class))
-                    .isEqualTo(Integer.parseInt(MigrationRehearsalSupport.CURRENT_HEAD_VERSION));
+                    .isEqualTo(com.uten.imp.testsupport.FixtureNumbers.integer(MigrationRehearsalSupport.CURRENT_HEAD_VERSION));
             assertThat(db.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class))
                     .isEqualTo(MigrationRehearsalSupport.CURRENT_MIGRATION_COUNT);
             assertNoImplicitCostGrants(db);
@@ -193,8 +193,8 @@ class GoodsCostPermissionSurfaceMigrationPostgresTest {
     }
 
     private static Flyway flyway(PostgreSQLContainer postgres, String target) {
-        var config = Flyway.configure().dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
-                .locations("classpath:db/migration").initSql("SET client_min_messages = WARNING");
+        var config = com.uten.imp.testsupport.TestFlyway.configure().dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+                .locations("classpath:db/migration");
         if (target != null) config.target(target);
         return config.load();
     }

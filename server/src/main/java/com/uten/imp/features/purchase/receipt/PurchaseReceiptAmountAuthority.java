@@ -87,12 +87,12 @@ public class PurchaseReceiptAmountAuthority {
                     || sourcePrice == null || sourcePrice.signum() < 0
                     || sourceCurrencyId == null || sourceRate == null || sourceRate.signum() <= 0
                     || sourceSettlementMethodId == null || sourceQty == null || sourceQty.signum()<0
+                    || sourceOriginal == null || sourceOriginal.signum() < 0
+                    || sourceLocal == null || sourceLocal.signum() < 0
                     || (sourceQty.signum()==0 && (item.getQty().signum()!=0 || !com.uten.imp.common.finance.ProcurementQuantities.isExtraGift((String)source[15])
                         ||decimal(source[16])==null || decimal(source[16]).signum()<=0 || sourcePrice.signum()!=0 || sourceOriginal.signum()!=0 || sourceLocal.signum()!=0))
                     || sourceTaxRate == null || sourceTaxRate.signum() < 0
-                    || sourceTaxRate.compareTo(new BigDecimal("100")) > 0
-                    || sourceOriginal == null || sourceOriginal.signum() < 0
-                    || sourceLocal == null || sourceLocal.signum() < 0) {
+                    || sourceTaxRate.compareTo(new BigDecimal("100")) > 0) {
                 throw conflict("采购收货来源订单未财务批准、已中止或商业数据不完整");
             }
             requireHeaderMatches(receipt.getSupplierId(), receipt.getCurrencyId(),

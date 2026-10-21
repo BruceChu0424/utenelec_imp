@@ -1,6 +1,5 @@
 package com.uten.imp.features.production.directtransfer;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -52,7 +51,7 @@ class WorkshopDirectTargetReasonPostgresTest {
     @BeforeAll
     static void seed() {
         POSTGRES.start();
-        Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").load().migrate();
         dataSource = new SingleConnectionDataSource(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword(), true);
@@ -470,7 +469,8 @@ class WorkshopDirectTargetReasonPostgresTest {
 
     private static String hex() {
         byte[] bytes = new byte[32];
-        new java.security.SecureRandom().nextBytes(bytes);
+        RANDOM.nextBytes(bytes);
         return HexFormat.of().formatHex(bytes);
     }
+    private static final java.security.SecureRandom RANDOM = new java.security.SecureRandom();
 }

@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -18,7 +17,7 @@ class PreplanFutureSupplyMigrationPostgresTest {
     @Test void currentHeadCompilesPublicExpectedSupplyAndClosedPendingEta() {
         try(var database=new PostgreSQLContainer("postgres:16-alpine")) {
             database.start();
-            var result=Flyway.configure().dataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword())
+            var result=com.uten.imp.testsupport.TestFlyway.configure().dataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword())
                     .locations("classpath:db/migration").load().migrate();
             assertThat(result.migrationsExecuted).isEqualTo(MigrationRehearsalSupport.CURRENT_MIGRATION_COUNT);
             var db=new JdbcTemplate(new DriverManagerDataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword()));

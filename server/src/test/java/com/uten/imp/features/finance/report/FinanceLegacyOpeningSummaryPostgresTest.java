@@ -227,7 +227,7 @@ class FinanceLegacyOpeningSummaryPostgresTest {
                 FinanceReportService service=new FinanceReportService(session,access,null,null,null,null,null);
                 LocalDate from=LocalDate.parse(start),to=from.withDayOfMonth(from.lengthOfMonth());
                 ReportTableResponse result="AR".equals(direction)?service.receivableSummary(keyword,from,to,1,50)
-                        :service.payableSummary(keyword,from,to,Map.of(),1,50,null,null);
+                        :service.payableSummary(keyword,from,to,1,50);
                 transaction.commit();
                 return result;
             } catch(RuntimeException|Error failure) {

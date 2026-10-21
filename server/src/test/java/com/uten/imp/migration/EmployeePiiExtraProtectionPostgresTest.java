@@ -87,7 +87,7 @@ class EmployeePiiExtraProtectionPostgresTest {
     }
 
     private static Flyway flyway(String target) {
-        return Flyway.configure()
+        return com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(
                         POSTGRES.getJdbcUrl(),
                         POSTGRES.getUsername(),

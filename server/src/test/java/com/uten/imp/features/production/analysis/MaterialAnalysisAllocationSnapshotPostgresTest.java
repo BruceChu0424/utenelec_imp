@@ -101,7 +101,7 @@ class MaterialAnalysisAllocationSnapshotPostgresTest {
             try (var config = connection.createStatement()) {
                 config.execute("SET LOCAL jit=off");
                 config.execute("SET LOCAL statement_timeout='10s'");
-                config.execute("SET LOCAL plan_cache_mode=" + mode);
+                com.uten.imp.testsupport.BoundTestSql.execute(config, "SELECT set_config('plan_cache_mode', ?, true)", mode);
             }
             seed(connection, "new", 49000);
             try (PreparedStatement statement = connection.prepareStatement(captured.sql())) {
@@ -143,11 +143,11 @@ class MaterialAnalysisAllocationSnapshotPostgresTest {
             seed(connection, "new", 2);
             assertEquals(0, execute(connection, capture(id("wrong-analysis"), "new", 1)));
             try (var statement = connection.createStatement()) {
-                statement.executeUpdate("UPDATE " + TABLE + " SET active=FALSE WHERE analysis_id='" + id("new") + "'");
+                com.uten.imp.testsupport.BoundTestSql.execute(statement, "UPDATE " + TABLE + " SET active=? WHERE analysis_id=?", false, id("new"));
             }
             assertEquals(0, execute(connection, capture(id("new"), "new", 1)));
             try (var statement = connection.createStatement()) {
-                statement.executeUpdate("UPDATE " + TABLE + " SET active=TRUE WHERE analysis_id='" + id("new") + "'");
+                com.uten.imp.testsupport.BoundTestSql.execute(statement, "UPDATE " + TABLE + " SET active=? WHERE analysis_id=?", true, id("new"));
             }
             Captured captured = capture(id("new"), "new", 1);
             assertEquals(1, execute(connection, captured));
@@ -250,10 +250,15 @@ class MaterialAnalysisAllocationSnapshotPostgresTest {
             }
             assertEquals(count, actual);
         }
-        try (var query = connection.createStatement(); var rows = query.executeQuery(
-                "SELECT count(*) FROM " + TABLE + " WHERE analysis_id='" + id("old") + "' AND updated_at IS NOT NULL")) {
-            assertTrue(rows.next());
-            assertEquals(0, rows.getInt(1), "Existing analyses must remain untouched");
+        try (var query = connection.prepareStatement("""
+                SELECT count(*) FROM production_material_analysis_materials
+                WHERE analysis_id=? AND updated_at IS NOT NULL
+                """)) {
+            query.setObject(1, id("old"));
+            try (var rows = query.executeQuery()) {
+                assertTrue(rows.next());
+                assertEquals(0, rows.getInt(1), "Existing analyses must remain untouched");
+            }
         }
     }
 

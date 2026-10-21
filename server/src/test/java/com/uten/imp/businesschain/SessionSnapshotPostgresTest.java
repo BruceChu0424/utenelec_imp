@@ -25,7 +25,7 @@ import java.util.TreeSet;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static com.uten.imp.testsupport.BusinessHttpRequests.authenticated;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 
@@ -86,7 +86,7 @@ class SessionSnapshotPostgresTest {
 
         // 偏好写路径不变(PUT 单键); 读取随快照带回。
         var put = http.perform(put("/api/user/preferences/{key}", "report.filter")
-                        .with(authentication(actor))
+                        .with(authenticated(actor))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"range\":\"month\"}"))
                 .andReturn().getResponse();
@@ -140,13 +140,13 @@ class SessionSnapshotPostgresTest {
                 "/api/department-staff-permissions/capability?surfaceKey=org.employee",
                 "/api/auth/me/document-scopes/sales",
                 "/api/user/preferences"}) {
-            int status = http.perform(get(removed).with(authentication(admin))).andReturn().getResponse().getStatus();
+            int status = http.perform(get(removed).with(authenticated(admin))).andReturn().getResponse().getStatus();
             assertThat(status).as("已由会话快照替代的旧端点 %s", removed).isIn(404, 405);
         }
     }
 
     private JsonNode getJson(String path, Authentication actor) throws Exception {
-        var response = http.perform(get(path).with(authentication(actor))).andReturn().getResponse();
+        var response = http.perform(get(path).with(authenticated(actor))).andReturn().getResponse();
         assertThat(response.getStatus()).as("GET %s", path).isEqualTo(200);
         return json.readTree(response.getContentAsByteArray());
     }

@@ -22,7 +22,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static com.uten.imp.testsupport.BusinessHttpRequests.authenticated;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 /** Maximum ordinary batch with real planning/request/physical stock paths; fixture preparation is excluded from command timing. */
@@ -62,7 +62,7 @@ class CloseoutDrawFiftyPostgresTest {
                 .map(row->new StockDocIssueBatchRequest.DocumentReview(row.docId(),row.reviewToken())).toList());
         var sample=ProductionJdbcMeasurement.begin();long started=System.nanoTime();
         try {
-            var response=http.perform(post("/api/stock/docs/issue-batch").with(authentication(actor))
+            var response=http.perform(post("/api/stock/docs/issue-batch").with(authenticated(actor))
                     .contentType("application/json").content(json.writeValueAsBytes(request))).andReturn().getResponse();
             assertEquals(200,response.getStatus(),response.getContentAsString());
             assertEquals(50,json.readTree(response.getContentAsByteArray()).path("issuedCount").asInt());
@@ -73,7 +73,7 @@ class CloseoutDrawFiftyPostgresTest {
         long movements=named.queryForObject("SELECT count(*) FROM stock_movements WHERE source_doc_id IN(:ids)",parameters,Long.class);
         assertEquals(100,movements,"Each planned DRAW has two original input identities");
         assertEquals(1,db.queryForObject("SELECT count(*) FROM stock_draw_issue_batches WHERE idempotency_key=?",Integer.class,request.getIdempotencyKey()));
-        var replay=http.perform(post("/api/stock/docs/issue-batch").with(authentication(actor))
+        var replay=http.perform(post("/api/stock/docs/issue-batch").with(authenticated(actor))
                 .contentType("application/json").content(json.writeValueAsBytes(request))).andReturn().getResponse();
         assertEquals(200,replay.getStatus(),replay.getContentAsString());assertEquals(50,json.readTree(replay.getContentAsByteArray()).path("replayedCount").asInt());
         assertEquals(movements,named.queryForObject("SELECT count(*) FROM stock_movements WHERE source_doc_id IN(:ids)",parameters,Long.class));

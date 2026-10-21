@@ -28,6 +28,7 @@ import static com.uten.imp.features.production.analysis.MaterialAnalysisContract
 
 /** HTTP boundary for persistent pre-plan material analysis. */
 @RestController
+@org.springframework.validation.annotation.Validated
 @RequestMapping("/api/production/material-analyses")
 @RequiredArgsConstructor
 public class MaterialAnalysisController {
@@ -264,8 +265,8 @@ public class MaterialAnalysisController {
     @PutMapping("/goods-owning-warehouses")
     @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:route')")
     public java.util.Map<String, Integer> saveGoodsOwningWarehouses(
-            @Valid @RequestBody
-            List<GoodsOwningWarehouseWriteService.OwningWarehouseRequest> requests) {
+            @RequestBody
+            List<GoodsOwningWarehouseWriteService.@Valid OwningWarehouseRequest> requests) {
         return goodsOwningWarehouses.applyOwningWarehouses(requests);
     }
 

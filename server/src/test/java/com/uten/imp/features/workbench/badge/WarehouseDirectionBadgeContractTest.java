@@ -20,7 +20,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -42,7 +41,7 @@ class WarehouseDirectionBadgeContractTest {
         assertThat(harness.drawReads.get()).isEqualTo(1);
         assertThat(harness.returnReads.get()).isEqualTo(1);
         assertThat(WorkbenchBadgeCatalog.warehouseDrawCenter.contributesToModule()).isFalse();
-        verify(harness.scopes).withScopeCache(any());
+        verify(harness.scopes).withQueryScopeCache(any());
     }
 
     @Test
@@ -79,7 +78,7 @@ class WarehouseDirectionBadgeContractTest {
                 })).toList();
         WorkbenchBadgeSources contributor = () -> registered;
         WarehouseTaskScopePort scopes = mock(WarehouseTaskScopePort.class);
-        when(scopes.withScopeCache(any())).thenAnswer(call -> ((Supplier<?>) call.getArgument(0)).get());
+        when(scopes.withQueryScopeCache(any())).thenAnswer(call -> ((WarehouseTaskScopePort.ReadQuery<?>) call.getArgument(0)).read());
         WorkbenchBadgeService service = new WorkbenchBadgeService(List.of(contributor), manager, scopes, com.uten.imp.testsupport.TaskAudienceTestSupport.direct());
         EntityManager em = mock(EntityManager.class);
         Session session = mock(Session.class);

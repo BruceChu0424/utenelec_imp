@@ -38,10 +38,9 @@ public class BatchShipRequest {
     private UUID settlementMethodId;
     @jakarta.validation.constraints.Min(0) private Integer parcelCount;
 
-    @Valid
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<Line> lines;
+    private List<@Valid Line> lines;
 
     @Getter
     @Setter

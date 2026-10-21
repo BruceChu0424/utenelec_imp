@@ -94,7 +94,7 @@ class GoodsCostHttpSmokeEndToEndTest {
         long snapshotsBefore=db.queryForObject("SELECT count(*) FROM goods_cost_snapshots",Long.class);
         var goodsBefore=db.queryForMap("SELECT version,c_total FROM goods WHERE id=?",world.goodsA());
         for(int call=0;call<2;call++) {
-            JsonNode opened=body(request(get(ROOT+"/bootstrap").param("goodsId",world.goodsA().toString()),owner,null,200));
+            JsonNode opened=body(request(post(ROOT+"/bootstrap").param("goodsId",world.goodsA().toString()),owner,null,200));
             JsonNode input=opened.path("resolvedInput");
             assertThat(input.path("goodsId").asText()).isEqualTo(world.goodsA().toString());
             assertThat(input.path("batchQty").asText()).isEqualTo("1");
@@ -187,7 +187,7 @@ class GoodsCostHttpSmokeEndToEndTest {
         Authentication restricted=auth(viewer);
         assertThat(restricted.getAuthorities()).noneMatch(authority->authority.getAuthority().equals("goods:cost:view"));
         request(post(ROOT+"/preview"),restricted,input("0.5"),403);
-        request(get(ROOT+"/bootstrap").param("goodsId",world.goodsD().toString()),restricted,null,403);
+        request(post(ROOT+"/bootstrap").param("goodsId",world.goodsD().toString()),restricted,null,403);
         request(get(ROOT+"/actual").param("goodsId",world.goodsD().toString()),restricted,null,403);
         request(get(ROOT+"/production-output").param("goodsId",world.goodsD().toString()),restricted,null,403);
         request(post(ROOT+"/export"),restricted,Map.of("sheetId",UUID.randomUUID(),"snapshotId",UUID.randomUUID(),"format","xlsx"),403);
@@ -249,7 +249,8 @@ class GoodsCostHttpSmokeEndToEndTest {
     private String key(String action){return "cost-http-"+action+"-"+UUID.randomUUID();}
     private JsonNode body(MvcResult result) throws Exception {return json.readTree(result.getResponse().getContentAsByteArray());}
     private MvcResult request(MockHttpServletRequestBuilder request,Authentication actor,Object body,int expected) throws Exception {
-        request.with(authentication(actor));
+        request.with(authentication(actor))
+                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf().asHeader());
         if(body!=null)request.contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(body));
         MvcResult result=http.perform(request).andReturn();
         assertThat(result.getResponse().getStatus()).as("%s %s: %s",result.getRequest().getMethod(),result.getRequest().getRequestURI(),result.getResponse().getContentAsString()).isEqualTo(expected);

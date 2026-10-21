@@ -22,7 +22,9 @@ final class InventoryValueWorkTestSupport {
         try (var claim = jdbc.getDataSource().getConnection()) {
             claim.setAutoCommit(false);
             try {
-                claim.createStatement().execute("SET LOCAL lock_timeout = '15s'");
+                try (var statement = claim.createStatement()) {
+                    statement.execute("SET LOCAL lock_timeout = '15s'");
+                }
                 try (var statement = claim.prepareStatement(
                         "SELECT pg_advisory_xact_lock(?, hashtext(CAST(? AS text)))")) {
                     statement.setInt(1, REFRESH_CLAIM_NAMESPACE);

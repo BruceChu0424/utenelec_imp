@@ -158,12 +158,12 @@ class HrNoticeServiceTest {
     void rejectionIsAnActionableTaskButPaymentReceiptDoesNotAssertBankArrival() {
         UUID claimId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
-        service.notifyExpenseClaimRejected(claimId, "申请人", "补齐原件", userId);
+        service.notifyExpenseClaimRejected(claimId, "补齐原件", userId);
         verify(notices).publishForUser(eq(userId), eq("报销单被驳回"), contains("补齐原件"),
                 eq("task"), eq("财务"), eq("/expense/" + claimId),
                 eq("EXPENSE_CLAIM_REJECTED"), eq("important"), eq(claimId));
         assertThat(ReviewNoticeCatalog.of("EXPENSE_CLAIM_REJECTED").orElseThrow().aggregateKind()).isEqualTo("EXPENSE_CLAIM");
-        service.notifyExpenseClaimPaid(claimId, "申请人", "12.34 元", userId);
+        service.notifyExpenseClaimPaid(claimId, "12.34 元", userId);
         verify(notices).publishForUser(eq(userId), eq("报销付款已登记"), contains("核对实际收款"),
                 eq("approval"), eq("财务"), eq("/expense/" + claimId));
         verify(notices).resolveReviewNotices("EXPENSE_CLAIM", claimId, "PAID");
@@ -240,11 +240,11 @@ class HrNoticeServiceTest {
                 .hasValueSatisfying(entry -> assertThat(entry.aggregateKind())
                         .isEqualTo("PROFILE_CHANGE"));
         assertThat(ReviewNoticeAudience.eligible("PAYROLL_BATCH_PENDING_PUBLISH",
-                Set.of("notice:read", "payroll:publish"), Set.of())).isTrue();
+                Set.of("notice:read", "payroll:publish"))).isTrue();
         assertThat(ReviewNoticeAudience.eligible("SUGGESTION_SUBMITTED",
-                Set.of("notice:read", "suggestion:submit", "suggestion:reply"), Set.of())).isTrue();
+                Set.of("notice:read", "suggestion:submit", "suggestion:reply"))).isTrue();
         assertThat(ReviewNoticeAudience.eligible("SUGGESTION_SUBMITTED",
-                Set.of("notice:read", "suggestion:submit"), Set.of())).isFalse();
+                Set.of("notice:read", "suggestion:submit"))).isFalse();
     }
 
     @Test

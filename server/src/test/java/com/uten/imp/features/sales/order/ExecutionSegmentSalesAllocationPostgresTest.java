@@ -5,7 +5,6 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.sales.order.dto.OrderChangeQtyRequest;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -51,7 +50,7 @@ class ExecutionSegmentSalesAllocationPostgresTest {
     @BeforeAll
     static void migrate() {
         POSTGRES.start();
-        Flyway.configure()
+        com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(
                         POSTGRES.getJdbcUrl(),
                         POSTGRES.getUsername(),

@@ -15,13 +15,14 @@ final class GoodsReferenceFacet {
     record Projection(Expression<String> value, Expression<String> label) { }
     static boolean supports(String field) { return "colorRef".equals(field) || "unitRef".equals(field); }
     static Predicate matches(Root<Goods> root, CriteriaBuilder cb, String field, String raw) {
-        String normalized = normalize(raw);
         // Existing saved table queries used bare integer snapshot values. Preserve that exact
         // snapshot query; new candidates always return a UUID or an explicit unresolved legacy token.
         if (raw != null && raw.trim().matches("[0-9]+")) {
+            int legacyId = exactLegacyId(raw.trim());
             String relation = "colorRef".equals(field) ? "color" : "unit";
-            return cb.equal(root.get(relation + "LegacyId"), Integer.parseInt(normalized.substring(7)));
+            return cb.equal(root.get(relation + "LegacyId"), legacyId);
         }
+        String normalized = normalize(raw);
         return cb.equal(projection(root, cb, field).value(), normalized);
     }
     static Projection projection(Root<Goods> root, CriteriaBuilder cb, String field) {
@@ -54,9 +55,13 @@ final class GoodsReferenceFacet {
             if (id.toString().equalsIgnoreCase(value)) return id.toString();
         } catch (IllegalArgumentException ignored) { }
         String legacy = value.startsWith("legacy:") ? value.substring(7) : value;
+        return "legacy:" + exactLegacyId(legacy);
+    }
+
+    private static int exactLegacyId(String value) {
         try {
-            int id = Integer.parseInt(legacy);
-            if (id >= 0 && Integer.toString(id).equals(legacy)) return "legacy:" + id;
+            int id = Integer.parseInt(value);
+            if (id >= 0 && Integer.toString(id).equals(value)) return id;
         } catch (NumberFormatException ignored) { }
         throw new ApiException(ErrorCode.VALIDATION_FAILED, "颜色或单位筛选必须为资料UUID或精确历史主键");
     }

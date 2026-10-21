@@ -693,7 +693,7 @@ public class PurchaseRequestService {
 
     @Transactional(readOnly = true)
     public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
-        var document=detailHistory(id);
+        detailHistory(id);
         com.uten.imp.common.history.RetainedRecordAccess.requireUnmaskedCostOriginal(false);
         return retainedRecords.children("purchase_requests",id,beforeId,size);
     }

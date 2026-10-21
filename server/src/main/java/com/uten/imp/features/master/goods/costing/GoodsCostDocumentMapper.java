@@ -174,8 +174,9 @@ public final class GoodsCostDocumentMapper {
     }
 
     public static Map<String, Object> row(Object... entries) {
+        if ((entries.length & 1) != 0) throw new IllegalArgumentException("Cost document rows require key/value pairs");
         Map<String, Object> result = new LinkedHashMap<>();
-        for (int i = 0; i < entries.length; i += 2) result.put((String) entries[i], entries[i + 1]);
+        for (int i = 0; i + 1 < entries.length; i += 2) result.put((String) entries[i], entries[i + 1]);
         return result;
     }
     public static ExportColumn textCol(String key, String label) { return new ExportColumn(key, label, ExportColumn.TEXT); }

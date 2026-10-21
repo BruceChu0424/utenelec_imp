@@ -84,6 +84,25 @@ class RemoteMfaPostgresTest {
 
     @AfterEach void close() throws Exception { SecurityContextHolder.clearContext();if(database!=null)database.close(); }
 
+    @Test void statusReadsAbsentAndPendingFactorsInsideAReadOnlyTransactionWithoutInitializingState() {
+        var readOnly = new TransactionTemplate(transaction.getTransactionManager());
+        readOnly.setReadOnly(true);
+        var absent = readOnly.execute(status -> mfa.status());
+        assertThat(absent).isNotNull();
+        assertThat(absent.enabled()).isFalse();
+        assertThat(absent.pending()).isFalse();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM staff_mfa WHERE user_id=?", Integer.class,
+                principal.getId())).isZero();
+
+        mfa.beginEnrollment();
+        var pending = readOnly.execute(status -> mfa.status());
+        assertThat(pending).isNotNull();
+        assertThat(pending.enabled()).isFalse();
+        assertThat(pending.pending()).isTrue();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM staff_mfa WHERE user_id=?", Integer.class,
+                principal.getId())).isEqualTo(1);
+    }
+
     @Test void enrollmentEncryptsSecretsBindsPendingToSessionAndConsumesConfirmationStep() {
         var enrollment=mfa.beginEnrollment();
         String pending=jdbc.queryForObject("SELECT pending_secret_ciphertext FROM staff_mfa WHERE user_id=?",String.class,principal.getId());
@@ -112,7 +131,7 @@ class RemoteMfaPostgresTest {
     }
 
     @Test void failedOtpCountersCommitAcrossErrorsAndEnrollmentCannotBypassLock() {
-        var enrollment=mfa.beginEnrollment();
+        mfa.beginEnrollment();
         for(int i=0;i<4;i++) assertError(()->mfa.confirmEnrollment("invalid"),ErrorCode.MFA_INVALID);
         assertError(()->mfa.confirmEnrollment("invalid"),ErrorCode.MFA_LOCKED);
         assertThat(jdbc.queryForObject("SELECT failed_attempts FROM staff_mfa WHERE user_id=?",Integer.class,principal.getId())).isEqualTo(5);

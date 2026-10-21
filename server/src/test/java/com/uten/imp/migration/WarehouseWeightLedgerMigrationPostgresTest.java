@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -225,7 +224,7 @@ class WarehouseWeightLedgerMigrationPostgresTest {
     }
 
     private static void migrate(PostgreSQLContainer db, int target) {
-        Flyway.configure()
+        com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(db.getJdbcUrl(), db.getUsername(), db.getPassword())
                 .locations("classpath:db/migration")
                 .target(Integer.toString(target))

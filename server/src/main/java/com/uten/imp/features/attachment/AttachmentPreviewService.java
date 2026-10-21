@@ -194,7 +194,9 @@ public class AttachmentPreviewService implements AttachmentPreviewEvictor {
             }
             return convert(root, cached, source, slot);
         } finally {
-            profileSlots.offer(slot);
+            if (!profileSlots.offer(slot)) {
+                throw new IllegalStateException("文档转换配置槽位状态不一致");
+            }
             slots.release();
         }
     }

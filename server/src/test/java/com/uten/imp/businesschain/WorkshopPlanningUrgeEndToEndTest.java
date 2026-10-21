@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.BoundTestSql;
+
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -543,7 +545,7 @@ class WorkshopPlanningUrgeEndToEndTest {
         db.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
             try (var statement = connection.createStatement()) {
                 statement.execute("SET session_replication_role = replica");
-                statement.execute("UPDATE production_execution_segments SET status='CANCELLED' WHERE id='" + segmentId + "'");
+                BoundTestSql.execute(statement, "UPDATE production_execution_segments SET status='CANCELLED' WHERE id=?", segmentId);
                 statement.execute("SET session_replication_role = origin");
             }
             return null;

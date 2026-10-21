@@ -60,7 +60,7 @@ class ProcurementWithdrawalSourceFinalityEndToEndTest {
     @Test @Order(1) void unrelatedRealPendingCostJobKeepsGlobalReportPendingButGiftWithdrawalFinal(){
         F f=fixture();UUID receipt=receipt(f,"10","1");receipts.approve(receipt);passAndStock(f,receipt);
         UUID otherSource=standalonePricedSource(f);
-        adjust(f,otherSource,f.w().goodsA());
+        adjust(otherSource, f.w().goodsA());
         assertThat(db.queryForObject("SELECT EXISTS(SELECT 1 FROM stock_value_jobs WHERE source_node_id=? AND status='PENDING')",Boolean.class,otherSource)).isTrue();
         var pool=new com.uten.imp.application.port.InventoryValuationPort.PoolKey(f.w().warehouseId(),f.w().goodsD(),null);
         assertThat(values.pool(pool).state()).isEqualTo(com.uten.imp.application.port.InventoryValuationPort.State.PENDING);
@@ -81,7 +81,7 @@ class ProcurementWithdrawalSourceFinalityEndToEndTest {
               UNION SELECT edge.parent_node_id FROM stock_value_edges edge JOIN parents child ON child.id=edge.child_node_id WHERE edge.interval_to>edge.interval_from)
             SELECT node.id FROM parents JOIN stock_value_nodes node ON node.id=parents.id WHERE node.kind='SOURCE'
             """,UUID.class,receipt);
-        adjust(f,source,f.w().goodsD());
+        adjust(source, f.w().goodsD());
         assertThat(db.queryForObject("SELECT EXISTS(SELECT 1 FROM stock_value_jobs WHERE source_node_id=? AND status='PENDING')",Boolean.class,source)).isTrue();
         blockedWithoutWrites(()->receipts.unapprovalEligibility(receipt),"成本来源");
         String before=facts();
@@ -95,7 +95,7 @@ class ProcurementWithdrawalSourceFinalityEndToEndTest {
         UUID id=ordinaryStock.create(request).getId();ordinaryStock.approve(id);
         return db.queryForObject("SELECT result_node_id FROM stock_value_events WHERE source_doc_id=? AND operation='RECEIVE'",UUID.class,id);
     }
-    private void adjust(F f,UUID source,UUID goods){
+    private void adjust(UUID source, UUID goods){
         new org.springframework.transaction.support.TransactionTemplate(beans.getBean(org.springframework.transaction.PlatformTransactionManager.class)).executeWithoutResult(status->{
             beans.getBean(com.uten.imp.security.TxSessionVars.class).bind();inventory.lockInventory(List.of(new com.uten.imp.features.stock.InventoryKey(goods,null)));
             var user=beans.getBean(com.uten.imp.security.SecurityContextCurrentUser.class);

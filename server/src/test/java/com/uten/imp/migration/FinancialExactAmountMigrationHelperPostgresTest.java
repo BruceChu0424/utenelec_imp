@@ -5,7 +5,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
-import org.flywaydb.core.Flyway;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
@@ -16,7 +15,7 @@ class FinancialExactAmountMigrationHelperPostgresTest {
         try(var pg=new PostgreSQLContainer("postgres:16-alpine")
                 .withDatabaseName("financial_exact_helper").withUsername("uten").withPassword("test-only")) {
             pg.start();
-            Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword())
+            com.uten.imp.testsupport.TestFlyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword())
                     .locations("filesystem:src/main/resources/db/migration").target("508").load().migrate();
             try(var connection=DriverManager.getConnection(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword())) {
                 String migration=sourceMigration();

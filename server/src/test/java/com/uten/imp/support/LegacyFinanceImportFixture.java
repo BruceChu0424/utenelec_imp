@@ -33,8 +33,9 @@ public final class LegacyFinanceImportFixture {
             jdbc.update("INSERT INTO legacy_migration_run_files(run_id,file_name,sha256,byte_size) VALUES(?,?,repeat('f',64),500)",run,file);
         }
         jdbc.queryForObject("SELECT set_config('uten.bootstrap_run_id',?,true)",String.class,run.toString());
-        jdbc.execute("SET LOCAL uten.bootstrap_mapping_version='bootstrap-v11'; SET LOCAL uten.bootstrap_repository_commit='"
-                +"a".repeat(40)+"'; SET LOCAL uten.bootstrap_manifest_sha='"+"b".repeat(64)+"'");
+        jdbc.execute("SET LOCAL uten.bootstrap_mapping_version='bootstrap-v11'");
+        jdbc.queryForObject("SELECT set_config('uten.bootstrap_repository_commit', ?, true)", String.class, "a".repeat(40));
+        jdbc.queryForObject("SELECT set_config('uten.bootstrap_manifest_sha', ?, true)", String.class, "b".repeat(64));
         jdbc.execute("SELECT pg_advisory_xact_lock(hashtextextended('uten:legacy-bootstrap:'||current_database(),0))");
         return run;
     }

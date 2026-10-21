@@ -1028,9 +1028,12 @@ public class ProductionFinishedArrivalRegistrationService {
                     (UUID) row[0], ignored -> new ArrayList<>())
                     .add(java.util.Arrays.copyOfRange(row, 1, row.length));
         }
-        EmployeeSnapshot receiver = itemRows.isEmpty()
-                ? null
-                : requireReceiver(currentUser.requireEmployeeId());
+        if (itemRows.isEmpty()) {
+            List<ArrivalRegistrationView> registered = new ArrayList<>(ids.size());
+            for (UUID reportId : ids) registered.add(detailInternal(reportId));
+            return List.copyOf(registered);
+        }
+        EmployeeSnapshot receiver = requireReceiver(currentUser.requireEmployeeId());
 
         // 已有的登记批次(含撤回历史)一次查完：部分登记或撤回过的报工在本页仍能看见并撤回。
         Map<UUID, List<RegistrationBatchView>> batchesByReport = registrationBatches(
@@ -1071,7 +1074,10 @@ public class ProductionFinishedArrivalRegistrationService {
             BatchArrivalRegistrationRequest request) {
         tx.bind();
         access.requireWarehouseTaskAccess("无权登记生产成品送检");
-        if (request == null || request.idempotencyKey() == null
+        if (request == null) {
+            throw validation("入库登记请求不能为空");
+        }
+        if (request.idempotencyKey() == null
                 || request.lots() == null || request.lots().isEmpty()) {
             throw validation("入库登记请求不能为空");
         }

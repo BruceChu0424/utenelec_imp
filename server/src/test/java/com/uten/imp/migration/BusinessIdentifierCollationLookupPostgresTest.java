@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -35,7 +34,7 @@ class BusinessIdentifierCollationLookupPostgresTest {
         DATABASE.start();
         // This index-only change is independent of the V500 valuation work.
         // Freeze the existing nonempty authority first, then apply exactly V501.
-        Flyway.configure().dataSource(DATABASE.getJdbcUrl(), DATABASE.getUsername(), DATABASE.getPassword())
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(DATABASE.getJdbcUrl(), DATABASE.getUsername(), DATABASE.getPassword())
                 .locations("classpath:db/migration").target("499").load().migrate();
         var dataSource = new DriverManagerDataSource(DATABASE.getJdbcUrl(), DATABASE.getUsername(), DATABASE.getPassword());
         jdbc = new JdbcTemplate(dataSource);

@@ -23,10 +23,9 @@ import java.util.UUID;
 @Setter
 public class MergePlanRequest {
 
-    @Valid
     @NotEmpty
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<Line> items;
+    private List<@Valid Line> items;
 
     /** 计划开工/完工日期（落到每个计划行）。 */
     private LocalDate planBeginDate;

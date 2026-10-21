@@ -26,7 +26,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -63,7 +62,7 @@ class WorkbenchBadgeBrowsingAudienceTest {
         var transactions = mock(PlatformTransactionManager.class);
         when(transactions.getTransaction(any())).thenAnswer(call -> new SimpleTransactionStatus());
         var scopes = mock(WarehouseTaskScopePort.class);
-        when(scopes.withScopeCache(any())).thenAnswer(call -> ((Supplier<?>) call.getArgument(0)).get());
+        when(scopes.withQueryScopeCache(any())).thenAnswer(call -> ((WarehouseTaskScopePort.ReadQuery<?>) call.getArgument(0)).read());
         var permissions = mock(PermissionResolver.class);
         when(permissions.grantedPermsOf(any(UUID.class))).thenReturn(Set.of());
         service = new WorkbenchBadgeService(List.of(() -> registered), transactions, scopes,

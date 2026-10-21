@@ -15,7 +15,6 @@ import com.uten.imp.features.stock.insight.dto.WeightAlertRow;
 import com.uten.imp.features.stock.weight.GoodsWeightEstimateService;
 import com.uten.imp.features.stock.weight.GoodsWeightFactsStore;
 import com.uten.imp.security.SecurityContextCurrentUser;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -56,7 +55,7 @@ class WarehouseInsightPostgresTest {
     static void start() {
         container = new PostgreSQLContainer("postgres:16-alpine");
         container.start();
-        Flyway.configure()
+        com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(container.getJdbcUrl(), container.getUsername(), container.getPassword())
                 .locations("classpath:db/migration")
                 .load()

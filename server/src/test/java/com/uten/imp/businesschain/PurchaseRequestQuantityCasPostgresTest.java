@@ -28,7 +28,7 @@ import java.math.BigDecimal;
 import java.util.*;
 import java.util.concurrent.*;
 import static org.junit.jupiter.api.Assertions.*;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static com.uten.imp.testsupport.BusinessHttpRequests.authenticated;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 
 /** Real request/order/financial occupancy paths with persistent CAS and canonical locks. */
@@ -145,7 +145,7 @@ class PurchaseRequestQuantityCasPostgresTest {
 
     @Test void oldQuantityOnlyBodyAndCurrentlyClosedStoppedOrDeletedItemsCannotWrite() throws Exception {
         var c=prepare(1);UUID item=c.items().getFirst();long version=row(c,item).getRowVersion();
-        var old=http.perform(put(path(c,item)).with(authentication(c.actor())).contentType("application/json")
+        var old=http.perform(put(path(c,item)).with(authenticated(c.actor())).contentType("application/json")
                 .content("{\"qty\":37}")).andReturn().getResponse();
         assertEquals(422,old.getStatus());
         db.update("UPDATE purchase_requests SET is_closed=TRUE WHERE id=?",c.request());
@@ -259,7 +259,7 @@ class PurchaseRequestQuantityCasPostgresTest {
     private void assertVersionMatchesDatabase(UUID id,RequestItemDto item){assertEquals(db.queryForObject("SELECT row_version FROM purchase_request_items WHERE id=?",Long.class,id),item.getRowVersion());}
     private String path(Case c,UUID id){return "/api/purchase/requests/"+c.request()+"/items/"+id+"/qty";}
     private int change(Case c,UUID id,String qty,long version,Authentication actor) throws Exception {
-        return http.perform(put(path(c,id)).with(authentication(actor)).contentType("application/json")
+        return http.perform(put(path(c,id)).with(authenticated(actor)).contentType("application/json")
                 .content(json.writeValueAsBytes(Map.of("qty",new BigDecimal(qty),"expectedVersion",version))))
                 .andReturn().getResponse().getStatus();
     }

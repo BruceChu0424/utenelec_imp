@@ -194,7 +194,7 @@ public class FinanceAssetPostingService {
         AssetPostingPolicy.requireDifferentActor(actor, locked.submittedBy(), "过账");
         AssetPostingPolicy.requireCorporateGlBook(locked.bookType());
         periods.ensureOpen(locked.period(), FinanceAssetAuthorization.POST);
-        advisoryLock(locked.runType(), locked.bookType(), locked.period());
+        advisoryLock(locked.runType(), locked.bookType());
         if ("NORMAL".equals(locked.runKind())) postNormal(locked, actor); else postReversal(locked, actor);
         return get(runId, null);
     }
@@ -212,7 +212,7 @@ public class FinanceAssetPostingService {
             throw conflict("只有已生效过账的正常批次才能红冲");
         }
         periods.ensureOpen(original.period(), FinanceAssetAuthorization.POST);
-        advisoryLock(original.runType(), original.bookType(), original.period());
+        advisoryLock(original.runType(), original.bookType());
         Number later = (Number) em.createNativeQuery("""
                 SELECT COUNT(*) FROM finance_asset_posting_runs
                 WHERE run_type=:type AND book_type=:book AND run_kind='NORMAL' AND status='POSTED'
@@ -801,7 +801,7 @@ public class FinanceAssetPostingService {
         return AssetPostingFingerprint.calculate(type, book, period, inputs);
     }
 
-    private void advisoryLock(String type, String book, String period) {
+    private void advisoryLock(String type, String book) {
         em.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))")
                 .setParameter("key", "FINANCE_ASSET_RUN|" + type + "|" + book).getSingleResult();
     }

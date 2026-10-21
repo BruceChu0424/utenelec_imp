@@ -422,7 +422,11 @@ public class ProcurementPayablesService {
     }
 
     private static Integer integer(Object value) {
-        return value instanceof Number number ? number.intValue() : value == null ? null : Integer.valueOf(value.toString());
+        try {
+            return value instanceof Number number ? number.intValue() : value == null ? null : Integer.valueOf(value.toString());
+        } catch (NumberFormatException malformed) {
+            throw new IllegalStateException("采购应付整数资料格式错误", malformed);
+        }
     }
 
     /** 金额原文(ADR-112): 至少 4 位小数, 更多位数原样给出, 不在接口层截短。 */

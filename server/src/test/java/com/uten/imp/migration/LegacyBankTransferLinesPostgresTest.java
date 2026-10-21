@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -30,7 +29,7 @@ class LegacyBankTransferLinesPostgresTest {
     @BeforeAll static void start() {
         PG.start();
         jdbc=new JdbcTemplate(new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword()));
-        Flyway.configure().dataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword()).target("625").load().migrate();
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword()).target("625").load().migrate();
         UUID currency=UUID.randomUUID(),style=UUID.randomUUID(),account=UUID.randomUUID();
         jdbc.update("INSERT INTO currencies(id,code,name,exchange_rate,status) VALUES (?,'BANK-HISTORY-CNY','人民币',1,'使用')",currency);
         jdbc.update("INSERT INTO payment_styles(id,code,name,category,level) VALUES (?,'BANK-HISTORY-STYLE','银行历史科目','ACCOUNT',0)",style);
@@ -43,7 +42,7 @@ class LegacyBankTransferLinesPostgresTest {
         line(OLD_LINE,HISTORY,"YC20250102000001","3");
         oldHeader=rows("finance_bank_transfers","id",HISTORY);
         oldLines=rows("finance_bank_transfer_lines","transfer_id",HISTORY);
-        Flyway.configure().dataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword()).load().migrate();
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword()).load().migrate();
     }
     @AfterAll static void stop(){PG.stop();}
 

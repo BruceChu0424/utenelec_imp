@@ -163,24 +163,17 @@ public class ReviewNoticeAudience {
 
     private static boolean actionEligible(String event,Set<String> permissions) {
         return BusinessNoticeActionCatalog.contains(event) ? BusinessNoticeActionCatalog.eligible(event,permissions)
-                : eligible(event, permissions, Set.of());
+                : eligible(event, permissions);
     }
 
     private static Set<String> eligibleEvents(Set<String> permissions) {
         return ReviewNoticeCatalog.events().stream()
-                .filter(event -> eligible(event, permissions, Set.of(), false))
+                .filter(event -> eligible(event, permissions))
                 .collect(Collectors.toUnmodifiableSet());
     }
 
-    static boolean eligible(String event, Set<String> permissions, Set<String> departments) {
-        return eligible(event, permissions, departments, false);
-    }
-
-    /**
-     * @param warehouseParticipant 部门外登记的仓库负责人或仓储部门负责人: 仓库类待办与仓储部门成员同等对待
-     */
-    static boolean eligible(String event, Set<String> permissions, Set<String> departments,
-                            boolean warehouseParticipant) {
+    /** Action eligibility only; readScope and the object-routing SQL enforce physical responsibility. */
+    static boolean eligible(String event, Set<String> permissions) {
         if (!permissions.contains("notice:read")) return false;
         return switch (event) {
             case "SALES_SHIPMENT_PENDING_FINANCE_AUDIT" -> permissions.contains("sales_shipment_finance:view")

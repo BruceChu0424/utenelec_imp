@@ -9,7 +9,6 @@ import com.uten.imp.security.TxSessionVars;
 import com.uten.imp.support.MigratedProjectionSchema;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -43,7 +42,7 @@ class GoodsBomLearningQueryPostgresTest {
 
     @BeforeAll static void migrate()throws Exception {
         DATABASE.start();
-        var migration=Flyway.configure().dataSource(DATABASE.getJdbcUrl(),DATABASE.getUsername(),DATABASE.getPassword())
+        var migration=com.uten.imp.testsupport.TestFlyway.configure().dataSource(DATABASE.getJdbcUrl(),DATABASE.getUsername(),DATABASE.getPassword())
                 .locations("classpath:db/migration").load();
         migration.migrate();
         try(Connection plain=connection();var statement=plain.createStatement();

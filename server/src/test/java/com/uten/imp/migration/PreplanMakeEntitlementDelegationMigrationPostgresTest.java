@@ -498,7 +498,7 @@ class PreplanMakeEntitlementDelegationMigrationPostgresTest {
     }
 
     private static Flyway flyway(String target) {
-        return Flyway.configure()
+        return com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(
                         POSTGRES.getJdbcUrl(),
                         POSTGRES.getUsername(),
@@ -519,7 +519,7 @@ class PreplanMakeEntitlementDelegationMigrationPostgresTest {
                             + "V337__preplan_make_entitlement_delegation.sql"),
                     migration,
                     StandardCopyOption.REPLACE_EXISTING);
-            Flyway.configure()
+            com.uten.imp.testsupport.TestFlyway.configure()
                     .dataSource(
                             POSTGRES.getJdbcUrl(),
                             POSTGRES.getUsername(),

@@ -21,7 +21,7 @@ import java.util.UUID;
 public record ProductionMaterialReturnConfirmRequest(
         @NotNull UUID warehouseId,
         @NotNull @Pattern(regexp="[A-Za-z0-9._:-]{8,128}") String idempotencyKey,
-        @Valid @Size(max = RequestLimits.DOCUMENT_LINES) List<Line> lines) {
+        @Size(max = RequestLimits.DOCUMENT_LINES) List<@Valid Line> lines) {
 
     public ProductionMaterialReturnConfirmRequest(UUID warehouseId, String idempotencyKey) {
         this(warehouseId, idempotencyKey, null);

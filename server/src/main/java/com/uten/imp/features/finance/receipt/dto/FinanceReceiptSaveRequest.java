@@ -68,7 +68,6 @@ public class FinanceReceiptSaveRequest implements ServerDerivedAmounts {
     private String remark;
 
     /** 核销明细（可空：空列表 = 直接收款 / 客户预付；非空 = 指定核销若干 AR）。 */
-    @Valid
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<FinanceReceiptLineInput> items;
+    private List<@Valid FinanceReceiptLineInput> items;
 }

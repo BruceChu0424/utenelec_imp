@@ -103,6 +103,22 @@ public class WarehouseDataScopeService implements WarehouseTaskScopePort {
         }
     }
 
+    @Override
+    public <T> T withRequestedWarehouseQuery(UUID requestedWarehouseId, ReadQuery<T> query) {
+        if (requestedWarehouseId == null) return query.read();
+        try (ScopeCacheLease ignored = new ScopeCacheLease()) {
+            current(requestedWarehouseId);
+            UUID previous = REQUESTED.get();
+            REQUESTED.set(requestedWarehouseId);
+            try {
+                return query.read();
+            } finally {
+                if (previous == null) REQUESTED.remove();
+                else REQUESTED.set(previous);
+            }
+        }
+    }
+
     /** Nested readers and commands share a window; only its owner releases it, including on failure. */
     private static final class ScopeCacheLease implements AutoCloseable {
         private final boolean owner;

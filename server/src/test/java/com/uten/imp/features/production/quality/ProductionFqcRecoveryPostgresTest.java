@@ -1,6 +1,5 @@
 package com.uten.imp.features.production.quality;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -35,7 +34,7 @@ class ProductionFqcRecoveryPostgresTest {
     @BeforeAll
     static void migrateAndSeedActor() throws Exception {
         POSTGRES.start();
-        Flyway.configure()
+        com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(
                         POSTGRES.getJdbcUrl(),
                         POSTGRES.getUsername(),

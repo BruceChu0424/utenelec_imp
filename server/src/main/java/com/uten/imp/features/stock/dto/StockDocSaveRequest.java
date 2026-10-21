@@ -42,8 +42,7 @@ public class StockDocSaveRequest {
     private String planNo;
     private String remark;
 
-    @Valid
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<StockDocItemLine> items;
+    private List<@Valid StockDocItemLine> items;
 }

@@ -103,7 +103,7 @@ class GoodsQuantityUnitLifecyclePostgresTest {
     @Test void everyQuantitySourceLocksAllDeclaredGoodsColumns() {
         for (Source source : SOURCES) {
             List<UUID> ids = new ArrayList<>();
-            for (String ignored : source.columns()) ids.add(goods(PIECE));
+            for (int index = 0; index < source.columns().size(); index++) ids.add(goods(PIECE));
             jdbc.update("INSERT INTO " + source.table() + "(" + String.join(",", source.columns())
                     + ",distinct_document_count) VALUES (" + String.join(",", Collections.nCopies(ids.size(), "?")) + ",1)", ids.toArray());
             for (UUID id : ids) {

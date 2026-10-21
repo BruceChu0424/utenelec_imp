@@ -371,7 +371,7 @@ public class SalesReturnService {
             assertStoredSources(value,items,false,true);
             validateReturnWritebackCapacity(items,-1,false);
             qualityService.requireUntouchedReceiptReversible(id,items.size());
-            Long quality=((Number)em.createNativeQuery("SELECT count(*) FROM sales_return_quality_items WHERE return_id=:id").setParameter("id",id).getSingleResult()).longValue();
+            long quality=((Number)em.createNativeQuery("SELECT count(*) FROM sales_return_quality_items WHERE return_id=:id").setParameter("id",id).getSingleResult()).longValue();
             if(quality==0)throw new ApiException(ErrorCode.CONFLICT,"历史退货缺少品质冻结事实，需先专项核对原库存路径，不能直接通用反审生成草稿");
             if(value.isArPosted())requireUnsettledReturnSource(id);
         });
@@ -1489,7 +1489,7 @@ public class SalesReturnService {
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_return:view')")
     public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
-        var document=detailHistory(id);
+        detailHistory(id);
         com.uten.imp.common.history.RetainedRecordAccess.requireUnmaskedCostOriginal(false);
         return retainedRecords.children("sales_returns",id,beforeId,size);
     }

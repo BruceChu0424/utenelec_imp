@@ -232,10 +232,10 @@ public class FinanceReceiptSourceAllocationService {
             if (slice.signum() == 0) continue;
             BigDecimal cashSlice = cashRemaining.min(slice);
             BigDecimal writeOffSlice = money(slice.subtract(cashSlice));
-            BigDecimal cashLocal = localPart(cashSlice, cashRemaining, cashLocalRemaining,
-                    positive(line.getExchangeRate(), "到账汇率"));
+            positive(line.getExchangeRate(), "到账汇率");
+            BigDecimal cashLocal = localPart(cashSlice, cashRemaining, cashLocalRemaining);
             BigDecimal writeOffLocal = localPart(writeOffSlice, writeOffRemaining,
-                    writeOffLocalRemaining, positive(line.getExchangeRate(), "到账汇率"));
+                    writeOffLocalRemaining);
             BigDecimal bookLocal = receipt.getSettlementAuthorityVersion()>=2
                     ? com.uten.imp.common.finance.FinancialBookAllocation.part(slice,refOriginalRemaining,refLocalRemaining)
                     : appliedRemaining.compareTo(slice) == 0
@@ -331,7 +331,7 @@ public class FinanceReceiptSourceAllocationService {
 
     private static BigDecimal localPart(
             BigDecimal originalPart, BigDecimal originalRemaining,
-            BigDecimal localRemaining, BigDecimal rate) {
+            BigDecimal localRemaining) {
         if (originalPart.signum() == 0) return BigDecimal.ZERO.setScale(MONEY_SCALE);
         if (originalPart.compareTo(originalRemaining) == 0) return money(localRemaining);
         BigDecimal value = com.uten.imp.common.finance.FinancialBookAllocation.part(originalPart,originalRemaining,localRemaining);

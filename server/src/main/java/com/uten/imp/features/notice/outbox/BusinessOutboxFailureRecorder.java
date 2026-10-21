@@ -6,6 +6,9 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
+import java.util.Optional;
+import java.time.Instant;
+import java.time.OffsetDateTime;
 
 /**
  * 业务 outbox 投递失败记录（{@link Propagation#REQUIRES_NEW} 独立事务）：
@@ -24,9 +27,9 @@ public class BusinessOutboxFailureRecorder {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void record(UUID eventId, Throwable error) {
-        String message = rootMessage(error);
-        jdbc.update("""
+    public Optional<RecordedFailure> record(UUID eventId, Throwable error) {
+        String message = BusinessOutboxDeliveryDiagnostics.describe(error).persistedDescription();
+        return jdbc.query("""
                 UPDATE business_outbox
                 SET attempts = attempts + 1,
                     status = CASE WHEN attempts + 1 >= ? THEN 2 ELSE 0 END,
@@ -38,19 +41,16 @@ public class BusinessOutboxFailureRecorder {
                     END,
                     last_error = ?
                 WHERE id = ? AND status = 0
+                RETURNING status, attempts, available_at, now() AS recorded_at
                 """,
-                MAX_ATTEMPTS,
-                MAX_ATTEMPTS,
-                message,
-                eventId);
+                (row, index) -> new RecordedFailure(row.getInt("status"), row.getInt("attempts"),
+                        row.getObject("available_at", OffsetDateTime.class).toInstant(),
+                        row.getObject("recorded_at", OffsetDateTime.class).toInstant()),
+                MAX_ATTEMPTS, MAX_ATTEMPTS, message, eventId).stream().findFirst();
     }
 
-    private String rootMessage(Throwable error) {
-        Throwable current = error;
-        while (current.getCause() != null) {
-            current = current.getCause();
-        }
-        String value = current.getClass().getSimpleName() + ": " + current.getMessage();
-        return value.length() <= 1000 ? value : value.substring(0, 1000);
+    public record RecordedFailure(int status, int attempts, Instant availableAt, Instant recordedAt) {
+        boolean deferred() { return status == 0 && attempts > 0 && attempts < MAX_ATTEMPTS && availableAt.isAfter(recordedAt); }
+        boolean exhausted() { return status == 2 && attempts >= MAX_ATTEMPTS; }
     }
 }

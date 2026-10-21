@@ -262,7 +262,7 @@ class MaterialAggregateOrderScalePostgresTest {
 
     @Test void independentAndDependentGroupsConserveRealOrdersAtConfiguredScales() throws Exception {
         List<Integer> scales=Arrays.stream(System.getProperty("uten.material.order.sizes","10").split(","))
-            .map(String::trim).filter(value->!value.isEmpty()).map(Integer::parseInt).toList();
+            .map(String::trim).filter(value->!value.isEmpty()).map(com.uten.imp.testsupport.FixtureNumbers::integer).toList();
         List<String> shapes=Arrays.stream(System.getProperty("uten.material.order.shapes","independent,mixed").split(","))
             .map(String::trim).toList();
         List<String> incomplete=new ArrayList<>();

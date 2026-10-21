@@ -22,15 +22,23 @@ class ControlledLoadWindowMetricsTest {
         assertEquals(ControlledLoadWindowMetrics.Outcome.OUTCOME_UNKNOWN, ControlledLoadWindowMetrics.outcome(true, facts));
     }
     @Test void independentBackgroundSqlIsCountedGloballyWithoutEnteringTheRequestSpan() throws Exception {
-        DataSource source = mock(DataSource.class); Connection connection = mock(Connection.class); Statement statement = mock(Statement.class);
-        when(source.getConnection()).thenReturn(connection); when(connection.createStatement()).thenReturn(statement);
+        DataSource source = mock(DataSource.class);
+        Connection connection = mock(Connection.class), backgroundConnection = mock(Connection.class);
+        Statement statement = mock(Statement.class), backgroundStatement = mock(Statement.class);
+        when(source.getConnection()).thenReturn(connection, backgroundConnection);
+        when(connection.createStatement()).thenReturn(statement);
+        when(backgroundConnection.createStatement()).thenReturn(backgroundStatement);
         var measured = (DataSource) ControlledLoadWindowMetrics.Configuration.controlledWindowJdbcMetrics().postProcessAfterInitialization(source, "dataSource");
         ControlledLoadWindowMetrics.beginWindow();
         try (var command = ControlledLoadWindowMetrics.span(ControlledLoadWindowMetrics.Phase.COMMAND)) {
-            measured.getConnection().createStatement().execute("select 1");
+            try (var borrowed = measured.getConnection(); var sql = borrowed.createStatement()) {
+                sql.execute("select 1");
+            }
             var failure = new java.util.concurrent.atomic.AtomicReference<Throwable>();
             Thread worker = new Thread(() -> {
-                try { measured.getConnection().createStatement().execute("select 2"); }
+                try (var borrowed = measured.getConnection(); var sql = borrowed.createStatement()) {
+                    sql.execute("select 2");
+                }
                 catch (Throwable error) { failure.set(error); }
             }, "business-outbox-test");
             worker.start(); worker.join(5000); assertFalse(worker.isAlive()); assertNull(failure.get());
@@ -38,6 +46,10 @@ class ControlledLoadWindowMetricsTest {
             var all = ControlledLoadWindowMetrics.allThreads();
             assertEquals(1L, ((java.util.Map<?, ?>) all.get("COMMAND")).get("sqlStatements"));
             assertEquals(1L, ((java.util.Map<?, ?>) all.get("BACKGROUND")).get("sqlStatements"));
+            verify(statement).close();
+            verify(backgroundStatement).close();
+            verify(connection).close();
+            verify(backgroundConnection).close();
         }
     }
 }

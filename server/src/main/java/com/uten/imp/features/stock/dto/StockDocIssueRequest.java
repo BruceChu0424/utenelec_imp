@@ -31,10 +31,9 @@ public class StockDocIssueRequest {
     @Size(min = 8, max = 128)
     private String idempotencyKey;
 
-    @Valid
     @NotNull
     @Size(min = 1, max = RequestLimits.DOCUMENT_LINES)
-    private List<Line> lines;
+    private List<@Valid Line> lines;
 
     /**
      * 取消出库：必填的取消原因（进审计，不落 remark）。

@@ -25,7 +25,7 @@ final class WarehouseHistoryQueries {
                 + "COALESCE(NULLIF(line.goods_code_snapshot,''),goods.code),"
                 + "COALESCE(NULLIF(line.goods_name_snapshot,''),goods.name),goods.spec,"
                 + "color.name,unit.name,line.qty,line.weight "
-                + lineJoins(type, scope) + where(type, true) + lineScopeFilter(type, scope)
+                + lineJoins(type, scope) + where(true) + lineScopeFilter(type, scope)
                 + orderBy.strip().replace("ORDER BY ", "ORDER BY " + rank + ", ")
                 + ", line.line_no NULLS LAST,line.id\n" + """
                 LIMIT :limit OFFSET :offset
@@ -57,7 +57,7 @@ final class WarehouseHistoryQueries {
 
     static String facetsSql(WarehouseHistoryType type, String expr, WarehouseTaskScope scope) {
         return "SELECT " + expr + ", COUNT(*) " + lineJoins(type, scope)
-                + where(type, true) + lineScopeFilter(type, scope) + " GROUP BY 1 ORDER BY 1\n";
+                + where(true) + lineScopeFilter(type, scope) + " GROUP BY 1 ORDER BY 1\n";
     }
 
     static String countSql(WarehouseHistoryType type) {
@@ -65,7 +65,7 @@ final class WarehouseHistoryQueries {
     }
 
     static String countSql(WarehouseHistoryType type, WarehouseTaskScope scope) {
-        return "SELECT COUNT(*) " + lineJoins(type, scope) + where(type, true) + lineScopeFilter(type, scope);
+        return "SELECT COUNT(*) " + lineJoins(type, scope) + where(true) + lineScopeFilter(type, scope);
     }
 
     static String detailHeaderSql(WarehouseHistoryType type) {
@@ -278,7 +278,7 @@ final class WarehouseHistoryQueries {
         };
     }
 
-    private static String where(WarehouseHistoryType type, boolean includeFilters) {
+    private static String where(boolean includeFilters) {
         String filters = includeFilters ? """
                   -- null 参数类型坑：可选过滤一律 CAST(:param AS 类型) IS NULL OR ...
                   AND (CAST(:status AS smallint) IS NULL OR h.status = CAST(:status AS smallint))

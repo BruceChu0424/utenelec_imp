@@ -30,8 +30,7 @@ public class InquirySaveRequest {
     private LocalDate deliverDate;
     private String remark;
 
-    @Valid
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<InquiryItemLine> items;
+    private List<@Valid InquiryItemLine> items;
 }

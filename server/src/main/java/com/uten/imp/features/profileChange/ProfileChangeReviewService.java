@@ -70,7 +70,6 @@ public class ProfileChangeReviewService {
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "员工档案不存在"));
         List<ProfileChangeRequest> rs = repo.findByBatchIdAndStatus(batchId, "pending");
         if (rs.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "无可审批批次");
-        ProfileChangeRequest first = rs.get(0);
         // 2026-09-29 放开自审：持 profile:review 的 HR 就一个人，他经「我的」页改自己
         // 档案产生的申请只能由他自己审——原先「不能审批自己提交的申请」会把这类单永久卡死。
 

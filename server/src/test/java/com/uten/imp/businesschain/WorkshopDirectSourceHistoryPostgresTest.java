@@ -1,6 +1,5 @@
 package com.uten.imp.businesschain;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.AfterAll;
@@ -153,7 +152,7 @@ class WorkshopDirectSourceHistoryPostgresTest {
     }
 
     private static void migrate(String url,String version) {
-        Flyway.configure().dataSource(url,username,password).locations("classpath:db/migration").target(version).load().migrate();
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(url,username,password).locations("classpath:db/migration").target(version).load().migrate();
     }
     private record Task(UUID plan,UUID item,UUID pack,UUID segment) {}
     private record History(UUID reservation,UUID demand,UUID parentPlan) {}

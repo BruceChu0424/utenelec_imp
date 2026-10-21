@@ -24,11 +24,11 @@ class LocalDiskStorageServiceTest {
     void uploadNeverOverwritesAnExistingStorageKey() throws Exception {
         LocalDiskStorageService storage = storage();
         byte[] original = "trusted-original".getBytes(StandardCharsets.UTF_8);
-        storage.store("fixed-key.txt", new ByteArrayInputStream(original), original.length, "text/plain");
+        storage.store("fixed-key.txt", new ByteArrayInputStream(original), original.length);
 
         byte[] replacement = "attacker-replacement".getBytes(StandardCharsets.UTF_8);
         assertThrows(IllegalStateException.class, () -> storage.store(
-                "fixed-key.txt", new ByteArrayInputStream(replacement), replacement.length, "text/plain"));
+                "fixed-key.txt", new ByteArrayInputStream(replacement), replacement.length));
         assertArrayEquals(original,
                 Files.readAllBytes(directory.resolve("staging").resolve("fixed-key.txt")));
     }
@@ -39,7 +39,7 @@ class LocalDiskStorageServiceTest {
         byte[] bytes = "short".getBytes(StandardCharsets.UTF_8);
 
         assertThrows(IllegalStateException.class, () -> storage.store(
-                "short.txt", new ByteArrayInputStream(bytes), bytes.length + 10L, "text/plain"));
+                "short.txt", new ByteArrayInputStream(bytes), bytes.length + 10L));
         assertFalse(Files.exists(directory.resolve("staging").resolve("short.txt")));
     }
 
@@ -51,6 +51,7 @@ class LocalDiskStorageServiceTest {
                         "EXPENSE_CLAIM", "receipt.png", "image/png", 8));
 
         assertTrue(upload.url().startsWith("/attachments/raw/"));
+        assertEquals("image/png", upload.headers().get("Content-Type"));
         assertFalse(upload.url().startsWith("/api/"));
         assertEquals(
                 "/attachments/raw/fixed.png",
@@ -61,7 +62,7 @@ class LocalDiskStorageServiceTest {
     void promotionCopiesIntoFinalAndLeavesStagingForOutboxCleanup() throws Exception {
         LocalDiskStorageService storage = storage();
         byte[] bytes = "trusted".getBytes(StandardCharsets.UTF_8);
-        storage.store("fixed.txt", new ByteArrayInputStream(bytes), bytes.length, "text/plain");
+        storage.store("fixed.txt", new ByteArrayInputStream(bytes), bytes.length);
         StorageService.StoredObject staged = storage.describe("fixed.txt");
 
         StorageService.StoredObject promoted = storage.promoteToFinal("fixed.txt", staged);
@@ -79,7 +80,7 @@ class LocalDiskStorageServiceTest {
     void inspectObjectClassifiesAbsentPresentDirectoryAndFlatLegacyLayout() throws Exception {
         LocalDiskStorageService storage = storage();
         byte[] bytes = "local original".getBytes(StandardCharsets.UTF_8);
-        storage.store("inspect.txt", new ByteArrayInputStream(bytes), bytes.length, "text/plain");
+        storage.store("inspect.txt", new ByteArrayInputStream(bytes), bytes.length);
         storage.promoteToFinal("inspect.txt", storage.describe("inspect.txt"));
         assertTrue(storage.inspectObject(StorageService.ObjectLocation.STAGING, "inspect.txt").exists());
         assertEquals(bytes.length, storage.inspectObject(StorageService.ObjectLocation.FINAL, "inspect.txt").size());

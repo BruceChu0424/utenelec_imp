@@ -593,6 +593,9 @@ final class MasterReferenceCatalog {
         exempt(out, ExemptReason.HISTORY, "已完成的往来核销", "supplier_open_item_offsets", "supplier_id");
         exempt(out, ExemptReason.HISTORY, "已审核的索赔收款", "supplier_claim_cash_receipts", "supplier_id");
         exempt(out, ExemptReason.HISTORY, "官网询盘来访线索", "website_inquiries", "client_id");
+        // V881: 首次单位核对回执写入后不可修改；当前计量身份仍由 goods.unit_id 的有效货品引用守卫覆盖。
+        exempt(out, ExemptReason.HISTORY, "首次基本单位人工核对的不可变回执，保留所选单位历史身份；当前引用由货品基本单位覆盖",
+                "rd_tasks", "initial_unit_id");
 
         exempt(out, ExemptReason.LEGACY, "老库车间直送异常", "production_workshop_direct_legacy_anomalies",
                 "goods_id", "color_id", "warehouse_id");

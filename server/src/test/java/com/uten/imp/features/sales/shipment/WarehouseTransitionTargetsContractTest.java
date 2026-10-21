@@ -18,9 +18,7 @@ class WarehouseTransitionTargetsContractTest {
                 SalesShipment.WORK_PENDING_PICK))
                 .containsExactly(SalesShipment.WORK_SHIPPED);
         assertThatCode(() -> SalesShipmentService.validateWarehouseTransition(
-                SalesShipment.WORK_PENDING_PICK,
-                SalesShipment.WORK_SHIPPED,
-                null)).doesNotThrowAnyException();
+                SalesShipment.WORK_PENDING_PICK, SalesShipment.WORK_SHIPPED)).doesNotThrowAnyException();
 
         for (String terminal : List.of(
                 SalesShipment.WORK_SHIPPED,
@@ -41,7 +39,7 @@ class WarehouseTransitionTargetsContractTest {
     void retiredIntermediateTargetsAreRejectedByCommandValidation() {
         for (String retired : List.of("PICKING", "PICKED", "EXCEPTION")) {
             assertThatThrownBy(() -> SalesShipmentService.validateWarehouseTransition(
-                    SalesShipment.WORK_PENDING_PICK, retired, "已核对实物"))
+                    SalesShipment.WORK_PENDING_PICK, retired))
                     .isInstanceOf(ApiException.class)
                     .extracting(error -> ((ApiException) error).getCode())
                     .isEqualTo(ErrorCode.VALIDATION_FAILED);
@@ -53,9 +51,7 @@ class WarehouseTransitionTargetsContractTest {
     @Test
     void confirmingOutboundTwiceFailsClosed() {
         assertThatThrownBy(() -> SalesShipmentService.validateWarehouseTransition(
-                SalesShipment.WORK_SHIPPED,
-                SalesShipment.WORK_SHIPPED,
-                null))
+                SalesShipment.WORK_SHIPPED, SalesShipment.WORK_SHIPPED))
                 .isInstanceOf(ApiException.class)
                 .extracting(error -> ((ApiException) error).getCode())
                 .isEqualTo(ErrorCode.CONFLICT);

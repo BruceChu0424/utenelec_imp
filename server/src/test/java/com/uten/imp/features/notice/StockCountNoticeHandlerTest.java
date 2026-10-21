@@ -126,9 +126,9 @@ class StockCountNoticeHandlerTest {
         assertThat(ReviewNoticeCatalog.of(StockCountNoticeHandler.FINANCE_EVENT).orElseThrow().aggregateKind())
                 .isEqualTo("STOCK_COUNT_REQUEST");
         assertThat(ReviewNoticeAudience.eligible(StockCountNoticeHandler.FINANCE_EVENT,
-                Set.of("notice:read", "stock:count:finance_review"), Set.of())).isTrue();
+                Set.of("notice:read", "stock:count:finance_review"))).isTrue();
         assertThat(ReviewNoticeAudience.eligible(StockCountNoticeHandler.WAREHOUSE_EVENT,
-                Set.of("notice:read", "stock:count:finance_review"), Set.of())).isFalse();
+                Set.of("notice:read", "stock:count:finance_review"))).isFalse();
     }
 
     private void header(String route, String status) {

@@ -825,7 +825,7 @@ class InventoryPositionPostgresTest {
             physical(issued,c,input,bd("3"),-1);
             return positions.move(new Move(context(),input,Owner.COST_WIP,segment,List.of(slice(issued.valueNodeId(),"3")))).positionRootId();
         });
-        var output=locked(product,()->{
+        locked(product,()->{
             EventContext c=context();var value=values.receive(new Receive(c,UUID.randomUUID(),product,bd("3"),qty(product),null,false));
             physical(value,c,product,bd("3"),1);productionCosts.registerOutput(segment,product,new InventoryProductionCostPort.Output(value.valueNodeId(),value.movementId()));return value;
         });

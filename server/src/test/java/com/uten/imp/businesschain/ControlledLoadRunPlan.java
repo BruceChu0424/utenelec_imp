@@ -56,7 +56,13 @@ record ControlledLoadRunPlan(List<String> scenarios, Background background, int 
         return fields;
     }
     private static String value(Map<String, String> env, String key, String fallback) { return env.getOrDefault("UTEN_WINDOW_" + key, fallback); }
-    private static int integer(Map<String, String> env, String key, int fallback) { return Integer.parseInt(value(env, key, Integer.toString(fallback))); }
+    private static int integer(Map<String, String> env, String key, int fallback) {
+        try {
+            return Integer.parseInt(value(env, key, Integer.toString(fallback)));
+        } catch (NumberFormatException invalid) {
+            throw new IllegalArgumentException("UTEN_WINDOW_" + key + " must be a whole number in the signed 32-bit range", invalid);
+        }
+    }
     private static void bound(int value, int minimum, int maximum, String key) {
         if (value < minimum || value > maximum) throw new IllegalArgumentException(key + " must be " + minimum + ".." + maximum);
     }

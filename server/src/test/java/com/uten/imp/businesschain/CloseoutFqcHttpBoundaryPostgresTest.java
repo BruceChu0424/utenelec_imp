@@ -31,7 +31,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.*;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static com.uten.imp.testsupport.BusinessHttpRequests.authenticated;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 /** Same actual FQC inputs retain different documented HTTP transaction boundaries. */
@@ -62,10 +62,10 @@ class CloseoutFqcHttpBoundaryPostgresTest {
     @Test void sequentialHandlingKeepsEarlierSuccessWhenTheNextReportIsExplicitlyRejected()throws Exception {
         Object source=source();List<UUID> ids=ReflectionTestUtils.invokeMethod(source,"inspections");
         var actor=SecurityContextHolder.getContext().getAuthentication();
-        var first=http.perform(post("/api/production/quality-inspections/"+ids.getFirst()+"/decisions").with(authentication(actor))
+        var first=http.perform(post("/api/production/quality-inspections/"+ids.getFirst()+"/decisions").with(authenticated(actor))
                 .contentType("application/json").content(json.writeValueAsBytes(new DecisionRequest("PASS",null,null,null,null,"row-first-"+UUID.randomUUID())))).andReturn().getResponse();
         assertEquals(200,first.getStatus(),first.getContentAsString());
-        var second=http.perform(post("/api/production/quality-inspections/"+ids.getLast()+"/decisions").with(authentication(actor))
+        var second=http.perform(post("/api/production/quality-inspections/"+ids.getLast()+"/decisions").with(authenticated(actor))
                 .contentType("application/json").content(json.writeValueAsBytes(new DecisionRequest("FAIL",null,null,"REWORK",null,"row-second-"+UUID.randomUUID())))).andReturn().getResponse();
         assertTrue(second.getStatus()==400||second.getStatus()==422,second.getContentAsString());
         assertEquals(1,eventCount(ids.getFirst()));assertEquals(0,eventCount(ids.getLast()));
@@ -78,7 +78,7 @@ class CloseoutFqcHttpBoundaryPostgresTest {
         var target=AopTestUtils.<ProductionCompletionReverseService>getUltimateTargetObject(completion);
         doThrow(new IllegalStateException("closeout final FQC projection failure")).when(target).afterFinishedInboundBatchApproved(anyCollection());
         try {
-            var response=http.perform(post("/api/production/quality-inspections/decisions/pass-all").with(authentication(actor))
+            var response=http.perform(post("/api/production/quality-inspections/decisions/pass-all").with(authenticated(actor))
                     .contentType("application/json").content(json.writeValueAsBytes(new PassAllBatchRequest(ids,key)))).andReturn().getResponse();
             assertTrue(response.getStatus()>=500,response.getContentAsString());
         }finally{doCallRealMethod().when(target).afterFinishedInboundBatchApproved(anyCollection());}

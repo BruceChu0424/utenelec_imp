@@ -116,7 +116,7 @@ class SubcontractComponentCustodyProjectionPostgresTest {
         World w = new World(UUID.randomUUID());
         Parent p = w.parent("P", false);
         UUID childA = w.child(p, "A", w.goodsA);
-        UUID action = w.action(p, "100", "0");
+        UUID action = w.action("100", "0");
         UUID application = w.allocation(action, p, "100");
         UUID orderItem = w.orderItem("1", application, "100");
         w.planLine(orderItem, w.goodsA, "1", "70");
@@ -136,7 +136,7 @@ class SubcontractComponentCustodyProjectionPostgresTest {
         Parent p = w.parent("P", false);
         UUID childA = w.child(p, "A", w.goodsA);
         UUID childB = w.child(p, "B", w.goodsB);
-        UUID action = w.action(p, "100", "0");
+        UUID action = w.action("100", "0");
         UUID application = w.allocation(action, p, "100");
         UUID orderItem = w.orderItem("1", application, "100");
         w.planLine(orderItem, w.goodsA, "1", "40");
@@ -156,12 +156,12 @@ class SubcontractComponentCustodyProjectionPostgresTest {
         World x = new World(UUID.randomUUID());
         Parent px = x.parent("PX", false);
         UUID cx = x.child(px, "A", x.goodsA);
-        UUID actionX = x.action(px, "60", "0");
+        UUID actionX = x.action("60", "0");
         UUID applicationX = x.allocation(actionX, px, "60");
         World y = x.sibling(UUID.randomUUID());
         Parent py = y.parent("PY", false);
         UUID cy = y.child(py, "A", x.goodsA);
-        UUID actionY = y.action(py, "40", "0");
+        UUID actionY = y.action("40", "0");
         UUID applicationY = y.allocation(actionY, py, "40");
         UUID orderItem = x.orderItem("1", applicationX, "60");
         x.source(orderItem, applicationY, "40", 2);
@@ -187,11 +187,11 @@ class SubcontractComponentCustodyProjectionPostgresTest {
         World x = new World(UUID.randomUUID());
         Parent px = x.parent("PX", false);
         UUID cx = x.child(px, "A", x.goodsA);
-        UUID applicationX = x.allocation(x.action(px, "100", "0"), px, "100");
+        UUID applicationX = x.allocation(x.action("100", "0"), px, "100");
         World y = x.sibling(UUID.randomUUID());
         Parent py = y.parent("PY", false);
         UUID cy = y.child(py, "A", x.goodsA);
-        UUID applicationY = y.allocation(y.action(py, "100", "0"), py, "100");
+        UUID applicationY = y.allocation(y.action("100", "0"), py, "100");
         UUID orderItem = x.orderItem("1", applicationX, "100");
         x.source(orderItem, applicationY, "100", 2);
         UUID line = x.planLine(orderItem, x.goodsA, "1", "100");
@@ -215,11 +215,11 @@ class SubcontractComponentCustodyProjectionPostgresTest {
         World x = new World(UUID.randomUUID());
         Parent px = x.parent("PX", false);
         UUID cx = x.child(px, "A", x.goodsA);
-        UUID applicationX = x.allocation(x.action(px, "100", "0"), px, "100");
+        UUID applicationX = x.allocation(x.action("100", "0"), px, "100");
         World y = x.sibling(UUID.randomUUID());
         Parent py = y.parent("PY", false);
         UUID cy = y.child(py, "A", x.goodsA);
-        UUID applicationY = y.allocation(y.action(py, "100", "0"), py, "100");
+        UUID applicationY = y.allocation(y.action("100", "0"), py, "100");
         UUID orderItem = x.orderItem("1", applicationX, "100");
         x.source(orderItem, applicationY, "100", 2);
         UUID line = x.planLine(orderItem, x.goodsA, "1", "100");
@@ -246,7 +246,7 @@ class SubcontractComponentCustodyProjectionPostgresTest {
         World w = new World(UUID.randomUUID());
         Parent root = w.parent("ROOT_SUPPLY", true);
         UUID childA = w.child(root, "A", w.goodsA);
-        UUID action = w.action(root, "1000", "500");
+        UUID action = w.action("1000", "500");
         UUID application = w.allocation(action, root, "1000");
         w.publicSurplus(action, application);
         UUID orderItem = w.orderItem("1", application, "1500");
@@ -265,7 +265,7 @@ class SubcontractComponentCustodyProjectionPostgresTest {
         World w = new World(UUID.randomUUID());
         Parent p = w.parent("P", false);
         UUID childA = w.child(p, "A", w.goodsA);
-        UUID action = w.action(p, "100", "0");
+        UUID action = w.action("100", "0");
         UUID application = w.allocation(action, p, "100");
         UUID orderItem = w.orderItem("1", application, "100");
         w.planLine(orderItem, w.goodsA, "1", "150");
@@ -279,7 +279,7 @@ class SubcontractComponentCustodyProjectionPostgresTest {
         Parent large = w.parent("large", false), small = w.parent("small", false);
         update("UPDATE production_material_analysis_materials SET goods_id=(SELECT goods_id FROM production_material_analysis_materials WHERE id=?) WHERE id=?",large.id(),small.id());
         UUID child = w.child(large,"A",w.goodsA);
-        UUID action = w.action(large,"110","0");
+        UUID action = w.action("110", "0");
         UUID first = w.allocation(action,small,"10"), last = w.allocation(action,large,"100");
         // Subcontract ordering admits overage on the last source. The material
         // has an original requirement of 200, but this action only commits 100.
@@ -385,7 +385,7 @@ class SubcontractComponentCustodyProjectionPostgresTest {
             return id;
         }
 
-        UUID action(Parent parent, String requested, String publicSurplus) throws SQLException {
+        UUID action(String requested, String publicSurplus) throws SQLException {
             UUID id = UUID.randomUUID();
             update("INSERT INTO preplan_supply_actions VALUES (?,?,'SUBCONTRACT','SUPPLY','CREATED','SUBCONTRACT_APPLICATION',?,?,NULL)",
                     id, analysis, new BigDecimal(requested), new BigDecimal(publicSurplus));

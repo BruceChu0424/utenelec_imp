@@ -89,7 +89,7 @@ class V238ToCurrentSyntheticMigrationPostgresTest {
     }
 
     private static Flyway flyway(boolean cleanDisabled, String targetVersion) {
-        return Flyway.configure()
+        return com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration")
                 .baselineOnMigrate(false)

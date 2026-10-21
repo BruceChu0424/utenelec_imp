@@ -1,7 +1,6 @@
 package com.uten.imp.support;
 
 import com.uten.imp.migration.MigrationRehearsalSupport;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
@@ -28,7 +27,7 @@ class MigratedSchemaBaselinePostgresTest {
             assertEquals(1, MigratedSchemaBaseline.processMigrationCount());
             assertHead(firstConnection);
             assertHead(secondConnection);
-            Flyway.configure().dataSource(second.getJdbcUrl(), second.getUsername(), second.getPassword())
+            com.uten.imp.testsupport.TestFlyway.configure().dataSource(second.getJdbcUrl(), second.getUsername(), second.getPassword())
                     .locations("classpath:db/migration").load().validate();
 
             assertColumn(firstConnection, "warehouses", "is_line_side");
@@ -108,7 +107,7 @@ class MigratedSchemaBaselinePostgresTest {
         try (var query = connection.createStatement();
              var rows = query.executeQuery("SELECT max(version::int) FROM flyway_schema_history WHERE success")) {
             assertTrue(rows.next());
-            assertEquals(Integer.parseInt(MigrationRehearsalSupport.CURRENT_HEAD_VERSION), rows.getInt(1));
+            assertEquals(com.uten.imp.testsupport.FixtureNumbers.integer(MigrationRehearsalSupport.CURRENT_HEAD_VERSION), rows.getInt(1));
         }
     }
 

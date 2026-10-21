@@ -51,7 +51,7 @@ class FinancePayableReportSqlContractTest {
 
         ReportTableResponse response = fixture.service().payableSummary(
                 null, LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 31),
-                Map.of(), 1, 50, null, null);
+                1, 50);
 
         assertThat(response.columns()).extracting(ReportColumn::key)
                 .contains("goodsAmount", "subcontractAmount", "purchaseReturnAmount",

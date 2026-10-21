@@ -196,7 +196,7 @@ class WorkshopSupplyAdversarialEndToEndTest {
         ManualFamily family=manualFamily("adv-direct-cost-"+alreadyIssued);Case c=family.context();UUID[] target=family.first();
         UUID demand=db.queryForObject("SELECT id FROM production_material_demands WHERE execution_segment_id=?",UUID.class,c.childSegment());
         transferTo(c,target[2],"10");
-        drainValue(c,List.of(c.child(),db.queryForObject("SELECT goods_id FROM production_material_demands WHERE id=?",UUID.class,demand)));
+        drainValue(List.of(c.child(),db.queryForObject("SELECT goods_id FROM production_material_demands WHERE id=?",UUID.class,demand)));
         // Current non-final output10 owns 10/200 of the true consumed cost100.
         poolValue(c.lineSide(),c.child(),"10","5");
         if(alreadyIssued)confirmRoute(target[0],target[1],"CONTINUOUS");
@@ -279,7 +279,7 @@ class WorkshopSupplyAdversarialEndToEndTest {
         qty(quantity,(BigDecimal)pool.get("quantity_basis"));qty(value,(BigDecimal)pool.get("basis_value_local"));
     }
 
-    private void drainValue(Case c,List<UUID> goods) {
+    private void drainValue(List<UUID> goods) {
         var operator=org.springframework.security.core.context.SecurityContextHolder.getContext();
         org.springframework.security.core.context.SecurityContextHolder.clearContext();
         try {InventoryValueWorkTestSupport.drain(beans.getBean(com.uten.imp.features.stock.valuation.InventoryValueWorkService.class),db,goods);}

@@ -1262,7 +1262,7 @@ public class SalesShipmentService {
         String target = req.getTargetStatus().trim()
                 .toUpperCase(java.util.Locale.ROOT);
         String reason = req.getReason() == null ? "" : req.getReason().trim();
-        validateWarehouseTransition(current, target, reason);
+        validateWarehouseTransition(current, target);
         OffsetDateTime now = OffsetDateTime.now();
         UUID actor = currentUser.requireEmployeeId();
         List<SalesShipmentItem> items =
@@ -1295,7 +1295,7 @@ public class SalesShipmentService {
         else assertWarehousePickCapacity(items);
         // ADR-135：出库实称重量(千克)只进库存重量账和本次出库事件证据, 从不写回销售明细。
         // 放在可发量校验之后、交接事实之前: 它的查询不会让交接字段提前落盘。
-        Map<UUID,BigDecimal> lineWeights=warehouseLineWeights(req,items);
+        Map<UUID,BigDecimal> lineWeights=warehouseLineWeights(req);
         s.setWarehouseExceptionReason(null);
         s.setHandedOverAt(now);
         s.setHandedOverBy(actor);
@@ -1329,7 +1329,7 @@ public class SalesShipmentService {
      * 不做静默兼容——它们对应的实物与会计语义已经不存在。
      */
     static void validateWarehouseTransition(
-            String current, String target, String reason) {
+            String current, String target) {
         if (!SalesShipment.WORK_SHIPPED.equals(target)) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
@@ -1570,8 +1570,7 @@ public class SalesShipmentService {
      * 按重量计的行(货品基本单位或本行单位是重量单位)丢弃, 库存账按数量精确换算。
      * 行归属与重复已由 {@link #warehouseStockPlaces} 核过(同一列表)。
      */
-    private Map<UUID,BigDecimal> warehouseLineWeights(com.uten.imp.features.sales.shipment.dto.WarehouseWorkTransitionRequest request,
-                                                      List<SalesShipmentItem> items) {
+    private Map<UUID,BigDecimal> warehouseLineWeights(com.uten.imp.features.sales.shipment.dto.WarehouseWorkTransitionRequest request) {
         if(request.getStockPlaces()==null)return Map.of();
         Map<UUID,BigDecimal> weights=new LinkedHashMap<>();
         for(var line:request.getStockPlaces()) {

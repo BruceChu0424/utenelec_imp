@@ -162,7 +162,7 @@ class FrozenAnalysisLabelMigrationPostgresTest {
     }
 
     private Flyway flyway(PostgreSQLContainer database, boolean compatible) {
-        var configuration = Flyway.configure()
+        var configuration = com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword())
                 .locations("filesystem:" + migrations.toAbsolutePath())
                 .baselineVersion("718").baselineOnMigrate(true).cleanDisabled(true);

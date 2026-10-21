@@ -106,8 +106,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 SecurityContextHolder.clearContext();
                 log.error(
                         "Authentication state resolution failed for {} {}",
-                        request.getMethod(),
-                        request.getRequestURI(),
+                        com.uten.imp.common.util.LogValue.singleLine(request.getMethod()),
+                        com.uten.imp.common.util.LogValue.singleLine(request.getRequestURI()),
                         ex);
                 writeServiceUnavailable(response);
                 return;

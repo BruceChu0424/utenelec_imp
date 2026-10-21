@@ -49,7 +49,6 @@ class MaterialAnalysisFlowStageServiceTest {
                 UUID.randomUUID(),
                 Map.of(line, "BUY"),
                 Map.of(line, new BigDecimal("5")),
-                Map.of(line, new BigDecimal("10")),
                 Map.of(),
                 Map.of());
         assertThat(stages).containsEntry(line, "BUY_PENDING_ISSUE");
@@ -64,7 +63,6 @@ class MaterialAnalysisFlowStageServiceTest {
                 UUID.randomUUID(),
                 Map.of(line, "BUY"),
                 Map.of(line, new BigDecimal("5")),
-                Map.of(line, BigDecimal.ZERO),
                 Map.of(),
                 Map.of());
         assertThat(stages).containsEntry(line, "BUY_PENDING_ISSUE");
@@ -89,11 +87,6 @@ class MaterialAnalysisFlowStageServiceTest {
                         running, new BigDecimal("5"),
                         done, BigDecimal.ZERO),
                 Map.of(
-                        waiting, new BigDecimal("10"),
-                        zeroReady, new BigDecimal("10"),
-                        running, new BigDecimal("10"),
-                        done, new BigDecimal("10")),
-                Map.of(
                         waiting, "WAITING",
                         zeroReady, "READY",
                         running, "IN_PROGRESS",
@@ -114,8 +107,7 @@ class MaterialAnalysisFlowStageServiceTest {
     void retainedPlanWithoutExecutionArrangementRequiresPlanningAcrossTheCanonicalStages() {
         UUID line = UUID.randomUUID();
         var stages = service.lineFlowStages(UUID.randomUUID(), Map.of(line, "MAKE"),
-                Map.of(line, new BigDecimal("1000")), Map.of(line, new BigDecimal("1000")),
-                Map.of(line, "PLANNING_REQUIRED"), Map.of());
+                Map.of(line, new BigDecimal("1000")), Map.of(line, "PLANNING_REQUIRED"), Map.of());
         assertThat(stages).containsEntry(line, "MAKE_PLANNING_REQUIRED");
         assertThat(MaterialAnalysisService.preparationStageRank("MAKE_PLANNING_REQUIRED"))
                 .isLessThan(MaterialAnalysisService.preparationStageRank("MAKE_WAITING_MATERIAL"));
@@ -130,7 +122,6 @@ class MaterialAnalysisFlowStageServiceTest {
                 UUID.randomUUID(),
                 Map.of(line, "SUBCONTRACT"),
                 Map.of(line, new BigDecimal("5")),
-                Map.of(line, new BigDecimal("10")),
                 Map.of(line, "IN_PROGRESS"),
                 Map.of(line, false));
         assertThat(stages).containsEntry(line, "SC_PENDING_ISSUE");
@@ -145,7 +136,6 @@ class MaterialAnalysisFlowStageServiceTest {
                 UUID.randomUUID(),
                 Map.of(line, "BUY"),
                 Map.of(line, BigDecimal.ZERO),
-                Map.of(line, new BigDecimal("10")),
                 Map.of(),
                 Map.of());
         assertThat(stages).containsEntry(line, "BUY_PENDING_ISSUE");
@@ -155,7 +145,7 @@ class MaterialAnalysisFlowStageServiceTest {
     void manufacturingTargetAdoptingUnprocessedPurchaseFollowsThatRealSupply() {
         UUID line=UUID.randomUUID();stubAllocationChain(line,UUID.randomUUID(),"PURCHASE_REQUEST");
         Map<UUID,String> stages=service.lineFlowStages(UUID.randomUUID(),Map.of(line,"MAKE"),
-                Map.of(line,new BigDecimal("2")),Map.of(line,new BigDecimal("2")),Map.of(),Map.of());
+                Map.of(line,new BigDecimal("2")),Map.of(),Map.of());
         assertThat(stages).containsEntry(line,"BUY_REQUESTED");
     }
 
@@ -170,7 +160,6 @@ class MaterialAnalysisFlowStageServiceTest {
         Map<UUID, String> stages = service.lineFlowStages(
                 UUID.randomUUID(),
                 Map.of(line, "BUY"),
-                Map.of(line, BigDecimal.ZERO),
                 Map.of(line, BigDecimal.ZERO),
                 Map.of(),
                 Map.of());
@@ -187,7 +176,6 @@ class MaterialAnalysisFlowStageServiceTest {
                 UUID.randomUUID(),
                 Map.of(line, "BUY"),
                 Map.of(line, BigDecimal.ZERO),
-                Map.of(line, new BigDecimal("10")),
                 Map.of(),
                 Map.of());
         assertThat(stages).containsEntry(line, "BUY_REQUESTED");
@@ -203,7 +191,6 @@ class MaterialAnalysisFlowStageServiceTest {
                 UUID.randomUUID(),
                 Map.of(line, "SUBCONTRACT"),
                 Map.of(line, BigDecimal.ZERO),
-                Map.of(line, BigDecimal.ZERO),
                 Map.of(),
                 Map.of());
         assertThat(stages).containsEntry(line, "SC_REQUESTED");
@@ -212,7 +199,7 @@ class MaterialAnalysisFlowStageServiceTest {
     @ParameterizedTest
     @ValueSource(strings = {"BUY", "SUBCONTRACT"})
     void partiallyStockedLiveDemandStillWaitsForItsMissingSupply(String route) {
-        assertThat(stage(route, "10", "6", false,
+        assertThat(stage(route, "6", false,
                 order("10", 1, receipt("COMPLETE", "4", "4"))))
                 .isEqualTo(waitReceipt(route));
     }
@@ -220,7 +207,7 @@ class MaterialAnalysisFlowStageServiceTest {
     @ParameterizedTest
     @ValueSource(strings = {"BUY", "SUBCONTRACT"})
     void passedSlicesStillWaitingForStockInTakePrecedenceOverRemainingShortage(String route) {
-        assertThat(stage(route, "10", "6", false,
+        assertThat(stage(route, "6", false,
                 order("10", 1, receipt("COMPLETE", "4", "4"), receipt("COMPLETE", "6", "0"))))
                 .isEqualTo(prefix(route) + "WAIT_STOCK_IN");
     }
@@ -228,7 +215,7 @@ class MaterialAnalysisFlowStageServiceTest {
     @ParameterizedTest
     @ValueSource(strings = {"BUY", "SUBCONTRACT"})
     void fulfilledPrivateShareDoesNotHideTheUnreceivedPublicRemainder(String route) {
-        assertThat(stage(route,"10","0",false,
+        assertThat(stage(route,"0",false,
                 order("20",1,receipt("COMPLETE","10","10"))))
                 .isEqualTo(waitReceipt(route));
     }
@@ -236,7 +223,7 @@ class MaterialAnalysisFlowStageServiceTest {
     @ParameterizedTest
     @ValueSource(strings = {"BUY", "SUBCONTRACT"})
     void partiallyInspectedReceiptDoesNotSkipQualityEvenWithSomeStockedGoods(String route) {
-        assertThat(stage(route, "10", "4", false,
+        assertThat(stage(route, "4", false,
                 order("10", 1, receipt("PARTIAL", "6", "6"))))
                 .isEqualTo(prefix(route) + "WAIT_IQC");
     }
@@ -244,7 +231,7 @@ class MaterialAnalysisFlowStageServiceTest {
     @ParameterizedTest
     @ValueSource(strings = {"BUY", "SUBCONTRACT"})
     void missingInspectionEvidenceForOneReceiptKeepsTheQualityGate(String route) {
-        assertThat(stage(route, "0", "0", false,
+        assertThat(stage(route, "0", false,
                 order("10", 1, receipt("COMPLETE", "4", "4"), receipt(null, "0", "0"))))
                 .isEqualTo(prefix(route) + "WAIT_IQC");
     }
@@ -252,7 +239,7 @@ class MaterialAnalysisFlowStageServiceTest {
     @ParameterizedTest
     @ValueSource(strings = {"BUY", "SUBCONTRACT"})
     void transferredLegacyLineCompletesOnlyAfterEveryReceiptCoversItsOrder(String route) {
-        assertThat(stage(route, "0", "0", false,
+        assertThat(stage(route, "0", false,
                 order("10", 1, receipt("COMPLETE", "4", "4"), receipt("COMPLETE", "6", "6"))))
                 .isEqualTo(prefix(route) + "STOCKED");
     }
@@ -260,7 +247,7 @@ class MaterialAnalysisFlowStageServiceTest {
     @ParameterizedTest
     @ValueSource(strings = {"BUY", "SUBCONTRACT"})
     void transferredLegacyLineDoesNotTreatOnePartialReceiptAsTheWholeOrder(String route) {
-        assertThat(stage(route, "0", "0", false,
+        assertThat(stage(route, "0", false,
                 order("10", 1, receipt("COMPLETE", "4", "4"))))
                 .isEqualTo(waitReceipt(route));
     }
@@ -268,7 +255,7 @@ class MaterialAnalysisFlowStageServiceTest {
     @ParameterizedTest
     @ValueSource(strings = {"BUY", "SUBCONTRACT"})
     void multipleOrdersFromOneSourceRetainTheEarlierUnapprovedOrder(String route) {
-        assertThat(stage(route, "0", "0", false,
+        assertThat(stage(route, "0", false,
                 order("4", 0, receipt("COMPLETE", "4", "4")),
                 order("6", 1, receipt("COMPLETE", "6", "6"))))
                 .isEqualTo(prefix(route) + "PENDING_FINANCE");
@@ -277,7 +264,7 @@ class MaterialAnalysisFlowStageServiceTest {
     @ParameterizedTest
     @ValueSource(strings = {"BUY", "SUBCONTRACT"})
     void multipleOrdersFromOneSourceRetainTheEarlierOpenInspection(String route) {
-        assertThat(stage(route, "0", "0", false,
+        assertThat(stage(route, "0", false,
                 order("4", 1, receipt("PARTIAL", "2", "2")),
                 order("6", 1, receipt("COMPLETE", "6", "6"))))
                 .isEqualTo(prefix(route) + "WAIT_IQC");
@@ -286,7 +273,7 @@ class MaterialAnalysisFlowStageServiceTest {
     @ParameterizedTest
     @ValueSource(strings = {"BUY", "SUBCONTRACT"})
     void oneOrdersExcessCannotCoverAnotherOrderThatHasNotArrived(String route) {
-        assertThat(stage(route, "0", "0", false,
+        assertThat(stage(route, "0", false,
                 order("4", 1, receipt("COMPLETE", "10", "10")), order("6", 1)))
                 .isEqualTo(waitReceipt(route));
     }
@@ -294,7 +281,7 @@ class MaterialAnalysisFlowStageServiceTest {
     @ParameterizedTest
     @ValueSource(strings = {"BUY", "SUBCONTRACT"})
     void orderStockedElsewhereDoesNotOverrideTheActualAnalysisShortage(String route) {
-        assertThat(stage(route, "10", "2", false,
+        assertThat(stage(route, "2", false,
                 order("10", 1, receipt("COMPLETE", "10", "10"))))
                 .isEqualTo(waitReceipt(route));
     }
@@ -302,7 +289,7 @@ class MaterialAnalysisFlowStageServiceTest {
     @ParameterizedTest
     @ValueSource(strings = {"BUY", "SUBCONTRACT"})
     void pendingFinanceStillWinsOverCompletedReceiptFacts(String route) {
-        assertThat(stage(route, "0", "0", true,
+        assertThat(stage(route, "0", true,
                 order("10", 1, receipt("COMPLETE", "10", "10"))))
                 .isEqualTo(prefix(route) + "PENDING_FINANCE");
     }
@@ -310,21 +297,21 @@ class MaterialAnalysisFlowStageServiceTest {
     @Test
     void subcontractWithDrawableSetsAsksForDrawEvenWhileEarlierBatchIsInInspection() {
         // 可领料轮到委外人员动手，排在回厂单的质检子状态之前。
-        assertThat(stage("SUBCONTRACT", "10", "10", false,
+        assertThat(stage("SUBCONTRACT", "10", false,
                 order("10", 1, draw("4", "0", "3"), receipt("PARTIAL", "2", "0"))))
                 .isEqualTo("SC_WAITING_DRAW");
     }
 
     @Test
     void subcontractSubmittedDrawWaitsForWarehouseOutbound() {
-        assertThat(stage("SUBCONTRACT", "10", "10", false,
+        assertThat(stage("SUBCONTRACT", "10", false,
                 order("10", 1, draw("0", "6", "0"))))
                 .isEqualTo("SC_WAIT_OUTBOUND");
     }
 
     @Test
     void subcontractWithoutAnyCompleteSetWaitsForMaterial() {
-        assertThat(stage("SUBCONTRACT", "10", "10", false,
+        assertThat(stage("SUBCONTRACT", "10", false,
                 order("10", 1, draw("0", "0", "0"))))
                 .isEqualTo("SC_WAITING_MATERIAL");
     }
@@ -332,27 +319,44 @@ class MaterialAnalysisFlowStageServiceTest {
     @Test
     void returnedBatchInInspectionShowsBeforeTheRemainingDrawWait() {
         // 40 套已领已回厂在质检，剩下 60 套还在等物料：质检子状态随回厂单实时显示。
-        assertThat(stage("SUBCONTRACT", "100", "100", false,
+        assertThat(stage("SUBCONTRACT", "100", false,
                 order("100", 1, draw("40", "0", "0"), receipt("PENDING", "0", "0"))))
                 .isEqualTo("SC_WAIT_IQC");
     }
 
     @Test
     void stockedBatchWithRemainingSetsAtSupplierWaitsForReturn() {
-        assertThat(stage("SUBCONTRACT", "100", "60", false,
+        assertThat(stage("SUBCONTRACT", "60", false,
                 order("100", 1, draw("70", "0", "0"), receipt("COMPLETE", "40", "40"))))
                 .isEqualTo("SC_WAIT_RETURN");
     }
 
     @Test
     void closedShortDeliveredOrderCompletesOnItsStockedReceipts() {
-        assertThat(stage("SUBCONTRACT", "0", "0", false,
+        assertThat(stage("SUBCONTRACT", "0", false,
                 closedOrder("100", draw("40", "0", "0"), receipt("COMPLETE", "40", "40"))))
                 .isEqualTo("SC_STOCKED");
     }
 
-    private String stage(String route, String required, String shortage, boolean financePending,
+    @ParameterizedTest
+    @ValueSource(strings = {"BUY", "SUBCONTRACT"})
+    void financeCasesForAnotherDocumentTypeDoNotBlockTheSameUuid(String route) {
+        OrderFixture order = order("100", 1);
+        String foreignType = "BUY".equals(route) ? "SUBCONTRACT" : "PURCHASE";
+        assertThat(stageWithPendingType(route, "100", true, foreignType, order))
+                .isEqualTo(stage(route, "100", false, order));
+        assertThat(stage(route, "100", true, order))
+                .isEqualTo(prefix(route) + "PENDING_FINANCE");
+    }
+
+    private String stage(String route, String shortage, boolean financePending,
                          OrderFixture... orders) {
+        return stageWithPendingType(route, shortage, financePending,
+                "BUY".equals(route) ? "PURCHASE" : "SUBCONTRACT", orders);
+    }
+
+    private String stageWithPendingType(String route, String shortage,
+                         boolean financePending, String pendingType, OrderFixture... orders) {
         UUID line = UUID.randomUUID();
         UUID action = UUID.randomUUID();
         UUID sourceItem = UUID.randomUUID();
@@ -395,7 +399,7 @@ class MaterialAnalysisFlowStageServiceTest {
                 rows = java.util.Arrays.stream(orders).map(order -> new Object[]{sourceItem,
                         order.id, order.status, order.itemId, new BigDecimal(order.quantity), order.closed}).toList();
             } else if (sql.contains("FROM procurement_order_approval_cases approval") && financePending) {
-                rows = List.<Object[]>of(new Object[]{orders[0].id, "PENDING"});
+                rows = List.<Object[]>of(new Object[]{pendingType, orders[0].id, "PENDING"});
             } else if (sql.contains("FROM " + kind + "_receipt_items receipt_item")) {
                 rows = receiptRows;
             } else if (sql.contains("FROM procurement_inspection_items inspection")) {
@@ -412,8 +416,7 @@ class MaterialAnalysisFlowStageServiceTest {
             return query;
         });
         return service.lineFlowStages(UUID.randomUUID(), Map.of(line, route),
-                Map.of(line, new BigDecimal(shortage)), Map.of(line, new BigDecimal(required)),
-                Map.of(), Map.of()).get(line);
+                Map.of(line, new BigDecimal(shortage)), Map.of(), Map.of()).get(line);
     }
 
     private static String prefix(String route) { return "BUY".equals(route) ? "BUY_" : "SC_"; }

@@ -54,17 +54,19 @@ final class MaterialSnapshotInput {
     }
 
     private static void write(JsonGenerator json,Object value)throws IOException {
-        if(value==null)json.writeNull();
-        else if(value instanceof BigDecimal number)json.writeNumber(number);
-        else if(value instanceof BigInteger number)json.writeNumber(number);
-        else if(value instanceof Integer number)json.writeNumber(number);
-        else if(value instanceof Long number)json.writeNumber(number);
-        else if(value instanceof Short number)json.writeNumber(number.intValue());
-        else if(value instanceof Boolean flag)json.writeBoolean(flag);
-        else if(value instanceof String text)json.writeString(text);
-        else if(value instanceof UUID id)json.writeString(id.toString());
-        else if(value instanceof LocalDate date)json.writeString(date.toString());
-        else if(value instanceof java.sql.Date date)json.writeString(date.toLocalDate().toString());
-        else throw new IllegalArgumentException("Unsupported material snapshot value type: "+value.getClass().getName());
+        switch(value) {
+            case null -> json.writeNull();
+            case BigDecimal number -> json.writeNumber(number);
+            case BigInteger number -> json.writeNumber(number);
+            case Integer number -> json.writeNumber(number);
+            case Long number -> json.writeNumber(number);
+            case Short number -> json.writeNumber(number.intValue());
+            case Boolean flag -> json.writeBoolean(flag);
+            case String text -> json.writeString(text);
+            case UUID id -> json.writeString(id.toString());
+            case LocalDate date -> json.writeString(date.toString());
+            case java.sql.Date date -> json.writeString(date.toLocalDate().toString());
+            default -> throw new IllegalArgumentException("Unsupported material snapshot value type: "+value.getClass().getName());
+        }
     }
 }

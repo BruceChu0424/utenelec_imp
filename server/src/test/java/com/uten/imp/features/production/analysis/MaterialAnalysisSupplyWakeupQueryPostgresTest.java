@@ -6,7 +6,6 @@ import com.uten.imp.support.ProcurementReceiptFixtureSupport;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.Query;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -69,7 +68,7 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
 
     @BeforeAll static void start() throws Exception {
         DB.start();
-        Flyway.configure().dataSource(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword())
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword())
                 .locations("classpath:db/migration").load().migrate();
         var source=new DriverManagerDataSource(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword());db=new JdbcTemplate(source);
         var builder=new LocalContainerEntityManagerFactoryBean();builder.setDataSource(source);

@@ -499,7 +499,7 @@ class ProductionFinishedInWarehouseConfirmationPostgresTest {
     }
 
     private static Flyway flyway(String target) {
-        return Flyway.configure()
+        return com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(
                         POSTGRES.getJdbcUrl(),
                         POSTGRES.getUsername(),
@@ -525,7 +525,7 @@ class ProductionFinishedInWarehouseConfirmationPostgresTest {
                             + "V338__production_finished_in_warehouse_confirmation.sql"),
                     migration,
                     StandardCopyOption.REPLACE_EXISTING);
-            Flyway.configure()
+            com.uten.imp.testsupport.TestFlyway.configure()
                     .dataSource(
                             POSTGRES.getJdbcUrl(),
                             POSTGRES.getUsername(),
@@ -551,7 +551,7 @@ class ProductionFinishedInWarehouseConfirmationPostgresTest {
                             + "V418__production_finished_in_rejected_residual.sql"),
                     migration,
                     StandardCopyOption.REPLACE_EXISTING);
-            Flyway.configure()
+            com.uten.imp.testsupport.TestFlyway.configure()
                     .dataSource(
                             POSTGRES.getJdbcUrl(),
                             POSTGRES.getUsername(),
@@ -607,15 +607,15 @@ class ProductionFinishedInWarehouseConfirmationPostgresTest {
         execute(connection, """
                 INSERT INTO production_plans(id, bill_no, bill_date, status)
                 VALUES (?, ?, ?, 1)
-                """, planId, businessNo("SJ", planId), date);
+                """, planId, businessNo("SJ"), date);
         execute(connection, """
                 INSERT INTO stock_documents(
                     id, doc_type, bill_no, bill_date, warehouse_id,
                     status, source_daily_report_id)
                 VALUES (?, 'FINISHED_IN', ?, ?, ?, ?, ?)
-                """, documentId, businessNo("CR", documentId), date,
+                """, documentId, businessNo("CR"), date,
                 warehouseId, documentStatus,
-                withReport ? report.reportId() : null);
+                withReport ? java.util.Objects.requireNonNull(report, "linked report is required").reportId() : null);
         execute(connection, """
                 INSERT INTO stock_document_items(
                     id, doc_id, bill_type, bill_no, bill_date, line_no,
@@ -624,9 +624,9 @@ class ProductionFinishedInWarehouseConfirmationPostgresTest {
                     goods_snapshot_source)
                 VALUES (?, ?, 'FINISHED_IN', ?, ?, 1,
                     ?, ?, 1, ?, ?, ?, ?, 'MASTER_AT_SAVE')
-                """, itemId, documentId, businessNo("CR", documentId), date,
+                """, itemId, documentId, businessNo("CR"), date,
                 goodsId, unitId, qty, reportedQty, qty,
-                withReport ? report.reportItemId() : null);
+                withReport ? java.util.Objects.requireNonNull(report, "linked report is required").reportItemId() : null);
         execute(connection, """
                 INSERT INTO plan_draw_links(plan_id, draw_id)
                 VALUES (?, ?)
@@ -660,12 +660,12 @@ class ProductionFinishedInWarehouseConfirmationPostgresTest {
         execute(connection, """
                 INSERT INTO production_plans(id, bill_no, bill_date, status)
                 VALUES (?, ?, ?, 1)
-                """, planId, businessNo("SJ", planId), date);
+                """, planId, businessNo("SJ"), date);
         execute(connection, """
                 INSERT INTO stock_documents(
                     id, doc_type, bill_no, bill_date, warehouse_id, status)
                 VALUES (?, 'FINISHED_IN', ?, ?, ?, 1)
-                """, documentId, businessNo("CR", documentId), date,
+                """, documentId, businessNo("CR"), date,
                 warehouseId);
         execute(connection, """
                 INSERT INTO stock_document_items(
@@ -674,7 +674,7 @@ class ProductionFinishedInWarehouseConfirmationPostgresTest {
                     goods_snapshot_source)
                 VALUES (?, ?, 'FINISHED_IN', ?, ?, 1,
                     ?, ?, 1, ?, ?, 'MASTER_AT_SAVE')
-                """, itemId, documentId, businessNo("CR", documentId), date,
+                """, itemId, documentId, businessNo("CR"), date,
                 goodsId, unitId, qty, qty);
         execute(connection, """
                 INSERT INTO plan_draw_links(plan_id, draw_id)
@@ -697,7 +697,7 @@ class ProductionFinishedInWarehouseConfirmationPostgresTest {
                     id, doc_type, bill_no, bill_date, warehouse_id,
                     status, source_daily_report_id)
                 VALUES (?, 'FINISHED_IN', ?, ?, ?, 0, ?)
-                """, documentId, businessNo("CR", documentId), date,
+                """, documentId, businessNo("CR"), date,
                 source.warehouseId(), report.reportId());
         execute(connection, """
                 INSERT INTO stock_document_items(
@@ -707,7 +707,7 @@ class ProductionFinishedInWarehouseConfirmationPostgresTest {
                     goods_snapshot_source)
                 VALUES (?, ?, 'FINISHED_IN', ?, ?, 1,
                     ?, ?, 1, ?, ?, ?, ?, 'MASTER_AT_SAVE')
-                """, itemId, documentId, businessNo("CR", documentId), date,
+                """, itemId, documentId, businessNo("CR"), date,
                 source.goodsId(), source.unitId(), qty, qty, qty,
                 report.reportItemId());
         execute(connection, """
@@ -738,13 +738,13 @@ class ProductionFinishedInWarehouseConfirmationPostgresTest {
                 INSERT INTO production_daily_reports(
                     id, bill_no, bill_date, status)
                 VALUES (?, ?, ?, 1)
-                """, reportId, businessNo("SR", reportId), date);
+                """, reportId, businessNo("SR"), date);
         execute(connection, """
                 INSERT INTO production_daily_report_items(
                     id, report_id, bill_no, bill_date, line_no,
                     goods_id, unit_id, unit_rate, qty)
                 VALUES (?, ?, ?, ?, 1, ?, ?, 1, ?)
-                """, reportItemId, reportId, businessNo("SR", reportId),
+                """, reportItemId, reportId, businessNo("SR"),
                 date, goodsId, unitId, qty);
         return new ReportSource(
                 reportId, reportItemId, goodsId, unitId);
@@ -864,7 +864,7 @@ class ProductionFinishedInWarehouseConfirmationPostgresTest {
         }
     }
 
-    private static String businessNo(String prefix, UUID id) {
+    private static String businessNo(String prefix) {
         int sequence = BUSINESS_IDENTIFIER_SEQUENCE.incrementAndGet();
         if (sequence > 999_999) {
             throw new IllegalStateException(

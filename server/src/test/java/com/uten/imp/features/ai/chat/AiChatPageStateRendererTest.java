@@ -25,7 +25,7 @@ class AiChatPageStateRendererTest {
                 {"红", "danger", "待选路线", "还没选生产路线，先选路线", "1"}};
         List<Map<String, Object>> entries = new ArrayList<>();
         for (String[] item : legend) entries.add(Map.of("column", "状态", "color", item[0], "tone", item[1], "value", item[2],
-                "meaning", item[3], "count", Integer.parseInt(item[4])));
+                "meaning", item[3], "count", com.uten.imp.testsupport.FixtureNumbers.integer(item[4])));
         return json.convertValue(Map.of("title", "我的车间任务", "tables", List.of(Map.of("title", "车间任务", "totalRows", 24,
                 "visibleRows", 24, "columns", List.of(Map.of("label", "货品"), Map.of("label", "状态")), "rows", List.of(),
                 "legend", entries))), AiChatPageSnapshot.class).sanitized();

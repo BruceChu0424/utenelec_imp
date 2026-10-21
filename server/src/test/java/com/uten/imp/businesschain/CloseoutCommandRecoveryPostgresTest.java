@@ -38,7 +38,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static com.uten.imp.testsupport.BusinessHttpRequests.authenticated;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
@@ -233,8 +233,8 @@ class CloseoutCommandRecoveryPostgresTest {
             "DELETE FROM user_data_scopes WHERE user_id=? AND scope='production_plan' AND owner_employee_id=?",reader,reportMaker));}
     private Authentication actor(){return SecurityContextHolder.getContext().getAuthentication();}
     private Authentication principal(UUID user,UUID employee,Set<String> permissions){return new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(new AuthUser(user,employee,"closeout-test",permissions,false,true,false),null,new AuthUser(user,employee,"closeout-test",permissions,false,true,false).getAuthorities());}
-    private JsonNode write(String path,Authentication actor,Object body,int status)throws Exception{var response=http.perform(post(path).with(authentication(actor)).contentType("application/json").content(json.writeValueAsBytes(body))).andReturn().getResponse();assertEquals(status,response.getStatus(),response.getContentAsString());return json.readTree(response.getContentAsByteArray());}
-    private JsonNode read(String path,Authentication actor,String key,int status)throws Exception{var response=http.perform(get(path).with(authentication(actor)).param("idempotencyKey",key)).andReturn().getResponse();assertEquals(status,response.getStatus(),response.getContentAsString());return json.readTree(response.getContentAsByteArray());}
+    private JsonNode write(String path,Authentication actor,Object body,int status)throws Exception{var response=http.perform(post(path).with(authenticated(actor)).contentType("application/json").content(json.writeValueAsBytes(body))).andReturn().getResponse();assertEquals(status,response.getStatus(),response.getContentAsString());return json.readTree(response.getContentAsByteArray());}
+    private JsonNode read(String path,Authentication actor,String key,int status)throws Exception{var response=http.perform(get(path).with(authenticated(actor)).param("idempotencyKey",key)).andReturn().getResponse();assertEquals(status,response.getStatus(),response.getContentAsString());return json.readTree(response.getContentAsByteArray());}
     private long movements(List<UUID> docs){return new org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate(db)
             .queryForObject("SELECT count(*) FROM stock_movements WHERE source_doc_id IN (:docs)",java.util.Map.of("docs",docs),Long.class);}
 }

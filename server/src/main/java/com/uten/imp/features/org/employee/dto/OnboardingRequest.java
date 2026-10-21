@@ -17,13 +17,10 @@ public record OnboardingRequest(
         @Valid Employment employment,
         @Valid Compensation compensation,
         @Valid Contract contract,
-        @Valid
         @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS)
         List<@Valid EmergencyContactInput> emergencyContacts,
-        @Valid
         @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS)
         List<@Valid CredentialInput> certificates,
-        @Valid
         @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS)
         List<@Valid EducationInput> educations,
         @Valid Account account

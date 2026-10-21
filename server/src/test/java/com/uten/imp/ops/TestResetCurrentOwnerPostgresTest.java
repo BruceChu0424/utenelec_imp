@@ -2,7 +2,6 @@ package com.uten.imp.ops;
 
 import com.uten.imp.application.port.BusinessTestResetFilesPort;
 import com.uten.imp.features.attachment.ResetEndToEndFixture;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.io.TempDir;
@@ -50,16 +49,16 @@ class TestResetCurrentOwnerPostgresTest {
             pg.start();
             var admin=new JdbcTemplate(new DriverManagerDataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()));
             admin.execute("CREATE ROLE uten_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE");
-            admin.execute("CREATE ROLE uten_migrator LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT PASSWORD '"+password+"'");
-            admin.execute("CREATE ROLE uten LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT PASSWORD '"+password+"'");
+            admin.execute(admin.queryForObject("SELECT format('CREATE ROLE uten_migrator LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT PASSWORD %L', CAST(? AS text))", String.class, password));
+            admin.execute(admin.queryForObject("SELECT format('CREATE ROLE uten LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT PASSWORD %L', CAST(? AS text))", String.class, password));
             admin.execute("GRANT uten_owner TO uten_migrator");
             admin.execute("ALTER DATABASE reset_current_owner OWNER TO uten_migrator; ALTER SCHEMA public OWNER TO uten_migrator");
             admin.execute("REVOKE ALL ON DATABASE reset_current_owner FROM PUBLIC; REVOKE ALL ON SCHEMA public FROM PUBLIC; GRANT CONNECT ON DATABASE reset_current_owner TO uten; GRANT USAGE ON SCHEMA public TO uten");
             // Production hardening grants EXECUTE on new functions to the runtime login by default.
             admin.execute("ALTER DEFAULT PRIVILEGES FOR ROLE uten_migrator, uten_owner IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO uten");
-            Flyway.configure().dataSource(pg.getJdbcUrl(),"uten_migrator",password).locations("classpath:db/migration").target(previous).load().migrate();
+            com.uten.imp.testsupport.TestFlyway.configure().dataSource(pg.getJdbcUrl(),"uten_migrator",password).locations("classpath:db/migration").target(previous).load().migrate();
             admin.execute("REASSIGN OWNED BY uten_migrator TO uten_owner");
-            assertThat(Flyway.configure().dataSource(pg.getJdbcUrl(),"uten_migrator",password).locations("classpath:db/migration").target(current).load().migrate().migrationsExecuted).isEqualTo(1);
+            assertThat(com.uten.imp.testsupport.TestFlyway.configure().dataSource(pg.getJdbcUrl(),"uten_migrator",password).locations("classpath:db/migration").target(current).load().migrate().migrationsExecuted).isEqualTo(1);
             assertThat(admin.queryForObject("SELECT pg_has_role('uten_migrator','uten_owner','MEMBER')",Boolean.class)).isTrue();
             assertThat(admin.queryForObject("SELECT pg_has_role('uten_owner','uten_migrator','MEMBER')",Boolean.class)).isFalse();
             assertThat(admin.queryForObject("SELECT proowner::regrole::text FROM pg_proc WHERE oid='public.business_data_reset()'::regprocedure",String.class)).isEqualTo("uten_owner");
@@ -103,7 +102,7 @@ class TestResetCurrentOwnerPostgresTest {
             assertThat(runtime.queryForObject("SELECT fn_business_test_reset_active()",Boolean.class)).isFalse();
 
             // A login that is neither the runtime role nor a member of the reset owner cannot pass the caller check.
-            admin.execute("CREATE ROLE reset_probe_login LOGIN NOSUPERUSER NOINHERIT PASSWORD '"+password+"'");
+            admin.execute(admin.queryForObject("SELECT format('CREATE ROLE reset_probe_login LOGIN NOSUPERUSER NOINHERIT PASSWORD %L', CAST(? AS text))", String.class, password));
             admin.execute("GRANT CONNECT ON DATABASE reset_current_owner TO reset_probe_login; GRANT USAGE ON SCHEMA public TO reset_probe_login; GRANT SELECT ON public.users TO reset_probe_login");
             admin.execute("GRANT EXECUTE ON FUNCTION public.fn_business_test_reset_require_caller() TO reset_probe_login");
             var probe=new JdbcTemplate(new DriverManagerDataSource(pg.getJdbcUrl(),"reset_probe_login",password));
@@ -161,14 +160,14 @@ class TestResetCurrentOwnerPostgresTest {
             if (matcher.matches() && Files.readString(migration, StandardCharsets.UTF_8)
                     .contains("CREATE FUNCTION public.fn_business_test_reset_objects()")) {
                 assertThat(current).as("one migration creates the single object rule").isEqualTo(-1);
-                current = Integer.parseInt(matcher.group(1));
+                current = com.uten.imp.testsupport.FixtureNumbers.integer(matcher.group(1));
             }
         }
         assertThat(current).isPositive();
         for (Path migration : migrations) {
             Matcher matcher = file.matcher(migration.getFileName().toString());
             if (matcher.matches()) {
-                int version = Integer.parseInt(matcher.group(1));
+                int version = com.uten.imp.testsupport.FixtureNumbers.integer(matcher.group(1));
                 if (version < current) previous = Math.max(previous, version);
             }
         }

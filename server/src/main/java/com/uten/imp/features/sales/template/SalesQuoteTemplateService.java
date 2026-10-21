@@ -244,7 +244,7 @@ public class SalesQuoteTemplateService {
             List<QuoteTemplateWorkbook.ExportLine> lines) {
         if (requested == null) return null;
         String suppliedScope = requested.scope();
-        if (suppliedScope != null && !Set.of("sales_quote", "view_sales").contains(suppliedScope.toString()))
+        if (suppliedScope != null && !Set.of("sales_quote", "view_sales").contains(suppliedScope))
             throw invalidProjection("导出表头不属于销售报价明细");
         var columns = requested.columns();
         if (columns == null || columns.isEmpty() || columns.size() > 100)

@@ -30,7 +30,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.function.Supplier;
 
 /**
  * 工作台徽章汇总(ADR-108): 在**一个只读事务**里按当前主体把全部登记来源各读一次,
@@ -135,10 +134,10 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
         return readOnly(() -> compute(subset, wanted));
     }
 
-    private WorkbenchBadgeSummary readOnly(Supplier<WorkbenchBadgeSummary> work) {
-        return warehouseScopes.withScopeCache(() -> readOnlyTransaction.execute(status -> {
+    private WorkbenchBadgeSummary readOnly(WarehouseTaskScopePort.ReadQuery<WorkbenchBadgeSummary> work) {
+        return warehouseScopes.withQueryScopeCache(() -> readOnlyTransaction.execute(status -> {
             try {
-                return work.get();
+                return work.read();
             } finally {
                 // 只读事务: 回滚与提交等价; 显式标记可避免来源内部的只可回滚标记变成异常。
                 status.setRollbackOnly();

@@ -18,6 +18,10 @@ public class FulfillmentSourceConflictException extends ApiException {
 
     private final String internalReason;
     private final boolean retryable;
+    private final Reason reason;
+
+    /** Only explicitly identified, rolled-back contention is a normal background deferral. */
+    public enum Reason { UNCLASSIFIED, PRE_WRITE_SOURCE_CHANGED, LOCK_BUSY }
 
     public FulfillmentSourceConflictException(String internalReason, boolean retryable) {
         this(internalReason, retryable, USER_MESSAGE);
@@ -25,10 +29,29 @@ public class FulfillmentSourceConflictException extends ApiException {
 
     /** 需要换一句面向用户的提示时用(例如主仓协调锁等不到: 请稍后再试)。 */
     public FulfillmentSourceConflictException(String internalReason, boolean retryable, String userMessage) {
+        this(internalReason, retryable, userMessage, Reason.UNCLASSIFIED, null);
+    }
+
+    private FulfillmentSourceConflictException(String internalReason, boolean retryable, String userMessage,
+                                               Reason reason, Throwable cause) {
         super(ErrorCode.CONFLICT, userMessage);
         this.internalReason = internalReason;
         this.retryable = retryable;
+        this.reason = reason;
+        if (cause != null) { initCause(cause); }
     }
+
+    static FulfillmentSourceConflictException preWriteSourceChanged(String internalReason) {
+        return new FulfillmentSourceConflictException(internalReason, true, USER_MESSAGE,
+                Reason.PRE_WRITE_SOURCE_CHANGED, null);
+    }
+
+    static FulfillmentSourceConflictException lockBusy(String internalReason, String userMessage, Throwable cause) {
+        return new FulfillmentSourceConflictException(internalReason, true, userMessage, Reason.LOCK_BUSY,
+                java.util.Objects.requireNonNull(cause));
+    }
+
+    public Reason reason() { return reason; }
 
     /** 只进服务端日志, 永不回给客户端。 */
     public String internalReason() {

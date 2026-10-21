@@ -56,7 +56,7 @@ class PayrollPdfServiceTest {
         int xref = raw.indexOf("xref\n");
         String[] entries = raw.substring(xref).split("\\n");
         for (int object = 1; object <= 6; object++) {
-            int offset = Integer.parseInt(entries[2 + object].substring(0, 10));
+            int offset = com.uten.imp.testsupport.FixtureNumbers.integer(entries[2 + object].substring(0, 10));
             assertTrue(raw.startsWith(object + " 0 obj", offset));
         }
     }

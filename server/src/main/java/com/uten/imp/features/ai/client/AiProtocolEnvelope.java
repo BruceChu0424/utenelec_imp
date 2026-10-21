@@ -13,7 +13,7 @@ final class AiProtocolEnvelope {
         boolean errorObject = root.has("error") && !root.path("error").isNull();
         JsonNode code = root.path("code");
         boolean failureCode = code.isIntegralNumber() && code.bigIntegerValue().compareTo(java.math.BigInteger.valueOf(400)) >= 0;
-        if (code.isTextual() && code.asText().matches("[0-9]{3,9}") && Long.parseLong(code.asText()) >= 400) failureCode = true;
+        if (code.isTextual() && code.asText().matches("[0-9]{3,9}") && code.asLong() >= 400) failureCode = true;
         if (declaredFailure || (!hasProtocolPayload && (errorObject || failureCode))) {
             // msg/error/message may echo request text, credentials or proxy internals. None is displayed.
             throw new AiCallException(AiErrorCategory.BAD_REQUEST,

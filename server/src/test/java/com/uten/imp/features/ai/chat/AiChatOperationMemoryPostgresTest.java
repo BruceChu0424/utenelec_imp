@@ -63,7 +63,7 @@ class AiChatOperationMemoryPostgresTest {
 
     @AfterAll
     static void stop() {
-        if (DB != null) DB.stop();
+        DB.stop();
     }
 
     @BeforeEach void clean() {

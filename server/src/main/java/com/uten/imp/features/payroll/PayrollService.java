@@ -401,8 +401,7 @@ public class PayrollService {
         batchRepository.save(batch);
         // 发布 → 持条员工逐人「工资条已发布」（普通通知不弹卡）+ 办结审核弹卡
         hrNotice.notifyPayrollPublished(
-                batch.getId(), periodLabel(batch),
-                slipRepository.findByBatchIdOrderByEmployeeCodeSnapshotAscIdAsc(batch.getId())
+                periodLabel(batch), slipRepository.findByBatchIdOrderByEmployeeCodeSnapshotAscIdAsc(batch.getId())
                         .stream().map(PayrollSlip::getEmployeeId).distinct().toList());
         hrNotice.resolvePayrollBatch(batch.getId(), "PUBLISHED");
         return mapBatchWithSlips(batch);

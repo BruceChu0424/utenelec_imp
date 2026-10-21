@@ -1,7 +1,6 @@
 package com.uten.imp.migration;
 
 import com.uten.imp.features.stock.StockReadSideSeed;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -16,7 +15,7 @@ class ProcurementInspectionActorMigrationPostgresTest {
     @Test void forwardMigrationKeepsHistoricalEventExactlyAndUserNullEvenWhenAnEmployeeIsRecorded()throws Exception {
         try(var postgres=new PostgreSQLContainer("postgres:16-alpine")){
             postgres.start();var ds=new DriverManagerDataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword());
-            Flyway.configure().dataSource(ds).locations("classpath:db/migration").target("772").load().migrate();
+            com.uten.imp.testsupport.TestFlyway.configure().dataSource(ds).locations("classpath:db/migration").target("772").load().migrate();
             UUID event=UUID.randomUUID(),linkedUser=UUID.randomUUID();
             try(var seed=new StockReadSideSeed(ds)){
                 UUID department=UUID.randomUUID(),employee=UUID.randomUUID();
@@ -31,7 +30,7 @@ class ProcurementInspectionActorMigrationPostgresTest {
                 seed.jdbc().update("INSERT INTO procurement_inspection_events(id,inspection_item_id,action,base_qty,actor_employee_id) VALUES(?,?,'RECEIVED',1,?)",event,inspection,employee);
             }
             var db=new JdbcTemplate(ds);String original=db.queryForObject("SELECT to_jsonb(e)::text FROM procurement_inspection_events e WHERE id=?",String.class,event);
-            Flyway.configure().dataSource(ds).locations("classpath:db/migration").target("774").load().migrate();
+            com.uten.imp.testsupport.TestFlyway.configure().dataSource(ds).locations("classpath:db/migration").target("774").load().migrate();
             assertNull(db.queryForObject("SELECT actor_user_id FROM procurement_inspection_events WHERE id=?",UUID.class,event));
             assertEquals(original,db.queryForObject("SELECT (to_jsonb(e)-'actor_user_id')::text FROM procurement_inspection_events e WHERE id=?",String.class,event));
             assertEquals(774,db.queryForObject("SELECT max(version::int) FROM flyway_schema_history",Integer.class));

@@ -602,7 +602,7 @@ class ExpenseClaimServiceTest {
         when(claimRepository.findByIdForUpdate(claim.getId())).thenReturn(Optional.of(claim));
         service.reject(claim.getId(),"补充原件");
         var order=inOrder(notices);order.verify(notices).resolveExpenseClaim(claim.getId(),"REJECTED");
-        order.verify(notices).notifyExpenseClaimRejected(claim.getId(),claim.getApplicantNameSnapshot(),"补充原件",null);
+        order.verify(notices).notifyExpenseClaimRejected(claim.getId(), "补充原件", null);
     }
 
     @Test void approvedClaimCannotBeMarkedPaidWithoutPaymentEvidence() {

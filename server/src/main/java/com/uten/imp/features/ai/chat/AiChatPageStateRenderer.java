@@ -39,7 +39,13 @@ final class AiChatPageStateRenderer {
         var matcher = ROW.matcher(java.text.Normalizer.normalize(question, java.text.Normalizer.Form.NFKC));
         if (!matcher.find()) return null;
         for (int group = 1; group <= matcher.groupCount(); group++) {
-            if (matcher.group(group) != null) return Integer.valueOf(matcher.group(group));
+            if (matcher.group(group) != null) {
+                try {
+                    return Integer.valueOf(matcher.group(group));
+                } catch (NumberFormatException malformed) {
+                    return null;
+                }
+            }
         }
         return null;
     }
@@ -56,7 +62,7 @@ final class AiChatPageStateRenderer {
 
     static String render(AiChatPageSnapshot snapshot, String question, String uiConventions) {
         return switch (focus(question)) {
-            case ROW -> row(snapshot, row(question), uiConventions);
+            case ROW -> row(snapshot, row(question));
             case COLORS -> colors(snapshot, uiConventions);
             case REVIEW -> review(snapshot);
             case SUMMARY -> summary(snapshot);
@@ -67,7 +73,7 @@ final class AiChatPageStateRenderer {
      * One row the question names: each column's text, what the page flagged in it, and the legend meaning of a
      * status the row shows. Falls back to the page summary when no table has that row.
      */
-    static String row(AiChatPageSnapshot snapshot, int rowNo, String uiConventions) {
+    static String row(AiChatPageSnapshot snapshot, int rowNo) {
         StringBuilder reply = new StringBuilder();
         for (var table : list(snapshot.tables())) {
             var row = list(table.rows()).stream().filter(item -> item.no() != null && item.no() == rowNo).findFirst();

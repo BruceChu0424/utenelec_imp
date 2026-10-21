@@ -183,12 +183,18 @@ class AiJobServiceTest {
     }
 
     private AiJobView submit(Map<String, String> params, InputStream body) throws Exception {
-        return service.submit("TEST_KIND", params, "list.csv", "text/csv", body, -1, user);
+        try (body) {
+            return service.submit("TEST_KIND", params, "list.csv", "text/csv", body, -1, user);
+        }
     }
 
     @Test
     void authorizesBeforeReadingTheBodyThenSniffsValidatesAndEnqueuesWithTheSubmitterStamps() throws Exception {
-        AiJobView view = submit(new LinkedHashMap<>(Map.of("clientId", "c1")), new TrackingStream(CSV));
+        AiJobView view;
+        try (var body = new TrackingStream(CSV)) {
+            view = service.submit("TEST_KIND", new LinkedHashMap<>(Map.of("clientId", "c1")), "list.csv", "text/csv",
+                    body, -1, user);
+        }
 
         assertThat(calls).startsWith("authorizeSubmit", "readBody");
         assertThat(calls).contains("validateInput:CSV:" + CSV.length);

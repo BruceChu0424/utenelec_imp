@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -14,7 +13,7 @@ class FinancialActualBankReceiptPostgresTest {
     @Test void actualBankAndThirtyDigitForeignReceiptCommitAndReverseWithoutChangingEitherSnapshot() throws Exception {
         try(var pg=new PostgreSQLContainer("postgres:16-alpine")) {
             pg.start();
-            Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword())
+            com.uten.imp.testsupport.TestFlyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword())
                 .locations("classpath:db/migration")
                 .target("520").load().migrate();
             try(var c=DriverManager.getConnection(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword())) {

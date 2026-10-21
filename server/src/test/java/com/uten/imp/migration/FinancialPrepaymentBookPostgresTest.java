@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -106,5 +105,5 @@ class FinancialPrepaymentBookPostgresTest {
     }
     private record Fixture(UUID client,UUID currency,UUID base,UUID maker,UUID approver,UUID actor,UUID order,UUID target,UUID ref){}
     private static Connection connect(PostgreSQLContainer pg)throws SQLException{return DriverManager.getConnection(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword());}
-    private static void migrate(PostgreSQLContainer pg,String target){Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()).locations("classpath:db/migration").target(target).load().migrate();}
+    private static void migrate(PostgreSQLContainer pg,String target){com.uten.imp.testsupport.TestFlyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()).locations("classpath:db/migration").target(target).load().migrate();}
 }

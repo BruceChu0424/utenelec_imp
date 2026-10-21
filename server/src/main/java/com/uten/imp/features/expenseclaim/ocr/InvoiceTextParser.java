@@ -141,7 +141,7 @@ final class InvoiceTextParser {
                 return LocalDate.of(Integer.parseInt(iso.group(1)),
                         Integer.parseInt(iso.group(2)), Integer.parseInt(iso.group(3)));
             }
-        } catch (DateTimeException invalidDate) {
+        } catch (DateTimeException | NumberFormatException invalidDate) {
             // OCR 日期可能认错；其他可信字段仍可供人工预填。
         }
         return null;

@@ -121,6 +121,7 @@ public class ProductionMaterialReturnReceiptService {
             requireNew(result);
         }
         Map<UUID, UUID> issueMovements = new LinkedHashMap<>();
+        UUID reversalEventId = result == null ? null : result.eventId();
         for (StockDocumentItem item : items) {
             Source source = sources.get(item.getId());
             OriginalMovement original = originals.get(item.getId());
@@ -128,6 +129,7 @@ public class ProductionMaterialReturnReceiptService {
                 throw conflict("缺少原实际收仓流水，不能按来源位置猜测红冲仓库");
             }
             boolean wasIssued = source.issuePosting() != null;
+            if (wasIssued && reversalEventId == null) throw conflict("原领料退回缺少可核验的账本冲回事实");
             if (!wasIssued) {
                 em.createNativeQuery("SELECT fn_prepare_reverse_workshop_return_custody(:request,NULL,:actor)")
                         .setParameter("request", source.requestItem()).setParameter("actor", actor).getSingleResult();
@@ -144,7 +146,7 @@ public class ProductionMaterialReturnReceiptService {
             em.createNativeQuery("SELECT fn_reverse_workshop_return_custody(:request,:incoming,:outgoing,:event,:actor)")
                     .setParameter("request", source.requestItem()).setParameter("incoming", incomingCounter)
                     .setParameter("outgoing", outgoingCounter)
-                    .setParameter("event", wasIssued ? result.eventId() : null)
+                    .setParameter("event", wasIssued ? reversalEventId : null)
                     .setParameter("actor", actor).getSingleResult();
             if (wasIssued) issueMovements.put(item.getId(), incomingCounter);
         }

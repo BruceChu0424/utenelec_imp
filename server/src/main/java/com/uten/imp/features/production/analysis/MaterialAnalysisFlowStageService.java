@@ -89,7 +89,6 @@ public class MaterialAnalysisFlowStageService {
      * @param analysisId         分析 id（链路查询按分析收敛，一次批量）
      * @param routeByLine        行 → 展示路线（已确认优先，回退建议）
      * @param shortageByLine     行 → shortage_qty（入库齐套权威）
-     * @param requiredByLine     行 → required_qty
      * @param childStatusByLine  行 → 自制锚点子件的执行状态（可空，只用于自制行）
      * @param childZeroByLine    行 → 自制子件执行段是否全部零料直制
      */
@@ -98,7 +97,6 @@ public class MaterialAnalysisFlowStageService {
             UUID analysisId,
             Map<UUID, String> routeByLine,
             Map<UUID, BigDecimal> shortageByLine,
-            Map<UUID, BigDecimal> requiredByLine,
             Map<UUID, String> childStatusByLine,
             Map<UUID, Boolean> childZeroByLine) {
         ChainFacts facts = loadChainFacts(analysisId);
@@ -111,8 +109,6 @@ public class MaterialAnalysisFlowStageService {
             // 无行动的行会推导为 *_PENDING_ISSUE，客户端本就不把它当流程中。
             BigDecimal shortage = shortageByLine.getOrDefault(
                     lineId, BigDecimal.ZERO);
-            BigDecimal required = requiredByLine.getOrDefault(
-                    lineId, BigDecimal.ZERO);
             switch (route) {
                 // 路线未定的行不进任何一条供应链(ADR-102)：调用方已经判定过
                 // 「这一行需要人先选供应方式」，这里只如实回传，不猜成采购。
@@ -123,7 +119,7 @@ public class MaterialAnalysisFlowStageService {
                 case "SUBCONTRACT" -> result.put(lineId,
                         subcontractStage(lineId, shortage, facts));
                 default -> result.put(lineId,
-                        purchaseStage(lineId, required, shortage, facts));
+                        purchaseStage(lineId, shortage, facts));
             }
             // A target may adopt another route's existing document. Its progress
             // follows that real supply until receipt, instead of asking for a new order.
@@ -131,7 +127,7 @@ public class MaterialAnalysisFlowStageService {
             LineChain chain=facts.lines.get(lineId);
             if(stage!=null&&stage.endsWith("PENDING_ISSUE")&&chain!=null) {
                 List<String> adoptedStages=new ArrayList<>();
-                if(!chain.purchaseExternalItems.isEmpty())adoptedStages.add(purchaseStage(lineId,required,shortage,facts));
+                if(!chain.purchaseExternalItems.isEmpty())adoptedStages.add(purchaseStage(lineId, shortage, facts));
                 if(!chain.subcontractExternalItems.isEmpty())adoptedStages.add(subcontractStage(lineId,shortage,facts));
                 adoptedStages.stream().min(java.util.Comparator.comparingInt(MaterialAnalysisService::preparationStageRank))
                         .ifPresent(value->result.put(lineId,value));
@@ -172,7 +168,7 @@ public class MaterialAnalysisFlowStageService {
     }
 
     private static String purchaseStage(
-            UUID lineId, BigDecimal required, BigDecimal shortage, ChainFacts facts) {
+            UUID lineId, BigDecimal shortage, ChainFacts facts) {
         LineChain chain = facts.lines.get(lineId);
         if (chain == null || chain.purchaseExternalItems.isEmpty()) {
             return BUY_PENDING_ISSUE;
@@ -325,16 +321,16 @@ public class MaterialAnalysisFlowStageService {
         subcontractOrderRows.values().stream().flatMap(List::stream)
                 .forEach(order -> allOrderIds.add(order.orderId));
 
-        Map<UUID, List<String>> approvalStatusByOrder = new LinkedHashMap<>();
+        Map<OrderKey, List<String>> approvalStatusByOrder = new LinkedHashMap<>();
         if (!allOrderIds.isEmpty()) {
             for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                            SELECT approval.order_id, approval.status
+                            SELECT approval.order_type, approval.order_id, approval.status
                             FROM procurement_order_approval_cases approval
                             WHERE approval.order_id IN (:orderIds)
                             """).setParameter("orderIds", List.copyOf(allOrderIds)))) {
                 approvalStatusByOrder
-                        .computeIfAbsent((UUID) row[0], ignored -> new ArrayList<>())
-                        .add((String) row[1]);
+                        .computeIfAbsent(new OrderKey((String) row[0], (UUID) row[1]), ignored -> new ArrayList<>())
+                        .add((String) row[2]);
             }
         }
 
@@ -527,11 +523,13 @@ public class MaterialAnalysisFlowStageService {
     private record IqcView(long total, long open, BigDecimal passed, BigDecimal stocked) {
     }
 
+    private record OrderKey(String type, UUID id) { }
+
     private static final class ChainFacts {
         final Map<UUID, LineChain> lines;
         final Map<UUID, List<OrderRow>> purchaseOrderRows;
         final Map<UUID, List<OrderRow>> subcontractOrderRows;
-        final Map<UUID, List<String>> approvalStatusByOrder;
+        final Map<OrderKey, List<String>> approvalStatusByOrder;
         final Map<UUID, Set<UUID>> approvedPurchaseReceiptItems;
         final Map<UUID, Set<UUID>> approvedSubcontractReceiptItems;
         final Map<UUID, IqcRow> iqcRows;
@@ -541,7 +539,7 @@ public class MaterialAnalysisFlowStageService {
                 Map<UUID, LineChain> lines,
                 Map<UUID, List<OrderRow>> purchaseOrderRows,
                 Map<UUID, List<OrderRow>> subcontractOrderRows,
-                Map<UUID, List<String>> approvalStatusByOrder,
+                Map<OrderKey, List<String>> approvalStatusByOrder,
                 Map<UUID, Set<UUID>> approvedPurchaseReceiptItems,
                 Map<UUID, Set<UUID>> approvedSubcontractReceiptItems,
                 Map<UUID, IqcRow> iqcRows,
@@ -587,7 +585,7 @@ public class MaterialAnalysisFlowStageService {
         boolean financePending(Set<UUID> orderIds, String orderType) {
             for (UUID orderId : orderIds) {
                 for (String status : approvalStatusByOrder.getOrDefault(
-                        orderId, List.of())) {
+                        new OrderKey(orderType, orderId), List.of())) {
                     if ("PENDING".equals(status)) {
                         return true;
                     }

@@ -118,7 +118,7 @@ class QuoteTemplateCandidateTruncateMigrationPostgresTest {
     }
 
     private static Flyway flyway(String url, String target) {
-        var configuration = Flyway.configure()
+        var configuration = com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(url, POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").cleanDisabled(true);
         configuration.target(target==null?"777":target); // historical truncate cleanup contract; current permanent reset is covered separately

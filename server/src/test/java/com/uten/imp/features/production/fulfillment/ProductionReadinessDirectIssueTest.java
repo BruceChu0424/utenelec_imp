@@ -45,8 +45,8 @@ class ProductionReadinessDirectIssueTest {
                 mock(ProductionMaterialAllocationFacade.class),mock(ProductionFulfillmentLedgerService.class),
                 mock(StockDocumentRepository.class),mock(StockDocumentItemRepository.class),provider,
                 mock(DocNumberService.class),current,mock(ChainNoticeService.class));
-        service.topUpDirectSupply(segment,demand,bin,BigDecimal.ONE,"first");
-        service.topUpDirectSupply(segment,demand,bin,BigDecimal.ONE,"second");
+        service.topUpDirectSupply(segment, demand, bin, BigDecimal.ONE);
+        service.topUpDirectSupply(segment, demand, bin, BigDecimal.ONE);
         verify(stock,times(2)).issueWorkshopDirectTransferDraws(eq(segment),eq(bin),anyString());
     }
 

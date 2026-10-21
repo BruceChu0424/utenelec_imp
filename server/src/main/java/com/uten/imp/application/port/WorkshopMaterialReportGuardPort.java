@@ -27,12 +27,11 @@ public interface WorkshopMaterialReportGuardPort {
     /**
      * 锁住相关期间并检查日期; 已结算时抛冲突, 文案给员工看 (新建提示改填哪天, 审核/红冲提示找谁撤销结算)。
      *
-     * @param reportId   日报 id; 新建时为空
      * @param billDate   日报表头业务日期
      * @param segmentIds 明细涉及的任务段; 为空时直接返回
      */
-    default void requireReversibleReadOnly(UUID reportId,LocalDate billDate,Collection<UUID> segmentIds) {
+    default void requireReversibleReadOnly(LocalDate billDate, Collection<UUID> segmentIds) {
         throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,"当前无法核对车间材料期间的反审条件");
     }
-    void lockAndCheck(UUID reportId, LocalDate billDate, Collection<UUID> segmentIds, Operation op);
+    void lockAndCheck(LocalDate billDate, Collection<UUID> segmentIds, Operation op);
 }

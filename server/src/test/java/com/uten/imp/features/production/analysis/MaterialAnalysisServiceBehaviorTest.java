@@ -1451,10 +1451,6 @@ class MaterialAnalysisServiceBehaviorTest {
         UUID dId = UUID.randomUUID();
         MaterialAnalysisService.BomNode aNode = bomNode(
                 aId, material, unitId, "a-m", "6", "START", "PER_UNIT", "1", "1", true);
-        MaterialAnalysisService.BomNode bNode = bomNode(
-                bId, material, unitId, "b-m", "6", "START", "PER_UNIT", "1", "1", true);
-        MaterialAnalysisService.BomNode dNode = bomNode(
-                dId, material, unitId, "d-m", "6", "START", "PER_UNIT", "1", "1", true);
         Map<String, MaterialAnalysisService.NodeAllocation> baseline = Map.of(
                 aId + "|a-m", new MaterialAnalysisService.NodeAllocation(bd("6"), bd("0")),
                 bId + "|b-m", new MaterialAnalysisService.NodeAllocation(bd("0"), bd("6")),

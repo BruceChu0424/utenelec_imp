@@ -68,6 +68,7 @@ class AnalysisLinkedSalesOrderServiceTest {
                 .isEqualTo(ErrorCode.NOT_FOUND);
         // 越权闸必须是第一条 SQL：不命中就不允许再发出任何取数查询。
         assertThat(em.statements).hasSize(1);
+        assertThat(em.bindings).containsExactly(Map.of("analysisId", ANALYSIS, "orderId", ORDER));
         assertThat(em.statements.getFirst())
                 .contains("production_material_analysis_items")
                 .contains("sales_item.order_id = :orderId")
@@ -80,6 +81,10 @@ class AnalysisLinkedSalesOrderServiceTest {
         AnalysisLinkedSalesOrderService service = service(em);
 
         var view = service.linkedOrder(ANALYSIS, ORDER);
+        assertThat(em.bindings).containsExactly(
+                Map.of("analysisId", ANALYSIS, "orderId", ORDER),
+                Map.of("orderId", ORDER),
+                Map.of("analysisId", ANALYSIS, "orderId", ORDER));
 
         assertThat(view.billNo()).isEqualTo("SO-088");
         assertThat(view.clientName()).isEqualTo("客户甲");

@@ -169,8 +169,8 @@ public class AiJobWorker implements AutoCloseable {
     }
 
     /** 新任务提交后唤醒。 */
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void onSubmitted(AiJobSubmittedEvent ignored) {
+    @TransactionalEventListener(classes = AiJobSubmittedEvent.class, phase = TransactionPhase.AFTER_COMMIT)
+    public void onSubmitted() {
         wake();
     }
 

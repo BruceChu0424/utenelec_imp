@@ -70,7 +70,7 @@ class DocumentDraftCountScopePostgresTest {
     @Test
     void draftsAreCountedPerOwnerAndOnlyForTypesTheUserCanActuallyWork() {
         String tag = "DRAFTCNT" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(java.util.Locale.ROOT);
-        int seq = 100000 + new java.util.Random().nextInt(800000);
+        int seq = 100000 + java.util.concurrent.ThreadLocalRandom.current().nextInt(800000);
         var world = fixture.seedWorld(tag);
 
         // ADR-184: 草稿是「我能继续编辑/提交」的待办——只有 *:view 不再计数;
@@ -132,7 +132,7 @@ class DocumentDraftCountScopePostgresTest {
     @Test
     void fullyGrantedUserExecutesEveryDeclaredCountAgainstTheMigratedSchema() {
         String tag = "DRAFTALL" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(java.util.Locale.ROOT);
-        int seq = 100000 + new java.util.Random().nextInt(800000);
+        int seq = 100000 + java.util.concurrent.ThreadLocalRandom.current().nextInt(800000);
         var world = fixture.seedWorld(tag);
         insertSalesOrder(docNo("XD", seq + 7), world.clientId(), world.employeeId(), (short) 0, false);
 
@@ -177,7 +177,7 @@ class DocumentDraftCountScopePostgresTest {
     @Test
     void stockDocumentSlicesSplitTheAggregateWithoutDoubleCounting() {
         String tag = "DRAFTSTK" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(java.util.Locale.ROOT);
-        int seq = 100000 + new java.util.Random().nextInt(800000);
+        int seq = 100000 + java.util.concurrent.ThreadLocalRandom.current().nextInt(800000);
         var world = fixture.seedWorld(tag);
 
         // ADR-184: 仓库切片计数也要真实办理资格(view+edit)，只读查看不数草稿。
@@ -215,7 +215,7 @@ class DocumentDraftCountScopePostgresTest {
     @Test
     void financeRejectedProcurementOrdersLeaveTheDraftBucketAndGetTheirOwnCount() {
         String tag = "DRAFTREJ" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(java.util.Locale.ROOT);
-        int seq = 100000 + new java.util.Random().nextInt(800000);
+        int seq = 100000 + java.util.concurrent.ThreadLocalRandom.current().nextInt(800000);
         var world = fixture.seedWorld(tag);
         // ADR-184: 草稿与「财务已退回」都要真实办理资格——退回件要能改单(view+edit)才计入待办。
         UUID buyer = fixture.createUserWithPerms(world, "pb-" + tag,

@@ -244,7 +244,7 @@ public final class ResetEndToEndFixture implements AutoCloseable {
     public Stored storeStaging(String category, String name) {
         byte[] bytes = ("business original " + name + " " + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8);
         String key = internal.presignUpload(new StorageService.UploadRequest(category, name, "application/pdf", bytes.length)).storageKey();
-        internal.store(key, new ByteArrayInputStream(bytes), bytes.length, "application/pdf");
+        internal.store(key, new ByteArrayInputStream(bytes), bytes.length);
         var staged = internal.describe(key);
         return new Stored(key, staged.versionId(), bytes.length, ImmutableDocumentStore.digest(bytes), staged.storedSize(), staged.encoding(), name);
     }

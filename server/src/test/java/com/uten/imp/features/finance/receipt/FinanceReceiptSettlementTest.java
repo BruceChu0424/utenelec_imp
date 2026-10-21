@@ -262,9 +262,7 @@ class FinanceReceiptSettlementTest {
     void draftSeparatesGrossSettlementNetAccountAndDeductedFee() {
         ArApLedger ledger = receivable("100.0000", "7.000000");
 
-        FinanceReceiptDetail detail = service.create(request(
-                ledger, "30.0000", "7.200000", "2.0000", "14.4000",
-                "9999.0000", "-8888.0000"));
+        FinanceReceiptDetail detail = service.create(request(ledger, "30.0000", "7.200000", "14.4000"));
 
         FinanceReceiptLine saved = onlyLine(detail.getId());
         assertMoney(saved.getAmountOriginal(), "30.0000");
@@ -282,14 +280,27 @@ class FinanceReceiptSettlementTest {
     }
 
     @Test
+    void clientDerivedLineAmountsAreRejectedAtTheJsonBoundary() {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper()
+                .disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                .registerModule(new com.uten.imp.common.finance.ServerDerivedAmountsModule());
+        for (var forged : Map.of("amountLocal", "9999.0000", "exchangeDiff", "-8888.0000").entrySet()) {
+            var body = mapper.createObjectNode().put("amountOriginal", "30.0000")
+                    .put(forged.getKey(), forged.getValue());
+            assertThatThrownBy(() -> mapper.treeToValue(body, FinanceReceiptLineInput.class))
+                    .isInstanceOf(com.fasterxml.jackson.databind.exc.MismatchedInputException.class)
+                    .hasMessageContaining(forged.getKey());
+        }
+        verify(receiptRepo, never()).save(any());
+    }
+
+    @Test
     void tradeAgentUsdSettlementPostsGrossArAndNetCnyAccount() {
         ArApLedger ledger=receivable("100000.0000","7.000000");
         UUID cnyCurrency=UUID.randomUUID();
         when(accountLock.getResultList()).thenReturn(List.<Object[]>of(
                 new Object[]{ACCOUNT_ID,cnyCurrency,true,"CNY","人民币",ACCOUNT_STYLE_ID}));
-        FinanceReceiptSaveRequest request=request(
-                ledger,"1000.0000","7.200000","0.0000","0.0000",
-                "0.0000","0.0000");
+        FinanceReceiptSaveRequest request=request(ledger, "1000.0000", "7.200000", "0.0000");
         request.setAccountCurrencyId(cnyCurrency);
         request.setAccountAmount(request.getAmountOriginal().multiply(request.getExchangeRate()));
         request.setSettlementChannel("TRADE_AGENT_CONVERSION");
@@ -329,9 +340,7 @@ class FinanceReceiptSettlementTest {
     @Test
     void v1RejectsMissingBankReferenceBeforeAccountMutation() {
         ArApLedger ledger=receivable("100.0000","7.000000");
-        FinanceReceiptSaveRequest request=request(
-                ledger,"10.0000","7.200000","0.0000","0.0000",
-                "0.0000","0.0000");
+        FinanceReceiptSaveRequest request=request(ledger, "10.0000", "7.200000", "0.0000");
         request.setBankReference("   ");
 
         assertThatThrownBy(() -> service.create(request))
@@ -347,9 +356,7 @@ class FinanceReceiptSettlementTest {
         UUID cnyCurrency=UUID.randomUUID();
         when(accountLock.getResultList()).thenReturn(List.<Object[]>of(
                 new Object[]{ACCOUNT_ID,cnyCurrency,true,"CNY","人民币",ACCOUNT_STYLE_ID}));
-        FinanceReceiptSaveRequest request=request(
-                ledger,"10.0000","7.200000","0.0000","0.0000",
-                "0.0000","0.0000");
+        FinanceReceiptSaveRequest request=request(ledger, "10.0000", "7.200000", "0.0000");
         request.setAccountCurrencyId(cnyCurrency);
         request.setAccountAmount(request.getAmountOriginal().multiply(request.getExchangeRate()));
         request.setSettlementChannel("TRADE_AGENT_CONVERSION");
@@ -371,9 +378,7 @@ class FinanceReceiptSettlementTest {
         when(accountLock.getResultList()).thenReturn(List.<Object[]>of(
                 new Object[]{ACCOUNT_ID,cnyCurrency,true,"CNY","人民币",ACCOUNT_STYLE_ID},
                 new Object[]{FEE_ACCOUNT_ID,cnyCurrency,true,"CNY","人民币",FEE_ACCOUNT_STYLE_ID}));
-        FinanceReceiptSaveRequest request=request(
-                ledger,"1000.0000","7.200000","0.0000","0.0000",
-                "0.0000","0.0000");
+        FinanceReceiptSaveRequest request=request(ledger, "1000.0000", "7.200000", "0.0000");
         request.setAccountCurrencyId(cnyCurrency);
         request.setAccountAmount(request.getAmountOriginal().multiply(request.getExchangeRate()));
         request.setBankFeeAccountAmount(new BigDecimal("50.0000"));
@@ -402,9 +407,7 @@ class FinanceReceiptSettlementTest {
     @Test
     void customerOrAgentBorneDeductionCannotBeMisbookedAsCompanyExpense() {
         ArApLedger ledger=receivable("100.0000","7.000000");
-        FinanceReceiptSaveRequest request=request(
-                ledger,"10.0000","7.200000","0.0000","0.0000",
-                "0.0000","0.0000");
+        FinanceReceiptSaveRequest request=request(ledger, "10.0000", "7.200000", "0.0000");
         request.setBankFeeAccountAmount(new BigDecimal("1.0000"));
         request.setFeeSettlementMode("DEDUCTED_FROM_PROCEEDS");
         request.setFeeBearer("CUSTOMER");
@@ -418,9 +421,7 @@ class FinanceReceiptSettlementTest {
     @Test
     void createIdempotencyHashDistinguishesFeeBearer() {
         ArApLedger ledger=receivable("100.0000","7.000000");
-        FinanceReceiptSaveRequest request=request(
-                ledger,"10.0000","7.200000","0.0000","7.2000",
-                "0.0000","0.0000");
+        FinanceReceiptSaveRequest request=request(ledger, "10.0000", "7.200000", "7.2000");
         FinanceReceiptDetail first=service.create(request);
         when(createReplay.getResultList()).thenReturn(List.of(first.getId()));
         request.setFeeBearer("CUSTOMER");
@@ -433,9 +434,7 @@ class FinanceReceiptSettlementTest {
     @Test
     void createIdempotencyHashUsesEffectiveLegacyFeeFallback() {
         ArApLedger ledger=receivable("100.0000","7.000000");
-        FinanceReceiptSaveRequest request=request(
-                ledger,"10.0000","7.200000","0.0000","0.0000",
-                "0.0000","0.0000");
+        FinanceReceiptSaveRequest request=request(ledger, "10.0000", "7.200000", "0.0000");
         request.setBankFeeAccountAmount(null);
         request.setBankFee(new BigDecimal("1.0000"));
         request.setAccountAmount(new BigDecimal("9.0000"));
@@ -453,9 +452,7 @@ class FinanceReceiptSettlementTest {
     @Test
     void createIdempotencyHashCanonicalizesEnumsAndTrimmedEvidence() {
         ArApLedger ledger=receivable("100.0000","7.000000");
-        FinanceReceiptSaveRequest request=request(
-                ledger,"10.0000","7.200000","0.0000","0.0000",
-                "0.0000","0.0000");
+        FinanceReceiptSaveRequest request=request(ledger, "10.0000", "7.200000", "0.0000");
         request.setSettlementChannel(" direct_account ");
         request.setExchangeRateSource(" bank_statement ");
         request.setFeeSettlementMode(" none ");
@@ -475,9 +472,7 @@ class FinanceReceiptSettlementTest {
     @Test
     void approvalLocksGlPeriodBeforeAnyAccountRow() {
         ArApLedger ledger=receivable("100.0000","7.000000");
-        FinanceReceiptDetail draft=service.create(request(
-                ledger,"10.0000","7.200000","0.0000","0.0000",
-                "0.0000","0.0000"));
+        FinanceReceiptDetail draft=service.create(request(ledger, "10.0000", "7.200000", "0.0000"));
         clearInvocations(glPosting,accountLock);
         when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
         postingCounts.addAll(List.of(0L,0L));
@@ -492,16 +487,12 @@ class FinanceReceiptSettlementTest {
     @Test
     void appliedReceiptRequiresExplicitPositiveArrivalRatePerLine() {
         ArApLedger ledger = receivable("100.0000", "7.000000");
-        FinanceReceiptSaveRequest missing = request(
-                ledger, "30.0000", "7.200000", "0.0000", "0.0000",
-                "9999.0000", "9999.0000");
+        FinanceReceiptSaveRequest missing = request(ledger, "30.0000", "7.200000", "0.0000");
         missing.getItems().getFirst().setExchangeRate(null);
         // A valid header value must not rescue a missing line-level arrival rate.
         missing.setExchangeRate(new BigDecimal("6.900000"));
 
-        FinanceReceiptSaveRequest zero = request(
-                ledger, "30.0000", "7.200000", "0.0000", "0.0000",
-                "9999.0000", "9999.0000");
+        FinanceReceiptSaveRequest zero = request(ledger, "30.0000", "7.200000", "0.0000");
         zero.getItems().getFirst().setExchangeRate(BigDecimal.ZERO);
 
         assertThatThrownBy(() -> service.create(missing))
@@ -515,9 +506,7 @@ class FinanceReceiptSettlementTest {
     @Test
     void updateAndDeleteAcquireTheSameHeaderWriteLockAsApproval() {
         ArApLedger ledger = receivable("100.0000", "7.000000");
-        FinanceReceiptSaveRequest request = request(
-                ledger, "30.0000", "7.200000", "0.0000", "0.0000",
-                "9999.0000", "9999.0000");
+        FinanceReceiptSaveRequest request = request(ledger, "30.0000", "7.200000", "0.0000");
 
         FinanceReceiptDetail updated = service.create(request);
         request.setExpectedVersion(updated.getVersion());
@@ -533,9 +522,7 @@ class FinanceReceiptSettlementTest {
     @Test
     void otherFeeStyleWritesAndPostingLockHierarchyBeforeSaveAndValidation() {
         ArApLedger ledger = receivable("100.0000", "7.000000");
-        FinanceReceiptSaveRequest request = request(
-                ledger, "30.0000", "7.200000", "2.0000", "0.0000",
-                "9999.0000", "9999.0000");
+        FinanceReceiptSaveRequest request = request(ledger, "30.0000", "7.200000", "0.0000");
         request.setOtherFeeAccountAmount(new BigDecimal("2.0000"));
         request.setAccountAmount(new BigDecimal("28.0000"));
         request.setFeeSettlementMode("DEDUCTED_FROM_PROCEEDS");
@@ -562,12 +549,8 @@ class FinanceReceiptSettlementTest {
     @Test
     void partialReceiptsKeepGrossArAndReverseOnlyTheActualNetAccountPosting() {
         ArApLedger ledger = receivable("100.0000", "7.000000");
-        FinanceReceiptDetail first = service.create(request(
-                ledger, "30.0000", "7.200000", "2.0000", "14.4000",
-                "9999.0000", "9999.0000"));
-        FinanceReceiptSaveRequest secondRequest = request(
-                ledger, "70.0000", "6.900000", "0.0000", "0.0000",
-                "9999.0000", "9999.0000");
+        FinanceReceiptDetail first = service.create(request(ledger, "30.0000", "7.200000", "14.4000"));
+        FinanceReceiptSaveRequest secondRequest = request(ledger, "70.0000", "6.900000", "0.0000");
         secondRequest.setBillDate(LocalDate.of(2026, 8, 9));
         FinanceReceiptDetail second = service.create(secondRequest);
         when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
@@ -654,9 +637,7 @@ class FinanceReceiptSettlementTest {
         UUID cnyCurrency=UUID.randomUUID();
         when(accountLock.getResultList()).thenReturn(List.<Object[]>of(
                 new Object[] {ACCOUNT_ID,cnyCurrency,true,"CNY","人民币",ACCOUNT_STYLE_ID}));
-        FinanceReceiptSaveRequest request=request(
-                ledger, "30.0000", "7.200000", "0.0000", "0.0000",
-                "9999.0000", "9999.0000");
+        FinanceReceiptSaveRequest request=request(ledger, "30.0000", "7.200000", "0.0000");
         request.setAccountCurrencyId(cnyCurrency);
         request.setAccountAmount(request.getAmountOriginal().multiply(request.getExchangeRate()));
         FinanceReceiptDetail draft = service.create(request);
@@ -675,9 +656,7 @@ class FinanceReceiptSettlementTest {
         UUID baseCurrency=UUID.randomUUID();
         when(accountLock.getResultList()).thenReturn(List.<Object[]>of(
                 new Object[] {ACCOUNT_ID,baseCurrency,true,"USD","美金",ACCOUNT_STYLE_ID}));
-        FinanceReceiptSaveRequest request=request(
-                ledger, "30.0000", "7.200000", "0.0000", "0.0000",
-                "9999.0000", "9999.0000");
+        FinanceReceiptSaveRequest request=request(ledger, "30.0000", "7.200000", "0.0000");
         request.setAccountCurrencyId(baseCurrency);
         request.setAccountAmount(new BigDecimal("216.0000"));
         FinanceReceiptDetail draft = service.create(request);
@@ -692,9 +671,7 @@ class FinanceReceiptSettlementTest {
     @Test
     void foreignCurrencyUuidCannotMasqueradeAsRmbByEditableLabels() {
         ArApLedger ledger = receivable("100.0000", "7.000000");
-        FinanceReceiptDetail draft = service.create(request(
-                ledger, "30.0000", "7.200000", "0.0000", "0.0000",
-                "9999.0000", "9999.0000"));
+        FinanceReceiptDetail draft = service.create(request(ledger, "30.0000", "7.200000", "0.0000"));
         when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
         postingCounts.addAll(List.of(0L,0L));
 
@@ -706,9 +683,7 @@ class FinanceReceiptSettlementTest {
     @Test
     void settlementLineCannotChangeTheReceivableOriginalCurrency() {
         ArApLedger ledger = receivable("100.0000", "7.000000");
-        FinanceReceiptSaveRequest request = request(
-                ledger, "30.0000", "7.200000", "0.0000", "0.0000",
-                "9999.0000", "9999.0000");
+        FinanceReceiptSaveRequest request = request(ledger, "30.0000", "7.200000", "0.0000");
         request.getItems().getFirst().setCurrencyId(UUID.randomUUID());
 
         assertThatThrownBy(() -> service.create(request))
@@ -723,9 +698,7 @@ class FinanceReceiptSettlementTest {
         UUID hkdCurrency=UUID.randomUUID();
         when(accountLock.getResultList()).thenReturn(List.<Object[]>of(
                 new Object[] {ACCOUNT_ID,hkdCurrency,false,"HKD","港币",ACCOUNT_STYLE_ID}));
-        FinanceReceiptSaveRequest request=request(
-                ledger, "30.0000", "7.200000", "0.0000", "0.0000",
-                "9999.0000", "9999.0000");
+        FinanceReceiptSaveRequest request=request(ledger, "30.0000", "7.200000", "0.0000");
         request.setAccountCurrencyId(hkdCurrency);
 
         assertThatThrownBy(() -> service.create(request))
@@ -736,9 +709,7 @@ class FinanceReceiptSettlementTest {
     @Test
     void v1RejectsMixingCommercialWriteOffIntoSettlementFees() {
         ArApLedger ledger = receivable("100.0000", "7.000000");
-        FinanceReceiptSaveRequest request=request(
-                ledger, "99.0000", "7.000000", "2.0000", "14.0000",
-                "1.0000", "1.0000");
+        FinanceReceiptSaveRequest request=request(ledger, "99.0000", "7.000000", "14.0000");
         request.getItems().getFirst().setWriteOffAmount(new BigDecimal("2.0000"));
 
         assertThatThrownBy(() -> service.create(request))
@@ -795,7 +766,7 @@ class FinanceReceiptSettlementTest {
         ledger.setAmountSettled(new BigDecimal("8.0000"));
         ledger.setAmountBalanceOriginal(new BigDecimal("12.0000"));
         ledger.setAmountBalance(new BigDecimal("12.0000"));
-        FinanceReceiptDetail draft=service.create(request(ledger,"3.0000","1.000000","0","0","0","0"));
+        FinanceReceiptDetail draft=service.create(request(ledger, "3.0000", "1.000000", "0"));
         when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
         postingCounts.addAll(List.of(0L,0L));
         service.approve(draft.getId());
@@ -808,7 +779,7 @@ class FinanceReceiptSettlementTest {
     void realPrepaymentKindCannotBeConsumedAsOrdinaryReceivable() {
         ArApLedger ledger=receivable("12.0000","1.000000");
         ledger.setSourceDocType("DIRECT_RECEIPT"); ledger.setOpenItemKind("CUSTOMER_PREPAYMENT");
-        FinanceReceiptDetail draft=service.create(request(ledger,"3.0000","1.000000","0","0","0","0"));
+        FinanceReceiptDetail draft=service.create(request(ledger, "3.0000", "1.000000", "0"));
         when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
         assertThatThrownBy(() -> service.approve(draft.getId())).isInstanceOf(ApiException.class)
                 .hasMessageContaining("预收款不能作为普通应收引用");
@@ -845,7 +816,7 @@ class FinanceReceiptSettlementTest {
         ledger.setAmountOffsetLocal(new BigDecimal("140.0000"));
         ledger.setAmountBalanceOriginal(new BigDecimal("80.0000"));
         ledger.setAmountBalance(new BigDecimal("560.0000"));
-        FinanceReceiptDetail first=service.create(request(ledger,"30.0000","7.100000","0","0","0","0"));
+        FinanceReceiptDetail first=service.create(request(ledger, "30.0000", "7.100000", "0"));
         when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
         postingCounts.addAll(List.of(0L,0L));
         service.approve(first.getId());
@@ -856,7 +827,7 @@ class FinanceReceiptSettlementTest {
         assertMoney(onlyLine(first.getId()).getExchangeDiff(),"3.0000");
 
         when(currentUser.requireEmployeeId()).thenReturn(MAKER_ID);
-        FinanceReceiptDetail finalReceipt=service.create(request(ledger,"50.0000","7.200000","0","0","0","0"));
+        FinanceReceiptDetail finalReceipt=service.create(request(ledger, "50.0000", "7.200000", "0"));
         when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
         postingCounts.addAll(List.of(0L,0L));
         service.approve(finalReceipt.getId());
@@ -885,7 +856,7 @@ class FinanceReceiptSettlementTest {
         UUID base=UUID.randomUUID();
         when(accountLock.getResultList()).thenReturn(List.<Object[]>of(
                 new Object[]{ACCOUNT_ID,base,true,"CNY","人民币",ACCOUNT_STYLE_ID}));
-        FinanceReceiptSaveRequest req=request(ledger,"88.1234","7.123456","0","0","999","999");
+        FinanceReceiptSaveRequest req=request(ledger, "88.1234", "7.123456", "0");
         req.setAccountCurrencyId(base);req.setAccountAmount(new BigDecimal("624.7432"));
         req.setBankFeeAccountAmount(new BigDecimal("3.0001"));
         req.setFeeSettlementMode("DEDUCTED_FROM_PROCEEDS");req.setFeeBearer("COMPANY");
@@ -905,7 +876,7 @@ class FinanceReceiptSettlementTest {
     @Test
     void v2SameCurrencyRejectsEvenOneActualFractionalUnitAndKeepsThirtyDigitBookProduct() {
         ArApLedger ledger=receivable("100","7.000001");
-        FinanceReceiptSaveRequest req=request(ledger,"0.000000000000000000000001","7.000001","0","0","0","0");
+        FinanceReceiptSaveRequest req=request(ledger, "0.000000000000000000000001", "7.000001", "0");
         req.setAccountAmount(new BigDecimal("0.000000000000000000000002"));
         assertThatThrownBy(()->service.create(req)).isInstanceOf(ApiException.class).hasMessageContaining("同币种银行实收");
         req.setCreateIdempotencyKey(UUID.randomUUID().toString());
@@ -922,8 +893,8 @@ class FinanceReceiptSettlementTest {
         UUID base=UUID.randomUUID();
         when(accountLock.getResultList()).thenReturn(List.<Object[]>of(
                 new Object[]{ACCOUNT_ID,base,true,"CNY","人民币",ACCOUNT_STYLE_ID}));
-        FinanceReceiptSaveRequest req=request(one,"1","3.333333","0","0","0","0");
-        FinanceReceiptLineInput second=request(two,"2","3.333333","0","0","0","0").getItems().getFirst();second.setLineNo(2);
+        FinanceReceiptSaveRequest req=request(one, "1", "3.333333", "0");
+        FinanceReceiptLineInput second=request(two, "2", "3.333333", "0").getItems().getFirst();second.setLineNo(2);
         req.setItems(List.of(req.getItems().getFirst(),second));req.setAccountCurrencyId(base);req.setAccountAmount(BigDecimal.TEN);
         FinanceReceiptDetail result=service.create(req);
         var lines=linesByReceipt.get(result.getId()).stream().sorted(Comparator.comparing(FinanceReceiptLine::getLineNo)).toList();
@@ -936,7 +907,7 @@ class FinanceReceiptSettlementTest {
     @Test
     void v2ActualNativeFeeKeepsItsThirtyDigitBookValueThroughApproval() {
         ArApLedger ledger=receivable("1","7.000001");
-        FinanceReceiptSaveRequest req=request(ledger,"0.000000000000000000000003","7.000001","0","0","0","0");
+        FinanceReceiptSaveRequest req=request(ledger, "0.000000000000000000000003", "7.000001", "0");
         req.setAccountAmount(new BigDecimal("0.000000000000000000000002"));
         req.setBankFeeAccountAmount(new BigDecimal("0.000000000000000000000001"));
         req.setFeeSettlementMode("DEDUCTED_FROM_PROCEEDS");req.setFeeBearer("COMPANY");
@@ -949,14 +920,7 @@ class FinanceReceiptSettlementTest {
         assertMoney(onlyLine(draft.getId()).getExchangeDiff(),"0");
     }
 
-    private static FinanceReceiptSaveRequest request(
-            ArApLedger ledger,
-            String cashOriginal,
-            String receiptRate,
-            String writeOffOriginal,
-            String bankFeeLocal,
-            String clientLocal,
-            String clientExchangeDiff) {
+    private static FinanceReceiptSaveRequest request(ArApLedger ledger, String cashOriginal, String receiptRate, String bankFeeLocal) {
         FinanceReceiptLineInput line = new FinanceReceiptLineInput();
         line.setLineNo(1);
         line.setAppliedLedgerId(ledger.getId());

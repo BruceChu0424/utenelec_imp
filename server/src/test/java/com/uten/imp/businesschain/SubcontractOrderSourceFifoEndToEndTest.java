@@ -69,13 +69,13 @@ class SubcontractOrderSourceFifoEndToEndTest {
 
     static Stream<Arguments> cases() {
         return Stream.of(
-                Arguments.of("shared multi-source rows", "25", List.of(0, 1), "25", List.of(0, 1),
+                Arguments.of(org.junit.jupiter.api.Named.of("shared multi-source rows", "25"), List.of(0, 1), "25", List.of(0, 1),
                         List.of("25", "0", "0"), List.of("5", "20", "0")),
-                Arguments.of("single-source consumes later FIFO capacity", "25", List.of(0), "25", List.of(0, 1),
+                Arguments.of(org.junit.jupiter.api.Named.of("single-source consumes later FIFO capacity", "25"), List.of(0), "25", List.of(0, 1),
                         List.of("25", "0", "0"), List.of("5", "20", "0")),
-                Arguments.of("a prior last source consumes its later non-last capacity", "35", List.of(0, 1),
+                Arguments.of(org.junit.jupiter.api.Named.of("a prior last source consumes its later non-last capacity", "35"), List.of(0, 1),
                         "25", List.of(1, 2), List.of("30", "5", "0"), List.of("0", "15", "10")),
-                Arguments.of("genuine excess remains on the last declared source", "35", List.of(0, 1),
+                Arguments.of(org.junit.jupiter.api.Named.of("genuine excess remains on the last declared source", "35"), List.of(0, 1),
                         "25", List.of(0, 1), List.of("30", "5", "0"), List.of("0", "25", "0")));
     }
 
@@ -174,7 +174,7 @@ class SubcontractOrderSourceFifoEndToEndTest {
     @ParameterizedTest(name = "{0}")
     @MethodSource("cases")
     void savedRowsShareFifoCapacityAndApprovalReversalMirrorTheirExactSourceFacts(
-            String scenario, String firstQty, List<Integer> firstSources, String secondQty,
+            String firstQty, List<Integer> firstSources, String secondQty,
             List<Integer> secondSources, List<String> firstExpected, List<String> secondExpected) {
         var w = fixture.seedWorld("subcontract-source-fifo-" + UUID.randomUUID());
         fixture.loginAs(w.superAdminUserId());

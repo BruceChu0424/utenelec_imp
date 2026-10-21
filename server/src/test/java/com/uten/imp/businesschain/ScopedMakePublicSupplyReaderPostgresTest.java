@@ -7,7 +7,6 @@ import com.uten.imp.features.production.analysis.MaterialAnalysisCommandService;
 import com.uten.imp.features.production.analysis.MaterialAnalysisContracts.*;
 import com.uten.imp.features.production.analysis.MaterialAnalysisService;
 import com.uten.imp.features.production.analysis.PreplanMakePublicSupplyService;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -51,7 +50,7 @@ class ScopedMakePublicSupplyReaderPostgresTest {
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
         DATABASE.start();
-        Flyway.configure().dataSource(DATABASE.getJdbcUrl(), DATABASE.getUsername(), DATABASE.getPassword())
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(DATABASE.getJdbcUrl(), DATABASE.getUsername(), DATABASE.getPassword())
                 .locations("classpath:db/migration").target("731").load().migrate();
         var before = new JdbcTemplate(new DriverManagerDataSource(DATABASE.getJdbcUrl(), DATABASE.getUsername(), DATABASE.getPassword()));
         legacyDefinition = before.queryForObject("SELECT pg_get_viewdef('v_preplan_make_public_supply_state'::regclass,true)", String.class)

@@ -76,8 +76,8 @@ class SalesIntakePipelineTest {
                 var r = sheet.createRow(3 + i);
                 r.createCell(0).setCellValue(rows[i][0]);
                 r.createCell(1).setCellValue(rows[i][1]);
-                r.createCell(2).setCellValue(Double.parseDouble(rows[i][2]));
-                r.createCell(3).setCellValue(Double.parseDouble(rows[i][3]));
+                r.createCell(2).setCellValue(com.uten.imp.testsupport.FixtureNumbers.finiteDouble(rows[i][2]));
+                r.createCell(3).setCellValue(com.uten.imp.testsupport.FixtureNumbers.finiteDouble(rows[i][3]));
             }
             wb.write(out);
             return out.toByteArray();
@@ -437,6 +437,7 @@ class SalesIntakePipelineTest {
             List<Map<String, Object>> warnings = (List<Map<String, Object>>) l.get("warnings");
             if ("MATCHED".equals(l.get("status"))) {
                 assertThat(selected).isNotNull();
+                selected = java.util.Objects.requireNonNull(selected, "MATCHED row must identify one returned candidate");
                 assertThat(selected.get("discount")).as("row %s", l.get("sourceRow")).isNotNull();
             }
             if (selected != null && "AMBIGUOUS_CURRENCY".equals(selected.get("pricingFlag"))) {

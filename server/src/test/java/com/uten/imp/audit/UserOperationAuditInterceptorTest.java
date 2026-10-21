@@ -33,11 +33,11 @@ class UserOperationAuditInterceptorTest {
 
     /** 模拟一个真实控制器: 类名推导资源, 方法名推导动作。 */
     static class SalesOrderController {
-        public void approve(UUID id) {
+        public void approve() {
         }
 
         @AuditAutomaticWrite("测试: 页面自动发起")
-        public void heartbeat(UUID id) {
+        public void heartbeat() {
         }
 
         public void list() {
@@ -67,7 +67,7 @@ class UserOperationAuditInterceptorTest {
         request.setAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE, Map.of("id", "123"));
         request.setContent("password=must-not-be-audited".getBytes());
 
-        run(request, new MockHttpServletResponse(), handler("approve", UUID.class), null);
+        run(request, new MockHttpServletResponse(), handler("approve"), null);
 
         verify(auditService).logSemanticOperation(
                 eq(userId), eq("auditor"), eq("sales_order.approve"), eq("sales_order"), eq("123"),
@@ -81,7 +81,7 @@ class UserOperationAuditInterceptorTest {
         MockHttpServletResponse response = new MockHttpServletResponse();
         response.setStatus(409);
 
-        run(request, response, handler("approve", UUID.class), null);
+        run(request, response, handler("approve"), null);
 
         verify(auditService).logSemanticOperation(
                 eq(userId), eq("auditor"), eq("sales_order.approve"), eq("sales_order"), eq("123"),
@@ -92,7 +92,7 @@ class UserOperationAuditInterceptorTest {
     void unhandledExceptionIsRecordedAsServerFailure() throws Exception {
         MockHttpServletRequest request = request("POST", "/api/sales/orders/123/approve");
 
-        run(request, new MockHttpServletResponse(), handler("approve", UUID.class),
+        run(request, new MockHttpServletResponse(), handler("approve"),
                 new IllegalStateException("controller failed"));
 
         verify(auditService).logSemanticOperation(
@@ -105,7 +105,7 @@ class UserOperationAuditInterceptorTest {
         MockHttpServletRequest request = request("POST", "/api/sales/orders/123/approve");
         AuditRequestContext.markMeaningfulEventRecorded(request);
 
-        run(request, new MockHttpServletResponse(), handler("approve", UUID.class), null);
+        run(request, new MockHttpServletResponse(), handler("approve"), null);
 
         verifyNoInteractions(auditService);
     }
@@ -118,7 +118,7 @@ class UserOperationAuditInterceptorTest {
         MockHttpServletResponse response = new MockHttpServletResponse();
         response.setStatus(500);
 
-        run(request, response, handler("approve", UUID.class), null);
+        run(request, response, handler("approve"), null);
 
         verify(auditService).logSemanticOperation(
                 eq(userId), eq("auditor"), eq("sales_order.approve"), eq("sales_order"), isNull(),
@@ -133,7 +133,7 @@ class UserOperationAuditInterceptorTest {
         MockHttpServletResponse response = new MockHttpServletResponse();
         response.setStatus(401);
 
-        run(request, response, handler("approve", UUID.class), null);
+        run(request, response, handler("approve"), null);
 
         verifyNoInteractions(auditService);
     }
@@ -141,12 +141,12 @@ class UserOperationAuditInterceptorTest {
     @Test
     void automaticSessionWriteIsQuietOnSuccessButKeptOnFailure() throws Exception {
         run(request("POST", "/api/task-claims/x/y/heartbeat"), new MockHttpServletResponse(),
-                handler("heartbeat", UUID.class), null);
+                handler("heartbeat"), null);
         verifyNoInteractions(auditService);
 
         MockHttpServletResponse failed = new MockHttpServletResponse();
         failed.setStatus(409);
-        run(request("POST", "/api/task-claims/x/y/heartbeat"), failed, handler("heartbeat", UUID.class), null);
+        run(request("POST", "/api/task-claims/x/y/heartbeat"), failed, handler("heartbeat"), null);
         verify(auditService).logSemanticOperation(
                 eq(userId), eq("auditor"), eq("sales_order.heartbeat"), eq("sales_order"), isNull(),
                 eq("POST"), eq("/api/task-claims/x/y/heartbeat"), eq(409), anyLong());

@@ -1,5 +1,7 @@
 package com.uten.imp.features.production.fulfillment;
 
+import com.uten.imp.testsupport.BoundTestSql;
+
 import java.math.BigDecimal;
 import java.sql.DriverManager;
 import java.util.UUID;
@@ -45,14 +47,17 @@ class ProductionReceiptAvailabilityPostgresTest {
                         + "(receipt_item_id uuid, allocated_qty numeric, status text)");
             }
             UUID id = UUID.randomUUID();
-            for (String table : new String[]{"purchase_receipt_items", "subcontract_receipt_items"}) {
-                statement.execute("INSERT INTO " + table + " VALUES ('" + id + "', 0.125, 24)");
+            for (String insert : new String[]{
+                    "INSERT INTO purchase_receipt_items VALUES (?, 0.125, 24)",
+                    "INSERT INTO subcontract_receipt_items VALUES (?, 0.125, 24)"}) {
+                BoundTestSql.execute(statement, insert, id);
             }
-            statement.execute("INSERT INTO stock_document_items VALUES ('" + id + "', 0.125, 24, 7)");
-            for (String table : new String[]{"production_material_receipt_allocations",
-                    "production_material_subcontract_receipt_allocations", "production_material_make_receipt_allocations"}) {
-                statement.execute("INSERT INTO " + table + " VALUES ('" + id
-                        + "', 0.75, 'EFFECTIVE'), ('" + id + "', 9, 'REVERSED')");
+            BoundTestSql.execute(statement, "INSERT INTO stock_document_items VALUES (?, 0.125, 24, 7)", id);
+            for (String insert : new String[]{
+                    "INSERT INTO production_material_receipt_allocations VALUES (?, 0.75, 'EFFECTIVE'), (?, 9, 'REVERSED')",
+                    "INSERT INTO production_material_subcontract_receipt_allocations VALUES (?, 0.75, 'EFFECTIVE'), (?, 9, 'REVERSED')",
+                    "INSERT INTO production_material_make_receipt_allocations VALUES (?, 0.75, 'EFFECTIVE'), (?, 9, 'REVERSED')"}) {
+                BoundTestSql.execute(statement, insert, id, id);
             }
             try (var query = connection.prepareStatement(kind.remainingQuantitySql().replace(":id", "?"))) {
                 query.setObject(1, id);

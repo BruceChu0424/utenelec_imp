@@ -41,8 +41,7 @@ public class ReceiptSaveRequest {
     private Integer approverLegacyId;
     private String approverName;
 
-    @Valid
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<ReceiptItemLine> items;
+    private List<@Valid ReceiptItemLine> items;
 }

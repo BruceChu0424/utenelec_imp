@@ -1,6 +1,5 @@
 package com.uten.imp.support;
 
-import org.flywaydb.core.Flyway;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.io.IOException;
@@ -162,7 +161,7 @@ public final class MigratedSchemaBaseline {
     }
 
     private static void migrate(PostgreSQLContainer postgres) {
-        Flyway.configure()
+        com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                 .locations("classpath:db/migration")
                 .load()

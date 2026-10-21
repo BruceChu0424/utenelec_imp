@@ -739,8 +739,7 @@ public class ProductionExecutionReadinessService
                     "收货关联的执行分段库存预留已被并发修改，请刷新后重试");
         }
         preplanAnalysisPeg.restorePlanDemandTransfers(
-                reservations.stream().map(row -> uuid(row[0])).toList(),
-                "RECEIPT_SEGMENT_DEMOTED");
+                reservations.stream().map(row -> uuid(row[0])).toList());
 
 
         Map<UUID, BigDecimal> reverseByPeg = new LinkedHashMap<>();
@@ -1129,8 +1128,7 @@ public class ProductionExecutionReadinessService
 
     /** Actual direct-transfer provenance wakes the same incremental allocation path as warehouse receipts. */
     @Transactional(propagation = Propagation.MANDATORY)
-    public void topUpDirectSupply(UUID segmentId, UUID demandId, UUID lineSideWarehouseId,
-            BigDecimal qty, String idempotencyKey) {
+    public void topUpDirectSupply(UUID segmentId, UUID demandId, UUID lineSideWarehouseId, BigDecimal qty) {
         if (segmentId==null || demandId==null || lineSideWarehouseId==null || qty==null || qty.signum()<=0) return;
         List<UUID> warehouses=NativeQueryResults.typedRows(em.createNativeQuery("""
                 SELECT package.warehouse_id FROM production_execution_segments segment
@@ -1381,7 +1379,7 @@ public class ProductionExecutionReadinessService
         // changes physical handoff, not the material quantity needed for production.
         ContinuousIncrementSnapshot increment = continuous
                 ? continuousIncrement(warehouseId, allDemands, analysisId, analysisItemId,
-                        triggeringReceiptId, triggeringKind,reclaimReturnedCustody)
+                        reclaimReturnedCustody)
                 : null;
         List<DemandRow> demands = increment == null ? unreservedDemand(allDemands) : increment.demands();
         if (continuous && demands.isEmpty()) return false;
@@ -1430,8 +1428,6 @@ public class ProductionExecutionReadinessService
         Map<UUID, List<ReceiptContribution>> contributions =
                 receiptContributions(
                         demands,
-                        triggeringReceiptId,
-                        triggeringKind,
                         warehouseId,reclaimReturnedCustody);
         /*
          * counts an unconsumed supply peg and a physical reservation
@@ -1949,7 +1945,7 @@ public class ProductionExecutionReadinessService
     }
 
     private ContinuousIncrementSnapshot continuousIncrement(UUID warehouseId, List<DemandRow> allDemands,
-            UUID analysisId, UUID analysisItemId, UUID receiptId, ReceiptKind kind,boolean reclaimReturnedCustody) {
+            UUID analysisId, UUID analysisItemId, boolean reclaimReturnedCustody) {
         if (allDemands.isEmpty()) return new ContinuousIncrementSnapshot(List.of(), List.of());
         Map<UUID, BigDecimal[]> covered = new HashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
@@ -1973,7 +1969,7 @@ public class ProductionExecutionReadinessService
                 && privateCustody.values().stream().noneMatch(qty -> qty.signum() > 0)) {
             return new ContinuousIncrementSnapshot(List.of(), availableRows);
         }
-        Map<UUID, List<ReceiptContribution>> receipts = receiptContributions(allDemands, receiptId, kind, warehouseId,true);
+        Map<UUID, List<ReceiptContribution>> receipts = receiptContributions(allDemands, warehouseId,true);
         Map<ProductionMaterialAllocationFacade.MaterialDimension, BigDecimal> claimed = new HashMap<>();
         List<DemandRow> increments = new ArrayList<>();
         for (DemandRow demand : allDemands) {
@@ -2092,10 +2088,8 @@ public class ProductionExecutionReadinessService
 
     private Map<UUID, List<ReceiptContribution>> receiptContributions(
             List<DemandRow> demands,
-            UUID triggeringReceiptId,
-            ReceiptKind triggeringKind,
             UUID warehouseId,boolean includeCustody) {
-        return receiptContributions(demands,triggeringReceiptId,triggeringKind,warehouseId,includeCustody,true,List.of(),List.of());
+        return receiptContributions(demands, warehouseId, includeCustody, true, List.of(), List.of());
     }
 
     public record PreviewReceiptDemand(UUID id,UUID goodsId,UUID colorId,UUID unitId,BigDecimal quantity) {}
@@ -2109,15 +2103,13 @@ public class ProductionExecutionReadinessService
         if(demands.isEmpty())return List.of();
         var rows=demands.stream().map(row->new DemandRow(row.id(),row.goodsId(),row.colorId(),row.unitId(),row.quantity())).toList();
         List<PreviewReceipt> result=new ArrayList<>();
-        receiptContributions(rows,null,ReceiptKind.PLAN_GROWTH,warehouseId,false,false,priorReceipts,priorReservations)
+        receiptContributions(rows, warehouseId, false, false, priorReceipts, priorReservations)
                 .forEach((demand,parts)->parts.forEach(part->result.add(new PreviewReceipt(demand,part.receiptId(),part.receiptItemId(),
                         part.pegId(),part.qty(),part.kind(),part.warehouseId(),part.custodyReservationId()))));
         return List.copyOf(result);
     }
 
-    private Map<UUID, List<ReceiptContribution>> receiptContributions(List<DemandRow> demands,
-            UUID triggeringReceiptId,ReceiptKind triggeringKind,UUID warehouseId,boolean includeCustody,boolean lockRows,
-            List<PreviewReceipt> priorReceipts,List<PreplanAnalysisPegPort.PreviewPublicReservation> priorReservations) {
+    private Map<UUID, List<ReceiptContribution>> receiptContributions(List<DemandRow> demands, UUID warehouseId, boolean includeCustody, boolean lockRows, List<PreviewReceipt> priorReceipts, List<PreplanAnalysisPegPort.PreviewPublicReservation> priorReservations) {
         Map<UUID, List<ReceiptContribution>> result =
                 new LinkedHashMap<>();
         if (demands.isEmpty()) return result;

@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -25,12 +24,12 @@ class SubcontractPreparationCommitmentMigrationPostgresTest {
     @AfterAll static void stop() { POSTGRES.stop(); }
 
     @Test void deployedV606UpgradesToCurrentHeadWithoutChangingAppliedChecksums() {
-        var base = Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+        var base = com.uten.imp.testsupport.TestFlyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").target("606").load();
         base.migrate();
         var db = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword()));
         var checksums = db.queryForList("SELECT version, checksum FROM flyway_schema_history WHERE version::integer<=606 ORDER BY installed_rank");
-        var upgraded = Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+        var upgraded = com.uten.imp.testsupport.TestFlyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").load().migrate();
         assertEquals(MigrationRehearsalSupport.expectedMigrationsAfter(606), upgraded.migrationsExecuted);
         assertEquals(checksums, db.queryForList("SELECT version, checksum FROM flyway_schema_history WHERE version::integer<=606 ORDER BY installed_rank"));

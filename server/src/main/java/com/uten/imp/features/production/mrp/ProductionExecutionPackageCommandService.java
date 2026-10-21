@@ -204,7 +204,7 @@ public class ProductionExecutionPackageCommandService {
         AnalysisExecutionSnapshotScope.beforeFormalMutation();
         allocation = awaitWorkshopRoute(allocation);
         List<SegmentDraft> segmentDrafts = persistSegments(
-                plan, begin.planningPackage(), allocation);
+                begin.planningPackage(), allocation);
         persistSalesAllocations(segmentDrafts);
 
         List<ProductionFulfillmentLedgerService.DemandDraft> demandDrafts =
@@ -314,13 +314,9 @@ public class ProductionExecutionPackageCommandService {
             requirePurchaseRequestForBuyShortage(
                     request.isGeneratePurchaseRequest(), purchaseLines);
         }
-        MrpGenerateResult purchaseResult =
-                packageOwnsSupply && request.isGeneratePurchaseRequest()
-                        ? createPurchase(
-                                plan, begin.planningPackage(),
-                                request.getWarehouseId(),
-                                demands, purchaseLines)
-                        : null;
+        if (packageOwnsSupply && request.isGeneratePurchaseRequest()) {
+            createPurchase(plan, begin.planningPackage(), request.getWarehouseId(), demands, purchaseLines);
+        }
 
         Map<DemandMaterialKey, BigDecimal> subcontractShortage =
                 packageOwnsSupply
@@ -350,16 +346,10 @@ public class ProductionExecutionPackageCommandService {
                         .filter(line -> line.qty().signum() > 0)
                         .toList();
         rejectSubcontractBomGaps(planId, plan, subcontractLines);
-        MrpGenerateResult subcontractResult =
-                packageOwnsSupply
-                        ? subcontractCoordinator.create(
-                                plan.billNo(),
-                                plan.deliveryDate(),
-                                request.getWarehouseId(),
-                                begin.planningPackage(),
-                                demands,
-                                subcontractLines)
-                        : null;
+        if (packageOwnsSupply) {
+            subcontractCoordinator.create(plan.billNo(), plan.deliveryDate(), request.getWarehouseId(),
+                    begin.planningPackage(), demands, subcontractLines);
+        }
 
         // 自制件派生只使用本次直接层 MAKE 缺口；下层 BOM 进入子计划后再逐级排产。
         // 与领料/采购同事务，走 EXECUTION_V1 subplan_links，幂等不重复。
@@ -401,6 +391,9 @@ public class ProductionExecutionPackageCommandService {
                         begin.planningPackage().getWarehouseId(), true);
             }
             em.refresh(draft.segment());
+            // A package may be confirmed after its plan-scheduled event was already delivered.
+            // Each newly created task therefore owns a durable assignment event of its own.
+            chainNotice.notifyExecutionSegmentWorkshopAssigned(draft.segment().getId());
         }
         // These segments were just flushed/refreshed after readiness. An analysis
         // package never creates its own purchase, subcontract or child plans;
@@ -565,9 +558,7 @@ public class ProductionExecutionPackageCommandService {
     }
 
     private List<SegmentDraft> persistSegments(
-            PlanHeader plan,
-            ProductionPlanningPackage planningPackage,
-            CompleteKitAllocator.Allocation allocation) {
+            ProductionPlanningPackage planningPackage, CompleteKitAllocator.Allocation allocation) {
         List<SegmentDraft> result = new ArrayList<>();
         int no = 0;
         for (CompleteKitAllocator.SegmentAllocation proposal
@@ -647,7 +638,7 @@ public class ProductionExecutionPackageCommandService {
                 proposal.status())) {
             throw conflict("无物料执行分段必须直接进入 READY");
         }
-        if (!List.of(
+        if (zeroReason == null || !List.of(
                         ProductionExecutionSegment
                                 .ZERO_MATERIAL_REASON_DIRECT_MAKE,
                         ProductionExecutionSegment

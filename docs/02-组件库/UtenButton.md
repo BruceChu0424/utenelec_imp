@@ -6,6 +6,8 @@
 
 文字小/标准14、主要16，圆角 `UtenRadius.control`（10）。同组同用途保持高度一致，宽度随内容；窄宽长标签可换行，禁止用缩字维持固定高。primary/secondary/ghost/tonal/danger/success复用同一交互内核与语义颜色。
 
+界面与交互改动默认使用 `frontend-design`，沿用 Uten tokens。内容按实际宽度、图标实测尺寸和标签最小自然宽度选择横排或纵排：能容纳时文字在图标右侧的剩余空间换行，不额外增加一整行图标；确实容不下时才纵排。装饰图标和忙态进度受实际宽度限制，文字字号、完整文案和按钮语义保持。布局支持 intrinsic/dry layout，对话框的固有尺寸测量与正常布局使用同一套约束。悬浮动作卡由 `UtenFloatingActionGroup` 统一滚动，卡片内部不再重复建立同向滚动区。
+
 `UtenActionButton`仅负责ClickGuard的异步防重入、忙态与解锁，视觉委托UtenButton；`UtenImportButton`也委托同一内核，不再保留独立padding/fixedSize/色板。导出、草稿、顶栏按钮保持原权限、身份和业务回调。
 
 原生Material按钮在根部经UtenControlTheme接收同一个宽高目标和密度，不能只给触控高度保底却漏掉短标签宽度。表格内联动作桌面按单行文字显示、触屏扩为48目标；它不是普通办公工具栏按钮。

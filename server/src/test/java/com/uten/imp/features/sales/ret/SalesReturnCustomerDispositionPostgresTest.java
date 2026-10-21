@@ -1,6 +1,5 @@
 package com.uten.imp.features.sales.ret;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -45,7 +44,7 @@ class SalesReturnCustomerDispositionPostgresTest {
     @BeforeAll
     static void migrate() {
         POSTGRES.start();
-        Flyway.configure()
+        com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration")
                 .load()
@@ -63,7 +62,7 @@ class SalesReturnCustomerDispositionPostgresTest {
         UUID returnId = UUID.randomUUID();
         try (Connection c = connection()) {
             insertClient(c, clientId);
-            insertReturn(c, returnId, clientId, null, "PENDING_DEFAULT");
+            insertReturn(c, returnId, clientId, null);
             try (PreparedStatement q = c.prepareStatement(
                     "SELECT customer_disposition, disposition_status, fulfilment_reopened "
                             + "FROM sales_returns WHERE id = ?")) {
@@ -83,8 +82,7 @@ class SalesReturnCustomerDispositionPostgresTest {
         UUID clientId = UUID.randomUUID();
         try (Connection c = connection()) {
             insertClient(c, clientId);
-            SQLException ex = assertThrows(SQLException.class, () -> insertReturn(
-                    c, UUID.randomUUID(), clientId, "BOGUS", "BAD-DISP"));
+            SQLException ex = assertThrows(SQLException.class, () -> insertReturn(c, UUID.randomUUID(), clientId, "BOGUS"));
             assertEquals("23514", ex.getSQLState());
         }
     }
@@ -217,8 +215,7 @@ class SalesReturnCustomerDispositionPostgresTest {
         }
     }
 
-    private static void insertReturn(Connection c, UUID returnId, UUID clientId,
-                                     String disposition, String tag) throws Exception {
+    private static void insertReturn(Connection c, UUID returnId, UUID clientId, String disposition) throws Exception {
         try (PreparedStatement s = c.prepareStatement("""
                 INSERT INTO sales_returns (id, bill_no, bill_date, client_id, status, customer_disposition)
                 VALUES (?, ?, ?, ?, 1, ?)

@@ -339,7 +339,7 @@ public class ProcurementOrderSourceRevisionService implements ProcurementOrderSo
         Allocation(Map<String,Object> row,BigDecimal before,BigDecimal after,BigDecimal minimum){this.row=row;this.before=before;this.after=after;this.minimum=minimum;}
         UUID source(){return id(row,"source_item_id");}
     }
-    private static Map<String,Object> args(Object...pairs){Map<String,Object> result=new HashMap<>();for(int i=0;i<pairs.length;i+=2){ result.put((String)pairs[i],pairs[i+1]); }return result;}
+    private static Map<String,Object> args(Object...pairs){if((pairs.length&1)!=0)throw new IllegalArgumentException("Source revision arguments require key/value pairs");Map<String,Object> result=new HashMap<>();for(int i=0;i+1<pairs.length;i+=2){ result.put((String)pairs[i],pairs[i+1]); }return result;}
     private static UUID id(Map<String,Object> row,String name){return (UUID)row.get(name);}
     private static Number number(Map<String,Object> row,String name){return (Number)row.get(name);}
     private static BigDecimal amount(Map<String,Object> row,String name){Object value=row.get(name);return value==null?BigDecimal.ZERO:new BigDecimal(value.toString());}

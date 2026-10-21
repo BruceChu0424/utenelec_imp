@@ -150,7 +150,7 @@ class FinanceReportPartyStatementTest {
         FinanceReportService service = service(em);
 
         service.receiptSummary(null, UUID.randomUUID(), null,
-                null, null, null, Map.of(), 1, 50, null, null);
+                null, null, null, 1, 50);
         service.paymentSummary(null, UUID.randomUUID(), null,
                 null, null, null, Map.of(), 1, 50, null, null);
         ReportTableResponse orderPlan = service.salesOrderReceivablePlan(null, null, null, null,

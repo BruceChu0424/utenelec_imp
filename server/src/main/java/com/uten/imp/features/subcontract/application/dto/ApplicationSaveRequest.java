@@ -29,8 +29,7 @@ public class ApplicationSaveRequest {
     private LocalDate needDate;
     private String remark;
 
-    @Valid
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<ApplicationItemLine> items;
+    private List<@Valid ApplicationItemLine> items;
 }

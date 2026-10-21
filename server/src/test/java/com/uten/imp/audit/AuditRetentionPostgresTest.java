@@ -1,6 +1,5 @@
 package com.uten.imp.audit;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
@@ -54,7 +53,7 @@ class AuditRetentionPostgresTest {
         owner = new JdbcTemplate(new DriverManagerDataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword()));
         // 与生产加固脚本同形: 运行账号不是所有者, 先拿通用业务授权, 再由迁移/加固脚本封口审计表。
         owner.execute("CREATE ROLE " + RUNTIME_ROLE + " LOGIN NOSUPERUSER PASSWORD '" + RUNTIME_PASSWORD + "'");
-        Flyway.configure().dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
                 .locations("classpath:db/migration").target("766").load().migrate();
         owner.execute("GRANT USAGE ON SCHEMA public TO " + RUNTIME_ROLE);
         owner.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO " + RUNTIME_ROLE);
@@ -79,7 +78,7 @@ class AuditRetentionPostgresTest {
         // The before switch exists solely to reproduce destructive legacy behavior
         // against this throwaway database with the same preservation assertions.
         if (!Boolean.getBoolean("uten.audit.retention.beforeProtection")) {
-            Flyway.configure().dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
+            com.uten.imp.testsupport.TestFlyway.configure().dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
                     .locations("classpath:db/migration").load().migrate();
         }
     }

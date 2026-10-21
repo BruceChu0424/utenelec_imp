@@ -1,4 +1,6 @@
 package com.uten.imp.businesschain;
+
+import com.uten.imp.testsupport.BoundTestSql;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.features.production.analysis.MaterialAnalysisCommandService;
 import com.uten.imp.features.production.analysis.MaterialAnalysisContracts.*;
@@ -290,9 +292,9 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
         try (var holder=dataSource.getConnection()) {
             holder.setAutoCommit(false);
             try (var lock=holder.createStatement()) {
-                lock.execute("SELECT id FROM production_material_analyses WHERE id='"+t.analysis()+"' FOR UPDATE");
-                lock.execute("SELECT id FROM production_material_analysis_materials WHERE analysis_id='"+t.analysis()+"' FOR UPDATE");
-                lock.execute("SELECT id FROM production_material_analysis_items WHERE analysis_id='"+t.analysis()+"' FOR UPDATE");
+                BoundTestSql.execute(lock, "SELECT id FROM production_material_analyses WHERE id=? FOR UPDATE", t.analysis());
+                BoundTestSql.execute(lock, "SELECT id FROM production_material_analysis_materials WHERE analysis_id=? FOR UPDATE", t.analysis());
+                BoundTestSql.execute(lock, "SELECT id FROM production_material_analysis_items WHERE analysis_id=? FOR UPDATE", t.analysis());
                 lock.execute("SELECT pg_advisory_xact_lock(hashtextextended('MATERIAL-ANALYSIS-WAREHOUSE:"+t.world().warehouseId()+"',0))");
             }
             long started=System.nanoTime();
@@ -854,7 +856,7 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
                 t.world().warehouseId(),"frozen-curve-refresh-"+t.analysis(),
                 List.of(new PreviewItem("OTHER",null,t.root(),null,t.world().unitId(),"planned-source-append-fixed-curve-"+t.root(),"计划量单一入口",BusinessTime.today().plusDays(10),new BigDecimal("1000")))));
         List<RouteDecision> reconfirm=refreshed.flatMaterials().stream().filter(MaterialView::actionable)
-                        .filter(m->!Boolean.TRUE.equals(m.sourceConfirmed()))
+                        .filter(m->!m.routeConfirmed())
                         .map(m->new RouteDecision(m.materialLineId(),m.actionGroupKey(),m.goodsId().equals(t.parent())||m.goodsId().equals(t.root())?"MAKE":"BUY",null)).toList();
         if(!reconfirm.isEmpty()) analyses.saveRoutes(t.analysis(),new RouteRequest(refreshed.version(),refreshed.fingerprint(),"frozen-curve-routes-"+t.analysis(),reconfirm));
         commands.issueWorkshopPlans(t.analysis(),issue(analyses.detail(t.analysis()),t,"third-75",candidate(t.parentLine(),"75")));

@@ -252,7 +252,7 @@ class LegacyOpeningOffsetEndToEndTest {
     private BigDecimal amount(String sql,UUID id){return jdbc.queryForObject(sql,BigDecimal.class,id);}
     private void assertBalance(UUID id,String expected){assertThat(amount("SELECT amount_balance_original FROM ar_ap_ledger WHERE id=?",id)).isEqualByComparingTo(expected);assertThat(amount("SELECT amount_balance FROM ar_ap_ledger WHERE id=?",id)).isEqualByComparingTo(expected);}
     private void assertReportBalance(String expected,LocalDate from) {
-        var report=reports.payableSummary(supplierCode,from,from.withDayOfMonth(from.lengthOfMonth()),Map.of(),1,50,null,null);
+        var report=reports.payableSummary(supplierCode,from,from.withDayOfMonth(from.lengthOfMonth()),1,50);
         assertThat(report.rows()).hasSize(1);assertThat((BigDecimal)report.rows().getFirst().get("balance")).isEqualByComparingTo(expected);
     }
 }

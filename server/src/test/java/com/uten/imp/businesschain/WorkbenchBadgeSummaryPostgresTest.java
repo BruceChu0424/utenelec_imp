@@ -626,11 +626,8 @@ class WorkbenchBadgeSummaryPostgresTest {
     // ---------------------------------------------------------------------------------------
 
     private void assertRollups(JsonNode summary) {
-        Map<String, long[]> modules = new TreeMap<>();
         long totalTodo = 0, totalInProgress = 0;
         for (var module : summary.path("modules").properties()) {
-            modules.put(module.getKey(), new long[] {
-                    module.getValue().path("todo").asLong(), module.getValue().path("inProgress").asLong()});
             totalTodo += module.getValue().path("todo").asLong();
             totalInProgress += module.getValue().path("inProgress").asLong();
         }

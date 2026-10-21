@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.BoundTestSql;
+
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.production.analysis.MaterialAnalysisContracts.*;
@@ -48,7 +50,7 @@ class AggregateMaterialDirectTransferEndToEndTest {
         List<UUID> plans=issue(c,c.child(),"1");
         var shared=flow.writer.submit(c.analysis(),flow.command(c,List.of(flow.input(c,c.common(),"MAKE","3",false)))).batches().getFirst();
         UUID source=segment(plans.getFirst()),target=demand(segment(shared.planId()));
-        flow.receive(c,c.material(),"6");start(c,source);
+        flow.receive(c,c.material(),"6");start(source);
         UUID worker=worker(c);flow.fixture.loginAs(worker);
         var candidates=direct().candidates(source,c.child(),null).candidates();
         assertEquals(1,candidates.size());assertEquals(target,candidates.getFirst().demandId());
@@ -95,7 +97,7 @@ class AggregateMaterialDirectTransferEndToEndTest {
         var c=flow.createWithChild("1");
         var shared=flow.writer.submit(c.analysis(),flow.command(c,List.of(flow.input(c,c.child(),"MAKE","3",false)))).batches().getFirst();
         List<UUID> parents=issue(c,c.common(),"1");
-        UUID source=segment(shared.planId());flow.receive(c,c.material(),"6");start(c,source);
+        UUID source=segment(shared.planId());flow.receive(c,c.material(),"6");start(source);
         UUID worker=worker(c);flow.fixture.loginAs(worker);
         var candidates=direct().candidates(source,c.child(),null).candidates();assertEquals(3,candidates.size());
         for(var candidate:candidates)amount("1",candidate.remainingQty());
@@ -110,7 +112,7 @@ class AggregateMaterialDirectTransferEndToEndTest {
         var c=flow.createWithChild("1");
         var shared=flow.writer.submit(c.analysis(),flow.command(c,List.of(flow.input(c,c.child(),"MAKE","3",false)))).batches().getFirst();
         List<UUID> parents=issue(c,c.common(),"1");
-        UUID source=segment(shared.planId());flow.receive(c,c.material(),"6");start(c,source);
+        UUID source=segment(shared.planId());flow.receive(c,c.material(),"6");start(source);
         // BOM 学习口径(V711/V739)：给这个子件建一份学习档案，审核后必须照常入队刷新。
         db.update("INSERT INTO goods_bom_learning_profiles(goods_id,output_unit_id,blocked_reason) VALUES (?,?,'MANUAL_BOM') ON CONFLICT DO NOTHING",
                 c.child(),c.world().unitId());
@@ -165,7 +167,7 @@ class AggregateMaterialDirectTransferEndToEndTest {
         }
         List<UUID> parents=flow.ordinary.issueWorkshopPlans(c.analysis(),new IssueWorkshopPlansRequest(view.version(),view.fingerprint(),"direct-mixed-"+UUID.randomUUID(),
                 c.world().warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,lines)).plans().stream().map(row->row.planId()).toList();
-        UUID source=segment(shared.planId());flow.receive(c,c.material(),"6");start(c,source);
+        UUID source=segment(shared.planId());flow.receive(c,c.material(),"6");start(source);
         UUID worker=worker(c);flow.fixture.loginAs(worker);
         var listing=direct().candidates(source,c.child(),null);
         assertEquals(2,listing.candidates().size());
@@ -197,7 +199,7 @@ class AggregateMaterialDirectTransferEndToEndTest {
         var c=flow.createWithChild("1");
         var shared=flow.writer.submit(c.analysis(),flow.command(c,List.of(flow.input(c,c.child(),"MAKE","3",false)))).batches().getFirst();
         issue(c,c.common(),"1");
-        UUID source=segment(shared.planId());flow.receive(c,c.material(),"6");start(c,source);
+        UUID source=segment(shared.planId());flow.receive(c,c.material(),"6");start(source);
         UUID worker=worker(c);flow.fixture.loginAs(worker);
         UUID report=transfer(c,source,List.of(),"1","2");
         assertEquals("USER_CHOSEN",db.queryForObject("SELECT output_route_reason FROM production_daily_report_items WHERE report_id=? AND NOT is_deleted",String.class,report));
@@ -235,7 +237,7 @@ class AggregateMaterialDirectTransferEndToEndTest {
         var c=flow.createWithChild("1");
         var shared=flow.writer.submit(c.analysis(),flow.command(c,List.of(flow.input(c,c.child(),"MAKE","3",false)))).batches().getFirst();
         issue(c,c.common(),"1");UUID source=segment(shared.planId());
-        flow.receive(c,c.material(),"6");start(c,source);UUID worker=worker(c);flow.fixture.loginAs(worker);
+        flow.receive(c,c.material(),"6");start(source);UUID worker=worker(c);flow.fixture.loginAs(worker);
         UUID target=direct().candidates(source,c.child(),null).candidates().getFirst().demandId();
         // V736/ADR-127：一个上层工单只缺 1，分给它 2 当场说清楚，不再悄悄把多出的送进仓库。
         var over=assertThrows(ApiException.class,()->transfer(c,source,List.of(DailyReportOutputAllocationLine.direct(target,new BigDecimal("2"))),"2","4"));
@@ -256,7 +258,7 @@ class AggregateMaterialDirectTransferEndToEndTest {
     @Test void sharedWarehouseReceiptCanPartlyFormalizeOnePrivateShareInTheSameTransaction(){
         var c=flow.createWithChild("2");
         var shared=flow.writer.submit(c.analysis(),flow.command(c,List.of(flow.input(c,c.child(),"MAKE","6",false)))).batches().getFirst();
-        issue(c,c.common(),"1");UUID source=segment(shared.planId());flow.receive(c,c.material(),"12");start(c,source);
+        issue(c,c.common(),"1");UUID source=segment(shared.planId());flow.receive(c,c.material(),"12");start(source);
         UUID planItem=db.queryForObject("SELECT source_plan_item_id FROM production_execution_segments WHERE id=?",UUID.class,source);
         var use=new DailyReportMaterialUsageLine();use.setDemandId(demand(source));use.setQtyBase(new BigDecimal("6"));
         UUID report=flow.fixture.reportAndApproveExecutionSegment(c.world(),planItem,null,c.child(),source,null,"3",false,"0",null,null,List.of(use));
@@ -272,7 +274,7 @@ class AggregateMaterialDirectTransferEndToEndTest {
                 .map(row->new IssueWorkshopPlansRequest.IssuePlanLine(row.materialLineId(),null,new BigDecimal(qty),null,null,c.workshop(),null,c.worker(),null,null,false,BigDecimal.ZERO)).toList()))
                 .plans().stream().map(row->row.planId()).toList();
     }
-    void start(AggregateMaterialOrderEndToEndTest.Case c,UUID segment){
+    void start(UUID segment){
         var draws=beans.getBean(ProductionDrawRequestService.class);var stock=beans.getBean(StockDocService.class);
         var request=new ProductionDrawRequest.Item(segment,flow.version(segment));
         var shown=draws.preview(new ProductionDrawRequest.PreviewRequest(List.of(request)));
@@ -326,26 +328,26 @@ class AggregateMaterialDirectTransferEndToEndTest {
                     "production_execution_segment_events","production_daily_report_items","stock_value_nodes","stock_value_events","stock_value_edges","stock_value_pools","stock_value_position_transfers","production_material_movement_links","production_material_stock_events"))com.uten.imp.support.MigratedProjectionSchema.copyTablesWithDataFromMigratedCatalog(connection,table);
             String definition;try(var result=statement.executeQuery("SELECT pg_get_functiondef('public.fn_preplan_aggregate_direct_draw_reversible(uuid)'::regprocedure)")){result.next();definition=result.getString(1);}
             statement.execute(definition.replace("FUNCTION public.","FUNCTION "+schema+"."));
-            try(var result=statement.executeQuery("SELECT fn_preplan_aggregate_direct_draw_reversible('"+document+"')")){assertTrue(result.next()&&result.getBoolean(1));}
+            try(var boundSql1 = BoundTestSql.prepare(statement, "SELECT fn_preplan_aggregate_direct_draw_reversible(?)", document); var result = boundSql1.executeQuery()){assertTrue(result.next()&&result.getBoolean(1));}
             var save=connection.setSavepoint();
-            statement.execute("UPDATE stock_document_items SET issued_qty=0.0001 WHERE doc_id='"+document+"'");
-            try(var result=statement.executeQuery("SELECT fn_preplan_aggregate_direct_draw_reversible('"+document+"')")){assertTrue(result.next());assertFalse(result.getBoolean(1),"一行仍有实发不得关闭");}connection.rollback(save);
-            statement.execute("INSERT INTO production_execution_segment_events(execution_segment_id,action) SELECT execution_segment_id,'START' FROM production_material_demands WHERE id='"+target+"'");
-            try(var result=statement.executeQuery("SELECT fn_preplan_aggregate_direct_draw_reversible('"+document+"')")){assertTrue(result.next());assertFalse(result.getBoolean(1),"接收已经开工不得关闭");}connection.rollback(save);
+            BoundTestSql.execute(statement, "UPDATE stock_document_items SET issued_qty=0.0001 WHERE doc_id=?", document);
+            try(var boundSql2 = BoundTestSql.prepare(statement, "SELECT fn_preplan_aggregate_direct_draw_reversible(?)", document); var result = boundSql2.executeQuery()){assertTrue(result.next());assertFalse(result.getBoolean(1),"一行仍有实发不得关闭");}connection.rollback(save);
+            BoundTestSql.execute(statement, "INSERT INTO production_execution_segment_events(execution_segment_id,action) SELECT execution_segment_id,'START' FROM production_material_demands WHERE id=?", target);
+            try(var boundSql3 = BoundTestSql.prepare(statement, "SELECT fn_preplan_aggregate_direct_draw_reversible(?)", document); var result = boundSql3.executeQuery()){assertTrue(result.next());assertFalse(result.getBoolean(1),"接收已经开工不得关闭");}connection.rollback(save);
             // Add one uncovered source to an otherwise fully proved real line.
-            statement.execute("INSERT INTO production_workshop_direct_source_allocations(id,transfer_item_id,stock_reservation_id,qty_base) SELECT gen_random_uuid(),gen_random_uuid(),posting.reservation_id,0.0001 FROM production_material_stock_postings posting JOIN stock_document_items item ON item.id=posting.stock_document_item_id WHERE item.doc_id='"+document+"' LIMIT 1");
-            try(var result=statement.executeQuery("SELECT fn_preplan_aggregate_direct_draw_reversible('"+document+"')")){assertTrue(result.next());assertFalse(result.getBoolean(1),"一份来源缺少共享证明也不得关闭");}
+            BoundTestSql.execute(statement, "INSERT INTO production_workshop_direct_source_allocations(id,transfer_item_id,stock_reservation_id,qty_base) SELECT gen_random_uuid(),gen_random_uuid(),posting.reservation_id,0.0001 FROM production_material_stock_postings posting JOIN stock_document_items item ON item.id=posting.stock_document_item_id WHERE item.doc_id=? LIMIT 1", document);
+            try(var boundSql4 = BoundTestSql.prepare(statement, "SELECT fn_preplan_aggregate_direct_draw_reversible(?)", document); var result = boundSql4.executeQuery()){assertTrue(result.next());assertFalse(result.getBoolean(1),"一份来源缺少共享证明也不得关闭");}
             connection.rollback(save);
-            UUID head;try(var result=statement.executeQuery("SELECT DISTINCT pool.head_node_id FROM stock_value_pools pool JOIN stock_documents doc ON doc.warehouse_id=pool.warehouse_id JOIN stock_document_items item ON item.doc_id=doc.id AND item.goods_id=pool.goods_id AND item.color_id IS NOT DISTINCT FROM pool.color_id WHERE doc.id='"+document+"'")){assertTrue(result.next());head=result.getObject(1,UUID.class);}
+            UUID head;try(var boundSql5 = BoundTestSql.prepare(statement, "SELECT DISTINCT pool.head_node_id FROM stock_value_pools pool JOIN stock_documents doc ON doc.warehouse_id=pool.warehouse_id JOIN stock_document_items item ON item.doc_id=doc.id AND item.goods_id=pool.goods_id AND item.color_id IS NOT DISTINCT FROM pool.color_id WHERE doc.id=?", document); var result = boundSql5.executeQuery()){assertTrue(result.next());head=result.getObject(1,UUID.class);}
             try(var result=statement.executeQuery("SELECT pg_get_functiondef('public.fn_preplan_aggregate_returned_issue_parent(uuid)'::regprocedure)")){result.next();definition=result.getString(1);}statement.execute(definition.replace("FUNCTION public.","FUNCTION "+schema+"."));
-            try(var result=statement.executeQuery("SELECT fn_preplan_aggregate_returned_issue_parent('"+head+"')")){assertTrue(result.next());assertNotNull(result.getObject(1),"完整实际退回应追到原库存头");}
+            try(var boundSql6 = BoundTestSql.prepare(statement, "SELECT fn_preplan_aggregate_returned_issue_parent(?)", head); var result = boundSql6.executeQuery()){assertTrue(result.next());assertNotNull(result.getObject(1),"完整实际退回应追到原库存头");}
             var costSave=connection.setSavepoint();
-            statement.execute("UPDATE stock_value_events SET qty_base=qty_base/2 WHERE id=(SELECT creation_event_id FROM stock_value_nodes WHERE id='"+head+"')");
-            try(var result=statement.executeQuery("SELECT fn_preplan_aggregate_returned_issue_parent('"+head+"')")){assertTrue(result.next());assertNull(result.getObject(1),"未满额退回不能证明成本未被使用");}connection.rollback(costSave);
-            statement.execute("INSERT INTO stock_value_position_transfers(id,event_id,source_root_id) SELECT gen_random_uuid(),creation_event_id,gen_random_uuid() FROM stock_value_nodes WHERE id='"+head+"'");
-            try(var result=statement.executeQuery("SELECT fn_preplan_aggregate_returned_issue_parent('"+head+"')")){assertTrue(result.next());assertNull(result.getObject(1),"多源退回不能猜测原成本");}connection.rollback(costSave);
-            statement.execute("UPDATE stock_value_nodes SET range_to=range_from+0.0001 WHERE id=(SELECT root.return_head_id FROM stock_value_position_transfers transfer JOIN stock_value_nodes root ON root.id=transfer.source_root_id WHERE transfer.event_id=(SELECT creation_event_id FROM stock_value_nodes WHERE id='"+head+"'))");
-            try(var result=statement.executeQuery("SELECT fn_preplan_aggregate_returned_issue_parent('"+head+"')")){assertTrue(result.next());assertNull(result.getObject(1),"仍有在制占用不能撤回原成本");}
+            BoundTestSql.execute(statement, "UPDATE stock_value_events SET qty_base=qty_base/2 WHERE id=(SELECT creation_event_id FROM stock_value_nodes WHERE id=?)", head);
+            try(var boundSql7 = BoundTestSql.prepare(statement, "SELECT fn_preplan_aggregate_returned_issue_parent(?)", head); var result = boundSql7.executeQuery()){assertTrue(result.next());assertNull(result.getObject(1),"未满额退回不能证明成本未被使用");}connection.rollback(costSave);
+            BoundTestSql.execute(statement, "INSERT INTO stock_value_position_transfers(id,event_id,source_root_id) SELECT gen_random_uuid(),creation_event_id,gen_random_uuid() FROM stock_value_nodes WHERE id=?", head);
+            try(var boundSql8 = BoundTestSql.prepare(statement, "SELECT fn_preplan_aggregate_returned_issue_parent(?)", head); var result = boundSql8.executeQuery()){assertTrue(result.next());assertNull(result.getObject(1),"多源退回不能猜测原成本");}connection.rollback(costSave);
+            BoundTestSql.execute(statement, "UPDATE stock_value_nodes SET range_to=range_from+0.0001 WHERE id=(SELECT root.return_head_id FROM stock_value_position_transfers transfer JOIN stock_value_nodes root ON root.id=transfer.source_root_id WHERE transfer.event_id=(SELECT creation_event_id FROM stock_value_nodes WHERE id=?))", head);
+            try(var boundSql9 = BoundTestSql.prepare(statement, "SELECT fn_preplan_aggregate_returned_issue_parent(?)", head); var result = boundSql9.executeQuery()){assertTrue(result.next());assertNull(result.getObject(1),"仍有在制占用不能撤回原成本");}
             connection.rollback();
         }
     }

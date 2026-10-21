@@ -75,8 +75,8 @@ class FinancialQueueSearchPostgresTest {
         // 本测试只验证 SQL/分词契约，直通保留当前身份即可（全部 task 开关为 false）。
         ReflectionTestUtils.setField(service, "taskAudience",
                 new com.uten.imp.application.port.TaskAudiencePort() {
-                    @Override public <T> T read(java.util.function.Supplier<T> work) { return work.get(); }
-                    @Override public <T> T browsingRead(java.util.function.Supplier<T> work) { return work.get(); }
+                    @Override public <T> T read(com.uten.imp.application.port.TaskAudiencePort.ReadQuery<T> work) { return work.read(); }
+                    @Override public <T> T browsingRead(com.uten.imp.application.port.TaskAudiencePort.ReadQuery<T> work) { return work.read(); }
                 });
         var expected = List.of(exact, prefix, contains, codeOnly);
         for (int page = 1; page <= 4; page++) {
@@ -124,7 +124,7 @@ class FinancialQueueSearchPostgresTest {
     @Test void lossClaimsKeepSupplierStatusAndExactHeaderFiltersWithLiteralWordsAndRankBeforeLimit() {
         UUID exact = loss("LOSS", "OPEN", supplier, false, 2020);
         UUID prefix = loss("LOSS-EXT", "OPEN", supplier, false, 2022);
-        UUID contains = loss("XLOSSX", "OPEN", supplier, false, 2026);
+        loss("XLOSSX", "OPEN", supplier, false, 2026);
         UUID literal = loss("LOSS_100%\\A", "OPEN", supplier, false, 2026);
         loss("LOSSA100X\\A", "CANCELED", supplier, false, 2026);
         loss("LOSS-hidden", "OPEN", supplier, true, 2026);
@@ -145,7 +145,7 @@ class FinancialQueueSearchPostgresTest {
 
     @Test void settlementsKeepMonthSupplierAndStateWhileMatchingWordsAndLiteralWildcardsBeforePaging() {
         UUID exact = batch("BATCH", "FROZEN", 2020, supplier, false);
-        UUID prefix = batch("BATCH-EXT", "FROZEN", 2022, supplier, false);
+        batch("BATCH-EXT", "FROZEN", 2022, supplier, false);
         batch("XBATCHX", "FROZEN", 2026, supplier, false);
         UUID literal = batch("BATCH_100%", "FROZEN", 2026, supplier, false);
         batch("BATCHA100X", "REVERSED", 2026, supplier, false);

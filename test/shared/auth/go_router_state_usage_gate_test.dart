@@ -51,6 +51,9 @@ void main() {
       // Platform settings registers dirty-navigation state only after checking
       // that the enclosing route has declarative Page settings.
       'lib/features/admin/pages/admin_platform_settings_page.dart': 1, // B+C
+      // Only a directly enclosing declarative Page may register the editor;
+      // imperative routes use the local PopScope confirmation instead.
+      'lib/features/basic_data/widgets/master_inline_edit.dart': 1, // B+C
       'lib/features/warehouse/pages/stock_doc_list_page.dart': 1, // B
       'lib/features/warehouse/widgets/production_finished_inbound_tasks_view.dart':
           2, // A: 行点击回调

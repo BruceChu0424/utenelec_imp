@@ -128,9 +128,11 @@ public class ProductionExecutionBatchService {
         splitSalesAllocations(source.id(),batch,remaining,quantity,actor);
         if (source.zeroMaterial()) {
             // 零物料子任务插入时已是 READY：无领料单、无提升，车间直接开工。
+            notices.notifyExecutionSegmentWorkshopAssigned(batch);
         } else if (batchMaterials.stream().allMatch(material->material.requiredQty().signum()==0)) {
             em.createNativeQuery("UPDATE production_execution_segments SET status='READY',updated_by=:actor WHERE id=:id")
                     .setParameter("actor",actor).setParameter("id",batch).executeUpdate();
+            notices.notifyExecutionSegmentWorkshopAssigned(batch);
         } else {
             readiness.promoteAfterMaterialRecheck(batch,source.warehouseId());
             long version=((Number)em.createNativeQuery("SELECT lock_version FROM production_execution_segments WHERE id=:id")

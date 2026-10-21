@@ -95,7 +95,9 @@ public final class AiReasoningParams {
                     fields.put("reasoning_effort", zhipuEffort(level));
                 }
             }
-            case NONE, ANTHROPIC_EFFORT -> {
+            case NONE -> {
+            }
+            case ANTHROPIC_EFFORT -> {
             }
         }
         return fields;

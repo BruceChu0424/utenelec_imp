@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.dailyreport.dto;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
@@ -61,9 +62,8 @@ public class DailyReportItemLine extends com.uten.imp.common.platformcolumns.Pla
      * 本行实际产量的去向分配(V736/ADR-127)：逐个转给上层工单多少、送入仓库多少，合计等于本行实际产量。
      * 不传或为空 = 整行送入仓库。去向只从这里读，客户端不再传单个去向或单个接收需求。
      */
-    @jakarta.validation.Valid
     @jakarta.validation.constraints.Size(max = com.uten.imp.common.validation.RequestLimits.DAILY_REPORT_LINE_DESTINATIONS)
-    private List<DailyReportOutputAllocationLine> allocations;
+    private List<@Valid DailyReportOutputAllocationLine> allocations;
 
     /**
      * 拆分后单条明细的产出去向(V584)：WAREHOUSE 或 WORKSHOP。由服务端按 {@link #allocations} 拆出，

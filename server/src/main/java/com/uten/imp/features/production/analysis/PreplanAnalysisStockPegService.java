@@ -214,7 +214,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
         // 先锁定全部来源的候选分析（analysis.id 全序），再逐来源 FIFO 分摊。
         for (Object[] anchor : anchors) {
             lockClaimantAnalyses(
-                    (UUID) anchor[3], warehouseId, goodsId, colorId);
+                    (UUID) anchor[3], goodsId, colorId);
         }
 
         // 精确归属候选：按供应行动分摊行（analysis_material_id）逐行锁定容量。
@@ -780,8 +780,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
     }
 
     private void lockClaimantAnalyses(
-            UUID externalItemId, UUID warehouseId,
-            UUID goodsId, UUID colorId) {
+            UUID externalItemId, UUID goodsId, UUID colorId) {
         em.createNativeQuery("""
                         SELECT analysis.id
                         FROM production_material_analyses analysis
@@ -1518,7 +1517,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void restorePlanDemandTransfers(
-            Collection<UUID> formalReservationIds, String reason) {
+            Collection<UUID> formalReservationIds) {
         tx.bind();
         List<PreplanStockEntitlementService.Formalization> formalizations =
                 entitlement.listActiveFormalizations(

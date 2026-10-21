@@ -377,12 +377,12 @@ public class AiChatJobHandler implements AiJobHandler {
                 // Carry only authorized guidance and opted-in query filters through a polite exchange.
                 if (!previous.knowledgeId().isBlank()) answer.put("_knowledge", knowledgeEntry(previous.knowledgeId()).id());
                 if (!previous.query().isEmpty()) answer.put("_query", previous.query());
-                if (page.isPresent() && pageContext.route().equals(previous.help().get("route"))) {
+                if (pageContext != null && page.isPresent() && pageContext.route().equals(previous.help().get("route"))) {
                     answer.put("_page", Map.copyOf(previous.help()));
                 }
             } else if (followUp != null && !previous.knowledgeId().isBlank()) {
                 answer = knowledgeAnswer(knowledgeEntry(previous.knowledgeId()), followUp);
-            } else if (followUp != null && page.isPresent() && "PAGE_HELP".equals(previous.intent())
+            } else if (followUp != null && pageContext != null && page.isPresent() && "PAGE_HELP".equals(previous.intent())
                     && pageContext.route().equals(previous.help().get("route"))) {
                 answer = pageHelp(request, page, previous.help().get("fieldKey") instanceof String key ? key : null, followUp);
             } else if (!previous.query().isEmpty() && AiChatDialogueSupport.isQueryPresentationFollowUp(request.message())) {
@@ -1089,7 +1089,7 @@ public class AiChatJobHandler implements AiJobHandler {
     private Map<String, Object> runTool(AiJobContext ctx, Ask ask, AiChatToolPort tool, JsonNode args) {
         if (!args.isObject() || args.size() > 8 || args.toString().length() > 3000) throw invalid();
         List<String> missing = AiChatArguments.missingRequired(args, tool.parameters(), json);
-        if (!missing.isEmpty()) return reply(missingQuestion(tool, missing), "SELF", "CLARIFY");
+        if (!missing.isEmpty()) return reply(missingQuestion(missing), "SELF", "CLARIFY");
         AiChatArguments.validate(args, tool.parameters(), json);
         Map<String, Object> arguments = json.convertValue(args, new TypeReference<>() {});
         Map<String, Object> result;
@@ -1577,10 +1577,10 @@ public class AiChatJobHandler implements AiJobHandler {
                    boolean pageBound, List<AiDocChunker.Chunk> docs, String visible, String ruleText, String userAccess) {
         /**
          * @param docs       design-document chunks found for a rule question (ADR-153), may be empty
-         * @param visible    what the user can already see (page snapshot, guide, catalog, the names of the modules and
+         * <p>{@code visible} is what the user can already see (page snapshot, guide, catalog, the names of the modules and
          *                   pages they can open): identifiers and on-screen names there are not invented
-         * @param ruleText   catalog and document text: the rule numbers an explanation may compute with
-         * @param userAccess the modules the user can open and their assistant domains, for the system prompt (no name,
+         * <p>{@code ruleText} is catalog and document text: the rule numbers an explanation may compute with.
+         * <p>{@code userAccess} contains the modules the user can open and their assistant domains, for the system prompt (no name,
          *                   id or department)
          */
         static Sources build(AiChatJobHandler handler, AiChatRequest request, AiChatPageSnapshot snapshot,
@@ -1817,7 +1817,7 @@ public class AiChatJobHandler implements AiJobHandler {
         return Map.of("tool", name, "arguments", Map.copyOf(args));
     }
 
-    private static String missingQuestion(AiChatToolPort tool, List<String> missing) {
+    private static String missingQuestion(List<String> missing) {
         Map<String, String> labels = Map.of("goodsKeyword", "货品名称或编号", "clientKeyword", "客户名称或编号",
                 "keyword", "查询名称或编号", "employeeKeyword", "员工姓名或工号", "permissionKeyword", "一项具体权限名称或权限码");
         return "请告诉我" + String.join("、", missing.stream().map(key -> labels.getOrDefault(key, "要查询的内容")).toList()) + "。";

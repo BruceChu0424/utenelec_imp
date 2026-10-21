@@ -117,7 +117,7 @@ class PreplanAnalysisFormalTransferServiceTest {
                 .thenReturn(List.of(formalization));
 
         f.service().restorePlanDemandTransfers(
-                List.of(formalReservationId), "计划包取消恢复");
+                List.of(formalReservationId));
 
         verify(f.entitlements()).appendRestore(
                 eq(formalization.targetPackageId()), eq(formalization), anyString());

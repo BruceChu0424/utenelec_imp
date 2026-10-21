@@ -148,7 +148,10 @@ public class WarehouseArrivalRegistrationService {
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('warehouse_inbound:view') and hasAuthority('warehouse_inbound:stock_in')")
     public WarehouseArrivalBatchRegisterResult registerBatch(WarehouseArrivalBatchRegisterRequest request) {
         tx.bind();
-        if (request == null || request.lines() == null || request.lines().isEmpty()) {
+        if (request == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "登记实际到货请求不能为空");
+        }
+        if (request.lines() == null || request.lines().isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "登记实际到货请求不能为空");
         }
         for (BatchArrivalLine line : request.lines()) {

@@ -100,7 +100,8 @@ public class ProductionScheduleService {
         int p = Math.max(1, page);
         int sz = Math.min(Math.max(1, size), 100);
         String kw = KeywordSearch.phrase(keyword);
-        String billNoFilter = billNo == null || billNo.isBlank()
+        String normalizedBillNo = billNo == null ? "" : billNo.trim();
+        String billNoFilter = normalizedBillNo.isEmpty()
                 ? "" : " AND o.bill_no = :billNo";
         LocalDate warn = BusinessTime.today().plusDays(3);
         String where = pendingWhere(kw, dateFrom, dateTo) + pendingStatusFilter(status)
@@ -114,7 +115,7 @@ public class ProductionScheduleService {
 
         var countQ = em.createNativeQuery("SELECT COUNT(*) " + countFilters);
         bindPendingFilters(countQ, kw, dateFrom, dateTo, warn, needsWarn);
-        if (!billNoFilter.isEmpty()) countQ.setParameter("billNo", billNo.trim());
+        if (!billNoFilter.isEmpty()) countQ.setParameter("billNo", normalizedBillNo);
         long total = ((Number) countQ.getSingleResult()).longValue();
         int totalPages = total == 0 ? 0 : (int) ((total + sz - 1) / sz);
         if (totalPages > 0 && p > totalPages) p = totalPages; // 页码越界回退
@@ -153,7 +154,7 @@ public class ProductionScheduleService {
                 + " " + orderBy + " LIMIT :lim OFFSET :off");
         bindPendingFilters(dataQ, kw, dateFrom, dateTo, warn, needsWarn);
         TaskKeywordSearch.bind(dataQ, kw, true);
-        if (!billNoFilter.isEmpty()) dataQ.setParameter("billNo", billNo.trim());
+        if (!billNoFilter.isEmpty()) dataQ.setParameter("billNo", normalizedBillNo);
         @SuppressWarnings("unchecked")
         List<Object[]> rs = (List<Object[]>) dataQ
                 .setParameter("lim", sz).setParameter("off", (p - 1) * sz)

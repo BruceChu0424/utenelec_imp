@@ -49,10 +49,9 @@ public class QuoteSaveRequest {
     @Valid
     private SalesAiIntakeRequest aiIntake;
 
-    @Valid
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<QuoteItemLine> items;
+    private List<@Valid QuoteItemLine> items;
 
     public List<QuoteItemLine> getItems() {
         return items == null ? null : java.util.Collections.unmodifiableList(items);

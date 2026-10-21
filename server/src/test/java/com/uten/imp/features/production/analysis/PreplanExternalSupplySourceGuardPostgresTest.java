@@ -1,7 +1,6 @@
 package com.uten.imp.features.production.analysis;
 
 import com.uten.imp.support.ProcurementReceiptFixtureSupport;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -222,7 +221,7 @@ class PreplanExternalSupplySourceGuardPostgresTest {
     @BeforeAll
     static void migrate() {
         POSTGRES.start();
-        Flyway.configure()
+        com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(
                         POSTGRES.getJdbcUrl(),
                         POSTGRES.getUsername(),
@@ -646,6 +645,15 @@ class PreplanExternalSupplySourceGuardPostgresTest {
                 new BigDecimal(received), BigDecimal.ZERO,
                 BigDecimal.ZERO, "PENDING");
         ProcurementReceiptFixtureSupport.recordZeroPriceQualityDecision(connection, inspectionId, "PASS", new BigDecimal(passed), fixture.userId());
+        try (var statement = connection.prepareStatement(
+                "SELECT failed_base_qty,status FROM procurement_inspection_items WHERE id=?")) {
+            statement.setObject(1, inspectionId);
+            try (var rows = statement.executeQuery()) {
+                org.junit.jupiter.api.Assertions.assertTrue(rows.next());
+                assertDecimal(rows.getBigDecimal(1), failed);
+                assertEquals(status, rows.getString(2));
+            }
+        }
     }
 
     private static void assertSplitProgress(

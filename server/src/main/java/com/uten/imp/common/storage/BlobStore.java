@@ -8,8 +8,8 @@ import java.io.InputStream;
  */
 public interface BlobStore {
 
-    /** 将上传字节落到本地磁盘。 */
-    void store(String storageKey, InputStream in, long contentLength, String contentType);
+    /** 将字节与确认长度落盘；媒体类型由上传授权和附件元数据保存。 */
+    void store(String storageKey, InputStream in, long contentLength);
 
     /** 打开对象的输入流用于下载（调用方负责关闭）。 */
     InputStream read(String storageKey);

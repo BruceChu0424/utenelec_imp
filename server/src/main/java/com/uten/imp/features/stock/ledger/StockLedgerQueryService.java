@@ -265,14 +265,14 @@ public class StockLedgerQueryService {
             String value = rs.getString("v");
             String label = switch (dimension) {
                 case "movementType" -> ADJUSTMENT_TYPE.equals(value) ? "重量调整"
-                        : StockMovementTypeCatalog.baseLabel(Short.valueOf(value));
+                        : StockMovementTypeCatalog.baseLabel(movementTypeCode(value));
                 case "color" -> rs.getString("label") == null ? "无颜色" : rs.getString("label");
                 default -> rs.getString("label");
             };
             facets.get(dimension).add(new FacetBucket(value, count, label));
         });
         facets.get("movementType").sort(java.util.Comparator.comparing(
-                (FacetBucket b) -> ADJUSTMENT_TYPE.equals(b.value()) ? Integer.MAX_VALUE : Integer.parseInt(b.value())));
+                (FacetBucket b) -> ADJUSTMENT_TYPE.equals(b.value()) ? Integer.MAX_VALUE : movementTypeCode(b.value())));
         facets.get("warehouse").sort(java.util.Comparator.comparingLong(FacetBucket::count).reversed()
                 .thenComparing(b -> b.label() == null ? "" : b.label()));
         facets.get("color").sort(java.util.Comparator.comparingLong(FacetBucket::count).reversed()
@@ -284,6 +284,14 @@ public class StockLedgerQueryService {
 
     /** 类型筛选: 具体类型代码 + 是否点名重量调整 (W)。 */
     record TypeFilter(List<Short> codes, boolean adjustments) {
+    }
+
+    private static short movementTypeCode(String value) {
+        try {
+            return Short.parseShort(value);
+        } catch (NumberFormatException malformed) {
+            throw new IllegalStateException("库存流水类型资料格式错误", malformed);
+        }
     }
 
     static TypeFilter parseTypes(String csv) {

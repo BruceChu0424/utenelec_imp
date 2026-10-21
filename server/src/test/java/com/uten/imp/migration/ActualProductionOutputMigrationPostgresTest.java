@@ -21,7 +21,7 @@ class ActualProductionOutputMigrationPostgresTest {
         assertEquals(1,migration("694").migrate().migrationsExecuted);
         assertEquals(0,migration("694").migrate().migrationsExecuted);
     }
-    static Flyway migration(String target){return Flyway.configure().dataSource(DATABASE.getJdbcUrl(),DATABASE.getUsername(),DATABASE.getPassword())
+    static Flyway migration(String target){return com.uten.imp.testsupport.TestFlyway.configure().dataSource(DATABASE.getJdbcUrl(),DATABASE.getUsername(),DATABASE.getPassword())
             .locations("classpath:db/migration").target(target).load();}
     @AfterAll static void stop(){DATABASE.stop();}
     @AfterEach void close()throws Exception{db.close();}

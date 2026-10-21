@@ -3,7 +3,6 @@ package com.uten.imp.features.finance.receivables;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -84,9 +83,10 @@ class SalesSourceUuidIndexPressurePostgresTest {
 
             // A separate migration connection avoids Docker's 64MiB parallel-build shared-memory limit.
             // Application queries keep their normal defaults; no table/role/container setting is changed.
-            var migration=Flyway.configure().dataSource(dataSource).locations("classpath:db/migration")
+            var migration=com.uten.imp.testsupport.TestFlyway.configureWithInitSql(
+                            "SET max_parallel_workers_per_gather=0; SET max_parallel_maintenance_workers=0;")
+                    .dataSource(dataSource).locations("classpath:db/migration")
                     .target("532").cleanDisabled(true).outOfOrder(false)
-                    .initSql("SET max_parallel_workers_per_gather=0; SET max_parallel_maintenance_workers=0;")
                     .load().migrate();
             assertTrue(migration.success);assertEquals(1,migration.migrationsExecuted);
             assertEquals("532",migration.targetSchemaVersion);

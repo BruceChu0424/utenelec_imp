@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -28,7 +27,7 @@ class AccountBalanceNativeCurrencyUpgradePostgresTest {
                 .withUsername("uten")
                 .withPassword("uten")) {
             postgres.start();
-            Flyway.configure()
+            com.uten.imp.testsupport.TestFlyway.configure()
                     .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                     .locations("classpath:db/migration")
                     .target("400")
@@ -114,7 +113,7 @@ class AccountBalanceNativeCurrencyUpgradePostgresTest {
                 connection.commit();
             }
 
-            Flyway.configure()
+            com.uten.imp.testsupport.TestFlyway.configure()
                     .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                     .locations("classpath:db/migration")
                     .load()

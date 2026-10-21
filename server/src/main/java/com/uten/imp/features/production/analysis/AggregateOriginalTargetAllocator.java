@@ -217,7 +217,7 @@ final class AggregateOriginalTargetAllocator {
         BigInteger augment(int source, int sink, BigInteger limit) {
             int depth = 0;
             pathNodes[0] = source;
-            while (depth >= 0) {
+            while (true) {
                 int node = pathNodes[depth];
                 if (node == sink) {
                     BigInteger pushed = limit;
@@ -247,7 +247,6 @@ final class AggregateOriginalTargetAllocator {
                     pathNodes[++depth] = edge.to;
                 }
             }
-            return BigInteger.ZERO;
         }
     }
 }

@@ -10,7 +10,6 @@ import java.util.List;
 @Setter
 public abstract class ExtraColumnRequest {
     /** null preserves the old snapshot; an empty array explicitly removes its columns. */
-    @Valid
     @Size(max = 32)
-    private List<ExtraColumnInput> extraColumns;
+    private List<@Valid ExtraColumnInput> extraColumns;
 }

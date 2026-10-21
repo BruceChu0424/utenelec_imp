@@ -222,6 +222,42 @@ class WarehouseDataScopeResolutionTest {
         verify(jdbc, times(3)).sql(contains(ACCESS_SQL));
     }
 
+    @Test
+    void selectedReadQueryKeepsOneScopeWindowAndRestoresTheSelectionAfterFailure() {
+        database.set(supervisor());
+        assertThatThrownBy(() -> service.withRequestedWarehouseQuery(warehouse, () -> {
+            assertThat(service.warehousePicked()).isTrue();
+            service.withQueryScopeCache(() -> {
+                for (int source = 0; source < 12; source++) {
+                    assertThat(service.current(null).warehouseIds()).containsExactly(warehouse);
+                }
+                return null;
+            });
+            throw new IllegalStateException("selected read failed");
+        })).isInstanceOf(IllegalStateException.class).hasMessage("selected read failed");
+        assertThat(service.warehousePicked()).isFalse();
+        verify(jdbc, times(1)).sql(contains(ACCESS_SQL));
+        verify(jdbc, times(1)).sql(contains(SUBTREE_SQL));
+        database.set(outsider());
+        assertThat(service.access().warehouseParticipant()).isFalse();
+        verify(jdbc, times(2)).sql(contains(ACCESS_SQL));
+    }
+
+    @Test
+    void selectedReadQueryRejectsAnUnauthorizedWarehouseBeforeReadingAnyProjection() {
+        database.set(keeper(warehouse));
+        java.util.concurrent.atomic.AtomicBoolean read = new java.util.concurrent.atomic.AtomicBoolean();
+        assertThatThrownBy(() -> service.withRequestedWarehouseQuery(other, () -> {
+            read.set(true);
+            return null;
+        })).isInstanceOfSatisfying(ApiException.class,
+                error -> assertThat(error.getCode()).isEqualTo(ErrorCode.FORBIDDEN));
+        assertThat(read.get()).isFalse();
+        assertThat(service.warehousePicked()).isFalse();
+        database.set(outsider());
+        assertThat(service.access().warehouseParticipant()).isFalse();
+    }
+
     private WarehouseAccess member() {
         return new WarehouseAccess(Role.OTHER, List.of(), new WarehouseTaskScope(true, List.of(other), true), true);
     }

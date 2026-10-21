@@ -41,6 +41,6 @@ public class WorkbenchBadgeController {
     @PreAuthorize("isAuthenticated() and !principal.visitor")
     public WorkbenchBadgeSummary badges(@RequestParam(required = false) UUID scopeWarehouseId) {
         if (scopeWarehouseId == null) return service.summary();
-        return warehouseScopes.withRequestedWarehouse(scopeWarehouseId, () -> service.summary(WAREHOUSE_ENTRIES));
+        return warehouseScopes.withRequestedWarehouseQuery(scopeWarehouseId, () -> service.summary(WAREHOUSE_ENTRIES));
     }
 }

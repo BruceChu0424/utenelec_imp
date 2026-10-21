@@ -143,7 +143,7 @@ class ActualOutputAppliedHistoryForwardMigrationPostgresTest {
     }
 
     private static Flyway migration(PostgreSQLContainer database, String target) {
-        return Flyway.configure().dataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword())
+        return com.uten.imp.testsupport.TestFlyway.configure().dataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword())
                 .locations("classpath:db/migration").target(target).load();
     }
 }

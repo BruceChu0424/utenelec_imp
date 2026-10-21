@@ -53,7 +53,7 @@ class ServerOperationsServiceTest {
         var saved=service.saveSource(request);assertThat(saved.applied()).isTrue();assertThat(saved.revision()).isEqualTo("rev2");
         assertThat(mapper.writeValueAsString(saved)).doesNotContain("TOP-SECRET","SHOULD-NOT-RETURN","RAW-ID");
         assertThat(request.toString()).doesNotContain("TOP-SECRET","key-id");
-        verify(client).call(eq(HostOperationsClient.Operation.CONFIG_SAVE),argThat(p->"".equals(p.get("objectPrefix"))
+        verify(client).call(eq(HostOperationsClient.Operation.CONFIG_SAVE),argThat(p->p.get("objectPrefix") instanceof String prefix && prefix.isEmpty()
                 && "rev1".equals(p.get("expectedRevision")) && "TOP-SECRET".equals(p.get("accessKeySecret"))),eq(user),eq(request.requestId()));
     }
     @Test void checkHasFixedModeAndDoesNotExposeTheInternalRequest() throws Exception {

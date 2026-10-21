@@ -456,7 +456,7 @@ public class AttachmentService implements AttachmentAccessPort {
                     "当前存储方式不支持直传，请联系管理员");
         }
         try {
-            store.store(storageKey, input, contentLength, contentType);
+            store.store(storageKey, input, contentLength);
         } catch (IllegalStateException e) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "文件保存失败，或服务器上已有同名文件，请重试");

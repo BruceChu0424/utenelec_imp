@@ -89,6 +89,6 @@ class EmployeeReconcilePrivacyAssertionsTest {
         JsonNode parent = root.at(path.substring(0, separator));
         String key = path.substring(separator + 1);
         if (parent instanceof ObjectNode object) object.put(key, value);
-        else ((ArrayNode) parent).set(Integer.parseInt(key), TextNode.valueOf(value));
+        else ((ArrayNode) parent).set(com.uten.imp.testsupport.FixtureNumbers.integer(key), TextNode.valueOf(value));
     }
 }

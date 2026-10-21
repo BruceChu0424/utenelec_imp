@@ -1,6 +1,7 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
+import com.uten.imp.testsupport.BoundTestSql;
+
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -43,7 +44,7 @@ class AuditTriggerCoveragePostgresTest {
     @BeforeAll
     static void start() {
         DB.start();
-        Flyway.configure().dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
                 .locations("classpath:db/migration").target("645").load().migrate();
         db = new JdbcTemplate(new DriverManagerDataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword()));
         // 升级前的历史: 在线表一行带完整手机号的操作人, 一行未认证登录失败的原始输入;
@@ -61,7 +62,7 @@ class AuditTriggerCoveragePostgresTest {
                 """);
         historyBefore = db.queryForObject(
                 "SELECT (SELECT count(*) FROM audit_log) + (SELECT count(*) FROM audit_log_archive)", Long.class);
-        Flyway.configure().dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
                 .locations("classpath:db/migration").load().migrate();
     }
 
@@ -190,13 +191,12 @@ class AuditTriggerCoveragePostgresTest {
         try (Connection connection = connection()) {
             connection.setAutoCommit(false);
             try (Statement statement = connection.createStatement()) {
-                statement.execute("SELECT set_config('app.actor_id','" + ACTOR + "',true),"
-                        + " set_config('app.actor_account','13712345678',true)");
-                statement.execute("INSERT INTO colors(id, code, name) VALUES('" + color + "','AUD-C1','蓝')");
-                statement.execute("UPDATE colors SET name = name WHERE id='" + color + "'");
-                statement.execute("UPDATE colors SET updated_at = now() + interval '1 minute' WHERE id='" + color + "'");
-                statement.execute("UPDATE colors SET name = '深蓝' WHERE id='" + color + "'");
-                statement.execute("UPDATE colors SET is_deleted = TRUE, deleted_at = now() WHERE id='" + color + "'");
+                BoundTestSql.execute(statement, "SELECT set_config('app.actor_id',CAST(? AS text),true), set_config('app.actor_account','13712345678',true)", ACTOR);
+                BoundTestSql.execute(statement, "INSERT INTO colors(id, code, name) VALUES(?,'AUD-C1','蓝')", color);
+                BoundTestSql.execute(statement, "UPDATE colors SET name = name WHERE id=?", color);
+                BoundTestSql.execute(statement, "UPDATE colors SET updated_at = now() + interval '1 minute' WHERE id=?", color);
+                BoundTestSql.execute(statement, "UPDATE colors SET name = '深蓝' WHERE id=?", color);
+                BoundTestSql.execute(statement, "UPDATE colors SET is_deleted = TRUE, deleted_at = now() WHERE id=?", color);
                 List<String> rows = new ArrayList<>();
                 try (var result = statement.executeQuery("""
                         SELECT action || '|' || risk_level || '|' || event_category || '|' ||
@@ -226,8 +226,7 @@ class AuditTriggerCoveragePostgresTest {
                         VALUES('%s', 'AUD-EMP', '审计员工', '其他', (SELECT id FROM departments WHERE NOT is_deleted LIMIT 1),
                                DATE '2026-01-01', 'active', 'regular')
                         """.formatted(ACTOR));
-                statement.execute("INSERT INTO users(id, employee_id, login_account, password_hash, status)"
-                        + " VALUES(gen_random_uuid(), '" + ACTOR + "', '13600001234', 'unused', 'active')");
+                BoundTestSql.execute(statement, "INSERT INTO users(id, employee_id, login_account, password_hash, status) VALUES(gen_random_uuid(), ?, '13600001234', 'unused', 'active')", ACTOR);
                 // 角色表已随 V677(ADR-109) 删除, 授权类高风险分类改由账号表验证。
                 assertEquals("high|authorization", scalar(statement,
                         "SELECT risk_level || '|' || event_category FROM audit_log WHERE target_type='users' AND action='insert'"));
@@ -268,7 +267,7 @@ class AuditTriggerCoveragePostgresTest {
                 statement.execute("CREATE TABLE public.audit_scope_probe(id uuid PRIMARY KEY, route text, derived numeric)");
                 statement.execute("SELECT fn_audit_track_table('audit_scope_probe', 'COLUMN_SCOPED', 'data_change',"
                         + " false, ARRAY['route'], false)");
-                statement.execute("INSERT INTO audit_scope_probe VALUES('" + ACTOR + "', 'MAKE', 1)");
+                BoundTestSql.execute(statement, "INSERT INTO audit_scope_probe VALUES(?, 'MAKE', 1)", ACTOR);
                 statement.execute("UPDATE audit_scope_probe SET derived = 2");
                 statement.execute("UPDATE audit_scope_probe SET route = 'BUY', derived = 3");
                 assertEquals("1", scalar(statement, "SELECT count(*) FROM audit_log WHERE target_type='audit_scope_probe'"));

@@ -373,7 +373,7 @@ public class SalesOtherShipmentService {
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_other_shipment:view')")
     public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
-        var document=detailHistory(id);
+        detailHistory(id);
         com.uten.imp.common.history.RetainedRecordAccess.requireUnmaskedCostOriginal(false);
         return retainedRecords.children("sales_other_shipments",id,beforeId,size);
     }

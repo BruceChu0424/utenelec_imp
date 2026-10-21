@@ -20,6 +20,7 @@ import java.util.List;
  * 备用手机号本人可见明文；权限点沿用 profile:edit:self（全员基础）。
  */
 @RestController
+@org.springframework.validation.annotation.Validated
 @RequestMapping("/api/profile/me")
 @RequiredArgsConstructor
 public class MyVehiclePhoneController {
@@ -39,7 +40,7 @@ public class MyVehiclePhoneController {
     @PreAuthorize("hasAuthority('profile:edit:self')")
     @org.springframework.transaction.annotation.Transactional
     public List<NestedDtos.VehicleDto> replaceMyVehicles(
-            @Valid @RequestBody List<NestedDtos.VehicleInput> inputs) {
+            @RequestBody List<NestedDtos.@Valid VehicleInput> inputs) {
         tx.bind();
         Employee me = requireMe();
         vehiclePhoneService.replaceVehicles(me, inputs);
@@ -59,7 +60,7 @@ public class MyVehiclePhoneController {
     @PreAuthorize("hasAuthority('profile:edit:self')")
     @org.springframework.transaction.annotation.Transactional
     public List<NestedDtos.PhoneDto> replaceMyPhones(
-            @Valid @RequestBody List<NestedDtos.PhoneInput> inputs) {
+            @RequestBody List<NestedDtos.@Valid PhoneInput> inputs) {
         tx.bind();
         Employee me = requireMe();
         vehiclePhoneService.replacePhones(me, inputs);

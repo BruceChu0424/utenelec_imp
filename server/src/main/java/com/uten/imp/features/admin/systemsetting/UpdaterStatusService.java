@@ -1,11 +1,7 @@
 package com.uten.imp.features.admin.systemsetting;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.file.Path;
-import java.time.Clock;
 import java.time.OffsetDateTime;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,13 +12,7 @@ public class UpdaterStatusService {
     private final SystemSettingRepository repository;
 
     @Autowired
-    public UpdaterStatusService(SystemSettingRepository repository, ObjectMapper mapper,
-            @Value("${uten.updater.status-file:/var/lib/uten-imp/updater-schedule/status.json}") String statusFile) {
-        this(repository, mapper, Path.of(statusFile), Clock.systemUTC());
-    }
-
-    // Kept for source compatibility; neither the old file nor a clock is read anymore.
-    UpdaterStatusService(SystemSettingRepository repository, ObjectMapper mapper, Path statusFile, Clock clock) {
+    public UpdaterStatusService(SystemSettingRepository repository) {
         this.repository = repository;
     }
 

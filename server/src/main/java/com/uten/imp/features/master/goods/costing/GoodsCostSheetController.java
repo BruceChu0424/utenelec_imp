@@ -21,7 +21,11 @@ public class GoodsCostSheetController {
     private final AuditDetailViewRecorder detailViews;
     private final GoodsProductionOutputQueryPort productionOutput;
     @GetMapping public List<SheetSummary> list(@RequestParam UUID goodsId){return service.list(goodsId);}
-    @GetMapping("/bootstrap") public java.util.Map<String,Object> bootstrap(@RequestParam UUID goodsId,@RequestParam(required=false) UUID clientId){return service.bootstrap(goodsId,clientId);}
+    /** Keep the retired read route from being interpreted as the generic UUID detail route. */
+    @GetMapping("/bootstrap") public void rejectBootstrapGet() {
+        throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.METHOD_NOT_ALLOWED);
+    }
+    @PostMapping("/bootstrap") public java.util.Map<String,Object> bootstrap(@RequestParam UUID goodsId,@RequestParam(required=false) UUID clientId){return service.bootstrap(goodsId,clientId);}
     @PostMapping public Sheet create(@RequestBody SaveRequest request){return service.create(request);}
     @GetMapping("/{id}") public Sheet get(@PathVariable UUID id){
         Sheet sheet=service.get(id);

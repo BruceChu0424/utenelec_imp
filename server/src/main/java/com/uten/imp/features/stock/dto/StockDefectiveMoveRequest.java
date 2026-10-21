@@ -29,5 +29,5 @@ public record StockDefectiveMoveRequest(
         @NotBlank @Size(max = 500) String reason,
         LocalDate billDate,
         @NotBlank @Pattern(regexp = "[A-Za-z0-9._:-]{8,128}") String requestKey,
-        @Valid @NotNull @Size(min = 1, max = RequestLimits.DOCUMENT_LINES) List<StockDocItemLine> items) {
+        @NotNull @Size(min = 1, max = RequestLimits.DOCUMENT_LINES) List<@Valid StockDocItemLine> items) {
 }

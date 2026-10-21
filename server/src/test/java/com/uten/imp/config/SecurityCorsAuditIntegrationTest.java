@@ -40,11 +40,13 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.filter.CorsFilter;
 
 import java.util.Optional;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.eq;
@@ -55,6 +57,7 @@ import static org.mockito.Mockito.when;
 
 @WebMvcTest(
         controllers = CorsAuditProbeController.class,
+        excludeAutoConfiguration = org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration.class,
         properties = {
                 "uten.security.cors-allowed-origins=https://trusted.example.test",
                 "uten.security.require-https=false",
@@ -140,7 +143,6 @@ class SecurityCorsAuditIntegrationTest {
         assertTrue(corsIndex > auditIndex);
         assertTrue(localNetworkIndex > corsIndex);
         assertTrue(jwtIndex > localNetworkIndex);
-        assertTrue(jwtIndex > corsIndex);
         assertTrue(remoteAccessIndex > jwtIndex);
         assertTrue(remoteBudgetIndex > localNetworkIndex);
         assertTrue(jwtIndex > remoteBudgetIndex);
@@ -219,6 +221,118 @@ class SecurityCorsAuditIntegrationTest {
                 eq("api/no-such-handler"),
                 eq(status),
                 longThat(value -> value >= 0));
+    }
+
+    @Test
+    void bearerPostsKeepTheDefaultCsrfFilterAndNeverCreateAnAuthenticationSession() throws Exception {
+        allowBearer();
+        var filters = springSecurityFilterChain.getFilters("/api/csrf-probe/write");
+        int network = indexOf(filters, LocalNetworkGuardFilter.class);
+        int csrf = indexOf(filters, org.springframework.security.web.csrf.CsrfFilter.class);
+        assertTrue(network >= 0);
+        assertTrue(csrf > network);
+        var request = new MockHttpServletRequest("POST", "/api/csrf-probe/write");
+        request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer valid-token");
+        var response = new MockHttpServletResponse();
+        boolean[] reached = {false};
+        springSecurityFilterChain.doFilter(request, response, (req, resp) -> {
+            reached[0] = true;
+            response.setStatus(204);
+        });
+        assertTrue(reached[0]);
+        assertEquals(204, response.getStatus());
+        assertStateless(request, response);
+    }
+
+    @Test
+    void missingMalformedAndExpiredBearerPostsRemainJson401WithoutCreatingSessions() throws Exception {
+        when(jwtService.parse("invalid-token")).thenThrow(new io.jsonwebtoken.MalformedJwtException("rejected"));
+        when(jwtService.parse("expired-token")).thenThrow(new io.jsonwebtoken.ExpiredJwtException(null, null, "expired"));
+        for (String token : List.of("", "invalid-token", "expired-token")) {
+            var request = new MockHttpServletRequest("POST", "/api/csrf-probe/write");
+            if (!token.isEmpty()) request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + token);
+            var response = new MockHttpServletResponse();
+            springSecurityFilterChain.doFilter(request, response, (req, resp) -> fail("Unauthenticated write reached application"));
+            assertJsonError(response, 401, "UNAUTHORIZED");
+            assertStateless(request, response);
+        }
+    }
+
+    @Test
+    void ambientCookiesAndForeignOriginsCannotAuthorizeAnApplicationWrite() throws Exception {
+        var cookieRequest = new MockHttpServletRequest("POST", "/api/csrf-probe/write");
+        cookieRequest.setCookies(new jakarta.servlet.http.Cookie("JSESSIONID", "ambient-session"),
+                new jakarta.servlet.http.Cookie("access_token", "ambient-token"));
+        var cookieResponse = new MockHttpServletResponse();
+        springSecurityFilterChain.doFilter(cookieRequest, cookieResponse,
+                (req, resp) -> fail("Cookies must not authenticate this API"));
+        assertJsonError(cookieResponse, 401, "UNAUTHORIZED");
+        assertTrue(cookieResponse.getHeaders("Set-Cookie").stream().anyMatch(value -> value.startsWith("XSRF-TOKEN=")));
+        assertStateless(cookieRequest, cookieResponse);
+
+        var foreign = new MockHttpServletRequest("POST", "/api/csrf-probe/write");
+        foreign.addHeader(HttpHeaders.AUTHORIZATION, "Bearer valid-token");
+        foreign.addHeader(HttpHeaders.ORIGIN, "https://untrusted.example.test");
+        var foreignResponse = new MockHttpServletResponse();
+        springSecurityFilterChain.doFilter(foreign, foreignResponse,
+                (req, resp) -> fail("Foreign origin reached application"));
+        assertEquals(403, foreignResponse.getStatus());
+        assertStateless(foreign, foreignResponse);
+    }
+
+    @Test
+    void exactPublicCredentialPostsKeepTheirStatelessGatewayContract() throws Exception {
+        for (String path : List.of("/api/auth/login", "/api/auth/refresh", "/api/auth/logout",
+                "/api/visitor/auth/send-code", "/api/visitor/auth/login", "/api/visitor/auth/refresh",
+                "/api/visitor/auth/logout", "/api/website-inquiries/ingest")) {
+            var request = new MockHttpServletRequest("POST", path);
+            var response = new MockHttpServletResponse();
+            boolean[] reached = {false};
+            springSecurityFilterChain.doFilter(request, response, (req, resp) -> {
+                reached[0] = true;
+                response.setStatus(204);
+            });
+            assertTrue(reached[0], path);
+            assertEquals(204, response.getStatus());
+            assertStateless(request, response);
+        }
+    }
+
+    @Test
+    void authenticatedPermissionDenialRemainsStructured403() throws Exception {
+        allowBearer();
+        var request = new MockHttpServletRequest("POST", "/api/csrf-probe/write");
+        request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer valid-token");
+        var response = new MockHttpServletResponse();
+        springSecurityFilterChain.doFilter(request, response,
+                (req, resp) -> { throw new org.springframework.security.access.AccessDeniedException("denied"); });
+        assertJsonError(response, 403, "FORBIDDEN");
+        assertStateless(request, response);
+    }
+
+    private void allowBearer() {
+        UUID userId = UUID.randomUUID(), employeeId = UUID.randomUUID();
+        java.time.Instant now = java.time.Instant.parse("2026-09-23T02:00:00Z");
+        when(jwtService.parse("valid-token")).thenReturn(claims(userId));
+        when(sessions.now()).thenReturn(now);
+        when(sessions.loadStaff(userId, SESSION, userId)).thenReturn(Optional.of(
+                new com.uten.imp.features.auth.AuthSessionService.StaffState(
+                        employeeId, "csrf-staff", "active", false, false, false, false, 7L, 11L,
+                        new com.uten.imp.features.auth.AuthSessionService.SessionFacts(
+                                now.minusSeconds(10), now.plusSeconds(86_400), null), "30")));
+        when(staffAuthorityResolver.resolve(userId, employeeId, false, 7, 11))
+                .thenReturn(new PermissionResolver.AuthorizationSnapshot(Set.of("employee:view")));
+    }
+
+    private static void assertJsonError(MockHttpServletResponse response, int status, String code) throws java.io.IOException {
+        assertEquals(status, response.getStatus());
+        assertEquals(code, new com.fasterxml.jackson.databind.ObjectMapper().readTree(response.getContentAsString()).path("code").asText());
+        assertTrue(response.getContentType().startsWith("application/json"));
+    }
+
+    private static void assertStateless(MockHttpServletRequest request, MockHttpServletResponse response) {
+        assertNull(request.getSession(false));
+        assertFalse(response.getHeaders("Set-Cookie").stream().anyMatch(value -> value.startsWith("JSESSIONID=")));
     }
 
     private static final UUID SESSION = UUID.randomUUID();

@@ -47,7 +47,7 @@ public class MaterialAnalysisPlanWithdrawalService {
         var guard = commands.lockAnalysisWithClaimableShared(analysisId);
         var header = analysis.headerAfterPrelock(analysisId);
         access.requireWritable(header.makerId(), "只能撤回本人负责物料分析的生产计划",
-                analysis.scopeForAnalysis(header));
+                analysis.scopeForAnalysis());
         requirePermission("production_material_analysis:generate", "缺少物料分析生产计划撤回权限");
 
         // A plan, source and conservation link must all name this exact analysis/source.

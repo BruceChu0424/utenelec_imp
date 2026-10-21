@@ -719,6 +719,7 @@ class ProcurementIqcPreStockInEndToEndTest {
                                      org.springframework.security.core.Authentication actor, int expectedStatus) throws Exception {
         var result = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(path)
                         .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(actor))
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf().asHeader())
                         .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                         .content(beans.getBean(com.fasterxml.jackson.databind.ObjectMapper.class).writeValueAsString(command)))
                 .andReturn();

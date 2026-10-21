@@ -5,7 +5,6 @@ import com.uten.imp.application.port.MasterIntakeLookupPort.AliasScope;
 import com.uten.imp.support.MigratedSchemaBaseline;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
-import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationVersion;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -34,7 +33,7 @@ class ClientGoodsAliasEvidencePostgresTest {
 
     @BeforeAll static void migrateLegacyThenForward() {
         postgres=new PostgreSQLContainer("postgres:16-alpine").withDatabaseName("alias_evidence_template");postgres.start();
-        Flyway.configure().dataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword())
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword())
                 .locations("classpath:db/migration").target(MigrationVersion.fromVersion("751")).load().migrate();
         JdbcTemplate sql=new JdbcTemplate(new DriverManagerDataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword()));
         legacyClient=seed(sql,"clients","client_categories");legacyGoods=seed(sql,"goods","material_categories");legacyDoc=UUID.randomUUID();
@@ -43,7 +42,7 @@ class ClientGoodsAliasEvidencePostgresTest {
                     confirm_count,explicit_count,first_confirmed_at,last_confirmed_at,last_source_doc_type,last_source_doc_id)
                 VALUES(?,'PART_NO','LEGACY','LEGACY','',?,3,1,now(),now(),'quote',?)
                 """,legacyClient,legacyGoods,legacyDoc);
-        Flyway.configure().dataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword()).locations("classpath:db/migration").load().migrate();
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword()).locations("classpath:db/migration").load().migrate();
     }
     @AfterAll static void stop(){if(postgres!=null)postgres.stop();}
     @BeforeEach void setup() throws Exception {

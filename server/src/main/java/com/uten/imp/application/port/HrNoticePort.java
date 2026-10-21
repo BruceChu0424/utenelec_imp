@@ -17,8 +17,7 @@ public interface HrNoticePort {
     UUID recipientUserIdOf(UUID employeeId);
 
     // —— 信息变更 ——
-    void notifyProfileChangeSubmitted(UUID batchId, String submitterName,
-                                      List<String> fieldLabels, UUID submitterEmployeeId);
+    void notifyProfileChangeSubmitted(UUID batchId, String submitterName, List<String> fieldLabels);
 
     void resolveProfileChangeBatch(UUID batchId, String reason);
 
@@ -41,11 +40,9 @@ public interface HrNoticePort {
                                     String amountLabel, UUID applicantUserId,
                                     UUID applicantEmployeeId, UUID approverEmployeeId);
 
-    void notifyExpenseClaimRejected(UUID claimId, String applicantName,
-                                    String reason, UUID applicantUserId);
+    void notifyExpenseClaimRejected(UUID claimId, String reason, UUID applicantUserId);
 
-    void notifyExpenseClaimPaid(UUID claimId, String applicantName,
-                                String amountLabel, UUID applicantUserId);
+    void notifyExpenseClaimPaid(UUID claimId, String amountLabel, UUID applicantUserId);
 
     void resolveExpenseClaim(UUID claimId, String reason);
 
@@ -61,7 +58,7 @@ public interface HrNoticePort {
 
     void resolvePayrollBatch(UUID batchId, String reason);
 
-    void notifyPayrollPublished(UUID batchId, String periodLabel, List<UUID> employeeIdsWithSlip);
+    void notifyPayrollPublished(String periodLabel, List<UUID> employeeIdsWithSlip);
 
     // —— 建议箱 ——
     void notifySuggestionSubmitted(UUID suggestionId, UUID submitterUserId,

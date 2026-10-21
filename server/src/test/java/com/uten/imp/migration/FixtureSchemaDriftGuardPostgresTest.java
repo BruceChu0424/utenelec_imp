@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -252,7 +251,7 @@ class FixtureSchemaDriftGuardPostgresTest {
     private static Map<String, Map<String, String>> migrateAndReadRealColumns() throws Exception {
         try (PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:16-alpine")) {
             postgres.start();
-            Flyway.configure()
+            com.uten.imp.testsupport.TestFlyway.configure()
                     .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                     .locations("classpath:db/migration")
                     .load()

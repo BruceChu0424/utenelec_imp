@@ -31,7 +31,6 @@ public class FinanceBankTransferSaveRequest implements ServerDerivedAmounts {
     private UUID operatorId;
     private String remark;
 
-    @Valid
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<FinanceBankTransferLineInput> items;
+    private List<@Valid FinanceBankTransferLineInput> items;
 }

@@ -1,5 +1,7 @@
 package com.uten.imp.migration;
 
+import com.uten.imp.testsupport.BoundTestSql;
+
 import com.uten.imp.support.MigratedSchemaBaseline;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -100,13 +102,13 @@ class PermanentRecordHistoryPostgresTest {
             try(var statement=writer.createStatement()) {
                 statement.execute("CREATE TABLE history_race_parent(id uuid PRIMARY KEY)");
                 statement.execute("CREATE TABLE history_race_child(id uuid PRIMARY KEY,parent_id uuid NOT NULL)");
-                statement.execute("INSERT INTO history_race_parent VALUES('"+parent+"'),('"+other+"')");
+                BoundTestSql.execute(statement, "INSERT INTO history_race_parent VALUES(?),(?)", parent, other);
                 // This row predates registration, as real migration input does.
-                statement.execute("INSERT INTO history_race_child VALUES('"+child+"','"+parent+"')");
+                BoundTestSql.execute(statement, "INSERT INTO history_race_child VALUES(?,?)", child, parent);
                 statement.execute("SELECT fn_register_record_retention('history_race_child','history_race_parent','parent_id')");
             }
             writer.setAutoCommit(false);
-            try(var statement=writer.createStatement()){statement.execute("DELETE FROM history_race_child WHERE id='"+child+"'");}
+            try(var statement=writer.createStatement()){BoundTestSql.execute(statement, "DELETE FROM history_race_child WHERE id=?", child);}
             var ready=new java.util.concurrent.CountDownLatch(1);
             var proceed=new java.util.concurrent.CountDownLatch(1);
             try(var executor=java.util.concurrent.Executors.newSingleThreadExecutor()) {
@@ -118,7 +120,7 @@ class PermanentRecordHistoryPostgresTest {
                             statement.executeQuery("SELECT count(*) FROM business_record_identities").close();
                             ready.countDown();proceed.await(10,java.util.concurrent.TimeUnit.SECONDS);
                             try {
-                                statement.execute("INSERT INTO history_race_child VALUES('"+child+"','"+other+"')");
+                                BoundTestSql.execute(statement, "INSERT INTO history_race_child VALUES(?,?)", child, other);
                                 connection.commit();return "UNSAFE_SUCCESS";
                             } catch(SQLException expected) {connection.rollback();return expected.getSQLState();}
                         }
@@ -128,7 +130,7 @@ class PermanentRecordHistoryPostgresTest {
                 writer.commit();proceed.countDown();
                 assertThat(attempted.get(20,java.util.concurrent.TimeUnit.SECONDS)).isIn("40001","23514");
             }
-            try(var statement=writer.createStatement();var result=statement.executeQuery("SELECT count(*) FROM business_record_history WHERE source_table='history_race_child' AND parent_id='"+parent+"'")) {
+            try(var statement=writer.createStatement();var boundSql1 = BoundTestSql.prepare(statement, "SELECT count(*) FROM business_record_history WHERE source_table='history_race_child' AND parent_id=CAST(? AS text)", parent); var result = boundSql1.executeQuery()) {
                 assertThat(result.next()).isTrue();assertThat(result.getInt(1)).isEqualTo(1);
             }
             writer.rollback();

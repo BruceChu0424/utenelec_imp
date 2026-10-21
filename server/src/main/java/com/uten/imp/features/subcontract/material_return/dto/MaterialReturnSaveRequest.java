@@ -38,8 +38,7 @@ public class MaterialReturnSaveRequest {
     private Integer approverLegacyId;
     private String approverName;
 
-    @Valid
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<MaterialReturnItemLine> items;
+    private List<@Valid MaterialReturnItemLine> items;
 }

@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.ConnectionCallback;
@@ -158,7 +157,7 @@ class WorkshopBinOpeningMigrationPostgresTest {
     }
 
     private static void migrate(PostgreSQLContainer db, String target) {
-        var flyway = Flyway.configure().dataSource(db.getJdbcUrl(), db.getUsername(), db.getPassword())
+        var flyway = com.uten.imp.testsupport.TestFlyway.configure().dataSource(db.getJdbcUrl(), db.getUsername(), db.getPassword())
                 .locations("classpath:db/migration");
         if (target != null) flyway.target(target);
         flyway.load().migrate();

@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -27,7 +26,7 @@ class AttachmentStorageIdentityMigrationPostgresTest {
         POSTGRES.start();
         var source = new DriverManagerDataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
         db = new JdbcTemplate(source);
-        Flyway.configure().dataSource(source).locations("classpath:db/migration").target("532").load().migrate();
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(source).locations("classpath:db/migration").target("532").load().migrate();
         for (String key : new String[]{"known-oss.pdf", "unknown-unversioned.pdf"}) {
             db.update("""
                     INSERT INTO attachments(id,owner_type,owner_id,storage_key,storage_version,
@@ -55,7 +54,7 @@ class AttachmentStorageIdentityMigrationPostgresTest {
                        ('STAGING','unknown.pdf',NULL,1031,repeat('c',64))
                 """);
         originalFacts = facts();
-        Flyway.configure().dataSource(source).locations("classpath:db/migration").target("533").load().migrate();
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(source).locations("classpath:db/migration").target("533").load().migrate();
     }
 
     @AfterAll static void stop() { POSTGRES.stop(); }

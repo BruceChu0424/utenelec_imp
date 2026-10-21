@@ -395,23 +395,23 @@ class PlatformColumnServicePostgresTest {
         BusinessDocuments(JdbcTemplate sql,Set<UUID> allowed,Map<UUID,UUID> parents,UUID documentId,boolean changeQty){this.sql=sql;this.allowed=allowed;this.parents=parents;this.documentId=documentId;this.changeQty=changeQty;}
         @PlatformColumnDocumentSave(scope="goods",requestArgument=1,documentIdArgument=0)
         public SaveResult save(UUID document,SaveRequest request){
-            sql.update("DELETE FROM platform_test_document_rows");UUID next=UUID.randomUUID();allowed.add(next);parents.put(next,documentId);
+            sql.update("DELETE FROM platform_test_document_rows");UUID next=UUID.randomUUID();allowed.add(next);parents.put(next,document);
             BigDecimal qty=changeQty?BigDecimal.ONE:request.items().getFirst().getQty();
             sql.update("INSERT INTO platform_test_document_rows VALUES(?,?)",next,qty);
             PlatformColumnSaveLineage.recordPersisted(next); // Mirrors the actual JPA @PostPersist callback.
-            return new SaveResult(documentId,List.of(new SavedLine(next,1,qty)));
+            return new SaveResult(document,List.of(new SavedLine(next,1,qty)));
         }
         @PlatformColumnDocumentSave(scope="goods",requestArgument=1,documentIdArgument=0)
         public SaveResult saveSame(UUID document,SaveRequest request){
             var line=request.items().getFirst();
             sql.update("UPDATE platform_test_document_rows SET qty=? WHERE id=?",line.getQty(),line.getId());
-            return new SaveResult(documentId,List.of(new SavedLine(line.getId(),1,line.getQty())));
+            return new SaveResult(document,List.of(new SavedLine(line.getId(),1,line.getQty())));
         }
         @PlatformColumnDocumentSave(scope="goods",requestArgument=1,documentIdArgument=0)
         public SaveResult saveExistingSibling(UUID document,SaveRequest request){
             var line=request.items().getFirst();
             UUID sibling=sql.queryForObject("SELECT id FROM platform_test_document_rows WHERE id<>?",UUID.class,line.getId());
-            return new SaveResult(documentId,List.of(new SavedLine(sibling,1,line.getQty())));
+            return new SaveResult(document,List.of(new SavedLine(sibling,1,line.getQty())));
         }
         @PlatformColumnDocumentSave(scope="goods")
         public SaveResult create(SaveRequest request) {
@@ -430,11 +430,11 @@ class PlatformColumnServicePostgresTest {
             for(int index=0;index<2;index++) {
                 BigDecimal qty=index==0?new BigDecimal("4"):new BigDecimal(changeQty?"7":"6");
                 var derived=new SaveLine(null,index+1,qty);PlatformColumnSaveLineage.copyToken(original,derived);
-                UUID next=UUID.randomUUID();allowed.add(next);parents.put(next,documentId);sql.update("INSERT INTO platform_test_document_rows VALUES(?,?)",next,qty);
+                UUID next=UUID.randomUUID();allowed.add(next);parents.put(next,document);sql.update("INSERT INTO platform_test_document_rows VALUES(?,?)",next,qty);
                 PlatformColumnSaveLineage.recordPersisted(next);
                 PlatformColumnSaveLineage.registerSaved(derived,next);output.add(new SavedLine(next,index+1,qty));
             }
-            return new SaveResult(documentId,output);
+            return new SaveResult(document,output);
         }
         @PlatformColumnDocumentSave(scope="goods",mapping=PlatformColumnDocumentSave.Mapping.DOMAIN_LINEAGE)
         public SaveResult createSplit(SaveRequest request) {

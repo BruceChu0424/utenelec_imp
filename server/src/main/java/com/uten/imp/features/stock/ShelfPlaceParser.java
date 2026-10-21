@@ -46,6 +46,10 @@ public final class ShelfPlaceParser {
         if (!m.matches()) {
             return ShelfPlace.UNPARSED;
         }
-        return new ShelfPlace(m.group(1), Integer.valueOf(m.group(2)), Integer.valueOf(m.group(3)), true);
+        try {
+            return new ShelfPlace(m.group(1), Integer.valueOf(m.group(2)), Integer.valueOf(m.group(3)), true);
+        } catch (NumberFormatException malformed) {
+            return ShelfPlace.UNPARSED;
+        }
     }
 }

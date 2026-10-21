@@ -420,7 +420,8 @@ public class SalesQuoteFinanceService {
     public QuoteFinanceReviewDto returnToSales(UUID id, QuoteFinanceDecisionRequest req) {
         tx.bind();
         requireEligibleReviewer();
-        String reason = req == null || req.text() == null ? "" : req.text().strip();
+        if (req == null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请写明退回原因, 告诉销售要改什么");
+        String reason = req.text() == null ? "" : req.text().strip();
         if (reason.isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请写明退回原因, 告诉销售要改什么");
         }
@@ -511,7 +512,7 @@ public class SalesQuoteFinanceService {
         q.setReviewRevision(q.getReviewRevision() + 1);
         quoteRepo.save(q);
         List<SalesQuoteItem> items = itemRepo.findByQuoteIdOrderByLineNoAsc(id);
-        revisionLog.append(q, items, SalesQuoteRevisionLog.FINANCE_REOPEN, actor, req == null ? null : req.reason());
+        revisionLog.append(q, items, SalesQuoteRevisionLog.FINANCE_REOPEN, actor, req.reason());
         notices.notifyFinanceReopened(id);
         return reviewOf(q);
     }

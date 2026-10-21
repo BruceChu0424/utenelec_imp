@@ -147,7 +147,7 @@ public class StockDocController {
     /** ADR-146 当前用户能办理的不良品专门通道(空 = 都不能办)。 */
     @GetMapping("/defective-moves/options")
     @PreAuthorize("hasAnyAuthority('stock:view','stock_doc:view','stock:defective_transfer','stock:defective_release')")
-    public com.uten.imp.features.stock.dto.StockDefectiveMoveOptions defectiveMoveOptions() {
+    public com.uten.imp.features.stock.dto.StockDefectiveMoveOptions getDefectiveMovementOptions() {
         return service.defectiveMoveOptions();
     }
 

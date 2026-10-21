@@ -166,7 +166,7 @@ class ProcurementMasterDefaultsSyncPostgresTest {
         UUID supplier = supplier("SUP-SYNC-A");
         UUID goods = goods("G-SYNC-1");
         UUID settlementActive = settlement("STM-SYNC-ON");
-        UUID settlementDisabled = settlement("STM-SYNC-OFF", "禁用");
+        settlement("STM-SYNC-OFF", "禁用");
         UUID currency = currency("CUR-SYNC-CNY");
         UUID order = purchaseOrder(supplier, goods, settlementActive, currency, "13.0000");
 

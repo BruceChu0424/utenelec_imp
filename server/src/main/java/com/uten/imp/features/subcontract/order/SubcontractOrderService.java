@@ -854,8 +854,6 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                     (BigDecimal)change[1],(BigDecimal)change[2],item.getUnitRate()==null?BigDecimal.ONE:item.getUnitRate());
         }).toList());
         Map<UUID, BigDecimal> baseDelta = new LinkedHashMap<>();
-        Map<UUID, BigDecimal> unitRates = new LinkedHashMap<>();
-        Map<UUID, UUID> goodsByItem = new LinkedHashMap<>();
         for (Object[] change : changes) {
             SubcontractOrderItem item = (SubcontractOrderItem) change[0];
             BigDecimal newQty = (BigDecimal) change[2];
@@ -863,8 +861,6 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                     ? BigDecimal.ONE : item.getUnitRate();
             baseDelta.put(item.getId(),
                     MoneyPolicy.quantity(newQty.subtract((BigDecimal) change[1]).multiply(unitRate)));
-            unitRates.put(item.getId(), unitRate);
-            goodsByItem.put(item.getId(), item.getGoodsId());
             item.setTotalAmountInput(MoneyPolicy.revisedTotalAmountInput(
                     item.getTotalAmountInput(), (BigDecimal) change[1], newQty));
             item.setQty(newQty);
@@ -887,7 +883,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                     (com.uten.imp.common.finance.ProcurementOrderQuantityBounds.ReceiptBound)change[3]);
         }
         materialPlanService.applyOrderQtyChange(
-                id, baseDelta, unitRates, goodsByItem);
+                id, baseDelta);
         // ADR-156：批准后加量同样要有齐套的直属物料(减量不拦); 改量后共用物料的委外申请重算可下单。
         if (changes.stream().anyMatch(change -> ((BigDecimal) change[2]).compareTo((BigDecimal) change[1]) > 0)) {
             requireKit(id, "加量", KIT_HINT_ORDER);

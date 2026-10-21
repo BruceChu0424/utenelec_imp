@@ -226,9 +226,15 @@ public class FinancePaymentService {
         if (p.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
-        if (req.getExpectedVersion() == null
-                || p.getVersion() == null
-                || req.getExpectedVersion().longValue() != p.getVersion().longValue()) {
+        if (req.getExpectedVersion() == null) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "付款草稿已被其他操作更新，请刷新后重试");
+        }
+        if (p.getVersion() == null) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "付款草稿已被其他操作更新，请刷新后重试");
+        }
+        if (req.getExpectedVersion().longValue() != p.getVersion().longValue()) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "付款草稿已被其他操作更新，请刷新后重试");
         }
@@ -1165,7 +1171,7 @@ public class FinancePaymentService {
 
     @Transactional(readOnly = true)
     public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
-        var document=detailHistory(id);
+        detailHistory(id);
         return retainedRecords.children("finance_payments",id,beforeId,size);
     }
 }

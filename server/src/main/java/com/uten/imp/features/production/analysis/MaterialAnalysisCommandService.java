@@ -937,9 +937,7 @@ public class MaterialAnalysisCommandService {
     }
 
     /** @param commandPlans plans already issued by this aggregate command; never adopted by its later groups. */
-    Map<UUID,BigDecimal> claimAggregateMakeFuture(UUID analysisId,AnalysisView view,
-            AggregateMaterialOrderContracts.GroupPreview group,String key,Set<UUID> commandPlans,
-            java.util.function.Consumer<AggregateMaterialOrderContracts.AdoptedClaim> collector) {
+    Map<UUID,BigDecimal> claimAggregateMakeFuture(UUID analysisId, AggregateMaterialOrderContracts.GroupPreview group, String key, Set<UUID> commandPlans, java.util.function.Consumer<AggregateMaterialOrderContracts.AdoptedClaim> collector) {
         Map<UUID,BigDecimal> desired=new LinkedHashMap<>();group.sources().forEach(source->desired.put(source.materialLineId(),source.allocatedQty()));
         return makePublicSupply.adoptLocked(analysisId,desired,Map.of(),key,commandPlans,collector);
     }
@@ -2332,8 +2330,9 @@ public class MaterialAnalysisCommandService {
             UUID analysisId, ActionDraft action, PreparedExternalDocuments prepared) {
         if ("BUY".equals(action.group().route())) {
             ProductionPurchaseRequestFacade.DraftResult result = prepared.purchaseRequest();
+            if (result == null) throw conflict("采购申请创建事实缺失，不能把来源标记为已下达");
             Map<UUID, ProductionPurchaseRequestFacade.DraftLineResult> bySlice =
-                    result == null ? Map.of() : result.lines().stream().collect(
+                    result.lines().stream().collect(
                             Collectors.toMap(
                                     ProductionPurchaseRequestFacade.DraftLineResult::demandId,
                                     value -> value));
@@ -3000,7 +2999,7 @@ public class MaterialAnalysisCommandService {
     }
 
     private void requireWritable(MaterialAnalysisService.AnalysisHeader header, String message) {
-        access.requireWritable(header.makerId(), message, analysisService.scopeForAnalysis(header));
+        access.requireWritable(header.makerId(), message, analysisService.scopeForAnalysis());
     }
 
     private CommandReplay commandReplay(

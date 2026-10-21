@@ -61,6 +61,7 @@ class MaterialAnalysisDetailReadProfileTest {
             }
         }
         var output=Path.of(System.getProperty("uten.build.directory","target"),"material-detail-profile.json");Files.createDirectories(output.getParent());
+        java.util.Objects.requireNonNull(last, "profile must measure the candidate detail reader");
         var result=new LinkedHashMap<String,Object>();result.put("measurements",measurements);result.put("completeSnapshotParity",true);
         result.put("statementOrigins",last.statementOrigins);result.put("plans",explain(last));
         json.writerWithDefaultPrettyPrinter().writeValue(output.toFile(),result);

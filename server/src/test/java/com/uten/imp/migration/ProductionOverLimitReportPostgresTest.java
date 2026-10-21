@@ -32,7 +32,7 @@ class ProductionOverLimitReportPostgresTest {
         assertEquals(0,migration("822").migrate().migrationsExecuted);
     }
     static Flyway migration(String target) {
-        return Flyway.configure().dataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword())
+        return com.uten.imp.testsupport.TestFlyway.configure().dataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword())
                 .locations("classpath:db/migration").target(target).load();
     }
     @AfterAll static void stop(){POSTGRES.stop();}

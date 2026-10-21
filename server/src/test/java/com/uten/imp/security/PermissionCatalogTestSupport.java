@@ -1,7 +1,6 @@
 package com.uten.imp.security;
 
 import com.uten.imp.UtenImpApplication;
-import org.flywaydb.core.Flyway;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -56,7 +55,7 @@ final class PermissionCatalogTestSupport {
                     .withUsername("uten")
                     .withPassword("uten-test-only");
             postgres.start();
-            Flyway.configure()
+            com.uten.imp.testsupport.TestFlyway.configure()
                     .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                     .locations("classpath:db/migration")
                     .load()

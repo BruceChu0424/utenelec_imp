@@ -35,8 +35,7 @@ public class WasteSaveRequest {
     private BigDecimal deductAmount;
     private String remark;
 
-    @Valid
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<WasteItemLine> items;
+    private List<@Valid WasteItemLine> items;
 }

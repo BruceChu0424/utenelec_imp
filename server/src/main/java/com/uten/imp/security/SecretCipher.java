@@ -122,11 +122,11 @@ public class SecretCipher {
             cipher.init(Cipher.ENCRYPT_MODE, keyring.get(currentVersion), new GCMParameterSpec(TAG_BITS, iv));
             cipher.updateAAD(aad(aadContext, currentVersion));
             byte[] sealed = cipher.doFinal(plaintext.getBytes(StandardCharsets.UTF_8));
-            byte[] payload = new byte[iv.length + sealed.length];
+            byte[] payload = new byte[Math.addExact(iv.length, sealed.length)];
             System.arraycopy(iv, 0, payload, 0, iv.length);
             System.arraycopy(sealed, 0, payload, iv.length, sealed.length);
             return "g" + currentVersion + ":" + Base64.getUrlEncoder().withoutPadding().encodeToString(payload);
-        } catch (GeneralSecurityException e) {
+        } catch (GeneralSecurityException | ArithmeticException e) {
             throw new IllegalStateException("第三方凭据加密失败", e);
         }
     }

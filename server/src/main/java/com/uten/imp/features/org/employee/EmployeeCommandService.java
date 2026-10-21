@@ -98,7 +98,7 @@ public class EmployeeCommandService {
         if (nn(r.gender())) e.setGender(r.gender());
         if (nn(r.ethnicity())) e.setEthnicity(r.ethnicity());
         // 出生日期/政治面貌/婚姻状况/户籍地址/居住地址/办公电话/邮箱 已迁入 sensitive 加密（见 updateSensitive）。
-        if (nn(r.birthDate())) e.setBirthMonthDay(
+        if (r.birthDate() != null) e.setBirthMonthDay(
                 EmployeeOnboardingService.birthMonthDayOf(r.birthDate()));
         if (r.supervisorId() != null) e.setSupervisor(empRepo.findById(r.supervisorId())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "直属上级不存在")));
@@ -223,12 +223,7 @@ public class EmployeeCommandService {
         });
         // employee:pii:edit 层：手机/银行/备用号(写敏感表)。证件号只走 changeIdentity 一条写入路径。
         if (writesPii) {
-            if (!isBlank(r.phone())) {
-                piiWriter.applyPhone(s, r.phone());
-                // 登录账号 = 手机号：HR 直改手机号必须同步登录账号并踢会话（ADR-021 §三）
-                loginAccountSync.syncLoginAccount(id, com.uten.imp.common.util.ChinaMobileNumber
-                        .normalize(r.phone()).orElseThrow());
-            }
+            applyPhoneChange(id, s, r.phone());
             if (!isBlank(r.bankAccount())) s.setBankAccountEnc(tx.encrypt(r.bankAccount()));
             if (!isBlank(r.bankBranch())) s.setBankBranchEnc(tx.encrypt(r.bankBranch()));
         }
@@ -257,6 +252,14 @@ public class EmployeeCommandService {
                 || !isBlank(r.residenceAddress())
                 || !isBlank(r.officePhone())
                 || !isBlank(r.email()));
+    }
+
+    /** A phone edit and its login-account/session change are one command boundary (ADR-021). */
+    private void applyPhoneChange(UUID employeeId, EmployeeSensitive sensitive, String phone) {
+        if (isBlank(phone)) return;
+        piiWriter.applyPhone(sensitive, phone);
+        String normalized = com.uten.imp.common.util.ChinaMobileNumber.normalize(phone).orElseThrow();
+        loginAccountSync.syncLoginAccount(employeeId, normalized);
     }
 
     /** HR may maintain normal employees, but encrypted PII/compensation of a super admin is immutable here. */
@@ -821,8 +824,4 @@ public class EmployeeCommandService {
         return s != null && !s.isBlank();
     }
 
-    /** 非空对象（用于日期/枚举等）。 */
-    private static boolean nn(Object o) {
-        return o != null;
-    }
 }

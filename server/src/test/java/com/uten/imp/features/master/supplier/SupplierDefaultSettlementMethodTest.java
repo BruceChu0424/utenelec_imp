@@ -82,7 +82,6 @@ class SupplierDefaultSettlementMethodTest {
     private EntityManager emWithMethodRow(UUID methodId, int legacyId, String name) {
         EntityManager em = mock(EntityManager.class);
         Query resolverQuery = mock(Query.class);
-        Query nameQuery = mock(Query.class);
         lenient().when(em.createNativeQuery(anyString())).thenReturn(resolverQuery);
         lenient().when(resolverQuery.setParameter(anyString(), any()))
                 .thenReturn(resolverQuery);

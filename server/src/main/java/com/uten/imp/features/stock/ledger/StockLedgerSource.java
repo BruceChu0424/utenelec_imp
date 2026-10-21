@@ -1,5 +1,7 @@
 package com.uten.imp.features.stock.ledger;
 
+import com.uten.imp.common.sql.SqlCatalogLiteral;
+
 import java.util.Arrays;
 import java.util.Optional;
 import java.util.Set;
@@ -192,7 +194,7 @@ public enum StockLedgerSource {
                 continue;
             }
             any = true;
-            sql.append(" WHEN '").append(source.code).append("' THEN ").append(value);
+            sql.append(" WHEN ").append(SqlCatalogLiteral.text(source.code)).append(" THEN ").append(value);
         }
         return any ? sql.append(" END").toString() : "CAST(NULL AS text)";
     }

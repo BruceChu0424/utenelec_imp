@@ -73,7 +73,8 @@ class MasterStagingProtectionForwardPostgresTest {
     }
     private void forward(java.sql.Statement sql)throws Exception {try(var input=getClass().getResourceAsStream("/db/migration/V783__protect_master_staging_cleanup_lineage.sql")){assertThat(input).isNotNull();sql.execute(new String(input.readAllBytes(),StandardCharsets.UTF_8));}}
     private boolean protectedObject(java.sql.Statement sql,String provider,String location,String key,String version)throws Exception {
-        String query="SELECT fn_business_test_object_protected('"+provider+"','"+location+"','"+key+"',"+(version==null?"NULL":"'"+version+"'")+")";
-        try(var result=sql.executeQuery(query)){assertThat(result.next()).isTrue();return result.getBoolean(1);}
+        try(var query=com.uten.imp.testsupport.BoundTestSql.prepare(sql,
+                "SELECT fn_business_test_object_protected(?,?,?,?)", provider, location, key, version);
+            var result=query.executeQuery()){assertThat(result.next()).isTrue();return result.getBoolean(1);}
     }
 }

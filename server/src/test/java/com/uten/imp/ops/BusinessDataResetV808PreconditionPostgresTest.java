@@ -1,6 +1,5 @@
 package com.uten.imp.ops;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -38,7 +37,7 @@ class BusinessDataResetV808PreconditionPostgresTest {
         current = Integer.toString(versions[1]);
         postgres = new PostgreSQLContainer("postgres:16-alpine").withDatabaseName("precondition_base");
         postgres.start();
-        Flyway.configure().dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                 .locations("classpath:db/migration").target(previous).load().migrate();
     }
 
@@ -104,7 +103,7 @@ class BusinessDataResetV808PreconditionPostgresTest {
 
     private Throwable migrate(String database) {
         String url = com.uten.imp.support.MigratedSchemaBaseline.jdbcUrlFor(postgres, database);
-        return catchThrowable(() -> Flyway.configure().dataSource(url, postgres.getUsername(), postgres.getPassword())
+        return catchThrowable(() -> com.uten.imp.testsupport.TestFlyway.configure().dataSource(url, postgres.getUsername(), postgres.getPassword())
                 .locations("classpath:db/migration").target(current).load().migrate());
     }
 

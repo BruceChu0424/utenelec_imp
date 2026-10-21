@@ -495,9 +495,7 @@ public class ProductionWorkshopDirectTransferService {
         if (resolved.packageWarehouseId() == null) return;
         if (resolved.receivingContinuous()) {
             readiness.topUpDirectSupply(
-                    resolved.receivingSegmentId(), resolved.demandId(),
-                    resolved.lineSideWarehouseId(), baseQuantity(item),
-                    "DT-TOPUP-" + item.getId());
+                    resolved.receivingSegmentId(), resolved.demandId(), resolved.lineSideWarehouseId(), baseQuantity(item));
             return;
         }
         boolean lineSideIssueChecked = readiness.promoteAfterWorkshopDirectTransfer(

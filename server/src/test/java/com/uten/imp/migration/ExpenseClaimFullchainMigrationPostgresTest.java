@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -316,7 +315,7 @@ class ExpenseClaimFullchainMigrationPostgresTest {
     }
 
     private static void migrate(PostgreSQLContainer postgres, String target) {
-        var config = Flyway.configure().dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+        var config = com.uten.imp.testsupport.TestFlyway.configure().dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                 .locations("classpath:db/migration");
         if (target != null) config.target(target);
         config.load().migrate();
@@ -392,6 +391,6 @@ class ExpenseClaimFullchainMigrationPostgresTest {
     }
 
     private static long number(Connection connection, String sql, Object... parameters) throws SQLException {
-        return Long.parseLong(text(connection, sql, parameters));
+        return com.uten.imp.testsupport.FixtureNumbers.longInteger(text(connection, sql, parameters));
     }
 }

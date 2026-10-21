@@ -598,7 +598,7 @@ public class FinanceBankTransferService {
 
     @Transactional(readOnly = true)
     public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
-        var document=detailHistory(id);
+        detailHistory(id);
         return retainedRecords.children("finance_bank_transfers",id,beforeId,size);
     }
 }

@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -35,7 +34,7 @@ class SubcontractComponentOutboundPostgresTest {
                 .withDatabaseName("sc_component_outbound")
                 .withUsername("uten").withPassword("uten-test-only")) {
             pg.start();
-            Flyway.configure()
+            com.uten.imp.testsupport.TestFlyway.configure()
                     .dataSource(pg.getJdbcUrl(), pg.getUsername(), pg.getPassword())
                     .locations("classpath:db/migration").target("581").load().migrate();
 

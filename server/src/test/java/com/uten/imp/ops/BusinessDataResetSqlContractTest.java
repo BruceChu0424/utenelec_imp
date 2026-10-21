@@ -545,7 +545,7 @@ public class BusinessDataResetSqlContractTest {
                 Matcher matcher = MIGRATION_FILE.matcher(file.getFileName().toString());
                 if (!matcher.matches()) continue;
                 count++;
-                head = Math.max(head, Integer.parseInt(matcher.group(1)));
+                head = Math.max(head, com.uten.imp.testsupport.FixtureNumbers.integer(matcher.group(1)));
             }
         }
         assertThat(head).as("迁移目录里没找到任何 V*.sql").isGreaterThan(0);

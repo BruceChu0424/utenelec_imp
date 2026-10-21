@@ -127,8 +127,8 @@ class AiUsageUnattributedMigrationPostgresTest {
     }
 
     private static Flyway flyway(String url, String target, boolean compatible) {
-        var config = Flyway.configure().dataSource(url, DB.getUsername(), DB.getPassword())
-                .defaultSchema("public").initSql("SET search_path = pg_catalog, public, pg_temp")
+        var config = com.uten.imp.testsupport.TestFlyway.configureWithInitSql("SET search_path = pg_catalog, public, pg_temp")
+                .dataSource(url, DB.getUsername(), DB.getPassword()).defaultSchema("public")
                 .locations("classpath:db/migration").target(target).cleanDisabled(true);
         if (compatible) config.callbacks(new AppliedMigrationCompatibilityCallback(), new AuditFreshStartGuardCallback());
         return config.load();

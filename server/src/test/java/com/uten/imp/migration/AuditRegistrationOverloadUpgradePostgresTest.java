@@ -161,8 +161,8 @@ class AuditRegistrationOverloadUpgradePostgresTest {
         assertNotNull(scalar(connection, "SELECT to_regprocedure('" + SEVEN + "')::text"));
     }
     private static Flyway flyway(String database, String target, boolean compatible, String location) {
-        var config = Flyway.configure().dataSource(url(database), DB.getUsername(), DB.getPassword())
-                .locations(location).target(target).cleanDisabled(true).initSql("SET client_min_messages=WARNING");
+        var config = com.uten.imp.testsupport.TestFlyway.configure().dataSource(url(database), DB.getUsername(), DB.getPassword())
+                .locations(location).target(target).cleanDisabled(true);
         if (compatible) config.callbacks(new AppliedMigrationCompatibilityCallback());
         return config.load();
     }

@@ -94,7 +94,7 @@ public class AttachmentReconciliationService {
 
     @Transactional(readOnly = true)
     public List<AttachmentReconciliationFindingDto> listOpen() {
-        AuthUser user = requireReconciler("attachment:reconcile:view");
+        requireReconciler("attachment:reconcile:view");
         return jdbc.query("""
                 SELECT id, object_location, storage_key, storage_version, size_bytes,
                        finding_state, observation_count, first_seen_at, last_seen_at,

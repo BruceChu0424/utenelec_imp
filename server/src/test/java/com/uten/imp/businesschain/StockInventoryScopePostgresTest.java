@@ -38,7 +38,7 @@ import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.springframework.http.MediaType;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static com.uten.imp.testsupport.BusinessHttpRequests.authenticated;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
@@ -151,7 +151,7 @@ class StockInventoryScopePostgresTest {
         assertEquals("PRIMARY",explicit.path("items").get(0).path("searchMatchKind").asText());
         Authentication exporter=auth("stock:view","stock_report:export");
         for(boolean related:List.of(false,true)) {
-            var response=http.perform(post("/api/stock/reports/export").with(authentication(exporter))
+            var response=http.perform(post("/api/stock/reports/export").with(authenticated(exporter))
                     .param("report","instant-inventory").param("keyword","螺丝").param("warehouseId",warehouse.toString())
                     .param("includeRelated",Boolean.toString(related)).contentType(MediaType.APPLICATION_JSON).content("{\"password\":\"\"}")).andReturn().getResponse();
             assertEquals(200,response.getStatus());
@@ -159,7 +159,7 @@ class StockInventoryScopePostgresTest {
                 assertEquals(related?4:3,workbook.getSheetAt(0).getLastRowNum());
             }
         }
-        var riskExport=http.perform(post("/api/stock/reports/export").with(authentication(exporter))
+        var riskExport=http.perform(post("/api/stock/reports/export").with(authenticated(exporter))
                 .param("report","instant-inventory").param("keyword","螺丝").param("warehouseId",warehouse.toString())
                 .param("includeRelated","true").param("attention","NEGATIVE_BALANCE")
                 .contentType(MediaType.APPLICATION_JSON).content("{\"password\":\"\"}")).andReturn().getResponse();
@@ -336,7 +336,7 @@ class StockInventoryScopePostgresTest {
         for(String permission:permissions)assertEquals(1,db.update("INSERT INTO user_permission_overrides(user_id,permission_id,effect) SELECT ?,id,'grant' FROM permissions WHERE code=?",id,permission));
         fixture.loginAs(id);Authentication actor=SecurityContextHolder.getContext().getAuthentication();SecurityContextHolder.clearContext();return actor;}
     private JsonNode read(String path,Authentication actor,Map<String,String> query,int status)throws Exception {
-        var request=get(path).with(authentication(actor));query.forEach(request::param);
+        var request=get(path).with(authenticated(actor));query.forEach(request::param);
         var response=http.perform(request).andReturn().getResponse();assertEquals(status,response.getStatus(),response.getContentAsString());
         return json.readTree(response.getContentAsByteArray());
     }

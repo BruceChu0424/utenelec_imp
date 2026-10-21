@@ -1,6 +1,5 @@
 package com.uten.imp.features.production.execution;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -41,7 +40,7 @@ class ProductionCompletionReversePostgresTest {
     @BeforeAll
     static void migrate() {
         POSTGRES.start();
-        Flyway.configure()
+        com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(
                         POSTGRES.getJdbcUrl(),
                         POSTGRES.getUsername(),
@@ -636,7 +635,7 @@ class ProductionCompletionReversePostgresTest {
             String sql,
             Object first,
             int expected) throws Exception {
-        assertCount(connection, sql, new Object[]{first}, expected);
+        assertBoundCount(connection, sql, new Object[]{first}, expected);
     }
 
     private static void assertCount(
@@ -645,11 +644,11 @@ class ProductionCompletionReversePostgresTest {
             Object first,
             Object second,
             int expected) throws Exception {
-        assertCount(
+        assertBoundCount(
                 connection, sql, new Object[]{first, second}, expected);
     }
 
-    private static void assertCount(
+    private static void assertBoundCount(
             Connection connection,
             String sql,
             Object[] values,

@@ -87,9 +87,7 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
         }
         for (LossLine input : waste.lines()) {
             BigDecimal actual = positiveQty(input.actualLossQty(), "实际损耗量");
-            BigDecimal allowedInput = nonNegative(input.allowedLossQty(), "合同允许损耗量");
-            BigDecimal allowed = qty(allowedInput.min(actual));
-            BigDecimal excess = qty(actual.subtract(allowed));
+            qty(nonNegative(input.allowedLossQty(), "合同允许损耗量").min(actual));
         }
         materialValue.validateWaste(waste.wasteId());
     }
@@ -407,8 +405,8 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 NativeValueConverters.uuid(row[0]), NativeValueConverters.uuid(row[1]), NativeValueConverters.uuid(row[2]), NativeValueConverters.uuid(row[3]), NativeValueConverters.uuid(row[4]),
                 NativeValueConverters.text(row[5]), NativeValueConverters.text(row[6]), NativeValueConverters.uuid(row[7]), NativeValueConverters.text(row[8]), NativeValueConverters.uuid(row[9]),
                 quantity(row[10]), quantity(row[11]), quantity(row[12]),
-                priceMasked ? null : money(row[13]),
-                priceMasked ? null : money(row[14]), NativeValueConverters.text(row[15]))).toList();
+                priceMasked ? null : moneyText(row[13]),
+                priceMasked ? null : moneyText(row[14]), NativeValueConverters.text(row[15]))).toList();
         @SuppressWarnings("unchecked")
         List<Object[]> resolutionRows = em.createNativeQuery("""
                 SELECT id, case_line_id, resolution_type, quantity, amount_local,
@@ -418,7 +416,7 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 """).setParameter("id", id).getResultList();
         List<Resolution> resolutions = resolutionRows.stream().map(row -> new Resolution(
                 NativeValueConverters.uuid(row[0]), NativeValueConverters.uuid(row[1]), NativeValueConverters.text(row[2]), quantity(row[3]),
-                priceMasked ? null : money(row[4]),
+                priceMasked ? null : moneyText(row[4]),
                 NativeValueConverters.text(row[5]), NativeValueConverters.text(row[6]), NativeValueConverters.text(row[7]), NativeValueConverters.text(row[8]), NativeValueConverters.text(row[9]),
                 NativeValueConverters.uuid(row[10]), NativeValueConverters.text(row[11]), NativeValueConverters.uuid(row[12]), NativeValueConverters.text(row[13]))).toList();
         @SuppressWarnings("unchecked")
@@ -742,8 +740,8 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 """).setParameter("resolutionId",resolution.id()).getResultList();
         if(rows.size()!=1)throw conflict("现金赔偿到账事实缺失或重复");
         Object[] row=rows.getFirst();
-        UUID receiptId=NativeValueConverters.uuid(row[0]);UUID accountId=NativeValueConverters.uuid(row[1]);
-        BigDecimal amount=decimal(row[2]);LocalDate receiptDate=LocalDate.parse(row[3].toString());
+        UUID receiptId=NativeValueConverters.uuid(row[0]);
+        LocalDate receiptDate=LocalDate.parse(row[3].toString());
         UUID reconciliationId=NativeValueConverters.uuid(row[4]);long receiptVersion=((Number)row[5]).longValue();
         long claimVersion=((Number)row[7]).longValue();
         if(!"APPROVED".equals(NativeValueConverters.text(row[6]))||!"SETTLED".equals(NativeValueConverters.text(row[8]))){
@@ -1283,8 +1281,8 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
         boolean priceMasked = !canViewFinanceAmounts();
         return new CaseSummary(NativeValueConverters.uuid(row[0]), NativeValueConverters.uuid(row[1]), NativeValueConverters.text(row[2]), NativeValueConverters.uuid(row[3]),
                 NativeValueConverters.text(row[4]), NativeValueConverters.text(row[5]), NativeValueConverters.text(row[6]), quantity(row[7]), quantity(row[8]),
-                quantity(row[9]), priceMasked ? null : money(row[10]),
-                priceMasked ? null : money(row[11]),
+                quantity(row[9]), priceMasked ? null : moneyText(row[10]),
+                priceMasked ? null : moneyText(row[11]),
                 ((Number) row[12]).longValue(), NativeValueConverters.text(row[13]), priceMasked);
     }
 
@@ -1335,7 +1333,7 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
         return value == null ? null : qty(decimal(value)).toPlainString();
     }
 
-    private static String money(Object value) {
+    private static String moneyText(Object value) {
         return value == null ? null : money(decimal(value)).toPlainString();
     }
 

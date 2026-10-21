@@ -50,8 +50,7 @@ public class ReceiptSaveRequest {
     private String remark;
     private boolean confirmGiftSemantics;
 
-    @Valid
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<ReceiptItemLine> items;
+    private List<@Valid ReceiptItemLine> items;
 }

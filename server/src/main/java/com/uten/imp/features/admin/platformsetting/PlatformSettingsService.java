@@ -84,7 +84,8 @@ public class PlatformSettingsService implements CompanyBrandingReadPort {
                          boolean attachmentUploadsEnabled) {}
 
     static PlatformBrandingDto.Update normalize(PlatformBrandingDto.Update request) {
-        if (request == null || request.expectedVersion() < 0) throw invalid("请刷新平台设置后重试");
+        if (request == null) throw invalid("请刷新平台设置后重试");
+        if (request.expectedVersion() < 0) throw invalid("请刷新平台设置后重试");
         if (request.removeLogo() && request.logoBase64() != null)
             throw invalid("不能同时替换和移除 Logo，请重新选择操作");
         String company = text(request.companyName(), 1, 120, "公司名称", false);

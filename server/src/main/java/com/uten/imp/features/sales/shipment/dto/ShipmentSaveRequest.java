@@ -51,8 +51,7 @@ public class ShipmentSaveRequest {
     private String logisticsNo;
     private String remark;
 
-    @Valid
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<ShipmentItemLine> items;
+    private List<@Valid ShipmentItemLine> items;
 }

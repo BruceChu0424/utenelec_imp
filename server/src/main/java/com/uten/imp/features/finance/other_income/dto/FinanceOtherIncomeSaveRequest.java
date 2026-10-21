@@ -33,8 +33,7 @@ public class FinanceOtherIncomeSaveRequest implements ServerDerivedAmounts {
     private UUID operatorId;
     private String remark;
 
-    @Valid
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<FinanceOtherIncomeItemInput> items;
+    private List<@Valid FinanceOtherIncomeItemInput> items;
 }

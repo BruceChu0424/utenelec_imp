@@ -152,8 +152,9 @@ public class ServerStatusProbe {
         }
         metrics.add(metric("cpu","处理器占用",cpu,80,95,
                 "运行环境的处理器占用；短时升高可继续观察，持续偏高需要检查。"));
+        Long memoryUsed=memoryTotal==null||memoryFree==null?null:memoryTotal-memoryFree;
         metrics.add(new Metric("memory","系统内存占用",memory,"PERCENT",80d,90d,severity(memory,80,90),memoryDetail,
-                memory==null?null:memoryTotal,memory==null?null:memoryTotal-memoryFree,memory==null?null:memoryFree));
+                memory==null?null:memoryTotal,memory==null?null:memoryUsed,memory==null?null:memoryFree));
         var heap=ManagementFactory.getMemoryMXBean().getHeapMemoryUsage();
         Double heapPercent=percent(heap.getUsed(),heap.getMax());
         metrics.add(new Metric("jvm_memory","Java 堆内存",heapPercent,"PERCENT",80d,90d,severity(heapPercent,80,90),
@@ -232,7 +233,13 @@ public class ServerStatusProbe {
             if (line.startsWith("MemTotal:")||line.startsWith("MemAvailable:")) {
                 String[] values=line.trim().split("\\s+");
                 if(values.length!=3||!"kB".equals(values[2])) return new Long[]{null,null};
-                long number=Math.multiplyExact(Long.parseLong(values[1]),1024);
+                long number;
+                try {
+                    number=Math.multiplyExact(Long.parseLong(values[1]),1024);
+                } catch (NumberFormatException | ArithmeticException malformed) {
+                    return new Long[]{null,null};
+                }
+                if(number<0)return new Long[]{null,null};
                 if(line.startsWith("MemTotal:"))total=number;else available=number;
             }
         }

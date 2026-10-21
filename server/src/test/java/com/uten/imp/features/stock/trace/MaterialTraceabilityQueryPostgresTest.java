@@ -520,7 +520,11 @@ class MaterialTraceabilityQueryPostgresTest {
     }
 
     private Result trace(String type, UUID id) { return query.trace(type, id, "usage", null, null, 1, 50); }
-    private static List<TraceRow> rows(Result result) { return result.items().stream().map(TraceRow.class::cast).toList(); }
+    private static List<TraceRow> rows(Result result) {
+        List<TraceRow> rows = new java.util.ArrayList<>();
+        for (var item : result.items()) rows.add((TraceRow) item);
+        return List.copyOf(rows);
+    }
     private UUID subcontractOrder(String code, UUID owner, UUID warehouse, String quantity) {
         UUID order = f.insert("subcontract_orders", "bill_no", code, "bill_date", DAY, "maker_id", owner,
                 "warehouse_id", warehouse, "status", 1, "is_deleted", false);

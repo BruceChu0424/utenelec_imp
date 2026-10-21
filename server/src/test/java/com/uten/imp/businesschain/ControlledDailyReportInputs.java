@@ -84,7 +84,7 @@ public final class ControlledDailyReportInputs {
         UUID sourceDemand = helper.demand(source);
         BigDecimal inputQuantity = BigDecimal.valueOf(receivers * 2L);
         flow.receive(c, c.material(), inputQuantity.toPlainString());
-        helper.start(c, source);
+        helper.start(source);
 
         // seedWorld itself inserts only masters/BOM. Prove the scenario's raw
         // material entered via approved OTHER_IN and was really issued to source.

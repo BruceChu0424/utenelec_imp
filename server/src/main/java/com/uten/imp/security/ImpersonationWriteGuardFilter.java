@@ -57,7 +57,8 @@ public class ImpersonationWriteGuardFilter extends OncePerRequestFilter {
             String path = SecurityRequestPath.withinApplication(request);
             if (WRITE_METHODS.contains(method) && !WRITABLE_WHITELIST.contains(path)
                     && !readOnlyIqcReportReceipt(method, path)
-                    && !readOnlyDailyCreateReceipt(method, path)) {
+                    && !readOnlyDailyCreateReceipt(method, path)
+                    && !readOnlyCostBootstrap(method, path)) {
                 blockWrite(request, response, user.getImpersonatedBy());
                 return;
             }
@@ -75,6 +76,12 @@ public class ImpersonationWriteGuardFilter extends OncePerRequestFilter {
     static boolean readOnlyDailyCreateReceipt(String method, String path) {
         return "POST".equals(method)
                 && "/api/production/daily-reports/create-receipt".equals(path);
+    }
+
+    /** Cost preparation scans evidence but does not change business records. Other cost commands stay blocked. */
+    static boolean readOnlyCostBootstrap(String method, String path) {
+        return "POST".equals(method)
+                && "/api/master/goods/cost-sheets/bootstrap".equals(path);
     }
 
     private void blockWrite(HttpServletRequest request, HttpServletResponse response, UUID adminId)

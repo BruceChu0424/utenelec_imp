@@ -78,7 +78,7 @@ public class MouldCategoryController {
 
     @GetMapping("/{id}/delete-preview")
     @PreAuthorize("hasAuthority('mould_category:view')")
-    public MouldCategoryDeletePreview deletePreview(@PathVariable UUID id) {
+    public MouldCategoryDeletePreview getDeletionPreview(@PathVariable UUID id) {
         return service.deletePreview(id);
     }
 

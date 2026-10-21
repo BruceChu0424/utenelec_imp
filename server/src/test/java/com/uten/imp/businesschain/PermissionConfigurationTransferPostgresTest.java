@@ -289,7 +289,9 @@ class PermissionConfigurationTransferPostgresTest {
         var snapshot=transfer.copySnapshot(source);var request=new CopyRequest(source,snapshot.fingerprint());var preview=transfer.previewCopy(target,request);
         try(Connection connection=DATABASE.createConnection("")) {
             connection.setAutoCommit(false);
-            connection.createStatement().execute("LOCK TABLE users IN ROW EXCLUSIVE MODE");
+            try (var statement = connection.createStatement()) {
+                statement.execute("LOCK TABLE users IN ROW EXCLUSIVE MODE");
+            }
             assertThatThrownBy(()->transfer.copyPermissions(target,new CopyCommit(request,preview.fingerprint(),confirmations(preview))))
                     .isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT));
             connection.rollback();
@@ -319,7 +321,9 @@ class PermissionConfigurationTransferPostgresTest {
         var preview=transfer.previewImport(request);
         try(Connection connection=DATABASE.createConnection("")) {
             connection.setAutoCommit(false);
-            connection.createStatement().execute("SELECT pg_advisory_xact_lock(hashtextextended('PERMISSION_BASELINE',0))");
+            try (var statement = connection.createStatement()) {
+                statement.execute("SELECT pg_advisory_xact_lock(hashtextextended('PERMISSION_BASELINE',0))");
+            }
             assertThatThrownBy(()->transfer.importConfiguration(new ImportCommit(request,preview.fingerprint(),confirmations(preview))))
                     .isInstanceOf(ApiException.class).hasMessageContaining("正在修改全员基础权限");
             connection.rollback();

@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.postgresql.util.PSQLException;
@@ -32,7 +31,7 @@ class RestoredCatalogConvergencePostgresTest {
     void convergesKnownDriftPreservesEvidenceAndRefusesUnknownObjects() throws Exception {
         try (var database = new PostgreSQLContainer("postgres:16-alpine")) {
             database.start();
-            Flyway.configure().dataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword())
+            com.uten.imp.testsupport.TestFlyway.configure().dataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword())
                     .locations("classpath:db/migration").target("476").load().migrate();
             String migration;
             try (var resource = getClass().getResourceAsStream("/db/migration/V505__restored_catalog_semantic_convergence.sql")) {

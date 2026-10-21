@@ -32,7 +32,7 @@ class ForwardMigrationSequenceContractTest {
     var versions=new ArrayList<Integer>();
     try(var files=Files.list(path)) {
       files.forEach(file->{var match=SCRIPT.matcher(file.getFileName().toString());
-        if(match.matches()) versions.add(Integer.parseInt(match.group(1)));});
+        if(match.matches()) versions.add(com.uten.imp.testsupport.FixtureNumbers.integer(match.group(1)));});
     }
     assertThat(versions).isNotEmpty();
     requireCompleteSequence(versions);

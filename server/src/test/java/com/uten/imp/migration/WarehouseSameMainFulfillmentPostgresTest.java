@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -25,7 +24,7 @@ class WarehouseSameMainFulfillmentPostgresTest {
     @BeforeAll
     static void upgrade() {
         DB.start();
-        Flyway.configure().dataSource(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword())
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword())
                 .locations("classpath:db/migration").target("488").load().migrate();
         jdbc = new JdbcTemplate(new DriverManagerDataSource(
                 DB.getJdbcUrl(),DB.getUsername(),DB.getPassword()));
@@ -33,7 +32,7 @@ class WarehouseSameMainFulfillmentPostgresTest {
         plastics = warehouse(main);
         hardware = warehouse(main);
         other = warehouse(null);
-        Flyway.configure().dataSource(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword())
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword())
                 .locations("classpath:db/migration").target("489").load().migrate();
     }
 

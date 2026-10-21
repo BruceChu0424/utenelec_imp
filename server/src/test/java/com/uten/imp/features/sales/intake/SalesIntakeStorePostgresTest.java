@@ -3,7 +3,6 @@ package com.uten.imp.features.sales.intake;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.features.sales.intake.IntakeReferenceData.CurrencyRow;
 import com.uten.imp.features.sales.intake.IntakeReferenceData.LearnedLayout;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -34,7 +33,7 @@ class SalesIntakeStorePostgresTest {
     @BeforeAll
     static void start() {
         DB.start();
-        Flyway.configure().dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
                 .locations("classpath:db/migration").load().migrate();
         DriverManagerDataSource ds = new DriverManagerDataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword());
         jdbc = new JdbcTemplate(ds);

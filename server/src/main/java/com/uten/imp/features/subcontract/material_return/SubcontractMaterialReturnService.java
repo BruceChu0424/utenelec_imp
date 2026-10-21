@@ -324,7 +324,6 @@ public class SubcontractMaterialReturnService {
     public com.uten.imp.application.port.DocumentUnapprovalPort.Eligibility unapprovalEligibility(UUID id) {
         detail(id);
         SubcontractMaterialReturn value=requireReturn(id);
-        List<SubcontractMaterialReturnItem> items=itemRepo.findByMaterialReturnIdOrderByLineNoAsc(id);
         String facts=com.uten.imp.common.review.SubcontractMaterialReversalFacts.read(em,"RETURN",id);
         return com.uten.imp.common.review.DocumentUnapprovalPreflight.evaluate("subcontractMaterialReturn",facts,()->{
             access.requireWritable(value.getMakerId(),"只能操作本人负责的委外材料退货单");

@@ -64,7 +64,7 @@ public final class IdentityResponseAssertions {
         if (item.matches()) {
             JsonNode section = root.path(item.group(1));
             if (section.isArray()) {
-                int index = Integer.parseInt(item.group(2));
+                int index = com.uten.imp.testsupport.FixtureNumbers.integer(item.group(2));
                 if (index < section.size() && section.get(index).isObject()) metadata = item.group(3);
             }
         }

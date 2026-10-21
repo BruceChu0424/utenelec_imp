@@ -269,9 +269,10 @@ final class AiDocIndex {
         for (var term : query.entrySet()) {
             int[] list = postings.get(term.getKey());
             if (list == null) continue;
+            if ((list.length & 1) != 0) throw new IllegalStateException("Knowledge postings must contain index/frequency pairs");
             int df = list.length / 2;
             double idf = Math.log(1 + (size - df + 0.5) / (df + 0.5));
-            for (int i = 0; i < list.length; i += 2) {
+            for (int i = 0; i + 1 < list.length; i += 2) {
                 int chunk = list[i];
                 double tf = list[i + 1];
                 double norm = tf * (K1 + 1) / (tf + K1 * (1 - B + B * lengths[chunk] / averageLength));

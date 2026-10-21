@@ -141,7 +141,7 @@ class AggregateDelegationProjectionTest {
         World world = perUnitWorld();
         UUID anchor2 = UUID.randomUUID();
         // 第二层共享批次：锚点树上的 B' 又整体转给了更深的批次(目标 = 其根行)。
-        var secondRoot = node(anchor2, "root", null, GOODS_B, "1", null, "PER_UNIT", "1", true, true);
+        node(anchor2, "root", null, GOODS_B, "1", null, "PER_UNIT", "1", true, true);
         var secondLeaf = node(anchor2, "c", "root", GOODS_C, "2", EDGE_C, "PER_UNIT", "1", true, false);
 
         Map<UUID, AggregateDelegationProjection.Delegation> result = AggregateDelegationProjection.project(

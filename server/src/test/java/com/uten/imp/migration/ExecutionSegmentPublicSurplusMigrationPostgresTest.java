@@ -27,7 +27,7 @@ class ExecutionSegmentPublicSurplusMigrationPostgresTest {
         assertEquals(0, migration("690").migrate().migrationsExecuted);
     }
     static Flyway migration(String target) {
-        return Flyway.configure().dataSource(DATABASE.getJdbcUrl(), DATABASE.getUsername(), DATABASE.getPassword())
+        return com.uten.imp.testsupport.TestFlyway.configure().dataSource(DATABASE.getJdbcUrl(), DATABASE.getUsername(), DATABASE.getPassword())
                 .locations("classpath:db/migration").target(target).load();
     }
     @AfterAll static void stop() { DATABASE.stop(); }

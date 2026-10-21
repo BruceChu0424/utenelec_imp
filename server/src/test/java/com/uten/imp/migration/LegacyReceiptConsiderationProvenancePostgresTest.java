@@ -3,7 +3,6 @@ package com.uten.imp.migration;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.uten.imp.support.LegacyFinanceImportFixture;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.dao.DataAccessException;
@@ -29,7 +28,7 @@ class LegacyReceiptConsiderationProvenancePostgresTest {
 
     @BeforeAll static void start() throws Exception {
         PG.start();admin=new JdbcTemplate(new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword()));
-        admin.execute("CREATE ROLE uten LOGIN NOSUPERUSER PASSWORD '"+PASSWORD+"'");
+        admin.execute(admin.queryForObject("SELECT format('CREATE ROLE uten LOGIN NOSUPERUSER PASSWORD %L', CAST(? AS text))", String.class, PASSWORD));
         migrate("517");
         try(Tx tx=tx()) {
             tx.db.execute("SET LOCAL uten.legacy_reference_import='legacy-receipt-test'");
@@ -255,7 +254,7 @@ class LegacyReceiptConsiderationProvenancePostgresTest {
     static UUID context(JdbcTemplate db){UUID run=LegacyFinanceImportFixture.context(db);for(String file:new String[]{"purchase_receipts.csv","purchase_receipt_items.csv","subcontract_in_m.csv","subcontract_in_i.csv"}){ db.update("INSERT INTO legacy_migration_run_files(run_id,file_name,sha256,byte_size) VALUES(?,?,repeat('f',64),500)",run,file); }return run;}
     static long count(JdbcTemplate db,String table){return db.queryForObject("SELECT count(*) FROM public."+table,Long.class);}
     static String snapshot(JdbcTemplate db,String table,UUID id,boolean after){return db.queryForObject("SELECT (to_jsonb(row)"+(after?"-'legacy_import_run_id'":"")+")::text FROM "+table+" row WHERE id=?",String.class,id);}
-    static void migrate(String version){Flyway.configure().dataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword()).target(version).load().migrate();}
+    static void migrate(String version){com.uten.imp.testsupport.TestFlyway.configure().dataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword()).target(version).load().migrate();}
     static Tx tx() throws Exception{return tx(PG.getUsername(),PG.getPassword());}
     static Tx tx(String user,String password)throws Exception {Connection c=DriverManager.getConnection(PG.getJdbcUrl(),user,password);c.setAutoCommit(false);return new Tx(c);}
     static final class Tx implements AutoCloseable{final Connection connection;final JdbcTemplate db;Tx(Connection c){connection=c;db=new JdbcTemplate(new SingleConnectionDataSource(c,true));}@Override public void close()throws Exception{connection.rollback();connection.close();}}

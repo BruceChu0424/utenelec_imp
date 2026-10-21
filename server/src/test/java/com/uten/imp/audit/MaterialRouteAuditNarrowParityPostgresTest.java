@@ -1,6 +1,5 @@
 package com.uten.imp.audit;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -43,7 +42,7 @@ class MaterialRouteAuditNarrowParityPostgresTest {
     static void start() {
         DB.start();
         db = new JdbcTemplate(new DriverManagerDataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword()));
-        Flyway.configure().dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
                 .locations("classpath:db/migration").load().migrate();
         db.execute("""
                 CREATE TABLE route_audit_parity_probe (

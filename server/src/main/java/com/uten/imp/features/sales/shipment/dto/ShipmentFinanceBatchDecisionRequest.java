@@ -15,7 +15,7 @@ import java.util.UUID;
  * 每项携带单笔决策所需的乐观锁三元组；退回批共用一个 [reason]。</p>
  */
 public record ShipmentFinanceBatchDecisionRequest(
-        @NotEmpty @Size(max = 100) @Valid List<Item> items,
+        @NotEmpty @Size(max = 100) List<@Valid Item> items,
         @Size(max = 500) String reason) {
 
     public record Item(@NotNull UUID id, Long expectedRevision,

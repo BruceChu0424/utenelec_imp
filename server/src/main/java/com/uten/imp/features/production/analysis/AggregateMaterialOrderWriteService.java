@@ -48,10 +48,11 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
     private final AggregateMissingDeepAliasRepair missingDeepAliases;
 
     @Override @Transactional public AnalysisView cancel(UUID analysisId,UUID actionId,MaterialAnalysisContracts.CancelRequest request) {
-        if(request==null||request.version()==null||request.fingerprint()==null||request.idempotencyKey()==null
+        if(request==null)throw invalid("整批撤回缺少版本或防重复提交标识");
+        if(request.version()==null||request.fingerprint()==null||request.idempotencyKey()==null
                 ||!request.idempotencyKey().matches("[A-Za-z0-9._:-]{8,128}"))throw invalid("整批撤回缺少版本或防重复提交标识");
         tx.bind();var guard=commands.lockAnalysisWithClaimableShared(analysisId);var header=analysis.headerAfterPrelock(analysisId);
-        access.requireWritable(header.makerId(),"只能撤回本人负责的共享批次",analysis.scopeForAnalysis(header));
+        access.requireWritable(header.makerId(),"只能撤回本人负责的共享批次",analysis.scopeForAnalysis());
         List<Object[]> rows=NativeQueryResults.objectArrayRows(em.createNativeQuery("SELECT batch.id,batch.plan_id,batch.route,action.status,batch.row_version FROM preplan_aggregate_batches batch JOIN preplan_supply_actions action ON action.id=batch.action_id WHERE batch.analysis_id=:analysis AND batch.action_id=:action FOR UPDATE OF batch,action")
                 .setParameter("analysis",analysisId).setParameter("action",actionId));
         if(rows.isEmpty())throw conflict("共享批次不存在或不属于当前分析");Object[] row=rows.getFirst();UUID plan=(UUID)row[1];
@@ -94,7 +95,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         validateRequest(request);tx.bind();
         var guard=commands.lockAnalysisWithClaimableShared(analysisId);
         var header=analysis.headerAfterPrelock(analysisId);
-        access.requireWritable(header.makerId(),"只能下达本人负责的物料分析",analysis.scopeForAnalysis(header));
+        access.requireWritable(header.makerId(),"只能下达本人负责的物料分析",analysis.scopeForAnalysis());
         requireSubmitAuthority(request);
         String hash=hashRequest(analysisId,request);
         List<Object[]> replay=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
@@ -201,8 +202,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                     originalFlow=originalPrivateFlow(remainingIntent,group,current);
                 }
             } else {
-            Map<UUID,BigDecimal> makeClaims=retainedMakeResponsibility||request.skipClaims()?Map.of():commands.claimAggregateMakeFuture(analysisId,current,group,
-                    stepKey(request.idempotencyKey(),group.clientGroupKey(),"MAKE-PUBLIC-CLAIM"),commandPlans,adoptedClaims::add);
+            Map<UUID,BigDecimal> makeClaims=retainedMakeResponsibility||request.skipClaims()?Map.of():commands.claimAggregateMakeFuture(analysisId, group, stepKey(request.idempotencyKey(),group.clientGroupKey(),"MAKE-PUBLIC-CLAIM"), commandPlans, adoptedClaims::add);
             if(!makeClaims.isEmpty()) {
                 List<SourcePreview> sources=group.sources().stream().map(source->source(source,
                         source.allocatedQty().subtract(makeClaims.getOrDefault(source.materialLineId(),BigDecimal.ZERO)).max(BigDecimal.ZERO))).toList();

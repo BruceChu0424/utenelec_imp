@@ -30,6 +30,7 @@ public class BusinessOutboxScheduler implements AutoCloseable {
     private final BusinessOutboxProcessor processor;
     private final BusinessOutboxFailureRecorder failureRecorder;
     private final OutboxWarnThrottler warnThrottler;
+    private final BusinessOutboxDeliveryDiagnostics diagnostics;
     private final ExecutorService worker;
     private final Object dispatchLock = new Object();
     private boolean queuedOrRunning;
@@ -38,21 +39,30 @@ public class BusinessOutboxScheduler implements AutoCloseable {
 
     // 多构造器必须显式 @Autowired 标记注入入口（同 MaterializedViewRefreshScheduler
     // 的约定），否则 Spring 回退找默认构造器直接启动失败。
-    @Autowired
     public BusinessOutboxScheduler(
             BusinessOutboxProcessor processor, BusinessOutboxFailureRecorder failureRecorder) {
         this(processor, failureRecorder, OutboxWarnThrottler.withDefaults());
+    }
+
+    @Autowired
+    public BusinessOutboxScheduler(BusinessOutboxProcessor processor,
+            BusinessOutboxFailureRecorder failureRecorder, BusinessOutboxDeliveryDiagnostics diagnostics) {
+        this(processor, failureRecorder, OutboxWarnThrottler.withDefaults(), newWorker(), diagnostics);
     }
 
     BusinessOutboxScheduler(
             BusinessOutboxProcessor processor,
             BusinessOutboxFailureRecorder failureRecorder,
             OutboxWarnThrottler warnThrottler) {
-        this(processor, failureRecorder, warnThrottler, new ThreadPoolExecutor(
+        this(processor, failureRecorder, warnThrottler, newWorker());
+    }
+
+    private static ExecutorService newWorker() {
+        return new ThreadPoolExecutor(
                 1, 1, 0, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(1),
                 Thread.ofPlatform().daemon().name("business-outbox-dispatch")
                         .inheritInheritableThreadLocals(false).factory(),
-                new ThreadPoolExecutor.AbortPolicy()));
+                new ThreadPoolExecutor.AbortPolicy());
     }
 
     BusinessOutboxScheduler(
@@ -60,14 +70,21 @@ public class BusinessOutboxScheduler implements AutoCloseable {
             BusinessOutboxFailureRecorder failureRecorder,
             OutboxWarnThrottler warnThrottler,
             ExecutorService worker) {
+        this(processor, failureRecorder, warnThrottler, worker, new BusinessOutboxDeliveryDiagnostics(null));
+    }
+
+    BusinessOutboxScheduler(BusinessOutboxProcessor processor,
+            BusinessOutboxFailureRecorder failureRecorder, OutboxWarnThrottler warnThrottler,
+            ExecutorService worker, BusinessOutboxDeliveryDiagnostics diagnostics) {
         this.processor = processor;
         this.failureRecorder = failureRecorder;
         this.warnThrottler = warnThrottler;
         this.worker = worker;
+        this.diagnostics = diagnostics;
     }
 
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void onCommittedEvent(BusinessOutboxReady ignored) {
+    @TransactionalEventListener(classes = BusinessOutboxReady.class, phase = TransactionPhase.AFTER_COMMIT)
+    public void onCommittedEvent() {
         requestDrain();
     }
 
@@ -133,17 +150,41 @@ public class BusinessOutboxScheduler implements AutoCloseable {
                 if (!processor.processNext()) {
                     return BatchResult.IDLE;
                 }
+                diagnostics.count(BusinessOutboxDeliveryDiagnostics.Outcome.DELIVERED,
+                        BusinessOutboxDeliveryDiagnostics.Kind.NONE);
             } catch (OutboxDeliveryException error) {
+                var failure = BusinessOutboxDeliveryDiagnostics.describe(error);
+                java.util.Optional<BusinessOutboxFailureRecorder.RecordedFailure> recorded;
                 try {
-                    failureRecorder.record(error.eventId(), error);
+                    recorded = failureRecorder.record(error.eventId(), error);
                 } catch (RuntimeException recordingFailure) {
+                    diagnostics.count(BusinessOutboxDeliveryDiagnostics.Outcome.NOT_RECORDED, failure.kind());
                     log.error("Business outbox failure recording failed; polling will retry", recordingFailure);
                     return BatchResult.FAILED;
                 }
+                if (recorded.isEmpty()) {
+                    diagnostics.count(BusinessOutboxDeliveryDiagnostics.Outcome.NOT_RECORDED, failure.kind());
+                    log.warn("Business outbox failure state was not recorded (event={}): {}",
+                            error.eventId(), failure.persistedDescription());
+                    continue;
+                }
+                var state = recorded.orElseThrow();
+                if (state.exhausted()) {
+                    diagnostics.count(BusinessOutboxDeliveryDiagnostics.Outcome.EXHAUSTED, failure.kind());
+                    log.error("Business outbox delivery exhausted (event={}, attempts={}): {}",
+                            error.eventId(), state.attempts(), failure.persistedDescription());
+                    continue;
+                }
+                if (failure.deferrable() && state.deferred()) {
+                    diagnostics.count(BusinessOutboxDeliveryDiagnostics.Outcome.DEFERRED, failure.kind());
+                    log.info("Business outbox contention deferred (event={}, attempts={}, availableAt={}): {}",
+                            error.eventId(), state.attempts(), state.availableAt(), failure.persistedDescription());
+                    continue;
+                }
+                diagnostics.count(BusinessOutboxDeliveryDiagnostics.Outcome.FAILED, failure.kind());
                 // 投递失败已落 failureRecorder；相同告警 5 分钟窗口内只打一条，
                 // 其余静默计数，避免下游长故障 + 积压时每轮刷屏 20 条相同 warn。
-                Throwable cause = error.getCause() == null ? error : error.getCause();
-                String line = warnThrottler.consume(cause.getClass().getSimpleName() + ": " + cause.getMessage());
+                String line = warnThrottler.consume(failure.persistedDescription());
                 if (line != null) {
                     log.warn("Business outbox delivery deferred (event={}): {}", error.eventId(), line);
                 }

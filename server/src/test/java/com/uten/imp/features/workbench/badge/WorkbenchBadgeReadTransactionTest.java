@@ -46,7 +46,7 @@ class WorkbenchBadgeReadTransactionTest {
                         ()->Map.of("count",1L,"preparing",2L,"inProgress",3L))).toList();
         WorkbenchBadgeSources contributor=()->sources;
         var scopes=mock(WarehouseTaskScopePort.class);
-        when(scopes.withScopeCache(any())).thenAnswer(call->((java.util.function.Supplier<?>)call.getArgument(0)).get());
+        when(scopes.withQueryScopeCache(any())).thenAnswer(call->((WarehouseTaskScopePort.ReadQuery<?>) call.getArgument(0)).read());
         var target=new WorkbenchBadgeService(List.of(contributor),manager,scopes,com.uten.imp.testsupport.TaskAudienceTestSupport.direct());
         EntityManager em=mock(EntityManager.class); Session session=mock(Session.class); when(em.unwrap(Session.class)).thenReturn(session);
         when(session.doReturningWork(any())).thenAnswer(call->((ReturningWork<?>)call.getArgument(0)).execute(
@@ -66,6 +66,6 @@ class WorkbenchBadgeReadTransactionTest {
         verify(connections.get(0)).commit(); verify(connections.get(0),never()).rollback();
         verify(connections.get(1)).rollback(); verify(connections.get(1),never()).commit();
         verify(connections.get(1)).setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
-        verify(scopes).withScopeCache(any()); // 一次汇总 = 一个范围解析复用窗口(准则 14)
+        verify(scopes).withQueryScopeCache(any()); // 一次汇总 = 一个范围解析复用窗口(准则 14)
     }
 }

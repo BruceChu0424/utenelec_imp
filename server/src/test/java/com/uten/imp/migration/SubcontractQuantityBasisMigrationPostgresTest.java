@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -56,7 +55,7 @@ class SubcontractQuantityBasisMigrationPostgresTest {
     }
 
     private static void migrate(PostgreSQLContainer pg,String version) {
-        Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword())
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword())
                 .locations("classpath:db/migration").target(version).load().migrate();
     }
     private record Fixture(UUID planItem,UUID issueItem,UUID goods) {}

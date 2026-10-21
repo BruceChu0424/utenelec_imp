@@ -743,7 +743,6 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                 ORDER BY id FOR UPDATE
                 """).setParameter("ids",byAp.keySet()).getResultList();
         if(sources.size()!=byAp.size())throw conflict("原失败份额的正应付缺失或已反向，禁止退货减款");
-        Map<UUID,BigDecimal> balances=new LinkedHashMap<>();
         for(Object[] source:sources){
             if(!java.util.Objects.equals(NativeValueConverters.uuid(source[2]),row.supplierId())
                     ||!java.util.Objects.equals(NativeValueConverters.uuid(source[3]),row.currencyId())
@@ -751,7 +750,6 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                     ||!java.util.Objects.equals(NativeValueConverters.uuid(source[5]),row.settlementMethodId())){
                 throw conflict("退货减款的原应付身份与冻结资金份额不一致");
             }
-            balances.put(NativeValueConverters.uuid(source[0]),NativeValueConverters.toBigDecimal(source[1]).max(BigDecimal.ZERO));
         }
         String sourceType=creditSourceType(row.receiptType());
         UUID ledgerId=row.creditLedgerId();
@@ -802,7 +800,6 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         mutationGuard.verifyUnchanged();
         requireAction("procurement_iqc_rejection:reverse");
         requireAction("procurement_iqc_rejection:amount:view");
-        if(request==null)throw validation("IQC贷项反向请求不能为空");
         String requestHash=commandHash("REVERSE",request);
         if(commandReplay(request.commandId(),id,"REVERSE",requestHash)){
             return detail(id);
@@ -1006,7 +1003,6 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         LockedCase row = lock(id);
         mutationGuard.verifyUnchanged();
         requireAction("procurement_iqc_rejection:reverse");
-        if(request==null)throw validation("IQC闭环反向请求不能为空");
         String requestHash=commandHash("REVERSE",request);
         if(commandReplay(request.commandId(),id,"REVERSE",requestHash)){
             return detail(id);
@@ -1309,9 +1305,9 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         var events=com.uten.imp.common.finance.ProcurementIqcAmountSplit.events(em,inspectionItemId);
         if(events.isEmpty())throw conflict("IQC失败缺少追加式处置事件，禁止猜测金额");
         return new FailedAmounts(
-                money(com.uten.imp.common.finance.ProcurementIqcAmountSplit.failedSlices(
+                bookMoney(com.uten.imp.common.finance.ProcurementIqcAmountSplit.failedSlices(
                         receivedOriginal,receivedBase,events,expectedFailedBase)),
-                money(com.uten.imp.common.finance.ProcurementIqcAmountSplit.failedSlices(
+                bookMoney(com.uten.imp.common.finance.ProcurementIqcAmountSplit.failedSlices(
                         receivedLocal,receivedBase,events,expectedFailedBase)));
     }
 
@@ -1786,7 +1782,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                 : NativeValueConverters.toBigDecimal(value).stripTrailingZeros().toPlainString();
     }
 
-    private static BigDecimal money(BigDecimal value) {
+    private static BigDecimal bookMoney(BigDecimal value) {
         return com.uten.imp.common.util.FinancialExactAmount.canonicalMoney(value,"IQC金额");
     }
 

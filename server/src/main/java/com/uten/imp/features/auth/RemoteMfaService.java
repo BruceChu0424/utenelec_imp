@@ -19,6 +19,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -73,7 +75,7 @@ public class RemoteMfaService {
 
     public Status status() {
         AuthUser principal = staff();
-        State state = state(principal.getId(), false);
+        State state = loadState(principal.getId());
         var fresh = sessions.loadStaff(principal.getId(), principal.getSessionId(), principal.getId());
         AuthSessionService.SessionFacts facts = fresh.map(AuthSessionService.StaffState::session).orElse(null);
         if (facts == null || facts.revokedAt() != null) throw new ApiException(ErrorCode.UNAUTHORIZED);
@@ -93,7 +95,7 @@ public class RemoteMfaService {
         return transaction.execute(status -> {
             UserAccount user = lockUser(principal.getId());
             requireCurrentSession(principal);
-            State state = state(user.getId(), true);
+            State state = lockState(user.getId());
             requireUnlocked(state);
             if (state.enabledAt() != null) throw new ApiException(ErrorCode.CONFLICT, "已绑定动态验证码，请先在公司内网解除原绑定");
             String secret = Totp.newSecret();
@@ -115,7 +117,7 @@ public class RemoteMfaService {
         Attempt<Void> result = transaction.execute(status -> {
             UserAccount user = lockUser(principal.getId());
             requireCurrentSession(principal);
-            State state = state(user.getId(), true);
+            State state = lockState(user.getId());
             if (state.enabledAt() != null) return Attempt.denied(ErrorCode.CONFLICT);
             if (state.pendingSecret() == null || !principal.getSessionId().equals(state.pendingSession())
                     || !state.pendingExpiresAt().isAfter(sessions.now())) return Attempt.denied(ErrorCode.MFA_ENROLLMENT_EXPIRED);
@@ -143,7 +145,7 @@ public class RemoteMfaService {
         Attempt<TokenResponse> result = transaction.execute(status -> {
             UserAccount user = lockUser(userId);
             access.requireStaffAccess(user);
-            ErrorCode denied = verifyLocked(user, state(userId, true), code);
+            ErrorCode denied = verifyLocked(user, lockState(userId), code);
             if (denied != null) return Attempt.denied(denied);
             TokenResponse response = issueTokens.get();
             audit(user, "mfa_remote_login_verified", "success");
@@ -158,7 +160,7 @@ public class RemoteMfaService {
             UserAccount user = lockUser(principal.getId());
             access.requireStaffAccess(user);
             requireCurrentSession(principal);
-            ErrorCode denied = verifyLocked(user, state(user.getId(), true), code);
+            ErrorCode denied = verifyLocked(user, lockState(user.getId()), code);
             if (denied != null) return Attempt.denied(denied);
             Instant until = sessions.markMfaVerified(principal.getSessionId(), user.getId(), sessions.now());
             audit(user, "mfa_session_verified", "success");
@@ -174,7 +176,7 @@ public class RemoteMfaService {
             // Refresh/logout take token -> session locks. Do not hold the session while
             // waiting to revoke tokens: that would deadlock with an in-flight rotation.
             requireCurrentSessionSnapshot(principal);
-            ErrorCode denied = verifyLocked(user, state(user.getId(), true), code);
+            ErrorCode denied = verifyLocked(user, lockState(user.getId()), code);
             if (denied != null) return Attempt.denied(denied);
             refreshTokens.revokeAllByUserId(user.getId());
             // Logout may have won while we waited. A failed locked recheck must throw,
@@ -202,7 +204,7 @@ public class RemoteMfaService {
                 throw new ApiException(ErrorCode.FORBIDDEN);
             if (AuthSessionService.evaluate(actor.session(), AuthSessionService.idleTimeoutMinutes(actor.idleTimeoutRaw()), sessions.now())
                     != AuthSessionService.Verdict.ACTIVE) throw new ApiException(ErrorCode.UNAUTHORIZED);
-            state(userId, true);
+            lockState(userId);
             refreshTokens.revokeAllByUserId(userId);
             clearFactorAndSessions(userId);
             audit.logCommitted(principal.getId(), principal.getLoginAccount(), "mfa_admin_reset", "users",
@@ -248,14 +250,26 @@ public class RemoteMfaService {
         return locked == null ? ErrorCode.MFA_INVALID : ErrorCode.MFA_LOCKED;
     }
 
-    private State state(UUID userId, boolean lock) {
-        if (lock) jdbc.update("INSERT INTO staff_mfa(user_id) VALUES(:user) ON CONFLICT(user_id) DO NOTHING", params(userId));
-        List<State> rows = jdbc.query("SELECT * FROM staff_mfa WHERE user_id=:user" + (lock ? " FOR UPDATE" : ""), params(userId),
-                (rs, n) -> new State(rs.getString("secret_ciphertext"), instant(rs.getObject("enabled_at", OffsetDateTime.class)),
-                        rs.getString("pending_secret_ciphertext"), rs.getObject("pending_session_id", UUID.class),
-                        instant(rs.getObject("pending_expires_at", OffsetDateTime.class)), rs.getObject("last_accepted_step", Long.class),
-                        rs.getInt("failed_attempts"), instant(rs.getObject("locked_until", OffsetDateTime.class))));
+    /** Status projections never initialize a factor row or acquire a write lock. */
+    private State loadState(UUID userId) {
+        List<State> rows = jdbc.query("SELECT * FROM staff_mfa WHERE user_id=:user", params(userId),
+                (rs, n) -> stateRow(rs));
         return rows.isEmpty() ? null : rows.getFirst();
+    }
+
+    /** Factor commands initialize and lock their state after locking the account. */
+    private State lockState(UUID userId) {
+        jdbc.update("INSERT INTO staff_mfa(user_id) VALUES(:user) ON CONFLICT(user_id) DO NOTHING", params(userId));
+        List<State> rows = jdbc.query("SELECT * FROM staff_mfa WHERE user_id=:user FOR UPDATE", params(userId),
+                (rs, n) -> stateRow(rs));
+        return rows.isEmpty() ? null : rows.getFirst();
+    }
+
+    private static State stateRow(ResultSet rs) throws SQLException {
+        return new State(rs.getString("secret_ciphertext"), instant(rs.getObject("enabled_at", OffsetDateTime.class)),
+                rs.getString("pending_secret_ciphertext"), rs.getObject("pending_session_id", UUID.class),
+                instant(rs.getObject("pending_expires_at", OffsetDateTime.class)), rs.getObject("last_accepted_step", Long.class),
+                rs.getInt("failed_attempts"), instant(rs.getObject("locked_until", OffsetDateTime.class)));
     }
 
     private UserAccount lockUser(UUID id) {

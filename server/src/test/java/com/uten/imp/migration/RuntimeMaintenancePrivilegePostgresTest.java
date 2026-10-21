@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -32,13 +31,13 @@ class RuntimeMaintenancePrivilegePostgresTest {
         PG.start();
         var admin=new JdbcTemplate(new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword()));
         for(String name:List.of("uten_migrator","uten","maintenance_outsider"))
-            admin.execute("CREATE ROLE "+name+" LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT PASSWORD '"+PASSWORD+"'");
+            admin.execute(admin.queryForObject("SELECT format('CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT PASSWORD %L', CAST(? AS text), CAST(? AS text))", String.class, name, PASSWORD));
         admin.execute("ALTER DATABASE runtime_maintenance OWNER TO uten_migrator; ALTER SCHEMA public OWNER TO uten_migrator;"
                 +" REVOKE ALL ON DATABASE runtime_maintenance FROM PUBLIC; REVOKE ALL ON SCHEMA public FROM PUBLIC;"
                 +" GRANT CONNECT ON DATABASE runtime_maintenance TO uten,maintenance_outsider;"
                 +" GRANT USAGE ON SCHEMA public TO uten,maintenance_outsider");
         owner=db("uten_migrator");app=db("uten");outsider=db("maintenance_outsider");
-        var base=Flyway.configure().dataSource(PG.getJdbcUrl(),"uten_migrator",PASSWORD)
+        var base=com.uten.imp.testsupport.TestFlyway.configure().dataSource(PG.getJdbcUrl(),"uten_migrator",PASSWORD)
                 .locations("classpath:db/migration").target("624").load();
         base.migrate();
         originalResetBody=owner.queryForObject("SELECT prosrc FROM pg_catalog.pg_proc WHERE oid='public.business_data_reset()'::regprocedure",String.class).replace("\r\n","\n");
@@ -54,7 +53,7 @@ class RuntimeMaintenancePrivilegePostgresTest {
         // migration and every exercised runtime call below remain non-super.
         new JdbcTemplate(new DriverManagerDataSource(ownerDatabaseUrl,PG.getUsername(),PG.getPassword()))
                 .execute("REASSIGN OWNED BY uten_migrator TO uten_owner");
-        assertEquals(1,Flyway.configure().dataSource(PG.getJdbcUrl(),"uten_migrator",PASSWORD)
+        assertEquals(1,com.uten.imp.testsupport.TestFlyway.configure().dataSource(PG.getJdbcUrl(),"uten_migrator",PASSWORD)
                 .locations("classpath:db/migration").target("625").load().migrate().migrationsExecuted);
         owner.execute("""
             GRANT SELECT,INSERT,UPDATE ON public.system_settings,public.report_materialized_view_refresh_state TO uten;
@@ -101,7 +100,7 @@ class RuntimeMaintenancePrivilegePostgresTest {
     @Test void retainedOwnerEntriesCanInvokeTheNewMigratorOwnedPrivateHelper() throws Exception {
         var db=new JdbcTemplate(new DriverManagerDataSource(ownerDatabaseUrl,"uten_migrator",PASSWORD));
         assertEquals("uten_owner",db.queryForObject("SELECT proowner::regrole::text FROM pg_catalog.pg_proc WHERE oid='public.business_data_reset()'::regprocedure",String.class));
-        assertEquals(1,Flyway.configure().dataSource(ownerDatabaseUrl,"uten_migrator",PASSWORD)
+        assertEquals(1,com.uten.imp.testsupport.TestFlyway.configure().dataSource(ownerDatabaseUrl,"uten_migrator",PASSWORD)
                 .locations("classpath:db/migration").target("625").load().migrate().migrationsExecuted);
         assertEquals("uten_migrator",db.queryForObject("SELECT proowner::regrole::text FROM pg_catalog.pg_proc WHERE oid='public.fn_require_runtime_maintenance(boolean)'::regprocedure",String.class));
         assertFalse(db.queryForObject("SELECT pg_has_role('uten_owner','uten_migrator','MEMBER')",Boolean.class));

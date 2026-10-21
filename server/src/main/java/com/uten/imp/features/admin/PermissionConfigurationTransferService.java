@@ -164,7 +164,8 @@ public class PermissionConfigurationTransferService {
     }
 
     private Plan copyPlan(UUID targetId, CopyRequest request) {
-        if (request == null || request.sourceUserId() == null) throw invalid("缺少复制来源");
+        if (request == null) throw invalid("缺少复制来源");
+        if (request.sourceUserId() == null) throw invalid("缺少复制来源");
         Plan plan = new Plan();
         CopySnapshot source = copySnapshot(request.sourceUserId());
         if (!Objects.equals(source.fingerprint(),request.sourceFingerprint())) plan.issues.add("复制来源或权限配置已变化，请重新复制后预览");

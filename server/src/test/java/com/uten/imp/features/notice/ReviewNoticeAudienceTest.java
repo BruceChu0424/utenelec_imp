@@ -17,9 +17,9 @@ class ReviewNoticeAudienceTest {
     void shipmentFinanceCardsRequireCurrentPageViewAndEitherDecisionPermission() {
         String event = "SALES_SHIPMENT_PENDING_FINANCE_AUDIT";
         for (String action : List.of("sales_shipment_finance:approve", "sales_shipment_finance:reject")) {
-            assertThat(ReviewNoticeAudience.eligible(event, Set.of("notice:read", action), Set.of("DEPT_FIN"))).isFalse();
-            assertThat(ReviewNoticeAudience.eligible(event, Set.of("notice:read", "sales_shipment_finance:view", action), Set.of("OTHER"))).isTrue();
-            assertThat(ReviewNoticeAudience.eligible(event, Set.of("notice:read", "sales_shipment_finance:view"), Set.of("OTHER"))).isFalse();
+            assertThat(ReviewNoticeAudience.eligible(event, Set.of("notice:read", action))).isFalse();
+            assertThat(ReviewNoticeAudience.eligible(event, Set.of("notice:read", "sales_shipment_finance:view", action))).isTrue();
+            assertThat(ReviewNoticeAudience.eligible(event, Set.of("notice:read", "sales_shipment_finance:view"))).isFalse();
         }
     }
 
@@ -45,10 +45,7 @@ class ReviewNoticeAudienceTest {
         verifyNoMoreInteractions(owners);
     }
 
-    /**
-     * ADR-149: 仓库类通知池按仓纳入了部门外登记的仓库负责人(如财务部的人负责五金仓库), 弹卡资格同口径,
-     * 否则发给他的待办只躺在通知列表里不弹卡。没登记负责人的部门外的人仍然不弹。
-     */
+    /** Action eligibility needs no organization query; PostgreSQL routing tests cover the separate object responsibility. */
     @Test
     void warehouseEventEligibilityFollowsActionsWhileObjectsUseTheirSeparateResponsibilityGate() {
         var permissions = Set.of("notice:read", "warehouse_sales_outbound:view", "warehouse_sales_outbound:execute", "warehouse_iqc_stock_in:view",
@@ -57,104 +54,90 @@ class ReviewNoticeAudienceTest {
         var events = List.of("SALES_SHIPMENT_PENDING_PICK", "PROCUREMENT_IQC_STOCK_IN_PENDING", "PRODUCTION_DRAW_PENDING",
                 "PRODUCTION_MATERIAL_DISCOVERY_PENDING", "PROCUREMENT_FINANCE_APPROVED");
         for (String event : events) {
-            assertThat(ReviewNoticeAudience.eligible(event, permissions, Set.of("DEPT_FIN"), true)).as(event).isTrue();
-            assertThat(ReviewNoticeAudience.eligible(event, permissions, Set.of("DEPT_FIN"), false)).as(event).isTrue();
-            assertThat(ReviewNoticeAudience.eligible(event, permissions, Set.of("SUB_WH"), false)).as(event).isTrue();
+            assertThat(ReviewNoticeAudience.eligible(event, permissions)).as(event).isTrue();
         }
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         UUID employee = UUID.randomUUID();
         UUID account = UUID.randomUUID();
         var keeper = new AuthUser(account, employee, "finance-keeper", permissions, false, true, false);
-        when(jdbc.queryForList(anyString(), eq(String.class), eq(employee), eq(employee))).thenReturn(List.of("DEPT_FIN"));
-        when(jdbc.queryForObject(contains("fn_warehouse_responsible_user_ids"), eq(Boolean.class), eq(account)))
-                .thenReturn(true);
-        assertThat(new ReviewNoticeAudience(jdbc, mock(com.uten.imp.security.OwnerVisibility.class), mock(com.uten.imp.features.auth.PermissionResolver.class)).eligibleEvents(keeper)).containsAll(events);
-        when(jdbc.queryForObject(contains("fn_warehouse_responsible_user_ids"), eq(Boolean.class), eq(account)))
-                .thenReturn(false);
         assertThat(new ReviewNoticeAudience(jdbc, mock(com.uten.imp.security.OwnerVisibility.class), mock(com.uten.imp.features.auth.PermissionResolver.class)).eligibleEvents(keeper)).containsAll(events);
         verifyNoInteractions(jdbc);
     }
 
     @Test
-    void productionChangesFollowCurrentApprovalPermissionAcrossDepartments() {
+    void productionChangesRequireCurrentApprovalAndNoticePermissions() {
         var events=Set.of("PRODUCTION_OVERPRODUCTION_RATE_SUBMITTED", "PRODUCTION_MATERIAL_INCREMENT_SUBMITTED");
         var permissions=Set.of("notice:read", "production_plan:approve");
         for(String event:events) {
             assertThat(ReviewNoticeCatalog.of(event)).isPresent();
-            assertThat(ReviewNoticeAudience.eligible(event, permissions, Set.of("SUB_PLAN"))).as(event).isTrue();
-            assertThat(ReviewNoticeAudience.eligible(event, Set.of("notice:read", "production_plan:view"), Set.of("SUB_PLAN"))).isFalse();
-            assertThat(ReviewNoticeAudience.eligible(event, permissions, Set.of("SUB_WH"))).isTrue();
-            assertThat(ReviewNoticeAudience.eligible(event, Set.of("production_plan:approve"), Set.of("SUB_PLAN"))).isFalse();
+            assertThat(ReviewNoticeAudience.eligible(event, permissions)).as(event).isTrue();
+            assertThat(ReviewNoticeAudience.eligible(event, Set.of("notice:read", "production_plan:view"))).isFalse();
+            assertThat(ReviewNoticeAudience.eligible(event, Set.of("production_plan:approve"))).isFalse();
         }
         JdbcTemplate jdbc=mock(JdbcTemplate.class);
         UUID employee=UUID.randomUUID();
         var user=new AuthUser(UUID.randomUUID(),employee,"planner",permissions,false,true,false);
-        when(jdbc.queryForList(anyString(),eq(String.class),eq(employee),eq(employee))).thenReturn(List.of("SUB_PLAN"));
         assertThat(new ReviewNoticeAudience(jdbc, mock(com.uten.imp.security.OwnerVisibility.class), mock(com.uten.imp.features.auth.PermissionResolver.class)).eligibleEvents(user)).containsAll(events);
+        verifyNoInteractions(jdbc);
     }
     @Test
     void workshopMaterialEventsReachOnlyThePeopleWhoCanStillHandleThem() {
-        Set<String> none = Set.of();
         // 领料 / 退料待办: 仓库发料人。
         for (String event : List.of("WORKSHOP_MATERIAL_REQUISITION_PENDING", "WORKSHOP_MATERIAL_RETURN_PENDING")) {
             assertThat(ReviewNoticeCatalog.of(event)).isPresent();
             assertThat(ReviewNoticeAudience.eligible(event,
-                    Set.of("notice:read", "workshop_material:view", "workshop_material:issue"), none)).as(event).isTrue();
+                    Set.of("notice:read", "workshop_material:view", "workshop_material:issue"))).as(event).isTrue();
             assertThat(ReviewNoticeAudience.eligible(event,
-                    Set.of("notice:read", "workshop_material:view", "workshop_material:request"), Set.of("DEPT_PROD")))
+                    Set.of("notice:read", "workshop_material:view", "workshop_material:request")))
                     .as(event).isFalse();
             assertThat(ReviewNoticeAudience.eligible(event,
-                    Set.of("workshop_material:view", "workshop_material:issue"), none)).as(event).isFalse();
+                    Set.of("workshop_material:view", "workshop_material:issue"))).as(event).isFalse();
         }
         // 未审报工拦住结算: 报工审核人, 或删掉 / 改好自己草稿的制单人。
         String report = "WORKSHOP_MATERIAL_CLOSE_BLOCKED_REPORT";
         assertThat(ReviewNoticeAudience.eligible(report,
-                Set.of("notice:read", "production_daily_report:view", "production_daily_report:approve"), none)).isTrue();
+                Set.of("notice:read", "production_daily_report:view", "production_daily_report:approve"))).isTrue();
         assertThat(ReviewNoticeAudience.eligible(report,
-                Set.of("notice:read", "production_daily_report:view", "production_daily_report:delete"), none)).isTrue();
+                Set.of("notice:read", "production_daily_report:view", "production_daily_report:delete"))).isTrue();
         assertThat(ReviewNoticeAudience.eligible(report,
-                Set.of("notice:read", "production_daily_report:create"), none)).isFalse();
+                Set.of("notice:read", "production_daily_report:create"))).isFalse();
         assertThat(ReviewNoticeAudience.eligible(report,
-                Set.of("notice:read", "production_daily_report:view"), none)).isFalse();
+                Set.of("notice:read", "production_daily_report:view"))).isFalse();
         assertThat(ReviewNoticeAudience.eligible(report,
-                Set.of("notice:read", "workshop_material:view", "workshop_material:issue"), none)).isFalse();
+                Set.of("notice:read", "workshop_material:view", "workshop_material:issue"))).isFalse();
         // 缺单个重量: BOM 维护人。
         String weight = "WORKSHOP_MATERIAL_CLOSE_BLOCKED_WEIGHT";
         assertThat(ReviewNoticeAudience.eligible(weight,
-                Set.of("notice:read", "goods:view", "goods:bom:edit"), none)).isTrue();
+                Set.of("notice:read", "goods:view", "goods:bom:edit"))).isTrue();
         assertThat(ReviewNoticeAudience.eligible(weight,
-                Set.of("notice:read", "goods:view", "goods:bom:view"), none)).isFalse();
+                Set.of("notice:read", "goods:view", "goods:bom:view"))).isFalse();
         // 有理论没进过料: 仓库发料人或该车间的认料人；具体车间范围由发卡侧约束。
         String stock = "WORKSHOP_MATERIAL_CLOSE_BLOCKED_STOCK";
         assertThat(ReviewNoticeAudience.eligible(stock,
-                Set.of("notice:read", "workshop_material:view", "workshop_material:issue"), Set.of("SUB_WH"))).isTrue();
+                Set.of("notice:read", "workshop_material:view", "workshop_material:issue"))).isTrue();
         assertThat(ReviewNoticeAudience.eligible(stock,
-                Set.of("notice:read", "workshop_material:view", "workshop_material:choose"), Set.of("DEPT_PROD"))).isTrue();
+                Set.of("notice:read", "workshop_material:view", "workshop_material:choose"))).isTrue();
         assertThat(ReviewNoticeAudience.eligible(stock,
-                Set.of("notice:read", "workshop_material:view", "workshop_material:choose"), Set.of("SUB_WH"))).isTrue();
-        assertThat(ReviewNoticeAudience.eligible(stock,
-                Set.of("notice:read", "workshop_material:view"), Set.of("SUB_WH", "DEPT_PROD"))).isFalse();
+                Set.of("notice:read", "workshop_material:view"))).isFalse();
         // 结算连续失败: 设置负责人。
         String failing = "WORKSHOP_MATERIAL_CLOSE_FAILING";
         assertThat(ReviewNoticeAudience.eligible(failing,
-                Set.of("notice:read", "workshop_material:view", "workshop_material:setup"), none)).isTrue();
+                Set.of("notice:read", "workshop_material:view", "workshop_material:setup"))).isTrue();
         assertThat(ReviewNoticeAudience.eligible(failing,
-                Set.of("notice:read", "workshop_material:view", "workshop_material:count"), none)).isFalse();
+                Set.of("notice:read", "workshop_material:view", "workshop_material:count"))).isFalse();
     }
 
     @Test
-    void everyRegisteredEventRejectsViewOnlyAndDepartmentOnlyRecipients() {
+    void everyRegisteredEventRejectsViewOnlyAndMissingActionRecipients() {
         Set<String> views = Set.of("notice:read", "sales_order_finance:view", "sales_quote_finance:view",
                 "finance_order_approval:view", "procurement_inspection:view",
                 "production_material_analysis:view", "production_execution:view",
                 "warehouse_iqc_stock_in:view", "stock_doc:view", "warehouse_inbound:view",
                 "sales_order:view", "procurement_iqc_rejection:view",
                 "workshop_material:view", "production_daily_report:view", "goods:view");
-        Set<String> departments = Set.of("DEPT_FIN", "SUB_PLAN", "DEPT_PROD",
-                "SUB_WH", "DEPT_QA", "SUB_PURCHASE", "DEPT_SALES", "DEPT_RAIL");
         for (String event : ReviewNoticeCatalog.events()) {
-            assertThat(ReviewNoticeAudience.eligible(event, views, departments)).as(event).isFalse();
-            assertThat(ReviewNoticeAudience.eligible(event, Set.of("notice:read"), departments)).as(event).isFalse();
+            assertThat(ReviewNoticeAudience.eligible(event, views)).as(event).isFalse();
+            assertThat(ReviewNoticeAudience.eligible(event, Set.of("notice:read"))).as(event).isFalse();
         }
     }
 
@@ -188,24 +171,21 @@ class ReviewNoticeAudienceTest {
     }
 
     @Test
-    void financeRequiresCurrentViewAndExactActionAcrossDepartments() {
+    void financeRequiresCurrentViewAndExactGrantedActionWithoutOrganizationQueries() {
         Set<String> permissions = Set.of("notice:read", "sales_order_finance:view", "sales_order_finance:confirm");
         assertThat(ReviewNoticeAudience.eligible("SALES_ORDER_PENDING_FINANCE_CONFIRM",
-                permissions, Set.of("DEPT_FIN"))).isTrue();
-        assertThat(ReviewNoticeAudience.eligible("SALES_ORDER_PENDING_FINANCE_CONFIRM",
-                permissions, Set.of("GM"))).isTrue();
+                permissions)).isTrue();
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         UUID employeeId = UUID.randomUUID();
         AuthUser user = new AuthUser(UUID.randomUUID(), employeeId, "test",
                 permissions, false, true, true);
-        when(jdbc.queryForList(anyString(), eq(String.class), eq(employeeId), eq(employeeId)))
-                .thenReturn(List.of("GM"));
         var resolver = mock(com.uten.imp.features.auth.PermissionResolver.class);
         when(resolver.grantedPermsOf(user.getId())).thenReturn(permissions);
         var audience = new ReviewNoticeAudience(jdbc, mock(com.uten.imp.security.OwnerVisibility.class), resolver);
         assertThat(audience.eligibleEvents(user)).containsExactly("SALES_ORDER_PENDING_FINANCE_CONFIRM");
         when(resolver.grantedPermsOf(user.getId())).thenReturn(Set.of("notice:read", "sales_order_finance:view"));
         assertThat(audience.eligibleEvents(user)).isEmpty();
+        verifyNoInteractions(jdbc);
     }
 
     @Test
@@ -220,13 +200,11 @@ class ReviewNoticeAudienceTest {
         assertThat(ReviewNoticeCatalog.isReviewEvent("SALES_QUOTE_FINANCE_CONFIRMED")).isFalse();
         assertThat(ReviewNoticeCatalog.isReviewEvent("SALES_QUOTE_FINANCE_REOPENED")).isFalse();
         Set<String> reviewer = Set.of("notice:read", "sales_quote_finance:view", "sales_quote_finance:confirm");
-        assertThat(ReviewNoticeAudience.eligible(event, reviewer, Set.of("DEPT_FIN"))).isTrue();
-        assertThat(ReviewNoticeAudience.eligible(event, reviewer, Set.of("DEPT_SALES"))).isTrue();
+        assertThat(ReviewNoticeAudience.eligible(event, reviewer)).isTrue();
         assertThat(ReviewNoticeAudience.eligible(event,
-                Set.of("notice:read", "sales_quote_finance:view"), Set.of("DEPT_FIN"))).isFalse();
+                Set.of("notice:read", "sales_quote_finance:view"))).isFalse();
         assertThat(ReviewNoticeAudience.eligible(event,
-                Set.of("notice:read", "sales_order_finance:view", "sales_order_finance:confirm"),
-                Set.of("DEPT_FIN"))).isFalse();
+                Set.of("notice:read", "sales_order_finance:view", "sales_order_finance:confirm"))).isFalse();
     }
 
     @Test
@@ -247,13 +225,13 @@ class ReviewNoticeAudienceTest {
     void decompositionRequiresCreatingTheTargetOrderAndShortDeliveryHasAnExplicitActionContract() {
         var permissions = new java.util.HashSet<>(Set.of("notice:read", "subcontract_application:view",
                 "subcontract_order:decompose"));
-        assertThat(ReviewNoticeAudience.eligible("SUBCONTRACT_ORDER_KIT_READY", permissions, Set.of("DEPT_FIN"))).isFalse();
+        assertThat(ReviewNoticeAudience.eligible("SUBCONTRACT_ORDER_KIT_READY", permissions)).isFalse();
         permissions.add("subcontract_order:create");
-        assertThat(ReviewNoticeAudience.eligible("SUBCONTRACT_ORDER_KIT_READY", permissions, Set.of("DEPT_FIN"))).isTrue();
+        assertThat(ReviewNoticeAudience.eligible("SUBCONTRACT_ORDER_KIT_READY", permissions)).isTrue();
         for (String event : List.of("SUBCONTRACT_SHORT_DELIVERY_DETECTED", "SUBCONTRACT_SHORT_DELIVERY_WAIT_OVERDUE")) {
-            assertThat(ReviewNoticeAudience.eligible(event, Set.of("notice:read", "subcontract_order:view"), Set.of())).isFalse();
+            assertThat(ReviewNoticeAudience.eligible(event, Set.of("notice:read", "subcontract_order:view"))).isFalse();
             assertThat(ReviewNoticeAudience.eligible(event, Set.of("notice:read", "subcontract_order:view",
-                    "subcontract_short_delivery:decide"), Set.of())).isTrue();
+                    "subcontract_short_delivery:decide"))).isTrue();
         }
     }
 

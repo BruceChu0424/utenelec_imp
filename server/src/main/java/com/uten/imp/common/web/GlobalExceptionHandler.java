@@ -88,19 +88,18 @@ public class GlobalExceptionHandler {
     // 启用 throw-exception-if-no-handler-found 时抛 NoHandlerFoundException。两者都应收敛为 404，
     // 否则会被下面的 Exception 兜底吞成 500（API 后端无 SPA 转发，404 是正确语义）。
     @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
-    public ResponseEntity<ApiError> handleRouteNotFound(Exception ex) {
+    public ResponseEntity<ApiError> handleRouteNotFound() {
         return ResponseEntity.status(404).body(ApiError.of(ErrorCode.NOT_FOUND, null));
     }
 
     // 路径存在但方法不对 (如已删除的写接口只剩 GET)：405, 不被兜底吞成 500。
     @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
-    public ResponseEntity<ApiError> handleMethodNotAllowed(
-            org.springframework.web.HttpRequestMethodNotSupportedException ex) {
+    public ResponseEntity<ApiError> handleMethodNotAllowed() {
         return ResponseEntity.status(405).body(ApiError.of(ErrorCode.METHOD_NOT_ALLOWED, null));
     }
 
     @ExceptionHandler(JsonBodyTooLargeException.class)
-    public ResponseEntity<ApiError> handleJsonBodyTooLarge(JsonBodyTooLargeException ex) {
+    public ResponseEntity<ApiError> handleJsonBodyTooLarge() {
         return ResponseEntity.status(ErrorCode.PAYLOAD_TOO_LARGE.getHttpStatus())
                 .body(ApiError.of(ErrorCode.PAYLOAD_TOO_LARGE, null));
     }
@@ -109,8 +108,8 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleUnreadableBody(HttpMessageNotReadableException ex) {
         Throwable cause = ex;
         while (cause != null) {
-            if (cause instanceof JsonBodyTooLargeException tooLarge) {
-                return handleJsonBodyTooLarge(tooLarge);
+            if (cause instanceof JsonBodyTooLargeException) {
+                return handleJsonBodyTooLarge();
             }
             cause = cause.getCause();
         }
@@ -119,30 +118,30 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
-    public ResponseEntity<ApiError> handleUnsupportedMediaType(HttpMediaTypeNotSupportedException ex) {
+    public ResponseEntity<ApiError> handleUnsupportedMediaType() {
         return ResponseEntity.status(ErrorCode.UNSUPPORTED_MEDIA_TYPE.getHttpStatus())
                 .body(ApiError.of(ErrorCode.UNSUPPORTED_MEDIA_TYPE, null));
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
-    public ResponseEntity<ApiError> handleMultipartTooLarge(MaxUploadSizeExceededException ex) {
+    public ResponseEntity<ApiError> handleMultipartTooLarge() {
         return ResponseEntity.status(ErrorCode.PAYLOAD_TOO_LARGE.getHttpStatus())
                 .body(ApiError.of(ErrorCode.PAYLOAD_TOO_LARGE, null));
     }
 
     @ExceptionHandler({MissingServletRequestPartException.class, MultipartException.class})
-    public ResponseEntity<ApiError> handleMalformedMultipart(Exception ex) {
+    public ResponseEntity<ApiError> handleMalformedMultipart() {
         return ResponseEntity.status(ErrorCode.MALFORMED_REQUEST.getHttpStatus())
                 .body(ApiError.of(ErrorCode.MALFORMED_REQUEST, "上传内容缺失或格式不正确"));
     }
 
     @ExceptionHandler(AuthenticationException.class)
-    public ResponseEntity<ApiError> handleAuth(AuthenticationException ex) {
+    public ResponseEntity<ApiError> handleAuth() {
         return ResponseEntity.status(401).body(ApiError.of(ErrorCode.UNAUTHORIZED, null));
     }
 
     @ExceptionHandler(AccessDeniedException.class)
-    public ResponseEntity<ApiError> handleAccessDenied(AccessDeniedException ex) {
+    public ResponseEntity<ApiError> handleAccessDenied() {
         return ResponseEntity.status(403).body(ApiError.of(ErrorCode.FORBIDDEN, null));
     }
 
@@ -173,7 +172,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({
             org.springframework.dao.OptimisticLockingFailureException.class,
             jakarta.persistence.OptimisticLockException.class})
-    public ResponseEntity<ApiError> handleOptimisticLock(Exception ex) {
+    public ResponseEntity<ApiError> handleOptimisticLock() {
         return ResponseEntity.status(409)
                 .body(ApiError.of(ErrorCode.CONFLICT, "该记录已被他人修改，请刷新后重试"));
     }
@@ -534,8 +533,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AsyncRequestNotUsableException.class)
     public void handleClientAbortedResponse(
             AsyncRequestNotUsableException ex, HttpServletRequest request) {
-        log.debug("客户端中断响应（刷新/热重启/取消请求）: {} {}",
-                request.getMethod(), request.getRequestURI());
+        log.debug("客户端中断响应（刷新/热重启/取消请求） type={}: {} {}",
+                ex.getClass().getSimpleName(),
+                com.uten.imp.common.util.LogValue.singleLine(request.getMethod()),
+                com.uten.imp.common.util.LogValue.singleLine(request.getRequestURI()));
     }
 
     @ExceptionHandler(Exception.class)

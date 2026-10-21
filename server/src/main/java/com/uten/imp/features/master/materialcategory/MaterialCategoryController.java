@@ -51,7 +51,7 @@ public class MaterialCategoryController {
 
     @GetMapping("/{id}/delete-preview")
     @PreAuthorize("hasAuthority('material_category:view')")
-    public MaterialCategoryDeletePreview deletePreview(@PathVariable UUID id) {
+    public MaterialCategoryDeletePreview getDeletionPreview(@PathVariable UUID id) {
         return service.deletePreview(id);
     }
 

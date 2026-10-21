@@ -170,7 +170,7 @@ class ReviewPendingLoginPopupPostgresTest {
 
     @Test
     void resolvedAndDeletedAndOtherUsersCardsStaySilent() {
-        Notice resolved = reviewCard(ME, Instant.now(), null);
+        reviewCard(ME, Instant.now(), null);
         Notice deleted = reviewCard(ME, null, null);
         state(deleted.getId(), ME, s -> s.setDeletedAt(Instant.now()));
         reviewCard(OTHER, null, null);

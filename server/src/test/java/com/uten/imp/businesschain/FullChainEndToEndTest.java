@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.BoundTestSql;
+
 import com.uten.imp.support.DailyReportApproveRequests;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
@@ -2070,7 +2072,7 @@ class FullChainEndToEndTest {
         materialReturnRequests.cancel(plan,beforeStart.documentId(),
                 new com.uten.imp.features.stock.allocation.dto.ProductionMaterialReturnRequest.Cancel("surplus-before-start-cancel","本次暂留待生产，撤回未实收申请"));
         assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM production_execution_segment_events WHERE execution_segment_id=? AND action='START'",Integer.class,segment));
-        var ready=executionSegmentService.list(plan).stream().filter(row->row.id().equals(segment)).findFirst().orElseThrow();
+        assertTrue(executionSegmentService.list(plan).stream().anyMatch(row->row.id().equals(segment)));
         confirmFullKitRoute(plan, segment);
         executionSegmentService.start(plan,segment,new SegmentTransitionRequest(jdbc.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,segment),"surplus-start-production"));
         UUID worker=createUserWithPerms(w,"surplus-worker","production_execution:view","production_material:settle");
@@ -2836,7 +2838,7 @@ class FullChainEndToEndTest {
                 .filter(segment -> segment.id().equals(segmentId))
                 .findFirst()
                 .orElseThrow();
-        ExecutionSegmentView assigned = executionSegmentService.assign(
+        executionSegmentService.assign(
                 plan.planId(), segmentId,
                 new SegmentAssignmentRequest(
                         current.lockVersion(),
@@ -2845,7 +2847,7 @@ class FullChainEndToEndTest {
                         LocalDate.of(2026, 8, 29),
                         LocalDate.of(2026, 8, 30)));
         confirmFullKitRoute(plan.planId(), segmentId);
-        ExecutionSegmentView dispatched = executionSegmentService.dispatch(
+        executionSegmentService.dispatch(
                 plan.planId(), segmentId,
                 new SegmentTransitionRequest(
                         jdbc.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,segmentId),
@@ -7600,7 +7602,7 @@ class FullChainEndToEndTest {
                 .filter(segment -> segment.id().equals(segmentId))
                 .findFirst()
                 .orElseThrow();
-        ExecutionSegmentView assigned = executionSegmentService.assign(
+        executionSegmentService.assign(
                 planId,
                 segmentId,
                 new SegmentAssignmentRequest(
@@ -7626,7 +7628,7 @@ class FullChainEndToEndTest {
                 """, UUID.class, segmentId, orderItemId);
 
         confirmFullKitRoute(planId, segmentId);
-        ExecutionSegmentView dispatched = executionSegmentService.dispatch(
+        executionSegmentService.dispatch(
                 planId,
                 segmentId,
                 new SegmentTransitionRequest(
@@ -12454,7 +12456,7 @@ class FullChainEndToEndTest {
                     """,w.goodsB()).signum()<0,"Allocated correction remains visible as pending reallocation until the worker completes");
             operatorContext=SecurityContextHolder.getContext();SecurityContextHolder.clearContext();
             try{drainCosts(w);}finally{SecurityContextHolder.setContext(operatorContext);}
-            expectedCogs-=Integer.parseInt(restoredQty)*10;
+            expectedCogs-=com.uten.imp.testsupport.FixtureNumbers.integer(restoredQty)*10;
             assertEquals(0,bigDecimalFor("SELECT sum(node.owned_value_local) FROM stock_value_nodes node JOIN stock_value_pools pool ON pool.id=node.pool_id WHERE pool.goods_id=? AND node.owner_kind='COGS'",w.goodsA())
                     .compareTo(BigDecimal.valueOf(expectedCogs)));
         }
@@ -12511,7 +12513,7 @@ class FullChainEndToEndTest {
         request.setIdempotencyKey("explicit-fixture-issue-"+planId);
         request.setPreviewFingerprint(preview.fingerprint());
         request.setGeneratePurchaseRequest(false);
-        PlanningPackageResult issued = planningPackageService.confirm(planId,request);
+        planningPackageService.confirm(planId,request);
 
         confirmFullKitRoutes(planId);
         var preparedSegments = executionSegmentService.list(planId);
@@ -12555,7 +12557,6 @@ class FullChainEndToEndTest {
         line.setUnitRate(BigDecimal.ONE);
         line.setQty(new BigDecimal(qty));
         line.setPrice(new BigDecimal("100"));
-        BigDecimal amt = new BigDecimal(qty).multiply(new BigDecimal("100"));
         line.setDiscount(BigDecimal.ONE);
         req.setItems(List.of(line));
         return req;
@@ -12672,7 +12673,7 @@ class FullChainEndToEndTest {
     /** V710 起 ZERO_MATERIAL+DIRECT_MAKE 叶段开工前须声明真实物料来源: 申报物料既不能是
      * 本段产出也不能成环, 就地新建无 BOM 的中性采购料; 零价自投保持老夹具「零成本产出」
      * 的价值前提(OTHER_IN +qty 零价 → 领料出库 -qty → 净库存不变)。 */
-    private void declareAndIssueSelfInput(World w, UUID segmentId, UUID goodsId) {
+    private void declareAndIssueSelfInput(World w, UUID segmentId) {
         BigDecimal planned = jdbc.queryForObject(
                 "SELECT planned_qty FROM production_execution_segments WHERE id=?", BigDecimal.class, segmentId);
         UUID neutral = UUID.randomUUID();
@@ -12779,7 +12780,7 @@ class FullChainEndToEndTest {
                     "SELECT fn_material_discovery_pending(?)", Boolean.class, startedSegmentId))) {
                 assertNotNull(selfInputGoodsId,
                         "discovery-pending leaf fixture must declare its real material");
-                declareAndIssueSelfInput(w, startedSegmentId, selfInputGoodsId);
+                declareAndIssueSelfInput(w, startedSegmentId);
             }
             executionSegmentService.start(
                     planId, startedSegmentId,
@@ -13159,7 +13160,7 @@ class FullChainEndToEndTest {
         jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
             try (var statement = connection.createStatement()) {
                 statement.execute("SET session_replication_role = replica");
-                statement.execute("UPDATE warehouses SET status='禁用' WHERE id='" + firstWarehouse + "'");
+                BoundTestSql.execute(statement, "UPDATE warehouses SET status='禁用' WHERE id=?", firstWarehouse);
                 statement.execute("SET session_replication_role = origin");
             }
             return null;
@@ -13496,7 +13497,6 @@ class FullChainEndToEndTest {
         line.setDiscount(BigDecimal.ONE);
         line.setUnitId(w.unitId());
         line.setUnitRate(BigDecimal.ONE);
-        BigDecimal amount = new BigDecimal(qty).multiply(new BigDecimal(price));
         req.setItems(List.of(line));
         return req;
     }

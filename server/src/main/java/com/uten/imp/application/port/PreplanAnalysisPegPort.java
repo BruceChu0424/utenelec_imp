@@ -185,7 +185,7 @@ public interface PreplanAnalysisPegPort {
      * been released by package cancellation or receipt-driven segment unwind.
      */
     void restorePlanDemandTransfers(
-            Collection<UUID> formalReservationIds, String reason);
+            Collection<UUID> formalReservationIds);
 
     /**
      * 在任何计划/计划包行锁之前，按来源物料分析预锁 active 节点与仍有效归属的

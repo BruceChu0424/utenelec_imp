@@ -41,9 +41,8 @@ public class StockDocIssueBatchRequest {
 
     /** Missing/1 preserves the original command. 2 freezes the complete review returned by issue-batch/review. */
     private Integer protocolVersion;
-    @Valid
     @Size(max = MAX_DOCUMENTS)
-    private List<DocumentReview> reviews;
+    private List<@Valid DocumentReview> reviews;
 
     public record DocumentReview(@NotNull UUID docId,
                                 @NotBlank @jakarta.validation.constraints.Pattern(regexp = "[0-9a-f]{64}")
@@ -53,9 +52,8 @@ public class StockDocIssueBatchRequest {
      * 逐行实称重量(选填, ADR-135): 领料行 id -> 本次出库的实称重量(千克)与「数量按称重推算」标记。
      * 行必须属于本批所选领料单; 本次没有剩余可出的行忽略其重量。
      */
-    @Valid
     @Size(max = RequestLimits.DOCUMENT_LINES, message = "逐行重量最多 500 行")
-    private List<ItemWeight> weights;
+    private List<@Valid ItemWeight> weights;
 
     /** 一行领料的本次实称重量(千克, 空或 0 = 没称)。 */
     public record ItemWeight(

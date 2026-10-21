@@ -369,8 +369,8 @@ class ProcurementIqcRejectionServiceContractTest {
                 mock(com.uten.imp.application.port.ProcurementInventoryValuePort.class));
         org.springframework.test.util.ReflectionTestUtils.setField(service, "taskAudience",
                 new com.uten.imp.application.port.TaskAudiencePort() {
-                    @Override public <T> T read(java.util.function.Supplier<T> work) { return work.get(); }
-                    @Override public <T> T browsingRead(java.util.function.Supplier<T> work) { return work.get(); }
+                    @Override public <T> T read(com.uten.imp.application.port.TaskAudiencePort.ReadQuery<T> work) { return work.read(); }
+                    @Override public <T> T browsingRead(com.uten.imp.application.port.TaskAudiencePort.ReadQuery<T> work) { return work.read(); }
                 });
         return service;
     }

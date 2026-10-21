@@ -90,6 +90,10 @@ public class AiDocKnowledge {
      */
     public AiDocKnowledge() {
         this.ready = new java.util.concurrent.CompletableFuture<>();
+    }
+
+    @jakarta.annotation.PostConstruct
+    void initializeIndex() {
         Thread builder = new Thread(() -> {
             try {
                 Loaded loaded = loadClasspath();

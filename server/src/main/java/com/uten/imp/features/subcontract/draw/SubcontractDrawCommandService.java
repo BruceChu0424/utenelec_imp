@@ -91,7 +91,10 @@ public class SubcontractDrawCommandService {
 
     @Transactional
     public DrawSubmitResult submit(DrawSubmitRequest request) {
-        if (request == null || request.idempotencyKey() == null
+        if (request == null) {
+            throw validation("领料提交的操作编号缺失或不正确，请重新打开领料页后再提交");
+        }
+        if (request.idempotencyKey() == null
                 || !IDEMPOTENCY_KEY.matcher(request.idempotencyKey()).matches()) {
             throw validation("领料提交的操作编号缺失或不正确，请重新打开领料页后再提交");
         }

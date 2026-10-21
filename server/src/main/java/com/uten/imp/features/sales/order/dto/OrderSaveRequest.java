@@ -66,10 +66,9 @@ public class OrderSaveRequest {
     @Valid
     private com.uten.imp.features.sales.SalesAiIntakeRequest aiIntake;
 
-    @Valid
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<OrderItemLine> items;
+    private List<@Valid OrderItemLine> items;
 
     public List<OrderItemLine> getItems() {
         return items == null ? null : java.util.Collections.unmodifiableList(items);

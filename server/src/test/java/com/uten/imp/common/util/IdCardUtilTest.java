@@ -142,7 +142,8 @@ class IdCardUtilTest {
 
     private static void assertProblem(String value, String code, String message) {
         IdCardProblem problem = IdCardUtil.check(value);
-        assertEquals(code, problem == null ? null : problem.code(), String.valueOf(value));
+        java.util.Objects.requireNonNull(problem, "expected ID card validation problem for " + value);
+        assertEquals(code, problem.code(), String.valueOf(value));
         assertEquals(message, problem.message(), String.valueOf(value));
         assertFalse(problem.message().contains("\uFF08"), "新增文案括号必须半角");
     }

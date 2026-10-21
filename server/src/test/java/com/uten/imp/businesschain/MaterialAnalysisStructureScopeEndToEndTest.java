@@ -385,7 +385,7 @@ class MaterialAnalysisStructureScopeEndToEndTest {
                         service, "qualifiedOwnedStock", view.analysisId(), refs);
                 assertNotNull(owned); assertTrue(owned.isEmpty());
                 assertNotNull(org.springframework.test.util.ReflectionTestUtils.invokeMethod(
-                        service, "availability", view.analysisId(), scenario.world().warehouseId(), expanded, sources));
+                        service, "availability", view.analysisId(), scenario.world().warehouseId(), expanded));
             } finally { ProductionJdbcMeasurement.end(); }
             assertTrue(sample.jdbcCalls >= 2, "Both actual entitlement and stock-availability queries must execute");
             assertTrue(sample.maxPreparedParameterIndex <= 32,

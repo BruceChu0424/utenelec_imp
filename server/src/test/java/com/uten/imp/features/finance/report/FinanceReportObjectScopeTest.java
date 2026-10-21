@@ -168,7 +168,7 @@ class FinanceReportObjectScopeTest {
         service.receiptDetail(null, null, null, null, from, to, null,
                 Map.of(), 1, 50, null, null);
         service.receiptSummary(null, null, null, from, to, null,
-                Map.of(), 1, 50, null, null);
+                1, 50);
         service.paymentDetail(null, null, null, null, from, to, null,
                 Map.of(), 1, 50, null, null);
         service.paymentSummary(null, null, null, from, to, null,
@@ -208,7 +208,7 @@ class FinanceReportObjectScopeTest {
         Fixture fixture = viewAllFixture();
 
         fixture.service().receiptSummary(null, null, null,
-                null, null, null, Map.of(), 1, 50, null, null);
+                null, null, null, 1, 50);
 
         List<CapturedQuery> sensitiveQueries = fixture.queries().stream()
                 .filter(query -> directlyReadsFinanceDocument(query.sql()))
@@ -235,9 +235,9 @@ class FinanceReportObjectScopeTest {
                 () -> service.salesOrderReceivablePlan(
                         null, null, null, null, null, 1, 50, null, null),
                 () -> service.arApSummary(
-                        "AR", null, null, null, Map.of(), 1, 50, null, null),
+                        "AR", null, null, null, 1, 50),
                 () -> service.receivableSummary(null, null, null, 1, 50),
-                () -> service.payableSummary(null, null, null, Map.of(), 1, 50, null, null),
+                () -> service.payableSummary(null, null, null, 1, 50),
                 () -> service.partyStatementFlow(null, "AR", null, null, 1, 50),
                 () -> service.partyStatementDetail(null, "AR", null, null, 1, 50),
                 () -> service.partyAnnualStatement(null, "AR", 2026, 1, 50),
@@ -294,7 +294,7 @@ class FinanceReportObjectScopeTest {
 
         service.arApDetail("AR", null, null, null,
                 null, null, null, Map.of(), 1, 50, null, null);
-        service.arApSummary("AR", null, null, null, Map.of(), 1, 50, null, null);
+        service.arApSummary("AR", null, null, null, 1, 50);
         service.partyStatementFlow(partyId, "AR", null, null, 1, 50);
         service.bankReport("detail");
         service.export("ar-ap/detail", Map.of("direction", "AR"), null, null);

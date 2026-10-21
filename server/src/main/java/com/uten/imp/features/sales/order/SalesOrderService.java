@@ -2631,7 +2631,11 @@ public class SalesOrderService {
             List<SalesOrderItem> existingItems,
             TrustedQuotePriceBook quoteBook,
             boolean quoteConversion) {
-        if (lines == null || lines.isEmpty()) {
+        if (lines == null) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED, "订货明细不能为空");
+        }
+        if (lines.isEmpty()) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED, "订货明细不能为空");
         }

@@ -499,6 +499,7 @@ public class PagePermissionWorkspaceService {
                     resultVersions,
                     changedCodes);
         } else {
+            if (actorEmployee == null) throw new ApiException(ErrorCode.FORBIDDEN, "当前负责人档案已失效");
             DelegationSnapshot snapshot = new DelegationSnapshot(
                     targetAccount.getPermissionDelegationGeneration(),
                     target.getPermissionDelegationGeneration(),

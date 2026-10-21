@@ -242,6 +242,7 @@ public class ProductionDailyReportMaterialWriteAdapter
     public int requestSelectedSurplusReturnForDailyReport(UUID planId, UUID executionSegmentId,
             UUID dailyReportId, String idempotencyKey, String reason, List<UUID> selectedDemandIds) {
         if (selectedDemandIds == null || selectedDemandIds.isEmpty()) return 0;
+        requireDailyReportMaterialSource(planId, executionSegmentId, dailyReportId);
         List<ProductionMaterialReturnRequest.Item> items = returnableSources(planId, executionSegmentId).stream()
                 .filter(source -> selectedDemandIds.contains(source.demandId()))
                 .map(source -> new ProductionMaterialReturnRequest.Item(source.issuePostingId(),
@@ -265,6 +266,7 @@ public class ProductionDailyReportMaterialWriteAdapter
             UUID dailyReportId,
             String idempotencyKey,
             String reason) {
+        requireDailyReportMaterialSource(planId, executionSegmentId, dailyReportId);
         List<ProductionMaterialReturnRequest.Item> items = returnableSources(planId, executionSegmentId).stream()
                 .map(source -> new ProductionMaterialReturnRequest.Item(
                         source.issuePostingId(), source.availableQty(), source.directTransferItemId()))
@@ -272,6 +274,25 @@ public class ProductionDailyReportMaterialWriteAdapter
         if (items.isEmpty()) return 0;
         return returns.submit(planId, new ProductionMaterialReturnRequest.Submit(
                 executionSegmentId, idempotencyKey, reason, items)).size();
+    }
+
+    private void requireDailyReportMaterialSource(UUID planId, UUID materialSegmentId, UUID dailyReportId) {
+        if (planId == null || materialSegmentId == null || dailyReportId == null) {
+            throw new ApiException(ErrorCode.DAILY_REPORT_MATERIAL_REVIEW_CONFLICT);
+        }
+        // A reporting batch can legitimately consume an earlier batch's material. Use the
+        // authoritative source function shared by the material review, rather than equating IDs.
+        boolean belongs = Boolean.TRUE.equals(em.createNativeQuery("""
+                SELECT EXISTS (
+                    SELECT 1 FROM production_daily_reports report
+                    JOIN production_daily_report_items item ON item.report_id=report.id AND NOT item.is_deleted
+                    CROSS JOIN LATERAL fn_production_material_usage_source_segments(item.execution_segment_id) source
+                    JOIN production_execution_segments segment ON segment.id=source.segment_id
+                    WHERE report.id=:report AND NOT report.is_deleted AND NOT report.is_canceled
+                      AND segment.id=:segment AND segment.plan_id=:plan AND NOT segment.is_deleted)
+                """).setParameter("report", dailyReportId).setParameter("segment", materialSegmentId)
+                .setParameter("plan", planId).getSingleResult());
+        if (!belongs) throw new ApiException(ErrorCode.DAILY_REPORT_MATERIAL_REVIEW_CONFLICT);
     }
 
     /**

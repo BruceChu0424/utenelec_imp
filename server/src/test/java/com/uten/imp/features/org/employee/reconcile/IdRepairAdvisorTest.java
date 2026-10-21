@@ -257,9 +257,9 @@ class IdRepairAdvisorTest {
             String truth = randomValidId(rnd);
             String stored = injectSingleError(truth, rnd);
             IdSuggestion suggestion = suggest(stored, new IdRepairEvidence(
-                    LocalDate.of(Integer.parseInt(truth.substring(6, 10)),
-                            Integer.parseInt(truth.substring(10, 12)),
-                            Integer.parseInt(truth.substring(12, 14))),
+                    LocalDate.of(com.uten.imp.testsupport.FixtureNumbers.integer(truth.substring(6, 10)),
+                            com.uten.imp.testsupport.FixtureNumbers.integer(truth.substring(10, 12)),
+                            com.uten.imp.testsupport.FixtureNumbers.integer(truth.substring(12, 14))),
                     true,
                     (truth.charAt(16) - '0') % 2 == 1 ? "male" : "female",
                     true, null, TODAY, null, null));

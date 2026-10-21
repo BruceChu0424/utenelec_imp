@@ -30,7 +30,7 @@ public record QuoteFinanceEditRequest(
         LocalDate validUntil,
         UUID settlementMethodId,
         @Size(max = 500, message = "财务备注不能超过 500 个字符") String financeRemark,
-        @Valid @Size(max = RequestLimits.DOCUMENT_LINES) List<Line> lines) {
+        @Size(max = RequestLimits.DOCUMENT_LINES) List<@Valid Line> lines) {
 
     public record Line(
             @NotNull UUID itemId,

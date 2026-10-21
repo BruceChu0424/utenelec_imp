@@ -968,7 +968,8 @@ public class SubcontractReceiptService {
     }
 
     private List<ReceiptItemDto> saveItems(SubcontractReceipt r, List<ReceiptItemLine> lines) {
-        if(lines!=null) r.setExchangeRate(com.uten.imp.common.finance.ProcurementApprovedExchangeRate.receiptRate(
+        if (lines == null || lines.stream().anyMatch(java.util.Objects::isNull)) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请填写完整的委外进仓明细");
+        r.setExchangeRate(com.uten.imp.common.finance.ProcurementApprovedExchangeRate.receiptRate(
                 em,"SUBCONTRACT",lines.stream().filter(java.util.Objects::nonNull).map(ReceiptItemLine::getOrderItemId).toList(),
                 r.getCurrencyId(),r.getExchangeRate()));
         List<ReceiptItemDto> out = new ArrayList<>(lines.size());

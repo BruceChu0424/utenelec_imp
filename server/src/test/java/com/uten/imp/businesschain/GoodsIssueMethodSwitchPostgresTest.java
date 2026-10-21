@@ -112,7 +112,7 @@ class GoodsIssueMethodSwitchPostgresTest {
     @Test
     void switchToPeriodicConvertsBomRowsAfterTheGoodsAndRejectsPackageRows() {
         Shop shop = shop("to-periodic");
-        UUID granule = goods(shop, "颗粒PP", shop.kg(), "采购", "ORDER", null, new BigDecimal("25"));
+        UUID granule = goods("颗粒PP", shop.kg(), "采购", "ORDER", null, new BigDecimal("25"));
         UUID p1 = product(shop, "注塑件一", null, null);
         UUID p2 = product(shop, "注塑件二", null, null);
         UUID p3 = product(shop, "注塑件三", null, null);
@@ -241,7 +241,7 @@ class GoodsIssueMethodSwitchPostgresTest {
                 world.warehouseId(), warehouseUser);
 
         // 颗粒甲: 已整批领料, 内料仓里有 40 千克、开着的一期里有发料。
-        UUID used = goods(shop, "颗粒甲", shop.kg(), "采购", "PERIODIC", "OWN", null);
+        UUID used = goods("颗粒甲", shop.kg(), "采购", "PERIODIC", "OWN", null);
         otherIn(shop, world.warehouseId(), used, "100", "10");
         fixture.loginAs(warehouseUser);
         var enabled = settings.update(workshop, new SettingsRequest(null, 0L, true, world.warehouseId(), null, true, BusinessTime.today(),
@@ -270,7 +270,7 @@ class GoodsIssueMethodSwitchPostgresTest {
         assertEquals("PERIODIC|OWN", str("SELECT issue_method || '|' || periodic_cost_basis FROM goods WHERE id = ?", used));
 
         // 颗粒乙: 没进过内料仓; 一个产品的 BOM 里有它的单个重量, 另一个产品认了它。改回按工单领料可以。
-        UUID idle = goods(shop, "颗粒乙", shop.kg(), "采购", "PERIODIC", "OWN", null);
+        UUID idle = goods("颗粒乙", shop.kg(), "采购", "PERIODIC", "OWN", null);
         UUID edgeProduct = product(shop, "有单重的件", null, null);
         UUID choiceProduct = product(shop, "认料的件", null, null);
         UUID edge = bomRow(edgeProduct, idle, "0.01", "START", "PER_UNIT", "1", false);
@@ -293,7 +293,7 @@ class GoodsIssueMethodSwitchPostgresTest {
                 WHERE product_goods_id = ? AND material_goods_id = ?""", choiceProduct, idle));
 
         // 颗粒丙: 改成辅料 → BOM 里去掉 (辅料不写进 BOM), 认料作废。
-        UUID colorant = goods(shop, "颗粒丙", shop.kg(), "采购", "PERIODIC", "OWN", null);
+        UUID colorant = goods("颗粒丙", shop.kg(), "采购", "PERIODIC", "OWN", null);
         UUID colorantProduct = product(shop, "用丙的件", null, null);
         UUID colorantEdge = bomRow(colorantProduct, colorant, "0.002", "START", "PER_UNIT", "1", false);
         IssueMethodPreview sharedPreview = issueMethods.preview(colorant, "PERIODIC", "SHARED");
@@ -322,8 +322,8 @@ class GoodsIssueMethodSwitchPostgresTest {
     @Test
     void periodicEdgeTakesGramsWithConfirmationsAndWarnings() {
         Shop shop = shop("grams");
-        UUID granule = goods(shop, "颗粒丁", shop.kg(), "采购", "PERIODIC", "OWN", null);
-        UUID second = goods(shop, "颗粒戊", shop.kg(), "采购", "PERIODIC", "OWN", null);
+        UUID granule = goods("颗粒丁", shop.kg(), "采购", "PERIODIC", "OWN", null);
+        UUID second = goods("颗粒戊", shop.kg(), "采购", "PERIODIC", "OWN", null);
         UUID product = product(shop, "双料件", new BigDecimal("10"), shop.gram());
         fixture.loginAs(shop.bomUser());
 
@@ -366,7 +366,7 @@ class GoodsIssueMethodSwitchPostgresTest {
         assertTrue(shape.getMessage().contains("单个重量"), shape.getMessage());
 
         // 按工单领料的组件不能按克填。
-        UUID ordinary = goods(shop, "嵌件", shop.world().unitId(), "采购", "ORDER", null, null);
+        UUID ordinary = goods("嵌件", shop.world().unitId(), "采购", "ORDER", null, null);
         BomItemSaveRequest insert = new BomItemSaveRequest();
         insert.setComponentGoodsId(ordinary);
         insert.setUnitWeightGrams(new BigDecimal("1"));
@@ -380,7 +380,7 @@ class GoodsIssueMethodSwitchPostgresTest {
         Object assignment = ReflectionTestUtils.invokeMethod(fixture, "productionAssignment", "s6-prep-" + shop.tag());
         UUID workshop = ReflectionTestUtils.invokeMethod(assignment, "workshopId");
         String granuleName = "颗粒PC-" + shop.tag();
-        UUID granule = goods(shop, granuleName, shop.kg(), "采购", "PERIODIC", "OWN", null);
+        UUID granule = goods(granuleName, shop.kg(), "采购", "PERIODIC", "OWN", null);
         UUID p1 = product(shop, "上线件一", new BigDecimal("12.5"), shop.gram());
         UUID p2 = product(shop, "上线件二", null, null);
         UUID p3 = product(shop, "上线件三", new BigDecimal("0.012"), shop.kg());
@@ -484,8 +484,7 @@ class GoodsIssueMethodSwitchPostgresTest {
         return id;
     }
 
-    private UUID goods(Shop shop, String name, UUID unit, String source, String method, String basis,
-                       BigDecimal orderMultiple) {
+    private UUID goods(String name, UUID unit, String source, String method, String basis, BigDecimal orderMultiple) {
         UUID id = UUID.randomUUID();
         db.update("""
                 INSERT INTO goods(id, code, name, source_type, status, unit_id, price, code_sequence,

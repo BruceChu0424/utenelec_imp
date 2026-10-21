@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -89,7 +88,7 @@ class ArApDualCurrencySettlementPostgresTest {
     private static void migrate(PostgreSQLContainer database,String target) {
         String extra=System.getProperty("uten.test.extraMigrationLocation","");
         String[] locations=extra.isBlank()?new String[]{"classpath:db/migration"}:new String[]{"classpath:db/migration",extra};
-        Flyway.configure().dataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword())
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword())
                 .locations(locations).target(target).load().migrate();
     }
     private static Connection connect(PostgreSQLContainer database)throws SQLException { return DriverManager.getConnection(database.getJdbcUrl(),database.getUsername(),database.getPassword()); }

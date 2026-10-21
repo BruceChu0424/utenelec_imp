@@ -31,7 +31,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static com.uten.imp.testsupport.BusinessHttpRequests.authenticated;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 /** Actual CREATE followed by a pure original-result HTTP observation, with no mocked business writer. */
@@ -134,7 +134,7 @@ class DailyReportCreateReceiptPostgresTest {
                 Set.of("production_daily_report:view"),UUID.randomUUID());
         assertEquals("COMMITTED",resolve(c.request(),simulated,200).path("status").asText());
         assertEquals(before,facts(c.id()));
-        var write=http.perform(post("/api/production/daily-reports").with(authentication(simulated))
+        var write=http.perform(post("/api/production/daily-reports").with(authenticated(simulated))
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(c.request())))
                 .andReturn().getResponse();
         assertEquals(403,write.getStatus());
@@ -325,14 +325,14 @@ class DailyReportCreateReceiptPostgresTest {
         return resolveBody(json.writeValueAsBytes(request),actor,expected);
     }
     private JsonNode resolveBody(byte[] originalBody,Authentication actor,int expected) throws Exception {
-        var result=http.perform(post(PATH).with(authentication(actor)).contentType(MediaType.APPLICATION_JSON)
+        var result=http.perform(post(PATH).with(authenticated(actor)).contentType(MediaType.APPLICATION_JSON)
                 .content(originalBody)).andReturn();
         assertEquals(expected,result.getResponse().getStatus(),result.getResponse().getContentAsString());
         return json.readTree(result.getResponse().getContentAsByteArray());
     }
     private Authentication reader(Case c) { return auth(c.world().superAdminUserId(),c.world().employeeId(),Set.of("production_daily_report:view"),null); }
     private JsonNode postCreateBody(byte[] body,Authentication actor,int expected) throws Exception {
-        var response=http.perform(post("/api/production/daily-reports").with(authentication(actor))
+        var response=http.perform(post("/api/production/daily-reports").with(authenticated(actor))
                 .contentType(MediaType.APPLICATION_JSON).content(body)).andReturn().getResponse();
         assertEquals(expected,response.getStatus(),response.getContentAsString());
         return json.readTree(response.getContentAsByteArray());

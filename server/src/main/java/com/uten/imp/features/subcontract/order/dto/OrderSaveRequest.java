@@ -33,8 +33,7 @@ public class OrderSaveRequest {
     private LocalDate deliverDate;
     private String remark;
 
-    @Valid
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<OrderItemLine> items;
+    private List<@Valid OrderItemLine> items;
 }

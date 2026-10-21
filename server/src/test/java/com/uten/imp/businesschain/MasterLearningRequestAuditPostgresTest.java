@@ -36,7 +36,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static com.uten.imp.testsupport.BusinessHttpRequests.authenticated;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -107,7 +107,7 @@ class MasterLearningRequestAuditPostgresTest {
 
         mvc.perform(post("/api/test/master-learning-probe/{clientId}/orders", clientId)
                         .param("email", email)
-                        .with(authentication(auth)))
+                        .with(authenticated(auth)))
                 .andExpect(status().isOk());
 
         assertThat(db.queryForObject("select email from clients where id = ?", String.class, clientId))

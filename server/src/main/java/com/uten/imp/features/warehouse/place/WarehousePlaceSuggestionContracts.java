@@ -24,7 +24,6 @@ public final class WarehousePlaceSuggestionContracts {
 
     public record PlaceSuggestionRequest(
             @NotNull UUID warehouseId,
-            @Valid
             @NotNull
             @Size(min = 1, max = MAX_ITEMS,
                     message = "库位建议一次需提供 1 至 500 个货品")

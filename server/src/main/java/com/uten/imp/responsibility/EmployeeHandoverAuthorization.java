@@ -31,16 +31,16 @@ public class EmployeeHandoverAuthorization {
         if (actor.isSuperAdmin() || isCentralHr(actor.getEmployeeId())) return;
 
         UUID sourceDepartmentId = departmentOf(sourceEmployeeId);
-        if (sourceDepartmentId == null
-                || managementScope.resolveAuthority(actor, sourceDepartmentId).isEmpty()) {
+        if (sourceDepartmentId == null) throw hidden();
+        if (managementScope.resolveAuthority(actor, sourceDepartmentId).isEmpty()) {
             throw hidden();
         }
-        if (targetEmployeeId != null) {
-            UUID targetDepartmentId = departmentOf(targetEmployeeId);
-            if (targetDepartmentId == null
-                    || managementScope.resolveAuthority(actor, targetDepartmentId).isEmpty()) {
-                throw hidden();
-            }
+        // Offboarding without a successor has only the already checked source scope.
+        if (targetEmployeeId == null) return;
+        UUID targetDepartmentId = departmentOf(targetEmployeeId);
+        if (targetDepartmentId == null) throw hidden();
+        if (managementScope.resolveAuthority(actor, targetDepartmentId).isEmpty()) {
+            throw hidden();
         }
     }
 

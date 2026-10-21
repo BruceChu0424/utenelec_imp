@@ -36,8 +36,7 @@ public class RequestSaveRequest {
     private LocalDate needDate;
     private String remark;
     private boolean confirmGiftSemantics;
-    @Valid
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<RequestItemLine> items;
+    private List<@Valid RequestItemLine> items;
 }

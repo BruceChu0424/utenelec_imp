@@ -24,10 +24,9 @@ import java.util.UUID;
 @Setter
 public class OrderChangeQtyRequest {
 
-    @Valid
     @NotEmpty
     @Size(max = RequestLimits.DOCUMENT_LINES)
-    private List<Line> items;
+    private List<@Valid Line> items;
 
     @Getter
     @Setter

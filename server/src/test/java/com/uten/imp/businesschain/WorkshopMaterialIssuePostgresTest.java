@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.BoundTestSql;
+
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
@@ -829,10 +831,7 @@ class WorkshopMaterialIssuePostgresTest {
                 try (ResultSet cleared = statement.executeQuery("SELECT cleared_rows FROM business_data_reset()")) {
                     assertTrue(cleared.next());
                 }
-                try (ResultSet kept = statement.executeQuery(
-                        "SELECT (SELECT count(*) FROM goods_periodic_material_choices WHERE product_goods_id = '"
-                                + product + "'), (SELECT count(*) FROM workshop_machines WHERE workshop_department_id = '"
-                                + shop.workshop() + "'), (SELECT count(*) FROM workshop_material_settings)")) {
+                try (var boundSql1 = BoundTestSql.prepare(statement, "SELECT (SELECT count(*) FROM goods_periodic_material_choices WHERE product_goods_id = ?), (SELECT count(*) FROM workshop_machines WHERE workshop_department_id = ?), (SELECT count(*) FROM workshop_material_settings)", product, shop.workshop()); ResultSet kept = boundSql1.executeQuery()) {
                     assertTrue(kept.next());
                     assertEquals(1, kept.getInt(1), "认料保留");
                     assertEquals(2, kept.getInt(2), "机台保留");

@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.security.RequiresStepUp;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.Map;
 import java.util.Optional;
@@ -25,7 +24,7 @@ class UpdaterStatusServiceTest {
     private Path statusFile;
     private UpdaterStatusService service;
     @BeforeEach void setUp(){
-        statusFile=directory.resolve("status.json");service=new UpdaterStatusService(repository,mapper,statusFile,Clock.systemUTC());
+        statusFile=directory.resolve("status.json");service=new UpdaterStatusService(repository);
         setting.setKey(SystemSettingKey.UPDATER_CHECK_INTERVAL_DAYS.key());setting.setValue("7");
         setting.setUpdatedAt(OffsetDateTime.parse("2026-09-26T01:00:00Z"));
         when(repository.findById(setting.getKey())).thenReturn(Optional.of(setting));

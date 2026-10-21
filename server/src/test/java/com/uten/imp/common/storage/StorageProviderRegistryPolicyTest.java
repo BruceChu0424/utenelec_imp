@@ -30,7 +30,7 @@ class StorageProviderRegistryPolicyTest {
         var local=new LocalDiskStorageService(properties);ReflectionTestUtils.invokeMethod(local,"init");
         byte[] bytes={1,2,3};
         var upload=local.presignUpload(new StorageService.UploadRequest("AI_INPUT_ORIGINAL","old.bin","application/octet-stream",bytes.length));
-        local.store(upload.storageKey(),new ByteArrayInputStream(bytes),bytes.length,"application/octet-stream");
+        local.store(upload.storageKey(),new ByteArrayInputStream(bytes),bytes.length);
         var original=local.promoteToFinal(upload.storageKey(),local.describe(upload.storageKey()));
         var active=mock(StorageService.class);when(active.backend()).thenReturn("internal");
         var registry=new StorageProviderRegistry(active,properties);

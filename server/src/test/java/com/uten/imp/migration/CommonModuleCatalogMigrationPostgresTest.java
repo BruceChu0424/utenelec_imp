@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -27,7 +26,7 @@ class CommonModuleCatalogMigrationPostgresTest {
     @BeforeAll
     static void start() {
         DB.start();
-        Flyway.configure()
+        com.uten.imp.testsupport.TestFlyway.configure()
                 .dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
                 .load()
                 .migrate();

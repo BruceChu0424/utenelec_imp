@@ -110,7 +110,7 @@ class ServerRuntimeFlywayIT {
         Pattern migration = Pattern.compile("BOOT-INF/classes/db/migration/V(\\d+)__[^/]+\\.sql");
         try (var jar = new JarFile(applicationJar().toFile())) {
             List<Integer> versions = jar.stream().map(entry -> migration.matcher(entry.getName()))
-                    .filter(matcher -> matcher.matches()).map(matcher -> Integer.parseInt(matcher.group(1))).toList();
+                    .filter(matcher -> matcher.matches()).map(matcher -> com.uten.imp.testsupport.FixtureNumbers.integer(matcher.group(1))).toList();
             assertThat(versions).isNotEmpty().doesNotHaveDuplicates();
             return new MigrationInventory(versions.size(), versions.stream().mapToInt(Integer::intValue).max().orElseThrow());
         }

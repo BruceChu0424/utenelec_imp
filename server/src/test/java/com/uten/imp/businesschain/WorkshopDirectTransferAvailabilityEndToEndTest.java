@@ -62,7 +62,7 @@ class WorkshopDirectTransferAvailabilityEndToEndTest {
                 flow.input(c, c.child(), "MAKE", "2", false)))).batches().getFirst();
         UUID parent = helper.issue(c, c.common(), "2").getFirst();
         UUID source = helper.segment(shared.planId());
-        flow.receive(c, c.material(), "4"); helper.start(c, source);
+        flow.receive(c, c.material(), "4"); helper.start(source);
         flow.fixture.loginAs(helper.worker(c));
         UUID target = helper.demand(helper.segment(parent));
         UUID first = helper.transfer(c, source, target, "1", "2");
@@ -100,7 +100,7 @@ class WorkshopDirectTransferAvailabilityEndToEndTest {
         assertEquals(receivers, parents.size());
         UUID source = helper.segment(shared.planId());
         flow.receive(c, c.material(), Integer.toString(receivers * 2));
-        helper.start(c, source);
+        helper.start(source);
         flow.fixture.loginAs(helper.worker(c));
         var candidates = helper.direct().candidates(source, c.child(), null).candidates();
         assertEquals(receivers, candidates.size());

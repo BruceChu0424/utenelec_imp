@@ -17,6 +17,8 @@ import com.uten.imp.features.stock.dto.StockDocItemLine;
 import com.uten.imp.features.stock.dto.StockDocIssueBatchRequest;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -52,6 +54,7 @@ class ProductionExecutionBatchEndToEndTest {
     @Autowired com.uten.imp.features.production.mrp.ProductionPlanningPackageService packages;
     @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
     @Autowired com.uten.imp.features.stock.allocation.ProductionMaterialReturnRequestService materialReturns;
+    @Autowired com.uten.imp.features.notice.outbox.BusinessOutboxProcessor outbox;
     FullChainEndToEndTest fixture;
     @BeforeEach void prepare(){fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);}
     @AfterEach void logout(){org.springframework.security.core.context.SecurityContextHolder.clearContext();}
@@ -211,6 +214,58 @@ class ProductionExecutionBatchEndToEndTest {
         assertEquals("READY",status(first.batchSegmentId()));assertEquals("WAITING",status(first.remainingSegmentId()));
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans={false,true})
+    void packageConfirmedAfterItsPlanEventOwnsAnAssignmentForEveryNewTask(boolean zeroMaterial) throws Exception {
+        String tag="late-package-"+(zeroMaterial?"zero":"waiting");
+        var world=fixture.seedWorld(tag);
+        fixture.loginAs(world.superAdminUserId());
+        UUID product=UUID.randomUUID();
+        fixture.insertGoods(product,"LATE-"+tag,"晚确认包成品","自制",world.unitId(),world.unitLegacy());
+        fixture.insertBom(product,world.goodsD(),"1");
+        if(zeroMaterial)db.update("UPDATE goods_bom_items SET control_stage='SHIP',hard_gate=false WHERE goods_id=?",product);
+        UUID plan=org.springframework.test.util.ReflectionTestUtils.invokeMethod(fixture,"approvedPlan",world,product,"10","10");
+        assertNotNull(plan);
+        for(int attempt=0;attempt<500;attempt++) {
+            Integer delivered=db.queryForObject("SELECT count(*) FROM business_outbox WHERE event_type='PRODUCTION_PLAN_SCHEDULED' AND aggregate_id=? AND status=1",Integer.class,plan);
+            if(Integer.valueOf(1).equals(delivered))break;
+            outbox.processNext();Thread.sleep(20);
+        }
+        assertEquals(1,db.queryForObject("SELECT count(*) FROM business_outbox WHERE event_type='PRODUCTION_PLAN_SCHEDULED' AND aggregate_id=? AND status=1",Integer.class,plan));
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM production_execution_segments WHERE plan_id=?",Integer.class,plan));
+        var preview=packages.preview(plan,world.warehouseId());
+        var request=new com.uten.imp.features.production.mrp.GeneratePlanningPackageRequest();
+        request.setWarehouseId(world.warehouseId());request.setIdempotencyKey("late-package-confirm-"+plan);
+        request.setPreviewFingerprint(preview.fingerprint());request.setGeneratePurchaseRequest(!zeroMaterial);
+        var result=packages.confirm(plan,request);
+        if(zeroMaterial) {
+            assertNull(result.purchaseRequest());
+        } else {
+            assertNotNull(result.purchaseRequest(),"WAITING 段的真实外购缺口必须同时形成采购申请草稿");
+        }
+        assertFalse(result.executionSegments().isEmpty());
+        for(var task:result.executionSegments()) {
+            assertEquals(zeroMaterial?"READY":"WAITING",status(task.segmentId()));
+            assertAssignmentEvent(task.segmentId());
+        }
+        packages.confirm(plan,request);
+        for(var task:result.executionSegments())assertAssignmentEvent(task.segmentId());
+    }
+
+    @Test void zeroMaterialSplitPublishesItsOwnDurableAssignmentExactlyOnce() {
+        Case c=create("split-zero-notice",false,"100",false,true);
+        confirmRoute(c.plan(),c.segment(),"BATCH","route-zero-notice-"+c.segment());
+        fixture.loginAs(c.workerUser());
+        var preview=batches.preview(new ProductionExecutionBatch.PreviewRequest(c.segment(),version(c.segment()),new BigDecimal("20")));
+        var request=new ProductionExecutionBatch.SubmitRequest(c.segment(),preview.expectedVersion(),preview.quantity(),preview.fingerprint(),"zero-notice-"+c.segment());
+        var result=batches.submit(request);
+        assertTrue(batches.submit(request).replayed());
+        assertEquals("READY",status(result.batchSegmentId()));
+        assertTrue(result.documentIds().isEmpty());
+        assertAssignmentEvent(result.batchSegmentId());
+        assertAssignmentEvent(result.remainingSegmentId());
+    }
+
     @Test void fixedBatchMaterialIsChargedOnceAndZeroIncrementContinuationNeedsActualPriorIssue() {
         Case c=create("split-fixed",true);
         confirmRoute(c.plan(),c.segment(),"BATCH","route-split-fixed-"+c.segment());
@@ -232,6 +287,7 @@ class ProductionExecutionBatchEndToEndTest {
         assertTrue(next.summaries().isEmpty());
         var second=batches.submit(new ProductionExecutionBatch.SubmitRequest(next.segmentId(),next.expectedVersion(),next.quantity(),next.fingerprint(),"fixed-second-"+next.segmentId()));
         assertTrue(second.documentIds().isEmpty());
+        assertAssignmentEvent(second.batchSegmentId());
         assertTrue(db.queryForObject("SELECT fn_split_batch_empty_issued(?)",Boolean.class,second.batchSegmentId()));
         assertEquals(List.of(first.batchSegmentId()),db.queryForList("SELECT segment_id FROM fn_production_material_usage_source_segments(?)",UUID.class,second.batchSegmentId()));
         issueAndReport(c,second,"30");
@@ -371,11 +427,15 @@ class ProductionExecutionBatchEndToEndTest {
         return create(tag,fixed,"100",false);
     }
     private Case create(String tag,boolean fixed,String plannedQty,boolean twoMaterials) {
+        return create(tag,fixed,plannedQty,twoMaterials,false);
+    }
+    private Case create(String tag,boolean fixed,String plannedQty,boolean twoMaterials,boolean zeroMaterial) {
         var w=fixture.seedWorld(tag);fixture.loginAs(w.superAdminUserId());
         UUID root=UUID.randomUUID(),material=UUID.randomUUID(),workshop=UUID.randomUUID(),worker=UUID.randomUUID();
         fixture.insertGoods(root,"ROOT-"+tag,"分批成品","自制",w.unitId(),w.unitLegacy());
         fixture.insertGoods(material,"MAT-"+tag,"分批原料","采购",w.unitId(),w.unitLegacy());
         fixture.insertBom(root,material,fixed?"1":"2");
+        if(zeroMaterial)db.update("UPDATE goods_bom_items SET control_stage='SHIP',hard_gate=false WHERE goods_id=?",root);
         UUID secondMaterial=twoMaterials?UUID.randomUUID():null;
         if(twoMaterials) {
             fixture.insertGoods(secondMaterial,"MAT2-"+tag,"分批第二种原料","采购",w.unitId(),w.unitLegacy());
@@ -402,8 +462,11 @@ class ProductionExecutionBatchEndToEndTest {
         UUID plan=commands.issueWorkshopPlans(view.analysisId(),new IssueWorkshopPlansRequest(view.version(),view.fingerprint(),"issue-"+tag,
                 w.warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,List.of(new IssueWorkshopPlansRequest.IssuePlanLine(
                 null,view.products().getFirst().analysisLineId(),new BigDecimal(plannedQty),BusinessTime.today(),BusinessTime.today().plusDays(10),workshop,null,worker,null,null)))).plans().getFirst().planId();
-        UUID segment=db.queryForObject("SELECT id FROM production_execution_segments WHERE plan_id=? AND status='WAITING'",UUID.class,plan);
+        UUID segment=db.queryForObject("SELECT id FROM production_execution_segments WHERE plan_id=? AND status IN ('WAITING','READY')",UUID.class,plan);
         return new Case(w,root,material,plan,segment,workshop,worker,workerUser,secondMaterial);
+    }
+    private void assertAssignmentEvent(UUID segment) {
+        assertEquals(1,db.queryForObject("SELECT count(*) FROM business_outbox WHERE event_type='PRODUCTION_SEGMENT_WORKSHOP_ASSIGNED' AND aggregate_id=?",Integer.class,segment));
     }
     private void receive(Case c,String quantity) {
         receive(c,c.material(),quantity);

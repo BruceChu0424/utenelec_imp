@@ -45,7 +45,7 @@ public interface ProductionCompletionReversePort {
 
     /** Called after FINISHED_IN physical stock has been removed. */
     default void afterFinishedInboundReversed(
-            UUID stockDocumentId, UUID warehouseId) {
+            UUID stockDocumentId) {
         // Optional for test doubles and legacy adapters.
     }
 }

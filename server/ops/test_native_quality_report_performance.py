@@ -112,6 +112,12 @@ class NativePerformanceEvidenceTest(unittest.TestCase):
         images = {runner.POSTGRES_IMAGE: {"id": "pg-frozen"}, runner.RYUK_IMAGE: {"id": "ryuk-frozen"}}
         observed = {str(index): {"imageId": "pg-frozen", "nanoCpus": 0, "memoryBytes": 0} for index in range(3)}
         self.assertEqual(3, runner.validate_containers(observed, [], images)["postgresContainers"])
+        observed["reaper"] = {"imageId": "ryuk-frozen", "nanoCpus": 0, "memoryBytes": 0}
+        self.assertEqual(3, runner.validate_containers(observed, [], images)["postgresContainers"])
+        observed["reaper"]["imageId"] = "unexpected-reaper"
+        with self.assertRaisesRegex(ValueError, "unexpected image"):
+            runner.validate_containers(observed, [], images)
+        observed["reaper"]["imageId"] = "ryuk-frozen"
         observed["0"]["imageId"] = "other-postgres"
         with self.assertRaisesRegex(ValueError, "unexpected image"):
             runner.validate_containers(observed, [], images)
@@ -157,14 +163,14 @@ class MavenRepositoryPolicyTest(unittest.TestCase):
         self.assertEqual(["--ignore-transitive-repositories", "--global-settings",
                           "${maven.multiModuleProjectDirectory}/.mvn/central-repository-settings.xml"], arguments)
 
-    def test_only_three_obsolete_ids_redirect_and_default_external_http_block_remains(self):
+    def test_only_four_obsolete_ids_redirect_and_default_external_http_block_remains(self):
         ns = {"m": "http://maven.apache.org/SETTINGS/1.2.0"}
         settings = ET.parse(self.policy).getroot()
         mirrors = {mirror.findtext("m:id", namespaces=ns): mirror
                    for mirror in settings.findall("m:mirrors/m:mirror", ns)}
         self.assertEqual({"uten-central-obsolete-transitive-repositories", "maven-default-http-blocker"}, set(mirrors))
         redirect = mirrors["uten-central-obsolete-transitive-repositories"]
-        self.assertEqual("flyway-community-db-support,jvnet-nexus-releases,jvnet-nexus-snapshots",
+        self.assertEqual("flyway-community-db-support,MavenFeed,jvnet-nexus-releases,jvnet-nexus-snapshots",
                          redirect.findtext("m:mirrorOf", namespaces=ns))
         self.assertEqual("https://repo.maven.apache.org/maven2", redirect.findtext("m:url", namespaces=ns))
         self.assertNotEqual("true", redirect.findtext("m:blocked", namespaces=ns))

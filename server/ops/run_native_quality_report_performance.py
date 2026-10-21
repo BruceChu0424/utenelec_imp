@@ -28,7 +28,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 POSTGRES_IMAGE = "postgres:16-alpine"
-RYUK_IMAGE = "testcontainers/ryuk:0.12.0"
+RYUK_IMAGE = "testcontainers/ryuk:0.14.0"
 REPETITIONS = 3
 METHODS = {
     ("QualityAndDailyReportPerformancePostgresTest", "fourReceiptsQualityApprovalIncludesAutomaticPhysicalStockInAndReplays"),

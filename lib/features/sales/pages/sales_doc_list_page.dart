@@ -30,6 +30,7 @@ import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_segment_row.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
+import '../../../components/layout/uten_refresh_scope.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -123,7 +124,9 @@ class SalesDocListPage extends ConsumerStatefulWidget {
 }
 
 class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
-    with DraftBulkDeleteMixin<SalesDocListPage> {
+    with
+        DraftBulkDeleteMixin<SalesDocListPage>,
+        UtenRefreshParticipant<SalesDocListPage> {
   SalesDocConfig get _cfg => SalesDocConfig.by(widget.docType);
   var _list = PagedListController<SalesDocListItem>();
   final _tableRows = MasterDataTableRowsController<SalesDocListItem>();
@@ -281,6 +284,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
   void didUpdateWidget(covariant SalesDocListPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.docType == widget.docType) return;
+    trackRefresh(Future<void>.value(), replaceKey: 'rows');
     _statsGeneration++;
     clearDraftSelection();
     _list.dispose();
@@ -559,7 +563,10 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     );
   }
 
-  Future<void> _reload([int? page, bool silent = false]) async {
+  Future<void> _reload([int? page, bool silent = false]) =>
+      trackRefresh(_reloadRows(page, silent), replaceKey: 'rows');
+
+  Future<void> _reloadRows([int? page, bool silent = false]) async {
     final generation = ++_reloadGeneration;
     if (page == 1) clearDraftSelection();
     // 列表重拉时同步分段计数(写操作成功 / 返回本页 / 手动刷新都经过这里)。
@@ -567,7 +574,16 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     if (statusScope != null) {
       ref.invalidate(documentStatusCountsProvider(statusScope));
     }
-    if (!_shouldLoad) return;
+    if (!_shouldLoad) {
+      // Deselecting a query also supersedes pending data and errors.
+      final keyword = _list.keyword;
+      final sortKey = _list.sortKey;
+      final sortAsc = _list.sortAsc;
+      _list.reset();
+      _list.keyword = keyword;
+      _list.onSortChange(sortKey, sortAsc);
+      return;
+    }
     unawaited(_loadBillNoFacets());
     await _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
     if (!mounted || generation != _reloadGeneration || _list.error != null) {
@@ -617,7 +633,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
       _statusSeg = seg;
       if (!seg.history) _historyTime = const UtenHistoryTimeValue.all();
     });
-    if (!seg.history || !_historyTime.isNone) _reload(1);
+    _reload(1);
   }
 
   void _onHistoryTime(UtenHistoryTimeValue value) {

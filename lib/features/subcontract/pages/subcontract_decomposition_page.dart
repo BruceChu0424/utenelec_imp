@@ -54,6 +54,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_refresh_scope.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -143,7 +144,8 @@ class SubcontractDecompositionPage extends ConsumerStatefulWidget {
 }
 
 class _SubcontractDecompositionPageState
-    extends ConsumerState<SubcontractDecompositionPage> {
+    extends ConsumerState<SubcontractDecompositionPage>
+    with UtenRefreshParticipant<SubcontractDecompositionPage> {
   OperationsWorkbenchData? _data;
   Map<String, Object?>? _acceptedQuery;
   Map<String, int>? _categoryCounts;
@@ -413,6 +415,11 @@ class _SubcontractDecompositionPageState
   }
 
   void _resetReadState() {
+    // Reader changes invalidate all three visible GET owners, including a draw
+    // list that the next segment no longer needs to request.
+    for (final key in ['rows', 'draw-rows', 'draw-count']) {
+      trackRefresh(Future<void>.value(), replaceKey: key);
+    }
     _readerGeneration++;
     _requestId++;
     _drawRequestId++;
@@ -539,7 +546,12 @@ class _SubcontractDecompositionPageState
     'exception': _exception,
   };
 
-  Future<void> _load({int? page, int size = 50}) async {
+  Future<void> _load({int? page, int size = 50}) => trackRefresh(
+    _loadRows(page: page, size: size),
+    replaceKey: 'rows',
+  );
+
+  Future<void> _loadRows({int? page, int size = 50}) async {
     if (!mounted) return;
     final requestId = ++_requestId;
     final query = _queryIdentity;
@@ -614,7 +626,10 @@ class _SubcontractDecompositionPageState
 
   /// 领料计数(红=可领、黄=已提交待仓库发)。无订货查看权限时服务端拒绝 →
   /// 红黄一起隐藏，拍平表只剩申请行。
-  Future<void> _loadDrawCount() async {
+  Future<void> _loadDrawCount() =>
+      trackRefresh(_loadDrawCountRows(), replaceKey: 'draw-count');
+
+  Future<void> _loadDrawCountRows() async {
     if (!mounted) return;
     final requestId = ++_drawCountRequestId;
     try {
@@ -646,7 +661,10 @@ class _SubcontractDecompositionPageState
   }
 
   /// 领料行与申请行分别使用真实服务端分页，申请定位先筛范围再计数、分页。
-  Future<void> _loadDraw({int? page}) async {
+  Future<void> _loadDraw({int? page}) =>
+      trackRefresh(_loadDrawRows(page: page), replaceKey: 'draw-rows');
+
+  Future<void> _loadDrawRows({int? page}) async {
     if (!mounted || !_pendingSeg || !_drawVisible) return;
     final requestId = ++_drawRequestId;
     final requestedPage = page ?? _drawPage;

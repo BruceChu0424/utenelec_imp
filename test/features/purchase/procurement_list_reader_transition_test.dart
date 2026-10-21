@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/server_config.dart';
@@ -66,6 +67,67 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('FRESH-A'), findsOneWidget);
       expect(find.text('PRIVATE-A'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('$label releases refresh when its reader is replaced', (
+      tester,
+    ) async {
+      final api = _Api(subcontract);
+      final container = await _mount(tester, api, subcontract);
+      await tester.pumpAndSettle();
+      final old = Completer<Map<String, dynamic>>();
+      api.responses.add(old);
+      await tester.tap(find.byType(UtenRefreshButton));
+      await tester.pump();
+      await tester.pump();
+      expect(api.queries.length, 2);
+      expect(find.byType(CircularProgressIndicator), findsWidgets);
+      container.read(_reader.notifier).state = const AuthenticatedScope(
+        userId: 'b',
+      );
+      api.nextBill = 'FRESH-B';
+      await tester.pumpAndSettle();
+      expect(find.text('FRESH-B'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(
+        old.isCompleted,
+        isFalse,
+        reason:
+            'replacing a reader releases only its wait, not the in-flight request',
+      );
+      old.complete(_page('STALE-A'));
+      await tester.pumpAndSettle();
+      expect(find.text('STALE-A'), findsNothing);
+      expect(find.text('FRESH-B'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('$label releases refresh on logout without a replacement GET', (
+      tester,
+    ) async {
+      final api = _Api(subcontract);
+      final container = await _mount(tester, api, subcontract);
+      await tester.pumpAndSettle();
+      final old = Completer<Map<String, dynamic>>();
+      api.responses.add(old);
+      await tester.tap(find.byType(UtenRefreshButton));
+      await tester.pump();
+      await tester.pump();
+      expect(api.queries.length, 2);
+      container.read(_reader.notifier).state = null;
+      await tester.pumpAndSettle();
+      expect(
+        api.queries.length,
+        2,
+        reason: 'logout must not start a new reader request',
+      );
+      expect(find.text('PRIVATE-A'), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(old.isCompleted, isFalse);
+      old.completeError(ApiException('FORBIDDEN', 'STALE LOGOUT ERROR'));
+      await tester.pumpAndSettle();
+      expect(find.text('STALE LOGOUT ERROR'), findsNothing);
       expect(tester.takeException(), isNull);
     });
 

@@ -33,6 +33,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
+import '../../../components/layout/uten_refresh_scope.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/server_config.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -105,7 +106,9 @@ class PurchaseDocListPage extends ConsumerStatefulWidget {
 }
 
 class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
-    with DraftBulkDeleteMixin<PurchaseDocListPage> {
+    with
+        DraftBulkDeleteMixin<PurchaseDocListPage>,
+        UtenRefreshParticipant<PurchaseDocListPage> {
   PurchaseDocConfig get _cfg => PurchaseDocConfig.by(widget.docType);
   final _list = PagedListController<PurchaseDocListItem>();
   final _tableRows = MasterDataTableRowsController<PurchaseDocListItem>();
@@ -185,6 +188,9 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
   }
 
   void _resetReadState() {
+    // A new reader invalidates both the old rows and any button awaiting them.
+    trackRefresh(Future<void>.value(), replaceKey: 'rows');
+    trackRefresh(Future<void>.value(), replaceKey: 'refresh');
     _readerGeneration++;
     clearDraftSelection();
     _reloadGeneration++;
@@ -369,9 +375,35 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
     );
   }
 
-  Future<void> _reload([int? page, bool silent = false]) async {
+  Future<void> _refresh() async {
+    final badges = _loadBadge();
+    final scope = _statusScope;
+    await Future.wait([
+      _reload(),
+      badges,
+      if (scope != null)
+        ref
+            .read(documentStatusCountsProvider(scope).future)
+            .then<void>((_) {}, onError: (Object error, StackTrace stack) {}),
+    ]);
+  }
+
+  Future<void> _reload([int? page, bool silent = false]) {
+    trackRefresh(Future<void>.value(), replaceKey: 'refresh');
+    return trackRefresh(_reloadRows(page, silent), replaceKey: 'rows');
+  }
+
+  Future<void> _reloadRows([int? page, bool silent = false]) async {
     final generation = ++_reloadGeneration;
-    if (!_shouldLoad) return;
+    if (!_shouldLoad) {
+      final keyword = _list.keyword;
+      final sortKey = _list.sortKey;
+      final sortAsc = _list.sortAsc;
+      _list.reset();
+      _list.keyword = keyword;
+      _list.onSortChange(sortKey, sortAsc);
+      return;
+    }
     unawaited(_loadBillNoFacets());
     await _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
     if (!mounted || generation != _reloadGeneration || _list.error != null) {
@@ -392,7 +424,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
       _seg = seg;
       if (!seg.history) _historyTime = const UtenHistoryTimeValue.all();
     });
-    if (!seg.history || !_historyTime.isNone) _reload(1);
+    _reload(1);
   }
 
   void _onHistoryTime(UtenHistoryTimeValue value) {
@@ -612,23 +644,12 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
           onPressed: () => backTo(context, defaultPath: RouteName.purchase),
         ),
         actions: [
-          UtenRefreshButton(
-            // TODO(l10n): 补 arb
-            onRefresh: () async {
-              final badges = _loadBadge();
-              final scope = _statusScope;
-              await Future.wait([
-                _reload(),
-                badges,
-                if (scope != null)
-                  ref
-                      .read(documentStatusCountsProvider(scope).future)
-                      .then<void>(
-                        (_) {},
-                        onError: (Object error, StackTrace stack) {},
-                      ),
-              ]);
-            },
+          ListenableBuilder(
+            listenable: _list,
+            builder: (context, _) => UtenRefreshButton(
+              busy: _list.loading,
+              onRefresh: () => trackRefresh(_refresh(), replaceKey: 'refresh'),
+            ),
           ),
         ],
       ),

@@ -198,16 +198,18 @@ class _WarehouseStockDocSegmentState
       }
       _list.keyword = widget.keyword;
       if (oldWidget.docType != widget.docType) {
-        _list.page = null;
+        trackRefresh(Future<void>.value(), replaceKey: 'rows');
+        _list.reset(notify: false);
+        _list.keyword = widget.keyword;
         _seg = null;
         _issueStatus = null;
         _historyTime = const UtenHistoryTimeValue.all();
         // 2026-09-25 单号列统一：换单据类型时单号筛选/桶随旧命名空间一并重置。
         _columnFilters.reset();
       }
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => trackRefresh(_reload(1)),
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _reload(1);
+      });
     }
   }
 
@@ -288,9 +290,21 @@ class _WarehouseStockDocSegmentState
     );
   }
 
-  Future<void> _reload([int? page, bool silent = false]) async {
+  Future<void> _reload([int? page, bool silent = false]) =>
+      trackRefresh(_reloadRows(page, silent), replaceKey: 'rows');
+
+  Future<void> _reloadRows([int? page, bool silent = false]) async {
     final generation = ++_reloadGeneration;
-    if (!_shouldLoad) return;
+    if (!_shouldLoad) {
+      // Deselecting a query also supersedes pending data and errors.
+      final keyword = _list.keyword;
+      final sortKey = _list.sortKey;
+      final sortAsc = _list.sortAsc;
+      _list.reset();
+      _list.keyword = keyword;
+      _list.onSortChange(sortKey, sortAsc);
+      return;
+    }
     unawaited(_loadBillNoFacets());
     await _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
     if (!mounted || generation != _reloadGeneration) return;
@@ -391,7 +405,7 @@ class _WarehouseStockDocSegmentState
       _issueStatus = null;
       if (!seg.history) _historyTime = const UtenHistoryTimeValue.all();
     });
-    if (!seg.history || !_historyTime.isNone) _reload(1);
+    _reload(1);
   }
 
   void _onHistoryTime(UtenHistoryTimeValue value) {

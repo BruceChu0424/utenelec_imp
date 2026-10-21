@@ -28,6 +28,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
+import '../../../components/layout/uten_refresh_scope.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
@@ -80,7 +81,9 @@ class StockDocListPage extends ConsumerStatefulWidget {
 }
 
 class _StockDocListPageState extends ConsumerState<StockDocListPage>
-    with DraftBulkDeleteMixin<StockDocListPage> {
+    with
+        DraftBulkDeleteMixin<StockDocListPage>,
+        UtenRefreshParticipant<StockDocListPage> {
   final _list = PagedListController<StockDocListItem>();
   final _tableRows = MasterDataTableRowsController<StockDocListItem>();
 
@@ -160,9 +163,8 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
     _departmentIdFilter = null;
     _toWarehouseIdFilter = null;
     _columnFilters.reset();
-    _list.page = null;
-    _list.keyword = '';
-    _list.onSortChange(null, true);
+    trackRefresh(Future<void>.value(), replaceKey: 'rows');
+    _list.reset(notify: false);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _loadBadge();
@@ -251,9 +253,21 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
     );
   }
 
-  Future<void> _reload([int? page, bool silent = false]) async {
+  Future<void> _reload([int? page, bool silent = false]) =>
+      trackRefresh(_reloadRows(page, silent), replaceKey: 'rows');
+
+  Future<void> _reloadRows([int? page, bool silent = false]) async {
     final generation = ++_reloadGeneration;
-    if (!_shouldLoad) return;
+    if (!_shouldLoad) {
+      // Deselecting a query also supersedes pending data and errors.
+      final keyword = _list.keyword;
+      final sortKey = _list.sortKey;
+      final sortAsc = _list.sortAsc;
+      _list.reset();
+      _list.keyword = keyword;
+      _list.onSortChange(sortKey, sortAsc);
+      return;
+    }
     unawaited(_loadBillNoFacets());
     await _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
     if (!mounted || generation != _reloadGeneration || _list.error != null) {
@@ -279,7 +293,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
       _issueStatus = null;
       if (!seg.history) _historyTime = const UtenHistoryTimeValue.all();
     });
-    if (!seg.history || !_historyTime.isNone) _reload(1);
+    _reload(1);
   }
 
   void _onHistoryTime(UtenHistoryTimeValue value) {

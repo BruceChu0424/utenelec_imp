@@ -25,6 +25,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_document_lifecycle_filter.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
+import '../../../components/layout/uten_refresh_scope.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_exception.dart';
@@ -60,8 +61,8 @@ class ProductionPlanListPage extends ConsumerStatefulWidget {
       _ProductionPlanListPageState();
 }
 
-class _ProductionPlanListPageState
-    extends ConsumerState<ProductionPlanListPage> {
+class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
+    with UtenRefreshParticipant<ProductionPlanListPage> {
   final _list = PagedListController<ProductionPlanListItem>();
   int? _statusFilter; // null=全部
   bool _historyMode = false;
@@ -162,10 +163,22 @@ class _ProductionPlanListPageState
   /// 分段计数范围(2026-09-21 用户口径: 父分类 hub 卡有草稿红徽章, 子分类也要有数)。
   static const _statusScope = DocumentStatusScope(DraftDocKind.productionPlan);
 
-  Future<void> _reload([int? page, bool silent = false]) async {
+  Future<void> _reload([int? page, bool silent = false]) =>
+      trackRefresh(_reloadRows(page, silent), replaceKey: 'rows');
+
+  Future<void> _reloadRows([int? page, bool silent = false]) async {
     // 列表重拉时同步分段计数(写操作成功 / 返回本页 / 手动刷新都经过这里)。
     ref.invalidate(documentStatusCountsProvider(_statusScope));
-    if (!_statusFilterSelected || (_historyMode && _historyTime.isNone)) return;
+    if (!_statusFilterSelected || (_historyMode && _historyTime.isNone)) {
+      // Deselecting a query also supersedes pending data and errors.
+      final keyword = _list.keyword;
+      final sortKey = _list.sortKey;
+      final sortAsc = _list.sortAsc;
+      _list.reset();
+      _list.keyword = keyword;
+      _list.onSortChange(sortKey, sortAsc);
+      return;
+    }
     await _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
     if (!mounted || _selectedIds.isEmpty) return;
     final draftIds = {

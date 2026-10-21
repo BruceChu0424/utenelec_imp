@@ -36,6 +36,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_refresh_scope.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
@@ -117,7 +118,8 @@ class OperationsWorkbenchPage extends ConsumerStatefulWidget {
 }
 
 class _OperationsWorkbenchPageState
-    extends ConsumerState<OperationsWorkbenchPage> {
+    extends ConsumerState<OperationsWorkbenchPage>
+    with UtenRefreshParticipant<OperationsWorkbenchPage> {
   OperationsWorkbenchData? _data;
   Map<String, Object?>? _acceptedQuery;
   Map<String, int>? _categoryCounts;
@@ -360,6 +362,9 @@ class _OperationsWorkbenchPageState
   }
 
   void _resetReadState() {
+    // The obsolete GET may finish later, but its owner cannot keep the new
+    // reader's refresh action busy after the accepted data has been cleared.
+    trackRefresh(Future<void>.value(), replaceKey: 'rows');
     _readerGeneration++;
     _requestId++;
     _data = null;
@@ -424,7 +429,12 @@ class _OperationsWorkbenchPageState
     'exception': _exception,
   };
 
-  Future<void> _load({int? page, int size = 50}) async {
+  Future<void> _load({int? page, int size = 50}) => trackRefresh(
+    _loadRows(page: page, size: size),
+    replaceKey: 'rows',
+  );
+
+  Future<void> _loadRows({int? page, int size = 50}) async {
     if (!mounted) return;
     final requestId = ++_requestId;
     final query = _queryIdentity;

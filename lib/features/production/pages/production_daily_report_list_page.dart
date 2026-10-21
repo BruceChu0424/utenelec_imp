@@ -20,6 +20,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_document_lifecycle_filter.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
+import '../../../components/layout/uten_refresh_scope.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -60,7 +61,9 @@ class ProductionDailyReportListPage extends ConsumerStatefulWidget {
 
 class _ProductionDailyReportListPageState
     extends ConsumerState<ProductionDailyReportListPage>
-    with DraftBulkDeleteMixin<ProductionDailyReportListPage> {
+    with
+        DraftBulkDeleteMixin<ProductionDailyReportListPage>,
+        UtenRefreshParticipant<ProductionDailyReportListPage> {
   final _list = PagedListController<ProductionDailyReportListItem>();
   final _tableRows =
       MasterDataTableRowsController<ProductionDailyReportListItem>();
@@ -168,11 +171,23 @@ class _ProductionDailyReportListPageState
     DraftDocKind.productionDailyReport,
   );
 
-  Future<void> _reload([int? page, bool silent = false]) async {
+  Future<void> _reload([int? page, bool silent = false]) =>
+      trackRefresh(_reloadRows(page, silent), replaceKey: 'rows');
+
+  Future<void> _reloadRows([int? page, bool silent = false]) async {
     final generation = ++_reloadGeneration;
     // 列表重拉时同步分段计数(写操作成功 / 返回本页 / 手动刷新都经过这里)。
     ref.invalidate(documentStatusCountsProvider(_statusScope));
-    if (!_statusFilterSelected || (_historyMode && _historyTime.isNone)) return;
+    if (!_statusFilterSelected || (_historyMode && _historyTime.isNone)) {
+      // Deselecting a query also supersedes pending data and errors.
+      final keyword = _list.keyword;
+      final sortKey = _list.sortKey;
+      final sortAsc = _list.sortAsc;
+      _list.reset();
+      _list.keyword = keyword;
+      _list.onSortChange(sortKey, sortAsc);
+      return;
+    }
     await _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
     if (!mounted || generation != _reloadGeneration || _list.error != null) {
       return;

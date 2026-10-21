@@ -39,6 +39,31 @@ class _Snapshots extends SessionSnapshotNotifier {
       ref.watch(authenticatedScopeProvider) == null ? null : SessionSnapshot();
 }
 
+Map<String, dynamic> _benchmark({String id = 'copper'}) => {
+  'seriesId': id,
+  'name': switch (id) {
+    'shfe_cu_main_daily' => '沪铜主力(日终)',
+    'shfe_al_main_daily' => '沪铝主力(日终)',
+    'shfe_ag_main_daily' => '沪银主力(日终)',
+    _ => '铜现货参考',
+  },
+  'commodity': id == 'shfe_ag_main_daily'
+      ? 'SILVER'
+      : id == 'shfe_al_main_daily'
+      ? 'ALUMINIUM'
+      : 'COPPER',
+  'market': id.startsWith('shfe_') ? 'FUTURES' : 'SPOT',
+  'grade': '交易所标准',
+  'region': '上海',
+  'currency': 'CNY',
+  'unit': id == 'shfe_ag_main_daily' ? '千克' : '吨',
+  'priceBasis': '主力合约日终结算价',
+  'sourceName': '上海期货交易所公开统计',
+  'provider': 'SHFE_PUBLIC_DAILY',
+  'autoUpdate': true,
+  'selectable': true,
+};
+
 Map<String, dynamic> _snapshot({String id = 'copper'}) => {
   'schemaVersion': 1,
   'seriesId': id,
@@ -81,6 +106,39 @@ Map<String, dynamic> _snapshot({String id = 'copper'}) => {
   'procurementSignal': 'RISING',
 };
 
+Map<String, dynamic> _researchSnapshot() => {
+  ..._snapshot(id: 'shfe_cu_main_daily'),
+  'schemaVersion': 2,
+  'name': '沪铜主力(日终)',
+  'market': 'FUTURES',
+  'sourceName': '上海期货交易所公开统计',
+  'status': 'RESEARCH_ONLY',
+  'validationBasis': 'LATEST_HISTORY_REPLAY',
+  'modelPriceBasis': 'CHAIN_LINKED_CURRENT_ANCHOR',
+  'quoteContract': 'cu2611',
+  'sourceFetchedAt': '2026-10-20T08:30:00Z',
+  'historyRecordCount': 500,
+  'procurementSignal': 'INSUFFICIENT',
+};
+
+Map<String, dynamic> _delayedQuote({
+  String status = 'CURRENT',
+  String expiresAt = '2026-10-20T09:20:00Z',
+}) => {
+  'schemaVersion': 1,
+  'seriesId': 'shfe_cu_main_daily',
+  'contract': 'cu2611',
+  'price': '81400.123456789',
+  'currency': 'CNY',
+  'unit': '吨',
+  'marketTime': '2026-10-20T08:00:00Z',
+  'fetchedAt': '2026-10-20T08:40:00Z',
+  'delayMinutes': 30,
+  'provider': 'SHFE_PUBLIC_DAILY',
+  'status': status,
+  'expiresAt': expiresAt,
+};
+
 MaterialMarketAnalysis _analysis({
   String status = 'READY',
   String? seriesId = 'copper',
@@ -88,25 +146,38 @@ MaterialMarketAnalysis _analysis({
   bool canManage = true,
   Map<String, dynamic>? snapshot,
   String? expiresAt = '2026-10-21T08:00:00Z',
+  bool hasSnapshot = true,
+  Map<String, dynamic>? sync,
+  Map<String, dynamic>? latestQuote,
+  int? refreshAfterSeconds,
 }) => MaterialMarketAnalysis({
   'status': status,
   'seriesId': seriesId,
   'bindingVersion': version,
-  'current': seriesId == null ? null : snapshot ?? _snapshot(id: seriesId),
+  'current': seriesId == null || !hasSnapshot
+      ? null
+      : snapshot ?? _snapshot(id: seriesId),
+  'benchmark': seriesId == null ? null : _benchmark(id: seriesId),
+  'sync': sync ?? {'status': 'OFFLINE', 'autoUpdateEnabled': false},
+  'latestQuote': latestQuote,
+  'refreshAfterSeconds': refreshAfterSeconds,
   'canManage': canManage,
   'expiresAt': expiresAt,
 });
 
 class _Repository implements MaterialMarketRepository {
   MaterialMarketAnalysis response = _analysis();
-  List<MaterialMarketSnapshot> choices = [MaterialMarketSnapshot(_snapshot())];
+  List<MaterialMarketBenchmark> choices = [
+    MaterialMarketBenchmark(_benchmark()),
+  ];
   final reads = <String>[];
   final pending = <Completer<MaterialMarketAnalysis>>[];
   final writes = <Map<String, dynamic>>[];
-  final pendingCatalogs = <Completer<List<MaterialMarketSnapshot>>>[];
+  final pendingCatalogs = <Completer<List<MaterialMarketBenchmark>>>[];
   final pendingWrites = <Completer<MaterialMarketAnalysis>>[];
   bool fail = false, delay = false, delayCatalog = false, failWrite = false;
   bool delayWrite = false;
+  bool bindPending = false;
 
   @override
   Future<MaterialMarketAnalysis> analysis(String goodsId) async {
@@ -121,9 +192,9 @@ class _Repository implements MaterialMarketRepository {
   }
 
   @override
-  Future<List<MaterialMarketSnapshot>> catalog(String goodsId) async {
+  Future<List<MaterialMarketBenchmark>> catalog(String goodsId) async {
     if (delayCatalog) {
-      final pendingRead = Completer<List<MaterialMarketSnapshot>>();
+      final pendingRead = Completer<List<MaterialMarketBenchmark>>();
       pendingCatalogs.add(pendingRead);
       return pendingRead.future;
     }
@@ -148,9 +219,15 @@ class _Repository implements MaterialMarketRepository {
       return command.future;
     }
     return response = _analysis(
-      status: seriesId == null ? 'UNMAPPED' : 'READY',
+      status: seriesId == null
+          ? 'UNMAPPED'
+          : bindPending
+          ? 'SYNC_PENDING'
+          : 'READY',
       seriesId: seriesId,
       version: expectedVersion + 1,
+      hasSnapshot: !bindPending,
+      refreshAfterSeconds: bindPending ? 60 : null,
     );
   }
 }
@@ -179,7 +256,7 @@ void main() {
     bool dark = false,
     double textScale = 1,
     Locale locale = const Locale('zh'),
-    GlobalKey? visualKey,
+    GlobalKey? visualVariant,
   }) async {
     await loadAuditScreenshotFonts(tester);
     tester.view.physicalSize = size;
@@ -201,8 +278,9 @@ void main() {
           apiBaseUrlProvider.overrideWithValue('https://example.invalid/api'),
         ],
         child: RepaintBoundary(
-          key: visualKey ?? const Key('material-market-test-host'),
+          key: visualVariant ?? const Key('material-market-test-host'),
           child: MaterialApp(
+            debugShowCheckedModeBanner: false,
             theme: auditScreenshotTheme(
               dark ? buildDarkTheme() : buildLightTheme(),
             ),
@@ -258,8 +336,8 @@ void main() {
     tester,
   ) async {
     final repository = _Repository()..fail = true;
-    final visualKey = GlobalKey();
-    await pump(tester, repository, visualKey: visualKey);
+    final visualVariant = GlobalKey();
+    await pump(tester, repository, visualVariant: visualVariant);
     expect(find.text('历史成交参考 12.34'), findsOneWidget);
     expect(find.byKey(const Key('material-market-error')), findsOneWidget);
     expect(find.byKey(const Key('material-market-quote')), findsNothing);
@@ -271,12 +349,12 @@ void main() {
     expect(repository.writes, isEmpty);
     const capture = bool.fromEnvironment('UTEN_MATERIAL_VISUALS');
     if (capture) {
-      await saveAuditScreenshot(tester, visualKey, 'material-market-wide');
+      await saveAuditScreenshot(tester, visualVariant, 'material-market-wide');
     }
   });
 
   testWidgets(
-    'unconfigured state explains authorized CSV import and no live feed',
+    'unconfigured state explains automatic service connection without CSV maintenance',
     (tester) async {
       final repository = _Repository()
         ..response = _analysis(
@@ -285,7 +363,8 @@ void main() {
           canManage: false,
         );
       await pump(tester, repository);
-      expect(find.textContaining('当前未接入实时行情源'), findsOneWidget);
+      expect(find.textContaining('自动行情服务尚未连接'), findsOneWidget);
+      expect(find.textContaining('CSV'), findsNothing);
       expect(find.byKey(const Key('material-market-link')), findsNothing);
       expect(find.byKey(const Key('material-market-quote')), findsNothing);
       expect(find.textContaining('未来 1 个观测期'), findsNothing);
@@ -334,7 +413,7 @@ void main() {
   });
 
   testWidgets(
-    'empty catalog directs CSV import and cannot confirm a fake choice',
+    'empty catalog explains unavailable definitions and cannot confirm a fake choice',
     (tester) async {
       final repository = _Repository()
         ..response = _analysis(status: 'UNMAPPED', seriesId: null)
@@ -521,6 +600,330 @@ void main() {
     expect(find.textContaining('行情已过期'), findsOneWidget);
   });
 
+  testWidgets(
+    'v2 built-ins can be linked once without a worker or snapshot then update by GET',
+    (tester) async {
+      final repository = _Repository()
+        ..response = _analysis(status: 'DISABLED', seriesId: null, version: 0)
+        ..bindPending = true
+        ..choices = [
+          for (final id in [
+            'shfe_cu_main_daily',
+            'shfe_al_main_daily',
+            'shfe_ag_main_daily',
+          ])
+            MaterialMarketBenchmark(_benchmark(id: id)),
+        ];
+      final container = await pump(tester, repository);
+      await tester.tap(find.byKey(const Key('material-market-link')));
+      await settle(tester);
+      expect(find.text('沪铜主力(日终)'), findsOneWidget);
+      expect(find.text('沪铝主力(日终)'), findsOneWidget);
+      expect(find.text('沪银主力(日终)'), findsOneWidget);
+      expect(
+        repository.choices.every((row) => !row.data.containsKey('latestPrice')),
+        true,
+      );
+      await tester.tap(find.text('沪铜主力(日终)'));
+      await settle(tester);
+      await tester.tap(find.byKey(const Key('material-market-picker-confirm')));
+      await settle(tester);
+      expect(repository.writes, [
+        {
+          'goodsId': 'a',
+          'seriesId': 'shfe_cu_main_daily',
+          'expectedVersion': 0,
+        },
+      ]);
+      expect(
+        find.byKey(const Key('material-market-bound-benchmark')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('等待首次行情'), findsOneWidget);
+      expect(find.textContaining('自动行情服务未连接'), findsOneWidget);
+      expect(find.textContaining('CSV'), findsNothing);
+      expect(find.byKey(const Key('material-market-quote')), findsNothing);
+      repository.response = _analysis(
+        status: 'RESEARCH_ONLY',
+        seriesId: 'shfe_cu_main_daily',
+        version: 1,
+        snapshot: _researchSnapshot(),
+        latestQuote: _delayedQuote(),
+        refreshAfterSeconds: 60,
+        sync: {
+          'status': 'IDLE',
+          'autoUpdateEnabled': true,
+          'lastSuccessAt': '2026-10-20T09:01:00Z',
+        },
+      );
+      container.read(_time.notifier).state = DateTime.utc(2026, 10, 20, 9, 1);
+      await tester.pump(const Duration(seconds: 60));
+      await settle(tester);
+      expect(find.text('自动更新已连接'), findsOneWidget);
+      expect(find.byKey(const Key('material-market-quote')), findsOneWidget);
+      expect(
+        find.byKey(const Key('material-market-delayed-quote')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('material-market-horizon-20')),
+        findsOneWidget,
+      );
+      expect(repository.writes, hasLength(1));
+    },
+  );
+
+  testWidgets(
+    'v2 research replay shows direction without validated badge or purchasing signal',
+    (tester) async {
+      final visualVariant = GlobalKey();
+      final repository = _Repository()
+        ..response = _analysis(
+          status: 'RESEARCH_ONLY',
+          seriesId: 'shfe_cu_main_daily',
+          snapshot: _researchSnapshot(),
+          latestQuote: _delayedQuote(),
+          refreshAfterSeconds: 60,
+          sync: {
+            'status': 'IDLE',
+            'autoUpdateEnabled': true,
+            'lastSuccessAt': '2026-10-20T08:40:00Z',
+            'nextSyncAt': '2026-10-20T09:01:00Z',
+          },
+        );
+      await pump(tester, repository, visualVariant: visualVariant);
+      expect(find.text('历史回放研究预测'), findsOneWidget);
+      expect(find.text('倾向上涨'), findsNWidgets(3));
+      expect(find.text('已通过历史回测'), findsNothing);
+      expect(find.byKey(const Key('material-market-signal')), findsNothing);
+      expect(
+        find.textContaining('最新延迟行情（至少 30 分钟）: 81400.123456789'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('最近日终结算: 81234.123456789'), findsOneWidget);
+      expect(find.text('日终交易日: 2026-10-19'), findsOneWidget);
+      expect(find.text('行情时间: 2026-10-20 16:00(北京)'), findsOneWidget);
+      expect(find.text('读取时间: 2026-10-20 16:40(北京)'), findsOneWidget);
+      expect(find.text('上次更新: 2026-10-20 16:40(北京)'), findsOneWidget);
+      expect(find.text('下次检查: 2026-10-20 17:01(北京)'), findsOneWidget);
+      const capture = bool.fromEnvironment('UTEN_MATERIAL_VISUALS');
+      if (capture) {
+        await saveAuditScreenshot(tester, visualVariant, 'material-market-v2-wide');
+      }
+      await tester.tap(find.byKey(const Key('material-market-evidence')));
+      await settle(tester);
+      expect(find.textContaining('历史回放 80% 区间覆盖比例: 83%'), findsOneWidget);
+      expect(find.textContaining('当前主力合约价位'), findsOneWidget);
+      expect(find.text('生成时间: 2026-10-20 16:00(北京)'), findsOneWidget);
+      expect(find.text('日终数据读取时间: 2026-10-20 16:30(北京)'), findsOneWidget);
+    },
+  );
+
+  for (final research in [false, true]) {
+    testWidgets(
+      'pending poll cannot extend snapshot or quote expiry (research=$research)',
+      (tester) async {
+        final repository = _Repository()
+          ..response = _analysis(
+            status: research ? 'RESEARCH_ONLY' : 'READY',
+            seriesId: 'shfe_cu_main_daily',
+            snapshot: research
+                ? _researchSnapshot()
+                : _snapshot(id: 'shfe_cu_main_daily'),
+            expiresAt: '2026-10-20T09:01:10Z',
+            latestQuote: _delayedQuote(expiresAt: '2026-10-20T09:01:10Z'),
+            refreshAfterSeconds: 60,
+          );
+        final container = await pump(tester, repository);
+        expect(
+          find.byKey(const Key('material-market-horizon-1')),
+          findsOneWidget,
+        );
+        if (!research) {
+          expect(
+            find.byKey(const Key('material-market-signal')),
+            findsOneWidget,
+          );
+        }
+        repository.delay = true;
+        container.read(_time.notifier).state = DateTime.utc(2026, 10, 20, 9, 1);
+        await tester.pump(const Duration(seconds: 60));
+        await settle(tester);
+        expect(repository.pending, hasLength(1));
+        expect(
+          find.byKey(const Key('material-market-horizon-1')),
+          findsOneWidget,
+        );
+        container.read(_time.notifier).state = DateTime.utc(
+          2026,
+          10,
+          20,
+          9,
+          1,
+          11,
+        );
+        await tester.pump(const Duration(seconds: 11));
+        await settle(tester);
+        expect(repository.pending.single.isCompleted, false);
+        expect(
+          find.byKey(const Key('material-market-horizon-1')),
+          findsNothing,
+        );
+        expect(find.byKey(const Key('material-market-signal')), findsNothing);
+        expect(
+          find.byKey(const Key('material-market-delayed-stale')),
+          findsOneWidget,
+        );
+        expect(find.byKey(const Key('material-market-quote')), findsOneWidget);
+        expect(repository.reads, hasLength(2));
+        expect(repository.writes, isEmpty);
+        repository.pending.single.complete(
+          _analysis(
+            status: 'STALE',
+            latestQuote: _delayedQuote(status: 'STALE'),
+          ),
+        );
+        await settle(tester);
+      },
+    );
+  }
+
+  testWidgets(
+    'v2 delayed quote expiry refreshes earlier than cadence and never changes settlement date',
+    (tester) async {
+      final repository = _Repository()
+        ..response = _analysis(
+          status: 'RESEARCH_ONLY',
+          seriesId: 'shfe_cu_main_daily',
+          snapshot: _researchSnapshot(),
+          latestQuote: _delayedQuote(expiresAt: '2026-10-20T09:00:20Z'),
+          refreshAfterSeconds: 60,
+        );
+      final container = await pump(tester, repository);
+      repository.response = _analysis(
+        status: 'RESEARCH_ONLY',
+        seriesId: 'shfe_cu_main_daily',
+        snapshot: _researchSnapshot(),
+        latestQuote: _delayedQuote(
+          status: 'STALE',
+          expiresAt: '2026-10-20T09:00:20Z',
+        ),
+        refreshAfterSeconds: 60,
+      );
+      container.read(_time.notifier).state = DateTime.utc(
+        2026,
+        10,
+        20,
+        9,
+        0,
+        21,
+      );
+      await tester.pump(const Duration(seconds: 21));
+      await settle(tester);
+      expect(repository.reads, hasLength(2));
+      expect(
+        find.byKey(const Key('material-market-delayed-stale')),
+        findsOneWidget,
+      );
+      expect(find.text('日终交易日: 2026-10-19'), findsOneWidget);
+      expect(repository.writes, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'v2 offline heartbeat never claims synchronization even with auto flag',
+    (tester) async {
+      await pump(
+        tester,
+        _Repository()
+          ..response = _analysis(
+            status: 'SYNC_PENDING',
+            seriesId: 'shfe_cu_main_daily',
+            hasSnapshot: false,
+            expiresAt: null,
+            refreshAfterSeconds: 60,
+            sync: {'status': 'OFFLINE', 'autoUpdateEnabled': true},
+          ),
+      );
+      expect(find.textContaining('自动行情服务未连接'), findsOneWidget);
+      expect(find.textContaining('正在读取最新行情'), findsNothing);
+      expect(find.text('自动更新已连接'), findsNothing);
+      expect(find.textContaining('沪铜主力(日终)'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'v2 automatic GET failure retains authorized evidence and retries only reads',
+    (tester) async {
+      final repository = _Repository()
+        ..response = _analysis(
+          status: 'RESEARCH_ONLY',
+          seriesId: 'shfe_cu_main_daily',
+          snapshot: _researchSnapshot(),
+          refreshAfterSeconds: 60,
+          sync: {'status': 'FETCHING', 'autoUpdateEnabled': true},
+        );
+      final container = await pump(tester, repository);
+      expect(find.text('正在读取最新行情'), findsOneWidget);
+      repository.fail = true;
+      container.read(_time.notifier).state = DateTime.utc(2026, 10, 20, 9, 1);
+      await tester.pump(const Duration(seconds: 60));
+      await settle(tester);
+      expect(repository.reads, hasLength(2));
+      expect(find.byKey(const Key('material-market-error')), findsOneWidget);
+      expect(find.byKey(const Key('material-market-quote')), findsOneWidget);
+      expect(find.text('正在读取最新行情'), findsNothing);
+      expect(find.text('暂无法核对自动更新状态，保留上次行情依据'), findsOneWidget);
+      repository.fail = false;
+      repository.delay = true;
+      container.read(_time.notifier).state = DateTime.utc(2026, 10, 20, 9, 2);
+      await tester.pump(const Duration(seconds: 60));
+      await settle(tester);
+      expect(repository.reads, hasLength(3));
+      expect(find.text('正在读取最新行情'), findsNothing);
+      expect(find.text('暂无法核对自动更新状态，保留上次行情依据'), findsOneWidget);
+      repository.pending.single.complete(repository.response);
+      await settle(tester);
+      expect(find.text('正在读取最新行情'), findsOneWidget);
+      expect(find.text('暂无法核对自动更新状态，保留上次行情依据'), findsNothing);
+      expect(repository.writes, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'v2 polling pauses behind another page and resumes without rebinding',
+    (tester) async {
+      final repository = _Repository()
+        ..response = _analysis(
+          status: 'SYNC_PENDING',
+          seriesId: 'shfe_cu_main_daily',
+          hasSnapshot: false,
+          expiresAt: null,
+          refreshAfterSeconds: 60,
+        );
+      final container = await pump(tester, repository);
+      final navigator = Navigator.of(
+        tester.element(find.byKey(const Key('material-market-panel'))),
+      );
+      unawaited(
+        navigator.push(
+          MaterialPageRoute<void>(
+            builder: (_) => const Scaffold(body: Text('其他页面')),
+          ),
+        ),
+      );
+      await settle(tester);
+      container.read(_time.notifier).state = DateTime.utc(2026, 10, 20, 9, 1);
+      await tester.pump(const Duration(seconds: 60));
+      await settle(tester);
+      expect(repository.reads, hasLength(1));
+      navigator.pop();
+      await settle(tester);
+      expect(repository.reads, hasLength(2));
+      expect(repository.writes, isEmpty);
+    },
+  );
+
   testWidgets('A B A goods transitions discard the first A response', (
     tester,
   ) async {
@@ -620,14 +1023,22 @@ void main() {
     testWidgets(
       'narrow large-text ${dark ? 'dark' : 'light'} layout and evidence remain usable',
       (tester) async {
-        final visualKey = GlobalKey();
+        final visualVariant = GlobalKey();
         await pump(
           tester,
-          _Repository(),
+          _Repository()
+            ..response = _analysis(
+              status: 'RESEARCH_ONLY',
+              seriesId: 'shfe_cu_main_daily',
+              snapshot: _researchSnapshot(),
+              latestQuote: _delayedQuote(),
+              refreshAfterSeconds: 60,
+              sync: {'status': 'IDLE', 'autoUpdateEnabled': true},
+            ),
           size: const Size(375, 812),
           dark: dark,
           textScale: 1.8,
-          visualKey: visualKey,
+          visualVariant: visualVariant,
         );
         expect(tester.takeException(), isNull);
         expect(
@@ -638,7 +1049,7 @@ void main() {
         if (capture) {
           await saveAuditScreenshot(
             tester,
-            visualKey,
+            visualVariant,
             'material-market-${dark ? 'dark' : 'light'}-large-top',
           );
         }
@@ -652,7 +1063,7 @@ void main() {
         if (capture) {
           await saveAuditScreenshot(
             tester,
-            visualKey,
+            visualVariant,
             'material-market-${dark ? 'dark' : 'light'}-large',
           );
         }

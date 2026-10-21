@@ -108,7 +108,7 @@ class _MarketRepository implements MaterialMarketRepository {
   }
 
   @override
-  Future<List<MaterialMarketSnapshot>> catalog(String goodsId) async => [];
+  Future<List<MaterialMarketBenchmark>> catalog(String goodsId) async => [];
   @override
   Future<MaterialMarketAnalysis> bind(
     String goodsId, {

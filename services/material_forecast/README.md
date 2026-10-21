@@ -1,13 +1,108 @@
-# 原材料离线预测 worker
+# 原材料自动行情与 CPU 预测 worker
 
-这个 worker 免费使用 Apache-2.0 的 StatsForecast 2.1.1，在本机 CPU 上计算。
-它只读取操作员提供且有使用授权的 CSV，不抓网页、不需要付费行情 API，
-不读取 ERP 交易，也不会修改 ERP 原有的采购成交历史参考价。
+主流程是**货品一次选择行情基准，后台自动更新行情并重新预测**，不需要采购人员导入 CSV。
+内置沪铜、沪铝、沪银三个期货基准。worker 直接读取上期所公开日终统计及延时行情，
+使用免费的 Apache-2.0 StatsForecast 2.1.1 在 CPU 上计算，不依赖 AKShare、GPU、
+付费模型或大模型 API。PC 聚碳酸酯暂未找到同等适用的免费自动数据源，不能用 PP/PVC 代替。
 
-货品与基准的关联由 ERP 中的显式选择完成。金属现货、某个期货合约、
-连续合约以及不同 PC 牌号分别建基准，不能直接混为同一个价格。
+本进程只知道三个公共基准，没有货品、员工、供应商、库存、ERP 登录凭据或交易事实。
+这些信息不进入 HTTP 请求，也不上传外部。行情不会自动改写 ERP 历史成交参考价或采购单价。
+公司内部使用公开统计与对外转载、转售的权限应分别确认，公开免费访问不是无限制转售授权。
 
-## 安装与运行
+## 自动采集主流程
+
+推荐 Python 3.12 64 位。在仓库根目录安装并检查：
+
+```powershell
+python -m venv .venv-material-forecast
+& ./.venv-material-forecast/Scripts/python.exe -m pip install -r services/material_forecast/requirements.txt
+& ./.venv-material-forecast/Scripts/python.exe -m unittest discover -s services/material_forecast/tests -v
+
+# 一次有界检查：先最新日终和延时价，再回填最多30个日文件。不会假装后台已常驻。
+& ./.venv-material-forecast/Scripts/python.exe services/material_forecast/worker.py `
+  --auto --once --output-directory D:/MaterialForecast/snapshots
+
+# 常驻：默认每15分钟同步，失败自动退避，每30秒写存活心跳。
+& ./.venv-material-forecast/Scripts/python.exe services/material_forecast/worker.py `
+  --auto --output-directory D:/MaterialForecast/snapshots
+```
+
+Linux 使用虚拟环境的 `bin/python`。服务器的
+`uten.material-forecast.snapshot-directory` 与 `--output-directory` 必须指向同一个绝对目录。
+例如在本地 `server/.env` 配置下列 properties，按现有发布/服务流程应用 V890 并重启后生效：
+
+```properties
+uten.material-forecast.snapshot-directory=D:/MaterialForecast/snapshots
+uten.material-forecast.max-data-age-days=3
+```
+
+这属于部署时的一次配置。员工日常只在货品价格分析页选择行情品种并确认，系统记住后自动更新；
+不需要操作 CSV 或在每次使用时启动命令。默认目录为空时显示服务未配置，可先保存品种关联。
+内置目录定义在 `server/src/main/resources/pricing/material-benchmarks.json`，可在数据尚未到达时先关联。
+采集进程部署并启动后，ERP 页面会定时重新读取报价与预测；HTTP 请求不训练或抓取行情。
+
+可设置 `--interval 1800` 改成每30分钟；允许900–3600秒。
+`--history-days 1200` 是默认日历回填窗口，可设3–3650天；
+`--backfill-budget 30` 限制每轮额外历史请求，可设0–1000。
+网络请求最多每秒1次，固定官方 HTTPS 主机和路径，同主机重定向才允许。
+请求/解压大小、读取时长和返回结构均有界；403/429停止当前同步，
+将退避期限持久化，重启也不能绕过它。不伪造浏览器身份、不处理验证码或绕过反爬。
+
+首次启动先获得最新两个完整交易日报告，用前日持仓选出最新主力结算价并显示；
+历史以每天文件在后台渐进回填，默认每轮30个，通常需要多个轮次才能得到约600条有效报价。
+完成时间取决于休市日、来源可达性和预算。历史不足时显示真实日终报价及依据不足，
+不能立即声称已验证预测。达到足够窗口后自动计算，新增报告会重新计算；
+即使日终未变化，每12小时也会重新生成一次模型证据，原始抓取时间不会随之改写。
+
+三个品种共用每天一次下载的持久缓存。缓存保留原始内容摘要、实际 `firstObservedAt/fetchedAt`
+和后续修订；未请求过的日期或网络失败会截断历史窗口。
+每次实际生成的预测也在 `.auto-feed/issued/` 按内容摘要保留，不用今天的新模型覆盖旧预测，
+方便后续对照真实新报价；这只是前向证据积累，不代表首版已经实现或通过前向验收。
+只有已检查的空日可跳过，连续报告还必须满足官方 `o_trade_day` 序号差1，
+不会把缺失的真正交易日当休市后错误使用两天前持仓。
+最近7日会轮换复查修订，最近2日404不永久标成休市。
+官方[年度下载清单](https://www.shfe.com.cn/reports/tradedata/datadownload/download.json)
+每周缓存发现，但首版不自动下载包含全部品种的大型年度 ZIP，也不解压到文件系统。
+
+主力规则是前一交易日 `OPENINTEREST` 最大，并列取最近交割月；
+先选约再验证本日结算，原赢家缺失时不临时改选次名。
+同一合约前后日 `SETTLEMENTPRICE` 收益前向连接，避免换月价差变成假涨跌；
+预测及 MAE 再按最新实际主力结算价折算，铜铝为 CNY/吨、银为 CNY/千克。
+这是透明的衍生基准，不是交易所发布的官方主力指数。
+
+延时价单独保存为 `<seriesId>.quote.json`，按日终选出的同一合约匹配，
+显示真实合约、行情时间与抓取时间，标称至少延时30分钟。
+它不进入日终训练标签，也不冒充收费实时行情。服务器按行情时间2小时/抓取时间1小时
+独立判断过期，午休、闭市或来源停更可能导致正常的“已过期”展示。
+
+历史档案没有可证明的完整发布时间版本，所以自动模式明确使用
+`LATEST_HISTORY_REPLAY`，通过同样的每跨度验收也只能是 `RESEARCH_ONLY`。
+历史数据足够且每个跨度都胜 Naive、区间覆盖达标时，可以展示研究价格与方向，
+但 `procurementSignal` 始终 `INSUFFICIENT`，不会升级为 READY 或建议下单。
+原始首次抓取时间不会倒写成历史已知时间；真实长期前向验证需要另外持续积累，
+首版没有把档案研究回测当成这项证据。
+
+输出日终预测快照、独立延时价和 `auto-feed-health.json` 均为原子完整替换。
+源失败保留旧数据，同时独立报告错误；ERP 再检查快照时效。
+后台有30秒心跳，10分钟未见心跳不得显示“正在更新”。`--once` 的
+`autoUpdateEnabled=false`，常驻进程才为true，正常停止后重新写false。
+请用系统进程管理器或下方容器例子监管，不需要在 ERP 请求线程启动后台任务。
+
+## 容器常驻示例
+
+提供 Dockerfile 和 `compose.yaml` 作为部署模板；本轮只验证了本机 Python，未构建或上线容器。
+在仓库根目录执行 `docker build -f services/material_forecast/Dockerfile -t uten-material-forecast:local .`。
+Compose 的 `MATERIAL_FORECAST_DIRECTORY` 必须设为服务器同样读取的绝对目录，
+Linux 目录须可由 uid 10001 写入；缓存 `.auto-feed/` 要持久化并与快照一起备份。
+本进程不需要 ERP 密钥。容器仅请求官方公开统计，未安装订阅行情服务。
+
+## 旧版可选 CSV 模式
+
+下面保留自有/已授权供应商现货等诊断工具及旧版读取兼容；当前内置关联目录不提供新增自定义 CSV 品种。
+它不是内置沪铜/沪铝/沪银的主流程。
+CSV 模式在安装后只读取本地文件，不访问网络，也不修改现有采购事实。
+
+### CSV 安装与运行
 
 推荐 Python 3.12 64 位。依赖安装需要能访问 PyPI；安装后计算不访问网络，
 不需要 GPU 或模型权重。依赖与 worker 版本一起发布，不能在每次启动时自动升级。
@@ -27,12 +122,7 @@ python -m venv .venv-material-forecast
 
 Linux 使用虚拟环境的 `bin/python`。输出目录必须与服务器配置
 `uten.material-forecast.snapshot-directory` 指向同一个本地绝对目录。
-例如在本地 `server/.env` 配置下列 properties，按现有服务流程重启后生效：
-
-```properties
-uten.material-forecast.snapshot-directory=D:/MaterialForecast/snapshots
-uten.material-forecast.max-data-age-days=3
-```
+目录配置使用前述自动采集章节的同一属性。
 
 默认没有目录配置时功能为未接入；不要把 `examples/generated` 配成正式目录。
 首次启用前先按既有发布流程应用 V890 迁移，不对公司数据库手工建表。
@@ -45,7 +135,7 @@ ERP 会独立检查数据和快照是否过期，失败后不会把旧价格重�
 也可以在每日完成数据导出后执行一次批处理命令。worker 不会向来源网站索取更新。
 来源导出应先写临时文件，再替换 CSV，避免读到写了一半的文件。
 
-## 授权数据与修订
+## CSV 授权数据与修订
 
 复制 `templates/manifest.json` 和只有表头的 `templates/prices.csv`。
 模板中的 `authorized` 故意为 `false`；确认数据来源的使用权后再设为 `true`，
@@ -102,7 +192,7 @@ CSV 字段固定为 `date,price,available_at`。每行是一个观察日期的�
 相邻首报价或同日修订相差超过 5 倍会视为可疑，需核对单位与来源。
 CSV 最大 8 MiB、50,000 行修订，不允许用插值或填充伪造缺失报价。
 
-## 预测和验收方法
+## CSV 预测和验收方法
 
 预测 1、5、20 个**后续有效报价**，不是自然日。没有交易日历时不编造未来日期，
 假期和缺失数据不会被补成持平价格。输入若缺少本来应有的报价，跨度会更长，
@@ -139,7 +229,7 @@ READY 时只有区间完全高于/低于最近价才显示 UP/DOWN。
 多跨度冲突或区间仍重叠最近价时为 WATCH。
 这仅是市场方向信号，采购还要考虑库存、交期、刚需数量和供应商实际报价。
 
-## SYNTHETIC 演示与真实库验证
+## SYNTHETIC CSV 演示与真实库验证
 
 `examples/generate_synthetic.py` 只生成明确标记的人工曲线，不提交大样本文件。
 默认 worker 拒绝它；只有 `--allow-synthetic` 才能测试，输出仍保留

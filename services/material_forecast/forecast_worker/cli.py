@@ -77,8 +77,13 @@ def run_once(manifest_path: Path, csv_path: Path, output_directory: Path,
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description="Offline material benchmark forecasts from authorized CSV revisions")
-    result.add_argument("--manifest", required=True, type=Path)
-    result.add_argument("--csv", required=True, type=Path)
+    result.add_argument("--auto", action="store_true", help="automatically collect the three built-in public SHFE benchmarks")
+    result.add_argument("--once", action="store_true", help="one bounded automatic collection cycle, without claiming a live daemon")
+    result.add_argument("--interval", type=int, default=900, help="automatic poll interval, 900..3600 seconds")
+    result.add_argument("--history-days", type=int, default=1200, help="calendar-day history window, 3..3650")
+    result.add_argument("--backfill-budget", type=int, default=30, help="maximum additional historical daily requests per cycle, 0..1000")
+    result.add_argument("--manifest", type=Path)
+    result.add_argument("--csv", type=Path)
     result.add_argument("--output-directory", required=True, type=Path)
     result.add_argument("--state-directory", type=Path, help="durable append-only ledger; default OUTPUT/.state")
     result.add_argument("--watch", type=int, metavar="SECONDS", help="check local files for updates (minimum 10 seconds)")
@@ -88,6 +93,15 @@ def parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
+    if args.auto:
+        if args.manifest or args.csv or args.watch is not None or args.allow_synthetic or args.state_directory:
+            parser().error("--auto cannot be combined with manual CSV/test options")
+        if not (900 <= args.interval <= 3600 and 3 <= args.history_days <= 3650 and 0 <= args.backfill_budget <= 1000):
+            parser().error("automatic interval/history/backfill budget exceeds supported bounds")
+        from .autofeed import run_auto
+        return run_auto(args)
+    if args.once or not args.manifest or not args.csv:
+        parser().error("use --auto [--once], or supply both --manifest and --csv")
     if args.watch is not None and args.watch < 10:
         parser().error("--watch must be at least 10 seconds")
     last_signature = None

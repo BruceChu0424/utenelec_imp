@@ -80,4 +80,21 @@ class MaterialForecastSnapshotReaderTest {
         var snapshot=r.read("copper-test").snapshot();assertThat(r.expiresAt(snapshot)).isEqualTo("2026-10-21T16:00:00Z");
         var p=new MaterialForecastProperties();p.setSnapshotDirectory(directory.toString());var atExpiry=new MaterialForecastSnapshotReader(p,json,Clock.fixed(Instant.parse("2026-10-21T16:00:00Z"),ZoneOffset.UTC));assertThat(atExpiry.read("copper-test").status()).isEqualTo("STALE");
     }
+    ObjectNode automaticFixture(){
+        var b=new MaterialBenchmarkCatalog(json).find("shfe_cu_main_daily");var n=fixture();var metadata=(ObjectNode)json.valueToTree(b);
+        for(String field:List.of("seriesId","name","commodity","market","grade","region","currency","unit","priceBasis","sourceName","sourceUrl","rollPolicy"))n.set(field,metadata.get(field));
+        n.put("schemaVersion",2);n.put("validationBasis","LATEST_HISTORY_REPLAY");n.put("modelPriceBasis","CHAIN_LINKED_CURRENT_ANCHOR");n.put("quoteContract","cu2611");n.put("sourceFetchedAt","2026-10-20T16:28:00Z");n.put("historyRecordCount",800);n.put("status","RESEARCH_ONLY");n.put("procurementSignal","INSUFFICIENT");return n;
+    }
+    void writeAutomatic(ObjectNode n)throws Exception{Files.writeString(directory.resolve("shfe_cu_main_daily.json"),json.writeValueAsString(n));}
+    @Test void missingBuiltinDataWaitsWithoutInventingAPrice()throws Exception{var result=reader().read("shfe_cu_main_daily");assertThat(result.status()).isEqualTo("SYNC_PENDING");assertThat(result.snapshot()).isNull();Files.writeString(directory.resolve("shfe_cu_main_daily.json"),"{");assertThat(reader().read("shfe_cu_main_daily").status()).isEqualTo("UNAVAILABLE");}
+    @Test void archiveReplayPassIsResearchAndNeverAnActivePurchaseSignal()throws Exception{
+        writeAutomatic(automaticFixture());var result=reader().read("shfe_cu_main_daily");assertThat(result.status()).isEqualTo("RESEARCH_ONLY");assertThat(result.snapshot().validation().passed()).isTrue();assertThat(result.snapshot().procurementSignal()).isEqualTo("INSUFFICIENT");assertThat(result.snapshot().forecasts()).allMatch(f->f.direction().equals("UP"));
+        for(String field:List.of("status","procurementSignal","validationBasis")){var n=automaticFixture();n.put(field,switch(field){case "status"->"READY";case "procurementSignal"->"RISING";default->"POINT_IN_TIME";});writeAutomatic(n);assertThat(reader().read("shfe_cu_main_daily").snapshot()).as(field).isNull();}
+    }
+    @Test void researchStillRequiresTheHeldoutAccuracyGates()throws Exception{for(String field:List.of("folds","modelMAE","coverage80")){var n=automaticFixture();var v=(ObjectNode)n.get("validation");if(field.equals("folds"))v.put(field,19);else v.put(field,field.equals("modelMAE")?"4":"0.69");writeAutomatic(n);assertThat(reader().read("shfe_cu_main_daily").snapshot()).as(field).isNull();}}
+    @Test void matchingSeriesIdCannotSubstituteAnotherCommodityOrUnit()throws Exception{for(String field:List.of("commodity","unit","sourceName","quoteContract")){var n=automaticFixture();n.put(field,switch(field){case "commodity"->"SILVER";case "unit"->"千克";case "sourceName"->"Unverified source";default->"ag2611";});writeAutomatic(n);assertThat(reader().read("shfe_cu_main_daily").snapshot()).as(field).isNull();}}
+    @Test void automaticEvidenceRejectsFutureFetchAndNonIntegerHistorySize()throws Exception{
+        var n=automaticFixture();n.put("sourceFetchedAt","2026-10-20T16:30:01Z");writeAutomatic(n);assertThat(reader().read("shfe_cu_main_daily").snapshot()).isNull();
+        n=automaticFixture();n.put("historyRecordCount",3.5);writeAutomatic(n);assertThat(reader().read("shfe_cu_main_daily").snapshot()).isNull();
+    }
 }

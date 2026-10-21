@@ -18,9 +18,18 @@ public final class MaterialForecastContracts {
             String grade,String region,String currency,String unit,String priceBasis,String sourceName,
             String sourceUrl,boolean authorized,String rollPolicy,String dataAsOf,String generatedAt,
             String latestPrice,String status,List<String> reasonCodes,String modelVersion,String libraryVersion,
-            String datasetDigest,Validation validation,List<Forecast> forecasts,String procurementSignal) {}
+            String datasetDigest,Validation validation,List<Forecast> forecasts,String procurementSignal,
+            String validationBasis,String modelPriceBasis,String quoteContract,String sourceFetchedAt,Integer historyRecordCount) {}
+    public record Benchmark(String seriesId,String name,String commodity,String market,String grade,String region,
+            String currency,String unit,String priceBasis,String sourceName,String sourceUrl,String rollPolicy,
+            String provider,String symbol,boolean autoUpdate,boolean selectable) {}
+    public record Sync(String status,boolean autoUpdateEnabled,String lastAttemptAt,String lastSuccessAt,
+            String nextSyncAt,String errorCode) {}
+    public record LatestQuote(int schemaVersion,String seriesId,String contract,String price,String currency,String unit,
+            String marketTime,String fetchedAt,int delayMinutes,String provider,String status,String expiresAt) {}
     public record Envelope(String status,String seriesId,long bindingVersion,Snapshot current,
-            boolean canManage,List<String> reasonCodes,String expiresAt) {}
+            boolean canManage,List<String> reasonCodes,String expiresAt,Benchmark benchmark,Sync sync,
+            LatestQuote latestQuote,int refreshAfterSeconds) {}
     public record BindingRequest(String seriesId,@JsonDeserialize(using=VersionDeserializer.class) Long expectedVersion) {}
     public static final class VersionDeserializer extends JsonDeserializer<Long> {
         @Override public Long deserialize(JsonParser p,DeserializationContext context)throws IOException {

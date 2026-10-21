@@ -2,11 +2,10 @@
 import copy
 import json
 from pathlib import Path
-import shutil
+import re
 import subprocess
 import sys
 import tempfile
-import textwrap
 import unittest
 
 import osv_scan_gate as gate
@@ -120,37 +119,32 @@ class OsvScanGateTest(unittest.TestCase):
 
 
 class OsvWorkflowContractTest(unittest.TestCase):
-    def test_complete_forecast_closure_is_staged_and_scanned_with_explicit_pip_parser(self):
+    def test_complete_forecast_closure_scans_the_canonical_hashed_lock(self):
         workflow = (ROOT / ".github/workflows/osv-scanner.yml").read_text(encoding="utf-8")
-        step = "      - name: Prepare complete material forecast scan input\n"
-        body = workflow.split(step, 1)[1].split("\n      - ", 1)[0]
-        self.assertIn("shell: python", body)
-        script = textwrap.dedent(body.split("        run: |\n", 1)[1])
-        self.assertIn("--lockfile\n            requirements.txt:./build/osv-material-forecast/requirements.txt", workflow)
+        lock_path = "services/material_forecast/requirements.txt"
+        self.assertIn("--lockfile\n            ./" + lock_path, workflow)
         artifact = workflow.split("name: osv-inputs", 1)[1].split("retention-days:", 1)[0]
-        self.assertIn("build/osv-material-forecast/requirements.txt", artifact)
-        self.assertLess(workflow.index(step), workflow.index("name: osv-inputs"))
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            source = root / "services/material_forecast"
-            source.mkdir(parents=True)
-            for name in ("requirements.txt", "requirements.runtime.txt", "build_payload.py"):
-                shutil.copyfile(ROOT / "services/material_forecast" / name, source / name)
-            shutil.copytree(ROOT / "services/material_forecast/runtime-locks", source / "runtime-locks")
-            result = subprocess.run([sys.executable, "-B", "-c", script], cwd=root, capture_output=True, text=True)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            staged = root / "build/osv-material-forecast/requirements.txt"
-            self.assertEqual(staged.read_bytes(), (source / "requirements.runtime.txt").read_bytes())
-            direct = [line for line in (source / "requirements.txt").read_text().splitlines() if line and not line.startswith("#")]
-            closure = [line for line in staged.read_text().splitlines() if line and not line.startswith("#")]
-            self.assertGreater(len(closure), len(direct), "scan must include the complete transitive runtime closure")
-            # A direct candidate without the matching closure/locks cannot stage
-            # stale versions and then claim those different inputs were audited.
-            staged.unlink()
-            (source / "requirements.txt").write_text("statsforecast==999.0\n", encoding="utf-8")
-            failed = subprocess.run([sys.executable, "-B", "-c", script], cwd=root, capture_output=True, text=True)
-            self.assertNotEqual(failed.returncode, 0)
-            self.assertFalse(staged.exists())
+        self.assertIn("\n            " + lock_path + "\n", artifact)
+        # The checkout lock already contains every transitive dependency. Scanning
+        # a separately staged compatibility export could audit different versions
+        # from the real inference installation and signed offline payload.
+        source = (ROOT / lock_path).read_text(encoding="utf-8")
+        requirements = [line.strip() for line in source.replace("\\\n", " ").splitlines()
+                        if line.strip() and not line.lstrip().startswith("#")]
+        packages = {}
+        for requirement in requirements:
+            match = re.match(r"^([a-zA-Z0-9_.-]+)==([^\s;]+)", requirement)
+            self.assertIsNotNone(match)
+            self.assertRegex(requirement, r"--hash=sha256:[a-f0-9]{64}(?:\s|$)")
+            name, version = match.groups()
+            self.assertNotIn(name, packages)
+            packages[name] = version
+        direct = dict(line.strip().split("==") for line in
+                      (ROOT / "services/material_forecast/requirements.in").read_text(encoding="utf-8").splitlines()
+                      if line.strip() and not line.lstrip().startswith("#"))
+        self.assertGreater(len(packages), len(direct))
+        self.assertTrue(all(packages.get(name) == version for name, version in direct.items()))
+        self.assertTrue({"coreforecast", "scipy", "statsmodels", "fugue", "utilsforecast"} <= packages.keys())
 
     def test_original_scanner_and_reporter_use_supported_flags_in_the_input_workspace(self):
         workflow = (ROOT / ".github/workflows/osv-scanner.yml").read_text(encoding="utf-8")

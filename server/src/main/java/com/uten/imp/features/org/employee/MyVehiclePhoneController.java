@@ -1,9 +1,12 @@
 package com.uten.imp.features.org.employee;
 
 import com.uten.imp.features.org.employee.dto.NestedDtos;
+import com.uten.imp.features.org.employee.dto.NestedDtos.VehicleInput;
+import com.uten.imp.features.org.employee.dto.NestedDtos.PhoneInput;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,7 +23,6 @@ import java.util.List;
  * 备用手机号本人可见明文；权限点沿用 profile:edit:self（全员基础）。
  */
 @RestController
-@org.springframework.validation.annotation.Validated
 @RequestMapping("/api/profile/me")
 @RequiredArgsConstructor
 public class MyVehiclePhoneController {
@@ -40,7 +42,7 @@ public class MyVehiclePhoneController {
     @PreAuthorize("hasAuthority('profile:edit:self')")
     @org.springframework.transaction.annotation.Transactional
     public List<NestedDtos.VehicleDto> replaceMyVehicles(
-            @RequestBody List<NestedDtos.@Valid VehicleInput> inputs) {
+            @RequestBody List<@NotNull @Valid VehicleInput> inputs) {
         tx.bind();
         Employee me = requireMe();
         vehiclePhoneService.replaceVehicles(me, inputs);
@@ -60,7 +62,7 @@ public class MyVehiclePhoneController {
     @PreAuthorize("hasAuthority('profile:edit:self')")
     @org.springframework.transaction.annotation.Transactional
     public List<NestedDtos.PhoneDto> replaceMyPhones(
-            @RequestBody List<NestedDtos.@Valid PhoneInput> inputs) {
+            @RequestBody List<@NotNull @Valid PhoneInput> inputs) {
         tx.bind();
         Employee me = requireMe();
         vehiclePhoneService.replacePhones(me, inputs);

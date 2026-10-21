@@ -82,6 +82,50 @@ class ContainerCascadeMetadataTest {
         }
     }
 
+    @Test
+    void hrVehicleAndPhoneUpdatesRejectTheSameNullAndBlankMembersAsSelfService() throws Exception {
+        var mapper = new ObjectMapper().findAndRegisterModules();
+        try (var factory = Validation.buildDefaultValidatorFactory()) {
+            for (String field : List.of("vehicles", "phones")) {
+                String required = field.equals("vehicles") ? "plateNo" : "phone";
+                for (String members : List.of("[null]", "[{}]", "[{\"" + required + "\":\" \"}]")) {
+                    var request = mapper.readValue("{\"" + field + "\":" + members + "}", UpdateEmployeeRequest.class);
+                    assertThat(factory.getValidator().validate(request))
+                            .anyMatch(violation -> violation.getPropertyPath().toString().startsWith(field + "[0]"));
+                }
+            }
+        }
+    }
+
+    @Test
+    void qualifiedNestedTypesKeepRealProviderCascadesWithoutChangingOptionalCollections() throws Exception {
+        try (var factory = Validation.buildDefaultValidatorFactory()) {
+            Validator validator = factory.getValidator();
+            for (String field : List.of("certificates", "educations")) {
+                var property = validator.getConstraintsForClass(UpdateEmployeeRequest.class)
+                        .getConstraintsForProperty(field);
+                assertThat(cascaded(property.getConstrainedContainerElementTypes())).as(field).isTrue();
+            }
+            var planning = new com.uten.imp.features.production.mrp.GeneratePlanningPackageRequest();
+            planning.setItems(List.of(new com.uten.imp.features.production.mrp.GenerateSubplansRequest.Line()));
+            assertThat(validator.validate(planning)).extracting(violation -> violation.getPropertyPath().toString())
+                    .contains("items[0].goodsId", "items[0].qty");
+            var move = new com.uten.imp.features.master.goods.dto.BomMoveRequest.Move();
+            var operation = new com.uten.imp.features.master.goods.dto.BomEditRequest.Operation(
+                    com.uten.imp.features.master.goods.dto.BomEditRequest.Type.MOVE,
+                    null, null, null, null, null, List.of(move));
+            assertThat(validator.validate(operation)).extracting(violation -> violation.getPropertyPath().toString())
+                    .contains("moves[0].itemId", "moves[0].targetParentGoodsId");
+
+            var mapper = new ObjectMapper().findAndRegisterModules();
+            for (String fields : List.of("{}", "{\"emergencyContacts\":[],\"certificates\":[],\"educations\":[]}")) {
+                assertThat(validator.validate(mapper.readValue(fields, OnboardingRequest.class))).isEmpty();
+                assertThat(validator.validate(mapper.readValue(fields.replace("\"emergencyContacts\":[],", ""),
+                        UpdateEmployeeRequest.class))).isEmpty();
+            }
+        }
+    }
+
     private static boolean cascaded(Set<ContainerElementTypeDescriptor> elements) {
         return elements.stream().anyMatch(element -> element.isCascaded()
                 || cascaded(element.getConstrainedContainerElementTypes()));

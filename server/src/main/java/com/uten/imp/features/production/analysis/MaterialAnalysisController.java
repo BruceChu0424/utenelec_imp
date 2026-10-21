@@ -8,7 +8,9 @@ import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.RequestUuidSets;
 import com.uten.imp.features.production.mrp.GoodsWorkshopPreferenceView;
 import com.uten.imp.features.production.mrp.ProductionGoodsWorkshopPreferenceService;
+import com.uten.imp.features.production.analysis.GoodsOwningWarehouseWriteService.OwningWarehouseRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -28,7 +30,6 @@ import static com.uten.imp.features.production.analysis.MaterialAnalysisContract
 
 /** HTTP boundary for persistent pre-plan material analysis. */
 @RestController
-@org.springframework.validation.annotation.Validated
 @RequestMapping("/api/production/material-analyses")
 @RequiredArgsConstructor
 public class MaterialAnalysisController {
@@ -266,7 +267,7 @@ public class MaterialAnalysisController {
     @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:route')")
     public java.util.Map<String, Integer> saveGoodsOwningWarehouses(
             @RequestBody
-            List<GoodsOwningWarehouseWriteService.@Valid OwningWarehouseRequest> requests) {
+            List<@NotNull @Valid OwningWarehouseRequest> requests) {
         return goodsOwningWarehouses.applyOwningWarehouses(requests);
     }
 

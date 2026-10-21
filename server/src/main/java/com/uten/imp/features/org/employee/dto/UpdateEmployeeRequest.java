@@ -1,7 +1,10 @@
 package com.uten.imp.features.org.employee.dto;
 
 import com.uten.imp.common.validation.RequestLimits;
+import com.uten.imp.features.org.employee.dto.NestedDtos.VehicleInput;
+import com.uten.imp.features.org.employee.dto.NestedDtos.PhoneInput;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import java.time.LocalDate;
@@ -45,14 +48,14 @@ public record UpdateEmployeeRequest(
         String socialInsuranceLocation,
         // 子集合（非 null 则整体替换；空数组 = 清空）
         @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS)
-        List<OnboardingRequest.@Valid CredentialInput> certificates,
+        List<OnboardingRequest.@NotNull @Valid CredentialInput> certificates,
         @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS)
-        List<OnboardingRequest.@Valid EducationInput> educations,
+        List<OnboardingRequest.@NotNull @Valid EducationInput> educations,
         // 车辆 / 备用手机号（非 null 则整体替换；空数组 = 清空）—— ADR-021
         @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS)
-        List<NestedDtos.@Valid VehicleInput> vehicles,
+        List<@NotNull @Valid VehicleInput> vehicles,
         @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS)
-        List<NestedDtos.@Valid PhoneInput> phones,
+        List<@NotNull @Valid PhoneInput> phones,
         // 入职日期更正使用旧值做并发比较；原因记入追加的任职更正记录。
         LocalDate hireDate,
         LocalDate expectedHireDate,

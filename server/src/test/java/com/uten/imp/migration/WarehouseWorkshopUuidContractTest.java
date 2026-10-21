@@ -98,6 +98,8 @@ class WarehouseWorkshopUuidContractTest {
         String page = compact(read("../lib/features/basic_data/pages/warehouse_page.dart"));
         String repository = compact(read(
                 "../lib/features/basic_data/repositories/warehouse_repository.dart"));
+        String inlineWrites = compact(read(
+                "../lib/features/basic_data/widgets/master_inline_page_mixin.dart"));
 
         assertThat(model)
                 .contains("final string? workshopdepartmentid")
@@ -107,15 +109,21 @@ class WarehouseWorkshopUuidContractTest {
         assertThat(page)
                 .contains("key: 'workshopdepartmentid'")
                 .contains("ref.watch(warehouseworkshopoptionsprovider)")
-                .contains("utendropdownitem(")
+                .contains("utendropdownitem(value: row.id,")
                 .contains("widget.onchanged(value)")
-                .contains("d.workshopdepartmentid ?? ''")
-                .contains("w.legacyoperatorid?.tostring()")
-                .doesNotContain("key: 'workshoplegacyid'");
+                .contains("'workshopdepartmentid' => row.workshopdepartmentid")
+                .contains("read: (row) => _inlinevalue(row, field.key)")
+                .contains("if (!field.readonly")
+                .doesNotContain("key: 'workshoplegacyid'", "key: 'legacyoperatorid'");
+        assertThat(inlineWrites)
+                .contains("for (final key in patch.keys) key: bykey[key]!.read(row)")
+                .contains(".read(masterinlineeditrepositoryprovider)")
+                .contains(".save(inlineentitytype, id, changes: patch, expected: expected)");
         assertThat(repository)
                 .contains("future<list<warehouseworkshopoption>> workshops()")
                 .contains("apiendpoints.warehousesworkshops")
-                .contains("warehouseworkshopoption.fromjson");
+                .contains("warehouseworkshopoption.fromjson")
+                .doesNotContain("'workshoplegacyid':", "'legacyoperatorid':", "'workshopdepartmentname':");
     }
 
     private static String read(String serverRelativePath) throws IOException {

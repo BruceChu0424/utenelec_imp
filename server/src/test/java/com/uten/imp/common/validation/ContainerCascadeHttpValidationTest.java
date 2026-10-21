@@ -4,7 +4,17 @@ import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.GlobalExceptionHandler;
 import com.uten.imp.features.org.employee.EmployeeVehiclePhoneService;
+import com.uten.imp.features.org.employee.Employee;
+import com.uten.imp.features.org.employee.EmployeeController;
+import com.uten.imp.features.org.employee.EmployeeCommandService;
+import com.uten.imp.features.org.employee.EmployeeOnboardingService;
+import com.uten.imp.features.org.employee.EmployeeQueryService;
+import com.uten.imp.features.admin.UserAccountAdminService;
+import com.uten.imp.application.port.AttachmentAccessPort;
+import com.uten.imp.responsibility.DataHandoverService;
 import com.uten.imp.features.org.employee.MyVehiclePhoneController;
+import com.uten.imp.features.org.department.staffpermission.PagePermissionWorkspaceController;
+import com.uten.imp.features.org.department.staffpermission.PagePermissionWorkspaceService;
 import com.uten.imp.features.production.analysis.AnalysisLinkedSalesOrderService;
 import com.uten.imp.features.production.analysis.GoodsOwningWarehouseWriteService;
 import com.uten.imp.features.production.analysis.MaterialAnalysisCommandService;
@@ -16,6 +26,8 @@ import com.uten.imp.features.production.analysis.MaterialStockReallocationServic
 import com.uten.imp.features.production.mrp.ProductionGoodsWorkshopPreferenceService;
 import com.uten.imp.features.warehouse.place.WarehousePlaceSuggestionController;
 import com.uten.imp.features.warehouse.place.WarehousePlaceSuggestionService;
+import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialSettingsController;
+import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialSettingsService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.validation.Valid;
@@ -79,6 +91,11 @@ class ContainerCascadeHttpValidationTest {
                 .andExpect(jsonPath("$.code").value(ErrorCode.VALIDATION_FAILED.name()))
                 .andExpect(jsonPath("$.fieldErrors[0].field").value("requests[0].goodsId"));
         verifyNoInteractions(service);
+        mvc.perform(put("/api/production/material-analyses/goods-owning-warehouses")
+                        .contentType(MediaType.APPLICATION_JSON).content("[null]"))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.code").value(ErrorCode.VALIDATION_FAILED.name()));
+        verifyNoInteractions(service);
     }
 
     @Test
@@ -108,6 +125,92 @@ class ContainerCascadeHttpValidationTest {
                     .createWithValidateFlags();
             assertThat(handler.shouldValidateArguments()).as(method).isTrue();
         }
+    }
+
+    @Test
+    void selfServiceRejectsNullAndBlankEntriesBeforeBindingOrReplacingEmployeeData() throws Exception {
+        var service = mock(EmployeeVehiclePhoneService.class);
+        var current = mock(SecurityContextCurrentUser.class);
+        var tx = mock(TxSessionVars.class);
+        var mvc = http(new MyVehiclePhoneController(service, current, tx));
+        for (String endpoint : List.of("vehicles", "phones")) {
+            String required = endpoint.equals("vehicles") ? "plateNo" : "phone";
+            for (String payload : List.of("[null]", "[{}]", "[{\"" + required + "\":\" \"}]")) {
+                mvc.perform(put("/api/profile/me/" + endpoint)
+                                .contentType(MediaType.APPLICATION_JSON).content(payload))
+                        .andExpect(status().isUnprocessableContent())
+                        .andExpect(jsonPath("$.code").value(ErrorCode.VALIDATION_FAILED.name()));
+            }
+        }
+        verifyNoInteractions(service, current, tx);
+    }
+
+    @Test
+    void selfServiceStillAllowsEmptyArraysToClearVehiclesAndPhones() throws Exception {
+        var service = mock(EmployeeVehiclePhoneService.class);
+        var current = mock(SecurityContextCurrentUser.class);
+        var employee = mock(Employee.class);
+        UUID id = UUID.randomUUID();
+        when(current.requireEmployeeId()).thenReturn(id);
+        when(service.requireEmployee(id)).thenReturn(employee);
+        when(employee.getId()).thenReturn(id);
+        when(service.listVehicles(id)).thenReturn(List.of());
+        when(service.listPhones(id)).thenReturn(List.of());
+        var mvc = http(new MyVehiclePhoneController(service, current, mock(TxSessionVars.class)));
+        for (String endpoint : List.of("vehicles", "phones")) {
+            mvc.perform(put("/api/profile/me/" + endpoint)
+                            .contentType(MediaType.APPLICATION_JSON).content("[]"))
+                    .andExpect(status().isOk());
+        }
+        verify(service).replaceVehicles(employee, List.of());
+        verify(service).replacePhones(employee, List.of());
+    }
+
+    @Test
+    void permissionWorkspaceQueryBoundsUseTheSameMvcValidationPath() throws Exception {
+        var service = mock(PagePermissionWorkspaceService.class);
+        var mvc = http(new PagePermissionWorkspaceController(service));
+        for (String query : List.of("page=0", "size=51", "search=" + "x".repeat(101))) {
+            mvc.perform(get("/api/department-staff-permissions/staff?surfaceKey=basic.goods&" + query))
+                    .andExpect(status().isUnprocessableContent())
+                    .andExpect(jsonPath("$.code").value(ErrorCode.VALIDATION_FAILED.name()));
+        }
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void workshopPendingQueryRejectsOversizedWarehouseSelectionsBeforeTheService() throws Exception {
+        var service = mock(WorkshopMaterialSettingsService.class);
+        var mvc = http(new WorkshopMaterialSettingsController(service));
+        String[] ids = java.util.stream.IntStream.range(0, 51)
+                .mapToObj(ignored -> UUID.randomUUID().toString()).toArray(String[]::new);
+        mvc.perform(get("/api/workshop-material/settings/in-progress-pending").param("workshopIds", ids))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.code").value(ErrorCode.VALIDATION_FAILED.name()));
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void hrUpdateAndOnboardingRejectNullChildrenBeforeAnyLifecycleCommand() throws Exception {
+        var queries = mock(EmployeeQueryService.class);
+        var onboarding = mock(EmployeeOnboardingService.class);
+        var commands = mock(EmployeeCommandService.class);
+        var mvc = http(new EmployeeController(queries, onboarding, commands,
+                mock(UserAccountAdminService.class), mock(DataHandoverService.class),
+                mock(AuditDetailViewRecorder.class), mock(AttachmentAccessPort.class)));
+        for (String field : List.of("certificates", "educations", "vehicles", "phones")) {
+            mvc.perform(put("/api/org/employees/" + UUID.randomUUID())
+                            .contentType(MediaType.APPLICATION_JSON).content("{\"" + field + "\":[null]}"))
+                    .andExpect(status().isUnprocessableContent())
+                    .andExpect(jsonPath("$.code").value(ErrorCode.VALIDATION_FAILED.name()));
+        }
+        for (String field : List.of("emergencyContacts", "certificates", "educations")) {
+            mvc.perform(post("/api/org/employees")
+                            .contentType(MediaType.APPLICATION_JSON).content("{\"" + field + "\":[null]}"))
+                    .andExpect(status().isUnprocessableContent())
+                    .andExpect(jsonPath("$.code").value(ErrorCode.VALIDATION_FAILED.name()));
+        }
+        verifyNoInteractions(queries, onboarding, commands);
     }
 
     @Test

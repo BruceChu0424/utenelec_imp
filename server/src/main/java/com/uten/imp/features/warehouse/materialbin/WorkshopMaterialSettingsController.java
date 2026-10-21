@@ -9,7 +9,6 @@ import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.Settings
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.SourceWarehouseOption;
 import jakarta.validation.constraints.Size;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -34,7 +33,6 @@ import java.util.UUID;
  *   <li>PUT  /api/workshop-material/settings/{workshopId}          单车间, 与批量同一条代码路径</li>
  * </ul>
  */
-@Validated
 @RestController
 @RequestMapping("/api/workshop-material/settings")
 public class WorkshopMaterialSettingsController {

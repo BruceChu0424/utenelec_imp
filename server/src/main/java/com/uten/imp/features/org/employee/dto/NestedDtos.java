@@ -2,6 +2,7 @@ package com.uten.imp.features.org.employee.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import jakarta.validation.constraints.NotBlank;
 
 import java.time.LocalDate;
 import java.util.UUID;
@@ -96,9 +97,9 @@ public final class NestedDtos {
 
     /** 车辆写入项（整体替换语义；车牌必填，其余非必填）。 */
     public record VehicleInput(
-            String plateNo, String vehicleType, String brandModel,
+            @NotBlank String plateNo, String vehicleType, String brandModel,
             String color, String remark, Integer sortOrder) {}
 
     /** 备用手机号写入项（整体替换语义；号码必填，标签默认「备用」）。 */
-    public record PhoneInput(String label, String phone, Integer sortOrder) {}
+    public record PhoneInput(String label, @NotBlank String phone, Integer sortOrder) {}
 }

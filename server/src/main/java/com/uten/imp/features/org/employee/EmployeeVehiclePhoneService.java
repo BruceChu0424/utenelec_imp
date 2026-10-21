@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -44,6 +45,7 @@ public class EmployeeVehiclePhoneService {
 
     /** 整体替换车辆列表（空数组 = 清空）。 */
     public void replaceVehicles(Employee employee, List<NestedDtos.VehicleInput> inputs) {
+        requirePresentEntries(inputs, "车辆");
         vehicleRepo.deleteByEmployeeId(employee.getId());
         // 派生删除在 Hibernate 动作队列里排在 INSERT 之后——立即 flush，
         // 否则同事务内重插相同车牌会撞 (employee_id, plate_norm) 唯一索引
@@ -85,6 +87,7 @@ public class EmployeeVehiclePhoneService {
 
     /** 整体替换备用手机号（空数组 = 清空）；号码规范化 + 员工内查重。 */
     public void replacePhones(Employee employee, List<NestedDtos.PhoneInput> inputs) {
+        requirePresentEntries(inputs, "备用手机号");
         phoneRepo.deleteByEmployeeId(employee.getId());
         phoneRepo.flush(); // 同 replaceVehicles：先落删除再插入，避免撞唯一索引
         if (inputs == null) return;
@@ -116,6 +119,12 @@ public class EmployeeVehiclePhoneService {
     }
 
     public record PhoneRow(UUID id, String label, String phonePlain) {}
+
+    private static void requirePresentEntries(List<?> inputs, String label) {
+        if (inputs != null && inputs.stream().anyMatch(Objects::isNull)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, label + "列表不能包含空项");
+        }
+    }
 
     private static String trimToNull(String s) {
         return isBlank(s) ? null : s.trim();

@@ -2,6 +2,7 @@ package com.uten.imp.features.org.employee.dto;
 
 import com.uten.imp.common.validation.RequestLimits;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import java.time.LocalDate;
@@ -18,11 +19,11 @@ public record OnboardingRequest(
         @Valid Compensation compensation,
         @Valid Contract contract,
         @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS)
-        List<@Valid EmergencyContactInput> emergencyContacts,
+        List<@NotNull @Valid EmergencyContactInput> emergencyContacts,
         @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS)
-        List<@Valid CredentialInput> certificates,
+        List<@NotNull @Valid CredentialInput> certificates,
         @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS)
-        List<@Valid EducationInput> educations,
+        List<@NotNull @Valid EducationInput> educations,
         @Valid Account account
 ) {
     public record Profile(

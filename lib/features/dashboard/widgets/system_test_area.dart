@@ -331,8 +331,8 @@ class _ClearDataCard extends ConsumerWidget {
     BusinessDataResetResult result,
   ) async {
     if (!context.mounted) return;
-    // 会话已被服务端作废（epoch 已递增、refresh token 已清空），
-    // 这里主动本地登出并回登录页；通知先弹给用户再离开当前页。
+    // 服务端已清除旧登录会话和 refresh token，权限版本与授权配置保持不变。
+    // 重新登录后读取新的业务数据代次，隔离旧草稿；先通知，再回登录页。
     context.appSuccess(
       '已清空 ${result.clearedTableCount} 张业务表'
       '(${result.clearedRows} 行)，保留 ${result.preservedTableCount} 张主档，'

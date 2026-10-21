@@ -40,7 +40,9 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <p>清空口径(逐表 CLEAR/PRESERVE 分类、TRUNCATE RESTART IDENTITY、主档金额/期初归零、
  * 物化视图刷新、全套失败关闭校验、终局全员下线)全部实现在数据库函数 {@code business_data_reset()} 里，
- * 分类只写在该函数体内一处。哪些物理文件属于测试数据只由 {@code fn_business_test_reset_objects()} 一条规则决定，
+ * 分类只写在该函数体内一处。仅推进业务数据代次，权限版本、账号授权和再认证锁定状态保持不变；
+ * 旧登录会话清理用于重登后刷新业务缓存与草稿，不通过修改权限版本下线。
+ * 哪些物理文件属于测试数据只由 {@code fn_business_test_reset_objects()} 一条规则决定，
  * 数据库能判断的拒绝条件只由 {@code fn_business_data_reset_refusals()} 一处判断。</p>
  *
  * <p>本类只负责运行中应用侧的编排，顺序固定：</p>

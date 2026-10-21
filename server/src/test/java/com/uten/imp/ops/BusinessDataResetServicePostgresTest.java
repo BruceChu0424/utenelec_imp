@@ -11,13 +11,32 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.admin.systemtest.BusinessDataResetDrainGate;
 import com.uten.imp.features.admin.systemtest.BusinessDataResetFeatureGate;
 import com.uten.imp.features.admin.systemtest.BusinessDataResetService;
+import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.attachment.ResetEndToEndFixture;
+import com.uten.imp.features.auth.AuthSessionService;
+import com.uten.imp.features.auth.PermissionResolver;
+import com.uten.imp.features.auth.model.UserAccountRepository;
+import com.uten.imp.features.org.department.DepartmentRepository;
+import com.uten.imp.features.org.department.staffpermission.PagePermissionDelegationFeatureGate;
+import com.uten.imp.features.org.department.staffpermission.PermissionSurfaceCatalogRepository;
+import com.uten.imp.features.org.department.staffpermission.PermissionSurfaceRegistry;
+import com.uten.imp.features.org.employee.EmployeeRepository;
+import com.uten.imp.features.org.employee.EmployeeSecondaryDepartmentRepository;
+import com.uten.imp.features.rbac.DepartmentPermissionRepository;
+import com.uten.imp.features.rbac.ManagerPermissionDelegationRepository;
+import com.uten.imp.features.rbac.Permission;
+import com.uten.imp.features.rbac.PermissionGrantPolicyCatalog;
+import com.uten.imp.features.rbac.PermissionRepository;
+import com.uten.imp.features.rbac.UserPermissionOverrideRepository;
+import com.uten.imp.security.PermissionDelegationPolicy;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.postgresql.Driver;
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.data.jpa.repository.support.JpaRepositoryFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.SimpleDriverDataSource;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.orm.jpa.JpaTransactionManager;
@@ -38,6 +57,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.Clock;
+import java.time.Instant;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -46,16 +67,20 @@ import java.util.Base64;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.UUID;
 import jakarta.persistence.EntityManagerFactory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * 工作台「清空业务数据」的真实库执行证明(清空函数 + 服务编排全链路，真实测试文件端口)：
  * 种子业务行被清空、主档金额归零且行数保留、identity 序列重启、
- * 全局 epoch 递增踢掉所有 staff token、refresh_tokens 被清空、
+ * 权限配置与有效负责人委派保留，业务代次推进、会话与 refresh_tokens 清空，
  * 后台事件排队中按拒绝函数在排水前拒绝为 409、可重复执行。
  *
  * <p>写法约束（Mimosa 写入门）：每条 SQL 在各自方法内内联字面量，经独立
@@ -107,9 +132,28 @@ class BusinessDataResetServicePostgresTest {
         insertSeedEmployee(dataSource);
         insertSeedUser(dataSource);
         insertPreservedAccountAndAuthorityFixtures(dataSource);
+        insertPreservedManagerDelegationFixtures(dataSource);
         assertPreservedScopeHasOnePermanentIdentity(dataSource);
         insertSeedRefreshToken(dataSource);
         long epochBefore = readEpoch(dataSource);
+        long generationBefore = readGeneration(dataSource);
+        var jdbc = new JdbcTemplate(dataSource);
+        UUID staff = jdbc.queryForObject("SELECT id FROM users WHERE login_account='t0001'", UUID.class);
+        UUID staffSession = jdbc.queryForObject("SELECT sid FROM auth_sessions WHERE user_id=?", UUID.class, staff);
+        var sessions = new AuthSessionService(new NamedParameterJdbcTemplate(dataSource),
+                mock(SystemSettingsService.class), Clock.systemUTC());
+        assertThat(AuthSessionService.evaluate(sessions.loadStaff(staff, staffSession, staff).orElseThrow().session(),
+                30, Instant.now())).isEqualTo(AuthSessionService.Verdict.ACTIVE);
+        var resolver = permissionResolver(jdbc);
+        Set<String> permissionCodes = new LinkedHashSet<>(jdbc.queryForList("SELECT code FROM permissions ORDER BY code", String.class));
+        List<UUID> authorityUsers = jdbc.queryForList("SELECT id FROM users ORDER BY id", UUID.class);
+        Map<UUID, Set<String>> effectiveBefore = resolver.grantedPermissionsFor(authorityUsers, permissionCodes);
+        assertThat(effectiveBefore.get(staff)).contains("goods:view", "account:support")
+                .doesNotContain("goods:edit", "profile:edit:self");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM manager_permission_delegations WHERE enabled", Long.class))
+                .as("both current and stale manager delegations must be populated").isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM auth_step_up_states WHERE failed_attempts=7 AND locked_until>now()", Long.class))
+                .as("clearing business data must not erase a real reauthentication lockout").isEqualTo(1);
 
         // 本测试没有业务附件：测试文件清单为空，真实文件端口什么都不删。
         var drain = new BusinessDataResetDrainGate();
@@ -169,8 +213,12 @@ class BusinessDataResetServicePostgresTest {
                     .doesNotContain("已整体回滚");
             assertThat(auditFailure).hasStackTraceContaining("reset completion unavailable");
             assertThat(readEpoch(dataSource)).isEqualTo(epochBefore);
+            assertThat(readGeneration(dataSource)).isEqualTo(generationBefore);
             assertThat(countRefreshTokens(dataSource)).isEqualTo(1);
             assertThat(preservedIdentityConfiguration(dataSource)).isEqualTo(identitiesBefore);
+            assertThat(resolver.grantedPermissionsFor(authorityUsers, permissionCodes)).isEqualTo(effectiveBefore);
+            assertThat(AuthSessionService.evaluate(sessions.loadStaff(staff, staffSession, staff).orElseThrow().session(),
+                    30, Instant.now())).isEqualTo(AuthSessionService.Verdict.ACTIVE);
             assertThat(countBusinessOutbox(dataSource)).isEqualTo(2);
             // ADR-067 §9：受理回执独立于清库事务、先行提交，回滚后仍在（+1）；提交确认丢失
             // 的不确定结果不写失败回执，完成回执随事务回滚——重登核对时只看到「已受理未完成」。
@@ -256,7 +304,8 @@ class BusinessDataResetServicePostgresTest {
         assertThat(result.clearedRows()).isEqualTo(6L + migratedClearBaseline.values().stream()
                 .mapToLong(Long::longValue).sum());
         assertThat(nonemptyClearTableCounts(dataSource)).isEmpty();
-        assertThat(result.authorizationEpochAfter()).isEqualTo(epochBefore + 1);
+        assertThat(result.authorizationEpochAfter()).isEqualTo(epochBefore);
+        assertThat(readGeneration(dataSource)).isEqualTo(generationBefore + 1);
 
         // 业务事实清空 + identity 序列重启（TRUNCATE RESTART IDENTITY 的直接证据：
         // 清空后 nextval 从 1 重新开始）
@@ -267,6 +316,9 @@ class BusinessDataResetServicePostgresTest {
         // 保留主档：行数不变、五个金额字段全部归零
         assertThat(countUsers(dataSource)).isEqualTo(usersBefore);
         assertThat(preservedIdentityConfiguration(dataSource)).isEqualTo(identitiesBefore);
+        assertThat(resolver.grantedPermissionsFor(authorityUsers, permissionCodes)).isEqualTo(effectiveBefore);
+        assertThat(AuthSessionService.evaluate(sessions.loadStaff(staff, staffSession, staff).orElseThrow().session(),
+                30, Instant.now())).isEqualTo(AuthSessionService.Verdict.MISSING);
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement();
              ResultSet rows = statement.executeQuery("SELECT count(*) FROM auth_sessions")) {
             assertThat(rows.next()).isTrue();
@@ -277,8 +329,8 @@ class BusinessDataResetServicePostgresTest {
         assertThat(queryZeroedPaymentStyle(dataSource)).isEqualTo(1);
         assertThat(financePriceAnalysisGrant(dataSource)).isEqualTo(financePriceAnalysisGrantBefore);
 
-        // 全员下线：epoch 已递增、refresh_tokens 已清空
-        assertThat(readEpoch(dataSource)).isEqualTo(epochBefore + 1);
+        // 全员下线只清理会话，不改变权限纪元或恢复过期的负责人委派。
+        assertThat(readEpoch(dataSource)).isEqualTo(epochBefore);
         assertThat(countRefreshTokens(dataSource)).isZero();
 
         // 旧测试审计清除，但本次主档归零 UPDATE 仍按实际操作者和请求留痕。
@@ -288,10 +340,12 @@ class BusinessDataResetServicePostgresTest {
         insertSeedBusinessOutboxRow(dataSource, (short) 1);
         var second = service.reset(operator, account);
         assertThat(second.clearedRows()).isEqualTo(1);
-        assertThat(second.authorizationEpochAfter()).isEqualTo(epochBefore + 2);
+        assertThat(second.authorizationEpochAfter()).isEqualTo(epochBefore);
+        assertThat(readGeneration(dataSource)).isEqualTo(generationBefore + 2);
         assertThat(preservedIdentityConfiguration(dataSource)).isEqualTo(identitiesBefore);
+        assertThat(resolver.grantedPermissionsFor(authorityUsers, permissionCodes)).isEqualTo(effectiveBefore);
         assertThat(service.lastResult(operator, attempt).authorizationEpochAfter())
-                .isEqualTo(epochBefore + 1); // A later reset must not replace this exact receipt.
+                .isEqualTo(epochBefore); // A later reset must not replace this exact receipt.
         RequestContextHolder.resetRequestAttributes();
     }
 
@@ -613,7 +667,77 @@ class BusinessDataResetServicePostgresTest {
                     INSERT INTO auth_sessions(sid,user_id,created_at,last_seen_at,absolute_expires_at)
                     SELECT gen_random_uuid(),id,now(),now(),now()+interval '1 day' FROM users WHERE login_account='t0001'
                     """);
+            statement.execute("""
+                    INSERT INTO auth_step_up_states(user_id,failed_attempts,locked_until,updated_at)
+                    SELECT id,7,now()+interval '2 hours',now()-interval '1 minute' FROM users WHERE login_account='t0001'
+                    """);
         }
+    }
+
+    private void insertPreservedManagerDelegationFixtures(SimpleDriverDataSource dataSource) throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            // Both requested capabilities are intentionally available to the recipient only through a delegation.
+            statement.execute("UPDATE permissions SET baseline=false WHERE code IN ('goods:view','goods:edit')");
+            statement.execute("""
+                    INSERT INTO employees(code,full_name,id_type,department_id,hire_date,status,employment_type)
+                    SELECT 'RESET-MANAGER','清空测试负责人','其他',id,current_date,'active','regular'
+                    FROM departments WHERE code='TEST'
+                    """);
+            statement.execute("""
+                    INSERT INTO users(employee_id,login_account,password_hash,must_change_password,status)
+                    SELECT id,'reset-manager','x',false,'active' FROM employees WHERE code='RESET-MANAGER'
+                    """);
+            statement.execute("""
+                    UPDATE departments SET manager_id=(SELECT id FROM employees WHERE code='RESET-MANAGER')
+                    WHERE code='TEST'
+                    """);
+            statement.execute("""
+                    INSERT INTO user_permission_overrides(user_id,permission_id,effect,authority_source)
+                    SELECT account.id,permission.id,'grant','SUPER_ADMIN_CONFIRMED'
+                    FROM users account CROSS JOIN permissions permission
+                    WHERE account.login_account='reset-manager' AND permission.code IN ('goods:view','goods:edit')
+                    """);
+            statement.execute("""
+                    INSERT INTO manager_permission_delegations(
+                        user_id,permission_id,department_id,enabled,surface_key,granted_by_user_id,
+                        target_user_generation,target_employee_generation,target_department_generation,
+                        grantor_user_generation,grantor_employee_generation,grantor_auth_version,
+                        grantor_authorization_epoch,scope_source,scope_department_id,scope_generation)
+                    SELECT target.id,permission.id,department.id,true,surface.surface_key,grantor.id,
+                           target.permission_delegation_generation,employee.permission_delegation_generation,
+                           department.permission_delegation_generation,grantor.permission_delegation_generation,
+                           manager.permission_delegation_generation,grantor.auth_version,
+                           auth.epoch-CASE WHEN permission.code='goods:edit' THEN 1 ELSE 0 END,
+                           'DEPARTMENT_MANAGER',department.id,department.permission_delegation_generation
+                    FROM users target JOIN employees employee ON employee.id=target.employee_id
+                    JOIN departments department ON department.id=employee.department_id
+                    CROSS JOIN users grantor JOIN employees manager ON manager.id=grantor.employee_id
+                    CROSS JOIN permissions permission CROSS JOIN authorization_state auth
+                    JOIN permission_surface_permissions link ON link.permission_id=permission.id
+                    JOIN permission_surfaces surface ON surface.id=link.surface_id
+                    WHERE target.login_account='t0001' AND grantor.login_account='reset-manager'
+                      AND permission.code IN ('goods:view','goods:edit')
+                      AND surface.surface_key='basic.goods' AND auth.singleton_id=1
+                    """);
+        }
+    }
+
+    private static PermissionResolver permissionResolver(JdbcTemplate jdbc) {
+        var catalog = mock(PermissionRepository.class);
+        when(catalog.findAll()).thenReturn(jdbc.query("SELECT code,action_type FROM permissions", (rows, index) -> {
+            var permission = new Permission();
+            permission.setCode(rows.getString("code"));
+            permission.setActionType(rows.getString("action_type"));
+            return permission;
+        }));
+        var resolver = new PermissionResolver(catalog, mock(DepartmentPermissionRepository.class),
+                mock(UserPermissionOverrideRepository.class), mock(EmployeeRepository.class), mock(EmployeeSecondaryDepartmentRepository.class),
+                mock(UserAccountRepository.class), mock(DepartmentRepository.class), mock(ManagerPermissionDelegationRepository.class),
+                new PermissionDelegationPolicy(new PermissionGrantPolicyCatalog(jdbc)),
+                new PermissionSurfaceRegistry(new PermissionSurfaceCatalogRepository(jdbc)),
+                new PagePermissionDelegationFeatureGate(true), jdbc);
+        resolver.initializeDependencyCatalog();
+        return resolver;
     }
 
     private void assertPreservedScopeHasOnePermanentIdentity(SimpleDriverDataSource dataSource) throws SQLException {
@@ -636,10 +760,14 @@ class BusinessDataResetServicePostgresTest {
                      SELECT encode(digest(jsonb_build_object(
                          'users',(SELECT jsonb_agg(to_jsonb(u) ORDER BY id) FROM users u),
                          'employees',(SELECT jsonb_agg(to_jsonb(e) ORDER BY id) FROM employees e),
+                         'departments',(SELECT jsonb_agg(to_jsonb(d) ORDER BY id) FROM departments d),
+                         'secondaryDepartments',(SELECT jsonb_agg(to_jsonb(d) ORDER BY employee_id,department_id) FROM employee_secondary_departments d),
+                         'permissions',(SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM permissions p),
                          'overrides',(SELECT jsonb_agg(to_jsonb(o) ORDER BY user_id,permission_id) FROM user_permission_overrides o),
                          'delegations',(SELECT jsonb_agg(to_jsonb(d) ORDER BY user_id,department_id,permission_id) FROM manager_permission_delegations d),
                          'dataScopes',(SELECT jsonb_agg(to_jsonb(s) ORDER BY user_id,scope,owner_employee_id) FROM user_data_scopes s),
-                         'departmentGrants',(SELECT jsonb_agg(to_jsonb(g) ORDER BY department_id,permission_id) FROM department_permissions g)
+                         'departmentGrants',(SELECT jsonb_agg(to_jsonb(g) ORDER BY department_id,permission_id) FROM department_permissions g),
+                         'stepUpStates',(SELECT jsonb_agg(to_jsonb(s) ORDER BY user_id) FROM auth_step_up_states s)
                      )::text,'sha256'),'hex')
                      """)) {
             assertThat(rows.next()).isTrue();
@@ -692,6 +820,15 @@ class BusinessDataResetServicePostgresTest {
              Statement statement = connection.createStatement();
              ResultSet rows = statement.executeQuery(
                      "SELECT epoch FROM authorization_state WHERE singleton_id = 1")) {
+            rows.next();
+            return rows.getLong(1);
+        }
+    }
+
+    private long readGeneration(SimpleDriverDataSource dataSource) throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery(
+                     "SELECT business_reset_generation FROM authorization_state WHERE singleton_id=1")) {
             rows.next();
             return rows.getLong(1);
         }

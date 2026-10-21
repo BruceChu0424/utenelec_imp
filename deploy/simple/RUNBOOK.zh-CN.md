@@ -222,10 +222,10 @@ readiness地址，使用证书中包含的内部域名或IP，并安装内部CA�
 构建前和签名前各核对一次，发布记录标注“CI未完成”，不冒充检查全绿。普通tag触发不能开启此选项。
 版本包依然由原发布密钥签名并上传阿里云OSS，业务附件和数据库使用内部服务器。
 
-Simple Release现在在构建前强制核验实际检出提交SHA对应的三个既有工作流：
+Simple Release现在在构建前强制核验实际检出提交SHA对应的四个工作流：
 `quality.yml`（Quality Gate）、`codeql.yml`（CodeQL）、`osv-scanner.yml`
-（Dependency Vulnerability Scan）。每个工作流以文件路径和GitHub数值ID识别，取该SHA的
-最新运行，并重新读取其当前重跑次数；三者都必须为 `completed/success`。
+（Dependency Vulnerability Scan）、`material-forecast.yml`（Material forecast）。每个工作流以文件路径和GitHub数值ID识别，取该SHA的
+最新运行，并重新读取其当前重跑次数；四者都必须为 `completed/success`。
 旧提交的绿灯、同名其他工作流、旧成功记录之后的失败或进行中重跑都不能放行。
 
 构建完成后、签名和OSS凭证注入前再次检查，防止构建期间启动的重跑被旧成功状态掩盖。
@@ -234,6 +234,15 @@ Simple Release现在在构建前强制核验实际检出提交SHA对应的三个
 没有运行、运行中、失败/取消、SHA/工作流不符或API错误都会停止发布；不自动等待或重试。
 先完成/修复同一SHA的质量工作流，再从GitHub界面手动重新运行失败的Simple Release。
 `.github/scripts/test_release_gate.py`提供离线回归并在发布作业的门禁前执行。
+
+原材料自动行情程序也随同一版本签名交付。发布在 Ubuntu 24.04、CPython 3.12 上，
+先从通过门禁的干净提交构建 `build/material-forecast`，只复制固定运行源码与内置品种目录，
+按完整 SHA-256 依赖锁下载 Linux 二进制 wheel。打包前再次核对提交、应用版本、文件清单、
+wheel 名称/版本/摘要及目标平台，然后把整个 `material-forecast/` 放入原有 `SHA256SUMS` 签名。
+服务器仍先按既有发布公钥验签，独立组件校验不能替代这一步；运行程序不在启动时联网安装依赖。
+程序使用独立系统身份，ERP 只读共享的公开快照、报价和心跳；私有缓存、历史发布档案及锁文件
+保持仅采集身份可读写。常驻安装、目录配置和备份需按 [worker 说明](../../services/material_forecast/README.md)
+单独验收，单纯激活 server/web 不代表行情程序已经运行。
 
 ```bash
 git tag v1.4.1 && git push origin v1.4.1

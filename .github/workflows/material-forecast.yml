@@ -26,6 +26,8 @@ jobs:
       # production secrets, a market subscription or external data requests.
       - name: Verify inference and security use the complete hashed lock
         run: python3.12 -m unittest discover -s services/material_forecast/tests -p test_ci_contract.py -v
+      - name: Verify separate writer and ERP reader filesystem permissions
+        run: sudo "$(command -v python3.12)" services/material_forecast/tests/check_linux_publication_permissions.py
       - name: Install pinned inference dependencies
         run: |
           python3.12 -m venv .venv-material-forecast

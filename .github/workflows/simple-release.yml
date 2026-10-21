@@ -1,9 +1,9 @@
 name: Simple Release
 
 # ADR-060 单维护者简化发布链：打 tag 即发布。
-# 前置：只读核验同一提交最新 Quality / CodeQL / OSV；默认全部成功。
+# 前置：只读核验同一提交最新 Quality / CodeQL / OSV / Material forecast；默认全部成功。
 # 手动发布显式 allow_running_checks 时可等待发布后复核，失败/取消/缺失仍阻断。
-# 产物：releases/<version>/{SHA256SUMS,SHA256SUMS.sig,server/*.jar,web/**} + LATEST.txt
+# 产物：releases/<version>/{SHA256SUMS,SHA256SUMS.sig,server/*.jar,web/**,material-forecast/**} + LATEST.txt
 # 发布后自动清理 releases/ 下所有旧版本（含历史 object 版本），OSS 只保留最新一版。
 # 服务器端由 deploy/simple/uten-imp-updater.sh 拉取验签安装。
 
@@ -40,7 +40,7 @@ env:
 jobs:
   release:
     name: Build, sign, publish to OSS
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # 2026-09-21：跨境传 OSS 的速度一天之内能差一个量级(v1.2.0 全程 10 分钟，
     # v1.3.0 当天上传一小时还没传完一个 JAR)。留足余量，让慢链路跑完而不是被砍。
     timeout-minutes: 330
@@ -81,6 +81,16 @@ jobs:
           GATE_ARGS=()
           if [ "$ALLOW_RUNNING_CHECKS" = "true" ]; then GATE_ARGS+=(--allow-running); fi
           python3 .github/scripts/release_gate.py --sha "$CHECKOUT_SHA" "${GATE_ARGS[@]}"
+
+      # Build before Maven/Flutter generate checkout files. The worker payload
+      # must come from the clean, gated commit and the reviewed CPython 3.12 lock.
+      - name: Build offline material forecast payload
+        run: |
+          set -euo pipefail
+          python3.12 -m unittest discover -s deploy/release -p 'test_material_forecast_payload.py' -v
+          python3.12 deploy/release/material_forecast_payload.py build \
+            --repo-root . --commit "$GITHUB_SHA" --version "$VERSION" \
+            --output build/material-forecast
 
       - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
         with:
@@ -130,6 +140,9 @@ jobs:
           python3 deploy/release/release_tools.py stamp-web \
             --pubspec pubspec.yaml \
             --web-root dist/web --version "$VERSION" --commit "$GITHUB_SHA"
+          python3 deploy/release/material_forecast_payload.py verify \
+            --payload build/material-forecast --commit "$GITHUB_SHA" --version "$VERSION"
+          cp -R build/material-forecast dist/material-forecast
           cd dist
           find . -type f ! -name SHA256SUMS -print0 | sort -z \
             | xargs -0 sha256sum > SHA256SUMS

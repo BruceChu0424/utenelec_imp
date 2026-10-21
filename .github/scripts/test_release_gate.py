@@ -316,6 +316,26 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         self.assertLess(assembly.index("stamp-web"), assembly.index("sha256sum > SHA256SUMS"))
         self.assertNotIn("publishedAt", assembly)
 
+    def test_worker_payload_uses_the_gated_checkout_and_enters_the_signed_inventory(self):
+        workflow = (ROOT / ".github/workflows/simple-release.yml").read_text(encoding="utf-8")
+        self.assertIn("    runs-on: ubuntu-24.04", workflow)
+        build = workflow.split("      - name: Build offline material forecast payload\n", 1)[1].split("      - uses:", 1)[0]
+        self.assertIn("python3.12 -m unittest discover -s deploy/release -p 'test_material_forecast_payload.py' -v", build)
+        self.assertIn("material_forecast_payload.py build", build)
+        self.assertIn('--repo-root . --commit "$GITHUB_SHA" --version "$VERSION"', build)
+        self.assertIn("--output build/material-forecast", build)
+        self.assertLess(workflow.index("release_gate.py --sha"), workflow.index("material_forecast_payload.py build"))
+        self.assertLess(workflow.index("material_forecast_payload.py build"), workflow.index("mvn $MAVEN_ARGS clean package"))
+        self.assertLess(workflow.index("material_forecast_payload.py build"), workflow.index("flutter pub get"))
+        assembly = workflow.split("      - name: Assemble release directory\n", 1)[1].split("      - name:", 1)[0]
+        self.assertIn("material_forecast_payload.py verify", assembly)
+        self.assertIn('--payload build/material-forecast --commit "$GITHUB_SHA" --version "$VERSION"', assembly)
+        self.assertLess(assembly.index("material_forecast_payload.py verify"), assembly.index("cp -R build/material-forecast dist/material-forecast"))
+        self.assertLess(assembly.index("cp -R build/material-forecast dist/material-forecast"), assembly.index("sha256sum > SHA256SUMS"))
+        self.assertNotIn("continue-on-error", build + assembly)
+        quality = (ROOT / ".github/workflows/quality.yml").read_text(encoding="utf-8")
+        self.assertIn('python3 -m unittest discover -s deploy/release -p "test_material_forecast_payload.py" -v', quality)
+
     def test_guard_runs_before_build_and_again_before_credentials_are_exposed(self):
         workflow = (ROOT / ".github/workflows/simple-release.yml").read_text(encoding="utf-8")
         guard = "python3 .github/scripts/release_gate.py --sha"
@@ -372,6 +392,15 @@ class SimpleReleaseWebAssemblyTest(unittest.TestCase):
                         jar.writestr(application_class, b"fixture-bytecode")
         shutil.copyfile(ROOT / "web/index.html", self.root / "build/web/index.html")
         shutil.copyfile(ROOT / "deploy/release/release_tools.py", self.root / "deploy/release/release_tools.py")
+        shutil.copyfile(ROOT / "deploy/release/material_forecast_payload.py",
+                        self.root / "deploy/release/material_forecast_payload.py")
+        fixture_spec = importlib.util.spec_from_file_location(
+            "assembly_material_forecast_fixtures", ROOT / "deploy/release/test_material_forecast_payload.py")
+        worker_fixtures = importlib.util.module_from_spec(fixture_spec)
+        fixture_spec.loader.exec_module(worker_fixtures)
+        # Inert wheels exercise the actual production component verifier and
+        # signed inventory; inference and real PyPI wheels have separate gates.
+        worker_fixtures.build_fixture_payload(self.root / "build/material-forecast", self.version, SHA)
         (self.root / "pubspec.yaml").write_text("name: uten_imp\nversion: 2.5.3+253\n", encoding="utf-8")
         # Flutter 3.44.2 output for the checkout that failed v2.5.3 assembly.
         (self.root / "build/web/version.json").write_bytes(
@@ -404,7 +433,28 @@ class SimpleReleaseWebAssemblyTest(unittest.TestCase):
         actual = {"./" + path.relative_to(dist).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
                   for path in dist.rglob("*") if path.is_file() and path.name != "SHA256SUMS"}
         self.assertEqual(actual, checksums)
+        self.assertIn("./material-forecast/release.json", checksums)
+        self.assertIn("./material-forecast/runtime-requirements.txt", checksums)
+        self.assertEqual(26, len(list((dist / "material-forecast/wheelhouse").glob("*.whl"))))
         self.assertFalse(any(path.name.startswith(".uten-web-release") for path in dist.rglob("*")))
+
+    def test_changed_worker_component_blocks_assembly_before_the_signed_inventory(self):
+        component = self.root / "build/material-forecast/source/services/material_forecast/worker.py"
+        component.write_bytes(component.read_bytes() + b"# unreviewed modification\n")
+        result = self.assemble()
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("component files are missing, extra, or have changed", result.stderr)
+        self.assertFalse((self.root / "dist/SHA256SUMS").exists())
+
+    def test_worker_from_another_commit_cannot_enter_the_signed_inventory(self):
+        path = self.root / "build/material-forecast/release.json"
+        manifest = json.loads(path.read_text(encoding="ascii"))
+        manifest["commit"] = "b" * 40
+        path.write_text(json.dumps(manifest), encoding="ascii")
+        result = self.assemble()
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("component source identity mismatch", result.stderr)
+        self.assertFalse((self.root / "dist/SHA256SUMS").exists())
 
     def test_unreviewed_web_metadata_blocks_assembly_before_checksums(self):
         (self.root / "build/web/version.json").write_text(

@@ -131,10 +131,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
   };
   @override
   bool get reviewDraftEditable =>
-      _review?.needsClaim == true &&
-      ref
-          .read(currentPermissionsProvider)
-          .contains(Perm.salesQuoteFinanceConfirm);
+      _review != null && _claimReady && _needsClaim(_review!);
   @override
   bool canDispatchReviewCommand(String action) =>
       formDraftIdentityIsCurrent &&
@@ -780,16 +777,12 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
       if (!canDispatchReviewCommand(action) || formDraftHasUnknownSubmission) {
         return;
       }
-      if (reviewDraftEditable) {
-        await submitReviewCommand(
-          action,
-          () => call(_claimId()!),
-          request: request,
-        );
-      } else {
-        // 只有退回权限时不开放核价编辑草稿；仍使用当前版本和本人有效认领提交。
-        await call(_claimId()!);
-      }
+      // 退回也要先持久化本次决定；价格能否编辑仍由 _editable 单独控制。
+      await submitReviewCommand(
+        action,
+        () => call(_claimId()!),
+        request: request,
+      );
       if (!mounted || !isCurrent()) return;
       await finishReviewDraft();
       if (!mounted || !isCurrent()) return;

@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/warehouse/materialbin/models/workshop_material_models.dart';
 import 'package:uten_imp/features/warehouse/materialbin/models/workshop_source_warehouse_option.dart';
 import 'package:uten_imp/features/warehouse/materialbin/repositories/workshop_material_repository.dart';
@@ -221,6 +222,8 @@ class FakeWorkshopMaterialRepository extends WorkshopMaterialRepository {
   Future<PagedResult<WmMaterialOption>> requestMaterials(
     String workshopId, {
     String keyword = '',
+    String? categoryId,
+    bool includeRelated = false,
     List<String> goodsIds = const [],
     int page = 1,
     int size = 50,
@@ -229,6 +232,8 @@ class FakeWorkshopMaterialRepository extends WorkshopMaterialRepository {
         (materialsByWorkshop[workshopId] ?? const <WmMaterialOption>[])
             .where(
               (material) =>
+                  (categoryId == null ||
+                      (material.categoryId ?? 'materials') == categoryId) &&
                   (goodsIds.isEmpty || goodsIds.contains(material.goodsId)) &&
                   '${material.goodsCode} ${material.displayName}'
                       .toLowerCase()
@@ -243,6 +248,27 @@ class FakeWorkshopMaterialRepository extends WorkshopMaterialRepository {
       totalPages: (matches.length / size).ceil(),
     );
   }
+
+  @override
+  Future<List<ProductCategoryNode>> requestMaterialCategories(
+    String workshopId,
+  ) async => [
+    ProductCategoryNode(
+      id: 'materials',
+      code: 'M',
+      name: '物料',
+      level: 0,
+      children: const [],
+    ),
+  ];
+
+  @override
+  Future<Set<String>> requestMaterialCategoryIds(
+    String workshopId,
+    String keyword, {
+    String? categoryId,
+    bool includeRelated = false,
+  }) async => {'materials'};
 
   @override
   Future<WmDirectIssueDefaults> directIssueDefaults(String workshopId) async =>
@@ -421,6 +447,8 @@ Future<void> pumpWorkshopMaterialPage(
   double textScale = 1,
   Set<String> permissions = const {Perm.workshopMaterialView},
   ProviderListenable<Set<String>>? permissionState,
+  GlobalKey? captureBoundary,
+  ThemeData? theme,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -454,15 +482,21 @@ Future<void> pumpWorkshopMaterialPage(
         workshopMaterialRepositoryProvider.overrideWithValue(repo),
       ],
       child: MaterialApp(
+        theme: theme,
         locale: const Locale('zh'),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.linear(textScale)),
-          child: child!,
-        ),
+        builder: (context, child) {
+          final content = MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: TextScaler.linear(textScale)),
+            child: child!,
+          );
+          return captureBoundary == null
+              ? content
+              : RepaintBoundary(key: captureBoundary, child: content);
+        },
         home: page,
       ),
     ),

@@ -18,6 +18,29 @@ import 'package:uten_imp/features/basic_data/widgets/uten_goods_picker.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 
 void main() {
+  testWidgets('点击侧边阴影取消多选，不提交勾选且再次打开没有旧选择', (tester) async {
+    final repository = _FakeGoodsRepository();
+    final results = <List<GoodsListItem>>[];
+    await _pumpMultiPicker(tester, repository, results);
+    await tester.tap(find.byKey(const Key('open-multi-picker')));
+    await tester.pumpAndSettle();
+    await tester.enterText(_searchEditable(), 'G-');
+    await tester.pump(const Duration(milliseconds: 301));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('连接器甲'));
+    await tester.pump();
+    expect(find.text('确定(1)'), findsOneWidget);
+    await tester.tapAt(const Offset(10, 450));
+    await tester.pumpAndSettle();
+    expect(_widePickerSheet(), findsNothing);
+    expect(results, hasLength(1));
+    expect(results.single, isEmpty);
+    await tester.tap(find.byKey(const Key('open-multi-picker')));
+    await tester.pumpAndSettle();
+    expect(find.text('确定(0)'), findsOneWidget);
+    expect(results, hasLength(1));
+  });
+
   testWidgets('向下滚动续页保留列表和多选，分类高亮变化不清掉旧页', (tester) async {
     final repository = _FakeGoodsRepository(
       splitAcrossPages: true,

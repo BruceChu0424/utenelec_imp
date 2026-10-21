@@ -60,7 +60,6 @@ Future<SupplierCreditApplyDraft?> showSupplierCreditApplyPanel({
   drawerWidth: 760,
   widthFraction: UtenPanelWidth.content,
   compactHeightFactor: 0.94,
-  barrierDismissible: false,
   panelElevation: 16,
   builder: (_) => _SupplierCreditApplyPanel(source: source),
 );

@@ -6,6 +6,9 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.CandidateCategoryTree;
+import com.uten.imp.common.util.CategoryKeywordSearch;
+import com.uten.imp.common.util.GoodsSearchPolicy;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialBinSupport.Period;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialBinSupport.Settings;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.BadgeCounts;
@@ -182,16 +185,18 @@ public class WorkshopMaterialPositionQueryService {
     @Transactional(readOnly = true)
     public PageResponse<MaterialStockOption> requestMaterials(UUID workshopDepartmentId, String keyword,
             List<UUID> goodsIds, int page, int size) {
-        if (workshopDepartmentId == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "请选择车间");
-        scope.requireWorkshop(workshopDepartmentId);
-        UUID bin = openings.openedBinOf(workshopDepartmentId).orElse(null);
+        return requestMaterials(workshopDepartmentId, keyword, goodsIds, null, false, page, size);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<MaterialStockOption> requestMaterials(UUID workshopDepartmentId, String keyword,
+            List<UUID> goodsIds, UUID categoryId, boolean includeRelated, int page, int size) {
+        MapSqlParameterSource params = requestMaterialScope(workshopDepartmentId);
         var paging = Pageables.of(page, size);
         List<UUID> ids = goodsIds == null ? List.of() : goodsIds.stream().filter(Objects::nonNull).distinct().toList();
-        MapSqlParameterSource params = new MapSqlParameterSource("bin", bin == null ? null : bin.toString())
-                .addValue("keyword", KeywordSearch.phrase(keyword))
-                .addValue("limit", paging.getPageSize()).addValue("offset", paging.getOffset());
+        params.addValue("limit", paging.getPageSize()).addValue("offset", paging.getOffset());
         if (!ids.isEmpty()) params.addValue("goodsIds", ids);
-        String candidates = WorkshopMaterialRequestCandidateSql.candidates(!ids.isEmpty());
+        String candidates = requestMaterialCandidates(!ids.isEmpty(), keyword, categoryId, includeRelated, params);
         Long count = db.queryForObject(candidates + " SELECT count(*) FROM candidates", params, Long.class);
         long total = count == null ? 0 : count;
         int pages = (int) Math.ceil((double) total / paging.getPageSize());
@@ -226,9 +231,87 @@ public class WorkshopMaterialPositionQueryService {
                     (String) row.get("name"), entry.getKey().colorId(), (String) row.get("color_name"),
                     (String) row.get("unit_name"), WorkshopMaterialBinSupport.decimal(row.get("bulk_package_qty")),
                     (String) row.get("periodic_cost_basis"), defaultLeaf, (String) row.get("default_leaf_name"),
-                    WorkshopMaterialBinSupport.zero(row.get("available")), List.copyOf(stock)));
+                    WorkshopMaterialBinSupport.zero(row.get("available")), List.copyOf(stock),
+                    (UUID) row.get("category_id"), ((Number) row.get("keyword_rank")).intValue(),
+                    (String) row.get("search_match_kind")));
         }
         return new PageResponse<>(List.copyOf(options), paging.getPageNumber() + 1, paging.getPageSize(), total, pages);
+    }
+
+    /** Uses exactly the same eligible material/colour projection as every page and search relocation. */
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> requestMaterialCategories(UUID workshopDepartmentId) {
+        var params = requestMaterialScope(workshopDepartmentId);
+        String candidates = requestMaterialCandidates(false, "", null, false, params);
+        var categories = db.queryForList(candidates + """
+                , visible_categories AS (
+                    SELECT category.id,category.parent_id FROM material_categories category
+                    WHERE NOT category.is_deleted AND category.id IN (SELECT category_id FROM candidates)
+                    UNION
+                    SELECT parent.id,parent.parent_id FROM material_categories parent
+                    JOIN visible_categories child ON child.parent_id=parent.id WHERE NOT parent.is_deleted
+                )
+                SELECT * FROM (
+                    SELECT category.id,category.code,category.name,category.parent_id,category.level,category.sort_order
+                    FROM material_categories category JOIN visible_categories visible ON visible.id=category.id
+                    UNION ALL
+                    SELECT CAST(:uncategorized AS uuid),'UNCATEGORIZED','未分类',NULL::uuid,0,2147483647
+                    WHERE EXISTS(SELECT 1 FROM candidates WHERE category_id=:uncategorized)
+                ) visible_tree
+                ORDER BY sort_order NULLS LAST,code,id
+                """, params);
+        return CandidateCategoryTree.fromRows(categories);
+    }
+
+    @Transactional(readOnly = true)
+    public List<UUID> requestMaterialCategoryIds(UUID workshopDepartmentId, String keyword,
+            UUID categoryId, boolean includeRelated) {
+        var params = requestMaterialScope(workshopDepartmentId);
+        if (KeywordSearch.terms(keyword).isEmpty()) return List.of();
+        return db.queryForList(requestMaterialCandidates(false, keyword, categoryId, includeRelated, params) + """
+                SELECT category_id FROM candidates GROUP BY category_id ORDER BY MIN(keyword_rank),category_id
+                """, params, UUID.class);
+    }
+
+    private MapSqlParameterSource requestMaterialScope(UUID workshopDepartmentId) {
+        if (workshopDepartmentId == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "请选择车间");
+        scope.requireWorkshop(workshopDepartmentId);
+        UUID bin = openings.openedBinOf(workshopDepartmentId).orElse(null);
+        return new MapSqlParameterSource("bin", bin == null ? null : bin.toString())
+                .addValue("uncategorized", CandidateCategoryTree.UNCATEGORIZED);
+    }
+
+    private String requestMaterialCandidates(boolean filterGoods, String keyword, UUID categoryId,
+            boolean includeRelated, MapSqlParameterSource params) {
+        String categoryCte = "", categoryFilter = "";
+        if (CandidateCategoryTree.UNCATEGORIZED.equals(categoryId)) {
+            categoryFilter = " AND NOT EXISTS(SELECT 1 FROM material_categories category WHERE category.id=goods.category_id AND NOT category.is_deleted)";
+        } else if (categoryId != null) {
+            params.addValue("category", categoryId);
+            categoryCte = """
+                    category_scope AS (
+                        SELECT id FROM material_categories WHERE id=:category AND NOT is_deleted
+                        UNION
+                        SELECT child.id FROM material_categories child JOIN category_scope parent ON child.parent_id=parent.id
+                        WHERE NOT child.is_deleted
+                    ),
+                    """;
+            categoryFilter = " AND goods.category_id IN (SELECT id FROM category_scope)";
+        }
+        String phrase = KeywordSearch.phrase(keyword);
+        List<CategoryKeywordSearch.Node> nodes = phrase.isEmpty() ? List.of() : db.query(
+                "SELECT id,parent_id,name,code FROM material_categories WHERE NOT is_deleted", Map.of(),
+                (rs, n) -> new CategoryKeywordSearch.Node(rs.getObject("id", UUID.class),
+                        rs.getObject("parent_id", UUID.class), rs.getString("name"), rs.getString("code")));
+        var search = new GoodsSearchPolicy(phrase, nodes, true, includeRelated,
+                categoryId == null ? GoodsSearchPolicy.SubjectMode.STRICT : GoodsSearchPolicy.SubjectMode.PREFER)
+                .nativeSearch("requestSearch", "goods.category_id", "goods.code", "goods.name",
+                        List.of("goods.code", "goods.name", "goods.model", "goods.spec", "goods.c_number",
+                                "goods.series", "goods.material", "goods.name_en", "goods.stock_place", "color.name",
+                                "unit.name", "CASE WHEN category.id IS NULL THEN '未分类' ELSE NULL END"), List.of());
+        params.addValues(search.parameters());
+        return WorkshopMaterialRequestCandidateSql.candidates(filterGoods, categoryCte, categoryFilter,
+                search, !phrase.isEmpty());
     }
 
     /**

@@ -41,7 +41,6 @@ Future<SupplierSettlementCreateDraft?> showSupplierSettlementCreatePanel({
   drawerWidth: 560,
   widthFraction: UtenPanelWidth.form,
   compactHeightFactor: 0.92,
-  barrierDismissible: false,
   panelElevation: 16,
   builder: (_) => const _SupplierSettlementCreatePanel(),
 );

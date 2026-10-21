@@ -487,6 +487,9 @@ class WmMaterialOption {
     required this.goodsId,
     required this.goodsName,
     this.goodsCode,
+    this.categoryId,
+    this.searchRank,
+    this.searchMatchKind,
     this.colorId,
     this.colorName,
     this.unitName,
@@ -501,6 +504,9 @@ class WmMaterialOption {
   final String goodsId;
   final String goodsName;
   final String? goodsCode;
+  final String? categoryId;
+  final int? searchRank;
+  final String? searchMatchKind;
   final String? colorId;
   final String? colorName;
   final String? unitName;
@@ -527,6 +533,9 @@ class WmMaterialOption {
         goodsId: json['goodsId'] as String,
         goodsName: _s(json['goodsName']) ?? '',
         goodsCode: _s(json['goodsCode']),
+        categoryId: _s(json['categoryId']),
+        searchRank: (json['searchRank'] as num?)?.toInt(),
+        searchMatchKind: _s(json['searchMatchKind']),
         colorId: _s(json['colorId']),
         colorName: _s(json['colorName']),
         unitName: _s(json['unitName']),

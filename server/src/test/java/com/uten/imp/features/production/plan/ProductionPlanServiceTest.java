@@ -71,6 +71,7 @@ class ProductionPlanServiceTest {
     private Query materialTrace;
     private Query purchaseTrace;
     private Query subcontractTrace;
+    private Query salesRequirements;
 
     private ProductionPlanService service;
 
@@ -112,6 +113,7 @@ class ProductionPlanServiceTest {
         materialTrace = query();
         purchaseTrace = query();
         subcontractTrace = query();
+        salesRequirements = query();
 
         when(plannedIncrement.executeUpdate()).thenReturn(1);
         when(recomputeClosed.executeUpdate()).thenReturn(1);
@@ -128,10 +130,16 @@ class ProductionPlanServiceTest {
         when(materialTrace.getResultList()).thenReturn(List.of());
         when(purchaseTrace.getResultList()).thenReturn(List.of());
         when(subcontractTrace.getResultList()).thenReturn(List.of());
+        when(salesRequirements.getResultList()).thenReturn(List.of());
         when(mrpService.isPlanningWriteReady()).thenReturn(false);
 
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
+            if (sql.startsWith("WITH RECURSIVE seeds AS (")
+                    && sql.contains("FROM production_plan_items item JOIN production_plans plan")
+                    && sql.contains("SELECT DISTINCT sources.context_id, item.id, orders.bill_no")) {
+                return salesRequirements;
+            }
             if (sql.contains("JOIN sales_orders o") && sql.contains("FOR UPDATE OF o, i")) {
                 return allocationLock;
             }
@@ -340,10 +348,12 @@ class ProductionPlanServiceTest {
                 false, false, false, false,
                 "20", "4", "1", "2", "3", "10", "7", (short) 8)));
         when(currentUser.requireEmployeeId()).thenReturn(UUID.randomUUID());
+        arrangeSalesRequirements(item, orderItemId);
 
-        service.approve(plan.getId());
+        var detail = service.approve(plan.getId());
 
         assertEquals((short) 1, plan.getStatus());
+        assertSalesRequirements(detail, item, orderItemId);
         verify(plannedIncrement).setParameter("a", new BigDecimal("5"));
         verify(plannedIncrement).setParameter("st", (short) 3);
         verify(plannedIncrement).executeUpdate();
@@ -573,10 +583,12 @@ class ProductionPlanServiceTest {
         when(linkRepo.findActiveByPlanItemIds(List.of(item.getId()))).thenReturn(List.of(link));
         when(unlinkOrderLock.getResultList()).thenReturn(java.util.Collections.singletonList(
                 new Object[]{orderItemId, new BigDecimal("5")}));
+        arrangeSalesRequirements(item, orderItemId);
 
-        service.reverse(plan.getId());
+        var detail = service.reverse(plan.getId());
 
         assertEquals((short) -1, plan.getStatus());
+        assertSalesRequirements(detail, item, orderItemId);
         assertTrue(link.isDeleted());
         verify(em).lock(link, LockModeType.PESSIMISTIC_WRITE);
         verify(em).refresh(link);
@@ -584,6 +596,22 @@ class ProductionPlanServiceTest {
         verify(plannedDecrement).setParameter("id", orderItemId);
         verify(plannedDecrement).executeUpdate();
         verify(linkRepo).save(link);
+    }
+
+    private void arrangeSalesRequirements(ProductionPlanItem item, UUID orderItemId) {
+        when(salesRequirements.getResultList()).thenReturn(List.<Object[]>of(new Object[]{
+                item.getId(), orderItemId, "SO-SOURCE", "来源产品", "全单要求", "产品要求"}));
+    }
+
+    private void assertSalesRequirements(
+            com.uten.imp.features.production.plan.dto.PlanDetail detail,
+            ProductionPlanItem item, UUID orderItemId) {
+        verify(salesRequirements).setParameter("ids", List.of(item.getId()));
+        verify(salesRequirements).getResultList();
+        assertEquals(1, detail.getItems().size());
+        assertEquals(List.of(new com.uten.imp.features.production.ProductionSalesRequirements.Requirement(
+                        orderItemId, "SO-SOURCE", "来源产品", "全单要求", "产品要求")),
+                detail.getItems().getFirst().getSalesRequirements());
     }
 
     @Test

@@ -34,7 +34,6 @@ Future<bool?> showWorkshopMaterialRequestSheet(
 }) => showUtenAdaptivePanel<bool>(
   context: context,
   drawerWidth: 960,
-  barrierDismissible: false,
   enableDrag: false,
   compactHeightFactor: .94,
   builder: (_) => WorkshopMaterialRequestPanel(

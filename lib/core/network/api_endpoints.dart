@@ -625,6 +625,10 @@ abstract final class ApiEndpoints {
   static const workshopMaterialMaterials = '$workshopMaterialBase/materials';
   static const workshopMaterialRequestMaterials =
       '$workshopMaterialBase/request-materials';
+  static const workshopMaterialRequestMaterialCategories =
+      '$workshopMaterialRequestMaterials/categories';
+  static const workshopMaterialRequestMaterialCategoryIds =
+      '$workshopMaterialRequestMaterials/category-ids';
   static const workshopMaterialChoicesPending =
       '$workshopMaterialBase/choices/pending';
   static const workshopMaterialChoices = '$workshopMaterialBase/choices';

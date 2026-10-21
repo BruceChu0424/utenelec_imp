@@ -2,6 +2,7 @@ package com.uten.imp.features.production;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zaxxer.hikari.HikariDataSource;
 import jakarta.persistence.EntityManager;
 import org.hibernate.SessionFactory;
 import org.hibernate.cfg.Configuration;
@@ -10,7 +11,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.List;
@@ -24,11 +24,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ProductionSalesRequirementsPostgresTest {
     private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine");
     private static SessionFactory factory;
+    private static HikariDataSource source;
     private static JdbcTemplate jdbc;
 
     @BeforeAll static void start() {
         POSTGRES.start();
-        jdbc = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword()));
+        source = new HikariDataSource();
+        source.setJdbcUrl(POSTGRES.getJdbcUrl());
+        source.setUsername(POSTGRES.getUsername());
+        source.setPassword(POSTGRES.getPassword());
+        source.setMaximumPoolSize(2);
+        jdbc = new JdbcTemplate(source);
         com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(jdbc,
                 "goods", "sales_orders", "sales_order_items", "production_material_analysis_items",
                 "production_material_analysis_materials", "preplan_supply_actions", "preplan_aggregate_batches",
@@ -39,17 +45,25 @@ class ProductionSalesRequirementsPostgresTest {
                 "fn_aggregate_relative_bom_path", "fn_preplan_aggregate_recorded_private_sources_scoped_batches",
                 "fn_preplan_aggregate_recorded_private_sources_scoped",
                 "fn_preplan_aggregate_recorded_private_sources");
-        factory = new Configuration().setProperty("hibernate.connection.url", POSTGRES.getJdbcUrl())
-                .setProperty("hibernate.connection.username", POSTGRES.getUsername())
-                .setProperty("hibernate.connection.password", POSTGRES.getPassword())
-                .setProperty("hibernate.hbm2ddl.auto", "none").buildSessionFactory();
+        Configuration configuration = new Configuration().setProperty("hibernate.hbm2ddl.auto", "none");
+        configuration.getProperties().put("hibernate.connection.datasource", source);
+        factory = configuration.buildSessionFactory();
     }
 
     @AfterAll static void stop() {
-        if (factory != null) {
-            factory.close();
+        try {
+            if (factory != null) {
+                factory.close();
+            }
+        } finally {
+            try {
+                if (source != null) {
+                    source.close();
+                }
+            } finally {
+                POSTGRES.stop();
+            }
         }
-        POSTGRES.stop();
     }
 
     @Test void proofWorkIsBoundedForOneContextAndForTheWholeAnalysis() throws Exception {

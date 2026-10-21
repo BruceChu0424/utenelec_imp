@@ -45,7 +45,6 @@ Future<List<WmSetting>?> showWorkshopBinOpeningPanel(
   context: context,
   drawerWidth: 760,
   widthFraction: UtenPanelWidth.content,
-  barrierDismissible: false,
   builder: (_) => WorkshopBinOpeningPanel(settings: settings, mode: mode),
 );
 

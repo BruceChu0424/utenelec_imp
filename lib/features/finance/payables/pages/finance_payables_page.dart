@@ -583,42 +583,22 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
     final canSelect = canCreatePayment || canApplyOffset;
     final reason = _selectionUnavailableReason;
     final selectedPrepayment = _selectedSingle?.openItemKind == 'PREPAYMENT';
-    final heading = Row(
-      children: [
-        Icon(
-          Icons.payments_outlined,
-          size: 20,
-          color: theme.colorScheme.primary,
+    final count = Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: UtenSpacing.s8,
+        vertical: UtenSpacing.s4,
+      ),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHigh,
+        borderRadius: UtenRadius.smAll,
+      ),
+      child: Text(
+        '共 $total 笔',
+        style: theme.textTheme.labelMedium?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+          fontFeatures: const [FontFeature.tabularFigures()],
         ),
-        const SizedBox(width: UtenSpacing.s8),
-        Expanded(
-          child: Text(
-            '供应商应付',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: UtenSpacing.s8,
-            vertical: UtenSpacing.s4,
-          ),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHigh,
-            borderRadius: UtenRadius.smAll,
-          ),
-          child: Text(
-            '共 $total 笔',
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
-          ),
-        ),
-      ],
+      ),
     );
     // 2026-09-26 全站口径：表格上方不再自制「已选 N 项 + 清空 + 生成付款单」
     // 文本条——已选计数与主动作收进右下悬浮组（见 _payablesFloatingActions），
@@ -642,33 +622,13 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(
-            UtenSpacing.s12,
-            UtenSpacing.s8,
-            UtenSpacing.s12,
-            UtenSpacing.s8,
-          ),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              if (!canSelect) return heading;
-              if (constraints.maxWidth >= 760) {
-                return Row(
-                  children: [
-                    Expanded(child: heading),
-                    const SizedBox(width: UtenSpacing.s12),
-                    selectAll,
-                  ],
-                );
-              }
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  heading,
-                  const SizedBox(height: UtenSpacing.s8),
-                  Align(alignment: Alignment.centerRight, child: selectAll),
-                ],
-              );
-            },
+          padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+          child: Wrap(
+            alignment: WrapAlignment.end,
+            spacing: UtenSpacing.s12,
+            runSpacing: UtenSpacing.s8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [count, if (canSelect) selectAll],
           ),
         ),
         if (_selectedIds.isNotEmpty && notice != null)

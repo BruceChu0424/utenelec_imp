@@ -111,6 +111,8 @@ class _RequestIssueRepository extends FakeWorkshopMaterialRepository {
   Future<PagedResult<WmMaterialOption>> requestMaterials(
     String workshopId, {
     String keyword = '',
+    String? categoryId,
+    bool includeRelated = false,
     List<String> goodsIds = const [],
     int page = 1,
     int size = 50,
@@ -118,6 +120,9 @@ class _RequestIssueRepository extends FakeWorkshopMaterialRepository {
     candidates.add(goodsIds);
     return super.requestMaterials(
       workshopId,
+      keyword: keyword,
+      categoryId: categoryId,
+      includeRelated: includeRelated,
       goodsIds: goodsIds,
       page: page,
       size: size,

@@ -1,11 +1,21 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/buttons/uten_back_button.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/router/route_names.dart';
+import 'package:uten_imp/core/theme/dark_theme.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/features/report/shared/report_filter_prefs.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
@@ -14,9 +24,297 @@ import 'package:uten_imp/features/basic_data/repositories/supplier_category_repo
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/basic_data/widgets/uten_category_tree_view.dart';
 import 'package:uten_imp/features/finance/pages/finance_ar_ap_overview_page.dart';
+import 'package:uten_imp/features/finance/pages/finance_hub_page.dart';
+import 'package:uten_imp/features/finance/pages/finance_report_table_page.dart';
+import 'package:uten_imp/features/finance/pages/finance_doc_detail_page.dart';
+import 'package:uten_imp/features/finance/models/finance_doc.dart';
+import 'package:uten_imp/features/finance/widgets/finance_date_range_filter.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
+import '../../helpers/badge_summary_fixture.dart';
+import '../../support/native_detail_reader_overrides.dart';
+
 void main() {
+  setUpAll(() async {
+    await (FontLoader(
+      'MaterialIcons',
+    )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
+    await (FontLoader(
+      'NotoSansSC',
+    )..addFont(rootBundle.load('assets/fonts/NotoSansSC.ttf'))).load();
+  });
+
+  testWidgets('finance report return preserves hub scroll and report filters', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final api = _OverviewApi();
+    final router = GoRouter(
+      initialLocation: RouteName.finance,
+      routes: [
+        GoRoute(
+          path: RouteName.finance,
+          builder: (_, _) => const FinanceHubPage(),
+        ),
+        GoRoute(
+          path: RouteName.financeReportOverview,
+          builder: (_, _) => const FinanceArApOverviewPage(),
+        ),
+        GoRoute(
+          path: '/finance/test-detail',
+          builder: (_, _) => Scaffold(
+            appBar: AppBar(leading: const UtenBackButton()),
+            body: const Text('report detail'),
+          ),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await _pumpPage(
+      tester,
+      prefs: prefs,
+      api: api,
+      router: router,
+      size: const Size(1000, 700),
+    );
+    final hubState = tester.state(find.byType(FinanceHubPage));
+    final hubList = find.byKey(const PageStorageKey('finance-hub-scroll'));
+    final hubScrollable = find.descendant(
+      of: hubList,
+      matching: find.byType(Scrollable),
+    );
+    await tester.scrollUntilVisible(
+      find.text('应收应付'),
+      400,
+      scrollable: hubScrollable,
+    );
+    await tester.pumpAndSettle();
+    final offset = tester.state<ScrollableState>(hubScrollable).position.pixels;
+    expect(offset, greaterThan(0));
+    await tester.tap(find.text('应收应付'));
+    await tester.pumpAndSettle();
+    expect(router.canPop(), isTrue);
+    expect(router.state.uri.queryParameters['returnTo'], RouteName.finance);
+    final reportState = tester.state(find.byType(FinanceArApOverviewPage));
+    await tester.tap(find.byType(FinanceDateRangeFilter));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('上月'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('finance-ar-ap-display-mode')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('只应付≠0').last);
+    await tester.pumpAndSettle();
+    final filtered = Map<String, dynamic>.of(api.reportQueries.last);
+    expect(filtered['displayMode'], 'AP_ONLY');
+    final dates = tester.widget<FinanceDateRangeFilter>(
+      find.byType(FinanceDateRangeFilter),
+    );
+    unawaited(router.push<void>('/finance/test-detail'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(UtenBackButton));
+    await tester.pumpAndSettle();
+    expect(
+      tester.state(find.byType(FinanceArApOverviewPage)),
+      same(reportState),
+    );
+    final restoredDates = tester.widget<FinanceDateRangeFilter>(
+      find.byType(FinanceDateRangeFilter),
+    );
+    expect(restoredDates.from, dates.from);
+    expect(restoredDates.to, dates.to);
+    expect(
+      tester
+          .widget<DropdownButton<String>>(
+            find.byKey(const ValueKey('finance-ar-ap-display-mode')),
+          )
+          .value,
+      'AP_ONLY',
+    );
+    for (final field in ['dateFrom', 'dateTo', 'displayMode']) {
+      expect(api.reportQueries.last[field], filtered[field], reason: field);
+    }
+    await tester.tap(find.byType(UtenBackButton));
+    await tester.pumpAndSettle();
+    expect(tester.state(find.byType(FinanceHubPage)), same(hubState));
+    expect(
+      tester.state<ScrollableState>(hubScrollable).position.pixels,
+      closeTo(offset, 0.1),
+    );
+    // Framework back must use the same preserved source page as the page button.
+    await tester.tap(find.text('应收应付'));
+    await tester.pumpAndSettle();
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(tester.state(find.byType(FinanceHubPage)), same(hubState));
+    expect(
+      tester.state<ScrollableState>(hubScrollable).position.pixels,
+      closeTo(offset, 0.1),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'hub report row opens native document and returns through both retained pages',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final api = _OverviewApi();
+      final router = GoRouter(
+        initialLocation: RouteName.finance,
+        routes: [
+          GoRoute(
+            path: RouteName.finance,
+            builder: (_, _) => const FinanceHubPage(),
+          ),
+          GoRoute(
+            path: RouteName.financeReportDetail,
+            builder: (_, _) => const FinanceReportTablePage(cardId: 'detail'),
+          ),
+          GoRoute(
+            path: '/finance/receipts/:id',
+            builder: (_, state) => FinanceDocDetailPage(
+              docType: FinanceDocType.receipt,
+              id: state.pathParameters['id']!,
+            ),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await _pumpPage(
+        tester,
+        prefs: prefs,
+        api: api,
+        router: router,
+        size: const Size(1920, 600),
+        readFinanceDetail: true,
+      );
+      final hubState = tester.state(find.byType(FinanceHubPage));
+      final hubScrollable = find.descendant(
+        of: find.byKey(const PageStorageKey('finance-hub-scroll')),
+        matching: find.byType(Scrollable),
+      );
+      await tester.scrollUntilVisible(
+        find.text('明细报表'),
+        400,
+        scrollable: hubScrollable,
+      );
+      await tester.pumpAndSettle();
+      final offset = tester
+          .state<ScrollableState>(hubScrollable)
+          .position
+          .pixels;
+      expect(offset, greaterThan(0));
+      await tester.tap(find.text('明细报表'));
+      await tester.pumpAndSettle();
+      final reportState = tester.state(find.byType(FinanceReportTablePage));
+      await tester.tap(find.text('销售收款明细'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(FinanceDateRangeFilter));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('上月'));
+      await tester.pumpAndSettle();
+      final dates = tester.widget<FinanceDateRangeFilter>(
+        find.byType(FinanceDateRangeFilter),
+      );
+      // Browse tables select on one click and open on two clicks.
+      await tester.tap(find.text('RECEIPT-001'));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.text('RECEIPT-001'));
+      await tester.pumpAndSettle();
+      expect(find.byType(FinanceDocDetailPage), findsOneWidget);
+      expect(find.text('SK-20261021-001'), findsOneWidget);
+      expect(router.canPop(), isTrue);
+      await tester.tap(find.byType(UtenBackButton));
+      await tester.pumpAndSettle();
+      expect(
+        tester.state(find.byType(FinanceReportTablePage)),
+        same(reportState),
+      );
+      final restored = tester.widget<FinanceDateRangeFilter>(
+        find.byType(FinanceDateRangeFilter),
+      );
+      expect(restored.from, dates.from);
+      expect(restored.to, dates.to);
+      expect(find.text('RECEIPT-001'), findsOneWidget);
+      await tester.tap(find.byType(UtenBackButton));
+      await tester.pumpAndSettle();
+      expect(tester.state(find.byType(FinanceHubPage)), same(hubState));
+      expect(
+        tester.state<ScrollableState>(hubScrollable).position.pixels,
+        closeTo(offset, 0.1),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'overview tree and single toolbar fit desktop narrow zoom and dark',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      for (final variant in [
+        (size: const Size(1600, 1000), scale: 1.0, dark: false),
+        (size: const Size(900, 900), scale: 2.0, dark: false),
+        (size: const Size(360, 800), scale: 2.0, dark: true),
+        (size: const Size(844, 390), scale: 1.5, dark: true),
+      ]) {
+        final capture = GlobalKey();
+        final api = _OverviewApi();
+        await _pumpPage(
+          tester,
+          prefs: prefs,
+          api: api,
+          size: variant.size,
+          scale: variant.scale,
+          dark: variant.dark,
+          capture: capture,
+        );
+        expect(tester.takeException(), isNull, reason: '$variant');
+        expect(find.textContaining('应收应付 ·'), findsNothing);
+        expect(find.byType(FinanceDateRangeFilter), findsOneWidget);
+        expect(_table(tester).toolbarLeadingActions, hasLength(3));
+        if (variant.size.width >= 840) {
+          expect(_tree(tester).flatLevelColors, isTrue);
+        }
+        if (const bool.fromEnvironment('UI_CAPTURE')) {
+          await _captureOverview(
+            tester,
+            capture,
+            '${variant.size.width.toInt()}-${variant.scale}',
+          );
+        }
+        // The shared table bounds tall toolbars and scrolls their controls.
+        // Verify the later filters are reachable at 200%, not merely mounted.
+        final mode = find.byKey(const ValueKey('finance-ar-ap-display-mode'));
+        await tester.ensureVisible(mode);
+        await tester.pumpAndSettle();
+        expect(mode.hitTestable(), findsOneWidget);
+        await tester.tap(mode);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('只应付≠0').last);
+        await tester.pumpAndSettle();
+        expect(api.reportQueries.last['displayMode'], 'AP_ONLY');
+        final count = find.text('共 1');
+        await tester.ensureVisible(count);
+        await tester.pumpAndSettle();
+        expect(count.hitTestable(), findsOneWidget);
+        expect(tester.takeException(), isNull, reason: '$variant filters');
+        if (const bool.fromEnvironment('UI_CAPTURE')) {
+          await _captureOverview(
+            tester,
+            capture,
+            '${variant.size.width.toInt()}-${variant.scale}-filters',
+          );
+        }
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+      }
+    },
+  );
+
   testWidgets(
     'one global table combines categories and preserves server exact-before-near order',
     (tester) async {
@@ -57,7 +355,8 @@ void main() {
       });
       expect(_table(tester).totalPages, 2);
       expect(find.text('共 4'), findsOneWidget);
-      expect(find.text('应收应付 · 全部搜索结果'), findsOneWidget);
+      expect(find.textContaining('应收应付 ·'), findsNothing);
+      expect(_tree(tester).flatLevelColors, isTrue);
       _expectGlobal(api.reportQueries.last, 'C-002');
       expect(api.reportQueries.last['dateFrom'], baseline['dateFrom']);
       expect(api.reportQueries.last['dateTo'], baseline['dateTo']);
@@ -146,7 +445,7 @@ void main() {
         expect(api.reportQueries.last[field], before[field], reason: field);
       }
       expect(_tree(tester).selectedIds, {'domestic-supplier'});
-      expect(find.text('应收应付 · 供应商：国内供应商'), findsOneWidget);
+      expect(find.textContaining('应收应付 ·'), findsNothing);
     },
   );
 
@@ -259,9 +558,15 @@ Future<void> _pumpPage(
   required SharedPreferences prefs,
   required _OverviewApi api,
   ReportFilterPrefs initialPrefs = const ReportFilterPrefs(),
+  GoRouter? router,
+  Size size = const Size(1600, 1000),
+  double scale = 1,
+  bool dark = false,
+  GlobalKey? capture,
+  bool readFinanceDetail = false,
 }) async {
   tester.view.devicePixelRatio = 1;
-  tester.view.physicalSize = const Size(1600, 1000);
+  tester.view.physicalSize = size;
   addTearDown(() {
     tester.view.resetPhysicalSize();
     tester.view.resetDevicePixelRatio();
@@ -271,6 +576,14 @@ Future<void> _pumpPage(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(prefs),
         apiClientProvider.overrideWithValue(api),
+        currentPermissionsProvider.overrideWithValue(const {}),
+        isSuperAdminProvider.overrideWithValue(true),
+        if (!readFinanceDetail)
+          authenticatedScopeProvider.overrideWithValue(null),
+        if (readFinanceDetail)
+          ...nativeDetailReaderOverrides(includeBadge: false),
+        fixedBadgeSummaryOverride(),
+        financeDetailReportPrefsProvider.overrideWith(_FixedDetailPrefs.new),
         financeArApOverviewReportPrefsProvider.overrideWith(
           () => _FixedPrefs(initialPrefs),
         ),
@@ -281,10 +594,53 @@ Future<void> _pumpPage(
           _SupplierCategoryRepo(),
         ),
       ],
-      child: const MaterialApp(home: FinanceArApOverviewPage()),
+      child: RepaintBoundary(
+        key: capture,
+        child: router == null
+            ? MaterialApp(
+                debugShowCheckedModeBanner: false,
+                theme: dark ? buildDarkTheme() : buildLightTheme(),
+                localizationsDelegates: AppLocalizations.localizationsDelegates,
+                supportedLocales: AppLocalizations.supportedLocales,
+                locale: const Locale('zh'),
+                builder: (context, child) => MediaQuery(
+                  data: MediaQuery.of(
+                    context,
+                  ).copyWith(textScaler: TextScaler.linear(scale)),
+                  child: child!,
+                ),
+                home: const FinanceArApOverviewPage(),
+              )
+            : MaterialApp.router(
+                routerConfig: router,
+                theme: buildLightTheme(),
+                localizationsDelegates: AppLocalizations.localizationsDelegates,
+                supportedLocales: AppLocalizations.supportedLocales,
+                locale: const Locale('zh'),
+              ),
+      ),
     ),
   );
   await tester.pumpAndSettle();
+}
+
+Future<void> _captureOverview(
+  WidgetTester tester,
+  GlobalKey capture,
+  String name,
+) async {
+  await tester.runAsync(() async {
+    final boundary =
+        capture.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+    final rendered = await boundary.toImage();
+    final png = await rendered.toByteData(format: ui.ImageByteFormat.png);
+    final folder = Directory('output/finance-redesign/previews');
+    await folder.create(recursive: true);
+    await File(
+      '${folder.path}/overview-$name.png',
+    ).writeAsBytes(png!.buffer.asUint8List());
+    rendered.dispose();
+  });
 }
 
 class _FixedPrefs extends FinanceArApOverviewReportPrefsNotifier {
@@ -292,6 +648,13 @@ class _FixedPrefs extends FinanceArApOverviewReportPrefsNotifier {
   final ReportFilterPrefs initial;
   @override
   ReportFilterPrefs build() => initial;
+  @override
+  void update(ReportFilterPrefs value) => state = value;
+}
+
+class _FixedDetailPrefs extends FinanceDetailReportPrefsNotifier {
+  @override
+  ReportFilterPrefs build() => const ReportFilterPrefs();
   @override
   void update(ReportFilterPrefs value) => state = value;
 }
@@ -320,6 +683,21 @@ class _OverviewApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '/finance/reports/receipt/detail') {
+      return _reportRows([
+        {'partyName': 'RECEIPT-001', '__srcId': 'receipt-1'},
+      ], total: 1);
+    }
+    if (path == '/finance/receipts/receipt-1') {
+      return {
+        'id': 'receipt-1',
+        'billNo': 'SK-20261021-001',
+        'billDate': '2026-10-21',
+        'status': 1,
+        'receiptKind': 'RECEIVABLE',
+        'items': <Object>[],
+      };
+    }
     if (path == '/finance/reports/ar-ap/party-locations') {
       final q = Map<String, dynamic>.from(query ?? const {});
       locationQueries.add(q);
@@ -422,6 +800,12 @@ class _OverviewApi extends ApiClient {
     }
     return const <String, dynamic>{};
   }
+
+  @override
+  Future<List<Map<String, dynamic>>> getList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async => const [];
 }
 
 Map<String, dynamic> _report(String partyName) => <String, dynamic>{

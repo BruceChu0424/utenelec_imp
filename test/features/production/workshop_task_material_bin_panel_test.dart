@@ -36,6 +36,8 @@ class _Materials extends WorkshopMaterialRepository {
   Future<PagedResult<WmMaterialOption>> requestMaterials(
     String workshopId, {
     String keyword = '',
+    String? categoryId,
+    bool includeRelated = false,
     List<String> goodsIds = const [],
     int page = 1,
     int size = 50,

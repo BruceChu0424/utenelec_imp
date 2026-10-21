@@ -423,13 +423,6 @@ class _FinanceAssetPostingPanelState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '月度计提预览',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s4),
-          Text(
             '必须先预览并核对错误和逐项金额，不能跳过预览直接计提。',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
@@ -537,13 +530,6 @@ class _FinanceAssetPostingPanelState
             _messages('必须处理的错误', preview.errors, theme.colorScheme.error),
           ],
           const SizedBox(height: UtenSpacing.s16),
-          Text(
-            '逐项明细',
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s8),
           _previewLines(preview.lines),
           const SizedBox(height: UtenSpacing.s16),
           Wrap(
@@ -842,33 +828,30 @@ class _FinanceAssetPostingPanelState
     required Widget child,
   }) {
     final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(UtenSpacing.s16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLowest,
-        borderRadius: UtenRadius.xlAll,
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
+    return Semantics(
+      container: true,
+      label: title,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(UtenSpacing.s16),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerLowest,
+          borderRadius: UtenRadius.xlAll,
+          border: Border.all(color: theme.colorScheme.outlineVariant),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              subtitle,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
-          ),
-          const SizedBox(height: UtenSpacing.s4),
-          Text(
-            subtitle,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s16),
-          child,
-        ],
+            const SizedBox(height: UtenSpacing.s16),
+            child,
+          ],
+        ),
       ),
     );
   }

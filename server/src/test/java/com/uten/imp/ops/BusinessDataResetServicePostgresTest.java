@@ -120,10 +120,11 @@ class BusinessDataResetServicePostgresTest {
         Map<String, String> expectedPolicy = BusinessDataResetSqlContractTest.expectedCurrentPolicy();
         Map<String, Long> migratedClearBaseline = nonemptyClearTableCounts(dataSource);
         // V775 registers every department grant's permanent parent identity.
-        // The V860 Finance seed is legitimate configuration; the current
-        // bootstrap guard ignores identities whose sources are PRESERVE tables.
-        assertThat(migratedClearBaseline).isEqualTo(Map.of("business_record_identities", 1L));
-        assertFinancePriceAnalysisSeedIdentity(dataSource);
+        // V860 seeds Finance price analysis; V896 also preserves the existing
+        // Finance quotation grant as separate reject/reverse decisions. All
+        // three create V775 identities whose source configuration is PRESERVE.
+        assertThat(migratedClearBaseline).isEqualTo(Map.of("business_record_identities", 3L));
+        assertFinancePermissionSeedIdentities(dataSource);
         verifySchemaOnlyBootstrapTarget(dataSource);
         List<String> financePriceAnalysisGrantBefore = financePriceAnalysisGrant(dataSource);
         assertThat(financePriceAnalysisGrantBefore).as("V860 finance price-analysis seed grant").hasSize(1);
@@ -161,6 +162,7 @@ class BusinessDataResetServicePostgresTest {
         String[] admin = superAdmin(dataSource);
         UUID operator = UUID.fromString(admin[0]);
         String account = admin[1];
+        insertPreservedPermissionTemplate(dataSource, operator);
         String identitiesBefore = preservedIdentityConfiguration(dataSource);
 
         // —— 阶段一：后台事件排队中 → 排水前由拒绝函数拒绝(409)——
@@ -296,8 +298,8 @@ class BusinessDataResetServicePostgresTest {
         // V741 删除政策情报表 -1, V742 保留 AI 服务商配置/客户货品对照/客户文件版式 +3: 102→104。
         assertThat(result.preservedTableCount()).isEqualTo(Math.toIntExact(
                 expectedPolicy.values().stream().filter("PRESERVE"::equals).count()));
-        // Four explicit business fixture rows plus the independently verified
-        // V860 configuration identity. The testing reset clears identities;
+        // Explicit business fixture rows plus the independently verified
+        // V860/V896 configuration identities. The testing reset clears identities;
         // it preserves the actual department grant and ordinary audit policy.
         // refresh_tokens 属 PRESERVE，
         // 在终局校验后单独清空，不计入）
@@ -593,13 +595,15 @@ class BusinessDataResetServicePostgresTest {
         return grants;
     }
 
-    private void assertFinancePriceAnalysisSeedIdentity(SimpleDriverDataSource dataSource) throws SQLException {
+    private void assertFinancePermissionSeedIdentities(SimpleDriverDataSource dataSource) throws SQLException {
+        Set<String> actualPermissions = new LinkedHashSet<>();
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement();
              ResultSet rows = statement.executeQuery("""
                      SELECT identity.parent_table, identity.parent_id,
                             identity.source_id::jsonb = jsonb_build_object(
                                 'department_id', grant_row.department_id, 'permission_id', grant_row.permission_id),
-                            department.id::text, grant_row.created_by
+                            department.id::text, grant_row.created_by, permission.code,
+                            original_grant.department_id, original_grant.created_by
                      FROM business_record_identities identity
                      JOIN department_permissions grant_row
                        ON identity.source_table = 'department_permissions'
@@ -607,14 +611,43 @@ class BusinessDataResetServicePostgresTest {
                       AND identity.source_id::jsonb->>'permission_id' = grant_row.permission_id::text
                      JOIN departments department ON department.id = grant_row.department_id
                      JOIN permissions permission ON permission.id = grant_row.permission_id
-                     WHERE department.code = 'DEPT_FIN' AND permission.code = 'goods:price_analysis:view'
+                     LEFT JOIN department_permissions original_grant
+                       ON original_grant.department_id = grant_row.department_id
+                      AND original_grant.permission_id = (
+                          SELECT id FROM permissions WHERE code = 'sales_quote_finance:confirm')
+                     WHERE department.code = 'DEPT_FIN' AND permission.code IN (
+                         'goods:price_analysis:view', 'sales_quote_finance:reject', 'sales_quote_finance:reverse')
+                     ORDER BY permission.code
                      """)) {
-            assertThat(rows.next()).isTrue();
-            assertThat(rows.getString(1)).isEqualTo("departments");
-            assertThat(rows.getString(2)).isEqualTo(rows.getString(4));
-            assertThat(rows.getBoolean(3)).isTrue();
-            assertThat(rows.getObject(5)).isNull();
-            assertThat(rows.next()).isFalse();
+            while (rows.next()) {
+                String permission = rows.getString(6);
+                assertThat(actualPermissions.add(permission)).as("one identity per seed grant").isTrue();
+                assertThat(rows.getString(1)).isEqualTo("departments");
+                assertThat(rows.getString(2)).isEqualTo(rows.getString(4));
+                assertThat(rows.getBoolean(3)).as("permanent identity retains its exact composite source").isTrue();
+                if (permission.equals("goods:price_analysis:view")) {
+                    assertThat(rows.getObject(5)).isNull();
+                } else {
+                    assertThat(rows.getObject(7)).as("split decision retains its original department grant").isNotNull();
+                    assertThat(rows.getObject(5)).as("split decision retains the original grant creator")
+                            .isEqualTo(rows.getObject(8));
+                }
+            }
+        }
+        assertThat(actualPermissions).containsExactlyInAnyOrder(
+                "goods:price_analysis:view", "sales_quote_finance:reject", "sales_quote_finance:reverse");
+    }
+
+    private void insertPreservedPermissionTemplate(SimpleDriverDataSource dataSource, UUID operator) throws SQLException {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     INSERT INTO permission_templates(id,name,description,permission_codes,created_by,updated_by)
+                     VALUES (gen_random_uuid(),'Reset preservation snapshot','Existing saved authority snapshot',
+                             '["goods:view","sales_quote_finance:reject"]'::jsonb,?,?)
+                     """)) {
+            statement.setObject(1, operator);
+            statement.setObject(2, operator);
+            assertThat(statement.executeUpdate()).isEqualTo(1);
         }
     }
 
@@ -767,7 +800,8 @@ class BusinessDataResetServicePostgresTest {
                          'delegations',(SELECT jsonb_agg(to_jsonb(d) ORDER BY user_id,department_id,permission_id) FROM manager_permission_delegations d),
                          'dataScopes',(SELECT jsonb_agg(to_jsonb(s) ORDER BY user_id,scope,owner_employee_id) FROM user_data_scopes s),
                          'departmentGrants',(SELECT jsonb_agg(to_jsonb(g) ORDER BY department_id,permission_id) FROM department_permissions g),
-                         'stepUpStates',(SELECT jsonb_agg(to_jsonb(s) ORDER BY user_id) FROM auth_step_up_states s)
+                         'stepUpStates',(SELECT jsonb_agg(to_jsonb(s) ORDER BY user_id) FROM auth_step_up_states s),
+                         'permissionTemplates',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM permission_templates t)
                      )::text,'sha256'),'hex')
                      """)) {
             assertThat(rows.next()).isTrue();

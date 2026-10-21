@@ -98,6 +98,8 @@ class _ContextRepository extends FakeWorkshopMaterialRepository {
   Future<PagedResult<WmMaterialOption>> requestMaterials(
     String workshopId, {
     String keyword = '',
+    String? categoryId,
+    bool includeRelated = false,
     List<String> goodsIds = const [],
     int page = 1,
     int size = 50,
@@ -106,6 +108,8 @@ class _ContextRepository extends FakeWorkshopMaterialRepository {
     return super.requestMaterials(
       workshopId,
       keyword: keyword,
+      categoryId: categoryId,
+      includeRelated: includeRelated,
       goodsIds: goodsIds,
       page: page,
       size: size,
@@ -289,9 +293,10 @@ void main() {
     expect(repo.positionReads, ['bin1']);
     await tester.tap(find.byKey(const Key('wm-bin-request')));
     await tester.pumpAndSettle();
-    expect(find.text('申请领料 · 注塑车间'), findsOneWidget);
-    expect(repo.materialReads.last, 'w1');
-    await tester.tap(find.byTooltip('关闭'));
+    expect(find.byKey(const Key('wm-request-inline-add')), findsOneWidget);
+    expect(find.text('注塑车间内料仓'), findsOneWidget);
+    expect(repo.materialReads, isEmpty);
+    await tester.tap(find.byKey(const Key('wm-request-inline-exit')));
     await tester.pumpAndSettle();
 
     final loadingThird = Completer<WmPosition>();

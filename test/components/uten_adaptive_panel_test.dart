@@ -222,20 +222,22 @@ void main() {
     expect(tester.getSize(find.byKey(const Key('panel-content'))).width, 720);
   });
 
-  testWidgets('barrier dismissal returns null without committing panel state', (
-    tester,
-  ) async {
-    _setTestSize(tester, const Size(390, 844));
-
-    await tester.pumpWidget(const MaterialApp(home: _PanelHarness()));
-    await tester.tap(find.byKey(const Key('open-panel')));
-    await tester.pumpAndSettle();
-
-    await tester.tapAt(const Offset(10, 10));
-    await tester.pumpAndSettle();
-
-    expect(find.text('result:cancelled'), findsOneWidget);
-  });
+  for (final size in [const Size(390, 844), const Size(1920, 1080)]) {
+    testWidgets(
+      'barrier dismissal at ${size.width} returns null without committing panel state',
+      (tester) async {
+        _setTestSize(tester, size);
+        await tester.pumpWidget(const MaterialApp(home: _PanelHarness()));
+        await tester.tap(find.byKey(const Key('open-panel')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('panel-content')), findsOneWidget);
+        await tester.tapAt(const Offset(10, 10));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('panel-content')), findsNothing);
+        expect(find.text('result:cancelled'), findsOneWidget);
+      },
+    );
+  }
 }
 
 void _setTestSize(WidgetTester tester, Size size) {

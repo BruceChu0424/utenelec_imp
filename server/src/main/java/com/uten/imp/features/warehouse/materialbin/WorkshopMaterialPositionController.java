@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /** 车间内料仓页: 现存、估计还剩、仓库可发与顶部的盘点结算状态。 */
@@ -43,8 +44,25 @@ public class WorkshopMaterialPositionController {
     public PageResponse<MaterialStockOption> requestMaterials(@RequestParam UUID workshopId,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) List<UUID> goodsIds,
+            @RequestParam(required = false) UUID categoryId,
+            @RequestParam(defaultValue = "false") boolean includeRelated,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return positions.requestMaterials(workshopId, keyword, goodsIds, page, size);
+        return positions.requestMaterials(workshopId, keyword, goodsIds, categoryId, includeRelated, page, size);
+    }
+
+    @GetMapping("/request-materials/categories")
+    @PreAuthorize("hasAuthority('workshop_material:view')")
+    public List<Map<String, Object>> requestMaterialCategories(@RequestParam UUID workshopId) {
+        return positions.requestMaterialCategories(workshopId);
+    }
+
+    @GetMapping("/request-materials/category-ids")
+    @PreAuthorize("hasAuthority('workshop_material:view')")
+    public List<UUID> requestMaterialCategoryIds(@RequestParam UUID workshopId,
+            @RequestParam String keyword,
+            @RequestParam(required = false) UUID categoryId,
+            @RequestParam(defaultValue = "false") boolean includeRelated) {
+        return positions.requestMaterialCategoryIds(workshopId, keyword, categoryId, includeRelated);
     }
 }

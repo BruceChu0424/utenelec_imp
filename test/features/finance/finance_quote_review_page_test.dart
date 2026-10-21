@@ -401,7 +401,7 @@ void main() {
       final state =
           tester.state(find.byType(FinanceQuoteReviewPage))
               as ReviewTaskDraftMixin<FinanceQuoteReviewPage>;
-      expect(state.reviewDraftEditable, isFalse);
+      expect(state.reviewDraftEditable, isTrue);
       await tester.tap(find.byKey(const Key('quote-finance-return')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('quote-finance-return-chip-0')));
@@ -1006,6 +1006,10 @@ void main() {
     );
     expect(find.text('重新认领并刷新'), findsOneWidget);
     expect(_deal('a'), findsNothing, reason: 'no editable fields');
+    final state =
+        tester.state(find.byType(FinanceQuoteReviewPage))
+            as ReviewTaskDraftMixin<FinanceQuoteReviewPage>;
+    expect(state.reviewDraftEditable, isFalse);
     await tester.tap(find.byKey(const Key('quote-finance-confirm')));
     await tester.pumpAndSettle();
     expect(repo.confirms, isEmpty);

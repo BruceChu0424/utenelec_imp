@@ -409,33 +409,13 @@ class _FinanceAssetDetailSurfaceState
           FinanceAssetRevisionSection(detail: detail),
           _summaryGrid(detail.summary),
           const SizedBox(height: UtenSpacing.s20),
-          _section(
-            theme,
-            '账簿与计划',
-            Icons.menu_book_outlined,
-            _booksAndSchedule(theme, detail),
-          ),
+          _section(theme, '账簿与计划', _booksAndSchedule(theme, detail)),
           const SizedBox(height: UtenSpacing.s20),
-          _section(
-            theme,
-            '审批轨迹',
-            Icons.fact_check_outlined,
-            _approvalTrail(theme, detail.approvalSteps),
-          ),
+          _section(theme, '审批轨迹', _approvalTrail(theme, detail.approvalSteps)),
           const SizedBox(height: UtenSpacing.s20),
-          _section(
-            theme,
-            '事件时间线',
-            Icons.timeline_outlined,
-            _eventTimeline(theme, detail.events),
-          ),
+          _section(theme, '事件时间线', _eventTimeline(theme, detail.events)),
           const SizedBox(height: UtenSpacing.s20),
-          _section(
-            theme,
-            '凭证与文档引用',
-            Icons.description_outlined,
-            _references(theme, detail),
-          ),
+          _section(theme, '凭证与文档引用', _references(theme, detail)),
         ],
       ),
     );
@@ -487,33 +467,19 @@ class _FinanceAssetDetailSurfaceState
     );
   }
 
-  Widget _section(ThemeData theme, String title, IconData icon, Widget child) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(UtenSpacing.s16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLowest,
-        borderRadius: UtenRadius.xlAll,
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 20, color: theme.colorScheme.primary),
-              const SizedBox(width: UtenSpacing.s8),
-              Text(
-                title,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: UtenSpacing.s16),
-          child,
-        ],
+  Widget _section(ThemeData theme, String title, Widget child) {
+    return Semantics(
+      container: true,
+      label: title,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(UtenSpacing.s16),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerLowest,
+          borderRadius: UtenRadius.xlAll,
+          border: Border.all(color: theme.colorScheme.outlineVariant),
+        ),
+        child: child,
       ),
     );
   }
@@ -638,13 +604,6 @@ class _FinanceAssetDetailSurfaceState
           ),
         if (detail.schedule.isNotEmpty) ...[
           const SizedBox(height: UtenSpacing.s16),
-          Text(
-            '计提计划',
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s8),
           MasterDataTableView<FinanceAssetScheduleLine>(
             tableKey: 'finance.asset.schedule',
             embedded: true,

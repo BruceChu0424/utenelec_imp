@@ -5,6 +5,9 @@ import '../../../../components/inputs/uten_search_bar.dart';
 import '../../../../components/layout/uten_adaptive_panel.dart';
 import '../../../../components/layout/uten_app_bar.dart';
 import '../../../basic_data/widgets/master_data_table_view.dart';
+import '../../../basic_data/widgets/uten_goods_picker.dart';
+import '../../../basic_data/models/goods_node.dart';
+import '../../../basic_data/models/product_category_node.dart';
 import '../../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/uten_tokens.dart';
@@ -13,6 +16,157 @@ import '../../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../models/workshop_material_models.dart';
 import '../repositories/workshop_material_repository.dart';
 import 'workshop_material_labels.dart';
+
+/// Same category tree, cross-page selection and confirmation as stock counting.
+/// The source is the workshop's authorized request candidates, not global goods.
+Future<List<WmMaterialOption>> showWorkshopRequestMaterialPickerMulti(
+  BuildContext context,
+  WidgetRef ref, {
+  required String workshopId,
+  required String workshopName,
+}) async {
+  final source = _WorkshopRequestPickerSource(
+    ref.read(workshopMaterialRepositoryProvider),
+    workshopId,
+  );
+  final selected = await showUtenGoodsPickerMulti(
+    context,
+    ref,
+    scope: UtenGoodsPickerScope.all,
+    title: '添加申请物料 · $workshopName',
+    dataSource: source,
+    readBoundary: ref.read(sensitiveReadBoundaryProvider),
+  );
+  return [for (final goods in selected) source.snapshots[goods]!];
+}
+
+class _WorkshopRequestPickerSource extends UtenGoodsPickerDataSource {
+  _WorkshopRequestPickerSource(this.repository, this.workshopId);
+  final WorkshopMaterialRepository repository;
+  final String workshopId;
+  final snapshots = <GoodsListItem, WmMaterialOption>{};
+
+  @override
+  bool get supportsRelatedSearch => true;
+  @override
+  Future<List<ProductCategoryNode>> tree() =>
+      repository.requestMaterialCategories(workshopId);
+  @override
+  Future<PagedResult<GoodsListItem>> list(
+    String categoryId, {
+    required int page,
+    String? keyword,
+  }) => _load(categoryId: categoryId, keyword: keyword, page: page);
+  @override
+  Future<PagedResult<GoodsListItem>> search(
+    String keyword, {
+    required int page,
+  }) => _load(keyword: keyword, page: page);
+  @override
+  Future<Set<String>> searchCategoryIds(String keyword) =>
+      repository.requestMaterialCategoryIds(workshopId, keyword);
+  @override
+  Future<PagedResult<GoodsListItem>> searchWithOptions(
+    String keyword, {
+    required int page,
+    String? categoryId,
+    bool includeRelated = false,
+  }) => _load(
+    keyword: keyword,
+    page: page,
+    categoryId: categoryId,
+    includeRelated: includeRelated,
+  );
+  @override
+  Future<Set<String>> searchCategoryIdsWithOptions(
+    String keyword, {
+    String? categoryId,
+    bool includeRelated = false,
+  }) => repository.requestMaterialCategoryIds(
+    workshopId,
+    keyword,
+    categoryId: categoryId,
+    includeRelated: includeRelated,
+  );
+
+  Future<PagedResult<GoodsListItem>> _load({
+    required int page,
+    String? keyword,
+    String? categoryId,
+    bool includeRelated = false,
+  }) async {
+    final result = await repository.requestMaterials(
+      workshopId,
+      keyword: keyword ?? '',
+      categoryId: categoryId,
+      includeRelated: includeRelated,
+      page: page,
+    );
+    return PagedResult(
+      items: [for (final row in result.items) _goods(row)],
+      page: result.page,
+      size: result.size,
+      total: result.total,
+      totalPages: result.totalPages,
+    );
+  }
+
+  GoodsListItem _goods(WmMaterialOption row) {
+    final goods = GoodsListItem(
+      id: row.key,
+      name: row.goodsName,
+      code: row.goodsCode,
+      colorId: row.colorId,
+      colorName: row.colorName,
+      unitName: row.unitName,
+      categoryId: row.categoryId,
+      searchRank: row.searchRank,
+      searchMatchKind: row.searchMatchKind,
+    );
+    snapshots[goods] = row;
+    return goods;
+  }
+
+  @override
+  bool isSelectable(GoodsListItem goods) =>
+      snapshots[goods]?.goodsId.isNotEmpty == true;
+  @override
+  List<MasterColumnDef<GoodsListItem>> get pickerColumns => [
+    MasterColumnDef(
+      key: 'name',
+      label: '物料名称',
+      width: 200,
+      value: (goods) => goods.name,
+      columnSearchEnabled: false,
+    ),
+    MasterColumnDef(
+      key: 'code',
+      label: '编号',
+      width: 130,
+      value: (goods) => goods.code,
+      columnSearchEnabled: false,
+    ),
+    MasterColumnDef(
+      key: 'color',
+      label: '颜色',
+      width: 100,
+      value: (goods) => goods.colorName,
+      columnSearchEnabled: false,
+    ),
+    MasterColumnDef(
+      key: 'quantity',
+      label: '仓库可发',
+      width: 160,
+      value: (goods) {
+        final row = snapshots[goods];
+        return row == null
+            ? null
+            : '${wmQty(row.warehouseAvailableQty, maxDecimals: 4)} ${row.unitName ?? ''}';
+      },
+      columnSearchEnabled: false,
+    ),
+  ];
+}
 
 Future<WmMaterialOption?> showWorkshopRequestMaterialPicker(
   BuildContext context, {

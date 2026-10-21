@@ -63,7 +63,6 @@ Future<SubcontractLossDecisionDraft?> showSubcontractLossDecisionPanel({
   drawerWidth: 940,
   widthFraction: UtenPanelWidth.content,
   compactHeightFactor: 0.96,
-  barrierDismissible: false,
   panelElevation: 16,
   builder: (_) => _LossDecisionEditor(detail: detail),
 );
@@ -77,7 +76,6 @@ Future<SubcontractLossFulfillmentDraft?> showSubcontractLossFulfillmentPanel({
   drawerWidth: 560,
   widthFraction: UtenPanelWidth.form,
   compactHeightFactor: 0.92,
-  barrierDismissible: false,
   panelElevation: 16,
   builder: (_) => _LossFulfillmentEditor(
     resolution: resolution,

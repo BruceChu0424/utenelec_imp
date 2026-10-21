@@ -38,7 +38,6 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('委外超耗责任 (1)'), findsOneWidget);
     expect(find.text('SW-001'), findsOneWidget);
     expect(find.text('待处理'), findsWidgets);
     expect(find.text('生成付款单'), findsNothing);

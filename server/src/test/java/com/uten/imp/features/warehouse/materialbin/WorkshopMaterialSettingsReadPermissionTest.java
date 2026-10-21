@@ -63,7 +63,10 @@ class WorkshopMaterialSettingsReadPermissionTest {
         verify(context.getBean(WorkshopMachineService.class)).list(workshop);
         assertThatThrownBy(() -> stock.position(UUID.randomUUID())).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> stock.materials(workshop)).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> stock.requestMaterials(workshop, null, null, 1, 50))
+        assertThatThrownBy(() -> stock.requestMaterials(workshop, null, null, null, false, 1, 50))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> stock.requestMaterialCategories(workshop)).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> stock.requestMaterialCategoryIds(workshop, "", null, false))
                 .isInstanceOf(AccessDeniedException.class);
         verifyNoInteractions(positions);
     }
@@ -85,9 +88,15 @@ class WorkshopMaterialSettingsReadPermissionTest {
         UUID bin = UUID.randomUUID();
         settings.list();
         stock.position(bin);
+        stock.requestMaterials(workshop, "颗粒", null, null, true, 1, 50);
+        stock.requestMaterialCategories(workshop);
+        stock.requestMaterialCategoryIds(workshop, "颗粒", null, true);
         context.getBean(WorkshopMachineController.class).list(workshop);
         verify(settingsService).list();
         verify(positions).position(bin);
+        verify(positions).requestMaterials(workshop, "颗粒", null, null, true, 1, 50);
+        verify(positions).requestMaterialCategories(workshop);
+        verify(positions).requestMaterialCategoryIds(workshop, "颗粒", null, true);
         verify(context.getBean(WorkshopMachineService.class)).list(workshop);
         assertThatThrownBy(() -> settings.inProgressPending(List.of(workshop)))
                 .isInstanceOf(AccessDeniedException.class);

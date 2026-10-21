@@ -213,34 +213,31 @@ class FinanceAssetRevisionSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            title,
-            style: Theme.of(
-              context,
-            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 8),
-          UtenRevisionTable<Map<String, dynamic>>(
-            tableKey:
-                'features.finance.widgets.finance_asset_revision_section.FinanceAssetRevisionSection._workflow.1',
-            key: ValueKey('finance-asset-revision-${revision.workflowType}'),
-            embedded: true,
-            rows: rows,
-            columns: [
-              for (final key in mainKeys)
-                MasterColumnDef(
-                  key: key,
-                  label: _fieldLabel(key),
-                  width:
-                      key == 'name' ||
-                          key == 'reason' ||
-                          key == 'evidenceReference'
-                      ? 210
-                      : 130,
-                  type: _numbers.contains(key) ? 'money' : 'text',
-                  value: (row) => display(row, key),
-                ),
-            ],
+          Semantics(
+            container: true,
+            label: title,
+            child: UtenRevisionTable<Map<String, dynamic>>(
+              tableKey:
+                  'features.finance.widgets.finance_asset_revision_section.FinanceAssetRevisionSection._workflow.1',
+              key: ValueKey('finance-asset-revision-${revision.workflowType}'),
+              embedded: true,
+              rows: rows,
+              columns: [
+                for (final key in mainKeys)
+                  MasterColumnDef(
+                    key: key,
+                    label: _fieldLabel(key),
+                    width:
+                        key == 'name' ||
+                            key == 'reason' ||
+                            key == 'evidenceReference'
+                        ? 210
+                        : 130,
+                    type: _numbers.contains(key) ? 'money' : 'text',
+                    value: (row) => display(row, key),
+                  ),
+              ],
+            ),
           ),
           if (extraFields.isNotEmpty) ...[
             const SizedBox(height: 12),

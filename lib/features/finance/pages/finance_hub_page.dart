@@ -100,6 +100,7 @@ class _FinanceHubPageState extends ConsumerState<FinanceHubPage> {
       body: SafeArea(
         child: UtenContentContainer(
           child: ListView(
+            key: const PageStorageKey('finance-hub-scroll'),
             padding: EdgeInsets.only(
               top: UtenSpacing.s12,
               // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊
@@ -400,7 +401,7 @@ class _EntryTile extends StatelessWidget {
       icon: entry.icon,
       label: entry.label,
       description: entry.description,
-      onTap: () => goFrom(context, entry.location),
+      onTap: () => pushFrom<void>(context, entry.location),
       badgeScope: entry.badgeScope,
       badge: entry.badge,
     );

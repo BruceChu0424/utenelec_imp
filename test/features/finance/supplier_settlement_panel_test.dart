@@ -24,7 +24,6 @@ void main() {
       },
     );
 
-    expect(find.text('供应商月结批次 (1)'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('supplier-settlement-create')),
       findsOneWidget,

@@ -247,37 +247,23 @@ class _SupplierSettlementPanelState
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final total = _result?.total ?? 0;
     return Stack(
       children: [
         Column(
           children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.calendar_month_outlined,
-                  color: theme.colorScheme.primary,
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                Expanded(
-                  child: Text(
-                    '供应商月结批次 ($total)',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                if (_canCreate)
-                  UtenButton(
+            if (_canCreate)
+              Padding(
+                padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: UtenButton(
                     key: const ValueKey('supplier-settlement-create'),
                     icon: Icons.add_rounded,
                     onPressed: _writing ? null : _create,
                     child: const Text('生成月结批次'),
                   ),
-              ],
-            ),
-            const SizedBox(height: UtenSpacing.s8),
+                ),
+              ),
             UtenFilterToolbar<String?>(
               autoSelectBadge: false,
               segmentsKey: const ValueKey('supplier-settlement-status'),
@@ -546,12 +532,6 @@ class _SupplierSettlementDetailPanelState
             style: theme.textTheme.bodySmall,
           ),
           const SizedBox(height: UtenSpacing.s12),
-          Text(
-            '快照明细 (${detail.lines.length})',
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
           MasterDataTableView<SupplierSettlementLine>(
             tableKey: 'finance.supplierSettlement.snapshot',
             embedded: true,

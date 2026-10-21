@@ -55,7 +55,6 @@ Future<void> showMasterOperationHistory(
 }) => showUtenAdaptivePanel<void>(
   context: context,
   drawerWidth: 640,
-  barrierDismissible: false,
   enableDrag: false,
   builder: (_) => MasterOperationHistoryPanel(
     entityType: entityType,

@@ -304,7 +304,18 @@ public final class WorkshopMaterialDtos {
                                       String colorName, String unitName, BigDecimal bulkPackageQty,
                                       String costBasis, UUID defaultLeafWarehouseId,
                                       String defaultLeafWarehouseName, BigDecimal warehouseAvailableQty,
-                                      List<LeafStockView> leafWarehouses) {}
+                                      List<LeafStockView> leafWarehouses, UUID categoryId,
+                                      Integer searchRank, String searchMatchKind) {
+        public MaterialStockOption(UUID goodsId, String goodsCode, String goodsName, UUID colorId,
+                                   String colorName, String unitName, BigDecimal bulkPackageQty,
+                                   String costBasis, UUID defaultLeafWarehouseId,
+                                   String defaultLeafWarehouseName, BigDecimal warehouseAvailableQty,
+                                   List<LeafStockView> leafWarehouses) {
+            this(goodsId, goodsCode, goodsName, colorId, colorName, unitName, bulkPackageQty, costBasis,
+                    defaultLeafWarehouseId, defaultLeafWarehouseName, warehouseAvailableQty, leafWarehouses,
+                    null, null, null);
+        }
+    }
 
     // ------------------------------------------------------------------ 徽章
 

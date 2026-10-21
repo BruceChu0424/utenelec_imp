@@ -329,10 +329,12 @@ class _SubcontractLossClaimDetailPanelState
         children: [
           _summaryCard(theme, detail.summary),
           const SizedBox(height: UtenSpacing.s12),
-          _sectionTitle(theme, '超耗材料明细 (${detail.lines.length})'),
-          _linesTable(detail.lines),
+          Semantics(
+            container: true,
+            label: '超耗材料明细',
+            child: _linesTable(detail.lines),
+          ),
           const SizedBox(height: UtenSpacing.s12),
-          _sectionTitle(theme, '责任方案 (${detail.resolutions.length})'),
           if (detail.resolutions.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: UtenSpacing.s8),
@@ -356,7 +358,6 @@ class _SubcontractLossClaimDetailPanelState
             categories: const ['损耗说明', '责任确认', '图片', '其他'],
           ),
           const SizedBox(height: UtenSpacing.s12),
-          _sectionTitle(theme, '处理事件 (${detail.events.length})'),
           if (detail.events.isEmpty)
             const Text('暂无事件')
           else
@@ -627,14 +628,6 @@ class _SubcontractLossClaimDetailPanelState
       ),
     );
   }
-
-  Widget _sectionTitle(ThemeData theme, String text) => Padding(
-    padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-    child: Text(
-      text,
-      style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-    ),
-  );
 
   Widget? _actions() {
     final detail = _detail!;

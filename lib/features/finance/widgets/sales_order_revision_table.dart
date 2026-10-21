@@ -124,10 +124,7 @@ class SalesOrderRevisionTable extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          '产品明细 · 红色为原内容，绿色为修改后',
-          style: Theme.of(context).textTheme.titleSmall,
-        ),
+        Text('红色为原内容，绿色为修改后', style: Theme.of(context).textTheme.titleSmall),
         if (!diff.baselineComplete) ...[
           const SizedBox(height: UtenSpacing.s4),
           const Text('历史记录仅保留部分旧值，未保存的信息显示为“—”。'),

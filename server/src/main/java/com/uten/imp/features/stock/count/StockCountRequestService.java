@@ -11,6 +11,7 @@ import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.util.CanonicalFingerprint;
+import com.uten.imp.common.util.CandidateCategoryTree;
 import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.common.util.CategoryKeywordSearch;
 import com.uten.imp.common.util.GoodsSearchPolicy;
@@ -35,7 +36,7 @@ import java.util.*;
 public class StockCountRequestService {
     public static final String SUBMIT="stock:count:submit", FINANCE="stock:count:finance_review", WAREHOUSE="stock:count:warehouse_review";
     /** Read-only picker identity for absent/deleted categories; never written back to goods. */
-    static final UUID UNCATEGORIZED_CATEGORY=UUID.fromString("00000000-0000-0000-0000-00000000c076");
+    static final UUID UNCATEGORIZED_CATEGORY=CandidateCategoryTree.UNCATEGORIZED;
     private final NamedParameterJdbcTemplate db;
     private final SecurityContextCurrentUser user;
     private final WorkshopStockCountPostingPort workshop;
@@ -240,35 +241,7 @@ public class StockCountRequestService {
                 ) visible_tree
                 ORDER BY sort_order NULLS LAST,code,id
                 """,params);
-        Map<UUID,Map<String,Object>> nodes=new LinkedHashMap<>();
-        Map<UUID,List<Map<String,Object>>> children=new LinkedHashMap<>();
-        for(var category:categories) {
-            UUID id=(UUID)category.get("id");
-            Map<String,Object> node=new LinkedHashMap<>();
-            node.put("id",id);node.put("code",category.get("code"));node.put("name",category.get("name"));
-            node.put("parentId",category.get("parent_id"));node.put("level",category.get("level"));
-            node.put("sortOrder",category.get("sort_order"));
-            var childNodes=new ArrayList<Map<String,Object>>();children.put(id,childNodes);node.put("children",childNodes);
-            nodes.put(id,node);
-        }
-        List<Map<String,Object>> roots=new ArrayList<>();
-        for(var node:nodes.values()) {
-            UUID id=(UUID)node.get("id"),parent=(UUID)node.get("parentId");
-            if(parent!=null&&nodes.containsKey(parent)&&!categoryCycle(id,parent,nodes)) children.get(parent).add(node);
-            else roots.add(node);
-        }
-        return roots;
-    }
-
-    /** Defensive only: corrupt legacy ancestry must not create recursive JSON objects. */
-    private static boolean categoryCycle(UUID id,UUID parent,Map<UUID,Map<String,Object>> nodes) {
-        Set<UUID> seen=new HashSet<>();seen.add(id);
-        UUID current=parent;
-        while(current!=null&&nodes.containsKey(current)) {
-            if(!seen.add(current))return true;
-            current=(UUID)nodes.get(current).get("parentId");
-        }
-        return false;
+        return CandidateCategoryTree.fromRows(categories);
     }
 
     @Transactional(readOnly=true)

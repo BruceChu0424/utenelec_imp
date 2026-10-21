@@ -46,6 +46,8 @@ double utenPanelWidth(Size screenSize, double preferred, double fraction) =>
 /// The function owns only the responsive presentation shell. Loading,
 /// selection drafts, validation, cancel and confirm behavior remain inside
 /// [builder].
+/// Ordinary panels share outside-tap cancellation. Content can retain its
+/// [PopScope] guards for pending writes and unsaved edits.
 Future<T?> showUtenAdaptivePanel<T>({
   required BuildContext context,
   required WidgetBuilder builder,

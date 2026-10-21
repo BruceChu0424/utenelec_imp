@@ -42,7 +42,6 @@ Future<ClientAccessSettings?> showClientAccessPanel({
   context: context,
   drawerWidth: 480,
   widthFraction: UtenPanelWidth.content,
-  barrierDismissible: false,
   showDragHandle: true,
   builder: (_) => ClientAccessPanel(
     clientId: clientId,

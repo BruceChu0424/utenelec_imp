@@ -19,6 +19,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
@@ -54,7 +56,10 @@ class WorkshopMaterialRequestCandidatesPostgresTest {
                 CREATE TABLE colors(id uuid PRIMARY KEY, name text, status text DEFAULT '使用', is_deleted boolean DEFAULT false);
                 CREATE TABLE warehouses(id uuid PRIMARY KEY, name text, parent_id uuid, status text DEFAULT '使用',
                     is_deleted boolean DEFAULT false, is_line_side boolean DEFAULT false, is_accountable boolean DEFAULT true);
+                CREATE TABLE material_categories(id uuid PRIMARY KEY,code text,name text,parent_id uuid,
+                    level integer DEFAULT 0,sort_order integer DEFAULT 0,is_deleted boolean DEFAULT false);
                 CREATE TABLE goods(id uuid PRIMARY KEY, code text, name text, color_id uuid, unit_id uuid,
+                    category_id uuid,model text,spec text,c_number text,series text,material text,name_en text,stock_place text,
                     status text DEFAULT '使用', is_deleted boolean DEFAULT false, issue_method text DEFAULT 'ORDER',
                     bulk_package_qty numeric, periodic_cost_basis text, owning_warehouse_id uuid, min_qty float8 DEFAULT 0);
                 CREATE TABLE stock_balances(warehouse_id uuid, goods_id uuid, color_id uuid, qty numeric);
@@ -257,8 +262,114 @@ class WorkshopMaterialRequestCandidatesPostgresTest {
         assertThatThrownBy(() -> service.requestMaterials(workshop, null, null, 1, 50)).isInstanceOf(ApiException.class);
         verifyNoInteractions(bins);
         var method = WorkshopMaterialPositionController.class.getMethod("requestMaterials", UUID.class,
-                String.class, List.class, int.class, int.class);
+                String.class, List.class, UUID.class, boolean.class, int.class, int.class);
         assertThat(method.getAnnotation(PreAuthorize.class).value()).contains("workshop_material:view");
+        assertThatThrownBy(() -> service.requestMaterialCategories(workshop)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> service.requestMaterialCategoryIds(workshop, "", null, false)).isInstanceOf(ApiException.class);
+        assertThat(WorkshopMaterialPositionController.class.getMethod("requestMaterialCategories", UUID.class)
+                .getAnnotation(PreAuthorize.class).value()).isEqualTo("hasAuthority('workshop_material:view')");
+        assertThat(WorkshopMaterialPositionController.class.getMethod("requestMaterialCategoryIds", UUID.class,
+                String.class, UUID.class, boolean.class).getAnnotation(PreAuthorize.class).value())
+                .isEqualTo("hasAuthority('workshop_material:view')");
+    }
+
+    @Test void categoryTreeIncludesOnlyEligibleMassMaterialsAndTheirAncestors() {
+        UUID root = category("ROOT", "全部物料", null), resin = category("RESIN", "颗粒", root);
+        UUID powder = category("POWDER", "色粉", root), empty = category("EMPTY", "空类别", root);
+        UUID ordered = goods("PP", "PP 颗粒", kg, "ORDER");
+        UUID periodic = goods("POWDER", "色粉", grams, "PERIODIC");
+        UUID nonMass = goods("SCREW", "螺丝", countUnit, "ORDER");
+        db.update("UPDATE goods SET category_id=? WHERE id=?", resin, ordered);
+        db.update("UPDATE goods SET category_id=? WHERE id=?", powder, periodic);
+        db.update("UPDATE goods SET category_id=? WHERE id=?", empty, nonMass);
+        var tree = flatten(service.requestMaterialCategories(workshop));
+        assertThat(tree.keySet()).containsExactlyInAnyOrder(root, resin, powder);
+        assertThat(tree.get(resin)).containsEntry("parentId", root).containsEntry("name", "颗粒");
+        assertThat(service.requestMaterialCategoryIds(workshop, "颗粒", null, false)).containsExactly(resin);
+        assertThat(service.requestMaterialCategoryIds(workshop, "螺丝", null, false)).isEmpty();
+        // The tree remains serializable even if legacy category ancestry is cyclic.
+        db.update("UPDATE material_categories SET parent_id=? WHERE id=?", resin, root);
+        assertThat(flatten(service.requestMaterialCategories(workshop)).keySet())
+                .containsExactlyInAnyOrder(root, resin, powder);
+    }
+
+    @Test void categorySubtreeIntersectsExactIdsSearchColorsAndServerPagination() {
+        UUID root = category("ROOT", "物料", null), branch = category("RAW", "塑料", root);
+        UUID child = category("PP", "颗粒", branch), sibling = category("METAL", "金属", root);
+        UUID material = goods("PP", "PP 颗粒", kg, "ORDER"), other = goods("FE", "铁", kg, "ORDER");
+        UUID black = color("黑色"), white = color("白色");
+        db.update("UPDATE goods SET category_id=?,color_id=? WHERE id=?", child, black, material);
+        db.update("UPDATE goods SET category_id=? WHERE id=?", sibling, other);
+        balance(leaf, material, black, "4");
+        balance(secondLeaf, material, white, "6");
+        var first = service.requestMaterials(workshop, "", null, branch, false, 1, 1);
+        var second = service.requestMaterials(workshop, "", null, branch, false, 2, 1);
+        assertThat(first.getTotal()).isEqualTo(2);
+        assertThat(first.getTotalPages()).isEqualTo(2);
+        assertThat(first.getItems().getFirst().categoryId()).isEqualTo(child);
+        assertThat(first.getItems().getFirst().colorId()).isNotEqualTo(second.getItems().getFirst().colorId());
+        assertThat(service.requestMaterials(workshop, "黑色", List.of(material), branch, false, 1, 50).getItems())
+                .singleElement().satisfies(row -> {
+                    assertThat(row.colorId()).isEqualTo(black);
+                    assertThat(row.warehouseAvailableQty()).isEqualByComparingTo("4");
+                    assertThat(row.searchMatchKind()).isEqualTo("PRIMARY");
+                });
+        assertThat(service.requestMaterials(workshop, "", List.of(other), branch, false, 1, 50).getTotal()).isZero();
+        assertThat(service.requestMaterialCategoryIds(workshop, "铁", branch, true)).isEmpty();
+        db.update("UPDATE material_categories SET is_deleted=true WHERE id=?", branch);
+        assertThat(service.requestMaterials(workshop, "", null, branch, false, 1, 50).getTotal()).isZero();
+    }
+
+    @Test void categoryIntentAndRelatedSearchRelocationUseTheSameRankedCandidates() {
+        UUID root = category("ROOT", "物料", null), screws = category("SCREWS", "螺丝类", root);
+        UUID coated = category("COATED", "镀锌件", screws), other = category("OTHER", "轨道螺丝", root);
+        UUID primary = goods("Z-3", "圆头件", kg, "ORDER"), related = goods("A-1", "其它件", kg, "ORDER");
+        db.update("UPDATE goods SET category_id=?,model='M3_20%' WHERE id=?", coated, primary);
+        db.update("UPDATE goods SET category_id=?,model='M3_20%' WHERE id=?", other, related);
+        assertThat(service.requestMaterials(workshop, "螺丝 M3_20%", null, null, false, 1, 50).getItems())
+                .extracting(MaterialStockOption::goodsId).containsExactly(primary);
+        var expanded = service.requestMaterials(workshop, "螺丝 M3_20%", null, null, true, 1, 50);
+        assertThat(expanded.getItems()).extracting(MaterialStockOption::goodsId).containsExactly(primary, related);
+        assertThat(expanded.getItems()).extracting(MaterialStockOption::searchMatchKind).containsExactly("PRIMARY", "RELATED");
+        assertThat(expanded.getItems().getFirst().searchRank()).isLessThan(100);
+        assertThat(expanded.getItems().getLast().searchRank()).isGreaterThanOrEqualTo(100);
+        assertThat(service.requestMaterialCategoryIds(workshop, "螺丝 M3_20%", null, false)).containsExactly(coated);
+        assertThat(service.requestMaterialCategoryIds(workshop, "螺丝 M3_20%", null, true)).containsExactly(coated, other);
+        assertThat(service.requestMaterialCategoryIds(workshop, "螺丝 M3_20%", screws, true)).containsExactly(coated);
+    }
+
+    @Test void uncategorizedAndColorSearchNeverExposeOtherBinsOrIneligibleIdentities() {
+        UUID deleted = category("OLD", "旧分类", null);
+        db.update("UPDATE material_categories SET is_deleted=true WHERE id=?", deleted);
+        UUID uncategorized = goods("NONE", "无分类料", kg, "ORDER"), old = goods("OLD", "旧分类料", grams, "ORDER");
+        db.update("UPDATE goods SET category_id=? WHERE id=?", deleted, old);
+        UUID privateColor = color("其它车间金色"), localColor = color("普通仓蓝色");
+        balance(otherBin, uncategorized, privateColor, "999");
+        balance(leaf, uncategorized, localColor, "3");
+        UUID bucket = com.uten.imp.common.util.CandidateCategoryTree.UNCATEGORIZED;
+        assertThat(flatten(service.requestMaterialCategories(workshop)).keySet()).containsExactly(bucket);
+        assertThat(service.requestMaterials(workshop, "", null, bucket, false, 1, 50).getItems())
+                .extracting(MaterialStockOption::goodsId).containsOnly(uncategorized, old);
+        assertThat(service.requestMaterialCategoryIds(workshop, "其它车间金色", null, true)).isEmpty();
+        assertThat(service.requestMaterialCategoryIds(workshop, "普通仓蓝色", bucket, false)).containsExactly(bucket);
+        assertThat(service.requestMaterialCategoryIds(workshop, " ", null, false)).isEmpty();
+        assertThat(db.queryForObject("SELECT category_id FROM goods WHERE id=?", UUID.class, old)).isEqualTo(deleted);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<UUID, Map<String, Object>> flatten(List<Map<String, Object>> rows) {
+        Map<UUID, Map<String, Object>> result = new LinkedHashMap<>();
+        for (var row : rows) {
+            result.put((UUID) row.get("id"), row);
+            result.putAll(flatten((List<Map<String, Object>>) row.get("children")));
+        }
+        return result;
+    }
+
+    private UUID category(String code, String name, UUID parent) {
+        UUID id = UUID.randomUUID();
+        db.update("INSERT INTO material_categories(id,code,name,parent_id) VALUES (?,?,?,?)", id, code, name, parent);
+        return id;
     }
 
     private UUID goods(String code, String name, UUID unit, String method) {

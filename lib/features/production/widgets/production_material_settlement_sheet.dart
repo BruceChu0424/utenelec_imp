@@ -44,7 +44,6 @@ Future<bool?> showProductionMaterialSettlementSheet(
     context: context,
     compactHeightFactor: 0.94,
     drawerWidth: 840,
-    barrierDismissible: false,
     enableDrag: false,
     panelElevation: 16,
     barrierColor: Colors.black.withValues(alpha: .38),

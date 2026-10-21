@@ -13,6 +13,7 @@ import '../../../../core/network/api_endpoints.dart';
 import '../../../../core/utils/idempotency_key.dart';
 import '../../../../shared/models/paged_result.dart';
 import '../../../../shared/warehouse/warehouse_task_view.dart';
+import '../../../basic_data/models/product_category_node.dart';
 import '../models/workshop_material_models.dart';
 import '../models/workshop_source_warehouse_option.dart';
 
@@ -204,6 +205,8 @@ class WorkshopMaterialRepository {
   Future<PagedResult<WmMaterialOption>> requestMaterials(
     String workshopId, {
     String keyword = '',
+    String? categoryId,
+    bool includeRelated = false,
     List<String> goodsIds = const [],
     int page = 1,
     int size = 50,
@@ -215,11 +218,35 @@ class WorkshopMaterialRepository {
         'page': page,
         'size': size,
         if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+        'categoryId': ?categoryId,
+        if (includeRelated && keyword.trim().isNotEmpty) 'includeRelated': true,
         if (goodsIds.isNotEmpty) 'goodsIds': goodsIds.join(','),
       },
     );
     return PagedResult.fromJson(json, WmMaterialOption.fromJson);
   }
+
+  Future<List<ProductCategoryNode>> requestMaterialCategories(
+    String workshopId,
+  ) async => (await api.getList(
+    ApiEndpoints.workshopMaterialRequestMaterialCategories,
+    query: {'workshopId': workshopId},
+  )).map(ProductCategoryNode.fromJson).toList();
+
+  Future<Set<String>> requestMaterialCategoryIds(
+    String workshopId,
+    String keyword, {
+    String? categoryId,
+    bool includeRelated = false,
+  }) async => (await api.getStringList(
+    ApiEndpoints.workshopMaterialRequestMaterialCategoryIds,
+    query: {
+      'workshopId': workshopId,
+      'keyword': keyword,
+      'categoryId': ?categoryId,
+      if (includeRelated && keyword.trim().isNotEmpty) 'includeRelated': true,
+    },
+  )).toSet();
 
   /// 内料仓页: 现存 + 顶部盘点 / 结算状态。
   Future<WmPosition> position(String binId) async {

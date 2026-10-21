@@ -89,7 +89,6 @@ Future<StartConfirmationOutcome?> showStartConfirmationSheet(
     context: context,
     compactHeightFactor: 0.94,
     drawerWidth: 1560,
-    barrierDismissible: false,
     enableDrag: false,
     panelElevation: 16,
     barrierColor: Colors.black.withValues(alpha: .38),

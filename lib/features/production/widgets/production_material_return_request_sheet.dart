@@ -37,7 +37,6 @@ Future<bool?> showProductionMaterialReturnRequestSheet(
 }) => showUtenAdaptivePanel<bool>(
   context: context,
   drawerWidth: 1100,
-  barrierDismissible: false,
   enableDrag: false,
   compactHeightFactor: .94,
   builder: (_) => ProductionMaterialReturnRequestPage(

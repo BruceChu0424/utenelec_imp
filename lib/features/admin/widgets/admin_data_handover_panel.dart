@@ -32,7 +32,6 @@ Future<DataHandoverResult?> showAdminDataHandoverPanel({
   context: context,
   drawerWidth: 520,
   widthFraction: UtenPanelWidth.form,
-  barrierDismissible: false,
   showDragHandle: true,
   builder: (_) => AdminDataHandoverPanel(
     targetEmployeeId: targetEmployeeId,

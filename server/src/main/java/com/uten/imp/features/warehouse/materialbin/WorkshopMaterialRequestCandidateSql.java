@@ -1,14 +1,18 @@
 package com.uten.imp.features.warehouse.materialbin;
 
-import com.uten.imp.common.util.TaskKeywordSearch;
+import com.uten.imp.common.util.GoodsSearchPolicy;
 
 /** 申请候选只读 SQL；默认出库仓只由 fn_workshop_bin_default_source 给出(ADR-147)。 */
 final class WorkshopMaterialRequestCandidateSql {
     private WorkshopMaterialRequestCandidateSql() {}
 
     static String stock(boolean filterGoods) {
-        return """
-                WITH eligible AS MATERIALIZED (
+        return stock(filterGoods, "", "");
+    }
+
+    private static String stock(boolean filterGoods, String categoryCte, String categoryFilter) {
+        return "WITH RECURSIVE " + categoryCte + """
+                eligible AS MATERIALIZED (
                     SELECT goods.id, goods.color_id FROM goods
                     JOIN units unit ON unit.id = goods.unit_id AND NOT unit.is_deleted
                       AND unit.status = '使用'
@@ -16,7 +20,7 @@ final class WorkshopMaterialRequestCandidateSql {
                       AND profile.measurement_dimension = 'MASS'
                     WHERE goods.issue_method IN ('ORDER', 'PERIODIC') AND NOT goods.is_deleted
                       AND goods.status = '使用'
-                """ + (filterGoods ? " AND goods.id IN (:goodsIds)\n" : "") + """
+                """ + (filterGoods ? " AND goods.id IN (:goodsIds)\n" : "") + categoryFilter + """
                 ), balances AS MATERIALIZED (
                     SELECT balance.warehouse_id, balance.goods_id, balance.color_id, balance.qty
                     FROM stock_balances balance JOIN eligible ON eligible.id = balance.goods_id
@@ -30,8 +34,11 @@ final class WorkshopMaterialRequestCandidateSql {
                 """;
     }
 
-    static String candidates(boolean filterGoods) {
-        return stock(filterGoods) + """
+    static String candidates(boolean filterGoods, String categoryCte, String categoryFilter,
+            GoodsSearchPolicy.NativeSearch search, boolean activeSearch) {
+        String kind = activeSearch ? "CASE WHEN (" + search.rank() + ")<"
+                + GoodsSearchPolicy.RELATED_RANK_OFFSET + " THEN 'PRIMARY' ELSE 'RELATED' END" : "NULL::text";
+        return stock(filterGoods, categoryCte, categoryFilter) + """
                 , used AS MATERIALIZED (
                     SELECT DISTINCT ledger.goods_id, ledger.color_id FROM v_workshop_material_bin_ledger ledger
                     JOIN eligible ON eligible.id = ledger.goods_id
@@ -43,23 +50,23 @@ final class WorkshopMaterialRequestCandidateSql {
                 ), candidates AS (
                     SELECT candidate.goods_id, candidate.color_id, goods.code, goods.name,
                            color.name AS color_name, unit.name AS unit_name,
+                           COALESCE(category.id,CAST(:uncategorized AS uuid)) AS category_id,
                            goods.bulk_package_qty, goods.periodic_cost_basis, goods.min_qty,
                            default_leaf.id AS default_leaf_id, default_leaf.name AS default_leaf_name,
-                           %s AS keyword_rank,
+                           %s AS keyword_rank, %s AS search_match_kind,
                            EXISTS (SELECT 1 FROM used WHERE used.goods_id = candidate.goods_id
                                      AND used.color_id IS NOT DISTINCT FROM candidate.color_id) AS used
                     FROM candidate_keys candidate JOIN goods ON goods.id = candidate.goods_id
                     JOIN units unit ON unit.id = goods.unit_id
                     LEFT JOIN colors color ON color.id = candidate.color_id
+                    LEFT JOIN material_categories category ON category.id=goods.category_id AND NOT category.is_deleted
                     LEFT JOIN warehouses default_leaf ON default_leaf.id = fn_workshop_bin_default_source(
                         CAST(:bin AS uuid), candidate.goods_id, candidate.color_id)
                     WHERE (candidate.color_id IS NULL OR (color.id IS NOT NULL AND NOT color.is_deleted
                            AND color.status = '使用'))
                       AND (%s)
                 )
-                """.formatted(TaskKeywordSearch.rankNamesFirstParameter("keyword", new String[]{"goods.name"},
-                                new String[]{}, new String[]{"goods.code"}),
-                        TaskKeywordSearch.conditionParameter("keyword", "goods.code", "goods.name", "color.name"));
+                """.formatted(search.rank(), kind, search.condition());
     }
 
     static final String HEADS = """

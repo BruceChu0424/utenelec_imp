@@ -42,8 +42,6 @@ Future<bool> showAiProviderEditor(
     drawerWidth: 560,
     widthFraction: UtenPanelWidth.form,
     compactHeightFactor: 0.94,
-    // 填了一半的密钥不该被误点空白处丢掉; 关闭走右上角按钮。
-    barrierDismissible: false,
     enableDrag: false,
     builder: (_) => AiProviderEditor(catalog: catalog, existing: existing),
   );

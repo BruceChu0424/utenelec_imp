@@ -2471,19 +2471,6 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                                 runSpacing: UtenSpacing.s8,
                                 crossAxisAlignment: WrapCrossAlignment.center,
                                 children: [
-                                  // 「明细 (N)」标题 2026-09-11 撤除（全站同改）：收款侧保留
-                                  // 「本次收款分配」——它带操作说明，不是单纯的行数复述。
-                                  if (isReceipt)
-                                    ConstrainedBox(
-                                      constraints: const BoxConstraints(
-                                        maxWidth: 420,
-                                      ),
-                                      child: _sectionHeading(
-                                        theme,
-                                        title: '本次收款分配',
-                                        icon: Icons.account_tree_outlined,
-                                      ),
-                                    ),
                                   // 2026-09-14 口径：引用入口放表格上面（原在 AppBar）。
                                   if (isReceipt) ...[
                                     if (canApplyCustomerPrepayment)

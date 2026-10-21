@@ -177,7 +177,6 @@ Future<void> showPagePermissionDrawer(
   return showUtenAdaptivePanel<void>(
     context: context,
     drawerWidth: 720,
-    barrierDismissible: false,
     barrierLabel: '页面权限设置',
     builder: (_) => PagePermissionDrawer(scope: scope),
   );

@@ -10,6 +10,8 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
+import 'package:uten_imp/components/layout/uten_draft_status_layout.dart';
 import 'package:uten_imp/features/finance/pages/finance_sales_order_review_page.dart';
 import 'package:uten_imp/features/finance/pages/finance_procurement_approval_review_page.dart';
 import 'package:uten_imp/features/finance/pages/finance_quote_review_page.dart';
@@ -26,6 +28,57 @@ import '../../support/native_detail_reader_overrides.dart';
 
 enum _Review { sales, procurement, quote, shipment }
 
+class _ObservedNativeFormDraftStorage extends NativeFormDraftStorage {
+  _ObservedNativeFormDraftStorage({
+    required super.directoryProvider,
+    required super.afterJournalFlush,
+    required this.observe,
+  });
+
+  final void Function(String, Map<String, Object?>) observe;
+
+  @override
+  Future<String?> read(String key) async {
+    observe('read-start', {});
+    try {
+      final value = await super.read(key);
+      observe('read-end', {'found': value != null});
+      return value;
+    } catch (error) {
+      observe('read-error', {'error': '$error'});
+      rethrow;
+    }
+  }
+
+  @override
+  Future<bool> compareAndSet(
+    String key, {
+    required String? expectedValue,
+    required String? value,
+  }) async {
+    final expected = expectedValue == null
+        ? null
+        : jsonDecode(expectedValue) as Map;
+    final replacement = value == null ? null : jsonDecode(value) as Map;
+    observe('cas-start', {
+      'expectedRevision': expected?['revision'],
+      'terminal': replacement?['completed'] == true,
+    });
+    try {
+      final result = await super.compareAndSet(
+        key,
+        expectedValue: expectedValue,
+        value: value,
+      );
+      observe('cas-end', {'matched': result});
+      return result;
+    } catch (error) {
+      observe('cas-error', {'error': '$error'});
+      rethrow;
+    }
+  }
+}
+
 class _Fixture {
   _Fixture(this.kind);
   final _Review kind;
@@ -36,6 +89,8 @@ class _Fixture {
   Map<String, dynamic> submittedBody = {};
   String? mismatchedShipmentRate;
   bool viewOnly = false;
+  bool quoteReturnOnly = false;
+  final claims = FinanceClaimFixture();
   late final Directory directory;
   late final SharedPreferences preferences;
   late final ApiClient api;
@@ -43,8 +98,18 @@ class _Fixture {
   Completer<void>? _submissionJournalRelease;
   int journalFlushes = 0;
   final journalObservations = <Map<String, Object?>>[];
+  final nativeEvents = <Map<String, Object?>>[];
+  final _nativeClock = Stopwatch()..start();
+  int _storageGeneration = 0;
+  String _heldAction = 'approve';
 
-  void holdSubmissionJournal() {
+  void observeQueue() => nativeEvents.add({
+    'us': _nativeClock.elapsedMicroseconds,
+    'event': 'queue-observed',
+  });
+
+  void holdSubmissionJournal({String action = 'approve'}) {
+    _heldAction = action;
     submissionJournalFlushed = Completer<FormDraft>();
     _submissionJournalRelease = Completer<void>();
   }
@@ -54,41 +119,57 @@ class _Fixture {
     if (release != null && !release.isCompleted) release.complete();
   }
 
-  NativeFormDraftStorage storage() => NativeFormDraftStorage(
-    directoryProvider: () async => directory,
-    afterJournalFlush: () async {
-      journalFlushes++;
-      final flushed = submissionJournalFlushed;
-      final release = _submissionJournalRelease;
-      if (flushed == null || release == null || flushed.isCompleted) return;
-      await for (final entity in directory.list(recursive: true)) {
-        if (entity is! File || !entity.path.endsWith('pending.json')) continue;
-        final journal = jsonDecode(await entity.readAsString()) as Map;
-        final payload = journal['payload'];
-        if (payload is! String) continue;
-        final draft = FormDraft.fromJson(
-          Map<String, dynamic>.from(jsonDecode(payload) as Map),
-        );
-        final command = draft.data['command'];
-        journalObservations.add({
-          'route': draft.route,
-          'unknown': draft.hasUnknownSubmission,
-          'action': command is Map ? command['action'] : null,
-        });
-        final location = Uri.parse(draft.route);
-        if (location.path != route ||
-            location.queryParameters.isNotEmpty ||
-            !draft.hasUnknownSubmission ||
-            command is! Map ||
-            command['action'] != 'approve') {
-          continue;
+  NativeFormDraftStorage storage() {
+    final generation = ++_storageGeneration;
+    void observe(String event, Map<String, Object?> detail) {
+      nativeEvents.add({
+        'us': _nativeClock.elapsedMicroseconds,
+        'storage': generation,
+        'event': event,
+        ...detail,
+      });
+    }
+
+    return _ObservedNativeFormDraftStorage(
+      directoryProvider: () async => directory,
+      observe: observe,
+      afterJournalFlush: () async {
+        journalFlushes++;
+        observe('journal-flushed', {'flush': journalFlushes});
+        final flushed = submissionJournalFlushed;
+        final release = _submissionJournalRelease;
+        if (flushed == null || release == null || flushed.isCompleted) return;
+        await for (final entity in directory.list(recursive: true)) {
+          if (entity is! File || !entity.path.endsWith('pending.json')) {
+            continue;
+          }
+          final journal = jsonDecode(await entity.readAsString()) as Map;
+          final payload = journal['payload'];
+          if (payload is! String) continue;
+          final draft = FormDraft.fromJson(
+            Map<String, dynamic>.from(jsonDecode(payload) as Map),
+          );
+          final command = draft.data['command'];
+          journalObservations.add({
+            'route': draft.route,
+            'unknown': draft.hasUnknownSubmission,
+            'action': command is Map ? command['action'] : null,
+          });
+          final location = Uri.parse(draft.route);
+          if (location.path != route ||
+              location.queryParameters.isNotEmpty ||
+              !draft.hasUnknownSubmission ||
+              command is! Map ||
+              command['action'] != _heldAction) {
+            continue;
+          }
+          flushed.complete(draft);
+          await release.future;
+          return;
         }
-        flushed.complete(draft);
-        await release.future;
-        return;
-      }
-    },
-  );
+      },
+    );
+  }
 
   String submissionDiagnostics(ProviderContainer container) {
     final drafts = container.read(formDraftsProvider);
@@ -96,6 +177,46 @@ class _Fixture {
         'journalFlushed=${submissionJournalFlushed?.isCompleted}, '
         'flushes=$journalFlushes, observed=$journalObservations, '
         'drafts=${drafts.length}, unknown=${drafts.map((draft) => draft.hasUnknownSubmission).toList()}';
+  }
+
+  String recoveryDiagnostics(WidgetTester tester, ProviderContainer container) {
+    final mounted = tester.any(find.byType(page.runtimeType));
+    final current = mounted
+        ? editor(tester) as ReviewTaskDraftMixin<ConsumerStatefulWidget>
+        : null;
+    final snapshot = current?.captureFormDraft();
+    return jsonEncode({
+      'submission': submissionDiagnostics(container),
+      'queue': find.text('review queue').evaluate().length,
+      'mounted': mounted,
+      'identityCurrent': current?.formDraftIdentityIsCurrent,
+      'enabled': current?.formDraftEnabled,
+      'busy': current?.formDraftBusy,
+      'recoveryId': current?.formDraftRecoveryId,
+      'recoveryRevision': current?.formDraftRecoveryRevision,
+      'restorationBlocked': current?.formDraftRestorationBlocked,
+      'source': current?.reviewDraftSource,
+      'snapshotSource': snapshot?['source'],
+      'command': snapshot?['command'],
+      'stored': [
+        for (final draft in container.read(formDraftsProvider))
+          {
+            'id': draft.id,
+            'revision': draft.revision,
+            'source': draft.data['source'],
+            'command': draft.data['command'],
+          },
+      ],
+      'status': tester
+          .widgetList<UtenDraftStatusLayout>(find.byType(UtenDraftStatusLayout))
+          .map((widget) => widget.status)
+          .toList(),
+      'notices': container
+          .read(appNotificationProvider)
+          .map((notice) => notice.message)
+          .toList(),
+      'nativeEvents': nativeEvents,
+    });
   }
 
   Future<void> waitForUnknownSubmission(
@@ -174,6 +295,7 @@ class _Fixture {
               (request.path.endsWith('/finance-confirmation') ||
                   request.path.endsWith('/batch-approve') ||
                   request.path.endsWith('/finance-confirm') ||
+                  request.path.endsWith('/finance-return') ||
                   request.path.endsWith('/finance-audit'));
           if (terminal) {
             businessPosts++;
@@ -272,14 +394,20 @@ class _Fixture {
         'id': id,
         'quoteId': id,
         'billNo': 'QT1',
-        'status': committed ? 1 : 2,
+        'status': committed ? (quoteReturnOnly ? 0 : 1) : 2,
         'reviewRevision': committed ? version + 1 : version,
         'financeActions': viewOnly
             ? <String>[]
             : committed
-            ? ['reopen']
+            ? (quoteReturnOnly ? <String>[] : ['reopen'])
+            : quoteReturnOnly
+            ? ['return']
             : ['edit', 'return', 'confirm'],
-        'financeConfirmedAt': committed ? '2026-10-11T12:00:00Z' : null,
+        'financeConfirmedAt': committed && !quoteReturnOnly
+            ? '2026-10-11T12:00:00Z'
+            : null,
+        if (committed && quoteReturnOnly)
+          'financeReturnReason': submittedBody['text'],
         'validUntil': '2026-11-01',
         'financeRemark': '',
         'totalOriginal': '160',
@@ -298,7 +426,10 @@ class _Fixture {
         ],
         'revisions': committed
             ? [
-                {'action': 'CONFIRM', 'revision': version + 1},
+                {
+                  'action': quoteReturnOnly ? 'RETURN' : 'CONFIRM',
+                  'revision': version + 1,
+                },
               ]
             : <Map<String, dynamic>>[],
       };
@@ -378,12 +509,13 @@ class _Fixture {
             if (!viewOnly) Perm.financeOrderApprovalApprove,
             if (!viewOnly) Perm.financeOrderApprovalReject,
             Perm.salesQuoteFinanceView,
-            if (!viewOnly) Perm.salesQuoteFinanceConfirm,
+            if (!viewOnly && !quoteReturnOnly) Perm.salesQuoteFinanceConfirm,
+            if (!viewOnly && quoteReturnOnly) Perm.salesQuoteFinanceReject,
             Perm.salesShipmentFinanceView,
             if (!viewOnly) Perm.salesShipmentFinanceApprove,
             if (!viewOnly) Perm.salesShipmentFinanceReject,
           }),
-          taskClaimRepositoryProvider.overrideWithValue(FinanceClaimFixture()),
+          taskClaimRepositoryProvider.overrideWithValue(claims),
         ],
         child: MaterialApp.router(
           routerConfig: router,
@@ -519,6 +651,142 @@ Future<void> _waitForState(
 
 void main() {
   testWidgets(
+    'quote return-only decision waits for native durability and recovers after write authority is revoked',
+    (tester) async {
+      tester.view.physicalSize = const Size(2600, 1700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final fixture = _Fixture(_Review.quote)..quoteReturnOnly = true;
+      await tester.runAsync(fixture.initialize);
+      addTearDown(() => tester.runAsync(fixture.removeStorage));
+      final container = await fixture.mount(tester);
+      expect(fixture.claims.acquired, [fixture.id]);
+      expect(find.byKey(const Key('quote-finance-deal-line')), findsNothing);
+      expect(find.byKey(const Key('quote-finance-save')), findsNothing);
+      expect(find.byKey(const Key('quote-finance-confirm')), findsNothing);
+      expect(fixture.editor(tester).formDraftEnabled, isTrue);
+
+      await tester.runAsync(
+        () => tester.tap(find.byKey(const Key('quote-finance-return'))),
+      );
+      await _settle(tester);
+      await tester.runAsync(
+        () => tester.tap(find.byKey(const Key('quote-finance-return-chip-0'))),
+      );
+      await tester.pump();
+      await tester.runAsync(() => tester.tap(find.text('取消')));
+      await _settle(tester);
+      expect(fixture.businessPosts, 0);
+      expect(
+        container
+            .read(formDraftsProvider)
+            .every(
+              (draft) =>
+                  !draft.hasUnknownSubmission && draft.data['command'] == null,
+            ),
+        isTrue,
+      );
+
+      await tester.runAsync(
+        () => tester.tap(find.byKey(const Key('quote-finance-return'))),
+      );
+      await _settle(tester);
+      fixture.holdSubmissionJournal(action: 'return');
+      addTearDown(fixture.releaseSubmissionJournal);
+      await tester.runAsync(
+        () => tester.tap(find.byKey(const Key('quote-finance-return-submit'))),
+      );
+      await _waitForState(
+        tester,
+        () => fixture.submissionJournalFlushed!.isCompleted,
+        phase: 'the return-only decision to flush its native command journal',
+        diagnostics: () => fixture.recoveryDiagnostics(tester, container),
+      );
+      final flushed = await fixture.submissionJournalFlushed!.future;
+      try {
+        expect(fixture.businessPosts, 0);
+        expect(fixture.editor(tester).formDraftBusy, isTrue);
+        expect(flushed.hasUnknownSubmission, isTrue);
+        expect(flushed.data['command'], {
+          'action': 'return',
+          'source': {
+            'subjectId': fixture.id,
+            'version': fixture.version,
+            'lineIds': ['line'],
+            'masterPrices': {'line': '80'},
+          },
+          'request': {'reason': '客户要改数量'},
+        });
+      } finally {
+        fixture.releaseSubmissionJournal();
+        await fixture.waitForUnknownSubmission(tester, container);
+      }
+      final draft = container.read(formDraftsProvider).single;
+      expect(draft.id, flushed.id);
+      expect(fixture.submittedBody['text'], '客户要改数量');
+      expect(fixture.submittedBody['expectedRevision'], fixture.version);
+      expect(fixture.businessPosts, 1);
+      fixture.viewOnly = true;
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _settle(tester);
+      final reopened = await fixture.mount(
+        tester,
+        location: draft.resumeLocation,
+      );
+      final before = fixture.reviewsRead;
+      expect(find.byKey(const Key('quote-finance-return')), findsNothing);
+      await tester.runAsync(
+        () => tester.tap(
+          find.byKey(const Key('review-task-draft-read-recovery')),
+        ),
+      );
+      await _waitForState(
+        tester,
+        () =>
+            fixture.reviewsRead > before &&
+            reopened.read(formDraftsProvider).isEmpty &&
+            find.text('review queue').evaluate().length == 1,
+        phase:
+            'GET proof of the exact RETURN revision and reason without replay',
+        diagnostics: () => fixture.recoveryDiagnostics(tester, reopened),
+      );
+      expect(fixture.businessPosts, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'quote return-only reviewer without a live claim writes no draft',
+    (tester) async {
+      tester.view.physicalSize = const Size(2600, 1700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final fixture = _Fixture(_Review.quote)..quoteReturnOnly = true;
+      fixture.claims.failClaim = true;
+      await tester.runAsync(fixture.initialize);
+      addTearDown(() => tester.runAsync(fixture.removeStorage));
+      final container = await fixture.mount(tester);
+      expect(fixture.claims.acquired, [fixture.id]);
+      expect(fixture.editor(tester).formDraftEnabled, isFalse);
+      await tester.runAsync(() => fixture.editor(tester).saveFormDraftNow());
+      await tester.runAsync(
+        () => tester.tap(find.byKey(const Key('quote-finance-return'))),
+      );
+      await _settle(tester);
+      expect(
+        find.byKey(const Key('quote-finance-return-submit')),
+        findsNothing,
+      );
+      expect(container.read(formDraftsProvider), isEmpty);
+      expect(fixture.businessPosts, 0);
+      expect(fixture.journalFlushes, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'shipment different confirmed exchange rate preserves the original native checkpoint',
     (tester) async {
       tester.view.physicalSize = const Size(2600, 1700);
@@ -606,8 +874,14 @@ void main() {
               reopened.read(formDraftsProvider).isEmpty &&
               find.text('review queue').evaluate().length == 1,
           phase: 'the GET-confirmed outcome to retire the native draft',
-          diagnostics: () => fixture.submissionDiagnostics(reopened),
+          diagnostics: () => fixture.recoveryDiagnostics(tester, reopened),
         );
+        if (kind == _Review.quote) {
+          fixture.observeQueue();
+          debugPrint(
+            'QUOTE_NATIVE_RECOVERY ${jsonEncode(fixture.nativeEvents)}',
+          );
+        }
         expect(fixture.reviewsRead, greaterThan(before));
         expect(fixture.businessPosts, 1);
         expect(reopened.read(formDraftsProvider), isEmpty);

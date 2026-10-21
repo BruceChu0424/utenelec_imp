@@ -33,6 +33,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/human_error_message.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/widgets/uten_hierarchy_search_header.dart';
 import '../../basic_data/models/product_category_node.dart';
 import '../../basic_data/repositories/client_category_repository.dart';
 import '../../basic_data/repositories/supplier_category_repository.dart';
@@ -522,6 +523,7 @@ class _FinanceArApOverviewPageState
 
     Widget treeWidget = UtenCategoryTreeView<ProductCategoryNode>(
       nodes: _forest,
+      flatLevelColors: true,
       nodeEnabledPredicate: (_) => true,
       selectedIds: {
         if (_searchQuery.isEmpty) ...{
@@ -540,17 +542,16 @@ class _FinanceArApOverviewPageState
       emptySearchText: _searchQuery.isEmpty ? null : '未找到匹配分类，往来单位结果见右侧',
       header: Padding(
         // 左缘贴 0（2026-10-18 全站分栏口径）：与分类页左栏搜索、返回键图标共缘。
-        padding: const EdgeInsets.only(top: 8, bottom: 8),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: SizedBox(
-            width: 180,
-            child: UtenSearchBar(
-              key: const ValueKey('finance-ar-ap-unified-search'),
-              controller: _treeSearchController,
-              hint: '搜索分类/往来单位名称或编号',
-              onSubmitted: (_) => _queueUnifiedSearch(immediate: true),
-            ),
+        padding: const EdgeInsets.only(
+          top: UtenSpacing.s12,
+          bottom: UtenSpacing.s8,
+        ),
+        child: UtenHierarchySearchHeader(
+          search: UtenSearchBar(
+            key: const ValueKey('finance-ar-ap-unified-search'),
+            controller: _treeSearchController,
+            hint: '搜索分类/往来单位名称或编号',
+            onSubmitted: (_) => _queueUnifiedSearch(immediate: true),
           ),
         ),
       ),
@@ -606,7 +607,7 @@ class _FinanceArApOverviewPageState
         ),
       ),
       leading: treeWidget,
-      trailing: _buildRightPane(theme, selectedLabel),
+      trailing: _buildRightPane(),
     );
 
     return Scaffold(
@@ -629,93 +630,64 @@ class _FinanceArApOverviewPageState
     );
   }
 
-  Widget _buildRightPane(ThemeData theme, String selectedLabel) {
+  Widget _buildRightPane() {
     return UtenContentContainer.wide(
       child: Padding(
         padding: const EdgeInsets.only(top: UtenSpacing.s8),
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(
-                bottom: UtenSpacing.s8,
-                left: UtenSpacing.s4,
-                right: UtenSpacing.s4,
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.account_balance_wallet_outlined,
-                    size: 18,
-                    color: theme.colorScheme.primary,
-                  ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  Expanded(
-                    child: Text(
-                      '应收应付 · $selectedLabel',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  if (_data != null)
-                    Text(
-                      '共 ${_data!.total}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            // 顶部筛选条：日期 + 显示方式。统一搜索位于左侧分类栏。
-            Padding(
-              padding: const EdgeInsets.only(
-                bottom: UtenSpacing.s8,
-                left: UtenSpacing.s4,
-                right: UtenSpacing.s4,
-              ),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  FinanceDateRangeFilter(
-                    from: _from,
-                    to: _to,
-                    onChanged: (from, to) {
-                      setState(() {
-                        _from = from!;
-                        _to = to!;
-                      });
-                      _persistAndReload();
-                    },
-                  ),
-                  DropdownButton<String>(
-                    value: _displayMode,
-                    isDense: true,
-                    items: const [
-                      DropdownMenuItem(value: 'ALL', child: Text('全部显示')),
-                      DropdownMenuItem(value: 'ANY', child: Text('应收≠0或应付≠0')),
-                      DropdownMenuItem(value: 'AR_ONLY', child: Text('只应收≠0')),
-                      DropdownMenuItem(value: 'AP_ONLY', child: Text('只应付≠0')),
-                    ],
-                    onChanged: (v) {
-                      if (v == null) return;
-                      setState(() => _displayMode = v);
-                      _persistAndReload();
-                    },
-                  ),
-                ],
-              ),
-            ),
-            Expanded(child: _buildTable()),
-          ],
-        ),
+        child: _buildTable(),
       ),
     );
   }
+
+  List<Widget> _buildFilters() => [
+    FinanceDateRangeFilter(
+      from: _from,
+      to: _to,
+      onChanged: (from, to) {
+        setState(() {
+          _from = from!;
+          _to = to!;
+        });
+        _persistAndReload();
+      },
+    ),
+    DropdownButton<String>(
+      key: const ValueKey('finance-ar-ap-display-mode'),
+      value: _displayMode,
+      isDense: true,
+      items: const [
+        DropdownMenuItem(value: 'ALL', child: Text('全部显示')),
+        DropdownMenuItem(value: 'ANY', child: Text('应收≠0或应付≠0')),
+        DropdownMenuItem(value: 'AR_ONLY', child: Text('只应收≠0')),
+        DropdownMenuItem(value: 'AP_ONLY', child: Text('只应付≠0')),
+      ],
+      onChanged: (value) {
+        if (value == null) return;
+        setState(() => _displayMode = value);
+        _persistAndReload();
+      },
+    ),
+    if (_data != null)
+      Text(
+        '共 ${_data!.total}',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
+  ];
+
+  Widget _initialTableState(Widget child) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Wrap(
+        spacing: UtenSpacing.s8,
+        runSpacing: UtenSpacing.s8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: _buildFilters(),
+      ),
+      Expanded(child: child),
+    ],
+  );
 
   Widget _buildTable() {
     final data = _data;
@@ -723,36 +695,42 @@ class _FinanceArApOverviewPageState
     //（搜索 0 命中/重查/报错）沿用上一次列集渲染同一张表，行区显示提示。
     if (data == null && _lastColumns.isEmpty) {
       if (_noUnifiedSearchMatches) {
-        return Center(
-          child: Text(
-            '未找到匹配「$_searchQuery」的分类或往来单位',
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+        return _initialTableState(
+          Center(
+            child: Text(
+              '未找到匹配「$_searchQuery」的分类或往来单位',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
             ),
-            textAlign: TextAlign.center,
           ),
         );
       }
       if (_reportError != null) {
-        return Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                _reportError!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: _load,
-                icon: const Icon(Icons.refresh_rounded, size: 18),
-                label: const Text('重试'),
-              ),
-            ],
+        return _initialTableState(
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _reportError!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: _load,
+                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  label: const Text('重试'),
+                ),
+              ],
+            ),
           ),
         );
       }
-      return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
+      return _initialTableState(
+        const Center(child: CircularProgressIndicator(strokeWidth: 2.5)),
+      );
     }
     final columns = (data?.columns ?? _lastColumns)
         .map(
@@ -771,6 +749,7 @@ class _FinanceArApOverviewPageState
           'features.finance.pages.finance_ar_ap_overview_page.FinanceArApOverviewPageState._buildTable.1',
       columns: columns,
       items: data?.rows ?? const [],
+      toolbarLeadingActions: _buildFilters(),
       toolbarActions: [
         UtenPrintPreviewButton(
           title: '应收应付',

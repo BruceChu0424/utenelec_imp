@@ -250,41 +250,24 @@ class _SubcontractLossClaimPanelState
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final total = _result?.total ?? 0;
     final canViewFinancialAmounts = ref
         .watch(currentPermissionsProvider)
         .contains(Perm.financeViewAll);
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-          child: Row(
-            children: [
-              Icon(
-                Icons.gavel_outlined,
-                size: 20,
-                color: theme.colorScheme.primary,
+        if (widget.showRefreshAction)
+          Padding(
+            padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: UtenButton(
+                type: UtenButtonType.ghost,
+                icon: Icons.refresh_rounded,
+                onPressed: _loading ? null : () => _load(1),
+                child: const Text('刷新'),
               ),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(
-                child: Text(
-                  '委外超耗责任 ($total)',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              if (widget.showRefreshAction)
-                UtenButton(
-                  type: UtenButtonType.ghost,
-                  icon: Icons.refresh_rounded,
-                  onPressed: _loading ? null : () => _load(1),
-                  child: const Text('刷新'),
-                ),
-            ],
+            ),
           ),
-        ),
         Padding(
           padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
           child: UtenFilterToolbar<String?>(

@@ -190,13 +190,24 @@ class PreplanAnalysisStockPegServiceTest {
     }
     @Test
     void finishedInboundHonorsFormalMakeCommitmentBeforePreplanExactPegging() {
+        assertFinishedInboundFormalCommitment(false);
+    }
+
+    @Test
+    void finishedInboundRejectsUnprovenCancelledParentBeforeUsingFormalCommitment() {
+        assertFinishedInboundFormalCommitment(true);
+    }
+
+    private void assertFinishedInboundFormalCommitment(boolean cancelledParent) {
         EntityManager em = mock(EntityManager.class);
         Query context = mock(Query.class);
         Query formalCommitment = mock(Query.class);
         Query privateBudget = mock(Query.class);
         Query publicOutputs = mock(Query.class);
+        Query cancelledParentGuard = mock(Query.class);
         when(publicOutputs.getResultList()).thenReturn(List.of());
-        for (Query query : List.of(context, formalCommitment, privateBudget, publicOutputs)) {
+        when(cancelledParentGuard.getSingleResult()).thenReturn(cancelledParent);
+        for (Query query : List.of(context, formalCommitment, privateBudget, publicOutputs, cancelledParentGuard)) {
             when(query.setParameter(anyString(), any())).thenReturn(query);
         }
         UUID analysisId = UUID.randomUUID();
@@ -217,36 +228,54 @@ class PreplanAnalysisStockPegServiceTest {
                     && sql.contains("SELECT item.id,GREATEST")) return privateBudget;
             if (sql.contains("SELECT id FROM stock_document_items")
                     && sql.contains("fn_finished_in_is_public_output")) return publicOutputs;
+            if (sql.contains("SELECT EXISTS(SELECT 1 FROM production_material_analysis_materials material")
+                    && sql.contains("parent.anchor_analysis_item_id=material.analysis_item_id")
+                    && sql.contains("action.status='CANCELLED'")) return cancelledParentGuard;
             if (sql.contains("FROM production_plans plan")) return context;
             if (sql.contains("FROM production_material_supply_pegs peg")) {
                 return formalCommitment;
             }
             throw new AssertionError("unexpected SQL: " + sql);
         });
+        InventoryMutationLock inventoryLock = mock(InventoryMutationLock.class);
         PreplanAnalysisStockPegService service = new PreplanAnalysisStockPegService(
                 em, mock(TxSessionVars.class),
                 mock(SecurityContextCurrentUser.class),
-                mock(InventoryMutationLock.class),
+                inventoryLock,
                 mock(PreplanStockEntitlementService.class),
                 mock(OriginHooks.class));
 
-        service.pegFinishedInbound(
+        Runnable receipt = () -> service.pegFinishedInbound(
                 UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
                 List.of(new com.uten.imp.application.port.PreplanAnalysisPegPort
                         .FinishedInboundSlice(
                         UUID.randomUUID(), planItemId, goodsId, colorId,
                         BigDecimal.TEN)));
+        if (cancelledParent) {
+            ApiException error = assertThrows(ApiException.class, receipt::run);
+            assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT);
+            assertThat(error.getMessage()).contains("原共享父批次已撤回").contains("原始私有来源");
+            verify(cancelledParentGuard).setParameter("material", parentMaterialId);
+            verifyNoInteractions(inventoryLock);
+            verify(formalCommitment, never()).getSingleResult();
+            verify(em, never()).createNativeQuery(org.mockito.ArgumentMatchers.startsWith("INSERT"));
+            return;
+        }
+        receipt.run();
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em, atLeastOnce()).createNativeQuery(sql.capture());
         verify(privateBudget).getResultList();
         verify(privateBudget).setParameter("items", List.of(planItemId));
         verify(context).getResultList();
+        verify(cancelledParentGuard).setParameter("material", parentMaterialId);
         verify(formalCommitment).getSingleResult();
-        var order = inOrder(privateBudget, publicOutputs, context, formalCommitment);
+        verify(formalCommitment).setParameter("planItemId", planItemId);
+        var order = inOrder(privateBudget, publicOutputs, context, cancelledParentGuard, formalCommitment);
         order.verify(privateBudget).getResultList();
         order.verify(publicOutputs, org.mockito.Mockito.times(2)).getResultList();
         order.verify(context).getResultList();
+        order.verify(cancelledParentGuard).getSingleResult();
         order.verify(formalCommitment).getSingleResult();
         assertThat(sql.getAllValues()).noneMatch(value ->
                 value.contains("INSERT INTO stock_reservations"));

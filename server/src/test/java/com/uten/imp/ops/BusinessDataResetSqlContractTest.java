@@ -203,6 +203,7 @@ public class BusinessDataResetSqlContractTest {
      * 同样走「读取已安装函数定义 + 锚点替换插入」补丁；与 CLEAR 扩展分开登记。
      */
     private static final Map<String, Integer> PRESERVE_RESET_EXTENSIONS = Map.ofEntries(
+            Map.entry("permission_templates", 894),
             Map.entry("goods_market_reference_bindings", 890),
             Map.entry("platform_column_definition_deletions", 888),
             Map.entry("business_column_deletions", 888),
@@ -489,11 +490,13 @@ public class BusinessDataResetSqlContractTest {
         Map<String, String> expected = expectedCurrentPolicy();
         for (String table : List.of("users", "employees", "departments", "employee_secondary_departments", "permissions",
                 "department_permissions", "user_permission_overrides", "manager_permission_delegations", "user_data_scopes",
-                "auth_step_up_states")) {
+                "auth_step_up_states", "permission_templates")) {
             assertThat(expected).as(table + " is not a business transaction").containsEntry(table, "PRESERVE");
         }
         assertThat(expected).containsEntry("auth_sessions", "CLEAR").containsEntry("refresh_tokens", "PRESERVE");
         assertThat(SECURITY_PRESERVE_OVERRIDES).containsEntry("auth_step_up_states", 889);
+        assertThat(PRESERVE_RESET_EXTENSIONS).containsEntry("permission_templates", 894);
+        assertThat(extensionSql(894)).contains("(''permission_templates'', ''PRESERVE'')");
         assertThat(extensionSql(889)).contains("SET business_reset_generation = business_reset_generation + 1",
                 "(''auth_step_up_states'', ''PRESERVE'')", "TRUNCATE TABLE refresh_tokens RESTART IDENTITY;");
     }

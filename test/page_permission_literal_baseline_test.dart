@@ -150,7 +150,7 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
     legacyCount: 4,
     tokens: {
       'Perm.attachmentView': 1,
-      'Perm.salesQuoteFinanceConfirm': 2,
+      'Perm.salesQuoteFinanceConfirm': 1,
       'Perm.salesQuoteFinanceReject': 1,
       'Perm.salesQuoteFinanceReverse': 1,
       'Perm.salesQuoteFinanceView': 2,
@@ -568,7 +568,7 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
         (sum, entry) =>
             sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
       ),
-      141, // Previous 133 + eight individually reviewed guards; baseline stays 677.
+      140, // Previous 133 + eight guards - duplicate quote draft gate; baseline stays 677.
     );
   });
 

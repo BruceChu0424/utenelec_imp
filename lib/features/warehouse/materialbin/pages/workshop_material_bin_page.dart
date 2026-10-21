@@ -36,8 +36,10 @@ import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
 import '../../../../core/utils/china_datetime.dart';
 import '../../../../shared/auth/permissions.dart';
+import '../../../../shared/drafts/form_draft_navigation.dart';
 import '../../../../shared/formatters/quantity_display.dart';
 import '../../../../shared/models/paged_result.dart';
+import '../../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../basic_data/widgets/master_data_table_view.dart';
 import '../../../stock/counts/models/stock_count_request.dart';
 import '../../../stock/counts/repositories/stock_count_request_repository.dart';
@@ -51,6 +53,7 @@ import '../widgets/workshop_material_labels.dart';
 import '../widgets/workshop_material_other_issue_dialog.dart';
 import '../widgets/workshop_material_overview.dart';
 import '../widgets/workshop_material_request_dialog.dart';
+import '../widgets/workshop_material_request_inline_editor.dart';
 
 class WorkshopMaterialBinPage extends ConsumerStatefulWidget {
   const WorkshopMaterialBinPage({super.key, this.workshopId});
@@ -66,6 +69,9 @@ class WorkshopMaterialBinPage extends ConsumerStatefulWidget {
 class _WorkshopMaterialBinPageState
     extends ConsumerState<WorkshopMaterialBinPage> {
   late final StockCountInlineController _countEditor;
+  late final WorkshopMaterialRequestInlineController _requestEditor;
+  SensitiveReadBoundary? _positionBoundary;
+  SensitiveReadBoundary? _requestBoundary;
   void _countChanged() {
     if (mounted) setState(() {});
   }
@@ -92,8 +98,34 @@ class _WorkshopMaterialBinPageState
         }
       }
     }
+    if (_requestEditor.active) {
+      for (final requested in _requestEditor.rows.values) {
+        final material = requested.material.value!;
+        if (keys.add(material.key)) {
+          rows.add(
+            WmPositionRow(
+              goodsId: material.goodsId,
+              goodsCode: material.goodsCode,
+              goodsName: material.goodsName,
+              colorId: material.colorId,
+              colorName: material.colorName,
+              unitName: material.unitName,
+              warehouseAvailableQty: material.warehouseAvailableQty,
+            ),
+          );
+        }
+      }
+    }
     return rows;
   }
+
+  bool get _requestIsCurrent =>
+      mounted &&
+      _requestBoundary != null &&
+      _requestBoundary == ref.read(sensitiveReadBoundaryProvider) &&
+      _requestEditor.workshopId == _current?.workshopDepartmentId &&
+      _position?.can(WmAction.request) == true &&
+      _canViewStock;
 
   static const _viewStock = 'stock';
   static const _viewHistory = 'history';
@@ -163,8 +195,8 @@ class _WorkshopMaterialBinPageState
 
   Future<void> _openSetup([WmSetting? setting]) async {
     if (!_canSetup || (setting != null && !setting.can(WmAction.setup))) return;
-    if (_countEditor.active) {
-      context.appInfo('请先送审或退出盘点，再进入设置');
+    if (_countEditor.active || _requestEditor.active) {
+      context.appInfo('请先提交或退出当前填写，再进入设置');
       return;
     }
     await context.push(
@@ -198,8 +230,8 @@ class _WorkshopMaterialBinPageState
   }
 
   void _openOverview() {
-    if (_countEditor.active) {
-      context.appInfo('请先送审或退出盘点，再返回车间总览');
+    if (_countEditor.active || _requestEditor.active) {
+      context.appInfo('请先提交或退出当前填写，再返回车间总览');
       return;
     }
     context.go(RouteName.workshopMaterialBin);
@@ -211,15 +243,27 @@ class _WorkshopMaterialBinPageState
     _countEditor = StockCountInlineController(
       ref.read(stockCountRequestRepositoryProvider),
     )..structureSignal.addListener(_countChanged);
+    _requestEditor = WorkshopMaterialRequestInlineController(
+      () => ref.read(workshopMaterialRepositoryProvider),
+    )..structureSignal.addListener(_countChanged);
+    ref.listenManual(sensitiveReadBoundaryProvider, (old, next) {
+      if (old == next) return;
+      _requestBoundary = null;
+      _positionBoundary = null;
+      _requestEditor.clear();
+    });
     _workshopId = widget.workshopId;
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadAll());
   }
 
   @override
   void dispose() {
+    FormDraftNavigation.unregister(this);
     _poller.stop();
     _countEditor.structureSignal.removeListener(_countChanged);
     _countEditor.dispose();
+    _requestEditor.structureSignal.removeListener(_countChanged);
+    _requestEditor.dispose();
     super.dispose();
   }
 
@@ -231,6 +275,9 @@ class _WorkshopMaterialBinPageState
     _historyLoadGeneration++;
     _poller.stop();
     _countEditor.clear();
+    _requestEditor.clear();
+    _requestBoundary = null;
+    _positionBoundary = null;
     _myLocation = null;
     _view = _viewStock;
     _workshopId = widget.workshopId;
@@ -294,8 +341,8 @@ class _WorkshopMaterialBinPageState
   }
 
   void _selectWorkshop(String workshopId) {
-    if (_countEditor.active) {
-      context.appInfo('盘点已固定当前内料仓，请先送审或退出盘点再切换车间');
+    if (_countEditor.active || _requestEditor.active) {
+      context.appInfo('当前填写已固定内料仓，请先提交或退出再切换车间');
       return;
     }
     if (_workshopId == workshopId ||
@@ -310,6 +357,7 @@ class _WorkshopMaterialBinPageState
       _workshopId = workshopId;
       // 切仓即清掉旧仓的库存、权限动作和期间，不能在新仓标题下继续操作旧仓数据。
       _position = null;
+      _positionBoundary = null;
       _periods = const [];
       _statusPeriod = null;
       _closeStatus = null;
@@ -325,9 +373,11 @@ class _WorkshopMaterialBinPageState
   /// 读当前车间的现存、期间与结算状态 (异常由调用方处理)。
   Future<void> _loadWorkshop(int seq) async {
     if (!mounted) return;
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
     final setting = _current;
     if (setting == null || !_canViewStock) {
       if (_countEditor.active) _countEditor.clear();
+      if (_requestEditor.active) _requestEditor.clear();
       _poller.stop();
       _historyLoadGeneration++;
       setState(() {
@@ -348,7 +398,12 @@ class _WorkshopMaterialBinPageState
       _repo.position(binId),
       if (setting.periodic) _repo.periods(binId),
     ]);
-    if (!mounted || seq != _loadSeq || !_canViewStock) return;
+    if (!mounted ||
+        seq != _loadSeq ||
+        !_canViewStock ||
+        boundary != ref.read(sensitiveReadBoundaryProvider)) {
+      return;
+    }
     final position = results[0] as WmPosition;
     final periods = [if (setting.periodic) ...results[1] as List<WmPeriod>]
       ..sort((a, b) => a.periodNo.compareTo(b.periodNo));
@@ -365,7 +420,11 @@ class _WorkshopMaterialBinPageState
     WmCloseStatus? closeStatus;
     if (statusPeriod != null && statusPeriod.status == WmPeriodStatus.counted) {
       closeStatus = await _repo.closeStatus(statusPeriod.id);
-      if (!mounted || seq != _loadSeq) return;
+      if (!mounted ||
+          seq != _loadSeq ||
+          boundary != ref.read(sensitiveReadBoundaryProvider)) {
+        return;
+      }
     } else if (statusPeriod != null) {
       closeStatus = WmCloseStatus(
         status: statusPeriod.status,
@@ -383,6 +442,7 @@ class _WorkshopMaterialBinPageState
     }
     setState(() {
       _position = position;
+      _positionBoundary = boundary;
       _periods = periods;
       _statusPeriod = statusPeriod;
       _closeStatus = closeStatus;
@@ -456,6 +516,24 @@ class _WorkshopMaterialBinPageState
   Future<void> _openRequest(String kind) async {
     final setting = _current;
     if (setting == null) return;
+    if (kind == 'ISSUE') {
+      if (_countEditor.active || _requestEditor.active) return;
+      final boundary = ref.read(sensitiveReadBoundaryProvider);
+      if (!_canViewStock ||
+          _position?.can(WmAction.request) != true ||
+          _positionBoundary != boundary) {
+        context.appWarning('申请范围已变化，请先刷新当前车间');
+        return;
+      }
+      _requestBoundary = boundary;
+      _requestEditor.begin(
+        workshopId: setting.workshopDepartmentId,
+        workshopName: setting.workshopName,
+        isCurrent: () => _requestIsCurrent,
+      );
+      setState(() => _view = _viewStock);
+      return;
+    }
     final done = await showWorkshopMaterialRequestSheet(
       context,
       kind: kind,
@@ -624,6 +702,12 @@ class _WorkshopMaterialBinPageState
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     _myLocation ??= currentLocationOr(context, RouteName.workshopMaterialBin);
+    FormDraftNavigation.register(
+      this,
+      _myLocation!,
+      () async => !mounted || !_requestEditor.busy,
+      pageKey: goRouterPageStateOrNull(context)?.pageKey,
+    );
     ref.onPageResume(
       _myLocation!,
       _loadAll,
@@ -635,41 +719,51 @@ class _WorkshopMaterialBinPageState
     final title = setting == null
         ? l10n.workshopMaterialBin
         : l10n.workshopMaterialBinOf(setting.workshopName);
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: title,
-        subtitle: _current?.currentPeriod == null
-            ? null
-            : wmPeriodLabel(_current!.currentPeriod!),
-        leading: UtenBackButton(
-          onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
-        ),
-        actions: [
-          UtenRefreshButton(
-            key: const Key('wm-bin-refresh'),
-            onRefresh: () async {
-              setState(() => _busyTitle = null);
-              await _loadAll();
-            },
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: Stack(
-          children: [
-            UtenContentContainer.wide(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s12),
-                child: _body(l10n, theme),
-              ),
+    return PopScope(
+      key: const Key('wm-bin-request-pop-guard'),
+      canPop: !_requestEditor.busy,
+      child: Scaffold(
+        appBar: UtenAppBar(
+          title: title,
+          subtitle: _current?.currentPeriod == null
+              ? null
+              : wmPeriodLabel(_current!.currentPeriod!),
+          leading: AbsorbPointer(
+            absorbing: _requestEditor.busy,
+            child: UtenBackButton(
+              onPressed: () =>
+                  backTo(context, defaultPath: RouteName.dashboard),
             ),
-            if (_busyTitle != null) UtenBusyOverlay(title: _busyTitle!),
+          ),
+          actions: [
+            UtenRefreshButton(
+              key: const Key('wm-bin-refresh'),
+              onRefresh: () async {
+                setState(() => _busyTitle = null);
+                await _loadAll();
+              },
+            ),
           ],
         ),
+        body: SafeArea(
+          child: Stack(
+            children: [
+              UtenContentContainer.wide(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: UtenSpacing.s12,
+                  ),
+                  child: _body(l10n, theme),
+                ),
+              ),
+              if (_busyTitle != null) UtenBusyOverlay(title: _busyTitle!),
+            ],
+          ),
+        ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+        floatingActionButton: _floatingActions(l10n),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: _floatingActions(l10n),
     );
   }
 
@@ -800,8 +894,8 @@ class _WorkshopMaterialBinPageState
             ],
             selected: {_view},
             onSelectionChanged: (value) {
-              if (_countEditor.active) {
-                context.appInfo('请先送审或退出盘点，再查看记录');
+              if (_countEditor.active || _requestEditor.active) {
+                context.appInfo('请先提交或退出当前填写，再查看记录');
                 return;
               }
               if (value == _view) return;
@@ -820,6 +914,13 @@ class _WorkshopMaterialBinPageState
           _countContext(theme),
           const SizedBox(height: UtenSpacing.s12),
         ],
+        if (_requestEditor.active && _requestEditor.error != null) ...[
+          UtenInlineNotice(
+            level: UtenInlineNoticeLevel.error,
+            message: _requestEditor.error!,
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+        ],
         Expanded(
           child: _view != _viewStock
               ? _historyTable(l10n)
@@ -833,6 +934,12 @@ class _WorkshopMaterialBinPageState
     if (_busyTitle != null) return null;
     // 总览的开通/开启整批领料/撤销是表格自己的右下批量动作。
     if (_workshopId == null) return null;
+    if (_requestEditor.active) {
+      return WorkshopMaterialRequestModeToolbar(
+        controller: _requestEditor,
+        onSubmitted: _reloadWorkshop,
+      );
+    }
     if (_current == null || !_canViewStock || !_current!.periodic) {
       final current = _current;
       return UtenFloatingActionGroup(
@@ -993,8 +1100,31 @@ class _WorkshopMaterialBinPageState
       tableKey:
           'features.warehouse.materialbin.pages.workshop_material_bin_page.WorkshopMaterialBinPageState._stockTable.1',
       key: const Key('wm-bin-stock-table'),
-      requiredLeadingColumnKeys: const ['countReviewStatus'],
+      requiredLeadingColumnKeys: const [
+        'countReviewStatus',
+        'requestReviewStatus',
+      ],
       columns: [
+        if (_requestEditor.reviewing)
+          MasterColumnDef<WmPositionRow>(
+            key: 'requestReviewStatus',
+            label: '状态',
+            width: 90,
+            value: (row) => _requestEditor.rows.containsKey(row.key)
+                ? _requestEditor.lastSubmitted!.isPending
+                      ? '待审批'
+                      : wmRequisitionStatusLabel(
+                          _requestEditor.lastSubmitted!.status,
+                        )
+                : '—',
+            cellColor: (_, row) => utenStatusBadgeCellColor(
+              _requestEditor.rows.containsKey(row.key)
+                  ? wmRequisitionStatusBadgeType(
+                      _requestEditor.lastSubmitted!.status,
+                    )
+                  : UtenStatusBadgeType.neutral,
+            ),
+          ),
         // 送审后的「待审核」状态列(2026-10-10 用户口径)：刚提交的行盖待审核，
         // 其余行显「—」；账面/现存照旧可见——审核通过前服务端不动库存(V766)。
         if (_countEditor.reviewing)
@@ -1027,6 +1157,8 @@ class _WorkshopMaterialBinPageState
           width: 90,
           value: (r) => r.colorName,
         ),
+        if (_requestEditor.active)
+          ..._requestEditor.columns<WmPositionRow>((row) => row.key),
         // 2026-10-10「数量+单位」全站口径：单位内联在数字后（12 公斤），列头不再
         // 重复 "(公斤)"；盘点态的「单位」列随之退役——本仓各行数量都是公斤系
         // 基准单位（盘点快照 unitName / 平时账面 kg 同源），口径核对一致。
@@ -1129,6 +1261,16 @@ class _WorkshopMaterialBinPageState
       filters: const {},
       onFilterChanged: (_, _) {},
       rowKeyOf: (r) => r.key,
+      canShowRowMenu: (row) =>
+          _requestEditor.editable && _requestEditor.rows.containsKey(row.key),
+      rowMenuBuilder: (row) => [
+        if (_requestEditor.editable && _requestEditor.rows.containsKey(row.key))
+          UtenMenuItem(
+            label: '从本次申请移除',
+            icon: Icons.remove_circle_outline,
+            onTap: () => _requestEditor.remove(row.key),
+          ),
+      ],
       isLoading: _loading && position == null,
       error: position == null ? _error : null,
       onRetry: _reloadWorkshop,
@@ -1147,7 +1289,9 @@ class _WorkshopMaterialBinPageState
           key: 'status',
           label: '状态',
           width: 72,
-          value: (r) => wmRequisitionStatusLabel(r.status),
+          value: (r) => r.kind == 'ISSUE' && r.isPending
+              ? '待审批'
+              : wmRequisitionStatusLabel(r.status),
           // 2026-10-01 口径「不同状态不同颜色」：待处理琥珀 / 已完成绿 / 已取消灰。
           // 历史表混排各状态，取默认（非任务）视角，与记录分段同口径。
           cellColor: (context, r) =>

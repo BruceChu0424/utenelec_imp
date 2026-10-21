@@ -43,7 +43,6 @@ Future<void> showGoodsOperationHistory(
 }) => showUtenAdaptivePanel<void>(
   context: context,
   drawerWidth: 640,
-  barrierDismissible: false,
   enableDrag: false,
   builder: (_) =>
       GoodsOperationHistoryPanel(preferRedo: preferRedo, onChanged: onChanged),

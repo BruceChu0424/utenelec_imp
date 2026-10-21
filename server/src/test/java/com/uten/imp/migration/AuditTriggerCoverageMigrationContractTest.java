@@ -88,6 +88,9 @@ class AuditTriggerCoverageMigrationContractTest {
     static final List<FullGroup> FULL = List.of(
             new FullGroup("document_unapprovals", "data_change", false,
                     "反审的原审核与后续草稿关系及原因是永久审计事实", Set.of("document_unapprovals")),
+            new FullGroup("permission_templates", "authorization", false,
+                    "V894 权限模板是超管保存的授权快照；增改与软删除完整审计，应用到账号仍由独立授权流程决定",
+                    Set.of("permission_templates")),
             new FullGroup("authorization", "authorization", false,
                     "账号、权限点、授权覆盖与数据范围: 谁能做什么的唯一事实, 每次变化都要能还原前后值(角色四表已随 V677 删除)",
                     Set.of(

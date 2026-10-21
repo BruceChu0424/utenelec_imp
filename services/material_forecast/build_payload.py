@@ -1,161 +1,127 @@
-"""Build one platform's offline, fully hash-locked signed-release payload."""
+"""Entry point for the one Git-bound, hash-locked release payload builder.
 
+requirements.txt is the sole dependency authority. Platform locks are checked
+compatibility exports, never inputs to a second downloader. The outer release
+signs this exact payload. There is no unhashed refresh mode.
+"""
 from __future__ import annotations
 
 import argparse
-import hashlib
+import importlib.util
 import json
 import os
-import re
+from pathlib import Path
 import runpy
 import shutil
-import subprocess
-import sys
-import zipfile
+import tempfile
 import uuid
-from email.parser import BytesParser
-from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+REPOSITORY = ROOT.parents[1]
 TARGETS = ("linux-x86_64", "windows-x86_64")
-
-
-def pinned_versions(path: Path) -> dict[str, str]:
-    versions = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue
-        match = re.fullmatch(r"([A-Za-z0-9_.-]+)==([A-Za-z0-9_.+!-]+)(?: --hash=sha256:[0-9a-f]{64})?", line)
-        if match is None:
-            raise ValueError("runtime inputs must contain exact package pins only")
-        name = re.sub(r"[-_.]+", "-", match[1]).lower()
-        if name in versions:
-            raise ValueError("duplicate runtime package pin")
-        versions[name] = match[2]
-    return versions
+_spec = importlib.util.spec_from_file_location(
+    "material_forecast_release", REPOSITORY / "deploy/release/material_forecast_payload.py")
+strict = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(strict)
 
 
 def validate_requirement_versions(root: Path, *, refresh_lock: bool = False) -> None:
-    direct = pinned_versions(root / "requirements.txt")
-    closure = pinned_versions(root / "requirements.runtime.txt")
-    if not direct or any(closure.get(name) != version for name, version in direct.items()):
-        raise ValueError("direct requirements differ from the reviewed runtime closure")
-    if not refresh_lock:
-        for target in TARGETS:
-            if pinned_versions(root / "runtime-locks" / (target + ".lock")) != closure:
-                raise ValueError("complete runtime closure and both platform locks must be updated together")
+    strict.require(not refresh_lock, "unhashed lock refresh is forbidden; review requirements.txt first")
+    strict.validate_derived(root)
 
 
-def sha(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        while chunk := stream.read(1024 * 1024):
-            digest.update(chunk)
-    return digest.hexdigest()
+def identity(repo: Path, version: str | None, commit: str | None) -> tuple[str, str]:
+    commit = commit or strict._git(repo, "rev-parse", "HEAD").decode().strip()
+    if version is None:
+        import re
+        text = strict.git_source(repo, commit, "pubspec.yaml").decode("utf-8")
+        found = re.findall(r"^version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+[1-9][0-9]*\s*$", text, re.MULTILINE)
+        strict.require(len(found) == 1, "invalid checkout application version")
+        version = "v" + found[0]
+    strict.validate_identity(version, commit)
+    return version, commit
 
 
-def wheel_lock(directory: Path) -> str:
-    entries = []
-    for path in sorted(directory.glob("*.whl")):
-        with zipfile.ZipFile(path) as archive:
-            metadata = [name for name in archive.namelist() if name.endswith(".dist-info/METADATA")]
-            if len(metadata) != 1:
-                raise ValueError("invalid wheel metadata")
-            item = BytesParser().parsebytes(archive.read(metadata[0]))
-        name = re.sub(r"[-_.]+", "-", item["Name"]).lower()
-        entries.append((name, f"{name}=={item['Version']} --hash=sha256:{sha(path)}"))
-    if len({name for name, _ in entries}) != len(entries) or not entries:
-        raise ValueError("duplicate or empty wheel set")
-    return "\n".join(line for _, line in sorted(entries)) + "\n"
-
-
-def build(output: Path, platform: str, refresh_lock: bool = False, wheelhouse_source: Path | None = None) -> dict:
-    validate_requirement_versions(ROOT, refresh_lock=refresh_lock)
+def build(output: Path, platform: str, refresh_lock: bool = False, wheelhouse_source: Path | None = None,
+          *, repo: Path = REPOSITORY, version: str | None = None, commit: str | None = None,
+          development: bool = False) -> dict:
+    strict.require(not refresh_lock, "unhashed lock refresh is forbidden")
+    repo = repo.resolve()
+    version, commit = identity(repo, version, commit)
+    before = strict.source_identity(repo, version, commit, platform, development)
+    validate_requirement_versions(repo / "services/material_forecast")
     output = output.absolute()
-    if output.exists() or output.is_symlink() or platform not in TARGETS:
-        raise ValueError("choose a new output directory and a supported platform")
-    lock_path = ROOT / "runtime-locks" / (platform + ".lock")
-    if not refresh_lock and not lock_path.is_file():
-        raise ValueError("reviewed platform lock is missing; refresh it explicitly before release")
-    output.mkdir(parents=True)
-    wheels = output / "wheelhouse"
-    wheels.mkdir()
-    command = [sys.executable, "-m", "pip", "download", "--disable-pip-version-check", "--no-deps",
-               "--only-binary=:all:", "--python-version", "3.12", "--implementation", "cp",
-               "--abi", "cp312", "--abi", "abi3", "--abi", "none", "--dest", str(wheels)]
-    platforms = ["win_amd64"] if platform == "windows-x86_64" else [
-        *[f"manylinux_2_{minor}_x86_64" for minor in range(39, 16, -1)], "manylinux2014_x86_64", "linux_x86_64"]
-    for tag in platforms:
-        command += ["--platform", tag]
-    command += ["--index-url", "https://pypi.org/simple", "-r",
-                str(ROOT / "requirements.runtime.txt" if refresh_lock else lock_path)]
-    if not refresh_lock:
-        command.append("--require-hashes")
-    # Download-only: no package metadata build, sdist execution or host installation.
-    if wheelhouse_source is None:
-        environment = {key: value for key, value in os.environ.items()
-                       if not key.startswith("PIP_") and key not in {"PYTHONPATH", "PYTHONHOME"}}
-        environment.update(PIP_CONFIG_FILE=os.devnull, PIP_NO_INPUT="1")
-        subprocess.run(command, check=True, env=environment)
-    else:
-        for wheel in wheelhouse_source.glob("*.whl"):
-            if wheel.is_symlink():
-                raise ValueError("wheel links are forbidden")
-            shutil.copyfile(wheel, wheels / wheel.name)
-    generated = wheel_lock(wheels)
-    if refresh_lock:
-        lock_path.parent.mkdir(exist_ok=True)
-        lock_path.write_text(generated, encoding="utf-8", newline="\n")
-    if generated != lock_path.read_text(encoding="utf-8"):
-        raise ValueError("wheel inventory differs from the reviewed exact platform lock")
-    (output / "requirements.lock").write_text(generated, encoding="utf-8", newline="\n")
-    for name in ("worker.py", "prepare_runtime.py", "prepare_runtime.ps1"):
-        shutil.copyfile(ROOT / name, output / name)
-    shutil.copytree(ROOT / "forecast_worker", output / "forecast_worker", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-    catalog = ROOT.parents[1] / "server/src/main/resources/pricing/material-benchmarks.json"
-    shutil.copyfile(catalog, output / "material-benchmarks.json")
-    # Preserve upstream metadata/licenses within each wheel; all installed artifacts are inventoried.
-    files = {path.relative_to(output).as_posix(): {"sha256": sha(path), "bytes": path.stat().st_size}
-             for path in sorted(output.rglob("*")) if path.is_file()}
-    version = re.search(r'__version__ = "([^"]+)"', (ROOT / "forecast_worker/__init__.py").read_text()).group(1)
-    manifest = {"schemaVersion": 1, "platform": platform, "pythonVersion": "3.12", "workerVersion": version,
-                "lockDigest": sha(output / "requirements.lock"), "files": files}
-    (output / "runtime-manifest.json").write_text(json.dumps(manifest, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-    return {"payload": str(output.resolve()), "platform": platform, "wheelCount": len(list(wheels.glob("*.whl"))), "lockDigest": manifest["lockDigest"]}
+    strict.no_symlink_ancestors(output)
+    strict.require(not output.exists() and not output.is_relative_to(repo / "services"),
+                   "output must be a new runtime directory")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    # Core builds stage under checkout/build. Export those same verified bytes
+    # to RUNNER_TEMP or the developer cache, with exactly one wheel download.
+    stage = repo / "build" / ("material-forecast-" + uuid.uuid4().hex)
+    strict.build(repo, stage, version, commit, wheelhouse_source, platform, development)
+    try:
+        with tempfile.TemporaryDirectory(prefix=".material-forecast-export-", dir=output.parent) as temporary:
+            copied = Path(temporary) / "payload"
+            shutil.copytree(stage, copied, symlinks=False)
+            result = strict.verify(copied, version, commit, platform)
+            strict.require(strict.source_identity(repo, version, commit, platform, development) == before,
+                           "runtime source changed during export")
+            strict.require(not output.exists(), "runtime output appeared during export")
+            copied.rename(output)
+    finally:
+        strict.no_symlink_ancestors(stage)
+        shutil.rmtree(stage)
+    return {**result, "payload": str(output.resolve())}
+
+
+def development_payload(cache: Path, platform: str, wheelhouse_source: Path | None = None,
+                        *, repo: Path = REPOSITORY) -> dict:
+    repo = repo.resolve()
+    version, commit = identity(repo, None, None)
+    strict.require_build_host(platform)
+    source_digest = strict.source_identity(repo, version, commit, platform, True)
+    validate_requirement_versions(repo / "services/material_forecast")
+    cache = cache.absolute()
+    strict.no_symlink_ancestors(cache)
+    strict.require(not cache.is_relative_to(repo), "development payload cache must be outside the checkout")
+    cache.mkdir(parents=True, exist_ok=True)
+    directory = cache / source_digest
+    guard = runpy.run_path(str(repo / "services/material_forecast/prepare_runtime.py"))["install_lock"]
+    with guard(cache / (source_digest + ".lock")):
+        if not directory.exists():
+            build(directory, platform, wheelhouse_source=wheelhouse_source, repo=repo,
+                  version=version, commit=commit, development=True)
+        # A directory/manifest existing is never sufficient, even on a cache hit.
+        result = strict.verify(directory, version, commit, platform)
+        strict.verify_checkout_sources(directory, repo, commit)
+        strict.require(strict.source_identity(repo, version, commit, platform, True) == source_digest,
+                       "runtime source changed during cache verification")
+    return {**result, "payload": str(directory.resolve()), "sourceIdentity": source_digest}
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--platform", choices=TARGETS)
-    parser.add_argument("--development-cache", action="store_true", help="developer entry point: prepare a source-addressed private payload")
-    parser.add_argument("--refresh-lock", action="store_true", help="maintainer-only explicit lock generation for review")
-    parser.add_argument("--wheelhouse-source", type=Path, help="reuse a local wheelhouse only when it matches the reviewed platform lock")
+    parser.add_argument("--version")
+    parser.add_argument("--commit")
+    parser.add_argument("--development-cache", action="store_true")
+    parser.add_argument("--wheelhouse-source", type=Path)
     args = parser.parse_args()
-    if args.development_cache:
-        if os.name != "nt" or sys.version_info[:2] != (3, 12):
-            raise ValueError("Windows developer bootstrap requires Python 3.12")
-        files = [ROOT / name for name in ("worker.py", "prepare_runtime.py", "prepare_runtime.ps1", "build_payload.py")]
-        files += sorted((ROOT / "forecast_worker").glob("*.py"))
-        files += [ROOT / "runtime-locks/windows-x86_64.lock", ROOT.parents[1] / "server/src/main/resources/pricing/material-benchmarks.json"]
-        source_digest = hashlib.sha256("".join(sha(path) for path in files).encode()).hexdigest()[:24]
-        directory = Path(os.environ["LOCALAPPDATA"]) / "UtenIMP/material-forecast/payloads" / source_digest
-        directory.parent.mkdir(parents=True, exist_ok=True)
-        guard = runpy.run_path(str(ROOT / "prepare_runtime.py"))["install_lock"]
-        with guard(directory.parent / (source_digest + ".lock")):
-            if directory.exists():
-                if not (directory / "runtime-manifest.json").is_file():
-                    raise ValueError("incomplete developer payload; retain it for diagnosis")
-            else:
-                staged = directory.with_name("." + source_digest + ".partial-" + uuid.uuid4().hex)
-                build(staged, "windows-x86_64")
-                os.rename(staged, directory)
-            print(json.dumps({"payload": str(directory.resolve())}))
+    try:
+        if args.development_cache:
+            platform = args.platform or ("windows-x86_64" if os.name == "nt" else "linux-x86_64")
+            base = Path(os.environ["LOCALAPPDATA"]) if os.name == "nt" else Path.home() / ".cache"
+            result = development_payload(base / "UtenIMP/material-forecast/payloads", platform, args.wheelhouse_source)
+        else:
+            if args.output is None or args.platform is None:
+                parser.error("--output and --platform are required for release builds")
+            result = build(args.output, args.platform, wheelhouse_source=args.wheelhouse_source,
+                           version=args.version, commit=args.commit)
+        print(json.dumps(result, sort_keys=True))
         return 0
-    if args.output is None or args.platform is None:
-        parser.error("--output and --platform are required for release builds")
-    print(json.dumps(build(args.output, args.platform, args.refresh_lock, args.wheelhouse_source)))
-    return 0
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        parser.exit(1, "material-forecast payload rejected: " + str(error) + "\n")
 
 
 if __name__ == "__main__":

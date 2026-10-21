@@ -34,6 +34,10 @@ deploy/simple/host/* text eol=lf
 *.ttf binary
 # Font manifests pin these license bytes too; Windows checkout must preserve LF.
 assets/fonts/*.txt text eol=lf
+# Runtime provenance compares checkout bytes with the reviewed Git objects.
+services/material_forecast/requirements.in text eol=lf
+services/material_forecast/requirements*.txt text eol=lf
+services/material_forecast/runtime-locks/*.lock text eol=lf
 *.woff binary
 *.woff2 binary
 *.pdf binary

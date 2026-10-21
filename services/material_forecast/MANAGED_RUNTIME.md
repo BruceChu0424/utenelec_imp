@@ -40,13 +40,47 @@ backup coverage must agree with these defaults.
 
 Simple release adds server/material_forecast/ to its signed artifact. It contains
 worker.py, forecast_worker/*.py, adjacent material-benchmarks.json, preparation
-helpers, a platform runtime manifest, complete hash-pinned dependency lock and
-offline wheelhouse. The active company platform is Ubuntu24.04/x86_64/Python3.12;
+helpers, `verify_payload.py`, Git/version-bound `release.json`, the complete
+`requirements.txt` authority, its selected `runtime-requirements.txt` and offline
+wheelhouse. There is no second runtime manifest or independently downloaded
+runtime. The active company platform is Ubuntu24.04/x86_64/Python3.12;
 the helper also supports Windows x64 for the current workstation. Do not require
 Codex runtimes or LibreOffice's python.exe. Use /usr/bin/python3 (validated 3.12)
 on Ubuntu and discover/validate the installed PythonCore3.12 registry executable
 on Windows. The one-time base OS Python/venv requirement belongs in existing app
 installation, not an employee workflow. Production startup never contacts PyPI.
+
+`deploy/release/material_forecast_payload.py build --repo-root <checkout>
+--output <checkout>/build/material-forecast --version vMAJOR.MINOR.PATCH
+--commit <exact-SHA>` builds from a clean exact Git checkout. Verification uses
+the same script's `verify --payload <directory> --version ... --commit ...`.
+Both default to `--platform linux-x86_64`; native Windows builds explicitly use
+`windows-x86_64`. Linux selects 26 reviewed packages; Windows selects 27 including
+the sole reviewed win32 marker, colorama. Only compatible CPython3.12 binary
+wheels whose hashes occur in the universal authority are accepted.
+
+`services/material_forecast/build_payload.py --platform <target> --output <new-dir>`
+is a thin entry point to that builder. It stages once under checkout/build and
+exports those same verified bytes, allowing the CI runner's temporary directory.
+It infers the version and exact HEAD when omitted. SimpleRelease signs this one
+component at `server/material_forecast`; helper source paths remain flat to match
+the Java launcher. Its signature authenticates the helper/verifier/manifest;
+the inner inventory check supplements that signature and cannot replace it.
+
+The universal hashed `requirements.txt` is the only dependency authority.
+`requirements.runtime.txt` and runtime-locks/*.lock are compatibility exports:
+every package/version/hash must be a platform-appropriate subset of that authority.
+They never drive a separate download or permit an unhashed refresh. Updating
+dependency versions still requires the reviewed universal-lock update workflow.
+
+The Windows developer `--development-cache` entry point allows unrelated dirty
+application files, while every runtime source, preparation/build/verifier helper,
+direct/full/derived lock, benchmark catalog and pubspec must match reviewed HEAD.
+Unexpected modules and links are rejected. Its cache identity includes all those
+Git blobs, version, exact commit and target. Before every cache lookup it rechecks
+the authority and source identity; every hit also verifies the complete payload.
+The release entry point retains whole-checkout clean-HEAD enforcement. Neither
+mode reads uncommitted executable runtime code or fetches data during validation.
 
 The payload preparation protocol (paths are operator/bootstrap data only):
 
@@ -64,6 +98,12 @@ prepare_runtime.ps1 wrapper discovers a valid base interpreter then calls this
 helper with the same arguments and returns the same JSON. Linux invokes helper
 with /usr/bin/python3. A launcher may supply a validated base executable override
 for tests/bootstrap; this is not a portable database setting.
+Preparation revalidates the same strict payload before and after installation,
+then installs only its selected wheel hashes with `--no-index --require-hashes
+--only-binary=:all:`. It runs pip check and a synthetic real-library Naive smoke
+before marking readiness, without external quotes or invented market results.
+Executable caches and their installation locks must be independent of the
+immutable payload and cannot be reached through symlinks or Windows junctions.
 
 ## Supervisor and heartbeat acknowledgement
 

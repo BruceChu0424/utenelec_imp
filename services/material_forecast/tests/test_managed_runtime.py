@@ -89,19 +89,24 @@ class ManagedRuntimeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / "runtime-locks").mkdir()
-            (root / "requirements.txt").write_text("example==1.0\n")
-            (root / "requirements.runtime.txt").write_text("example==1.0\ntransitive==2.0\n")
+            for name in ("requirements.txt", "requirements.runtime.txt"):
+                shutil.copyfile(PREPARE.parent / name, root / name)
             for target in builder.TARGETS:
-                (root / "runtime-locks" / (target + ".lock")).write_text(
-                    "example==1.0 --hash=sha256:" + "a" * 64 + "\ntransitive==2.0 --hash=sha256:" + "b" * 64 + "\n")
+                shutil.copyfile(PREPARE.parent / "runtime-locks" / (target + ".lock"),
+                                root / "runtime-locks" / (target + ".lock"))
             builder.validate_requirement_versions(root)
-            (root / "requirements.txt").write_text("example==1.1\n")
-            with self.assertRaisesRegex(ValueError, "direct requirements differ"):
+            exported = root / "requirements.runtime.txt"
+            original = exported.read_text()
+            exported.write_text(original.replace("numpy==2.2.6", "numpy==2.2.5"))
+            with self.assertRaisesRegex(ValueError, "authoritative requirements.txt"):
                 builder.validate_requirement_versions(root)
-            (root / "requirements.runtime.txt").write_text("example==1.1\ntransitive==2.0\n")
-            with self.assertRaisesRegex(ValueError, "both platform locks"):
+            exported.write_text(original)
+            platform_lock = root / "runtime-locks/windows-x86_64.lock"
+            platform_lock.write_text(platform_lock.read_text().replace("numpy==2.2.6", "numpy==2.2.5"))
+            with self.assertRaisesRegex(ValueError, "differs from authority"):
                 builder.validate_requirement_versions(root)
-            builder.validate_requirement_versions(root, refresh_lock=True)
+            with self.assertRaisesRegex(ValueError, "unhashed lock refresh is forbidden"):
+                builder.validate_requirement_versions(root, refresh_lock=True)
 
     @unittest.skipUnless(os.name == "nt", "Windows PowerShell 5.1 host contract")
     def test_windows_powershell_51_wrapper_accepts_real_python312(self):
@@ -130,17 +135,19 @@ class ManagedRuntimeTests(unittest.TestCase):
             root = Path(temporary)
             manifest = {"platform": "windows-x86_64" if os.name == "nt" else "linux-x86_64",
                         "lockDigest": "a" * 64, "workerVersion": "2.0.0"}
-            key = root / (("w-" if os.name == "nt" else "l-") + "a" * 24)
+            cache = root / "cache"
+            cache.mkdir()
+            key = cache / (("w-" if os.name == "nt" else "l-") + "a" * 24)
             key.mkdir()
             with patch.object(prepare, "validate", return_value=manifest), patch.object(prepare.venv.EnvBuilder, "create", side_effect=RuntimeError("interrupted-after-marker")):
                 with self.assertRaisesRegex(RuntimeError, "interrupted-after-marker"):
-                    prepare.prepare(root, root)
+                    prepare.prepare(root / "payload", cache)
             self.assertTrue((key / "managed.json").is_file())
             (key / "managed.json").unlink()
             (key / "unknown-user-file").write_text("preserve", encoding="utf-8")
             with patch.object(prepare, "validate", return_value=manifest):
                 with self.assertRaisesRegex(ValueError, "unrecognized incomplete"):
-                    prepare.prepare(root, root)
+                    prepare.prepare(root / "payload", cache)
             self.assertEqual((key / "unknown-user-file").read_text(), "preserve")
 
     def test_collector_lock_is_busy_while_alive_and_released_after_kill(self):
@@ -203,34 +210,53 @@ class ManagedRuntimeTests(unittest.TestCase):
             self.assertEqual(env["SystemDrive"], Path(os.environ["SystemRoot"]).drive)
 
     def test_payload_inventory_detects_tamper_extra_file_and_network_lock_directive(self):
+        spec = importlib.util.spec_from_file_location("strict_runtime_fixtures",
+            PREPARE.parents[2] / "deploy/release/test_material_forecast_payload.py")
+        fixtures = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(fixtures)
+        target = "windows-x86_64" if os.name == "nt" else "linux-x86_64"
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            names = {"worker.py", "prepare_runtime.py", "prepare_runtime.ps1", "requirements.lock", "material-benchmarks.json",
-                     "forecast_worker/__init__.py", "forecast_worker/cli.py", "forecast_worker/a.py", "forecast_worker/b.py", "wheelhouse/test.whl"}
-            for name in names:
-                target = root / name
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text("test", encoding="utf-8")
-            (root / "requirements.lock").write_text("test==1.0 --hash=sha256:" + "a" * 64 + "\n", encoding="utf-8")
-            def manifest():
-                inventory = {name: {"bytes": (root / name).stat().st_size, "sha256": hashlib.sha256((root / name).read_bytes()).hexdigest()} for name in names}
-                (root / "runtime-manifest.json").write_text(json.dumps({"schemaVersion": 1,
-                    "platform": "windows-x86_64" if os.name == "nt" else "linux-x86_64", "pythonVersion": "3.12",
-                    "workerVersion": "2.0.0", "lockDigest": prepare.digest(root / "requirements.lock"), "files": inventory}), encoding="utf-8")
-            manifest()
+            root = fixtures.build_fixture_payload(Path(temporary) / "payload", target=target)
             self.assertEqual(prepare.validate(root)["schemaVersion"], 1)
-            (root / "worker.py").write_text("tampered", encoding="utf-8")
+            source = root / "worker.py"
+            original = source.read_bytes()
+            source.write_bytes(original + b"tampered")
             with self.assertRaises(ValueError):
                 prepare.validate(root)
-            manifest()
+            source.write_bytes(original)
             (root / "extra.py").write_text("extra", encoding="utf-8")
             with self.assertRaises(ValueError):
                 prepare.validate(root)
             (root / "extra.py").unlink()
-            (root / "requirements.lock").write_text("--find-links https://invalid.example\n", encoding="utf-8")
-            manifest()
-            with self.assertRaises(ValueError):
+            (root / "runtime-requirements.txt").write_text("--find-links https://invalid.example\n")
+            # Even an internally rehashed manifest cannot grant a network directive.
+            manifest = json.loads((root / "release.json").read_text())
+            for item in manifest["files"]:
+                if item["path"] == "runtime-requirements.txt":
+                    item.update(size=(root / item["path"]).stat().st_size,
+                                sha256=prepare.digest(root / item["path"]))
+            (root / "release.json").write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(ValueError, "runtime requirements"):
                 prepare.validate(root)
+            (root / "release.json").write_text("[]")
+            with self.assertRaisesRegex(ValueError, "manifest must be an object"):
+                prepare.validate(root)
+
+    def test_installer_refuses_payload_local_cache_and_linked_install_lock(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with patch.object(prepare, "validate", return_value={}):
+                with self.assertRaisesRegex(ValueError, "private directory"):
+                    prepare.prepare(root, root / "cache")
+            outside = root / "outside"
+            outside.write_text("owned fixture")
+            lock = root / "install.lock"
+            os.link(outside, lock)
+            with self.assertRaisesRegex(ValueError, "lock is unsafe"):
+                with prepare.install_lock(lock):
+                    self.fail("linked lock accepted")
+            self.assertEqual(outside.read_text(), "owned fixture")
 
 
 if __name__ == "__main__":

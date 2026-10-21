@@ -6,8 +6,8 @@ import argparse
 import hashlib
 import json
 import os
-import platform
 import re
+import runpy
 import stat
 import subprocess
 import sys
@@ -15,7 +15,13 @@ import tempfile
 import time
 import venv
 from contextlib import contextmanager
-from pathlib import Path, PurePosixPath
+from pathlib import Path
+
+sys.dont_write_bytecode = True
+
+
+def linked(path: Path) -> bool:
+    return path.is_symlink() or path.is_junction()
 
 
 def digest(path: Path) -> str:
@@ -28,7 +34,13 @@ def digest(path: Path) -> str:
 
 @contextmanager
 def install_lock(path: Path):
+    if (any(linked(item) for item in (path, *path.parents))
+            or path.exists() and (not path.is_file() or path.stat().st_nlink != 1)):
+        raise ValueError("runtime installation lock is unsafe")
     with path.open("a+b") as handle:
+        info = os.fstat(handle.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise ValueError("runtime installation lock is unsafe")
         if handle.tell() == 0:
             handle.write(b"0")
             handle.flush()
@@ -58,46 +70,31 @@ def install_lock(path: Path):
 
 
 def validate(payload: Path) -> dict:
-    if not payload.is_absolute() or payload.is_symlink() or not payload.is_dir():
+    # Updater signature verification authenticates this helper, verifier and
+    # release.json before launch. Reuse that same strict component protocol;
+    # never accept the older independently editable runtime-manifest format.
+    if (not payload.is_absolute() or not payload.is_dir()
+            or any(linked(path) for path in (payload, *payload.parents))):
         raise ValueError("payload must be a real absolute directory")
-    manifest_path = payload / "runtime-manifest.json"
-    if manifest_path.is_symlink() or manifest_path.stat().st_size > 512 * 1024:
-        raise ValueError("invalid runtime manifest")
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    verifier = payload / "verify_payload.py"
+    if not verifier.is_file() or linked(verifier) or verifier.stat().st_nlink != 1:
+        raise ValueError("strict payload verifier is missing or linked")
+    strict = runpy.run_path(str(verifier))
     target = "windows-x86_64" if os.name == "nt" else "linux-x86_64"
-    if (sys.version_info[:2] != (3, 12) or platform.machine().lower() not in {"amd64", "x86_64"}
-            or manifest.get("schemaVersion") != 1 or manifest.get("platform") != target
-            or manifest.get("pythonVersion") != "3.12"):
-        raise ValueError("unsupported interpreter or payload platform")
-    files = manifest.get("files")
-    if not isinstance(files, dict) or not 10 <= len(files) <= 500:
-        raise ValueError("invalid runtime file inventory")
-    required = {"worker.py", "prepare_runtime.py", "prepare_runtime.ps1", "requirements.lock",
-                "material-benchmarks.json", "forecast_worker/__init__.py", "forecast_worker/cli.py"}
-    if not required.issubset(files) or sum(item.get("bytes", 0) for item in files.values()) > 512 * 1024 * 1024:
-        raise ValueError("runtime inventory is incomplete or too large")
-    paths = list(payload.rglob("*"))
-    if any(path.is_symlink() or not (path.is_dir() or path.is_file()) for path in paths):
-        raise ValueError("runtime payload links or special files are forbidden")
-    actual = {path.relative_to(payload).as_posix() for path in paths if path.is_file() and path != manifest_path}
-    if actual != set(files):
-        raise ValueError("runtime payload file set differs")
-    for name, entry in files.items():
-        relative = PurePosixPath(name)
-        if (relative.is_absolute() or any(part in {".", "..", ""} for part in relative.parts)
-                or "\\" in name or not re.fullmatch(r"[A-Za-z0-9_./+-]+", name)):
-            raise ValueError("unsafe runtime file path")
-        path = payload.joinpath(*relative.parts)
-        if any(item.is_symlink() for item in (path, *path.parents[:len(relative.parts)])) or not stat.S_ISREG(path.stat().st_mode):
-            raise ValueError("runtime payload links are forbidden")
-        if path.stat().st_size != entry.get("bytes") or digest(path) != entry.get("sha256"):
-            raise ValueError("runtime payload digest differs")
-    if digest(payload / "requirements.lock") != manifest.get("lockDigest"):
-        raise ValueError("runtime lock digest differs")
-    lines = (payload / "requirements.lock").read_text(encoding="utf-8").splitlines()
-    if not lines or not all(re.fullmatch(r"[a-z0-9][a-z0-9-]*==[A-Za-z0-9.+!_-]+ --hash=sha256:[0-9a-f]{64}", line) for line in lines):
-        raise ValueError("runtime lock must contain only exact hashed packages")
-    return manifest
+    strict["require_build_host"](target)
+    manifest_path = payload / "release.json"
+    if linked(manifest_path) or not manifest_path.is_file() or manifest_path.stat().st_nlink != 1:
+        raise ValueError("component manifest must be an independent regular file")
+    manifest = strict["read_json"](manifest_path)
+    if not isinstance(manifest, dict):
+        raise ValueError("component manifest must be an object")
+    strict["verify"](payload, manifest.get("version"), manifest.get("commit"), target)
+    versions = re.findall(r'^__version__ = "([A-Za-z0-9._]+)"$',
+                          (payload / "forecast_worker/__init__.py").read_text(encoding="utf-8"), re.MULTILINE)
+    if len(versions) != 1:
+        raise ValueError("verified worker version is missing")
+    return {"schemaVersion": 1, "platform": target, "workerVersion": versions[0],
+            "lockDigest": digest(payload / "runtime-requirements.txt"), "commit": manifest["commit"]}
 
 
 def child_environment() -> dict:
@@ -139,7 +136,8 @@ def run(command: list[str], timeout: int = 180) -> None:
 def prepare(payload: Path, cache: Path) -> dict:
     payload = payload.absolute()
     manifest = validate(payload)
-    if not cache.is_absolute() or cache.is_symlink():
+    if (not cache.is_absolute() or any(linked(path) for path in (cache, *cache.parents))
+            or cache.resolve().is_relative_to(payload.resolve())):
         raise ValueError("cache must be an absolute private directory")
     cache.mkdir(parents=True, exist_ok=True)
     # Windows packaged hosts may virtualize LocalAppData without a symlink.
@@ -152,7 +150,7 @@ def prepare(payload: Path, cache: Path) -> dict:
     with install_lock(cache / (key + ".lock")):
         new_root = not root.exists()
         root.mkdir(exist_ok=True)
-        if root.is_symlink() or (root / "venv").is_symlink():
+        if linked(root) or linked(root / "venv"):
             raise ValueError("runtime directory links are forbidden")
         python = root / "venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
         marker = root / "ready.json"
@@ -174,11 +172,13 @@ def prepare(payload: Path, cache: Path) -> dict:
                 raise ValueError("runtime repair target escaped its managed key")
             venv.EnvBuilder(with_pip=True, clear=True, symlinks=False).create(target)
             run([str(python), "-I", "-m", "pip", "install", "--no-index", "--no-deps", "--require-hashes",
-                 "--only-binary=:all:", "--find-links", str(payload / "wheelhouse"), "-r", str(payload / "requirements.lock")])
+                 "--only-binary=:all:", "--find-links", str(payload / "wheelhouse"), "-r", str(payload / "runtime-requirements.txt")])
         elif ready != identity:
             raise ValueError("runtime readiness marker differs")
         run([str(python), "-I", "-m", "pip", "check"])
         run([str(python), "-I", "-c", "import statsforecast,numpy,pandas; from statsforecast.models import Naive; assert statsforecast.__version__ == '2.1.1'; Naive().forecast(y=numpy.array([1.,2.,3.]),h=2)"])
+        if validate(payload) != manifest:
+            raise ValueError("payload changed during runtime preparation")
         atomic_marker(owner_marker, identity)
         atomic_marker(marker, identity)
         return {"schemaVersion": 1, "state": "READY", "platform": manifest["platform"],
@@ -195,7 +195,7 @@ def main() -> int:
     try:
         print(json.dumps(prepare(args.payload, args.cache)))
         return 0
-    except (OSError, ValueError, subprocess.SubprocessError):
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
         print('{"schemaVersion":1,"state":"ERROR","errorCode":"PREPARATION_FAILED"}')
         return 2
 

@@ -77,7 +77,16 @@ class ContainerCascadeHttpPostgresTest {
                 "production_material_analysis:view");
         fixture.loginAs(viewer);
         Authentication denied=SecurityContextHolder.getContext().getAuthentication();
-        assertThat(putJson(WAREHOUSES,"[{}]",denied).getResponse().getStatus()).isEqualTo(403);
+        // MVC argument validation precedes the method-security proxy. A malformed
+        // element is rejected before invocation, regardless of the caller's grants.
+        MvcResult deniedInvalid=putJson(WAREHOUSES,"[{}]",denied);
+        assertError(deniedInvalid,422,"VALIDATION_FAILED");
+        assertThat(body(deniedInvalid).path("fieldErrors").toString()).contains("goodsId");
+        // This valid body would clear the current warehouse if authorization were
+        // bypassed. Even a valid empty no-op must still pass the same method guard.
+        assertError(putJson(WAREHOUSES,json.writeValueAsString(List.of(Map.of(
+                "goodsId",world.goodsA()))),denied),403,"FORBIDDEN");
+        assertError(putJson(WAREHOUSES,"[]",denied),403,"FORBIDDEN");
         assertThat(db.queryForObject("SELECT owning_warehouse_id FROM goods WHERE id=?",UUID.class,world.goodsA()))
                 .isEqualTo(world.warehouseId());
     }

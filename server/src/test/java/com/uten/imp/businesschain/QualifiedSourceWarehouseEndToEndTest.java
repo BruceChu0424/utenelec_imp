@@ -271,7 +271,19 @@ class QualifiedSourceWarehouseEndToEndTest {
             }
             return null;
         });
-        for(int round=0;round<5;round++)readinessReconciler.runBatch();
+        var authentication=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        assertNotNull(authentication,"the fixture actor must be present before simulating the system worker");
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        try {
+            for(int round=0;round<5;round++) {
+                assertNull(org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication(),
+                        "automatic readiness reconciliation must run as the system, not as the fixture employee");
+                readinessReconciler.runBatch();
+            }
+        } finally {
+            org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(authentication);
+        }
+        assertSame(authentication,org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication());
         assertEquals("WAITING",status(c));
         qty("10",material(c).shortageQty());
         assertTrue(material(c).warehouseBreakdown().stream().noneMatch(row->defective.equals(row.warehouseId())),

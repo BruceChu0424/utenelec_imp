@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.analysis;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.AfterAll;
@@ -12,10 +13,14 @@ import org.mockito.ArgumentCaptor;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -31,6 +36,8 @@ import static org.mockito.Mockito.when;
  * ADR-143 §4.5 per-material subcontract draw coverage. Runs the real projection SQL against
  * minimal relations holding only the columns it reads; the two SQL helpers are the migrated
  * definitions (fn_subcontract_order_source_share from V503, fn_subcontract_draw_f per V798).
+ * Aggregate public ownership reads V712 batch/event identities and frozen intent, not fake
+ * private allocations; these relations must exist even when a case only uses private supply.
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class SubcontractComponentCustodyProjectionPostgresTest {
@@ -56,7 +63,15 @@ class SubcontractComponentCustodyProjectionPostgresTest {
         execute("""
                 CREATE TABLE preplan_supply_actions(id uuid PRIMARY KEY, analysis_id uuid, route text,
                     operation_type text, status text, external_document_type text, requested_qty numeric,
-                    public_surplus_qty numeric NOT NULL DEFAULT 0, public_surplus_external_item_id uuid);
+                    public_surplus_qty numeric NOT NULL DEFAULT 0, public_surplus_external_item_id uuid,
+                    goods_id uuid, color_id uuid, unit_id uuid);
+                CREATE TABLE preplan_aggregate_batches(id uuid PRIMARY KEY, analysis_id uuid NOT NULL,
+                    action_id uuid NOT NULL UNIQUE REFERENCES preplan_supply_actions(id));
+                CREATE TABLE preplan_aggregate_batch_events(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                    batch_id uuid NOT NULL REFERENCES preplan_aggregate_batches(id),
+                    event_type text NOT NULL CHECK(event_type IN('CREATE','APPEND','ALIAS_APPEND','CANCEL')),
+                    public_delta numeric(18,4) NOT NULL DEFAULT 0,
+                    intent_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb CHECK(jsonb_typeof(intent_snapshot)='object'));
                 CREATE TABLE preplan_supply_action_allocations(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
                     action_id uuid, analysis_id uuid, analysis_material_id uuid, allocated_qty numeric,
                     external_item_id uuid);
@@ -86,7 +101,7 @@ class SubcontractComponentCustodyProjectionPostgresTest {
                     created_at timestamptz DEFAULT now());
                 CREATE TABLE production_material_analysis_materials(id uuid PRIMARY KEY, analysis_id uuid,
                     analysis_item_id uuid, node_key text, parent_node_key text, node_role text, depth int,
-                    path text, goods_id uuid, color_id uuid, active boolean DEFAULT true);
+                    path text, goods_id uuid, color_id uuid, active boolean DEFAULT true, unit_id uuid);
                 CREATE FUNCTION fn_subcontract_draw_f(p_sets numeric, p_bom_unit_qty numeric)
                 RETURNS numeric LANGUAGE sql IMMUTABLE AS $$ SELECT CEIL(p_sets * p_bom_unit_qty * 10000) / 10000 $$;
                 CREATE FUNCTION fn_subcontract_order_source_share(p_order_item_id uuid, p_application_item_id uuid,
@@ -109,6 +124,418 @@ class SubcontractComponentCustodyProjectionPostgresTest {
                 $$;
                 """);
     }
+
+    @Test
+    void publicOnlyCreateAndAppendKeepTheirFrozenOwnerWeightsWithoutPrivateAllocations() throws Exception {
+        PublicWorld p = publicWorld();
+        assertThat(allocationCount(p.action())).isZero();
+
+        // CREATE 3 at 1:2, then APPEND 3 entirely for the second source: 1 + 5.
+        // A repeated snapshot of the first physical parent must not double its weight.
+        Map<UUID, BigDecimal[]> before = coverage(p.world().analysis);
+        assertThat(before).containsOnlyKeys(p.firstChild(), p.secondChild());
+        assertThat(before.get(p.firstChild())[0]).isEqualByComparingTo("1");
+        assertThat(before.get(p.firstChild())[1]).isEqualByComparingTo("1");
+        assertThat(before.get(p.secondChild())[0]).isEqualByComparingTo("5");
+        assertThat(before.get(p.secondChild())[1]).isEqualByComparingTo("5");
+
+        p.world().stockedReceipt(p.orderItem(), "3");
+        Map<UUID, BigDecimal[]> remaining = coverage(p.world().analysis);
+        assertThat(remaining.get(p.firstChild())[0]).isEqualByComparingTo("0.5");
+        assertThat(remaining.get(p.firstChild())[1]).isEqualByComparingTo("0.5");
+        assertThat(remaining.get(p.secondChild())[0]).isEqualByComparingTo("2.5");
+        assertThat(remaining.get(p.secondChild())[1]).isEqualByComparingTo("2.5");
+        assertThat(remaining.values().stream().map(row -> row[1]).reduce(BigDecimal.ZERO, BigDecimal::add))
+                .isEqualByComparingTo("3");
+        assertThat(allocationCount(p.action())).isZero();
+    }
+
+    @Test
+    void publicOwnerRequiresTheActualProductColorAndUnit() throws Exception {
+        PublicWorld p = publicWorld();
+        for (String column : List.of("goods_id", "color_id", "unit_id")) {
+            update("UPDATE preplan_supply_actions SET " + column + "=? WHERE id=?", UUID.randomUUID(), p.action());
+            assertThat(coverage(p.world().analysis)).as("mismatched %s", column).isEmpty();
+            p.world().bindActionProduct(p.action(), p.first());
+        }
+        assertThat(coverage(p.world().analysis)).containsOnlyKeys(p.firstChild(), p.secondChild());
+        assertThat(allocationCount(p.action())).isZero();
+    }
+
+    @Test
+    void privateAllocationOwnsTheWholePhysicalBatchAfterPublicOnlyIntentBecomesMixed() throws Exception {
+        PublicWorld p = publicWorld();
+        assertThat(coverage(p.world().analysis)).containsOnlyKeys(p.firstChild(), p.secondChild());
+        update("UPDATE preplan_supply_actions SET requested_qty=6 WHERE id=?", p.action());
+        UUID privateApplication = p.world().allocation(p.action(), p.first(), "6");
+        p.world().source(p.orderItem(), privateApplication, "6", 2);
+        update("UPDATE subcontract_material_plan_items SET issued_qty=12 WHERE id=?", p.planLine());
+
+        Map<UUID, BigDecimal[]> mixed = coverage(p.world().analysis);
+        assertThat(mixed).containsOnlyKeys(p.firstChild());
+        assertThat(mixed.get(p.firstChild())[0]).isEqualByComparingTo("12");
+        assertThat(mixed.get(p.firstChild())[1]).isEqualByComparingTo("12");
+        assertThat(allocationCount(p.action())).isEqualTo(1);
+    }
+
+    @Test
+    void sharedPrivateOwnersKeepAnExactHalfBoundaryWithoutAnArtificialCeilingTick() throws Exception {
+        PublicWorld p = privateWorld();
+        p.world().stockedReceipt(p.orderItem(), "3");
+        Map<UUID, BigDecimal[]> rows = coverage(p.world().analysis);
+        assertThat(rows).containsOnlyKeys(p.firstChild(), p.secondChild());
+        assertThat(rows.get(p.firstChild())[0]).isEqualByComparingTo("0.5");
+        assertThat(rows.get(p.firstChild())[1]).isEqualByComparingTo("0.5");
+        assertThat(rows.get(p.secondChild())[0]).isEqualByComparingTo("2.5");
+        assertThat(rows.get(p.secondChild())[1]).isEqualByComparingTo("2.5");
+        assertThat(allocationCount(p.action())).isEqualTo(2);
+    }
+
+    @Test
+    void genuineFractionalConsumptionStillRoundsUpForPrivateAndPublicOwners() throws Exception {
+        for (boolean publicOnly : List.of(false, true)) {
+            PublicWorld p = publicOnly ? publicWorld() : privateWorld();
+            p.world().stockedReceipt(p.orderItem(), "1");
+            Map<UUID, BigDecimal[]> rows = coverage(p.world().analysis);
+            // 1/6 and 5/6 really require CEIL4 to 0.1667 and 0.8334.
+            assertThat(rows.get(p.firstChild())[0]).isEqualByComparingTo("0.8333");
+            assertThat(rows.get(p.secondChild())[0]).isEqualByComparingTo("4.1666");
+        }
+    }
+
+    @Test
+    void unitConversionAndFrozenBomKeepAnExactHalfConsumptionBoundary() throws Exception {
+        World w = new World(UUID.randomUUID());
+        Parent parent = w.parent("UNIT-BOUNDARY", false);
+        UUID child = w.child(parent, "A", w.goodsA);
+        UUID application = w.allocation(w.action("6", "0"), parent, "6");
+        // One order unit is six parent base units; its frozen material need is three.
+        UUID item = w.orderItem("6", application, "1");
+        w.planLine(item, w.goodsA, "3", "3");
+        w.stockedReceipt(item, "1");
+
+        BigDecimal[] actual = coverage(w.analysis).get(child);
+        assertThat(actual[0]).isEqualByComparingTo("2.5");
+        assertThat(actual[1]).isEqualByComparingTo("5");
+    }
+
+    @Test
+    void parentOutputCapUsesTheAuthoritativeFourDecimalAllocationBudget() throws Exception {
+        installParentCapacity();
+        World w = new World(UUID.randomUUID());
+        Parent a = w.parent("CAP-A", false), b = w.parent("CAP-B", false);
+        update("UPDATE production_material_analysis_materials SET goods_id=(SELECT goods_id FROM production_material_analysis_materials WHERE id=?) WHERE id=?",
+                a.id(), b.id());
+        UUID child = w.child(a, "A", w.goodsA);
+        w.child(b, "A", w.goodsA);
+        UUID action = w.action("3", "0");
+        UUID application = w.allocation(action, a, "1");
+        w.allocation(action, b, "2", application);
+        UUID allocationA = new UUID(0, 1), allocationB = new UUID(0, 2);
+        update("UPDATE preplan_supply_action_allocations SET id=? WHERE action_id=? AND analysis_material_id=?", allocationA, action, a.id());
+        update("UPDATE preplan_supply_action_allocations SET id=? WHERE action_id=? AND analysis_material_id=?", allocationB, action, b.id());
+        assertThat(parentCapacity(application, allocationA, "3")).isEqualByComparingTo("1");
+        assertThat(parentCapacity(application, allocationA, "1")).isEqualByComparingTo("0.3333");
+        UUID item = w.orderItem("1", application, "3");
+        w.planLine(item, w.goodsA, "6", "18");
+        w.stockedReceipt(item, "2");
+
+        String authoritativeSql = "SELECT " + MaterialAnalysisService.allocationBudgetShareSql("1")
+                + " FROM (" + MaterialAnalysisService.allocationBudgetRowsSql("source.action_id='" + action + "'::uuid")
+                + ") allocation JOIN preplan_supply_actions action ON action.id=allocation.action_id WHERE allocation.id='"
+                + allocationA + "'::uuid";
+        BigDecimal authoritative;
+        try (var query = connection.createStatement(); var rows = query.executeQuery(authoritativeSql)) {
+            assertThat(rows.next()).isTrue();
+            authoritative = rows.getBigDecimal(1);
+        }
+        assertThat(authoritative).isEqualByComparingTo("0.3333");
+        BigDecimal[] actual = coverage(w.analysis).get(child);
+        assertThat(actual[0]).isEqualByComparingTo("2");
+        // A refreshed current BOM uses three, while the physical order retains its frozen six.
+        // The original requirement still has headroom, so only the authoritative parent cap limits coverage.
+        String key = a.nodeKey() + "/A";
+        var node = new MaterialAnalysisService.BomNode(a.analysisItemId(), child, UUID.randomUUID(),
+                w.goodsA, null, w.unit, 2, key, a.nodeKey(), BigDecimal.ONE, new BigDecimal("3"),
+                new BigDecimal("3"), new BigDecimal("3.9999"), "A", "A", null, null, "piece",
+                BigDecimal.ZERO, "BUY", false, "START", "PER_UNIT", BigDecimal.ONE, true, true);
+        var formal = new MaterialAnalysisService.FormalMaterialCoverage(child, a.analysisItemId(), key, actual[0], actual[1]);
+        var secured = MaterialAnalysisService.planFormalCoverage(List.of(formal), List.of(node));
+        org.junit.jupiter.api.Assertions.assertAll(
+                () -> assertThat(actual[1]).isEqualByComparingTo(authoritative),
+                () -> assertThat(secured.securedTotal(a.analysisItemId() + "|" + key)).isEqualByComparingTo("0.9999"));
+    }
+
+    @Test
+    void threeApplicationsSumTheirCommonDenominatorBeforeExactHalfConsumption() throws Exception {
+        assertMultiApplicationConsumption(List.of("6", "6", "6"), List.of("1", "1", "1"), "0.1667");
+    }
+
+    @Test
+    void differentApplicationDenominatorsDoNotInventAnExactHalfConsumptionTick() throws Exception {
+        // Returned shares are 1/6 + 1/13 + 10/39 = 1/2 exactly.
+        assertMultiApplicationConsumption(List.of("6", "13", "39"), List.of("1", "1", "10"), "0.2564");
+    }
+
+    @Test
+    void fractionalOwnerQuantitiesAndOrderUnitRateKeepExactMaterialBoundaries() throws Exception {
+        World w = new World(UUID.randomUUID());
+        Parent first = w.parent("FRACTION-A", false), second = w.parent("FRACTION-B", false);
+        update("UPDATE production_material_analysis_materials SET goods_id=(SELECT goods_id FROM production_material_analysis_materials WHERE id=?) WHERE id=?",
+                first.id(), second.id());
+        UUID firstChild = w.child(first, "A", w.goodsA), secondChild = w.child(second, "A", w.goodsA);
+        UUID action = w.action("1.5", "0");
+        UUID application = w.allocation(action, first, "0.5");
+        w.allocation(action, second, "1", application);
+        UUID item = w.orderItem("1.5", application, "1");
+        w.planLine(item, w.goodsA, "3", "3");
+        w.stockedReceipt(item, "0.75");
+
+        Map<UUID, BigDecimal[]> rows = coverage(w.analysis);
+        assertThat(rows.get(firstChild)[0]).isEqualByComparingTo("0.5");
+        assertThat(rows.get(firstChild)[1]).isEqualByComparingTo("0.25");
+        assertThat(rows.get(secondChild)[0]).isEqualByComparingTo("1");
+        assertThat(rows.get(secondChild)[1]).isEqualByComparingTo("0.5");
+    }
+
+    @Test
+    void halfTickExactOwnershipKeepsPriorityOverAnEarlierPublicOwner() throws Exception {
+        assertExactMaterialBudget(true);
+    }
+
+    @Test
+    void scaledExactOwnershipConservesTheWholeRemainingMaterialBudget() throws Exception {
+        assertExactMaterialBudget(false);
+    }
+
+    @Test
+    void repeatingOwnerNeedsKeepTheExactIndividualHalfTick() throws Exception {
+        installParentCapacity();
+        World w = new World(UUID.randomUUID());
+        Parent first = w.parent("REPEAT-A", false), second = w.parent("REPEAT-B", false);
+        Parent a = first.id().toString().compareTo(second.id().toString()) < 0 ? first : second;
+        Parent b = a == first ? second : first;
+        Parent c = w.parent("REPEAT-C", false), d = w.parent("REPEAT-D", false);
+        for (Parent parent : List.of(b, c, d)) {
+            update("UPDATE production_material_analysis_materials SET goods_id=(SELECT goods_id FROM production_material_analysis_materials WHERE id=?) WHERE id=?",
+                    a.id(), parent.id());
+        }
+        UUID childA = w.child(a, "A", w.goodsA), childB = w.child(b, "A", w.goodsA);
+        w.child(c, "A", w.goodsA);
+        w.child(d, "A", w.goodsA);
+        UUID action = w.action("90", "0");
+        UUID application = w.allocation(action, b, "7");
+        w.allocation(action, c, "4", application);
+        w.allocation(action, a, "3", application);
+        w.allocation(action, d, "76", application);
+        List<Parent> allocationOrder = List.of(b, c, a, d);
+        for (int i = 0; i < allocationOrder.size(); i++) {
+            update("UPDATE preplan_supply_action_allocations SET id=? WHERE action_id=? AND analysis_material_id=?",
+                    new UUID(0, i + 1), action, allocationOrder.get(i).id());
+        }
+        assertThat(parentCapacity(application, new UUID(0, 3), "1")).isEqualByComparingTo("0.0334");
+        assertThat(parentCapacity(application, new UUID(0, 1), "1")).isEqualByComparingTo("0.0778");
+        UUID item = w.orderItem("1", UUID.randomUUID(), "0.1107");
+        w.source(item, application, "1", 2);
+        UUID line = w.planLine(item, w.goodsA, "1", "0.1112");
+        w.handoff(line, a, childA, "0.0334");
+        w.handoff(line, b, childB, "0.0778");
+        w.stockedReceipt(item, "0.1107");
+        try (var query = connection.prepareStatement("SELECT fn_subcontract_order_source_share(?,?,?)")) {
+            query.setObject(1, item);
+            query.setObject(2, application);
+            query.setBigDecimal(3, new BigDecimal("0.1107"));
+            try (var rows = query.executeQuery()) {
+                rows.next();
+                assertThat(rows.getBigDecimal(1)).isZero();
+            }
+        }
+        Map<UUID, BigDecimal[]> rows = coverage(w.analysis);
+        assertThat(rows).containsOnlyKeys(childA, childB);
+        assertThat(rows.get(childA)[0]).isEqualByComparingTo("0.0002");
+        assertThat(rows.get(childB)[0]).isEqualByComparingTo("0.0003");
+        assertThat(rows.values().stream().map(row -> row[0]).reduce(BigDecimal.ZERO, BigDecimal::add))
+                .isEqualByComparingTo("0.0005");
+    }
+
+    private void assertExactMaterialBudget(boolean singleExact) throws Exception {
+        installParentCapacity();
+        World w = new World(UUID.randomUUID());
+        Parent first = w.parent("EXACT-A", false), second = w.parent("EXACT-B", false);
+        update("UPDATE production_material_analysis_materials SET goods_id=(SELECT goods_id FROM production_material_analysis_materials WHERE id=?) WHERE id=?",
+                first.id(), second.id());
+        // PostgreSQL orders UUID bytes unsigned; Java UUID.compareTo uses signed longs.
+        boolean firstSortsBeforeSecond = first.id().toString().compareTo(second.id().toString()) < 0;
+        Parent a = firstSortsBeforeSecond != singleExact ? first : second;
+        Parent b = a == first ? second : first;
+        UUID childA = w.child(a, "A", w.goodsA), childB = w.child(b, "A", w.goodsA);
+        UUID action = w.action("2", "0");
+        UUID application = w.allocation(action, a, "1");
+        w.allocation(action, b, "1", application);
+        UUID allocationA = new UUID(0, 1), allocationB = new UUID(0, 2);
+        update("UPDATE preplan_supply_action_allocations SET id=? WHERE action_id=? AND analysis_material_id=?", allocationA, action, a.id());
+        update("UPDATE preplan_supply_action_allocations SET id=? WHERE action_id=? AND analysis_material_id=?", allocationB, action, b.id());
+        // The real capacity authority grants A the first tick even when public B sorts first.
+        assertThat(parentCapacity(application, allocationA, singleExact ? "0.0005" : "1"))
+                .isGreaterThanOrEqualTo(new BigDecimal("0.0003"));
+        if (singleExact) assertThat(parentCapacity(application, allocationB, "0.0005")).isEqualByComparingTo("0.0002");
+        UUID item = w.orderItem("1", application, singleExact ? "0.0005" : "1");
+        UUID line = w.planLine(item, w.goodsA, "1", singleExact ? "0.0005" : "0.0006");
+        w.handoff(line, a, childA, "0.0003");
+        if (!singleExact) {
+            w.handoff(line, b, childB, "0.0003");
+            w.stockedReceipt(item, "0.0001");
+        }
+        Map<UUID, BigDecimal[]> rows = coverage(w.analysis);
+        assertThat(rows).containsOnlyKeys(childA, childB);
+        assertThat(rows.get(childA)[0]).isEqualByComparingTo("0.0003");
+        assertThat(rows.get(childB)[0]).isEqualByComparingTo("0.0002");
+        assertThat(rows.values().stream().map(row -> row[0]).reduce(BigDecimal.ZERO, BigDecimal::add))
+                .isEqualByComparingTo("0.0005");
+    }
+
+    private void installParentCapacity() throws Exception {
+        String migration = Files.readString(Path.of("src/main/resources/db/migration/V798__subcontract_step_draw.sql"));
+        int function = migration.indexOf("CREATE OR REPLACE FUNCTION fn_subcontract_component_parent_capacity(");
+        assertThat(function).isGreaterThanOrEqualTo(0);
+        execute(migration.substring(function, migration.indexOf("$$;", function) + 3));
+    }
+
+    private BigDecimal parentCapacity(UUID application, UUID allocation, String total) throws SQLException {
+        try (var query = connection.prepareStatement("SELECT fn_subcontract_component_parent_capacity(?,?,?)")) {
+            query.setObject(1, application);
+            query.setObject(2, allocation);
+            query.setBigDecimal(3, new BigDecimal(total));
+            try (var rows = query.executeQuery()) {
+                rows.next();
+                return rows.getBigDecimal(1);
+            }
+        }
+    }
+
+    @Test
+    void distinctApplicationBudgetsStayInsideTheExistingReadTimeout() throws Exception {
+        for (int count : List.of(1, 16, 128, 512)) {
+            World w = new World(UUID.randomUUID());
+            Parent first = w.parent("BENCH-A", false), second = w.parent("BENCH-B", false);
+            update("UPDATE production_material_analysis_materials SET goods_id=(SELECT goods_id FROM production_material_analysis_materials WHERE id=?) WHERE id=?",
+                    first.id(), second.id());
+            UUID child = w.child(first, "A", w.goodsA);
+            w.child(second, "A", w.goodsA);
+            UUID item = null;
+            for (int i = 0; i < count; i++) {
+                int total = 1001 + i;
+                UUID action = w.action(Integer.toString(total), "0");
+                UUID application = w.allocation(action, first, "1");
+                w.allocation(action, second, Integer.toString(total - 1), application);
+                if (item == null) item = w.orderItem("1", application, "1");
+                else w.source(item, application, "1", i + 1);
+            }
+            w.planLine(item, w.goodsA, "1", Integer.toString(count));
+            execute("ANALYZE");
+            long started = System.nanoTime();
+            Map<UUID, BigDecimal[]> rows = coverage(w.analysis);
+            double firstReadMs = (System.nanoTime() - started) / 1_000_000.0;
+            assertThat(rows).hasSize(2);
+            assertThat(rows.get(child)[0]).isPositive();
+            assertThat(rows.values().stream().map(row -> row[0]).reduce(BigDecimal.ZERO, BigDecimal::add))
+                    .isEqualByComparingTo(Integer.toString(count));
+            recordExplain(w.analysis, count, firstReadMs, false);
+            if (count == 512) recordExplain(w.analysis, count, firstReadMs, true);
+        }
+    }
+
+    private void recordExplain(UUID analysis, int sources, double firstReadMs, boolean timing) throws Exception {
+        String sql = productionSql().replace(":analysisId", "'" + analysis + "'::uuid");
+        String json;
+        try (var statement = connection.createStatement()) {
+            statement.setQueryTimeout(10);
+            try (var rows = statement.executeQuery("EXPLAIN (ANALYZE,BUFFERS,TIMING " + (timing ? "ON" : "OFF") + ",FORMAT JSON) " + sql)) {
+                rows.next();
+                json = rows.getString(1);
+            }
+        }
+        Path output = Path.of(System.getProperty("uten.build.directory", "target"))
+                .resolve("custody-rational-" + sources + (timing ? "-timing" : "") + "-explain.json");
+        Files.createDirectories(output.getParent());
+        Files.writeString(output, json);
+        var plan = new ObjectMapper().readTree(json).get(0);
+        System.out.printf(Locale.ROOT,
+                "CUSTODY_RATIONAL_EXPLAIN sources=%d timing=%s firstReadMs=%.3f planningMs=%.3f executionMs=%.3f file=%s%n",
+                sources, timing, firstReadMs, plan.get("Planning Time").doubleValue(),
+                plan.get("Execution Time").doubleValue(), output);
+    }
+
+    private void assertMultiApplicationConsumption(List<String> totals, List<String> owned, String expectedNet) throws Exception {
+        World w = new World(UUID.randomUUID());
+        Parent first = w.parent("MULTI-A", false), second = w.parent("MULTI-B", false);
+        update("UPDATE production_material_analysis_materials SET goods_id=(SELECT goods_id FROM production_material_analysis_materials WHERE id=?) WHERE id=?",
+                first.id(), second.id());
+        UUID child = w.child(first, "A", w.goodsA);
+        w.child(second, "A", w.goodsA);
+        UUID item = null;
+        for (int i = 0; i < totals.size(); i++) {
+            UUID action = w.action(totals.get(i), "0");
+            UUID application = w.allocation(action, first, owned.get(i));
+            w.allocation(action, second, new BigDecimal(totals.get(i)).subtract(new BigDecimal(owned.get(i))).toPlainString(), application);
+            String ordered = i == 2 ? "2" : "1";
+            if (item == null) item = w.orderItem("1", application, ordered);
+            else w.source(item, application, ordered, i + 1);
+        }
+        w.planLine(item, w.goodsA, "1", "4");
+        w.stockedReceipt(item, "3");
+        Map<UUID, BigDecimal[]> rows = coverage(w.analysis);
+        assertThat(rows.get(child)[0]).isEqualByComparingTo(expectedNet);
+        assertThat(rows.values().stream().map(row -> row[0]).reduce(BigDecimal.ZERO, BigDecimal::add))
+                .isEqualByComparingTo("1");
+    }
+
+    private PublicWorld privateWorld() throws Exception {
+        World w = new World(UUID.randomUUID());
+        Parent first = w.parent("PRIVATE-A", false), second = w.parent("PRIVATE-B", false);
+        update("UPDATE production_material_analysis_materials SET goods_id=(SELECT goods_id FROM production_material_analysis_materials WHERE id=?) WHERE id=?",
+                first.id(), second.id());
+        UUID firstChild = w.child(first, "A", w.goodsA), secondChild = w.child(second, "A", w.goodsA);
+        UUID action = w.action("6", "0");
+        UUID application = w.allocation(action, first, "1");
+        w.allocation(action, second, "5", application);
+        UUID orderItem = w.orderItem("1", application, "6");
+        UUID planLine = w.planLine(orderItem, w.goodsA, "1", "6");
+        return new PublicWorld(w, first, firstChild, secondChild, action, orderItem, planLine);
+    }
+
+    private PublicWorld publicWorld() throws Exception {
+        World w = new World(UUID.randomUUID());
+        Parent first = w.parent("PUBLIC-A", false), second = w.parent("PUBLIC-B", false);
+        update("UPDATE production_material_analysis_materials SET goods_id=(SELECT goods_id FROM production_material_analysis_materials WHERE id=?) WHERE id=?",
+                first.id(), second.id());
+        UUID firstChild = w.child(first, "A", w.goodsA), secondChild = w.child(second, "A", w.goodsA);
+        UUID action = w.action("0", "6"), application = UUID.randomUUID(), batch = UUID.randomUUID();
+        w.bindActionProduct(action, first);
+        w.publicSurplus(action, application);
+        update("INSERT INTO preplan_aggregate_batches(id,analysis_id,action_id) VALUES (?,?,?)", batch, w.analysis, action);
+        Map<String, Object> firstSource = w.sourceSnapshot(first, "1", 1);
+        Map<String, Object> secondSource = w.sourceSnapshot(second, "2", 2);
+        w.publicEvent(batch, "CREATE", "3", List.of(firstSource, firstSource, secondSource), Map.of());
+        w.publicEvent(batch, "APPEND", "3", List.of(firstSource, secondSource),
+                Map.of(first.id().toString(), "0", second.id().toString(), "3"));
+        UUID orderItem = w.orderItem("1", application, "6");
+        UUID planLine = w.planLine(orderItem, w.goodsA, "1", "6");
+        return new PublicWorld(w, first, firstChild, secondChild, action, orderItem, planLine);
+    }
+
+    private int allocationCount(UUID action) throws SQLException {
+        try (var statement = connection.prepareStatement("SELECT COUNT(*) FROM preplan_supply_action_allocations WHERE action_id=?")) {
+            statement.setObject(1, action);
+            try (var rows = statement.executeQuery()) {
+                rows.next();
+                return rows.getInt(1);
+            }
+        }
+    }
+
+    private record PublicWorld(World world, Parent first, UUID firstChild, UUID secondChild,
+                               UUID action, UUID orderItem, UUID planLine) {}
 
     @Test
     void stockedReturnsConsumeTheirMaterialAndCapTheRemainingParentOutput() throws Exception {
@@ -348,6 +775,7 @@ class SubcontractComponentCustodyProjectionPostgresTest {
         final UUID analysis;
         final UUID goodsA;
         final UUID goodsB;
+        final UUID unit = UUID.randomUUID();
         final UUID order = UUID.randomUUID();
         final UUID plan = UUID.randomUUID();
         private boolean orderCreated;
@@ -370,33 +798,56 @@ class SubcontractComponentCustodyProjectionPostgresTest {
         Parent parent(String nodeKey, boolean root) throws SQLException {
             UUID id = UUID.randomUUID();
             UUID item = UUID.randomUUID();
-            update("INSERT INTO production_material_analysis_materials VALUES (?,?,?,?,?,?,?,?,?,NULL,true)",
+            update("INSERT INTO production_material_analysis_materials(id,analysis_id,analysis_item_id,node_key,parent_node_key,node_role,depth,path,goods_id,color_id,active,unit_id) VALUES (?,?,?,?,?,?,?,?,?,NULL,true,?)",
                     id, analysis, item, nodeKey, null, root ? "ROOT_SUPPLY" : "BOM_COMPONENT",
-                    root ? 0 : 1, nodeKey, UUID.randomUUID());
+                    root ? 0 : 1, nodeKey, UUID.randomUUID(), unit);
             return new Parent(id, item, nodeKey, root);
         }
 
         UUID child(Parent parent, String nodeKey, UUID goods) throws SQLException {
             UUID id = UUID.randomUUID();
             String key = parent.nodeKey() + "/" + nodeKey;
-            update("INSERT INTO production_material_analysis_materials VALUES (?,?,?,?,?,?,?,?,?,NULL,true)",
+            update("INSERT INTO production_material_analysis_materials(id,analysis_id,analysis_item_id,node_key,parent_node_key,node_role,depth,path,goods_id,color_id,active,unit_id) VALUES (?,?,?,?,?,?,?,?,?,NULL,true,?)",
                     id, analysis, parent.analysisItemId(), key, parent.root() ? null : parent.nodeKey(),
-                    "BOM_COMPONENT", parent.root() ? 1 : 2, key, goods);
+                    "BOM_COMPONENT", parent.root() ? 1 : 2, key, goods, unit);
             return id;
         }
 
         UUID action(String requested, String publicSurplus) throws SQLException {
             UUID id = UUID.randomUUID();
-            update("INSERT INTO preplan_supply_actions VALUES (?,?,'SUBCONTRACT','SUPPLY','CREATED','SUBCONTRACT_APPLICATION',?,?,NULL)",
+            update("INSERT INTO preplan_supply_actions(id,analysis_id,route,operation_type,status,external_document_type,requested_qty,public_surplus_qty,public_surplus_external_item_id) VALUES (?,?,'SUBCONTRACT','SUPPLY','CREATED','SUBCONTRACT_APPLICATION',?,?,NULL)",
                     id, analysis, new BigDecimal(requested), new BigDecimal(publicSurplus));
             return id;
         }
 
         UUID allocation(UUID action, Parent parent, String qty) throws SQLException {
             UUID application = UUID.randomUUID();
+            allocation(action, parent, qty, application);
+            return application;
+        }
+
+        void allocation(UUID action, Parent parent, String qty, UUID application) throws SQLException {
+            bindActionProduct(action, parent);
             update("INSERT INTO preplan_supply_action_allocations(action_id,analysis_id,analysis_material_id,allocated_qty,external_item_id) VALUES (?,?,?,?,?)",
                     action, analysis, parent.id(), new BigDecimal(qty), application);
-            return application;
+        }
+
+        void bindActionProduct(UUID action, Parent parent) throws SQLException {
+            update("UPDATE preplan_supply_actions action SET goods_id=parent.goods_id,color_id=parent.color_id,unit_id=parent.unit_id FROM production_material_analysis_materials parent WHERE action.id=? AND parent.id=?",
+                    action, parent.id());
+        }
+
+        Map<String, Object> sourceSnapshot(Parent parent, String required, int priority) {
+            return Map.of("materialLineId", parent.id().toString(), "sourceRequiredQty", required,
+                    "allocationPriority", priority, "needDate", "2026-10-30");
+        }
+
+        void publicEvent(UUID batch, String type, String delta, List<Map<String, Object>> sources,
+                         Map<String, String> requested) throws Exception {
+            String intent = new ObjectMapper().writeValueAsString(Map.of("sources", sources,
+                    "sourceRequestedQtyByMaterialLineId", requested));
+            update("INSERT INTO preplan_aggregate_batch_events(batch_id,event_type,public_delta,intent_snapshot) VALUES (?,?,?,CAST(? AS jsonb))",
+                    batch, type, new BigDecimal(delta), intent);
         }
 
         void publicSurplus(UUID action, UUID application) throws SQLException {

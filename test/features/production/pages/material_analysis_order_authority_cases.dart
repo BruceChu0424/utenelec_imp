@@ -47,6 +47,47 @@ Future<void> _showMaterialSummary(WidgetTester tester) async {
 }
 
 void materialOrderAuthorityCases() {
+  testWidgets('整批撤回409保留真实单据并显示失败，不误报成功或自动重试', (tester) async {
+    await _pump(
+      tester,
+      permissions: _unifiedHandlingPermissions,
+      mutate: _unifiedHandlingFixture,
+      failOn: const {'/cancel': 409},
+    );
+    await _showUnifiedMaterialLayout(tester);
+    requests.clear();
+    final button = find.byKey(
+      const ValueKey('material-aggregate-cancel-make-batch-1'),
+    );
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('确认整批撤回'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 1));
+    expect(
+      requests.where((request) => request.path.endsWith('/cancel')),
+      hasLength(1),
+    );
+    expect(button, findsOneWidget, reason: '服务端回滚后原批次仍可核对，不能从本地隐藏');
+    final notices = ProviderScope.containerOf(
+      tester.element(find.byType(ProductionMaterialAnalysisPage)),
+    ).read(appNotificationProvider);
+    expect(
+      notices.where((notice) => notice.kind == AppNotificationKind.warning),
+      isNotEmpty,
+    );
+    expect(
+      notices.where((notice) => notice.kind == AppNotificationKind.success),
+      isEmpty,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('来源办理权限：转交后两视图供应方式锁定，原来源仍能独立追加', (tester) async {
     await _pump(
       tester,

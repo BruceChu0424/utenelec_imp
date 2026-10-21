@@ -44,6 +44,7 @@ part 'material_analysis_order_authority_cases.dart';
 part 'material_analysis_unified_handling_cases.dart';
 part 'material_analysis_presentation_work_cases.dart';
 part 'material_analysis_view_transition_cases.dart';
+part 'material_analysis_append_quantity_cases.dart';
 
 const _permissions = {
   Perm.productionMaterialAnalysisView,
@@ -260,6 +261,7 @@ bool _framedRed(WidgetTester tester, Finder field) {
 }
 
 void main() {
+  _appendQuantityRegressionTests();
   materialAnalysisViewTransitionCases();
   materialAnalysisPresentationWorkCases();
   materialSharedSourceCases();
@@ -1968,7 +1970,7 @@ void main() {
     );
   });
 
-  testWidgets('汇总整单确认点取消：不写单不预览，草稿保留可再次下单(2026-10-07)', (tester) async {
+  testWidgets('汇总整单确认点取消：保留输入选择且不遗留锁行草稿，可再次下单', (tester) async {
     await _pump(
       tester,
       overSupply: true,
@@ -2002,9 +2004,23 @@ void main() {
     );
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
-    // 取消即停：没有任何预览/下单请求，勾选与草稿原样保留供再次核对。
+    // 仅为确认临时建立的汇总上下文不能接管原行；输入和选择仍可继续使用。
     expect(requests.where((r) => r.path.contains('aggregate-orders')), isEmpty);
-    expect(find.textContaining('撤销汇总草稿'), findsOneWidget);
+    expect(find.textContaining('撤销汇总草稿'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('material-bom-layout-product')));
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 3; i++) {
+      expect(_qtyText(tester, _orderQty('shared-$i')), '1000');
+      expect(
+        tester.widget<Checkbox>(_rowCheckbox('shared-$i')).onChanged,
+        isNotNull,
+      );
+      expect(_rowChecked(tester, 'shared-$i'), isTrue);
+    }
+    await tester.tap(
+      find.byKey(const ValueKey('material-bom-layout-material')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
     await tester.pumpAndSettle();
     expect(find.byType(AlertDialog), findsOneWidget, reason: '再次下单重新确认');
@@ -2013,6 +2029,88 @@ void main() {
       requests.where((r) => r.path.endsWith('/aggregate-orders/submit')),
       isNotEmpty,
     );
+  });
+
+  testWidgets('汇总确认取消保留原有人工草稿和来源数量保护', (tester) async {
+    await _pump(
+      tester,
+      overSupply: true,
+      permissions: _overSupplyPermissions,
+      mutate: _threeSharedBuySources,
+      aggregatePreview: _sharedAggregatePreview,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('material-bom-layout-material')),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('material-aggregate-qty-g-m-2|本色|unit-1')),
+      '3100',
+    );
+    await _settlePreview(tester);
+    requests.clear();
+    await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(of: find.byType(AlertDialog), matching: find.text('取消')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('撤销汇总草稿(1)'), findsOneWidget);
+    expect(
+      requests.where((r) => r.path.endsWith('/aggregate-orders/submit')),
+      isEmpty,
+    );
+    await tester.tap(find.byKey(const ValueKey('material-bom-layout-product')));
+    await tester.pumpAndSettle();
+    expect(_orderQty('shared-0'), findsNothing, reason: '原有人工汇总仍按整份来源保护');
+    await tester.tap(find.byKey(const Key('material-aggregate-cancel-drafts')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('撤销草稿'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(_qtyText(tester, _orderQty('shared-0')), '1000');
+    expect(
+      tester.widget<Checkbox>(_rowCheckbox('shared-0')).onChanged,
+      isNotNull,
+    );
+  });
+
+  testWidgets('汇总确认取消恢复已有草稿来源，后续取消新选行不保留其数量', (tester) async {
+    await _pump(
+      tester,
+      overSupply: true,
+      permissions: _overSupplyPermissions,
+      mutate: _threeSharedBuySources,
+      failOn: const {'/aggregate-orders/submit': 409},
+    );
+    await _check(tester, _rowCheckbox('shared-0'));
+    await _submitSelected(tester);
+    expect(find.textContaining('撤销汇总草稿(1)'), findsOneWidget);
+    await _check(tester, _rowCheckbox('shared-1'));
+    await _showMaterialSummary(tester);
+    await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('共 1 种物料，合计 2000'), findsOneWidget);
+    await tester.tap(
+      find.descendant(of: find.byType(AlertDialog), matching: find.text('取消')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('material-bom-layout-product')));
+    await tester.pumpAndSettle();
+    await _toggle(tester, _rowCheckbox('shared-1'));
+    await _showMaterialSummary(tester);
+    await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('共 1 种物料，合计 1000'), findsOneWidget);
+    await tester.tap(
+      find.descendant(of: find.byType(AlertDialog), matching: find.text('取消')),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('已下达汇总追加900：平分进各来源追加格，撤销恢复0(2026-09-27)', (tester) async {
@@ -8626,6 +8724,7 @@ Map<String, dynamic> _analysis({bool overSupply = false}) => {
           'status': 'REQUESTED',
           'documentNo': 'SC-0001',
           'allocatedQty': 1000,
+          'growableLineQty': 1000,
         },
       ],
     ),
@@ -8652,6 +8751,7 @@ Map<String, dynamic> _analysis({bool overSupply = false}) => {
           'status': 'REQUESTED',
           'documentNo': 'SC-0002',
           'allocatedQty': 1000,
+          'growableLineQty': 1000,
         },
       ],
     ),
@@ -8687,6 +8787,7 @@ Map<String, dynamic> _analysis({bool overSupply = false}) => {
           'status': 'REQUESTED',
           'documentNo': 'SC-0003',
           'allocatedQty': 1000,
+          'growableLineQty': 1000,
         },
       ],
     ),
@@ -8896,6 +8997,7 @@ Map<String, dynamic> _withOverIssuedSubcontractChild(
             'status': 'IN_PROGRESS',
             'documentNo': 'SC-0004',
             'allocatedQty': 1000,
+            'growableLineQty': 1400,
           },
         ],
       ),

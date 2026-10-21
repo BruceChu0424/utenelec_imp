@@ -9,6 +9,7 @@ import 'package:uten_imp/features/warehouse/models/warehouse_iqc_return.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_iqc_stock_in.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_quality_result.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_quality_result_detail_page.dart';
+import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
 import 'package:uten_imp/features/warehouse/repositories/warehouse_iqc_return_repository.dart';
 import 'package:uten_imp/features/warehouse/repositories/warehouse_iqc_stock_in_repository.dart';
 import 'package:uten_imp/features/warehouse/repositories/warehouse_quality_result_repository.dart';
@@ -19,6 +20,70 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets(
+    'physical inspection selection displays and posts only its release slices',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1800, 1500);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final preferences = await SharedPreferences.getInstance();
+      final stock = _StockInGateway();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            warehouseQualityResultRepositoryProvider.overrideWithValue(
+              _QualityGateway(_detailJson()),
+            ),
+            warehouseIqcStockInRepositoryProvider.overrideWithValue(stock),
+            warehouseIqcReturnRepositoryProvider.overrideWithValue(
+              _FailingReturnGateway(),
+            ),
+            sharedPreferencesProvider.overrideWithValue(preferences),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.warehouseIqcStockInView,
+              Perm.warehouseIqcStockInConfirm,
+            }),
+          ],
+          child: const MaterialApp(
+            home: WarehouseQualityResultDetailPage(
+              receiptType: 'PURCHASE',
+              receiptId: 'receipt-1',
+              inspectionItemIds: ['inspection-1'],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('quality-slice-qty-pass-1')), findsNothing);
+      expect(find.byKey(const Key('quality-slice-qty-pass-2')), findsOneWidget);
+      expect(find.byKey(const Key('quality-slice-qty-pass-3')), findsOneWidget);
+      expect(find.text('确认入库(2)'), findsOneWidget);
+      final editor =
+          tester.state(find.byType(WarehouseQualityResultDetailPage))
+              as FormDraftMixin<WarehouseQualityResultDetailPage>;
+      expect(
+        Uri.parse(
+          editor.formDraftSpec.route,
+        ).queryParameters['inspectionItemIds'],
+        'inspection-1',
+      );
+      await tester.tap(
+        find.byKey(const Key('warehouse-quality-detail-confirm')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('warehouse-inbound-allocation-confirm')),
+      );
+      await tester.pumpAndSettle();
+      expect(stock.lastCommand!.items.map((item) => item.passEventId), [
+        'pass-2',
+        'pass-3',
+      ]);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   for (final scenario in [
     (

@@ -35,6 +35,7 @@ import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../models/warehouse_iqc_stock_in.dart';
 import '../models/warehouse_quality_result.dart';
+import '../models/warehouse_quality_selection.dart';
 import '../models/warehouse_task_form_drafts.dart';
 import '../repositories/warehouse_quality_result_repository.dart';
 import '../widgets/warehouse_quality_slice_table.dart'
@@ -126,7 +127,7 @@ class _WarehouseQualityResultsPageState
   /// 排序列 key 见 [_kSortFields]，null = 服务端默认序。
   final _columnFilters = MasterServerColumnFilters();
 
-  /// 表格多选保留原货品身份；办理入口按关联收货单去重。
+  /// 表格与办理入口始终保留原检查物料行，收货单只用于分组。
   Set<String> _selectedIds = {};
 
   bool get _shouldLoad {
@@ -174,17 +175,31 @@ class _WarehouseQualityResultsPageState
       ref.read(formDraftsProvider),
       task.receiptTypeValue,
       task.receiptId,
+      inspectionItemId: task.line?.itemId,
     );
     if (drafts.isNotEmpty) {
       await resumeTaskFormDraft(context, ref, drafts);
       if (mounted) await _load(_result?.page ?? 1);
       return;
     }
+    final List<String>? selectedItems;
+    try {
+      selectedItems = warehouseQualityInspectionSelection([task]);
+    } on ApiException catch (error) {
+      context.appError(error.message);
+      return;
+    }
     final done = await context.push<bool>(
-      RouteName.warehouseQualityPreStockIn(
-        task.receiptTypeValue,
-        task.receiptId,
-      ),
+      Uri(
+        path: RouteName.warehouseQualityPreStockIn(
+          task.receiptTypeValue,
+          task.receiptId,
+        ),
+        queryParameters: {
+          if (selectedItems != null)
+            'inspectionItemIds': selectedItems.join(','),
+        },
+      ).toString(),
     );
     if (!mounted) return;
     if (done == true) await _load(_result?.page ?? 1);
@@ -425,13 +440,13 @@ class _WarehouseQualityResultsPageState
   static String _taskId(WarehouseQualityResultTask task) => task.rowKey;
 
   /// 当前选中且仍有待入库切片的任务（批量入库目标）。
-  List<WarehouseQualityResultTask> get _selectedStockInTasks => {
+  List<WarehouseQualityResultTask> get _selectedStockInTasks => [
     for (final id in _selectedIds)
       if (_taskById(id) case final task?
           when task.pendingSliceCount > 0 &&
               task.workStatus != WarehouseQualityWorkStatus.completed)
-        task.documentKey: task,
-  }.values.toList(growable: false);
+        task,
+  ];
 
   /// 多选批量入库（2026-09-12 弹窗改页）：进批量入库页——所选任务的放行切片
   /// 集中成一张表，可勾选、可改数量/库位，整批同事务提交。
@@ -455,12 +470,35 @@ class _WarehouseQualityResultsPageState
     // 只选中一张时不进批量页——那是一张单据，直接进它自己的详情页办理
     // （用户 2026-09-11：「只选中一个的情况，点击批量入库也应该去到对应的详情页」）。
     // 详情页信息全、能逐行核对，批量页是为「跨多张单一次过」才存在的。
-    if (targets.length == 1) {
-      await _openDetail(targets.single);
+    final List<String>? selectedItems;
+    try {
+      selectedItems = warehouseQualityInspectionSelection(targets);
+    } on ApiException catch (error) {
+      context.appError(error.message);
+      return;
+    }
+    if (selectedItems != null && selectedItems.length > 100) {
+      context.appWarning('本次最多办理100行品质放行明细，请分批办理');
+      return;
+    }
+    final documents = targets.map((task) => task.documentKey).toSet();
+    if (documents.length > 50) {
+      context.appWarning('本次最多办理50张收货单，请分批办理');
+      return;
+    }
+    if (documents.length == 1) {
+      await _openDetail(targets.first, inspectionItemIds: selectedItems);
       return;
     }
     final done = await context.push<bool>(
-      RouteName.warehouseQualityBatchStockIn,
+      Uri(
+        path: RouteName.warehouseQualityBatchStockIn,
+        queryParameters: {
+          'receipts': (documents.toList()..sort()).join(','),
+          if (selectedItems != null)
+            'inspectionItemIds': selectedItems.join(','),
+        },
+      ).toString(),
       extra: targets,
     );
     if (!mounted) return;
@@ -479,9 +517,13 @@ class _WarehouseQualityResultsPageState
           ref.read(formDraftsProvider),
           task.receiptTypeValue,
           task.receiptId,
+          inspectionItemId: task.line?.itemId,
         );
 
-  Future<void> _openDetail(WarehouseQualityResultTask task) async {
+  Future<void> _openDetail(
+    WarehouseQualityResultTask task, {
+    List<String>? inspectionItemIds,
+  }) async {
     if (_loading) return;
     final drafts = _taskDrafts(task);
     if (drafts.isNotEmpty) {
@@ -490,10 +532,16 @@ class _WarehouseQualityResultsPageState
       return;
     }
     await context.push(
-      RouteName.warehouseQualityResultDetail(
-        task.receiptTypeValue,
-        task.receiptId,
-      ),
+      Uri(
+        path: RouteName.warehouseQualityResultDetail(
+          task.receiptTypeValue,
+          task.receiptId,
+        ),
+        queryParameters: {
+          if (inspectionItemIds != null)
+            'inspectionItemIds': inspectionItemIds.join(','),
+        },
+      ).toString(),
     );
     if (!mounted) return;
     await _load(_result?.page ?? 1);
@@ -677,7 +725,10 @@ class _WarehouseQualityResultsPageState
   }
 
   List<Widget> _batchActions(BuildContext context, Set<String> selectedIds) {
-    final stockInCount = _selectedStockInTasks.length;
+    final stockInCount = _selectedStockInTasks
+        .map((task) => task.documentKey)
+        .toSet()
+        .length;
     return [
       UtenButton(
         key: const Key('warehouse-quality-result-batch-stock-in'),

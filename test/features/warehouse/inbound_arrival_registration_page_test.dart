@@ -51,6 +51,165 @@ final _liveArrivalPermissions = StateProvider<Set<String>>(
 final _liveArrivalScope = StateProvider<AuthenticatedScope?>((ref) => null);
 
 void main() {
+  for (final itemIds in [
+    <String>[],
+    ['stale-physical-row'],
+  ]) {
+    testWidgets(
+      'empty or stale physical selection never falls back to whole order ($itemIds)',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        final preferences = await SharedPreferences.getInstance();
+        final api = _BatchApi();
+        final router = _router(ids: [_ids.first], itemIds: itemIds);
+        addTearDown(router.dispose);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              apiClientProvider.overrideWithValue(api),
+              sharedPreferencesProvider.overrideWithValue(preferences),
+              sessionProvider.overrideWith(_TestSessionNotifier.new),
+              masterNameServiceProvider.overrideWithValue(
+                MasterNameService(api),
+              ),
+            ],
+            child: MaterialApp.router(routerConfig: router),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final editor =
+            tester.state(find.byType(InboundArrivalRegistrationPage))
+                as FormDraftMixin<InboundArrivalRegistrationPage>;
+        expect(editor.captureFormDraft()['rows'], isEmpty);
+        expect(find.textContaining('所选到货明细已变化'), findsOneWidget);
+        expect(api.arrivalPostBodies, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  for (final preStock in [false, true]) {
+    testWidgets(
+      'selected physical item alone is displayed, drafted and submitted ($preStock)',
+      (tester) async {
+        tester.view.physicalSize = const Size(1800, 1600);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        SharedPreferences.setMockInitialValues({});
+        final preferences = await SharedPreferences.getInstance();
+        final api = _BatchApi(
+          customPrefills: const [
+            ProcurementReceiptPrefill(
+              expectationId: 'selected-order',
+              orderType: ProcurementInboundOrderType.purchase,
+              orderBillNo: 'CD20261021000002',
+              supplierId: 'supplier-1',
+              purchaserId: 'purchaser-1',
+              warehouseId: 'warehouse-1',
+              items: [
+                ProcurementReceiptPrefillItem(
+                  orderItemId: 'unselected',
+                  goodsId: 'same-goods',
+                  goodsCode: 'UT3128',
+                  goodsName: '同货品未选行',
+                  unitRate: 1,
+                  approvedRemainingQty: 5000,
+                ),
+                ProcurementReceiptPrefillItem(
+                  orderItemId: 'selected',
+                  goodsId: 'same-goods',
+                  goodsCode: 'UT3128',
+                  goodsName: '产品外箱所选行',
+                  unitRate: 1,
+                  approvedRemainingQty: 50,
+                ),
+              ],
+            ),
+          ],
+        );
+        final router = _router(
+          ids: ['selected-order'],
+          itemIds: ['expectation-item-selected'],
+          route: preStock
+              ? InboundRoute.stockInFirst
+              : InboundRoute.inspectFirst,
+        );
+        addTearDown(router.dispose);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              apiClientProvider.overrideWithValue(api),
+              sharedPreferencesProvider.overrideWithValue(preferences),
+              sessionProvider.overrideWith(_TestSessionNotifier.new),
+              masterNameServiceProvider.overrideWithValue(
+                MasterNameService(api),
+              ),
+              currentPermissionsProvider.overrideWithValue(const {
+                Perm.warehouseInboundView,
+                Perm.warehouseInboundStockIn,
+                Perm.warehouseIqcStockInBeforeInspection,
+              }),
+            ],
+            child: MaterialApp.router(routerConfig: router),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(api.byIdsQueries.single, {
+          'ids': 'selected-order',
+          'itemIds': 'expectation-item-selected',
+        });
+        expect(find.text('同货品未选行'), findsNothing);
+        final editor =
+            tester.state(find.byType(InboundArrivalRegistrationPage))
+                as FormDraftMixin<InboundArrivalRegistrationPage>;
+        expect(
+          Uri.parse(
+            editor.formDraftSpec.route,
+          ).queryParameters['expectationItemIds'],
+          'expectation-item-selected',
+        );
+        final draft = editor.captureFormDraft();
+        final rows = (draft['rows'] as List).cast<Map<String, dynamic>>();
+        expect(rows, hasLength(1));
+        expect((rows.single['item'] as Map)['orderItemId'], 'selected');
+        final unrelatedDraft =
+            jsonDecode(jsonEncode(draft)) as Map<String, dynamic>;
+        final unrelatedRow = Map<String, dynamic>.from(
+          (unrelatedDraft['rows'] as List).single as Map,
+        );
+        unrelatedRow['item'] = {
+          ...(unrelatedRow['item'] as Map),
+          'orderItemId': 'unselected',
+        };
+        (unrelatedDraft['rows'] as List).add(unrelatedRow);
+        await expectLater(
+          editor.restoreFormDraft(unrelatedDraft),
+          throwsStateError,
+        );
+        expect(editor.captureFormDraft()['rows'], hasLength(1));
+        rows.single['stockPlace'] = 'BOX-A-01';
+        await editor.restoreFormDraft(draft);
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(
+            (preStock ? InboundRoute.stockInFirst : InboundRoute.inspectFirst)
+                .submitKey,
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(preStock ? '确认登记并先入库' : '确认登记送检'));
+        await tester.pumpAndSettle();
+        final lines = (api.arrivalPostBodies.single['lines'] as List)
+            .cast<Map<String, dynamic>>();
+        expect(lines, hasLength(1));
+        expect(lines.single['orderItemId'], 'selected');
+        expect(lines.single['qty'], '50');
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   for (final readOnly in [false, true]) {
     testWidgets(
       'arrival confirmation observes current authority or readonly ($readOnly)',
@@ -1138,15 +1297,27 @@ void main() {
   });
 }
 
-GoRouter _router({List<String> ids = _ids, InboundRoute? route}) => GoRouter(
+GoRouter _router({
+  List<String> ids = _ids,
+  List<String>? itemIds,
+  InboundRoute? route,
+}) => GoRouter(
   initialLocation: RoutePath.warehouseArrivalRegistration(
     ids,
+    expectationItemIds: itemIds,
     stockInBeforeInspection: route?.isStockInFirst,
   ),
   routes: [
     GoRoute(
       path: RouteName.warehouseArrivalRegistration,
       builder: (_, state) => InboundArrivalRegistrationPage(
+        expectationItemIds:
+            state.uri.queryParameters.containsKey('expectationItemIds')
+            ? state.uri.queryParameters['expectationItemIds']!
+                  .split(',')
+                  .where((id) => id.isNotEmpty)
+                  .toList()
+            : null,
         expectationIds: (state.uri.queryParameters['expectationIds'] ?? '')
             .split(',')
             .where((id) => id.isNotEmpty)

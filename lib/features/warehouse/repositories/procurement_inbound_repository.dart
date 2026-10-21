@@ -67,7 +67,10 @@ abstract interface class ProcurementInboundRepository {
   /// 到货登记一步完成（登记 + 送检审核）：仓库只登记数量/库位，币族由服务端按
   /// 来源订货单权威回填；正常保存即转品质待检，超量返回 excessQuarantined（已隔离待财务）。
   /// 登记页按来源身份读取预计到货(ADR-151 §5：页面路由只带 ?expectationIds=)。
-  Future<List<InboundExpectation>> expectationsByIds(List<String> ids);
+  Future<List<InboundExpectation>> expectationsByIds(
+    List<String> ids, {
+    List<String>? expectationItemIds,
+  });
 
   /// 登记实际到货的唯一命令(单张 = 1 个来源、多选 = N 个来源)：一个事务，服务端按
   /// 「订货单 x 入库仓库」分组成收货单，逐组结果含超量隔离。
@@ -297,11 +300,17 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
   }
 
   @override
-  Future<List<InboundExpectation>> expectationsByIds(List<String> ids) async {
+  Future<List<InboundExpectation>> expectationsByIds(
+    List<String> ids, {
+    List<String>? expectationItemIds,
+  }) async {
     if (ids.isEmpty) return const [];
     final rows = await api.getList(
       ApiEndpoints.warehouseInboundExpectationsByIds,
-      query: {'ids': ids.join(',')},
+      query: {
+        'ids': ids.join(','),
+        if (expectationItemIds != null) 'itemIds': expectationItemIds.join(','),
+      },
     );
     return rows.map(InboundExpectation.fromJson).toList(growable: false);
   }

@@ -36,6 +36,7 @@ import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/measurement/weight_prefs.dart';
 import '../models/warehouse_quality_result.dart';
+import '../models/warehouse_quality_selection.dart';
 import '../repositories/warehouse_quality_result_repository.dart';
 import '../widgets/warehouse_quality_merged_table.dart';
 import '../widgets/warehouse_quality_slice_table.dart';
@@ -47,11 +48,13 @@ class WarehouseQualityBatchStockInPage extends ConsumerStatefulWidget {
     super.key,
     this.targets = const [],
     this.receipts = const [],
+    this.inspectionItemIds,
   });
 
   /// 列表页多选的待入库任务（receiptType + receiptId 携带即可）。
   final List<WarehouseQualityResultTask> targets;
   final List<({String receiptType, String receiptId})> receipts;
+  final List<String>? inspectionItemIds;
 
   @override
   ConsumerState<WarehouseQualityBatchStockInPage> createState() =>
@@ -62,6 +65,9 @@ class _WarehouseQualityBatchStockInPageState
     extends ConsumerState<WarehouseQualityBatchStockInPage>
     with FormDraftMixin<WarehouseQualityBatchStockInPage> {
   WarehouseQualityBatchConfirmCommand? _pendingCommand;
+  List<String>? get _inspectionItemIds =>
+      widget.inspectionItemIds ??
+      warehouseQualityInspectionSelection(widget.targets);
   List<({String receiptType, String receiptId})> get _receipts =>
       {
         ...widget.receipts,
@@ -91,6 +97,8 @@ class _WarehouseQualityBatchStockInPageState
         route: Uri(
           path: RouteName.warehouseQualityBatchStockIn,
           queryParameters: {
+            if (_inspectionItemIds != null)
+              'inspectionItemIds': _inspectionItemIds!.join(','),
             'receipts': _receipts
                 .map((item) => '${item.receiptType}:${item.receiptId}')
                 .join(','),
@@ -107,6 +115,7 @@ class _WarehouseQualityBatchStockInPageState
   ];
   @override
   Map<String, dynamic> captureFormDraft() => {
+    'inspectionItemIds': _inspectionItemIds,
     'receipts': [
       for (final receipt in _receipts)
         {'receiptType': receipt.receiptType, 'receiptId': receipt.receiptId},
@@ -117,6 +126,17 @@ class _WarehouseQualityBatchStockInPageState
   @override
   Future<void> restoreFormDraft(Map<String, dynamic> data) async {
     final pending = data['pendingCommand'];
+    if (pending is Map &&
+        _inspectionItemIds != null &&
+        (data['inspectionItemIds'] is! List ||
+            !(data['inspectionItemIds'] as List).toSet().containsAll(
+              _inspectionItemIds!,
+            ) ||
+            !_inspectionItemIds!.toSet().containsAll(
+              data['inspectionItemIds'] as List,
+            ))) {
+      throw const FormatException('原入库提交不属于当前物料选择，请从原草稿入口恢复');
+    }
     _pendingCommand = pending is Map
         ? WarehouseQualityBatchConfirmCommand.fromDraft(
             Map<String, dynamic>.from(pending),
@@ -208,18 +228,22 @@ class _WarehouseQualityBatchStockInPageState
           version != _requestVersion) {
         return;
       }
+      final selectedItems = _inspectionItemIds?.toSet();
+      validateWarehouseQualityInspectionSelection(details, _inspectionItemIds);
       final drafts = [
         for (final detail in details)
           for (final slice in detail.items)
-            WarehouseQualitySliceDraft(
-              slice,
-              receiptTypeValue: detail.receiptType.apiValue,
-              receiptId: detail.receiptId,
-              receiptNo: detail.billNo,
-              canConfirm: detail.canConfirm,
-              snapshot:
-                  snapshots['${detail.receiptType.apiValue}:${detail.receiptId}:${slice.passEventId}'],
-            ),
+            if (selectedItems == null ||
+                selectedItems.contains(slice.inspectionItemId))
+              WarehouseQualitySliceDraft(
+                slice,
+                receiptTypeValue: detail.receiptType.apiValue,
+                receiptId: detail.receiptId,
+                receiptNo: detail.billNo,
+                canConfirm: detail.canConfirm,
+                snapshot:
+                    snapshots['${detail.receiptType.apiValue}:${detail.receiptId}:${slice.passEventId}'],
+              ),
       ];
       final List<WarehouseQualityMergedRow> nextRows;
       try {
@@ -234,6 +258,7 @@ class _WarehouseQualityBatchStockInPageState
                         draft.receiptId == detail.receiptId,
                   )
                   .toList(),
+              inspectionItemIds: selectedItems,
             ),
         ];
       } catch (_) {
@@ -464,7 +489,7 @@ class _WarehouseQualityBatchStockInPageState
         canPop: !_saving,
         child: Scaffold(
           appBar: UtenAppBar(
-            title: '批量入库 · ${widget.targets.length} 张收货单',
+            title: '批量入库 · ${_receipts.length} 张收货单',
             leading: UtenBackButton(
               color: _saving ? theme.disabledColor : null,
               onPressed: _saving

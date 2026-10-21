@@ -23,6 +23,9 @@ import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
+import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
+import 'package:uten_imp/features/warehouse/models/warehouse_quality_selection.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 import '../../support/filter_segment_tap.dart';
@@ -42,6 +45,129 @@ Future<void> _showStatusChoices(WidgetTester tester) async {
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  test(
+    'explicit empty, unknown and mixed physical quality identities fail closed',
+    () {
+      final detail = WarehouseQualityResultDetail.fromJson(
+        _detailJsonFor('receipt-1'),
+      );
+      for (final ids in [
+        <String>[],
+        ['missing-inspection'],
+      ]) {
+        expect(
+          () => validateWarehouseQualityInspectionSelection([detail], ids),
+          throwsA(isA<ApiException>()),
+        );
+      }
+      final legacy = WarehouseQualityResultTask.fromJson(
+        _summaryJson('ALL_PASSED', pendingSliceCount: 1),
+      );
+      final physical = WarehouseQualityResultTask.fromJson({
+        ..._summaryJson('ALL_PASSED', pendingSliceCount: 1),
+        'line': {'key': 'inspection-1', 'itemId': 'inspection-1'},
+      });
+      expect(warehouseQualityInspectionSelection([legacy]), isNull);
+      expect(warehouseQualityInspectionSelection([physical]), ['inspection-1']);
+      expect(
+        () => warehouseQualityInspectionSelection([legacy, physical]),
+        throwsA(isA<ApiException>()),
+      );
+    },
+  );
+
+  testWidgets(
+    'physical batch selection excludes same-goods sibling releases from every receipt',
+    (tester) async {
+      _viewport(tester, const Size(1600, 1200));
+      final tasks = [
+        for (final index in [1, 2])
+          WarehouseQualityResultTask.fromJson({
+            ..._summaryJson(
+              'ALL_PASSED',
+              pendingSliceCount: 1,
+              passedLineCount: 1,
+              receiptId: 'receipt-$index',
+              billNo: 'PR-00$index',
+            ),
+            'line': {
+              'key': 'inspection-$index',
+              'itemId': 'inspection-$index',
+              'goodsCode': 'G-001',
+              'goodsName': '测试产品',
+            },
+          }),
+      ];
+      final details = <String, Map<String, dynamic>>{};
+      for (final index in [1, 2]) {
+        final detail = _detailJsonFor('receipt-$index');
+        final line = Map<String, dynamic>.from(
+          (detail['lines'] as List).single as Map,
+        );
+        final slice = Map<String, dynamic>.from(
+          (detail['items'] as List).single as Map,
+        );
+        detail['lines'] = [
+          line,
+          {...line, 'inspectionItemId': 'sibling-$index'},
+        ];
+        detail['items'] = [
+          slice,
+          {
+            ...slice,
+            'inspectionItemId': 'sibling-$index',
+            'passEventId': 'unselected-pass-$index',
+          },
+        ];
+        details['receipt-$index'] = detail;
+      }
+      final gateway = _QualityGateway(tasks, details: details);
+      final preferences = await SharedPreferences.getInstance();
+      final router = _routerWithBatchPage();
+      addTearDown(router.dispose);
+      await tester.pumpWidget(_app(null, gateway, preferences, router: router));
+      await tester.pumpAndSettle();
+      final table = tester
+          .widget<MasterDataTableView<WarehouseQualityResultTask>>(
+            find.byKey(const Key('warehouse-quality-result-table')),
+          );
+      table.onSelectedIdsChanged!(tasks.map((task) => task.rowKey).toSet());
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('warehouse-quality-result-batch-stock-in')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('quality-slice-qty-unselected-pass-1')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('quality-slice-qty-unselected-pass-2')),
+        findsNothing,
+      );
+      final editor =
+          tester.state(find.byType(WarehouseQualityBatchStockInPage))
+              as FormDraftMixin<WarehouseQualityBatchStockInPage>;
+      expect(
+        Uri.parse(
+          editor.formDraftSpec.route,
+        ).queryParameters['inspectionItemIds'],
+        'inspection-1,inspection-2',
+      );
+      await tester.tap(
+        find.byKey(const Key('warehouse-quality-batch-confirm')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        gateway.lastBatchCommand!.batches
+            .expand((batch) => batch.items)
+            .map((item) => item.passEventId),
+        ['pass-1', 'pass-2'],
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   for (final scenario in [
     (
@@ -813,7 +939,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('同单货品独立显示和选择，入库复核只打开关联单据一次', (tester) async {
+  testWidgets('同单货品独立显示和选择，入库复核保留所有所选物料身份', (tester) async {
     _viewport(tester, const Size(1440, 1000));
     final tasks = [
       for (final key in ['inspection-1', 'inspection-2'])
@@ -838,6 +964,7 @@ void main() {
     final gateway = _QualityGateway(tasks);
     final preferences = await SharedPreferences.getInstance();
     final pushed = <String>[];
+    final selectedItems = <String?>[];
     final router = GoRouter(
       initialLocation: '/warehouse/quality-results',
       routes: [
@@ -849,6 +976,7 @@ void main() {
           path: '/warehouse/quality-results/:receiptType/:receiptId',
           builder: (_, state) {
             pushed.add(state.uri.path);
+            selectedItems.add(state.uri.queryParameters['inspectionItemIds']);
             return const Scaffold(body: Text('品质检查结果详情'));
           },
         ),
@@ -879,6 +1007,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(pushed, ['/warehouse/quality-results/PURCHASE/receipt-1']);
+    expect(selectedItems, ['inspection-1,inspection-2']);
     expect(tester.takeException(), isNull);
   });
 }
@@ -893,8 +1022,13 @@ GoRouter _routerWithBatchPage() => GoRouter(
     ),
     GoRoute(
       path: '/warehouse/quality-results/batch-stock-in',
-      builder: (_, state) =>
-          WarehouseQualityBatchStockInPage(targets: _batchTargetsOf(state)),
+      builder: (_, state) => WarehouseQualityBatchStockInPage(
+        targets: _batchTargetsOf(state),
+        inspectionItemIds:
+            state.uri.queryParameters.containsKey('inspectionItemIds')
+            ? state.uri.queryParameters['inspectionItemIds']!.split(',')
+            : null,
+      ),
     ),
   ],
 );
@@ -960,9 +1094,10 @@ void _viewport(WidgetTester tester, Size size) {
 }
 
 class _QualityGateway implements WarehouseQualityResultGateway {
-  _QualityGateway(this.tasks);
+  _QualityGateway(this.tasks, {this.details = const {}});
 
   final List<WarehouseQualityResultTask> tasks;
+  final Map<String, Map<String, dynamic>> details;
   int batchConfirmCalls = 0;
   bool failNextBatch = false;
   int statusCountsCalls = 0;
@@ -1060,7 +1195,9 @@ class _QualityGateway implements WarehouseQualityResultGateway {
   Future<WarehouseQualityResultDetail> detail(
     String receiptType,
     String receiptId,
-  ) async => WarehouseQualityResultDetail.fromJson(_detailJsonFor(receiptId));
+  ) async => WarehouseQualityResultDetail.fromJson(
+    details[receiptId] ?? _detailJsonFor(receiptId),
+  );
 
   @override
   Future<WarehouseQualityBatchConfirmResult> batchConfirm(

@@ -31,6 +31,7 @@ import '../../../shared/warehouse/warehouse_task_scope.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/warehouse_task_center_record.dart';
+import '../models/arrival_registration_selection.dart';
 import '../models/warehouse_task_form_drafts.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../repositories/procurement_inbound_repository.dart';
@@ -242,6 +243,9 @@ class _WarehouseTaskRecordsViewState
       'ARRIVAL_REGISTER' || 'ARRIVAL_CONTINUE' => arrivalTaskDrafts(
         drafts,
         row.dataId('expectationId') ?? target,
+        expectationItemId: row.action == 'ARRIVAL_REGISTER'
+            ? row.dataId('expectationItemId') ?? row.line?.itemId
+            : null,
       ),
       'FINISHED_REGISTER' || 'FINISHED_COUNT' => finishedInboundTaskDrafts(
         drafts,
@@ -444,12 +448,23 @@ class _WarehouseTaskRecordsViewState
       context.appWarning('请只选择可用同一种方式办理的单据');
       return;
     }
-    final max = family == 'SUBCONTRACT_OUTBOUND' ? 50 : 100;
+    final max = family == 'ARRIVAL_REGISTER'
+        ? arrivalRegistrationMaxSources
+        : family == 'SUBCONTRACT_OUTBOUND'
+        ? 50
+        : 100;
     final commandCount = family == 'ARRIVAL_CONTINUE'
         ? rows.expand((row) => row.dataIds('draftReceiptIds')).toSet().length
+        : family == 'ARRIVAL_REGISTER'
+        ? rows.map((row) => row.targetId ?? row.id).toSet().length
         : rows.length;
     if (commandCount > max) {
       context.appWarning('本次最多办理 $max 张单据，请分批办理');
+      return;
+    }
+    if (family == 'ARRIVAL_REGISTER' &&
+        rows.length > arrivalRegistrationMaxItems) {
+      context.appWarning('本次最多登记 $arrivalRegistrationMaxItems 行到货明细，请分批办理');
       return;
     }
     if (selectedRows.any((row) => !_canSelect(row))) {

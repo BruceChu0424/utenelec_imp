@@ -297,7 +297,9 @@ class InboundExpectation {
         items.any((item) => item.canReceive);
   }
 
-  ProcurementReceiptPrefill? toReceiptPrefill() {
+  ProcurementReceiptPrefill? toReceiptPrefill({
+    Set<String>? expectationItemIds,
+  }) {
     if (!canCreateReceipt) return null;
     return ProcurementReceiptPrefill(
       expectationId: id,
@@ -312,7 +314,12 @@ class InboundExpectation {
       suggestedWarehouseName: suggestedWarehouseName,
       purchaserId: ownerEmployeeId,
       items: items
-          .where((item) => item.canReceive)
+          .where(
+            (item) =>
+                item.canReceive &&
+                (expectationItemIds == null ||
+                    expectationItemIds.contains(item.id)),
+          )
           .map(
             (item) => ProcurementReceiptPrefillItem(
               orderItemId: item.orderItemId,

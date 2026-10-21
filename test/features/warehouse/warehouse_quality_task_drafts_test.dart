@@ -118,6 +118,53 @@ void main() {
     expect(arrivalTaskDrafts([impostor], 'e-1'), isEmpty);
   });
   test(
+    'quality item draft binds only its selected inspection on the same receipt',
+    () {
+      final draft = _draft(
+        'quality-item',
+        FormDraftCatalog.warehouseQualityStockIn,
+        route:
+            '${RouteName.warehouseQualityResults}/PURCHASE/r-1?inspectionItemIds=i-1',
+      );
+      expect(
+        qualityStockInTaskDrafts(
+          [draft],
+          'PURCHASE',
+          'r-1',
+          inspectionItemId: 'i-1',
+        ),
+        [draft],
+      );
+      expect(
+        qualityStockInTaskDrafts(
+          [draft],
+          'PURCHASE',
+          'r-1',
+          inspectionItemId: 'i-2',
+        ),
+        isEmpty,
+      );
+    },
+  );
+  test(
+    'arrival item draft does not bind unselected sibling rows on the same order',
+    () {
+      final draft = _draft(
+        'arrival-item',
+        FormDraftCatalog.arrival,
+        route:
+            '${RouteName.warehouseArrivalRegistration}?expectationIds=e-1&expectationItemIds=item-a',
+      );
+      expect(arrivalTaskDrafts([draft], 'e-1', expectationItemId: 'item-a'), [
+        draft,
+      ]);
+      expect(
+        arrivalTaskDrafts([draft], 'e-1', expectationItemId: 'item-b'),
+        isEmpty,
+      );
+    },
+  );
+  test(
     'IQC batch matches receipt type and id, never supplier or goods identity',
     () {
       final draft = _draft(

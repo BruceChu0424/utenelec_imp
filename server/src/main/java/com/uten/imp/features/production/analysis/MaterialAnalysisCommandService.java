@@ -2912,7 +2912,7 @@ public class MaterialAnalysisCommandService {
                     WHERE batch.action_id=:action AND plan.status IN(0,1) AND NOT plan.is_deleted AND NOT plan.is_canceled)
                 """).setParameter("action",actionId).getSingleResult()))throw conflict("共享制造已有正式计划，请先按整个共享计划处理其报工、库存及来源依赖");
         Object[] item = one(em.createNativeQuery("""
-                SELECT requested_qty, submitted_qty, approved_qty
+                SELECT requested_qty, submitted_qty, approved_qty, source_type
                 FROM production_material_analysis_items
                 WHERE id = :id AND analysis_id = :analysisId
                   AND source_type IN ('MAKE_COMPONENT','AGGREGATE_MAKE')
@@ -2935,7 +2935,38 @@ public class MaterialAnalysisCommandService {
                 """).setParameter("analysisId", analysisId)
                 .setParameter("actionId", actionId).setParameter("itemId", itemId)
                 .getSingleResult();
-        if (next.signum() == 0 && other.longValue() == 0) {
+        // A cancelled shared parent loses its production responsibility, but its
+        // separately ordered children still own these exact material identities.
+        // Keep their zero-demand context so refresh does not remove the child
+        // sources and then reject the still-valid orders as an identity change.
+        boolean retainedAggregateContext = "AGGREGATE_MAKE".equals(item[3])
+                && Boolean.TRUE.equals(em.createNativeQuery("""
+                        SELECT EXISTS (
+                            SELECT 1
+                            FROM production_material_analysis_materials material
+                            JOIN preplan_supply_action_allocations allocation
+                              ON allocation.analysis_material_id=material.id
+                            JOIN preplan_supply_actions action ON action.id=allocation.action_id
+                            WHERE material.analysis_id=:analysisId AND material.analysis_item_id=:itemId
+                              AND action.id<>:actionId AND action.status<>'CANCELLED'
+                        ) OR EXISTS (
+                            SELECT 1
+                            FROM production_material_analysis_materials material
+                            JOIN production_material_analysis_items child
+                              ON child.parent_analysis_material_id=material.id AND NOT child.is_deleted
+                            JOIN production_material_analysis_plan_links link
+                              ON link.analysis_item_id=child.id AND link.allocation_status IN('SUBMITTED','APPROVED')
+                            WHERE material.analysis_id=:analysisId AND material.analysis_item_id=:itemId
+                        ) OR EXISTS (
+                            SELECT 1
+                            FROM production_material_analysis_materials material
+                            JOIN preplan_make_public_claims claim ON claim.target_material_id=material.id
+                            WHERE material.analysis_id=:analysisId AND material.analysis_item_id=:itemId
+                              AND claim.qty>fn_preplan_make_public_claim_cancelled_qty(claim.id)
+                        )
+                        """).setParameter("analysisId",analysisId).setParameter("itemId",itemId)
+                        .setParameter("actionId",actionId).getSingleResult());
+        if (next.signum() == 0 && other.longValue() == 0 && !retainedAggregateContext) {
             em.createNativeQuery("""
                     UPDATE production_material_analysis_items
                     SET is_deleted = TRUE, deleted_at = now(), updated_at = now(),
@@ -2946,9 +2977,15 @@ public class MaterialAnalysisCommandService {
         } else {
             em.createNativeQuery("""
                     UPDATE production_material_analysis_items
-                    SET requested_qty = :qty, updated_at = now(), updated_by = :actorId
+                    SET requested_qty = :qty,
+                        ready_now_qty=LEAST(ready_now_qty,:remaining),
+                        ready_by_date_qty=LEAST(ready_by_date_qty,:remaining),
+                        ready_start_qty=LEAST(ready_start_qty,:remaining),
+                        ready_finish_qty=LEAST(ready_finish_qty,:remaining),
+                        ready_ship_qty=LEAST(ready_ship_qty,:remaining),
+                        updated_at = now(), updated_by = :actorId
                     WHERE id = :id
-                    """).setParameter("qty", next)
+                    """).setParameter("qty", next).setParameter("remaining",next.subtract(minimum))
                     .setParameter("actorId", currentUser.requireId())
                     .setParameter("id", itemId).executeUpdate();
         }

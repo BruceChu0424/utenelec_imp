@@ -1144,6 +1144,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.warehouseQualityBatchStockIn,
             name: 'warehouse-quality-batch-stock-in',
             builder: (_, s) => WarehouseQualityBatchStockInPage(
+              inspectionItemIds:
+                  s.uri.queryParameters.containsKey('inspectionItemIds')
+                  ? s.uri.queryParameters['inspectionItemIds']!
+                        .split(',')
+                        .where((id) => id.isNotEmpty)
+                        .toList()
+                  : null,
               targets: s.extra is List<WarehouseQualityResultTask>
                   ? s.extra! as List<WarehouseQualityResultTask>
                   : const [],
@@ -1164,6 +1171,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 '${RouteName.warehouseQualityPreStockInBase}/:receiptType/:receiptId',
             name: 'warehouse-quality-pre-stock-in',
             builder: (_, state) => WarehouseQualityPreStockInPage(
+              inspectionItemIds:
+                  state.uri.queryParameters.containsKey('inspectionItemIds')
+                  ? state.uri.queryParameters['inspectionItemIds']!
+                        .split(',')
+                        .where((id) => id.isNotEmpty)
+                        .toList()
+                  : null,
               receiptType: state.pathParameters['receiptType']!,
               receiptId: state.pathParameters['receiptId']!,
             ),
@@ -1173,6 +1187,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 '${RouteName.warehouseQualityResults}/:receiptType/:receiptId',
             name: 'warehouse-quality-result-detail',
             builder: (_, state) => WarehouseQualityResultDetailPage(
+              inspectionItemIds:
+                  state.uri.queryParameters.containsKey('inspectionItemIds')
+                  ? state.uri.queryParameters['inspectionItemIds']!
+                        .split(',')
+                        .where((id) => id.isNotEmpty)
+                        .toList()
+                  : null,
               receiptType: state.pathParameters['receiptType']!,
               receiptId: state.pathParameters['receiptId']!,
             ),
@@ -1257,6 +1278,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.warehouseArrivalRegistration,
             name: 'warehouse-arrival-registration',
             builder: (_, s) => InboundArrivalRegistrationPage(
+              expectationItemIds:
+                  s.uri.queryParameters.containsKey('expectationItemIds')
+                  ? (s.uri.queryParameters['expectationItemIds'] ?? '')
+                        .split(',')
+                        .map((id) => id.trim())
+                        .where((id) => id.isNotEmpty)
+                        .toList(growable: false)
+                  : null,
               expectationIds: (s.uri.queryParameters['expectationIds'] ?? '')
                   .split(',')
                   .map((id) => id.trim())

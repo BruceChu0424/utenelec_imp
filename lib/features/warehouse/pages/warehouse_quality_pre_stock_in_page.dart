@@ -38,6 +38,7 @@ import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../models/warehouse_iqc_stock_in.dart';
 import '../models/warehouse_quality_result.dart';
+import '../models/warehouse_quality_selection.dart';
 import '../repositories/warehouse_iqc_stock_in_repository.dart';
 import '../repositories/warehouse_quality_result_repository.dart';
 import '../widgets/warehouse_quality_slice_table.dart'
@@ -50,10 +51,12 @@ class WarehouseQualityPreStockInPage extends ConsumerStatefulWidget {
     super.key,
     required this.receiptType,
     required this.receiptId,
+    this.inspectionItemIds,
   });
 
   final String receiptType;
   final String receiptId;
+  final List<String>? inspectionItemIds;
 
   @override
   ConsumerState<WarehouseQualityPreStockInPage> createState() =>
@@ -78,10 +81,16 @@ class _WarehouseQualityPreStockInPageState
   @override
   FormDraftSpec get formDraftSpec =>
       FormDraftCatalog.warehouseQualityPreStockIn.spec(
-        route: RouteName.warehouseQualityPreStockIn(
-          widget.receiptType,
-          widget.receiptId,
-        ),
+        route: Uri(
+          path: RouteName.warehouseQualityPreStockIn(
+            widget.receiptType,
+            widget.receiptId,
+          ),
+          queryParameters: {
+            if (widget.inspectionItemIds != null)
+              'inspectionItemIds': widget.inspectionItemIds!.join(','),
+          },
+        ).toString(),
       );
   @override
   Iterable<Listenable> get formDraftListenables => [
@@ -90,6 +99,7 @@ class _WarehouseQualityPreStockInPageState
   ];
   @override
   Map<String, dynamic> captureFormDraft() => {
+    'inspectionItemIds': widget.inspectionItemIds,
     'receipts': [
       {'receiptType': widget.receiptType, 'receiptId': widget.receiptId},
     ],
@@ -108,6 +118,17 @@ class _WarehouseQualityPreStockInPageState
   @override
   Future<void> restoreFormDraft(Map<String, dynamic> data) async {
     final pending = data['pendingCommand'];
+    if (pending is Map &&
+        widget.inspectionItemIds != null &&
+        (data['inspectionItemIds'] is! List ||
+            !(data['inspectionItemIds'] as List).toSet().containsAll(
+              widget.inspectionItemIds!,
+            ) ||
+            !widget.inspectionItemIds!.toSet().containsAll(
+              data['inspectionItemIds'] as List,
+            ))) {
+      throw const FormatException('原上架提交不属于当前物料选择，请从原草稿入口恢复');
+    }
     _pendingCommand = pending is Map
         ? WarehouseIqcPreStockInCommand.fromDraft(
             Map<String, dynamic>.from(pending),
@@ -202,8 +223,14 @@ class _WarehouseQualityPreStockInPageState
           version != _requestVersion) {
         return;
       }
+      validateWarehouseQualityInspectionSelection([
+        detail,
+      ], widget.inspectionItemIds);
       final rows = [
-        for (final line in detail.preStockableLines) WarehousePreStockRow(line),
+        for (final line in detail.preStockableLines)
+          if (widget.inspectionItemIds == null ||
+              widget.inspectionItemIds!.contains(line.inspectionItemId))
+            WarehousePreStockRow(line),
       ];
       try {
         final identities = rows.map((row) => row.line.inspectionItemId).toSet();

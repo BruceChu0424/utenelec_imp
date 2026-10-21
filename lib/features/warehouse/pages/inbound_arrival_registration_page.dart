@@ -82,6 +82,7 @@ import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
 import '../models/inbound_registration_line.dart';
+import '../models/arrival_registration_selection.dart';
 import '../providers/inbound_warehouse_fill_memory.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../repositories/warehouse_place_suggestion_repository.dart';
@@ -97,12 +98,17 @@ class InboundArrivalRegistrationPage extends ConsumerStatefulWidget {
   const InboundArrivalRegistrationPage({
     super.key,
     required this.expectationIds,
+    this.expectationItemIds,
     this.canRegister,
     this.route,
   });
 
   /// 来源预计到货任务(1..N)：双击 = 1 个，多选 = N 个；每个 = 一张订货单。
   final List<String> expectationIds;
+
+  /// Physical expectation rows selected in the task center. Null keeps the
+  /// document entry; an empty or stale selection must never expand to all rows.
+  final List<String>? expectationItemIds;
 
   /// 仅供独立预览/测试覆盖；正式路由为空时从当前登录权限实时推导。
   final bool? canRegister;
@@ -128,6 +134,7 @@ class _InboundArrivalRegistrationPageState
     title: '登记实际到货',
     route: RoutePath.warehouseArrivalRegistration(
       widget.expectationIds,
+      expectationItemIds: widget.expectationItemIds,
       stockInBeforeInspection: widget.route?.isStockInFirst,
     ),
   );
@@ -145,6 +152,7 @@ class _InboundArrivalRegistrationPageState
   ];
   @override
   Map<String, dynamic> captureFormDraft() => {
+    'expectationItemIds': widget.expectationItemIds,
     'remark': _remark.text,
     'billDate': _billDate.toIso8601String(),
     'receiverId': _receiverId,
@@ -177,6 +185,23 @@ class _InboundArrivalRegistrationPageState
   };
   @override
   Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    if (widget.expectationItemIds case final selected?) {
+      final sourceItems = _selectedSourceOrderItems;
+      final savedItems = data['expectationItemIds'];
+      final sameSelection =
+          savedItems is List &&
+          savedItems.toSet().containsAll(selected) &&
+          selected.toSet().containsAll(savedItems);
+      if ((sourceItems == null && !sameSelection) ||
+          (sourceItems != null &&
+              draftMaps(data['rows']).any(
+                (row) => !sourceItems.contains(
+                  '${row['expectationId']}:${draftMap(row['item'])['orderItemId']}',
+                ),
+              ))) {
+        throw StateError('草稿到货明细与本次选择不一致，请从原草稿入口恢复');
+      }
+    }
     _remark.text = draftText(data, 'remark');
     _billDate = DateTime.parse(draftText(data, 'billDate'));
     _receiverId = data['receiverId'] as String?;
@@ -243,9 +268,7 @@ class _InboundArrivalRegistrationPageState
   /// 明细表 sticky 表头是否已置顶(页面滚动条门控：置顶前不显示，置顶后才显示)。
   final _gridPinned = ValueNotifier<bool>(false);
   final _lineGrid = UtenEditableGridController<_BatchArrivalLine>();
-  late final _suggestions = InboundPlaceSuggestionLoader(
-    ref.read(warehousePlaceSuggestionRepositoryProvider),
-  );
+  late final InboundPlaceSuggestionLoader _suggestions;
   final Map<String, UtenEmployeePickerItem> _empCache = {};
 
   DateTime _billDate = ChinaDateTime.today();
@@ -263,6 +286,7 @@ class _InboundArrivalRegistrationPageState
   bool _profileLearningInCommand = true;
   int _removedLineCount = 0;
   String? _loadError;
+  Set<String>? _selectedSourceOrderItems;
 
   /// 多选时任务中心选定的路线：「先入库后质检」= 登记送检的同一事务里把每行按库位上架(库位必填)；
   /// 「先质检后入库」= 原登记送检流程。双击进来为空，两条路线按钮并排。
@@ -393,6 +417,11 @@ class _InboundArrivalRegistrationPageState
   @override
   void initState() {
     super.initState();
+    // Construct while ref is live, including a failed/empty source read whose
+    // first interaction with the loader would otherwise be dispose().
+    _suggestions = InboundPlaceSuggestionLoader(
+      ref.read(warehousePlaceSuggestionRepositoryProvider),
+    );
     // 进页即定路线；没有独立权限时退回「先质检后入库」(任务中心本就不显示该入口)。
     final route = widget.route;
     _route = route == null
@@ -431,11 +460,43 @@ class _InboundArrivalRegistrationPageState
     try {
       await ref.read(masterNameServiceProvider).ensureLoaded();
       // 来源身份进页(ADR-151 §5)：按 id 从服务端重新读预计到货，与任务中心同一投影。
+      final selectedItems = widget.expectationItemIds?.toSet();
+      if (widget.expectationIds.toSet().length >
+              arrivalRegistrationMaxSources ||
+          (selectedItems != null &&
+              (selectedItems.isEmpty ||
+                  selectedItems.length > arrivalRegistrationMaxItems))) {
+        throw ApiException('CONFLICT', '所选到货明细已变化，请返回任务中心重新选择');
+      }
       final expectations = await ref
           .read(procurementInboundRepositoryProvider)
-          .expectationsByIds(widget.expectationIds);
+          .expectationsByIds(
+            widget.expectationIds,
+            expectationItemIds: widget.expectationItemIds,
+          );
+      if (selectedItems != null &&
+          !selectedItems.every(
+            (id) => expectations.any(
+              (expectation) => expectation.items.any(
+                (item) => item.id == id && item.canReceive,
+              ),
+            ),
+          )) {
+        throw ApiException('CONFLICT', '所选到货明细已变化，请返回任务中心重新选择');
+      }
+      _selectedSourceOrderItems = selectedItems == null
+          ? null
+          : {
+              for (final expectation in expectations)
+                for (final item in expectation.items)
+                  if (selectedItems.contains(item.id))
+                    '${expectation.id}:${item.orderItemId}',
+            };
       prefills = [
-        for (final expectation in expectations) ?expectation.toReceiptPrefill(),
+        for (final expectation in expectations)
+          if (expectation.toReceiptPrefill(expectationItemIds: selectedItems)
+              case final prefill?)
+            if (prefill.items.isNotEmpty) prefill,
       ];
     } catch (error) {
       if (!mounted) return;

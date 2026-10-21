@@ -37,6 +37,7 @@ import '../../../shared/drafts/form_draft_mixin.dart';
 import '../models/warehouse_iqc_return.dart';
 import '../models/warehouse_iqc_stock_in.dart';
 import '../models/warehouse_quality_result.dart';
+import '../models/warehouse_quality_selection.dart';
 import '../repositories/warehouse_iqc_return_repository.dart';
 import '../repositories/warehouse_iqc_stock_in_repository.dart';
 import '../repositories/warehouse_quality_result_repository.dart';
@@ -56,10 +57,12 @@ class WarehouseQualityResultDetailPage extends ConsumerStatefulWidget {
     super.key,
     required this.receiptType,
     required this.receiptId,
+    this.inspectionItemIds,
   });
 
   final String receiptType;
   final String receiptId;
+  final List<String>? inspectionItemIds;
 
   @override
   ConsumerState<WarehouseQualityResultDetailPage> createState() =>
@@ -84,8 +87,14 @@ class _WarehouseQualityResultDetailPageState
   @override
   FormDraftSpec
   get formDraftSpec => FormDraftCatalog.warehouseQualityStockIn.spec(
-    route:
-        '${RouteName.warehouseQualityResults}/${widget.receiptType}/${widget.receiptId}',
+    route: Uri(
+      path:
+          '${RouteName.warehouseQualityResults}/${widget.receiptType}/${widget.receiptId}',
+      queryParameters: {
+        if (widget.inspectionItemIds != null)
+          'inspectionItemIds': widget.inspectionItemIds!.join(','),
+      },
+    ).toString(),
   );
   @override
   Iterable<Listenable> get formDraftListenables => [
@@ -94,6 +103,7 @@ class _WarehouseQualityResultDetailPageState
   ];
   @override
   Map<String, dynamic> captureFormDraft() => {
+    'inspectionItemIds': widget.inspectionItemIds,
     'receipts': [
       {'receiptType': widget.receiptType, 'receiptId': widget.receiptId},
     ],
@@ -103,6 +113,17 @@ class _WarehouseQualityResultDetailPageState
   @override
   Future<void> restoreFormDraft(Map<String, dynamic> data) async {
     final pending = data['pendingCommand'];
+    if (pending is Map &&
+        widget.inspectionItemIds != null &&
+        (data['inspectionItemIds'] is! List ||
+            !(data['inspectionItemIds'] as List).toSet().containsAll(
+              widget.inspectionItemIds!,
+            ) ||
+            !widget.inspectionItemIds!.toSet().containsAll(
+              data['inspectionItemIds'] as List,
+            ))) {
+      throw const FormatException('原入库提交不属于当前物料选择，请从原草稿入口恢复');
+    }
     _pendingCommand = pending is Map
         ? WarehouseIqcStockInConfirmCommand.fromDraft(
             Map<String, dynamic>.from(pending),
@@ -202,21 +223,30 @@ class _WarehouseQualityResultDetailPageState
           version != _requestVersion) {
         return;
       }
+      validateWarehouseQualityInspectionSelection([
+        detail,
+      ], widget.inspectionItemIds);
       final nextDrafts = [
         for (final slice in detail.items)
-          WarehouseQualitySliceDraft(
-            slice,
-            receiptTypeValue: detail.receiptType.apiValue,
-            receiptId: detail.receiptId,
-            receiptNo: detail.billNo,
-            canConfirm: detail.canConfirm,
-            snapshot:
-                snapshots['${detail.receiptType.apiValue}:${detail.receiptId}:${slice.passEventId}'],
-          ),
+          if (widget.inspectionItemIds == null ||
+              widget.inspectionItemIds!.contains(slice.inspectionItemId))
+            WarehouseQualitySliceDraft(
+              slice,
+              receiptTypeValue: detail.receiptType.apiValue,
+              receiptId: detail.receiptId,
+              receiptNo: detail.billNo,
+              canConfirm: detail.canConfirm,
+              snapshot:
+                  snapshots['${detail.receiptType.apiValue}:${detail.receiptId}:${slice.passEventId}'],
+            ),
       ];
       final List<WarehouseQualityMergedRow> nextRows;
       try {
-        nextRows = warehouseQualityRowsForDetail(detail, nextDrafts);
+        nextRows = warehouseQualityRowsForDetail(
+          detail,
+          nextDrafts,
+          inspectionItemIds: widget.inspectionItemIds?.toSet(),
+        );
       } catch (_) {
         for (final draft in nextDrafts) {
           draft.dispose();

@@ -66,8 +66,9 @@ class WarehouseQualityMergedRow extends EditableGridRow {
 /// 两种办理入口共用同一个按检查行和放行 UUID 关联的行集。
 List<WarehouseQualityMergedRow> warehouseQualityRowsForDetail(
   WarehouseQualityResultDetail detail,
-  List<WarehouseQualitySliceDraft> drafts,
-) {
+  List<WarehouseQualitySliceDraft> drafts, {
+  Set<String>? inspectionItemIds,
+}) {
   final byLine = <String, List<WarehouseQualitySliceDraft>>{};
   for (final draft in drafts) {
     byLine.putIfAbsent(draft.slice.inspectionItemId, () => []).add(draft);
@@ -89,6 +90,10 @@ List<WarehouseQualityMergedRow> warehouseQualityRowsForDetail(
     supplierName: detail.supplierName,
   );
   for (final line in detail.lines) {
+    if (inspectionItemIds != null &&
+        !inspectionItemIds.contains(line.inspectionItemId)) {
+      continue;
+    }
     final slices = byLine.remove(line.inspectionItemId) ?? const [];
     if (slices.isEmpty) {
       rows.add(row(line, null, 0, 0));

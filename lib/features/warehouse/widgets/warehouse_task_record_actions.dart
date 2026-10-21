@@ -16,6 +16,7 @@ import '../../../shared/warehouse/warehouse_task_scope.dart';
 import '../../../core/network/server_config.dart';
 import '../config/warehouse_document_history_config.dart';
 import '../models/stock_doc.dart';
+import '../models/arrival_registration_selection.dart';
 import '../models/warehouse_task_center_record.dart';
 import '../models/production_finished_inbound_task.dart';
 import '../pages/production_finished_batch_stock_in_page.dart';
@@ -45,8 +46,8 @@ const _openActions = {
 bool warehouseTaskRecordCanOpen(WarehouseTaskCenterRecord row) =>
     _openActions.contains(row.action) && (row.targetId ?? row.id).isNotEmpty;
 
-/// Lists select physical items; the existing review pages still own document commands.
-/// Continue-inspection keeps all item payloads until receipt IDs are unioned.
+/// Registration keeps physical items until the destination reads those exact rows.
+/// Document commands deduplicate only after all selected item identities are retained.
 List<WarehouseTaskCenterRecord> warehouseTaskCommandTargets(
   Iterable<WarehouseTaskCenterRecord> rows,
 ) => {
@@ -55,6 +56,7 @@ List<WarehouseTaskCenterRecord> warehouseTaskCommandTargets(
           'FINISHED_REGISTER' => row.dataId('lotId') ?? row.rowKey,
           'FINISHED_COUNT' => row.dataId('taskId') ?? row.targetId ?? row.id,
           'ARRIVAL_CONTINUE' => row.rowKey,
+          'ARRIVAL_REGISTER' => row.dataId('expectationItemId') ?? row.line?.itemId ?? row.rowKey,
           _ => row.targetId ?? row.id,
         }}':
         row,
@@ -136,7 +138,18 @@ Future<void> openWarehouseTaskRecord(
   }
   switch (row.action) {
     case 'ARRIVAL_REGISTER':
-      await context.push<void>(RoutePath.warehouseArrivalRegistration([id]));
+      final itemId = row.dataId('expectationItemId') ?? row.line?.itemId;
+      if (row.line != null && itemId == null) {
+        context.appWarning(
+          AppLocalizations.of(context).warehouseTaskSelectionChanged,
+        );
+        return;
+      }
+      await context.push<void>(
+        RoutePath.warehouseArrivalRegistration([
+          id,
+        ], expectationItemIds: itemId == null ? null : [itemId]),
+      );
     case 'ARRIVAL_CONTINUE':
       final receiptIds = row.dataIds('draftReceiptIds');
       if (!row.canHandle || receiptIds.isEmpty || receiptIds.length > 100) {
@@ -313,18 +326,45 @@ Future<void> openWarehouseTaskRecordBatch(
   }
   final family = families.single!;
   rows = warehouseTaskCommandTargets(rows);
-  final max = family == 'SUBCONTRACT_OUTBOUND' ? 50 : 100;
-  if (rows.length > max) {
+  final max = family == 'ARRIVAL_REGISTER'
+      ? arrivalRegistrationMaxSources
+      : family == 'SUBCONTRACT_OUTBOUND'
+      ? 50
+      : 100;
+  final ids = rows.map((row) => row.targetId ?? row.id).toSet().toList()
+    ..sort();
+  final commandCount = family == 'ARRIVAL_REGISTER' ? ids.length : rows.length;
+  if (commandCount > max) {
     context.appWarning('本次最多办理 $max 张单据，请分批办理');
     return;
   }
-  final ids = rows.map((row) => row.targetId ?? row.id).toSet().toList()
-    ..sort();
+  if (family == 'ARRIVAL_REGISTER' &&
+      rows.length > arrivalRegistrationMaxItems) {
+    context.appWarning('本次最多登记 $arrivalRegistrationMaxItems 行到货明细，请分批办理');
+    return;
+  }
   switch (family) {
     case 'ARRIVAL_REGISTER':
+      final items = rows
+          .map((row) => row.dataId('expectationItemId') ?? row.line?.itemId)
+          .toList();
+      if ((items.any((id) => id != null) && items.any((id) => id == null)) ||
+          rows.any(
+            (row) =>
+                row.line != null &&
+                (row.dataId('expectationItemId') ?? row.line?.itemId) == null,
+          )) {
+        context.appWarning(
+          AppLocalizations.of(context).warehouseTaskSelectionChanged,
+        );
+        return;
+      }
       await context.push<void>(
         RoutePath.warehouseArrivalRegistration(
           ids,
+          expectationItemIds: items.every((id) => id != null)
+              ? items.cast<String>()
+              : null,
           stockInBeforeInspection: preStock,
         ),
       );

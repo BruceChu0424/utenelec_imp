@@ -5,6 +5,9 @@ import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.features.production.analysis.MaterialAnalysisCommandService;
 import com.uten.imp.features.production.analysis.MaterialAnalysisContracts.*;
 import com.uten.imp.features.production.analysis.MaterialAnalysisService;
+import com.uten.imp.features.production.analysis.AggregateMaterialOrderContracts;
+import com.uten.imp.features.production.analysis.AggregateMaterialOrderPreviewService;
+import com.uten.imp.features.production.analysis.AggregateMaterialOrderWriteService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -42,6 +45,8 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
     @Autowired JdbcTemplate db;
     @Autowired MaterialAnalysisService analyses;
     @Autowired MaterialAnalysisCommandService commands;
+    @Autowired AggregateMaterialOrderPreviewService aggregatePreview;
+    @Autowired AggregateMaterialOrderWriteService aggregateWriter;
     @Autowired javax.sql.DataSource dataSource;
     @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
     private FullChainEndToEndTest fixture;
@@ -1085,6 +1090,54 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
                 WHERE action.analysis_id=?
                 """,BigDecimal.class,analysis));
         assertNotNull(material(notified,componentLine));
+    }
+
+    @Test void subcontractAppendPreviewAndActualSubmissionKeepTheExactDirectEdgeQuantity() {
+        var w=fixture.seedWorld("planned-sub-append-8000");fixture.loginAs(w.superAdminUserId());
+        UUID root=UUID.randomUUID(),sub=UUID.randomUUID();
+        fixture.insertGoods(root,"PQA-ROOT-"+root,"追加计量成品","自制",w.unitId(),w.unitLegacy());
+        fixture.insertGoods(sub,"PQA-S-"+sub,"追加委外父件","委外",w.unitId(),w.unitLegacy());
+        fixture.insertBom(root,sub,"1");fixture.insertBom(sub,w.goodsC(),"1");
+        db.update("UPDATE goods SET default_supplier_id=? WHERE id IN (?,?)",w.supplierId(),sub,w.goodsC());
+        AnalysisView view=analyses.preview(new PreviewRequest(null,null,null,w.warehouseId(),"planned-sub-append-preview-"+root,
+                List.of(new PreviewItem("OTHER",null,root,null,w.unitId(),"planned-sub-append-source-"+root,"委外追加精确计量",BusinessTime.today().plusDays(10),new BigDecimal("5000")))));
+        view=analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"planned-sub-append-routes-"+view.analysisId(),
+                view.flatMaterials().stream().filter(MaterialView::actionable)
+                        .map(m->new RouteDecision(m.materialLineId(),m.actionGroupKey(),m.goodsId().equals(sub)?"SUBCONTRACT":m.goodsId().equals(root)?"MAKE":"BUY",null)).toList()));
+        UUID analysis=view.analysisId(),subLine=line(view,sub),componentLine=line(view,w.goodsC());
+        view=aggregateWriter.submit(analysis,subcontractAggregateRequest(view,w.warehouseId(),subLine,"8000","planned-sub-first-")).analysis();
+        qty("8000",material(view,componentLine).requiredQty());
+        qty("5000",material(view,componentLine).sourceRequiredQty());
+        assertNotNull(material(view,subLine).aggregatePreparation());
+        qty("8000",material(view,subLine).aggregatePreparation().orderedQty());
+        qty("5000",material(view,subLine).aggregatePreparation().allocatedOrderedQty());
+        qty("3000",material(view,subLine).preparationSharedAvailableQty());
+        for(String increment:List.of("1","10","100","1000","10","1000")) {
+            AnalysisView preview=commands.previewIssuePlans(analysis,new PreviewIssuePlansRequest(
+                    view.version(),view.fingerprint(),"planned-sub-append-cascade-"+analysis,w.warehouseId(),
+                    BusinessTime.today(),BusinessTime.today().plusDays(10),false,List.of(),List.of(typed(subLine,increment))));
+            qty(new BigDecimal("8000").add(new BigDecimal(increment)).toPlainString(),material(preview,componentLine).requiredQty());
+            qty("5000",material(preview,componentLine).sourceRequiredQty());
+            qty("8000",material(analyses.detail(analysis),componentLine).requiredQty());
+        }
+        var append=subcontractAggregateRequest(view,w.warehouseId(),subLine,"1000","planned-sub-append-");
+        AnalysisView after=aggregateWriter.submit(analysis,append).analysis();
+        qty("9000",material(after,componentLine).requiredQty());
+        qty("5000",material(after,componentLine).sourceRequiredQty());
+        qty("9000",material(aggregateWriter.submit(analysis,append).analysis(),componentLine).requiredQty());
+        assertEquals(1,db.queryForObject("SELECT count(*) FROM preplan_supply_actions WHERE analysis_id=? AND route='SUBCONTRACT' AND operation_type='SUPPLY'",Integer.class,analysis));
+    }
+
+    private AggregateMaterialOrderContracts.SubmitRequest subcontractAggregateRequest(
+            AnalysisView view,UUID warehouse,UUID materialLine,String quantity,String key) {
+        var group=new AggregateMaterialOrderContracts.GroupInput("subcontract-parent",List.of(materialLine),"SUBCONTRACT",
+                new BigDecimal(quantity),true,null,null,null,null,null,null,null,BigDecimal.ZERO);
+        var request=new AggregateMaterialOrderContracts.PreviewRequest(view.version(),view.fingerprint(),key+view.analysisId(),
+                warehouse,BusinessTime.today(),BusinessTime.today().plusDays(10),false,List.of(group));
+        var preview=aggregatePreview.preview(view.analysisId(),request);
+        assertNull(preview.groups().getFirst().blockedReason());
+        return new AggregateMaterialOrderContracts.SubmitRequest(request.version(),request.fingerprint(),request.idempotencyKey(),
+                warehouse,request.billDate(),request.deliveryDate(),false,request.groups(),preview.previewFingerprint(),true);
     }
 
     private static PreviewIssuePlansRequest previewOf(IssueWorkshopPlansRequest request) {

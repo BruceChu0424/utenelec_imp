@@ -10,12 +10,19 @@ bool _queryContains(FormDraft draft, String key, String id) =>
 
 List<FormDraft> arrivalTaskDrafts(
   Iterable<FormDraft> drafts,
-  String expectationId,
-) => taskDraftsFor(
+  String expectationId, {
+  String? expectationItemId,
+}) => taskDraftsFor(
   drafts,
   matches: (draft) =>
       FormDraftCatalog.arrival.groups(draft) &&
       _queryContains(draft, 'expectationIds', expectationId) &&
+      (expectationItemId == null ||
+          Uri.tryParse(
+                draft.route,
+              )?.queryParameters.containsKey('expectationItemIds') !=
+              true ||
+          _queryContains(draft, 'expectationItemIds', expectationItemId)) &&
       (draft.data['rows'] is! List ||
           (draft.data['rows'] as List).whereType<Map<Object?, Object?>>().any(
             (row) => row['expectationId'] == expectationId,
@@ -146,11 +153,17 @@ List<FormDraft> stockTaskDrafts(
 List<FormDraft> qualityStockInTaskDrafts(
   Iterable<FormDraft> drafts,
   String receiptType,
-  String receiptId,
-) => taskDraftsFor(
+  String receiptId, {
+  String? inspectionItemId,
+}) => taskDraftsFor(
   drafts,
   matches: (draft) {
     final uri = Uri.tryParse(draft.route);
+    if (inspectionItemId != null &&
+        uri?.queryParameters.containsKey('inspectionItemIds') == true &&
+        !_queryContains(draft, 'inspectionItemIds', inspectionItemId)) {
+      return false;
+    }
     final segments = uri?.pathSegments ?? const <String>[];
     String? type(Object? value) {
       if (value is! String) return null;

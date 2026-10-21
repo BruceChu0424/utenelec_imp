@@ -756,6 +756,7 @@ abstract final class RoutePath {
   /// 登记实际到货页深链(单张 = 1 个来源、多选 = N 个来源)：expectationIds 逗号拼接进 query。
   static String warehouseArrivalRegistration(
     List<String> expectationIds, {
+    List<String>? expectationItemIds,
     bool? stockInBeforeInspection,
   }) {
     final ids = expectationIds
@@ -766,6 +767,8 @@ abstract final class RoutePath {
       path: RouteName.warehouseArrivalRegistration,
       queryParameters: {
         'expectationIds': ids,
+        if (expectationItemIds != null)
+          'expectationItemIds': expectationItemIds.toSet().join(','),
         if (stockInBeforeInspection != null)
           'preStock': stockInBeforeInspection ? '1' : '0',
       },

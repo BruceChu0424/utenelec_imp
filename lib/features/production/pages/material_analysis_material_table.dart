@@ -3138,6 +3138,62 @@ abstract class _MaterialAnalysisMaterialTableState
     return ordered;
   }
 
+  /// 下层备料跟本行真实发出的总产出走，不能把只归本需求的私有份额当产出。
+  /// 例如归需求 5000 + 公共备货 3000 的父件，子层已经按 8000 展开；追加 1000
+  /// 的比例必须是 9000 / 8000。allocatedOrderedQty 只用于本行覆盖扣减，拿它的
+  /// 5000 作分母会把同一子层错误地放到 9600，并在迟到预览间继续漂移。
+  /// totalOrderedQty 可能含同批其他来源，只有可核对的原行 orderedQty 能用。
+  /// 历史数据无法证明原行总量时交给服务端，不能猜整批或私有份额就是它的产出。
+  double? _tableCascadeCommittedOutput(_MaterialGroup group) {
+    final preparation = _tablePreviewed(
+      group.representative,
+    ).aggregatePreparation;
+    if (preparation?.orderedQtyExact == false) return null;
+    final committed = preparation?.orderedQty ?? _tableGroupIssuedQty(group);
+    final route = _draftRoute(group);
+    if (route == MaterialSupplyRoute.make) {
+      final groups = <_MaterialGroup>{group};
+      final analysis = _analysis;
+      if (analysis != null && preparation != null) {
+        final byLine = _analysisIndexes(analysis).groupsByLine;
+        for (final id in preparation.targetMaterialLineIds) {
+          if (byLine[id] case final target?) groups.add(target);
+        }
+      }
+      if (groups.any(
+        (target) =>
+            (_tableMakeAnchorOf(target)?.planExecutionInboundQty ?? 0) > 0,
+      )) {
+        return null;
+      }
+    } else if (route == MaterialSupplyRoute.subcontract && committed > 0) {
+      // 已订货/分批回厂后没有精确的未结产出列；只有仍可就地追加、未订货的
+      // 申请明细能证明历史发出量尚未执行。不能把已回厂的份额再当作待备料产出。
+      final actions = <String>{};
+      var proven = 0.0;
+      for (final path in group.paths) {
+        for (final target in path.notifiedTargets) {
+          if (target.target != route ||
+              target.status == 'CANCELLED' ||
+              const {
+                'FUTURE_TRANSFER',
+                'SHARED_FUTURE_CLAIM',
+              }.contains(_supplyOperationType(target.actionId))) {
+            continue;
+          }
+          final actionId = target.actionId;
+          if (actionId == null || actionId.isEmpty) return null;
+          if (!actions.add(actionId)) continue;
+          final quantity = target.growableLineQty;
+          if (quantity == null || !quantity.isFinite) return null;
+          proven += quantity;
+        }
+      }
+      if (actions.isEmpty || (proven - committed).abs() > 0.00005) return null;
+    }
+    return committed;
+  }
+
   /// 顶层产品行的计划量是来源单位(销售单位)，物料行是基本单位，两边差一个
   /// 单位换算率；锚点子件行与物料行同单位，换算率为 1。
   double _tableAnchorUnitRate(
@@ -4171,13 +4227,16 @@ abstract class _MaterialAnalysisMaterialTableState
       residual: snapshot.residual,
       suggested: snapshot.residual,
     );
-    final committed = group == null ? 0.0 : _tableGroupIssuedQty(group);
+    final privateCommitted = group == null ? 0.0 : _tableGroupIssuedQty(group);
+    final committed = group == null ? 0.0 : _tableCascadeCommittedOutput(group);
     // 现货那一份读服务端明写的两个分配量(本批分到的合格现货 + 精确绑定的到货)，
     // 不用「需求 − 缺口」倒推——倒推会把安全库存保护等别的口径也算成现货。
     // 这是估算：漏算的覆盖来源由 cascadeScaleOne 里与服务端封顶值取大兜底，
     // 剩下的误差 300ms 后服务端那份预览整体覆盖。
     final covered =
-        previewed.allocatedAvailableQty + previewed.exactPeggedQty + committed;
+        previewed.allocatedAvailableQty +
+        previewed.exactPeggedQty +
+        privateCommitted;
     return (
       covered: covered,
       input: (
@@ -4187,14 +4246,16 @@ abstract class _MaterialAnalysisMaterialTableState
         server: server,
         userTyped: typedOutputs[material.materialLineId],
         // 分母 = 这一行在当前快照里按的产出量 = 用快照当时的填数算出来的计划产出量。
-        baselineOutput: _tablePlannedOutput(
-          material,
-          committedOutput: committed,
-          server: server,
-          typed: _tableCascadePreviewTyped[material.materialLineId],
-        ),
+        baselineOutput: committed == null
+            ? null
+            : _tablePlannedOutput(
+                material,
+                committedOutput: committed,
+                server: server,
+                typed: _tableCascadePreviewTyped[material.materialLineId],
+              ),
       ),
-      committed: committed,
+      committed: committed ?? 0,
     );
   }
 

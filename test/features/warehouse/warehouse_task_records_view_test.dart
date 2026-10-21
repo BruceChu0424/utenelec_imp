@@ -590,6 +590,69 @@ void main() {
     },
   );
 
+  for (final source in ['PURCHASE', 'SUBCONTRACT']) {
+    for (final preStock in [false, true]) {
+      testWidgets(
+        '$source registration preserves selected physical rows ($preStock)',
+        (tester) async {
+          final rows = [
+            for (final item in ['item-a', 'item-b', 'item-c'])
+              warehouseTestRecord(
+                source: source,
+                record: 'EXPECTATION',
+                id: 'one-order',
+                billNo: 'ONE-ORDER',
+                action: 'ARRIVAL_REGISTER',
+                canHandle: true,
+                data: {
+                  'canRegisterBeforeInspection': true,
+                  'expectationItemId': item,
+                },
+                line: WarehouseTaskLine(
+                  key: item,
+                  itemId: item,
+                  goodsCode: 'SAME-GOODS',
+                  quantity: 10,
+                ),
+              ),
+          ];
+          final harness = await _pump(
+            tester,
+            WarehouseTaskRecordsFakeGateway(rows),
+            spec: _ViewSpec(
+              direction: WarehouseTaskDirection.inbound,
+              source: source,
+              sources: warehouseTestInboundSources,
+            ),
+          );
+          final selected = [rows.first, rows.last];
+          expect(warehouseTaskCommandTargets(selected), hasLength(2));
+          _table(tester).onSelectedIdsChanged!(
+            selected.map((row) => row.rowKey).toSet(),
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('${preStock ? '先入库后质检' : '先质检后入库'}(2)'));
+          await tester.pumpAndSettle();
+          expect(
+            harness.opened.single.queryParameters['expectationIds'],
+            'one-order',
+          );
+          expect(
+            harness.opened.single.queryParameters['expectationItemIds']?.split(
+              ',',
+            ),
+            ['item-a', 'item-c'],
+          );
+          expect(
+            harness.opened.single.queryParameters['preStock'],
+            preStock ? '1' : '0',
+          );
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
   for (final action in ['ARRIVAL_REGISTER', 'FINISHED_REGISTER']) {
     testWidgets(
       '$action uses every selected server capability, not local special grants',

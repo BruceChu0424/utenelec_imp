@@ -1352,14 +1352,50 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     /** 登记页按来源身份读取预计到货(ADR-151 §5)：与列表同一投影、同一可见范围，最多 50 个。 */
     @Transactional(readOnly = true)
     public List<InboundExpectationTask> expectationsByIds(List<UUID> ids) {
+        return expectationsByIds(ids, null);
+    }
+
+    /** A physical-row entry never widens to every item on its source order. */
+    @Transactional(readOnly = true)
+    public List<InboundExpectationTask> expectationsByIds(List<UUID> ids, List<UUID> itemIds) {
         List<UUID> distinct = ids == null ? List.of()
                 : ids.stream().filter(java.util.Objects::nonNull).distinct().toList();
-        if (distinct.isEmpty()) return List.of();
+        if (distinct.isEmpty()) return selectedExpectationItems(List.of(), itemIds);
         if (distinct.size() > 50) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "一次最多登记 50 个预计到货任务");
         }
-        return expectations(1, distinct.size(), "", "", null, WarehouseTaskScope.ALL, null, null, null, distinct)
-                .getItems();
+        return selectedExpectationItems(expectations(1, distinct.size(), "", "", null,
+                WarehouseTaskScope.ALL, null, null, null, distinct).getItems(), itemIds);
+    }
+
+    static List<InboundExpectationTask> selectedExpectationItems(
+            List<InboundExpectationTask> visible, List<UUID> itemIds) {
+        if (itemIds == null) return visible;
+        var selected = new java.util.HashSet<>(itemIds);
+        // 50 sources + 100 physical UUIDs stay inside the existing GET/deep-link
+        // request-line budget; receipt commands keep their separate 500-line cap.
+        if (selected.isEmpty() || selected.contains(null) || itemIds.size() > 100) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请选择有效的到货明细后再登记");
+        }
+        var found = visible.stream().flatMap(task -> task.items().stream())
+                .map(InboundExpectationItem::id).filter(selected::contains)
+                .collect(java.util.stream.Collectors.toSet());
+        if (!found.equals(selected)) {
+            throw new ApiException(ErrorCode.CONFLICT, "所选到货明细已变化或不在当前范围，请返回任务中心重新选择");
+        }
+        return visible.stream().map(task -> {
+            var items = task.items().stream().filter(item -> selected.contains(item.id())).toList();
+            return new InboundExpectationTask(task.id(), task.orderType(), task.orderId(), task.billNo(),
+                    task.supplierId(), task.supplierName(), task.warehouseId(), task.warehouseName(),
+                    task.suggestedWarehouseId(), task.suggestedWarehouseName(), task.expectedDate(),
+                    task.ownerEmployeeId(), task.ownerEmployeeName(), task.status(),
+                    items.stream().map(InboundExpectationItem::orderedQty).reduce(BigDecimal.ZERO, BigDecimal::add),
+                    items.stream().map(InboundExpectationItem::acceptedQty).reduce(BigDecimal.ZERO, BigDecimal::add),
+                    items.stream().map(InboundExpectationItem::remainingQty).reduce(BigDecimal.ZERO, BigDecimal::add),
+                    items.stream().map(InboundExpectationItem::registeredQty).reduce(BigDecimal.ZERO, BigDecimal::add),
+                    items, task.allowedActions(), task.draftReceiptIds(), task.pendingInspectionReceipts(),
+                    task.openArrivalExceptions());
+        }).filter(task -> !task.items().isEmpty()).toList();
     }
 
     private PageResponse<InboundExpectationTask> expectations(

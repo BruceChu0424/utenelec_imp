@@ -158,8 +158,9 @@ public class WarehouseInboundController {
      * 不再依赖页面跳转时塞进去的内存对象；与列表同一投影、同一可见范围。
      */
     @GetMapping("/expectations/by-ids")
-    public List<InboundExpectationTask> expectationsByIds(@RequestParam List<UUID> ids) {
-        return service.expectationsByIds(ids);
+    public List<InboundExpectationTask> expectationsByIds(@RequestParam List<UUID> ids,
+            @RequestParam(required = false) List<UUID> itemIds) {
+        return service.expectationsByIds(ids, itemIds);
     }
 
     /**

@@ -79,6 +79,26 @@ final class _MaterialAggregateSubmission {
     final keys = selected
         .map((group) => owner._aggregateKeyOf(group.representative))
         .toSet();
+    final existingDraftKeys = table.drafts.keys.toSet();
+    final confirmationDrafts = <String, _MaterialAggregateDraft>{};
+    final previousDrafts = {
+      for (final key in keys)
+        if (table.drafts[key] case final draft?)
+          key: (
+            draft: draft,
+            paths: Map<String, _MaterialAggregatePathSnapshot>.from(
+              draft.paths,
+            ),
+            requested: draft.sourceRequestedQtyByMaterialLineId == null
+                ? null
+                : Map<String, String>.from(
+                    draft.sourceRequestedQtyByMaterialLineId!,
+                  ),
+            total: draft.totalText,
+            productFlow: draft.productFlow,
+            preview: draft.previewGroups,
+          ),
+    };
     owner._mutateAggregateTable(() {
       for (final key in keys) {
         final scope = selected
@@ -94,12 +114,14 @@ final class _MaterialAggregateSubmission {
           scope: scope,
         );
         draft.productFlow = draft.productFlow || confirmed;
+        if (!existingDraftKeys.contains(key)) confirmationDrafts[key] = draft;
       }
       running = true;
     });
     final remaining = {...keys};
     final completed = <String>{};
     final createdChildren = <String>{};
+    var confirmedIntent = confirmed || table.uncertain;
     try {
       // ADR-120 §2.4「统一依赖编排先父后子，同一层合批；只确认一次」：汇总视图
       // 直接下单在开跑前一次性确认全部所选物料，之后各依赖轮次按身份桥重绑静默
@@ -149,6 +171,7 @@ final class _MaterialAggregateSubmission {
             !owner._sameAnalysisSnapshot(analysis, sessionScope)) {
           return false;
         }
+        confirmedIntent = true;
       }
       final dependencies = _dependencies(keys);
       while (remaining.isNotEmpty) {
@@ -242,7 +265,46 @@ final class _MaterialAggregateSubmission {
       if (owner.mounted) owner.context.appWarning(failure.message);
       return false;
     } finally {
-      if (owner.mounted) owner._mutateAggregateTable(() => running = false);
+      if (owner.mounted) {
+        owner._mutateAggregateTable(() {
+          // Building the confirmation is a read-only step. Its temporary
+          // groups must not keep source rows locked after cancellation or
+          // validation failure. Preserve drafts the user had already edited.
+          if (!confirmedIntent) {
+            for (final entry in confirmationDrafts.entries) {
+              if (!identical(table.drafts[entry.key], entry.value)) continue;
+              table.drafts.remove(entry.key);
+              for (final line in entry.value.lineIds) {
+                if (table._draftByLine[line] == entry.key) {
+                  table._draftByLine.remove(line);
+                }
+              }
+            }
+            if (owner._sameAnalysisSnapshot(analysis, sessionScope)) {
+              for (final entry in previousDrafts.entries) {
+                final previous = entry.value;
+                final draft = table.drafts[entry.key];
+                if (!identical(draft, previous.draft)) continue;
+                for (final line in draft!.lineIds.toList()) {
+                  if (!previous.paths.containsKey(line) &&
+                      table._draftByLine[line] == entry.key) {
+                    table._draftByLine.remove(line);
+                  }
+                }
+                draft.paths
+                  ..clear()
+                  ..addAll(previous.paths);
+                draft.sourceRequestedQtyByMaterialLineId = previous.requested;
+                draft.totalText = previous.total;
+                draft.productFlow = previous.productFlow;
+                draft.previewGroups = previous.preview;
+              }
+            }
+            table._revision++;
+          }
+          running = false;
+        });
+      }
     }
   }
 

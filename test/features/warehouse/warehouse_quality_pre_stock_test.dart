@@ -29,6 +29,59 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 // - 到货登记结果：STOCKED_PENDING_INSPECTION 解析为已上架待检。
 
 void main() {
+  testWidgets(
+    'physical pending selection shelves only its original inspection item',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final detail = _detailJson();
+      final pending = Map<String, dynamic>.from(
+        (detail['lines'] as List).cast<Map<String, dynamic>>().firstWhere(
+          (line) => line['inspectionItemId'] == 'inspection-pending',
+        ),
+      );
+      detail['lines'] = [
+        ...(detail['lines'] as List),
+        {...pending, 'inspectionItemId': 'unselected-pending'},
+      ];
+      final stock = _StockInGateway();
+      await tester.pumpWidget(
+        await _app(
+          const WarehouseQualityPreStockInPage(
+            receiptType: 'PURCHASE',
+            receiptId: 'receipt-1',
+            inspectionItemIds: ['inspection-pending'],
+          ),
+          quality: _QualityGateway(detail),
+          stockIn: stock,
+          permissions: const {
+            Perm.warehouseIqcStockInView,
+            Perm.warehouseIqcStockInBeforeInspection,
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('pre-stock-place-unselected-pending')),
+        findsNothing,
+      );
+      await tester.enterText(
+        find.byKey(const Key('pre-stock-place-inspection-pending')),
+        'D-08',
+      );
+      tester
+          .widget<UtenButton>(
+            find.byKey(const Key('warehouse-quality-pre-stock-confirm')),
+          )
+          .onPressed!();
+      await tester.pumpAndSettle();
+      expect(
+        stock.lastPreStock!.items.single.inspectionItemId,
+        'inspection-pending',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   for (final withExtra in [false, true]) {
     testWidgets(
       'sparse superadmin pending shelf form requires explicit extra ($withExtra)',

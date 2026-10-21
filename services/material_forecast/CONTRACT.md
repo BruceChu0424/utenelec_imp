@@ -1,4 +1,99 @@
-# Material forecast v1 contract
+# Automatic material market contract v2
+
+The main flow is one-time goods-to-benchmark association, followed by automatic
+public SHFE daily/delayed data collection and CPU forecasts. No CSV is required.
+No goods, staff, suppliers or ERP transaction facts leave the application.
+
+## Built-in definitions and selection
+
+The canonical built-in catalog is
+`server/src/main/resources/pricing/material-benchmarks.json` (JSON array).
+Fields: `seriesId,name,commodity,market,grade,region,currency,unit,priceBasis,
+sourceName,sourceUrl,rollPolicy,provider,symbol,autoUpdate,selectable`.
+Stable IDs: `shfe_cu_main_daily`, `shfe_al_main_daily`, `shfe_ag_main_daily`.
+Provider is `SHFE_PUBLIC_DAILY`, symbols `cu/al/ag`. CU/AL are CNY/tonne;
+AG is CNY/kilogram. These are futures benchmarks. PC must not use a PP/PVC proxy.
+The catalog is selectable before any worker/snapshot exists. PUT may bind a
+built-in definition even when data is pending. The database identity digest is
+computed from definition semantics, never changing quote/model timestamps.
+
+## Automatic collector
+
+The independent Python daemon collects the three global series; its requests
+contain no goods IDs. Only allowlisted official HTTPS SHFE hosts/paths are fetched.
+No arbitrary URL input, eval, CAPTCHA bypass or retry storm. Time/size limits,
+same-host redirects, bounded retries/backoff and atomic local cache are required.
+Public free access is not a claim of unrestricted commercial redistribution rights.
+
+Use official daily data and official annual archive download manifest. Read only
+target commodity files, bounded archive sizes and no path extraction. First
+publish the latest completed daily data, then backfill history and fit models.
+Daily reference uses SETTLEMENTPRICE. Select the main contract using the previous
+trading day's open interest (tie: nearest delivery month), with a valid current
+settlement. Missing the previously selected contract must not introduce lookahead.
+Use that same contract's previous/current settlement ratio for a forward chain,
+removing artificial contract-roll jumps. Fit the chain, then convert forecast
+values/intervals to the latest actual main-contract settlement level. Record the
+actual contract and explicit basis; do not call this an exchange-published index.
+
+Optional delayed quotes are separate from completed daily model training. They
+use the selected contract, official market timestamp, fetched timestamp, correct
+currency/unit and `delayMinutes:30`. Do not mix intraday last prices into daily
+settlement labels or claim a paid real-time feed.
+
+Raw downloaded revisions retain actual first-observed/fetched times. Historical
+archives lack publication vintages: replay may use reconstructed daily availability
+only when explicitly tagged `LATEST_HISTORY_REPLAY`. A replay pass may show
+`RESEARCH_ONLY` estimates/direction but never active procurement advice or a
+point-in-time validation claim. Failed baseline/coverage gates stay BASELINE_ONLY.
+
+## Snapshot v2 additions
+
+Keep all v1 fields below. schemaVersion=2 adds required fields:
+`validationBasis` (`LATEST_HISTORY_REPLAY`),
+`modelPriceBasis` (`CHAIN_LINKED_CURRENT_ANCHOR`), `quoteContract` (e.g. cu2611),
+`sourceFetchedAt` (UTC ISO instant), `historyRecordCount` (integer).
+RESEARCH_ONLY requires the same held-out MAE/fold/coverage gates as READY but has
+procurementSignal=INSUFFICIENT. Direction still follows interval versus latest
+settlement. Every v2 automatic replay remains barred from READY. Report MAE in
+current-anchor price units and label that conversion explicitly in evidence.
+
+`<seriesId>.quote.json` optional file:
+`{schemaVersion:1,seriesId,contract,price,currency,unit,marketTime,fetchedAt,
+delayMinutes:30,provider:"SHFE_PUBLIC_DAILY"}`. Service computes quote status and
+expiresAt; missing quotes are not synthetic zeroes. Quote validity is bounded by
+marketTime+2h and fetchedAt+1h; stale quote can be shown as dated/stale only.
+
+`auto-feed-health.json`:
+`{schemaVersion:1,workerVersion,generatedAt,autoUpdateEnabled,series:[
+{seriesId,status,lastAttemptAt,lastSuccessAt,nextSyncAt,errorCode}]}`.
+status is FETCHING/BACKFILLING/MODEL/IDLE/ERROR. Timestamps nullable UTC strings.
+Only safe codes (NETWORK_ERROR/RATE_LIMITED/INVALID_SOURCE/MODEL_FAILED) are exposed.
+A missing/older-than-10-minute heartbeat is OFFLINE, never 'syncing'. A one-shot
+collector sets autoUpdateEnabled=false; daemon sets true while alive.
+
+## ERP v2 endpoints and refresh
+
+Existing GET/PUT routes stay. Catalog becomes List<Benchmark>, independent of
+snapshots. Envelopes retain previous fields and add:
+`benchmark` (definition or null),
+`sync:{status,autoUpdateEnabled,lastAttemptAt,lastSuccessAt,nextSyncAt,errorCode}`,
+`latestQuote` (quote file plus computed status CURRENT/STALE and expiresAt),
+`refreshAfterSeconds:60`.
+Missing built-in snapshot returns SYNC_PENDING, or SYNC_FAILED on fresh ERROR;
+DISABLED remains when no snapshot directory is configured. The bound benchmark
+is always returned so the user sees what was remembered and can unlink it.
+Source failure retains valid previous evidence and separately reports failure.
+The client refreshes GET at the earlier of server cadence/expiry; it never
+repeats PUT. Respect foreground/selection/save/ownership guards. Lack of worker
+heartbeat must not claim automatic updating is running.
+
+The current UI uses frontend-design and existing Uten tokens/components. It shows
+association, source/automatic update state, delayed quote, daily settlement, then
+forecast/evidence. Research replay has an explicit label, no validated-accuracy
+badge or active order signal. Remove CSV from the normal purchasing workflow.
+
+## Legacy manually supplied v1 (optional diagnostic/custom input)
 
 This is an offline, CPU, read-only market forecasting worker. Only operator supplied,
 authorized CSV data enters it. It never fetches websites or receives ERP transactions.

@@ -9,6 +9,7 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/utils/display_datetime.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/formatters/exact_decimal.dart';
@@ -42,15 +43,20 @@ class _GoodsMaterialMarketPanelState
   MaterialMarketAnalysis? _data;
   bool _loading = false, _saving = false, _picking = false;
   bool _catalogBusy = false;
+  bool _syncVerified = false;
   String? _error;
   int _revision = 0;
   final _routes = <ModalRoute<dynamic>>{};
   Timer? _expiryTimer;
+  Timer? _deadlineTimer;
   bool _expiryRefreshPending = false;
+  ModalRoute<dynamic>? _pageRoute;
 
   bool get _foreground =>
-      WidgetsBinding.instance.lifecycleState == null ||
-      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+      (WidgetsBinding.instance.lifecycleState == null ||
+          WidgetsBinding.instance.lifecycleState ==
+              AppLifecycleState.resumed) &&
+      (_pageRoute?.isCurrent ?? true);
   DateTime get _now => ref.read(materialMarketClockProvider)();
 
   String get _identity => '${widget.goodsId}|${widget.contextIdentity}';
@@ -109,8 +115,20 @@ class _GoodsMaterialMarketPanelState
     }
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _pageRoute = ModalRoute.of(context);
+    if (_foreground) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _resumeReads();
+      });
+    }
+  }
+
   void _clear() {
     _expiryTimer?.cancel();
+    _deadlineTimer?.cancel();
     _expiryRefreshPending = false;
     _revision++;
     if (!mounted) return;
@@ -121,6 +139,7 @@ class _GoodsMaterialMarketPanelState
       _saving = false;
       _picking = false;
       _catalogBusy = false;
+      _syncVerified = false;
     });
   }
 
@@ -131,15 +150,31 @@ class _GoodsMaterialMarketPanelState
   @override
   Future<void> nativeReadReload() => _load();
 
-  Future<void> _load() async {
-    if (!mounted || !_allowed || _saving || _picking || !_foreground) return;
-    final accepts = captureNativeRead(_identity, () => _identity);
+  Future<void> _load({bool background = false}) async {
+    if (!mounted ||
+        !_allowed ||
+        _loading ||
+        _saving ||
+        _picking ||
+        !_foreground) {
+      return;
+    }
+    final preserve = background && nativeReadAccessConfirmed && _data != null;
+    final identity = _identity;
+    final owns = captureNativeOwnership();
+    final accepts = preserve
+        ? () => owns() && identity == _identity && nativeReadAccessConfirmed
+        : captureNativeRead(_identity, () => _identity);
     if (!accepts()) return;
     final revision = ++_revision;
     _expiryTimer?.cancel();
+    if (!preserve) _deadlineTimer?.cancel();
     _expiryRefreshPending = false;
     setState(() {
-      _data = null;
+      if (!preserve) {
+        _data = null;
+        _syncVerified = false;
+      }
       _loading = true;
       _error = null;
     });
@@ -152,6 +187,7 @@ class _GoodsMaterialMarketPanelState
       setState(() {
         _data = result;
         _loading = false;
+        _syncVerified = true;
       });
       _scheduleExpiry(result);
     } catch (_) {
@@ -159,21 +195,28 @@ class _GoodsMaterialMarketPanelState
       setState(() {
         _loading = false;
         _error = 'UNAVAILABLE';
+        _syncVerified = false;
       });
+      if (preserve && _data != null) _scheduleExpiry(_data!);
     }
   }
 
   void _scheduleExpiry(MaterialMarketAnalysis data) {
     _expiryTimer?.cancel();
-    if (data.current == null ||
-        (data.status != 'READY' && data.status != 'BASELINE_ONLY')) {
-      return;
-    }
-    final expiresAt = data.expiresAt;
-    if (expiresAt == null || !expiresAt.isAfter(_now)) return;
+    _scheduleDeadline(data);
+    final now = _now;
+    final deadlines = <DateTime>[
+      if (data.seriesId != null && data.refreshAfterSeconds != null)
+        now.add(Duration(seconds: data.refreshAfterSeconds!)),
+      if (data.expiresAt?.isAfter(now) == true) data.expiresAt!,
+      if (data.latestQuote?.expiresAt?.isAfter(now) == true)
+        data.latestQuote!.expiresAt!,
+    ];
+    if (deadlines.isEmpty) return;
+    final expiresAt = deadlines.reduce((a, b) => a.isBefore(b) ? a : b);
     final identity = _identity;
     final revision = _revision;
-    _expiryTimer = Timer(expiresAt.difference(_now), () {
+    _expiryTimer = Timer(expiresAt.difference(now), () {
       if (!mounted ||
           identity != _identity ||
           revision != _revision ||
@@ -182,6 +225,26 @@ class _GoodsMaterialMarketPanelState
       }
       setState(() => _expiryRefreshPending = true);
       _flushExpiryRefresh();
+    });
+  }
+
+  // A slow poll can retain evidence but cannot extend a market deadline.
+  void _scheduleDeadline(MaterialMarketAnalysis data) {
+    _deadlineTimer?.cancel();
+    final now = _now;
+    final deadlines = <DateTime>[
+      if (data.expiresAt?.isAfter(now) == true) data.expiresAt!,
+      if (data.latestQuote?.expiresAt?.isAfter(now) == true)
+        data.latestQuote!.expiresAt!,
+    ];
+    if (deadlines.isEmpty) return;
+    final deadline = deadlines.reduce((a, b) => a.isBefore(b) ? a : b);
+    final identity = _identity;
+    final owns = captureNativeOwnership();
+    _deadlineTimer = Timer(deadline.difference(now), () {
+      if (!owns() || identity != _identity || !identical(_data, data)) return;
+      setState(() {});
+      _scheduleDeadline(data);
     });
   }
 
@@ -197,19 +260,26 @@ class _GoodsMaterialMarketPanelState
       return;
     }
     _expiryRefreshPending = false;
-    unawaited(_load());
+    unawaited(_load(background: true));
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed || !mounted) return;
+    _resumeReads();
+  }
+
+  void _resumeReads() {
+    if (!_foreground || !mounted) return;
     final data = _data;
-    if (data == null && !_loading && !_saving && !_picking) {
+    if (data == null && _error == null && !_loading && !_saving && !_picking) {
       unawaited(_load());
       return;
     }
     if (data?.current != null &&
-        (data!.status == 'READY' || data.status == 'BASELINE_ONLY') &&
+        (data!.status == 'READY' ||
+            data.status == 'BASELINE_ONLY' ||
+            data.status == 'RESEARCH_ONLY') &&
         !data.freshAt(_now)) {
       setState(() => _expiryRefreshPending = true);
     }
@@ -347,6 +417,7 @@ class _GoodsMaterialMarketPanelState
       setState(() {
         _data = result;
         _saving = false;
+        _syncVerified = true;
       });
       _expiryRefreshPending = false;
       _scheduleExpiry(result);
@@ -357,6 +428,7 @@ class _GoodsMaterialMarketPanelState
       setState(() {
         _data = null;
         _saving = false;
+        _syncVerified = false;
         _error = 'saveUnverified';
       });
     }
@@ -366,6 +438,7 @@ class _GoodsMaterialMarketPanelState
   void dispose() {
     _revision++;
     _expiryTimer?.cancel();
+    _deadlineTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _closeRoutes();
     super.dispose();
@@ -379,13 +452,18 @@ class _GoodsMaterialMarketPanelState
     final theme = Theme.of(context);
     final data = nativeReadAccessConfirmed ? _data : null;
     final snapshot = data?.current;
+    final benchmark = data?.benchmark ?? snapshot;
+    final quote = data?.latestQuote;
     final now = _now;
     final actionable = data?.actionableAt(now) == true;
+    final researchOnly = data?.researchOnlyAt(now) == true;
     final canShowProjection = data?.canShowProjectionAt(now) == true;
     final effectiveStatus =
         data != null &&
             snapshot != null &&
-            (data.status == 'READY' || data.status == 'BASELINE_ONLY') &&
+            (data.status == 'READY' ||
+                data.status == 'BASELINE_ONLY' ||
+                data.status == 'RESEARCH_ONLY') &&
             !data.freshAt(now)
         ? 'STALE'
         : data?.status;
@@ -487,14 +565,30 @@ class _GoodsMaterialMarketPanelState
                         : theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
-                if (snapshot != null) ...[
+                if (benchmark != null) ...[
                   const SizedBox(height: UtenSpacing.s8),
-                  Text(snapshot.name, style: theme.textTheme.titleMedium),
+                  Text(
+                    benchmark.name,
+                    key: const Key('material-market-bound-benchmark'),
+                    style: theme.textTheme.titleMedium,
+                  ),
                   const SizedBox(height: UtenSpacing.s4),
-                  _BenchmarkIdentity(snapshot: snapshot),
+                  _BenchmarkIdentity(snapshot: benchmark),
+                  const SizedBox(height: UtenSpacing.s8),
+                  _MarketSync(
+                    analysis: data,
+                    benchmark: benchmark,
+                    verified: _syncVerified,
+                  ),
+                ],
+                if (quote != null) ...[
+                  const SizedBox(height: UtenSpacing.s12),
+                  _DelayedQuote(quote: quote, now: now),
+                ],
+                if (snapshot != null) ...[
                   const SizedBox(height: UtenSpacing.s12),
                   Text(
-                    '${materialMarketText(context, 'quote')}: '
+                    '${materialMarketText(context, benchmark?.text('provider') == 'SHFE_PUBLIC_DAILY' || snapshot.data['schemaVersion'] == 2 ? 'settlement' : 'quote')}: '
                     '${priceNumber(snapshot.data['latestPrice'])} '
                     '${snapshot.denomination}',
                     key: const Key('material-market-quote'),
@@ -506,12 +600,24 @@ class _GoodsMaterialMarketPanelState
                     Text(
                       materialMarketText(
                         context,
-                        actionable ? 'projection' : 'baselineProjection',
+                        researchOnly
+                            ? 'researchProjection'
+                            : actionable
+                            ? 'projection'
+                            : 'baselineProjection',
                       ),
                       style: theme.textTheme.titleSmall,
                     ),
                     const SizedBox(height: UtenSpacing.s8),
-                    _Forecasts(snapshot: snapshot, validated: actionable),
+                    if (researchOnly)
+                      Text(
+                        materialMarketText(context, 'researchLimit'),
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    _Forecasts(
+                      snapshot: snapshot,
+                      allowDirection: actionable || researchOnly,
+                    ),
                     const SizedBox(height: UtenSpacing.s8),
                     Text(
                       materialMarketText(context, 'sessions'),
@@ -549,7 +655,7 @@ class _GoodsMaterialMarketPanelState
 
 class _BenchmarkIdentity extends StatelessWidget {
   const _BenchmarkIdentity({required this.snapshot});
-  final MaterialMarketSnapshot snapshot;
+  final MaterialMarketBenchmark snapshot;
 
   @override
   Widget build(BuildContext context) => Wrap(
@@ -565,6 +671,89 @@ class _BenchmarkIdentity extends StatelessWidget {
   );
 }
 
+class _MarketSync extends StatelessWidget {
+  const _MarketSync({
+    required this.analysis,
+    required this.benchmark,
+    required this.verified,
+  });
+  final MaterialMarketAnalysis analysis;
+  final MaterialMarketBenchmark benchmark;
+  final bool verified;
+
+  @override
+  Widget build(BuildContext context) {
+    final sync = analysis.sync;
+    final status = sync['status']?.toString() ?? 'OFFLINE';
+    final key = !verified
+        ? 'syncUnknown'
+        : status == 'IDLE'
+        ? (sync['autoUpdateEnabled'] == true ? 'autoConnected' : 'autoStopped')
+        : 'sync$status';
+    return DefaultTextStyle(
+      style: Theme.of(context).textTheme.bodySmall!,
+      child: Wrap(
+        spacing: UtenSpacing.s12,
+        runSpacing: UtenSpacing.s4,
+        children: [
+          Text(
+            materialMarketText(context, key),
+            key: const Key('material-market-sync'),
+          ),
+          Text(
+            '${materialMarketText(context, 'source')}: ${benchmark.text('sourceName')}',
+          ),
+          for (final field in ['lastSuccessAt', if (verified) 'nextSyncAt'])
+            if (sync[field] != null && sync[field].toString().isNotEmpty)
+              Text(
+                '${materialMarketText(context, field)}: ${DisplayDateTime.beijing(sync[field]?.toString(), fallback: '—')}',
+              ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DelayedQuote extends StatelessWidget {
+  const _DelayedQuote({required this.quote, required this.now});
+  final MaterialMarketQuote quote;
+  final DateTime now;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        '${materialMarketText(context, 'delayedQuote')}: '
+        '${priceNumber(quote.data['price'])} ${quote.denomination}',
+        key: const Key('material-market-delayed-quote'),
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
+      if (!quote.currentAt(now))
+        Text(
+          materialMarketText(context, 'quoteStale'),
+          key: const Key('material-market-delayed-stale'),
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      Wrap(
+        spacing: UtenSpacing.s12,
+        runSpacing: UtenSpacing.s4,
+        children: [
+          Text(
+            '${materialMarketText(context, 'contract')}: ${quote.text('contract')}',
+          ),
+          Text(
+            '${materialMarketText(context, 'marketTime')}: ${DisplayDateTime.beijing(quote.text('marketTime'), fallback: '—')}',
+          ),
+          Text(
+            '${materialMarketText(context, 'fetchedAt')}: ${DisplayDateTime.beijing(quote.text('fetchedAt'), fallback: '—')}',
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
 class _EvidenceRow extends StatelessWidget {
   const _EvidenceRow({required this.snapshot});
   final MaterialMarketSnapshot snapshot;
@@ -576,12 +765,11 @@ class _EvidenceRow extends StatelessWidget {
       spacing: UtenSpacing.s12,
       runSpacing: UtenSpacing.s4,
       children: [
-        Text(materialMarketText(context, 'imported')),
         Text(
           '${materialMarketText(context, 'source')}: ${snapshot.text('sourceName')}',
         ),
         Text(
-          '${materialMarketText(context, 'asOf')}: ${snapshot.text('dataAsOf')}',
+          '${materialMarketText(context, snapshot.data['schemaVersion'] == 2 ? 'settlementDate' : 'asOf')}: ${snapshot.text('dataAsOf')}',
         ),
       ],
     ),
@@ -589,9 +777,9 @@ class _EvidenceRow extends StatelessWidget {
 }
 
 class _Forecasts extends StatelessWidget {
-  const _Forecasts({required this.snapshot, required this.validated});
+  const _Forecasts({required this.snapshot, required this.allowDirection});
   final MaterialMarketSnapshot snapshot;
-  final bool validated;
+  final bool allowDirection;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -636,7 +824,7 @@ class _Forecasts extends StatelessWidget {
                         Text(
                           materialMarketText(
                             context,
-                            validated
+                            allowDirection
                                 ? forecast.text('direction')
                                 : 'UNCERTAIN',
                           ),
@@ -681,11 +869,25 @@ class _MarketEvidence extends StatelessWidget {
                     'modelVersion' => 'model',
                     'libraryVersion' => 'library',
                     _ => 'generated',
-                  })}: ${snapshot.text(key)}',
+                  })}: ${key == 'generatedAt' ? DisplayDateTime.beijing(snapshot.text(key), fallback: '—') : snapshot.text(key)}',
                 ),
               Text(
                 '${materialMarketText(context, 'dataset')}: ${snapshot.text('datasetDigest')}',
               ),
+              if (snapshot.text('validationBasis') ==
+                  'LATEST_HISTORY_REPLAY') ...[
+                Text(materialMarketText(context, 'researchLimit')),
+                Text(materialMarketText(context, 'anchorMAE')),
+              ],
+              for (final field in [
+                'quoteContract',
+                'sourceFetchedAt',
+                'historyRecordCount',
+              ])
+                if (snapshot.text(field).isNotEmpty)
+                  Text(
+                    '${materialMarketText(context, field)}: ${field == 'sourceFetchedAt' ? DisplayDateTime.beijing(snapshot.text(field), fallback: '—') : snapshot.text(field)}',
+                  ),
               Text(
                 '${validation['backtestStart'] ?? '—'} – ${validation['backtestEnd'] ?? '—'}',
               ),
@@ -696,7 +898,11 @@ class _MarketEvidence extends StatelessWidget {
                 'coverage80',
               ])
                 Text(
-                  '${materialMarketText(context, key == 'coverage80' ? 'coverage' : key)}: '
+                  '${materialMarketText(context, key == 'coverage80'
+                      ? snapshot.researchOnly
+                            ? 'replayCoverage'
+                            : 'coverage'
+                      : key)}: '
                   '${key == 'coverage80' && validation[key] != null ? '${priceNumber(financeExactMultiplyTexts([validation[key].toString(), '100']))}%' : priceNumber(validation[key])}',
                 ),
               Text(
@@ -721,7 +927,7 @@ class _MaterialMarketPicker extends StatefulWidget {
     required this.onLoadingChanged,
   });
   final String? initialId;
-  final Future<List<MaterialMarketSnapshot>> Function() load;
+  final Future<List<MaterialMarketBenchmark>> Function() load;
   final bool Function() isCurrent;
   final ValueChanged<bool> onLoadingChanged;
 
@@ -730,7 +936,7 @@ class _MaterialMarketPicker extends StatefulWidget {
 }
 
 class _MaterialMarketPickerState extends State<_MaterialMarketPicker> {
-  List<MaterialMarketSnapshot> _rows = [];
+  List<MaterialMarketBenchmark> _rows = [];
   String? _selected;
   String _search = '';
   bool _loading = true, _failed = false;
@@ -775,6 +981,7 @@ class _MaterialMarketPickerState extends State<_MaterialMarketPicker> {
         !_loading &&
         !_failed &&
         choice != null &&
+        choice.selectable &&
         choice.seriesId != widget.initialId &&
         widget.isCurrent();
     return Column(
@@ -840,6 +1047,7 @@ class _MaterialMarketPickerState extends State<_MaterialMarketPicker> {
                   ListTile(
                     key: ValueKey('material-market-choice-${row.seriesId}'),
                     contentPadding: EdgeInsets.zero,
+                    enabled: row.selectable,
                     selected: _selected == row.seriesId,
                     leading: Icon(
                       _selected == row.seriesId
@@ -852,12 +1060,12 @@ class _MaterialMarketPickerState extends State<_MaterialMarketPicker> {
                       children: [
                         _BenchmarkIdentity(snapshot: row),
                         Text(
-                          '${materialMarketText(context, 'source')}: ${row.text('sourceName')} · ${row.text('dataAsOf')}',
+                          '${materialMarketText(context, 'source')}: ${row.text('sourceName')}',
                         ),
                       ],
                     ),
                     onTap: () {
-                      if (widget.isCurrent()) {
+                      if (widget.isCurrent() && row.selectable) {
                         setState(() => _selected = row.seriesId);
                       }
                     },

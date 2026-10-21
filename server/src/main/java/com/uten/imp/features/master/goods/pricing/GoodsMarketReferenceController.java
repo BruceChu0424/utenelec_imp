@@ -22,7 +22,7 @@ public class GoodsMarketReferenceController {
         return result;
     }
     @GetMapping("/catalog")
-    public List<Snapshot> catalog(@PathVariable UUID goodsId){return service.catalog(goodsId);}
+    public List<Benchmark> catalog(@PathVariable UUID goodsId){return service.catalog(goodsId);}
     @PutMapping
     @PreAuthorize("hasAuthority('goods:edit') and hasAuthority('goods:view') and hasAuthority('goods:price_analysis:view') and (hasAuthority('purchase_order:view') or hasAuthority('finance_order_approval:view')) and (hasAuthority('purchase_order:price:view') or hasAuthority('finance:view:all'))")
     public Envelope put(@PathVariable UUID goodsId,@RequestBody BindingRequest request){return service.put(goodsId,request);}

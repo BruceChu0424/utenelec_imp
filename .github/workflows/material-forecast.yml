@@ -4,12 +4,14 @@ on:
   pull_request:
     paths:
       - 'services/material_forecast/**'
+      - 'server/src/main/resources/pricing/material-benchmarks.json'
       - '.github/workflows/material-forecast.yml'
       - '.github/dependabot.yml'
   push:
     branches: [main]
     paths:
       - 'services/material_forecast/**'
+      - 'server/src/main/resources/pricing/material-benchmarks.json'
       - '.github/workflows/material-forecast.yml'
   workflow_dispatch:
 

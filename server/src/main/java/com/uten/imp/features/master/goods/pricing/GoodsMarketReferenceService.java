@@ -25,6 +25,8 @@ public class GoodsMarketReferenceService {
     private final GoodsMarketBindingWriteAccess writeAccess;
     private final GoodsMarketReferenceStore bindings;
     private final MaterialForecastSnapshotReader snapshots;
+    private final MaterialBenchmarkCatalog benchmarks;
+    private final MaterialMarketFeedReader feed;
     private final SecurityContextCurrentUser current;
     private final TxSessionVars tx;
     private final AuditService audit;
@@ -35,9 +37,9 @@ public class GoodsMarketReferenceService {
         return envelope(goodsId,bindings.find(goodsId));
     }
     @Transactional(readOnly=true)
-    public List<Snapshot> catalog(UUID goodsId) {
+    public List<Benchmark> catalog(UUID goodsId) {
         requireRead(goodsId);
-        return snapshots.catalog();
+        return benchmarks.all();
     }
     @Transactional
     @PreAuthorize("hasAuthority('goods:edit') and hasAuthority('goods:view') and hasAuthority('goods:price_analysis:view') and (hasAuthority('purchase_order:view') or hasAuthority('finance_order_approval:view')) and (hasAuthority('purchase_order:price:view') or hasAuthority('finance:view:all'))")
@@ -54,9 +56,9 @@ public class GoodsMarketReferenceService {
         if(previous.version()!=request.expectedVersion())throw new ApiException(ErrorCode.CONFLICT,"货品市场关联已有修改，请刷新后重新选择");
         String digest=null;
         if(request.seriesId()!=null) {
-            var selected=snapshots.read(request.seriesId());
-            if(selected.snapshot()==null)throw GoodsPriceAnalysisService.invalid("所选市场参考暂不可用，请刷新目录后重新选择");
-            digest=snapshots.identityDigest(selected.snapshot());
+            Benchmark selected=benchmarks.find(request.seriesId());
+            if(selected==null||!selected.selectable())throw GoodsPriceAnalysisService.invalid("请选择内置市场参考后重新确认");
+            digest=benchmarks.identityDigest(selected);
         }
         var actor=current.get().orElseThrow(()->new ApiException(ErrorCode.FORBIDDEN,"当前登录状态无效"));
         bindings.compareAndSet(goodsId,request.seriesId(),digest,request.expectedVersion(),actor.getId());
@@ -73,11 +75,17 @@ public class GoodsMarketReferenceService {
     }
     private Envelope envelope(UUID goodsId,GoodsMarketReferenceStore.Binding binding) {
         boolean manage=writeAccess.canManage(goodsId);
-        if(!snapshots.enabled())return new Envelope("DISABLED",binding.seriesId(),binding.version(),null,manage,List.of("MARKET_FORECAST_DISABLED"),null);
-        if(binding.seriesId()==null)return new Envelope("UNMAPPED",null,binding.version(),null,manage,List.of("MARKET_REFERENCE_UNMAPPED"),null);
+        Benchmark benchmark=benchmarks.find(binding.seriesId());
+        if(!snapshots.enabled())return new Envelope("DISABLED",binding.seriesId(),binding.version(),null,manage,List.of("MARKET_FORECAST_DISABLED"),null,benchmark,feed.offline(),null,60);
+        if(binding.seriesId()==null)return new Envelope("UNMAPPED",null,binding.version(),null,manage,List.of("MARKET_REFERENCE_UNMAPPED"),null,null,feed.offline(),null,60);
+        Sync sync=benchmark==null?feed.offline():feed.sync(binding.seriesId());
+        if(benchmark!=null&&!Objects.equals(binding.identityDigest(),benchmarks.identityDigest(benchmark)))
+            return new Envelope("UNAVAILABLE",binding.seriesId(),binding.version(),null,manage,List.of("MARKET_REFERENCE_IDENTITY_CHANGED"),null,benchmark,sync,null,60);
         var read=snapshots.read(binding.seriesId());
-        if(read.snapshot()!=null&&!Objects.equals(binding.identityDigest(),snapshots.identityDigest(read.snapshot())))
-            return new Envelope("UNAVAILABLE",binding.seriesId(),binding.version(),null,manage,List.of("MARKET_REFERENCE_IDENTITY_CHANGED"),null);
-        return new Envelope(read.status(),binding.seriesId(),binding.version(),read.snapshot(),manage,read.reasons(),read.snapshot()==null?null:snapshots.expiresAt(read.snapshot()));
+        if(benchmark==null&&read.snapshot()!=null&&!Objects.equals(binding.identityDigest(),snapshots.identityDigest(read.snapshot())))
+            return new Envelope("UNAVAILABLE",binding.seriesId(),binding.version(),null,manage,List.of("MARKET_REFERENCE_IDENTITY_CHANGED"),null,null,sync,null,60);
+        String status=read.status();
+        if(benchmark!=null&&read.status().equals("SYNC_PENDING"))status="ERROR".equals(sync.status())?"SYNC_FAILED":"SYNC_PENDING";
+        return new Envelope(status,binding.seriesId(),binding.version(),read.snapshot(),manage,read.reasons(),read.snapshot()==null?null:snapshots.expiresAt(read.snapshot()),benchmark,sync,feed.quote(benchmark,read.snapshot()),60);
     }
 }

@@ -1,0 +1,18 @@
+services:
+  material-forecast:
+    image: uten-material-forecast:local
+    build:
+      context: ../..
+      dockerfile: services/material_forecast/Dockerfile
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 120s
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - type: bind
+        source: ${MATERIAL_FORECAST_DIRECTORY:?Set an absolute persistent snapshot directory}
+        target: /data

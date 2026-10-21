@@ -34,7 +34,13 @@ class _Api extends ApiClient {
     method = 'GET';
     this.path = path;
     return [
-      {'seriesId': 'copper', 'latestPrice': '12345.123456789'},
+      {
+        'seriesId': 'shfe_cu_main_daily',
+        'name': '沪铜主力(日终)',
+        'currency': 'CNY',
+        'unit': '吨',
+        'selectable': true,
+      },
     ];
   }
 
@@ -49,6 +55,55 @@ class _Api extends ApiClient {
 
 void main() {
   test(
+    'v2 replay remains research-only and delayed quote has its own deadline',
+    () {
+      final now = DateTime.utc(2026, 10, 20, 9);
+      final analysis = MaterialMarketAnalysis({
+        'status': 'RESEARCH_ONLY',
+        'seriesId': 'shfe_cu_main_daily',
+        'bindingVersion': 1,
+        'expiresAt': '2026-10-21T08:00:00Z',
+        'refreshAfterSeconds': 60,
+        'benchmark': {
+          'seriesId': 'shfe_cu_main_daily',
+          'name': '沪铜主力(日终)',
+          'selectable': true,
+        },
+        'current': {
+          'schemaVersion': 2,
+          'status': 'RESEARCH_ONLY',
+          'validationBasis': 'LATEST_HISTORY_REPLAY',
+          'modelPriceBasis': 'CHAIN_LINKED_CURRENT_ANCHOR',
+          'validation': {'passed': true},
+        },
+        'latestQuote': {
+          'status': 'CURRENT',
+          'price': '81400.123456789',
+          'expiresAt': '2026-10-20T09:00:20Z',
+        },
+      });
+      expect(analysis.researchOnlyAt(now), true);
+      expect(analysis.actionableAt(now), false);
+      expect(analysis.canShowProjectionAt(now), true);
+      expect(analysis.latestQuote!.text('price'), '81400.123456789');
+      expect(
+        analysis.latestQuote!.currentAt(now.add(const Duration(seconds: 21))),
+        false,
+      );
+      expect(
+        analysis.canShowProjectionAt(now.add(const Duration(seconds: 21))),
+        true,
+      );
+      final invalidReady = MaterialMarketAnalysis({
+        ...analysis.data,
+        'status': 'READY',
+        'current': {...analysis.current!.data, 'status': 'READY'},
+      });
+      expect(invalidReady.actionableAt(now), false);
+    },
+  );
+
+  test(
     'market reads and catalog use encoded goods context and exact text',
     () async {
       final api = _Api();
@@ -59,7 +114,9 @@ void main() {
       expect(api.method, 'GET');
       final catalog = await repository.catalog('goods/a');
       expect(api.path, '/master/goods/goods%2Fa/price-analysis/market/catalog');
-      expect(catalog.single.text('latestPrice'), '12345.123456789');
+      expect(catalog.single.seriesId, 'shfe_cu_main_daily');
+      expect(catalog.single.selectable, true);
+      expect(catalog.single.data.containsKey('latestPrice'), false);
     },
   );
 
@@ -115,6 +172,7 @@ void main() {
 
   test('stale envelope and unvalidated model cannot activate a signal', () {
     final current = {
+      'schemaVersion': 1,
       'status': 'READY',
       'validation': {'passed': true},
     };

@@ -5,7 +5,7 @@ import 'material_market_models.dart';
 
 abstract interface class MaterialMarketRepository {
   Future<MaterialMarketAnalysis> analysis(String goodsId);
-  Future<List<MaterialMarketSnapshot>> catalog(String goodsId);
+  Future<List<MaterialMarketBenchmark>> catalog(String goodsId);
   Future<MaterialMarketAnalysis> bind(
     String goodsId, {
     required String? seriesId,
@@ -25,10 +25,10 @@ class ApiMaterialMarketRepository implements MaterialMarketRepository {
       MaterialMarketAnalysis(await api.get(_path(goodsId)));
 
   @override
-  Future<List<MaterialMarketSnapshot>> catalog(String goodsId) async =>
+  Future<List<MaterialMarketBenchmark>> catalog(String goodsId) async =>
       (await api.getList(
         '${_path(goodsId)}/catalog',
-      )).map(MaterialMarketSnapshot.new).toList(growable: false);
+      )).map(MaterialMarketBenchmark.new).toList(growable: false);
 
   @override
   Future<MaterialMarketAnalysis> bind(

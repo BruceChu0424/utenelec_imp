@@ -1,9 +1,11 @@
 package com.uten.imp.architecture;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.charset.MalformedInputException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -14,6 +16,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -34,6 +38,7 @@ class SubcontractRemovedConceptSourceScanTest {
     private static final Path MAIN_JAVA = Path.of("src/main/java");
     private static final Path MAIN_RESOURCES = Path.of("src/main/resources");
     private static final Path MIGRATIONS = MAIN_RESOURCES.resolve("db").resolve("migration");
+    private static final Path PDF_FONT = MAIN_RESOURCES.resolve("fonts").resolve("NotoSansSCFullPdf.ttf");
 
     /** 被删的概念(ADR-143 §五 / CONTRACT §2.1、§2.2、§4.3、CONTRACT_NOBOM §3)。标识符按词边界匹配。 */
     private static final List<String> REMOVED_IDENTIFIERS = List.of(
@@ -196,6 +201,17 @@ class SubcontractRemovedConceptSourceScanTest {
 
     // ===================== 扫描 =====================
 
+    @Test
+    void binaryFontIsExcludedButFontTextAndInvalidTextRemainCovered(@TempDir Path directory) throws IOException {
+        List<Path> files = sourceFiles();
+        assertFalse(files.contains(PDF_FONT), "完整 TTF 是二进制资源，不是可执行源码或 UTF-8 文本");
+        assertTrue(files.contains(PDF_FONT.resolveSibling("NotoSansSCFullPdf.json")), "字体派生元数据仍须扫描");
+        assertTrue(files.contains(PDF_FONT.resolveSibling("README.md")), "字体文字说明仍须扫描");
+        Path invalidText = directory.resolve("invalid.json");
+        Files.write(invalidText, new byte[]{(byte) 0xc3, (byte) 0x28});
+        assertThrows(MalformedInputException.class, () -> scan(invalidText), "损坏的文本编码必须继续失败");
+    }
+
     private static List<Path> sourceFiles() throws IOException {
         List<Path> files = new ArrayList<>();
         try (Stream<Path> java = Files.walk(MAIN_JAVA)) {
@@ -205,6 +221,8 @@ class SubcontractRemovedConceptSourceScanTest {
             try (Stream<Path> resources = Files.walk(MAIN_RESOURCES)) {
                 resources.filter(Files::isRegularFile)
                         .filter(path -> !path.startsWith(MIGRATIONS))
+                        // The bundled full font is binary; all neighboring text resources stay in the scan.
+                        .filter(path -> !path.equals(PDF_FONT))
                         .forEach(files::add);
             }
         }

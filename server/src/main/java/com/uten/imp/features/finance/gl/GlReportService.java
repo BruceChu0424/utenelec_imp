@@ -323,8 +323,11 @@ public class GlReportService {
     private static BigDecimal at(BigDecimal[] months, int month) {
         requireMonth(month);
         if (months == null) return BigDecimal.ZERO;
-        if (month < 0 || month >= months.length) throw new IllegalStateException("总账月度取数缺少完整月份");
-        return months[month] == null ? BigDecimal.ZERO : months[month];
+        if (month >= 0 && month < months.length) {
+            BigDecimal amount = months[month];
+            return amount == null ? BigDecimal.ZERO : amount;
+        }
+        throw new IllegalStateException("总账月度取数缺少完整月份");
     }
 
     private static void requireMonth(int month) {

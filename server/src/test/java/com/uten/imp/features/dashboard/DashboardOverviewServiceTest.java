@@ -79,8 +79,11 @@ class DashboardOverviewServiceTest {
 
     @Test void overviewNoLongerCarriesOrQueriesPolicyIntelligence() {
         service.overview();
-        assertThat(java.util.Arrays.stream(DashboardOverviewDto.class.getRecordComponents())
-                .map(java.lang.reflect.RecordComponent::getName))
+        com.fasterxml.jackson.databind.JsonNode wire = new com.fasterxml.jackson.databind.ObjectMapper()
+                .findAndRegisterModules().valueToTree(service.overview());
+        var fields = new java.util.ArrayList<String>();
+        wire.fieldNames().forEachRemaining(fields::add);
+        assertThat(fields)
                 .containsExactly("departmentCode", "departmentName", "generatedAt", "metrics", "todos");
         assertThat(mockingDetails(jdbc).getInvocations())
                 .flatExtracting(invocation -> java.util.Arrays.asList(invocation.getArguments()))

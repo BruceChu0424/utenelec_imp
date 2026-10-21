@@ -72,7 +72,7 @@ class ProductionContinuousZeroBudgetTest {
             return query;
         });
         Object snapshot=ReflectionTestUtils.invokeMethod(service,"continuousIncrement",warehouse,List.of(row),UUID.randomUUID(),UUID.randomUUID(),
-                null,ProductionExecutionReadinessService.ReceiptKind.PLAN_GROWTH,reclaim);
+                reclaim);
         List<?> increments=ReflectionTestUtils.invokeMethod(snapshot,"demands");
         return new Result(increments,(int)statements.stream().filter(sql->sql.contains("JOIN purchase_receipt_items")
                 ||sql.contains("JOIN subcontract_receipt_items")||sql.contains("JOIN stock_document_items receipt_item")).count());

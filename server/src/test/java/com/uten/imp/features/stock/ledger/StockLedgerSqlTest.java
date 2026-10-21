@@ -122,7 +122,7 @@ class StockLedgerSqlTest {
         for (StockLedgerSource source : StockLedgerSource.values()) {
             assertThat(sql).contains("p.source_doc_type = '" + source.code() + "'");
         }
-        assertThat(sql).contains("WHEN 'STOCK_DOC' THEN src_sd.doc_type")
+        assertThat(sql).contains("WHEN E'STOCK_DOC' THEN src_sd.doc_type")
                 .contains("LEFT JOIN production_daily_reports src_sd_pdr")
                 // 调拨两腿的往来方是对方仓库。
                 .contains("q.movement_type = 15 - p.movement_type")

@@ -29,6 +29,11 @@ class SpreadsheetGridReaderTest {
 
     private static byte[] write(Workbook wb) throws IOException {
         try (wb; ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            if (wb instanceof HSSFWorkbook legacy) {
+                legacy.createInformationProperties();
+                legacy.getSummaryInformation().getSections().forEach(section -> section.setCodepage(org.apache.poi.util.CodePageUtil.CP_UTF16));
+                legacy.getDocumentSummaryInformation().getSections().forEach(section -> section.setCodepage(org.apache.poi.util.CodePageUtil.CP_UTF16));
+            }
             wb.write(out);
             return out.toByteArray();
         }

@@ -218,8 +218,20 @@ class ChainNoticeProductionWorkshopScopeTest {
                 "static String executionReadySourceLabel(");
 
         assertThat(source)
-                .contains("publishWorkshopTasksForPlan(")
+                .contains("lockWorkshopSegmentsForPlans(")
+                .contains("workshopSegments.getOrDefault(ps.planId(), List.of())")
+                .contains("publishWorkshopTask(segmentId, \"生产计划已审核下达\")")
                 .contains("生产计划已审核下达");
+        String frozenSegments = slice(source,
+                "static Map<UUID, List<UUID>> lockWorkshopSegmentsForPlans(",
+                "private void publishWorkshopTasksForDraw(");
+        assertThat(frozenSegments)
+                .contains("ORDER BY segment.id")
+                .contains("FOR UPDATE OF segment")
+                .contains("List.copyOf(segments)")
+                .contains("return Map.copyOf(frozen)")
+                .doesNotContain("FOR UPDATE OF plan")
+                .doesNotContain("FROM business_outbox");
         assertThat(issued)
                 .contains("publishWorkshopTasksForDraw(")
                 .contains("true)")
@@ -276,7 +288,7 @@ class ChainNoticeProductionWorkshopScopeTest {
         String assigned = slice(
                 chain,
                 "public void notifyExecutionSegmentWorkshopAssigned(",
-                "private void publishWorkshopTasksForPlan(");
+                "static Map<UUID, List<UUID>> lockWorkshopSegmentsForPlans(");
         assertThat(assigned)
                 .contains("publishWorkshopTask(")
                 .doesNotContain("notifyRoles(")

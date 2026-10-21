@@ -137,7 +137,7 @@ class SalesReportOwnerScopeTest {
         assertTrue(allSql.contains("o.currency_id AS \"__currencyId\""));
         assertTrue(allSql.contains("t.\"__clientId\", t.\"__currencyId\""));
         assertTrue(allSql.contains("BTRIM(currency.name)"));
-        assertTrue(allSql.contains("'USD' THEN '美金'"));
+        assertTrue(allSql.contains("E'USD' THEN E'美金'"));
         assertFalse(allSql.contains("currency.code AS \"currencyCode\""));
         assertTrue(allSql.contains("shipment.warehouse_work_status = 'SHIPPED'"));
         assertTrue(allSql.contains("SUM(shipped.amount_local)"));

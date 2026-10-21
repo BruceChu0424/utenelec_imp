@@ -7,8 +7,7 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.encryption.AccessPermission;
 import org.apache.pdfbox.pdmodel.encryption.StandardProtectionPolicy;
-import org.apache.pdfbox.pdmodel.font.PDType1Font;
-import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.junit.jupiter.api.Test;
 
 import javax.imageio.ImageIO;
@@ -24,14 +23,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class PdfTextReaderTest {
 
     static byte[] pdf(List<List<String>> pages, String userPassword) throws IOException {
-        try (PDDocument doc = new PDDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            PDType1Font font = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+        try (PDDocument doc = new PDDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream();
+             var fontFile = PdfTextReaderTest.class.getResourceAsStream("/fonts/NotoSansSCFullPdf.ttf")) {
+            if (fontFile == null) throw new IOException("Dedicated PDF fixture font is missing");
+            PDType0Font font = null;
             for (List<String> lines : pages) {
                 PDPage page = new PDPage();
                 doc.addPage(page);
                 if (lines.isEmpty()) {
                     continue;
                 }
+                if (font == null) font = PDType0Font.load(doc, fontFile, true);
                 try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
                     cs.beginText();
                     cs.setFont(font, 11);
@@ -102,12 +104,15 @@ class PdfTextReaderTest {
     @Test
     void discardedLongLineMarksTheDocumentIncomplete() throws IOException {
         byte[] bytes;
-        try (PDDocument doc = new PDDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+        try (PDDocument doc = new PDDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream();
+             var fontFile = PdfTextReaderTest.class.getResourceAsStream("/fonts/NotoSansSCFullPdf.ttf")) {
+            if (fontFile == null) throw new IOException("Dedicated PDF fixture font is missing");
+            PDType0Font font = PDType0Font.load(doc, fontFile, true);
             PDPage page = new PDPage(new PDRectangle(10000, 100));
             doc.addPage(page);
             try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
                 cs.beginText();
-                cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 1);
+                cs.setFont(font, 1);
                 cs.newLineAtOffset(1, 50);
                 cs.showText("x".repeat(8193) + " Invoice No: second-invoice");
                 cs.endText();

@@ -47,7 +47,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
  * 被取消) / fail(抛出业务异常); 提交时 mode=deny 拒绝; 结果里的 secretField 在读取时被过滤掉。
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
-@SpringBootTest(properties = {
+@SpringBootTest(classes = com.uten.imp.UtenImpApplication.class, properties = {
         "spring.profiles.active=dev",
         "uten.storage.malware-scan.provider=test-only",
         "uten.audit.retention.enabled=false",

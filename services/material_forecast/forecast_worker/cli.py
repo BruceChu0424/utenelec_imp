@@ -16,10 +16,16 @@ from .data import InputError, ledger_payload, read_dataset, require_append_only
 from .engine import build_snapshot
 
 
-def atomic_json(path: Path, value: dict) -> None:
+def atomic_json(path: Path, value: dict, *, public: bool = False) -> None:
     descriptor, temporary = tempfile.mkstemp(prefix="." + path.name + ".", suffix=".tmp", dir=path.parent)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+            if public and os.name == "posix":
+                # Only the three published market documents are shared with the
+                # ERP reader group. Private ledgers/cache/locks remain owner-only.
+                # An SGID output directory supplies the reader group without
+                # giving this separate writer identity any ERP group membership.
+                os.fchmod(handle.fileno(), 0o640)
             json.dump(value, handle, ensure_ascii=False, indent=2, allow_nan=False)
             handle.write("\n")
             handle.flush()
@@ -71,7 +77,7 @@ def run_once(manifest_path: Path, csv_path: Path, output_directory: Path,
         # Ledger first: after a crash, rerunning the same full append-only file is safe.
         # Publish uses same-directory replace, so readers see either complete generation.
         atomic_json(ledger_path, ledger_payload(dataset))
-        atomic_json(destination, snapshot)
+        atomic_json(destination, snapshot, public=True)
     return destination, snapshot
 
 

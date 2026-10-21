@@ -45,7 +45,7 @@ class AutoFeed:
                 "schemaVersion": 1, "workerVersion": __version__, "generatedAt": utc_text(self.now()),
                 "autoUpdateEnabled": self.continuous and not self.stop.is_set(),
                 "series": list(self.health.values()),
-            })
+            }, public=True)
 
     def _heartbeat_loop(self) -> None:
         while not self.stop.wait(30):
@@ -162,7 +162,7 @@ class AutoFeed:
                         # Preserve what was actually issued for later prospective analysis.
                         # This archive does not by itself constitute a passed forward validation.
                         atomic_json(issued_path, snapshot)
-                    atomic_json(path, snapshot)
+                    atomic_json(path, snapshot, public=True)
                 except (ValueError, ArithmeticError, RuntimeError) as exc:
                     raise SourceError("MODEL_FAILED") from exc
                 self.state.setdefault("models", {})[series] = {"digest": digest, "generatedAt": snapshot["generatedAt"]}
@@ -196,7 +196,7 @@ class AutoFeed:
                      "price": format(amount, "f"), "currency": benchmark["currency"], "unit": benchmark["unit"],
                      "marketTime": utc_text(market_time), "fetchedAt": utc_text(now),
                      "delayMinutes": 30, "provider": "SHFE_PUBLIC_DAILY"}
-            atomic_json(self.output / (series + ".quote.json"), quote)
+            atomic_json(self.output / (series + ".quote.json"), quote, public=True)
             with self.health_lock:
                 self.health[series]["lastSuccessAt"] = utc_text(now)
 

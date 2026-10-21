@@ -3,6 +3,8 @@
 import gzip
 import io
 import json
+import os
+import stat
 import random
 import sys
 import tempfile
@@ -178,6 +180,11 @@ class AutomaticCycleTests(unittest.TestCase):
             self.assertEqual(len(list((Path(temporary) / ".auto-feed/issued/shfe_cu_main_daily").glob("*.json"))), 1)
             health = json.loads((Path(temporary) / "auto-feed-health.json").read_text(encoding="utf-8"))
             self.assertTrue(all(row["status"] == "IDLE" for row in health["series"]))
+            if os.name == "posix":
+                for path in Path(temporary).glob("*.json"):
+                    self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o640, path.name)
+                for path in (Path(temporary) / ".auto-feed").rglob("*.json"):
+                    self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600, str(path))
 
     def test_full_backfill_real_model_next_day_update_and_failure_preservation(self):
         with tempfile.TemporaryDirectory() as temporary:

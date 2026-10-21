@@ -15,7 +15,8 @@
 
 ```powershell
 python -m venv .venv-material-forecast
-& ./.venv-material-forecast/Scripts/python.exe -m pip install -r services/material_forecast/requirements.txt
+& ./.venv-material-forecast/Scripts/python.exe -m pip install --require-hashes --only-binary=:all: -r services/material_forecast/requirements.txt
+& ./.venv-material-forecast/Scripts/python.exe -m pip check
 & ./.venv-material-forecast/Scripts/python.exe -m unittest discover -s services/material_forecast/tests -v
 
 # 一次有界检查：先最新日终和延时价，再回填最多30个日文件。不会假装后台已常驻。
@@ -94,6 +95,12 @@ uten.material-forecast.max-data-age-days=3
 在仓库根目录执行 `docker build -f services/material_forecast/Dockerfile -t uten-material-forecast:local .`。
 Compose 的 `MATERIAL_FORECAST_DIRECTORY` 必须设为服务器同样读取的绝对目录，
 Linux 目录须可由 uid 10001 写入；缓存 `.auto-feed/` 要持久化并与快照一起备份。
+Linux 正式安装使用独立 worker 身份。输出目录由该身份拥有、组为 ERP 只读组，设置 SGID
+和 `2750`；只有公开快照、延时报价、心跳以 `0640` 原子发布，ERP 可以读、不能写。
+缓存、已发行预测档案、状态账本和锁仍为 `0600`，不要对私有状态递归放宽权限，
+也不要让 worker 加入 ERP 组或复用 ERP 运行身份来解决读取问题。
+镜像构建与虚拟环境安装使用同一份完整 hash 锁，强制 `--require-hashes --only-binary=:all:`，
+并执行 `pip check`；常驻进程启动时不安装或更新依赖。
 本进程不需要 ERP 密钥。容器仅请求官方公开统计，未安装订阅行情服务。
 
 ## 旧版可选 CSV 模式

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import csv
 import json
+import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -16,7 +18,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from examples.generate_synthetic import generate
-from forecast_worker.cli import run_once
+from forecast_worker.cli import atomic_json, run_once
 from forecast_worker.data import Dataset, InputError, Revision, ledger_payload, read_dataset, require_append_only
 from forecast_worker.engine import HORIZONS, MIN_VALIDATION_FOLDS, build_snapshot, chronological_folds, validation_reasons
 
@@ -146,6 +148,26 @@ class ImportTests(unittest.TestCase):
         with self.assertRaises(InputError):
             run_once(self.manifest_path, self.csv_path, self.directory / "out", now=NOW)
         self.assertEqual(output.read_bytes(), before)
+
+    def test_published_snapshots_share_read_permission_while_the_ledger_stays_private(self):
+        self.write_rows([("2026-10-19", "50000", "2026-10-19T16:00:00+08:00")])
+        output, _ = run_once(self.manifest_path, self.csv_path, self.directory / "out", now=NOW)
+        ledger = output.parent / ".state/test_copper.state.json"
+        self.assertTrue(ledger.is_file())
+        if os.name == "posix":
+            self.assertEqual(stat.S_IMODE(output.stat().st_mode), 0o640)
+            self.assertEqual(stat.S_IMODE(ledger.stat().st_mode), 0o600)
+
+    def test_failed_publication_preserves_the_complete_readable_generation(self):
+        output = self.directory / "published.json"
+        atomic_json(output, {"generation": 1}, public=True)
+        before = output.read_bytes()
+        with self.assertRaises(ValueError):
+            atomic_json(output, {"generation": float("nan")}, public=True)
+        self.assertEqual(output.read_bytes(), before)
+        self.assertEqual(list(self.directory.glob(".*.tmp")), [])
+        if os.name == "posix":
+            self.assertEqual(stat.S_IMODE(output.stat().st_mode), 0o640)
 
     def test_truncated_quoted_csv_is_rejected_without_republishing(self):
         self.write_rows([("2026-10-19", "50000", "2026-10-19T16:00:00+08:00")])

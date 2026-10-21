@@ -72,6 +72,20 @@ class MasterReferenceCatalogCoverageTest {
     }
 
     @Test
+    void marketReferenceAssociationIsGoodsOwnConfigurationRatherThanAnOpenBusinessReference() {
+        assertThat(MasterReferenceCatalog.exemptions().stream()
+                .filter(exemption -> exemption.table().equals("goods_market_reference_bindings")).toList())
+                .singleElement().satisfies(exemption -> {
+                    assertThat(exemption.column()).isEqualTo("goods_id");
+                    assertThat(exemption.reason()).isEqualTo(MasterReferenceCatalog.ExemptReason.OWN_CONFIG);
+                    assertThat(exemption.note()).contains("CAS墓碑", "不是在办业务引用");
+                });
+        assertThat(MasterReferenceCatalog.references().stream()
+                .filter(reference -> reference.table().equals("goods_market_reference_bindings")).toList())
+                .isEmpty();
+    }
+
+    @Test
     void everyColumnPointingAtAMasterIsEitherCheckedOrExemptedWithAReason() throws SQLException {
         Map<String, MasterEntityKind> inventory = inventory();
         Map<String, MasterEntityKind> covered = new TreeMap<>();

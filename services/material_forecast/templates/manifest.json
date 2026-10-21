@@ -1,0 +1,15 @@
+{
+  "seriesId": "replace_with_own_benchmark_id",
+  "name": "Replace with the authorized source and benchmark name",
+  "commodity": "COPPER",
+  "market": "SPOT",
+  "grade": "REPLACE_WITH_EXACT_GRADE",
+  "region": "REPLACE_WITH_REGION",
+  "currency": "CNY",
+  "unit": "元/吨",
+  "priceBasis": "REPLACE_WITH_TAX_FREIGHT_AND_PROCESSING_BASIS",
+  "sourceName": "REPLACE_WITH_AUTHORIZED_SOURCE",
+  "sourceUrl": "https://example.invalid/replace-with-provenance",
+  "authorized": false,
+  "rollPolicy": null
+}

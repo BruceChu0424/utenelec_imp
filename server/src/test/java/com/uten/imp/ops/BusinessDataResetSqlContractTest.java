@@ -203,6 +203,10 @@ public class BusinessDataResetSqlContractTest {
      * 同样走「读取已安装函数定义 + 锚点替换插入」补丁；与 CLEAR 扩展分开登记。
      */
     private static final Map<String, Integer> PRESERVE_RESET_EXTENSIONS = Map.ofEntries(
+            Map.entry("goods_market_reference_bindings", 890),
+            // V888 existing catalog removals survive a business reset along with their definitions.
+            Map.entry("platform_column_definition_deletions", 888),
+            Map.entry("business_column_deletions", 888),
             Map.entry("staff_mfa", 873),
             Map.entry("remote_access_policy", 874),
             // V879 官网管理与桥接：连接配置与投递诊断跨业务清空保留。

@@ -157,3 +157,9 @@ server/.codex-*
 
 # 本地会话分析产物（output/ 目录）
 output/
+
+# Local forecasting environments and authorized market data stay outside Git.
+/.venv-material-forecast/
+/services/material_forecast/.venv*/
+/services/material_forecast/runtime/
+/services/material_forecast/**/__pycache__/

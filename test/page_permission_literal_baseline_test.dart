@@ -86,6 +86,20 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
       'Perm.subcontractOrderReverse': 1,
     },
   ),
+  // ADR-186: synchronous read invalidation matches GoodsMarketReferenceService's
+  // purchase/finance alternatives. Editing is exclusively server canManage plus
+  // native ownership; these six references never grant a mutation capability.
+  'lib/features/basic_data/widgets/goods_material_market_panel.dart': (
+    legacyCount: 0,
+    tokens: {
+      'Perm.goodsView': 1,
+      'Perm.goodsPriceAnalysisView': 1,
+      'Perm.purchaseOrderView': 1,
+      'Perm.financeOrderApprovalView': 1,
+      'Perm.purchaseOrderPriceView': 1,
+      'Perm.financeViewAll': 1,
+    },
+  ),
   'lib/features/finance/pages/finance_quote_review_page.dart': (
     legacyCount: 4,
     tokens: {
@@ -506,7 +520,7 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
         (sum, entry) =>
             sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
       ),
-      126, // Previous 122 + 4 reviewed inline/history entry checks. Global baseline remains 677.
+      132, // Previous 126 + 6 reviewed ADR-186 read guards. Global baseline remains 677.
     );
   });
 

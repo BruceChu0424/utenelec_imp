@@ -108,9 +108,10 @@ class AuditTriggerCoverageMigrationContractTest {
             new FullGroup("master", "data_change", false,
                     "基础资料主档: 人工维护, 被所有单据引用",
                     Set.of(
-                        "accounts", "business_column_definitions",
+                        "accounts", "business_column_definitions", "business_column_deletions", "platform_column_definition_deletions",
                         "sales_alias_document_evidence", "client_categories", "client_ship_addresses", "clients",
                         "colors", "currencies", "finance_payment_methods", "goods",
+                        "goods_market_reference_bindings",
                         "goods_bom_items", "goods_cost_sheets", "goods_cost_snapshots", "goods_cost_templates",
                         "goods_cost_imports", "goods_cost_import_mappings",
                         "goods_weight_profiles",

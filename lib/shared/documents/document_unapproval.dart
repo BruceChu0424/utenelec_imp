@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/network/api_exception.dart';
+import '../../core/router/nav_helpers.dart';
 import '../../core/ui/app_notification.dart';
 import '../providers/authenticated_scope_provider.dart';
 
@@ -174,9 +175,14 @@ void showDocumentUnapprovalResult(BuildContext context, int? status) {
 
 /// Replacing the page gives the successor its own async/identity scope and retains returnTo.
 void openUnapprovedDraft(BuildContext context, String path) {
-  final query = Map<String, String>.from(
-    GoRouter.of(context).routeInformationProvider.value.uri.queryParameters,
-  )..remove('history');
+  final page = goRouterPageStateOrNull(context);
+  if (page == null ||
+      ModalRoute.of(context)?.isCurrent != true ||
+      page.pageKey != GoRouter.of(context).state.pageKey) {
+    return;
+  }
+  final query = Map<String, String>.from(page.uri.queryParameters)
+    ..remove('history');
   context.pushReplacement(
     Uri.parse(
       path,
@@ -297,13 +303,16 @@ class _DocumentUnapprovalBannerState
       if (next != null) _load();
     });
     if (_links.isEmpty) return const SizedBox.shrink();
-    final uri = GoRouter.of(context).routeInformationProvider.value.uri;
+    final uri = goRouterPageStateOrNull(context)?.uri;
+    if (uri == null || !uri.pathSegments.contains(widget.documentId)) {
+      return const SizedBox.shrink();
+    }
     String relatedPath(String id) {
       final segments = List<String>.from(uri.pathSegments);
       final index = segments.indexOf(widget.documentId);
       if (index >= 0) segments[index] = id;
       if (segments.isNotEmpty && segments.last == 'edit') segments.removeLast();
-      return uri.replace(pathSegments: segments).toString();
+      return uri.replace(pathSegments: ['', ...segments]).toString();
     }
 
     return Container(

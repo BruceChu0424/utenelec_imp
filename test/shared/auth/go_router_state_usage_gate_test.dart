@@ -25,7 +25,10 @@ void main() {
     const allowlist = <String, int>{
       // 2026-09-10 UtenBackButton 默认返回改为委托 nav_helpers.backTo，本文件不再
       // 直接调用 GoRouterState.of（全站返回契约只在 nav_helpers 维护一份）。
-      'lib/core/router/nav_helpers.dart': 3, // A+C: 回调期 + fail-closed 封装
+      // 2026-10-21 pushFrom 在财务 hub 卡片 onTap 读取来源 matchedLocation，
+      // 压栈后返回复用原 hub 状态；属于 A 类回调，不在子弹层 build 中取状态。
+      // A ×3：goFrom / pushFrom / backTo；C ×1：先检查 Page 的 fail-closed 封装。
+      'lib/core/router/nav_helpers.dart': 4, // A ×3 + C ×1
       // page_resume_provider.dart 的三处命中都在文档注释里（无代码调用）：两处是
       // onPageResume 的用法示例，2026-09-21 落点改取栈顶 matchedLocation 后又多出
       // 一处，说明页面注册用的 GoRouterState.of 与 topMatchedLocationOf 同口径。

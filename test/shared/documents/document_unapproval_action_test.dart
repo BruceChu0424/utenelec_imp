@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -35,6 +36,78 @@ Map<String, dynamic> _blocked(String message) => {
 };
 
 void main() {
+  testWidgets(
+    'pushed unapproval links retain the owning detail path and query',
+    (tester) async {
+      final router = await _pumpBannerRoutes(tester);
+      await tester.tap(find.text('后续单据 FY-2'));
+      await tester.pumpAndSettle();
+      final successor = GoRouterState.of(
+        tester.element(find.byKey(const ValueKey('page-successor'))),
+      ).uri;
+      expect(successor.path, '/finance/expenses/successor');
+      expect(successor.queryParameters, {
+        'history': '1',
+        'returnTo': '/finance/expenses',
+        'tab': 'attachments',
+      });
+      await tester.tap(find.text('反审前单据与附件'));
+      await tester.pumpAndSettle();
+      final original = GoRouterState.of(
+        tester.element(find.byKey(const ValueKey('page-original'))),
+      ).uri;
+      expect(original.path, '/finance/expenses/original');
+      expect(original.queryParameters, successor.queryParameters);
+      expect(router.canPop(), isTrue);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('offstage unapproval banner keeps its own document identity', (
+    tester,
+  ) async {
+    final rebuild = ValueNotifier(0);
+    addTearDown(rebuild.dispose);
+    final router = await _pumpBannerRoutes(tester, rebuild: rebuild);
+    router.push('/finance/expenses/other?tab=other');
+    await tester.pumpAndSettle();
+    rebuild.value++;
+    await tester.pump();
+    final originalBanner = find.byKey(
+      const ValueKey('banner-original'),
+      skipOffstage: false,
+    );
+    final link = find.descendant(
+      of: originalBanner,
+      matching: find.widgetWithText(
+        TextButton,
+        '后续单据 FY-2',
+        skipOffstage: false,
+      ),
+      skipOffstage: false,
+    );
+    expect(link, findsOneWidget);
+    tester.widget<TextButton>(link).onPressed!();
+    await tester.pumpAndSettle();
+    final uri = GoRouterState.of(
+      tester.element(find.byKey(const ValueKey('page-successor'))),
+    ).uri;
+    expect(uri.path, '/finance/expenses/successor');
+    expect(uri.queryParameters['tab'], 'attachments');
+    expect(uri.queryParameters['returnTo'], '/finance/expenses');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'unapproval banner without its document route cannot expose unrelated links',
+    (tester) async {
+      await _pumpBannerRoutes(tester, bannerDocumentId: 'mismatched');
+      expect(find.text('后续单据 FY-2'), findsNothing);
+      expect(find.text('反审前单据与附件'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'blocked action explains the actual dependency and never invokes reversal',
     (tester) async {
@@ -170,6 +243,88 @@ void main() {
       expect(api.posts, 1);
     },
   );
+}
+
+Future<GoRouter> _pumpBannerRoutes(
+  WidgetTester tester, {
+  ValueNotifier<int>? rebuild,
+  String? bannerDocumentId,
+}) async {
+  final revision = rebuild ?? ValueNotifier(0);
+  if (rebuild == null) addTearDown(revision.dispose);
+  Widget detail(BuildContext context, GoRouterState state) {
+    final id = state.pathParameters['id']!;
+    final edit = state.uri.path.endsWith('/edit');
+    return Scaffold(
+      key: ValueKey('page-$id${edit ? '-edit' : ''}'),
+      body: ValueListenableBuilder<int>(
+        valueListenable: revision,
+        builder: (_, _, _) => DocumentUnapprovalBanner(
+          key: ValueKey('banner-$id'),
+          family: 'financeExpense',
+          documentId: bannerDocumentId ?? id,
+        ),
+      ),
+    );
+  }
+
+  final router = GoRouter(
+    initialLocation: '/finance',
+    routes: [
+      GoRoute(
+        path: '/finance',
+        builder: (context, _) => Scaffold(
+          body: TextButton(
+            onPressed: () => context.push('/finance/expenses'),
+            child: const Text('费用列表'),
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/finance/expenses',
+        builder: (context, _) => Scaffold(
+          body: TextButton(
+            onPressed: () => context.push(
+              '/finance/expenses/original/edit?history=1'
+              '&returnTo=%2Ffinance%2Fexpenses&tab=attachments',
+            ),
+            child: const Text('原单据详情'),
+          ),
+        ),
+      ),
+      GoRoute(path: '/finance/expenses/:id/edit', builder: detail),
+      GoRoute(path: '/finance/expenses/:id', builder: detail),
+    ],
+  );
+  addTearDown(router.dispose);
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        ...nativeDetailReaderOverrides(),
+        apiClientProvider.overrideWithValue(_BannerApi()),
+      ],
+      child: MaterialApp.router(routerConfig: router),
+    ),
+  );
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('费用列表'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('原单据详情'));
+  await tester.pumpAndSettle();
+  return router;
+}
+
+class _BannerApi extends ApiClient {
+  _BannerApi() : super(Dio());
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async => {
+    'links': [
+      {'originalId': 'original', 'draftId': 'successor', 'draftBillNo': 'FY-2'},
+    ],
+  };
 }
 
 Future<ProviderContainer> _pump(

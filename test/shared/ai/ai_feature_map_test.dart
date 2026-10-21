@@ -21,6 +21,8 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/router/app_router.dart';
 import 'package:uten_imp/core/router/hub_catalog.dart';
+import 'package:uten_imp/core/router/nav_helpers.dart';
+import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/core/router/permission_by_path.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/dashboard/widgets/workbench_module_area.dart';
@@ -395,10 +397,13 @@ Future<List<_Card>> _harvest(
   Future<String> tap(VoidCallback onTap) async {
     onTap();
     await tester.pump(const Duration(milliseconds: 300));
-    final landed = router.routerDelegate.currentConfiguration.uri.path;
+    // Imperative push preserves the root configuration URI. Collect the
+    // visible route, using the same contract as page resume notifications.
+    final landed = topMatchedLocationOf(router);
+    expect(landed, isNotNull, reason: '卡片跳转后必须有可见的目标路由');
     router.go(location);
     await tester.pump(const Duration(milliseconds: 300));
-    return landed;
+    return landed!;
   }
 
   final cards = <_Card>[];
@@ -800,6 +805,52 @@ List<Map<String, Object?>> _features() => [
 ];
 
 void main() {
+  testWidgets('directory card harvest records both go and push destinations', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final cards = await _harvest(
+      tester,
+      preferences,
+      '/fixture-hub',
+      (_, _) => Builder(
+        builder: (context) => Scaffold(
+          body: Column(
+            children: [
+              UtenHubCard(
+                icon: Icons.list_alt_outlined,
+                label: '替换入口',
+                description: '真实替换目标',
+                onTap: () => goFrom(context, '/records/go?filter=pending'),
+              ),
+              UtenHubCard(
+                icon: Icons.receipt_long_outlined,
+                label: '压栈入口',
+                description: '真实压栈目标',
+                onTap: () =>
+                    pushFrom<void>(context, '/records/push?filter=pending'),
+              ),
+            ],
+          ),
+        ),
+      ),
+      const ['工作台', '测试目录'],
+    );
+    expect(cards.map((card) => card.location), [
+      '/records/go',
+      '/records/push',
+    ]);
+    expect(cards.map((card) => card.label), ['替换入口', '压栈入口']);
+    expect(cards.map((card) => card.description), ['真实替换目标', '真实压栈目标']);
+    expect(cards.map((card) => card.path), [
+      ['工作台', '测试目录', '替换入口'],
+      ['工作台', '测试目录', '压栈入口'],
+    ]);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('the feature directory matches the router, cards and page docs', (
     tester,
   ) async {

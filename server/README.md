@@ -39,8 +39,19 @@ CI 返回 HTTP 401。将这个已知仓库 ID 单独映射到 Central，避免�
 cd server
 cp .env.example .env            # 模板已连接 Docker 宿主端口 localhost:5433
 docker compose up -d --wait --wait-timeout 600 postgres # 起开发用 Postgres，并等健康检查通过
-mvn spring-boot:run             # 读取 .env，Flyway 自动建表 + 种子
+mvn -Pdev-run spring-boot:run    # 读取 .env，编译主代码，Flyway 自动建表 + 种子
 ```
+
+PowerShell 可直接运行 `server/dev.ps1`：在 `server/` 中执行 `.\dev.ps1`，在仓库根目录执行
+`.\server\dev.ps1`。脚本会切到 `server/`，保证加载同一份 `.env` 和 Maven 仓库配置；应用留在前台，
+按 `Ctrl+C` 停止，Maven 启动失败的退出码会原样返回。
+
+`dev-run` 是显式选择的 **Maven 开发启动配置**，与 Spring 的 `dev` profile 不同：仍需在私有
+`.env` 中设置 `UTEN_PROFILE=dev`。Spring Boot 的 `run` 目标会先进入 `test-compile`；该 Maven
+配置只在开发启动时跳过测试源码编译和测试资源复制，把输出放在独立的 `target-dev`。
+普通 `mvn spring-boot:run` 仍包含测试编译；普通 `mvn test` / `mvn verify` 的测试行为保持不变。
+**验收、CI、打包不得携带 `-Pdev-run`**，因为该配置会设置 `maven.test.skip=true`，不能提供测试证据。
+它不改变 Flyway、JPA 结构校验、Bean 初始化或日志级别；首次完整主代码编译和应用启动仍需正常完成。
 
 `docker-compose.yml` 将容器内 PostgreSQL `5432` 映射为宿主机 `5433`，因此直接运行 Maven/IDE
 时必须连接 `jdbc:postgresql://localhost:5433/uten_imp`；`.env.example` 已与该映射保持一致。若改用
@@ -109,25 +120,33 @@ SSL factory/hostname verifier。明确的本机回环继续允许开发、内部
 
 ## 本地启动与并行测试的编译目录
 
-`spring-boot:run` 默认从 `target/classes` 加载应用类。运行或启动服务时，另一个终端若在同目录执行
-`mvn clean test`，会删除 JVM 正在使用的 class 文件，可能报 `NoClassDefFoundError` 或外层的
+普通 `spring-boot:run` 从 `target/classes` 加载应用类；推荐开发入口 `dev-run` / `dev.ps1` 改用
+`target-dev/classes`。运行或启动服务时，另一个终端若对同一输出目录执行 `clean test`，
+会删除 JVM 正在使用的 class 文件，可能报 `NoClassDefFoundError` 或外层的
 `Lookup method resolution failed`。这类缺类错误先检查编译目录，不修改业务源码或已应用迁移。
 
-并行测试必须选择独立输出目录，默认开发启动仍使用 `target`：
+推荐开发启动与普通构建已分开；并行测试仍为每个测试任务选择独立输出目录：
 
 ```powershell
 # 测试终端；clean、主代码、测试代码、报告全部位于 target-tests
 mvn "-Duten.build.directory=target-tests" clean test
 
 # 开发启动终端
-mvn spring-boot:run
+.\dev.ps1
+# 或 mvn -Pdev-run spring-boot:run
 ```
 
 多个测试任务也应使用各自独立的 `target-任务名`，不要让它们同时清理同一输出目录。
+同时运行第二个开发实例也必须独立输出并选择其它端口，例如
+`.\dev.ps1 -BuildDirectory target-dev-secondary -Port 8081`；该参数只隔离类文件和监听端口，
+数据库、后台任务、附件目录和应用日志仍由 Spring 配置决定，不自动产生隔离测试环境。
+使用相同开发输出目录前先停止已有实例。切换分支或删除迁移、类文件后，停止对应开发实例，再运行
+`mvn -Pdev-run clean spring-boot:run` 清除旧资源；日常启动不重复 `clean`，以保留增量编译收益。
 
 当前测试启动参数已显式挂载 Mockito Java agent，避免测试执行时临时自挂载代理的 JDK 告警；测试日志也按构建目录隔离。不要为了让输出变绿而全局关闭 WARN/ERROR。首次空库迁移、首个超管创建与正常重启应分别验证；安全引导提醒不能当成普通运行故障，也不能删掉。
 `server/target-*/` 已在 Git 忽略规则内。已经启动的旧构建不会受新参数影响，须等待其结束后再恢复服务。
-遇到缺类且没有其它构建占用默认目录时，可先执行 `mvn -DskipTests clean compile`，成功后再启动。
+遇到缺类时，确认对应输出目录没有运行中的应用或构建，再用上述带 `clean` 的开发命令重建；
+普通入口则执行 `mvn clean compile`，成功后再启动。
 
 ## 数据库与启动排错
 
@@ -139,11 +158,19 @@ mvn spring-boot:run
 2. 缺列/缺表：确认本轮源码需要的迁移已进入正式资源且Flyway成功完成；不关闭结构校验。
 3. `NoClassDefFoundError` 或依赖不匹配：停止旧进程，使用当前pom完整编译后启动。临时目录或旧依赖生成的classpath/argfile不能长期用作启动入口。
 4. 历史数据或迁移校验失败：保留错误及目标库备份，按对应迁移文档修正前提，再原样重跑；不修改已应用文件或执行repair掩盖差异。
-5. `Found more than one migration with version`：分别核对源码目录和 `target/classes/db/migration`。合并或切换分支后，Maven 增量资源复制不会删除旧 SQL；若重复文件仅存在于生成目录，确认默认构建目录没有运行中的应用或测试后，执行 `mvn clean spring-boot:run` 重建。若旧测试占用日志，先结束对应测试或改用独立构建目录；不要为清缓存修改数据库历史。源码本身重号则先核对是否已应用，按正式迁移规则处理。
+5. `Found more than one migration with version`：分别核对源码目录和当前输出目录的 `classes/db/migration`
+   （开发入口为 `target-dev`，普通入口为 `target`）。合并或切换分支后，Maven 增量资源复制不会删除旧 SQL；
+   若重复文件仅存在于生成目录，停止使用该目录的应用或测试后，开发入口执行
+   `mvn -Pdev-run clean spring-boot:run` 重建，普通入口执行 `mvn clean spring-boot:run`。
+   若旧测试占用日志，先结束对应测试或改用独立构建目录；不要为清缓存修改数据库历史。
+   源码本身重号则先核对是否已应用，按正式迁移规则处理。
 
 Flyway 的专用迁移连接初始化 `client_min_messages=WARNING`：历史 `IF EXISTS / IF NOT EXISTS` 的 PostgreSQL NOTICE 不再经 JDBC 被误报为 WARN；真正的 SQL WARNING 和异常仍保留，普通应用连接的消息级别不受影响。此设置不修改已应用迁移，也不关闭结构校验。首次空库创建引导超管仍提示首登改密；同库正常重启应单独检查，不能通过删掉安全提醒或降低全局日志等级获得“无告警”。
 
-后端验收按顺序确认：当前源码完整编译（包括默认 `spring-boot:run` 的测试编译阶段）、Flyway 校验/迁移完成、`Started UtenImpApplication`、readiness `UP`，再观察后台任务是否出现异常。使用隔离数据库演练时，须记录迁移头、文件数量和源码/构建资源摘要一致性；没有对目标库执行过就不宣称目标库已升级。
+后端验收按顺序确认：当前主代码完整编译、Flyway 校验/迁移完成、`Started UtenImpApplication`、
+readiness `UP`，再观察后台任务是否出现异常。开发启动不替代测试门禁；另外执行不带 `-Pdev-run` 的
+`mvn verify`，需要真库时按下方说明启用。使用隔离数据库演练时，须记录迁移头、文件数量和
+源码/构建资源摘要一致性；没有对目标库执行过就不宣称目标库已升级。
 
 ### 已入库但车间仍等待物料
 
@@ -294,7 +321,9 @@ access 立即服务端失效；access 最多存活到短 TTL，紧急全局清�
 开发环境敏感数据可集中在不入库的 `server/.env`；生产不得复制该文件或把秘密写进 Git/聊天/日志：
 
 - `server/.env.example` 是模板（占位值），`server/.env` 是真实值并已 `.gitignore`。
-- 后端通过 `spring-dotenv` 自动加载 `server/.env`（开发）；`application.yml` 用 `${UTEN_DB_URL}` 等占位读取，**密钥类无弱默认值，缺失即 fail-fast**。
+- 后端通过 Spring Boot 的 `spring.config.import=optional:file:.env[.properties]` 加载工作目录中的
+  `.env`（开发启动入口固定在 `server/`）；`application.yml` 用 `${UTEN_DB_URL}` 等占位读取，
+  **密钥类无弱默认值，缺失即 fail-fast**。
 - 涉及的关键配置：`UTEN_DB_*`（数据库连接）、`UTEN_JWT_SECRET`（≥32 字节）、
   `UTEN_JWT_ISSUER`（环境唯一且生产必填）、`UTEN_MAX_HTTP_REQUEST_HEADER_SIZE`
   （有限请求头预算，默认 16KB）、`UTEN_PGP_MASTER_KEY`（PII 加密主密钥）、

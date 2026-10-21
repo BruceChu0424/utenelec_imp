@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../components/buttons/uten_refresh_button.dart';
 import '../../../../components/buttons/uten_back_button.dart';
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/data_display/uten_status_badge.dart';
@@ -156,10 +157,10 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
 
   /// 「返回即刷新」回调：台账分段重拉当前页；超耗/月结面板靠 [_panelRefreshTick]
   /// 驱动 didUpdateWidget 重拉（面板不可见时不发台账请求）。
-  void _refreshWorkspace() {
+  Future<void> _refreshWorkspace() async {
     setState(() => _panelRefreshTick++);
     if (_workspace == _PayablesWorkspaceView.payables) {
-      _load(_page);
+      await _load(_page);
     }
   }
 
@@ -821,13 +822,9 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
         ),
         actions: [
           if (availableWorkspaces.contains(_workspace))
-            IconButton(
-              icon: const Icon(Icons.refresh_rounded),
-              tooltip: '刷新',
-              onPressed:
-                  _workspace == _PayablesWorkspaceView.payables && _loading
-                  ? null
-                  : _refreshWorkspace,
+            UtenRefreshButton(
+              busy: _workspace == _PayablesWorkspaceView.payables && _loading,
+              onRefresh: _refreshWorkspace,
             ),
         ],
       ),

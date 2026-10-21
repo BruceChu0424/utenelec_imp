@@ -174,6 +174,46 @@ class WarehouseOutboundTaskCenterSqlPostgresTest {
                 .containsExactly("suggestion-1", "suggestion-2", "suggestion-3");
         assertThat(rows(query, 1, 20).getFirst()).containsEntry("goods_name", "真实字段物料").containsEntry("unit_name", "kg");
         assertThat(count(search("DRAW", "第二种材料", WarehouseTaskScope.ALL))).isEqualTo(2);
+        assertThat(badges(true).productionDraw(WarehouseTaskScope.ALL))
+                .containsEntry("MATERIALS_TO_DEFINE",3L).containsEntry("OPEN_ANY",3L);
+        assertThat(badges(false).productionDraw(WarehouseTaskScope.ALL)).containsEntry("OPEN_ANY",0L);
+        assertThat(badges(true).productionDraw(WarehouseTaskScope.NONE)).containsEntry("OPEN_ANY",0L);
+    }
+
+    @Test void outboundBadgesCountPhysicalRowsOfTheSameSourceDocumentAndRespectLineWarehouses() {
+        UUID sale=UUID.randomUUID(),issue=UUID.randomUUID();
+        sale(sale,"BADGE-SALE",WAREHOUSE_A);
+        for(int i=0;i<3;i++) jdbc.update("INSERT INTO sales_shipment_items(id,shipment_id,line_no,warehouse_id,goods_name_snapshot,is_deleted)"
+                +" VALUES(:id,:doc,:line,:warehouse,:name,FALSE)",
+                Map.of("id",UUID.randomUUID(),"doc",sale,"line",i+1,"warehouse",i==2?WAREHOUSE_B:WAREHOUSE_A,
+                        "name",i==2?"Outside item":"Repeat visible item"));
+        var scope=new WarehouseTaskScope(true,List.of(WAREHOUSE_A),false);
+        assertThat(badges(true).salesOutbound(scope)).containsEntry("PENDING_PICK",2L);
+        assertThat(badges(true).salesOutbound(WarehouseTaskScope.ALL)).containsEntry("PENDING_PICK",3L);
+        assertThat(badges(true).salesOutbound(WarehouseTaskScope.NONE)).containsEntry("PENDING_PICK",0L);
+        assertThat(count(search("SALES","Repeat visible",scope))).isEqualTo(2);
+        assertThat(count(search("SALES","Outside",scope))).isZero();
+        jdbc.update("UPDATE sales_shipments SET warehouse_work_status='LEGACY_PENDING' WHERE id=:id",Map.of("id",sale));
+        assertThat(badges(true).salesOutbound(scope)).containsEntry("PENDING_PICK",0L).containsEntry("LEGACY_PENDING",2L);
+        subcontract(issue,"BADGE-ISSUE",WAREHOUSE_A,0,false,true);
+        jdbc.update("INSERT INTO subcontract_material_issue_items(id,issue_id,line_no,plan_item_id,goods_name_snapshot,is_deleted)"
+                +" SELECT :id,issue_id,2,plan_item_id,'Second physical item',FALSE FROM subcontract_material_issue_items WHERE issue_id=:issue",
+                Map.of("id",UUID.randomUUID(),"issue",issue));
+        assertThat(badges(true).subcontractOutbound(scope)).isEqualTo(2);
+        assertThat(badges(true).subcontractOutbound(WarehouseTaskScope.NONE)).isZero();
+        assertThat(badges(true).subcontractOutbound(new WarehouseTaskScope(true,List.of(WAREHOUSE_B),false))).isZero();
+        jdbc.update("UPDATE subcontract_material_issues SET is_closed=TRUE WHERE id=:id",Map.of("id",issue));
+        assertThat(badges(true).subcontractOutbound(scope)).isZero();
+    }
+
+    private static WarehouseTaskRowCountService badges(boolean canIssue) {
+        var access=org.mockito.Mockito.mock(com.uten.imp.security.ProductionStockTaskAccessPolicy.class);
+        org.mockito.Mockito.when(access.canAccessWarehouseTasks()).thenReturn(true);
+        var current=org.mockito.Mockito.mock(com.uten.imp.security.SecurityContextCurrentUser.class);
+        var permissions=canIssue?Set.of("stock_doc:view","stock_doc:approve","stock_doc:issue"):Set.of("stock_doc:view");
+        var actor=new com.uten.imp.security.AuthUser(ACTOR,ACTOR,"warehouse",permissions,false,true,false);
+        org.mockito.Mockito.when(current.get()).thenReturn(java.util.Optional.of(actor));
+        return new WarehouseTaskRowCountService(jdbc,access,current);
     }
 
     @Test

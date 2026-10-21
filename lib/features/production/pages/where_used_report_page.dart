@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 // 物料反查产成品（production_where_used:view，只读 CQRS 报表）。
 //
 // 当前 BOM、旧生产快照、新生产履约需求和委外历史证据由后端分别聚合；
@@ -15,6 +16,7 @@ import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_reference_picker_field.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_refresh_scope.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -119,6 +121,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
   String _traceDirection = 'usage';
   int _readEpoch = 0;
   int _traceReloadTick = 0;
+  final _refreshController = UtenRefreshController();
   _WhereUsedSource _source = _WhereUsedSource.all;
   bool _limitHistoryDates = false;
   DateTime _from = defaultReportFrom();
@@ -223,6 +226,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
 
   @override
   void dispose() {
+    _refreshController.dispose();
     ++_loadGeneration;
     _closeReadRoute(_filterRoute);
     _closeReadRoute(_basisRoute);
@@ -368,7 +372,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
   Future<void> _refreshQuery() async {
     if (_subject == null) return _pickSubject();
     if (_mode == _TraceResultMode.actual) {
-      setState(() => ++_traceReloadTick);
+      await _refreshController.run(() => setState(() => ++_traceReloadTick));
     } else {
       _page = 1;
       await _load();
@@ -518,60 +522,59 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
     ref.onPageResume(_myLocation!, () {
       if (_subject != null) _refreshQuery();
     });
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: '物料反查与追溯',
-        leading: UtenBackButton(
-          onPressed: () => backTo(context, defaultPath: RouteName.production),
+    return UtenRefreshScope(
+      controller: _refreshController,
+      child: Scaffold(
+        appBar: UtenAppBar(
+          title: '物料反查与追溯',
+          leading: UtenBackButton(
+            onPressed: () => backTo(context, defaultPath: RouteName.production),
+          ),
+          actions: [
+            IconButton(
+              key: const Key('where-used-basis'),
+              icon: const Icon(Icons.info_outline_rounded),
+              tooltip: '依据说明',
+              onPressed: _showBasis,
+            ),
+            UtenRefreshButton(
+              tooltip: '刷新当前结果',
+              enabled: !(_subject == null || _loading),
+              busy: _loading,
+              onRefresh: _refreshQuery,
+            ),
+          ],
         ),
-        actions: [
-          IconButton(
-            key: const Key('where-used-basis'),
-            icon: const Icon(Icons.info_outline_rounded),
-            tooltip: '依据说明',
-            onPressed: _showBasis,
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新当前结果',
-            onPressed: _subject == null || _loading ? null : _refreshQuery,
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: UtenContentContainer.wide(
-          child: Padding(
-            padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            child: UtenCollapsingHeaderScrollView(
-              collapsingHeader: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Card(
-                    margin: EdgeInsets.zero,
-                    child: Padding(
-                      padding: const EdgeInsets.all(UtenSpacing.s16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _buildQueryToolbar(),
-                          if (_entry != _TraceEntry.document) ...[
-                            const SizedBox(height: UtenSpacing.s12),
-                            _buildTitle(theme),
-                          ],
-                        ],
+        body: SafeArea(
+          child: UtenContentContainer.wide(
+            child: Padding(
+              padding: const EdgeInsets.only(top: UtenSpacing.s8),
+              child: UtenCollapsingHeaderScrollView(
+                collapsingHeader: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Card(
+                      margin: EdgeInsets.zero,
+                      child: Padding(
+                        padding: const EdgeInsets.all(UtenSpacing.s16),
+                        child: _buildQueryToolbar(),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: UtenSpacing.s12),
-                  if (_mode == _TraceResultMode.relationships &&
-                      unattributed > 0)
-                    _UnattributedNotice(
-                      count: unattributed,
-                      quantity: _data?.meta['unattributedDemandQty'],
-                    ),
-                ],
+                    const SizedBox(height: UtenSpacing.s12),
+                    if (_entry != _TraceEntry.document) ...[
+                      _buildTitle(theme),
+                      const SizedBox(height: UtenSpacing.s12),
+                    ],
+                    if (_mode == _TraceResultMode.relationships &&
+                        unattributed > 0)
+                      _UnattributedNotice(
+                        count: unattributed,
+                        quantity: _data?.meta['unattributedDemandQty'],
+                      ),
+                  ],
+                ),
+                body: _buildResultPane(theme),
               ),
-              body: _buildResultPane(theme),
             ),
           ),
         ),

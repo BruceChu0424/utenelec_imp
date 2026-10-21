@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/display_datetime.dart';
 import '../models/system_updater_status.dart';
@@ -17,7 +20,7 @@ class SystemUpdaterStatusCard extends StatelessWidget {
   final SystemUpdaterStatus? status;
   final bool loading;
   final String? error;
-  final VoidCallback? onRefresh;
+  final FutureOr<void> Function()? onRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -74,11 +77,12 @@ class SystemUpdaterStatusCard extends StatelessWidget {
                   ),
                 ),
               ),
-              IconButton(
+              UtenRefreshButton(
                 key: const ValueKey('system-updater-status-refresh'),
                 tooltip: '刷新服务器更新状态',
-                onPressed: loading ? null : onRefresh,
-                icon: const Icon(Icons.refresh, size: 20),
+                busy: loading,
+                enabled: onRefresh != null,
+                onRefresh: onRefresh ?? () {},
               ),
             ],
           ),

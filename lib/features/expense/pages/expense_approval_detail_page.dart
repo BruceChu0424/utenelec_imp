@@ -198,15 +198,12 @@ class _ExpenseApprovalDetailPageState
         showBackButton: true,
         actions: [
           detail.maybeWhen(
-            data: (claim) => Padding(
-              padding: const EdgeInsets.only(right: UtenSpacing.s8),
-              child: UtenButton(
-                type: UtenButtonType.tonal,
-                size: UtenButtonSize.small,
-                icon: Icons.print_outlined,
-                onPressed: () => showExpenseClaimPrintPreview(context, claim),
-                child: const Text('打印报销单'),
-              ),
+            data: (claim) => UtenButton(
+              type: UtenButtonType.tonal,
+              size: UtenButtonSize.small,
+              icon: Icons.print_outlined,
+              onPressed: () => showExpenseClaimPrintPreview(context, claim),
+              child: const Text('打印报销单'),
             ),
             orElse: () => const SizedBox.shrink(),
           ),

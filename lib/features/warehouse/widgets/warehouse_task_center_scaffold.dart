@@ -16,6 +16,8 @@
 // 仓库数据范围(ADR-149)：服务端按本人范围强制过滤；顶栏选择器只对主管与多仓负责人出现(右侧滑窗)，
 // 所选仓经 [WarehouseListScope] 传给各分段列表；范围一变就推进 refreshTick 并重拉分段计数，
 // 列表与小类计数都按新范围重拉(计数取同一份汇总, 见 warehouse_task_badges.dart)。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -23,6 +25,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_refresh_scope.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -97,7 +100,7 @@ class WarehouseTaskCenterScaffold extends ConsumerStatefulWidget {
   final Widget Function(String segmentValue)? trailingBuilder;
 
   /// 返回本页时重拉计数 provider（分段徽章/上级 hub 角标用）。
-  final VoidCallback? onResume;
+  final FutureOr<void> Function()? onResume;
   final String? initialSegment;
 
   /// 嵌入态（2026-09-24 仓库任务中心合并）：作为合并页某一大类的正文嵌入，
@@ -127,6 +130,13 @@ class _WarehouseTaskCenterScaffoldState
   String _keyword = '';
   String? _myLocation;
   int _refreshTick = 0;
+  final _refreshController = UtenRefreshController();
+
+  @override
+  void dispose() {
+    _refreshController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -237,37 +247,50 @@ class _WarehouseTaskCenterScaffoldState
             ],
           );
     }
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: widget.title,
-        leading: UtenBackButton(
-          onPressed: () => backTo(context, defaultPath: RouteName.warehouse),
-        ),
-        actions: [
-          const WarehouseScopeSelector(),
-          UtenRefreshButton(
-            onRefresh: () {
-              ref.invalidate(myWarehouseScopeProvider);
-              setState(() => _refreshTick++);
-              widget.onResume?.call();
-            },
+    return UtenRefreshScope(
+      controller: _refreshController,
+      child: Scaffold(
+        appBar: UtenAppBar(
+          title: widget.title,
+          leading: UtenBackButton(
+            onPressed: () => backTo(context, defaultPath: RouteName.warehouse),
           ),
-        ],
-      ),
-      body: SafeArea(
-        child: UtenContentContainer.wide(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-            child:
-                body ??
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    toolbar,
-                    const SizedBox(height: UtenSpacing.s8),
-                    const Expanded(child: _SegmentPlaceholder()),
-                  ],
-                ),
+          actions: [
+            const WarehouseScopeSelector(),
+            UtenRefreshButton(
+              onRefresh: () => _refreshController.run(() {
+                ref.invalidate(myWarehouseScopeProvider);
+                _refreshController.track(
+                  ref
+                      .read(myWarehouseScopeProvider.future)
+                      .then<void>(
+                        (_) {},
+                        onError: (Object error, StackTrace stack) {},
+                      ),
+                );
+                setState(() => _refreshTick++);
+                _refreshController.track(
+                  Future<void>.sync(() => widget.onResume?.call()),
+                );
+              }),
+            ),
+          ],
+        ),
+        body: SafeArea(
+          child: UtenContentContainer.wide(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+              child:
+                  body ??
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      toolbar,
+                      const SizedBox(height: UtenSpacing.s8),
+                      const Expanded(child: _SegmentPlaceholder()),
+                    ],
+                  ),
+            ),
           ),
         ),
       ),

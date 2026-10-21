@@ -41,9 +41,9 @@ class FulfillmentWorkbenchTaskAudiencePostgresTest {
         jdbc.execute("CREATE TABLE purchase_orders (id uuid PRIMARY KEY, maker_id uuid, is_deleted boolean DEFAULT false)");
         jdbc.execute("CREATE TABLE subcontract_orders (id uuid PRIMARY KEY, maker_id uuid, is_deleted boolean DEFAULT false)");
         jdbc.execute("CREATE TABLE v_procurement_decomposition_tasks (department text, action_doc_type text, action_doc_id uuid, action_item_id uuid, task_status text, open_qty numeric)");
-        jdbc.execute("CREATE TABLE subcontract_short_delivery_cases (order_id uuid, owner_employee_id uuid, status text, severity text, expected_complete_by date)");
+        jdbc.execute("CREATE TABLE subcontract_short_delivery_cases (order_id uuid, order_item_id uuid, owner_employee_id uuid, status text, severity text, expected_complete_by date)");
         jdbc.execute("CREATE TABLE subcontract_application_items (id uuid PRIMARY KEY, goods_id uuid, is_deleted boolean DEFAULT false)");
-        jdbc.execute("CREATE FUNCTION fn_subcontract_draw_edges(goods uuid) RETURNS TABLE(id uuid) LANGUAGE SQL AS 'SELECT goods'");
+        jdbc.execute("CREATE FUNCTION fn_subcontract_draw_edges(goods uuid) RETURNS TABLE(id uuid) LANGUAGE SQL AS 'SELECT goods WHERE goods IS NOT NULL'");
     }
 
     @AfterAll static void stop() { POSTGRES.stop(); }
@@ -57,7 +57,7 @@ class FulfillmentWorkbenchTaskAudiencePostgresTest {
     void decisionOnlyUserGetsOnlyWritableCasesWithoutInvalidEmptyInClause() {
         for (UUID owner : List.of(own, handover, readOnly)) {
             UUID order = order("SUBCONTRACT", owner, "FINANCE_APPROVED");
-            jdbc.update("INSERT INTO subcontract_short_delivery_cases VALUES (?, ?, 'PENDING_OWNER', 'BELOW_FLOOR', NULL)", order, owner);
+            shortCases(order, owner);
         }
         var access = access();
         when(access.canDecideSubcontractShortDelivery()).thenReturn(true);
@@ -71,7 +71,7 @@ class FulfillmentWorkbenchTaskAudiencePostgresTest {
     void reworkAndInProgressExcludeReadOnlyOwnersWhileRequestsRemainAnAuthorizedPublicPool() {
         for (String department : List.of("PURCHASE", "SUBCONTRACT")) {
             UUID first = order(department, own, "FINANCE_REJECTED");
-            // A second goods line must not create a second task for the same rejected order.
+            // The list shows both goods lines, so both must contribute to the order's task badges.
             jdbc.update("INSERT INTO v_procurement_decomposition_tasks VALUES (?, ?, ?, ?, 'FINANCE_REJECTED', 1)",
                     department, department + "_ORDER", first, UUID.randomUUID());
             order(department, handover, "FINANCE_REJECTED");
@@ -87,10 +87,80 @@ class FulfillmentWorkbenchTaskAudiencePostgresTest {
             when(access.canCreateSubcontractOrder()).thenReturn(true);
             var service = service(access);
 
-            assertEquals(new FulfillmentWorkbenchQueryService.PendingTaskCounts(3, 1, 2, 0),
+            assertEquals(new FulfillmentWorkbenchQueryService.PendingTaskCounts(4, 1, 3, 0),
                     service.pendingTaskCounts(department, WarehouseTaskScope.ALL));
-            assertEquals(2, service.countInProgress(department));
+            assertEquals(3, service.countInProgress(department));
         }
+    }
+
+    @Test
+    void twoApplicationItemsCountAsTwoPendingTasksAndViewOnlyUsersStillHaveNone() {
+        for (String department : List.of("PURCHASE", "SUBCONTRACT")) {
+            UUID application = UUID.randomUUID();
+            for (int index = 0; index < 2; index++) {
+                UUID item = UUID.randomUUID();
+                jdbc.update("INSERT INTO subcontract_application_items VALUES (?, ?, false)", item, UUID.randomUUID());
+                jdbc.update("INSERT INTO v_procurement_decomposition_tasks VALUES (?, ?, ?, ?, 'WAITING_ORDER', 1)",
+                        department, department.equals("SUBCONTRACT") ? "SUBCONTRACT_APPLICATION" : "PURCHASE_REQUEST", application, item);
+            }
+            jdbc.update("INSERT INTO v_procurement_decomposition_tasks VALUES (?, ?, ?, ?, 'WAITING_ORDER', 0)",
+                    department, department.equals("SUBCONTRACT") ? "SUBCONTRACT_APPLICATION" : "PURCHASE_REQUEST", application, UUID.randomUUID());
+            if (department.equals("SUBCONTRACT")) {
+                UUID missingBomItem = UUID.randomUUID();
+                jdbc.update("INSERT INTO subcontract_application_items VALUES (?, NULL, false)", missingBomItem);
+                jdbc.update("INSERT INTO v_procurement_decomposition_tasks VALUES ('SUBCONTRACT', 'SUBCONTRACT_APPLICATION', ?, ?, 'WAITING_ORDER', 1)",
+                        application, missingBomItem);
+            }
+            var access = access();
+            when(access.canCreatePurchaseOrder()).thenReturn(true);
+            when(access.canCreateSubcontractOrder()).thenReturn(true);
+
+            assertEquals(new FulfillmentWorkbenchQueryService.PendingTaskCounts(2, 2, 0, 0),
+                    service(access).pendingTaskCounts(department, WarehouseTaskScope.ALL));
+            assertEquals(FulfillmentWorkbenchQueryService.PendingTaskCounts.NONE,
+                    service(access()).pendingTaskCounts(department, WarehouseTaskScope.ALL));
+        }
+    }
+
+    @Test
+    void decisionOnlyCountKeepsAffectedItemRowsWithoutCountingOtherGoodsOfTheSameOrder() {
+        UUID order = order("SUBCONTRACT", own, "FINANCE_APPROVED");
+        jdbc.update("INSERT INTO v_procurement_decomposition_tasks VALUES ('SUBCONTRACT', 'SUBCONTRACT_ORDER', ?, ?, 'FINANCE_APPROVED', 1)",
+                order, UUID.randomUUID());
+        shortCases(order, own);
+        jdbc.update("INSERT INTO v_procurement_decomposition_tasks VALUES ('SUBCONTRACT', 'SUBCONTRACT_ORDER', ?, ?, 'FINANCE_APPROVED', 1)",
+                order, UUID.randomUUID());
+        var access = access();
+        when(access.canDecideSubcontractShortDelivery()).thenReturn(true);
+
+        assertEquals(new FulfillmentWorkbenchQueryService.PendingTaskCounts(2, 0, 0, 2),
+                service(access).pendingTaskCounts("SUBCONTRACT", WarehouseTaskScope.ALL));
+    }
+
+    @Test
+    void inProgressCountsEachItemAcrossFinanceStagesAndKeepsFulfilledRowsUntilTheOrderCloses() {
+        for (String department : List.of("PURCHASE", "SUBCONTRACT")) {
+            for (String stage : FulfillmentWorkbenchQueryService.IN_PROGRESS_STATUSES) {
+                UUID order = order(department, own, stage);
+                jdbc.update("INSERT INTO v_procurement_decomposition_tasks VALUES (?, ?, ?, ?, ?, 0)",
+                        department, department + "_ORDER", order, UUID.randomUUID(), stage);
+            }
+            order(department, readOnly, "FINANCE_APPROVED");
+            UUID deleted = order(department, own, "FINANCE_APPROVED");
+            jdbc.update("UPDATE " + department.toLowerCase() + "_orders SET is_deleted = true WHERE id = ?", deleted);
+            var access = access();
+            when(access.documentAccess(department, "ORDER")).thenReturn(new FulfillmentWorkbenchAccessPolicy.DocumentAccess(true, true));
+
+            assertEquals(6, service(access).countInProgress(department));
+        }
+    }
+
+    private void shortCases(UUID order, UUID owner) {
+        jdbc.update("""
+                INSERT INTO subcontract_short_delivery_cases
+                SELECT action_doc_id, action_item_id, ?, 'PENDING_OWNER', 'BELOW_FLOOR', NULL
+                FROM v_procurement_decomposition_tasks WHERE action_doc_id = ?
+                """, owner, order);
     }
 
     private UUID order(String department, UUID owner, String status) {

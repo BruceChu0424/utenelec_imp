@@ -36,6 +36,7 @@ BadgeSummary badgeSummaryFixture({
   var todo = 0;
   var inProgress = 0;
   for (final MapEntry(key: entry, value: counts) in entries.entries) {
+    if (!entry.contributesToModule) continue;
     final current = modules[entry.module.name] ?? (0, 0);
     modules[entry.module.name] = (
       current.$1 + counts.$1,

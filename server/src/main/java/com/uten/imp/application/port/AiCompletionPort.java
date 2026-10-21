@@ -47,7 +47,8 @@ public interface AiCompletionPort {
      *
      * <ul>
      *   <li>{@code DEFAULT}: 调用方不要求 —— 保持服务商配置的既有行为(配置了写法的 DeepSeek/通义/OpenAI 关掉思考,
-     *       其它不发参数)。识别类用途都用它。</li>
+     *       其它不发参数); GLM-5.3 系列不能关闭思考, 使用 low 并预留受服务商硬上限约束的思考额度。
+     *       识别类用途都用它。</li>
      *   <li>{@code OFF}: 尽量不思考(不能关的模型取最轻档), 网关同时收紧超时。</li>
      *   <li>{@code LOW}/{@code MEDIUM}/{@code HIGH}: 逐级加深; 思考预算另计、不占回答长度, {@code HIGH} 放宽超时。</li>
      * </ul>
@@ -69,7 +70,8 @@ public interface AiCompletionPort {
      * @param userParts       用户内容片段(文本或图片), 按顺序发送
      * @param jsonSchemaName  服务商支持 JSON_SCHEMA 时使用的 schema 名称; 可为空
      * @param jsonSchema      JSON Schema(服务商支持时原样下发, 否则由调用方在提示词里描述并在服务端校验); 可为空
-     * @param maxOutputTokens 本次最大输出 token(网关再按服务商上限截断)
+     * @param maxOutputTokens 首轮正文预算; 网关按需预留思考额度, 截断时最多扩容重试一次,
+     *                        每次总输出都受服务商配置的硬上限约束
      * @param jobId           所属 AI 任务 id(写进调用技术记录); 非任务调用为空
      * @param reasoningEffort 思考程度提示; 为空等同 {@link AiReasoningEffort#DEFAULT}
      */

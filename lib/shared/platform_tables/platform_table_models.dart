@@ -87,6 +87,7 @@ class PlatformColumnDefinition {
     this.usageCount = 0,
     this.personalUsageCount = 0,
     this.relationKey,
+    this.canDelete = false,
   });
   final String id;
   final String scope;
@@ -97,6 +98,9 @@ class PlatformColumnDefinition {
   final int usageCount;
   final int personalUsageCount;
   final String? relationKey;
+
+  /// Fresh server authorization for deleting this actor's own catalog entry.
+  final bool canDelete;
   bool get calculated => type == 'CALCULATED';
   bool get related => type == 'RELATED';
   bool get numeric => type == 'NUMBER' || calculated;
@@ -116,6 +120,7 @@ class PlatformColumnDefinition {
         usageCount: (json['usageCount'] as num?)?.toInt() ?? 0,
         personalUsageCount: (json['personalUsageCount'] as num?)?.toInt() ?? 0,
         relationKey: json['relationKey']?.toString(),
+        canDelete: json['canDelete'] == true,
       );
   Map<String, dynamic> toJson() => {
     'id': id,

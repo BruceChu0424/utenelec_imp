@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 // 仓库实物单据历史（可嵌入只读视图）：列是显式的实物事实允许清单，服务端 DTO
 // 不含商业值或业务单据动作；不复用采购/委外单据组件。
 //
@@ -60,7 +61,8 @@ class WarehouseDocumentHistoryView extends ConsumerStatefulWidget {
 }
 
 class _WarehouseDocumentHistoryViewState
-    extends ConsumerState<WarehouseDocumentHistoryView> {
+    extends ConsumerState<WarehouseDocumentHistoryView>
+    with UtenRefreshParticipant<WarehouseDocumentHistoryView> {
   PagedResult<WarehouseDocumentHistorySummary>? _result;
   bool _loading = false;
   String? _error;
@@ -105,7 +107,7 @@ class _WarehouseDocumentHistoryViewState
     super.initState();
     _keyword = widget.keyword;
     _listenRepository();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+    WidgetsBinding.instance.addPostFrameCallback((_) => trackRefresh(_load(1)));
   }
 
   @override
@@ -130,7 +132,9 @@ class _WarehouseDocumentHistoryViewState
         oldWidget.dateFrom != widget.dateFrom ||
         oldWidget.dateTo != widget.dateTo) {
       _keyword = widget.keyword;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => trackRefresh(_load(1)),
+      );
     }
   }
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -40,7 +41,8 @@ class ProductionExecutionGroupPanel extends ConsumerStatefulWidget {
 }
 
 class _ProductionExecutionGroupPanelState
-    extends ConsumerState<ProductionExecutionGroupPanel> {
+    extends ConsumerState<ProductionExecutionGroupPanel>
+    with UtenRefreshParticipant<ProductionExecutionGroupPanel> {
   /// 宿主页路径(创建时捕获), 精准刷新信号只在它就在栈顶时立即重拉。
   String? _hostLocation;
 
@@ -62,7 +64,7 @@ class _ProductionExecutionGroupPanelState
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _load();
+      if (mounted) trackRefresh(_load());
     });
   }
 
@@ -74,7 +76,7 @@ class _ProductionExecutionGroupPanelState
       if (keywordChanged) _page = 1;
       final generation = ++_loadGeneration;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && generation == _loadGeneration) _load();
+        if (mounted && generation == _loadGeneration) trackRefresh(_load());
       });
     }
   }

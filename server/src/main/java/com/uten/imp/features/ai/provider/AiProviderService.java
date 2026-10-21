@@ -252,8 +252,11 @@ public class AiProviderService {
                 preset.thinkingControl(), "思考参数写法");
         boolean temperature = request.sendTemperature() == null ? preset.sendTemperature() : request.sendTemperature();
         int timeout = boundedInt(request.timeoutSeconds(), 120, 10, 600, "超时秒数");
+        // This transient runtime is only for synthetic connectivity pings. It needs room for
+        // the same bounded thinking policy as real calls (512 answer + up to 4096 for the probe).
+        // A 256-token ceiling starves forced-thinking models before a JSON answer can be produced.
         return new AiProviderRuntime(null, "连接测试", preset, region, protocol, endpoint, model, apiKey,
-                jsonMode, thinking, temperature, false, 256, timeout);
+                jsonMode, thinking, temperature, false, 8192, timeout);
     }
 
     // ------------------------------------------------------------------ 写入

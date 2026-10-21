@@ -72,6 +72,9 @@ class _Api extends ApiClient {
   VoidCallback? onSnapshotRead;
   Completer<void>? pendingPreview;
   Completer<void>? pendingCommit;
+  ApiException? commitFailure;
+  final pendingCanonical = <String, Completer<List<GoodsBomItem>>>{};
+  final canonicalCalls = <String>[];
   final tree = <String, List<Map<String, dynamic>>>{
     'source': [
       _row('row-frame', 'frame', '铁架'),
@@ -128,6 +131,7 @@ class _Api extends ApiClient {
       };
     }
     await pendingCommit?.future;
+    if (commitFailure case final failure?) throw failure;
     return {};
   }
 }
@@ -137,10 +141,16 @@ class _Repository extends Fake implements GoodsBomRepository {
   final _Api api;
 
   @override
-  Future<List<GoodsBomItem>> list(String goodsId) async => [
-    for (final row in api.tree[goodsId] ?? const <Map<String, dynamic>>[])
-      GoodsBomItem.fromJson(row),
-  ];
+  Future<List<GoodsBomItem>> list(String goodsId) async {
+    api.canonicalCalls.add(goodsId);
+    if (api.pendingCanonical[goodsId] case final pending?) {
+      return pending.future;
+    }
+    return [
+      for (final row in api.tree[goodsId] ?? const <Map<String, dynamic>>[])
+        GoodsBomItem.fromJson(row),
+    ];
+  }
 
   @override
   Future<GoodsBomLearningSummary> learning(String goodsId) async =>
@@ -266,6 +276,16 @@ Future<void> _menu(WidgetTester tester, String name) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _stageFrameDeletion(WidgetTester tester) async {
+  await _edit(tester);
+  await _menu(tester, '铁架');
+  await tester.tap(find.text('删除').last);
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const Key('goods-bom-batch-delete-confirm')));
+  await tester.pumpAndSettle();
+  expect(find.text('铁架'), findsNothing);
+}
+
 Future<void> _capture(WidgetTester tester, String name) async {
   final boundary = tester.renderObject<RenderRepaintBoundary>(
     find.byKey(const Key('bom-test-render')),
@@ -281,6 +301,204 @@ Future<void> _capture(WidgetTester tester, String name) async {
 }
 
 void main() {
+  testWidgets(
+    'discard and exit restores canonical assembly without saving and releases navigation',
+    (tester) async {
+      final modes = <bool>[];
+      final interactions = <bool>[];
+      var canonicalChanges = 0;
+      final fixture = await _pump(
+        tester,
+        onEditModeChanged: modes.add,
+        onInteractionChanged: interactions.add,
+        onDataChanged: () => canonicalChanges++,
+      );
+      await _stageFrameDeletion(tester);
+      await tester.tap(find.text('螺丝'));
+      await tester.pumpAndSettle();
+      final state = tester.state<GoodsBomTabState>(find.byType(GoodsBomTab));
+      final finishing = state.finishEditing();
+      await tester.pumpAndSettle();
+      expect(find.text('不保存并退出'), findsOneWidget);
+      expect(find.text('继续编辑'), findsOneWidget);
+      expect(find.byKey(const Key('goods-bom-save-confirm')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('goods-bom-discard-and-exit')));
+      await tester.pumpAndSettle();
+
+      expect(await finishing, isTrue);
+      expect(state.hasEditingSession, isFalse);
+      expect(modes, [true, false]);
+      expect(interactions, [true, false]);
+      expect(canonicalChanges, 0);
+      expect(fixture.api.commands.single.$1, endsWith('/preview'));
+      expect(fixture.api.tree['source'], hasLength(2));
+      expect(find.text('铁架'), findsOneWidget);
+      expect(find.text('螺丝'), findsOneWidget);
+      expect(find.text('编辑模式'), findsOneWidget);
+      for (final checkbox in tester.widgetList<Checkbox>(
+        find.byType(Checkbox),
+      )) {
+        expect(checkbox.value, isFalse);
+      }
+    },
+  );
+
+  testWidgets(
+    'discard hides abandoned draft while waiting for canonical reload',
+    (tester) async {
+      final fixture = await _pump(tester);
+      await _stageFrameDeletion(tester);
+      final canonical = fixture.api.pendingCanonical['source'] =
+          Completer<List<GoodsBomItem>>();
+      final state = tester.state<GoodsBomTabState>(find.byType(GoodsBomTab));
+      final finishing = state.finishEditing();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('goods-bom-discard-and-exit')));
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(state.hasEditingSession, isFalse);
+      expect(find.text('螺丝'), findsNothing);
+      expect(find.text('铁架'), findsNothing);
+      expect(fixture.api.commands.single.$1, endsWith('/preview'));
+      canonical.complete([
+        for (final row in fixture.api.tree['source']!)
+          GoodsBomItem.fromJson(row),
+      ]);
+      await tester.pumpAndSettle();
+      expect(await finishing, isTrue);
+      expect(find.text('铁架'), findsOneWidget);
+      expect(find.text('螺丝'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'failed canonical reload after discard never leaves abandoned draft visible',
+    (tester) async {
+      final fixture = await _pump(tester);
+      await _stageFrameDeletion(tester);
+      final canonical = fixture.api.pendingCanonical['source'] =
+          Completer<List<GoodsBomItem>>();
+      final state = tester.state<GoodsBomTabState>(find.byType(GoodsBomTab));
+      final finishing = state.finishEditing();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('goods-bom-discard-and-exit')));
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      canonical.completeError(ApiException('NETWORK', '正式组装清单读取失败'));
+      await tester.pumpAndSettle();
+
+      expect(await finishing, isTrue);
+      expect(state.hasEditingSession, isFalse);
+      expect(find.text('正式组装清单读取失败'), findsOneWidget);
+      expect(find.text('螺丝'), findsNothing);
+      expect(find.text('铁架'), findsNothing);
+      expect(fixture.api.commands.single.$1, endsWith('/preview'));
+    },
+  );
+
+  testWidgets(
+    'stale discard consent cannot close a replacement product edit session',
+    (tester) async {
+      final fixture = await _pump(tester);
+      await _stageFrameDeletion(tester);
+      final toggle = tester
+          .widget<UtenButton>(find.byKey(const Key('goods-bom-edit-mode')))
+          .onPressed!;
+      final state = tester.state<GoodsBomTabState>(find.byType(GoodsBomTab));
+      final finishing = state.finishEditing();
+      await tester.pumpAndSettle();
+      fixture.goodsId.value = 'target';
+      await tester.pumpAndSettle();
+      toggle();
+      await tester.pumpAndSettle();
+      expect(state.hasEditingSession, isTrue);
+      expect(fixture.api.snapshotCalls.last, 'target');
+      await tester.tap(find.byKey(const Key('goods-bom-discard-and-exit')));
+      await tester.pumpAndSettle();
+
+      expect(await finishing, isFalse);
+      expect(state.hasEditingSession, isTrue);
+      expect(find.text('螺母'), findsOneWidget);
+      expect(find.text('退出并保存'), findsOneWidget);
+      expect(fixture.api.commands.single.$1, endsWith('/preview'));
+    },
+  );
+
+  testWidgets(
+    'three save consent actions remain reachable on narrow screens with 2x text',
+    (tester) async {
+      await loadAuditScreenshotFonts(tester);
+      await _pump(tester, textScale: 2);
+      await _stageFrameDeletion(tester);
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      await tester.pumpAndSettle();
+      final state = tester.state<GoodsBomTabState>(find.byType(GoodsBomTab));
+      final finishing = state.finishEditing();
+      await tester.pumpAndSettle();
+      for (final action in [
+        find.text('继续编辑'),
+        find.byKey(const Key('goods-bom-discard-and-exit')),
+        find.byKey(const Key('goods-bom-save-confirm')),
+      ]) {
+        expect(action, findsOneWidget);
+        await tester.ensureVisible(action);
+        await tester.pumpAndSettle();
+        final rect = tester.getRect(action);
+        expect(rect.left, greaterThanOrEqualTo(0));
+        expect(rect.right, lessThanOrEqualTo(390));
+        expect(rect.top, greaterThanOrEqualTo(0));
+        expect(rect.bottom, lessThanOrEqualTo(844));
+        expect(action.hitTestable(), findsOneWidget);
+      }
+      expect(tester.takeException(), isNull);
+      await _capture(tester, 'bom-discard-consent-390-2x');
+      await tester.tap(find.byKey(const Key('goods-bom-discard-and-exit')));
+      await tester.pumpAndSettle();
+      expect(await finishing, isTrue);
+    },
+  );
+
+  testWidgets(
+    'uncertain commit offers refresh without promising unsaved exit and reads actual canonical data',
+    (tester) async {
+      var canonicalChanges = 0;
+      final fixture = await _pump(
+        tester,
+        onDataChanged: () => canonicalChanges++,
+      );
+      await _stageFrameDeletion(tester);
+      fixture.api.commitFailure = ApiException('NETWORK_TIMEOUT', '请求超时');
+      await _edit(tester);
+      await tester.tap(find.byKey(const Key('goods-bom-save-confirm')));
+      await tester.pumpAndSettle();
+      expect(find.text('放弃草稿并刷新'), findsOneWidget);
+      await tester.tap(find.text('继续保留草稿'));
+      await tester.pumpAndSettle();
+      fixture.api.tree['source'] = [_row('row-actual', 'actual', '服务端正式组件')];
+      final state = tester.state<GoodsBomTabState>(find.byType(GoodsBomTab));
+      final finishing = state.finishEditing();
+      await tester.pumpAndSettle();
+
+      expect(find.text('不保存并退出'), findsNothing);
+      expect(find.textContaining('保存结果暂时无法确认'), findsOneWidget);
+      expect(find.text('放弃草稿并刷新'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('goods-bom-discard-and-exit')));
+      await tester.pumpAndSettle();
+      expect(await finishing, isTrue);
+      expect(state.hasEditingSession, isFalse);
+      expect(find.text('服务端正式组件'), findsOneWidget);
+      expect(find.text('螺丝'), findsNothing);
+      expect(
+        fixture.api.commands.where((row) => row.$1.endsWith('/commit')),
+        hasLength(1),
+      );
+      expect(canonicalChanges, 0);
+    },
+  );
+
   testWidgets(
     'history interlock spans pending entry, draft, consent and canonical commit',
     (tester) async {

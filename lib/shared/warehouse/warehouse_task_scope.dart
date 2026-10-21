@@ -3,7 +3,7 @@
 // 谁能看哪些仓由服务端唯一判定(GET /master/warehouses/my-scope 告诉前端结论):
 //   · 主管(超管、仓储部负责人、登记在主仓上的负责人)：默认看全部，可挑任一仓(含下级)；
 //   · 子仓负责人：只看自己负责的仓，负责多个仓时可以在这几个仓之间切换；
-//   · 其他人：看没人负责的仓与未定仓的任务，不能挑仓。
+//   · 其他人：看没人负责的仓与未定仓的任务，可在本人可见仓内缩小筛选。
 // 各任务列表、facets、分段计数与徽章都由服务端按本人范围强制过滤；前端只多带一个可选的
 // scopeWarehouseId(在可选范围内挑一个仓)，越界服务端返回 403。
 // 选择按账号记忆(user_preferences: warehouse.taskScope，只存 warehouseId)；记忆的仓不在
@@ -64,7 +64,7 @@ class MyWarehouseScope {
   /// 能选「全部仓库」(只有主管)。
   final bool canSelectAll;
 
-  /// 可以切换到的仓(主管 = 全部在用仓，先主仓后子仓；子仓负责人 = 自己负责的仓及下级)。
+  /// 可以切换到的仓，由服务端按本人可见范围给出。
   final List<WarehouseScopeOption> selectable;
 
   /// 本人登记负责的仓(登记在主仓上的也列出)。
@@ -77,12 +77,8 @@ class MyWarehouseScope {
 
   bool get isKeeper => role == WarehouseScopeRole.keeper;
 
-  /// 选择器只对主管或负责多个仓的人出现。
-  bool get showsSelector => isSupervisor || (isKeeper && selectable.length > 1);
-
-  /// 只负责一个仓：顶栏显示只读标签「我负责：包材仓库」。
-  WarehouseScopeOption? get onlyWarehouse =>
-      isKeeper && selectable.length == 1 ? selectable.single : null;
+  /// 可选能力只取服务端清单，不在前端按角色或仓库数量再次隐藏。
+  bool get showsSelector => selectable.isNotEmpty;
 
   bool canSelect(String warehouseId) =>
       selectable.any((option) => option.id == warehouseId);
@@ -195,34 +191,44 @@ final warehouseTaskScopePrefProvider =
       WarehouseTaskScopePrefNotifier.new,
     );
 
-/// 当前账号的仓库数据范围。随身份重建；失败按「其他人」处理(不显示选择器, 列表仍由服务端过滤)。
+/// 当前账号的仓库数据范围。随身份重建；读取失败由选择器显示重试入口。
 final myWarehouseScopeProvider = FutureProvider<MyWarehouseScope>((ref) async {
   final boundary = ref.watch(sensitiveReadBoundaryProvider);
   if (boundary.identity == null) return MyWarehouseScope.empty;
-  try {
-    final json = await boundary.api.get(ApiEndpoints.myWarehouseScope);
-    return MyWarehouseScope.fromJson(json);
-  } catch (_) {
-    return MyWarehouseScope.empty;
-  }
+  final json = await boundary.api.get(ApiEndpoints.myWarehouseScope);
+  return MyWarehouseScope.fromJson(json);
 });
 
 /// 仓库任务中心各列表当前生效的范围。
 ///
 /// 没选过 = 本人默认范围。记忆的仓只有仍在可选范围内才生效(负责关系变了 / 仓被删 → 回到默认),
-/// 可选范围还没加载完时先按默认, 加载完再切, 各列表随之重拉一次。
+/// 可选范围刷新/读取失败时保留所选筛选参数，不能悄悄扩大为默认范围；
+/// 参数始终由服务端校验，前端不把未确认的仓当成授权能力。
 final warehouseTaskScopeProvider = Provider<WarehouseTaskScope>((ref) {
   final pref = ref.watch(warehouseTaskScopePrefProvider);
   final id = pref.warehouseId;
   if (id == null) return const WarehouseTaskScope.all();
   final mine = confirmedMyWarehouseScope(ref.watch(myWarehouseScopeProvider));
-  if (mine == null || !mine.showsSelector) {
-    return const WarehouseTaskScope.all();
-  }
+  if (mine == null) return WarehouseTaskScope.warehouse(id);
   final option = mine.option(id);
-  return option == null
-      ? const WarehouseTaskScope.all()
-      : WarehouseTaskScope.warehouse(id, name: option.name);
+  if (option != null) {
+    return WarehouseTaskScope.warehouse(id, name: option.name);
+  }
+  // 确认失效后清掉记忆，避免下一次刷新又暂时带回已失效的仓。
+  Future.microtask(() {
+    if (!ref.mounted) return;
+    final current = confirmedMyWarehouseScope(
+      ref.read(myWarehouseScopeProvider),
+    );
+    if (ref.read(warehouseTaskScopePrefProvider).warehouseId == id &&
+        current != null &&
+        !current.canSelect(id)) {
+      ref
+          .read(warehouseTaskScopePrefProvider.notifier)
+          .select(const WarehouseTaskScope.all());
+    }
+  });
+  return const WarehouseTaskScope.all();
 });
 
 /// 仓库任务中心把当前范围往下传给各分段列表(出库/入库/生产领料三个任务中心的骨架包一层)。

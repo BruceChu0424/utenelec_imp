@@ -12,6 +12,15 @@ import 'platform_table_repository.dart';
 import '../providers/authenticated_scope_provider.dart';
 import '../../core/network/server_config.dart';
 
+enum PlatformColumnDeletionFailure { forbidden, referenced, busy, unavailable }
+
+class PlatformColumnDeletionException extends FormatException {
+  const PlatformColumnDeletionException(this.failure)
+    : super('Column deletion is unavailable');
+
+  final PlatformColumnDeletionFailure failure;
+}
+
 /// Shared persistence lifecycle for master tables and editable grids. Row writes
 /// are explicit CAS operations and never mutate the host's business record.
 class PlatformTableController<T> extends ChangeNotifier {
@@ -45,6 +54,8 @@ class PlatformTableController<T> extends ChangeNotifier {
   final Map<String, PlatformColumnDefinition> _definitions = {};
   final Set<String> _recordColumnIds = {};
   final Map<String, PlatformColumnDefinition> _catalogDefinitions = {};
+  final Set<(PlatformTableRepository?, String?, int, String)>
+  _deletingDefinitions = {};
   Map<String, String?> Function(T)? fallbackFactsOf;
   Iterable<Listenable> Function(T)? fallbackFactListenablesOf;
   PlatformRowDraft? Function(T)? draftOf;
@@ -468,6 +479,89 @@ class PlatformTableController<T> extends ChangeNotifier {
       );
     }
     unawaited(reload());
+  }
+
+  bool canDeleteColumn(PlatformColumnDefinition column) =>
+      !disposed &&
+      !historical &&
+      (column.related ? canDefineRelatedColumns : canDefineColumns) &&
+      (!column.priceProtected || capabilities?.priceVisible == true) &&
+      (column.scope.isEmpty
+          ? !bound && layout.added.any((item) => item.id == column.id)
+          : column.scope == binding?.scope && column.canDelete);
+
+  /// Retire only the catalog entry. Saved values and formula dependencies keep
+  /// their immutable definitions; deleting a header must never rewrite history.
+  Future<void> deleteColumn(PlatformColumnDefinition column) async {
+    if (!canDeleteColumn(column)) {
+      throw const PlatformColumnDeletionException(
+        PlatformColumnDeletionFailure.forbidden,
+      );
+    }
+    if (column.scope.isEmpty &&
+        definitions.any(
+          (item) =>
+              item.id != column.id &&
+              [
+                item.formula?.base,
+                ...?item.formula?.steps.map((step) => step.operand),
+              ].any((operand) => operand?.columnId == column.id),
+        )) {
+      throw const PlatformColumnDeletionException(
+        PlatformColumnDeletionFailure.referenced,
+      );
+    }
+    final repo = repository;
+    final ownerScope = binding?.scope;
+    final revision = authorizationRevision;
+    final operation = (repo, ownerScope, revision, column.id);
+    if (!_deletingDefinitions.add(operation)) {
+      throw const PlatformColumnDeletionException(
+        PlatformColumnDeletionFailure.busy,
+      );
+    }
+    try {
+      if (column.scope.isNotEmpty) {
+        if (repo == null) {
+          throw const PlatformColumnDeletionException(
+            PlatformColumnDeletionFailure.unavailable,
+          );
+        }
+        await repo.deleteDefinition(column.scope, column.id);
+      }
+      if (disposed ||
+          !identical(repo, repository) ||
+          ownerScope != binding?.scope ||
+          revision != authorizationRevision ||
+          !canDeleteColumn(column)) {
+        return;
+      }
+      final key = column.key;
+      updateLayout(
+        layout.copyWith(
+          added: layout.added.where((item) => item.id != column.id).toList(),
+          order: layout.order.where((item) => item != key).toList(),
+          // Persist the removal even when saved records still carry this cell.
+          hidden: {...layout.hidden, key},
+          pinned: {...layout.pinned}..remove(key),
+          widths: {...layout.widths}..remove(key),
+          filters: {...layout.filters}
+            ..remove(key)
+            ..remove('search.$key'),
+          clearSort: layout.sortColumn == key,
+        ),
+      );
+      if (column.scope.isNotEmpty) {
+        // A live formula can still depend on an entry retired from the picker.
+        _catalogDefinitions[column.id] = column;
+      } else {
+        _catalogDefinitions.remove(column.id);
+      }
+      _signature = '';
+      _emit();
+    } finally {
+      _deletingDefinitions.remove(operation);
+    }
   }
 
   Future<void> reload() async {

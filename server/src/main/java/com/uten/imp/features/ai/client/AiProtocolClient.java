@@ -50,9 +50,30 @@ public interface AiProtocolClient {
      *
      * @param content   模型输出的文本
      * @param truncated 因输出长度上限被截断
+     * @param stopReason 已知的协议停止原因; 不保留服务商返回的任意文本
+     * @param thinkingOnly 返回了思考块但没有回答正文; 思考内容绝不能作为业务 JSON 使用
      */
     record ChatResponse(String content, Integer inputTokens, Integer outputTokens, int httpStatus, boolean truncated,
-                        long latencyMs) {
+                        long latencyMs, String stopReason, boolean thinkingOnly) {
+        public ChatResponse {
+            stopReason = safeStopReason(stopReason);
+        }
+
+        public ChatResponse(String content, Integer inputTokens, Integer outputTokens, int httpStatus,
+                            boolean truncated, long latencyMs) {
+            this(content, inputTokens, outputTokens, httpStatus, truncated, latencyMs, null, false);
+        }
+    }
+
+    /** Only protocol constants may enter diagnostics; an upstream field may contain arbitrary private text. */
+    private static String safeStopReason(String value) {
+        if (value == null || value.isBlank()) return null;
+        return switch (value) {
+            case "end_turn", "max_tokens", "stop_sequence", "tool_use", "pause_turn", "refusal",
+                    "model_context_window_exceeded", "stop", "length", "tool_calls", "function_call",
+                    "content_filter", "sensitive" -> value;
+            default -> "unknown";
+        };
     }
 
     /** Missing, malformed or negative usage is unknown, never a fabricated zero. */

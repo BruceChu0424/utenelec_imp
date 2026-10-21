@@ -11,7 +11,11 @@ import '../../../shared/warehouse/warehouse_task_badges.dart';
 
 /// 仓库写操作成功后(或任务中心返回时)调用：徽章汇总重拉 + 所选仓的汇总重拉。
 /// 写请求本身已由网络层推进本端写修订号, 这里不必再记。
-void invalidateWarehouseTaskCounts(WidgetRef ref) {
-  refreshBadges(ref);
+Future<void> invalidateWarehouseTaskCounts(WidgetRef ref) async {
   invalidateSelectedWarehouseBadges(ref);
+  await refreshBadges(ref);
+  if (!ref.context.mounted) return;
+  // The global summary advances the selected scope's revision. Await the
+  // resulting request rather than the obsolete request from the old revision.
+  await refreshSelectedWarehouseBadges(ref, invalidate: false);
 }

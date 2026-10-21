@@ -12,6 +12,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uten_imp/components/buttons/uten_app_bar_action_button.dart';
+import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/router/nav_helpers.dart';
@@ -96,6 +98,11 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(api.taskRequestCount, 2);
+      final refreshSpinner = find.descendant(
+        of: find.byType(UtenRefreshButton),
+        matching: find.byType(CircularProgressIndicator),
+      );
+      expect(refreshSpinner, findsOneWidget);
 
       final searchField = find.descendant(
         of: find.byKey(const Key('warehouse-task-center-search')),
@@ -108,6 +115,15 @@ void main() {
       expect(api.taskRequestCount, 3, reason: api.taskKeywords.toString());
       expect(api.taskKeywords.last, 'RB202608280001');
       expect(find.text('共 2 条'), findsOneWidget);
+      expect(refreshSpinner, findsNothing);
+      final refreshAction = tester.widget<UtenAppBarActionButton>(
+        find.descendant(
+          of: find.byType(UtenRefreshButton),
+          matching: find.byType(UtenAppBarActionButton),
+        ),
+      );
+      expect(refreshAction.isLoading, isFalse);
+      expect(refreshAction.onPressed, isNotNull);
 
       api.completeBlockedTaskRequest(total: 99);
       await tester.pumpAndSettle();

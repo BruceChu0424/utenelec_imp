@@ -435,7 +435,8 @@ void main() {
     await tester.tap(find.byTooltip('刷新'));
     await tester.pump();
     await tester.tap(_clearSearch());
-    await tester.pumpAndSettle();
+    // 刷新请求尚未完成，刷新按钮持续转圈；先推进清空搜索，不能等待动画 settle。
+    await tester.pump(const Duration(milliseconds: 100));
     final calls = stock.calls;
     refreshedTree.complete(await _ProductCategoryRepo().treeWithGoodsCounts());
     await tester.pumpAndSettle();
@@ -773,6 +774,7 @@ class _RecordingStockRepository extends StockQueryRepository {
     String? warehouseId,
     bool includeDefective = false,
     bool includeLineSide = false,
+    bool warehouseRelatedOnly = false,
     String? keyword,
     String? owningWarehouse,
     bool owningWarehouseNull = false,

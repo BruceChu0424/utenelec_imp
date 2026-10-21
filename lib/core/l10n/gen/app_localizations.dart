@@ -898,6 +898,48 @@ abstract class AppLocalizations {
   /// **'移除后，这列在各行的内容会清掉，金额重新算；保存单子后生效，其他单子不受影响。'**
   String get businessColumnRemoveHint;
 
+  /// No description provided for @platformColumnDeleteTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除列'**
+  String get platformColumnDeleteTitle;
+
+  /// No description provided for @platformColumnDeleteAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除'**
+  String get platformColumnDeleteAction;
+
+  /// No description provided for @platformColumnDeleteConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除“{name}”后，这列将不再出现在可选列中。已保存的单据数据和已有公式引用会保留。只能删除自己创建的列。'**
+  String platformColumnDeleteConfirm(String name);
+
+  /// No description provided for @platformColumnDeleteForbidden.
+  ///
+  /// In zh, this message translates to:
+  /// **'只能删除自己创建且有管理权限的列。'**
+  String get platformColumnDeleteForbidden;
+
+  /// No description provided for @platformColumnDeleteUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前列已不可删除，请重新加载后再试。'**
+  String get platformColumnDeleteUnavailable;
+
+  /// No description provided for @platformColumnDeleteReferenced.
+  ///
+  /// In zh, this message translates to:
+  /// **'该列仍被其他计算列引用，请先删除引用它的计算列。'**
+  String get platformColumnDeleteReferenced;
+
+  /// No description provided for @platformColumnDeleteBusy.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在删除此列，请等待回执。'**
+  String get platformColumnDeleteBusy;
+
   /// No description provided for @businessColumnUseExisting.
   ///
   /// In zh, this message translates to:
@@ -16921,7 +16963,7 @@ abstract class AppLocalizations {
   /// No description provided for @warehouseScopePickerTitle.
   ///
   /// In zh, this message translates to:
-  /// **'选择仓库范围'**
+  /// **'筛选仓库'**
   String get warehouseScopePickerTitle;
 
   /// No description provided for @warehouseScopeSupervisorTooltip.
@@ -20756,6 +20798,216 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'准备编辑失败，请重试。'**
   String get bomEditPrepareFailed;
+
+  /// No description provided for @warehouseScopeAllVisible.
+  ///
+  /// In zh, this message translates to:
+  /// **'全部可见仓库'**
+  String get warehouseScopeAllVisible;
+
+  /// No description provided for @warehouseScopeIncludingChildren.
+  ///
+  /// In zh, this message translates to:
+  /// **'{name}(含下级)'**
+  String warehouseScopeIncludingChildren(String name);
+
+  /// No description provided for @warehouseScopeIncludesVisibleChildren.
+  ///
+  /// In zh, this message translates to:
+  /// **'包含可见的下级仓库'**
+  String get warehouseScopeIncludesVisibleChildren;
+
+  /// No description provided for @warehouseScopeLoadFailedRetry.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓库筛选加载失败，重试'**
+  String get warehouseScopeLoadFailedRetry;
+
+  /// No description provided for @warehouseScopeVisibleTooltip.
+  ///
+  /// In zh, this message translates to:
+  /// **'可在本人可见的仓库内筛选。'**
+  String get warehouseScopeVisibleTooltip;
+
+  /// No description provided for @warehouseScopeTaskFilter.
+  ///
+  /// In zh, this message translates to:
+  /// **'任务筛选：{name}'**
+  String warehouseScopeTaskFilter(String name);
+
+  /// No description provided for @warehouseScopeClearFilter.
+  ///
+  /// In zh, this message translates to:
+  /// **'清除筛选'**
+  String get warehouseScopeClearFilter;
+
+  /// No description provided for @warehouseTaskSelectionChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'所选任务已变化，请刷新后重新选择'**
+  String get warehouseTaskSelectionChanged;
+
+  /// No description provided for @warehouseFinishedLotsChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'所选批次已变化或已由他人办理，请返回任务中心刷新后重新选择'**
+  String get warehouseFinishedLotsChanged;
+
+  /// No description provided for @warehouseMasterTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓库资料'**
+  String get warehouseMasterTitle;
+
+  /// No description provided for @warehouseMasterSearchHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索仓库名称 / 编号'**
+  String get warehouseMasterSearchHint;
+
+  /// No description provided for @warehouseMasterSelectHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择仓库查看资料与即时库存'**
+  String get warehouseMasterSelectHint;
+
+  /// No description provided for @warehouseMasterDetailsLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓库资料加载失败，请重试'**
+  String get warehouseMasterDetailsLoadFailed;
+
+  /// No description provided for @warehouseMasterInventorySummaryHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'包含下级核算仓的即时库存'**
+  String get warehouseMasterInventorySummaryHint;
+
+  /// No description provided for @warehouseInventorySearchHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索货品名称 / 编号'**
+  String get warehouseInventorySearchHint;
+
+  /// No description provided for @warehouseInventoryNoAccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有库存查看权限'**
+  String get warehouseInventoryNoAccess;
+
+  /// No description provided for @warehouseInventoryLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'库存加载失败，请重试'**
+  String get warehouseInventoryLoadFailed;
+
+  /// No description provided for @warehouseInventoryEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'此仓库暂无库存记录'**
+  String get warehouseInventoryEmpty;
+
+  /// No description provided for @warehouseInventoryOpenLedger.
+  ///
+  /// In zh, this message translates to:
+  /// **'双击货品查看出入库流水'**
+  String get warehouseInventoryOpenLedger;
+
+  /// No description provided for @warehouseInventoryQuantity.
+  ///
+  /// In zh, this message translates to:
+  /// **'库存数量'**
+  String get warehouseInventoryQuantity;
+
+  /// No description provided for @warehouseInventoryPendingInspection.
+  ///
+  /// In zh, this message translates to:
+  /// **'待检量'**
+  String get warehouseInventoryPendingInspection;
+
+  /// No description provided for @warehouseInventoryPendingStockIn.
+  ///
+  /// In zh, this message translates to:
+  /// **'合格待入库'**
+  String get warehouseInventoryPendingStockIn;
+
+  /// No description provided for @warehouseMasterStatusLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'状态'**
+  String get warehouseMasterStatusLabel;
+
+  /// No description provided for @warehouseMasterDisable.
+  ///
+  /// In zh, this message translates to:
+  /// **'停用'**
+  String get warehouseMasterDisable;
+
+  /// No description provided for @warehouseMasterEnable.
+  ///
+  /// In zh, this message translates to:
+  /// **'启用'**
+  String get warehouseMasterEnable;
+
+  /// No description provided for @warehouseMasterSetKeepers.
+  ///
+  /// In zh, this message translates to:
+  /// **'设置负责人'**
+  String get warehouseMasterSetKeepers;
+
+  /// No description provided for @warehouseMasterWarehouseLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓库'**
+  String get warehouseMasterWarehouseLabel;
+
+  /// No description provided for @warehouseMasterAdd.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加仓库'**
+  String get warehouseMasterAdd;
+
+  /// No description provided for @warehouseMasterAddChild.
+  ///
+  /// In zh, this message translates to:
+  /// **'新增子仓库'**
+  String get warehouseMasterAddChild;
+
+  /// No description provided for @warehouseMasterAddPeer.
+  ///
+  /// In zh, this message translates to:
+  /// **'新增同级仓库'**
+  String get warehouseMasterAddPeer;
+
+  /// No description provided for @warehouseMasterEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'编辑仓库'**
+  String get warehouseMasterEdit;
+
+  /// No description provided for @warehouseMasterDelete.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除仓库'**
+  String get warehouseMasterDelete;
+
+  /// No description provided for @bomEditDiscardAndExit.
+  ///
+  /// In zh, this message translates to:
+  /// **'不保存并退出'**
+  String get bomEditDiscardAndExit;
+
+  /// No description provided for @masterEditDiscardRemainingNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅放弃尚未保存的修改，已保存成功的修改会保留。'**
+  String get masterEditDiscardRemainingNote;
+
+  /// No description provided for @filterAllCategoriesSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'全部分类'**
+  String get filterAllCategoriesSummary;
 }
 
 class _AppLocalizationsDelegate

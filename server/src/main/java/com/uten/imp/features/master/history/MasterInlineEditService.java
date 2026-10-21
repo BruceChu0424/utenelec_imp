@@ -21,6 +21,8 @@ import com.uten.imp.features.master.client.ClientService;
 import com.uten.imp.features.master.client.dto.ClientSaveRequest;
 import com.uten.imp.features.master.supplier.SupplierService;
 import com.uten.imp.features.master.supplier.dto.SupplierSaveRequest;
+import com.uten.imp.features.master.warehouse.WarehouseService;
+import com.uten.imp.features.master.warehouse.dto.WarehouseSaveRequest;
 import com.uten.imp.security.CurrentAuthorityGuard;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
@@ -51,6 +53,7 @@ public class MasterInlineEditService {
     private final ReferenceMethodService referenceMethods;
     private final ClientService clients;
     private final SupplierService suppliers;
+    private final WarehouseService warehouses;
 
     private record Domain(String table,String permission,Set<String> fields,Class<?> request) {}
     private static final Map<String,Domain> DOMAINS=Map.of(
@@ -61,7 +64,8 @@ public class MasterInlineEditService {
         "accounts",new Domain("accounts","account",Set.of("name","bankAccountNo","accountType","currencyId"),AccountSaveRequest.class),
         "reference-methods",new Domain("settlement_methods","settlement_method",Set.of("name","termsBase","dueRule","defaultDueDays","fixedDayOfMonth","monthsAhead"),SettlementMethodTermsRequest.class),
         "clients",new Domain("clients","client",Set.of("name","nameEn","fullName","clientRank","region","placeId","legalPerson","linkman","mobile","phone","phone2","fax","postcode","address","email","website","shipVia","shipAddress","bank","bankAccount","taxId","tday","creditFloor","defaultSettlementMethodId","defaultCurrencyId","defaultShipmentPolicy","status","remark"),ClientSaveRequest.class),
-        "suppliers",new Domain("suppliers","supplier",Set.of("name","description","place","legalPerson","linkman","mobile","phone","phone2","fax","postcode","address","email","website","shipVia","shipAddress","bank","bankAccount","taxId","tday","defaultSettlementMethodId","defaultCurrencyId","defaultTaxRate","status","remark"),SupplierSaveRequest.class));
+        "suppliers",new Domain("suppliers","supplier",Set.of("name","description","place","legalPerson","linkman","mobile","phone","phone2","fax","postcode","address","email","website","shipVia","shipAddress","bank","bankAccount","taxId","tday","defaultSettlementMethodId","defaultCurrencyId","defaultTaxRate","status","remark"),SupplierSaveRequest.class),
+        "warehouses",new Domain("warehouses","warehouse",Set.of("name","location","remark","accountable","workshopDepartmentId","defective","status"),WarehouseSaveRequest.class));
     private static final Set<String> PARTY_BASELINE=Set.of("categoryId","code","name","fullName","clientRank","region","placeId","description","place","legalPerson","linkman","mobile","phone","phone2","fax","postcode","address","email","website","shipVia","shipAddress","bank","bankAccount","taxId","tday","credit","initTotal","creditFloor","status","remark","version");
 
     @Transactional
@@ -88,7 +92,7 @@ public class MasterInlineEditService {
         } catch(ApiException failure) {throw failure;}
         catch(RuntimeException failure) {var error=new ApiException(ErrorCode.CONFLICT,"资料正在由其他操作更新，请刷新后重试");error.initCause(failure);throw error;}
         if(versioned)em.clear();
-        Object detail=switch(entityType) {case "colors"->colors.detail(id);case "units"->units.detail(id);case "currencies"->currencies.detail(id);case "moulds"->moulds.detail(id);case "accounts"->accounts.detail(id);case "reference-methods"->settlementTerms(id);case "clients"->clients.detail(id);case "suppliers"->suppliers.detail(id);default->throw new IllegalStateException();};
+        Object detail=switch(entityType) {case "colors"->colors.detail(id);case "units"->units.detail(id);case "currencies"->currencies.detail(id);case "moulds"->moulds.detail(id);case "accounts"->accounts.detail(id);case "reference-methods"->settlementTerms(id);case "clients"->clients.detail(id);case "suppliers"->suppliers.detail(id);case "warehouses"->warehouses.detail(id);default->throw new IllegalStateException();};
         ObjectNode actual=mapper.valueToTree(detail);
         if(entityType.equals("clients")&&!actual.path("writable").asBoolean())throw new ApiException(ErrorCode.NOT_FOUND,"客户不存在");
         if(versioned) {
@@ -102,6 +106,9 @@ public class MasterInlineEditService {
         Set<String> requestFields=new HashSet<>(domain.fields());
         if(!entityType.equals("reference-methods"))requestFields.add("code");
         if(entityType.equals("accounts"))requestFields.addAll(Set.of("styleId","styleLegacyId","parentLegacyId","status"));
+        // Omitted workshop references preserve the current warehouse assignment;
+        // explicit null remains the existing command's request to clear it.
+        if(entityType.equals("warehouses")&&!changes.containsKey("workshopDepartmentId"))requestFields.remove("workshopDepartmentId");
         ObjectNode merged=mapper.createObjectNode();
         if(versioned)requestFields=new HashSet<>(PARTY_BASELINE);
         for(String key:requestFields)if(actual.has(key))merged.set(key,actual.get(key));
@@ -124,6 +131,7 @@ public class MasterInlineEditService {
             case "reference-methods"->referenceMethods.updateTerms(id,(SettlementMethodTermsRequest)request);
             case "clients"->clients.update(id,(ClientSaveRequest)request);
             case "suppliers"->suppliers.update(id,(SupplierSaveRequest)request);
+            case "warehouses"->warehouses.update(id,(WarehouseSaveRequest)request);
             default->throw new IllegalStateException();
         };
     }

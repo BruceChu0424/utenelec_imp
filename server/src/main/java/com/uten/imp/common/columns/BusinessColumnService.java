@@ -23,7 +23,12 @@ public class BusinessColumnService {
     private final SecurityContextCurrentUser currentUser;
     private final ObjectMapper mapper;
 
-    public record Definition(UUID id, String scope, String name, String type, String operation, long usageCount) { }
+    public record Definition(UUID id, String scope, String name, String type, String operation, long usageCount,
+                             boolean canDelete) {
+        public Definition(UUID id, String scope, String name, String type, String operation, long usageCount) {
+            this(id, scope, name, type, operation, usageCount, false);
+        }
+    }
     public record Create(String scope, String name, String type, String operation) { }
     public record Capabilities(String scope, boolean arithmetic, int maxColumns) { }
 
@@ -41,8 +46,10 @@ public class BusinessColumnService {
         if (needle.length() > 80) throw invalid("列名搜索过长");
         @SuppressWarnings("unchecked") List<Object[]> rows = em.createNativeQuery("""
                 SELECT id, scope, name, value_type, operation, usage_count, created_by
-                FROM business_column_definitions
-                WHERE scope = :scope AND (:q = '' OR position(:q IN normalized_name) > 0
+                FROM business_column_definitions d
+                WHERE scope = :scope
+                  AND NOT EXISTS (SELECT 1 FROM business_column_deletions x WHERE x.column_id=d.id)
+                  AND (:q = '' OR position(:q IN normalized_name) > 0
                     OR EXISTS (SELECT 1 FROM generate_series(1,length(CAST(:q AS text))-1) n
                         WHERE position(substring(CAST(:q AS text) from n for 2) IN normalized_name) > 0))
                 ORDER BY CASE WHEN normalized_name = :q THEN 0
@@ -50,7 +57,7 @@ public class BusinessColumnService {
                          usage_count DESC, name, id LIMIT 500
                 """).setParameter("scope", scope).setParameter("q", needle).getResultList();
         UUID actor = currentUser.id().orElse(null);
-        return rank(rows.stream().map(r -> new Suggestion(definition(r),
+        return rank(rows.stream().map(r -> new Suggestion(definitionForUser(r),
                 actor != null && actor.equals(r[6]))).toList(), needle);
     }
 
@@ -105,12 +112,42 @@ public class BusinessColumnService {
                 .setParameter("type", type).setParameter("operation", operation)
                 .setParameter("actor", currentUser.requireId()).executeUpdate();
         Object[] row = (Object[]) em.createNativeQuery("""
-                SELECT id, scope, name, value_type, operation, usage_count
+                SELECT id, scope, name, value_type, operation, usage_count, created_by
                 FROM business_column_definitions
                 WHERE scope=:scope AND normalized_name=:name AND value_type=:type AND operation=:operation
+                FOR UPDATE
                 """).setParameter("scope", input.scope()).setParameter("name", normalized)
                 .setParameter("type", type).setParameter("operation", operation).getSingleResult();
-        return definition(row);
+        @SuppressWarnings("unchecked") List<Object> deletions = em.createNativeQuery("""
+                SELECT column_id FROM business_column_deletions WHERE column_id=:id
+                """).setParameter("id", row[0]).getResultList();
+        if (!deletions.isEmpty()) {
+            if (!currentUser.requireId().equals(row[6])) {
+                throw new ApiException(ErrorCode.CONFLICT, "同名同类型的列已由创建者删除，请调整列名或类型");
+            }
+            em.createNativeQuery("DELETE FROM business_column_deletions WHERE column_id=:id")
+                    .setParameter("id", row[0]).executeUpdate();
+        }
+        return definitionForUser(row);
+    }
+
+    /** Remove only the creator's catalog entry. Document snapshots and values remain intact. */
+    @Transactional
+    public void delete(String scope, UUID id) {
+        requireScope(scope);
+        requirePermission(scope, true);
+        @SuppressWarnings("unchecked") List<Object[]> rows = em.createNativeQuery("""
+                SELECT id, scope, name, value_type, operation, usage_count, created_by
+                FROM business_column_definitions WHERE id=:id AND scope=:scope FOR UPDATE
+                """).setParameter("id", id).setParameter("scope", scope).getResultList();
+        if (rows.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "此列不存在或不属于当前单据类型");
+        Object[] row = rows.getFirst();
+        if (!currentUser.requireId().equals(row[6])) throw forbidden("只能删除自己创建的列");
+        if (!"NONE".equals(row[4]) || "AMOUNT".equals(row[3])) requirePricePermission(scope);
+        em.createNativeQuery("""
+                INSERT INTO business_column_deletions(column_id, deleted_by) VALUES (:id, :actor)
+                ON CONFLICT(column_id) DO NOTHING
+                """).setParameter("id", id).setParameter("actor", currentUser.requireId()).executeUpdate();
     }
 
     /** All definitions are authoritative; values only become document terms after validation. */
@@ -195,16 +232,25 @@ public class BusinessColumnService {
     private static Definition definition(Object[] r) {
         return new Definition((UUID) r[0], (String) r[1], (String) r[2], (String) r[3], (String) r[4], ((Number) r[5]).longValue());
     }
+    private Definition definitionForUser(Object[] row) {
+        Definition d = definition(row);
+        boolean own = currentUser.id().filter(id -> row.length > 6 && id.equals(row[6])).isPresent();
+        boolean financial = !"NONE".equals(d.operation()) || "AMOUNT".equals(d.type());
+        return new Definition(d.id(), d.scope(), d.name(), d.type(), d.operation(), d.usageCount(),
+                own && hasPermission(d.scope(), true) && (!financial || canViewPrice(d.scope())));
+    }
     private static void requireScope(String scope) {
         if (scope == null || !SCOPES.contains(scope)) throw invalid("不支持此单据类型");
     }
     private void requirePermission(String scope, boolean write) {
-        boolean permitted = currentUser.get().filter(user -> !user.isVisitor()).map(user -> user.isSuperAdmin() || user.getPermissions().contains(scope + ":" + (write ? "edit" : "view"))
+        if (!hasPermission(scope, write)) throw forbidden("没有此单据的" + (write ? "编辑" : "查看") + "权限");
+    }
+    private boolean hasPermission(String scope, boolean write) {
+        return currentUser.get().filter(user -> !user.isVisitor()).map(user -> user.isSuperAdmin() || user.getPermissions().contains(scope + ":" + (write ? "edit" : "view"))
                 || (write && user.getPermissions().contains(scope + ":create"))
                 || (!write && (user.getPermissions().contains(scope + ":create")
                         || user.getPermissions().contains(scope + ":edit")
                         || user.getPermissions().contains("finance:view:all")))).orElse(false);
-        if (!permitted) throw forbidden("没有此单据的" + (write ? "编辑" : "查看") + "权限");
     }
     private void requirePricePermission(String scope) {
         if (!canViewPrice(scope)) throw forbidden("没有此单据的价格权限");

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/network/authenticated_request_scope.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/security/secure_storage.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -51,7 +52,7 @@ List<WarehouseTaskCenterRecord> warehouseTaskCommandTargets(
 ) => {
   for (final row in rows)
     '${row.sourceType}:${row.action}:${switch (row.action) {
-          'FINISHED_REGISTER' => row.dataId('reportId') ?? row.targetId ?? row.id,
+          'FINISHED_REGISTER' => row.dataId('lotId') ?? row.rowKey,
           'FINISHED_COUNT' => row.dataId('taskId') ?? row.targetId ?? row.id,
           'ARRIVAL_CONTINUE' => row.rowKey,
           _ => row.targetId ?? row.id,
@@ -99,6 +100,7 @@ String warehouseTaskRecordBatchLabel(String? family) => switch (family) {
 Future<void> _openFinishedArrivalRegistration(
   BuildContext context,
   List<String> reportIds, {
+  List<String>? lotIds,
   bool? preStock,
 }) async {
   if (!context.mounted) return;
@@ -114,6 +116,7 @@ Future<void> _openFinishedArrivalRegistration(
   await router.push<void>(
     RoutePath.warehouseProductionFinishedArrivalRegistration(
       reportIds,
+      lotIds: lotIds,
       stockInBeforeInspection: preStock,
       returnTo: source.toString(),
     ),
@@ -187,9 +190,16 @@ Future<void> openWarehouseTaskRecord(
             ),
       );
     case 'FINISHED_REGISTER':
+      if ((row.line != null || row.dataId('sourceReportItemId') != null) &&
+          row.dataId('lotId') == null) {
+        context.appWarning(
+          AppLocalizations.of(context).warehouseTaskSelectionChanged,
+        );
+        return;
+      }
       await _openFinishedArrivalRegistration(context, [
         row.dataId('reportId') ?? id,
-      ]);
+      ], lotIds: row.dataId('lotId') == null ? null : [row.dataId('lotId')!]);
     case 'FINISHED_COUNT' ||
         'RETURN_RECEIVE' ||
         'PRODUCTION_DRAW' ||
@@ -319,6 +329,19 @@ Future<void> openWarehouseTaskRecordBatch(
         ),
       );
     case 'FINISHED_REGISTER':
+      final lots = rows.map((row) => row.dataId('lotId')).toList();
+      if ((lots.any((id) => id != null) && lots.any((id) => id == null)) ||
+          rows.any(
+            (row) =>
+                (row.line != null ||
+                    row.dataId('sourceReportItemId') != null) &&
+                row.dataId('lotId') == null,
+          )) {
+        context.appWarning(
+          AppLocalizations.of(context).warehouseTaskSelectionChanged,
+        );
+        return;
+      }
       final reports =
           rows
               .map((row) => row.dataId('reportId') ?? row.targetId ?? row.id)
@@ -328,6 +351,7 @@ Future<void> openWarehouseTaskRecordBatch(
       await _openFinishedArrivalRegistration(
         context,
         reports,
+        lotIds: lots.every((id) => id != null) ? lots.cast<String>() : null,
         preStock: preStock,
       );
     case 'FINISHED_COUNT':

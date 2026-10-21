@@ -8,6 +8,8 @@ import org.springframework.aop.support.DefaultPointcutAdvisor;
 import org.springframework.aop.support.StaticMethodMatcherPointcut;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Role;
+import org.springframework.beans.factory.config.BeanDefinition;
 
 /** Test-only aggregate timings. Neither SQL, business arguments nor results are retained. */
 final class MaterialOrderServiceTiming {
@@ -35,7 +37,9 @@ final class MaterialOrderServiceTiming {
     }
     @TestConfiguration(proxyBeanMethods=false)
     static class Configuration {
-        @Bean static Advisor materialOrderTimingAdvisor(){
+        @Bean
+        @Role(BeanDefinition.ROLE_INFRASTRUCTURE)
+        static Advisor materialOrderTimingAdvisor(){
             var pointcut=new StaticMethodMatcherPointcut(){
                 @Override public boolean matches(Method method,Class<?> target){
                     return TYPES.contains(target.getSimpleName())&&method.getDeclaringClass()!=Object.class;

@@ -63,7 +63,7 @@ public class ProductionFinishedInboundTaskService {
                        report.created_at,
                        FALSE AS residual_task,
                        -- 仓库数据范围(ADR-149)的「所在仓」：待登记还没选仓，按成品主档「所属仓库」归属
-                       -- (一单多个所属仓时任一仓的负责人都看得到；都没有所属仓 = 未定仓)。
+                       -- 先保留当前范围内的实物行，再汇总报工任务；没有所属仓 = 未定仓。
                        COALESCE(array_agg(DISTINCT goods.owning_warehouse_id)
                                     FILTER (WHERE goods.owning_warehouse_id IS NOT NULL),
                                 ARRAY[]::uuid[]) AS scope_warehouse_ids,
@@ -104,6 +104,7 @@ public class ProductionFinishedInboundTaskService {
                 WHERE report.status = 1
                   AND report.is_deleted = FALSE
                   AND report_item.destination = 'WAREHOUSE'
+                  AND (%s)
                 GROUP BY report.id, report.bill_no, report.bill_date,
                          plan.plan_id, plan.plan_no, report.created_at
             ), final_count_tasks AS (
@@ -212,7 +213,13 @@ public class ProductionFinishedInboundTaskService {
 
     /** Fixed shared CTEs; task-center pagination must use the same registration/residual facts. */
     public static String taskCenterFactCtes() {
-        return BASE_SQL.replaceFirst("^\\s*WITH\\s+", "");
+        return baseSql(null).replaceFirst("^\\s*WITH\\s+", "");
+    }
+
+    /** Scope pending registration shares before aggregation; final count remains a whole-document task. */
+    private static String baseSql(WarehouseTaskScope activeScope) {
+        return BASE_SQL.formatted(
+                activeScope == null ? "TRUE" : activeScope.predicate("goods.owning_warehouse_id", ":warehouse_scope"));
     }
     private final ProductionStockTaskAccessPolicy access;
 
@@ -271,14 +278,15 @@ public class ProductionFinishedInboundTaskService {
         }
         String filter = taskFilter(normalized, normalizedStage, warehouseId,
                 scoped ? warehouseScope : null, taskNo, planNo);
+        String base = baseSql(scoped ? warehouseScope : null);
 
         Query countQuery = em.createNativeQuery(
-                BASE_SQL + " SELECT COUNT(*) FROM task_documents " + filter);
+                base + " SELECT COUNT(*) FROM task_documents " + filter);
         bindTaskFilters(countQuery, normalized, normalizedStage, warehouseId,
                 scoped ? warehouseScope : null, taskNo, planNo);
         long total = ((Number) countQuery.getSingleResult()).longValue();
 
-        Query rowsQuery = em.createNativeQuery(BASE_SQL + """
+        Query rowsQuery = em.createNativeQuery(base + """
                 SELECT task_stage, task_id, report_id,
                        document_id, document_no, document_date,
                        warehouse_id, warehouse_name, plan_id, plan_no,
@@ -337,7 +345,7 @@ public class ProductionFinishedInboundTaskService {
     private List<java.util.Map<String, Object>> billBuckets(
             String sql, String normalized, String normalizedStage, UUID warehouseId,
             WarehouseTaskScope warehouseScope) {
-        Query query = em.createNativeQuery(BASE_SQL + sql).setMaxResults(500);
+        Query query = em.createNativeQuery(baseSql(warehouseScope) + sql).setMaxResults(500);
         bindTaskFilters(query, normalized, normalizedStage, warehouseId, warehouseScope, null, null);
         return NativeFacets.rowsOf(query);
     }
@@ -410,7 +418,7 @@ public class ProductionFinishedInboundTaskService {
     public long countPending(WarehouseTaskScope warehouseScope) {
         if (!access.canAccessWarehouseTasks()) return 0;
         WarehouseTaskScope activeScope = warehouseScope != null && warehouseScope.active() ? warehouseScope : null;
-        Query query = em.createNativeQuery(BASE_SQL + " SELECT COUNT(*) FROM task_documents "
+        Query query = em.createNativeQuery(baseSql(activeScope) + " SELECT COUNT(*) FROM task_documents "
                 + taskFilter("", "", null, activeScope, null, null));
         bindTaskFilters(query, "", "", null, activeScope, null, null);
         Number count = (Number) query.getSingleResult();

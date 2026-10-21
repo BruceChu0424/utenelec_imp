@@ -95,6 +95,9 @@ class GoodsBomEditDraft implements GoodsBomRepository {
   bool get hasChanges => _operations.isNotEmpty;
   int get operationCount => _operations.length;
   bool get isBusy => _busy;
+  // The last write may already have committed; dropping the local draft does
+  // not undo it. The exit dialog must describe a refresh instead of no save.
+  bool get isCommitRecoveryPending => _recoverCommit;
 
   String _path(String goodsId) => '${ApiEndpoints.goodsBom(goodsId)}/edit';
 

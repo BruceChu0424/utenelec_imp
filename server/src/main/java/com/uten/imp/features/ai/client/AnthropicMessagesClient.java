@@ -49,22 +49,32 @@ public class AnthropicMessagesClient implements AiProtocolClient {
         if (!exchange.success()) {
             throw AiErrorMapper.fromStatus(exchange.status(), exchange.body(), runtime.apiKey());
         }
-        JsonNode root = parse(exchange.body());
+        JsonNode root = parse(exchange.body(), exchange.status());
         AiProtocolEnvelope.requireSuccess(root, exchange.status(), root.path("content").isArray());
         // 模型按安全规则拒答(stop_reason=refusal): 内容审核, 不是格式错误。
         if ("refusal".equals(root.path("stop_reason").asText(""))) {
             throw AiCallException.contentFiltered(exchange.status());
         }
+        if (!root.path("content").isArray()) {
+            throw new AiCallException(AiErrorCategory.INVALID_RESPONSE, "AI 服务返回的内容无法识别", exchange.status());
+        }
         StringBuilder text = new StringBuilder();
+        boolean hasThinking = false;
         for (JsonNode block : root.path("content")) {
             if ("text".equals(block.path("type").asText()) && block.path("text").isTextual()) {
                 text.append(block.path("text").asText());
             }
+            if ("thinking".equals(block.path("type").asText())
+                    || "redacted_thinking".equals(block.path("type").asText())) {
+                hasThinking = true;
+            }
         }
-        boolean truncated = "max_tokens".equals(root.path("stop_reason").asText(""));
+        String stopReason = root.path("stop_reason").asText(null);
+        boolean truncated = "max_tokens".equals(stopReason) || "model_context_window_exceeded".equals(stopReason);
         JsonNode usage = root.path("usage");
         return new ChatResponse(text.toString(), AiProtocolClient.tokenCount(usage, "input_tokens"),
-                AiProtocolClient.tokenCount(usage, "output_tokens"), exchange.status(), truncated, exchange.latencyMs());
+                AiProtocolClient.tokenCount(usage, "output_tokens"), exchange.status(), truncated, exchange.latencyMs(),
+                stopReason, hasThinking && text.toString().isBlank());
     }
 
     @Override
@@ -75,7 +85,7 @@ public class AnthropicMessagesClient implements AiProtocolClient {
             throw AiErrorMapper.fromStatus(exchange.status(), exchange.body(), runtime.apiKey());
         }
         List<String> models = new ArrayList<>();
-        JsonNode root = parse(exchange.body());
+        JsonNode root = parse(exchange.body(), exchange.status());
         AiProtocolEnvelope.requireSuccess(root, exchange.status(), root.path("data").isArray());
         for (JsonNode item : root.path("data")) {
             String id = item.path("id").asText("");
@@ -140,17 +150,17 @@ public class AnthropicMessagesClient implements AiProtocolClient {
         return headers;
     }
 
-    private JsonNode parse(byte[] body) {
+    private JsonNode parse(byte[] body, int httpStatus) {
         try {
             JsonNode node = json.readTree(body);
             if (node == null || !node.isObject()) {
-                throw new AiCallException(AiErrorCategory.INVALID_RESPONSE, "AI 服务返回的内容无法识别");
+                throw new AiCallException(AiErrorCategory.INVALID_RESPONSE, "AI 服务返回的内容无法识别", httpStatus);
             }
             return node;
         } catch (AiCallException e) {
             throw e;
         } catch (Exception e) {
-            throw new AiCallException(AiErrorCategory.INVALID_RESPONSE, "AI 服务返回的内容无法识别");
+            throw new AiCallException(AiErrorCategory.INVALID_RESPONSE, "AI 服务返回的内容无法识别", httpStatus);
         }
     }
 }

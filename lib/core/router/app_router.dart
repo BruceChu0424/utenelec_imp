@@ -1240,6 +1240,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   .map((id) => id.trim())
                   .where((id) => id.isNotEmpty)
                   .toList(growable: false),
+              lotIds: state.uri.queryParameters.containsKey('lotIds')
+                  ? (state.uri.queryParameters['lotIds'] ?? '')
+                        .split(',')
+                        .map((id) => id.trim())
+                        .where((id) => id.isNotEmpty)
+                        .toList(growable: false)
+                  : null,
               returnTo: state.uri.queryParameters['returnTo'],
               route: InboundRoute.fromQuery(state.uri.queryParameters),
             ),

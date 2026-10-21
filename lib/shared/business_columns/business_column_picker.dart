@@ -5,9 +5,11 @@ import '../../components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../components/buttons/uten_button.dart';
+import '../../components/feedback/uten_dialog.dart';
 import '../../components/inputs/uten_dropdown_field.dart';
 import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/l10n/gen/app_localizations_zh.dart';
+import '../../core/network/api_exception.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../components/layout/uten_segment_row.dart';
 import '../formatters/exact_decimal.dart';
@@ -225,6 +227,35 @@ class _BusinessColumnPickerState extends ConsumerState<_BusinessColumnPicker> {
     }
   }
 
+  Future<void> _delete(BusinessColumn column) async {
+    if (!_ready || !column.canDelete || !_checkEditing()) return;
+    final repository = _repo;
+    _debounce?.cancel();
+    ++_generation;
+    setState(() {
+      _saving = true;
+      _saveError = null;
+    });
+    final deleted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _DeleteBusinessColumnDialog(
+        column: column,
+        scope: widget.scope,
+        repository: repository,
+        isEditingEnabled: () => _editing,
+      ),
+    );
+    if (!mounted || !identical(repository, _repo)) return;
+    setState(() {
+      _saving = false;
+      if (deleted == true) {
+        _results = _results.where((c) => c.id != column.id).toList();
+      }
+    });
+    if (deleted == true) await _load();
+  }
+
   @override
   void dispose() {
     ++_generation;
@@ -276,7 +307,9 @@ class _BusinessColumnPickerState extends ConsumerState<_BusinessColumnPicker> {
     );
     final columns = _results
         .where(
-          (c) => !_existingIds.contains(c.id) && (_arithmetic || !c.financial),
+          (c) =>
+              (!_existingIds.contains(c.id) || c.canDelete) &&
+              (_arithmetic || !c.financial),
         )
         .toList();
     return Column(
@@ -320,8 +353,22 @@ class _BusinessColumnPickerState extends ConsumerState<_BusinessColumnPicker> {
                             ? Icons.calculate_outlined
                             : Icons.notes_rounded,
                       ),
-                      trailing: const Icon(Icons.add_rounded),
-                      onTap: !_ready || _atLimit
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (c.canDelete)
+                            IconButton(
+                              key: ValueKey('business-column-delete-${c.id}'),
+                              tooltip: _text.platformColumnDeleteTitle,
+                              color: Theme.of(context).colorScheme.error,
+                              onPressed: !_ready ? null : () => _delete(c),
+                              icon: const Icon(Icons.delete_outline),
+                            ),
+                          if (!_existingIds.contains(c.id))
+                            const Icon(Icons.add_rounded),
+                        ],
+                      ),
+                      onTap: !_ready || _atLimit || _existingIds.contains(c.id)
                           ? null
                           : () => _completeChoice(
                               BusinessColumnChoice(column: c),
@@ -718,6 +765,101 @@ class _BusinessColumnPickerState extends ConsumerState<_BusinessColumnPicker> {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _DeleteBusinessColumnDialog extends ConsumerStatefulWidget {
+  const _DeleteBusinessColumnDialog({
+    required this.column,
+    required this.scope,
+    required this.repository,
+    required this.isEditingEnabled,
+  });
+
+  final BusinessColumn column;
+  final String scope;
+  final BusinessColumnsRepository repository;
+  final bool Function() isEditingEnabled;
+
+  @override
+  ConsumerState<_DeleteBusinessColumnDialog> createState() =>
+      _DeleteBusinessColumnDialogState();
+}
+
+class _DeleteBusinessColumnDialogState
+    extends ConsumerState<_DeleteBusinessColumnDialog> {
+  bool _saving = false;
+  String? _error;
+
+  AppLocalizations get _text =>
+      Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+      AppLocalizationsZh();
+
+  bool get _allowed =>
+      widget.isEditingEnabled() &&
+      identical(widget.repository, ref.read(businessColumnsRepositoryProvider));
+
+  Future<void> _delete() async {
+    if (_saving || !_allowed) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await widget.repository.delete(widget.scope, widget.column.id);
+      if (!mounted || !_allowed) return;
+      Navigator.pop(context, true);
+    } catch (error) {
+      if (!mounted || !_allowed) return;
+      setState(() {
+        _error = error is ApiException && error.code == 'FORBIDDEN'
+            ? _text.platformColumnDeleteForbidden
+            : _text.platformColumnDeleteUnavailable;
+      });
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    ref.watch(businessColumnsRepositoryProvider);
+    final text = _text;
+    return PopScope(
+      canPop: !_saving,
+      child: UtenAlertDialog(
+        title: Text(text.platformColumnDeleteTitle),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(text.platformColumnDeleteConfirm(widget.column.name)),
+            if (_error != null || !_allowed) ...[
+              const SizedBox(height: UtenSpacing.s12),
+              ColumnEditorNotice(
+                icon: Icons.error_outline,
+                text: _allowed ? _error! : text.platformColumnDeleteUnavailable,
+                error: true,
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          UtenButton(
+            type: UtenButtonType.ghost,
+            onPressed: _saving ? null : () => Navigator.pop(context, false),
+            child: Text(text.commonCancel),
+          ),
+          UtenButton(
+            key: const Key('business-column-confirm-delete'),
+            type: UtenButtonType.danger,
+            isLoading: _saving,
+            onPressed: !_allowed || _saving ? null : _delete,
+            child: Text(text.platformColumnDeleteAction),
+          ),
+        ],
       ),
     );
   }

@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 // 生产链路健康初筛（当前只覆盖四类已结构化关系）。
 //
 // 扫描 销售订货 → 物料分析 → 生产计划 → 领料单/采购申请 四类断链：
@@ -82,11 +83,11 @@ class _ProductionChainHealthPageState
           onPressed: () => backTo(context, defaultPath: RouteName.production),
         ),
         actions: [
-          IconButton(
-            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+          UtenRefreshButton(
             tooltip: '重新扫描',
-            onPressed: _loading ? null : _load,
-            icon: const Icon(Icons.refresh_rounded),
+            enabled: !(_loading),
+            busy: _loading,
+            onRefresh: _load,
           ),
         ],
       ),

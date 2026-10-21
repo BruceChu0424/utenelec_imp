@@ -17,6 +17,8 @@ import '../buttons/uten_back_button.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
 import 'uten_adaptive_panel.dart';
 import 'uten_app_bar_action_scope.dart';
+import 'uten_app_bar_action_feedback.dart';
+import 'uten_app_bar_action_row.dart';
 import 'uten_fit_or_compact.dart';
 import '../buttons/uten_button.dart';
 import '../buttons/uten_app_bar_action_button.dart';
@@ -140,13 +142,15 @@ class _UtenAppBarState extends State<UtenAppBar> {
     ];
     Widget textAction(Widget source) {
       if (source is Padding) {
+        final padding = source.padding.resolve(Directionality.of(context));
         return Padding(
           key: source.key,
-          padding: source.padding,
+          padding: EdgeInsets.only(top: padding.top, bottom: padding.bottom),
           child: source.child == null ? null : textAction(source.child!),
         );
       }
       if (source is SizedBox) {
+        if (source.child == null) return const SizedBox.shrink();
         return SizedBox(
           key: source.key,
           width: source.width,
@@ -182,11 +186,29 @@ class _UtenAppBarState extends State<UtenAppBar> {
           onLongPress: source.onLongPress,
         );
       }
+      if (source is Row) {
+        return UtenAppBarActionRow(
+          key: source.key,
+          children: [for (final child in source.children) textAction(child)],
+        );
+      }
       if (source is ButtonStyleButton) {
-        return UtenAppBarNativeActionButton(
-          source: source,
+        return UtenAppBarActionFeedback(
           onPressed: source.onPressed,
           onLongPress: source.onLongPress,
+          builder: (context, busy, press, longPress) =>
+              UtenAppBarNativeActionButton(
+                source: source,
+                onPressed: UtenAppBarActionScope.wrapBefore(context, press),
+                onLongPress: UtenAppBarActionScope.wrapBefore(
+                  context,
+                  longPress,
+                ),
+                label: UtenAppBarActionProgress(
+                  isLoading: busy,
+                  child: source.child ?? const SizedBox.shrink(),
+                ),
+              ),
         );
       }
       return source;
@@ -230,12 +252,10 @@ class _UtenAppBarState extends State<UtenAppBar> {
           (112 * textScale).clamp(0.0, availableActionWidth),
           availableActionWidth,
         );
-        final expandedActions = Row(
-          mainAxisSize: MainAxisSize.min,
+        final expandedActions = UtenAppBarActionRow(
           // 顶栏动作间隙全站统一 4px（2026-10-18 口径）：此前各动作自带 0/4/8
           // 不等水平内边距，相邻按钮间隙忽大忽小；现在动作自身一律零内边距，
           // 间距只由这里的 spacing 决定，宽窄一致。
-          spacing: UtenSpacing.s4,
           children: [
             for (final action in presentedActions)
               UtenAppBarActionPresentation(child: action),
@@ -465,7 +485,7 @@ class _UtenAppBarState extends State<UtenAppBar> {
                     padding: const EdgeInsets.all(16),
                     child: UtenAppBarActionPresentation(
                       child: Wrap(
-                        spacing: 8,
+                        spacing: UtenSpacing.s4,
                         runSpacing: 12,
                         children: [
                           for (final action in presentation.actions)

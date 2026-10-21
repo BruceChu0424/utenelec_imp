@@ -20,11 +20,14 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.validation.method.ParameterErrors;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.transaction.TransactionTimedOutException;
 
 import java.util.List;
+import java.util.ArrayList;
 import java.sql.SQLException;
 import org.postgresql.util.PSQLException;
 import org.postgresql.util.ServerErrorMessage;
@@ -68,6 +71,49 @@ public class GlobalExceptionHandler {
         List<ApiError.FieldError> fields = ex.getConstraintViolations().stream()
                 .map(v -> new ApiError.FieldError(v.getPropertyPath().toString(), v.getMessage()))
                 .toList();
+        return ResponseEntity.status(422)
+                .body(ApiError.of(ErrorCode.VALIDATION_FAILED, "填写的内容有误，请检查后重试", fields));
+    }
+
+    /** MVC validates container elements before invoking array-body controller methods. */
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<ApiError> handleMethodValidation(HandlerMethodValidationException ex) {
+        if (ex.isForReturnValue()) {
+            log.error("接口返回值校验失败: {}.{}", ex.getMethod().getDeclaringClass().getSimpleName(),
+                    ex.getMethod().getName());
+            return ResponseEntity.status(500).body(ApiError.of(ErrorCode.INTERNAL, null));
+        }
+        List<ApiError.FieldError> fields = new ArrayList<>();
+        for (var result : ex.getParameterValidationResults()) {
+            var parameter = result.getMethodParameter();
+            String name = parameter.getParameterName();
+            if (name == null) name = "arg" + parameter.getParameterIndex();
+            boolean containerElement = result.getContainerIndex() != null || result.getContainerKey() != null;
+            String path = name;
+            if (result.getContainerIndex() != null) {
+                path += "[" + result.getContainerIndex() + "]";
+            } else if (result.getContainerKey() != null) {
+                // Map keys can contain client data; identify the entry without echoing its value.
+                path += "[]";
+            }
+            if (result instanceof ParameterErrors errors) {
+                for (var error : errors.getFieldErrors()) {
+                    fields.add(new ApiError.FieldError(
+                            containerElement ? path + "." + error.getField() : error.getField(),
+                            error.getDefaultMessage()));
+                }
+                for (var error : errors.getGlobalErrors()) {
+                    fields.add(new ApiError.FieldError(path, error.getDefaultMessage()));
+                }
+            } else {
+                for (var error : result.getResolvableErrors()) {
+                    fields.add(new ApiError.FieldError(path, error.getDefaultMessage()));
+                }
+            }
+        }
+        for (var error : ex.getCrossParameterValidationResults()) {
+            fields.add(new ApiError.FieldError("", error.getDefaultMessage()));
+        }
         return ResponseEntity.status(422)
                 .body(ApiError.of(ErrorCode.VALIDATION_FAILED, "填写的内容有误，请检查后重试", fields));
     }

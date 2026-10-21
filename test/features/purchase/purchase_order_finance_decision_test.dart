@@ -1,13 +1,17 @@
 import '../../support/native_detail_reader_overrides.dart';
-// 采购订货单详情页的财务审批入口边界测试。
+// 采购订货单详情页的财务审批入口与打印边界测试。
 //
 // 即使当前账号是合格财务审核员、详情投影意外带有 APPROVE/REJECT，业务详情页
 // 也只能展示待审状态(提示「审核期间仅可查看，财务将在订货审批中处理」)；审批唯一入口是「财务 → 订货审批任务中心」。
+// 打印同时要求有效已审单据与财务通过证据，并须经用户再次确认后读取打印投影。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/purchase/models/purchase_doc.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_doc_detail_page.dart';
 import 'package:uten_imp/features/purchase/repositories/purchase_repository.dart';
@@ -18,7 +22,7 @@ import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import '../../support/document_scope_capability_overrides.dart';
 
 Map<String, dynamic> _orderDetail({
-  required String approvalStatus,
+  required String? approvalStatus,
   required List<String> allowedActions,
   int status = 0,
 }) => {
@@ -36,13 +40,14 @@ Map<String, dynamic> _orderDetail({
   'canEdit': true,
   'canDelete': true,
   'canReverse': false,
-  'financeApproval': {
-    'caseId': 'case-1',
-    'status': approvalStatus,
-    'attempt': 1,
-    'version': 3,
-    'allowedActions': allowedActions,
-  },
+  if (approvalStatus != null)
+    'financeApproval': {
+      'caseId': 'case-1',
+      'status': approvalStatus,
+      'attempt': 1,
+      'version': 3,
+      'allowedActions': allowedActions,
+    },
   'items': [
     {
       'id': 'i1',
@@ -61,15 +66,40 @@ class _RecordingApi extends ApiClient {
     : super(Dio(BaseOptions(baseUrl: 'http://localhost:8080/api')));
 
   final List<({String method, String path, Object? body})> posts = [];
-  String approvalStatus = 'PENDING';
+  final List<String> printRequests = [];
+  String? approvalStatus = 'PENDING';
   List<String> allowedActions = const ['APPROVE', 'REJECT'];
   int orderStatus = 0;
+  ApiException? printError;
 
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '/purchase/orders/order-1/print-data') {
+      printRequests.add(path);
+      if (printError != null) throw printError!;
+      return {
+        'id': 'order-1',
+        'billNo': 'PO-2026-001',
+        'billDate': '2026-08-28',
+        'companyName': '测试采购公司',
+        'supplierName': '测试供应商',
+        'makerName': '采购李四',
+        'reviewerName': '财务王五',
+        'statusLabel': '财务已通过',
+        'lines': [
+          {
+            'id': 'i1',
+            'goodsCode': 'G001',
+            'goodsName': '测试采购货品',
+            'physicalQty': '10',
+            'unitName': '个',
+          },
+        ],
+      };
+    }
     if (path.contains('/purchase/orders/order-1')) {
       return _orderDetail(
         approvalStatus: approvalStatus,
@@ -151,6 +181,123 @@ Future<void> _pump(
 }
 
 void main() {
+  for (final state in <({String name, int orderStatus, String? approval})>[
+    (name: '草稿未提交', orderStatus: kPurchaseStatusDraft, approval: 'DRAFT'),
+    (name: '待财务审核', orderStatus: kPurchaseStatusDraft, approval: 'PENDING'),
+    (name: '财务退回', orderStatus: kPurchaseStatusDraft, approval: 'REJECTED'),
+    (
+      name: '草稿含过期通过投影',
+      orderStatus: kPurchaseStatusDraft,
+      approval: 'APPROVED',
+    ),
+    (name: '改量待复核', orderStatus: kPurchaseStatusApproved, approval: 'PENDING'),
+    (
+      name: '改量复核退回',
+      orderStatus: kPurchaseStatusApproved,
+      approval: 'REJECTED',
+    ),
+    (name: '已审但无财务通过证据', orderStatus: kPurchaseStatusApproved, approval: null),
+    (name: '已反审', orderStatus: kPurchaseStatusReversed, approval: 'APPROVED'),
+    (name: '已取消', orderStatus: kPurchaseStatusCanceled, approval: 'APPROVED'),
+  ]) {
+    testWidgets('${state.name}的采购详情禁止打印', (tester) async {
+      final api = _RecordingApi()
+        ..approvalStatus = state.approval
+        ..orderStatus = state.orderStatus
+        ..allowedActions = const [];
+      await _pump(tester, api);
+
+      final printButton = find.byKey(const Key('purchase-order-print'));
+      expect(tester.widget<UtenButton>(printButton).onPressed, isNull);
+      expect(find.byTooltip('财务审核通过后才能打印，改量后须等待财务复核通过'), findsOneWidget);
+      await tester.tap(printButton);
+      await tester.pumpAndSettle();
+
+      expect(find.text('确认打印采购单'), findsNothing);
+      expect(api.printRequests, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('财务通过的采购详情打印先确认，取消不读取打印单据', (tester) async {
+    final api = _RecordingApi()
+      ..approvalStatus = 'APPROVED'
+      ..orderStatus = kPurchaseStatusApproved
+      ..allowedActions = const [];
+    await _pump(tester, api);
+
+    final printButton = find.byKey(const Key('purchase-order-print'));
+    expect(tester.widget<UtenButton>(printButton).onPressed, isNotNull);
+    await tester.tap(printButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('确认打印采购单'), findsOneWidget);
+    expect(find.textContaining('PO-2026-001'), findsWidgets);
+    expect(find.text('确认打印'), findsOneWidget);
+    expect(api.printRequests, isEmpty);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('确认打印采购单'), findsNothing);
+    expect(api.printRequests, isEmpty);
+    expect(tester.widget<UtenButton>(printButton).isLoading, isFalse);
+    expect(tester.widget<UtenButton>(printButton).onPressed, isNotNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('财务通过的采购详情确认打印后才读取单据并打开预览', (tester) async {
+    final api = _RecordingApi()
+      ..approvalStatus = 'APPROVED'
+      ..orderStatus = kPurchaseStatusApproved
+      ..allowedActions = const [];
+    await _pump(tester, api);
+    await tester.tap(find.byKey(const Key('purchase-order-print')));
+    await tester.pumpAndSettle();
+
+    expect(api.printRequests, isEmpty);
+    await tester.tap(find.text('确认打印'));
+    await tester.pumpAndSettle();
+
+    expect(api.printRequests, ['/purchase/orders/order-1/print-data']);
+    expect(find.text('确认打印采购单'), findsNothing);
+    expect(find.text('预览采购单 PO-2026-001'), findsOneWidget);
+    expect(find.text('审核：财务王五'), findsOneWidget);
+    expect(
+      find.byKey(const Key('purchase-print-preview-print')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('确认打印后财务状态被服务端拦截时展示真实原因', (tester) async {
+    final api = _RecordingApi()
+      ..approvalStatus = 'APPROVED'
+      ..orderStatus = kPurchaseStatusApproved
+      ..allowedActions = const []
+      ..printError = ApiException('CONFLICT', '采购单已改量，须等待财务复核通过');
+    await _pump(tester, api);
+    await tester.tap(find.byKey(const Key('purchase-order-print')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认打印'));
+    await tester.pumpAndSettle();
+
+    expect(api.printRequests, ['/purchase/orders/order-1/print-data']);
+    final notifications = ProviderScope.containerOf(
+      tester.element(find.byType(PurchaseDocDetailPage)),
+    ).read(appNotificationProvider);
+    expect(notifications, hasLength(1));
+    expect(notifications.single.kind, AppNotificationKind.error);
+    expect(notifications.single.message, '采购单已改量，须等待财务复核通过');
+    expect(find.byKey(const Key('purchase-print-preview-print')), findsNothing);
+    expect(
+      tester
+          .widget<UtenButton>(find.byKey(const Key('purchase-order-print')))
+          .isLoading,
+      isFalse,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   for (final status in [kPurchaseStatusCanceled, kPurchaseStatusReversed]) {
     testWidgets(
       'terminal purchase $status does not offer correction for historical rejection',

@@ -417,6 +417,64 @@ Future<void> _doubleTap(WidgetTester tester, String text) async {
 }
 
 void main() {
+  for (final selectedLots in <List<String>>[
+    ['lot-a'],
+    ['lot-a', 'lot-b'],
+  ]) {
+    testWidgets(
+      'finished task navigation preserves selected lots $selectedLots from one report',
+      (tester) async {
+        final rows = [
+          for (final entry in [
+            ('item-a', 'lot-a'),
+            ('item-a-surplus', 'lot-a'),
+            ('item-b', 'lot-b'),
+          ])
+            warehouseTestRecord(
+              source: 'FINISHED',
+              record: 'FINISHED_REGISTER',
+              id: 'report-a',
+              billNo: 'REPORT-A',
+              action: 'FINISHED_REGISTER',
+              canHandle: true,
+              data: {'reportId': 'report-a', 'lotId': entry.$2},
+              line: WarehouseTaskLine(key: entry.$1, itemId: entry.$1),
+            ),
+        ];
+        final harness = await _pump(
+          tester,
+          WarehouseTaskRecordsFakeGateway(rows),
+          spec: const _ViewSpec(
+            direction: WarehouseTaskDirection.inbound,
+            source: 'FINISHED',
+            sources: warehouseTestInboundSources,
+          ),
+        );
+        final selected = [
+          for (final lotId in selectedLots)
+            rows.firstWhere((row) => row.dataId('lotId') == lotId),
+        ];
+        expect(warehouseTaskCommandTargets(rows), hasLength(2));
+        _table(tester).onSelectedIdsChanged!({
+          for (final row in selected) row.rowKey,
+        });
+        await tester.pumpAndSettle();
+        expect(
+          warehouseTaskCommandTargets(selected),
+          hasLength(selectedLots.length),
+        );
+        await tester.tap(find.text('先质检后入库(${selectedLots.length})'));
+        await tester.pumpAndSettle();
+        expect(harness.opened.single.queryParameters['reportIds'], 'report-a');
+        expect(
+          harness.opened.single.queryParameters['lotIds']!.split(','),
+          selectedLots,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets('历史单据向服务器声明历史范围且不混草稿或办理入口', (tester) async {
     final row = warehouseTestRecord(
       source: 'FINISHED',

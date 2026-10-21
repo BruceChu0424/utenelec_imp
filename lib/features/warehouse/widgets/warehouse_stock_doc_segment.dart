@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 // 仓库任务中心 · 通用单据分段（新建 XXX + 历史 XXX 一体化工作台）。
 //
 // 出库/入库/领料任务中心里，仓库原生单据（其它出库/产成品出库/其它入库/产成品进仓/
@@ -104,7 +105,9 @@ class WarehouseStockDocSegment extends ConsumerStatefulWidget {
 
 class _WarehouseStockDocSegmentState
     extends ConsumerState<WarehouseStockDocSegment>
-    with DraftBulkDeleteMixin<WarehouseStockDocSegment> {
+    with
+        DraftBulkDeleteMixin<WarehouseStockDocSegment>,
+        UtenRefreshParticipant<WarehouseStockDocSegment> {
   /// 宿主页路径(创建时捕获), 精准刷新信号只在它就在栈顶时立即重拉。
   String? _hostLocation;
 
@@ -202,7 +205,9 @@ class _WarehouseStockDocSegmentState
         // 2026-09-25 单号列统一：换单据类型时单号筛选/桶随旧命名空间一并重置。
         _columnFilters.reset();
       }
-      WidgetsBinding.instance.addPostFrameCallback((_) => _reload(1));
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => trackRefresh(_reload(1)),
+      );
     }
   }
 

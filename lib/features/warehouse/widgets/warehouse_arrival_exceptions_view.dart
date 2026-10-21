@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 // 到货异常任务中心（可嵌入）：财务定案后仓库按批准量一键入库 / 退回归档。
 //
 // 2026-09-01 起「入库任务中心 · 采购入库」到货异常分段内嵌本组件（embedded=true
@@ -65,7 +66,8 @@ class WarehouseArrivalExceptionsView extends ConsumerStatefulWidget {
 }
 
 class _WarehouseArrivalExceptionsViewState
-    extends ConsumerState<WarehouseArrivalExceptionsView> {
+    extends ConsumerState<WarehouseArrivalExceptionsView>
+    with UtenRefreshParticipant<WarehouseArrivalExceptionsView> {
   PagedResult<ProcurementArrivalException>? _result;
   bool _loading = false;
   String? _error;
@@ -100,7 +102,7 @@ class _WarehouseArrivalExceptionsViewState
           .read(masterNameServiceProvider)
           .ensureLoaded()
           .then((_) => mounted ? setState(() {}) : null);
-      _load(1);
+      trackRefresh(_load(1));
     });
   }
 
@@ -110,7 +112,9 @@ class _WarehouseArrivalExceptionsViewState
     if (oldWidget.keyword != widget.keyword ||
         oldWidget.refreshTick != widget.refreshTick) {
       _keyword = widget.keyword;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => trackRefresh(_load(1)),
+      );
     }
   }
 

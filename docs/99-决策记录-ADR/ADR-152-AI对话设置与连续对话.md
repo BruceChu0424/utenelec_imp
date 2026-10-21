@@ -69,11 +69,11 @@ ADR-150 之前的实现: 回答长短只由这一句话里的「简单点/举例
 - 「能否调整」只有一个判定 `AiReasoningParams.supported(runtime)`: 写法 + 生效协议 + 模型三者都接受才算; 不能调整时一律按 DEFAULT 写请求体、不加额度、不改超时, 所以账号里存的任何档位(包括换服务商之前存的「快速」)都不会改变请求, 也不会让请求被拒。
 - 唯一映射表 `AiReasoningParams`(协议客户端写请求体、网关放宽/收紧上限与超时、调用日志都用它):
 
-| 写法(协议) | DEFAULT(识别等用途, 行为不变) | OFF(快速) | LOW | MEDIUM(标准) | HIGH(深入) |
+| 写法(协议) | DEFAULT(识别等用途) | OFF(快速) | LOW | MEDIUM(标准) | HIGH(深入) |
 |---|---|---|---|---|---|
 | DEEPSEEK(OpenAI 兼容) | thinking disabled | thinking disabled | enabled + reasoning_effort low | enabled + high | enabled + max |
-| ZHIPU(OpenAI 兼容) | 不发 | enabled + low(5.3 关不掉思考) | enabled + low | enabled + high | enabled + max |
-| ZHIPU(Anthropic 兼容端点) | 不发 | output_config.effort low | low | high | max |
+| ZHIPU(OpenAI 兼容) | 已知 GLM-5.3 系列 enabled + low, 其它不发 | enabled + low(5.3 关不掉思考) | enabled + low | enabled + high | enabled + max |
+| ZHIPU(Anthropic 兼容端点) | 已知 GLM-5.3 系列 output_config.effort low, 其它不发 | output_config.effort low | low | high | max |
 | DASHSCOPE(不可调整) | enable_thinking false | false | false | false | false |
 | OPENAI_REASONING | reasoning_effort none | none | low | medium | high |
 | ANTHROPIC_EFFORT(Opus 4.5 / Sonnet 4.6 及以上) | 不发 | output_config.effort low | low | medium | high |
@@ -86,7 +86,12 @@ ADR-150 之前的实现: 回答长短只由这一句话里的「简单点/举例
 
 - 不发 `budget_tokens`(GLM 忽略, 新 Claude 模型 400)。支持调整时: 回答上限之外另给思考额度(LOW +2048、MEDIUM +4096、HIGH +16384), 但单次输出**不超过管理员配置的「最大输出长度」**(单次输出含思考的硬上限, 也是模型上限与成本上限; 想给「深入」更多空间由管理员调大); 超时 OFF 收紧到 ≤60 秒, HIGH 放宽到配置的 1.5 倍(≤240 秒, 任务租约在调用中自动续)。不支持时一律不改。调用方只按回答需要给上限(对话固定 8192, 长短由详略决定, 不随思考档缩放)。
 - 「测试连接」: 能调整时多一步「思考程度」, 按对话默认档「标准」用同一套写法实测一次; 服务商拒绝(400/404) = 模型不认思考参数, 判失败并提示改为「不发送」或换模型; 超时、限流只提示。
-- 网关在明确要求了思考程度时写一行调用日志 `AI call reasoning: purpose, provider, effort, params=[...], maxOutputTokens, timeoutSeconds`(只有参数名与档位)。
+- 2026-10-20 补充: GLM-5.3 强制思考且默认 `max`([官方模型说明](https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3)),
+  识别类 `DEFAULT` 与该模型的 `OFF` 均使用 `low` 并在正文之外预留 2048 token, 总额不突破服务商配置上限。
+  本次销售匹配日志对应的真实调用 HTTP 均为 200、输出均达到 1360 token 请求上限; 原始正文未保留, 不补造历史停止原因或思考内容。
+  8 行消歧请求的上限由 1360 调为 3408, 若仍截断最多在配置上限内扩大一次, 完整规则见 [AI 平台接入指南](../05-架构/AI平台接入指南.md)。
+  连接测试与业务共用这套预算; 手填密钥的临时测试配置采用 8192 的有界上限, 不读取或改写已保存服务商配置。
+- 网关在明确要求了思考程度或自动给强制思考模型预留额度时写一行调用日志 `AI call reasoning: purpose, provider, effort, params=[...], maxOutputTokens, timeoutSeconds`(只有参数名与档位)。
 - 服务端能力 `reasoningEffortSupported` 告诉前端; 不支持时设置面板锁住该项并显示「当前 AI 服务不支持调整思考程度」。
 
 ### 4. 前端

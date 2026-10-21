@@ -9,6 +9,7 @@ class BusinessColumn {
     this.type = 'TEXT',
     this.operation = 'NONE',
     this.usageCount = 0,
+    this.canDelete = false,
     this.value,
   });
 
@@ -18,6 +19,9 @@ class BusinessColumn {
   final String type;
   final String operation;
   final int usageCount;
+
+  /// Server-authorized creator ownership; historical snapshots never grant it.
+  final bool canDelete;
   final String? value;
 
   bool get numeric => type != 'TEXT';
@@ -40,6 +44,7 @@ class BusinessColumn {
     type: (json['type'] ?? 'TEXT').toString(),
     operation: (json['operation'] ?? 'NONE').toString(),
     usageCount: (json['usageCount'] as num?)?.toInt() ?? 0,
+    canDelete: json['canDelete'] == true,
     value: json['value']?.toString(),
   );
 

@@ -14,6 +14,8 @@
 //     本页的遮罩只挂在纯网络段且会给密码框让位;
 //   * 服务器没开放境外服务商时不能选; 开放了也要逐个勾选数据出境确认。
 import 'package:flutter/material.dart';
+
+import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -376,11 +378,12 @@ class _AdminAiSettingsPageState extends ConsumerState<_AdminAiSettingsSession> {
         title: l10n.aiSettingsTitle,
         leading: const UtenBackButton(),
         actions: [
-          IconButton(
+          UtenRefreshButton(
             key: const ValueKey('ai-settings-refresh'),
             tooltip: l10n.aiSettingsRefresh,
-            icon: const Icon(Icons.refresh_rounded),
-            onPressed: _loading || _busy != null ? null : _refresh,
+            busy: _loading,
+            enabled: _busy == null,
+            onRefresh: _refresh,
           ),
         ],
       ),

@@ -7,6 +7,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -252,12 +253,13 @@ class _FinanceReconciliationPageState
           onPressed: () => backTo(context, defaultPath: RouteName.finance),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新',
-            onPressed: () {
-              ref.read(financeNameServiceProvider).ensureLoaded();
-              _load(1);
+          UtenRefreshButton(
+            busy: _loading,
+            onRefresh: () async {
+              await Future.wait([
+                ref.read(financeNameServiceProvider).ensureLoaded(),
+                _load(1),
+              ]);
             },
           ),
         ],

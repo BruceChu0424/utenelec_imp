@@ -143,6 +143,31 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
       },
     );
 
+    body = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+          child: UtenFilterToolbar<PayrollBatchScope>(
+            segmentsKey: const Key('payroll-batch-scope'),
+            autoSelectBadge: false,
+            selected: {scope},
+            segments: const [
+              UtenFilterSegment(value: PayrollBatchScope.active, label: '进行中'),
+              UtenFilterSegment(
+                value: PayrollBatchScope.history,
+                label: '历史单据',
+              ),
+            ],
+            onSelectionChanged: (value) {
+              setState(() => _selectedId = null);
+              ref.read(payrollBatchScopeProvider.notifier).state = value;
+            },
+          ),
+        ),
+        Expanded(child: body),
+      ],
+    );
     if (context.breakpoint.isCompact) {
       body = UtenContentContainer(child: body);
     }
@@ -155,33 +180,7 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
           selectedBatch == null || scope == PayrollBatchScope.history
           ? null
           : _actionBar(selectedBatch, permissions),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-            child: UtenFilterToolbar<PayrollBatchScope>(
-              segmentsKey: const Key('payroll-batch-scope'),
-              autoSelectBadge: false,
-              selected: {scope},
-              segments: const [
-                UtenFilterSegment(
-                  value: PayrollBatchScope.active,
-                  label: '进行中',
-                ),
-                UtenFilterSegment(
-                  value: PayrollBatchScope.history,
-                  label: '历史单据',
-                ),
-              ],
-              onSelectionChanged: (value) {
-                setState(() => _selectedId = null);
-                ref.read(payrollBatchScopeProvider.notifier).state = value;
-              },
-            ),
-          ),
-          Expanded(child: body),
-        ],
-      ),
+      body: body,
     );
   }
 

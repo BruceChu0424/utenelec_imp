@@ -404,7 +404,10 @@ void main() {
       pendingSave.completeError(
         ApiException('FORBIDDEN', '不可继续读取费用', httpStatus: 403),
       );
-      await tester.pumpAndSettle();
+      // The refresh still owns pendingRead: its spinner correctly remains
+      // active after billing closes, until the stale read itself completes.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
       pendingRead.complete(_data(question: '拒绝后的迟到内容'));
       await tester.pumpAndSettle();
       expect(find.text('拒绝后的迟到内容'), findsNothing);

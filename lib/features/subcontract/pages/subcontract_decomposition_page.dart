@@ -44,6 +44,7 @@ import '../../../shared/drafts/form_draft_category.dart';
 import '../widgets/subcontract_draft_task_category.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
@@ -708,11 +709,13 @@ class _SubcontractDecompositionPageState
     _loadDrawCount();
   }
 
-  void _refreshAll() {
-    refreshBadges(ref);
-    _load(page: 1);
-    _loadDrawCount();
-    if (_pendingSeg) _loadDraw();
+  Future<void> _refreshAll() async {
+    await Future.wait([
+      refreshBadges(ref),
+      _load(page: 1),
+      _loadDrawCount(),
+      if (_pendingSeg) _loadDraw(),
+    ]);
   }
 
   void _selectSeg(_DecompositionSeg seg) {
@@ -1040,14 +1043,11 @@ class _SubcontractDecompositionPageState
           onPressed: () => backTo(context, defaultPath: RouteName.subcontract),
         ),
         actions: [
-          IconButton(
+          UtenRefreshButton(
             tooltip: '刷新委外任务',
-            onPressed: (_pendingSeg && (_drawLoading || _loading)) || _loading
-                ? null
-                : _refreshAll,
-            icon: const Icon(Icons.refresh_rounded),
+            busy: (_pendingSeg && _drawLoading) || _loading,
+            onRefresh: _refreshAll,
           ),
-          const SizedBox(width: UtenSpacing.s8),
         ],
       ),
       body: SafeArea(

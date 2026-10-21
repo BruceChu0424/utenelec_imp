@@ -34,6 +34,13 @@ public class PurchaseOrderPrintService {
     public PrintDocument read(UUID id) {
         // Resolve owner visibility before querying any supplier, employee or commercial facts.
         OrderDetail detail = orders.detail(id);
+        // The latest case governs the current revision, including quantity reconfirmation.
+        // A historical effective status alone is not evidence of finance approval.
+        if (detail.getStatus() == null || detail.getStatus() != 1
+                || detail.getFinanceApproval() == null
+                || !"APPROVED".equals(detail.getFinanceApproval().status())) {
+            throw new ApiException(ErrorCode.BUSINESS, "仅财务审核通过的采购单可导出单据");
+        }
         Object[] header = (Object[]) em.createNativeQuery("""
                 SELECT s.name, s.linkman, s.phone, s.mobile,
                        c.name, c.code, sm.name, w.name, w.location,

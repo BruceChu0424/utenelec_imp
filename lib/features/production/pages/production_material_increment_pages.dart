@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -94,13 +95,7 @@ class _IncrementListState
           onPressed: () =>
               popOrBackTo(context, defaultPath: RouteName.productionPlanList),
         ),
-        actions: [
-          IconButton(
-            onPressed: () => _load(_data?.page ?? 1),
-            icon: const Icon(Icons.refresh),
-            tooltip: '刷新',
-          ),
-        ],
+        actions: [UtenRefreshButton(onRefresh: () => _load(_data?.page ?? 1))],
       ),
       body: SafeArea(
         child: UtenContentContainer.wide(
@@ -632,13 +627,7 @@ class _IncrementDetailState
                 : RouteName.productionWorkshopTasks,
           ),
         ),
-        actions: [
-          IconButton(
-            onPressed: _busy ? null : _load,
-            icon: const Icon(Icons.refresh),
-            tooltip: '刷新',
-          ),
-        ],
+        actions: [UtenRefreshButton(enabled: !(_busy), onRefresh: _load)],
       ),
       body: SafeArea(
         child: UtenContentContainer.wide(

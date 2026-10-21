@@ -13,9 +13,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/widgets.dart' as pw;
 
+import '../../../components/feedback/uten_dialog.dart';
 import '../../../core/io/file_saver.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/ui/app_notification.dart';
 import '../models/purchase_order_print_document.dart';
 import 'purchase_order_print_preview.dart';
@@ -57,32 +59,60 @@ Future<void> exportPurchaseOrderDocumentsBatch(
   })?
   saver,
 }) async {
-  if (documents.isEmpty) return;
+  final uniqueDocuments = {
+    for (final document in documents) document.id: document,
+  }.values.toList(growable: false);
+  if (uniqueDocuments.isEmpty ||
+      !context.mounted ||
+      !(stillCurrent?.call() ?? true)) {
+    return;
+  }
+  final confirmed = await UtenDialog.show(
+    context,
+    title: '确认导出采购单',
+    content: Text(
+      '将导出 ${uniqueDocuments.length} 份采购单。请核对单号：\n'
+      '${uniqueDocuments.map((document) => document.number.isEmpty ? document.id : document.number).join('、')}\n\n'
+      '仅财务审核通过的采购单可以导出，改量后须等待财务复核通过。',
+    ),
+    confirmLabel: '确认导出',
+    waitForExit: true,
+  );
+  if (confirmed != true ||
+      !context.mounted ||
+      !(stillCurrent?.call() ?? true)) {
+    return;
+  }
   final font = await _loadPrintFont();
+  if (!context.mounted || !(stillCurrent?.call() ?? true)) return;
   final done = <String, Uint8List>{}; // 文件名 → PDF 字节（单号全局唯一）。
   final failed = <String>[];
   var processed = 0;
-  for (final document in documents) {
+  for (final document in uniqueDocuments) {
     try {
       final json = await apiClient.get(
         '/purchase/orders/${Uri.encodeComponent(document.id)}/print-data',
       );
       final paper = PurchaseOrderPrintDocument.fromJson(json);
+      if (!paper.financeApproved) {
+        throw ApiException('FINANCE_APPROVAL_REQUIRED', '采购单须财务审核通过后才能导出');
+      }
       done['采购单-${paper.billNo}.pdf'] = await buildPurchaseOrderPdf(
         paper,
         font: font,
       );
-    } catch (_) {
-      failed.add(document.number.isEmpty ? document.id : document.number);
+    } catch (error) {
+      final number = document.number.isEmpty ? document.id : document.number;
+      failed.add(error is ApiException ? '$number：${error.message}' : number);
     } finally {
       processed++;
-      onProgress?.call(processed, documents.length);
+      onProgress?.call(processed, uniqueDocuments.length);
     }
     if (!(stillCurrent?.call() ?? true)) return;
   }
   if (!(stillCurrent?.call() ?? true)) return;
   if (done.isEmpty) {
-    if (context.mounted) context.appError('全部单据导出失败，请稍后重试');
+    if (context.mounted) context.appError('未导出任何采购单：${failed.join('；')}');
     return;
   }
   final String name;

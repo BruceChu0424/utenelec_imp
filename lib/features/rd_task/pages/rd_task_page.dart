@@ -28,6 +28,7 @@ import '../../../shared/drafts/form_draft_category.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
@@ -95,7 +96,7 @@ class _RdTaskPageState extends ConsumerState<RdTaskPage> {
   late _RdTaskSeg _seg;
   final _searchController = TextEditingController();
   String _keyword = '';
-  int _refreshVersion = 0;
+  final _panelKey = GlobalKey<_RdTaskListPanelState>();
 
   @override
   void initState() {
@@ -133,10 +134,10 @@ class _RdTaskPageState extends ConsumerState<RdTaskPage> {
         ),
         actions: [
           if (_seg != _RdTaskSeg.draft)
-            IconButton(
-              tooltip: '刷新',
-              onPressed: () => setState(() => _refreshVersion++),
-              icon: const Icon(Icons.refresh_rounded),
+            UtenRefreshButton(
+              onRefresh: () async {
+                await _panelKey.currentState?._refresh();
+              },
             ),
         ],
       ),
@@ -206,9 +207,9 @@ class _RdTaskPageState extends ConsumerState<RdTaskPage> {
                       ),
                     )
                   : _RdTaskListPanel(
+                      key: _panelKey,
                       seg: _seg,
                       keyword: _keyword,
-                      refreshVersion: _refreshVersion,
                     ),
             ),
           ],
@@ -221,13 +222,8 @@ class _RdTaskPageState extends ConsumerState<RdTaskPage> {
 // ═══════════════════════ 单分段列表面板(待处理 / 进行中 / 已完成) ═══════════════════════
 
 class _RdTaskListPanel extends ConsumerStatefulWidget {
-  const _RdTaskListPanel({
-    required this.seg,
-    required this.keyword,
-    required this.refreshVersion,
-  });
+  const _RdTaskListPanel({super.key, required this.seg, required this.keyword});
   final String keyword;
-  final int refreshVersion;
 
   /// 当前分段 —— 决定列表的 `status` 过滤与「标记完成」入口是否出现。
   final _RdTaskSeg seg;
@@ -457,9 +453,7 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
     super.didUpdateWidget(oldWidget);
     // 换分段 = 换服务端口径: 回到第一页并清掉旧选中任务。
     // 关键词与类别刻意保留 —— 用户常常拿同一个条件在三段之间来回看。
-    if (widget.seg != oldWidget.seg ||
-        widget.keyword != oldWidget.keyword ||
-        widget.refreshVersion != oldWidget.refreshVersion) {
+    if (widget.seg != oldWidget.seg || widget.keyword != oldWidget.keyword) {
       _page = 1;
       _selectedTaskId = null;
       _load();
@@ -472,6 +466,13 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _load();
     });
+  }
+
+  Future<void> _refresh() async {
+    if (_loading) return;
+    _page = 1;
+    _selectedTaskId = null;
+    await _load();
   }
 
   Future<void> _load() async {

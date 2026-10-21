@@ -16,9 +16,11 @@
 //
 // 2026-10-19「进行中」段新增批量导出单据：表格多选 + 右下悬浮「导出单据」，
 // 批量导出所选任务关联的采购订货单 PDF（与详情页「打印单据」同一份文件），
-// 单份存 PDF、多份自动打包 zip；能力由 app_router 注入，未关联订货单的行
-// 勾选位换锁图标。「申请待分解」段的「生成采购订货单」批量链路保持不变。
+// 单份存 PDF、多份自动打包 zip；能力由 app_router 注入，仅财务已通过的
+// 订货单可勾选，导出前由采购侧统一二次确认。「申请待分解」段的批量下单不变。
 import 'package:flutter/material.dart';
+
+import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter/foundation.dart' show mapEquals, setEquals;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -755,7 +757,9 @@ class _OperationsWorkbenchPageState
           return _SelectionPrimaryAction(
             buttonKey: const Key('operations-workbench-purchase-export-docs'),
             label: progress == null
-                ? (selected.isEmpty ? '导出单据' : '导出单据(${selected.length})')
+                ? (selected.isEmpty
+                      ? '导出单据'
+                      : '导出单据(${_exportOrderDocumentsOf(selected).length})')
                 : '导出单据(${progress.done}/${progress.total})',
             icon: Icons.print_outlined,
             readyTooltip: '把已选任务的采购单导出为 PDF 文件（多份自动打包 zip）',
@@ -813,8 +817,8 @@ class _OperationsWorkbenchPageState
     return '/purchase/orders/new?requestItemIds=$ids';
   }
 
-  /// 「进行中」段可导出的行 = 关联了可查看的采购订货单（与详情页「打印
-  /// 单据」同一数据源）。申请/收货阶段的行导不出采购单，勾选位换锁图标。
+  /// 「进行中」段只有财务已通过、可查看的采购订货单可导出。
+  /// 已生效单据的改量待复核/退回仍保留 status=1，必须同时检查权威任务阶段。
   ({String id, String number})? _exportableOrderDocOf(
     OperationsWorkbenchTask task,
   ) {
@@ -822,18 +826,37 @@ class _OperationsWorkbenchPageState
     if (document == null || !document.canView) return null;
     final type = document.docType.toUpperCase();
     if (type != 'ORDER' && type != 'PURCHASE_ORDER') return null;
+    if (document.status != '1' ||
+        task.taskStatus != 'FINANCE_APPROVED' ||
+        task.progressStatus != 'FINANCE_APPROVED') {
+      return null;
+    }
     return (id: document.id, number: document.number);
+  }
+
+  List<({String id, String number})> _exportOrderDocumentsOf(
+    List<OperationsWorkbenchTask> selected,
+  ) {
+    final documents = <String, ({String id, String number})>{};
+    for (final task in selected) {
+      final document = _exportableOrderDocOf(task);
+      if (document != null) documents.putIfAbsent(document.id, () => document);
+    }
+    return documents.values.toList(growable: false);
   }
 
   String? _purchaseExportIssue(List<OperationsWorkbenchTask> selected) {
     if (selected.isEmpty) return '请先选择采购任务';
-    if (selected.length > _maxExportDocs) {
-      return '一次最多导出 $_maxExportDocs 份单据，请分批选择';
-    }
     // 跨页保留的勾选可能落在刷新后不可导出的行上（锁行勾不进去，但旧
     // 选择还在集合里），此时给出明确原因而不是让按钮无声失效。
     if (selected.any((task) => _exportableOrderDocOf(task) == null)) {
-      return '所选任务包含不可导出的行，请重新选择';
+      return '仅财务已通过的采购订货单可导出，请重新选择';
+    }
+    if (selected.length != _selectedIds.length) {
+      return '所选任务已发生变化，请刷新后重新选择';
+    }
+    if (_exportOrderDocumentsOf(selected).length > _maxExportDocs) {
+      return '一次最多导出 $_maxExportDocs 份单据，请分批选择';
     }
     return null;
   }
@@ -842,20 +865,21 @@ class _OperationsWorkbenchPageState
     if (_docExportProgress != null) return;
     final export = widget.purchaseOrderBatchExport;
     if (export == null) return;
-    // 同一张订货单可能被多行任务引用（归组行一行一单，防御性按单据 id
-    // 去重，重复单只导出一份）。
-    final documents = <String, ({String id, String number})>{};
-    for (final task in _selectedTasks) {
-      final document = _exportableOrderDocOf(task);
-      if (document != null) documents.putIfAbsent(document.id, () => document);
+    // 执行前再次校验整个选择，避免刷新/状态变化后只导出其中一部分。
+    final selected = _selectedTasks;
+    final issue = _purchaseExportIssue(selected);
+    if (issue != null) {
+      context.appWarning(issue);
+      return;
     }
-    if (documents.isEmpty) return;
+    final documents = _exportOrderDocumentsOf(selected);
     final generation = _readerGeneration;
+    setState(() => _docExportProgress = (done: 0, total: documents.length));
     try {
       await export(
         context,
         apiClient: ref.read(apiClientProvider),
-        documents: documents.values.toList(growable: false),
+        documents: documents,
         onProgress: (done, total) {
           if (mounted) {
             setState(() => _docExportProgress = (done: done, total: total));
@@ -915,17 +939,13 @@ class _OperationsWorkbenchPageState
               backTo(context, defaultPath: _departmentHome(widget.department)),
         ),
         actions: [
-          IconButton(
-            tooltip: '刷新',
-            onPressed: _loading
-                ? null
-                : () {
-                    refreshBadges(ref);
-                    _load(page: 1);
-                  },
-            icon: const Icon(Icons.refresh_rounded),
+          UtenRefreshButton(
+            busy: _loading,
+            onRefresh: () async {
+              refreshBadges(ref);
+              await _load(page: 1);
+            },
           ),
-          const SizedBox(width: UtenSpacing.s8),
         ],
       ),
       body: SafeArea(
@@ -1261,7 +1281,7 @@ class _DesktopTaskTable extends StatelessWidget {
       unselectableLeadingBuilder: selectableIdOf == null
           ? null
           : (context, item) => Tooltip(
-              message: '该任务未关联可导出的采购订货单',
+              message: '仅财务已通过的采购订货单可导出',
               child: Icon(
                 Icons.lock_outline_rounded,
                 size: 20,

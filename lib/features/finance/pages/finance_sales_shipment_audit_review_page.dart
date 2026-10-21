@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
@@ -784,10 +785,10 @@ class _FinanceSalesShipmentAuditReviewPageState
           title: '出货财务审核',
           leading: UtenBackButton(onPressed: _leave),
           actions: [
-            IconButton(
-              tooltip: '刷新',
-              onPressed: _loading || _busy ? null : _load,
-              icon: const Icon(Icons.refresh_rounded, size: 20),
+            UtenRefreshButton(
+              enabled: !_busy,
+              busy: _loading,
+              onRefresh: _load,
             ),
           ],
         ),

@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'package:uten_imp/features/department/models/workforce_overview.dart';
 import 'package:uten_imp/features/department/widgets/organization_workforce_overview_card.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -84,6 +87,55 @@ void main() {
     await tester.pump();
     expect(find.byIcon(Icons.warning_amber_rounded), findsOneWidget);
     expect(find.textContaining('缺少离职事件日期'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('刷新人员统计等待真实 Future，期间禁用并显示加载', (tester) async {
+    final pending = Completer<void>();
+    var reads = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [sharedPreferencesProvider.overrideWithValue(preferences)],
+        child: MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: OrganizationWorkforceOverviewCard(
+                organizationName: '财税部',
+                organizationLevel: '一级部门',
+                loading: false,
+                overview: _overview(),
+                onRetry: () {
+                  reads++;
+                  return pending.future;
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    final refresh = find.byType(UtenRefreshButton);
+    final button = find.descendant(
+      of: refresh,
+      matching: find.byType(IconButton),
+    );
+    await tester.tap(button);
+    await tester.pump();
+    expect(reads, 1);
+    expect(tester.widget<IconButton>(button).onPressed, isNull);
+    expect(
+      find.descendant(
+        of: refresh,
+        matching: find.byType(CircularProgressIndicator),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(button);
+    await tester.pump();
+    expect(reads, 1);
+    pending.complete();
+    await tester.pumpAndSettle();
+    expect(tester.widget<IconButton>(button).onPressed, isNotNull);
     expect(tester.takeException(), isNull);
   });
 }

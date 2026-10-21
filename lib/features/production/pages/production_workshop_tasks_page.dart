@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 // 我的车间任务（车间视角的执行工单办理台）。
 //
 // 2026-09-20 用户口径（终版，勿再改回弹窗流）：等待物料的「下一步」就是选定
@@ -2848,35 +2849,25 @@ class _ProductionWorkshopTasksPageState
               onPressed: _navigating ? null : _openMaterialBin,
               child: Text(AppLocalizations.of(context).workshopMaterialBin),
             ),
-          IconButton(
-            tooltip: '刷新',
-            // 整页刷新：回第 1 页重拉（关键词/状态/车间筛选保留）。
-            onPressed: _loading
-                ? null
-                : () {
-                    // 刷新兼作自愈：批量报工/领料等流程页保存后用 replace / go
-                    // 收尾时，go_router 不会完成本页原 push 的 Future，各流程的
-                    // finally 走不到、_navigating 卡在 true——勾选/开工/报工会
-                    // 静默不动。「返回即刷新」是第一道复位，这里是用户手里的
-                    // 第二道，否则只剩浏览器刷新(2026-09-20 用户反馈)。
-                    setState(() {
-                      _page = 1;
-                      _navigating = false;
-                      // 同上：遮罩是这条人工自愈路径必须能解掉的东西。
-                      _busy = null;
-                    });
-                    // 顶部分类徽章随徽章汇总带回, 手动刷新时一并重拉。
-                    refreshBadges(ref);
-                    _load();
-                  },
-            icon: const Icon(Icons.refresh_rounded),
+          UtenRefreshButton(
+            busy: _loading,
+            onRefresh: () async {
+              // Refresh also releases stale navigation/overlay state after a
+              // child workflow finishes by replacing its route.
+              setState(() {
+                _page = 1;
+                _navigating = false;
+                _busy = null;
+              });
+              await Future.wait([refreshBadges(ref), _load()]);
+            },
           ),
         ],
       ),
       body: SafeArea(
         child: UtenContentContainer.wide(
           child: Padding(
-            padding: const EdgeInsets.all(UtenSpacing.s12),
+            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [

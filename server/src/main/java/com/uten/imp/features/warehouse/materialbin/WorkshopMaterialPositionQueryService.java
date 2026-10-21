@@ -366,11 +366,15 @@ public class WorkshopMaterialPositionQueryService {
                       WHERE bin.workshop_department_id = period.workshop_department_id)""", ":warehouseScope");
         Map<String, Object> row = db.queryForMap("""
                 SELECT (SELECT count(*) FROM workshop_material_requisitions requisition
-                        WHERE status = 'PENDING' AND kind = 'ISSUE'
+                        JOIN workshop_material_requisition_lines line ON line.requisition_id=requisition.id
+                        JOIN goods ON goods.id=line.goods_id
+                        WHERE requisition.status = 'PENDING' AND kind = 'ISSUE'
                         """ + " AND " + inScope + requisitionFilter + """
                 ) AS pending_issue,
                        (SELECT count(*) FROM workshop_material_requisitions requisition
-                        WHERE status = 'PENDING' AND kind = 'RETURN'
+                        JOIN workshop_material_requisition_lines line ON line.requisition_id=requisition.id
+                        JOIN goods ON goods.id=line.goods_id
+                        WHERE requisition.status = 'PENDING' AND kind = 'RETURN'
                         """ + " AND " + inScope + requisitionFilter + """
                 ) AS pending_return,
                        (SELECT count(*) FROM workshop_material_periods period

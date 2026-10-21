@@ -2,11 +2,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../../components/buttons/uten_button.dart';
+import '../../components/feedback/uten_dialog.dart';
 import '../../components/inputs/uten_input_decoration.dart';
 import '../../components/inputs/uten_field_message.dart';
 import '../../components/inputs/uten_dropdown_field.dart';
 import '../../components/inputs/uten_search_bar.dart';
 import '../../core/theme/uten_tokens.dart';
+import '../../core/l10n/gen/app_localizations.dart';
+import '../../core/l10n/gen/app_localizations_zh.dart';
 import '../business_columns/business_column.dart';
 import '../search/keyword_search.dart';
 import '../widgets/column_editor_dialog.dart';
@@ -78,12 +81,16 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
   bool _submitted = false;
   bool _loading = false;
   bool _saving = false;
+  String? _deletingColumnId;
   int _generation = 0;
   PlatformTableRepository? _repository;
   bool _editingEnabled = false;
   String _relationSignature = '';
   int _authorizationRevision = -1;
   bool get _catalog => widget.controller.bound;
+  AppLocalizations get _text =>
+      Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+      AppLocalizationsZh();
   bool get _editing => widget.controller.canCustomizeColumns;
   bool get _sharedDefinitions => widget.controller.canDefineColumns;
   bool get _canDefine =>
@@ -130,6 +137,7 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
     if (accessChanged) {
       _generation++;
       _saving = false;
+      _deletingColumnId = null;
       _loading = false;
     }
     final editingChanged = _editingEnabled != _editing;
@@ -138,6 +146,7 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
       _generation++;
       _creating = false;
       _saving = false;
+      _deletingColumnId = null;
       _loading = false;
       _results = const [];
       _loadError = null;
@@ -147,6 +156,7 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
       _generation++;
       _creating = false;
       _saving = false;
+      _deletingColumnId = null;
     }
     if (identical(_repository, widget.controller.repository)) {
       setState(() {});
@@ -159,11 +169,13 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
       _results = const [];
       _sourceColumns.clear();
       _saving = false;
+      _deletingColumnId = null;
     });
     unawaited(_load());
   }
 
   Future<void> _load() async {
+    if (_saving) return;
     final generation = ++_generation;
     if (!_editing) {
       setState(() {
@@ -215,6 +227,7 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
   }
 
   void _searchChanged(String value) {
+    if (_saving) return;
     _generation++;
     setState(() {
       _loading = _editing;
@@ -405,6 +418,68 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
     }
   }
 
+  Future<void> _delete(PlatformColumnDefinition column) async {
+    if (_saving || !widget.controller.canDeleteColumn(column)) return;
+    final generation = _generation;
+    final repository = widget.controller.repository;
+    final revision = widget.controller.authorizationRevision;
+    bool current() =>
+        mounted &&
+        generation == _generation &&
+        identical(repository, widget.controller.repository) &&
+        revision == widget.controller.authorizationRevision;
+    setState(() {
+      _saving = true;
+      _deletingColumnId = column.id;
+      _saveError = null;
+    });
+    try {
+      final confirmed = await UtenDialog.show(
+        context,
+        title: _text.platformColumnDeleteTitle,
+        content: Text(_text.platformColumnDeleteConfirm(column.name)),
+        confirmLabel: _text.platformColumnDeleteAction,
+        cancelLabel: _text.commonCancel,
+        danger: true,
+      );
+      if (confirmed != true ||
+          !current() ||
+          !widget.controller.canDeleteColumn(column)) {
+        return;
+      }
+      await widget.controller.deleteColumn(column);
+      if (!current()) return;
+      setState(() {
+        _results = _results.where((item) => item.id != column.id).toList();
+        _sourceColumns.remove(column.id);
+      });
+    } catch (error) {
+      if (current()) {
+        setState(() {
+          _saveError = error is PlatformColumnDeletionException
+              ? switch (error.failure) {
+                  PlatformColumnDeletionFailure.forbidden =>
+                    _text.platformColumnDeleteForbidden,
+                  PlatformColumnDeletionFailure.referenced =>
+                    _text.platformColumnDeleteReferenced,
+                  PlatformColumnDeletionFailure.busy =>
+                    _text.platformColumnDeleteBusy,
+                  PlatformColumnDeletionFailure.unavailable =>
+                    _text.platformColumnDeleteUnavailable,
+                }
+              : platformTableError(error);
+        });
+      }
+    } finally {
+      if (current()) {
+        setState(() {
+          _saving = false;
+          _deletingColumnId = null;
+        });
+      }
+    }
+  }
+
   @override
   void dispose() {
     _generation++;
@@ -442,8 +517,8 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
             key: Key(
               _creating ? 'platform-column-create' : 'platform-column-new',
             ),
-            isLoading: _saving,
-            onPressed: _loading || !_canDefine
+            isLoading: _saving && _deletingColumnId == null,
+            onPressed: _saving || _loading || !_canDefine
                 ? null
                 : _creating
                 ? _create
@@ -490,13 +565,19 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        UtenSearchBar(
-          key: const Key('platform-column-search'),
-          controller: _query,
-          hint: '搜索列名称',
-          autofocus: true,
-          onInputChanged: _searchChanged,
-          onChanged: (_) => unawaited(_load()),
+        ExcludeFocus(
+          excluding: _saving,
+          child: IgnorePointer(
+            ignoring: _saving,
+            child: UtenSearchBar(
+              key: const Key('platform-column-search'),
+              controller: _query,
+              hint: '搜索列名称',
+              autofocus: true,
+              onInputChanged: _searchChanged,
+              onChanged: (_) => unawaited(_load()),
+            ),
+          ),
         ),
         const SizedBox(height: UtenSpacing.s16),
         if (system.isNotEmpty) ...[
@@ -510,7 +591,9 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
                     title: column.label,
                     subtitle: '点击显示',
                     icon: Icons.view_column_outlined,
-                    onTap: () => Navigator.pop(context, column.key),
+                    onTap: () {
+                      if (!_saving) Navigator.pop(context, column.key);
+                    },
                   ),
               ],
             ),
@@ -561,6 +644,26 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
                         ) &&
                         !widget.controller.layout.hidden.contains(column.key),
                     onTap: () => _select(column),
+                    deleteAction: widget.controller.canDeleteColumn(column)
+                        ? IconButton(
+                            key: ValueKey(
+                              'platform-column-delete-${column.id}',
+                            ),
+                            tooltip: _text.platformColumnDeleteTitle,
+                            onPressed: _saving
+                                ? null
+                                : () => unawaited(_delete(column)),
+                            color: Theme.of(context).colorScheme.error,
+                            icon: _deletingColumnId == column.id
+                                ? const SizedBox.square(
+                                    dimension: UtenSpacing.s20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.delete_outline_rounded),
+                          )
+                        : null,
                   ),
               ],
             ),
@@ -927,12 +1030,14 @@ class _ColumnOption extends StatelessWidget {
     required this.icon,
     required this.onTap,
     this.selected = false,
+    this.deleteAction,
   });
   final String title;
   final String subtitle;
   final IconData icon;
   final VoidCallback onTap;
   final bool selected;
+  final Widget? deleteAction;
 
   @override
   Widget build(BuildContext context) => ListTile(
@@ -940,8 +1045,14 @@ class _ColumnOption extends StatelessWidget {
     title: Text(title),
     subtitle: Text(selected ? '$subtitle · 已显示' : subtitle),
     leading: Icon(icon),
-    trailing: Icon(selected ? Icons.check_rounded : Icons.add_rounded),
-    enabled: !selected,
+    trailing: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(selected ? Icons.check_rounded : Icons.add_rounded),
+        ?deleteAction,
+      ],
+    ),
+    enabled: !selected || deleteAction != null,
     onTap: selected ? null : onTap,
   );
 }

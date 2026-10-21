@@ -14,6 +14,8 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -93,19 +95,36 @@ class PurchaseOrderPrintServiceTest {
         assertThat(document.lines()).hasSize(1);
     }
 
-    @Test void pendingReconfirmationNeverPrintsPreviousOrAssignedReviewer() {
+    @Test void pendingReconfirmationCannotExportEvenWhenAnEarlierRevisionWasApproved() {
         when(detail.getFinanceApproval().status()).thenReturn("PENDING");
-        when(cases.getResultList()).thenReturn(List.<Object[]>of(new Object[]{"PENDING", null}));
-        var document = service.read(id);
-        assertThat(document.reviewerName()).isEmpty();
-        assertThat(document.statusLabel()).isEqualTo("改量待财务复核");
-        verifyNoInteractions(names);
+        assertFinanceApprovalRequired();
+        verifyNoInteractions(em, branding, names);
     }
 
-    @Test void legacyApprovedWithoutFinanceEvidenceLeavesSignatureBlank() {
+    @ParameterizedTest
+    @CsvSource({"0,DRAFT", "0,PENDING", "0,REJECTED", "1,REJECTED",
+            "1,LEGACY_EFFECTIVE", "-1,APPROVED", "2,APPROVED", "0,APPROVED"})
+    void unapprovedOrInactiveDocumentsCannotProducePrintFacts(short status, String financeStatus) {
+        when(detail.getStatus()).thenReturn(status);
+        when(detail.getFinanceApproval().status()).thenReturn(financeStatus);
+        assertFinanceApprovalRequired();
+        verifyNoInteractions(em, branding, names);
+    }
+
+    @Test void missingFinanceProjectionFailsClosed() {
+        when(detail.getFinanceApproval()).thenReturn(null);
+        assertFinanceApprovalRequired();
+        verifyNoInteractions(em, branding, names);
+    }
+
+    @Test void missingOrderStatusFailsClosedEvenWhenFinanceProjectionIsApproved() {
+        when(detail.getStatus()).thenReturn(null);
+        assertFinanceApprovalRequired();
+        verifyNoInteractions(em, branding, names);
+    }
+
+    @Test void approvedWithoutRecordedReviewerLeavesSignatureBlank() {
         when(cases.getResultList()).thenReturn(List.of());
-        assertThat(service.read(id).reviewerName()).isEmpty();
-        when(detail.getStatus()).thenReturn((short) 0);
         assertThat(service.read(id).reviewerName()).isEmpty();
         verifyNoInteractions(names);
     }
@@ -138,5 +157,26 @@ class PurchaseOrderPrintServiceTest {
         assertThat(controller.printData(id).id()).isEqualTo(id);
         verify(audit).logSuccessfulDetailView(actorId, "reader", "view_purchase_order_detail",
                 "purchase_orders", id, "采购单打印预览", "CD-1", null);
+    }
+
+    @Test void controllerCannotBypassFinanceGuardOrRecordASuccessfulPreviewForRejectedExport() {
+        var recorder = mock(AuditDetailViewRecorder.class);
+        var controller = new PurchaseOrderController(orders, mock(ProcurementFinanceApprovalService.class), recorder);
+        ReflectionTestUtils.setField(controller, "printService", service);
+        when(detail.getFinanceApproval().status()).thenReturn("PENDING");
+
+        assertThatThrownBy(() -> controller.printData(id))
+                .isInstanceOfSatisfying(ApiException.class, failure ->
+                        assertThat(failure.getCode()).isEqualTo(ErrorCode.BUSINESS));
+
+        verifyNoInteractions(recorder, em, branding, names);
+    }
+
+    private void assertFinanceApprovalRequired() {
+        assertThatThrownBy(() -> service.read(id))
+                .isInstanceOfSatisfying(ApiException.class, failure -> {
+                    assertThat(failure.getCode()).isEqualTo(ErrorCode.BUSINESS);
+                    assertThat(failure.getMessage()).isEqualTo("仅财务审核通过的采购单可导出单据");
+                });
     }
 }

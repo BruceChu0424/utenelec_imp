@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/purchase/widgets/purchase_order_batch_export.dart';
 
 Map<String, dynamic> _fixture({
@@ -56,9 +57,15 @@ Map<String, dynamic> _fixture({
 };
 
 class _FakeApi extends ApiClient {
-  _FakeApi(this.failIds) : super(Dio());
+  _FakeApi(
+    this.failIds, {
+    this.pendingIds = const {},
+    this.rejectedIds = const {},
+  }) : super(Dio());
 
   final Set<String> failIds;
+  final Set<String> pendingIds;
+  final Set<String> rejectedIds;
   final List<String> paths = [];
 
   @override
@@ -69,10 +76,13 @@ class _FakeApi extends ApiClient {
     paths.add(path);
     final id = path.split('/')[3];
     if (failIds.contains(id)) throw StateError('boom');
+    if (rejectedIds.contains(id)) {
+      throw ApiException('FINANCE_APPROVAL_REQUIRED', '采购单须财务审核通过后才能导出或打印');
+    }
     return _fixture(
       id: id,
       billNo: 'CD20261019${(id.split('-').last).padLeft(6, '0')}',
-    );
+    )..['statusLabel'] = pendingIds.contains(id) ? '改量待财务复核' : '财务已通过';
   }
 }
 
@@ -87,11 +97,24 @@ Future<void> _run(
   })
   saver,
   void Function(int done, int total)? onProgress,
+  bool confirm = true,
+  bool dismiss = false,
+  bool Function()? stillCurrent,
+  VoidCallback? beforeConfirm,
+  ThemeData? theme,
+  double textScale = 1,
 }) async {
   late BuildContext captured;
   await tester.pumpWidget(
     ProviderScope(
       child: MaterialApp(
+        theme: theme,
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(textScale)),
+          child: child!,
+        ),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         locale: const Locale('zh'),
@@ -105,13 +128,28 @@ Future<void> _run(
     ),
   );
   await tester.pump();
-  await exportPurchaseOrderDocumentsBatch(
+  final export = exportPurchaseOrderDocumentsBatch(
     captured,
     apiClient: api,
     documents: documents,
     onProgress: onProgress,
     saver: saver,
+    stillCurrent: stillCurrent,
   );
+  await tester.pumpAndSettle();
+  expect(find.text('确认导出采购单'), findsOneWidget);
+  if (api is _FakeApi) expect(api.paths, isEmpty);
+  beforeConfirm?.call();
+  if (dismiss) {
+    await tester.binding.handlePopRoute();
+  } else {
+    final button = find.text(confirm ? '确认导出' : '取消');
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+  }
+  await tester.pumpAndSettle();
+  expect(find.text('确认导出采购单'), findsNothing);
+  await export;
 }
 
 bool _isPdf(Uint8List bytes) => String.fromCharCodes(bytes.take(5)) == '%PDF-';
@@ -212,6 +250,139 @@ void main() {
         return name;
       },
     );
+    expect(saves, 0);
+  });
+
+  for (final dismiss in [false, true]) {
+    testWidgets(
+      'cancel or back from confirmation makes no request ($dismiss)',
+      (tester) async {
+        final api = _FakeApi(const {});
+        var saves = 0;
+        await _run(
+          tester,
+          api: api,
+          documents: const [(id: 'order-1', number: 'CD-1')],
+          confirm: false,
+          dismiss: dismiss,
+          saver: (bytes, name, {stillCurrent}) async {
+            saves++;
+            return name;
+          },
+        );
+        expect(api.paths, isEmpty);
+        expect(saves, 0);
+      },
+    );
+  }
+
+  testWidgets('one order selected through multiple lines exports one PDF', (
+    tester,
+  ) async {
+    final api = _FakeApi(const {});
+    final saved = <String>[];
+    await _run(
+      tester,
+      api: api,
+      documents: const [
+        (id: 'order-1', number: 'CD-1'),
+        (id: 'order-1', number: 'CD-1'),
+      ],
+      beforeConfirm: () =>
+          expect(find.textContaining('将导出 1 份采购单'), findsOneWidget),
+      saver: (bytes, name, {stillCurrent}) async {
+        saved.add(name);
+        return name;
+      },
+    );
+    expect(api.paths, hasLength(1));
+    expect(saved.single, endsWith('.pdf'));
+  });
+
+  testWidgets('pending finance response never generates an output', (
+    tester,
+  ) async {
+    final api = _FakeApi(const {}, pendingIds: {'order-1'});
+    var saves = 0;
+    await _run(
+      tester,
+      api: api,
+      documents: const [(id: 'order-1', number: 'CD-1')],
+      saver: (bytes, name, {stillCurrent}) async {
+        saves++;
+        return name;
+      },
+    );
+    expect(saves, 0);
+  });
+
+  testWidgets(
+    'a stale approved selection rejected by the server saves nothing',
+    (tester) async {
+      final api = _FakeApi(const {}, rejectedIds: {'order-1'});
+      var saves = 0;
+      await _run(
+        tester,
+        api: api,
+        documents: const [(id: 'order-1', number: 'CD-1')],
+        saver: (bytes, name, {stillCurrent}) async {
+          saves++;
+          return name;
+        },
+      );
+      expect(api.paths, hasLength(1));
+      expect(saves, 0);
+    },
+  );
+
+  testWidgets('identity change while confirming prevents requests and saves', (
+    tester,
+  ) async {
+    final api = _FakeApi(const {});
+    var current = true;
+    var saves = 0;
+    await _run(
+      tester,
+      api: api,
+      documents: const [(id: 'order-1', number: 'CD-1')],
+      stillCurrent: () => current,
+      beforeConfirm: () => current = false,
+      saver: (bytes, name, {stillCurrent}) async {
+        saves++;
+        return name;
+      },
+    );
+    expect(api.paths, isEmpty);
+    expect(saves, 0);
+  });
+
+  testWidgets('confirmation fits a narrow dark window with large text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final api = _FakeApi(const {});
+    var saves = 0;
+    await _run(
+      tester,
+      api: api,
+      documents: const [
+        (id: 'order-1', number: 'CD20261020000001'),
+        (id: 'order-2', number: 'CD20261020000002'),
+      ],
+      theme: ThemeData.dark(),
+      textScale: 2,
+      confirm: false,
+      beforeConfirm: () => expect(tester.takeException(), isNull),
+      saver: (bytes, name, {stillCurrent}) async {
+        saves++;
+        return name;
+      },
+    );
+    expect(tester.takeException(), isNull);
+    expect(api.paths, isEmpty);
     expect(saves, 0);
   });
 }

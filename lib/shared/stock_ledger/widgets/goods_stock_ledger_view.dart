@@ -10,6 +10,8 @@
 import 'package:flutter/material.dart';
 import '../../../components/inputs/uten_filter_chip.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../components/layout/uten_refresh_scope.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
@@ -64,7 +66,8 @@ class GoodsStockLedgerView extends ConsumerStatefulWidget {
       _GoodsStockLedgerViewState();
 }
 
-class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView> {
+class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
+    with UtenRefreshParticipant<GoodsStockLedgerView> {
   /// 默认近90天 (含今天); 每页 50 行 (StockLedgerQuery 默认)。
   static const _defaultDays = 90;
 
@@ -90,7 +93,9 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView> {
     _to = DateTime(today.year, today.month, today.day);
     _from = _to.subtract(const Duration(days: _defaultDays - 1));
     _applyScope(widget.scope);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) trackRefresh(_load(1));
+    });
   }
 
   @override
@@ -99,9 +104,9 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView> {
     if (oldWidget.scope != widget.scope) {
       _data = null;
       _applyScope(widget.scope);
-      _load(1);
+      trackRefresh(_load(1));
     } else if (oldWidget.reloadTick != widget.reloadTick) {
-      _load(_data?.page ?? 1);
+      trackRefresh(_load(_data?.page ?? 1));
     }
   }
 

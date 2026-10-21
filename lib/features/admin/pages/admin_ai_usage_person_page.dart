@@ -6,6 +6,8 @@
 //
 // 安全: 与看板页同门禁(/admin/* 守卫 + 页内超管校验); 限额编辑走独立面板。
 import 'package:flutter/material.dart';
+
+import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
@@ -254,11 +256,11 @@ class _AdminAiUsagePersonPageState
             icon: const Icon(Icons.tune_rounded),
             onPressed: detail == null ? null : _editLimits,
           ),
-          IconButton(
+          UtenRefreshButton(
             key: const ValueKey('ai-usage-person-refresh'),
             tooltip: l10n.aiSettingsRefresh,
-            icon: const Icon(Icons.refresh_rounded),
-            onPressed: _loading ? null : _refresh,
+            busy: _loading,
+            onRefresh: _refresh,
           ),
         ],
       ),

@@ -139,9 +139,13 @@ void main() {
       );
       await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded));
       await tester.pumpAndSettle();
-      expect(find.text('全部分类'), findsOneWidget);
+      final allCategoryOption = find.descendant(
+        of: find.byType(ListView),
+        matching: find.text('全部分类'),
+      );
+      expect(allCategoryOption, findsOneWidget);
       expect(find.text('等待财务审核和供应商处理的采购申请').last, findsOneWidget);
-      await tester.tap(find.text('全部分类'));
+      await tester.tap(allCategoryOption);
       await tester.pumpAndSettle();
       expect(
         chosen,

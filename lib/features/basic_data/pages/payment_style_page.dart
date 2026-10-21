@@ -10,6 +10,7 @@ import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -359,9 +360,8 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
   // ---- 目录 ---------------------------------------------------------------
 
   Widget _buildDirectory({bool closeOnSelect = false}) {
-    final theme = Theme.of(context);
     return Material(
-      color: theme.colorScheme.surface,
+      type: MaterialType.transparency,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -735,11 +735,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
                 builder: (_) => const PostingStyleRolePanel(),
               ),
             ),
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新',
-            onPressed: _treeLoading ? null : _load,
-          ),
+          UtenRefreshButton(busy: _treeLoading, onRefresh: _load),
         ],
       ),
       body: SafeArea(child: body),

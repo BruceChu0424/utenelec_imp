@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +13,7 @@ import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/production/models/production_execution_workbench.dart';
 import 'package:uten_imp/features/production/pages/production_workshop_tasks_page.dart';
+import 'package:uten_imp/features/production/pages/production_board_page.dart';
 import 'package:uten_imp/features/production/providers/production_department_provider.dart';
 import 'package:uten_imp/features/production/providers/production_execution_refresh.dart';
 import 'package:uten_imp/features/production/repositories/production_execution_workbench_repository.dart';
@@ -102,6 +105,49 @@ void main() {
       container.dispose();
     },
   );
+
+  testWidgets(
+    'board refresh reloads the visible ongoing segment and waits for it',
+    (tester) async {
+      final repository = _Repository();
+      final container = await _pump(
+        tester,
+        repository,
+        const ProductionBoardPage(initialTab: 1),
+      );
+      expect(repository.groupLoads, 1);
+      final gate = Completer<void>();
+      repository.groupGate = gate.future;
+      final refresh = find.byKey(const Key('production-pending-refresh'));
+      await tester.tap(refresh);
+      await tester.pump();
+      await tester.pump();
+      expect(repository.groupLoads, 2);
+      expect(
+        find.descendant(
+          of: refresh,
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(refresh);
+      await tester.pump();
+      expect(repository.groupLoads, 2);
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('生产批次 2'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: refresh,
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+    },
+  );
 }
 
 Future<ProviderContainer> _pump(
@@ -150,6 +196,7 @@ class _Repository extends ProductionExecutionWorkbenchRepository {
   _Repository() : super(ApiClient(Dio()));
   int taskLoads = 0;
   int groupLoads = 0;
+  Future<void>? groupGate;
   final List<String?> statuses = [];
 
   @override
@@ -202,6 +249,7 @@ class _Repository extends ProductionExecutionWorkbenchRepository {
     String? salesOrder,
   }) async {
     groupLoads++;
+    await groupGate;
     return PagedResult(
       items: [
         ProductionExecutionWorkbenchGroup.fromJson({

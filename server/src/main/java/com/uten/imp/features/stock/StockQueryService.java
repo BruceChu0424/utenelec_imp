@@ -101,12 +101,22 @@ public class StockQueryService {
      * @param series              物料系列表头筛选
      * @param unitId              单位表头筛选
      * @param attention           行动清单规则；null=全部，值必须命中白名单
+     * @param warehouseRelatedOnly 选仓时仅列该仓范围已有余额或待检/待入库实物的货品颜色；默认保留全货品零库存
      */
     public record InstantInventoryFilter(UUID categoryId, UUID warehouseId, boolean includeDefective,
                                          boolean includeLineSide, String keyword, UUID owningWarehouse,
                                          Boolean owningWarehouseNull, UUID colorId, String series, UUID unitId,
                                          String attention, UUID goodsId, boolean colorNull, boolean inventoryOnly,
-                                         boolean includeRelated) {
+                                         boolean includeRelated, boolean warehouseRelatedOnly) {
+        public InstantInventoryFilter(UUID categoryId, UUID warehouseId, boolean includeDefective,
+                                      boolean includeLineSide, String keyword, UUID owningWarehouse,
+                                      Boolean owningWarehouseNull, UUID colorId, String series, UUID unitId,
+                                      String attention, UUID goodsId, boolean colorNull, boolean inventoryOnly,
+                                      boolean includeRelated) {
+            this(categoryId, warehouseId, includeDefective, includeLineSide, keyword, owningWarehouse,
+                    owningWarehouseNull, colorId, series, unitId, attention, goodsId, colorNull, inventoryOnly,
+                    includeRelated, false);
+        }
         public InstantInventoryFilter(UUID categoryId, UUID warehouseId, boolean includeDefective,
                                       boolean includeLineSide, String keyword, UUID owningWarehouse,
                                       Boolean owningWarehouseNull, UUID colorId, String series, UUID unitId,
@@ -253,9 +263,22 @@ public class StockQueryService {
                                                               String series, UUID unitId, String attention,
                                                               int page, int size, String sort, String order,
                                                               boolean includeRelated) {
+        return instantInventory(categoryId, warehouseId, includeDefective, includeLineSide, keyword,
+                owningWarehouse, owningWarehouseNull, colorId, series, unitId, attention,
+                page, size, sort, order, includeRelated, false);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<InstantInventoryRow> instantInventory(UUID categoryId, UUID warehouseId,
+                                                              boolean includeDefective, boolean includeLineSide,
+                                                              String keyword, UUID owningWarehouse,
+                                                              Boolean owningWarehouseNull, UUID colorId,
+                                                              String series, UUID unitId, String attention,
+                                                              int page, int size, String sort, String order,
+                                                              boolean includeRelated, boolean warehouseRelatedOnly) {
         InstantInventoryFilter filter = new InstantInventoryFilter(categoryId, warehouseId, includeDefective,
                 includeLineSide, keyword, owningWarehouse, owningWarehouseNull, colorId, series, unitId,
-                attention, null, false, true, includeRelated);
+                attention, null, false, true, includeRelated, warehouseRelatedOnly);
         InstantSql sql = instantSql(filter, sort);
         PageResponse<InstantInventoryRow> rows = instantPage(sql, page, size, sort, order);
 
@@ -515,6 +538,11 @@ public class StockQueryService {
                 " AND i.passed_base_qty - i.warehouse_stocked_base_qty > 0");
         StringBuilder goodsWhere = new StringBuilder(" WHERE g.is_deleted = false");
         if (warehouseScope != null && warehouseScope.isEmpty()) goodsWhere.append(" AND FALSE");
+        if (filter.warehouseRelatedOnly() && filter.warehouseId() != null) {
+            // Keep real zero balances and inspection placeholders; exclude only the
+            // synthetic zero row produced by the company-wide goods LEFT JOIN.
+            goodsWhere.append(" AND base.goods_id IS NOT NULL");
+        }
         if (filter.goodsId() != null) goodsWhere.append(" AND g.id = :goodsId");
         if (filter.categoryId() != null) {
             goodsWhere.append(" AND g.category_id IN (SELECT id FROM cat)");

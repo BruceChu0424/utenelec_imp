@@ -52,7 +52,9 @@ class AdminPermissionArchiveActions extends ConsumerStatefulWidget {
 
 class _ArchiveActionsState
     extends ConsumerState<AdminPermissionArchiveActions> {
-  bool _busy = false;
+  bool _exporting = false;
+  bool _importing = false;
+  bool get _busy => _exporting || _importing;
 
   Future<void> _export() async {
     final boundary = ref.read(sensitiveReadBoundaryProvider);
@@ -61,7 +63,7 @@ class _ArchiveActionsState
         boundary == ref.read(sensitiveReadBoundaryProvider) &&
         _canTransfer(ref);
     if (_busy || !current()) return;
-    setState(() => _busy = true);
+    setState(() => _exporting = true);
     try {
       final scope = await ref
           .read(apiClientProvider)
@@ -85,7 +87,7 @@ class _ArchiveActionsState
         context.appError(permissionTransferError(error));
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _exporting = false);
     }
   }
 
@@ -97,7 +99,7 @@ class _ArchiveActionsState
         _canTransfer(ref) &&
         widget.importEnabled;
     if (_busy || !current()) return;
-    setState(() => _busy = true);
+    setState(() => _importing = true);
     try {
       final files = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -142,7 +144,7 @@ class _ArchiveActionsState
         context.appError(permissionTransferError(error));
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _importing = false);
     }
   }
 
@@ -155,7 +157,7 @@ class _ArchiveActionsState
       return const SizedBox.shrink();
     }
     return Wrap(
-      spacing: UtenSpacing.s8,
+      spacing: UtenSpacing.s4,
       runSpacing: UtenSpacing.s4,
       children: [
         UtenButton(
@@ -163,6 +165,7 @@ class _ArchiveActionsState
           type: UtenButtonType.secondary,
           size: UtenButtonSize.small,
           icon: Icons.download_outlined,
+          isLoading: _exporting,
           onPressed: _busy ? null : _export,
           child: const Text('导出权限设置'),
         ),
@@ -171,6 +174,7 @@ class _ArchiveActionsState
           type: UtenButtonType.secondary,
           size: UtenButtonSize.small,
           icon: Icons.upload_outlined,
+          isLoading: _importing,
           onPressed: _busy || !widget.importEnabled ? null : _import,
           onDisabledTap: !widget.importEnabled
               ? () => context.appWarning('请先保存当前权限修改，再导入权限设置')
@@ -200,6 +204,7 @@ class AdminPermissionCopyActions extends ConsumerStatefulWidget {
 
 class _CopyActionsState extends ConsumerState<AdminPermissionCopyActions> {
   bool _busy = false;
+  bool _copying = false;
   int _operation = 0;
 
   @override
@@ -208,6 +213,7 @@ class _CopyActionsState extends ConsumerState<AdminPermissionCopyActions> {
     if (oldWidget.user.id != widget.user.id) {
       _operation++;
       _busy = false;
+      _copying = false;
     }
   }
 
@@ -224,7 +230,10 @@ class _CopyActionsState extends ConsumerState<AdminPermissionCopyActions> {
         boundary == ref.read(sensitiveReadBoundaryProvider) &&
         _canTransfer(ref);
     if (!current()) return;
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _copying = true;
+    });
     try {
       final scope = await ref
           .read(apiClientProvider)
@@ -242,7 +251,12 @@ class _CopyActionsState extends ConsumerState<AdminPermissionCopyActions> {
         context.appError(permissionTransferError(error));
       }
     } finally {
-      if (mounted && operation == _operation) setState(() => _busy = false);
+      if (mounted && operation == _operation) {
+        setState(() {
+          _busy = false;
+          _copying = false;
+        });
+      }
     }
   }
 
@@ -285,7 +299,7 @@ class _CopyActionsState extends ConsumerState<AdminPermissionCopyActions> {
   Widget build(BuildContext context) {
     final copied = ref.watch(permissionCopyClipboardProvider);
     return Wrap(
-      spacing: UtenSpacing.s8,
+      spacing: UtenSpacing.s4,
       runSpacing: UtenSpacing.s4,
       children: [
         UtenButton(
@@ -293,6 +307,7 @@ class _CopyActionsState extends ConsumerState<AdminPermissionCopyActions> {
           type: UtenButtonType.secondary,
           size: UtenButtonSize.small,
           icon: Icons.copy_outlined,
+          isLoading: _copying,
           onPressed: widget.enabled && !_busy ? _copy : null,
           child: const Text('复制权限'),
         ),

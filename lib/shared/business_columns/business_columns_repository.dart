@@ -9,6 +9,10 @@ class BusinessColumnsRepository {
   const BusinessColumnsRepository(this.api);
   final ApiClient api;
 
+  Future<void> delete(String scope, String id) => api.delete(
+    '/business-columns/${Uri.encodeComponent(scope)}/${Uri.encodeComponent(id)}',
+  );
+
   Future<List<BusinessColumn>> search(String scope, String query) async =>
       (await api.getList(
         '/business-columns',

@@ -13,6 +13,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'click_guard.dart';
+import 'uten_app_bar_action_button.dart';
+import '../layout/uten_app_bar_action_scope.dart';
 
 class UtenRefreshButton extends StatefulWidget {
   const UtenRefreshButton({
@@ -20,6 +22,7 @@ class UtenRefreshButton extends StatefulWidget {
     required this.onRefresh,
     this.tooltip = '刷新', // TODO(l10n): 补 arb
     this.busy = false,
+    this.enabled = true,
   });
 
   /// 刷新动作。组件自动防重入：忙碌期间再点不触发。
@@ -27,6 +30,9 @@ class UtenRefreshButton extends StatefulWidget {
 
   /// 外部忙碌口径（如页面级 _loading）。为 true 时按钮转圈并禁用。
   final bool busy;
+
+  /// Other page locks disable refresh without claiming that it is loading.
+  final bool enabled;
 
   final String tooltip;
 
@@ -38,6 +44,7 @@ class _UtenRefreshButtonState extends State<UtenRefreshButton> {
   final _guard = ClickGuard();
 
   Future<void> _run() async {
+    if (!widget.enabled || widget.busy) return;
     final action = _guard.run(() => Future<void>.sync(widget.onRefresh));
     if (action == null) return;
     setState(() {});
@@ -51,6 +58,14 @@ class _UtenRefreshButtonState extends State<UtenRefreshButton> {
   @override
   Widget build(BuildContext context) {
     final busy = widget.busy || _guard.isBusy;
+    if (UtenAppBarActionPresentation.contains(context)) {
+      return UtenAppBarActionButton(
+        label: '刷新',
+        tooltip: widget.tooltip,
+        isLoading: busy,
+        onPressed: busy || !widget.enabled ? null : _run,
+      );
+    }
     return IconButton(
       icon: busy
           ? const SizedBox(
@@ -60,7 +75,7 @@ class _UtenRefreshButtonState extends State<UtenRefreshButton> {
             )
           : const Icon(Icons.refresh_rounded),
       tooltip: widget.tooltip,
-      onPressed: busy ? null : _run,
+      onPressed: busy || !widget.enabled ? null : _run,
     );
   }
 }

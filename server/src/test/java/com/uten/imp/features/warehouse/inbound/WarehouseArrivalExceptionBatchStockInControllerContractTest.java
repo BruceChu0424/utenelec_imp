@@ -31,7 +31,8 @@ class WarehouseArrivalExceptionBatchStockInControllerContractTest {
                 mock(SubcontractReceiptService.class),
                 mock(WarehouseArrivalRegistrationService.class),
                 batch,
-                null);
+                null,
+                mock(com.uten.imp.application.port.WarehouseTaskRowCountPort.class));
         WarehouseArrivalExceptionBatchStockInRequest request =
                 new WarehouseArrivalExceptionBatchStockInRequest(
                         "arrival-batch-key-1",

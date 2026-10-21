@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import '../layout/uten_app_bar_action_scope.dart';
+import '../layout/uten_app_bar_action_feedback.dart';
 
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
@@ -93,14 +94,43 @@ class UtenButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (UtenAppBarActionPresentation.contains(context)) {
+      return UtenAppBarActionFeedback(
+        onPressed: onPressed,
+        onLongPress: onLongPress,
+        isLoading: isLoading,
+        builder: (context, busy, press, longPress) => _buildButton(
+          context,
+          loading: busy,
+          press: press,
+          longPress: longPress,
+        ),
+      );
+    }
+    return _buildButton(
+      context,
+      loading: isLoading,
+      press: onPressed,
+      longPress: onLongPress,
+    );
+  }
+
+  Widget _buildButton(
+    BuildContext context, {
+    required bool loading,
+    required FutureOr<void> Function()? press,
+    required FutureOr<void> Function()? longPress,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
     final inAppBar = UtenAppBarActionPresentation.contains(context);
-    final enabled = onPressed != null && !isLoading;
+    final enabled = press != null && !loading;
     final effectiveOnTap = enabled
-        ? UtenAppBarActionScope.wrap(context, onPressed)
+        ? UtenAppBarActionScope.wrap(context, press)
+        : loading && inAppBar
+        ? null
         : onDisabledTap;
     final effectiveLongPress = enabled
-        ? UtenAppBarActionScope.wrap(context, onLongPress)
+        ? UtenAppBarActionScope.wrap(context, longPress)
         : null;
     final (enabledBackground, enabledForeground, enabledBorder) =
         _resolveColors(colorScheme, inAppBar: inAppBar);
@@ -134,6 +164,12 @@ class UtenButton extends StatelessWidget {
       borderRadius: radius,
       side: border == null ? BorderSide.none : BorderSide(color: border),
     );
+    final content = inAppBar
+        ? UtenAppBarActionProgress(
+            isLoading: loading,
+            child: child is Flexible ? (child as Flexible).child : child,
+          )
+        : child;
 
     Widget button = MergeSemantics(
       child: Semantics(
@@ -198,12 +234,6 @@ class UtenButton extends StatelessWidget {
 
     if (isExpanded) {
       button = SizedBox(width: double.infinity, child: button);
-    }
-    if (inAppBar) {
-      button = Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: button,
-      );
     }
     return button;
   }

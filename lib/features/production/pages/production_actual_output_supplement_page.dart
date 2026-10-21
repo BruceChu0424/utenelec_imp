@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -195,10 +196,10 @@ class _SupplementState
         title: '追加生产计划',
         leading: UtenBackButton(onPressed: _back),
         actions: [
-          IconButton(
-            onPressed: _busy ? null : _load,
-            icon: const Icon(Icons.refresh),
+          UtenRefreshButton(
             tooltip: '刷新状态',
+            enabled: !(_busy),
+            onRefresh: _load,
           ),
         ],
       ),

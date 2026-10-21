@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
@@ -340,12 +341,7 @@ class _SubcontractShortDeliveryPageState
           onPressed: () => backTo(context, defaultPath: RouteName.subcontract),
         ),
         actions: [
-          IconButton(
-            tooltip: '刷新',
-            onPressed: _loading ? null : () => _load(page: 1),
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-          const SizedBox(width: UtenSpacing.s8),
+          UtenRefreshButton(busy: _loading, onRefresh: () => _load(page: 1)),
         ],
       ),
       body: SafeArea(

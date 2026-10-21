@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 // 产成品入库任务(可嵌入)：FQC 放行上限进入队列；登记入库仓库与库位后走两条路线之一
 // ——「先入库后质检」(登记即按库位上架，合格自动入库)或「先质检后入库」(品质放行后按
 // 实物完成最终点收，支持短收余量与批量全量点收)。
@@ -79,7 +80,8 @@ class ProductionFinishedInboundTasksView extends ConsumerStatefulWidget {
 }
 
 class _ProductionFinishedInboundTasksViewState
-    extends ConsumerState<ProductionFinishedInboundTasksView> {
+    extends ConsumerState<ProductionFinishedInboundTasksView>
+    with UtenRefreshParticipant<ProductionFinishedInboundTasksView> {
   PagedResult<ProductionFinishedInboundTask>? _result;
   bool _loading = false;
   String? _error;
@@ -108,7 +110,7 @@ class _ProductionFinishedInboundTasksViewState
           .read(masterNameServiceProvider)
           .ensureLoaded()
           .then((_) => mounted ? setState(() {}) : null);
-      _load(1);
+      trackRefresh(_load(1));
     });
   }
 
@@ -120,7 +122,7 @@ class _ProductionFinishedInboundTasksViewState
       _keyword = widget.keyword;
       // build 期不能同步触发加载（onLoadingChanged 会 setState 父级）——post-frame。
       WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _load(1, replaceActive: true),
+        (_) => trackRefresh(_load(1, replaceActive: true)),
       );
     }
   }

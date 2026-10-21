@@ -1,7 +1,7 @@
 // 仓库资料管理页(基础资料)。
 //
 // 主档形态(ADR-145)：全公司只有一个主仓(编号 001)，只作汇总、负责人范围和导航；其余仓都是
-// 它的直属子仓。列表主仓置顶、子仓缩进；「上级仓库」只读、固定是主仓(新建不传，服务端补)；
+// 它的直属子仓。左侧仓库目录、右侧信息卡与即时库存；「上级仓库」只读、固定是主仓(新建不传，服务端补)；
 // 「仓库用途」(良品仓/不良品仓)可筛选可编辑；内料仓由「车间内料仓」页开通，这里只读。
 // 停用/删除被拒时原样展示服务端原因(还有库存/还是货品所属仓库/未结预留/主仓等)。
 // accountable(bool) 用 select 使用/不使用(提交 'true'/'false' 字符串，Jackson 自动转 Boolean)。
@@ -12,9 +12,11 @@
 // = 只看、只收自己负责的仓；没登记负责人的仓交主管，没登记的同事也看得到。
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import '../widgets/master_operation_history_panel.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
@@ -24,21 +26,29 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../components/layout/uten_split_view.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/models/uten_tree_node.dart';
+import '../../../shared/search/keyword_search.dart';
+import '../../../shared/widgets/master_detail_card.dart';
+import '../../../shared/widgets/uten_hierarchy_node_actions.dart';
+import '../../../shared/widgets/uten_hierarchy_search_header.dart';
 import '../models/master_facet.dart';
-import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/master_name_provider.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../models/warehouse_node.dart';
 import '../repositories/warehouse_keeper_repository.dart';
 import '../repositories/warehouse_repository.dart';
@@ -46,6 +56,10 @@ import '../repositories/master_status_repository.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
+import '../widgets/master_inline_edit.dart';
+import '../widgets/master_inline_page_mixin.dart';
+import '../widgets/uten_category_tree_view.dart';
+import '../widgets/warehouse_inventory_panel.dart';
 
 class WarehousePage extends ConsumerStatefulWidget {
   const WarehousePage({super.key});
@@ -54,17 +68,105 @@ class WarehousePage extends ConsumerStatefulWidget {
   ConsumerState<WarehousePage> createState() => _WarehousePageState();
 }
 
-class _WarehousePageState extends ConsumerState<WarehousePage> {
-  PagedResult<WarehouseListItem>? _page;
-  int _pageNum = 1;
+class _WarehousePageState extends ConsumerState<WarehousePage>
+    with MasterInlinePageMixin<WarehousePage, WarehouseDetail> {
+  @override
+  String get inlineEntityType => 'warehouses';
+  @override
+  bool get inlineCanEdit => _canEdit;
+  @override
+  bool get inlineReadReady =>
+      !_loading && !_detailLoading && _error == null && _warehouses != null;
+  @override
+  String inlineIdOf(WarehouseDetail row) => row.id;
+  @override
+  Future<void> inlineReload() => _refresh();
+  @override
+  void inlineClearView() {
+    _loadRequests.begin();
+    _detailRequests.begin();
+    _warehouses = null;
+    _selectedId = null;
+    _selectedDetail = null;
+    _keeperNames = const {};
+    _error = null;
+    _detailError = null;
+    _loading = false;
+    _detailLoading = false;
+  }
+
+  Object? _inlineValue(WarehouseDetail row, String key) => switch (key) {
+    'name' => row.name,
+    'code' => row.code,
+    'location' => row.location,
+    'remark' => row.remark,
+    'accountable' => row.accountable,
+    'workshopDepartmentId' => row.workshopDepartmentId,
+    'workshopDepartmentName' => row.workshopDepartmentName,
+    'isLineSide' => row.lineSide,
+    'parentName' => row.isMain ? '' : _mainWarehouseName,
+    'defective' => row.defective,
+    'status' => row.status,
+    _ => null,
+  };
+
+  @override
+  Map<String, MasterInlineField<WarehouseDetail>> get inlineFields {
+    return {
+      for (final field in _fields())
+        if (!field.readOnly && (field.key != 'status' || _canStatus))
+          field.key: MasterInlineField(
+            key: field.key,
+            read: (row) => _inlineValue(row, field.key),
+            type: field.type,
+            required: field.required,
+            options: field.options,
+            customBuilder: field.customBuilder,
+            editableOf: (row) =>
+                !row.lineSide &&
+                !(row.isMain &&
+                    const {'status', 'defective'}.contains(field.key)),
+          ),
+    };
+  }
+
+  @override
+  Future<void> saveInline(String id, Map<String, dynamic> patch) async {
+    final changes = <String, dynamic>{};
+    for (final entry in patch.entries) {
+      if (const {'accountable', 'defective'}.contains(entry.key)) {
+        final value = entry.value;
+        if (value is! bool && value != 'true' && value != 'false') {
+          throw StateError(
+            masterEditText(
+              context,
+              '请选择有效的仓库选项',
+              'Select a valid warehouse option',
+              '올바른 창고 옵션을 선택하세요',
+            ),
+          );
+        }
+        changes[entry.key] = value == true || value == 'true';
+      } else {
+        changes[entry.key] = entry.value;
+      }
+    }
+    await super.saveInline(id, changes);
+  }
+
+  List<WarehouseListItem>? _warehouses;
   bool _loading = false;
   String? _error;
   final _loadRequests = LatestRequestGuard();
 
   Map<String, String?> _filters = {};
   String _keyword = '';
-  WarehouseFacets? _facets;
   bool _detailLoading = false;
+  String? _selectedId;
+  WarehouseDetail? _selectedDetail;
+  String? _detailError;
+  final _detailRequests = LatestRequestGuard();
+  bool _directoryActionBusy = false;
 
   /// 仓库 id → 负责人姓名(ADR-115)；加载失败时列显示「—」不挡列表。
   Map<String, List<String>> _keeperNames = const {};
@@ -73,8 +175,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadWarehouses(1);
-      _loadFacets();
+      _loadWarehouses();
       _loadKeepers();
     });
   }
@@ -91,34 +192,44 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
   bool get _canStatus =>
       ref.read(currentPermissionsProvider).contains(Perm.warehouseStatus);
 
-  Future<void> _loadWarehouses(int page) async {
+  Future<void> _loadWarehouses() async {
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
     final generation = _loadRequests.begin();
     setState(() {
       _loading = true;
       _error = null;
-      _pageNum = page;
     });
     try {
-      final result = await ref
-          .read(warehouseRepositoryProvider)
-          .list(
-            page: page,
-            keyword: _keyword.trim().isEmpty ? null : _keyword,
-            filters: _filters,
-          );
-      if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      final result = await ref.read(warehouseRepositoryProvider).dict();
+      if (!inlineAcceptsRead(boundary) ||
+          !_loadRequests.isCurrent(generation)) {
+        return;
+      }
       setState(() {
-        _page = result;
+        _warehouses = result;
         _loading = false;
+        if (_selectedId != null && !result.any((w) => w.id == _selectedId)) {
+          _detailRequests.begin();
+          _selectedId = null;
+          _selectedDetail = null;
+          _detailError = null;
+          _detailLoading = false;
+        }
       });
     } on ApiException catch (e) {
-      if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (!inlineAcceptsRead(boundary) ||
+          !_loadRequests.isCurrent(generation)) {
+        return;
+      }
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (!inlineAcceptsRead(boundary) ||
+          !_loadRequests.isCurrent(generation)) {
+        return;
+      }
       setState(() {
         _error = '加载仓库列表失败';
         _loading = false;
@@ -126,22 +237,13 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
     }
   }
 
-  Future<void> _loadFacets() async {
-    try {
-      final f = await ref.read(warehouseRepositoryProvider).facets();
-      if (!mounted) return;
-      setState(() => _facets = f);
-    } catch (_) {
-      // Facets are optional; the primary list remains usable.
-    }
-  }
-
   Future<void> _loadKeepers() async {
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
     try {
       final assignments = await ref
           .read(warehouseKeeperRepositoryProvider)
           .assignments();
-      if (!mounted) return;
+      if (!inlineAcceptsRead(boundary)) return;
       final byWarehouse = <String, List<String>>{};
       for (final a in assignments) {
         byWarehouse.putIfAbsent(a.warehouseId, () => []).add(a.name);
@@ -159,6 +261,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
 
   /// 设置负责人：整组替换；保存后刷新负责人列。
   Future<void> _editKeepers(WarehouseDetail d) async {
+    if (!_canEdit) return;
     final repo = ref.read(warehouseKeeperRepositoryProvider);
     List<WarehouseKeeper> current;
     try {
@@ -170,7 +273,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
       if (mounted) context.appError('加载仓库负责人失败');
       return;
     }
-    if (!mounted) return;
+    if (!mounted || !_canEdit) return;
     final saved = await showDialog<List<WarehouseKeeper>>(
       context: context,
       builder: (_) => _WarehouseKeepersDialog(
@@ -200,41 +303,36 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
     await _loadKeepers();
   }
 
-  // 表头筛选：列 key → 服务端 query 参数名（上级仓库列在服务端是 parentId；核算列同名）。
-  static const _columnToParam = {'parent': 'parentId'};
-
+  // 目录筛选同时用于打印与导出的服务端查询参数。
   void _onFilterChanged(String key, String? value) {
-    final paramKey = _columnToParam[key] ?? key;
     setState(() {
       final next = Map<String, String?>.from(_filters);
       if (value == null) {
-        next.remove(paramKey); // 选"所有"= 不筛
+        next.remove(key);
       } else {
-        next[paramKey] = value; // 具体值 或 kMasterFilterNullValue（空值）
+        next[key] = value;
       }
       _filters = next;
     });
-    _loadWarehouses(1);
   }
-
-  /// 表头筛选回显：把 _filters（服务端参数名）映射回列 key 供表格选中态索引。
-  Map<String, String?> get _columnFilters => {
-    for (final e in _filters.entries)
-      (e.key == 'parentId' ? 'parent' : e.key): e.value,
-  };
 
   void _onKeywordChanged(String kw) {
     setState(() => _keyword = kw);
-    _loadWarehouses(1);
   }
 
   /// 主仓名称(字典里唯一没有上级的仓)；字典没加载到时为空。
-  String? get _mainWarehouseName => ref
-      .read(masterNameServiceProvider)
-      .warehouseHierarchy
-      .where((entry) => entry.parentId == null || entry.parentId!.isEmpty)
-      .map((entry) => entry.name)
-      .firstOrNull;
+  String? get _mainWarehouseName =>
+      _warehouses
+          ?.where((warehouse) => warehouse.isMain)
+          .map((warehouse) => warehouse.name)
+          .whereType<String>()
+          .firstOrNull ??
+      ref
+          .read(masterNameServiceProvider)
+          .warehouseHierarchy
+          .where((entry) => entry.parentId == null || entry.parentId!.isEmpty)
+          .map((entry) => entry.name)
+          .firstOrNull;
 
   /// 表单字段。[editing] 为空 = 新建。内料仓与主仓的用途/车间字段只读(ADR-145)。
   List<MasterFieldDef> _fields({WarehouseDetail? editing}) {
@@ -261,12 +359,17 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
         group: '基础',
         hint: '如 总仓库/轨道仓',
       ),
-      const MasterFieldDef(key: 'remark', label: '备注', group: '基础'),
+      MasterFieldDef(
+        key: 'remark',
+        label: l10n.employeeTransferFieldRemark,
+        group: '基础',
+      ),
       const MasterFieldDef(
         key: 'accountable',
         label: '是否核算',
         group: '基础',
         type: MasterFieldType.select,
+        required: true,
         options: [
           MasterSelectOption(value: 'true', label: '使用(参与核算)'),
           MasterSelectOption(value: 'false', label: '不使用(不核算)'),
@@ -341,20 +444,23 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
           ),
         ],
       ),
-      const MasterFieldDef(
+      MasterFieldDef(
         key: 'status',
         label: '状态',
         type: MasterFieldType.select,
         options: kMasterStatusOptions,
         required: true,
+        readOnly: isMain,
         group: '基础',
       ),
     ];
   }
 
   Future<void> _showCreate() async {
+    if (!_canCreate) return;
+    if (!await inlineEdit.confirmLeave(context) || !mounted) return;
     await ref.read(masterNameServiceProvider).ensureWarehousesLoaded();
-    if (!mounted) return;
+    if (!mounted || !_canCreate) return;
     await showMasterEditDialog(
       context: context,
       draftSpec: FormDraftCatalog.warehouse.spec(title: '新增仓库'),
@@ -376,50 +482,18 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
     await ref.read(warehouseRepositoryProvider).create(body);
     if (mounted) {
       context.appSuccess('仓库已创建');
-      await _loadWarehouses(_pageNum);
+      await _loadWarehouses();
     }
     return true;
   }
 
-  Future<void> _showEdit(WarehouseDetail d) async {
-    await ref.read(masterNameServiceProvider).ensureWarehousesLoaded();
-    if (!mounted) return;
-    await showMasterEditDialog(
-      context: context,
-      title: '编辑仓库',
-      fields: _fields(editing: d),
-      initialValues: {
-        'name': d.name ?? '',
-        'code': d.code ?? '',
-        'location': d.location ?? '',
-        'remark': d.remark ?? '',
-        'accountable': d.accountable ? 'true' : 'false',
-        'workshopDepartmentId': d.workshopDepartmentId ?? '',
-        'workshopDepartmentName': d.workshopDepartmentName ?? '',
-        'isLineSide': d.lineSide ? 'true' : 'false',
-        'parentName': d.isMain ? '' : (_mainWarehouseName ?? ''),
-        'defective': d.defective ? 'true' : 'false',
-        'status': d.status ?? '',
-      },
-      readOnlyKeys: _canStatus ? null : const {'status'},
-      onSubmit: (body) => _doUpdate(d.id, body),
-    );
-  }
-
-  Future<bool> _doUpdate(String id, Map<String, dynamic> body) async {
-    final ok = await context.guardRun(
-      () async {
-        await ref.read(warehouseRepositoryProvider).update(id, body);
-      },
-      success: '仓库已更新', // TODO(l10n): 补 arb
-      errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
-    );
-    if (!ok) return false;
-    await _loadWarehouses(_pageNum);
-    return true;
+  Future<void> _showEdit(WarehouseDetail detail) async {
+    if (!_canEdit || detail.lineSide || _selectedId != detail.id) return;
+    await inlineEdit.prepareToBegin();
   }
 
   Future<void> _toggleDetailStatus(WarehouseDetail d) async {
+    if (!_canStatus || d.lineSide || d.isMain) return;
     final next = d.status == '使用' ? '禁用' : '使用';
     final ok = await context.guardRun(
       () => ref
@@ -428,10 +502,14 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
       success: next == '禁用' ? '已停用' : '已启用',
       errorFallback: '状态变更失败，请稍后重试',
     );
-    if (ok && mounted) await _loadWarehouses(_pageNum);
+    if (ok && mounted) {
+      await _loadWarehouses();
+      if (mounted && _selectedId == d.id) await _showDetail(d.id);
+    }
   }
 
   Future<void> _delete(WarehouseDetail d) async {
+    if (!_canDelete || d.lineSide || d.isMain) return;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => UtenAlertDialog(
@@ -454,7 +532,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
       ),
     );
     if (ok != true) return;
-    if (!mounted) return;
+    if (!mounted || !_canDelete) return;
     final deleted = await context.guardRun(
       () async {
         await ref.read(warehouseRepositoryProvider).delete(d.id);
@@ -463,65 +541,49 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
       errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
     );
     if (!deleted || !mounted) return;
-    await _loadWarehouses(_pageNum);
-    if (mounted && _page != null && _page!.items.isEmpty && _page!.page > 1) {
-      await _loadWarehouses(_page!.page - 1);
-    }
+    await _loadWarehouses();
   }
 
   Future<void> _showDetail(String id) async {
-    if (_detailLoading) return;
-    _detailLoading = true;
-    final nav = Navigator.of(context, rootNavigator: true);
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const Center(child: CircularProgressIndicator()),
-    );
-    WarehouseDetail? d;
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final generation = _detailRequests.begin();
+    setState(() {
+      _selectedId = id;
+      _selectedDetail = null;
+      _detailLoading = true;
+      _detailError = null;
+    });
     try {
-      d = await ref.read(warehouseRepositoryProvider).detail(id);
+      final detail = await ref.read(warehouseRepositoryProvider).detail(id);
+      if (!inlineAcceptsRead(boundary) ||
+          !_detailRequests.isCurrent(generation)) {
+        return;
+      }
+      setState(() {
+        _selectedDetail = detail;
+        _detailLoading = false;
+      });
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (!inlineAcceptsRead(boundary) ||
+          !_detailRequests.isCurrent(generation)) {
+        return;
+      }
+      setState(() {
+        _detailError = e.message;
+        _detailLoading = false;
+      });
     } catch (_) {
-      if (mounted) context.appError('加载仓库详情失败');
+      if (!inlineAcceptsRead(boundary) ||
+          !_detailRequests.isCurrent(generation)) {
+        return;
+      }
+      setState(() {
+        _detailError = AppLocalizations.of(
+          context,
+        ).warehouseMasterDetailsLoadFailed;
+        _detailLoading = false;
+      });
     }
-    if (!mounted) {
-      nav.pop();
-      return;
-    }
-    nav.pop();
-    if (d == null) {
-      _detailLoading = false;
-      return;
-    }
-    final detail = d;
-    // ADR-147: 车间内料仓只由「车间内料仓」开通和撤销, 这里只读 (编辑、停用、删除都不给)。
-    final lineSide = detail.lineSide;
-    await showMasterDetailSheet(
-      context: context,
-      title: detail.name?.isNotEmpty == true
-          ? detail.name!
-          : (detail.code ?? '仓库详情'),
-      rows: _detailRows(detail),
-      canEdit: _canEdit && !lineSide,
-      canDelete: _canDelete && !lineSide,
-      onToggleStatus: _canStatus && !lineSide
-          ? () => _toggleDetailStatus(detail)
-          : null,
-      statusActionLabel: detail.status == '使用' ? '停用' : '启用',
-      onEdit: () => _showEdit(detail),
-      onDelete: () => _delete(detail),
-      extraActions: [
-        if (_canEdit)
-          MasterDetailAction(
-            label: '设置负责人',
-            icon: Icons.manage_accounts_outlined,
-            onPressed: () => _editKeepers(detail),
-          ),
-      ],
-    );
-    if (mounted) _detailLoading = false;
   }
 
   List<MasterDetailRow> _detailRows(WarehouseDetail w) {
@@ -531,7 +593,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
       MasterDetailRow('仓库名称', w.name),
       MasterDetailRow(
         l10n.warehouseMasterParentLabel,
-        w.isMain ? l10n.warehouseMasterParentSelf : _mainWarehouseName,
+        w.isMain ? l10n.warehouseMasterMainTag : _mainWarehouseName,
       ),
       MasterDetailRow(
         l10n.warehouseMasterUseColumn,
@@ -541,18 +603,10 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
       ),
       MasterDetailRow('位置', w.location),
       MasterDetailRow('是否核算', w.accountable ? '是' : '否'),
-      MasterDetailRow(
-        l10n.warehouseMasterLineSideLabel,
-        w.lineSide
-            ? l10n.warehouseMasterLineSideManaged
-            : l10n.warehouseMasterLineSideNo,
-      ),
       MasterDetailRow('备注', w.remark),
       MasterDetailRow('状态', w.status),
       MasterDetailRow('所属车间', w.workshopDepartmentName),
       MasterDetailRow('仓库负责人', _keeperLabel(w.id)),
-      MasterDetailRow('旧操作员ID', w.legacyOperatorId?.toString()),
-      MasterDetailRow('旧系统 ID', w.legacyId?.toString()),
     ];
   }
 
@@ -665,7 +719,378 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
   }
 
   Future<void> _refresh() async {
-    await Future.wait([_loadWarehouses(1), _loadFacets(), _loadKeepers()]);
+    final selectedId = _selectedId;
+    await Future.wait([_loadWarehouses(), _loadKeepers()]);
+    if (mounted && selectedId != null && _selectedId == selectedId) {
+      await _showDetail(selectedId);
+    }
+  }
+
+  List<_WarehouseTreeNode> get _directoryNodes {
+    final items = _warehouses ?? const <WarehouseListItem>[];
+    final ids = {for (final item in items) item.id};
+    List<_WarehouseTreeNode> childrenOf(String? parent) => [
+      for (final item in items)
+        if (parent == null
+            ? item.parentId == null || !ids.contains(item.parentId)
+            : item.parentId == parent)
+          _WarehouseTreeNode(item, childrenOf(item.id)),
+    ];
+    return childrenOf(null);
+  }
+
+  Set<String>? get _visibleDirectoryIds {
+    if (_keyword.trim().isEmpty && _filters.isEmpty) return null;
+    final visible = <String>{};
+    final byId = {
+      for (final item in _warehouses ?? <WarehouseListItem>[]) item.id: item,
+    };
+    for (final item in byId.values) {
+      if (!matchesKeywordSearch([item.name, item.code], _keyword)) continue;
+      if (_filters['defective'] case final use?) {
+        if (item.defective.toString() != use) continue;
+      }
+      if (_filters['status'] case final status?) {
+        if (item.status != status) continue;
+      }
+      WarehouseListItem? ancestor = item;
+      while (ancestor != null && visible.add(ancestor.id)) {
+        ancestor = byId[ancestor.parentId];
+      }
+    }
+    return visible;
+  }
+
+  Future<void> _directoryAction(
+    WarehouseListItem warehouse,
+    Future<void> Function(WarehouseDetail detail) action, {
+    bool keepInlineDrafts = false,
+  }) async {
+    if (_directoryActionBusy) return;
+    if (inlineEdit.busy || inlineEdit.preparing) return;
+    if (!keepInlineDrafts &&
+        (!await inlineEdit.confirmLeave(context) || !mounted)) {
+      return;
+    }
+    _directoryActionBusy = true;
+    try {
+      await _showDetail(warehouse.id);
+      final detail = _selectedDetail;
+      if (mounted && _selectedId == warehouse.id && detail != null) {
+        await action(detail);
+      }
+    } finally {
+      _directoryActionBusy = false;
+    }
+  }
+
+  final _directoryOperationsCache = <String, UtenHierarchyNodeOperations>{};
+  List<WarehouseListItem>? _directoryOperationsSource;
+
+  UtenHierarchyNodeOperations _directoryOperations(_WarehouseTreeNode node) {
+    if (!identical(_directoryOperationsSource, _warehouses)) {
+      _directoryOperationsSource = _warehouses;
+      _directoryOperationsCache.clear();
+    }
+    final key =
+        '${Localizations.localeOf(context)}|$_canCreate|$_canEdit|'
+        '$_canDelete|$_canStatus|${node.id}';
+    return _directoryOperationsCache.putIfAbsent(
+      key,
+      () => _buildDirectoryOperations(node),
+    );
+  }
+
+  UtenHierarchyNodeOperations _buildDirectoryOperations(
+    _WarehouseTreeNode node,
+  ) {
+    final l10n = AppLocalizations.of(context);
+    final warehouse = node.warehouse;
+    return UtenHierarchyNodeOperations(
+      add: _canCreate && !warehouse.lineSide
+          ? UtenHierarchyNodeOperation(
+              buttonKey: ValueKey('warehouse-node-add-${node.id}'),
+              label: warehouse.isMain
+                  ? l10n.warehouseMasterAddChild
+                  : l10n.warehouseMasterAddPeer,
+              icon: Icons.add_outlined,
+              onInvoke: _showCreate,
+            )
+          : null,
+      edit: _canEdit && !warehouse.lineSide
+          ? UtenHierarchyNodeOperation(
+              buttonKey: ValueKey('warehouse-node-edit-${node.id}'),
+              label: l10n.warehouseMasterEdit,
+              icon: Icons.edit_outlined,
+              onInvoke: () => _directoryAction(
+                warehouse,
+                _showEdit,
+                keepInlineDrafts: true,
+              ),
+            )
+          : null,
+      delete: _canDelete && !warehouse.lineSide && !warehouse.isMain
+          ? UtenHierarchyNodeOperation(
+              buttonKey: ValueKey('warehouse-node-delete-${node.id}'),
+              label: l10n.warehouseMasterDelete,
+              icon: Icons.delete_outline,
+              destructive: true,
+              onInvoke: () => _directoryAction(warehouse, _delete),
+            )
+          : null,
+      extra: [
+        if (_canEdit)
+          UtenHierarchyNodeOperation(
+            label: l10n.warehouseMasterSetKeepers,
+            icon: Icons.manage_accounts_outlined,
+            showInline: false,
+            onInvoke: () => _directoryAction(warehouse, _editKeepers),
+          ),
+        if (_canStatus && !warehouse.lineSide && !warehouse.isMain)
+          UtenHierarchyNodeOperation(
+            label: warehouse.status == '使用'
+                ? l10n.warehouseMasterDisable
+                : l10n.warehouseMasterEnable,
+            icon: Icons.power_settings_new,
+            showInline: false,
+            onInvoke: () => _directoryAction(warehouse, _toggleDetailStatus),
+          ),
+      ],
+    );
+  }
+
+  Widget _directoryHeader(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(
+        top: UtenSpacing.s12,
+        bottom: UtenSpacing.s8,
+      ),
+      child: Column(
+        children: [
+          UtenHierarchySearchHeader(
+            search: UtenSearchBar(
+              key: const Key('warehouse-directory-search'),
+              hint: l10n.warehouseMasterSearchHint,
+              initialValue: _keyword,
+              onChanged: (value) =>
+                  inlineNavigate(() => _onKeywordChanged(value)),
+            ),
+            trailing: _canCreate
+                ? IconButton.filledTonal(
+                    key: const Key('warehouse-add'),
+                    tooltip: l10n.warehouseMasterAdd,
+                    style: IconButton.styleFrom(
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: UtenRadius.controlAll,
+                      ),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    padding: EdgeInsets.zero,
+                    onPressed: _showCreate,
+                    icon: const Icon(Icons.add_outlined),
+                  )
+                : null,
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+          Row(
+            children: [
+              Expanded(
+                child: UtenDropdownField(
+                  key: const Key('warehouse-directory-use-filter'),
+                  label: l10n.warehouseMasterUseColumn,
+                  value: _filters['defective'],
+                  items: [
+                    UtenDropdownItem(label: l10n.visitorFilterAll),
+                    UtenDropdownItem(
+                      value: 'false',
+                      label: l10n.warehouseMasterUseGood,
+                    ),
+                    UtenDropdownItem(
+                      value: 'true',
+                      label: l10n.warehouseMasterUseDefective,
+                    ),
+                  ],
+                  onChanged: (value) => inlineNavigate(
+                    () => _onFilterChanged('defective', value),
+                  ),
+                ),
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              Expanded(
+                child: UtenDropdownField(
+                  label: l10n.warehouseMasterStatusLabel,
+                  value: _filters['status'],
+                  items: [
+                    UtenDropdownItem(label: l10n.visitorFilterAll),
+                    for (final option in kMasterStatusOptions)
+                      UtenDropdownItem(
+                        value: option.value,
+                        label: option.label,
+                      ),
+                  ],
+                  onChanged: (value) =>
+                      inlineNavigate(() => _onFilterChanged('status', value)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _directory(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    if (_loading && _warehouses == null) {
+      return Column(
+        children: [
+          _directoryHeader(context),
+          const Expanded(child: Center(child: CircularProgressIndicator())),
+        ],
+      );
+    }
+    if (_error != null) {
+      return Column(
+        children: [
+          _directoryHeader(context),
+          Expanded(
+            child: UtenEmpty.error(
+              message: _error,
+              actionLabel: l10n.commonRetry,
+              onAction: _loadWarehouses,
+            ),
+          ),
+        ],
+      );
+    }
+    return UtenCategoryTreeView<_WarehouseTreeNode>(
+      key: const Key('warehouse-directory-tree'),
+      nodes: _directoryNodes,
+      showSearch: false,
+      sortByCode: false,
+      flatLevelColors: true,
+      expandOnRowTap: true,
+      initiallyExpandDepth: 2,
+      header: _directoryHeader(context),
+      selectedIds: {?_selectedId},
+      visibleFilterIds: _visibleDirectoryIds,
+      externalSearchQuery: _keyword,
+      emptySearchText: l10n.commonNoData,
+      onNodeTap: (node) {
+        if (!inlineEdit.busy && !inlineEdit.preparing) _showDetail(node.id);
+      },
+      trailingBuilder: (node) =>
+          UtenHierarchyNodeActions(operations: _directoryOperations(node)),
+      rowMenuBuilder: (node) => _directoryOperations(node).menuEntries,
+    );
+  }
+
+  Widget _detailPane(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    if (_selectedId == null) {
+      return UtenEmpty(
+        icon: Icons.warehouse_outlined,
+        message: l10n.warehouseMasterSelectHint,
+      );
+    }
+    if (_detailLoading) return const Center(child: CircularProgressIndicator());
+    if (_detailError != null) {
+      return UtenEmpty.error(
+        message: _detailError,
+        actionLabel: l10n.commonRetry,
+        onAction: () => _showDetail(_selectedId!),
+      );
+    }
+    final detail = _selectedDetail;
+    if (detail == null) return const SizedBox.shrink();
+    final name = detail.name?.isNotEmpty == true
+        ? detail.name!
+        : (detail.code ?? l10n.warehouseMasterTitle);
+    final remark = detail.remark?.trim();
+    final facts = [
+      detail.code ?? '—',
+      for (final row in _detailRows(detail).skip(2))
+        if (row.label != '备注' && row.value?.isNotEmpty == true)
+          '${row.label}: ${row.value}',
+    ].join(' · ');
+    return Padding(
+      key: ValueKey('warehouse-master-detail-${detail.id}'),
+      padding: EdgeInsets.symmetric(
+        horizontal: context.breakpoint.isCompact ? 0 : UtenSpacing.s16,
+      ),
+      child: UtenCollapsingHeaderScrollView(
+        key: ValueKey(detail.id),
+        collapsingHeader: Padding(
+          padding: const EdgeInsets.only(
+            top: UtenSpacing.s16,
+            bottom: UtenSpacing.s12,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              MasterDetailCard(
+                key: const Key('warehouse-master-summary'),
+                title: remark == null || remark.isEmpty
+                    ? name
+                    : '$name ($remark)',
+                subtitle: [
+                  facts,
+                  if (detail.isMain) l10n.warehouseMasterParentSelf,
+                  if (detail.lineSide) l10n.warehouseMasterLineSideManaged,
+                ].join('\n'),
+                icon: Icons.warehouse_outlined,
+                stats: const [],
+                canEdit: false,
+              ),
+              if (inlineEdit.active && !detail.lineSide) ...[
+                const SizedBox(height: UtenSpacing.s16),
+                MasterInlineRecordEditor<WarehouseDetail>(
+                  key: ValueKey('warehouse-inline-editor-${detail.id}'),
+                  controller: inlineEdit,
+                  row: detail,
+                  idOf: inlineIdOf,
+                  fields: inlineFields,
+                  columns: [
+                    for (final field in _fields(editing: detail))
+                      MasterColumnDef(
+                        key: field.key,
+                        label: field.label,
+                        width: 180,
+                        value: (row) {
+                          if (field.key == 'workshopDepartmentId') {
+                            return row.workshopDepartmentName ?? '—';
+                          }
+                          final value = _inlineValue(
+                            row,
+                            field.key,
+                          )?.toString();
+                          for (final option
+                              in field.options ?? <MasterSelectOption>[]) {
+                            if (option.value == value) return option.label;
+                          }
+                          return value?.isNotEmpty == true
+                              ? value
+                              : (field.hint ?? '—');
+                        },
+                      ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+        body: WarehouseInventoryPanel(
+          warehouse: detail,
+          navigationEnabled: !inlineEdit.active,
+          primary: true,
+          bottomContentPadding: _canCreate || _canEdit
+              ? UtenFloatingActionGroup.scrollClearance
+              : 0,
+        ),
+      ),
+    );
   }
 
   @override
@@ -677,115 +1102,102 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
 
   Widget _buildDraftHost(BuildContext context) {
     ref.watch(currentPermissionsProvider);
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: '仓库资料',
-        leading: UtenBackButton(
-          onPressed: () => backTo(context, defaultPath: RouteName.basicinfo),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新',
-            onPressed: _refresh,
+    final l10n = AppLocalizations.of(context);
+    final selected = _warehouses
+        ?.where((warehouse) => warehouse.id == _selectedId)
+        .firstOrNull;
+    return inlineGuard(
+      Scaffold(
+        appBar: UtenAppBar(
+          title: l10n.warehouseMasterTitle,
+          leading: UtenBackButton(
+            onPressed: () => inlineNavigate(
+              () => backTo(context, defaultPath: RouteName.basicinfo),
+            ),
           ),
-        ],
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: _canCreate
-          ? UtenFloatingActionGroup(
-              children: [
-                UtenButton(
-                  size: UtenButtonSize.large,
-                  icon: Icons.add_rounded,
-                  onPressed: _showCreate,
-                  child: const Text('添加仓库'),
-                ),
-              ],
-            )
-          : null,
-      body: SafeArea(
-        child: UtenContentContainer(
-          child: Padding(
-            padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(
-                    bottom: UtenSpacing.s8,
-                    left: UtenSpacing.s4,
-                    right: UtenSpacing.s4,
-                  ),
-                  child: UtenSearchBar(
-                    hint: '搜索仓库(名称/编号)',
-                    initialValue: _keyword,
-                    onChanged: _onKeywordChanged,
-                  ),
-                ),
-                Expanded(
-                  child: MasterDataTableView<WarehouseListItem>(
-                    bottomContentPadding: _canCreate
-                        ? UtenFloatingActionGroup.scrollClearance
-                        : 0,
-                    columnEditingEnabled: _canEdit,
-                    tableKey:
-                        'features.basic_data.pages.warehouse_page.WarehousePageState._buildDraftHost.1',
-                    columns: _columns,
-                    items: _page?.items ?? const [],
-                    // 导出/打印（V717 warehouse:export）：打印预览用本页列渲染，
-                    // 导出列集服务端与表格对齐——「表格显示啥导出啥」。
-                    // 导出/打印进左簇（2026-10-18 用户口径）：与「表头设置 / 全屏」同排靠左，
-                    // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
-                    toolbarLeadingActions: [
-                      UtenPrintPreviewButton(
-                        title: '仓库资料', // TODO(l10n): 补 arb
-                        subtitle: '最多前 2000 行', // TODO(l10n): 补 arb
-                        loader: _printLoader,
-                        exportEndpoint: '/master/warehouses/export',
-                        exportPermission: Perm.warehouseExport,
-                        exportReport: '',
-                        exportQuery: _exportQuery,
-                        exportFilename: '仓库资料', // TODO(l10n): 补 arb
-                        type: UtenButtonType.primary,
-                        size: UtenButtonSize.large,
-                        icon: null,
-                      ),
-                      UtenExportButton(
-                        endpoint: '/master/warehouses/export',
-                        requiredPermission: Perm.warehouseExport,
-                        report: '',
-                        queryParams: _exportQuery,
-                        filename: '仓库资料', // TODO(l10n): 补 arb
-                        label: '导出仓库', // TODO(l10n): 补 arb
-                        type: UtenButtonType.primary,
-                        size: UtenButtonSize.large,
-                        icon: null,
-                      ),
-                    ],
-                    facets: _facets?.fields ?? const {},
-                    nullCounts: _facets?.nullCounts ?? const {},
-                    filters: _columnFilters,
-                    onFilterChanged: _onFilterChanged,
-                    onRowTap: (w) => _showDetail(w.id),
-                    isLoading: _loading && _page == null,
-                    loadingMore: _loading && _page != null,
-                    error: _error,
-                    onRetry: () => _loadWarehouses(_pageNum),
-                    emptyMessage: '暂无仓库',
-                    currentPage: _page?.page ?? 1,
-                    totalPages: _page?.totalPages ?? 1,
-                    paginationScope: _keyword,
-                    onPageChange: (p) => _loadWarehouses(p),
-                  ),
-                ),
-              ],
+          actions: [
+            MasterOperationHistoryActions(
+              entityType: 'warehouses',
+              onChanged: _refresh,
+            ),
+            UtenPrintPreviewButton(
+              enabled: !inlineEdit.active,
+              title: l10n.warehouseMasterTitle,
+              loader: _printLoader,
+              exportEndpoint: '/master/warehouses/export',
+              exportPermission: Perm.warehouseExport,
+              exportReport: '',
+              exportQuery: _exportQuery,
+              exportFilename: l10n.warehouseMasterTitle,
+              icon: null,
+            ),
+            UtenExportButton(
+              enabled: !inlineEdit.active,
+              endpoint: '/master/warehouses/export',
+              requiredPermission: Perm.warehouseExport,
+              report: '',
+              queryParams: _exportQuery,
+              filename: l10n.warehouseMasterTitle,
+              icon: null,
+            ),
+            UtenRefreshButton(
+              busy: _loading || _detailLoading,
+              tooltip: l10n.commonRefresh,
+              onRefresh: () => inlineNavigate(_refresh),
+            ),
+          ],
+        ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+        floatingActionButton: MasterInlineEditActions<WarehouseDetail>(
+          controller: inlineEdit,
+          canEdit:
+              inlineCanEdit &&
+              inlineReadReady &&
+              (_selectedDetail?.lineSide == false || inlineEdit.active),
+          onSave: saveInline,
+          additionalActions: [
+            if (_canCreate)
+              UtenButton(
+                size: UtenButtonSize.large,
+                icon: Icons.add_rounded,
+                onPressed: _showCreate,
+                child: Text(l10n.warehouseMasterAdd),
+              ),
+          ],
+        ),
+        body: SafeArea(
+          child: SelectionArea(
+            child: UtenSplitView(
+              persistenceKey: 'basicData.warehouse',
+              minTwoPaneWidth: 840,
+              leadingNoun: l10n.warehouseMasterWarehouseLabel,
+              selectedLeadingKey: _selectedId,
+              selectedLeadingLabel: selected?.name,
+              compactHeader: _directoryHeader(context),
+              leading: _directory(context),
+              trailing: _detailPane(context),
             ),
           ),
         ),
       ),
     );
   }
+}
+
+class _WarehouseTreeNode extends UtenTreeNode<_WarehouseTreeNode> {
+  _WarehouseTreeNode(this.warehouse, this.children);
+  final WarehouseListItem warehouse;
+  @override
+  String get id => warehouse.id;
+  @override
+  String get name => warehouse.name ?? warehouse.code ?? id;
+  @override
+  String get code => warehouse.code ?? '';
+  @override
+  final List<_WarehouseTreeNode> children;
+  @override
+  bool get hasChildren => children.isNotEmpty;
 }
 
 class _WarehouseWorkshopField extends ConsumerStatefulWidget {

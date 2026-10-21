@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -200,10 +202,10 @@ class _RemoteAccessSessionState extends ConsumerState<_RemoteAccessSession> {
         title: t('title'),
         leading: const UtenBackButton(),
         actions: [
-          IconButton(
+          UtenRefreshButton(
             tooltip: t('refresh'),
-            onPressed: _busy ? null : _load,
-            icon: const Icon(Icons.refresh),
+            busy: _busy,
+            onRefresh: _load,
           ),
         ],
       ),

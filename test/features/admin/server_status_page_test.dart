@@ -279,7 +279,10 @@ void main() {
         expect(
           tester
               .widget<UtenAppBarActionButton>(
-                find.byKey(const Key('server-status-refresh')),
+                find.descendant(
+                  of: find.byKey(const Key('server-status-refresh')),
+                  matching: find.byType(UtenAppBarActionButton),
+                ),
               )
               .onPressed,
           isNull,

@@ -79,10 +79,12 @@ public class PlatformColumnService {
         if(needle.length()>80)throw invalid("列名搜索不能超过80字符");
         Map<String,Object> parameters=params(scope);parameters.put("q",needle);
         List<Definition> candidates=jdbc.query("""
-                SELECT d.*,COALESCE(u.usage_count,0) AS personal_usage_count
+                SELECT d.*,COALESCE(u.usage_count,0) AS personal_usage_count,false AS definition_deleted
                 FROM platform_column_definitions d LEFT JOIN platform_column_usage u
                   ON u.definition_id=d.id AND u.user_id=:actor
-                WHERE d.scope=:scope AND (d.owner_user_id=:owner OR (d.value_type='RELATED' AND d.owner_user_id=:actor)) AND (:q='' OR position(:q IN d.normalized_name)>0
+                WHERE d.scope=:scope AND (d.owner_user_id=:owner OR (d.value_type='RELATED' AND d.owner_user_id=:actor))
+                  AND NOT EXISTS(SELECT 1 FROM platform_column_definition_deletions deleted WHERE deleted.definition_id=d.id)
+                  AND (:q='' OR position(:q IN d.normalized_name)>0
                   OR EXISTS(SELECT 1 FROM generate_series(1,length(CAST(:q AS text))-1) n
                     WHERE position(substring(CAST(:q AS text) from n for 2) IN d.normalized_name)>0))
                 ORDER BY CASE WHEN d.normalized_name=:q THEN 0 WHEN position(:q IN d.normalized_name)>0 THEN 1 ELSE 2 END,
@@ -132,11 +134,51 @@ public class PlatformColumnService {
                 VALUES(:id,:scope,:name,:normalized,:type,:protected,CAST(:formula AS jsonb),:fingerprint,:actor,:owner,:relation)
                 ON CONFLICT(scope,owner_user_id,definition_fingerprint) DO NOTHING
                 """,parameters);
-        return jdbc.queryForObject("""
-                SELECT d.*,COALESCE(u.usage_count,0) AS personal_usage_count
+        // Lock the immutable identity so delete and an identical create serialize around its tombstone.
+        var existing=jdbc.queryForObject("""
+                SELECT d.*,COALESCE(u.usage_count,0) AS personal_usage_count,false AS definition_deleted
                 FROM platform_column_definitions d LEFT JOIN platform_column_usage u ON u.definition_id=d.id AND u.user_id=:actor
                 WHERE d.scope=:scope AND d.owner_user_id=:owner AND d.definition_fingerprint=:fingerprint
-                """,parameters,this::definition);
+                FOR UPDATE OF d
+                """,parameters,(rs,row)->new DefinitionState(definition(rs,row),rs.getObject("created_by",UUID.class)));
+        // A waiter needs a new READ COMMITTED statement after acquiring the identity lock:
+        // the tombstone is a different row and may have changed while the SELECT was blocked.
+        parameters.put("definition",existing.definition().id());
+        boolean deleted=Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM platform_column_definition_deletions WHERE definition_id=:definition)",parameters,Boolean.class));
+        if(deleted) {
+            if(!currentUser.requireId().equals(existing.createdBy()))throw conflict("相同定义的列已由创建人删除，请调整列名或定义后创建");
+            jdbc.update("DELETE FROM platform_column_definition_deletions WHERE definition_id=:definition",parameters);
+            Definition restored=existing.definition();
+            return new Definition(restored.id(),restored.scope(),restored.name(),restored.type(),restored.priceProtected(),restored.formula(),
+                    restored.usageCount(),restored.personalUsageCount(),restored.relationKey(),true);
+        }
+        return existing.definition();
+    }
+
+    /** Remove only the creator's catalog entry; immutable identities remain available to saved rows and formulas. */
+    @Transactional
+    public void delete(String scope,UUID definitionId) {
+        var adapter=resource(scope);adapter.requireDefinitionAccess(false);
+        if(definitionId==null)throw invalid("请选择要删除的列");
+        tx.bind();
+        var parameters=params(scope);parameters.put("definition",definitionId);
+        var matches=jdbc.query("""
+                SELECT d.*,0 AS personal_usage_count,false AS definition_deleted
+                FROM platform_column_definitions d
+                WHERE d.scope=:scope AND d.id=:definition
+                  AND (d.owner_user_id=:owner OR (d.value_type='RELATED' AND d.owner_user_id=:actor))
+                FOR UPDATE OF d
+                """,parameters,(rs,row)->new DefinitionState(definition(rs,row),rs.getObject("created_by",UUID.class)));
+        if(matches.isEmpty())throw invalid("扩展列不存在或不属于当前模块");
+        var state=matches.getFirst();var definition=state.definition();
+        if(!currentUser.requireId().equals(state.createdBy()))throw forbidden("只能删除自己创建的列");
+        requireDefinitionMutationAccess(adapter,definition.type(),definition.relationKey());
+        var dependencies=loadDefinitions(scope,Set.of(definitionId));
+        if(!adapter.canViewPrice()&&protectedDefinition(definition,dependencies,adapter,new HashSet<>()))throw forbidden("没有该敏感列的价格权限，不能删除");
+        jdbc.update("""
+                INSERT INTO platform_column_definition_deletions(definition_id,deleted_by) VALUES(:definition,:actor)
+                ON CONFLICT(definition_id) DO NOTHING
+                """,parameters);
     }
 
     /** Stable layout restoration includes the entire authorized immutable dependency closure. */
@@ -597,7 +639,9 @@ public class PlatformColumnService {
             if(depth>MAX_DEPTH||definitions.size()+pending.size()>MAX_DEPENDENCIES)throw invalid("计算列依赖过多或过深");
             Map<String,Object> parameters=params(scope);parameters.put("ids",pending);
             List<Definition> loaded=jdbc.query("""
-                    SELECT d.*,COALESCE(u.usage_count,0) AS personal_usage_count FROM platform_column_definitions d
+                    SELECT d.*,COALESCE(u.usage_count,0) AS personal_usage_count,
+                      EXISTS(SELECT 1 FROM platform_column_definition_deletions deleted WHERE deleted.definition_id=d.id) AS definition_deleted
+                    FROM platform_column_definitions d
                     LEFT JOIN platform_column_usage u ON u.definition_id=d.id AND u.user_id=:actor
                     WHERE d.scope=:scope AND (d.owner_user_id=:owner OR (d.value_type='RELATED' AND d.owner_user_id=:actor)) AND d.id IN(:ids)
                     """,parameters,this::definition);
@@ -639,10 +683,22 @@ public class PlatformColumnService {
     }
     private static boolean relationAllowed(PlatformColumnResourceAdapter adapter,String key) { return key!=null&&adapter.relations().stream().anyMatch(relation->key.equals(relation.key())); }
     private static void requireValues(PlatformColumnResourceAdapter adapter) { if(!adapter.supportsValues())throw invalid("汇总报表没有可保存的实体记录，请使用计算展示列"); }
+    private void requireDefinitionMutationAccess(PlatformColumnResourceAdapter adapter,String type,String relationKey) {
+        boolean related="RELATED".equals(type);
+        adapter.requireDefinitionAccess(!related);
+        if(related&&(!adapter.canDefineRelatedColumns()||!relationAllowed(adapter,relationKey)))throw forbidden("没有个人关联列的定义权限");
+    }
+    private boolean canDeleteDefinition(String scope,String type,String relationKey,boolean priceProtected,UUID createdBy,boolean deleted) {
+        var adapter=adapters.get(scope);
+        if(deleted||!currentUser.requireId().equals(createdBy)||(priceProtected&&!adapter.canViewPrice()))return false;
+        try {requireDefinitionMutationAccess(adapter,type,relationKey);return true;}
+        catch(ApiException denied){if(denied.getCode()==ErrorCode.FORBIDDEN)return false;throw denied;}
+    }
     private Definition definition(ResultSet rs,int row) throws SQLException {
         String formula=rs.getString("formula");
         return new Definition(rs.getObject("id",UUID.class),rs.getString("scope"),rs.getString("name"),rs.getString("value_type"),
-                rs.getBoolean("price_protected"),formula==null?null:readJson(formula,Formula.class),rs.getLong("usage_count"),rs.getLong("personal_usage_count"),rs.getString("relation_key"));
+                rs.getBoolean("price_protected"),formula==null?null:readJson(formula,Formula.class),rs.getLong("usage_count"),rs.getLong("personal_usage_count"),rs.getString("relation_key"),
+                canDeleteDefinition(rs.getString("scope"),rs.getString("value_type"),rs.getString("relation_key"),rs.getBoolean("price_protected"),rs.getObject("created_by",UUID.class),rs.getBoolean("definition_deleted")));
     }
     private static Definition visibleDefinition(Definition definition,boolean priceVisible) {
         return definition.priceProtected()&&!priceVisible?new Definition(definition.id(),definition.scope(),"受保护字段",definition.type(),true,null,
@@ -661,6 +717,7 @@ public class PlatformColumnService {
     private <T>T readJson(String json,Class<T> type) {try{return mapper.readValue(json,type);}catch(JsonProcessingException invalid){throw new IllegalStateException("Invalid stored platform definition",invalid);}}
     private String json(Object value) {try{return mapper.writeValueAsString(value);}catch(JsonProcessingException invalid){throw new IllegalStateException(invalid);}}
     private record Stored(long version,List<CellInput> cells) { }
+    private record DefinitionState(Definition definition,UUID createdBy) { }
     private static String decimalText(BigDecimal value) {return value==null?null:value.stripTrailingZeros().toPlainString();}
     private static int tier(String name,String needle) {String key=BusinessColumnService.normalize(name);return key.equals(needle)?0:key.contains(needle)?1:2;}
     private static double similarity(String name,String needle) {return IntakeTextNormalizer.bigramDice(BusinessColumnService.normalize(name),needle);}

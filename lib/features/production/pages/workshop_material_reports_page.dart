@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 // 车间内料仓用量报表与结算页 (ADR-131 §5.10；路由 /reports/workshop-material)。
 //
 // 入口：生产 hub 报表中心、财务 hub 报表中心 (同一路由)。报表一律不挂数。
@@ -474,9 +475,7 @@ class _WorkshopMaterialReportsPageState
     _loadData();
   }
 
-  void _refresh() {
-    _loadPeriods();
-  }
+  Future<void> _refresh() => _loadPeriods();
 
   @override
   Widget build(BuildContext context) {
@@ -489,13 +488,7 @@ class _WorkshopMaterialReportsPageState
           onPressed: () =>
               popOrBackTo(context, defaultPath: RouteName.production),
         ),
-        actions: [
-          IconButton(
-            onPressed: _busy ? null : _refresh,
-            icon: const Icon(Icons.refresh),
-            tooltip: '刷新',
-          ),
-        ],
+        actions: [UtenRefreshButton(enabled: !(_busy), onRefresh: _refresh)],
       ),
       body: SafeArea(
         child: Stack(

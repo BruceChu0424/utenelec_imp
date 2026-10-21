@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -118,13 +119,7 @@ class _RateListState
           onPressed: () =>
               popOrBackTo(context, defaultPath: RouteName.productionPlanList),
         ),
-        actions: [
-          IconButton(
-            onPressed: () => _load(_data?.page ?? 1),
-            icon: const Icon(Icons.refresh),
-            tooltip: '刷新',
-          ),
-        ],
+        actions: [UtenRefreshButton(onRefresh: () => _load(_data?.page ?? 1))],
       ),
       body: SafeArea(
         child: UtenContentContainer.wide(
@@ -380,13 +375,7 @@ class _RateDetailState
                 : RouteName.productionWorkshopTasks,
           ),
         ),
-        actions: [
-          IconButton(
-            onPressed: _busy ? null : _load,
-            icon: const Icon(Icons.refresh),
-            tooltip: '刷新',
-          ),
-        ],
+        actions: [UtenRefreshButton(enabled: !(_busy), onRefresh: _load)],
       ),
       body: SafeArea(
         child: UtenContentContainer.wide(

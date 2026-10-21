@@ -404,6 +404,23 @@ class AiProviderServiceTest {
     }
 
     @Test
+    void typedProbeCanFitForcedThinkingWithoutReadingOrChangingStoredProviderLimits() {
+        var runtime = service.probeRuntime(new AiProviderDtos.ProbeRequest("ZHIPU", null, "ANTHROPIC_MESSAGES",
+                "https://open.bigmodel.cn/api/anthropic", "glm-5.3", KEY, null, "ZHIPU", null, 30, null));
+        var policy = com.uten.imp.application.port.AiCompletionPort.AiReasoningEffort.DEFAULT;
+        assertThat(com.uten.imp.features.ai.client.AiReasoningParams.maxOutputTokens(runtime, 512, policy))
+                .isEqualTo(2560).isLessThanOrEqualTo(runtime.maxOutputTokens());
+        assertThat(com.uten.imp.features.ai.client.AiReasoningParams.maxOutputTokens(runtime, 512,
+                com.uten.imp.application.port.AiCompletionPort.AiReasoningEffort.MEDIUM))
+                .isEqualTo(4608).isLessThanOrEqualTo(runtime.maxOutputTokens());
+        assertThat(com.uten.imp.features.ai.client.AiReasoningParams.maxOutputTokens(runtime, 100_000,
+                com.uten.imp.application.port.AiCompletionPort.AiReasoningEffort.HIGH)).isEqualTo(8192);
+        assertThat(runtime.id()).isNull();
+        verify(repository, never()).findById(any());
+        verify(repository, never()).findDefault();
+    }
+
+    @Test
     void setEnabledAuditsAndLastTestRecordingIsSeparate() {
         service.create(deepSeek("A", KEY, null), admin);
         AiProvider row = rows.get(0);

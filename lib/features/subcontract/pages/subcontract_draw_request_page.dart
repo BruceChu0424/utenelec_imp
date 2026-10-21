@@ -15,6 +15,7 @@ import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_dialog.dart';
@@ -329,13 +330,13 @@ class _SubcontractDrawRequestPageState
           title: '委外领料',
           leading: UtenBackButton(onPressed: _saving ? null : _back),
           actions: [
-            IconButton(
+            UtenRefreshButton(
               key: const Key('subcontract-draw-request-refresh'),
               tooltip: _uncertain ? '请先重试领料，确认本批结果' : '按实时可领量重新填写',
-              onPressed: _loading || _saving || _uncertain ? null : _load,
-              icon: const Icon(Icons.refresh_rounded),
+              busy: _loading,
+              enabled: !_saving && !_uncertain,
+              onRefresh: _load,
             ),
-            const SizedBox(width: UtenSpacing.s8),
           ],
         ),
         body: SafeArea(

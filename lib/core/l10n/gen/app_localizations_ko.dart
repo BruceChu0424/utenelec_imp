@@ -467,6 +467,32 @@ class AppLocalizationsKo extends AppLocalizations {
       '제거하면 모든 행에서 이 열의 값이 지워지고 금액이 다시 계산됩니다. 문서를 저장하면 적용되며 다른 문서와 재사용 열에는 영향이 없습니다.';
 
   @override
+  String get platformColumnDeleteTitle => '열 삭제';
+
+  @override
+  String get platformColumnDeleteAction => '삭제';
+
+  @override
+  String platformColumnDeleteConfirm(String name) {
+    return '“$name” 열을 삭제하면 선택 가능한 열에서 사라집니다. 저장된 문서 데이터와 기존 수식 참조는 유지됩니다. 직접 만든 열만 삭제할 수 있습니다.';
+  }
+
+  @override
+  String get platformColumnDeleteForbidden =>
+      '직접 만들었고 관리 권한이 있는 열만 삭제할 수 있습니다.';
+
+  @override
+  String get platformColumnDeleteUnavailable =>
+      '이 열은 더 이상 삭제할 수 없습니다. 다시 불러온 후 시도하세요.';
+
+  @override
+  String get platformColumnDeleteReferenced =>
+      '다른 계산 열에서 이 열을 참조하고 있습니다. 참조하는 계산 열을 먼저 삭제하세요.';
+
+  @override
+  String get platformColumnDeleteBusy => '이 열을 삭제하고 있습니다. 응답을 기다려 주세요.';
+
+  @override
   String get businessColumnUseExisting => '기존 열 사용';
 
   @override
@@ -9386,7 +9412,7 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
-  String get warehouseScopePickerTitle => '창고 범위 선택';
+  String get warehouseScopePickerTitle => '창고 필터';
 
   @override
   String get warehouseScopeSupervisorTooltip =>
@@ -11617,4 +11643,116 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get bomEditPrepareFailed => '편집을 준비하지 못했습니다. 다시 시도해 주세요.';
+
+  @override
+  String get warehouseScopeAllVisible => '조회 가능한 전체 창고';
+
+  @override
+  String warehouseScopeIncludingChildren(String name) {
+    return '$name(하위 포함)';
+  }
+
+  @override
+  String get warehouseScopeIncludesVisibleChildren => '조회 가능한 하위 창고 포함';
+
+  @override
+  String get warehouseScopeLoadFailedRetry => '창고 필터 로드 실패. 다시 시도';
+
+  @override
+  String get warehouseScopeVisibleTooltip => '조회 가능한 창고 내에서 필터링합니다.';
+
+  @override
+  String warehouseScopeTaskFilter(String name) {
+    return '작업 필터: $name';
+  }
+
+  @override
+  String get warehouseScopeClearFilter => '필터 지우기';
+
+  @override
+  String get warehouseTaskSelectionChanged =>
+      '선택한 작업이 변경되었습니다. 새로 고친 후 다시 선택하세요.';
+
+  @override
+  String get warehouseFinishedLotsChanged =>
+      '선택한 배치가 변경되었거나 다른 사용자가 처리했습니다. 작업 센터로 돌아가 새로 고친 후 다시 선택하세요.';
+
+  @override
+  String get warehouseMasterTitle => '창고 자료';
+
+  @override
+  String get warehouseMasterSearchHint => '창고 이름 / 코드 검색';
+
+  @override
+  String get warehouseMasterSelectHint => '창고를 선택하여 상세 정보와 실시간 재고를 확인하세요';
+
+  @override
+  String get warehouseMasterDetailsLoadFailed => '창고 정보를 불러오지 못했습니다. 다시 시도하세요.';
+
+  @override
+  String get warehouseMasterInventorySummaryHint => '하위 회계 창고의 실시간 재고 포함';
+
+  @override
+  String get warehouseInventorySearchHint => '상품 이름 / 코드 검색';
+
+  @override
+  String get warehouseInventoryNoAccess => '재고 조회 권한이 없습니다';
+
+  @override
+  String get warehouseInventoryLoadFailed => '재고를 불러오지 못했습니다. 다시 시도하세요.';
+
+  @override
+  String get warehouseInventoryEmpty => '이 창고에 재고 기록이 없습니다';
+
+  @override
+  String get warehouseInventoryOpenLedger => '상품을 두 번 클릭하여 입출고 내역을 확인하세요';
+
+  @override
+  String get warehouseInventoryQuantity => '재고 수량';
+
+  @override
+  String get warehouseInventoryPendingInspection => '검사 대기 수량';
+
+  @override
+  String get warehouseInventoryPendingStockIn => '합격 후 입고 대기';
+
+  @override
+  String get warehouseMasterStatusLabel => '상태';
+
+  @override
+  String get warehouseMasterDisable => '사용 중지';
+
+  @override
+  String get warehouseMasterEnable => '사용';
+
+  @override
+  String get warehouseMasterSetKeepers => '담당자 설정';
+
+  @override
+  String get warehouseMasterWarehouseLabel => '창고';
+
+  @override
+  String get warehouseMasterAdd => '창고 추가';
+
+  @override
+  String get warehouseMasterAddChild => '하위 창고 추가';
+
+  @override
+  String get warehouseMasterAddPeer => '동일 단계 창고 추가';
+
+  @override
+  String get warehouseMasterEdit => '창고 편집';
+
+  @override
+  String get warehouseMasterDelete => '창고 삭제';
+
+  @override
+  String get bomEditDiscardAndExit => '저장하지 않고 나가기';
+
+  @override
+  String get masterEditDiscardRemainingNote =>
+      '아직 저장하지 않은 변경 사항만 버립니다. 이미 저장된 변경 사항은 유지됩니다.';
+
+  @override
+  String get filterAllCategoriesSummary => '전체 분류';
 }

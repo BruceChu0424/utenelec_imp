@@ -68,6 +68,7 @@ class AiDocumentProfilerTest {
             var data = sheet.createRow(2);
             data.createCell(0).setCellValue("钱试一"); data.createCell(1).setCellValue("注塑一部");
             data.createCell(2).setCellValue("13800000001"); data.createCell(3).setCellValue("x@example.test");
+            AiDocumentFixtures.initializeLegacyMetadata(book);
             book.write(out);
             var profile = AiDocumentProfiler.profile(SpreadsheetGridReader.read(out.toByteArray(), DocumentKind.XLS)).sheets().getFirst();
             assertThat(profile.headerRow()).isZero();

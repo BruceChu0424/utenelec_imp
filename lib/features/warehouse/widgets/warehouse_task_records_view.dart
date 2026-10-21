@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
@@ -64,7 +65,8 @@ class WarehouseTaskRecordsView extends ConsumerStatefulWidget {
 }
 
 class _WarehouseTaskRecordsViewState
-    extends ConsumerState<WarehouseTaskRecordsView> {
+    extends ConsumerState<WarehouseTaskRecordsView>
+    with UtenRefreshParticipant<WarehouseTaskRecordsView> {
   WarehouseTaskCenterPageResult? _result;
   String? _status;
   String? _billNo;
@@ -155,7 +157,10 @@ class _WarehouseTaskRecordsViewState
   String? get _effectiveStatus =>
       _status?.startsWith('source:') == true ? null : _status;
 
-  Future<void> _load(int page) async {
+  Future<void> _load(int page) =>
+      trackRefresh(_loadPage(page), replaceKey: 'rows');
+
+  Future<void> _loadPage(int page) async {
     if (!mounted) return;
     final version = ++_requestVersion;
     setState(() {
@@ -241,6 +246,7 @@ class _WarehouseTaskRecordsViewState
       'FINISHED_REGISTER' || 'FINISHED_COUNT' => finishedInboundTaskDrafts(
         drafts,
         reportId: row.dataId('reportId'),
+        lotId: row.dataId('lotId'),
         documentId: row.dataId('documentId'),
       ),
       'SALES_OUTBOUND' => salesOutboundTaskDrafts(drafts, target),

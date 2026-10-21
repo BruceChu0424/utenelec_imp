@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
+import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -229,16 +230,11 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
         showPagePermissionAction: false,
         actions: [
           if (allowed && !_denied)
-            IconButton(
+            UtenRefreshButton(
               key: const Key('server-status-refresh'),
               tooltip: l10n.serverStatusRefresh,
-              onPressed: _loading ? null : _refresh,
-              icon: _loading
-                  ? const SizedBox.square(
-                      dimension: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.refresh_rounded),
+              busy: _loading,
+              onRefresh: _refresh,
             ),
         ],
       ),

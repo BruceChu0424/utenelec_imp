@@ -12,9 +12,12 @@ public final class PlatformColumnContracts {
         public CreateDefinition(String name, String type, boolean priceProtected, Formula formula) { this(name,type,priceProtected,formula,null); }
     }
     public record Definition(UUID id, String scope, String name, String type, boolean priceProtected,
-                             Formula formula, long usageCount, long personalUsageCount, String relationKey) {
+                             Formula formula, long usageCount, long personalUsageCount, String relationKey, boolean canDelete) {
+        public Definition(UUID id,String scope,String name,String type,boolean priceProtected,Formula formula,long usageCount,long personalUsageCount,String relationKey) {
+            this(id,scope,name,type,priceProtected,formula,usageCount,personalUsageCount,relationKey,false);
+        }
         public Definition(UUID id,String scope,String name,String type,boolean priceProtected,Formula formula,long usageCount,long personalUsageCount) {
-            this(id,scope,name,type,priceProtected,formula,usageCount,personalUsageCount,null);
+            this(id,scope,name,type,priceProtected,formula,usageCount,personalUsageCount,null,false);
         }
     }
     public record Scope(String scope, String label, boolean canWrite, boolean priceVisible, boolean supportsValues,

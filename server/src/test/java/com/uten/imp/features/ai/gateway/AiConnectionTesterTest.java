@@ -202,6 +202,31 @@ class AiConnectionTesterTest {
     }
 
     @Test
+    void forcedThinkingModelPingUsesTheSameBudgetPolicyAsStructuredBusinessCalls() {
+        var base = AiTestRuntimes.anthropic(fake, KEY, AiJsonMode.JSON_OBJECT, false);
+        var runtime = new AiProviderRuntime(base.id(), base.name(), base.preset(), base.region(), base.protocol(),
+                base.endpoint(), "glm-5.3", base.apiKey(), base.jsonMode(), AiThinkingControl.ZHIPU,
+                base.sendTemperature(), base.supportsVision(), 8192, base.timeoutSeconds());
+        fake.models(List.of("glm-5.3"));
+
+        assertThat(tester.test(runtime).ok()).isTrue();
+        assertThat(chatBodies()).hasSize(2);
+        assertThat(chatBodies().get(0)).contains("\"max_tokens\":2560", "\"effort\":\"low\"");
+        assertThat(chatBodies().get(1)).contains("\"max_tokens\":4608", "\"effort\":\"high\"");
+    }
+
+    @Test
+    void completeLookingJsonAtATruncationBoundaryCannotPassTheConnectionJsonStep() {
+        fake.enqueue(FakeAiProviderServer.openAiContent("{\"ok\":true}", 10, 512, "length"));
+
+        var result = tester.test(AiTestRuntimes.openAi(fake, KEY));
+
+        assertThat(result.ok()).isFalse();
+        assertThat(statuses(result)).contains("MODEL:OK", "JSON:FAILED");
+        assertThat(result.summary()).contains("输出额度");
+    }
+
+    @Test
     void modelListExplainsWhenUnavailable() {
         fake.models(List.of("b-model", "a-model"));
         assertThat(tester.models(AiTestRuntimes.openAi(fake, KEY)).models()).containsExactly("a-model", "b-model");

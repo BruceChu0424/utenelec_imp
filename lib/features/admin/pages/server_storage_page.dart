@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
+
+import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -384,16 +386,15 @@ class _ServerStorageState extends ConsumerState<_ServerStorageSession>
         showBackButton: true,
         showPagePermissionAction: false,
         actions: [
-          IconButton(
+          UtenRefreshButton(
             key: const ValueKey('server-storage-refresh'),
             tooltip: '刷新本机存储',
-            onPressed: allowed && !_busy && !_loading
-                ? () async {
-                    await _load();
-                    await _checkReceipt(manual: true);
-                  }
-                : null,
-            icon: const Icon(Icons.refresh_rounded),
+            busy: _loading || _receiptLoading,
+            enabled: allowed && !_busy,
+            onRefresh: () async {
+              await _load();
+              await _checkReceipt(manual: true);
+            },
           ),
         ],
       ),

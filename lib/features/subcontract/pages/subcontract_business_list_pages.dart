@@ -22,6 +22,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/doc_status_badge.dart';
 import '../../../components/data_display/uten_status_badge.dart';
@@ -814,17 +815,24 @@ class _SubcontractBusinessListPageState
           onPressed: () => backTo(context, defaultPath: SubcontractRoute.hub),
         ),
         actions: [
-          IconButton(
-            tooltip: '刷新',
-            onPressed: _controller.loading
-                ? null
-                : () {
-                    _reload();
-                    _loadBadge();
-                  },
-            icon: const Icon(Icons.refresh_rounded),
+          UtenRefreshButton(
+            busy: _controller.loading,
+            onRefresh: () async {
+              final badges = _loadBadge();
+              final scope = _statusScope;
+              await Future.wait([
+                _reload(),
+                badges,
+                if (scope != null)
+                  ref
+                      .read(documentStatusCountsProvider(scope).future)
+                      .then<void>(
+                        (_) {},
+                        onError: (Object error, StackTrace stack) {},
+                      ),
+              ]);
+            },
           ),
-          const SizedBox(width: UtenSpacing.s8),
         ],
       ),
       body: SafeArea(

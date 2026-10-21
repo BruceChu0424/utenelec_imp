@@ -12,6 +12,7 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/models/inbound_registration_line.dart';
@@ -27,6 +28,7 @@ import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
 
 import '../../shared/drafts/memory_form_draft_storage.dart';
 
@@ -35,6 +37,7 @@ const _reportB = '20000000-0000-0000-0000-000000000002';
 const _itemA = '30000000-0000-0000-0000-000000000001';
 const _itemB = '30000000-0000-0000-0000-000000000002';
 const _itemA2 = '30000000-0000-0000-0000-000000000003';
+const _itemASurplus = '30000000-0000-0000-0000-000000000004';
 const _goodsA = 'a0000000-0000-0000-0000-000000000001';
 const _goodsB = 'a0000000-0000-0000-0000-000000000002';
 const _goodsA2 = 'a0000000-0000-0000-0000-000000000003';
@@ -65,6 +68,145 @@ class _TestBatchPermissions extends Notifier<Set<String>> {
 }
 
 void main() {
+  testWidgets(
+    'reopening a saved deep link retains its lot scope after page disposal',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final uri = Uri.parse(
+        RoutePath.warehouseProductionFinishedArrivalRegistration(
+          [_reportA, _reportB],
+          lotIds: [_itemA2],
+          stockInBeforeInspection: false,
+        ),
+      );
+      for (var open = 0; open < 2; open++) {
+        await _openBatchPage(
+          tester,
+          api: _BatchArrivalApi(twoItemsInFirstReport: true),
+          lotIds: uri.queryParameters['lotIds']!.split(','),
+        );
+        expect(_placeField(_itemA2), findsOneWidget);
+        expect(_placeField(_itemA), findsNothing);
+        expect(_placeField(_itemB), findsNothing);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+      }
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'an older report-wide draft cannot add unrelated lots to a selected lot page',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await _openBatchPage(
+        tester,
+        api: _BatchArrivalApi(twoItemsInFirstReport: true),
+        lotIds: [_itemA],
+      );
+      final state =
+          tester.state(find.byType(ProductionFinishedArrivalRegistrationPage))
+              as FormDraftMixin<ProductionFinishedArrivalRegistrationPage>;
+      final snapshot = state.captureFormDraft();
+      final rows = (snapshot['rows'] as List).cast<Map<String, dynamic>>();
+      await expectLater(
+        state.restoreFormDraft({
+          ...snapshot,
+          'rows': [
+            ...rows,
+            {...rows.single, 'lotId': _itemA2},
+          ],
+        }),
+        throwsA(isA<FormatException>()),
+      );
+      expect(_placeField(_itemA), findsOneWidget);
+      expect(_placeField(_itemA2), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'task selection keeps only its physical lot and preserves the whole split batch',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = _BatchArrivalApi(twoItemsInFirstReport: true);
+      final drafts = MemoryFormDraftStorage();
+      await _openBatchPage(tester, api: api, lotIds: [_itemA], drafts: drafts);
+
+      expect(_placeField(_itemA), findsOneWidget);
+      expect(_placeField(_itemA2), findsNothing);
+      expect(_placeField(_itemB), findsNothing);
+      expect(find.text('需求 8 · 实际超产 2'), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const Key('production-finished-arrival-remark')),
+        '只登记选中批',
+      );
+      await tester.pumpAndSettle();
+      final record =
+          jsonDecode(drafts.records.values.single) as Map<String, dynamic>;
+      expect(
+        Uri.parse(record['route'] as String).queryParameters['lotIds'],
+        _itemA,
+      );
+
+      _pressSubmit(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认登记送检'));
+      await tester.pumpAndSettle();
+      final lots = (api.lastPostBody!['lots'] as List)
+          .cast<Map<String, dynamic>>();
+      expect(lots.map((lot) => lot['lotId']), [_itemA]);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'multiple selected lots from one report survive without including another report',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = _BatchArrivalApi(twoItemsInFirstReport: true);
+      await _openBatchPage(tester, api: api, lotIds: [_itemA, _itemA2]);
+      expect(_placeField(_itemA), findsOneWidget);
+      expect(_placeField(_itemA2), findsOneWidget);
+      expect(_placeField(_itemB), findsNothing);
+      _pressSubmit(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认登记送检'));
+      await tester.pumpAndSettle();
+      final lots = (api.lastPostBody!['lots'] as List)
+          .cast<Map<String, dynamic>>();
+      expect(lots.map((lot) => lot['lotId']), [_itemA, _itemA2]);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final lotIds in <List<String>>[
+    [],
+    ['missing-lot'],
+    [_itemA, 'missing-lot'],
+  ]) {
+    testWidgets(
+      'unavailable selection $lotIds cannot fall back to all report lots',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1280, 900));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final api = _BatchArrivalApi(twoItemsInFirstReport: true);
+        await _openBatchPage(tester, api: api, lotIds: lotIds);
+        expect(find.text('所选批次已变化或已由他人办理，请返回任务中心刷新后重新选择'), findsOneWidget);
+        expect(
+          find.byKey(const Key('production-finished-arrival-grid')),
+          findsNothing,
+        );
+        expect(api.lastPostPath, isNull);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     'each goods master warehouse takes precedence over personal last selection',
     (tester) async {
@@ -749,6 +891,7 @@ Future<ProviderContainer> _openBatchPage(
   bool stockInBeforeInspection = false,
   Set<String> permissions = const {Perm.stockDocView, Perm.stockDocApprove},
   MemoryFormDraftStorage? drafts,
+  List<String>? lotIds,
 }) async {
   // 给了 [drafts] 就按真实应用打开本机草稿保护(登录身份 + 本机存储)。
   final draftOverrides = <Override>[
@@ -790,6 +933,9 @@ Future<ProviderContainer> _openBatchPage(
     ProviderScope(
       overrides: [
         apiClientProvider.overrideWithValue(api),
+        localServerReachableProvider.overrideWith(
+          (ref) => LocalServerReachabilityNotifier(null, web: true),
+        ),
         sharedPreferencesProvider.overrideWithValue(prefs),
         currentPermissionsProvider.overrideWithValue(permissions),
         isSuperAdminProvider.overrideWithValue(false),
@@ -808,6 +954,7 @@ Future<ProviderContainer> _openBatchPage(
                   MaterialPageRoute<void>(
                     builder: (_) => ProductionFinishedArrivalRegistrationPage(
                       reportIds: const [_reportA, _reportB],
+                      lotIds: lotIds,
                       canRegister: true,
                       // 任务中心多选时已选定路线(?preStock=1|0)。
                       route: stockInBeforeInspection
@@ -979,7 +1126,17 @@ class _BatchArrivalApi extends ApiClient {
         {
           'lotId': itemIds[index],
           'members': [
-            {'reportItemId': itemIds[index], 'qty': 10, 'kind': 'DEMAND'},
+            {
+              'reportItemId': itemIds[index],
+              'qty': itemIds[index] == _itemA ? 8 : 10,
+              'kind': 'DEMAND',
+            },
+            if (itemIds[index] == _itemA)
+              {
+                'reportItemId': _itemASurplus,
+                'qty': 2,
+                'kind': 'ACTUAL_SURPLUS',
+              },
           ],
           if (itemIds[index] == _itemA) ...{
             'demandQty': 8,

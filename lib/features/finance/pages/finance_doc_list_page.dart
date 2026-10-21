@@ -9,6 +9,7 @@ import '../../../shared/drafts/form_draft_category.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/doc_status_badge.dart';
@@ -27,6 +28,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/auth/document_scope_capability.dart';
@@ -256,8 +258,10 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
     // 列表重拉时同步分段计数(写操作成功 / 返回本页 / 手动刷新都经过这里)。
     ref.invalidate(documentStatusCountsProvider(_statusScope));
     if (!_statusFilterSelected || (_historyMode && _historyTime.isNone)) return;
-    unawaited(_loadBillNoFacets());
-    await _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
+    await Future.wait([
+      _loadBillNoFacets(),
+      _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch),
+    ]);
     if (!mounted || generation != _reloadGeneration || _list.error != null) {
       return;
     }
@@ -503,10 +507,22 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
           onPressed: () => backTo(context, defaultPath: RouteName.finance),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新',
-            onPressed: () => _reload(1),
+          ListenableBuilder(
+            listenable: _list,
+            builder: (context, _) => UtenRefreshButton(
+              busy: _list.loading,
+              onRefresh: () async {
+                try {
+                  await Future.wait([
+                    _reload(1),
+                    ref.read(documentStatusCountsProvider(_statusScope).future),
+                    ref.read(financeNameServiceProvider).ensureLoaded(),
+                  ]);
+                } catch (error) {
+                  if (context.mounted) context.appApiError(error);
+                }
+              },
+            ),
           ),
         ],
       ),

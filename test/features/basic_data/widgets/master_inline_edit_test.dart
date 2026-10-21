@@ -26,6 +26,41 @@ final _days = MasterInlineField<_Row>(
   type: MasterFieldType.integer,
 );
 
+Future<void> _pumpRecordEditor(
+  WidgetTester tester,
+  MasterInlineEditController<_Row> controller,
+  ValueNotifier<_Row> selected,
+) => tester.pumpWidget(
+  MaterialApp(
+    home: Scaffold(
+      body: ValueListenableBuilder<_Row>(
+        valueListenable: selected,
+        builder: (_, row, _) => MasterInlineRecordEditor<_Row>(
+          key: ValueKey(row.id),
+          controller: controller,
+          row: row,
+          idOf: (row) => row.id,
+          fields: {'name': _name, 'days': _days},
+          columns: [
+            MasterColumnDef(
+              key: 'name',
+              label: 'Name',
+              width: 180,
+              value: (row) => row.name,
+            ),
+            MasterColumnDef(
+              key: 'days',
+              label: 'Days',
+              width: 180,
+              value: (row) => row.days?.toString(),
+            ),
+          ],
+        ),
+      ),
+    ),
+  ),
+);
+
 void main() {
   testWidgets(
     'imperative editor route keeps local dirty confirmation without parent registration',
@@ -237,6 +272,124 @@ void main() {
         {'name': 'Edited'},
       ]);
       expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'returning to an untouched record uses its newly loaded value for the first CAS',
+    (tester) async {
+      final controller = MasterInlineEditController<_Row>()..begin();
+      final selected = ValueNotifier<_Row>((id: '1', name: 'Before', days: 4));
+      addTearDown(controller.dispose);
+      addTearDown(selected.dispose);
+      await _pumpRecordEditor(tester, controller, selected);
+      selected.value = (id: '2', name: 'Another record', days: 8);
+      await tester.pump();
+      selected.value = (id: '1', name: 'Updated on server', days: 7);
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('inline-activate-1-name')));
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'My new name');
+      final writes = <Map<String, Object?>>[];
+
+      expect(
+        await controller.save((id, patch) async {
+          writes.add({
+            'id': id,
+            'expected': _name.read(controller.baselineOf(id)!),
+            'changes': patch,
+          });
+        }),
+        isTrue,
+      );
+      expect(writes, [
+        {
+          'id': '1',
+          'expected': 'Updated on server',
+          'changes': {'name': 'My new name'},
+        },
+      ]);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'reloading a record with a draft preserves its original CAS and local value',
+    (tester) async {
+      final controller = MasterInlineEditController<_Row>()..begin();
+      final selected = ValueNotifier<_Row>((id: '1', name: 'Before', days: 4));
+      addTearDown(controller.dispose);
+      addTearDown(selected.dispose);
+      await _pumpRecordEditor(tester, controller, selected);
+      await tester.tap(find.byKey(const ValueKey('inline-activate-1-name')));
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'My draft');
+      selected.value = (id: '2', name: 'Another record', days: 8);
+      await tester.pump();
+      selected.value = (id: '1', name: 'Updated on server', days: 7);
+      await tester.pump();
+      expect(find.text('My draft'), findsOneWidget);
+      expect(
+        await controller.save((id, patch) async {
+          expect(_name.read(controller.baselineOf(id)!), 'Before');
+          expect(patch, {'name': 'My draft'});
+          throw StateError('Concurrent update');
+        }),
+        isFalse,
+      );
+      expect(controller.patchFor('1'), {'name': 'My draft'});
+      expect(controller.error, 'Concurrent update');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  test(
+    'fully reverting one row forgets its originals without disturbing another draft',
+    () async {
+      final controller = MasterInlineEditController<_Row>()..begin();
+      addTearDown(controller.dispose);
+      controller.rememberBaseline('1', (id: '1', name: 'Before', days: 4));
+      controller.rememberBaseline('2', (id: '2', name: 'Other', days: 8));
+      controller.setValue('1', _name, 'After', originalValue: 'Before');
+      controller.setValue('2', _name, 'Other draft', originalValue: 'Other');
+      controller.setValue('1', _name, 'Before', originalValue: 'Before');
+      expect(controller.patchFor('1'), isEmpty);
+      expect(controller.patchFor('2'), {'name': 'Other draft'});
+      expect(controller.changedRows, 1);
+      controller.rememberBaseline('1', (
+        id: '1',
+        name: 'Updated on server',
+        days: 7,
+      ));
+      // The old original is now a deliberate new value, so it must be written.
+      controller.setValue(
+        '1',
+        _name,
+        'Before',
+        originalValue: 'Updated on server',
+      );
+      expect(controller.patchFor('1'), {'name': 'Before'});
+      expect(controller.changedRows, 2);
+      final writes = <String, Object?>{};
+      expect(
+        await controller.save((id, patch) async {
+          writes[id] = {
+            'expected': _name.read(controller.baselineOf(id)!),
+            'changes': patch,
+          };
+        }),
+        isTrue,
+      );
+      expect(writes, {
+        '1': {
+          'expected': 'Updated on server',
+          'changes': {'name': 'Before'},
+        },
+        '2': {
+          'expected': 'Other',
+          'changes': {'name': 'Other draft'},
+        },
+      });
     },
   );
 

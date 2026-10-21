@@ -356,7 +356,7 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
         assertNotNull(page);
         assertEquals(2, page.total());
         assertEquals(2, page.totalPages());
-        assertEquals(1L, page.summary().statusCounts().get("FINANCE_APPROVED"));
+        assertEquals(2L, page.summary().statusCounts().get("FINANCE_APPROVED"));
         var exceeded = org.junit.jupiter.api.Assertions.assertThrows(com.uten.imp.common.web.ApiException.class,
                 () -> transactions.execute(status -> service.exportPurchase("", "", "", null, null, table, 1)));
         assertEquals(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED, exceeded.getCode());

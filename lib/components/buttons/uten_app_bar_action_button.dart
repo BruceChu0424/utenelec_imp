@@ -11,7 +11,9 @@
 // - 高度固定 [height]=36：顶栏 56 高，44/52 的全站默认会顶满上下留白。
 // - 页面动作只显示文字与计数，不带图标；窄屏通过统一操作面板保留完整文案。
 //
-// 用法：直接放进 `UtenAppBar(actions: [...])`，本组件自带右侧 4px 间距。
+// 用法：直接放进 `UtenAppBar(actions: [...])`，间距由顶栏统一管理。
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 
@@ -38,8 +40,10 @@ class UtenAppBarActionButton extends StatelessWidget {
   /// Kept for source compatibility. Header actions display their text label.
   final IconData? icon;
 
-  final VoidCallback? onPressed;
-  final VoidCallback? onLongPress;
+  /// Return the real request Future so the header can show pending feedback
+  /// and prevent another click until completion.
+  final FutureOr<void> Function()? onPressed;
+  final FutureOr<void> Function()? onLongPress;
 
   /// 悬停提示；缺省用 [label]。
   final String? tooltip;

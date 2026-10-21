@@ -39,7 +39,7 @@ class SupplierNoteSummarizer {
                         + "Return {\"summary\": string}.",   // 英文系统提示词, 写清 JSON 形状
                 List.of(new AiCompletionPort.AiText(supplierNote, true)),   // 外部内容一律 untrusted = true
                 null, null,                               // 服务商支持 JSON_SCHEMA 时可给 schema 名称与 schema
-                256,                                      // 本次最大输出 token(再与服务商上限取小)
+                256,                                      // 首轮正文预算; 思考与一次扩容重试均受服务商上限约束
                 null);                                    // 非任务调用 jobId 为空
         try {
             String json = ai.completeJson(request).json(); // 已去掉代码块、取出首个完整 JSON 对象
@@ -57,9 +57,18 @@ class SupplierNoteSummarizer {
 
 - **绝不在事务里调用**(会占住数据库连接几十秒); 需要读写库就在调用前后各开一个短事务。
 - 网关已经做了: 取默认且启用的服务商、解密密钥、出网/境外/图片能力检查、每日 token 额度、并发名额(最多等 30 秒)、
-  系统提示词追加 `Respond with a single JSON object.`、不可信文本加随机编号的隔离标记、网络/服务端/返回无法解析时重试一次、
+  系统提示词追加 `Respond with a single JSON object.`、不可信文本加随机编号的隔离标记、网络/服务端/返回无法解析时最多重试一次、
   每次尝试写 `ai_call_logs`。调用方不要自己重试。
 - 返回的 JSON 仍然是**不可信数据**: 调用方必须按自己的规则校验(字段类型、取值范围、引用的 id 是否在服务端给出的候选里)。
+- 输出额度包含模型思考与正文。已知强制思考的 GLM-5.3 系列在 `DEFAULT` 识别调用中发送 `low`,
+  在正文需求之外预留 2048 token; `OFF` 也不能真正关闭该模型的思考, 同样预留。总额始终不超过管理员配置的单次上限。
+  服务商明确报告截断时, 即使正文含有完整内层 JSON 或看似完整的前缀, 网关也拒绝接收。
+  输出截断或只有思考而无正文时, 最多重试一次, 将额度提升至当前两倍与当前加 2048 的较大值, 再受配置上限裁剪;
+  已到上限或模型上下文容量耗尽时不重复同一无效请求。重试前重新检查账号启用状态与全局/个人额度。
+- 排查 `INVALID_RESPONSE` 时, 先按 `jobId` 对照 `ai_call_logs` 的真实 HTTP 状态、token 和耗时。
+  HTTP 200 只说明协议请求成功, 不代表正文可作为完整业务结果。失败日志保留协议、尝试序号、受限停止原因、
+  正文字符数与本次输出上限, 区分 `OUTPUT_LIMIT / CONTEXT_LIMIT / THINKING_ONLY / EMPTY_CONTENT / INVALID_JSON / INVALID_ENVELOPE`;
+  不记录提示词、正文、思考内容或密钥。旧版控制台 `status=null` 可能丢失已收到的 HTTP 状态, 不能单凭它判断网络失败。
 - 错误类别: AUTH / NOT_FOUND / BAD_REQUEST / RATE_LIMIT / QUOTA / TIMEOUT / NETWORK / SERVER / INVALID_RESPONSE /
   BLOCKED(被规则或次数拦截) / UNAVAILABLE(没配置或被关)。`e.getMessage()` 不含密钥, 但为了让管理员排错会带
   「密钥无效」「服务商返回 503」「服务商不接受这个请求: <服务商原文>」这类技术说法, **不要直接显示给业务人员**;

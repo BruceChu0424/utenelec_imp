@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -765,10 +766,10 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
             enabled: !_loading && !_detailBusy && !_editing,
             onChanged: _reloadAfterHistory,
           ),
-          IconButton(
-            tooltip: '刷新',
-            onPressed: _loading || _detailBusy || _editing ? null : _refresh,
-            icon: const Icon(Icons.refresh_rounded),
+          UtenRefreshButton(
+            enabled: !_editing,
+            busy: _loading || _detailBusy,
+            onRefresh: _refresh,
           ),
         ],
       ),

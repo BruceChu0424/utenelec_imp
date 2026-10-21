@@ -602,6 +602,7 @@ class MasterOperationHistoryActions extends ConsumerWidget {
 
     return Row(
       mainAxisSize: MainAxisSize.min,
+      spacing: UtenSpacing.s4,
       children: [
         UtenAppBarActionButton(
           label: l10n.goodsHistoryUndo,

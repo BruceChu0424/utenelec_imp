@@ -29,7 +29,8 @@ import java.util.concurrent.TimeUnit;
  *
  * <p>一次调用: 取默认且启用的服务商(只读短事务, 解密密钥) → 出网/境外/图片能力检查 → 当日 token 预算 →
  * 全局并发名额(最多等 30 秒) → 不可信文本加随机编号的隔离标记、系统提示词追加 JSON 与隔离说明 →
- * 协议客户端调用 → 提取 JSON。网络/服务端/返回无法解析时重试一次; 每次尝试都写一行调用技术记录。
+ * 协议客户端调用 → 提取 JSON。网络/服务端/返回无法解析时最多重试一次; 截断时只在上限允许内扩充额度,
+ * 不接收残缺 JSON; 每次尝试都写一行调用技术记录。
  * 绝不能在数据库事务里调用(会占住连接等几十秒), 进来时发现事务直接拒绝。
  */
 @Slf4j
@@ -94,7 +95,8 @@ public class AiGateway implements AiCompletionPort {
         }
         requireCallAllowed();
         AiProtocolClient.ChatRequest chat = prepare(request, runtime);
-        if (request.reasoningEffort().explicit()) {
+        if (request.reasoningEffort().explicit()
+                || AiReasoningParams.thinkingAllowance(runtime, request.reasoningEffort()) > 0) {
             // ADR-152: names and levels only (never prompt or business data), so the admin can verify what was sent.
             log.info("AI call reasoning: purpose={}, provider={}, effort={}, params=[{}], maxOutputTokens={}, timeoutSeconds={}",
                     request.purpose(), runtime.id(), request.reasoningEffort(),
@@ -109,11 +111,12 @@ public class AiGateway implements AiCompletionPort {
             // Waiting for a provider slot can outlive a limit/disable change.
             // Recheck immediately before every outbound attempt, including retries.
             requireCallAllowed();
-            AttemptResult first = attempt(runtime, chat, request.purpose(), request.jobId(), resetGeneration, pricing);
+            AttemptResult first = attempt(runtime, chat, request.purpose(), request.jobId(), resetGeneration, pricing, 1);
             AttemptResult result = first;
-            if (first.failure() != null && retryable(first.failure().category())) {
+            AiProtocolClient.ChatRequest retry = retryRequest(runtime, chat, first);
+            if (retry != null) {
                 requireCallAllowed();
-                result = attempt(runtime, chat, request.purpose(), request.jobId(), resetGeneration, pricing);
+                result = attempt(runtime, retry, request.purpose(), request.jobId(), resetGeneration, pricing, 2);
             }
             if (result.failure() != null) {
                 throw result.failure();
@@ -180,39 +183,83 @@ public class AiGateway implements AiCompletionPort {
     }
 
     private AttemptResult attempt(AiProviderRuntime runtime, AiProtocolClient.ChatRequest chat, String purpose,
-                                  UUID jobId, Long resetGeneration, AiCallLogService.PricingSnapshot pricing) {
+                                  UUID jobId, Long resetGeneration, AiCallLogService.PricingSnapshot pricing,
+                                  int attemptNumber) {
         long started = System.nanoTime();
         AiProtocolClient.ChatResponse response = null;
         try {
             response = client(runtime).chat(runtime, chat);
-            String json;
-            try {
-                json = AiJsonExtractor.extractObject(response.content());
-            } catch (AiCallException invalid) {
-                if (response.truncated()) {
-                    throw new AiCallException(AiErrorCategory.INVALID_RESPONSE,
-                            "AI 输出被截断(超过最大输出长度), 请在 AI 服务设置里调大最大输出长度");
-                }
-                throw invalid;
+            // A truncated document can still contain a balanced inner object. Never accept that
+            // fragment (or even a complete prefix) as the requested, complete JSON response.
+            if (response.truncated()) {
+                throw new AiCallException(AiErrorCategory.INVALID_RESPONSE,
+                        "model_context_window_exceeded".equals(response.stopReason())
+                                ? "AI 输入与输出超过模型上下文容量, 请减少本次识别内容"
+                                : "AI 输出被截断(超过最大输出长度), 请减少本次识别行数或联系管理员调整最大输出长度",
+                        response.httpStatus());
             }
+            if (response.thinkingOnly()) {
+                throw new AiCallException(AiErrorCategory.INVALID_RESPONSE,
+                        "AI 只返回了思考过程, 没有生成识别结果, 请稍后再试", response.httpStatus());
+            }
+            String json = AiJsonExtractor.extractObject(response.content());
             logAttempt(runtime, purpose, jobId, true, null, response.httpStatus(), response.inputTokens(),
                     response.outputTokens(), response.latencyMs(), resetGeneration, pricing);
             return new AttemptResult(response, json, null);
         } catch (AiCallException e) {
+            Integer status = e.httpStatus() != null ? e.httpStatus()
+                    : response == null ? null : response.httpStatus();
+            AiCallException failure = e.httpStatus() == null && status != null
+                    ? new AiCallException(e.category(), e.getMessage(), status) : e;
+            long latencyMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
             logAttempt(runtime, purpose, jobId, false, e.category().name(),
-                    e.httpStatus() != null ? e.httpStatus() : response == null ? null : response.httpStatus(),
+                    status,
                     response == null ? null : response.inputTokens(),
                     response == null ? null : response.outputTokens(),
-                    TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started), resetGeneration, pricing);
-            log.info("AI call failed: purpose={}, provider={}, category={}, status={}",
-                    purpose, runtime.id(), e.category(), e.httpStatus());
-            return new AttemptResult(null, null, e);
+                    latencyMs, resetGeneration, pricing);
+            // Only bounded technical fields: never log prompts, response text, exception messages or keys.
+            log.info("AI call failed: purpose={}, provider={}, protocol={}, jobId={}, attempt={}, category={},"
+                            + " reason={}, status={}, stopReason={}, textLength={}, inputTokens={}, outputTokens={},"
+                            + " maxOutputTokens={}, latencyMs={}",
+                    purpose, runtime.id(), runtime.protocol(), jobId, attemptNumber, e.category(),
+                    failureReason(e, response), status, response == null ? null : response.stopReason(),
+                    response == null || response.content() == null ? null : response.content().length(),
+                    response == null ? null : response.inputTokens(), response == null ? null : response.outputTokens(),
+                    chat.maxOutputTokens(), latencyMs);
+            return new AttemptResult(response, null, failure);
         }
     }
 
-    private static boolean retryable(AiErrorCategory category) {
-        return category == AiErrorCategory.NETWORK || category == AiErrorCategory.SERVER
-                || category == AiErrorCategory.INVALID_RESPONSE;
+    private static String failureReason(AiCallException failure, AiProtocolClient.ChatResponse response) {
+        if (failure.category() != AiErrorCategory.INVALID_RESPONSE) return failure.category().name();
+        if (response == null) return "INVALID_ENVELOPE";
+        if ("model_context_window_exceeded".equals(response.stopReason())) return "CONTEXT_LIMIT";
+        if (response.truncated()) return "OUTPUT_LIMIT";
+        if (response.thinkingOnly()) return "THINKING_ONLY";
+        if (response.content() == null || response.content().isBlank()) return "EMPTY_CONTENT";
+        return "INVALID_JSON";
+    }
+
+    private static AiProtocolClient.ChatRequest retryRequest(AiProviderRuntime runtime,
+                                                            AiProtocolClient.ChatRequest chat,
+                                                            AttemptResult first) {
+        if (first.failure() == null) return null;
+        AiErrorCategory category = first.failure().category();
+        if (category != AiErrorCategory.NETWORK && category != AiErrorCategory.SERVER
+                && category != AiErrorCategory.INVALID_RESPONSE) return null;
+        if (first.response() != null
+                && "model_context_window_exceeded".equals(first.response().stopReason())) return null;
+        if (first.response() != null && (first.response().truncated() || first.response().thinkingOnly())) {
+            // Replaying an identical exhausted budget cannot recover an answer. Allow one larger
+            // attempt, bounded by the administrator's model/cost cap and the normal budget checks.
+            int cap = Math.max(1, runtime.maxOutputTokens());
+            if (chat.maxOutputTokens() >= cap) return null;
+            int expanded = (int) Math.min(cap, Math.max((long) chat.maxOutputTokens() * 2,
+                    (long) chat.maxOutputTokens() + 2048));
+            return new AiProtocolClient.ChatRequest(chat.systemPrompt(), chat.parts(), chat.jsonSchemaName(),
+                    chat.jsonSchema(), expanded, chat.reasoningEffort());
+        }
+        return chat;
     }
 
     /** 系统提示词追加 JSON 与隔离说明; 不可信文本包上随机编号的隔离标记。 */

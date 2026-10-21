@@ -1,4 +1,4 @@
-// 产成品登记实际入库页(ADR-151 §5 单批合一：任务中心双击 = 1 张报工，多选 = N 张报工，同一个页面)。
+// 产成品登记实际入库页(ADR-151 §5)：任务行带实物批身份，报工只负责读取来源。
 //
 // 2026-09-27 用户口径「产成品入库与采购/委外入库 UI、逻辑、表格、记忆都一样，能公用的
 // 都公用」：本页与登记实际到货页(inbound_arrival_registration_page)同一骨架——
@@ -73,6 +73,7 @@ class ProductionFinishedArrivalRegistrationPage extends ConsumerStatefulWidget {
   const ProductionFinishedArrivalRegistrationPage({
     super.key,
     required this.reportIds,
+    this.lotIds,
     this.returnTo,
     this.canRegister,
     this.route,
@@ -80,6 +81,9 @@ class ProductionFinishedArrivalRegistrationPage extends ConsumerStatefulWidget {
 
   /// 来源报工(1..N)：双击 = 1 张，多选 = N 张。
   final List<String> reportIds;
+
+  /// 任务中心选中的实物交接批；不传时兼容按整张报工打开的入口。
+  final List<String>? lotIds;
   final String? returnTo;
 
   /// 仅供独立预览/测试覆盖；正式路由为空时从当前登录权限自行推导。
@@ -101,9 +105,7 @@ class _ProductionFinishedArrivalRegistrationPageState
 
   /// 明细表 sticky 表头是否已置顶（页面滚动条门控：置顶前不显示，置顶后才显示）。
   final _gridPinned = ValueNotifier<bool>(false);
-  late final _suggestions = InboundPlaceSuggestionLoader(
-    ref.read(warehousePlaceSuggestionRepositoryProvider),
-  );
+  late final InboundPlaceSuggestionLoader _suggestions;
   String _idempotencyKey = 'finished-arrival-${const Uuid().v4()}';
 
   List<ProductionFinishedArrivalRegistration>? _reports;
@@ -192,6 +194,7 @@ class _ProductionFinishedArrivalRegistrationPageState
     title: workflowFieldText(context).handoffLotRegistrationTitle,
     route: RoutePath.warehouseProductionFinishedArrivalRegistration(
       widget.reportIds,
+      lotIds: widget.lotIds,
       stockInBeforeInspection: widget.route?.isStockInFirst,
     ),
   );
@@ -230,6 +233,14 @@ class _ProductionFinishedArrivalRegistrationPageState
   };
   @override
   Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    final saved = draftMaps(data['rows']);
+    if (widget.lotIds case final lotIds?) {
+      if (saved.any((item) => !lotIds.contains(item['lotId']))) {
+        throw FormatException(
+          AppLocalizations.of(context).warehouseFinishedLotsChanged,
+        );
+      }
+    }
     _remarkController.text = draftText(data, 'remark');
     _idempotencyKey = data['idempotencyKey'] as String? ?? _idempotencyKey;
     final savedRoute = InboundRoute.values
@@ -241,7 +252,6 @@ class _ProductionFinishedArrivalRegistrationPageState
         ? InboundRoute.inspectFirst
         : savedRoute;
     _removedLineCount = (data['removedLineCount'] as num?)?.toInt() ?? 0;
-    final saved = draftMaps(data['rows']);
     final retained = saved.map((item) => item['lotId']).toSet();
     _grid.removeWhere(
       (row) => !row.registered && !retained.contains(row.lot.lotId),
@@ -326,6 +336,9 @@ class _ProductionFinishedArrivalRegistrationPageState
   @override
   void initState() {
     super.initState();
+    _suggestions = InboundPlaceSuggestionLoader(
+      ref.read(warehousePlaceSuggestionRepositoryProvider),
+    );
     _route = _initialRoute();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
@@ -353,9 +366,24 @@ class _ProductionFinishedArrivalRegistrationPageState
           .read(productionFinishedInboundTaskRepositoryProvider)
           .batchArrivalRegistrations(widget.reportIds);
       if (!mounted) return;
+      final selectedLots = widget.lotIds?.toSet();
+      final availableLots = {
+        for (final report in reports)
+          for (final lot in report.lots) lot.lotId,
+      };
+      if (selectedLots != null &&
+          (selectedLots.isEmpty || !availableLots.containsAll(selectedLots))) {
+        throw ApiException(
+          'CONFLICT',
+          AppLocalizations.of(context).warehouseFinishedLotsChanged,
+          httpStatus: 409,
+        );
+      }
       final rows = [
         for (final report in reports)
-          for (final lot in report.lots) _FinishedLotLine(report, lot),
+          for (final lot in report.lots)
+            if (selectedLots == null || selectedLots.contains(lot.lotId))
+              _FinishedLotLine(report, lot),
       ];
       _grid.replaceAll(rows);
       // 进页默认全选：勾选=本次要登记的行，右下提交按钮只认勾选行。

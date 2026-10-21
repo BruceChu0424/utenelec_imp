@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 // 生产日报列表页（生产管理 / production_daily_report:view · 空结构保未来）。
 //
 // 老库 F_DateReport 从未启用（docs/数据迁移/23 §2.2），本期建空结构保未来启用零成本。
@@ -306,13 +307,7 @@ class _ProductionDailyReportListPageState
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.production),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新',
-            onPressed: () => _reload(1),
-          ),
-        ],
+        actions: [UtenRefreshButton(onRefresh: () => _reload(1))],
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,

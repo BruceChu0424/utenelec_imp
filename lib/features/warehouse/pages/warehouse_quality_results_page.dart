@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -100,7 +101,8 @@ class _QStatusSeg {
 }
 
 class _WarehouseQualityResultsPageState
-    extends ConsumerState<WarehouseQualityResultsPage> {
+    extends ConsumerState<WarehouseQualityResultsPage>
+    with UtenRefreshParticipant<WarehouseQualityResultsPage> {
   PagedResult<WarehouseQualityResultTask>? _result;
   bool _loading = false;
   String? _error;
@@ -194,7 +196,7 @@ class _WarehouseQualityResultsPageState
     // 全来源与全部作业是明确的默认范围；徽章只报告工作量，不代用户收窄。
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refreshStatusCounts();
-      _load(1);
+      trackRefresh(_load(1));
     });
   }
 
@@ -208,7 +210,9 @@ class _WarehouseQualityResultsPageState
     if (widget.externalKeyword != oldWidget.externalKeyword ||
         (widget.externalRefreshTick ?? 0) !=
             (oldWidget.externalRefreshTick ?? 0)) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => trackRefresh(_load(1)),
+      );
     }
   }
 
@@ -219,18 +223,18 @@ class _WarehouseQualityResultsPageState
 
   /// 状态小类计数（后端全量口径；null = 尚未返回，分段按钮显示 '—'）。
   /// 独立于列表加载：进页面（全来源）/ 切换来源时主动刷新，列表加载时联动刷新。
-  void _refreshStatusCounts() {
+  Future<void> _refreshStatusCounts() {
     final version = ++_statusCountRequestVersion;
     final receiptType = _receiptType;
     final keyword = _effectiveKeyword;
-    ref
+    return ref
         .read(warehouseQualityResultRepositoryProvider)
         .statusCounts(
           receiptType: receiptType,
           keyword: keyword.isEmpty ? null : keyword,
           scopeWarehouseId: _scopeWarehouseId,
         )
-        .then((counts) {
+        .then<void>((counts) {
           if (mounted && version == _statusCountRequestVersion) {
             setState(() => _statusCounts = counts);
           }
@@ -325,7 +329,7 @@ class _WarehouseQualityResultsPageState
         scopeWarehouseId: _scopeWarehouseId,
       );
       // 状态计数失败不阻断列表（分段按钮降级为 '—'）。
-      _refreshStatusCounts();
+      await _refreshStatusCounts();
       // 单号 facets 与列表同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
       unawaited(_loadBillNoFacets());
       if (!mounted || version != _requestVersion) return;

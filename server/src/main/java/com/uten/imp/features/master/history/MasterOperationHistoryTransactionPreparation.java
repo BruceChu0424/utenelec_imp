@@ -18,7 +18,7 @@ public class MasterOperationHistoryTransactionPreparation implements Transaction
             "client-categories", "supplier-categories", "mould-categories", "payment-styles",
             "reference-methods", "operation-history");
     private static final Set<String> INLINE_ENTITIES = Set.of(
-            "colors", "units", "currencies", "moulds", "accounts", "reference-methods", "clients", "suppliers");
+            "colors", "units", "currencies", "moulds", "accounts", "reference-methods", "clients", "suppliers", "warehouses");
     private final EntityManager em;
 
     @Override

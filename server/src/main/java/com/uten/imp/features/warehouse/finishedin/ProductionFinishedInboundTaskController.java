@@ -29,6 +29,7 @@ public class ProductionFinishedInboundTaskController {
     private final ProductionFinishedInboundTaskService service;
     private final ProductionFinishedArrivalRegistrationService arrivalRegistrations;
     private final com.uten.imp.application.port.WarehouseTaskScopePort warehouseScopes;
+    private final com.uten.imp.application.port.WarehouseTaskRowCountPort taskRowCounts;
 
     @GetMapping("/tasks")
     @PreAuthorize("hasAuthority('stock_doc:view')")
@@ -68,7 +69,7 @@ public class ProductionFinishedInboundTaskController {
     @com.uten.imp.security.BusinessTaskRead
     @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:approve')")
     public Map<String, Long> count(@RequestParam(required = false) UUID scopeWarehouseId) {
-        return Map.of("count", service.countPending(warehouseScopes.current(scopeWarehouseId)));
+        return Map.of("count", taskRowCounts.finishedInbound(warehouseScopes.current(scopeWarehouseId)));
     }
 
     // 产成品入库登记只有这一组端点(ADR-151 §5)：单张 = 1 个来源、多选 = N 个来源，

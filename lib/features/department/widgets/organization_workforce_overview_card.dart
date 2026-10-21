@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/workforce_overview.dart';
@@ -20,7 +23,7 @@ class OrganizationWorkforceOverviewCard extends StatefulWidget {
   final bool loading;
   final WorkforceOverview? overview;
   final String? error;
-  final VoidCallback? onRetry;
+  final FutureOr<void> Function()? onRetry;
 
   @override
   State<OrganizationWorkforceOverviewCard> createState() =>
@@ -86,11 +89,11 @@ class _OrganizationWorkforceOverviewCardState
                       ],
                     ),
                   ),
-                  if (!widget.loading && widget.onRetry != null)
-                    IconButton(
-                      onPressed: widget.onRetry,
+                  if (widget.onRetry != null)
+                    UtenRefreshButton(
+                      onRefresh: widget.onRetry!,
+                      busy: widget.loading,
                       tooltip: '刷新人员统计',
-                      icon: const Icon(Icons.refresh_rounded),
                     ),
                   Container(
                     padding: const EdgeInsets.symmetric(

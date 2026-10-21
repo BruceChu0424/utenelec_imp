@@ -706,6 +706,7 @@ class _ProcurementReturnTaskDetailPageState
                 UtenAppBarActionButton(
                   label: '刷新',
                   icon: Icons.refresh_rounded,
+                  isLoading: _loading,
                   onPressed: _loading || _saving ? null : _load,
                 ),
               ],

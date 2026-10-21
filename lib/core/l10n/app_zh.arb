@@ -136,6 +136,14 @@
   "businessColumnFactorHint": "乘除填写倍率，例如乘 0.9 表示按原金额的 90% 计算。",
   "businessColumnRemove": "从本单移除",
   "businessColumnRemoveHint": "移除后，这列在各行的内容会清掉，金额重新算；保存单子后生效，其他单子不受影响。",
+  "platformColumnDeleteTitle": "删除列",
+  "platformColumnDeleteAction": "删除",
+  "platformColumnDeleteConfirm": "删除“{name}”后，这列将不再出现在可选列中。已保存的单据数据和已有公式引用会保留。只能删除自己创建的列。",
+  "@platformColumnDeleteConfirm": {"placeholders":{"name":{"type":"String"}}},
+  "platformColumnDeleteForbidden": "只能删除自己创建且有管理权限的列。",
+  "platformColumnDeleteUnavailable": "当前列已不可删除，请重新加载后再试。",
+  "platformColumnDeleteReferenced": "该列仍被其他计算列引用，请先删除引用它的计算列。",
+  "platformColumnDeleteBusy": "正在删除此列，请等待回执。",
   "businessColumnUseExisting": "使用已有列",
   "businessColumnAlreadyAdded": "这张单子已经加过这一列，可在“本单已添加”里查看。",
   "businessColumnOrderHint": "金额按列添加的先后顺序算；拖动表头只改显示位置。填了数的费用列会一直显示。",
@@ -4775,7 +4783,7 @@
       }
     }
   },
-  "warehouseScopePickerTitle": "选择仓库范围",
+  "warehouseScopePickerTitle": "筛选仓库",
   "warehouseScopeSupervisorTooltip": "你是仓库主管：可看全部仓库，也可只看某一个仓。任务列表、分段计数都按所选范围由服务端给出，不改变办理权限。",
   "warehouseScopeKeeperTooltip": "任务中心只显示你负责的仓库的任务，徽章和通知也只算这些仓。要调整负责的仓库，请联系仓库主管在「仓库资料」里设置负责人。",
   "warehouseKeeperDialogTitle": "设置负责人 · {name}",
@@ -6014,5 +6022,54 @@
   "bomEditPreparing": "正在准备编辑",
   "bomEditChecking": "正在检查修改范围",
   "bomEditRefreshing": "正在刷新组装信息",
-  "bomEditPrepareFailed": "准备编辑失败，请重试。"
+  "bomEditPrepareFailed": "准备编辑失败，请重试。",
+  "warehouseScopeAllVisible": "全部可见仓库",
+  "warehouseScopeIncludingChildren": "{name}(含下级)",
+  "@warehouseScopeIncludingChildren": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "warehouseScopeIncludesVisibleChildren": "包含可见的下级仓库",
+  "warehouseScopeLoadFailedRetry": "仓库筛选加载失败，重试",
+  "warehouseScopeVisibleTooltip": "可在本人可见的仓库内筛选。",
+  "warehouseScopeTaskFilter": "任务筛选：{name}",
+  "@warehouseScopeTaskFilter": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "warehouseScopeClearFilter": "清除筛选",
+  "warehouseTaskSelectionChanged": "所选任务已变化，请刷新后重新选择",
+  "warehouseFinishedLotsChanged": "所选批次已变化或已由他人办理，请返回任务中心刷新后重新选择",
+  "warehouseMasterTitle": "仓库资料",
+  "warehouseMasterSearchHint": "搜索仓库名称 / 编号",
+  "warehouseMasterSelectHint": "选择仓库查看资料与即时库存",
+  "warehouseMasterDetailsLoadFailed": "仓库资料加载失败，请重试",
+  "warehouseMasterInventorySummaryHint": "包含下级核算仓的即时库存",
+  "warehouseInventorySearchHint": "搜索货品名称 / 编号",
+  "warehouseInventoryNoAccess": "没有库存查看权限",
+  "warehouseInventoryLoadFailed": "库存加载失败，请重试",
+  "warehouseInventoryEmpty": "此仓库暂无库存记录",
+  "warehouseInventoryOpenLedger": "双击货品查看出入库流水",
+  "warehouseInventoryQuantity": "库存数量",
+  "warehouseInventoryPendingInspection": "待检量",
+  "warehouseInventoryPendingStockIn": "合格待入库",
+  "warehouseMasterStatusLabel": "状态",
+  "warehouseMasterDisable": "停用",
+  "warehouseMasterEnable": "启用",
+  "warehouseMasterSetKeepers": "设置负责人",
+  "warehouseMasterWarehouseLabel": "仓库",
+  "warehouseMasterAdd": "添加仓库",
+  "warehouseMasterAddChild": "新增子仓库",
+  "warehouseMasterAddPeer": "新增同级仓库",
+  "warehouseMasterEdit": "编辑仓库",
+  "warehouseMasterDelete": "删除仓库",
+  "bomEditDiscardAndExit": "不保存并退出",
+  "masterEditDiscardRemainingNote": "仅放弃尚未保存的修改，已保存成功的修改会保留。",
+  "filterAllCategoriesSummary": "全部分类"
 }

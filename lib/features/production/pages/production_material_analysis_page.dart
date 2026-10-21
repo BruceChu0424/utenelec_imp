@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
@@ -11,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
@@ -2322,28 +2324,23 @@ class _ProductionMaterialAnalysisPageState
           ],
           if (_analysis != null)
             if (_canCancelAnalysis)
-              IconButton(
+              UtenAppBarActionButton(
                 key: const Key('material-analysis-cancel'),
-                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                label: '取消分析',
+                icon: Icons.cancel_outlined,
+                isLoading: _cancellingAnalysis,
                 // 禁用时也要说清为什么（2026-09-14 用户口径「取消分析按钮点击
                 // 没有反应」）：一个点不动又不解释的图标，用户只会当它坏了。
                 tooltip: _busy
                     ? '正在执行「${_busyLabel ?? '上一个操作'}」，结束后才能取消分析'
                     : '取消分析',
                 onPressed: _busy ? null : _cancelCurrentAnalysis,
-                icon: _cancellingAnalysis
-                    ? const SizedBox.square(
-                        dimension: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.cancel_outlined),
               ),
           if (_analysis != null)
-            IconButton(
-              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            UtenRefreshButton(
               tooltip: '按最新库存刷新分析',
-              onPressed: _busy || !_canManage ? null : _previewAnalysis,
-              icon: const Icon(Icons.refresh_rounded),
+              enabled: !(_busy || !_canManage),
+              onRefresh: _previewAnalysis,
             ),
         ],
       ),

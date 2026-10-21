@@ -6,6 +6,7 @@ import '../../../shared/models/paged_result.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../widgets/goods_price_observation_detail.dart';
 import '../widgets/master_data_table_view.dart';
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
@@ -665,10 +666,11 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
           ),
         ),
         actions: [
-          IconButton(
-            onPressed: _loading || !_allowed ? null : _load,
+          UtenRefreshButton(
+            enabled: _allowed,
+            busy: _loading,
+            onRefresh: _load,
             tooltip: priceText(context, 'retry'),
-            icon: const Icon(Icons.refresh),
           ),
         ],
       ),

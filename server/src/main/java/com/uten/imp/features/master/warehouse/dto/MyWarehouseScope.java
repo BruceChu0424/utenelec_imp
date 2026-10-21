@@ -9,9 +9,9 @@ import java.util.UUID;
  * @param role               SUPERVISOR 主管 / KEEPER 子仓负责人 / OTHER 其他人
  * @param canSelectAll       能选「全部仓库」(只有主管)
  * @param selectable         可以切换到的仓(主管 = 全部在用仓, 先主仓后子仓; 子仓负责人 = 自己负责的仓及下级;
- *                           其他人为空)。服务端按同一清单校验 scopeWarehouseId, 越界 403
+ *                           其他人 = 本人默认可见范围内的仓)。选择只缩小默认范围, 越界 403
  * @param keeperWarehouses   本人登记负责的仓(登记在主仓上的也列出)
- * @param defaultWarehouseId 只负责一个仓的子仓负责人 = 那个仓(选择器显示只读标签); 其余为空 = 本人默认范围
+ * @param defaultWarehouseId 只负责一个仓的子仓负责人 = 那个仓; 其余为空 = 本人默认范围
  * @param warehouseParticipant 服务端判定的仓库任务参与能力；OTHER 不代表具备此能力
  */
 public record MyWarehouseScope(

@@ -32,7 +32,8 @@ class MasterOperationHistoryTransactionPreparationTest {
             "/api/master/client-categories/id", "/api/master/supplier-categories/id",
             "/api/master/mould-categories/id", "/api/master/payment-styles/id",
             "/api/master/reference-methods/settlement", "/api/master/operation-history/id/undo",
-            "/api/master/inline-edit/colors/id", "/api/master/inline-edit/clients/id"})
+            "/api/master/inline-edit/colors/id", "/api/master/inline-edit/clients/id",
+            "/api/master/inline-edit/warehouses/id"})
     void managedDomainsKeepTheMandatoryHistoryPreparation(String path) {
         Query query = mock(Query.class);
         when(em.createNativeQuery("SELECT fn_begin_master_history_request()")).thenReturn(query);

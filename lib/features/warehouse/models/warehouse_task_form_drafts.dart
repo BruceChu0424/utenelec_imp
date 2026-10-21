@@ -93,13 +93,15 @@ List<FormDraft> salesOutboundTaskDrafts(
 List<FormDraft> finishedInboundTaskDrafts(
   Iterable<FormDraft> drafts, {
   String? reportId,
+  String? lotId,
   String? documentId,
 }) => taskDraftsFor(
   drafts,
   matches: (draft) =>
       (reportId != null &&
           FormDraftCatalog.finishedArrival.groups(draft) &&
-          _queryContains(draft, 'reportIds', reportId)) ||
+          _queryContains(draft, 'reportIds', reportId) &&
+          (lotId == null || _finishedArrivalDraftContainsLot(draft, lotId))) ||
       (documentId != null &&
           FormDraftCatalog.productionFinishedBatchStockIn.groups(draft) &&
           _queryContains(draft, 'documentIds', documentId) &&
@@ -108,6 +110,19 @@ List<FormDraft> finishedInboundTaskDrafts(
                 documentId,
               ))),
 );
+
+bool _finishedArrivalDraftContainsLot(FormDraft draft, String lotId) {
+  if (Uri.tryParse(draft.route)?.queryParameters.containsKey('lotIds') ==
+      true) {
+    return _queryContains(draft, 'lotIds', lotId);
+  }
+  // Before lot-scoped routes, the snapshot is the only recorded lot identity.
+  final rows = draft.data['rows'];
+  return rows is! List ||
+      rows.whereType<Map<Object?, Object?>>().any(
+        (row) => row['lotId'] == lotId,
+      );
+}
 
 List<FormDraft> stockTaskDrafts(
   Iterable<FormDraft> drafts,

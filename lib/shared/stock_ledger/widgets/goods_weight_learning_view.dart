@@ -10,6 +10,8 @@
 import 'package:flutter/material.dart';
 import '../../../components/layout/uten_segment_row.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../components/layout/uten_refresh_scope.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
@@ -75,7 +77,8 @@ class GoodsWeightLearningView extends ConsumerStatefulWidget {
 }
 
 class _GoodsWeightLearningViewState
-    extends ConsumerState<GoodsWeightLearningView> {
+    extends ConsumerState<GoodsWeightLearningView>
+    with UtenRefreshParticipant<GoodsWeightLearningView> {
   GoodsWeightDetail? _detail;
   bool _loading = false;
   String? _error;
@@ -94,8 +97,9 @@ class _GoodsWeightLearningViewState
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadDetail();
-      _loadRecords(1);
+      if (!mounted) return;
+      trackRefresh(_loadDetail());
+      trackRefresh(_loadRecords(1));
     });
   }
 
@@ -104,8 +108,8 @@ class _GoodsWeightLearningViewState
     super.didUpdateWidget(oldWidget);
     if (oldWidget.reloadTick != widget.reloadTick ||
         oldWidget.goodsId != widget.goodsId) {
-      _loadDetail();
-      _loadRecords(_records?.page ?? 1);
+      trackRefresh(_loadDetail());
+      trackRefresh(_loadRecords(_records?.page ?? 1));
     }
   }
 

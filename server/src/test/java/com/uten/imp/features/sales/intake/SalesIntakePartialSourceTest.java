@@ -112,6 +112,11 @@ class SalesIntakePartialSourceTest {
 
     private static byte[] bytes(Workbook workbook) throws Exception {
         try (var output = new ByteArrayOutputStream()) {
+            if (workbook instanceof HSSFWorkbook legacy) {
+                legacy.createInformationProperties();
+                legacy.getSummaryInformation().getSections().forEach(section -> section.setCodepage(org.apache.poi.util.CodePageUtil.CP_UTF16));
+                legacy.getDocumentSummaryInformation().getSections().forEach(section -> section.setCodepage(org.apache.poi.util.CodePageUtil.CP_UTF16));
+            }
             workbook.write(output);
             return output.toByteArray();
         }

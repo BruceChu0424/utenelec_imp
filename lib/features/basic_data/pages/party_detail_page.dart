@@ -19,6 +19,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
@@ -292,12 +293,10 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
             enabled: !_loading && !_busy && !_editing && !_openingEditor,
             onChanged: _reloadAfterHistory,
           ),
-          IconButton(
-            tooltip: '刷新',
-            onPressed: _loading || _busy || _editing || _openingEditor
-                ? null
-                : _load,
-            icon: const Icon(Icons.refresh_rounded, size: 20),
+          UtenRefreshButton(
+            enabled: !_busy && !_editing && !_openingEditor,
+            busy: _loading,
+            onRefresh: _load,
           ),
         ],
       ),

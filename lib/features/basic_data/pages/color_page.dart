@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
@@ -630,24 +631,10 @@ class _ColorPageState extends ConsumerState<ColorPage>
               entityType: 'colors',
               onChanged: _refresh,
             ),
-            IconButton(
-              icon: const Icon(Icons.refresh_rounded),
-              tooltip: '刷新', // TODO(l10n): 补 arb
-              onPressed: () => inlineNavigate(_refresh),
+            UtenRefreshButton(
+              busy: _loading,
+              onRefresh: () => inlineNavigate(_refresh),
             ),
-          ],
-        ),
-        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-        floatingActionButton: inlineFloatingActions(
-          additionalActions: [
-            if (_canCreate)
-              UtenButton(
-                size: UtenButtonSize.large,
-                icon: Icons.add_rounded,
-                onPressed: _showCreate,
-                child: const Text('添加颜色'),
-              ),
           ],
         ),
         body: SafeArea(

@@ -271,7 +271,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
                       Text('• ${preview.mouldCount} 个模具'), // TODO(l10n): 补 arb
                     const SizedBox(height: UtenSpacing.s4),
                     const Text(
-                      '以上将随该分类一并删除，且不可恢复。', // TODO(l10n): 补 arb
+                      '以上将随该分类一并删除。可在操作记录中撤回，仍需满足当前权限和引用规则。', // TODO(l10n): 补 arb
                       style: TextStyle(color: UtenColors.error),
                     ),
                   ],

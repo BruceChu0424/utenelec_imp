@@ -675,10 +675,16 @@ void main() {
       gateway.response = null;
       gateway.data = _data(capability: true, onlyFirst: true);
       bumpPageResumeState(resume, RouteName.operationsSubcontractWorkbench);
-      await tester.pumpAndSettle();
+      // The older button refresh still owns a real pending request. Its busy
+      // indicator must keep animating while the resumed list accepts new data.
+      for (var frame = 0; frame < 5; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
       expect(gateway.queries, hasLength(4));
       expect(gateway.queries.last['status'], 'WAITING_ORDER');
       expect(find.text('FG-task-2'), findsNothing);
+      expect(stale.isCompleted, isFalse);
+      expect(find.byType(CircularProgressIndicator), findsWidgets);
       stale.complete(_data(capability: true));
       await tester.pumpAndSettle();
       expect(find.text('FG-task-2'), findsNothing);

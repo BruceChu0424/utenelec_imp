@@ -19,6 +19,7 @@ const _note = PlatformColumnDefinition(
   id: 'note',
   scope: 'resource',
   name: '包装说明',
+  canDelete: true,
 );
 const _number = PlatformColumnDefinition(
   id: 'number',
@@ -41,6 +42,10 @@ class _Repository extends PlatformTableRepository {
   PlatformColumnDefinition? created;
   Completer<void>? createGate;
   Completer<void>? searchGate;
+  Completer<void>? deleteGate;
+  bool failDelete = false;
+  final deletions = <String>[];
+  final deletedIds = <String>{};
   final queries = <String>[];
 
   @override
@@ -52,10 +57,20 @@ class _Repository extends PlatformTableRepository {
     queries.add(query);
     await searchGate?.future;
     if (failSearch) throw const FormatException('列目录暂时不可用');
-    return [
-      _note,
-      _number,
-    ].where((column) => column.name.contains(query)).toList();
+    return [_note, _number]
+        .where(
+          (column) =>
+              column.name.contains(query) && !deletedIds.contains(column.id),
+        )
+        .toList();
+  }
+
+  @override
+  Future<void> deleteDefinition(String scope, String id) async {
+    deletions.add('$scope/$id');
+    await deleteGate?.future;
+    if (failDelete) throw const FormatException('删除失败，请重试');
+    deletedIds.add(id);
   }
 
   @override
@@ -277,7 +292,201 @@ Future<void> _newFormula(WidgetTester tester) async {
   await _choose(tester, 'platform-formula-base', '数量');
 }
 
+Future<void> _beginDelete(WidgetTester tester) async {
+  final deletion = find.byKey(const Key('platform-column-delete-note'));
+  await tester.ensureVisible(deletion);
+  await tester.tap(deletion);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 250));
+  expect(find.text('删除列'), findsOneWidget);
+  expect(find.textContaining('包装说明'), findsWidgets);
+  expect(find.textContaining('保留'), findsOneWidget);
+}
+
+Future<void> _confirmDelete(WidgetTester tester) async {
+  await _beginDelete(tester);
+  await tester.tap(find.widgetWithText(UtenButton, '删除'));
+  await tester.pump();
+}
+
 void main() {
+  testWidgets('只能删除自己创建的列，已显示列也能进入确认且取消不删除', (tester) async {
+    final repository = _Repository();
+    final controller = _Controller(repository, columnEditingEnabled: true)
+      ..layout = const PlatformTableLayout(added: [_note]);
+    await _open(tester, controller);
+    expect(
+      find.byKey(const Key('platform-column-delete-note')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('platform-column-delete-number')),
+      findsNothing,
+    );
+    await _beginDelete(tester);
+    expect(find.text('删除列'), findsOneWidget);
+    expect(find.textContaining('保留'), findsOneWidget);
+    await _tap(tester, find.widgetWithText(UtenButton, '取消').last);
+    expect(find.text('删除列'), findsNothing);
+    expect(find.text('包装说明'), findsOneWidget);
+    expect(controller.layout.added, [_note]);
+    expect(repository.deletions, isEmpty);
+    expect(controller.selected, isNull);
+  });
+
+  testWidgets('删除成功移除结果并保持选择器打开，失败保留原列并可重试', (tester) async {
+    final repository = _Repository()..failDelete = true;
+    final controller = _Controller(repository, columnEditingEnabled: true)
+      ..layout = const PlatformTableLayout(added: [_note]);
+    await _open(tester, controller);
+    await _confirmDelete(tester);
+    await tester.pumpAndSettle();
+    expect(repository.deletions, ['resource/note']);
+    expect(find.text('删除失败，请重试'), findsOneWidget);
+    expect(find.text('包装说明'), findsOneWidget);
+    expect(controller.layout.added, [_note]);
+    repository.failDelete = false;
+    await _confirmDelete(tester);
+    await tester.pumpAndSettle();
+    expect(repository.deletions, ['resource/note', 'resource/note']);
+    expect(find.text('包装说明'), findsNothing);
+    expect(find.text('删除失败，请重试'), findsNothing);
+    expect(find.byKey(const Key('platform-column-search')), findsOneWidget);
+    expect(find.text('参考数量'), findsOneWidget);
+    expect(controller.layout.added, isEmpty);
+    expect(controller.selected, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('删除进行中阻止重复提交、取消及返回', (tester) async {
+    final repository = _Repository()..deleteGate = Completer<void>();
+    final controller = _Controller(repository, columnEditingEnabled: true);
+    await _open(tester, controller);
+    await _confirmDelete(tester);
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(repository.deletions, ['resource/note']);
+    final deletion = find.byKey(const Key('platform-column-delete-note'));
+    expect(tester.widget<IconButton>(deletion).onPressed, isNull);
+    expect(
+      tester
+          .widget<UtenButton>(find.widgetWithText(UtenButton, '取消'))
+          .onPressed,
+      isNull,
+    );
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    await tester.tapAt(const Offset(4, 4));
+    await tester.pump();
+    expect(find.byKey(const Key('platform-column-search')), findsOneWidget);
+    expect(repository.deletions, ['resource/note']);
+    repository.deleteGate!.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('包装说明'), findsNothing);
+    expect(find.byKey(const Key('platform-column-search')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('确认期间权限版本变化使旧确认失效，不发删除请求', (tester) async {
+    final repository = _Repository();
+    final controller = _Controller(repository, columnEditingEnabled: true)
+      ..layout = const PlatformTableLayout(added: [_note]);
+    await _open(tester, controller);
+    await _beginDelete(tester);
+    controller.invalidateAuthorization();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+    await _tap(tester, find.widgetWithText(UtenButton, '删除'));
+    expect(repository.deletions, isEmpty);
+    expect(controller.layout.added, [_note]);
+    expect(find.text('包装说明'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final boundary in ['repository', 'authorization']) {
+    testWidgets('删除迟到回执不写回已切换的 $boundary', (tester) async {
+      final repository = _Repository()..deleteGate = Completer<void>();
+      final controller = _Controller(repository, columnEditingEnabled: true)
+        ..layout = const PlatformTableLayout(added: [_note]);
+      await _open(tester, controller);
+      await _confirmDelete(tester);
+      await tester.pump(const Duration(milliseconds: 250));
+      if (boundary == 'repository') {
+        controller.switchRepository(_Repository());
+      } else {
+        controller.invalidateAuthorization();
+      }
+      await tester.pumpAndSettle();
+      repository.deleteGate!.complete();
+      await tester.pumpAndSettle();
+      expect(controller.layout.added, [_note]);
+      expect(find.text('包装说明'), findsOneWidget);
+      expect(find.byKey(const Key('platform-column-search')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('切换 $boundary 后同列新删除独立进行，旧失败不能清除新请求', (tester) async {
+      final firstGate = Completer<void>();
+      final first = _Repository()..deleteGate = firstGate;
+      final controller = _Controller(first, columnEditingEnabled: true)
+        ..layout = const PlatformTableLayout(added: [_note]);
+      await _open(tester, controller);
+      await _confirmDelete(tester);
+      await tester.pump(const Duration(milliseconds: 250));
+      final secondGate = Completer<void>();
+      late _Repository current;
+      if (boundary == 'repository') {
+        current = _Repository()..deleteGate = secondGate;
+        controller.switchRepository(current);
+      } else {
+        current = first..deleteGate = secondGate;
+        controller.invalidateAuthorization();
+      }
+      await tester.pumpAndSettle();
+      await _confirmDelete(tester);
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(current.deletions.length, boundary == 'repository' ? 1 : 2);
+      expect(controller.layout.added, [_note]);
+      firstGate.completeError(const FormatException('旧账号删除失败'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(find.text('旧账号删除失败'), findsNothing);
+      expect(find.text('包装说明'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(
+        tester
+            .widget<IconButton>(
+              find.byKey(const Key('platform-column-delete-note')),
+            )
+            .onPressed,
+        isNull,
+      );
+      secondGate.complete();
+      await tester.pumpAndSettle();
+      expect(controller.layout.added, isEmpty);
+      expect(find.text('包装说明'), findsNothing);
+      expect(find.byKey(const Key('platform-column-search')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('窄屏深色大字号可确认删除且保留选择器', (tester) async {
+    final repository = _Repository();
+    final controller = _Controller(repository, columnEditingEnabled: true);
+    await _open(
+      tester,
+      controller,
+      size: const Size(360, 780),
+      scale: 1.5,
+      dark: true,
+    );
+    await _confirmDelete(tester);
+    await tester.pumpAndSettle();
+    expect(repository.deletions, ['resource/note']);
+    expect(find.text('包装说明'), findsNothing);
+    expect(find.byKey(const Key('platform-column-search')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final boundary in ['target ABA', 'same repository authorization ABA']) {
     testWidgets('在途关联创建遇到 $boundary 不选入旧响应', (tester) async {
       final repository = _Repository()..createGate = Completer<void>();

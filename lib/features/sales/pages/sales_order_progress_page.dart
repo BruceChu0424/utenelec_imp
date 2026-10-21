@@ -38,6 +38,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_context_menu.dart';
@@ -648,18 +649,13 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
           onPressed: () => backTo(context, defaultPath: RouteName.sales),
         ),
         actions: [
-          IconButton(
-            tooltip: '刷新',
+          UtenRefreshButton(
             // 整页刷新：列表回第 1 页 + 阶段徽章计数（与 initState 同口径）。
-            onPressed: _loading
-                ? null
-                : () {
-                    _loadStageCounts();
-                    _load(1);
-                  },
-            icon: const Icon(Icons.refresh_rounded),
+            busy: _loading,
+            onRefresh: () async {
+              await Future.wait([_loadStageCounts(), _load(1)]);
+            },
           ),
-          const SizedBox(width: UtenSpacing.s8),
         ],
       ),
       body: SafeArea(child: UtenContentContainer(child: bodyContent)),

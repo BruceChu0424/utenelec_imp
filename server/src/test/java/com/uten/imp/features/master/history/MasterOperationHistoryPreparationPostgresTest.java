@@ -83,4 +83,22 @@ class MasterOperationHistoryPreparationPostgresTest {
         assertEquals(MigrationRehearsalSupport.CURRENT_HEAD_VERSION, em.createNativeQuery(
                 "SELECT version FROM public.flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1").getSingleResult());
     }
+
+    @Test void warehouseInlinePatchAcquiresTheSameMandatoryActorLockAndOnlyTheExactRouteIsManaged() {
+        UUID actor = UUID.randomUUID();
+        String path = "/api/master/inline-edit/warehouses/" + UUID.randomUUID();
+        em.createNativeQuery("SELECT set_config('app.actor_id', :actor, true), "
+                        + "set_config('app.audit_request_path', :path, true), "
+                        + "set_config('app.audit_request_method', 'PATCH', true)")
+                .setParameter("actor", actor.toString()).setParameter("path", path).getSingleResult();
+        new MasterOperationHistoryTransactionPreparation(em).prepare(path, "PATCH");
+        assertEquals("warehouses", em.createNativeQuery("SELECT fn_master_history_entity(:path, 'PATCH')")
+                .setParameter("path", path).getSingleResult());
+        assertEquals(actor.toString(), em.createNativeQuery(
+                "SELECT current_setting('app.master_history_prelocked_actor', true)").getSingleResult());
+        assertNull(em.createNativeQuery("SELECT fn_master_history_entity(:path, 'POST')")
+                .setParameter("path", path).getSingleResult());
+        assertNull(em.createNativeQuery("SELECT fn_master_history_entity(:path, 'PATCH')")
+                .setParameter("path", path + "/unexpected").getSingleResult());
+    }
 }

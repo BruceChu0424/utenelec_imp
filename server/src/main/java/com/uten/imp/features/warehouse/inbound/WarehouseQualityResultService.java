@@ -249,11 +249,6 @@ public class WarehouseQualityResultService {
             ) quality_goods ON TRUE
             """;
 
-    /** Badges aggregate only visible line facts, then count each receipt once. */
-    private static final String BADGE_STATUS_CASE = STATUS_CASE
-            .replace("pending_release.pending_slice_count","inspection.pending_slice_count")
-            .replace("pending_return.pending_return_count","inspection.pending_return_count");
-
     /** 关键字过滤（收货单 / 供应商 / 仓库 / 货品编码或名称）。 */
     private static final String KEYWORD_WHERE = "WHERE (:type = 'ALL' OR scope.receipt_type = :type) AND "
             + com.uten.imp.common.util.TaskKeywordSearch.conditionParameter("keyword",
@@ -520,12 +515,12 @@ public class WarehouseQualityResultService {
      * 来源类型(大类)分段的两枚计数。
      * actionable = 轮到仓库动手(全部合格待入库 + 部分合格 + 全部不合格需退回);
      * inProgress = 等待检查结果(货已收、结论在品质部手上, 仓库不用动手)。
-     * 两支同出一次收货单聚合；页内货品行计数独立，列表展开不增加全局待办。
+     * 两支与列表共用逐货品关系；同一收货单的两条实物任务分别计数。
      */
     public record TypeCounts(Map<String, Long> actionable, Map<String, Long> inProgress) {}
 
     /**
-     * 来源类型分段的红黄两枚计数：保留收货单聚合按 (来源类型, 作业状态) 分组，
+     * 来源类型分段的红黄两枚计数：逐货品按 (来源类型, 作业状态) 分组，
      * 只扫一次再在 Java 侧分流。
      *
      * <p>「等待检查结果」{@code WAITING_INSPECTION} 不进红色：那一档球在品质部
@@ -547,22 +542,15 @@ public class WarehouseQualityResultService {
             return new TypeCounts(Map.of(PURCHASE, 0L, SUBCONTRACT, 0L),
                     Map.of(PURCHASE, 0L, SUBCONTRACT, 0L));
         }
+        String taskStatus = STATUS_CASE
+                .replace("pending_release.pending_slice_count", "CASE WHEN :taskCanStockIn THEN pending_release.pending_slice_count ELSE 0 END")
+                .replace("pending_return.pending_return_count", "CASE WHEN :taskCanReturn THEN pending_return.pending_return_count ELSE 0 END");
         @SuppressWarnings("unchecked")
         List<Object[]> rows = (List<Object[]>) aggregateQuery("ALL", "", "", warehouseScope, """
-                , badge_inspection AS (
-                    SELECT scope.receipt_type,scope.receipt_id,
-                           SUM(inspection.passed_line_count) AS passed_line_count,
-                           SUM(inspection.failed_line_count) AS failed_line_count,
-                           SUM(inspection.open_item_count) AS open_item_count,
-                           SUM(CASE WHEN :taskCanStockIn THEN COALESCE(pending_release.pending_slice_count,0) ELSE 0 END) AS pending_slice_count,
-                           SUM(CASE WHEN :taskCanReturn THEN COALESCE(pending_return.pending_return_count,0) ELSE 0 END) AS pending_return_count
-                    %s%s%s
-                    GROUP BY scope.receipt_type,scope.receipt_id
-                )
-                SELECT inspection.receipt_type, (%s) AS work_status, COUNT(*)
-                FROM badge_inspection inspection
-                GROUP BY inspection.receipt_type, (%s)
-                """.formatted(AGGREGATE_FROM,KEYWORD_WHERE,scopeFilter(warehouseScope),BADGE_STATUS_CASE,BADGE_STATUS_CASE))
+                SELECT scope.receipt_type, (%s) AS work_status, COUNT(*)
+                %s%s%s
+                GROUP BY 1, 2
+                """.formatted(taskStatus, AGGREGATE_FROM, KEYWORD_WHERE, scopeFilter(warehouseScope)))
                 .setParameter("taskCanStockIn", canStockIn)
                 .setParameter("taskCanReturn", canReturn)
                 .getResultList();

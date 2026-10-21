@@ -37,6 +37,7 @@
 //   （用户口径「搜索栏长度缩小一半」）；
 // - 响应式：搜索和行尾按局部宽度换行；所有宽度下分段均按真实内容测量。
 //   放不下时显示当前分类入口，打开完整纵向面板；长名与计数不缩字、不横滚。
+//   折叠入口的红黄合计明确标注「全部分类」，避免误认为当前所选分类的数量。
 // - 纯分类无搜索的页面只传 [segments]（searchHint 不传即不渲染搜索框）；
 // - 纯搜索+行尾的页面（筛选下沉到列头/下拉，如即时库存）不传 [segments]
 //   （2026-09-10 起 segments/selected/onSelectionChanged 均可省略）。
@@ -47,6 +48,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../feedback/uten_in_progress_badge.dart';
 import '../feedback/uten_notification_badge.dart';
 import '../feedback/uten_segment_badge_label.dart';
@@ -231,6 +233,9 @@ class _UtenFilterToolbarState<T> extends State<UtenFilterToolbar<T>> {
   Widget build(BuildContext context) {
     final enabled = widget.enabled;
     final selected = widget.selected;
+    final l10n =
+        Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+        lookupAppLocalizations(const Locale('zh'));
     // segments 为空 = 纯「搜索 + 行尾」工具条（筛选已下沉到列头/下拉的页面，
     // 如即时库存分类下拉化后）——不渲染空分段条。
     final button = widget.segments.isEmpty
@@ -242,7 +247,9 @@ class _UtenFilterToolbarState<T> extends State<UtenFilterToolbar<T>> {
                 : Wrap(
                     spacing: 8,
                     runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
+                      Text(l10n.filterAllCategoriesSummary),
                       if (_inProgressTotal > 0)
                         IntrinsicWidth(
                           child: UtenInProgressBadge(count: _inProgressTotal),

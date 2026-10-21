@@ -189,8 +189,9 @@ class WarehouseQualityResultApiContractTest {
         // 只跑一次聚合、只读一次结果集：红黄同源是结构保证，不是两处写法碰巧一致。
         assertThat(countOccurrences(body, "aggregateQuery(")).isEqualTo(1);
         assertThat(countOccurrences(body, "getResultList()")).isEqualTo(1);
-        // SELECT 与 GROUP BY 都用同一个 STATUS_CASE 常量，和页内分段同口径。
-        assertThat(countOccurrences(body, "STATUS_CASE")).isEqualTo(2);
+        // 逐行状态只投影一次；GROUP BY 序号复用它，避免布尔参数重复绑定导致 PostgreSQL 表达式不等价。
+        assertThat(countOccurrences(body, "STATUS_CASE")).isEqualTo(1);
+        assertThat(body).contains("GROUP BY 1, 2");
         // 分流口径：已完结两支都不数；等待检查结果只进黄色，其余三档只进红色。
         assertThat(body)
                 .contains("if (COMPLETED.equals(workStatus)) {")

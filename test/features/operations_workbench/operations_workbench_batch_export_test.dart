@@ -1,5 +1,5 @@
 // 采购任务工作台「进行中」段批量导出单据的页面级测试（2026-10-19）：
-// 多选勾选（无订货单的行锁形不可选）、右下悬浮「导出单据(N)」按钮、点击把
+// 多选勾选（非财务通过的行锁形不可选）、右下悬浮「导出单据(N)」按钮、点击把
 // 去重后的单据交给注入的导出能力、导出中按钮带 n/N 进度、未选择时点按钮给
 // 出原因而不是无声失效。
 import 'dart:async';
@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/operations_workbench/models/operations_workbench.dart';
 import 'package:uten_imp/features/operations_workbench/pages/operations_workbench_page.dart';
 import 'package:uten_imp/features/operations_workbench/repositories/operations_workbench_repository.dart';
@@ -19,7 +20,7 @@ import '../../support/filter_segment_tap.dart';
 class _FakeGateway implements OperationsWorkbenchGateway {
   _FakeGateway(this.data);
 
-  final OperationsWorkbenchData data;
+  OperationsWorkbenchData data;
 
   @override
   Future<OperationsWorkbenchData> load({
@@ -65,6 +66,9 @@ OperationsWorkbenchTask _task(
   String id, {
   String? docType,
   String docId = 'doc-1',
+  String taskStatus = 'FINANCE_APPROVED',
+  String? displayStage,
+  String? documentStatus = '1',
 }) {
   return OperationsWorkbenchTask(
     taskId: id,
@@ -83,7 +87,8 @@ OperationsWorkbenchTask _task(
     fulfilledQty: 2,
     supplyPeggedQty: 4,
     openQty: 8,
-    taskStatus: 'OPEN',
+    taskStatus: taskStatus,
+    displayStage: displayStage,
     needDate: '2026-10-01',
     expectedDate: null,
     exceptionCode: null,
@@ -99,7 +104,7 @@ OperationsWorkbenchTask _task(
                 : '/purchase/requests/$docId',
             canView: true,
             canEdit: false,
-            status: '1',
+            status: documentStatus,
           ),
     actionDocItemId: 'item-$id',
     actionDocumentRestricted: false,
@@ -258,12 +263,161 @@ void main() {
     await tester.pump();
     await tester.tap(find.byType(Checkbox).at(2));
     await tester.pump();
+    expect(find.text('导出单据(1)'), findsOneWidget);
     await tester.tap(
       find.byKey(const Key('operations-workbench-purchase-export-docs')),
     );
     await tester.pump();
     expect(calls.single, hasLength(1));
     expect(calls.single.single.id, 'order-1');
+  });
+
+  testWidgets('only finance-approved orders can be selected, including '
+      'amendment review and conflicting approval projections', (tester) async {
+    final base = _inProgressData();
+    final items = [
+      _task('approved', docType: 'ORDER'),
+      _task(
+        'pending',
+        docType: 'PURCHASE_ORDER',
+        taskStatus: 'ORDER_PENDING_APPROVAL',
+        documentStatus: '0',
+      ),
+      _task(
+        'rejected',
+        docType: 'PURCHASE_ORDER',
+        taskStatus: 'FINANCE_REJECTED',
+        documentStatus: '0',
+      ),
+      _task(
+        'amendment-pending',
+        docType: 'PURCHASE_ORDER',
+        taskStatus: 'ORDER_PENDING_APPROVAL',
+        displayStage: 'FINANCE_REVIEW_PENDING',
+      ),
+      _task(
+        'amendment-rejected',
+        docType: 'PURCHASE_ORDER',
+        taskStatus: 'FINANCE_REJECTED',
+        displayStage: 'FINANCE_REVIEW_REJECTED',
+      ),
+      _task(
+        'stage-conflict',
+        docType: 'PURCHASE_ORDER',
+        displayStage: 'FINANCE_REVIEW_PENDING',
+      ),
+      _task(
+        'document-conflict',
+        docType: 'PURCHASE_ORDER',
+        documentStatus: '0',
+      ),
+      _task(
+        'document-unknown',
+        docType: 'PURCHASE_ORDER',
+        documentStatus: null,
+      ),
+    ];
+    final gateway = _FakeGateway(
+      OperationsWorkbenchData(
+        department: base.department,
+        summary: base.summary,
+        items: items,
+        page: 1,
+        size: 20,
+        total: items.length,
+        totalPages: 1,
+        capabilities: base.capabilities,
+      ),
+    );
+    final calls = <List<({String id, String number})>>[];
+    await _pumpPage(
+      tester,
+      gateway: gateway,
+      export:
+          (
+            context, {
+            required apiClient,
+            required documents,
+            onProgress,
+            stillCurrent,
+          }) async {
+            calls.add(documents);
+          },
+    );
+    await selectFilterSegment(tester, '进行中');
+    await tester.pumpAndSettle();
+    expect(find.byType(Checkbox), findsNWidgets(2));
+    expect(find.byIcon(Icons.lock_outline_rounded), findsNWidgets(7));
+    expect(find.byTooltip('仅财务已通过的采购订货单可导出'), findsNWidgets(7));
+    await tester.tap(find.byType(Checkbox).first);
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const Key('operations-workbench-purchase-export-docs')),
+    );
+    await tester.pump();
+    expect(calls.single.single.id, 'doc-1');
+  });
+
+  testWidgets('refreshing a selected order into finance review blocks the '
+      'entire export instead of silently exporting the other order', (
+    tester,
+  ) async {
+    final gateway = _FakeGateway(_inProgressData());
+    final calls = <List<({String id, String number})>>[];
+    await _pumpPage(
+      tester,
+      gateway: gateway,
+      export:
+          (
+            context, {
+            required apiClient,
+            required documents,
+            onProgress,
+            stillCurrent,
+          }) async {
+            calls.add(documents);
+          },
+    );
+    await selectFilterSegment(tester, '进行中');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(Checkbox).first);
+    await tester.pump();
+    expect(find.text('导出单据(2)'), findsOneWidget);
+    final base = gateway.data;
+    gateway.data = OperationsWorkbenchData(
+      department: base.department,
+      summary: base.summary,
+      items: [
+        _task('task-1', docType: 'PURCHASE_ORDER', docId: 'order-1'),
+        _task(
+          'task-2',
+          docType: 'PURCHASE_ORDER',
+          docId: 'order-2',
+          taskStatus: 'ORDER_PENDING_APPROVAL',
+          displayStage: 'FINANCE_REVIEW_PENDING',
+        ),
+      ],
+      page: 1,
+      size: 20,
+      total: 2,
+      totalPages: 1,
+      capabilities: base.capabilities,
+    );
+    await tester.tap(find.byTooltip('刷新'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('operations-workbench-purchase-export-docs')),
+    );
+    await tester.pump();
+    expect(calls, isEmpty);
+    expect(
+      ProviderScope.containerOf(
+            tester.element(find.byType(OperationsWorkbenchPage)),
+          )
+          .read(appNotificationProvider)
+          .map((notification) => notification.message),
+      contains('仅财务已通过的采购订货单可导出，请重新选择'),
+    );
   });
 
   testWidgets('waiting-order segment keeps the batch-order action unchanged', (

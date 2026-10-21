@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../components/buttons/uten_refresh_button.dart';
+import '../../core/ui/app_notification.dart';
 import '../../components/layout/uten_app_bar_action_scope.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -105,16 +107,21 @@ class _HistoryPageState extends ConsumerState<_FormDraftHistoryPage> {
         title: '本机草稿历史',
         leading: BackButton(onPressed: () => Navigator.of(context).pop()),
         actions: [
-          IconButton(
+          UtenRefreshButton(
             tooltip: '刷新历史',
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
+            busy: page.isLoading,
+            onRefresh: () async {
               setState(
                 () => _cursors
                   ..clear()
                   ..add(null),
               );
               ref.invalidate(_historyPageProvider);
+              try {
+                await ref.read(_historyPageProvider(null).future);
+              } catch (error) {
+                if (context.mounted) context.appApiError(error);
+              }
             },
           ),
         ],

@@ -7,6 +7,7 @@ import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_context_menu.dart';
 import '../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../components/layout/uten_filter_toolbar.dart';
+import '../../components/layout/uten_refresh_scope.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/network/data_write_revision.dart';
 import '../../core/theme/uten_tokens.dart';
@@ -146,10 +147,31 @@ String? _localParty(FormDraft draft) {
 }
 
 class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
-    with DraftBulkDeleteMixin<DraftWorkspaceTable> {
+    with
+        DraftBulkDeleteMixin<DraftWorkspaceTable>,
+        UtenRefreshParticipant<DraftWorkspaceTable> {
   String _search = '';
   final _filters = <String, String?>{};
   Map<String, DraftWorkspaceRow> _visible = {};
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) trackRefresh(_waitForRows());
+    });
+  }
+
+  Future<void> _waitForRows() async {
+    try {
+      await Future.wait([
+        for (final kind in _kinds)
+          ref.read(draftWorkspaceRowsProvider(kind).future),
+      ]);
+    } catch (_) {
+      // Each source renders its existing error/retry state in this table.
+    }
+  }
 
   String? _resolveLocalParty(FormDraft draft) {
     final kind = formDraftBusinessKind(draft) ?? '';
@@ -207,7 +229,7 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
       // vsync 对 ProviderScope setState，同步调用即触发「build 期 setState」
       // 断言。挪到本帧结束后再失效重建，刷新语义不变（本就异步）。
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _refresh();
+        if (mounted) trackRefresh(_refresh());
       });
     }
     if (!listEquals(oldWidget.kinds, widget.kinds) ||

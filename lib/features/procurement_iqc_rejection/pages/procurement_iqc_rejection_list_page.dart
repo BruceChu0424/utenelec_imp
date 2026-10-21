@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -32,6 +34,7 @@ class ProcurementIqcRejectionListPage extends ConsumerStatefulWidget {
     this.embedded = false,
     this.externalHeader,
     this.refreshTick = 0,
+    this.refreshCompletion,
   });
 
   final String? source;
@@ -47,6 +50,7 @@ class ProcurementIqcRejectionListPage extends ConsumerStatefulWidget {
 
   /// 外层（业务审核中心）触发的刷新信号；数值变化时重拉当前页。
   final int refreshTick;
+  final Completer<void>? refreshCompletion;
 
   @override
   ConsumerState<ProcurementIqcRejectionListPage> createState() =>
@@ -90,15 +94,35 @@ class _ProcurementIqcRejectionListPageState
   @override
   void initState() {
     super.initState();
-    Future<void>.microtask(() => _load(1));
+    Future<void>.microtask(() async {
+      if (!mounted) return;
+      final completion = widget.refreshCompletion;
+      await _load(1).whenComplete(() {
+        if (completion != null && !completion.isCompleted) {
+          completion.complete();
+        }
+      });
+    });
   }
 
   @override
   void didUpdateWidget(ProcurementIqcRejectionListPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.refreshTick != oldWidget.refreshTick) {
-      _load(_result?.page ?? 1);
+      final completion = widget.refreshCompletion;
+      _load(_result?.page ?? 1).whenComplete(() {
+        if (completion != null && !completion.isCompleted) {
+          completion.complete();
+        }
+      });
     }
+  }
+
+  @override
+  void dispose() {
+    final completion = widget.refreshCompletion;
+    if (completion != null && !completion.isCompleted) completion.complete();
+    super.dispose();
   }
 
   Future<void> _load(int page) async {
@@ -201,7 +225,6 @@ class _ProcurementIqcRejectionListPageState
       _myLocation ??= currentLocationOr(context, _defaultBackPath);
       ref.onPageResume(_myLocation!, () => _load(_result?.page ?? 1));
     }
-    final result = _result;
     // 加载/错误态也钉住宿主分类栏（2026-10-01 用户口径：点击子分类的瞬间
     // 整条分类栏不得消失），数据到位后照常走折叠容器。
     final transient = !_hasAcceptedList && (_loading || _error != null);
@@ -248,7 +271,7 @@ class _ProcurementIqcRejectionListPageState
           UtenAppBarActionButton(
             label: '刷新',
             icon: Icons.refresh_rounded,
-            isLoading: _loading && result != null,
+            isLoading: _loading,
             onPressed: _loading ? null : () => _load(1),
           ),
         ],

@@ -304,9 +304,10 @@ management:
   metrics:
     web:
       server:
-        # 项目路由模板远多于 Spring Boot 默认的 100；这是合法模板预算，
-        # 动态 UUID/数字段仍由 MetricsConfig 归一化，避免无界基数。
-        max-uri-tags: ${UTEN_METRICS_MAX_URI_TAGS:1024}
+        # 当前主控制器有 1287 个合法 URI 模式；加上有限的框架/保留桶，
+        # 由 MetricsUriTagBudgetContractTest 实际注册目录验证 2048 的有界预算。
+        # 动态 UUID/数字段仍由 MetricsConfig 归一化，未知 URI 仍受上限保护。
+        max-uri-tags: ${UTEN_METRICS_MAX_URI_TAGS:2048}
   endpoints:
     web:
       exposure:

@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -684,11 +685,7 @@ class _MaterialSettlementSheetState
           showPagePermissionAction: false,
           title: _canRegister ? '登记实际用料' : '用料记录',
           actions: [
-            IconButton(
-              tooltip: '刷新',
-              onPressed: _editingLocked ? null : _load,
-              icon: const Icon(Icons.refresh_rounded),
-            ),
+            UtenRefreshButton(enabled: !(_editingLocked), onRefresh: _load),
             IconButton(
               tooltip: '关闭',
               onPressed: _editingLocked

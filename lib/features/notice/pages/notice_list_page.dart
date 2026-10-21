@@ -15,14 +15,15 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_paged_grid.dart';
-import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -137,9 +138,7 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
     final list = ref.watch(noticeListProvider);
     final filter = ref.watch(noticeFilterProvider);
 
-    // Tab 栏（全部/未读）与「管理/全部已读」放同一行：tab 用 Stack+Center 保证在整行
-    // 正中间（不受右侧按钮宽度影响，比 Row 两侧 Expanded 更精确），按钮用 Positioned
-    // 钉在最右边（问题 #12：老员工反馈两者原本分成两行，视觉上找不到入口）。
+    // 分类与卡片内容共左缘，动作在宽屏靠右；窄屏或大字号时换行，避免相互遮挡。
     Widget body = Column(
       children: [
         Padding(
@@ -147,86 +146,70 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
             top: UtenSpacing.s12,
             bottom: UtenSpacing.s8,
           ),
-          child: SizedBox(
-            // 44 = UtenActionButtonSize.small 的最小高度（见 click_guard.dart _minimumHeight），
-            // 给够高度避免右侧按钮被 Stack 边界裁切。
-            height: 44,
-            child: Stack(
-              alignment: Alignment.center,
+          child: UtenFilterToolbar<NoticeFilter>(
+            autoSelectBadge: false,
+            selected: {filter},
+            onSelectionChanged: (value) =>
+                ref.read(noticeFilterProvider.notifier).state = value,
+            segments: const [
+              UtenFilterSegment(value: NoticeFilter.all, label: '全部'),
+              UtenFilterSegment(value: NoticeFilter.unread, label: '未读'),
+              // 重要 = 人事序列部门发布且未读（2026-09-28 用户口径）。
+              UtenFilterSegment(value: NoticeFilter.important, label: '重要'),
+            ],
+            trailing: Wrap(
+              alignment: WrapAlignment.end,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: UtenSpacing.s4,
+              runSpacing: UtenSpacing.s4,
               children: [
                 // 个人通知弹窗开关（V833/ADR-172）：设置全部弹窗类别的开与关。
-                Positioned(
-                  left: UtenSpacing.s4,
-                  child: IconButton(
-                    tooltip: '通知设置',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () => showNoticePopupSettingsDialog(context),
-                    icon: const Icon(Icons.tune_rounded, size: 20),
-                  ),
+                IconButton(
+                  tooltip: '通知设置',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => showNoticePopupSettingsDialog(context),
+                  icon: const Icon(Icons.tune_rounded, size: 20),
                 ),
-                Center(
-                  child: UtenSegmentedFilter<NoticeFilter>(
-                    selected: filter,
-                    onChanged: (v) =>
-                        ref.read(noticeFilterProvider.notifier).state = v,
-                    segments: const [
-                      UtenSegment(value: NoticeFilter.all, label: '全部'),
-                      UtenSegment(value: NoticeFilter.unread, label: '未读'),
-                      // 重要 = 人事序列部门发布且未读（2026-09-28 用户口径）。
-                      UtenSegment(value: NoticeFilter.important, label: '重要'),
-                    ],
+                if (_selecting) ...[
+                  UtenButton(
+                    type: UtenButtonType.ghost,
+                    size: UtenButtonSize.small,
+                    onPressed: () {
+                      final notices = list.value ?? const <Notice>[];
+                      setState(() {
+                        _selected
+                          ..clear()
+                          ..addAll(notices.map((n) => n.id));
+                      });
+                    },
+                    child: const Text('全选'),
                   ),
-                ),
-                Positioned(
-                  right: UtenSpacing.s8,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (_selecting) ...[
-                        UtenActionButton(
-                          type: UtenActionButtonType.ghost,
-                          size: UtenActionButtonSize.small,
-                          label: const Text('全选'),
-                          onAction: () async {
-                            final notices = list.value ?? const <Notice>[];
-                            setState(() {
-                              _selected
-                                ..clear()
-                                ..addAll(notices.map((n) => n.id));
-                            });
-                          },
-                        ),
-                        const SizedBox(width: UtenSpacing.s8),
-                        UtenActionButton(
-                          type: UtenActionButtonType.ghost,
-                          size: UtenActionButtonSize.small,
-                          label: const Text('退出管理'),
-                          onAction: () async => _exitSelection(),
-                        ),
-                      ] else ...[
-                        UtenActionButton(
-                          type: UtenActionButtonType.secondary,
-                          size: UtenActionButtonSize.small,
-                          icon: Icons.checklist_rounded,
-                          label: const Text('管理'),
-                          onAction: () async => _enterSelection(),
-                        ),
-                        const SizedBox(width: UtenSpacing.s8),
-                        UtenActionButton(
-                          type: UtenActionButtonType.ghost,
-                          size: UtenActionButtonSize.small,
-                          label: const Text('全部已读'),
-                          onAction: () async {
-                            await markAllNoticeRead(ref);
-                            if (context.mounted) {
-                              context.appSuccess('全部已读');
-                            }
-                          },
-                        ),
-                      ],
-                    ],
+                  UtenButton(
+                    type: UtenButtonType.ghost,
+                    size: UtenButtonSize.small,
+                    onPressed: _exitSelection,
+                    child: const Text('退出管理'),
                   ),
-                ),
+                ] else ...[
+                  UtenButton(
+                    type: UtenButtonType.secondary,
+                    size: UtenButtonSize.small,
+                    icon: Icons.checklist_rounded,
+                    onPressed: _enterSelection,
+                    child: const Text('管理'),
+                  ),
+                  UtenActionButton(
+                    type: UtenActionButtonType.ghost,
+                    size: UtenActionButtonSize.small,
+                    label: const Text('全部已读'),
+                    onAction: () async {
+                      await markAllNoticeRead(ref);
+                      if (context.mounted) {
+                        context.appSuccess('全部已读');
+                      }
+                    },
+                  ),
+                ],
               ],
             ),
           ),

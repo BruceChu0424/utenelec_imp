@@ -19,6 +19,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/buttons/click_guard.dart';
 import '../../../components/data_display/uten_user_avatar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -122,11 +123,12 @@ class DashboardPage extends ConsumerWidget {
           ),
         ),
         if (isSuperAdmin)
-          ActionChip(
-            avatar: const Icon(Icons.swap_horiz_rounded, size: 18),
+          UtenActionButton(
+            type: UtenActionButtonType.secondary,
+            size: UtenActionButtonSize.small,
+            icon: Icons.swap_horiz_rounded,
             label: Text(AppLocalizations.of(context).impersonationSwitchPerson),
-            onPressed: () => openSwitchPerson(context, ref),
-            visualDensity: VisualDensity.compact,
+            onAction: () => openSwitchPerson(context, ref),
           ),
       ],
     );

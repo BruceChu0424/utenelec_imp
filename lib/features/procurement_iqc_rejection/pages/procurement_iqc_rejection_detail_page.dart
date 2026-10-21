@@ -182,7 +182,7 @@ class _ProcurementIqcRejectionDetailPageState
           UtenAppBarActionButton(
             label: '刷新',
             icon: Icons.refresh_rounded,
-            isLoading: _loading && detail != null,
+            isLoading: _loading,
             onPressed: _loading ? null : _load,
           ),
         ],

@@ -21,6 +21,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -289,18 +290,21 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
   }
 
   /// 刷新: 概览 + 盘点建议 (KPI 要用) + 当前段, 都停在当前页。
-  void _refresh() {
-    _loadHealth(_health?.rows.page ?? 1);
-    _loadCycle(_cycle?.page ?? 1);
+  Future<void> _refresh() async {
+    final requests = <Future<void>>[
+      _loadHealth(_health?.rows.page ?? 1),
+      _loadCycle(_cycle?.page ?? 1),
+    ];
     switch (_segment) {
       case WarehouseInsightSegment.weightAlerts:
-        _loadAlerts(_alerts?.rows.page ?? 1);
+        requests.add(_loadAlerts(_alerts?.rows.page ?? 1));
       case WarehouseInsightSegment.learning:
-        _loadLearning(_learning?.page ?? 1);
+        requests.add(_loadLearning(_learning?.page ?? 1));
       case WarehouseInsightSegment.health:
       case WarehouseInsightSegment.cycleCount:
         break;
     }
+    await Future.wait(requests);
   }
 
   void _select(WarehouseInsightSegment segment) {
@@ -1089,11 +1093,9 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
         ),
         actions: [
           const WarehouseScopeSelector(),
-          IconButton(
+          UtenRefreshButton(
             key: const Key('insight-refresh'),
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新',
-            onPressed: _refresh,
+            onRefresh: _refresh,
           ),
         ],
       ),

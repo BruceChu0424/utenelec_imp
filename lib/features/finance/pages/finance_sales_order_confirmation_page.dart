@@ -68,6 +68,7 @@ class FinanceSalesOrderConfirmationPage extends ConsumerStatefulWidget {
     this.embedded = false,
     this.externalHeader,
     this.refreshTick = 0,
+    this.refreshCompletion,
   });
 
   final bool changesOnly;
@@ -80,6 +81,7 @@ class FinanceSalesOrderConfirmationPage extends ConsumerStatefulWidget {
 
   /// 外层（业务审核中心）触发的刷新信号；数值变化时重拉当前视图。
   final int refreshTick;
+  final Completer<void>? refreshCompletion;
 
   @override
   ConsumerState<FinanceSalesOrderConfirmationPage> createState() =>
@@ -110,6 +112,10 @@ class _FinanceSalesOrderConfirmationPageState
   @override
   void dispose() {
     ++_requestVersion;
+    final completion = widget.refreshCompletion;
+    if (completion != null && !completion.isCompleted) {
+      completion.complete();
+    }
     _batchClaim?.releaseAll().ignore();
     super.dispose();
   }
@@ -165,9 +171,15 @@ class _FinanceSalesOrderConfirmationPageState
       if (!setEquals(previous, next)) _invalidateScope();
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       // 客户应收列前缀要显示本位币名(币种字典 baseCurrency 标记)。
       ref.read(financeNameServiceProvider).ensureLoaded();
-      _load(1);
+      final completion = widget.refreshCompletion;
+      _load(1).whenComplete(() {
+        if (completion != null && !completion.isCompleted) {
+          completion.complete();
+        }
+      });
     });
   }
 
@@ -196,7 +208,14 @@ class _FinanceSalesOrderConfirmationPageState
         confirmationKind: _initialSelection.kind,
       );
     }
-    if (widget.refreshTick != oldWidget.refreshTick) _refreshCurrent();
+    if (widget.refreshTick != oldWidget.refreshTick) {
+      final completion = widget.refreshCompletion;
+      _refreshCurrent().whenComplete(() {
+        if (completion != null && !completion.isCompleted) {
+          completion.complete();
+        }
+      });
+    }
   }
 
   Future<void> _load(int page) async {

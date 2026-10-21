@@ -69,7 +69,13 @@ public class WarehouseDataScopeService implements WarehouseTaskScopePort {
             if (!selectable(access, requested)) {
                 throw new ApiException(ErrorCode.FORBIDDEN, OUT_OF_SCOPE_MESSAGE);
             }
-            return new WarehouseTaskScope(true, subtree(requested), false);
+            List<UUID> selected = subtree(requested);
+            if (access.defaultScope().active()) {
+                // A visible parent can contain children assigned to somebody else.
+                // Picking it narrows the current audience; it never grants those children.
+                selected = selected.stream().filter(access.defaultScope().warehouseIds()::contains).toList();
+            }
+            return new WarehouseTaskScope(true, selected, false);
         });
     }
 
@@ -194,11 +200,8 @@ public class WarehouseDataScopeService implements WarehouseTaskScopePort {
     public MyWarehouseScope myScope() {
         WarehouseAccess access = access();
         List<MyWarehouseScope.Option> keepers = options(access.keeperWarehouseIds(), false);
-        List<MyWarehouseScope.Option> selectable = switch (access.role()) {
-            case SUPERVISOR -> options(null, true);
-            case KEEPER -> options(access.defaultScope().warehouseIds(), true);
-            case OTHER -> List.of();
-        };
+        List<MyWarehouseScope.Option> selectable = options(
+                access.defaultScope().active() ? access.defaultScope().warehouseIds() : null, true);
         UUID defaultWarehouseId = access.role() == Role.KEEPER && selectable.size() == 1
                 ? selectable.getFirst().id() : null;
         boolean participant = currentUser.get().map(actor -> !actor.isVisitor()
@@ -241,13 +244,12 @@ public class WarehouseDataScopeService implements WarehouseTaskScopePort {
     }
 
     private boolean selectable(WarehouseAccess access, UUID warehouseId) {
-        return switch (access.role()) {
-            case SUPERVISOR -> Boolean.TRUE.equals(jdbc.sql(
-                            "SELECT EXISTS (SELECT 1 FROM warehouses WHERE id = :id AND NOT is_deleted)")
-                    .param("id", warehouseId).query(Boolean.class).single());
-            case KEEPER -> access.defaultScope().warehouseIds().contains(warehouseId);
-            case OTHER -> false;
-        };
+        if (access.defaultScope().active()) {
+            return access.defaultScope().warehouseIds().contains(warehouseId);
+        }
+        return Boolean.TRUE.equals(jdbc.sql(
+                        "SELECT EXISTS (SELECT 1 FROM warehouses WHERE id = :id AND NOT is_deleted)")
+                .param("id", warehouseId).query(Boolean.class).single());
     }
 
     private List<UUID> subtree(UUID warehouseId) {

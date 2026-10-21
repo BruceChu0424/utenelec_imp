@@ -507,6 +507,10 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
 
   String? _error;
 
+  bool get _orderFinanceApproved =>
+      _detail?.status == kPurchaseStatusApproved &&
+      _detail?.financeApproval?.isApproved == true;
+
   Future<void> _printOrder() async {
     if (_openingPrint ||
         _busy ||
@@ -515,9 +519,21 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
         _detail == null) {
       return;
     }
+    if (!_orderFinanceApproved) {
+      context.appWarning('采购单须财务审核通过后才能打印；改量后须等待财务复核通过');
+      return;
+    }
     final ownsNative = captureNativeOwnership();
     setState(() => _openingPrint = true);
     try {
+      final confirmed = await UtenDialog.show(
+        context,
+        title: '确认打印采购单',
+        content: Text('将打开采购单 ${_detail!.billNo ?? widget.id} 的打印预览，请核对单号后继续。'),
+        confirmLabel: '确认打印',
+        waitForExit: true,
+      );
+      if (confirmed != true || !mounted || !ownsNative()) return;
       final document = await ref
           .read(purchaseRepositoryProvider(PurchaseDocType.order))
           .orderPrintDocument(widget.id);
@@ -1059,18 +1075,23 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
         title: '${_cfg.label}详情',
         actions: [
           if (widget.docType == PurchaseDocType.order)
-            UtenButton(
-              key: const Key('purchase-order-print'),
-              icon: Icons.print_outlined,
-              isLoading: _openingPrint,
-              onPressed:
-                  !_loading &&
-                      !_busy &&
-                      nativeReadAccessConfirmed &&
-                      _detail != null
-                  ? _printOrder
-                  : null,
-              child: const Text('打印单据'),
+            Tooltip(
+              message: _orderFinanceApproved
+                  ? '打印采购单'
+                  : '财务审核通过后才能打印，改量后须等待财务复核通过',
+              child: UtenButton(
+                key: const Key('purchase-order-print'),
+                icon: Icons.print_outlined,
+                isLoading: _openingPrint,
+                onPressed:
+                    !_loading &&
+                        !_busy &&
+                        nativeReadAccessConfirmed &&
+                        _orderFinanceApproved
+                    ? _printOrder
+                    : null,
+                child: const Text('打印单据'),
+              ),
             ),
         ],
         leading: UtenBackButton(

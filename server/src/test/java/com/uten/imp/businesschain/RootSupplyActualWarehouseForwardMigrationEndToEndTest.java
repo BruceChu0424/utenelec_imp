@@ -66,10 +66,12 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
         assertThat(db.queryForObject("SELECT to_regclass('public.sms_gateway_settings') IS NULL", Boolean.class)).isTrue();
         var support=new RootSupplyActualWarehouseEndToEndTest();beans.autowireBean(support);support.prepare();
         try {
-            // Prepare versioned V854 procurement facts, then run real receipt/IQC/stock
-            // commands. The historical amount authority is restored before migrations;
+            // Prepare versioned V854 analysis/request/procurement facts, then run real
+            // receipt/IQC/stock commands. Historical authorities restore before Flyway;
             // current-schema receipt reversal below always uses the production bean.
-            var fixture=new LegacyV854RootSupplyFixture(support).createAndPass();
+            var historical=new LegacyV854RootSupplyFixture(support);
+            var fixture=historical.createAndPass();
+            historical.assertCurrentComponentsRestored();
             assertThat(db.queryForObject("SELECT max(version::integer) FROM flyway_schema_history WHERE success",Integer.class)).isEqualTo(854);
             assertThat(db.queryForObject("SELECT pg_get_functiondef('fn_guard_root_output_event()'::regprocedure)",String.class))
                     .contains("a.warehouse_id=NEW.warehouse_id");
@@ -106,6 +108,7 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
             // today's entity mappings exist. Once all forward migrations are
             // applied, validate every current mapping before using current beans.
             validateCurrentApplicationSchema();
+            historical.assertCurrentComponentsRestored();
             assertThat(db.queryForObject("SELECT to_regprocedure('public.fn_preplan_make_public_supply_sources(uuid,uuid,uuid[])') IS NOT NULL",Boolean.class))
                     .isTrue();
             assertThat(businessFacts(fixture)).containsExactlyElementsOf(before);
@@ -155,6 +158,12 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
 
     private List<String> businessFacts(RootSupplyActualWarehouseEndToEndTest.Fixture fixture) {
         java.util.ArrayList<String> facts=new java.util.ArrayList<>();
+        facts.addAll(db.queryForList("SELECT row_to_json(analysis)::text FROM production_material_analyses analysis WHERE id=?",String.class,fixture.analysis()));
+        facts.addAll(db.queryForList("SELECT row_to_json(material)::text FROM production_material_analysis_materials material WHERE analysis_id=? ORDER BY id",String.class,fixture.analysis()));
+        facts.addAll(db.queryForList("SELECT row_to_json(action)::text FROM preplan_supply_actions action WHERE analysis_id=? ORDER BY id",String.class,fixture.analysis()));
+        facts.addAll(db.queryForList("SELECT row_to_json(allocation)::text FROM preplan_supply_action_allocations allocation WHERE analysis_id=? ORDER BY id",String.class,fixture.analysis()));
+        facts.addAll(db.queryForList("SELECT row_to_json(request)::text FROM purchase_requests request WHERE id IN(SELECT external_document_id FROM preplan_supply_actions WHERE analysis_id=? AND external_document_type='PURCHASE_REQUEST') ORDER BY id",String.class,fixture.analysis()));
+        facts.addAll(db.queryForList("SELECT row_to_json(item)::text FROM purchase_request_items item WHERE id IN(SELECT external_item_id FROM preplan_supply_action_allocations WHERE analysis_id=?) ORDER BY id",String.class,fixture.analysis()));
         facts.addAll(db.queryForList("SELECT row_to_json(receipt)::text FROM purchase_receipts receipt WHERE id=?",String.class,fixture.receipt()));
         facts.addAll(db.queryForList("SELECT row_to_json(item)::text FROM purchase_receipt_items item WHERE receipt_id=? ORDER BY id",String.class,fixture.receipt()));
         facts.addAll(db.queryForList("SELECT row_to_json(output)::text FROM preplan_root_output_events output WHERE analysis_id=? ORDER BY id",String.class,fixture.analysis()));

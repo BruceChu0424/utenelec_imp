@@ -25,6 +25,7 @@ import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Clock;
+import java.sql.SQLException;
 import java.util.*;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -49,6 +50,7 @@ class GoodsOperationHistoryAccountPostgresTest {
 
     @BeforeAll static void start() throws Exception {
         database=MigratedSchemaBaseline.openDatabase("goods_history_accounts");
+        maintainReplayTables();
         dataSource=new DriverManagerDataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword());
         var bean=new LocalContainerEntityManagerFactoryBean();
         bean.setDataSource(dataSource);bean.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
@@ -75,12 +77,65 @@ class GoodsOperationHistoryAccountPostgresTest {
                 new OwnerVisibility(current,em,new EmployeeHandoverVisibility(em)),mock(BusinessEventPublisher.class));
         login(a,Set.of(),true);
     }
-    @AfterEach void close() {
+    @AfterEach void close() throws SQLException {
         if (em.getTransaction().isActive()) {
             em.getTransaction().rollback();
         }
         em.close();
         org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        maintainReplayTables();
+    }
+
+    /** Keep automatic maintenance enabled, but reset this private matrix's
+     * cumulative dead/modification counts between cases, after every client
+     * transaction has closed. ANALYZE/VACUUM take ShareUpdateExclusiveLock,
+     * which intentionally conflicts with production replay's NOWAIT lock. */
+    private static void maintainReplayTables() throws SQLException {
+        try (var connection=database.openConnection();var statement=connection.createStatement()) {
+            statement.execute("VACUUM (ANALYZE) colors,units,material_categories,goods,goods_bom_items");
+        }
+    }
+
+    @Test void maintenanceContentionRetainsHistoryUntilTheLockIsReleased() throws Exception {
+        UUID goods=goods(null,"maintenance original"),operation=edit(goods,"maintenance changed");
+        login(a,EDIT,false);
+        try (var maintenance=database.openConnection();var contender=database.openConnection();
+             var observer=database.openConnection()) {
+            maintenance.setAutoCommit(false);
+            contender.setAutoCommit(false);
+            int maintenancePid;
+            try (var statement=maintenance.createStatement();var result=statement.executeQuery("SELECT pg_backend_pid()")) {
+                assertTrue(result.next());maintenancePid=result.getInt(1);
+            }
+            try (var statement=maintenance.createStatement()) {
+                statement.execute("ANALYZE goods");
+            }
+            try (var statement=observer.prepareStatement("SELECT mode FROM pg_locks WHERE pid=? AND relation='goods'::regclass AND granted")) {
+                statement.setInt(1,maintenancePid);
+                try (var result=statement.executeQuery()) {
+                    assertTrue(result.next());
+                    assertEquals("ShareUpdateExclusiveLock",result.getString(1));
+                }
+            }
+            try (var statement=observer.createStatement();var result=statement.executeQuery("SHOW autovacuum")) {
+                assertTrue(result.next());assertEquals("on",result.getString(1));
+            }
+            try (var statement=contender.createStatement()) {
+                SQLException blocked=assertThrows(SQLException.class,()->statement.execute(
+                        "LOCK TABLE colors,units,material_categories,goods,goods_bom_items IN SHARE ROW EXCLUSIVE MODE NOWAIT"));
+                assertEquals("55P03",blocked.getSQLState());
+            }
+            contender.rollback();
+            assertEquals("maintenance changed",text("SELECT name FROM goods WHERE id=:id",goods));
+            assertEquals(0,entry(operation).version());assertEvents(0);
+            maintenance.rollback();
+        }
+        inTx(()->service.undo(operation,0));
+        assertEquals("maintenance original",text("SELECT name FROM goods WHERE id=:id",goods));
+        assertTrue(entry(operation).canRedo());assertEquals(1,entry(operation).version());
+        inTx(()->service.redo(operation,1));
+        assertEquals("maintenance changed",text("SELECT name FROM goods WHERE id=:id",goods));
+        assertEquals(2,entry(operation).version());assertEvents(2);
     }
 
     @Test void eachAccountKeepsItsOwnUndoAndRedoBranchWhenTheOtherAccountWrites() {
@@ -366,4 +421,5 @@ class GoodsOperationHistoryAccountPostgresTest {
             throw error;
         }
     }
+
 }

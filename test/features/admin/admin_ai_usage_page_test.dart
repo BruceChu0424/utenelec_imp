@@ -1,6 +1,8 @@
 // AdminAiUsagePage / AdminAiUsagePersonPage 测试(ADR-164):
 // 守卫断言、KPI/趋势/人员表渲染、窗口切换重请求、限额编辑(409 冲突/停用二次确认)、
 // 无权限空态与人员详情基础渲染。fake 仓储直接喂服务端 wire JSON(顺带覆盖 fromJson)。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -170,6 +172,7 @@ class _Repo implements AiUsageDashboardRepository {
 
   /// 非空时 saveLimits 抛它(模拟 409 冲突等)。
   Object? saveError;
+  Completer<AiUserLimits>? pendingSave;
 
   final List<String> dashboardCalls = [];
   final List<String> personCalls = [];
@@ -211,6 +214,7 @@ class _Repo implements AiUsageDashboardRepository {
     });
     final error = saveError;
     if (error != null) throw error;
+    if (pendingSave case final pending?) return pending.future;
     return AiUserLimits(
       userId: userId,
       disabled: disabled,
@@ -466,6 +470,72 @@ void main() {
         find.byKey(const ValueKey('ai-usage-limit-error')),
         findsOneWidget,
       );
+    },
+  );
+
+  testWidgets(
+    'idle limit editor outside cancellation does not save or refresh',
+    (tester) async {
+      final repo = _Repo();
+      await _pump(tester, const AdminAiUsagePage(), repo: repo);
+      await _tap(tester, 'ai-usage-limit-$_zhangId');
+      await _enter(tester, 'ai-usage-limit-tokens', '200000');
+      await tester.tapAt(const Offset(8, 500));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('ai-usage-limit-save')), findsNothing);
+      expect(repo.saves, isEmpty);
+      expect(repo.dashboardCalls, ['day']);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'held limit save survives first-frame outside dismissal and back until host refresh',
+    (tester) async {
+      final pending = Completer<AiUserLimits>();
+      final repo = _Repo()..pendingSave = pending;
+      addTearDown(() {
+        if (!pending.isCompleted) {
+          pending.complete(
+            const AiUserLimits(
+              userId: _zhangId,
+              disabled: false,
+              dailyTokenLimit: null,
+              dailyJobLimit: null,
+              rowVersion: 5,
+            ),
+          );
+        }
+      });
+      await _pump(tester, const AdminAiUsagePage(), repo: repo);
+      await _tap(tester, 'ai-usage-limit-$_zhangId');
+      final save = find.byKey(const ValueKey('ai-usage-limit-save'));
+      await tester.tap(save);
+      // Deliberately before the next frame mounts the root busy overlay.
+      await tester.tapAt(const Offset(8, 500));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(save, findsOneWidget);
+      expect(repo.saves, hasLength(1));
+      await Navigator.of(tester.element(save)).maybePop();
+      await tester.pump();
+      await tester.tapAt(const Offset(8, 500));
+      await tester.pump();
+      expect(save, findsOneWidget);
+      expect(repo.dashboardCalls, ['day']);
+      pending.complete(
+        const AiUserLimits(
+          userId: _zhangId,
+          disabled: false,
+          dailyTokenLimit: null,
+          dailyJobLimit: null,
+          rowVersion: 5,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(save, findsNothing);
+      expect(repo.dashboardCalls, ['day', 'day']);
+      expect(tester.takeException(), isNull);
     },
   );
 

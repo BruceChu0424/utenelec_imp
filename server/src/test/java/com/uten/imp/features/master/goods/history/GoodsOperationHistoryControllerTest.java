@@ -1,5 +1,6 @@
 package com.uten.imp.features.master.goods.history;
 
+import com.uten.imp.common.web.GlobalExceptionHandler;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.aop.framework.ProxyFactory;
@@ -25,7 +26,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class GoodsOperationHistoryControllerTest {
     private final GoodsOperationHistoryService service = mock(GoodsOperationHistoryService.class);
     private final GoodsOperationHistoryController controller = new GoodsOperationHistoryController(service);
-    private final MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).build();
+    private final MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
+            .setControllerAdvice(new GlobalExceptionHandler()).build();
     private final GoodsOperationHistoryService.History empty =
             new GoodsOperationHistoryService.History(List.of(), List.of());
 
@@ -41,7 +43,14 @@ class GoodsOperationHistoryControllerTest {
             for (String body : List.of("{}", "{\"expectedVersion\":null}", "{\"expectedVersion\":-1}")) {
                 mvc.perform(post("/api/master/goods/history/{id}/{action}", id, action)
                                 .contentType(MediaType.APPLICATION_JSON).content(body))
-                        .andExpect(status().isBadRequest());
+                        .andExpect(status().isUnprocessableContent())
+                        .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                        .andExpect(jsonPath("$.status").value(422))
+                        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                        .andExpect(jsonPath("$.message").value("填写的内容有误，请检查后重试"))
+                        .andExpect(jsonPath("$.fieldErrors.length()").value(1))
+                        .andExpect(jsonPath("$.fieldErrors[0].field").value("expectedVersion"))
+                        .andExpect(jsonPath("$.fieldErrors[0].message").isNotEmpty());
             }
         }
         verifyNoInteractions(service);

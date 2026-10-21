@@ -262,7 +262,7 @@ class _AiUsageLimitEditorState extends ConsumerState<AiUsageLimitEditor> {
       error.httpStatus == 409 || error.code == 'CONFLICT';
 
   void _close() {
-    if (_closing) return;
+    if (_closing || _saving) return;
     _closing = true;
     Navigator.of(context).pop(false);
   }
@@ -272,63 +272,71 @@ class _AiUsageLimitEditorState extends ConsumerState<AiUsageLimitEditor> {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final target = _target;
-    return Material(
-      color: theme.colorScheme.surface,
-      child: Column(
-        children: [
-          _Header(
-            title: l10n.aiUsageSetLimits,
-            subtitle: widget.target.display,
-            onClose: _close,
-          ),
-          Divider(height: 1, color: theme.colorScheme.outlineVariant),
-          Expanded(
-            child: target == null
-                ? _resolveBody(l10n)
-                : Stack(
+    return PopScope(
+      // Keep dismissal routed through the live save guard even before the
+      // next frame has mounted the global busy overlay.
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _close();
+      },
+      child: Material(
+        color: theme.colorScheme.surface,
+        child: Column(
+          children: [
+            _Header(
+              title: l10n.aiUsageSetLimits,
+              subtitle: widget.target.display,
+              onClose: _close,
+            ),
+            Divider(height: 1, color: theme.colorScheme.outlineVariant),
+            Expanded(
+              child: target == null
+                  ? _resolveBody(l10n)
+                  : Stack(
+                      children: [
+                        Positioned.fill(child: _form(l10n, theme, target)),
+                        if (_saving)
+                          UtenBusyOverlay(
+                            semanticsKey: const ValueKey('ai-usage-limit-busy'),
+                            title: l10n.aiSettingsBusySaving,
+                          ),
+                      ],
+                    ),
+            ),
+            Divider(height: 1, color: theme.colorScheme.outlineVariant),
+            if (target != null)
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.all(UtenSpacing.s16),
+                  child: Row(
                     children: [
-                      Positioned.fill(child: _form(l10n, theme, target)),
-                      if (_saving)
-                        UtenBusyOverlay(
-                          semanticsKey: const ValueKey('ai-usage-limit-busy'),
-                          title: l10n.aiSettingsBusySaving,
+                      Expanded(
+                        child: UtenButton(
+                          key: const ValueKey('ai-usage-limit-cancel'),
+                          type: UtenButtonType.secondary,
+                          height: 48,
+                          onPressed: _saving ? null : _close,
+                          child: Text(l10n.aiSettingsCancel),
                         ),
+                      ),
+                      const SizedBox(width: UtenSpacing.s12),
+                      Expanded(
+                        child: UtenButton(
+                          key: const ValueKey('ai-usage-limit-save'),
+                          height: 48,
+                          icon: Icons.save_outlined,
+                          isLoading: _saving,
+                          onPressed: _save,
+                          child: Text(l10n.aiSettingsSave),
+                        ),
+                      ),
                     ],
                   ),
-          ),
-          Divider(height: 1, color: theme.colorScheme.outlineVariant),
-          if (target != null)
-            SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.all(UtenSpacing.s16),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: UtenButton(
-                        key: const ValueKey('ai-usage-limit-cancel'),
-                        type: UtenButtonType.secondary,
-                        height: 48,
-                        onPressed: _saving ? null : _close,
-                        child: Text(l10n.aiSettingsCancel),
-                      ),
-                    ),
-                    const SizedBox(width: UtenSpacing.s12),
-                    Expanded(
-                      child: UtenButton(
-                        key: const ValueKey('ai-usage-limit-save'),
-                        height: 48,
-                        icon: Icons.save_outlined,
-                        isLoading: _saving,
-                        onPressed: _save,
-                        child: Text(l10n.aiSettingsSave),
-                      ),
-                    ),
-                  ],
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

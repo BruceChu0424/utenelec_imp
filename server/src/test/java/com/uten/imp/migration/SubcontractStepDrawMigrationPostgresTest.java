@@ -698,9 +698,9 @@ class SubcontractStepDrawMigrationPostgresTest {
                       WHERE draw_grant.user_id = holder.user_id AND draw_grant.effect = 'grant' AND draw_grant.active)
                 """), "个人加授了送财务的账号都必须同时加授领料");
         // V798 suppresses retention only for its draw seed / retired close grants.
-        // A later independently registered configuration grant (V860 Finance
-        // price analysis) legitimately has a V775 parent identity. The current
-        // bootstrap guard distinguishes PRESERVE configuration from business sources.
+        // V860 Finance price analysis and V896's two copied quotation decisions
+        // independently retain V775 parent identities. They are PRESERVE
+        // configuration, not side effects of the V798 draw seed.
         assertEquals(0, count("""
                 SELECT count(*) FROM business_record_identities identity
                 JOIN permissions permission ON permission.id::text = identity.source_id::jsonb->>'permission_id'
@@ -729,8 +729,25 @@ class SubcontractStepDrawMigrationPostgresTest {
                   AND department.code = 'DEPT_FIN' AND permission.code = 'goods:price_analysis:view'
                   AND grant_row.created_by IS NULL
                 """), "V860 独立财务价格分析种子保留精确的授权父级身份");
-        assertEquals(1, count("SELECT count(*) FROM business_record_identities WHERE source_table = 'department_permissions'"),
-                "当前完整目录仅包含独立验证的 V860 配置身份，不得归因于 V798 领料种子");
+        for (String decision : List.of("sales_quote_finance:reject", "sales_quote_finance:reverse")) {
+            assertEquals(1, count("""
+                    SELECT count(*) FROM business_record_identities identity
+                    JOIN department_permissions grant_row ON identity.source_id::jsonb = jsonb_build_object(
+                        'department_id', grant_row.department_id, 'permission_id', grant_row.permission_id)
+                    JOIN departments department ON department.id = grant_row.department_id
+                    JOIN permissions permission ON permission.id = grant_row.permission_id
+                    JOIN department_permissions original_grant ON original_grant.department_id = grant_row.department_id
+                    JOIN permissions original_permission ON original_permission.id = original_grant.permission_id
+                      AND original_permission.code = 'sales_quote_finance:confirm'
+                    WHERE identity.source_table = 'department_permissions'
+                      AND identity.parent_table = 'departments' AND identity.parent_id = department.id::text
+                      AND department.code = 'DEPT_FIN' AND permission.code = ?
+                      AND grant_row.created_by IS NOT DISTINCT FROM original_grant.created_by
+                      AND grant_row.created_at IS NOT DISTINCT FROM original_grant.created_at
+                    """, decision), "V896 拆分决定必须保留原财务授权的部门、创建者、时间与精确父级身份: " + decision);
+        }
+        assertEquals(3, count("SELECT count(*) FROM business_record_identities WHERE source_table = 'department_permissions'"),
+                "当前完整目录仅含逐条验证的 V860/V896 配置身份，不得归因于 V798 领料种子");
         assertEquals(2, count("""
                 SELECT count(*) FROM pg_trigger
                 WHERE tgrelid = 'department_permissions'::regclass

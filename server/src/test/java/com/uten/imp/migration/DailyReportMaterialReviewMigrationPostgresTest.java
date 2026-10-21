@@ -104,6 +104,8 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertTrue(expectedTables.add("business_column_deletions"));
         // V890 preserves the explicit market association with its goods master.
         assertTrue(expectedTables.add("goods_market_reference_bindings"));
+        // V894 adds saved permission snapshots, independently of existing accounts and command evidence.
+        assertTrue(expectedTables.add("permission_templates"));
         V871_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         V885_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         assertEquals(expectedTables.stream().toList(),tables());
@@ -134,6 +136,13 @@ class DailyReportMaterialReviewMigrationPostgresTest {
                 "CREATE UNIQUE INDEX business_column_deletions_pkey ON public.business_column_deletions USING btree (column_id)"));
         assertNull(expectedIndexes.put("goods_market_reference_bindings_pkey",
                 "CREATE UNIQUE INDEX goods_market_reference_bindings_pkey ON public.goods_market_reference_bindings USING btree (goods_id)"));
+        assertNull(expectedIndexes.put("permission_templates_pkey",
+                "CREATE UNIQUE INDEX permission_templates_pkey ON public.permission_templates USING btree (id)"));
+        assertNull(expectedIndexes.put("permission_templates_name_active_uq",
+                "CREATE UNIQUE INDEX permission_templates_name_active_uq ON public.permission_templates USING btree (lower(btrim((name)::text))) WHERE (NOT is_deleted)"));
+        // V895 bounds retained-responsibility lookup to the cancelled actions of the current analysis.
+        assertNull(expectedIndexes.put("idx_preplan_cancelled_action_analysis",
+                "CREATE INDEX idx_preplan_cancelled_action_analysis ON public.preplan_supply_actions USING btree (analysis_id, id) WHERE (status = 'CANCELLED'::text)"));
         // V870 adds a nullable correction-source relationship to append-only
         // employment events; its one new partial index is an explicit delta.
         assertNull(expectedIndexes.put("idx_employment_history_correction_source",
@@ -160,6 +169,7 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         // V890 retains the market binding, including its unlink/CAS tombstone.
         assertEquals("CLEAR",expectedPolicy.put("auth_step_up_states","PRESERVE"));
         assertNull(expectedPolicy.put("goods_market_reference_bindings","PRESERVE"));
+        assertNull(expectedPolicy.put("permission_templates","PRESERVE"));
         V871_HISTORY_TABLES.forEach(table->assertNull(expectedPolicy.put(table,"PRESERVE")));
         V885_HISTORY_TABLES.forEach(table->assertNull(expectedPolicy.put(table,"PRESERVE")));
         assertEquals(expectedPolicy,catalogMap(resetPolicy()));

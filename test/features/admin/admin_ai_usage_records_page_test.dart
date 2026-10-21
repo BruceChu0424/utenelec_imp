@@ -54,6 +54,78 @@ void main() {
     expect(providers.reads, greaterThanOrEqualTo(1));
   });
 
+  testWidgets('idle billing outside cancellation does not save or refresh', (
+    tester,
+  ) async {
+    final repository = _Repository();
+    await _pump(tester, repository);
+    final reads = repository.reads.length;
+    await _openBilling(tester);
+    await tester.tapAt(const Offset(8, 500));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('ai-billing-provider')), findsNothing);
+    expect(repository.saved, isEmpty);
+    expect(repository.reads, hasLength(reads));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'held billing save survives outside dismissal and back until saved close refreshes host',
+    (tester) async {
+      final pending = Completer<Map<String, dynamic>>();
+      final repository = _Repository()..pendingSave = pending;
+      addTearDown(() {
+        if (!pending.isCompleted) {
+          pending.complete({...repository.billingValue, 'version': 8});
+        }
+      });
+      await _pump(tester, repository);
+      final reads = repository.reads.length;
+      await _openBilling(tester);
+      final save = find.byKey(const ValueKey('ai-billing-save'));
+      await tester.ensureVisible(save);
+      await tester.tap(save);
+      await tester.tapAt(const Offset(8, 500));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(save, findsOneWidget);
+      await Navigator.of(tester.element(save)).maybePop();
+      await tester.pump();
+      expect(save, findsOneWidget);
+      expect(repository.saved, hasLength(1));
+      expect(repository.reads, hasLength(reads));
+      pending.complete({...repository.billingValue, 'version': 8});
+      await tester.pumpAndSettle();
+      await tester.tapAt(const Offset(8, 500));
+      await tester.pumpAndSettle();
+      expect(save, findsNothing);
+      expect(repository.reads, hasLength(reads + 1));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('a read-only billing load can still be cancelled outside', (
+    tester,
+  ) async {
+    final pending = Completer<Map<String, dynamic>>();
+    final repository = _Repository()..pendingBilling = pending;
+    addTearDown(() {
+      if (!pending.isCompleted) {
+        pending.complete(Map.of(repository.billingValue));
+      }
+    });
+    await _pump(tester, repository);
+    await _openBilling(tester);
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    await tester.tapAt(const Offset(8, 500));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('ai-billing-provider')), findsNothing);
+    expect(repository.saved, isEmpty);
+    pending.complete(Map.of(repository.billingValue));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('provider list failure keeps records readable and billing off', (
     tester,
   ) async {
@@ -838,6 +910,7 @@ class _Repository implements AiUsageAuditRepository {
   Object? billingError;
   void Function(Map<String, dynamic>)? afterSave;
   Completer<Map<String, dynamic>>? pendingSave;
+  Completer<Map<String, dynamic>>? pendingBilling;
   final billingValue = <String, dynamic>{
     'version': 7,
     'billingMode': 'METERED',
@@ -869,6 +942,7 @@ class _Repository implements AiUsageAuditRepository {
   @override
   Future<Map<String, dynamic>> billing(String providerId) async {
     if (billingError case final error?) throw error;
+    if (pendingBilling case final pending?) return pending.future;
     return Map.of(billingValue);
   }
 

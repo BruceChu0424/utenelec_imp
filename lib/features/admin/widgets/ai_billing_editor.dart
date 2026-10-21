@@ -72,6 +72,8 @@ class _AiBillingEditorState extends ConsumerState<AiBillingEditor> {
   String? _message;
   bool _messageIsSuccess = false;
   bool _busy = false;
+  // Loading may be cancelled; a dispatched save must finish before closing.
+  bool _saving = false;
   bool _saved = false;
   final _input = TextEditingController(), _output = TextEditingController();
   final _quota5h = TextEditingController(),
@@ -154,6 +156,7 @@ class _AiBillingEditorState extends ConsumerState<AiBillingEditor> {
     }
     setState(() {
       _busy = true;
+      _saving = true;
       _message = null;
       _messageIsSuccess = false;
     });
@@ -184,6 +187,8 @@ class _AiBillingEditorState extends ConsumerState<AiBillingEditor> {
     } catch (error) {
       if (!mounted) return;
       if (_isAccessDenied(error)) {
+        _saving = false;
+        _busy = false;
         widget.onDenied?.call(error as ApiException);
         _close();
         return;
@@ -199,11 +204,13 @@ class _AiBillingEditorState extends ConsumerState<AiBillingEditor> {
             ? error.message
             : l10n.aiAuditSaveFailed;
       });
+    } finally {
+      if (mounted && _saving) setState(() => _saving = false);
     }
   }
 
   void _close() {
-    if (!mounted) return;
+    if (!mounted || _saving) return;
     Navigator.of(context).pop(_saved);
   }
 

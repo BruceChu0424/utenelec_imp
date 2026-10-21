@@ -62,13 +62,16 @@ public class MaterialForecastDevelopmentPayload {
     static Path sourceCheckout(Path applicationHome) {
         Path home=applicationHome.toAbsolutePath().normalize();
         if(home.getFileName()==null||!"classes".equals(home.getFileName().toString()))return null;
-        for(Path candidate=home.getParent();candidate!=null;candidate=candidate.getParent()) {
-            if(Files.exists(candidate.resolve(".git"),LinkOption.NOFOLLOW_LINKS)
-                    &&Files.isRegularFile(candidate.resolve("server/pom.xml"),LinkOption.NOFOLLOW_LINKS)
-                    &&Files.isRegularFile(candidate.resolve("services/material_forecast/build_payload.py"),LinkOption.NOFOLLOW_LINKS)
-                    &&home.startsWith(candidate.resolve("server")))return candidate;
-        }
-        return null;
+        Path buildDirectory=home.getParent();
+        Path module=buildDirectory==null?null:buildDirectory.getParent();
+        Path repository=module==null?null:module.getParent();
+        if(repository==null||!module.equals(repository.resolve("server")))return null;
+        // Maven's build directory may have any name. Only the direct server
+        // output owns these classes; nested fixtures must not borrow an outer checkout.
+        return Files.exists(repository.resolve(".git"),LinkOption.NOFOLLOW_LINKS)
+                &&Files.isRegularFile(module.resolve("pom.xml"),LinkOption.NOFOLLOW_LINKS)
+                &&Files.isRegularFile(repository.resolve("services/material_forecast/build_payload.py"),LinkOption.NOFOLLOW_LINKS)
+                ?repository:null;
     }
 
     List<String> command(Path repository) {

@@ -1,0 +1,35 @@
+{
+  "historicalSourceCommit": "0bdab31f1784018f854a3954eef898c09ce3c90b",
+  "historicalSourceBlobSha256": "c0237a963b1ae712001808b5c3c6e1baa25e2dc95a0d4891bccf85fb886cf64a",
+  "currentExactMatchSourceCommit": "013b62e0e86de1dde70f9585e2426551013d79a1",
+  "currentSourceBlobSha256": "3b684ebdf556fda641c5709b347ed146dfba7481dc8301f221e45ccab05ea82e",
+  "historicalPegFullSourceBlobSha256": "0eca14ef9ac49aa3700856b660eaa451881642b2d806b0ccf4e9371baff9638f",
+  "queries": [
+    {
+      "resource": "historical.active-future-coverage.sql",
+      "sha256": "5ea9172ad5e72053588f712d10c42713c872cd9ef6ced0c07019f91aee2474ad",
+      "bytes": 5944
+    },
+    {
+      "resource": "historical.parent-supply-commitments.sql",
+      "sha256": "57e2118eb4db8080419470e71de0366426569e14007c438497a01969b4479096",
+      "bytes": 6065
+    },
+    {
+      "resource": "current.active-future-coverage.sql",
+      "sha256": "6c6d33546130daf01b7ab232a3dc2bef724c021e5cd41f12262c18bd1c0e4b49",
+      "bytes": 7405
+    },
+    {
+      "resource": "current.parent-supply-commitments.sql",
+      "sha256": "44e31cd2b831051c10b36bc1085713f47b601fb6c0826de810cd506b019510f7",
+      "bytes": 7526
+    }
+  ],
+  "historicalSourcePath": "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisService.java",
+  "selectedHistoricalMethods": [
+    "activeFutureCoverage",
+    "parentSupplyCommitments"
+  ],
+  "purpose": "Exact two complete SELECT statements used only by real historical IQC synchronous refresh; no preview/detail/notify or SQL function replacement"
+}

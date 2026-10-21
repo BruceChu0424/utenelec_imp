@@ -29,6 +29,20 @@ class MaterialForecastDevelopmentPayloadTest {
         assertThat(MaterialForecastDevelopmentPayload.sourceCheckout(repository.resolve("website/classes"))).isNull();
     }
 
+    @Test void nestedFixtureClassesCannotBorrowAnOuterCheckoutAndCustomBuildNamesStillWork()throws Exception {
+        Path repository=repository();
+        Path nested=Files.createDirectories(repository.resolve("server/validation-output/tmp/fixture/elsewhere/classes"));
+        assertThat(MaterialForecastDevelopmentPayload.sourceCheckout(nested)).isNull();
+        Path custom=Files.createDirectories(repository.resolve("server/custom-validation-output/classes"));
+        assertThat(MaterialForecastDevelopmentPayload.sourceCheckout(custom)).isEqualTo(repository);
+        if(MaterialForecastHostPaths.windows()) {
+            assertThat(MaterialForecastDevelopmentPayload.sourceCheckout(
+                    repository.resolve("SERVER/custom-validation-output/classes"))).isEqualTo(repository);
+        }
+        Path anotherModule=Files.createDirectories(repository.resolve("website/server/custom-output/classes"));
+        assertThat(MaterialForecastDevelopmentPayload.sourceCheckout(anotherModule)).isNull();
+    }
+
     @Test void everyPreparationUsesTheBuilderReceiptAndNeverTrustsAnExistingCacheDirectory()throws Exception {
         Path repository=repository();
         Path home=Files.createDirectories(repository.resolve("server/target/classes"));

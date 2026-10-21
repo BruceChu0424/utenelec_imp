@@ -64,12 +64,25 @@ class FixtureApi:
 
 
 class ReleaseGateTest(unittest.TestCase):
-    def test_all_three_exact_commit_workflows_must_pass(self):
+    def test_all_four_exact_commit_workflows_must_pass(self):
         api = FixtureApi()
         evidence = gate.require_release_gates(api, REPOSITORY, SHA)
-        self.assertEqual(3, len(evidence))
+        self.assertEqual(4, len(evidence))
         self.assertTrue(all(SHA in item for item in evidence))
-        self.assertEqual(9, len(api.calls))
+        self.assertEqual(12, len(api.calls))
+
+    def test_forecast_missing_failed_or_pending_cannot_be_bypassed_by_other_green_gates(self):
+        for state in ("missing", "failure", "in_progress"):
+            with self.subTest(state=state):
+                api = FixtureApi()
+                if state == "missing":
+                    api.runs["material-forecast.yml"] = []
+                elif state == "failure":
+                    api.runs["material-forecast.yml"][0]["conclusion"] = "failure"
+                else:
+                    api.runs["material-forecast.yml"][0].update(status=state, conclusion=None)
+                with self.assertRaisesRegex(gate.GateError, "material-forecast"):
+                    gate.require_release_gates(api, REPOSITORY, SHA)
 
     def test_missing_run_rejects_instead_of_accepting_other_workflows(self):
         api = FixtureApi()
@@ -321,7 +334,8 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
                 self.assertNotIn("continue-on-error", block)
 
     def test_required_workflows_are_the_existing_named_gates(self):
-        expected = {"quality.yml": "Quality Gate", "codeql.yml": "CodeQL", "osv-scanner.yml": "Dependency Vulnerability Scan"}
+        expected = {"quality.yml": "Quality Gate", "codeql.yml": "CodeQL",
+                    "osv-scanner.yml": "Dependency Vulnerability Scan", "material-forecast.yml": "Material forecast"}
         self.assertEqual(set(expected), set(gate.WORKFLOWS))
         for filename, name in expected.items():
             content = (ROOT / ".github/workflows" / filename).read_text(encoding="utf-8")

@@ -23,7 +23,9 @@ jobs:
           persist-credentials: false
 
       - name: Verify OSV process and output gate
-        run: python3 -m unittest discover -s .github/scripts -p test_osv_scan_gate.py -v
+        run: |
+          python3 -m unittest discover -s .github/scripts -p test_osv_scan_gate.py -v
+          python3 -m unittest discover -s services/material_forecast/tests -p test_ci_contract.py -v
 
       - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
         with:
@@ -42,6 +44,7 @@ jobs:
           path: |
             server/target/classes/META-INF/sbom/application.cdx.json
             pubspec.lock
+            services/material_forecast/requirements.txt
             osv-scanner.toml
           if-no-files-found: error
           retention-days: 1
@@ -66,6 +69,8 @@ jobs:
             ./server/target/classes/META-INF/sbom/application.cdx.json
             --lockfile
             ./pubspec.lock
+            --lockfile
+            ./services/material_forecast/requirements.txt
 
       - name: Generate OSV SARIF
         id: osv-report

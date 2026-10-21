@@ -17,6 +17,10 @@ Series IDs match `[a-z0-9][a-z0-9_-]{0,63}`. PC must use SPOT with an explicit g
 never silently converted. CSV columns: `date,price,available_at`. All timestamps
 are timezone aware; quote dates use Asia/Shanghai and generatedAt uses UTC.
 Revisions are appended, never silently replaced.
+Malformed/truncated quoted CSV is rejected. The import ledger is accepted only
+with its exact supported fields and a digest matching the complete canonical
+prefix of incoming rows; empty, shortened or incompatible ledgers cannot silently
+reset import history. Failed imports retain the last complete snapshot.
 Historical replay uses only the revision available at each forecast origin;
 the latest revised series must not be sliced and called point-in-time backtesting.
 Reject duplicate date+available_at, nonpositive/nonfinite price, future publication,

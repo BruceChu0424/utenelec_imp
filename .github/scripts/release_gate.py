@@ -11,7 +11,7 @@ import urllib.parse
 import urllib.request
 
 
-WORKFLOWS = ("quality.yml", "codeql.yml", "osv-scanner.yml")
+WORKFLOWS = ("quality.yml", "codeql.yml", "osv-scanner.yml", "material-forecast.yml")
 PAGE_SIZE = 100
 MAX_RUNS = 1000
 

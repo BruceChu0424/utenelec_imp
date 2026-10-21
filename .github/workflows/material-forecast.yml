@@ -2,15 +2,8 @@ name: Material forecast
 
 on:
   pull_request:
-    paths:
-      - 'services/material_forecast/**'
-      - '.github/workflows/material-forecast.yml'
-      - '.github/dependabot.yml'
   push:
     branches: [main]
-    paths:
-      - 'services/material_forecast/**'
-      - '.github/workflows/material-forecast.yml'
   workflow_dispatch:
 
 permissions:
@@ -29,11 +22,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # Ubuntu 24.04 supplies Python 3.12. The worker does not need a GPU,
+      # Use the same Python minor as the universal dependency lock. No GPU,
       # production secrets, a market subscription or external data requests.
+      - name: Verify inference and security use the complete hashed lock
+        run: python3.12 -m unittest discover -s services/material_forecast/tests -p test_ci_contract.py -v
       - name: Install pinned inference dependencies
         run: |
-          python3 -m venv .venv-material-forecast
-          .venv-material-forecast/bin/python -m pip install -r services/material_forecast/requirements.txt
+          python3.12 -m venv .venv-material-forecast
+          .venv-material-forecast/bin/python -m pip install --require-hashes --only-binary=:all: --disable-pip-version-check -r services/material_forecast/requirements.txt
+          .venv-material-forecast/bin/python -m pip check
       - name: Verify point-in-time replay, model gates and real library inference
         run: .venv-material-forecast/bin/python -m unittest discover -s services/material_forecast/tests -v

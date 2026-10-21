@@ -127,6 +127,23 @@ def read_manifest(path: Path, allow_synthetic: bool = False) -> dict:
     return value
 
 
+def strict_csv_rows(raw: str):
+    """A partially replaced quoted file must not become a valid new generation."""
+    try:
+        reader = csv.DictReader(io.StringIO(raw), strict=True)
+        if reader.fieldnames != ["date", "price", "available_at"]:
+            raise InputError("CSV header must be date,price,available_at in that order")
+        yield from reader
+    except csv.Error as exc:
+        raise InputError("CSV is malformed or truncated; restore the complete source file") from exc
+
+
+def dataset_digest(manifest: dict, rows) -> str:
+    canonical = json.dumps(manifest, sort_keys=True, ensure_ascii=False) + "\n"
+    canonical += "\n".join(row.canonical() for row in rows)
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
 def read_dataset(manifest_path: Path, csv_path: Path, now: datetime,
                  allow_synthetic: bool = False) -> Dataset:
     manifest = read_manifest(manifest_path, allow_synthetic)
@@ -136,12 +153,9 @@ def read_dataset(manifest_path: Path, csv_path: Path, now: datetime,
         raw = csv_path.read_text(encoding="utf-8-sig")
     except UnicodeError as exc:
         raise InputError("CSV must be UTF-8") from exc
-    reader = csv.DictReader(io.StringIO(raw))
-    if reader.fieldnames != ["date", "price", "available_at"]:
-        raise InputError("CSV header must be date,price,available_at in that order")
     rows: list[Revision] = []
     seen: set[tuple[date, datetime]] = set()
-    for line, entry in enumerate(reader, 2):
+    for line, entry in enumerate(strict_csv_rows(raw), 2):
         if len(rows) >= MAX_ROWS:
             raise InputError("CSV exceeds 50000 revisions")
         if None in entry or any(value is None for value in entry.values()):
@@ -184,9 +198,7 @@ def read_dataset(manifest_path: Path, csv_path: Path, now: datetime,
     for left, right in zip(first_prices, first_prices[1:]):
         if max(left, right) / min(left, right) > 5:
             raise InputError("implausible adjacent price change; check units/source")
-    canonical = json.dumps(manifest, sort_keys=True, ensure_ascii=False) + "\n"
-    canonical += "\n".join(row.canonical() for row in rows)
-    return Dataset(manifest, tuple(rows), hashlib.sha256(canonical.encode()).hexdigest())
+    return Dataset(manifest, tuple(rows), dataset_digest(manifest, rows))
 
 
 def ledger_payload(dataset: Dataset) -> dict:
@@ -196,9 +208,18 @@ def ledger_payload(dataset: Dataset) -> dict:
 def require_append_only(dataset: Dataset, previous: dict | None) -> None:
     if previous is None:
         return
+    old_rows = previous.get("rows")
+    if (set(previous) != {"manifest", "rows", "digest"}
+            or not isinstance(old_rows, list) or not old_rows
+            or any(not isinstance(value, str) or re.fullmatch(r"[a-f0-9]{64}", value) is None
+                   for value in old_rows)):
+        raise InputError("import ledger is invalid; restore its trusted backup")
     if previous.get("manifest") != dataset.manifest:
         raise InputError("manifest identity changed; create a new seriesId for a new source/basis")
-    old_rows = previous.get("rows")
     hashes = dataset.row_hashes()
-    if not isinstance(old_rows, list) or hashes[:len(old_rows)] != old_rows:
+    if hashes[:len(old_rows)] != old_rows:
         raise InputError("append-only import violated: retain every old CSV row in its original order")
+    # Validate the ledger against its complete canonical prefix. Merely matching
+    # a prefix of row hashes lets a truncated/empty ledger erase import history.
+    if previous.get("digest") != dataset_digest(dataset.manifest, dataset.rows[:len(old_rows)]):
+        raise InputError("import ledger digest is invalid; restore its trusted backup")

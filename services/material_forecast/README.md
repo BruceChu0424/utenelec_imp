@@ -15,7 +15,8 @@
 
 ```powershell
 python -m venv .venv-material-forecast
-& ./.venv-material-forecast/Scripts/python.exe -m pip install -r services/material_forecast/requirements.txt
+& ./.venv-material-forecast/Scripts/python.exe -m pip install --require-hashes --only-binary=:all: -r services/material_forecast/requirements.txt
+& ./.venv-material-forecast/Scripts/python.exe -m pip check
 & ./.venv-material-forecast/Scripts/python.exe -m unittest discover -s services/material_forecast/tests -v
 
 & ./.venv-material-forecast/Scripts/python.exe services/material_forecast/worker.py `
@@ -96,6 +97,8 @@ CSV 字段固定为 `date,price,available_at`。每行是一个观察日期的�
 同一基准不能并行导入；进程异常退出遗留锁时，先确认该进程已停止再处理该锁文件。
 
 重复的 `date+available_at`、未来发布时间、非正价格、明显单位跳变、超限文件会拒绝。
+引号未闭合的截断 CSV 也会拒绝，保留上一次完整快照。账本缺少字段、版本不兼容、
+行清单被截短或完整前缀摘要不符时停止导入，须恢复可信备份，不能重新建立空账本。
 相邻首报价或同日修订相差超过 5 倍会视为可疑，需核对单位与来源。
 CSV 最大 8 MiB、50,000 行修订，不允许用插值或填充伪造缺失报价。
 
@@ -160,6 +163,16 @@ READY 时只有区间完全高于/低于最近价才显示 UP/DOWN。
 ## 升级
 
 依赖升级通过仓库依赖更新检查产生可审查变更，再运行上述真库回归。
+`requirements.in` 登记直接依赖，`requirements.txt` 固定完整传递依赖及 PyPI 包摘要；
+安装强制校验摘要，不能让启动时的解析悄悄引入未审查的新版本。当前锁用 uv 0.8.22
+生成，可在独立工具环境安装相同版本后，于仓库根目录执行：
+
+```powershell
+uv pip compile services/material_forecast/requirements.in --universal --python-version 3.12 --generate-hashes --only-binary :all: --no-annotate --no-header --output-file services/material_forecast/requirements.txt
+```
+
+每个 PR 和 main 提交都运行离线模型回归，OSV 同时扫描这份完整锁；发布必须通过
+同一提交最新的 Quality、CodeQL、OSV 和 Material forecast 四项门禁。
 这只代表新版本候选通过软件检查；生产升级还需使用自有授权数据进行滚动评估，
 确认每个品类/跨度没有退化后再部署新 worker，保留前一版本和输入账本备份。
 不允许把开源项目发布新版本直接等同于更高预测准确率。

@@ -147,6 +147,62 @@ class ImportTests(unittest.TestCase):
             run_once(self.manifest_path, self.csv_path, self.directory / "out", now=NOW)
         self.assertEqual(output.read_bytes(), before)
 
+    def test_truncated_quoted_csv_is_rejected_without_republishing(self):
+        self.write_rows([("2026-10-19", "50000", "2026-10-19T16:00:00+08:00")])
+        output, _ = run_once(self.manifest_path, self.csv_path, self.directory / "out", now=NOW)
+        before = output.read_bytes()
+        self.csv_path.write_text(
+            'date,price,available_at\n2026-10-19,50000,"2026-10-19T16:00:00+08:00',
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(InputError, "malformed|truncated"):
+            run_once(self.manifest_path, self.csv_path, self.directory / "out", now=NOW)
+        self.assertEqual(output.read_bytes(), before)
+
+    def test_corrupted_or_unknown_ledger_cannot_erase_import_history(self):
+        self.write_rows([
+            ("2026-10-18", "50000", "2026-10-18T16:00:00+08:00"),
+            ("2026-10-19", "50020", "2026-10-19T16:00:00+08:00"),
+        ])
+        output, _ = run_once(self.manifest_path, self.csv_path, self.directory / "out", now=NOW)
+        before = output.read_bytes()
+        ledger_path = output.parent / ".state" / "test_copper.state.json"
+        original = json.loads(ledger_path.read_text(encoding="utf-8"))
+        damaged = [
+            {**original, "rows": []},
+            {**original, "rows": original["rows"][:1]},
+            {**original, "digest": "0" * 64},
+            {**original, "schemaVersion": 99},
+            {key: value for key, value in original.items() if key != "digest"},
+        ]
+        for ledger in damaged:
+            with self.subTest(ledger=ledger):
+                ledger_path.write_text(json.dumps(ledger), encoding="utf-8")
+                with self.assertRaisesRegex(InputError, "ledger"):
+                    run_once(self.manifest_path, self.csv_path, output.parent, now=NOW)
+                self.assertEqual(output.read_bytes(), before)
+        ledger_path.write_text(json.dumps(original), encoding="utf-8")
+        run_once(self.manifest_path, self.csv_path, output.parent, now=NOW)
+
+    def test_truncated_ledger_json_retains_the_last_complete_snapshot(self):
+        self.write_rows([("2026-10-19", "50000", "2026-10-19T16:00:00+08:00")])
+        output, _ = run_once(self.manifest_path, self.csv_path, self.directory / "out", now=NOW)
+        before = output.read_bytes()
+        ledger_path = output.parent / ".state" / "test_copper.state.json"
+        ledger_path.write_text('{"manifest":', encoding="utf-8")
+        with self.assertRaisesRegex(InputError, "ledger"):
+            run_once(self.manifest_path, self.csv_path, output.parent, now=NOW)
+        self.assertEqual(output.read_bytes(), before)
+
+    def test_unknown_manifest_schema_and_invalid_encoding_fail_closed(self):
+        self.write_rows([("2026-10-19", "50000", "2026-10-19T16:00:00+08:00")])
+        self.write_manifest({**manifest(), "schemaVersion": 99})
+        with self.assertRaisesRegex(InputError, "unknown manifest fields"):
+            self.read()
+        self.manifest_path.write_bytes(b'{"name":"\xff"}')
+        with self.assertRaisesRegex(InputError, "UTF-8 JSON"):
+            self.read()
+
 
 class RealLibraryTests(unittest.TestCase):
     @classmethod

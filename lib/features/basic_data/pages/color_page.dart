@@ -637,6 +637,19 @@ class _ColorPageState extends ConsumerState<ColorPage>
             ),
           ],
         ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+        floatingActionButton: inlineFloatingActions(
+          additionalActions: [
+            if (_canCreate)
+              UtenButton(
+                size: UtenButtonSize.large,
+                icon: Icons.add_rounded,
+                onPressed: _showCreate,
+                child: const Text('添加颜色'),
+              ),
+          ],
+        ),
         body: SafeArea(
           child: UtenContentContainer(
             child: Padding(

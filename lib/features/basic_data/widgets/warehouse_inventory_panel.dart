@@ -15,11 +15,11 @@ import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
-import '../../stock/models/instant_inventory_scope.dart';
-import '../../stock/models/stock_query.dart';
-import '../../stock/repositories/stock_query_repository.dart';
-import '../../stock/widgets/instant_inventory_columns.dart';
-import '../../report/shared/report_total.dart';
+import '../../../shared/stock_inventory/instant_inventory_scope.dart';
+import '../../../shared/stock_inventory/instant_inventory_row.dart';
+import '../../../shared/stock_inventory/instant_inventory_repository.dart';
+import '../../../shared/stock_inventory/instant_inventory_columns.dart';
+import '../../../shared/report/report_total.dart';
 import '../models/master_facet.dart';
 import '../models/warehouse_node.dart';
 import 'basic_data_l10n.dart';
@@ -146,7 +146,7 @@ class _WarehouseInventoryPanelState
   };
 
   Future<PagedResult<InstantInventoryRow>> _fetch(int page, int size) => ref
-      .read(stockQueryRepositoryProvider)
+      .read(instantInventoryRepositoryProvider)
       .instantInventory(
         page: page,
         size: size,

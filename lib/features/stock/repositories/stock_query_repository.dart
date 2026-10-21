@@ -5,12 +5,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/stock_inventory/instant_inventory_repository.dart';
 import '../models/stock_query.dart';
 import '../models/instant_inventory_scope.dart';
 
 class StockQueryRepository {
-  StockQueryRepository(this.api);
+  StockQueryRepository(this.api, {InstantInventoryRepository? instantInventory})
+    : _instantInventory = instantInventory ?? InstantInventoryRepository(api);
+
   final ApiClient api;
+  final InstantInventoryRepository _instantInventory;
 
   /// 按库存页自身的货品范围定位分类，不下载库存明细。
   Future<Set<String>> instantInventorySearchCategoryIds(
@@ -140,37 +144,25 @@ class StockQueryRepository {
     String? attention,
     String? sort,
     String? order,
-  }) async {
-    final json = await api.get(
-      attention == null
-          ? ApiEndpoints.stockInstantInventory
-          : '${ApiEndpoints.stockInstantInventory}/attention',
-      query: {
-        'page': page,
-        'size': size,
-        'categoryId': ?categoryId,
-        'warehouseId': ?warehouseId,
-        'includeDefective': includeDefective,
-        // V595：线边仓(车间直送料架)默认不算进现实库存，显式打开才计入。
-        if (includeLineSide) 'includeLineSide': true,
-        if (warehouseRelatedOnly) 'warehouseRelatedOnly': true,
-        if (keyword != null && keyword.isNotEmpty) 'keyword': keyword,
-        if (includeRelated && keyword?.trim().isNotEmpty == true)
-          'includeRelated': true,
-        // V587/V590 归属表头筛选：UUID 等值 / 未登记。
-        'owningWarehouse': ?owningWarehouse,
-        if (owningWarehouseNull) 'owningWarehouseNull': true,
-        // 2026-09-16 颜色/物料系列/单位表头筛选。
-        'colorId': ?colorId,
-        'series': ?series,
-        'unitId': ?unitId,
-        'attention': ?attention,
-        if (sort != null && sort.isNotEmpty) 'sort': sort,
-        if (order != null && order.isNotEmpty) 'order': order,
-      },
-    );
-    return PagedResult.fromJson(json, InstantInventoryRow.fromJson);
-  }
+  }) => _instantInventory.instantInventory(
+    page: page,
+    size: size,
+    categoryId: categoryId,
+    warehouseId: warehouseId,
+    includeDefective: includeDefective,
+    includeLineSide: includeLineSide,
+    warehouseRelatedOnly: warehouseRelatedOnly,
+    keyword: keyword,
+    includeRelated: includeRelated,
+    owningWarehouse: owningWarehouse,
+    owningWarehouseNull: owningWarehouseNull,
+    colorId: colorId,
+    series: series,
+    unitId: unitId,
+    attention: attention,
+    sort: sort,
+    order: order,
+  );
 
   /// 货架目视化清单行：货品主档已维护库位号的货品（未软删；默认不含禁用），
   /// 库位号按「库行-层-位」三段解析（不符合格式的行 parsed=false，归「未分层」），
@@ -325,5 +317,8 @@ class ShelfLayoutRack {
 }
 
 final stockQueryRepositoryProvider = Provider<StockQueryRepository>(
-  (ref) => StockQueryRepository(ref.watch(apiClientProvider)),
+  (ref) => StockQueryRepository(
+    ref.watch(apiClientProvider),
+    instantInventory: ref.watch(instantInventoryRepositoryProvider),
+  ),
 );

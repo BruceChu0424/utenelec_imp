@@ -15,8 +15,8 @@ import 'package:uten_imp/features/basic_data/models/warehouse_node.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/basic_data/widgets/warehouse_inventory_panel.dart';
-import 'package:uten_imp/features/stock/models/stock_query.dart';
-import 'package:uten_imp/features/stock/repositories/stock_query_repository.dart';
+import 'package:uten_imp/shared/stock_inventory/instant_inventory_row.dart';
+import 'package:uten_imp/shared/stock_inventory/instant_inventory_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 
@@ -176,7 +176,7 @@ MasterDataTableView<InstantInventoryRow> _table(WidgetTester tester) =>
 void main() {
   test('related-only is opt-in and serialized only when requested', () async {
     final api = _InventoryApi();
-    final repository = StockQueryRepository(api);
+    final repository = InstantInventoryRepository(api);
     await repository.instantInventory(warehouseId: 'hardware');
     await repository.instantInventory(
       warehouseId: 'hardware',

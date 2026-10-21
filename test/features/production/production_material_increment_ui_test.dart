@@ -125,6 +125,13 @@ void main() {
     await tester.pump();
     await tester.tap(find.byTooltip('刷新'));
     await tester.pump();
+    expect(repository.calls, 2, reason: '共享刷新按钮禁止并发重复点击');
+    await tester.tap(find.text('审批通过'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.widgetWithText(FilledButton, '确认审核'));
+    await tester.pump();
+    expect(repository.decisions, 1);
     repository.newer.complete(
       ProductionMaterialIncrementRequest({
         ..._request().data,
@@ -134,7 +141,12 @@ void main() {
         'canReturn': false,
       }),
     );
-    await tester.pumpAndSettle();
+    // The original user refresh still owns pending loading feedback. Observe
+    // the actual approval result before completing that superseded request.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+    expect(find.textContaining('追加用料已批准'), findsOneWidget);
     repository.older.complete(_request());
     await tester.pumpAndSettle();
     expect(find.textContaining('追加用料已批准'), findsOneWidget);
@@ -271,11 +283,24 @@ class _DelayedRepository extends _Repository {
   final older = Completer<ProductionMaterialIncrementRequest>();
   final newer = Completer<ProductionMaterialIncrementRequest>();
   int calls = 0;
+  int decisions = 0;
   @override
   Future<ProductionMaterialIncrementRequest> detail(String id) {
     calls++;
     if (calls == 1) return Future.value(_request());
     return calls == 2 ? older.future : newer.future;
+  }
+
+  @override
+  Future<ProductionMaterialIncrementRequest> decide(
+    ProductionMaterialIncrementRequest request, {
+    required bool approve,
+    required String reason,
+  }) {
+    expect(approve, isTrue);
+    expect(request.rowVersion, 0);
+    decisions++;
+    return newer.future;
   }
 }
 

@@ -14,7 +14,10 @@ import org.springframework.transaction.PlatformTransactionManager;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.IntConsumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -42,15 +45,32 @@ class InventoryValueWorkSchedulerTest {
     @Test
     void explicitOptInPollingStopsWhenItsOwnedContextCloses() {
         AtomicInteger[] observed = new AtomicInteger[1];
-        context("dev").withPropertyValues("uten.inventory.value-work.enabled=true").run(context -> {
-            assertThat(context).hasSingleBean(InventoryValueWorkScheduler.class);
-            observed[0] = context.getBean(AtomicInteger.class);
-            await().atMost(Duration.ofSeconds(3))
-                    .untilAsserted(() -> assertThat(observed[0].get()).isPositive());
-        });
-        int pollsAtClose = observed[0].get();
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch completed = new CountDownLatch(1);
+        Semaphore release = new Semaphore(0);
+        try {
+            context("dev", count -> {
+                if (count == 1) {
+                    entered.countDown();
+                    // A database call can finish after scheduler cancellation. Keep
+                    // that known in-flight round separate from a new scheduled query.
+                    release.acquireUninterruptibly();
+                    completed.countDown();
+                }
+            }).withPropertyValues("uten.inventory.value-work.enabled=true").run(context -> {
+                assertThat(context).hasSingleBean(InventoryValueWorkScheduler.class);
+                observed[0] = context.getBean(AtomicInteger.class);
+                await().atMost(Duration.ofSeconds(3))
+                        .untilAsserted(() -> assertThat(entered.getCount()).isZero());
+            });
+            assertThat(observed[0].get()).isEqualTo(1);
+        } finally {
+            release.release();
+        }
+        await().atMost(Duration.ofSeconds(3))
+                .untilAsserted(() -> assertThat(completed.getCount()).isZero());
         await().during(Duration.ofMillis(150)).atMost(Duration.ofSeconds(2))
-                .untilAsserted(() -> assertThat(observed[0].get()).isEqualTo(pollsAtClose));
+                .untilAsserted(() -> assertThat(observed[0].get()).isEqualTo(1));
     }
 
     @Test
@@ -84,13 +104,17 @@ class InventoryValueWorkSchedulerTest {
     }
 
     private ApplicationContextRunner context(String profile) {
+        return context(profile, count -> { });
+    }
+
+    private ApplicationContextRunner context(String profile, IntConsumer onPoll) {
         return new ApplicationContextRunner()
                 .withInitializer(context -> {
                     context.getEnvironment().setActiveProfiles(profile);
                     AtomicInteger polls = new AtomicInteger();
                     NamedParameterJdbcTemplate database = mock(NamedParameterJdbcTemplate.class);
                     when(database.queryForList(anyString(), anyMap(), eq(UUID.class))).thenAnswer(invocation -> {
-                        polls.incrementAndGet();
+                        onPoll.accept(polls.incrementAndGet());
                         return List.of();
                     });
                     InventoryValuationPort values = mock(InventoryValuationPort.class);

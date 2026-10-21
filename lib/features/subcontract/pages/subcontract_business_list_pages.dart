@@ -815,23 +815,26 @@ class _SubcontractBusinessListPageState
           onPressed: () => backTo(context, defaultPath: SubcontractRoute.hub),
         ),
         actions: [
-          UtenRefreshButton(
-            busy: _controller.loading,
-            onRefresh: () async {
-              final badges = _loadBadge();
-              final scope = _statusScope;
-              await Future.wait([
-                _reload(),
-                badges,
-                if (scope != null)
-                  ref
-                      .read(documentStatusCountsProvider(scope).future)
-                      .then<void>(
-                        (_) {},
-                        onError: (Object error, StackTrace stack) {},
-                      ),
-              ]);
-            },
+          ListenableBuilder(
+            listenable: _controller,
+            builder: (context, _) => UtenRefreshButton(
+              busy: _controller.loading,
+              onRefresh: () async {
+                final badges = _loadBadge();
+                final scope = _statusScope;
+                await Future.wait([
+                  _reload(),
+                  badges,
+                  if (scope != null)
+                    ref
+                        .read(documentStatusCountsProvider(scope).future)
+                        .then<void>(
+                          (_) {},
+                          onError: (Object error, StackTrace stack) {},
+                        ),
+                ]);
+              },
+            ),
           ),
         ],
       ),

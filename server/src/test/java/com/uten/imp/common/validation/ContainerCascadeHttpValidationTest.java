@@ -28,6 +28,11 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
+import org.springframework.validation.beanvalidation.MethodValidationPostProcessor;
+import org.springframework.validation.beanvalidation.MethodValidationInterceptor;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.aop.framework.Advised;
+import org.springframework.aop.support.AopUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -40,6 +45,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.endsWith;
 import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
@@ -77,7 +83,7 @@ class ContainerCascadeHttpValidationTest {
                         .content("[{\"owningWarehouseId\":\"" + UUID.randomUUID() + "\"}]"))
                 .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value(ErrorCode.VALIDATION_FAILED.name()))
-                .andExpect(jsonPath("$.fieldErrors[0].field").value("requests[0].goodsId"));
+                .andExpect(jsonPath("$.fieldErrors[0].field").value(endsWith("requests[0].goodsId")));
         verifyNoInteractions(service);
     }
 
@@ -100,14 +106,17 @@ class ContainerCascadeHttpValidationTest {
     }
 
     @Test
-    void selfServiceVehicleAndPhoneArraysRetainSpringMethodValidation() throws Exception {
+    void selfServiceVehicleAndPhoneArraysUseTheConfiguredMethodValidationProxy() throws Exception {
         var controller = new MyVehiclePhoneController(mock(EmployeeVehiclePhoneService.class),
                 mock(SecurityContextCurrentUser.class), mock(TxSessionVars.class));
         for (String method : List.of("replaceMyVehicles", "replaceMyPhones")) {
             var handler = new HandlerMethod(controller, controller.getClass().getMethod(method, List.class))
                     .createWithValidateFlags();
-            assertThat(handler.shouldValidateArguments()).as(method).isTrue();
+            assertThat(handler.shouldValidateArguments()).as("Class-level @Validated delegates "+method+" to AOP").isFalse();
         }
+        Object proxy=validatedController(controller);
+        assertThat(AopUtils.isAopProxy(proxy)).isTrue();
+        assertThat(((Advised)proxy).getAdvisors()).anyMatch(advisor->advisor.getAdvice() instanceof MethodValidationInterceptor);
     }
 
     @Test
@@ -147,8 +156,16 @@ class ContainerCascadeHttpValidationTest {
     }
 
     private MockMvc http(Object controller) {
-        return MockMvcBuilders.standaloneSetup(controller).setValidator(validator)
+        return MockMvcBuilders.standaloneSetup(validatedController(controller)).setValidator(validator)
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
+    }
+    private Object validatedController(Object controller) {
+        if(!controller.getClass().isAnnotationPresent(Validated.class))return controller;
+        var processor=new MethodValidationPostProcessor();
+        processor.setValidator(validator);
+        processor.setProxyTargetClass(true);
+        processor.afterPropertiesSet();
+        return processor.postProcessAfterInitialization(controller,"validated-http-fixture");
     }
 
     private static MaterialAnalysisController analysisController(GoodsOwningWarehouseWriteService writes) {

@@ -218,7 +218,15 @@ Future<ProviderContainer> _pump(
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  if (api.readGate != null) {
+    // A deliberately pending read keeps the shared loading feedback animated.
+    // Observe that state without requiring its request to finish first.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+  } else {
+    await tester.pumpAndSettle();
+  }
   return container;
 }
 

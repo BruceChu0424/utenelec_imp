@@ -94,7 +94,11 @@ class AiChatAnswerContractHttpTest {
         assertThatThrownBy(() -> gateway.completeJson(request(1200))).isInstanceOf(AiCompletionPort.AiCallException.class)
                 .hasMessageContaining("最大输出长度");
         assertInvalidAttempts();
-        for (var exchange : fake.requests()) assertThat(json.readTree(exchange.body()).path("max_tokens").asInt()).isEqualTo(1200);
+        var attempts=fake.requests().stream().filter(exchange->exchange.method().equals("POST")).toList();
+        assertThat(attempts).hasSize(2);
+        assertThat(json.readTree(attempts.getFirst().body()).path("max_tokens").asInt()).isEqualTo(1200);
+        assertThat(json.readTree(attempts.getLast().body()).path("max_tokens").asInt())
+                .isEqualTo(3248).isLessThanOrEqualTo(4096);
     }
 
     @Test void emptyFinalContentIsInvalidRatherThanAUserQuestionError() {

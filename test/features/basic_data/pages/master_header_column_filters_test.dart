@@ -3,12 +3,15 @@
 //   key ownerEmployeeName；选桶回传服务端参数名 ownerEmployeeId。
 // - 基本单位页：计量维度列固定枚举桶（六维度全量可选）+ 回传 dimension 参数；
 //   空值桶走 nullFields（服务端筛未设置维度的单位）。
-// - 仓库资料页：上级仓库列（桶 label=上级仓名）回传 parentId；核算列回传
-//   accountable（true/false）；上级仓库空值桶走 nullFields parentId。
+// - 仓库资料页：目录用途/状态筛选保留祖先，导出沿相同参数；选择仓库后详情
+//   展示负责人聚合。目录页不再渲染已退役的仓库明细表头筛选。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
+import 'package:uten_imp/components/buttons/uten_export_button.dart';
+import 'package:uten_imp/shared/widgets/master_detail_card.dart';
 
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
@@ -146,26 +149,16 @@ void main() {
   });
 
   group('warehouse page', () {
-    testWidgets('上级仓库/核算表头筛选回传 parentId/accountable', (tester) async {
-      final warehouses = _FakeWarehouseRepository(
-        facetPayload: const WarehouseFacets(
-          fields: {
-            'parent': [
-              MasterFacetBucket(value: 'wh-parent', count: 2, label: '成品仓库'),
-            ],
-            'accountable': [
-              MasterFacetBucket(value: 'true', count: 5, label: '是'),
-              MasterFacetBucket(value: 'false', count: 1, label: '否'),
-            ],
-          },
-          nullCounts: {'parent': 3},
-        ),
-      );
+    testWidgets('目录用途和状态筛选保留祖先且导出沿同一范围', (tester) async {
+      final warehouses = _FakeWarehouseRepository();
       await _pump(
         tester,
         ProviderScope(
           overrides: [
             warehouseRepositoryProvider.overrideWithValue(warehouses),
+            warehouseKeeperRepositoryProvider.overrideWithValue(
+              _FakeWarehouseKeeperRepository(),
+            ),
             currentPermissionsProvider.overrideWithValue(<String>{
               Perm.warehouseView,
             }),
@@ -175,32 +168,49 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final table = _tableOf<WarehouseListItem>(tester);
-      expect(table.facets['parent']?.single.label, '成品仓库');
-      expect(table.nullCounts['parent'], 3);
-      expect(table.facets['accountable']?.first.label, '是');
-
-      table.onFilterChanged('parent', 'wh-parent');
+      final directory = find.byKey(const Key('warehouse-directory-tree'));
+      Finder name(String value) =>
+          find.descendant(of: directory, matching: find.text(value));
+      expect(name('成品仓库'), findsOneWidget);
+      expect(name('五金仓库'), findsOneWidget);
+      tester
+          .widget<UtenDropdownField>(
+            find.byKey(const Key('warehouse-directory-use-filter')),
+          )
+          .onChanged('true');
       await tester.pumpAndSettle();
-      expect(warehouses.lastFilters?['parentId'], 'wh-parent');
-
-      _tableOf<WarehouseListItem>(
-        tester,
-      ).onFilterChanged('accountable', 'false');
+      expect(name('成品仓库'), findsNothing);
+      expect(name('五金仓库'), findsOneWidget);
+      expect(name('总仓'), findsOneWidget);
+      final l10n = AppLocalizations.of(
+        tester.element(find.byType(WarehousePage)),
+      );
+      final status = find.byWidgetPredicate(
+        (widget) =>
+            widget is UtenDropdownField &&
+            widget.label == l10n.warehouseMasterStatusLabel,
+      );
+      tester.widget<UtenDropdownField>(status).onChanged('使用');
       await tester.pumpAndSettle();
-      expect(warehouses.lastFilters?['accountable'], 'false');
-
-      // 上级仓库空值桶（顶层/独立仓）→ 哨兵值按 parentId 键送到仓储
-      //（真实仓储收集进 nullFields，服务端筛 parent_id is null）。
-      _tableOf<WarehouseListItem>(
-        tester,
-      ).onFilterChanged('parent', kMasterFilterNullValue);
+      expect(name('五金仓库'), findsNothing);
+      final export = tester.widget<UtenExportButton>(
+        find.byType(UtenExportButton),
+      );
+      expect(export.queryParams['defective'], 'true');
+      expect(export.queryParams['status'], '使用');
+      tester.widget<UtenDropdownField>(status).onChanged(null);
+      tester
+          .widget<UtenDropdownField>(
+            find.byKey(const Key('warehouse-directory-use-filter')),
+          )
+          .onChanged(null);
       await tester.pumpAndSettle();
-      expect(warehouses.lastFilters?['parentId'], kMasterFilterNullValue);
+      expect(name('成品仓库'), findsOneWidget);
+      expect(name('五金仓库'), findsOneWidget);
     });
 
-    // ADR-115：列表「负责人」列按全部负责关系显示；没登记的仓显示「—」。
-    testWidgets('负责人列显示登记的仓管员', (tester) async {
+    // ADR-115：详情按全部负责关系显示；没登记的仓显示「—」。
+    testWidgets('仓库详情显示登记的全部仓管员且未登记时不伪造负责人', (tester) async {
       await _pump(
         tester,
         ProviderScope(
@@ -220,20 +230,30 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final table = _tableOf<WarehouseListItem>(tester);
-      final keepers = table.columns.singleWhere((c) => c.key == 'keepers');
-      expect(keepers.label, '负责人');
-      expect(
-        keepers.value(
-          const WarehouseListItem(id: 'wh-1', code: 'C01', name: '成品仓库'),
-        ),
-        '成品仓管、仓库主管',
+      final directory = find.byKey(const Key('warehouse-directory-tree'));
+      await tester.tap(
+        find.descendant(of: directory, matching: find.text('成品仓库')),
       );
+      await tester.pumpAndSettle();
       expect(
-        keepers.value(
-          const WarehouseListItem(id: 'wh-2', code: 'C02', name: '五金仓库'),
-        ),
-        '—',
+        tester
+            .widget<MasterDetailCard>(
+              find.byKey(const Key('warehouse-master-summary')),
+            )
+            .subtitle,
+        contains('仓库负责人: 成品仓管、仓库主管'),
+      );
+      await tester.tap(
+        find.descendant(of: directory, matching: find.text('五金仓库')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<MasterDetailCard>(
+              find.byKey(const Key('warehouse-master-summary')),
+            )
+            .subtitle,
+        contains('仓库负责人: —'),
       );
     });
   });
@@ -380,10 +400,40 @@ class _FakeUnitRepository implements UnitRepository {
 }
 
 class _FakeWarehouseRepository implements WarehouseRepository {
-  _FakeWarehouseRepository({this.facetPayload});
-
-  final WarehouseFacets? facetPayload;
+  _FakeWarehouseRepository();
   Map<String, String?>? lastFilters;
+  static const _rows = [
+    WarehouseListItem(id: 'wh-parent', code: '001', name: '总仓', status: '使用'),
+    WarehouseListItem(
+      id: 'wh-1',
+      code: 'C01',
+      name: '成品仓库',
+      parentId: 'wh-parent',
+      status: '使用',
+    ),
+    WarehouseListItem(
+      id: 'wh-2',
+      code: 'C02',
+      name: '五金仓库',
+      parentId: 'wh-parent',
+      status: '禁用',
+      defective: true,
+    ),
+  ];
+  @override
+  Future<List<WarehouseListItem>> dict() async => _rows;
+  @override
+  Future<WarehouseDetail> detail(String id) async {
+    final row = _rows.singleWhere((row) => row.id == id);
+    return WarehouseDetail(
+      id: row.id,
+      name: row.name,
+      code: row.code,
+      parentId: row.parentId,
+      status: row.status,
+      defective: row.defective,
+    );
+  }
 
   @override
   Future<PagedResult<WarehouseListItem>> list({
@@ -404,7 +454,7 @@ class _FakeWarehouseRepository implements WarehouseRepository {
 
   @override
   Future<WarehouseFacets> facets() async =>
-      facetPayload ?? const WarehouseFacets(fields: {}, nullCounts: {});
+      const WarehouseFacets(fields: {}, nullCounts: {});
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

@@ -134,7 +134,11 @@ void main() {
         'LATEST-QUERY',
       );
       await tester.pump(const Duration(milliseconds: 350));
-      await tester.pumpAndSettle();
+      // The old clicked refresh still owns an unfinished future and its shared
+      // loading feedback. Observe the newer query before releasing that future.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
       expect(find.text('LATEST-ROW'), findsOneWidget);
       gate.complete(_page(stage.value, 'STALE-ROW'));
       await tester.pumpAndSettle();

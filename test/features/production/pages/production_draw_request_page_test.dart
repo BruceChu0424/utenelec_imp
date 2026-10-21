@@ -406,7 +406,10 @@ void main() {
 
       expect(find.text('重试领料'), findsOneWidget);
       final refresh = tester.widget<UtenAppBarActionButton>(
-        find.byKey(const Key('production-draw-request-refresh')),
+        find.descendant(
+          of: find.byKey(const Key('production-draw-request-refresh')),
+          matching: find.byType(UtenAppBarActionButton),
+        ),
       );
       expect(refresh.onPressed, isNull);
       expect(

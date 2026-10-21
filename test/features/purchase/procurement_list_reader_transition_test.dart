@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/server_config.dart';
@@ -43,6 +44,12 @@ void main() {
       );
       await tester.pump();
       await tester.pump();
+      if (subcontract) {
+        expect(
+          tester.widget<UtenRefreshButton>(find.byType(UtenRefreshButton)).busy,
+          isTrue,
+        );
+      }
       expect(
         find.text('PRIVATE-A'),
         findsNothing,
@@ -64,6 +71,12 @@ void main() {
       );
       a.complete(_page('FRESH-A'));
       await tester.pumpAndSettle();
+      if (subcontract) {
+        expect(
+          tester.widget<UtenRefreshButton>(find.byType(UtenRefreshButton)).busy,
+          isFalse,
+        );
+      }
       expect(find.text('FRESH-A'), findsOneWidget);
       expect(find.text('PRIVATE-A'), findsNothing);
       expect(tester.takeException(), isNull);

@@ -109,9 +109,14 @@ class WarehouseWorkshopUuidContractTest {
                 .contains("ref.watch(warehouseworkshopoptionsprovider)")
                 .contains("utendropdownitem(")
                 .contains("widget.onchanged(value)")
-                .contains("d.workshopdepartmentid ?? ''")
-                .contains("w.legacyoperatorid?.tostring()")
-                .doesNotContain("key: 'workshoplegacyid'");
+                .contains("'workshopdepartmentid' => row.workshopdepartmentid")
+                .contains("read: (row) => _inlinevalue(row, field.key)")
+                .contains("initialvalue: field.initialvalue")
+                .contains("onchanged: field.onchanged")
+                .contains("utendropdownitem(value: row.id")
+                .contains("changes[entry.key] = entry.value")
+                .contains("await super.saveinline(id, changes)")
+                .doesNotContain("key: 'workshoplegacyid'", "key: 'legacyoperatorid'");
         assertThat(repository)
                 .contains("future<list<warehouseworkshopoption>> workshops()")
                 .contains("apiendpoints.warehousesworkshops")

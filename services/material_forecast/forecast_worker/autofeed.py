@@ -62,6 +62,10 @@ class AutoFeed:
         while not self.stop.is_set():
             line = sys.stdin.buffer.readline(80)
             if not line:
+                # This loop exists only for an owned managed run. EOF means its
+                # supervisor disappeared; release the collector lease rather
+                # than leave an orphan blocking the next application process.
+                self.stop.set()
                 return
             if line.rstrip(b"\r\n") == expected:
                 self.stop.set()

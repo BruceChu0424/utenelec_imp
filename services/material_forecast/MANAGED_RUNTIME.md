@@ -74,6 +74,10 @@ and applies changed policy by graceful restart. A per-state-dir OS lease prevent
 two JVMs launching duplicate collectors. Kill only owned processes/descendants;
 never find-and-kill unrelated Java/Python processes. Unexpected exit uses bounded
 backoff. Shutdown and config stop are graceful before bounded force termination.
+In managed mode, EOF on the owner's private control pipe also stops the worker
+and releases its collector lease. Losing the JVM must not leave an orphan worker
+blocking the next application start. Legacy collectors without a runId retain
+their independent stdin behavior.
 
 All child environments are cleared and only minimal OS/TLS/temp/UTF8 and bounded
 numerical thread variables are retained. Never pass DB/JWT/crypto/cloud secrets.

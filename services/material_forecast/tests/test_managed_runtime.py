@@ -27,6 +27,46 @@ spec.loader.exec_module(builder)
 
 
 class ManagedRuntimeTests(unittest.TestCase):
+    def test_real_managed_process_stops_and_releases_lease_when_owner_pipe_closes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            script = (
+                "import sys,os;from pathlib import Path;sys.path.insert(0,sys.argv[1]);"
+                "from forecast_worker.autofeed import AutoFeed\n"
+                "class Offline(AutoFeed):\n"
+                " def run_cycle(self):\n"
+                "  self.heartbeat(status='IDLE');print('READY '+str(os.getpid()),flush=True);return True\n"
+                "worker=Offline(Path(sys.argv[2]),continuous=True,config_revision='a'*64,"
+                "run_id='12345678-1234-1234-1234-123456789abc');sys.exit(worker.run())")
+            child = subprocess.Popen([sys.executable,"-I","-c",script,str(PREPARE.parent),str(root)],
+                                     stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,
+                                     env=prepare.child_environment())
+            holder = None
+            try:
+                ready = child.stdout.readline().strip().split()
+                self.assertEqual(ready[0],"READY")
+                holder = int(ready[1])
+                with self.assertRaises(BlockingIOError):
+                    with os_file_lock(root / ".auto-feed/collector.lock"):
+                        self.fail("controlled cycle must own the real collector lease")
+                child.stdin.close()
+                child.stdin = None
+                stdout,stderr = child.communicate(timeout=15)
+                self.assertEqual(child.returncode,0,stderr)
+                with os_file_lock(root / ".auto-feed/collector.lock"):
+                    pass
+                health=json.loads((root / "auto-feed-health.json").read_text(encoding="utf-8"))
+                self.assertFalse(health["autoUpdateEnabled"])
+            finally:
+                if child.poll() is None:
+                    if holder is not None:
+                        os.kill(holder,signal.SIGTERM)
+                    child.kill()
+                    child.wait(timeout=10)
+                for stream in (child.stdin,child.stdout,child.stderr):
+                    if stream is not None and not stream.closed:
+                        stream.close()
+
     def test_isolated_python_runs_payload_entry_from_untrusted_working_directory(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

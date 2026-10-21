@@ -38,10 +38,11 @@ class AiChatAnswerContractHttpTest {
     private FakeAiProviderServer fake;
     private AiGateway gateway;
     private AiChatAnswerContract contract;
+    private AiProperties properties;
 
     @BeforeEach void setUp() {
         fake = FakeAiProviderServer.start();
-        AiProperties properties = new AiProperties();
+        properties = new AiProperties();
         AiHttpTransport transport = new AiHttpTransport(properties);
         SecurityContextCurrentUser current = mock(SecurityContextCurrentUser.class);
         when(current.id()).thenReturn(Optional.empty());
@@ -87,14 +88,64 @@ class AiChatAnswerContractHttpTest {
         assertThat(fake.chatRequestCount()).isEqualTo(1);
     }
 
-    @Test void oldTwelveHundredTokenTruncationIsReproducedAcrossTheRealProtocolAndGateway() throws Exception {
-        use(AiTestRuntimes.openAi(fake, null));
+    @Test void truncatedInitialBudgetExpandsOnlyOnceWithoutAcceptingPartialJson() throws Exception {
+        use(openAiWithCap(4096));
         fake.enqueue(FakeAiProviderServer.openAiContent("{\"intent\":\"PAGE_HELP\",\"tool\":", 300, 1200, "length"),
-                FakeAiProviderServer.openAiContent("{\"intent\":\"PAGE_HELP\",\"tool\":", 300, 1200, "length"));
+                FakeAiProviderServer.openAiContent("{\"intent\":\"PAGE_HELP\",\"tool\":", 300, 3248, "length"));
         assertThatThrownBy(() -> gateway.completeJson(request(1200))).isInstanceOf(AiCompletionPort.AiCallException.class)
                 .hasMessageContaining("最大输出长度");
         assertInvalidAttempts();
-        for (var exchange : fake.requests()) assertThat(json.readTree(exchange.body()).path("max_tokens").asInt()).isEqualTo(1200);
+        assertSentBudgetsAndClosedContract(1200, 3248);
+    }
+
+    @Test void expandedRetryKeepsTheSamePromptAndSchemaAndAuditsBothRealHttpAttempts() throws Exception {
+        use(openAiWithCap(4096));
+        fake.enqueue(FakeAiProviderServer.openAiContent("{\"intent\":", 300, 1200, "length"),
+                FakeAiProviderServer.openAiContent(contract.exampleJson(), 300, 500, "stop"));
+
+        assertThat(gateway.completeJson(request(1200)).json()).isEqualTo(contract.exampleJson());
+        assertSentBudgetsAndClosedContract(1200, 3248);
+        var attempts = callRecords(2);
+        assertThat(attempts).extracting(AiCallLogService.CallRecord::ok).containsExactly(false, true);
+        assertThat(attempts).extracting(AiCallLogService.CallRecord::outputTokens).containsExactly(1200, 500);
+        assertThat(attempts.get(0).errorCategory()).isEqualTo("INVALID_RESPONSE");
+        assertThat(attempts.get(1).errorCategory()).isNull();
+        assertThat(attempts).allSatisfy(attempt -> assertThat(attempt.httpStatus()).isEqualTo(200));
+    }
+
+    @Test void administratorCapOfTwelveHundredStopsAfterOneTruncatedResponse() throws Exception {
+        use(openAiWithCap(1200));
+        // Even a balanced JSON object is unusable when the provider reports truncation.
+        fake.enqueue(FakeAiProviderServer.openAiContent(contract.exampleJson(), 300, 1200, "length"));
+
+        assertThatThrownBy(() -> gateway.completeJson(request(8192)))
+                .isInstanceOf(AiCompletionPort.AiCallException.class).hasMessageContaining("最大输出长度");
+        assertSentBudgetsAndClosedContract(1200);
+        assertInvalidAttempts(1);
+    }
+
+    @Test void retryExpansionIsClippedToTheAdministratorCapAcrossRealHttp() throws Exception {
+        use(openAiWithCap(2000));
+        fake.enqueue(FakeAiProviderServer.openAiContent("{\"intent\":", 300, 1200, "length"),
+                FakeAiProviderServer.openAiContent(contract.exampleJson(), 300, 500, "stop"));
+
+        assertThat(gateway.completeJson(request(1200)).json()).isEqualTo(contract.exampleJson());
+        assertSentBudgetsAndClosedContract(1200, 2000);
+        assertThat(callRecords(2)).extracting(AiCallLogService.CallRecord::ok).containsExactly(false, true);
+    }
+
+    @Test void exhaustedGlobalBudgetAfterTruncationPreventsTheExpandedHttpRetry() throws Exception {
+        use(openAiWithCap(4096));
+        properties.setDailyTokenBudget(1500);
+        when(logs.todayTokens()).thenReturn(0L, 0L, 1500L);
+        fake.enqueue(FakeAiProviderServer.openAiContent("{\"intent\":", 300, 1200, "length"));
+
+        assertThatThrownBy(() -> gateway.completeJson(request(1200)))
+                .isInstanceOf(AiCompletionPort.AiCallException.class)
+                .satisfies(error -> assertThat(((AiCompletionPort.AiCallException) error).category())
+                        .isEqualTo(AiCompletionPort.AiErrorCategory.QUOTA));
+        assertSentBudgetsAndClosedContract(1200);
+        assertInvalidAttempts(1);
     }
 
     @Test void emptyFinalContentIsInvalidRatherThanAUserQuestionError() {
@@ -126,6 +177,27 @@ class AiChatAnswerContractHttpTest {
     private void use(AiProviderRuntime runtime) {
         when(providers.resolveDefault()).thenReturn(new AiProviderService.Resolution(runtime, runtime.name(), runtime.model(), runtime.supportsVision(), null));
     }
+    private AiProviderRuntime openAiWithCap(int cap) {
+        var base = AiTestRuntimes.openAi(fake, null, AiJsonMode.JSON_SCHEMA, AiThinkingControl.NONE, false, 30);
+        return new AiProviderRuntime(base.id(), base.name(), base.preset(), base.region(), base.protocol(),
+                base.endpoint(), base.model(), base.apiKey(), base.jsonMode(), base.thinkingControl(),
+                base.sendTemperature(), base.supportsVision(), cap, base.timeoutSeconds());
+    }
+    private void assertSentBudgetsAndClosedContract(int... limits) throws Exception {
+        var exchanges = fake.requests().stream().filter(exchange -> exchange.method().equals("POST")).toList();
+        assertThat(exchanges).hasSize(limits.length);
+        JsonNode first = json.readTree(exchanges.get(0).body());
+        for (int index = 0; index < limits.length; index++) {
+            JsonNode sent = json.readTree(exchanges.get(index).body());
+            assertThat(sent.path("max_tokens").asInt()).isEqualTo(limits[index]);
+            assertThat(sent.path("response_format").path("json_schema").path("strict").asBoolean()).isTrue();
+            assertThat(sent.path("response_format").path("json_schema").path("schema"))
+                    .isEqualTo(json.valueToTree(contract.schema()));
+            assertThat(sent.path("messages")).isEqualTo(first.path("messages"));
+            assertThat(sent.path("response_format")).isEqualTo(first.path("response_format"));
+        }
+        assertNoBusinessReplyWasSent();
+    }
     private AiCompletionPort.AiCompletionRequest request(int limit) {
         return new AiCompletionPort.AiCompletionRequest("ERP_CHAT_ANSWER", "Answer from the sources. Example JSON: " + contract.exampleJson(),
                 List.of(new AiCompletionPort.AiText("这个页面怎么填写？请举个例子。", true)), contract.schemaName(), contract.schema(), limit, null);
@@ -134,12 +206,18 @@ class AiChatAnswerContractHttpTest {
         assertThat(fake.lastChatRequest().body()).doesNotContain("PRIVATE_SALES_REPLY", "PRIVATE_FIELD_FACT", "PRIVATE_EXAMPLE");
     }
     private void assertInvalidAttempts() {
-        assertThat(fake.chatRequestCount()).isEqualTo(2);
-        ArgumentCaptor<AiCallLogService.CallRecord> records = ArgumentCaptor.forClass(AiCallLogService.CallRecord.class);
-        verify(logs, times(2)).record(records.capture());
-        assertThat(records.getAllValues()).allSatisfy(record -> {
+        assertInvalidAttempts(2);
+    }
+    private void assertInvalidAttempts(int count) {
+        assertThat(callRecords(count)).allSatisfy(record -> {
             assertThat(record.ok()).isFalse(); assertThat(record.errorCategory()).isEqualTo("INVALID_RESPONSE");
             assertThat(record.httpStatus()).isEqualTo(200);
         });
+    }
+    private List<AiCallLogService.CallRecord> callRecords(int count) {
+        assertThat(fake.chatRequestCount()).isEqualTo(count);
+        ArgumentCaptor<AiCallLogService.CallRecord> records = ArgumentCaptor.forClass(AiCallLogService.CallRecord.class);
+        verify(logs, times(count)).record(records.capture());
+        return records.getAllValues();
     }
 }

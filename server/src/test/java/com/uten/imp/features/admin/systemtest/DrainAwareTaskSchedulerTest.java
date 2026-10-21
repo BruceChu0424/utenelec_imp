@@ -3,6 +3,9 @@ package com.uten.imp.features.admin.systemtest;
 import com.uten.imp.features.admin.serverstatus.ScheduledTaskRunRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.DisposableBean;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.context.event.ContextClosedEvent;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -10,11 +13,14 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * 清空窗口内 @Scheduled 任务必须被跳过（2026-09-04 服务器死锁事故的回归锁）：
@@ -59,6 +65,88 @@ class DrainAwareTaskSchedulerTest {
             release.countDown();task.get(5,TimeUnit.SECONDS);
             assertEquals(BusinessDataResetDrainGate.DrainOutcome.STARTED, drained.get(5,TimeUnit.SECONDS));
         } finally {release.countDown();}
+    }
+
+    @Test
+    void closingTheOwnedContextDrainsActiveWorkBeforeDestroyingDependenciesAndDiscardsDelayedWork() throws Exception {
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var closingStarted = new CountDownLatch(1);
+        var finished = new AtomicBoolean();
+        var interrupted = new AtomicBoolean();
+        var dependencyDestroyed = new AtomicBoolean();
+        var dependencyDestroyedBeforeWorkFinished = new AtomicBoolean();
+        var delayedRuns = new AtomicInteger();
+        var context = new AnnotationConfigApplicationContext();
+        context.registerBean(BusinessDataResetDrainGate.class);
+        context.registerBean(ScheduledTaskRunRegistry.class);
+        context.registerBean(DrainAwareTaskScheduler.class);
+        // A datasource/transaction collaborator must outlive already admitted work.
+        context.registerBean("workDependency", DisposableBean.class, () -> () -> {
+            dependencyDestroyedBeforeWorkFinished.set(!finished.get());
+            dependencyDestroyed.set(true);
+        });
+        context.addApplicationListener(event -> {
+            if (event instanceof ContextClosedEvent) closingStarted.countDown();
+        });
+        try (var closer = Executors.newSingleThreadExecutor()) {
+            try {
+                context.refresh();
+                var owned = context.getBean(DrainAwareTaskScheduler.class);
+                var active = owned.schedule(() -> {
+                    entered.countDown();
+                    // JDBC work may not stop immediately on interruption. Keep the
+                    // operation in flight until its explicit commit/rollback boundary.
+                    while (release.getCount() != 0) {
+                        try {
+                            release.await();
+                        } catch (InterruptedException shutdown) {
+                            interrupted.set(true);
+                        }
+                    }
+                    finished.set(true);
+                    if (interrupted.get()) Thread.currentThread().interrupt();
+                }, Instant.now());
+                assertTrue(entered.await(5, TimeUnit.SECONDS));
+                var delayed = owned.schedule(delayedRuns::incrementAndGet, Instant.now().plusSeconds(300));
+                var closed = closer.submit(context::close);
+                assertTrue(closingStarted.await(5, TimeUnit.SECONDS));
+                try {
+                    assertThrows(TimeoutException.class, () -> closed.get(150, TimeUnit.MILLISECONDS),
+                            "Context close must wait for already admitted work, before destroying its dependencies");
+                    assertFalse(dependencyDestroyed.get());
+                } finally {
+                    release.countDown();
+                }
+                closed.get(5, TimeUnit.SECONDS);
+                active.get(5, TimeUnit.SECONDS);
+                assertTrue(finished.get());
+                assertFalse(interrupted.get(), "Graceful close must let the current transaction finish");
+                assertTrue(dependencyDestroyed.get());
+                assertFalse(dependencyDestroyedBeforeWorkFinished.get());
+                assertTrue(delayed.isCancelled(), "Queued delayed work must not be admitted during shutdown");
+                assertEquals(0, delayedRuns.get());
+            } finally {
+                release.countDown();
+                context.close();
+            }
+        }
+    }
+
+    @Test
+    void anotherContextsCloseEventCannotStopTheOwnedScheduler() throws Exception {
+        try (var context = new AnnotationConfigApplicationContext();
+             var unrelated = new AnnotationConfigApplicationContext()) {
+            context.registerBean(BusinessDataResetDrainGate.class);
+            context.registerBean(ScheduledTaskRunRegistry.class);
+            context.registerBean(DrainAwareTaskScheduler.class);
+            context.refresh();
+            var owned = context.getBean(DrainAwareTaskScheduler.class);
+            context.publishEvent(new ContextClosedEvent(unrelated));
+            var runs = new AtomicInteger();
+            owned.schedule(runs::incrementAndGet, Instant.now()).get(5, TimeUnit.SECONDS);
+            assertEquals(1, runs.get());
+        }
     }
 
     /** 服务器状态页「定时任务最近执行」的数据来源：同一包装点记录每次执行。 */

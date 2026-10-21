@@ -4,6 +4,11 @@ import com.uten.imp.features.admin.serverstatus.ScheduledTaskRunRegistry;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Profile;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
+import org.springframework.context.ApplicationListener;
+import org.springframework.context.SmartLifecycle;
+import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.Trigger;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
@@ -31,10 +36,15 @@ import java.util.concurrent.ScheduledFuture;
  * <p>2026-09-10 起同一包装点把每次执行的开始/结束/异常类型记入
  * {@link ScheduledTaskRunRegistry}，供服务器状态页展示「定时任务最近执行」；
  * 被排水闸跳过的一轮不计为执行。</p>
+ *
+ * <p>包装器必须把内部调度器的完整容器生命周期交还 Spring：关闭所属上下文时先拒绝新任务并丢弃
+ * 尚未开始的延迟任务，再由 SmartLifecycle 等待已入场的任务完成，最后销毁调度器和数据库等依赖。
+ * 等待沿用容器的 shutdown-phase 上限（应用配置为 30 秒），不自行无限等待或提前中断事务。</p>
  */
 @Component
 @Profile("!cloud")
-public class DrainAwareTaskScheduler implements TaskScheduler, DisposableBean {
+public class DrainAwareTaskScheduler implements TaskScheduler, DisposableBean, SmartLifecycle,
+        ApplicationContextAware, ApplicationListener<ContextClosedEvent> {
 
     private final BusinessDataResetDrainGate drainGate;
     private final ScheduledTaskRunRegistry runRegistry;
@@ -54,6 +64,8 @@ public class DrainAwareTaskScheduler implements TaskScheduler, DisposableBean {
         this.delegate.setPoolSize(1);
         this.delegate.setThreadNamePrefix("scheduling-");
         this.delegate.setRemoveOnCancelPolicy(true);
+        this.delegate.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
+        this.delegate.setContinueExistingPeriodicTasksAfterShutdownPolicy(false);
         this.delegate.initialize();
     }
 
@@ -107,6 +119,50 @@ public class DrainAwareTaskScheduler implements TaskScheduler, DisposableBean {
     @Override
     public ScheduledFuture<?> scheduleWithFixedDelay(Runnable task, Duration delay) {
         return delegate.scheduleWithFixedDelay(gated(task, delay), delay);
+    }
+
+    @Override
+    public void setApplicationContext(ApplicationContext applicationContext) {
+        delegate.setApplicationContext(applicationContext);
+    }
+
+    @Override
+    public void onApplicationEvent(ContextClosedEvent event) {
+        // The delegate checks context identity, so closing an unrelated child
+        // context cannot stop the application's scheduler.
+        delegate.onApplicationEvent(event);
+    }
+
+    @Override
+    public boolean isAutoStartup() {
+        return delegate.isAutoStartup();
+    }
+
+    @Override
+    public int getPhase() {
+        return delegate.getPhase();
+    }
+
+    @Override
+    public void start() {
+        delegate.start();
+    }
+
+    @Override
+    public void stop() {
+        delegate.stop();
+    }
+
+    @Override
+    public void stop(Runnable callback) {
+        // Spring invokes the callback after admitted tasks finish and applies
+        // its existing bounded phase timeout before destroying dependencies.
+        delegate.stop(callback);
+    }
+
+    @Override
+    public boolean isRunning() {
+        return delegate.isRunning();
     }
 
     @Override

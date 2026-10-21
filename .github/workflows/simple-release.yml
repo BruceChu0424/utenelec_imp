@@ -3,7 +3,7 @@ name: Simple Release
 # ADR-060 单维护者简化发布链：打 tag 即发布。
 # 前置：只读核验同一提交最新 Quality / CodeQL / OSV / Material forecast；默认全部成功。
 # 手动发布显式 allow_running_checks 时可等待发布后复核，失败/取消/缺失仍阻断。
-# 产物：releases/<version>/{SHA256SUMS,SHA256SUMS.sig,server/*.jar,web/**,material-forecast/**} + LATEST.txt
+# 产物：releases/<version>/{SHA256SUMS,SHA256SUMS.sig,server/**,web/**} + LATEST.txt
 # 发布后自动清理 releases/ 下所有旧版本（含历史 object 版本），OSS 只保留最新一版。
 # 服务器端由 deploy/simple/uten-imp-updater.sh 拉取验签安装。
 
@@ -123,16 +123,6 @@ jobs:
             --dart-define="APP_BUILD_ID=$GITHUB_SHA" \
             --dart-define=API_BASE_URL=/api
 
-      - name: Build offline material forecast runtime payload
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -c 'import sys; assert sys.version_info[:2] == (3, 12)'
-          python3 services/material_forecast/build_payload.py \
-            --platform linux-x86_64 --output build/material_forecast_payload
-          python3 build/material_forecast_payload/prepare_runtime.py \
-            --payload "$PWD/build/material_forecast_payload" --cache "$RUNNER_TEMP/material-forecast-runtime"
-
       - name: Assemble release directory
         shell: bash
         run: |
@@ -142,7 +132,6 @@ jobs:
           rm -rf dist && mkdir -p dist/server dist/web
           cp server/target/uten-imp-server-*.jar dist/server/uten-imp-server.jar
           cp server/target/uten-imp-migrator.jar dist/server/uten-imp-migrator.jar
-          cp -r build/material_forecast_payload dist/server/material_forecast
           python3 deploy/release/release_tools.py verify-migrations \
             --payload-root dist \
             --flyway-dir server/src/main/resources/db/migration \
@@ -153,7 +142,7 @@ jobs:
             --web-root dist/web --version "$VERSION" --commit "$GITHUB_SHA"
           python3 deploy/release/material_forecast_payload.py verify \
             --payload build/material-forecast --commit "$GITHUB_SHA" --version "$VERSION"
-          cp -R build/material-forecast dist/material-forecast
+          cp -R build/material-forecast dist/server/material_forecast
           cd dist
           find . -type f ! -name SHA256SUMS -print0 | sort -z \
             | xargs -0 sha256sum > SHA256SUMS

@@ -330,8 +330,12 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         assembly = workflow.split("      - name: Assemble release directory\n", 1)[1].split("      - name:", 1)[0]
         self.assertIn("material_forecast_payload.py verify", assembly)
         self.assertIn('--payload build/material-forecast --commit "$GITHUB_SHA" --version "$VERSION"', assembly)
-        self.assertLess(assembly.index("material_forecast_payload.py verify"), assembly.index("cp -R build/material-forecast dist/material-forecast"))
-        self.assertLess(assembly.index("cp -R build/material-forecast dist/material-forecast"), assembly.index("sha256sum > SHA256SUMS"))
+        self.assertLess(assembly.index("material_forecast_payload.py verify"), assembly.index("cp -R build/material-forecast dist/server/material_forecast"))
+        self.assertLess(assembly.index("cp -R build/material-forecast dist/server/material_forecast"), assembly.index("sha256sum > SHA256SUMS"))
+        self.assertEqual(1, workflow.count("material_forecast_payload.py build"))
+        self.assertNotIn("services/material_forecast/build_payload.py", workflow)
+        self.assertNotIn("dist/material-forecast", workflow)
+        self.assertNotIn("build/material_forecast_payload", workflow)
         self.assertNotIn("continue-on-error", build + assembly)
         quality = (ROOT / ".github/workflows/quality.yml").read_text(encoding="utf-8")
         self.assertIn('python3 -m unittest discover -s deploy/release -p "test_material_forecast_payload.py" -v', quality)
@@ -373,16 +377,6 @@ class SimpleReleaseWebAssemblyTest(unittest.TestCase):
         self.root = Path(self.temporary.name)
         for directory in ("server/target", "server/src/main/resources/db/migration", "build/web", "deploy/release"):
             (self.root / directory).mkdir(parents=True)
-        # Exercise mandatory recursive payload assembly without building or
-        # downloading an executable runtime in this isolated shell fixture.
-        self.synthetic_market_payload = {
-            "SYNTHETIC-TEST-ONLY.txt": b"Synthetic release assembly fixture; not an executable runtime.\n",
-            "worker/synthetic-module.txt": b"Synthetic nested payload content.\n",
-        }
-        for name, content in self.synthetic_market_payload.items():
-            path = self.root / "build/material_forecast_payload" / name
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(content)
         spec = importlib.util.spec_from_file_location("assembly_release_tools", ROOT / "deploy/release/release_tools.py")
         tools = importlib.util.module_from_spec(spec)
         sys.modules[spec.name] = tools
@@ -440,21 +434,36 @@ class SimpleReleaseWebAssemblyTest(unittest.TestCase):
         self.assertIn('src="update_check.js"', index)
         checksums = dict(line.split("  ", 1)[::-1]
                          for line in (dist / "SHA256SUMS").read_text().splitlines())
-        for name, content in self.synthetic_market_payload.items():
-            self.assertEqual(content, (dist / "server/material_forecast" / name).read_bytes())
-            self.assertEqual(hashlib.sha256(content).hexdigest(),
-                             checksums["./server/material_forecast/" + name])
+        original_component = self.root / "build/material-forecast"
+        deployed_component = dist / "server/material_forecast"
+        for source in original_component.rglob("*"):
+            if source.is_file():
+                relative = source.relative_to(original_component)
+                self.assertEqual(source.read_bytes(), (deployed_component / relative).read_bytes())
+                self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(),
+                                 checksums["./server/material_forecast/" + relative.as_posix()])
         actual = {"./" + path.relative_to(dist).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
                   for path in dist.rglob("*") if path.is_file() and path.name != "SHA256SUMS"}
         self.assertEqual(actual, checksums)
-        self.assertIn("./material-forecast/release.json", checksums)
-        self.assertIn("./material-forecast/runtime-requirements.txt", checksums)
-        self.assertEqual(26, len(list((dist / "material-forecast/wheelhouse").glob("*.whl"))))
+        self.assertIn("./server/material_forecast/release.json", checksums)
+        self.assertIn("./server/material_forecast/runtime-requirements.txt", checksums)
+        self.assertIn("./server/material_forecast/prepare_runtime.py", checksums)
+        self.assertIn("./server/material_forecast/forecast_worker/locking.py", checksums)
+        self.assertEqual(26, len(list((deployed_component / "wheelhouse").glob("*.whl"))))
+        self.assertFalse((dist / "material-forecast").exists())
+        self.assertFalse((deployed_component / "source").exists())
         self.assertFalse(any(path.name.startswith(".uten-web-release") for path in dist.rglob("*")))
 
     def test_changed_worker_component_blocks_assembly_before_the_signed_inventory(self):
-        component = self.root / "build/material-forecast/source/services/material_forecast/worker.py"
+        component = self.root / "build/material-forecast/worker.py"
         component.write_bytes(component.read_bytes() + b"# unreviewed modification\n")
+        result = self.assemble()
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("component files are missing, extra, or have changed", result.stderr)
+        self.assertFalse((self.root / "dist/SHA256SUMS").exists())
+
+    def test_missing_preparation_helper_blocks_assembly_before_the_signed_inventory(self):
+        (self.root / "build/material-forecast/prepare_runtime.py").unlink()
         result = self.assemble()
         self.assertNotEqual(0, result.returncode)
         self.assertIn("component files are missing, extra, or have changed", result.stderr)

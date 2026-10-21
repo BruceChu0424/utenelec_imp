@@ -246,9 +246,11 @@ public class BusinessDataResetSqlContractTest {
             Map.entry("goods_weight_observations", 743),
             Map.entry("goods_weight_estimates", 743),
             Map.entry("business_column_definitions", 744),
+            Map.entry("business_column_deletions", 888),
             Map.entry("sales_quote_customer_templates", 745),
             Map.entry("sales_quote_template_versions", 745),
             Map.entry("platform_column_definitions", 750),
+            Map.entry("platform_column_definition_deletions", 888),
             Map.entry("platform_record_fields", 750),
             Map.entry("platform_column_usage", 750),
             Map.entry("sales_alias_document_evidence", 752),
@@ -289,6 +291,9 @@ public class BusinessDataResetSqlContractTest {
         "business_record_history","business_record_identities","notice_blessing_history","ai_provider_history",
         "platform_record_field_versions","platform_column_usage",
         "goods_weight_observations","goods_weight_estimates");
+
+    /** Account security state is independent from the transaction dataset being cleared. */
+    private static final Map<String, Integer> SECURITY_PRESERVE_OVERRIDES = Map.of("auth_step_up_states", 889);
 
     /**
      * V590 起整表废弃并从清空策略移除的表(「读取已安装定义 + 锚点替换删除」
@@ -349,6 +354,7 @@ public class BusinessDataResetSqlContractTest {
         versions.addAll(RUNTIME_RESET_EXTENSIONS.values());
         versions.addAll(PRESERVE_RESET_EXTENSIONS.values());
         versions.addAll(REMOVED_RESET_TABLES.values());
+        versions.addAll(SECURITY_PRESERVE_OVERRIDES.values());
         StringBuilder extensions = new StringBuilder();
         for (int version : versions) extensions.append(extensionSql(version)).append('\n');
         extensionSql = extensions.toString();
@@ -465,6 +471,20 @@ public class BusinessDataResetSqlContractTest {
             assertThat(migration).contains("(''"+table+"'', ''PRESERVE'')");
             assertThat(expectedCurrentPolicy()).containsEntry(table,"PRESERVE");
         }
+    }
+
+    @Test
+    void currentResetPreservesAuthorityAndSecurityConfiguration() throws IOException {
+        Map<String, String> expected = expectedCurrentPolicy();
+        for (String table : List.of("users", "employees", "departments", "employee_secondary_departments", "permissions",
+                "department_permissions", "user_permission_overrides", "manager_permission_delegations", "user_data_scopes",
+                "auth_step_up_states")) {
+            assertThat(expected).as(table + " is not a business transaction").containsEntry(table, "PRESERVE");
+        }
+        assertThat(expected).containsEntry("auth_sessions", "CLEAR").containsEntry("refresh_tokens", "PRESERVE");
+        assertThat(SECURITY_PRESERVE_OVERRIDES).containsEntry("auth_step_up_states", 889);
+        assertThat(extensionSql(889)).contains("SET business_reset_generation = business_reset_generation + 1",
+                "(''auth_step_up_states'', ''PRESERVE'')", "TRUNCATE TABLE refresh_tokens RESTART IDENTITY;");
     }
 
     @Test
@@ -603,6 +623,9 @@ public class BusinessDataResetSqlContractTest {
                     .containsKey(table);
             expected.put(table,"CLEAR");
         });
+        SECURITY_PRESERVE_OVERRIDES.forEach((table, version) ->
+                assertThat(expected.put(table, "PRESERVE"))
+                        .as(table + " must change from CLEAR to PRESERVE in V" + version).isEqualTo("CLEAR"));
         return expected;
     }
 

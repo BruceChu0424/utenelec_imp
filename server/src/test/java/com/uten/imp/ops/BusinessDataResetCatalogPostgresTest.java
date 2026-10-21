@@ -101,7 +101,10 @@ class BusinessDataResetCatalogPostgresTest {
                 Map.entry("fn_business_test_reset_verify_purged", false), Map.entry("fn_clear_business_test_object_metadata", false));
         assertThat(jdbc.queryForObject("SELECT pg_get_functiondef('public.business_data_reset()'::regprocedure)", String.class))
                 .doesNotContain("business_attachment_reset_prepare", "business_test_object_cleanup_prepare", "psql")
-                .contains("fn_business_data_reset_refusals()", "USING ERRCODE = 'XX000'");
+                .doesNotContain("SET epoch = epoch + 1")
+                .contains("fn_business_data_reset_refusals()", "USING ERRCODE = 'XX000'",
+                        "SET business_reset_generation = business_reset_generation + 1",
+                        "TRUNCATE TABLE refresh_tokens RESTART IDENTITY;");
     }
 
     @Test
@@ -119,8 +122,11 @@ class BusinessDataResetCatalogPostgresTest {
                     """, goods, "SAMPLE:" + goods);
             jdbc.update("INSERT INTO goods_weight_estimates(goods_id, unit_weight_kg) VALUES (?, 0.2)", goods);
             long before = generation();
-            jdbc.queryForList("SELECT * FROM business_data_reset()");
+            long epoch = jdbc.queryForObject("SELECT epoch FROM authorization_state WHERE singleton_id=1", Long.class);
+            assertThat(((Number) jdbc.queryForMap("SELECT * FROM business_data_reset()").get("authorization_epoch_after")).longValue())
+                    .isEqualTo(epoch);
             assertThat(generation()).isEqualTo(before + 1);
+            assertThat(jdbc.queryForObject("SELECT epoch FROM authorization_state WHERE singleton_id=1", Long.class)).isEqualTo(epoch);
             assertThat(jdbc.queryForObject("SELECT count(*) FROM goods_weight_observations", Long.class)).isZero();
             assertThat(jdbc.queryForObject("SELECT count(*) FROM goods_weight_estimates", Long.class)).isZero();
             assertThat(jdbc.queryForObject("SELECT default_tare_kg FROM goods_weight_profiles WHERE goods_id = ?",

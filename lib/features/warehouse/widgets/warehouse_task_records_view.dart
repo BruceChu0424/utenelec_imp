@@ -138,7 +138,7 @@ class _WarehouseTaskRecordsViewState
   /// 变化保留旧行到新数据落地（keepPreviousData）——此前一律清空，任务中心每
   /// 次搜索停顿 300ms 就整表闪一次全屏骨架（2026-10-18 口径统一）。
   void _invalidate({bool reset = false}) {
-    ++_requestVersion;
+    final revision = ++_requestVersion;
     if (!mounted) return;
     setState(() {
       if (reset) _result = null;
@@ -148,7 +148,7 @@ class _WarehouseTaskRecordsViewState
       _decisionKey = null;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _load(1);
+      if (mounted && revision == _requestVersion) _load(1);
     });
   }
 
@@ -394,6 +394,9 @@ class _WarehouseTaskRecordsViewState
       } else {
         await openWarehouseTaskRecord(context, ref, row);
       }
+      // Returning also clears the host search after this frame. Let that state
+      // reach the next build before scheduling the one current list request.
+      await WidgetsBinding.instance.endOfFrame;
       if (!mounted ||
           scope != ref.read(authenticatedScopeProvider) ||
           server != ref.read(apiBaseUrlProvider)) {

@@ -12,6 +12,8 @@ import 'package:uten_imp/features/admin/pages/admin_system_settings_page.dart';
 import 'package:uten_imp/features/admin/repositories/system_setting_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
+import '../../support/pump_until.dart';
+
 void main() {
   testWidgets('weekly schedule shows server confirmation and does not poll', (
     tester,
@@ -197,7 +199,18 @@ Future<void> _pump(
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  if (repo.firstStatus != null) {
+    await pumpUntil(
+      tester,
+      () => find
+          .byKey(const ValueKey('system-setting-updater_check_interval_days'))
+          .evaluate()
+          .isNotEmpty,
+      reason: 'Settings must be editable while the earlier status read is held',
+    );
+  } else {
+    await tester.pumpAndSettle();
+  }
 }
 
 class _Repository implements SystemSettingRepository {

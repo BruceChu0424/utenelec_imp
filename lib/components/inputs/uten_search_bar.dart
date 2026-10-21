@@ -83,6 +83,8 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
   late final TextEditingController _controller;
   Timer? _debounce;
   bool _ownsController = false;
+  late String _appliedText;
+  late String _inputText;
   late final _searchLifecycle = PageSearchLifecycle(
     onLeave: _cancelPendingSearch,
     onReturn: _clear,
@@ -131,7 +133,9 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
           text: text,
           selection: TextSelection.collapsed(offset: text.length),
         );
+        _inputText = text;
         widget.onInputChanged?.call(text);
+        _appliedText = text;
         if (widget.onChanged != null) {
           widget.onChanged!(text);
         } else {
@@ -149,6 +153,7 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
     _ownsController = widget.controller == null;
     _controller =
         widget.controller ?? TextEditingController(text: widget.initialValue);
+    _appliedText = _inputText = _controller.text;
     // 组合结束时文本可能不变（原样上屏/失焦提交），onChanged 不会触发，
     // 靠监听 controller 捕捉「composing 区间清空」这一刻补发挂起的回调。
     _controller.addListener(_onControllerValueChanged);
@@ -162,6 +167,7 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
     // page state without sharing one TextEditingController between two inputs.
     if (_ownsController && oldWidget.initialValue != widget.initialValue) {
       final next = widget.initialValue ?? '';
+      _appliedText = _inputText = next;
       if (_controller.text != next) {
         _heldByComposition = null;
         _debounce?.cancel();
@@ -209,10 +215,14 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
 
   void _dispatch(String value) {
     _debounce?.cancel();
+    _inputText = value;
     widget.onInputChanged?.call(value);
     _debounce = Timer(widget.debounce, () {
       if (!mounted) return;
-      widget.onChanged?.call(value);
+      if (widget.onChanged != null) {
+        _appliedText = value;
+        widget.onChanged!(value);
+      }
     });
     setState(() {});
   }
@@ -224,8 +234,16 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
 
   void _clear() {
     if (!mounted) return;
+    final changed =
+        _controller.text.isNotEmpty ||
+        _appliedText.isNotEmpty ||
+        _inputText.isNotEmpty;
     _cancelPendingSearch();
+    // Returning to an already empty search is not a new query. The host's
+    // normal resume refresh remains the sole data read in that case.
+    if (!changed) return;
     _controller.clear();
+    _appliedText = _inputText = '';
     widget.onInputChanged?.call('');
     if (widget.onChanged != null) {
       widget.onChanged!('');
@@ -248,6 +266,7 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
           ? null
           : (value) {
               _debounce?.cancel();
+              _appliedText = value;
               widget.onSubmitted!(value);
             },
       textInputAction: TextInputAction.search,

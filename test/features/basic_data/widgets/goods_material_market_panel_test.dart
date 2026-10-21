@@ -708,7 +708,11 @@ void main() {
       expect(find.text('下次检查: 2026-10-20 17:01(北京)'), findsOneWidget);
       const capture = bool.fromEnvironment('UTEN_MATERIAL_VISUALS');
       if (capture) {
-        await saveAuditScreenshot(tester, visualVariant, 'material-market-v2-wide');
+        await saveAuditScreenshot(
+          tester,
+          visualVariant,
+          'material-market-v2-wide',
+        );
       }
       await tester.tap(find.byKey(const Key('material-market-evidence')));
       await settle(tester);

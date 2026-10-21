@@ -32,6 +32,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../support/audit_screenshot_support.dart';
 import '../support/document_scope_capability_overrides.dart';
+import '../support/pump_until.dart';
 
 const _id = 'e65a0a91-4302-430b-adc6-f8277a947893';
 const _owner = '88c21312-0a3e-4e03-a872-9acbff33cf37';
@@ -218,7 +219,16 @@ Future<ProviderContainer> _pump(
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  if (api.readGate != null) {
+    await pumpUntil(
+      tester,
+      () => find.byType(UtenSkeletonList).evaluate().isNotEmpty,
+      reason:
+          'The intentionally held detail request must show its loading view',
+    );
+  } else {
+    await tester.pumpAndSettle();
+  }
   return container;
 }
 

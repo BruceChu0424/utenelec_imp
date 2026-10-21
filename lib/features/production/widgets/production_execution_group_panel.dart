@@ -81,7 +81,9 @@ class _ProductionExecutionGroupPanelState
     }
   }
 
-  Future<void> _load() async {
+  Future<void> _load() => trackRefresh(_loadPage(), replaceKey: 'rows');
+
+  Future<void> _loadPage() async {
     if (!mounted) return;
     final generation = ++_loadGeneration;
     final requestedPage = _page;

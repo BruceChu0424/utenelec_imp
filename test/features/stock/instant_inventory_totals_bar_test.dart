@@ -88,7 +88,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('详情为独立路由，返回保留原分类、搜索和表头筛选', (tester) async {
+  testWidgets('详情为独立路由，返回保留分类与表头筛选并清空页面搜索', (tester) async {
     final api = InstantInventoryApiFixture(
       withTotals: true,
       withAnalysis: true,
@@ -130,7 +130,7 @@ void main() {
       same(originalState),
     );
     expect(_categoryText('原材料'), findsOneWidget);
-    expect(tester.widget<EditableText>(search).controller.text, '原材料');
+    expect(tester.widget<EditableText>(search).controller.text, isEmpty);
     expect(
       tester
           .widget<MasterDataTableView<InstantInventoryRow>>(tableFinder)

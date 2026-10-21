@@ -110,6 +110,44 @@ class _FullscreenSearchHostState extends State<_FullscreenSearchHost> {
 }
 
 void main() {
+  testWidgets('returning with an empty search emits no redundant query', (
+    tester,
+  ) async {
+    final changes = <String>[];
+    final inputs = <String>[];
+    final router = _router(_SearchPage(changes: changes, inputs: inputs));
+    addTearDown(router.dispose);
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+    router.push<void>('/detail');
+    await tester.pumpAndSettle();
+    router.pop();
+    await tester.pumpAndSettle();
+    expect(changes, isEmpty);
+    expect(inputs, isEmpty);
+  });
+
+  testWidgets(
+    'return clears an applied query when its deletion was debounced',
+    (tester) async {
+      final changes = <String>[];
+      final router = _router(
+        _SearchPage(changes: changes, initialValue: 'applied'),
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '');
+      router.push<void>('/detail');
+      await tester.pumpAndSettle();
+      expect(changes, isEmpty);
+      router.pop();
+      await tester.pumpAndSettle();
+      expect(changes, ['']);
+      expect(find.text('applied:'), findsOneWidget);
+    },
+  );
+
   testWidgets('push and pop clear applied query and both search callbacks once', (
     tester,
   ) async {

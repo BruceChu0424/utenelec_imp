@@ -10,6 +10,8 @@ import 'package:uten_imp/features/production/pages/production_material_increment
 import 'package:uten_imp/features/production/repositories/production_material_increment_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
+import '../../support/pump_until.dart';
+
 Map<String, dynamic> _snapshot(int increment) => {
   'items': [
     {
@@ -125,6 +127,21 @@ void main() {
     await tester.pump();
     await tester.tap(find.byTooltip('刷新'));
     await tester.pump();
+    expect(
+      repository.calls,
+      2,
+      reason: 'The busy refresh rejects a second tap',
+    );
+    await tester.tap(find.text('审批通过'));
+    await pumpUntil(
+      tester,
+      () => find.widgetWithText(FilledButton, '确认审核').evaluate().isNotEmpty,
+      reason:
+          'The decision confirmation remains available during an older read',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, '确认审核'));
+    await tester.pump();
+    expect(repository.decisions, 1);
     repository.newer.complete(
       ProductionMaterialIncrementRequest({
         ..._request().data,
@@ -134,7 +151,12 @@ void main() {
         'canReturn': false,
       }),
     );
-    await tester.pumpAndSettle();
+    await pumpUntil(
+      tester,
+      () => find.textContaining('追加用料已批准').evaluate().isNotEmpty,
+      reason:
+          'The authoritative approval must win before the old read completes',
+    );
     repository.older.complete(_request());
     await tester.pumpAndSettle();
     expect(find.textContaining('追加用料已批准'), findsOneWidget);
@@ -271,11 +293,22 @@ class _DelayedRepository extends _Repository {
   final older = Completer<ProductionMaterialIncrementRequest>();
   final newer = Completer<ProductionMaterialIncrementRequest>();
   int calls = 0;
+  int decisions = 0;
   @override
   Future<ProductionMaterialIncrementRequest> detail(String id) {
     calls++;
     if (calls == 1) return Future.value(_request());
     return calls == 2 ? older.future : newer.future;
+  }
+
+  @override
+  Future<ProductionMaterialIncrementRequest> decide(
+    ProductionMaterialIncrementRequest request, {
+    required bool approve,
+    required String reason,
+  }) {
+    decisions++;
+    return newer.future;
   }
 }
 

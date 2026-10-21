@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:uten_imp/components/buttons/uten_app_bar_action_button.dart';
+import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -405,10 +405,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('重试领料'), findsOneWidget);
-      final refresh = tester.widget<UtenAppBarActionButton>(
+      final refresh = tester.widget<UtenRefreshButton>(
         find.byKey(const Key('production-draw-request-refresh')),
       );
-      expect(refresh.onPressed, isNull);
+      expect(refresh.enabled, isFalse);
       expect(
         tester
             .widget<TextField>(

@@ -676,7 +676,9 @@ class _PendingPanelState extends ConsumerState<_PendingPanel>
     return _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load() => trackRefresh(_loadPage(), replaceKey: 'rows');
+
+  Future<void> _loadPage() async {
     final requestVersion = ++_requestVersion;
     _hasLoaded = true;
     setState(() {
@@ -1299,7 +1301,9 @@ class _PlanPanelState extends ConsumerState<_PlanPanel>
     return _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load() => trackRefresh(_loadPage(), replaceKey: 'rows');
+
+  Future<void> _loadPage() async {
     if (!mounted) return;
     final generation = ++_loadGeneration;
     setState(() {

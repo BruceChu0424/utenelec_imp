@@ -54,7 +54,7 @@ class ReportDraftExclusionContractTest {
                 // finance 单头别名是 t：保留本地实现，原断言口径不变。
                 assertThat(source)
                         .as("%s 必须有默认排除草稿的统一入口", entry.getKey())
-                        .contains("private static void addApprovedByDefault(WhereBuilder w, Short status)")
+                        .contains("private static void addApprovedByDefault(FinanceWhereBuilder w, Short status)")
                         .contains("w.add(\"" + alias + ".status <> 0\", null, null)");
                 assertThat(source.replace(" ", ""))
                         .as("%s 显式 status 仍要能查（含 status=0 查草稿）", entry.getKey())

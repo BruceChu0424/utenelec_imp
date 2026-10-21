@@ -151,6 +151,15 @@ class ProcurementRejectedOrderEditTest {
         EntityManager em = mock(EntityManager.class);
         UUID applicationItemId = UUID.randomUUID();
         stubSubcontractSnapshots(em, applicationItemId, goodsId);
+        Query existingSourcesQuery = mock(Query.class);
+        when(em.createNativeQuery(argThat(sql ->
+                sql != null && sql.contains("SELECT item.application_item_id")
+                        && sql.contains("FROM subcontract_order_items item")
+                        && sql.contains("FROM subcontract_order_item_sources source"))))
+                .thenReturn(existingSourcesQuery);
+        when(existingSourcesQuery.setParameter("order", orderId))
+                .thenReturn(existingSourcesQuery);
+        when(existingSourcesQuery.getResultList()).thenReturn(List.of(applicationItemId));
         UUID settlementMethodId = UUID.randomUUID();
         Query settlementQuery = mock(Query.class);
         when(em.createNativeQuery(argThat(sql ->
@@ -220,6 +229,8 @@ class ProcurementRejectedOrderEditTest {
         assertEquals("APPLICATION_ITEM_AT_SAVE",
                 savedItem.getValue().getGoodsSnapshotSource());
         verify(projection).requireMutable("SUBCONTRACT", orderId);
+        verify(existingSourcesQuery).setParameter("order", orderId);
+        verify(existingSourcesQuery).getResultList();
         verify(sourceGuard, never()).requireSubcontractOrderMutable(orderId);
     }
 

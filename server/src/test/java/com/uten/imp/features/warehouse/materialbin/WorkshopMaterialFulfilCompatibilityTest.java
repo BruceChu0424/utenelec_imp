@@ -6,6 +6,7 @@ import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.FulfilRe
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.MaterialSetup;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.RequisitionView;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -57,13 +58,19 @@ class WorkshopMaterialFulfilCompatibilityTest {
 
     private String captured(List<MaterialSetup> setup) throws Exception {
         WorkshopMaterialCommandLedger ledger = mock(WorkshopMaterialCommandLedger.class);
+        NamedParameterJdbcTemplate db = mock(NamedParameterJdbcTemplate.class);
+        WorkshopMaterialScope scope = mock(WorkshopMaterialScope.class);
+        UUID workshop = UUID.fromString("00000000-0000-4000-8000-000000000004");
+        when(db.queryForList(contains("FROM workshop_material_requisitions"),
+                eq(java.util.Map.of("id", REQUEST)), eq(UUID.class))).thenReturn(List.of(workshop));
         Object[] captured = new Object[1];
         when(ledger.execute(eq("REQUISITION_FULFIL"), eq(KEY), any(), eq(RequisitionView.class), any()))
                 .thenAnswer(invocation -> { captured[0] = invocation.getArgument(2); return null; });
         WorkshopMaterialRequisitionService service = new WorkshopMaterialRequisitionService(
-                null, null, null, ledger, null, null, null, null, null, null, null);
+                db, null, null, ledger, scope, null, null, null, null, null, null);
         service.fulfil(REQUEST, new FulfilRequest(2L,
                 List.of(new FulfilLine(LINE, LEAF, new BigDecimal("12.50"))), null, KEY, setup));
+        verify(scope).requireWorkshop(workshop);
         return new ObjectMapper().findAndRegisterModules().writeValueAsString(captured[0]);
     }
 }

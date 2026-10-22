@@ -79,7 +79,7 @@ class PaymentStyleWorkspaceRuntimePostgresTest {
         UUID id=create("business flags",null,"EXPENSE");route("/api/master/inline-edit/payment-styles/"+id,"PATCH");
         inline.patch(id,Map.of("departmental",false,"receipt",false,"payment",false),Map.of("departmental",true,"receipt",true,"payment",true));
         var revision=sharedHistory.list("payment-styles",id,null,null).entries().getFirst();
-        var detail=sharedHistory.detail("payment-styles",Long.parseLong(revision.id()));
+        var detail=sharedHistory.detail("payment-styles",historyId(revision.id()));
         assertTrue(detail.changes().stream().anyMatch(change->change.field().equals("is_departmental")&&change.label().equals("部门核算")));
         assertTrue(detail.changes().stream().anyMatch(change->change.field().equals("is_receipt")&&change.label().equals("收款标志")));
         assertTrue(detail.changes().stream().anyMatch(change->change.field().equals("is_payment")&&change.label().equals("付款标志")));
@@ -134,9 +134,9 @@ class PaymentStyleWorkspaceRuntimePostgresTest {
         var principal=new AuthUser(actor,employee,"payment-admin",Set.of("payment_style:view","payment_style:edit"),false,true,true,false,null,UUID.randomUUID());
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(principal,"",principal.getAuthorities()));
         var creation=sharedHistory.list("payment-styles",id,null,null).entries().stream().filter(entry->entry.action().equals("CREATE")).findFirst().orElseThrow();
-        var selected=sharedHistory.detail("payment-styles",Long.parseLong(creation.id()));
+        var selected=sharedHistory.detail("payment-styles",historyId(creation.id()));
         assertFalse(selected.canRestoreBefore());assertTrue(selected.blockedReason().contains("财务类别"),selected.blockedReason());
-        assertThrows(ApiException.class,()->sharedHistory.restore("payment-styles",Long.parseLong(selected.id()),selected.expectedHead(),true));
+        assertThrows(ApiException.class,()->sharedHistory.restore("payment-styles",historyId(selected.id()),selected.expectedHead(),true));
         assertFalse(db.queryForObject("SELECT is_deleted FROM payment_styles WHERE id=?",Boolean.class,id));
     }
 
@@ -145,6 +145,13 @@ class PaymentStyleWorkspaceRuntimePostgresTest {
         UUID id=styles.create(request).getId();
         // Keep assertions readable while the generated code remains authoritative.
         db.update("UPDATE payment_styles SET name=? WHERE id=?",name,id);return id;
+    }
+    private static long historyId(String value) {
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException malformed) {
+            throw new AssertionError("History must expose its numeric database revision id", malformed);
+        }
     }
     private void login(Set<String> permissions) {
         var principal=new AuthUser(actor,employee,"payment-workspace",permissions,false,true,false,false,null,UUID.randomUUID());

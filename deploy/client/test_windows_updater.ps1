@@ -97,11 +97,13 @@ function Run-Case([string]$Name, [bool]$Crash, [bool]$AddTraversal = $false, [bo
     $start.Arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -PackagePath "{1}" -ExpectedSha256 {2} -BuildNumber 2 -Architecture x64 -InstallDirectory "{3}" -ParentProcessId {4} -ParentStartFileTime {5} -ReadyEventName "{6}" -Workspace "{7}"' -f $updater, $package, $expectedHash, $install, $parent.Id, $startTime, $eventName, $job
     $start.UseShellExecute = $false
     $start.CreateNoWindow = $true
-    $start.RedirectStandardError = $true
+    # A restarted client inherits the helper's standard handles. Reading a
+    # redirected pipe to EOF can hang after the helper exits while that client
+    # correctly remains alive; durable result JSON carries the failure details.
     $helper = [Diagnostics.Process]::Start($start)
     $ownedProcesses.Add($helper)
     try {
-        if (-not $ready.WaitOne(15000)) { throw "Updater did not become ready: $($helper.StandardError.ReadToEnd())" }
+        if (-not $ready.WaitOne(15000)) { throw 'Updater did not become ready within 15 seconds.' }
         if ([IO.File]::ReadAllText((Join-Path $install 'data\app.so')) -ne 'fixture-1') {
             throw 'Updater changed program files while its parent was alive.'
         }
@@ -113,7 +115,7 @@ function Run-Case([string]$Name, [bool]$Crash, [bool]$AddTraversal = $false, [bo
         $expectedStatus = if ($shouldFail) { 'failed' } else { 'updated' }
         $expectedBuild = if ($shouldFail) { 1 } else { 2 }
         if ($result.status -ne $expectedStatus) {
-            throw "Unexpected updater result: $($result | ConvertTo-Json -Compress). $($helper.StandardError.ReadToEnd())"
+            throw "Unexpected updater result: $($result | ConvertTo-Json -Compress)."
         }
         if ($shouldFail -and -not $result.rollbackComplete) { throw 'The old version did not recover completely.' }
         $actualBuild = [Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $install 'uten_imp.exe')).FilePrivatePart

@@ -54,7 +54,7 @@ class WorkshopMaterialRequestCandidatesPostgresTest {
                 DROP SCHEMA public CASCADE; CREATE SCHEMA public;
                 CREATE TABLE units(id uuid PRIMARY KEY, name text, status text DEFAULT '使用', is_deleted boolean DEFAULT false);
                 CREATE TABLE unit_measurement_profiles(unit_id uuid PRIMARY KEY, measurement_dimension text);
-                CREATE TABLE colors(id uuid PRIMARY KEY, name text, status text DEFAULT '使用', is_deleted boolean DEFAULT false);
+                CREATE TABLE colors(id uuid PRIMARY KEY, name text, status text DEFAULT '使用', is_deleted boolean DEFAULT false, remark text);
                 CREATE TABLE warehouses(id uuid PRIMARY KEY, name text, parent_id uuid, status text DEFAULT '使用',
                     is_deleted boolean DEFAULT false, is_line_side boolean DEFAULT false, is_accountable boolean DEFAULT true);
                 CREATE TABLE goods(id uuid PRIMARY KEY, code text, name text, color_id uuid, unit_id uuid,

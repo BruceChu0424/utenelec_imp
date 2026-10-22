@@ -89,7 +89,8 @@ class SubcontractComponentCustodyProjectionPostgresTest {
                     is_deleted boolean DEFAULT false);
                 CREATE TABLE subcontract_material_issues(id uuid PRIMARY KEY, status int, is_deleted boolean DEFAULT false);
                 CREATE TABLE subcontract_material_issue_items(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-                    issue_id uuid, plan_item_id uuid, qty numeric, is_deleted boolean DEFAULT false);
+                    issue_id uuid, plan_item_id uuid, qty numeric, is_deleted boolean DEFAULT false,
+                    warehouse_split_command_id uuid, warehouse_split_at timestamptz);
                 CREATE TABLE stock_reservations(id uuid PRIMARY KEY, qty numeric, released_qty numeric DEFAULT 0,
                     consumed_qty numeric DEFAULT 0, status int DEFAULT 0, is_deleted boolean DEFAULT false);
                 CREATE TABLE subcontract_component_stock_handoffs(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

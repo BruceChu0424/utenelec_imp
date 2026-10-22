@@ -8,6 +8,7 @@ import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../employee/repositories/employee_repository.dart';
+import '../../employee/models/employee_api_models.dart';
 import '../../employee/widgets/department_employee_picker.dart';
 import '../models/currency_node.dart';
 import 'client_master_edit.dart' show loadClientCurrencies;
@@ -16,37 +17,60 @@ import '../models/supplier_node.dart';
 import '../repositories/reference_method_repository.dart';
 import '../repositories/supplier_repository.dart';
 import '../widgets/master_edit_dialog.dart';
+import 'master_edit_owner.dart';
 
 /// 加载启用中的结算方式（范式同客户侧 loadClientSettlementMethods）。
-bool _settlementOptionsLoading = false;
+Object? _settlementOptionsLoading;
+MasterEditOwner? _settlementOptionsOwner;
 Future<List<ReferenceMethodOption>?> loadSupplierSettlementMethods(
   BuildContext context,
-  WidgetRef ref,
-) async {
-  if (_settlementOptionsLoading) return null;
-  _settlementOptionsLoading = true;
+  WidgetRef ref, {
+  MasterEditOwner? owner,
+}) async {
+  if (owner?.isCurrent == false) return null;
+  if (_settlementOptionsLoading != null &&
+      (_settlementOptionsOwner?.isCurrent ?? true)) {
+    return null;
+  }
+  final ticket = Object();
+  _settlementOptionsLoading = ticket;
+  _settlementOptionsOwner = owner;
   final nav = Navigator.of(context, rootNavigator: true);
-  showDialog<void>(
+  final route = DialogRoute<void>(
     context: context,
     barrierDismissible: false,
     builder: (_) => const Center(child: CircularProgressIndicator()),
   );
+  owner?.trackRoute(route);
+  nav.push(route);
   try {
-    final methods = await ref
-        .read(referenceMethodRepositoryProvider)
-        .settlementMethods();
+    Future<List<ReferenceMethodOption>> read() =>
+        ref.read(referenceMethodRepositoryProvider).settlementMethods();
+    final methods = owner == null ? await read() : await owner.run(read);
+    if (!context.mounted || owner?.isCurrent == false) return null;
     if (methods.isEmpty) {
       if (context.mounted) context.appError('暂无可用结算方式，请先维护结算方式字典');
       return null;
     }
     return methods;
   } on ApiException catch (e) {
-    if (context.mounted) context.appError(e.message);
+    if (context.mounted && owner?.isCurrent != false) {
+      context.appError(e.message);
+    }
   } catch (_) {
-    if (context.mounted) context.appError('加载结算方式失败，请重试');
+    if (context.mounted && owner?.isCurrent != false) {
+      context.appError('加载结算方式失败，请重试');
+    }
   } finally {
-    if (nav.canPop()) nav.pop();
-    _settlementOptionsLoading = false;
+    if (owner != null) {
+      owner.closeRoute(route);
+    } else if (route.isActive) {
+      route.navigator?.removeRoute(route);
+    }
+    if (identical(_settlementOptionsLoading, ticket)) {
+      _settlementOptionsLoading = null;
+      _settlementOptionsOwner = null;
+    }
   }
   return null;
 }
@@ -58,17 +82,20 @@ List<MasterFieldDef> buildSupplierFields(
   List<ReferenceMethodOption> settlementMethods,
   WidgetRef ref, {
   List<CurrencyListItem> currencies = const [],
+  MasterEditOwner? owner,
 }) => [
-  ...const <MasterFieldDef>[
-    MasterFieldDef(key: 'name', label: '名称', required: true, group: '基础'),
+  ...<MasterFieldDef>[
+    const MasterFieldDef(key: 'name', label: '名称', required: true, group: '基础'),
     MasterFieldDef(
       key: 'code',
       label: '编号',
       group: '基础',
       hint: '留空按分类前缀自动生成；手工编号也必须唯一',
+      identifierDomain: 'SUPPLIER',
+      identifierId: iv['_entityId'],
     ),
-    MasterFieldDef(key: 'description', label: '描述/全称', group: '基础'),
-    MasterFieldDef(key: 'place', label: '地区', group: '地址'),
+    const MasterFieldDef(key: 'description', label: '描述/全称', group: '基础'),
+    const MasterFieldDef(key: 'place', label: '地区', group: '地址'),
   ],
   MasterFieldDef(
     key: 'ownerEmployeeId',
@@ -81,9 +108,9 @@ List<MasterFieldDef> buildSupplierFields(
       initialId: ctx.initialValue,
       initialName: iv['ownerEmployeeName'],
       initialLoader: (employeeId) async {
-        final employee = await ref
-            .read(employeeRepositoryProvider)
-            .getById(employeeId);
+        Future<EmployeeProfile> read() =>
+            ref.read(employeeRepositoryProvider).getById(employeeId);
+        final employee = owner == null ? await read() : await owner.run(read);
         return UtenEmployeePickerItem(
           id: employee.id,
           name: employee.fullName ?? '',
@@ -97,8 +124,13 @@ List<MasterFieldDef> buildSupplierFields(
         );
       },
       onChanged: ctx.onChanged,
-      onPick: () =>
-          showUtenDepartmentEmployeePicker(context, ref, title: '选择业务员'),
+      onPick: () => showUtenDepartmentEmployeePicker(
+        context,
+        ref,
+        title: '选择业务员',
+        dialogScopeBuilder: owner?.ownDialog,
+        isCurrent: owner == null ? null : () => owner.isCurrent,
+      ),
     ),
   ),
   ...const <MasterFieldDef>[
@@ -168,12 +200,46 @@ Future<void> showSupplierMasterEdit(
   String? fallbackCategoryId,
   VoidCallback? onSaved,
 }) async {
-  final settlementMethods = await loadSupplierSettlementMethods(context, ref);
-  if (!context.mounted || settlementMethods == null) return;
+  final owner = MasterEditOwner(
+    context,
+    ref,
+    permissions: {Perm.supplierView, Perm.supplierEdit},
+  );
+  try {
+    if (!await owner.bindRequests()) return;
+    if (!context.mounted) return;
+    await _showSupplierMasterEditOwned(
+      context,
+      ref,
+      d,
+      owner,
+      fallbackCategoryId: fallbackCategoryId,
+      onSaved: onSaved,
+    );
+  } finally {
+    owner.dispose();
+  }
+}
+
+Future<void> _showSupplierMasterEditOwned(
+  BuildContext context,
+  WidgetRef ref,
+  SupplierDetail d,
+  MasterEditOwner owner, {
+  String? fallbackCategoryId,
+  VoidCallback? onSaved,
+}) async {
+  final settlementMethods = await loadSupplierSettlementMethods(
+    context,
+    ref,
+    owner: owner,
+  );
+  if (!context.mounted || !owner.isCurrent || settlementMethods == null) return;
   // V593 默认币种下拉；加载失败不阻断编辑（只是该项没有选项）。
   final currencies =
-      await loadClientCurrencies(context, ref) ?? const <CurrencyListItem>[];
-  if (!context.mounted) return;
+      await loadClientCurrencies(context, ref, owner: owner) ??
+      const <CurrencyListItem>[];
+  if (!context.mounted || !owner.isCurrent) return;
   if (d.defaultSettlementMethodId != null &&
       !settlementMethods.any(
         (method) => method.id == d.defaultSettlementMethodId,
@@ -181,46 +247,18 @@ Future<void> showSupplierMasterEdit(
     context.appError('该供应商保存的默认结算方式已不可用，请先在列表里修正后再编辑');
     return;
   }
-  final iv = <String, String>{
-    'name': d.name ?? '',
-    'code': d.code ?? '',
-    'description': d.description ?? '',
-    'place': d.place ?? '',
-    'ownerEmployeeId': d.ownerEmployeeId ?? '',
-    'ownerEmployeeName': d.ownerEmployeeName ?? d.empId ?? '',
-    'legalPerson': d.legalPerson ?? '',
-    'linkman': d.linkman ?? '',
-    'mobile': d.mobile ?? '',
-    'phone': d.phone ?? '',
-    'phone2': d.phone2 ?? '',
-    'fax': d.fax ?? '',
-    'postcode': d.postcode ?? '',
-    'address': d.address ?? '',
-    'email': d.email ?? '',
-    'website': d.website ?? '',
-    'shipVia': d.shipVia ?? '',
-    'shipAddress': d.shipAddress ?? '',
-    'bank': d.bank ?? '',
-    'bankAccount': d.bankAccount ?? '',
-    'taxId': d.taxId ?? '',
-    'initTotal': d.initTotal?.toString() ?? '',
-    'tday': d.tday?.toString() ?? '',
-    'defaultSettlementMethodId': d.defaultSettlementMethodId ?? '',
-    'defaultCurrencyId': d.defaultCurrencyId ?? '',
-    'defaultTaxRate': d.defaultTaxRate?.toString() ?? '',
-    'status': d.status ?? '',
-    'remark': d.remark ?? '',
-  };
+  final iv = supplierInitialValues(d);
   final permissions = ref.read(currentPermissionsProvider);
   await showMasterEditDialog(
     context: context,
-    title: '编辑供应商', // TODO(l10n): 补 arb
+    title: '编辑供应商',
     fields: buildSupplierFields(
       context,
       iv,
       settlementMethods,
       ref,
       currencies: currencies,
+      owner: owner,
     ),
     initialValues: iv,
     fixedValues: {
@@ -230,17 +268,47 @@ Future<void> showSupplierMasterEdit(
     readOnlyKeys: permissions.contains(Perm.supplierStatus)
         ? null
         : const {'status'},
+    submissionOwner: owner,
     onSubmit: (body) async {
-      final ok = await context.guardRun(
-        () async {
-          await ref.read(supplierRepositoryProvider).update(d.id, body);
-        },
-        success: '供应商已更新', // TODO(l10n): 补 arb
-        errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
-      );
-      if (!ok) return false;
-      onSaved?.call();
+      await ref.read(supplierRepositoryProvider).update(d.id, body);
       return true;
+    },
+    onAccepted: () {
+      if (!owner.isCurrent) return;
+      context.appSuccess('供应商已更新');
+      onSaved?.call();
     },
   );
 }
+
+Map<String, String> supplierInitialValues(SupplierDetail d) => {
+  '_entityId': d.id,
+  'name': d.name ?? '',
+  'code': d.code ?? '',
+  'description': d.description ?? '',
+  'place': d.place ?? '',
+  'ownerEmployeeId': d.ownerEmployeeId ?? '',
+  'ownerEmployeeName': d.ownerEmployeeName ?? d.empId ?? '',
+  'legalPerson': d.legalPerson ?? '',
+  'linkman': d.linkman ?? '',
+  'mobile': d.mobile ?? '',
+  'phone': d.phone ?? '',
+  'phone2': d.phone2 ?? '',
+  'fax': d.fax ?? '',
+  'postcode': d.postcode ?? '',
+  'address': d.address ?? '',
+  'email': d.email ?? '',
+  'website': d.website ?? '',
+  'shipVia': d.shipVia ?? '',
+  'shipAddress': d.shipAddress ?? '',
+  'bank': d.bank ?? '',
+  'bankAccount': d.bankAccount ?? '',
+  'taxId': d.taxId ?? '',
+  'initTotal': d.initTotal?.toString() ?? '',
+  'tday': d.tday?.toString() ?? '',
+  'defaultSettlementMethodId': d.defaultSettlementMethodId ?? '',
+  'defaultCurrencyId': d.defaultCurrencyId ?? '',
+  'defaultTaxRate': d.defaultTaxRate?.toString() ?? '',
+  'status': d.status ?? '',
+  'remark': d.remark ?? '',
+};

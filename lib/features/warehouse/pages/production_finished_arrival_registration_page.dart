@@ -37,6 +37,7 @@ import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/router/route_access_policy.dart';
@@ -116,6 +117,7 @@ class _ProductionFinishedArrivalRegistrationPageState
   bool _saving = false;
   bool _submitted = false;
   bool _reversing = false;
+  bool _preparing = false;
   int _removedLineCount = 0;
 
   /// 选定的路线(多选进页即定)；双击进页为空，两条路线按钮并排，点哪条走哪条。
@@ -154,7 +156,7 @@ class _ProductionFinishedArrivalRegistrationPageState
   bool get _hasCheckedEditableRow =>
       _grid.selectedRows.any((row) => !row.locked);
 
-  bool get _busy => _saving || _reversing;
+  bool get _busy => _saving || _reversing || _preparing;
 
   /// 本次实收列是否可填：选定了先入库后质检，或两条并排且有权限(点哪条按哪条校验)。
   bool get _stockInQtyEditable =>
@@ -336,6 +338,7 @@ class _ProductionFinishedArrivalRegistrationPageState
   @override
   void initState() {
     super.initState();
+    startFormDraftIdentityGuard(includePermissions: true);
     _suggestions = InboundPlaceSuggestionLoader(
       ref.read(warehousePlaceSuggestionRepositoryProvider),
     );
@@ -514,6 +517,26 @@ class _ProductionFinishedArrivalRegistrationPageState
     ProductionFinishedRegistrationBatch batch,
   ) async {
     if (_busy || !_canRegister) return;
+    setState(() => _preparing = true);
+    try {
+      final scope = await captureFormDraftRequestScope();
+      await scope.run(() => _reverseBatchScoped(report, batch, scope));
+      scope.checkCurrent();
+    } catch (error) {
+      if (error is ApiException && error.code == 'SESSION_CHANGED') {
+        invalidateFormDraftIdentity();
+      }
+      if (mounted) context.appApiError(error, fallback: '撤回登记失败，请稍后重试');
+    } finally {
+      if (mounted) setState(() => _preparing = false);
+    }
+  }
+
+  Future<void> _reverseBatchScoped(
+    ProductionFinishedArrivalRegistration report,
+    ProductionFinishedRegistrationBatch batch,
+    AuthenticatedRequestScope requestScope,
+  ) async {
     final reason = await showArrivalRegistrationReversalDialog(
       context,
       title: '撤回登记(仅品质未处理)',
@@ -523,6 +546,8 @@ class _ProductionFinishedArrivalRegistrationPageState
           '${batch.sheetNo == null ? '' : ' · 检查单 ${batch.sheetNo}'}',
     );
     if (reason == null || !mounted) return;
+    requestScope.checkCurrent();
+    if (!_canRegister) return;
     setState(() => _reversing = true);
     try {
       await ref
@@ -532,6 +557,7 @@ class _ProductionFinishedArrivalRegistrationPageState
             reason: reason,
             idempotencyKey: 'arrival-reverse-${const Uuid().v4()}',
           );
+      requestScope.checkCurrent();
       if (!mounted) return;
       setState(() => _reversing = false);
       invalidateWarehouseTaskCounts(ref);
@@ -556,6 +582,25 @@ class _ProductionFinishedArrivalRegistrationPageState
 
   Future<void> _save(InboundRoute route) async {
     if (_busy || !_canRegister || _submitted) return;
+    setState(() => _preparing = true);
+    try {
+      final scope = await captureFormDraftRequestScope();
+      await scope.run(() => _saveScoped(route, scope));
+      scope.checkCurrent();
+    } catch (error) {
+      if (error is ApiException && error.code == 'SESSION_CHANGED') {
+        invalidateFormDraftIdentity();
+      }
+      if (mounted) context.appApiError(error, fallback: '登记失败，请保持当前内容后重试');
+    } finally {
+      if (mounted) setState(() => _preparing = false);
+    }
+  }
+
+  Future<void> _saveScoped(
+    InboundRoute route,
+    AuthenticatedRequestScope requestScope,
+  ) async {
     if (route.isStockInFirst && !_canStockInFirst) {
       // 路线进页已定，这里只会因权限被收回而退回原流程：说明原因并换成
       // 「先质检后入库」按钮，由用户决定是否继续，不静默换路线提交。
@@ -643,6 +688,8 @@ class _ProductionFinishedArrivalRegistrationPageState
       ]),
     );
     if (confirmed != true || !mounted) return;
+    requestScope.checkCurrent();
+    if (!_canRegister || _submitted) return;
 
     // 幂等键含路线与实称重量指纹：换路线或改了重量重提交是另一个请求，不是重放；
     // 一批都没称时键与不称重时一致。
@@ -693,6 +740,7 @@ class _ProductionFinishedArrivalRegistrationPageState
             error.httpStatus == 422 ||
             (error.httpStatus == 409 && error.code == 'CONFLICT'),
       );
+      requestScope.checkCurrent();
     } catch (error, stack) {
       // 服务端拒绝与本机草稿保护的原因都如实给人看(ADR-151 §2), 不再一律吞成兜底句。
       if (error is! ApiException) {
@@ -707,6 +755,7 @@ class _ProductionFinishedArrivalRegistrationPageState
       return;
     }
     await completeFormDraft();
+    requestScope.checkCurrent();
     if (!mounted) return;
     setState(() {
       _saving = false;
@@ -803,7 +852,7 @@ class _ProductionFinishedArrivalRegistrationPageState
                       absorbing: _busy,
                       child: _buildForm(context, theme, names, canRegister),
                     ),
-              if (_busy)
+              if (_saving || _reversing)
                 UtenBusyOverlay(
                   title: _saving ? '正在登记入库' : '正在撤销本次登记',
                   description: _saving

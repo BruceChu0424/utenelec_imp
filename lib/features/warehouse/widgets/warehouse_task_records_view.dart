@@ -239,6 +239,11 @@ class _WarehouseTaskRecordsViewState
     if (recovering.isNotEmpty) return recovering;
     final drafts = ref.read(formDraftsProvider);
     final target = row.targetId ?? row.id;
+    if (row.line != null &&
+        row.action != 'MATERIAL_DISCOVERY' &&
+        row.line!.itemId?.isNotEmpty != true) {
+      return const [];
+    }
     return switch (row.action) {
       'ARRIVAL_REGISTER' || 'ARRIVAL_CONTINUE' => arrivalTaskDrafts(
         drafts,
@@ -252,14 +257,41 @@ class _WarehouseTaskRecordsViewState
         reportId: row.dataId('reportId'),
         lotId: row.dataId('lotId'),
         documentId: row.dataId('documentId'),
+        itemId: row.line?.itemId,
       ),
-      'SALES_OUTBOUND' => salesOutboundTaskDrafts(drafts, target),
-      'SUBCONTRACT_OUTBOUND' => subcontractOutboundTaskDrafts(drafts, target),
-      'PRODUCTION_DRAW' || 'RETURN_RECEIVE' => stockTaskDrafts(drafts, target),
+      'SALES_OUTBOUND' => salesOutboundTaskDrafts(
+        drafts,
+        target,
+        itemId: row.line?.itemId,
+      ),
+      'SUBCONTRACT_OUTBOUND' => subcontractOutboundTaskDrafts(
+        drafts,
+        target,
+        itemId: row.line?.itemId,
+      ),
+      'PRODUCTION_DRAW' || 'RETURN_RECEIVE' => stockTaskDrafts(
+        drafts,
+        target,
+        itemId: row.line?.itemId,
+      ),
+      'MATERIAL_DISCOVERY' => materialDiscoveryTaskDrafts(
+        drafts,
+        row.dataId('requestId') ?? target,
+        suggestionKey: row.line?.key,
+        expectedVersion: row.expectedVersion,
+      ),
+      'WORKSHOP_REQUISITION' => workshopMaterialTaskDrafts(
+        drafts,
+        row.dataId('requisitionId') ?? target,
+        lineId: row.line?.itemId,
+      ),
       'QUALITY_RESULT' => qualityStockInTaskDrafts(
         drafts,
         row.sourceType,
         target,
+        inspectionItemIds: row.line == null
+            ? null
+            : row.dataIds('inspectionItemIds'),
       ),
       _ => const [],
     };
@@ -409,7 +441,11 @@ class _WarehouseTaskRecordsViewState
           scope == ref.read(authenticatedScopeProvider) &&
           server == ref.read(apiBaseUrlProvider)) {
         context.appError(
-          error is ApiException ? error.message : '单据打开失败，请刷新后重试',
+          error is ApiException
+              ? error.message
+              : error is FormatException
+              ? error.message
+              : '单据打开失败，请刷新后重试',
         );
       }
     } finally {
@@ -458,9 +494,7 @@ class _WarehouseTaskRecordsViewState
         : 100;
     final commandCount = family == 'ARRIVAL_CONTINUE'
         ? rows.expand((row) => row.dataIds('draftReceiptIds')).toSet().length
-        : family == 'ARRIVAL_REGISTER'
-        ? rows.map((row) => row.targetId ?? row.id).toSet().length
-        : rows.length;
+        : rows.map((row) => row.targetId ?? row.id).toSet().length;
     if (commandCount > max) {
       context.appWarning('本次最多办理 $max 张单据，请分批办理');
       return;
@@ -644,7 +678,11 @@ class _WarehouseTaskRecordsViewState
           scope == ref.read(authenticatedScopeProvider) &&
           server == ref.read(apiBaseUrlProvider)) {
         context.appError(
-          error is ApiException ? error.message : '操作未确认完成，请核对原单后再试',
+          error is ApiException
+              ? error.message
+              : error is FormatException
+              ? error.message
+              : '操作未确认完成，请核对原单后再试',
         );
       }
     } finally {
@@ -671,12 +709,12 @@ class _WarehouseTaskRecordsViewState
             type: UtenButtonType.tonal,
             isLoading: _busy,
             onPressed: _busy ? null : () => _batch(preStock: true),
-            child: Text('先入库后质检(${ids.length})'),
+            child: Text('${warehouseTaskRecordBatchLabel(family)}（先入库后质检）'),
           ),
         UtenButton(
           isLoading: _busy,
           onPressed: _busy ? null : () => _batch(preStock: false),
-          child: Text('先质检后入库(${ids.length})'),
+          child: Text('${warehouseTaskRecordBatchLabel(family)}（先质检后入库）'),
         ),
       ];
     }
@@ -688,7 +726,9 @@ class _WarehouseTaskRecordsViewState
         onDisabledTap: ids.isNotEmpty && family == null
             ? () => context.appWarning('不同办理方式的单据，请分别选择后处理')
             : null,
-        child: Text('${warehouseTaskRecordBatchLabel(family)}(${ids.length})'),
+        child: Text(
+          warehouseTaskRecordBatchLabel(family, rows: _selectedRows.values),
+        ),
       ),
     ];
   }
@@ -739,6 +779,13 @@ class _WarehouseTaskRecordsViewState
         ),
       ),
       MasterColumnDef(
+        key: 'billNo',
+        label: '单据 / 任务单号',
+        width: 180,
+        sortable: true,
+        value: (row) => row.billNo ?? '—',
+      ),
+      MasterColumnDef(
         key: 'goodsName',
         label: '货品名称',
         width: 200,
@@ -751,16 +798,16 @@ class _WarehouseTaskRecordsViewState
         value: (row) => row.line?.goodsCode ?? '—',
       ),
       MasterColumnDef(
-        key: 'specification',
-        label: '规格',
-        width: 140,
-        value: (row) => row.line?.specification ?? '—',
-      ),
-      MasterColumnDef(
         key: 'colorName',
         label: '颜色',
         width: 100,
         value: (row) => row.line?.colorName ?? '—',
+      ),
+      MasterColumnDef(
+        key: 'specification',
+        label: '规格',
+        width: 140,
+        value: (row) => row.line?.specification ?? '—',
       ),
       MasterColumnDef(
         key: 'quantity',
@@ -768,13 +815,6 @@ class _WarehouseTaskRecordsViewState
         width: 130,
         type: 'number',
         value: (row) => row.line?.quantityLabel ?? '—',
-      ),
-      MasterColumnDef(
-        key: 'billNo',
-        label: '单据 / 任务单号',
-        width: 180,
-        sortable: true,
-        value: (row) => row.billNo ?? '—',
       ),
       MasterColumnDef(
         key: 'sourceDocNo',
@@ -821,7 +861,7 @@ class _WarehouseTaskRecordsViewState
         key: ValueKey('warehouse-task-records-${widget.direction.name}'),
         tableKey:
             'warehouse.task-center.${widget.direction.name}.${widget.source}${_history ? '.history' : ''}',
-        requiredLeadingColumnKeys: const ['status', 'goodsName'],
+        requiredLeadingColumnKeys: const ['status', 'billNo'],
         primary: true,
         rowsController: _rows,
         paginationRevision: result,

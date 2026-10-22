@@ -19,6 +19,7 @@ import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -26,6 +27,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -41,6 +43,7 @@ import '../widgets/master_inline_edit.dart';
 import '../widgets/master_inline_page_mixin.dart';
 import '../widgets/master_operation_history_panel.dart';
 import '../widgets/master_edit_dialog.dart';
+import '../widgets/master_record_history_panel.dart';
 
 class SettlementMethodPage extends ConsumerStatefulWidget {
   const SettlementMethodPage({super.key});
@@ -70,6 +73,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
     _items = null;
     _facets = null;
     _error = null;
+    _selectedMethodIds = {};
   }
 
   @override
@@ -125,6 +129,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
         ),
       };
   List<SettlementMethodAdminItem>? _items;
+  Set<String> _selectedMethodIds = {};
   bool _loading = false;
   String? _error;
   String _keyword = '';
@@ -209,6 +214,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
 
   void _onFilterChanged(String key, String? value) {
     setState(() {
+      _selectedMethodIds = {};
       final next = Map<String, String?>.from(_filters);
       if (value == null) {
         next.remove(key);
@@ -245,6 +251,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
   // ---- 新增（可随带账期） ------------------------------------------------
 
   Future<void> _showCreate() async {
+    if (!_canCreate) return;
     await showMasterEditDialog(
       context: context,
       draftSpec: FormDraftCatalog.settlement.spec(title: '新增结算方式'),
@@ -275,27 +282,61 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
   // ---- 账期维护 ----------------------------------------------------------
 
   void _showEditTerms(SettlementMethodAdminItem m) {
-    if (m.lockedBySystemRole) {
-      context.appInfo('系统角色(${m.systemRole})的账期口径由迁移锁定：现金=收货当天到期，月结=月末+30天');
-      return;
-    }
-    if (!_canEdit) {
-      context.appInfo('${m.name}：${settlementTermsSummary(m)}');
-      return;
-    }
-    showMasterEditDialog(
-      context: context,
-      title: '维护账期 · ${m.name}', // TODO(l10n): 补 arb
-      fields: _termsFields(hintName: m.name),
+    final fields = _termsFields(hintName: m.name, includePresentation: true);
+    final body = _SettlementTermsDialog(
+      item: m,
+      fields: fields,
       initialValues: {
+        'code': m.code ?? '',
         'name': m.name,
         'termsBase': m.termsBase,
         'dueRule': m.dueRule,
         'defaultDueDays': m.defaultDueDays.toString(),
         'fixedDayOfMonth': m.fixedDayOfMonth?.toString() ?? '',
         'monthsAhead': m.monthsAhead.toString(),
+        'status': m.status ?? '',
+        'systemRole': settlementSystemRoleLabel(m.systemRole),
+        'termsSummary': settlementTermsSummary(m),
+        'remark': m.remark ?? '',
       },
       onSubmit: (body) => _doUpdateTerms(m, body),
+      onHistoryChanged: _refresh,
+    );
+    if (context.breakpoint.isCompact) {
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(UtenRadius.lg),
+          ),
+        ),
+        builder: (context) => Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.viewInsetsOf(context).bottom,
+          ),
+          child: body,
+        ),
+      );
+      return;
+    }
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => UtenDialogFrame(
+        shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: (MediaQuery.sizeOf(context).width * 0.92).clamp(
+              560.0,
+              900.0,
+            ),
+            maxHeight: MediaQuery.sizeOf(context).height * 0.88,
+          ),
+          child: body,
+        ),
+      ),
     );
   }
 
@@ -303,6 +344,10 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
     SettlementMethodAdminItem m,
     Map<String, dynamic> body,
   ) async {
+    if (m.lockedBySystemRole || !_canEdit) {
+      context.appInfo('当前结算方式不可编辑');
+      return false;
+    }
     final ok = await context.guardRun(
       () async {
         await ref
@@ -334,7 +379,17 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
 
   // ---- 字段定义 ----------------------------------------------------------
 
-  List<MasterFieldDef> _termsFields({String? hintName}) => [
+  List<MasterFieldDef> _termsFields({
+    String? hintName,
+    bool includePresentation = false,
+  }) => [
+    const MasterFieldDef(
+      key: 'code',
+      label: '编号',
+      group: '基础',
+      readOnly: true,
+      hint: '保存后自动生成',
+    ),
     MasterFieldDef(
       key: 'name',
       label: '名称',
@@ -388,6 +443,32 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
       group: '账期',
       hint: '0-120；月末/固定日规则跨几个月后到期',
     ),
+    if (includePresentation) ...[
+      const MasterFieldDef(
+        key: 'status',
+        label: '状态',
+        group: '资料',
+        readOnly: true,
+      ),
+      const MasterFieldDef(
+        key: 'systemRole',
+        label: '系统角色',
+        group: '资料',
+        readOnly: true,
+      ),
+      const MasterFieldDef(
+        key: 'termsSummary',
+        label: '账期说明',
+        group: '资料',
+        readOnly: true,
+      ),
+      const MasterFieldDef(
+        key: 'remark',
+        label: '备注',
+        group: '资料',
+        readOnly: true,
+      ),
+    ],
   ];
 
   // ---- 导出 / 打印（V717 settlement_method:export） --------------------------
@@ -493,6 +574,24 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
 
   // ---- 展示 --------------------------------------------------------------
 
+  List<Widget> _settlementActions(BuildContext context, Set<String> ids) => [
+    MasterInlineEditActions<SettlementMethodAdminItem>(
+      controller: inlineEdit,
+      canEdit: _canEdit && inlineReadReady,
+      onSave: saveInline,
+      embedded: true,
+      additionalActions: [
+        if (_canCreate)
+          UtenButton(
+            size: UtenButtonSize.large,
+            icon: Icons.add_rounded,
+            onPressed: () => inlineNavigate(_showCreate),
+            child: const Text('添加结算方式'),
+          ),
+      ],
+    ),
+  ];
+
   @override
   Widget build(BuildContext context) => FormDraftDialogResume(
     descriptor: FormDraftCatalog.settlement,
@@ -523,19 +622,6 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
             ),
           ],
         ),
-        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-        floatingActionButton: inlineFloatingActions(
-          additionalActions: [
-            if (_canCreate)
-              UtenButton(
-                size: UtenButtonSize.large,
-                icon: Icons.add_rounded,
-                onPressed: _showCreate,
-                child: const Text('添加结算方式'),
-              ),
-          ],
-        ),
         body: SafeArea(
           child: UtenContentContainer(
             child: Padding(
@@ -552,7 +638,10 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
                       hint: '搜索结算方式(名称/编号)',
                       initialValue: _keyword,
                       onChanged: (kw) => inlineNavigate(
-                        () => setState(() => _keyword = kw),
+                        () => setState(() {
+                          _keyword = kw;
+                          _selectedMethodIds = {};
+                        }),
                       ), // 本地过滤，小字典
                     ),
                   ),
@@ -565,7 +654,14 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
                       tableKey:
                           'features.basic_data.pages.settlement_method_page.SettlementMethodPageState._buildDraftHost.1',
                       columns: inlineColumns(_columns),
+                      requiredLeadingColumnKeys: const ['code', 'name'],
                       items: items,
+                      selectable: true,
+                      idOf: (method) => method.id,
+                      selectedIds: _selectedMethodIds,
+                      onSelectedIdsChanged: (ids) =>
+                          setState(() => _selectedMethodIds = ids),
+                      batchActionsBuilder: _settlementActions,
                       // 导出/打印（V717 settlement_method:export）：打印预览用本页列
                       // 渲染，导出列集服务端与表格对齐——「表格显示啥导出啥」。
                       // 导出/打印进左簇（2026-10-18 用户口径）：与「表头设置 / 全屏」同排靠左，
@@ -628,6 +724,133 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SettlementTermsDialog extends ConsumerStatefulWidget {
+  const _SettlementTermsDialog({
+    required this.item,
+    required this.fields,
+    required this.initialValues,
+    required this.onSubmit,
+    required this.onHistoryChanged,
+  });
+
+  final SettlementMethodAdminItem item;
+  final List<MasterFieldDef> fields;
+  final Map<String, String> initialValues;
+  final MasterSubmit onSubmit;
+  final VoidCallback onHistoryChanged;
+
+  @override
+  ConsumerState<_SettlementTermsDialog> createState() =>
+      _SettlementTermsDialogState();
+}
+
+class _SettlementTermsDialogState
+    extends ConsumerState<_SettlementTermsDialog> {
+  final _formKey = GlobalKey<MasterEditFormState>();
+  bool _saving = false;
+
+  bool get _canEdit =>
+      !widget.item.lockedBySystemRole &&
+      ref.read(currentPermissionsProvider).contains(Perm.settlementMethodEdit);
+
+  Future<void> _save() async {
+    if (_saving || !_canEdit) return;
+    final body = _formKey.currentState?.buildBody();
+    if (body == null) return;
+    setState(() => _saving = true);
+    try {
+      final saved = await widget.onSubmit(body);
+      if (saved && mounted) Navigator.of(context).pop();
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    ref.watch(currentPermissionsProvider);
+    final canEdit = _canEdit;
+    return PopScope(
+      canPop: !_saving,
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      canEdit ? '维护账期 · ${widget.item.name}' : widget.item.name,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  MasterRecordHistoryAction(
+                    entityType: 'reference-methods',
+                    recordId: widget.item.id,
+                    enabled: !_saving,
+                    onChanged: () {
+                      final route = ModalRoute.of(context);
+                      if (route != null && route.isActive) {
+                        route.navigator?.removeRoute(route);
+                      }
+                      widget.onHistoryChanged();
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: _saving
+                        ? null
+                        : () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: MasterEditForm(
+                key: _formKey,
+                fields: widget.fields,
+                initialValues: widget.initialValues,
+                readOnlyKeys: canEdit && !_saving
+                    ? null
+                    : {for (final field in widget.fields) field.key},
+              ),
+            ),
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.all(UtenSpacing.s16),
+              child: Wrap(
+                alignment: WrapAlignment.center,
+                spacing: UtenSpacing.s12,
+                runSpacing: UtenSpacing.s8,
+                children: [
+                  UtenButton(
+                    type: UtenButtonType.secondary,
+                    onPressed: _saving
+                        ? null
+                        : () => Navigator.of(context).pop(),
+                    child: Text(canEdit ? '取消' : '关闭'),
+                  ),
+                  if (canEdit)
+                    UtenButton(
+                      isLoading: _saving,
+                      onPressed: _save,
+                      child: const Text('保存'),
+                    ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -60,6 +60,8 @@ import '../../../shared/platform_tables/platform_table_row.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/network/authenticated_request_scope.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -479,6 +481,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
   @override
   void initState() {
     super.initState();
+    startFormDraftIdentityGuard(includePermissions: true);
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
 
@@ -869,7 +872,10 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
   }
 
   /// 把暂存附件上传到刚创建的领料单；全部成功才跳详情，失败项留在页面供重试。
-  Future<void> _finishCreatedDoc(String createdId) async {
+  Future<void> _finishCreatedDoc(
+    String createdId,
+    AuthenticatedRequestScope requestScope,
+  ) async {
     setState(() => _saving = true);
     try {
       final ok = await flushPendingAttachments(
@@ -879,8 +885,10 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
         ownerType: 'STOCK_DOCUMENT',
         ownerIds: [createdId],
       );
+      requestScope.checkCurrent();
       if (!mounted || !ok) return;
       await completeFormDraft();
+      requestScope.checkCurrent();
       if (!mounted) return;
       context.replace(RoutePath.stockDocDetail(widget.docType.code, createdId));
     } finally {
@@ -891,8 +899,24 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
   Future<void> _save() async {
     if (_isLegacyReadOnly) return;
     if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      final scope = await captureFormDraftRequestScope();
+      await scope.run(() => _saveScoped(scope));
+      scope.checkCurrent();
+    } catch (error) {
+      if (error is ApiException && error.code == 'SESSION_CHANGED') {
+        invalidateFormDraftIdentity();
+      }
+      if (mounted) context.appApiError(error, fallback: '保存失败');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _saveScoped(AuthenticatedRequestScope requestScope) async {
     if (_createdDocId case final createdId?) {
-      await _finishCreatedDoc(createdId);
+      await _finishCreatedDoc(createdId, requestScope);
       return;
     }
     if (widget.id != null && !_loadedCanEdit) {
@@ -1020,6 +1044,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
       final d = widget.id == null
           ? await runFormDraftSubmission(() => repo.create(body))
           : await repo.update(widget.id!, body);
+      requestScope.checkCurrent();
       if (!mounted) return;
       context.appSuccess(widget.id == null ? '已创建' : '已保存');
       bumpListRefresh(ref, widget.docType.refreshKey);
@@ -1027,10 +1052,12 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
         // 新建领料单：先拿到真实 UUID，再把保存前暂存的凭证逐个确认上传。
         setState(() => _createdDocId = d.id);
         await checkpointFormDraftAfterCreation();
-        await _finishCreatedDoc(d.id);
+        requestScope.checkCurrent();
+        await _finishCreatedDoc(d.id, requestScope);
         return;
       }
       await completeFormDraft();
+      requestScope.checkCurrent();
       if (!mounted) return;
       context.replace(RoutePath.stockDocDetail(widget.docType.code, d.id));
     } catch (error) {
@@ -1071,8 +1098,10 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
     ];
   }
 
-  Widget _savedFields(Widget child) =>
-      SavedDocumentFields(locked: _createdDocId != null, child: child);
+  Widget _savedFields(Widget child) => SavedDocumentFields(
+    locked: _saving || _createdDocId != null,
+    child: child,
+  );
 
   /// 普通调拨的调入仓仍与调出仓同类(良品/不良品, ADR-146)；没选调入仓也算合法。
   bool _toWarehouseMatchesSource(List<WarehouseDictEntry> hierarchy) {

@@ -749,6 +749,12 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   bool get shellSearchPending => _acceptPendingSearch;
 
   String get shellSearchQuery => _globalQuery;
+  String? get shellSelectedId {
+    if (!shellCanViewCategories) return null;
+    final id = _globalQuery.isEmpty ? _selectedId : _searchCategoryId;
+    final node = id == null ? null : _findById(_tree ?? const [], id);
+    return node == null || shellIsVirtualNode(node) ? null : id;
+  }
 
   String? get shellSearchCategoryId =>
       shellCanViewCategories ? _searchCategoryId : null;
@@ -1058,6 +1064,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
               case final entityType?)
             MasterOperationHistoryActions(
               entityType: entityType,
+              categoryId: shellSelectedId,
               onChanged: shellReloadAll,
             ),
           ...shellExtraAppBarActions(

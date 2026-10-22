@@ -91,6 +91,7 @@ PagePermissionScope? pagePermissionScopeFor(String location) {
   // 车间内料仓操作三页（V812 补挂：面早已播种，路由映射漏网）。
   if (path == '/workshop-material/bin' ||
       path == '/workshop-material/issue' ||
+      path == '/workshop-material/issue/batch' ||
       path == '/workshop-material/count') {
     return _workshopMaterialScope;
   }

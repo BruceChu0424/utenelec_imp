@@ -6,6 +6,7 @@
 // - 车间内料仓(ADR-147)只由「车间内料仓」开通和撤销：详情只读，没有编辑/停用/删除。
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,10 +16,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/authenticated_request_scope.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_inline_edit.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/features/basic_data/models/master_batch.dart';
+import 'package:uten_imp/features/basic_data/repositories/master_batch_repository.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/models/warehouse_node.dart';
@@ -26,10 +32,13 @@ import 'package:uten_imp/features/basic_data/pages/warehouse_page.dart';
 import 'package:uten_imp/features/basic_data/repositories/warehouse_keeper_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/warehouse_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+
+import '../../../shared/drafts/memory_form_draft_storage.dart';
 
 final _grants = StateProvider<Set<String>>((ref) => {});
 
@@ -69,6 +78,250 @@ const _defective = WarehouseListItem(
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets('仓库表格全选只选择普通仓，批量删除取消零写入', (tester) async {
+    final batch = _WarehouseBatch();
+    await _pump(
+      tester,
+      _FakeWarehouseRepository(),
+      permissions: _allPermissions,
+      batch: batch,
+    );
+    await tester.tap(find.text('表格视图'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(Checkbox).first);
+    await tester.pumpAndSettle();
+    final table = tester.widget<MasterDataTableView<WarehouseDetail>>(
+      find.byKey(const Key('warehouse-master-table')),
+    );
+    expect(table.selectedIds, {'c01', 'c0401'});
+    expect(table.items, hasLength(4));
+    expect(table.idOf!(_warehouseDetail(_main)), isNull);
+    expect(table.idOf!(_warehouseDetail(_bin)), isNull);
+    await tester.tap(find.text('批量删除'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('2 个仓库'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(batch.commands, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('窄屏仓库表格的多选操作可见且不溢出', (tester) async {
+    await _pump(
+      tester,
+      _FakeWarehouseRepository(),
+      permissions: _allPermissions,
+    );
+    await tester.tap(find.text('表格视图'));
+    await tester.pumpAndSettle();
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(Checkbox).first);
+    await tester.pumpAndSettle();
+    expect(find.text('批量删除').hitTestable(), findsOneWidget);
+    expect(find.text('批量停用').hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('仓库批量写入期间展示共享遮罩并防止重复提交', (tester) async {
+    final batch = _WarehouseBatch()..pending = Completer<MasterBatchResult>();
+    await _pump(
+      tester,
+      _FakeWarehouseRepository(),
+      permissions: _allPermissions,
+      batch: batch,
+    );
+    await tester.tap(find.text('表格视图'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(Checkbox).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('批量停用'));
+    await tester.pumpAndSettle();
+    expect(find.byType(UtenBusyOverlay), findsNothing);
+    await tester.tap(find.text('确认'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(UtenBusyOverlay), findsOneWidget);
+    expect(batch.commands, hasLength(1));
+    batch.pending!.complete(
+      const MasterBatchResult(
+        succeeded: 2,
+        failed: 0,
+        results: [
+          MasterBatchItemResult(id: 'c01', ok: true),
+          MasterBatchItemResult(id: 'c0401', ok: true),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(UtenBusyOverlay), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('仓库批量逐项展示失败，成功移出选择而失败保留', (tester) async {
+    final batch = _WarehouseBatch(
+      result: const MasterBatchResult(
+        succeeded: 1,
+        failed: 1,
+        results: [
+          MasterBatchItemResult(id: 'c01', ok: true),
+          MasterBatchItemResult(id: 'c0401', ok: false, reason: '仓库还有库存，不能删除'),
+        ],
+      ),
+    );
+    await _pump(
+      tester,
+      _FakeWarehouseRepository(),
+      permissions: _allPermissions,
+      batch: batch,
+    );
+    await tester.tap(find.text('表格视图'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(Checkbox).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('批量删除'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+    expect(batch.commands.single, {
+      'delete': true,
+      'ids': ['c01', 'c0401'],
+    });
+    expect(find.text('仓库还有库存，不能删除'), findsOneWidget);
+    await tester.tap(find.text('知道了'));
+    await tester.pumpAndSettle();
+    final table = tester.widget<MasterDataTableView<WarehouseDetail>>(
+      find.byKey(const Key('warehouse-master-table')),
+    );
+    expect(table.selectedIds, {'c0401'});
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('确认窗口期间撤销仓库权限不会继续执行批量写入', (tester) async {
+    final batch = _WarehouseBatch();
+    final container = await _pump(
+      tester,
+      _FakeWarehouseRepository(),
+      permissions: _allPermissions,
+      batch: batch,
+    );
+    await tester.tap(find.text('表格视图'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(Checkbox).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('批量停用'));
+    await tester.pumpAndSettle();
+    final oldConfirm = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, '确认'),
+    );
+    container.read(_grants.notifier).state = {Perm.warehouseView};
+    await tester.pumpAndSettle();
+    expect(find.text('确认'), findsNothing);
+    oldConfirm.onPressed!();
+    await tester.pumpAndSettle();
+    expect(batch.commands, isEmpty);
+    expect(find.text('批量删除'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('仓库旧身份的批量结果弹窗立即关闭且旧关闭回调无效', (tester) async {
+    final batch = _WarehouseBatch(
+      result: const MasterBatchResult(
+        succeeded: 0,
+        failed: 1,
+        results: [
+          MasterBatchItemResult(
+            id: 'c01',
+            ok: false,
+            label: '原身份仓库',
+            reason: '原身份库存原因',
+          ),
+        ],
+      ),
+    );
+    final container = await _pump(
+      tester,
+      _FakeWarehouseRepository(),
+      permissions: _allPermissions,
+      batch: batch,
+    );
+    await tester.tap(find.text('表格视图'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(Checkbox).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('批量删除'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+    expect(find.text('原身份库存原因'), findsOneWidget);
+    final oldClose = tester.widget<UtenButton>(
+      find.widgetWithText(UtenButton, '知道了'),
+    );
+    container.read(_grants.notifier).state = {Perm.warehouseView};
+    await tester.pumpAndSettle();
+    expect(find.text('原身份库存原因'), findsNothing);
+    expect(find.text('原身份仓库'), findsNothing);
+    oldClose.onPressed!();
+    await tester.pumpAndSettle();
+    expect(find.byType(WarehousePage), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('仓库旧请求的私有失败在撤权并恢复后仍不弹出', (tester) async {
+    final batch = _WarehouseBatch()..pending = Completer<MasterBatchResult>();
+    final container = await _pump(
+      tester,
+      _FakeWarehouseRepository(),
+      permissions: _allPermissions,
+      batch: batch,
+    );
+    await tester.tap(find.text('表格视图'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(Checkbox).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('批量停用'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认'));
+    await tester.pump();
+    container.read(_grants.notifier).state = {Perm.warehouseView};
+    await tester.pump();
+    container.read(_grants.notifier).state = _allPermissions;
+    await tester.pump();
+    batch.pending!.completeError(
+      ApiException('CONFLICT', '旧身份私有业务原因', httpStatus: 409),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('旧身份私有业务原因'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('仓库表格编辑复用字段CAS，主仓编号与内料仓仍只读', (tester) async {
+    final warehouses = _FakeWarehouseRepository();
+    await _pump(tester, warehouses, permissions: _allPermissions);
+    await tester.tap(find.text('表格视图'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('编辑模式'));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('inline-activate-main-code')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('inline-activate-bin-name')),
+      findsNothing,
+    );
+    await _editText(tester, 'c01', 'name', '新的五金仓');
+    await _editText(tester, 'c0401', 'remark', '待清理货架');
+    expect(find.text('批量删除'), findsNothing);
+    await tester.tap(find.text('保存 2 行修改'));
+    await tester.pumpAndSettle();
+    expect(warehouses.inlineWrites, hasLength(2));
+    expect((warehouses.inlineWrites.first['body'] as Map)['expected'], {
+      'name': '五金仓库',
+    });
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('新增仓库可填写备注并提交正式字段', (tester) async {
     final warehouses = _FakeWarehouseRepository();
@@ -162,7 +415,11 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('仓库(14年版)'), findsWidgets);
-    for (final field in ['code', 'parentName', 'isLineSide', 'status']) {
+    expect(
+      find.byKey(const ValueKey('inline-activate-c01-code')),
+      findsOneWidget,
+    );
+    for (final field in ['parentName', 'isLineSide', 'status']) {
       expect(find.byKey(ValueKey('inline-activate-c01-$field')), findsNothing);
     }
     await _editText(tester, 'c01', 'remark', '重新规划的保管区');
@@ -177,6 +434,43 @@ void main() {
       },
     });
     expect(warehouses.updates, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('普通仓编号输入时查重，冲突不保存，空闲编号按原值保护保存', (tester) async {
+    final warehouses = _FakeWarehouseRepository();
+    await _pump(
+      tester,
+      warehouses,
+      permissions: {Perm.warehouseView, Perm.warehouseEdit},
+    );
+    await _selectWarehouse(tester, _hardware.name!);
+    await tester.tap(find.text('编辑模式'));
+    await tester.pumpAndSettle();
+    await _editText(tester, 'c01', 'code', 'DUPLICATE');
+    await tester.tap(find.text('保存 1 行修改'));
+    await tester.pumpAndSettle();
+    expect(warehouses.inlineWrites, isEmpty);
+    expect(find.text('编号已存在，请更换编号'), findsWidgets);
+    final input = find.descendant(
+      of: find.byKey(const ValueKey('inline-c01-code')),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(input, 'WAREHOUSE-FREE');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存 1 行修改'));
+    await tester.pumpAndSettle();
+    expect(warehouses.inlineWrites.single, {
+      'path': '/master/inline-edit/warehouses/c01',
+      'body': {
+        'expected': {'code': 'C01'},
+        'changes': {'code': 'WAREHOUSE-FREE'},
+      },
+    });
+    expect(warehouses.codeChecks.map((query) => query['entityId']), [
+      'c01',
+      'c01',
+    ]);
     expect(tester.takeException(), isNull);
   });
 
@@ -646,6 +940,7 @@ Future<ProviderContainer> _pump(
   WidgetTester tester,
   _FakeWarehouseRepository warehouses, {
   required Set<String> permissions,
+  _WarehouseBatch? batch,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1440, 900));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -654,9 +949,14 @@ Future<ProviderContainer> _pump(
     ProviderScope(
       overrides: [
         apiClientProvider.overrideWithValue(_DictApi(warehouses)),
-        authenticatedScopeProvider.overrideWithValue(null),
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'warehouse-test-editor'),
+        ),
         sharedPreferencesProvider.overrideWithValue(preferences),
+        formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
         warehouseRepositoryProvider.overrideWithValue(warehouses),
+        if (batch != null)
+          masterBatchRepositoryProvider.overrideWithValue(batch),
         warehouseKeeperRepositoryProvider.overrideWithValue(
           _FakeKeeperRepository(),
         ),
@@ -692,6 +992,42 @@ WarehouseDetail _warehouseDetail(WarehouseListItem warehouse) =>
       remark: warehouse.remark,
     );
 
+class _WarehouseBatch implements MasterBatchRepository {
+  _WarehouseBatch({
+    this.result = const MasterBatchResult(succeeded: 0, failed: 0, results: []),
+  });
+  final MasterBatchResult result;
+  Completer<MasterBatchResult>? pending;
+  final commands = <Map<String, Object?>>[];
+
+  @override
+  Future<MasterBatchResult> delete({
+    required String entityPath,
+    required List<MasterBatchItem> items,
+  }) async {
+    expect(entityPath, ApiEndpoints.warehouses);
+    commands.add({
+      'delete': true,
+      'ids': [for (final row in items) row.id],
+    });
+    return pending == null ? result : pending!.future;
+  }
+
+  @override
+  Future<MasterBatchResult> changeStatus({
+    required String entityPath,
+    required String status,
+    required List<MasterBatchItem> items,
+  }) async {
+    expect(entityPath, ApiEndpoints.warehouses);
+    commands.add({
+      'status': status,
+      'ids': [for (final row in items) row.id],
+    });
+    return pending == null ? result : pending!.future;
+  }
+}
+
 class _FakeWarehouseRepository implements WarehouseRepository {
   _FakeWarehouseRepository({
     this.facetPayload,
@@ -703,6 +1039,7 @@ class _FakeWarehouseRepository implements WarehouseRepository {
   Map<String, String?>? lastFilters;
   final updates = <Map<String, dynamic>>[];
   final inlineWrites = <Map<String, dynamic>>[];
+  final codeChecks = <Map<String, dynamic>>[];
   ApiException? inlineFailure;
 
   void applyInline(String id, Map<String, dynamic> changes) {
@@ -718,7 +1055,7 @@ class _FakeWarehouseRepository implements WarehouseRepository {
         );
     details[id] = WarehouseDetail(
       id: id,
-      code: original.code,
+      code: changes['code'] as String? ?? original.code,
       name: changes.containsKey('name')
           ? changes['name'] as String?
           : original.name,
@@ -824,6 +1161,26 @@ class _FakeKeeperRepository implements WarehouseKeeperRepository {
 class _DictApi implements ApiClient {
   _DictApi([this.warehouses]);
   final _FakeWarehouseRepository? warehouses;
+
+  @override
+  Future<AuthenticatedRequestScope> captureRequestScope({
+    required bool Function() isCurrent,
+  }) => ApiClient(Dio()).captureRequestScope(isCurrent: isCurrent);
+
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    if (path == '/master/warehouses/code-availability') {
+      warehouses!.codeChecks.add(Map.of(query!));
+      return {
+        'available': query['code'] != 'DUPLICATE',
+        'message': query['code'] == 'DUPLICATE' ? '编号已存在，请更换编号' : null,
+      };
+    }
+    return {};
+  }
 
   @override
   Future<Map<String, dynamic>> patch(String path, {Object? body}) async {

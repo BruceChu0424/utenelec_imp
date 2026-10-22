@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_month_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -17,6 +18,73 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets('全部模具历史不携带虚拟分类，真实分类历史保留 UUID', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1440, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    const categoryId = '01a16499-490e-7e30-979a-9c1828900b55';
+    final opened = <Uri>[];
+    final router = GoRouter(
+      routes: [
+        GoRoute(path: '/', builder: (_, _) => const MouldCategoryPage()),
+        GoRoute(
+          path: '/basicinfo/history',
+          builder: (_, state) {
+            opened.add(state.uri);
+            return const Scaffold(body: Text('模具历史页面'));
+          },
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    final preferences = await SharedPreferences.getInstance();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(preferences),
+          currentPermissionsProvider.overrideWithValue({
+            Perm.mouldView,
+            Perm.mouldCategoryView,
+          }),
+          isSuperAdminProvider.overrideWithValue(false),
+          mouldCategoryRepositoryProvider.overrideWithValue(
+            _Categories(id: categoryId),
+          ),
+          mouldRepositoryProvider.overrideWithValue(_Moulds()),
+          mouldWorkshopTreeProvider.overrideWith(
+            (ref) async => const MouldWorkshopTree(tree: [], prodDeptId: null),
+          ),
+        ],
+        child: MaterialApp.router(
+          locale: const Locale('zh'),
+          routerConfig: router,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('全部模具'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('修改历史'));
+    await tester.pumpAndSettle();
+    expect(opened.last.queryParameters, {'entityType': 'moulds'});
+    router.pop();
+    await tester.pumpAndSettle();
+    if (find.text('历史模具').evaluate().isEmpty) {
+      await tester.tap(find.text('全部模具'));
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(find.text('历史模具'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('修改历史'));
+    await tester.pumpAndSettle();
+    expect(opened.last.queryParameters, {
+      'entityType': 'moulds',
+      'categoryId': categoryId,
+    });
+    expect(tester.takeException(), isNull);
+  });
 
   for (final boundDepartment in [false, true]) {
     testWidgets('模具详情独立展示车间关系与存放位置 $boundDepartment', (tester) async {
@@ -276,10 +344,12 @@ Future<void> _pumpPage(
 }
 
 class _Categories implements MouldCategoryRepository {
+  _Categories({this.id = 'cat'});
+  final String id;
   @override
   Future<List<ProductCategoryNode>> tree() async => [
     ProductCategoryNode(
-      id: 'cat',
+      id: id,
       code: 'MF1',
       name: '历史模具',
       level: 0,
@@ -288,8 +358,8 @@ class _Categories implements MouldCategoryRepository {
   ];
   @override
   Future<ProductCategoryDetail> detail(String id) async =>
-      const ProductCategoryDetail(
-        id: 'cat',
+      ProductCategoryDetail(
+        id: id,
         code: 'MF1',
         name: '历史模具',
         level: 0,

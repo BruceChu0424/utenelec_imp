@@ -169,8 +169,7 @@ void main() {
   testWidgets('即时库存相关开关同步列表facet导出，显式分类可清除且恢复原浏览类', (tester) async {
     final api = _ContextApi();
     await _pump(tester, api, 'instant');
-    await tester.tap(_category('原材料'));
-    await tester.pumpAndSettle();
+    await _chooseInventoryCategory(tester, '原材料');
     await _query(tester, '螺丝');
     expect(_inventory(tester).items.map((r) => r.goodsId), ['a']);
     final old = await tester
@@ -190,19 +189,17 @@ void main() {
     _inventory(tester).onFilterChanged('series', 'M3');
     await tester.pumpAndSettle();
     expect(api.last('/stock/instant-inventory')['series'], 'M3');
-    expect(
-      api.last('/stock/instant-inventory/search-category-ids')['series'],
-      'M3',
-    );
-    await tester.tap(_category('成品'));
-    await tester.pumpAndSettle();
+    await _chooseInventoryCategory(tester, '成品');
     expect(api.last('/stock/instant-inventory')['categoryId'], 'finished');
-    expect(
-      api.last('/stock/instant-inventory/search-category-ids')['categoryId'],
-      'finished',
-    );
     expect(_inventory(tester).items.map((r) => r.goodsId), ['r']);
-    await tester.tap(find.byKey(const Key('instant-inventory-category-all')));
+    await tester.ensureVisible(
+      find.byKey(const Key('instant-inventory-category')),
+    );
+    await tester.tap(find.byKey(const Key('instant-inventory-category')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('category-picker-all')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确定').last);
     await tester.pumpAndSettle();
     expect(_inventory(tester).items.map((r) => r.goodsId), ['a', 'r']);
     await _query(tester, '');
@@ -377,6 +374,18 @@ Finder _category(String text) => find.descendant(
   of: find.byType(UtenCategoryTreeView<ProductCategoryNode>),
   matching: find.text(text),
 );
+Future<void> _chooseInventoryCategory(WidgetTester tester, String text) async {
+  final field = find.byKey(const Key('instant-inventory-category'));
+  await tester.ensureVisible(field);
+  await tester.pumpAndSettle();
+  await tester.tap(field);
+  await tester.pumpAndSettle();
+  await tester.tap(_category(text));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('确定').last);
+  await tester.pumpAndSettle();
+}
+
 Future<void> _query(WidgetTester tester, String text) async {
   await tester.enterText(
     find.descendant(

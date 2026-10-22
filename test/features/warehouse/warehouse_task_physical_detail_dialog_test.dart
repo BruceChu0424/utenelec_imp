@@ -86,7 +86,7 @@ Widget _app(_Api api) => ProviderScope(
 );
 
 void main() {
-  testWidgets('其它出库撤回详情仍走出库范围端点，全部明细可翻页且只显示物理字段', (tester) async {
+  testWidgets('其它出库撤回详情保留实物行身份，分页沿用精确范围且只显示物理字段', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1440, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final api = _Api();
@@ -94,7 +94,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       api.calls.single.path,
-      '/warehouse/task-center/outbound/OTHER%3ASTOCK_DOC%3Aoriginal-id/detail',
+      '/warehouse/task-center/outbound/OTHER%3ASTOCK_DOC%3Aoriginal-id%3Aitem-id/detail',
     );
     expect(api.calls.single.query['scopeWarehouseId'], 'warehouse-a');
     expect(find.text('PHYSICAL-1'), findsOneWidget);

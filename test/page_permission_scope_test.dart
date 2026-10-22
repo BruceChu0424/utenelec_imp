@@ -399,6 +399,7 @@ Iterable<String> _businessPaths() sync* {
     '/workshop-material/bin?workshopId=workshop-1',
     '/workshop-material/issue?mode=direct',
     '/workshop-material/issue?requisitionId=requisition-1',
+    '/workshop-material/issue/batch?selections=%7B%7D',
     '/workshop-material/count?periodId=period-1',
     '/reports/workshop-material',
   ];

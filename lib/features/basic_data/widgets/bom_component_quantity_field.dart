@@ -95,6 +95,7 @@ Map<String, dynamic> periodicBomQuantityBody(
 /// Copy design values only; learning quantities and audit flags belong to the original edge.
 Map<String, dynamic> bomComponentCopyBody(GoodsBomItem item) => {
   'componentGoodsId': item.componentGoodsId,
+  'copiedFromBomItemId': item.id,
   'qty': item.qty,
   'price': item.price,
   'total': item.total,

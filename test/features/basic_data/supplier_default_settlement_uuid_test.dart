@@ -74,11 +74,10 @@ void main() {
       final normalized = pageSource.replaceAll(RegExp(r'\s+'), '');
       expect(
         normalized,
-        // 不断言收尾括号：formatter 可能加尾逗号
-        // 2026-09-14：详情面板整页化后这一行搬到 pages/party_detail_page.dart，
-        // 渲染器由 MasterDetailRow 换成本页的 _kv。契约不变——详情显示的必须是
-        // UUID 解析出来的**名称**，不是 legacy 值。
-        contains("_kv(theme,'默认结算方式',d.defaultSettlementMethodName"),
+        // 当前查看态复用编辑字段定义；UUID 仍映射到服务端返回的名称。
+        contains(
+          "'defaultSettlementMethodId'=>detail.defaultSettlementMethodName",
+        ),
       );
     });
   });

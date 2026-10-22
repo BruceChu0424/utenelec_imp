@@ -20,12 +20,14 @@ import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/measurement/weight_params.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
+import '../../../shared/drafts/form_draft_field_codec.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_store.dart';
 import '../../../shared/measurement/widgets/weight_params_load_notice.dart';
@@ -34,6 +36,7 @@ import '../../../shared/measurement/widgets/weight_grid_column.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/outbound_weight_entry.dart';
 import '../models/warehouse_sales_outbound.dart';
+import '../models/warehouse_task_item_selection.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../repositories/warehouse_sales_outbound_repository.dart';
 import '../widgets/outbound_weight_columns.dart';
@@ -48,11 +51,13 @@ class WarehouseSalesOutboundBatchPage extends ConsumerStatefulWidget {
     this.targets = const [],
     this.shipmentIds = const [],
     required this.action,
+    this.selectedItemIds,
   });
 
   final List<WarehouseSalesOutboundSummary> targets;
   final List<String> shipmentIds;
   final WarehouseSalesOutboundAction action;
+  final List<String>? selectedItemIds;
 
   @override
   ConsumerState<WarehouseSalesOutboundBatchPage> createState() =>
@@ -67,6 +72,8 @@ class _WarehouseSalesOutboundBatchPageState
     for (final item in widget.targets) item.id,
   }.toList()..sort();
   String? _unknownShipment;
+  final Set<String> _blockedSources = {};
+  final Map<String, Map<String, dynamic>> _recoveryInputs = {};
   bool _restoredTerminal = false;
   @override
   bool get formDraftBusy => _saving || _confirming || _loading;
@@ -90,6 +97,9 @@ class _WarehouseSalesOutboundBatchPageState
           queryParameters: {
             'shipmentIds': _targetIds.join(','),
             'action': widget.action.name,
+            ...WarehouseTaskItemSelection(
+              widget.selectedItemIds,
+            ).queryParameters,
           },
         ).toString(),
       );
@@ -101,16 +111,24 @@ class _WarehouseSalesOutboundBatchPageState
   @override
   Map<String, dynamic> captureFormDraft() => {
     'shipmentIds': _targetIds,
+    'selectedItemIds': widget.selectedItemIds,
     'reason': _reason.text,
     'completed': _completed.toList()..sort(),
     'unknownShipment': _unknownShipment,
     'inputs': {
+      ..._recoveryInputs,
       for (final entry in _picking.entries)
         entry.key: entry.value.captureInput(),
     },
   };
   @override
   Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    if (((data['selectedItemIds'] as List? ?? []).whereType<String>().toList()
+              ..sort())
+            .join(',') !=
+        ((widget.selectedItemIds ?? []).toList()..sort()).join(',')) {
+      throw const FormatException('原出库草稿的所选明细与当前不一致，请返回任务中心核对');
+    }
     final ids = (data['shipmentIds'] as List?)?.whereType<String>().toSet();
     if (ids == null ||
         ids.length != _targetIds.length ||
@@ -119,16 +137,22 @@ class _WarehouseSalesOutboundBatchPageState
     }
     _reason.text = data['reason'] as String? ?? '';
     _unknownShipment = data['unknownShipment'] as String?;
+    if (_unknownShipment != null && !_targetIds.contains(_unknownShipment)) {
+      throw const FormatException('原待核对出货单不属于本批来源');
+    }
     final inputs = data['inputs'];
     for (final detail in _details ?? <WarehouseSalesOutboundDetail>[]) {
       final id = detail.header.id;
+      final input = inputs is Map ? inputs[id] : null;
       if (detail.header.warehouseWorkStatus ==
           WarehouseSalesOutboundStatus.shipped) {
+        if (_unknownShipment == id && !_matchesRecoveryRange(detail)) {
+          throw const FormatException('原出库明细范围已变化，不能确认原结果');
+        }
         _completed.add(id);
         if (_unknownShipment == id) _unknownShipment = null;
         continue;
       }
-      final input = inputs is Map ? inputs[id] : null;
       if (input is! Map) throw const FormatException('批量出库草稿缺少任务明细');
       _picking[id]!.restoreInput(Map<String, dynamic>.from(input));
     }
@@ -145,10 +169,18 @@ class _WarehouseSalesOutboundBatchPageState
     final id = _unknownShipment;
     if (id == null) return;
     try {
-      final latest = await ref
-          .read(warehouseSalesOutboundRepositoryProvider)
-          .detail(id);
+      final input = _picking[id]?.captureInput();
+      if (input != null) _recoveryInputs.putIfAbsent(id, () => input);
+      final scope = await captureFormDraftRequestScope();
+      final latest = await scope.run(
+        () => ref.read(warehouseSalesOutboundRepositoryProvider).detail(id),
+      );
+      scope.checkCurrent();
       if (!mounted || !formDraftIdentityIsCurrent) return;
+      if (latest.header.id != id || !_matchesRecoveryRange(latest)) {
+        context.appWarning('原出库明细范围已变化，原结果继续待核对');
+        return;
+      }
       if (latest.header.warehouseWorkStatus !=
           WarehouseSalesOutboundStatus.shipped) {
         context.appWarning('尚未查到已出库结果，原输入继续保留，请稍后再次核对');
@@ -175,9 +207,40 @@ class _WarehouseSalesOutboundBatchPageState
       invalidateWarehouseTaskCounts(ref);
     } catch (error) {
       if (mounted) {
+        if (error is ApiException &&
+            const [403, 404].contains(error.httpStatus)) {
+          setState(() {
+            _blockedSources.add(id);
+            _details?.removeWhere((detail) => detail.header.id == id);
+            _picking.remove(id)?.dispose();
+          });
+        }
         context.appError(describeSubmitError(error, fallback: '核对出库结果失败'));
       }
     }
+  }
+
+  bool _matchesRecoveryRange(WarehouseSalesOutboundDetail detail) {
+    final input =
+        _recoveryInputs[detail.header.id] ??
+        _picking[detail.header.id]?.captureInput();
+    final rows = input?['rows'];
+    if (input?['shipmentId'] != detail.header.id ||
+        rows is! List ||
+        rows.length != detail.lines.length) {
+      return false;
+    }
+    final byId = {
+      for (final row in rows.whereType<Map<Object?, Object?>>()) row['id']: row,
+    };
+    if (byId.length != rows.length) return false;
+    final selection = WarehouseTaskItemSelection(widget.selectedItemIds);
+    return detail.lines.every(
+      (line) =>
+          selection.contains(line.id) &&
+          byId[line.id]?['goodsId'] == line.goodsId &&
+          byId[line.id]?['quantity'] == line.quantity,
+    );
   }
 
   void _leaveBatch(bool result) {
@@ -202,6 +265,7 @@ class _WarehouseSalesOutboundBatchPageState
   bool _attempted = false;
   int _loadVersion = 0;
   final Map<String, WarehouseSalesPickingDraft> _picking = {};
+  bool _selectionComplete = true;
 
   /// 本次 build 盯住的页内单重参数缓存 (有待称重且带货品的行时才建)。
   WeightParamsCache? _weightCache;
@@ -217,7 +281,7 @@ class _WarehouseSalesOutboundBatchPageState
   @override
   void initState() {
     super.initState();
-    startFormDraftIdentityGuard();
+    startFormDraftIdentityGuard(includePermissions: true);
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -231,7 +295,7 @@ class _WarehouseSalesOutboundBatchPageState
   }
 
   Future<void> _load({bool preserveInputs = true}) async {
-    if (!mounted || _saving || _attempted) return;
+    if (!mounted || _saving || _confirming || _attempted) return;
     final version = ++_loadVersion;
     final l10n = _l10n;
     setState(() {
@@ -239,22 +303,135 @@ class _WarehouseSalesOutboundBatchPageState
       _error = null;
     });
     try {
+      if (_unknownShipment case final id?) {
+        final input = _picking[id]?.captureInput();
+        if (input != null) _recoveryInputs.putIfAbsent(id, () => input);
+      }
+      await ref.read(formDraftsProvider.notifier).ready;
+      if (!mounted || !formDraftIdentityIsCurrent || version != _loadVersion) {
+        return;
+      }
+      final resumeId = goRouterPageStateOrNull(
+        context,
+      )?.uri.queryParameters['draftId'];
+      final checkpoint = ref
+          .read(formDraftsProvider)
+          .where((draft) => draft.id == resumeId)
+          .firstOrNull;
+      if (checkpoint != null) {
+        if (!formDraftSpec.canRestore(
+          checkpoint,
+          currentRoute: formDraftSpec.route,
+        )) {
+          throw const FormatException('原批次身份不一致');
+        }
+        final unknown = checkpoint.data['unknownShipment'];
+        if (unknown != null &&
+            (unknown is! String || !_targetIds.contains(unknown))) {
+          throw const FormatException('原待核对来源不正确');
+        }
+        _unknownShipment = unknown as String?;
+        if (checkpoint.data['inputs'] case final Map<Object?, Object?> inputs) {
+          for (final entry in inputs.entries) {
+            if (entry.key is String &&
+                _targetIds.contains(entry.key) &&
+                entry.value is Map) {
+              _recoveryInputs[entry.key as String] = Map<String, dynamic>.from(
+                entry.value as Map,
+              );
+            }
+          }
+        }
+      }
+      final recovering =
+          _unknownShipment != null ||
+          _completed.isNotEmpty ||
+          (checkpoint != null &&
+              draftStrings(checkpoint.data['completed']).isNotEmpty);
       final targets = {for (final item in widget.targets) item.id: item};
       if (_targetIds.isEmpty) {
         throw FormatException(l10n.warehouseOutboundBatchEmpty);
       }
       final repository = ref.read(warehouseSalesOutboundRepositoryProvider);
-      final details = await Future.wait(_targetIds.map(repository.detail));
+      final blocked = <String>{};
+      final reads = await Future.wait(
+        _targetIds.map((id) async {
+          try {
+            final detail = await repository.detail(id);
+            if (detail.header.id != id) throw const FormatException('出货来源不一致');
+            if (recovering &&
+                _recoveryInputs.containsKey(id) &&
+                !_matchesRecoveryRange(detail)) {
+              blocked.add(id);
+              return null;
+            }
+            if (recovering &&
+                id != _unknownShipment &&
+                detail.header.warehouseWorkStatus !=
+                    WarehouseSalesOutboundStatus.shipped &&
+                warehouseSalesOutboundPrimaryAction(detail.header) !=
+                    widget.action) {
+              blocked.add(id);
+              return null;
+            }
+            return detail;
+          } catch (_) {
+            if (!recovering) rethrow;
+            blocked.add(id);
+            return null;
+          }
+        }),
+      );
+      final details = reads.whereType<WarehouseSalesOutboundDetail>().toList();
+      for (final id in blocked) {
+        if (id == _unknownShipment) continue;
+        final input = _recoveryInputs[id] ?? _picking[id]?.captureInput();
+        _recoveryInputs[id] = {
+          'shipmentId': id,
+          'blocked': true,
+          'rows': [
+            for (final row in draftMaps(input?['rows'])) {'id': row['id']},
+          ],
+        };
+      }
+      final selection = WarehouseTaskItemSelection(widget.selectedItemIds);
+      selection.validate([
+        ...details.expand((detail) => detail.lines).map((line) => line.id),
+        if (recovering)
+          for (final id in blocked)
+            for (final row in draftMaps(_recoveryInputs[id]?['rows']))
+              row['id'] as String?,
+      ]);
+      _selectionComplete = details.every(
+        (detail) => detail.lines.every((line) => selection.contains(line.id)),
+      );
+      for (var index = 0; index < details.length; index++) {
+        final detail = details[index];
+        details[index] = WarehouseSalesOutboundDetail(
+          header: detail.header,
+          lines: detail.lines
+              .where((line) => selection.contains(line.id))
+              .toList(),
+          shipAddress: detail.shipAddress,
+          contactPhone: detail.contactPhone,
+          logisticsNo: detail.logisticsNo,
+          parcelCount: detail.parcelCount,
+          warehouseWorkUpdatedAt: detail.warehouseWorkUpdatedAt,
+          handedOverAt: detail.handedOverAt,
+        );
+      }
       if (!mounted || !formDraftIdentityIsCurrent || version != _loadVersion) {
         return;
       }
       if (details.any(
         (detail) =>
             detail.lines.isEmpty ||
-            (targets.containsKey(detail.header.id) &&
+            (!recovering &&
+                targets.containsKey(detail.header.id) &&
                 detail.header.warehouseWorkStatus !=
                     targets[detail.header.id]?.warehouseWorkStatus) ||
-            (warehouseSalesOutboundPrimaryAction(detail.header) !=
+            (!recovering &&
+                warehouseSalesOutboundPrimaryAction(detail.header) !=
                     widget.action &&
                 detail.header.warehouseWorkStatus !=
                     WarehouseSalesOutboundStatus.shipped),
@@ -294,6 +471,9 @@ class _WarehouseSalesOutboundBatchPageState
           ..clear()
           ..addAll(nextPicking);
         _details = details;
+        _blockedSources
+          ..clear()
+          ..addAll(blocked);
         _completed.addAll(
           details
               .where(
@@ -361,6 +541,10 @@ class _WarehouseSalesOutboundBatchPageState
   }
 
   Future<void> _submit() async {
+    if (!_selectionComplete) {
+      context.appWarning('该出货单需整单确认，请返回任务中心选齐同单明细；本次未出库');
+      return;
+    }
     final details = _details;
     if (_saving ||
         _confirming ||
@@ -391,7 +575,19 @@ class _WarehouseSalesOutboundBatchPageState
               '${warehouseSalesWeightAlertText(alert.line, alert.check)}',
     ];
     // Busy before the dialog also prevents two confirmations from rapid taps.
+    final requestScopeFuture = captureFormDraftRequestScope();
     setState(() => _confirming = true);
+    final AuthenticatedRequestScope requestScope;
+    try {
+      requestScope = await requestScopeFuture;
+    } catch (error) {
+      if (mounted) {
+        setState(() => _confirming = false);
+        context.appError(describeSubmitError(error, fallback: '身份状态暂时无法确认'));
+      }
+      return;
+    }
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => UtenAlertDialog(
@@ -448,58 +644,67 @@ class _WarehouseSalesOutboundBatchPageState
     });
     final repository = ref.read(warehouseSalesOutboundRepositoryProvider);
     try {
-      await runFormDraftSubmission(() async {
-        for (var i = 0; i < details.length; i++) {
-          final reviewed = details[i];
-          if (_completed.contains(reviewed.header.id)) continue;
-          try {
-            final latest = await repository.detail(reviewed.header.id);
-            if (warehouseSalesOutboundReviewSnapshot(latest) !=
-                    warehouseSalesOutboundReviewSnapshot(reviewed) ||
-                warehouseSalesOutboundPrimaryAction(latest.header) !=
-                    widget.action) {
-              throw FormatException(l10n.warehouseOutboundBatchStale);
-            }
-            _unknownShipment = reviewed.header.id;
-            await saveFormDraftNow();
-            if (!formDraftIdentityIsCurrent) {
-              throw ApiException('SESSION_CHANGED', '登录身份已变化，请重新进入任务中心');
-            }
-            final updated = await repository.transition(
-              reviewed.header.id,
-              targetStatus: widget.action.targetStatus,
-              reason: _reason.text.trim(),
-              stockPlaces: _picking[reviewed.header.id]?.stockPlaces,
-              lineWarehouses: _picking[reviewed.header.id]?.lineWarehouses,
-              lineWeights: _picking[reviewed.header.id]?.lineWeights,
-            );
-            if (updated.header.id != reviewed.header.id ||
-                updated.header.warehouseWorkStatus !=
-                    widget.action.targetStatus) {
-              throw FormatException(l10n.warehouseOutboundBatchUnknown);
-            }
-            _completed.add(reviewed.header.id);
-            _unknownShipment = null;
-            details[i] = updated;
-            await checkpointFormDraftAfterCreation();
-            if (mounted) setState(() {});
-          } catch (error) {
-            if (error is ApiException &&
-                (error.httpStatus == 400 ||
-                    error.httpStatus == 422 ||
-                    (error.httpStatus == 409 && error.code == 'CONFLICT'))) {
+      requestScope.checkCurrent();
+      await runFormDraftSubmission(
+        () => requestScope.run(() async {
+          for (var i = 0; i < details.length; i++) {
+            final reviewed = details[i];
+            if (_completed.contains(reviewed.header.id)) continue;
+            try {
+              final latest = await repository.detail(reviewed.header.id);
+              requestScope.checkCurrent();
+              if (warehouseSalesOutboundReviewSnapshot(latest) !=
+                      warehouseSalesOutboundReviewSnapshot(reviewed) ||
+                  warehouseSalesOutboundPrimaryAction(latest.header) !=
+                      widget.action) {
+                throw FormatException(l10n.warehouseOutboundBatchStale);
+              }
+              _unknownShipment = reviewed.header.id;
+              await saveFormDraftNow();
+              requestScope.checkCurrent();
+              if (!formDraftIdentityIsCurrent) {
+                throw ApiException('SESSION_CHANGED', '登录身份已变化，请重新进入任务中心');
+              }
+              final updated = await repository.transition(
+                reviewed.header.id,
+                targetStatus: widget.action.targetStatus,
+                reason: _reason.text.trim(),
+                stockPlaces: _picking[reviewed.header.id]?.stockPlaces,
+                lineWarehouses: _picking[reviewed.header.id]?.lineWarehouses,
+                lineWeights: _picking[reviewed.header.id]?.lineWeights,
+                itemIds: widget.selectedItemIds == null
+                    ? null
+                    : reviewed.lines.map((line) => line.id).toList(),
+              );
+              requestScope.checkCurrent();
+              if (updated.header.id != reviewed.header.id ||
+                  updated.header.warehouseWorkStatus !=
+                      widget.action.targetStatus) {
+                throw FormatException(l10n.warehouseOutboundBatchUnknown);
+              }
+              _completed.add(reviewed.header.id);
               _unknownShipment = null;
+              details[i] = updated;
+              await checkpointFormDraftAfterCreation();
+              if (mounted) setState(() {});
+            } catch (error) {
+              if (error is ApiException &&
+                  (error.httpStatus == 400 ||
+                      error.httpStatus == 422 ||
+                      (error.httpStatus == 409 && error.code == 'CONFLICT'))) {
+                _unknownShipment = null;
+              }
+              _failedId = reviewed.header.id;
+              _error = describeSubmitError(
+                error,
+                fallback: l10n.warehouseOutboundBatchUnknown,
+              );
+              await checkpointFormDraftAfterCreation();
+              break;
             }
-            _failedId = reviewed.header.id;
-            _error = describeSubmitError(
-              error,
-              fallback: l10n.warehouseOutboundBatchUnknown,
-            );
-            await checkpointFormDraftAfterCreation();
-            break;
           }
-        }
-      });
+        }),
+      );
     } catch (error) {
       _failedId ??= _targetIds.firstOrNull;
       _error = describeSubmitError(
@@ -513,13 +718,20 @@ class _WarehouseSalesOutboundBatchPageState
       }
     }
     if (!mounted || !formDraftIdentityIsCurrent) return;
-    if (_failedId == null) {
+    if (_failedId == null &&
+        _blockedSources.isEmpty &&
+        _completed.length == _targetIds.length) {
       await completeFormDraft();
       if (!mounted) return;
       context.appSuccess(l10n.commonSuccess);
       _leaveBatch(true);
-    } else {
+    } else if (_failedId != null) {
       context.appError(_error!);
+    } else {
+      await saveFormDraftNow();
+      if (mounted) {
+        context.appWarning('可办理来源已处理，其余来源仍未派发，原批次继续保留');
+      }
     }
   }
 
@@ -553,7 +765,7 @@ class _WarehouseSalesOutboundBatchPageState
                   label: l10n.commonRefresh,
                   icon: Icons.refresh_rounded,
                   isLoading: _loading,
-                  onPressed: _loading || _saving ? null : _load,
+                  onPressed: _loading || _saving || _confirming ? null : _load,
                 ),
             ],
           ),
@@ -588,7 +800,7 @@ class _WarehouseSalesOutboundBatchPageState
             child: Stack(
               children: [
                 AbsorbPointer(
-                  absorbing: _saving,
+                  absorbing: _saving || _confirming,
                   child: _loading
                       ? const UtenSkeletonList()
                       : _details == null
@@ -611,10 +823,14 @@ class _WarehouseSalesOutboundBatchPageState
                                 children: [
                                   Text(
                                     l10n.warehouseOutboundBatchSelection(
-                                      _details!.length,
+                                      _targetIds.length,
                                     ),
                                   ),
                                   const SizedBox(height: UtenSpacing.s8),
+                                  for (final id in _blockedSources)
+                                    Text(
+                                      '来源 $id 当前不可办理，原范围保留；${id == _unknownShipment ? '原结果继续待核对，不能重新派发' : '本次未派发'}',
+                                    ),
                                   UtenCollapsibleSection(
                                     title: l10n.warehouseOutboundBatchDocuments,
                                     // 列数既按容器宽度算，也不超过单据张数：只有一张单
@@ -651,9 +867,19 @@ class _WarehouseSalesOutboundBatchPageState
                               body: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
+                                  if (!_selectionComplete)
+                                    Text(
+                                      '该出货单需整单确认，请返回任务中心选齐同单明细',
+                                      style: TextStyle(
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.error,
+                                      ),
+                                    ),
                                   TextField(
                                     controller: _reason,
-                                    readOnly: _attempted,
+                                    readOnly:
+                                        _attempted || _saving || _confirming,
                                     maxLength: 500,
                                     decoration: UtenInputDecoration(
                                       InputDecoration(
@@ -665,78 +891,99 @@ class _WarehouseSalesOutboundBatchPageState
                                   const SizedBox(height: UtenSpacing.s12),
                                   WeightParamsLoadNotice(cache: _weightCache),
                                   Expanded(
-                                    child: MasterDataTableView<WarehouseSalesOutboundTableRow>(
-                                      tableKey:
-                                          'features.warehouse.pages.warehouse_sales_outbound_batch_page.WarehouseSalesOutboundBatchPageState.build.1',
-                                      key: const Key(
-                                        'warehouse-sales-outbound-batch-table',
-                                      ),
-                                      primary: true,
-                                      columns: warehouseSalesOutboundTableColumns(
-                                        context: context,
-                                        l10n: l10n,
-                                        rows: rows,
-                                        // V631：发出仓按行在表格里选，批量核对不再逐单选仓。
-                                        draftOf: (row) =>
-                                            _picking[row.detail.header.id],
-                                        onDraftChanged: () {
-                                          setState(() {});
-                                          ensureOutboundWeightParams(
-                                            _weightCache,
-                                            _weightEntries,
-                                          );
-                                        },
-                                        stockPlaceControllerOf: (row) =>
-                                            _picking[row.detail.header.id]
-                                                ?.places[row.line.id],
-                                        editingEnabled:
-                                            !_attempted &&
-                                            !_saving &&
-                                            !_confirming,
-                                        includeShipment: true,
-                                        weightParams: _weightCache,
-                                        weightEntryUnit: weightUnits.entry,
-                                        resultOf: _attempted
-                                            ? (row) =>
-                                                  _completed.contains(
-                                                    row.detail.header.id,
-                                                  )
-                                                  ? l10n.warehouseOutboundBatchDone
-                                                  : _failedId ==
+                                    child:
+                                        MasterDataTableView<
+                                          WarehouseSalesOutboundTableRow
+                                        >(
+                                          tableKey:
+                                              'features.warehouse.pages.warehouse_sales_outbound_batch_page.WarehouseSalesOutboundBatchPageState.build.1',
+                                          key: const Key(
+                                            'warehouse-sales-outbound-batch-table',
+                                          ),
+                                          primary: true,
+                                          columns:
+                                              warehouseSalesOutboundTableColumns(
+                                                context: context,
+                                                l10n: l10n,
+                                                rows: rows,
+                                                // V631：发出仓按行在表格里选，批量核对不再逐单选仓。
+                                                draftOf: (row) =>
+                                                    _picking[row
+                                                        .detail
+                                                        .header
+                                                        .id],
+                                                onDraftChanged: () {
+                                                  setState(() {});
+                                                  ensureOutboundWeightParams(
+                                                    _weightCache,
+                                                    _weightEntries,
+                                                  );
+                                                },
+                                                stockPlaceControllerOf: (row) =>
+                                                    _picking[row
+                                                            .detail
+                                                            .header
+                                                            .id]
+                                                        ?.places[row.line.id],
+                                                editingEnabled:
+                                                    !_attempted &&
+                                                    !_saving &&
+                                                    !_confirming,
+                                                includeShipment: true,
+                                                weightParams: _weightCache,
+                                                weightEntryUnit:
+                                                    weightUnits.entry,
+                                                resultOf: (row) =>
+                                                    _unknownShipment ==
                                                         row.detail.header.id
-                                                  ? l10n.warehouseOutboundBatchFailed
-                                                  : l10n.warehouseOutboundBatchPending
-                                            : null,
-                                      ),
-                                      toolbarActions: weightEntries.isEmpty
-                                          ? null
-                                          : const [WeightEntryUnitButton()],
-                                      summaryBar: rows.isEmpty
-                                          ? null
-                                          : OutboundWeightSummaryBar(
-                                              entries: weightEntries,
-                                              params: _weightCache,
-                                              productsOf: () => [
-                                                for (final row in rows)
-                                                  OutboundProductQuantity(
-                                                    goodsId: row.line.goodsId,
-                                                    quantity: row.line.quantity,
-                                                    unitId: row.line.unitId,
-                                                    unitName: row.line.unitName,
-                                                  ),
-                                              ],
-                                            ),
-                                      items: rows,
-                                      bottomContentPadding:
-                                          UtenFloatingActionGroup
-                                              .scrollClearance,
-                                      rowKeyOf: (row) => row.key,
-                                      facets: const {},
-                                      nullCounts: const {},
-                                      filters: const {},
-                                      onFilterChanged: (_, _) {},
-                                      emptyMessage: l10n.commonNoData,
-                                    ),
+                                                    ? '结果待核对'
+                                                    : _completed.contains(
+                                                        row.detail.header.id,
+                                                      )
+                                                    ? row
+                                                          .detail
+                                                          .header
+                                                          .statusLabel
+                                                    : _failedId ==
+                                                          row.detail.header.id
+                                                    ? '办理受阻'
+                                                    : row
+                                                          .detail
+                                                          .header
+                                                          .statusLabel,
+                                              ),
+                                          toolbarActions: weightEntries.isEmpty
+                                              ? null
+                                              : const [WeightEntryUnitButton()],
+                                          summaryBar: rows.isEmpty
+                                              ? null
+                                              : OutboundWeightSummaryBar(
+                                                  entries: weightEntries,
+                                                  params: _weightCache,
+                                                  productsOf: () => [
+                                                    for (final row in rows)
+                                                      OutboundProductQuantity(
+                                                        goodsId:
+                                                            row.line.goodsId,
+                                                        quantity:
+                                                            row.line.quantity,
+                                                        unitId: row.line.unitId,
+                                                        unitName:
+                                                            row.line.unitName,
+                                                      ),
+                                                  ],
+                                                ),
+                                          items: rows,
+                                          bottomContentPadding:
+                                              UtenFloatingActionGroup
+                                                  .scrollClearance,
+                                          rowKeyOf: (row) => row.key,
+                                          facets: const {},
+                                          nullCounts: const {},
+                                          filters: const {},
+                                          onFilterChanged: (_, _) {},
+                                          emptyMessage: l10n.commonNoData,
+                                        ),
                                   ),
                                 ],
                               ),

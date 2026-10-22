@@ -14,9 +14,19 @@ import 'package:uten_imp/features/warehouse/models/stock_doc.dart';
 import 'package:uten_imp/features/warehouse/pages/stock_doc_detail_page.dart';
 import 'package:uten_imp/shared/auth/document_scope_capability.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/models/user.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../support/document_scope_capability_overrides.dart';
+
+class _Session extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(id: 'dialog-test', code: 'T001', name: '弹窗测试员'),
+  );
+}
 
 void main() {
   for (final production in [true, false]) {
@@ -33,6 +43,7 @@ void main() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
+              sessionProvider.overrideWith(_Session.new),
               apiClientProvider.overrideWithValue(api),
               sharedPreferencesProvider.overrideWithValue(preferences),
               currentPermissionsProvider.overrideWithValue(const {

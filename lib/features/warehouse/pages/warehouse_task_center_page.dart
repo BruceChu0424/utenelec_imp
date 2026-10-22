@@ -105,11 +105,26 @@ class _WarehouseTaskCenterPageState
   bool get _legacyReturn =>
       {'wdraw', 'productionReturn', 'RETURN'}.contains(widget.initialSection);
 
-  String? get _initialGroup => widget.initialGroup == 'draw'
+  bool get _legacyWorkshopIssue =>
+      widget.initialGroup == 'workshopMaterial' &&
+      widget.initialSection == 'pendingIssue';
+  bool get _legacyWorkshopReturn =>
+      widget.initialGroup == 'workshopMaterial' &&
+      widget.initialSection == 'pendingReturn';
+
+  String? get _initialGroup => _legacyWorkshopIssue
+      ? 'outbound'
+      : _legacyWorkshopReturn
+      ? 'inbound'
+      : widget.initialGroup == 'draw'
       ? (_legacyReturn ? 'inbound' : 'outbound')
       : widget.initialGroup;
 
-  String? get _initialSection => widget.initialGroup == 'draw'
+  String? get _initialSection => _legacyWorkshopIssue
+      ? 'DRAW'
+      : _legacyWorkshopReturn
+      ? 'RETURN'
+      : widget.initialGroup == 'draw'
       ? (_legacyReturn ? 'RETURN' : 'DRAW')
       : widget.initialSection;
 
@@ -171,7 +186,6 @@ class _WarehouseTaskCenterPageState
         ref.watch(formDraftsPageCountProvider('warehouse')) > 0;
     final canReviewCounts = canOpen(RouteName.warehouseStockCountReview);
     // 独立授权的盘点审核人也从同一分类办理，不要求仓库发料权限。
-    final canWorkshopMaterial = canOpen(RouteName.workshopMaterialIssue);
     final canCycleCount =
         canOpen(RouteName.workshopMaterialBin) &&
         canOpen(RouteName.workshopMaterialCount);
@@ -181,10 +195,9 @@ class _WarehouseTaskCenterPageState
         ref.watch(warehouseTaskEntryTodoProvider(entry));
     int inProgress(BadgeEntry entry) =>
         ref.watch(warehouseTaskEntryInProgressProvider(entry));
-    // 红 = 待发料/退回与待审盘点(各按自己的入口); 黄仅真实周期盘点中。
-    final workshopTodo =
-        (canWorkshopMaterial ? todo(BadgeEntry.warehouseWorkshopMaterial) : 0) +
-        (canReviewCounts ? todo(BadgeEntry.warehouseStockCountReview) : 0);
+    final workshopTodo = canReviewCounts
+        ? todo(BadgeEntry.warehouseStockCountReview)
+        : 0;
     final workshopInProgress = canCycleCount
         ? inProgress(BadgeEntry.warehouseWorkshopMaterial)
         : 0;
@@ -217,11 +230,10 @@ class _WarehouseTaskCenterPageState
           count: todo(BadgeEntry.warehouseQualityResult),
           inProgressCount: inProgress(BadgeEntry.warehouseQualityResult),
         ),
-      if (canWorkshopMaterial || canReviewCounts || canCycleCount)
+      if (canReviewCounts || canCycleCount)
         _GroupSpec(
           value: 'workshopMaterial',
           label: workshopMaterialLabel,
-          // 红 = 待发料/退回与待审盘点的独立入口并集；黄仅真实周期盘点中。
           count: workshopTodo,
           inProgressCount: workshopInProgress,
         ),

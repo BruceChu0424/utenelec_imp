@@ -332,6 +332,7 @@ class PlatformTableController<T> extends ChangeNotifier {
   PlatformTableLayout localLayout(
     List<String> keys, {
     required Set<String> defaultHidden,
+    bool insertNewColumnsAtDeclaredPosition = false,
   }) {
     final byCanonical = {for (final key in keys) canonicalKey(key): key};
     final byCanonicalFilter = {
@@ -348,7 +349,30 @@ class PlatformTableController<T> extends ChangeNotifier {
       final local = byCanonical[canonicalKey(key)];
       if (local != null && !order.contains(local)) order.add(local);
     }
-    order.addAll(keys.where((key) => !order.contains(key)));
+    if (savedOrder.isEmpty || !insertNewColumnsAtDeclaredPosition) {
+      // 可编辑表格的既有口径：保存序里还没有的列一律追加表尾（锚点列由宿主
+      // defaultColumnOrderAnchors 另行归位），不要改动。
+      order.addAll(keys.where((key) => !order.contains(key)));
+    } else {
+      // 主表浏览表格的口径：保存序里还没有的列（保存之后版本新增的）插回代码
+      // 默认位置——贴着列定义里它的前邻列落位，没有前邻的新前缀从最前开始。
+      // 否则升级账号的新列（如货品表「模具名称」）会被追到最右端，与默认列序
+      // 脱节。
+      final known = order.toSet();
+      for (final key in keys) {
+        if (known.contains(key)) continue;
+        var insertAt = 0;
+        for (var i = keys.indexOf(key) - 1; i >= 0; i--) {
+          final anchor = order.indexOf(keys[i]);
+          if (anchor >= 0) {
+            insertAt = anchor + 1;
+            break;
+          }
+        }
+        order.insert(insertAt, key);
+        known.add(key);
+      }
+    }
     final defaults = binding?.defaultVisibleColumnKeys;
     final hiddenByDefault = defaults == null
         ? defaultHidden

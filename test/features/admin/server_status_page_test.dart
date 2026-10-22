@@ -15,6 +15,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/data_display/uten_gauge_ring.dart';
 import 'package:uten_imp/components/data_display/uten_status_badge.dart';
 import 'package:uten_imp/components/feedback/uten_live_pulse_dot.dart';
+import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -29,7 +30,10 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/features/dashboard/providers/workbench_layout_provider.dart';
 import 'package:uten_imp/features/dashboard/widgets/workbench_module_area.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+
+import '../../helpers/badge_summary_fixture.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -249,6 +253,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('系统管理'), findsOneWidget);
       expect(find.text('服务器状态'), findsOneWidget);
+      // 「服务器更新」卡 2026-10-22 退役：更新入口并入服务器状态页。
+      expect(find.text('服务器更新'), findsNothing);
       expect(find.text('权限管理'), findsNothing);
       expect(find.text('系统设置'), findsNothing);
       await tester.tap(find.text('服务器状态'));
@@ -265,6 +271,40 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+
+  // 2026-10-22：「服务器更新」卡从工作台退役后，服务器状态页内的更新按钮是
+  // 常驻入口；待更新版本数（徽章汇总 serverOperations.updates，只对有更新权限
+  // 的人有数）直接标在按钮上，不点进去也知道该更新了。
+  testWidgets('服务器更新按钮按待更新数显示徽章，无数时不占位', (tester) async {
+    await withClock(Clock.fixed(sampledAt), () async {
+      final repository = _Repository(() async => _sample(sampledAt));
+      final container = await _pump(
+        tester,
+        repository,
+        badgeSummary: badgeSummaryFixture(
+          entries: {BadgeEntry.serverUpdateAvailable: (2, 0)},
+        ),
+      );
+      expect(
+        tester
+            .widget<UtenNotificationBadge>(
+              find.byKey(const Key('server-update-pending-badge')),
+            )
+            .count,
+        2,
+      );
+      // 没有待更新版本时按钮回到纯文字，不渲染徽章(同一作用域推一份空汇总)。
+      (container.read(badgeSummaryProvider.notifier)
+              as FixedBadgeSummaryNotifier)
+          .emit(badgeSummaryFixture());
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('server-update-pending-badge')),
+        findsNothing,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  });
 
   testWidgets(
     'slow reads never overlap and polling pauses off-route, in background and after disposal',
@@ -533,6 +573,7 @@ Future<ProviderContainer> _pump(
   bool settle = true,
   Set<String> permissions = const {Perm.serverStatusView},
   ServerStatusSnapshot? cached,
+  BadgeSummary? badgeSummary,
 }) async {
   tester.view.physicalSize = compact
       ? const Size(390, 1000)
@@ -548,6 +589,7 @@ Future<ProviderContainer> _pump(
         currentPermissionsProvider.overrideWithValue(permissions),
         sharedPreferencesProvider.overrideWithValue(preferences),
         serverStatusRepositoryProvider.overrideWithValue(repository),
+        if (badgeSummary != null) fixedBadgeSummaryOverride(badgeSummary),
         // 模拟「工作台那张卡的告警徽章刚刚拉过一次」——共享缓存里已有读数。
         if (cached != null)
           serverStatusSnapshotCacheProvider.overrideWith((ref) => cached),

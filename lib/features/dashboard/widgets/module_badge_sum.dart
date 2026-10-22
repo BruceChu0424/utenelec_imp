@@ -29,8 +29,7 @@ enum WorkbenchBadgeKind {
   sales, // 销售管理
   websiteInquiry, // 官网询盘：独立容器，避免销售管理重复计数。
   qualityInspection, // 品质任务中心（IQC 待检收货单 + FQC 待检行）
-  serverStatus, // 服务器状态(越过警告或危急阈值的告警条数)
-  serverUpdate, // 上次手动检查发现的待更新版本
+  serverStatus, // 服务器状态(告警条数 + 待更新版本数, 更新入口在该页内)
   none, // 暂无角标数据源（预留：以后接入时新增枚举值）
 }
 
@@ -63,8 +62,13 @@ BadgeCounts workbenchBadgeCounts(
     WorkbenchBadgeKind.sales => module(BadgeModule.sales),
     WorkbenchBadgeKind.websiteInquiry => entry(BadgeEntry.websiteInquiry),
     WorkbenchBadgeKind.qualityInspection => module(BadgeModule.quality),
-    WorkbenchBadgeKind.serverStatus => entry(BadgeEntry.serverStatusAlert),
-    WorkbenchBadgeKind.serverUpdate => entry(BadgeEntry.serverUpdateAvailable),
+    // 更新入口 2026-10-22 起只在服务器状态页内, 工作台那张卡不复存在;
+    // 该卡角标 = 告警条数 + 待更新版本数(两次入口红数相加, 黄数两入口恒 0)。
+    WorkbenchBadgeKind.serverStatus => BadgeCounts(
+      summary.entryTodo(BadgeEntry.serverStatusAlert) +
+          summary.entryTodo(BadgeEntry.serverUpdateAvailable),
+      0,
+    ),
     WorkbenchBadgeKind.none => BadgeCounts.zero,
   };
 }

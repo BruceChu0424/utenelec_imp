@@ -134,7 +134,14 @@ const _reviewedNewGuardedRoutes = <String, List<String>>{
   // 发料、设置要求本码，周期盘点允许录入或仓库审核码。
   '/workshop-material/bin': [],
   '/reports/workshop-material': [],
-  '/workshop-material/issue': [Perm.workshopMaterialIssue],
+  '/workshop-material/issue': [
+    Perm.workshopMaterialView,
+    Perm.workshopMaterialIssue,
+  ],
+  '/workshop-material/issue/batch': [
+    Perm.workshopMaterialView,
+    Perm.workshopMaterialIssue,
+  ],
   '/workshop-material/count': [],
   '/warehouse/workshop-material/setup': [Perm.workshopMaterialSetup],
 

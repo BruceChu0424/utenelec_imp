@@ -10,6 +10,8 @@ import 'package:uten_imp/features/basic_data/pages/account_detail_page.dart';
 import 'package:uten_imp/features/basic_data/repositories/account_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/currency_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/payment_style_repository.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_edit_dialog.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_read_only_fields.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
@@ -37,6 +39,19 @@ void main() {
     expect(find.textContaining('未获授权查看余额与流水金额'), findsOneWidget);
     expect(find.text('99999999999999.1234'), findsNothing);
     expect(find.text('设置警戒线'), findsNothing);
+    expect(find.text('10201 · 基本户'), findsOneWidget);
+    final basics = tester.widget<MasterReadOnlyFields>(
+      find.byKey(const Key('account-basic-fields')),
+    );
+    expect(basics.fields.map((field) => field.key), [
+      'name',
+      'code',
+      'bankAccountNo',
+      'accountType',
+      'currencyId',
+      'styleId',
+      'status',
+    ]);
   });
 
   testWidgets(
@@ -88,6 +103,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(currencies.dictCalls, 1);
     expect(styles.treeCalls, 1);
+    final viewer = tester.widget<MasterReadOnlyFields>(
+      find.byKey(const Key('account-basic-fields')),
+    );
+    final editor = tester.widget<MasterEditForm>(find.byType(MasterEditForm));
+    expect(
+      editor.fields.map((field) => field.key),
+      viewer.fields.map((field) => field.key),
+    );
 
     await tester.enterText(
       find.byWidgetPredicate(
@@ -103,6 +126,50 @@ void main() {
     expect(currencies.dictCalls, 1);
     expect(styles.treeCalls, 1);
     expect(find.text('修改后账户'), findsWidgets);
+  });
+
+  for (final deleted in [false, true]) {
+    testWidgets('account subject label remains readable for deleted=$deleted', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(720, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repository = _AccountRepositoryFake(styleDeleted: deleted);
+      final styles = _PaymentStyleRepositoryFake();
+      await _pumpDetail(tester, repository, {
+        Perm.accountView,
+      }, paymentStyleRepository: styles);
+      expect(
+        find.text(deleted ? '10201 · 基本户（已删除）' : '10201 · 基本户'),
+        findsOneWidget,
+      );
+      expect(styles.treeCalls, 0);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('account basic fields reflow using the shared editor grid', (
+    tester,
+  ) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(1280, 1000));
+    await _pumpDetail(tester, _AccountRepositoryFake(), {Perm.accountView});
+    final scope = find.byKey(const Key('account-basic-fields'));
+    Finder label(String name) =>
+        find.descendant(of: scope, matching: find.text(name));
+    final wideName = tester.getRect(label('账户名称'));
+    final wideCode = tester.getRect(label('账户编号'));
+    final wideBank = tester.getRect(label('银行账号'));
+    expect(wideCode.top, wideName.top);
+    expect(wideBank.top, wideName.top);
+    expect(wideCode.left, greaterThan(wideName.left));
+    await tester.binding.setSurfaceSize(const Size(390, 1000));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getRect(label('账户编号')).top,
+      greaterThan(tester.getRect(label('账户名称')).bottom),
+    );
+    expect(tester.takeException(), isNull);
   });
 }
 
@@ -136,6 +203,8 @@ Future<void> _pumpDetail(
 }
 
 class _AccountRepositoryFake implements AccountRepository {
+  _AccountRepositoryFake({this.styleDeleted = false});
+  final bool styleDeleted;
   @override
   Future<List<MasterFacetBucket>> statementBillNoFacets({
     required String accountId,
@@ -169,6 +238,9 @@ class _AccountRepositoryFake implements AccountRepository {
     currencyCode: 'CNY',
     currencyName: '人民币',
     styleId: 'style-bank',
+    styleCode: '10201',
+    styleName: '基本户',
+    styleDeleted: styleDeleted,
     initBalance: 99999999999999.12,
     initBalanceText: '99999999999999.1234',
     balanceCurrent: 99999999999999.12,

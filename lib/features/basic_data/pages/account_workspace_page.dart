@@ -9,6 +9,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -16,6 +17,8 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -24,12 +27,14 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/sensitive_write.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../models/account_node.dart';
 import '../models/currency_node.dart';
 import '../models/master_facet.dart';
+import '../models/master_batch.dart';
 import '../models/payment_style_node.dart';
 import '../repositories/account_repository.dart';
 import '../repositories/currency_repository.dart';
@@ -42,6 +47,7 @@ import '../widgets/master_inline_edit.dart';
 import '../widgets/master_inline_page_mixin.dart';
 import '../widgets/master_operation_history_panel.dart';
 import '../widgets/master_edit_dialog.dart';
+import '../widgets/master_batch_feedback.dart';
 
 class AccountPage extends ConsumerStatefulWidget {
   const AccountPage({super.key, this.initialAccountTypeFilter});
@@ -57,7 +63,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
   @override
   String get inlineEntityType => 'accounts';
   @override
-  bool get inlineCanEdit => _canEdit;
+  bool get inlineCanEdit => _canEdit && !_batchBusy;
   @override
   bool get inlineReadReady => !_loading && _error == null;
   @override
@@ -73,7 +79,16 @@ class _AccountPageState extends ConsumerState<AccountPage>
     _disabledAccounts = null;
     _facets = null;
     _summary = null;
-    _selectedAccount = null;
+    _clearSelection();
+    _commandEpoch++;
+    _batchWriting = false;
+    final dialogs = _batchDialogs.toList();
+    _batchDialogs.clear();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final route in dialogs) {
+        if (route.isActive) route.navigator?.removeRoute(route);
+      }
+    });
     _error = null;
     _summaryError = null;
     _disabledError = null;
@@ -139,6 +154,13 @@ class _AccountPageState extends ConsumerState<AccountPage>
   bool _disabledRequested = false;
   bool _detailBusy = false;
   AccountListItem? _selectedAccount;
+  Set<String> _selectedAccountIds = {};
+  final Map<String, AccountListItem> _selectedAccounts = {};
+  int _commandEpoch = 0;
+  bool _batchBusy = false;
+  bool _batchWriting = false;
+  String _batchAction = '';
+  final Set<ModalRoute<dynamic>> _batchDialogs = {};
   String? _error;
   String? _summaryError;
   String? _disabledError;
@@ -268,10 +290,14 @@ class _AccountPageState extends ConsumerState<AccountPage>
       }
       setState(() {
         _page = result;
-        final selectedId = _selectedAccount?.id;
-        _selectedAccount = selectedId == null
-            ? null
-            : result.items.where((item) => item.id == selectedId).firstOrNull;
+        for (final item in result.items) {
+          if (_selectedAccountIds.contains(item.id)) {
+            _selectedAccounts[item.id] = item;
+          }
+        }
+        _selectedAccount = _selectedAccountIds.length == 1
+            ? _selectedAccounts[_selectedAccountIds.single]
+            : null;
         _loading = false;
       });
     } on ApiException catch (error) {
@@ -488,6 +514,8 @@ class _AccountPageState extends ConsumerState<AccountPage>
 
   void _onFilterChanged(String key, String? value) {
     setState(() {
+      _clearSelection();
+      _commandEpoch++;
       final next = Map<String, String?>.from(_filters);
       value == null ? next.remove(key) : next[key] = value;
       _filters = next;
@@ -496,12 +524,18 @@ class _AccountPageState extends ConsumerState<AccountPage>
   }
 
   void _onKeywordChanged(String value) {
-    setState(() => _keyword = value);
+    setState(() {
+      _clearSelection();
+      _commandEpoch++;
+      _keyword = value;
+    });
     _loadAccounts(1, refreshDisabled: _disabledRequested);
   }
 
   void _onSortChange(String? column, bool ascending) {
     setState(() {
+      _clearSelection();
+      _commandEpoch++;
       _sortKey = column;
       _sortAsc = ascending;
     });
@@ -520,6 +554,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
       label: '账户编号',
       group: '基础',
       hint: '留空自动生成；编号只用于展示和查找，不影响系统内部关联',
+      identifierDomain: 'ACCOUNT',
     ),
     const MasterFieldDef(key: 'bankAccountNo', label: '银行账号', group: '基础'),
     MasterFieldDef(
@@ -587,6 +622,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
   }
 
   Future<void> _openAccount(String id, {bool edit = false}) async {
+    if (_batchBusy) return;
     if (!await inlineEdit.confirmLeave(context) || !mounted) return;
     if (_detailBusy) return;
     _detailBusy = true;
@@ -599,55 +635,326 @@ class _AccountPageState extends ConsumerState<AccountPage>
     await _refresh();
   }
 
-  Future<void> _toggleStatus(AccountListItem account) async {
-    if (!_canStatus) return;
-    final next = account.status == '使用' ? '禁用' : '使用';
-    final ok = await context.guardRun(
-      () => ref
-          .read(masterStatusRepositoryProvider)
-          .change(resourcePath: AccountEndpoints.one(account.id), status: next),
-      success: next == '禁用' ? '账户已停用' : '账户已启用',
-      errorFallback: '状态变更失败，请稍后重试',
-    );
-    if (ok && mounted) await _refresh();
+  void _clearSelection() {
+    _selectedAccountIds = {};
+    _selectedAccounts.clear();
+    _selectedAccount = null;
   }
 
-  Future<void> _delete(AccountListItem account) async {
-    if (!_canDelete) return;
-    final label = account.name?.isNotEmpty == true
-        ? account.name!
-        : (account.code ?? '该账户');
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => UtenAlertDialog(
-        title: const Text('删除账户'),
-        content: Text('确定删除「$label」吗？已有资金往来的账户不能删除。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('取消'),
+  void _selectAccounts(Set<String> ids) {
+    if (_batchBusy) return;
+    setState(() {
+      _selectedAccountIds = Set.of(ids);
+      for (final account in [...?_page?.items, ...?_disabledAccounts?.items]) {
+        if (ids.contains(account.id)) _selectedAccounts[account.id] = account;
+      }
+      _selectedAccounts.removeWhere((id, _) => !ids.contains(id));
+      _selectedAccount = ids.length == 1 ? _selectedAccounts[ids.single] : null;
+    });
+  }
+
+  String _accountLabel(AccountListItem account) =>
+      account.name?.isNotEmpty == true ? account.name! : (account.code ?? '账户');
+
+  Future<void> _toggleStatus(AccountListItem account) => _runAccountBatch(
+    {account.id},
+    status: account.status == '使用' ? '禁用' : '使用',
+    account: account,
+  );
+
+  Future<void> _delete(AccountListItem account) =>
+      _runAccountBatch({account.id}, account: account);
+
+  Future<T?> _ownedBatchDialog<T>(
+    SensitiveReadBoundary owner,
+    int epoch,
+    WidgetBuilder builder,
+  ) async {
+    ModalRoute<T>? route;
+    try {
+      return await showDialog<T>(
+        context: context,
+        builder: (dialogContext) {
+          route = ModalRoute.of<T>(dialogContext);
+          if (route != null) _batchDialogs.add(route!);
+          return Consumer(
+            builder: (context, ref, _) {
+              final boundary = ref.watch(sensitiveReadBoundaryProvider);
+              if (owner != boundary || epoch != _commandEpoch) {
+                return const SizedBox.shrink();
+              }
+              return builder(context);
+            },
+          );
+        },
+      );
+    } finally {
+      _batchDialogs.remove(route);
+    }
+  }
+
+  Future<bool> _confirmBatch(
+    SensitiveReadBoundary owner,
+    int epoch, {
+    required List<String> targets,
+    required Map<String, String> labels,
+    String? status,
+  }) async {
+    final l10n = AppLocalizations.of(context);
+    final deleting = status == null;
+    final disabling = status == '禁用';
+    final label = targets.length == 1 ? labels[targets.single]! : '选中的账户';
+    final title = deleting
+        ? targets.length == 1
+              ? '删除账户'
+              : '批量删除账户'
+        : disabling
+        ? l10n.masterStatusDisableTitle
+        : l10n.masterStatusEnableTitle;
+    final description = deleting
+        ? targets.length == 1
+              ? '确定删除「$label」吗？已有资金往来的账户不能删除。'
+              : '确定删除选中的 ${targets.length} 个账户吗？已有资金往来的账户不能删除，未通过校验的账户会列出原因并保留。'
+        : disabling
+        ? l10n.masterStatusDisableBody(label, targets.length)
+        : l10n.masterStatusEnableBody(label, targets.length);
+    return await _ownedBatchDialog<bool>(
+          owner,
+          epoch,
+          (context) => UtenAlertDialog(
+            title: UtenDialogHeading(
+              title: Text(title),
+              icon: deleting
+                  ? Icons.delete_outline_rounded
+                  : Icons.power_settings_new,
+              danger: deleting || disabling,
+            ),
+            content: Text(description),
+            actions: [
+              UtenButton(
+                type: UtenButtonType.ghost,
+                onPressed: () => Navigator.pop(context, false),
+                child: Text(l10n.commonCancel),
+              ),
+              UtenButton(
+                type: deleting || disabling
+                    ? UtenButtonType.danger
+                    : UtenButtonType.primary,
+                onPressed: () => Navigator.pop(context, true),
+                child: Text(deleting ? '删除' : l10n.commonConfirm),
+              ),
+            ],
           ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: UtenColors.error),
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('删除'),
+        ) ==
+        true;
+  }
+
+  Future<void> _showBatchOutcome(
+    MasterBatchResult result,
+    String action,
+    SensitiveReadBoundary owner,
+    int epoch,
+  ) async {
+    if (result.failed == 0) {
+      await showMasterBatchOutcome(context, result, action: action, noun: '账户');
+      return;
+    }
+    await _ownedBatchDialog<void>(
+      owner,
+      epoch,
+      (context) => SelectionArea(
+        child: UtenAlertDialog(
+          key: const Key('master-batch-outcome'),
+          scrollable: false,
+          title: Text(
+            result.succeeded == 0
+                ? '$action失败：${result.failed} 个账户没有处理'
+                : '已$action ${result.succeeded} 个，${result.failed} 个没有处理',
           ),
-        ],
+          content: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: 560,
+              maxHeight: MediaQuery.sizeOf(context).height * 0.6,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final failure in result.failures)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            failure.label ?? '账户',
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                          Text(failure.reason ?? '处理失败'),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            UtenButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('知道了'),
+            ),
+          ],
+        ),
       ),
     );
-    if (confirmed != true || !mounted) return;
-    final deleted = await context.guardRun(
-      () => ref.read(accountRepositoryProvider).delete(account.id),
-      success: '账户已删除',
-      errorFallback: '删除失败，请稍后重试',
-    );
-    if (deleted && mounted) await _refresh();
+  }
+
+  Future<void> _runAccountBatch(
+    Set<String> ids, {
+    String? status,
+    AccountListItem? account,
+  }) async {
+    if (_batchBusy ||
+        ids.isEmpty ||
+        (status == null ? !_canDelete : !_canStatus)) {
+      return;
+    }
+    final epoch = _commandEpoch;
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final ownerRoute = ModalRoute.of(context);
+    final targets = ids.toList()..sort();
+    final labels = {
+      for (final id in targets)
+        id: account?.id == id
+            ? _accountLabel(account!)
+            : _selectedAccounts[id] == null
+            ? '账户'
+            : _accountLabel(_selectedAccounts[id]!),
+    };
+    final action = status == null
+        ? '删除'
+        : status == '禁用'
+        ? '停用'
+        : '启用';
+    bool current() =>
+        mounted &&
+        epoch == _commandEpoch &&
+        ref.read(sensitiveReadBoundaryProvider) == boundary &&
+        (ownerRoute == null ||
+            ownerRoute.isCurrent ||
+            _batchDialogs.any((route) => route.isCurrent)) &&
+        (status == null ? _canDelete : _canStatus);
+    setState(() {
+      _batchBusy = true;
+      _batchAction = action;
+    });
+    MasterBatchResult? result;
+    try {
+      result = await runSensitiveWrite<MasterBatchResult?>(
+        ref,
+        isCurrent: current,
+        write: () async {
+          if (!await inlineEdit.confirmLeave(context) ||
+              !mounted ||
+              !current()) {
+            return null;
+          }
+          final confirmed = await _confirmBatch(
+            boundary,
+            epoch,
+            targets: targets,
+            labels: labels,
+            status: status,
+          );
+          if (!confirmed || !current()) return null;
+          if (inlineEdit.active || inlineEdit.dirty) return null;
+          setState(() => _batchWriting = true);
+          final results = <MasterBatchItemResult>[];
+          for (var index = 0; index < targets.length; index++) {
+            if (!current()) throw AuthenticatedRequestScope.changed();
+            final id = targets[index];
+            try {
+              if (status == null) {
+                await ref.read(accountRepositoryProvider).delete(id);
+              } else {
+                await ref
+                    .read(masterStatusRepositoryProvider)
+                    .change(
+                      resourcePath: AccountEndpoints.one(id),
+                      status: status,
+                    );
+              }
+              if (!current()) throw AuthenticatedRequestScope.changed();
+              results.add(
+                MasterBatchItemResult(id: id, label: labels[id], ok: true),
+              );
+            } catch (error) {
+              if (!current() || isSessionBoundaryError(error)) rethrow;
+              results.add(
+                MasterBatchItemResult(
+                  id: id,
+                  label: labels[id],
+                  ok: false,
+                  reason: error is ApiException
+                      ? masterBatchFailureReason(error)
+                      : '处理失败，请刷新后核对该账户',
+                ),
+              );
+              if (error is ApiException &&
+                  (error.httpStatus == 401 || error.httpStatus == 403)) {
+                for (final pending in targets.skip(index + 1)) {
+                  results.add(
+                    MasterBatchItemResult(
+                      id: pending,
+                      label: labels[pending],
+                      ok: false,
+                      reason: '权限或登录状态已变化，该账户尚未处理',
+                    ),
+                  );
+                }
+                break;
+              }
+            }
+          }
+          return MasterBatchResult(
+            succeeded: results.where((item) => item.ok).length,
+            failed: results.where((item) => !item.ok).length,
+            results: results,
+          );
+        },
+      );
+    } catch (error) {
+      if (mounted && current()) context.appApiError(error);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _batchBusy = false;
+          _batchWriting = false;
+        });
+      }
+    }
+    if (result == null || !current()) return;
+    final failed = result.failures.map((item) => item.id).toSet();
+    setState(() {
+      _selectedAccountIds = failed;
+      _selectedAccounts.removeWhere((id, _) => !failed.contains(id));
+      _selectedAccount = failed.length == 1
+          ? _selectedAccounts[failed.single]
+          : null;
+    });
+    await _refresh(preserveSelection: true);
+    if (!mounted || !current()) return;
+    await _showBatchOutcome(result, action, boundary, epoch);
   }
 
   Future<void> _openBalanceReconciliation({
     String? accountId,
     bool compactOverride = false,
   }) async {
+    if (_batchBusy) return;
     if (!await inlineEdit.confirmLeave(context) || !mounted) return;
     if (!_canAdjustBalance) return;
     final result = await showAccountBalanceReconciliationDialog(
@@ -663,40 +970,128 @@ class _AccountPageState extends ConsumerState<AccountPage>
     await _refresh();
   }
 
-  List<UtenContextMenuEntry> _rowMenu(AccountListItem account) => [
-    UtenMenuItem(
-      label: '查看详情',
-      icon: Icons.open_in_new_rounded,
-      onTap: () => _openAccount(account.id),
-    ),
-    UtenMenuItem(
-      label: '编辑账户',
-      icon: Icons.edit_outlined,
-      enabled: _canEdit,
-      onTap: () => _openAccount(account.id, edit: true),
-    ),
-    UtenMenuItem(
-      label: '余额校准',
-      icon: Icons.fact_check_outlined,
-      enabled: _canAdjustBalance,
-      onTap: () => _openBalanceReconciliation(accountId: account.id),
-    ),
-    const UtenMenuDivider(),
-    UtenMenuItem(
-      label: account.status == '使用' ? '停用账户' : '启用账户',
-      icon: account.status == '使用'
-          ? Icons.pause_circle_outline_rounded
-          : Icons.play_circle_outline_rounded,
-      enabled: _canStatus,
-      destructive: account.status == '使用',
-      onTap: () => _toggleStatus(account),
-    ),
-    UtenMenuItem(
-      label: '删除账户',
-      icon: Icons.delete_outline_rounded,
-      enabled: _canDelete,
-      destructive: true,
-      onTap: () => _delete(account),
+  List<UtenContextMenuEntry> _rowMenu(AccountListItem account) {
+    if (_selectedAccountIds.length > 1 &&
+        _selectedAccountIds.contains(account.id)) {
+      final ids = Set<String>.of(_selectedAccountIds);
+      return [
+        if (_canStatus) ...[
+          UtenMenuItem(
+            label: '停用选中(${ids.length})',
+            icon: Icons.pause_circle_outline_rounded,
+            destructive: true,
+            enabled: !_batchBusy,
+            preserveSelectionAfterAction: true,
+            onTap: () => _runAccountBatch(ids, status: '禁用'),
+          ),
+          UtenMenuItem(
+            label: '启用选中(${ids.length})',
+            icon: Icons.play_circle_outline_rounded,
+            enabled: !_batchBusy,
+            preserveSelectionAfterAction: true,
+            onTap: () => _runAccountBatch(ids, status: '使用'),
+          ),
+        ],
+        if (_canDelete)
+          UtenMenuItem(
+            label: '删除选中(${ids.length})',
+            icon: Icons.delete_outline_rounded,
+            destructive: true,
+            enabled: !_batchBusy,
+            preserveSelectionAfterAction: true,
+            onTap: () => _runAccountBatch(ids),
+          ),
+      ];
+    }
+    return [
+      UtenMenuItem(
+        label: '查看详情',
+        icon: Icons.open_in_new_rounded,
+        enabled: !_batchBusy,
+        onTap: () => _openAccount(account.id),
+      ),
+      UtenMenuItem(
+        label: '编辑账户',
+        icon: Icons.edit_outlined,
+        enabled: _canEdit && !_batchBusy,
+        onTap: () => _openAccount(account.id, edit: true),
+      ),
+      UtenMenuItem(
+        label: '余额校准',
+        icon: Icons.fact_check_outlined,
+        enabled: _canAdjustBalance && !_batchBusy,
+        onTap: () => _openBalanceReconciliation(accountId: account.id),
+      ),
+      const UtenMenuDivider(),
+      UtenMenuItem(
+        label: account.status == '使用' ? '停用账户' : '启用账户',
+        icon: account.status == '使用'
+            ? Icons.pause_circle_outline_rounded
+            : Icons.play_circle_outline_rounded,
+        enabled: _canStatus && !_batchBusy,
+        destructive: account.status == '使用',
+        preserveSelectionAfterAction: true,
+        onTap: () => _toggleStatus(account),
+      ),
+      UtenMenuItem(
+        label: '删除账户',
+        icon: Icons.delete_outline_rounded,
+        enabled: _canDelete && !_batchBusy,
+        destructive: true,
+        preserveSelectionAfterAction: true,
+        onTap: () => _delete(account),
+      ),
+    ];
+  }
+
+  List<Widget> _accountFloatingActions(
+    BuildContext context,
+    Set<String> ids,
+  ) => [
+    MasterInlineEditActions<AccountListItem>(
+      controller: inlineEdit,
+      canEdit: _canEdit && inlineReadReady && !_batchBusy,
+      onSave: saveInline,
+      embedded: true,
+      additionalActions: [
+        if (ids.isNotEmpty && _canStatus) ...[
+          UtenButton(
+            key: const Key('account-batch-disable'),
+            type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
+            onPressed: _batchBusy || _loading
+                ? null
+                : () => _runAccountBatch(Set.of(ids), status: '禁用'),
+            child: const Text('停用选中'),
+          ),
+          UtenButton(
+            key: const Key('account-batch-enable'),
+            type: UtenButtonType.tonal,
+            size: UtenButtonSize.large,
+            onPressed: _batchBusy || _loading
+                ? null
+                : () => _runAccountBatch(Set.of(ids), status: '使用'),
+            child: const Text('启用选中'),
+          ),
+        ],
+        if (ids.isNotEmpty && _canDelete)
+          UtenButton(
+            key: const Key('account-batch-delete'),
+            type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
+            onPressed: _batchBusy || _loading
+                ? null
+                : () => _runAccountBatch(Set.of(ids)),
+            child: const Text('删除选中'),
+          ),
+        if (_canCreate)
+          UtenButton(
+            size: UtenButtonSize.large,
+            icon: Icons.add_rounded,
+            onPressed: _batchBusy ? null : () => inlineNavigate(_showCreate),
+            child: const Text('添加账户'),
+          ),
+      ],
     ),
   ];
 
@@ -825,7 +1220,13 @@ class _AccountPageState extends ConsumerState<AccountPage>
     );
   }
 
-  Future<void> _refresh() async {
+  Future<void> _refresh({bool preserveSelection = false}) async {
+    if (!preserveSelection) {
+      setState(() {
+        _clearSelection();
+        _commandEpoch++;
+      });
+    }
     await Future.wait([
       _loadAccounts(1, refreshDisabled: _disabledRequested),
       _loadFacets(),
@@ -842,173 +1243,184 @@ class _AccountPageState extends ConsumerState<AccountPage>
 
   Widget _buildDraftHost(BuildContext context) {
     ref.watch(currentPermissionsProvider);
+    ref.watch(isSuperAdminProvider);
     final filteredLabel = AccountType.byValue(
       widget.initialAccountTypeFilter,
     )?.label;
     final title = widget.initialAccountTypeFilter == null
         ? '账户资料'
         : '${filteredLabel ?? '账户'}账户';
-    return inlineGuard(
-      Scaffold(
-        appBar: UtenAppBar(
-          title: title,
-          leading: UtenBackButton(
-            onPressed: () => inlineNavigate(
-              () => backTo(context, defaultPath: RouteName.basicinfo),
-            ),
-          ),
-          actions: [
-            MasterOperationHistoryActions(
-              entityType: 'accounts',
-              onChanged: _refresh,
-            ),
-            UtenRefreshButton(
-              busy: _loading,
-              onRefresh: () => inlineNavigate(_refresh),
-            ),
-          ],
-        ),
-        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-        floatingActionButton: inlineFloatingActions(
-          additionalActions: [
-            if (_canCreate)
-              UtenButton(
-                size: UtenButtonSize.large,
-                icon: Icons.add_rounded,
-                onPressed: _showCreate,
-                child: const Text('添加账户'),
-              ),
-          ],
-        ),
-        body: SafeArea(
-          child: UtenContentContainer.wide(
-            child: Padding(
-              padding: const EdgeInsets.only(top: UtenSpacing.s8),
-              child: UtenCollapsingHeaderScrollView(
-                collapsingHeader: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        UtenSpacing.s4,
-                        UtenSpacing.s8,
-                        UtenSpacing.s4,
-                        UtenSpacing.s12,
-                      ),
-                      child: AccountOverviewCard(
-                        totalAccounts: _summary?.totalAccounts ?? _safeTotal,
-                        canViewBalance: _canViewBalance,
-                        summary: _summary,
-                        loading: _summaryLoading,
-                        error: _summaryError,
-                        onRetry: _loadSummary,
-                        filteredType: widget.initialAccountTypeFilter,
-                      ),
-                    ),
-                    if (_stylesLoading || _stylesError != null)
-                      AccountStyleLoadNotice(
-                        loading: _stylesLoading,
-                        error: _stylesError,
-                        onRetry: () => _ensureReferenceOptions(force: true),
-                      ),
-                  ],
+    return Stack(
+      children: [
+        inlineGuard(
+          Scaffold(
+            appBar: UtenAppBar(
+              title: title,
+              leading: UtenBackButton(
+                onPressed: () => inlineNavigate(
+                  () => backTo(context, defaultPath: RouteName.basicinfo),
                 ),
-                body: Column(
-                  children: [
-                    _actionRow(),
-                    Expanded(
-                      child: MasterDataTableView<AccountListItem>(
-                        bottomContentPadding: (_canCreate || _canEdit)
-                            ? UtenFloatingActionGroup.scrollClearance
-                            : 0,
-                        columnEditingEnabled: _canEdit,
-                        tableKey:
-                            'features.basic_data.pages.account_workspace_page.AccountPageState._buildDraftHost.1',
-                        primary: true,
-                        showFullscreenToggle:
-                            MediaQuery.sizeOf(context).width >= 600,
-                        showColumnChooser:
-                            MediaQuery.sizeOf(context).width >= 600,
-                        columns: inlineColumns(_columns),
-                        items: _page?.items ?? const [],
-                        leadingGroups: _leadingGroups,
-                        // 导出/打印进左簇（2026-10-18 用户口径）：与「表头设置 / 全屏」同排靠左，
-                        // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
-                        toolbarLeadingActions:
-                            MediaQuery.sizeOf(context).width < 600
-                            ? null
-                            : [
-                                UtenPrintPreviewButton(
-                                  title: '账户资料',
-                                  subtitle: '最多前 2000 行',
-                                  loader: _printLoader,
-                                  exportEndpoint: '/master/accounts/export',
-                                  exportPermission: Perm.accountExport,
-                                  exportReport: '',
-                                  exportQuery: _exportQuery,
-                                  exportFilename: '账户资料',
-                                  type: UtenButtonType.primary,
-                                  size: UtenButtonSize.large,
-                                  icon: null,
-                                ),
-                                UtenExportButton(
-                                  endpoint: '/master/accounts/export',
-                                  requiredPermission: Perm.accountExport,
-                                  report: '',
-                                  queryParams: _exportQuery,
-                                  filename: '账户资料',
-                                  label: '导出账户',
-                                  type: UtenButtonType.primary,
-                                  size: UtenButtonSize.large,
-                                  icon: null,
-                                ),
-                              ],
-                        facets: _labeledFacets,
-                        nullCounts: _facets?.nullCounts ?? const {},
-                        filters: _filters,
-                        onFilterChanged: (key, value) =>
-                            inlineNavigate(() => _onFilterChanged(key, value)),
-                        // 行底色按状态（ADR-169 收编）：使用=蓝档淡底（裸色收编）/
-                        // 禁用=灰档淡底（停用归中性终态，原浅红当异常色）。
-                        rowColor: (account) => switch (account.status) {
-                          '使用' => UtenColors.info.withValues(alpha: 0.11),
-                          '禁用' => UtenColors.statusNeutral.withValues(
-                            alpha: 0.09,
+              ),
+              actions: [
+                MasterOperationHistoryActions(
+                  entityType: 'accounts',
+                  onChanged: _refresh,
+                ),
+                UtenRefreshButton(
+                  busy: _loading,
+                  onRefresh: () => inlineNavigate(_refresh),
+                ),
+              ],
+            ),
+            body: SafeArea(
+              child: UtenContentContainer.wide(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: UtenSpacing.s8),
+                  child: UtenCollapsingHeaderScrollView(
+                    collapsingHeader: Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            UtenSpacing.s4,
+                            UtenSpacing.s8,
+                            UtenSpacing.s4,
+                            UtenSpacing.s12,
                           ),
-                          _ => null,
-                        },
-                        rowMenuBuilder: inlineEdit.active ? null : _rowMenu,
-                        onSelectionChanged: (account) =>
-                            setState(() => _selectedAccount = account),
-                        onSelectionCleared: () =>
-                            setState(() => _selectedAccount = null),
-                        onRowTap: inlineEdit.active
-                            ? null
-                            : (account) => _openAccount(account.id),
-                        sortColumn: _sortKey,
-                        sortAscending: _sortAsc,
-                        onSortChange: (key, ascending) =>
-                            inlineNavigate(() => _onSortChange(key, ascending)),
-                        isLoading: _loading && _page == null,
-                        loadingMore: _loading && _page != null,
-                        error: _error,
-                        onRetry: () =>
-                            _loadAccounts(_pageNum, refreshDisabled: true),
-                        emptyMessage: '暂无账户',
-                        currentPage: _page?.page ?? 1,
-                        totalPages: _page?.totalPages ?? 1,
-                        paginationScope: _keyword,
-                        onPageChange: (page) =>
-                            inlineNavigate(() => _loadAccounts(page)),
-                      ),
+                          child: AccountOverviewCard(
+                            totalAccounts:
+                                _summary?.totalAccounts ?? _safeTotal,
+                            canViewBalance: _canViewBalance,
+                            summary: _summary,
+                            loading: _summaryLoading,
+                            error: _summaryError,
+                            onRetry: _loadSummary,
+                            filteredType: widget.initialAccountTypeFilter,
+                          ),
+                        ),
+                        if (_stylesLoading || _stylesError != null)
+                          AccountStyleLoadNotice(
+                            loading: _stylesLoading,
+                            error: _stylesError,
+                            onRetry: () => _ensureReferenceOptions(force: true),
+                          ),
+                      ],
                     ),
-                  ],
+                    body: Column(
+                      children: [
+                        _actionRow(),
+                        Expanded(
+                          child: MasterDataTableView<AccountListItem>(
+                            bottomContentPadding:
+                                (_canCreate ||
+                                    _canEdit ||
+                                    _canStatus ||
+                                    _canDelete)
+                                ? UtenFloatingActionGroup.scrollClearance
+                                : 0,
+                            columnEditingEnabled: _canEdit,
+                            tableKey:
+                                'features.basic_data.pages.account_workspace_page.AccountPageState._buildDraftHost.1',
+                            primary: true,
+                            showFullscreenToggle:
+                                MediaQuery.sizeOf(context).width >= 600,
+                            showColumnChooser:
+                                MediaQuery.sizeOf(context).width >= 600,
+                            columns: inlineColumns(_columns),
+                            items: _page?.items ?? const [],
+                            selectable: true,
+                            idOf: (account) => account.id,
+                            selectedIds: _selectedAccountIds,
+                            onSelectedIdsChanged: _selectAccounts,
+                            batchActionsBuilder: _accountFloatingActions,
+                            leadingGroups: _leadingGroups,
+                            // 导出/打印进左簇（2026-10-18 用户口径）：与「表头设置 / 全屏」同排靠左，
+                            // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
+                            toolbarLeadingActions:
+                                MediaQuery.sizeOf(context).width < 600
+                                ? null
+                                : [
+                                    UtenPrintPreviewButton(
+                                      title: '账户资料',
+                                      subtitle: '最多前 2000 行',
+                                      loader: _printLoader,
+                                      exportEndpoint: '/master/accounts/export',
+                                      exportPermission: Perm.accountExport,
+                                      exportReport: '',
+                                      exportQuery: _exportQuery,
+                                      exportFilename: '账户资料',
+                                      type: UtenButtonType.primary,
+                                      size: UtenButtonSize.large,
+                                      icon: null,
+                                    ),
+                                    UtenExportButton(
+                                      endpoint: '/master/accounts/export',
+                                      requiredPermission: Perm.accountExport,
+                                      report: '',
+                                      queryParams: _exportQuery,
+                                      filename: '账户资料',
+                                      label: '导出账户',
+                                      type: UtenButtonType.primary,
+                                      size: UtenButtonSize.large,
+                                      icon: null,
+                                    ),
+                                  ],
+                            facets: _labeledFacets,
+                            nullCounts: _facets?.nullCounts ?? const {},
+                            filters: _filters,
+                            onFilterChanged: (key, value) => inlineNavigate(
+                              () => _onFilterChanged(key, value),
+                            ),
+                            // 行底色按状态（ADR-169 收编）：使用=蓝档淡底（裸色收编）/
+                            // 禁用=灰档淡底（停用归中性终态，原浅红当异常色）。
+                            rowColor: (account) => switch (account.status) {
+                              '使用' => UtenColors.info.withValues(alpha: 0.11),
+                              '禁用' => UtenColors.statusNeutral.withValues(
+                                alpha: 0.09,
+                              ),
+                              _ => null,
+                            },
+                            rowMenuBuilder: inlineEdit.active ? null : _rowMenu,
+                            onRowTap: inlineEdit.active
+                                ? null
+                                : (account) => _openAccount(account.id),
+                            sortColumn: _sortKey,
+                            sortAscending: _sortAsc,
+                            onSortChange: (key, ascending) => inlineNavigate(
+                              () => _onSortChange(key, ascending),
+                            ),
+                            isLoading: _loading && _page == null,
+                            loadingMore: _loading && _page != null,
+                            error: _error,
+                            onRetry: () =>
+                                _loadAccounts(_pageNum, refreshDisabled: true),
+                            emptyMessage: '暂无账户',
+                            currentPage: _page?.page ?? 1,
+                            totalPages: _page?.totalPages ?? 1,
+                            paginationScope: (
+                              _keyword,
+                              _filters.toString(),
+                              _sortKey,
+                              _sortAsc,
+                            ),
+                            onPageChange: (page) =>
+                                inlineNavigate(() => _loadAccounts(page)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
         ),
-      ),
+        if (_batchWriting)
+          UtenBusyOverlay(
+            title: '正在$_batchAction账户',
+            description: '逐项校验并处理选中的账户',
+            semanticsKey: const Key('account-batch-writing'),
+          ),
+      ],
     );
   }
 

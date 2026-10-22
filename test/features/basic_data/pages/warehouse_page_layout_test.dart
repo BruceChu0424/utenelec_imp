@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/layout/uten_split_view.dart';
+import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
@@ -18,6 +19,7 @@ import 'package:uten_imp/features/basic_data/repositories/warehouse_repository.d
 import 'package:uten_imp/features/basic_data/widgets/uten_category_tree_view.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_inline_edit.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_read_only_fields.dart';
 import 'package:uten_imp/features/stock/models/stock_query.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
@@ -217,6 +219,19 @@ Future<void> _select(
   }
 }
 
+Future<void> _reachInventory(WidgetTester tester) async {
+  final panel = find.byKey(const Key('warehouse-inventory-panel'));
+  if (panel.hitTestable().evaluate().isNotEmpty) return;
+  final outer = find
+      .descendant(
+        of: find.byType(UtenCollapsingHeaderScrollView),
+        matching: find.byType(Scrollable),
+      )
+      .first;
+  await tester.scrollUntilVisible(panel, 280, scrollable: outer);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets(
     'wide warehouse records show the directory beside a summary and live inventory',
@@ -249,10 +264,24 @@ void main() {
         find.byKey(const Key('warehouse-master-summary')),
       );
       expect(card.title, '五金仓 (hardware-备注)');
-      expect(card.stats, isEmpty);
+      expect(card.stats.map((stat) => stat.label), ['仓库负责人']);
       expect(card.onEdit, isNull);
       expect(card.onDelete, isNull);
-      expect(card.subtitle, contains('hardware-位置'));
+      final basics = tester.widget<MasterReadOnlyFields>(
+        find.byKey(const ValueKey('warehouse-read-only-fields-hardware')),
+      );
+      expect(basics.fields.map((field) => field.key), [
+        'name',
+        'code',
+        'location',
+        'remark',
+        'accountable',
+        'workshopDepartmentId',
+        'isLineSide',
+        'parentName',
+        'defective',
+        'status',
+      ]);
       expect(find.text('hardware-库存货品'), findsOneWidget);
       expect(find.byType(Dialog), findsNothing);
       expect(api.inventoryQueries.single['warehouseId'], 'hardware');
@@ -358,6 +387,11 @@ void main() {
           await tester.pumpAndSettle();
         }
         await _select(tester, '五金仓');
+        final viewFields = tester
+            .widget<MasterReadOnlyFields>(
+              find.byKey(const ValueKey('warehouse-read-only-fields-hardware')),
+            )
+            .fields;
         await tester.tap(find.text('编辑模式'));
         await tester.pumpAndSettle();
         expect(
@@ -365,6 +399,13 @@ void main() {
           findsOneWidget,
         );
         expect(find.byType(Dialog), findsNothing);
+        final editor = tester.widget<MasterInlineRecordEditor<WarehouseDetail>>(
+          find.byType(MasterInlineRecordEditor<WarehouseDetail>),
+        );
+        expect(
+          editor.columns.map((field) => field.key),
+          viewFields.map((field) => field.key),
+        );
         final table = find.byKey(const Key('warehouse-inventory-table'));
         if (table.evaluate().isEmpty) {
           final outerScroll = find
@@ -390,7 +431,7 @@ void main() {
         );
         expect(
           find.byKey(const ValueKey('inline-activate-hardware-code')),
-          findsNothing,
+          findsOneWidget,
         );
         final activation = find.byKey(
           const ValueKey('inline-activate-hardware-name'),
@@ -422,6 +463,7 @@ void main() {
           find.byType(MasterInlineRecordEditor<WarehouseDetail>),
           findsNothing,
         );
+        await _reachInventory(tester);
         expect(find.text('hardware-库存货品'), findsOneWidget);
         final readableInventory = tester
             .widget<MasterDataTableView<InstantInventoryRow>>(
@@ -470,6 +512,7 @@ void main() {
           find.byKey(const Key('warehouse-master-summary')),
           findsOneWidget,
         );
+        await _reachInventory(tester);
         expect(
           find.byKey(const Key('warehouse-inventory-panel')),
           findsOneWidget,
@@ -536,6 +579,7 @@ void main() {
         }
       }
       await _select(tester, '五金仓');
+      await _reachInventory(tester);
       expect(find.text('hardware-库存货品'), findsOneWidget);
       expect(tester.takeException(), isNull);
       if (capture) {

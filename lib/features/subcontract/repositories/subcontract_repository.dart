@@ -179,6 +179,53 @@ class SubcontractRepository {
     return SubcontractDocDetail.fromJson(json);
   }
 
+  Future<SubcontractDocDetail> approveSelected(
+    String id,
+    List<String> itemIds,
+  ) async {
+    final json = await api.post(
+      '${_doc(id)}/approve',
+      body: {'itemIds': itemIds},
+    );
+    return SubcontractDocDetail.fromJson(json);
+  }
+
+  Future<({SubcontractDocDetail document, String fingerprint})>
+  selectedOutboundReview(String sourceId) async {
+    final json = await api.get('${_doc(sourceId)}/selected-outbound/review');
+    final fingerprint = json['fingerprint'];
+    if (json['document'] is! Map ||
+        fingerprint is! String ||
+        !RegExp(r'^[a-f0-9]{64}$').hasMatch(fingerprint)) {
+      throw const FormatException('出仓核对快照不完整，请刷新后重试');
+    }
+    return (
+      document: SubcontractDocDetail.fromJson(
+        Map<String, dynamic>.from(json['document'] as Map),
+      ),
+      fingerprint: fingerprint,
+    );
+  }
+
+  Future<Map<String, dynamic>> submitSelectedOutbound(
+    String sourceId,
+    Map<String, dynamic> command,
+  ) => api.post('${_doc(sourceId)}/selected-outbound', body: command);
+
+  Future<Map<String, dynamic>?> selectedOutboundReceipt(
+    String sourceId,
+    String idempotencyKey,
+  ) async {
+    final json = await api.get(
+      '${_doc(sourceId)}/selected-outbound/receipt',
+      query: {'idempotencyKey': idempotencyKey},
+    );
+    final result = json['result'];
+    if (result == null) return null;
+    if (result is! Map) throw const FormatException('出仓回执不完整，原操作继续保留');
+    return Map<String, dynamic>.from(result);
+  }
+
   Future<SubcontractDocDetail> submitFinance(String id) async {
     final json = await api.post('${_doc(id)}/submit-finance');
     return SubcontractDocDetail.fromJson(json);

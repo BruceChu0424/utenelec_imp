@@ -21,6 +21,7 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import '../../helpers/warehouse_request_scope_fixture.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -37,6 +38,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            ...warehouseRequestScopeFixture(includeClient: false),
             apiClientProvider.overrideWithValue(ApiClient(Dio())),
             warehouseQualityResultRepositoryProvider.overrideWithValue(
               _QualityGateway(detail),
@@ -113,6 +115,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            ...warehouseRequestScopeFixture(includeClient: false),
             apiClientProvider.overrideWithValue(ApiClient(Dio())),
             warehouseQualityResultRepositoryProvider.overrideWithValue(
               _QualityGateway(detail),
@@ -210,6 +213,7 @@ void main() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
+              ...warehouseRequestScopeFixture(includeClient: false),
               apiClientProvider.overrideWithValue(ApiClient(Dio())),
               warehouseQualityResultRepositoryProvider.overrideWithValue(
                 quality,
@@ -342,6 +346,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            ...warehouseRequestScopeFixture(),
             warehouseQualityResultRepositoryProvider.overrideWithValue(
               _QualityGateway(_detailJson()),
             ),
@@ -469,6 +474,9 @@ void main() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
+              ...warehouseRequestScopeFixture(
+                includeIdentity: !scenario.readOnly,
+              ),
               warehouseQualityResultRepositoryProvider.overrideWithValue(
                 _QualityGateway(detail),
               ),
@@ -674,6 +682,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            ...warehouseRequestScopeFixture(),
             warehouseQualityResultRepositoryProvider.overrideWithValue(
               _QualityGateway(detail),
             ),
@@ -739,6 +748,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            ...warehouseRequestScopeFixture(),
             warehouseQualityResultRepositoryProvider.overrideWithValue(
               qualityGateway,
             ),
@@ -895,6 +905,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          ...warehouseRequestScopeFixture(),
           warehouseQualityResultRepositoryProvider.overrideWithValue(
             qualityGateway,
           ),
@@ -965,6 +976,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          ...warehouseRequestScopeFixture(),
           warehouseQualityResultRepositoryProvider.overrideWithValue(
             _QualityGateway(_detailJson()),
           ),
@@ -1016,6 +1028,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          ...warehouseRequestScopeFixture(),
           warehouseQualityResultRepositoryProvider.overrideWithValue(
             _QualityGateway(_completedDetailJson()),
           ),

@@ -29,9 +29,11 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_section_header.dart';
+import '../../../components/layout/uten_detail_action_layout.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
-import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
@@ -59,6 +61,7 @@ import 'goods_cost_tab.dart';
 import 'goods_issue_method_dialog.dart';
 import 'goods_name_en_field.dart';
 import 'goods_operation_history_panel.dart';
+import 'master_record_history_panel.dart';
 import 'goods_purchase_receipt_policy_field.dart';
 import 'goods_quote_history_tab.dart';
 import 'master_detail_sheet.dart';
@@ -432,11 +435,13 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         info: l10n.goodsNameEnInfo,
         group: '基础',
       ),
-      const MasterFieldDef(
+      MasterFieldDef(
         key: 'code',
         label: '编号',
         hint: '留空自动生成',
         group: '基础',
+        identifierDomain: 'GOODS',
+        identifierId: _goodsId,
       ),
       const MasterFieldDef(key: 'shortName', label: '简称', group: '基础'),
       const MasterFieldDef(
@@ -1094,6 +1099,13 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       showBackButton: true,
       showBottomBorder: false,
       actions: [
+        if (_goodsId != null)
+          MasterRecordHistoryAction(
+            entityType: 'goods',
+            recordId: _goodsId,
+            enabled: !_historyBlocked,
+            onChanged: _refreshPage,
+          ),
         if (_goodsId != null &&
             canOpenGoodsOperationHistory(
               ref.watch(currentPermissionsProvider),
@@ -1193,17 +1205,15 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         ref.watch(currentPermissionsProvider).contains(Perm.goodsPriceView) ||
         canEditPrice;
     final readOnlyKeys = <String>{
-      if (_mode == _GoodsDetailMode.edit) 'code',
       // 价格字段仅可查看者才在表里；可见但无编辑权 → 锁定。
       if (!canEditPrice && canViewPrice) 'price',
       if (!canEditPrice && canViewDiscount) 'discount',
       if (!widget.canStatus || !_writable) 'status',
     };
-    return Column(
-      children: [
-        Expanded(
+    return UtenDetailActionLayout(
+      body:
           // 表单随可用内容宽度扩展，字段继续由表单内部响应式分列。
-          child: Align(
+          Align(
             alignment: Alignment.topCenter,
             child: ConstrainedBox(
               constraints: const BoxConstraints.tightFor(
@@ -1211,6 +1221,12 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
               ),
               child: MasterEditForm(
                 key: _formKey,
+                contentPadding: const EdgeInsets.fromLTRB(
+                  UtenSpacing.s16,
+                  UtenSpacing.s16,
+                  UtenSpacing.s16,
+                  UtenFloatingActionGroup.scrollClearance,
+                ),
                 fields: _goodsFields(
                   canViewDiscount: canViewDiscount,
                   canViewPrice: canViewPrice,
@@ -1222,39 +1238,32 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
               ),
             ),
           ),
+      actions: [
+        UtenButton(
+          type: UtenButtonType.secondary,
+          size: UtenButtonSize.large,
+          key: const Key('goods-detail-cancel-edit'),
+          onPressed: _savingBasic
+              ? null
+              : () {
+                  if (_mode == _GoodsDetailMode.edit && _detail != null) {
+                    _enterView(_detail!);
+                  } else {
+                    Navigator.of(context).pop();
+                  }
+                },
+          child: Text(_mode == _GoodsDetailMode.create ? '取消' : '取消编辑'),
         ),
-        const Divider(height: 1),
-        Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s16),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              UtenButton(
-                type: UtenButtonType.secondary,
-                key: const Key('goods-detail-cancel-edit'),
-                onPressed: _savingBasic
-                    ? null
-                    : () {
-                        if (_mode == _GoodsDetailMode.edit && _detail != null) {
-                          _enterView(_detail!);
-                        } else {
-                          Navigator.of(context).pop();
-                        }
-                      },
-                child: Text(_mode == _GoodsDetailMode.create ? '取消' : '取消编辑'),
-              ),
-              const SizedBox(width: UtenSpacing.s12),
-              UtenButton(
-                icon: Icons.save_outlined,
-                isLoading: _savingBasic,
-                onPressed: _savingBasic || !_canSaveBasic ? null : _saveBasic,
-                onDisabledTap: !_canSaveBasic
-                    ? () => context.appWarning('当前账号没有本次货品保存权限', force: true)
-                    : null,
-                child: const Text('保存'),
-              ),
-            ],
-          ),
+        UtenButton(
+          type: UtenButtonType.danger,
+          size: UtenButtonSize.large,
+          icon: Icons.save_outlined,
+          isLoading: _savingBasic,
+          onPressed: _savingBasic || !_canSaveBasic ? null : _saveBasic,
+          onDisabledTap: !_canSaveBasic
+              ? () => context.appWarning('当前账号没有本次货品保存权限', force: true)
+              : null,
+          child: const Text('保存'),
         ),
       ],
     );
@@ -1263,8 +1272,6 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
   /// 查看态：只读字段网格 + 流水/编辑/删除。
   Widget _buildBasicView(ThemeData theme) {
     final canViewLedger = _visibleTabs.contains(GoodsDetailTab.stock);
-    final twoColumn = !context.breakpoint.isCompact;
-    final colCount = twoColumn ? 2 : 1;
     final sections = _detailSections();
     final bodyChildren = <Widget>[];
     for (var si = 0; si < sections.length; si++) {
@@ -1273,118 +1280,86 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       bodyChildren
         ..add(UtenSectionHeader(title: sec.title, subdued: true))
         ..add(const SizedBox(height: UtenSpacing.s12));
-      final rows = sec.rows;
-      for (var i = 0; i < rows.length; i += colCount) {
-        final first = rows[i];
-        final second = i + 1 < rows.length ? rows[i + 1] : null;
-        bodyChildren.add(
-          Padding(
-            padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-            // Equal-height pair: a tile with an action button (English name)
-            // must not leave its neighbour visibly shorter.
-            child: IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(child: _cell(theme, first)),
-                  if (colCount > 1) ...[
-                    const SizedBox(width: UtenSpacing.s8),
-                    Expanded(
-                      child: second != null
-                          ? _cell(theme, second)
-                          : const SizedBox.shrink(),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        );
-      }
+      bodyChildren.add(
+        UtenFormGrid(
+          columns: 4,
+          maxColumns: 4,
+          minFieldWidth: 260,
+          children: [for (final row in sec.rows) _cell(theme, row)],
+        ),
+      );
     }
-    return Column(
-      children: [
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(UtenSpacing.s16),
-            // 只读网格与编辑态表单同样使用完整可用内容宽度。
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints.tightFor(
-                  width: double.infinity,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: bodyChildren,
-                ),
-              ),
+    return UtenDetailActionLayout(
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(
+          UtenSpacing.s16,
+          UtenSpacing.s16,
+          UtenSpacing.s16,
+          UtenFloatingActionGroup.scrollClearance,
+        ),
+        // 只读网格与编辑态表单同样使用完整可用内容宽度。
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints.tightFor(width: double.infinity),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: bodyChildren,
             ),
           ),
         ),
-        if (canViewLedger ||
-            (widget.onToggleStatus != null && _writable) ||
-            _canEditSaved ||
-            _canEditIssueMethod ||
-            (widget.onDelete != null && _writable)) ...[
-          const Divider(height: 1),
-          Padding(
-            padding: const EdgeInsets.all(UtenSpacing.s16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                if (canViewLedger) ...[
-                  // 同页切到「库存与出入库」页签的流水分段 (不再压栈跳页)。
-                  Builder(
-                    builder: (tabContext) => UtenButton(
-                      key: const ValueKey('goods-detail-view-ledger'),
-                      type: UtenButtonType.tonal,
-                      icon: Icons.swap_vert_rounded,
-                      onPressed: () => _openStockLedger(tabContext),
-                      child: const Text('出入库流水'),
-                    ),
-                  ),
-                  const SizedBox(width: UtenSpacing.s8),
-                ],
-                if (_canEditIssueMethod) ...[
-                  UtenButton(
-                    key: const Key('goods-issue-method-open'),
-                    type: UtenButtonType.tonal,
-                    icon: Icons.inventory_2_outlined,
-                    onPressed: _openIssueMethod,
-                    child: Text(_l10nOrNull()?.wmIssueMethod ?? '发料方式'),
-                  ),
-                  const SizedBox(width: UtenSpacing.s8),
-                ],
-                if (widget.onToggleStatus != null && _writable) ...[
-                  UtenButton(
-                    type: UtenButtonType.tonal,
-                    icon: Icons.sync_alt_rounded,
-                    onPressed: widget.onToggleStatus,
-                    child: Text(_detail?.status == '使用' ? '停用' : '启用'),
-                  ),
-                  const SizedBox(width: UtenSpacing.s8),
-                ],
-                if (_canEditSaved) ...[
-                  UtenButton(
-                    type: UtenButtonType.secondary,
-                    icon: Icons.edit_outlined,
-                    onPressed: () => _enterEdit(null),
-                    child: const Text('编辑'),
-                  ),
-                  const SizedBox(width: UtenSpacing.s8),
-                ],
-                if (widget.onDelete != null && _writable)
-                  UtenButton(
-                    type: UtenButtonType.danger,
-                    icon: Icons.delete_outline,
-                    // 页面自己确认 + 删除 + 返回（本页 context 必须活着）。
-                    onPressed: widget.onDelete,
-                    child: const Text('删除'),
-                  ),
-              ],
+      ),
+      actions: [
+        if (canViewLedger)
+          // 同页切到「库存与出入库」页签的流水分段 (不再压栈跳页)。
+          Builder(
+            builder: (tabContext) => UtenButton(
+              key: const ValueKey('goods-detail-view-ledger'),
+              type: UtenButtonType.tonal,
+              size: UtenButtonSize.large,
+              icon: Icons.swap_vert_rounded,
+              onPressed: () => _openStockLedger(tabContext),
+              child: const Text('出入库流水'),
             ),
           ),
-        ],
+        if (_canEditIssueMethod)
+          UtenButton(
+            key: const Key('goods-issue-method-open'),
+            type: UtenButtonType.tonal,
+            size: UtenButtonSize.large,
+            icon: Icons.inventory_2_outlined,
+            onPressed: _openIssueMethod,
+            child: Text(_l10nOrNull()?.wmIssueMethod ?? '发料方式'),
+          ),
+        if (widget.onToggleStatus != null && _writable)
+          UtenButton(
+            key: const Key('goods-detail-toggle-status'),
+            type: _detail?.status == '使用'
+                ? UtenButtonType.danger
+                : UtenButtonType.secondary,
+            size: UtenButtonSize.large,
+            icon: _detail?.status == '使用'
+                ? Icons.block_rounded
+                : Icons.check_circle_outline_rounded,
+            onPressed: widget.onToggleStatus,
+            child: Text(_detail?.status == '使用' ? '停用' : '启用'),
+          ),
+        if (_canEditSaved)
+          UtenButton(
+            type: UtenButtonType.secondary,
+            size: UtenButtonSize.large,
+            icon: Icons.edit_outlined,
+            onPressed: () => _enterEdit(null),
+            child: const Text('编辑'),
+          ),
+        if (widget.onDelete != null && _writable)
+          UtenButton(
+            type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
+            icon: Icons.delete_outline,
+            // 页面自己确认 + 删除 + 返回（本页 context 必须活着）。
+            onPressed: widget.onDelete,
+            child: const Text('删除'),
+          ),
       ],
     );
   }
@@ -1451,7 +1426,6 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
 
     return [
       _DetailSection('基础', [
-        MasterDetailRow('编号', d.code),
         MasterDetailRow('货品名称', d.name),
         _GoodsNameEnDetailRow(
           label: basicDataL10n(context).goodsNameEnLabel,
@@ -1459,6 +1433,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
           learned: d.nameEnLearned,
           onEdit: d.canEditNameEn ? _editNameEn : null,
         ),
+        MasterDetailRow('编号', d.code),
         MasterDetailRow('简称', d.shortName),
         MasterDetailRow('状态', d.status),
         MasterDetailRow('来源', d.sourceType),
@@ -1469,6 +1444,9 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         MasterDetailRow('客户型号', d.cNumber),
         MasterDetailRow('规格', d.spec),
         MasterDetailRow('材质', d.material),
+        MasterDetailRow('系列', d.series),
+        MasterDetailRow('库位号', d.stockPlace),
+        MasterDetailRow('所属仓库', d.owningWarehouseName),
         MasterDetailRow(
           '厚度',
           withUnit(d.thickness, d.thicknessUnitId, d.thicknessUnitLegacyId),
@@ -1477,45 +1455,21 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
           '单重',
           withUnit(d.mWeight, d.mWeightUnitId, d.mWeightUnitLegacyId),
         ),
-        // ADR-131：有期间边的产品在单重旁只读显示 BOM 里的塑料单个重量。
+        MasterDetailRow('颜色', d.colorName),
         for (final w in d.periodicBomWeights)
           MasterDetailRow('塑料单个重量', _periodicBomWeightText(w)),
-        MasterDetailRow('颜色', d.colorName),
-        MasterDetailRow('系列', d.series),
-        MasterDetailRow('库位号', d.stockPlace),
       ]),
       _DetailSection('生产', [
         MasterDetailRow('模具', d.mouldName),
-        MasterDetailRow('模具编号', d.mouldCode),
         MasterDetailRow('后模镶件编号', d.rearInsertCode),
-      ]),
-      // 车间内料仓 (ADR-131)：发料方式等在底部「发料方式」按钮里改。
-      _DetailSection(_l10nOrNull()?.wmWorkshopMaterialSection ?? '车间用料', [
-        MasterDetailRow(
-          _l10nOrNull()?.wmIssueMethod ?? '发料方式',
-          goodsIssueMethodLabel(context, d.issueMethod),
-        ),
-        if (d.isPeriodicIssue)
-          MasterDetailRow(
-            _l10nOrNull()?.wmCostBasis ?? '分摊方式',
-            goodsCostBasisLabel(context, d.periodicCostBasis),
-          ),
-        if (d.isPeriodicIssue || d.bulkPackageQty != null)
-          MasterDetailRow(
-            _l10nOrNull()?.wmBulkPackageQty ?? '每袋净重 (公斤)',
-            goodsQtyText(d.bulkPackageQty),
-          ),
-        MasterDetailRow(
-          _l10nOrNull()?.wmRecycledMaterial ?? '回收料',
-          d.recycledMaterial ? '是 (其它入库按 0 成本进仓)' : '否',
-        ),
+        MasterDetailRow('模具编号', d.mouldCode),
       ]),
       _DetailSection('商务', [
         if (canViewPrice) MasterDetailRow('价格', s(d.price)),
         if (canViewDiscount)
           MasterDetailRow('折扣', d.discount == null ? '' : '${d.discount}'),
         MasterDetailRow('包装', d.pack),
-        MasterDetailRow('单位', d.unitName),
+        MasterDetailRow('基本单位', d.unitName),
         MasterDetailRow('件数', s(d.pieces)),
       ]),
       // 采购批量口径（V575）：软约束，只是下达采购的默认数量依据，采购员可改。
@@ -1549,6 +1503,27 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
               d.defaultSubcontractPrice,
             ),
           ),
+      ]),
+      // 车间内料仓 (ADR-131)：发料方式等在底部「发料方式」按钮里改。
+      _DetailSection(_l10nOrNull()?.wmWorkshopMaterialSection ?? '车间用料', [
+        MasterDetailRow(
+          _l10nOrNull()?.wmIssueMethod ?? '发料方式',
+          goodsIssueMethodLabel(context, d.issueMethod),
+        ),
+        if (d.isPeriodicIssue)
+          MasterDetailRow(
+            _l10nOrNull()?.wmCostBasis ?? '分摊方式',
+            goodsCostBasisLabel(context, d.periodicCostBasis),
+          ),
+        if (d.isPeriodicIssue || d.bulkPackageQty != null)
+          MasterDetailRow(
+            _l10nOrNull()?.wmBulkPackageQty ?? '每袋净重 (公斤)',
+            goodsQtyText(d.bulkPackageQty),
+          ),
+        MasterDetailRow(
+          _l10nOrNull()?.wmRecycledMaterial ?? '回收料',
+          d.recycledMaterial ? '是 (其它入库按 0 成本进仓)' : '否',
+        ),
       ]),
       _DetailSection('库存', [
         // 所属仓库 (V587)：货品平时归哪个仓管，不是下面那几行的单据落点仓。

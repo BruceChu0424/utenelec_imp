@@ -611,7 +611,7 @@ class _WarehouseQualityResultsPageState
                 // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
                 primary: true,
                 key: const Key('warehouse-quality-result-table'),
-                requiredLeadingColumnKeys: const ['workStatus', 'goodsName'],
+                requiredLeadingColumnKeys: const ['workStatus', 'billNo'],
                 columns: _columns,
                 items: result.items,
                 // 收货单号表头值筛选（2026-09-25 单号列统一）：服务端分组计数桶。
@@ -881,19 +881,18 @@ class _WarehouseQualityResultsPageState
             : UtenStatusBadgeType.neutral,
       ),
     ),
-    // 2026-10-08 用户口径「状态或进度列默认放最前」：品质结论是本表的第二条
-    // 行级结果列（合格/部分/退回汇总），紧跟作业状态前置。
+    MasterColumnDef(
+      key: 'billNo',
+      label: '收货单号',
+      width: 160,
+      sortable: true,
+      value: (task) => task.billNo ?? '—',
+    ),
     MasterColumnDef(
       key: 'verdict',
       label: '品质结论',
       width: 200,
       value: (task) => task.verdictLabel,
-    ),
-    MasterColumnDef(
-      key: 'goodsCode',
-      label: '货品编号',
-      width: 150,
-      value: (task) => task.line?.goodsCode ?? '—',
     ),
     MasterColumnDef(
       key: 'goodsName',
@@ -902,16 +901,22 @@ class _WarehouseQualityResultsPageState
       value: (task) => task.line?.goodsName ?? '—',
     ),
     MasterColumnDef(
-      key: 'specification',
-      label: '规格',
-      width: 130,
-      value: (task) => task.line?.specification ?? '—',
+      key: 'goodsCode',
+      label: '货品编号',
+      width: 150,
+      value: (task) => task.line?.goodsCode ?? '—',
     ),
     MasterColumnDef(
       key: 'colorName',
       label: '颜色',
       width: 100,
       value: (task) => task.line?.colorName ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'specification',
+      label: '规格',
+      width: 130,
+      value: (task) => task.line?.specification ?? '—',
     ),
     MasterColumnDef(
       key: 'quantity',
@@ -925,13 +930,6 @@ class _WarehouseQualityResultsPageState
       label: '来源类型',
       width: 100,
       value: (task) => task.receiptType.label,
-    ),
-    MasterColumnDef(
-      key: 'billNo',
-      label: '收货单号',
-      width: 160,
-      sortable: true, // 2026-09-25 单号列统一：表头排序 + 值筛选。
-      value: (task) => task.billNo ?? '—',
     ),
     MasterColumnDef(
       key: 'billDate',

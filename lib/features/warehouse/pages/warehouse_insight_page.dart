@@ -690,11 +690,10 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
         onTap: () => _openLearning(InsightLearningFilter.needsSample),
       ),
     ];
-    // 一行横排, 放不下左右滑 (手机上不把表格挤到屏幕外)。
-    return SingleChildScrollView(
+    return MetricFilterCards(
       key: const Key('insight-kpis'),
-      scrollDirection: Axis.horizontal,
-      child: MetricFilterCards(items: items, itemWidth: 210),
+      items: items,
+      itemWidth: 156,
     );
   }
 

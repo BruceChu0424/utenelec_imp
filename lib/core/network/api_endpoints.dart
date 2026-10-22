@@ -480,8 +480,6 @@ abstract final class ApiEndpoints {
   static const stockBalanceAdjust = '/stock/balances/adjust';
   // 即时库存（货品+颜色聚合余额 + 分类树/仓库过滤；仓库管理 hub 入口）。
   static const stockInstantInventory = '/stock/instant-inventory';
-  static const stockInstantInventorySearchCategoryIds =
-      '$stockInstantInventory/search-category-ids';
   // 货架目视化清单（货品主档库位号驱动，打印张贴/导出口径，与库存数量无关）。
   static const stockShelfLabels = '/stock/shelf-labels';
   static const stockShelfLabelRacks = '/stock/shelf-labels/racks';
@@ -550,6 +548,7 @@ abstract final class ApiEndpoints {
   static const workshopMaterialBadgeCounts =
       '$workshopMaterialBase/badge-counts';
   static const workshopMaterialSettings = '$workshopMaterialBase/settings';
+  static const workshopMaterialTaskStatus = '$workshopMaterialBase/task-status';
 
   /// 开启整批领料前, 所选车间在产、需认料的产品 (按产品去重, 含预填; ADR-147)。
   static const workshopMaterialSettingsInProgressPending =

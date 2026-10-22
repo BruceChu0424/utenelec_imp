@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
@@ -17,8 +18,22 @@ import 'package:uten_imp/features/basic_data/pages/settlement_method_page.dart';
 import 'package:uten_imp/features/basic_data/pages/unit_page.dart';
 import 'package:uten_imp/features/basic_data/repositories/account_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_edit_dialog.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/models/user.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+
+import '../../../shared/drafts/memory_form_draft_storage.dart';
+
+class _MasterSession extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(id: 'master-list-test', code: 'T001', name: '资料测试员'),
+  );
+}
 
 void main() {
   // 仓库已改为目录 + 只读库存；目录动作与库存列权限分别由仓库页面/面板测试覆盖。
@@ -78,6 +93,10 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            sessionProvider.overrideWith(_MasterSession.new),
+            formDraftStorageProvider.overrideWithValue(
+              MemoryFormDraftStorage(),
+            ),
             apiClientProvider.overrideWithValue(_MasterListApi()),
             sharedPreferencesProvider.overrideWithValue(preferences),
             isSuperAdminProvider.overrideWithValue(false),
@@ -176,6 +195,10 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            sessionProvider.overrideWith(_MasterSession.new),
+            formDraftStorageProvider.overrideWithValue(
+              MemoryFormDraftStorage(),
+            ),
             apiClientProvider.overrideWithValue(_MasterListApi(empty: true)),
             sharedPreferencesProvider.overrideWithValue(preferences),
             isSuperAdminProvider.overrideWithValue(false),
@@ -215,6 +238,8 @@ void main() {
       await tester.tap(find.text(createLabel));
       await tester.pumpAndSettle();
       expect(find.text(createLabel.replaceFirst('添加', '新增')), findsOneWidget);
+      expect(find.byType(MasterEditForm), findsOneWidget);
+      expect(find.text('保存'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }
@@ -235,8 +260,9 @@ void _expectFloatingCreate(WidgetTester tester, String label, Size viewport) {
   expect(bounds.bottom, lessThanOrEqualTo(viewport.height));
 }
 
-class _MasterListApi implements ApiClient {
-  _MasterListApi({this.empty = false});
+class _MasterListApi extends ApiClient {
+  _MasterListApi({this.empty = false})
+    : super(Dio(BaseOptions(baseUrl: 'https://master-list.invalid/api')));
   final bool empty;
   static const _item = <String, dynamic>{
     'id': 'master-1',

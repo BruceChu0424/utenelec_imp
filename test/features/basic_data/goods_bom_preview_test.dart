@@ -18,6 +18,8 @@ class _PreviewRepo extends Fake implements GoodsBomRepository {
         componentGoodsId: 'plastic',
         componentCode: 'P01',
         componentName: '塑料',
+        componentMaterial: 'PVC',
+        componentStockQty: 12.3456,
         qty: 0.1,
         actual: BomActualUsage(
           qty: 0.10500000000000001,
@@ -42,48 +44,64 @@ class _PreviewRepo extends Fake implements GoodsBomRepository {
 }
 
 void main() {
-  testWidgets('preview lists design and actual usage side by side', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 1000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          goodsBomRepositoryProvider.overrideWithValue(_PreviewRepo()),
-          currentPermissionsProvider.overrideWithValue(const {}),
-          isSuperAdminProvider.overrideWithValue(false),
-        ],
-        child: MaterialApp(
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          locale: const Locale('zh'),
-          home: Builder(
-            builder: (context) => Scaffold(
-              body: TextButton(
-                onPressed: () =>
-                    showGoodsBomPreview(context: context, goodsId: 'goods-a'),
-                child: const Text('open'),
+  for (final stockAccess in [false, true]) {
+    testWidgets(
+      'preview lists usage, material and permitted stock (stock=$stockAccess)',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1400, 1000));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              goodsBomRepositoryProvider.overrideWithValue(_PreviewRepo()),
+              currentPermissionsProvider.overrideWithValue({
+                if (stockAccess) Perm.stockView,
+              }),
+              isSuperAdminProvider.overrideWithValue(false),
+            ],
+            child: MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              locale: const Locale('zh'),
+              home: Builder(
+                builder: (context) => Scaffold(
+                  body: TextButton(
+                    onPressed: () => showGoodsBomPreview(
+                      context: context,
+                      goodsId: 'goods-a',
+                    ),
+                    child: const Text('open'),
+                  ),
+                ),
               ),
             ),
           ),
-        ),
-      ),
-    );
-    await tester.tap(find.text('open'));
-    await tester.pumpAndSettle();
+        );
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
 
-    expect(find.text('设计使用数量'), findsOneWidget);
-    expect(find.text('真实使用数量'), findsOneWidget);
-    expect(find.text('数量'), findsNothing);
-    // 表头 14 列。
-    final header = tester.widgetList<Table>(find.byType(Table)).last;
-    expect(header.children.first.children, hasLength(14));
-    // 塑料：真实 0.105(无浮点噪声)；纸箱：整包不适用 → 「—」，尾包「整包」。
-    expect(find.text('0.105'), findsOneWidget);
-    expect(find.text('0.10500000000000001'), findsNothing);
-    expect(find.text('整包'), findsOneWidget);
-    expect(find.text('50'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
+        expect(find.text('设计使用数量'), findsOneWidget);
+        expect(find.text('真实使用数量'), findsOneWidget);
+        expect(find.text('数量'), findsNothing);
+        expect(find.text('材质'), findsOneWidget);
+        expect(find.text('PVC'), findsOneWidget);
+        expect(find.text('库存数量'), stockAccess ? findsOneWidget : findsNothing);
+        expect(
+          find.text('12.3456'),
+          stockAccess ? findsOneWidget : findsNothing,
+        );
+        final header = tester.widgetList<Table>(find.byType(Table)).last;
+        expect(
+          header.children.first.children,
+          hasLength(stockAccess ? 16 : 15),
+        );
+        // 塑料：真实 0.105(无浮点噪声)；纸箱：整包不适用 → 「—」，尾包「整包」。
+        expect(find.text('0.105'), findsOneWidget);
+        expect(find.text('0.10500000000000001'), findsNothing);
+        expect(find.text('整包'), findsOneWidget);
+        expect(find.text('50'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 }

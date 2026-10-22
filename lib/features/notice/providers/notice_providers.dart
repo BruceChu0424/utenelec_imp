@@ -108,6 +108,18 @@ String? noticeActionTarget(Notice notice) {
   final uri = Uri.parse(route);
   final params = Map<String, String>.from(uri.queryParameters)
     ..['returnTo'] = RouteName.notice;
+  if (uri.path == RouteName.warehouseTasks &&
+      params['group'] == 'workshopMaterial' &&
+      !params.containsKey('section')) {
+    switch (notice.sourceEvent) {
+      case 'WORKSHOP_MATERIAL_REQUISITION_PENDING':
+        params['group'] = 'outbound';
+        params['section'] = 'DRAW';
+      case 'WORKSHOP_MATERIAL_RETURN_PENDING':
+        params['group'] = 'inbound';
+        params['section'] = 'RETURN';
+    }
+  }
   return uri.replace(queryParameters: params).toString();
 }
 

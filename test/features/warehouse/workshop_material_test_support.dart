@@ -11,20 +11,35 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/warehouse/materialbin/models/workshop_material_models.dart';
 import 'package:uten_imp/features/warehouse/materialbin/models/workshop_source_warehouse_option.dart';
 import 'package:uten_imp/features/warehouse/materialbin/repositories/workshop_material_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/drafts/form_draft_storage.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/sensitive_read_boundary_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../shared/drafts/memory_form_draft_storage.dart';
+
+class _TestSession extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState();
+}
 
 class FakeWorkshopMaterialRepository extends WorkshopMaterialRepository {
   FakeWorkshopMaterialRepository() : super(ApiClient(Dio()));
+
+  @override
+  Future<List<WmSetting>> taskStatus({
+    Map<String, String> scope = const {},
+  }) async => settingsResult;
 
   // ------------------------------------------------------------ 预置数据
   List<WmSetting> settingsResult = const [];
@@ -447,6 +462,9 @@ Future<void> pumpWorkshopMaterialPage(
   double textScale = 1,
   Set<String> permissions = const {Perm.workshopMaterialView},
   ProviderListenable<Set<String>>? permissionState,
+  ProviderListenable<AuthenticatedScope?>? identityState,
+  FormDraftStorage? draftStorage,
+  bool settle = true,
   GlobalKey? captureBoundary,
   ThemeData? theme,
 }) async {
@@ -461,6 +479,17 @@ Future<void> pumpWorkshopMaterialPage(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        formDraftStorageProvider.overrideWithValue(
+          draftStorage ?? MemoryFormDraftStorage(),
+        ),
+        authenticatedScopeProvider.overrideWith(
+          (ref) => identityState == null
+              ? const AuthenticatedScope(userId: 'workshop-test-user')
+              : ref.watch(identityState),
+        ),
+        sessionProvider.overrideWith(_TestSession.new),
+        apiBaseUrlProvider.overrideWithValue('https://warehouse.test/api'),
+        apiClientProvider.overrideWithValue(repo.api),
         sharedPreferencesProvider.overrideWithValue(prefs),
         currentPermissionsProvider.overrideWith(
           (ref) => permissionState == null
@@ -472,7 +501,7 @@ Future<void> pumpWorkshopMaterialPage(
         // session; do not start the real API/session restoration for a picker.
         sensitiveReadBoundaryProvider.overrideWith(
           (ref) => SensitiveReadBoundary(
-            identity: const AuthenticatedScope(userId: 'workshop-test-user'),
+            identity: ref.watch(authenticatedScopeProvider),
             api: repo.api,
             permissions: ref.watch(currentPermissionsProvider),
             superAdmin: ref.watch(isSuperAdminProvider),
@@ -501,7 +530,7 @@ Future<void> pumpWorkshopMaterialPage(
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) await tester.pumpAndSettle();
 }
 
 // ---------------------------------------------------------------- 数据构造

@@ -247,6 +247,7 @@ class GoodsBomEditDraft implements GoodsBomRepository {
       'componentModel',
       'componentSpec',
       'componentMaterial',
+      'componentStockQty',
       'componentUnitName',
       'componentColorName',
       'componentSourceType',

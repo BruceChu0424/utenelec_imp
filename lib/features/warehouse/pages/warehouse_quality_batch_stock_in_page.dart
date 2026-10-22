@@ -25,6 +25,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -183,7 +184,7 @@ class _WarehouseQualityBatchStockInPageState
   @override
   void initState() {
     super.initState();
-    startFormDraftIdentityGuard();
+    startFormDraftIdentityGuard(includePermissions: true);
     _load();
   }
 
@@ -380,16 +381,20 @@ class _WarehouseQualityBatchStockInPageState
     WarehouseQualityBatchConfirmCommand command,
   ) async {
     if (_saving || !_canConfirmStockIn) return;
+    final scopeFuture = captureFormDraftRequestScope();
     final previousPending = _pendingCommand;
     var locallyRejected = false;
-    _pendingCommand = command;
+    AuthenticatedRequestScope? boundScope;
     setState(() {
       _saving = true;
       _error = null;
     });
     try {
+      final requestScope = await scopeFuture;
+      boundScope = requestScope;
+      _pendingCommand = command;
       final result = await runFormDraftSubmission(
-        () {
+        () => requestScope.run(() {
           if (!_canConfirmStockIn) {
             locallyRejected = true;
             _pendingCommand = previousPending;
@@ -402,18 +407,22 @@ class _WarehouseQualityBatchStockInPageState
           return ref
               .read(warehouseQualityResultRepositoryProvider)
               .batchConfirm(command);
-        },
+        }),
         isDefiniteRejection: (error) =>
-            (locallyRejected && previousPending == null) ||
-            error.httpStatus == 400 ||
-            error.httpStatus == 422 ||
-            (error.httpStatus == 409 && error.code == 'CONFLICT'),
+            previousPending == null &&
+            (locallyRejected ||
+                error.httpStatus == 400 ||
+                error.httpStatus == 403 ||
+                error.httpStatus == 422 ||
+                (error.httpStatus == 409 && error.code == 'CONFLICT')),
       );
+      requestScope.checkCurrent();
       if (!mounted || !formDraftIdentityIsCurrent) return;
       // 打源头 type-counts: 红黄两支都是它的派生, 失效派生不会重新发请求。
       refreshBadges(ref);
       _pendingCommand = null;
       await completeFormDraft();
+      requestScope.checkCurrent();
       if (!mounted) return;
       context.appSuccess(
         '已批量入库 ${result.confirmedReceipts} 张收货单 / '
@@ -422,26 +431,40 @@ class _WarehouseQualityBatchStockInPageState
       if (context.canPop()) {
         context.pop(true);
       } else {
-        await resetFormDraftAfterSubmission(prepare: () => _load());
+        await resetFormDraftAfterSubmission(
+          prepare: () => requestScope.run(() => _load()),
+        );
       }
     } on ApiException catch (error) {
       if (!mounted) return;
-      if (error.httpStatus == 400 ||
-          error.httpStatus == 422 ||
-          error.code == 'CONFLICT') {
+      if (previousPending == null &&
+          (error.httpStatus == 400 ||
+              error.httpStatus == 403 ||
+              error.httpStatus == 422 ||
+              error.code == 'CONFLICT')) {
         _pendingCommand = null;
       }
       await _showFailureDialog(
-        error.code == 'CONFLICT'
+        previousPending != null
+            ? '${error.message}；这次拒绝不能确认原提交结果，原批次、明细和幂等键继续保留待核对'
+            : error.code == 'CONFLICT'
             ? '${error.message}（本次入库没有生效；你填的数量和库位都还在，刷新后重新核对再提交）'
             : error.message,
       );
-      if (mounted && error.code == 'CONFLICT') {
-        await _load(preserveInputs: true);
-        if (mounted) {
-          setState(
-            () => _error = '${error.message}；已刷新待入量，保留了本次数量、目标叶仓和库位，请重新核对。',
-          );
+      if (mounted &&
+          previousPending == null &&
+          error.code == 'CONFLICT' &&
+          boundScope != null &&
+          boundScope.isCurrent) {
+        try {
+          await boundScope.run(() => _load(preserveInputs: true));
+          if (mounted && boundScope.isCurrent) {
+            setState(
+              () => _error = '${error.message}；已刷新待入量，保留了本次数量、目标叶仓和库位，请重新核对。',
+            );
+          }
+        } on ApiException catch (scopeError) {
+          if (mounted) context.appError(scopeError.message);
         }
       }
       await checkpointFormDraftAfterCreation();

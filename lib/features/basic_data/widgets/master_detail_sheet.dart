@@ -1,12 +1,14 @@
 // 主档通用详情面板（货品/模具/客户/供应商 共用）。
 //
 // 替代各页内联 _openXxxDialog + _row：调用方按期望顺序传入 [MasterDetailRow] 列表，
-// 组件统一渲染「双列卡片网格 + 自适应容器 + 底部居中操作按钮」。
+// 组件统一渲染与编辑表单相同的自适应字段网格、对象历史与操作按钮。
 // 容器自适应（参照 showUtenPickerSheet）：compact 底部抽屉 / medium+ 居中面板。
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/layout/uten_form_grid.dart';
+import 'master_record_history_panel.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 
@@ -48,6 +50,11 @@ Future<void> showMasterDetailSheet({
   VoidCallback? onEdit,
   VoidCallback? onDelete,
   List<MasterDetailAction> extraActions = const [],
+  String? historyEntityType,
+  String? historyRecordId,
+  VoidCallback? onHistoryChanged,
+  Widget Function(BuildContext, Widget)? dialogScopeBuilder,
+  bool Function()? isCurrent,
 }) {
   final body = _MasterDetailBody(
     title: title,
@@ -59,6 +66,10 @@ Future<void> showMasterDetailSheet({
     onEdit: onEdit,
     onDelete: onDelete,
     extraActions: extraActions,
+    historyEntityType: historyEntityType,
+    historyRecordId: historyRecordId,
+    onHistoryChanged: onHistoryChanged,
+    isCurrent: isCurrent,
   );
   if (context.breakpoint.isCompact) {
     return showModalBottomSheet<void>(
@@ -70,23 +81,26 @@ Future<void> showMasterDetailSheet({
           top: Radius.circular(UtenRadius.lg),
         ),
       ),
-      builder: (_) => body,
+      builder: (ctx) => dialogScopeBuilder?.call(ctx, body) ?? body,
     );
   }
   return showDialog<void>(
     context: context,
-    builder: (ctx) => UtenDialogFrame(
-      shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
-      child: ConstrainedBox(
-        // 2026-09-14：宽度随屏幕放缩（原固定 560 太小；客户/供应商已改详情整页，
-        // 其余主档弹窗同样受益），网格列数按实际宽度自适应。
-        constraints: BoxConstraints(
-          maxWidth: (MediaQuery.sizeOf(ctx).width * 0.92).clamp(560.0, 840.0),
-          maxHeight: MediaQuery.sizeOf(ctx).height * 0.88,
+    builder: (ctx) {
+      final frame = UtenDialogFrame(
+        shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
+        child: ConstrainedBox(
+          // 2026-09-14：宽度随屏幕放缩（原固定 560 太小；客户/供应商已改详情整页，
+          // 其余主档弹窗同样受益），网格列数按实际宽度自适应。
+          constraints: BoxConstraints(
+            maxWidth: (MediaQuery.sizeOf(ctx).width * 0.92).clamp(560.0, 840.0),
+            maxHeight: MediaQuery.sizeOf(ctx).height * 0.88,
+          ),
+          child: body,
         ),
-        child: body,
-      ),
-    ),
+      );
+      return dialogScopeBuilder?.call(ctx, frame) ?? frame;
+    },
   );
 }
 
@@ -101,6 +115,10 @@ class _MasterDetailBody extends StatelessWidget {
     required this.onEdit,
     required this.onDelete,
     required this.extraActions,
+    required this.historyEntityType,
+    required this.historyRecordId,
+    required this.onHistoryChanged,
+    required this.isCurrent,
   });
 
   final String title;
@@ -112,11 +130,24 @@ class _MasterDetailBody extends StatelessWidget {
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
   final List<MasterDetailAction> extraActions;
+  final String? historyEntityType;
+  final String? historyRecordId;
+  final VoidCallback? onHistoryChanged;
+  final bool Function()? isCurrent;
+
+  bool _current(BuildContext context) =>
+      context.mounted && (isCurrent?.call() ?? true);
+
+  void _act(BuildContext context, [VoidCallback? action]) {
+    if (!_current(context)) return;
+    if (isCurrent != null && ModalRoute.of(context)?.isCurrent != true) return;
+    Navigator.of(context).pop();
+    action?.call();
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final twoColumn = !context.breakpoint.isCompact;
     return SafeArea(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -126,7 +157,12 @@ class _MasterDetailBody extends StatelessWidget {
           Flexible(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(UtenSpacing.s16),
-              child: _grid(theme, twoColumn),
+              child: UtenFormGrid(
+                columns: 4,
+                maxColumns: 4,
+                minFieldWidth: 260,
+                children: [for (final row in rows) _cell(theme, row)],
+              ),
             ),
           ),
           const Divider(height: 1),
@@ -136,44 +172,9 @@ class _MasterDetailBody extends StatelessWidget {
     );
   }
 
-  Widget _grid(ThemeData theme, bool twoColumn) {
-    if (!twoColumn) return _gridColumns(theme, 1);
-    // 2026-09-14：非 compact 弹窗按容器宽度自适应 2-4 列。
-    return LayoutBuilder(
-      builder: (context, constraints) =>
-          _gridColumns(theme, (constraints.maxWidth ~/ 260).clamp(1, 4)),
-    );
-  }
-
-  Widget _gridColumns(ThemeData theme, int colCount) {
-    final rows2 = <Widget>[];
-    for (var i = 0; i < rows.length; i += colCount) {
-      rows2.add(
-        Padding(
-          padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (var c = 0; c < colCount; c++) ...[
-                if (c > 0) const SizedBox(width: UtenSpacing.s8),
-                Expanded(
-                  child: i + c < rows.length
-                      ? _cell(theme, rows[i + c])
-                      : const SizedBox.shrink(),
-                ),
-              ],
-            ],
-          ),
-        ),
-      );
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: rows2,
-    );
-  }
-
   Widget _header(ThemeData theme, BuildContext context) {
+    final detailRoute = ModalRoute.of(context);
+    final navigator = Navigator.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         UtenSpacing.s16,
@@ -191,9 +192,21 @@ class _MasterDetailBody extends StatelessWidget {
               ),
             ),
           ),
+          if (historyEntityType != null && historyRecordId != null)
+            MasterRecordHistoryAction(
+              entityType: historyEntityType!,
+              recordId: historyRecordId,
+              onChanged: () {
+                if (!_current(context)) return;
+                if (detailRoute != null && detailRoute.isActive) {
+                  navigator.removeRoute(detailRoute);
+                }
+                onHistoryChanged?.call();
+              },
+            ),
           IconButton(
             icon: const Icon(Icons.close_rounded),
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () => _act(context),
           ),
         ],
       ),
@@ -247,18 +260,20 @@ class _MasterDetailBody extends StatelessWidget {
               type: action.type,
               icon: action.icon,
               onPressed: () {
-                Navigator.of(context).pop();
-                action.onPressed();
+                _act(context, action.onPressed);
               },
               child: Text(action.label),
             ),
           if (onToggleStatus != null)
             UtenButton(
-              type: UtenButtonType.tonal,
-              icon: Icons.sync_alt_rounded,
+              type: statusActionLabel == '停用' || statusActionLabel == '禁用'
+                  ? UtenButtonType.danger
+                  : UtenButtonType.secondary,
+              icon: statusActionLabel == '停用' || statusActionLabel == '禁用'
+                  ? Icons.block_rounded
+                  : Icons.check_circle_outline_rounded,
               onPressed: () {
-                Navigator.of(context).pop();
-                onToggleStatus!();
+                _act(context, onToggleStatus);
               },
               child: Text(statusActionLabel),
             ),
@@ -267,8 +282,7 @@ class _MasterDetailBody extends StatelessWidget {
               type: UtenButtonType.secondary,
               icon: Icons.edit_outlined,
               onPressed: () {
-                Navigator.of(context).pop();
-                onEdit!();
+                _act(context, onEdit);
               },
               child: const Text('编辑'), // TODO(l10n): 补 arb
             ),
@@ -277,14 +291,13 @@ class _MasterDetailBody extends StatelessWidget {
               type: UtenButtonType.danger,
               icon: Icons.delete_outline,
               onPressed: () {
-                Navigator.of(context).pop();
-                onDelete!();
+                _act(context, onDelete);
               },
               child: const Text('删除'), // TODO(l10n): 补 arb
             ),
           UtenButton(
             type: UtenButtonType.secondary,
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () => _act(context),
             child: const Text('关闭'), // TODO(l10n): 补 arb
           ),
         ],

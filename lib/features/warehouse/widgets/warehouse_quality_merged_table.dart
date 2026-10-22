@@ -158,6 +158,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
       controller: controller,
       stickyHeaderPinned: stickyHeaderPinned,
       columns: _columns(context),
+      defaultColumnOrderAnchors: const {'receipt': 'verdict'},
       showAddRow: false,
       showRowDelete: false,
       selectable: editable,

@@ -76,6 +76,11 @@ set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}")
 install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
   COMPONENT Runtime)
 
+# Trusted updater is installed with the bootstrap client. Update ZIPs exclude
+# this directory and cannot replace the script that is applying the release.
+install(FILES "runner/client_updater.ps1"
+  DESTINATION "${CMAKE_INSTALL_PREFIX}/client_updater" COMPONENT Runtime)
+
 install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   COMPONENT Runtime)
 

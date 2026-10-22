@@ -21,11 +21,90 @@ import 'package:uten_imp/features/basic_data/repositories/currency_repository.da
 import 'package:uten_imp/features/basic_data/repositories/party_directory_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/reference_method_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
+class _Session extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState();
+}
+
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  for (final size in [const Size(1269, 900), const Size(390, 844)]) {
+    testWidgets('客户各分区卡片与身份卡同宽，查看编辑不重复缩进 $size', (tester) async {
+      await tester.binding.setSurfaceSize(size);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sessionProvider.overrideWith(_Session.new),
+            authenticatedScopeProvider.overrideWithValue(
+              const AuthenticatedScope(userId: 'party-test'),
+            ),
+            sharedPreferencesProvider.overrideWithValue(
+              await SharedPreferences.getInstance(),
+            ),
+            apiClientProvider.overrideWithValue(_EmptyApi()),
+            currentPermissionsProvider.overrideWithValue({
+              Perm.clientView,
+              Perm.clientEdit,
+              Perm.clientStatus,
+            }),
+            isSuperAdminProvider.overrideWithValue(false),
+            clientRepositoryProvider.overrideWithValue(_FakeClientRepository()),
+            clientDirectoryRepositoryProvider.overrideWithValue(
+              _FakePartyDirectoryRepository(),
+            ),
+            referenceMethodRepositoryProvider.overrideWithValue(
+              _FakeReferenceMethodRepository(),
+            ),
+            currencyRepositoryProvider.overrideWithValue(
+              _FakeCurrencyRepository(),
+            ),
+          ],
+          child: const MaterialApp(
+            locale: Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: PartyDetailPage(partyType: 'client', id: 'client-1'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final identity = tester.getRect(
+        find.byKey(const Key('party-identity-card')),
+      );
+      void expectAligned(String key) {
+        final card = tester.getRect(find.byKey(ValueKey(key)));
+        expect(card.left, closeTo(identity.left, 0.1));
+        expect(card.right, closeTo(identity.right, 0.1));
+      }
+
+      Future<void> selectTab(int index) async {
+        tester
+            .widget<TabBarView>(find.byType(TabBarView))
+            .controller!
+            .animateTo(index);
+        await tester.pumpAndSettle();
+      }
+
+      expectAligned('party-overview-card');
+      await selectTab(1);
+      expectAligned('party-finance-card');
+      await tester.tap(find.byKey(const Key('party-detail-edit')));
+      await tester.pumpAndSettle();
+      expectAligned('party-overview-card');
+      await selectTab(1);
+      expectAligned('party-finance-card');
+      await selectTab(0);
+      expectAligned('party-overview-card');
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('客户详情页：Hero 统计行 + Tab 分区渲染子表，添加联系方式走目录仓库', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1500, 1000));
@@ -34,6 +113,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sessionProvider.overrideWith(_Session.new),
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'party-test'),
+          ),
           sharedPreferencesProvider.overrideWithValue(
             await SharedPreferences.getInstance(),
           ),
@@ -56,15 +139,15 @@ void main() {
     await tester.pumpAndSettle();
 
     // Hero 身份卡：名称 + 状态徽章 + 信誉分统计行。
-    expect(find.text('中山测试客户'), findsOneWidget);
-    expect(find.text('使用'), findsOneWidget);
+    expect(find.text('中山测试客户'), findsNWidgets(2));
+    expect(find.text('使用'), findsNWidgets(2));
     expect(find.text('信誉分'), findsOneWidget);
     expect(find.text('95'), findsOneWidget);
 
     // 概览 Tab（默认）：分区标题与键值瓦片。
-    expect(find.text('基本信息'), findsOneWidget);
+    expect(find.text('基础'), findsOneWidget);
     expect(find.text('全称'), findsOneWidget);
-    expect(find.text('地址与物流'), findsOneWidget);
+    expect(find.text('地址'), findsWidgets);
 
     // 销售条款与财务 Tab：默认货运策略显词表文案而非库代号（2026-09-19 修）。
     await tester.tap(find.text('销售条款与财务'));
@@ -108,6 +191,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sessionProvider.overrideWith(_Session.new),
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'party-test'),
+          ),
           sharedPreferencesProvider.overrideWithValue(
             await SharedPreferences.getInstance(),
           ),
@@ -163,7 +250,7 @@ void main() {
     expect(_labeledField('名称'), findsNothing);
     await tester.tap(find.text('概览'));
     await tester.pumpAndSettle();
-    expect(find.text('基本信息'), findsOneWidget);
+    expect(find.text('基础'), findsOneWidget);
   });
 
   // 2026-09-20 回归：只改「销售条款与财务」Tab、不碰概览就保存。此前两张分区表单各持
@@ -175,6 +262,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sessionProvider.overrideWith(_Session.new),
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'party-test'),
+          ),
           sharedPreferencesProvider.overrideWithValue(
             await SharedPreferences.getInstance(),
           ),
@@ -230,6 +321,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sessionProvider.overrideWith(_Session.new),
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'party-test'),
+          ),
           sharedPreferencesProvider.overrideWithValue(
             await SharedPreferences.getInstance(),
           ),
@@ -281,6 +376,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sessionProvider.overrideWith(_Session.new),
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'party-test'),
+          ),
           sharedPreferencesProvider.overrideWithValue(
             await SharedPreferences.getInstance(),
           ),
@@ -332,6 +431,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sessionProvider.overrideWith(_Session.new),
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'party-test'),
+          ),
           sharedPreferencesProvider.overrideWithValue(
             await SharedPreferences.getInstance(),
           ),

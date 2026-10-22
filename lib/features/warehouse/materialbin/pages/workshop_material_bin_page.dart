@@ -15,6 +15,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../components/buttons/uten_back_button.dart';
 import '../../../../components/buttons/uten_refresh_button.dart';
+import '../../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/data_display/uten_status_badge.dart';
 import '../../../../components/data_display/uten_status_cell_color.dart';
@@ -743,6 +744,18 @@ class _WorkshopMaterialBinPageState
                 await _loadAll();
               },
             ),
+            if (_current?.periodic == true &&
+                _canViewStock &&
+                ref
+                    .watch(currentPermissionsProvider)
+                    .contains(stockCountSubmitPermission))
+              UtenAppBarActionButton(
+                key: const Key('wm-bin-my-counts'),
+                label: '盘点历史',
+                onPressed: _countEditor.active || _requestEditor.active
+                    ? null
+                    : () => context.push(RouteName.stockCountRequests),
+              ),
           ],
         ),
         body: SafeArea(
@@ -1027,13 +1040,6 @@ class _WorkshopMaterialBinPageState
           leadingIcon: const Icon(Icons.fact_check_outlined),
           onPressed: _openCount,
           child: const Text('周期盘点'),
-        ),
-      if (openCountHistory != null)
-        MenuItemButton(
-          key: const Key('wm-bin-my-counts'),
-          leadingIcon: const Icon(Icons.history_outlined),
-          onPressed: openCountHistory,
-          child: const Text('盘点历史'),
         ),
     ];
     return [

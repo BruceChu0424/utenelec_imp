@@ -121,6 +121,7 @@ class _FakeRepository extends ProductionDrawTaskRepository {
     required String idempotencyKey,
     required List<String> docIds,
     List<Map<String, dynamic>> weights = const [],
+    List<String>? itemIds,
     String? reason,
   }) async {
     batchKeys.add(idempotencyKey);
@@ -242,6 +243,7 @@ Widget _app(
     _scopeProvider.overrideWithValue(scope),
     sharedPreferencesProvider.overrideWithValue(_prefs),
     productionDrawTaskRepositoryProvider.overrideWithValue(repo),
+    apiClientProvider.overrideWithValue(repo.api),
     stockDocRepositoryProvider(
       StockDocType.draw,
     ).overrideWithValue(_FakeStockRepository(repo)),

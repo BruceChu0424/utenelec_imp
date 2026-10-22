@@ -3,6 +3,7 @@ package com.uten.imp.businesschain;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.uten.imp.support.MigratedSchemaBaseline;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,14 +13,17 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
+import org.springframework.context.ApplicationContextInitializer;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.beans.factory.support.BeanDefinitionRegistry;
+import org.springframework.beans.factory.support.RootBeanDefinition;
+import org.springframework.boot.test.util.TestPropertyValues;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
@@ -29,6 +33,8 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.Map;
+import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -38,7 +44,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 /**
  * 服务端会话与再认证的真库测试底座 (ADR-110): 真实 PostgreSQL + 全部迁移 + 完整安全过滤链。
  * 用可控时钟 ({@link MutableClock}) 推进会话时间, 不必真的等待空闲超时; 同一配置的测试类共享
- * 一个 Spring 上下文与一个数据库。
+ * 一个 Spring 上下文与一个数据库；不同上下文从已迁移模板获取独立数据库，
+ * 不把旧上下文的故意损坏密文等负例带入新上下文的启动回填。
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 @SpringBootTest(classes = com.uten.imp.UtenImpApplication.class, properties = {
@@ -52,6 +59,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
         "uten.bootstrap.admin-password=AuthSessionBoot-1!"
 })
 @AutoConfigureMockMvc
+@ContextConfiguration(initializers = AuthSessionPostgresTestSupport.DatabaseInitializer.class)
 @Import({AuthSessionPostgresTestSupport.ClockOverride.class, ProductionJdbcMeasurement.Configuration.class})
 abstract class AuthSessionPostgresTestSupport {
 
@@ -62,17 +70,47 @@ abstract class AuthSessionPostgresTestSupport {
 
     private static final AtomicInteger EMPLOYEE_SEQUENCE = new AtomicInteger();
 
-    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine")
-            .withDatabaseName("uten_imp")
-            .withUsername("uten")
-            .withPassword("uten");
+    static final String DATABASE_LEASE_BEAN = "authSessionDatabaseLease";
 
-    @DynamicPropertySource
-    static void registerDataSource(DynamicPropertyRegistry registry) {
-        POSTGRES.start();
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
+    /** Runs once per actual Spring context, including when the cache rebuilds it. */
+    public static final class DatabaseInitializer implements ApplicationContextInitializer<ConfigurableApplicationContext> {
+        @Override
+        public void initialize(ConfigurableApplicationContext context) {
+            final MigratedSchemaBaseline.ScopedDatabase database;
+            try {
+                database = MigratedSchemaBaseline.openDatabase("auth_session");
+            } catch (java.sql.SQLException failure) {
+                throw new IllegalStateException("Cannot create isolated auth-session test database", failure);
+            }
+            try {
+                var definition = new RootBeanDefinition(MigratedSchemaBaseline.ScopedDatabase.class, () -> database);
+                definition.setDestroyMethodName("close");
+                ((BeanDefinitionRegistry) context.getBeanFactory()).registerBeanDefinition(DATABASE_LEASE_BEAN, definition);
+                TestPropertyValues.of(
+                        "spring.datasource.url=" + database.getJdbcUrl(),
+                        "spring.datasource.username=" + database.getUsername(),
+                        "spring.datasource.password=" + database.getPassword()).applyTo(context.getEnvironment());
+                context.addBeanFactoryPostProcessor(factory -> {
+                    for (String name : factory.getBeanNamesForType(javax.sql.DataSource.class, true, false)) {
+                        // Both the main pool and any secondary datasource must
+                        // close before dropping the clone. EM and the evidence
+                        // writer already depend on their configured datasource.
+                        factory.registerDependentBean(DATABASE_LEASE_BEAN, name);
+                        if (factory.containsBeanDefinition(name)) {
+                            var source = factory.getBeanDefinition(name);
+                            var dependencies = new LinkedHashSet<String>();
+                            if (source.getDependsOn() != null) dependencies.addAll(Arrays.asList(source.getDependsOn()));
+                            dependencies.add(DATABASE_LEASE_BEAN);
+                            source.setDependsOn(dependencies.toArray(String[]::new));
+                        }
+                    }
+                });
+            } catch (RuntimeException | Error failure) {
+                try { database.close(); }
+                catch (java.sql.SQLException cleanup) { failure.addSuppressed(cleanup); }
+                throw failure;
+            }
+        }
     }
 
     /** 只由测试推进的时钟: 服务端会话 (last_seen/绝对期限/再认证有效期) 都按它判定。 */

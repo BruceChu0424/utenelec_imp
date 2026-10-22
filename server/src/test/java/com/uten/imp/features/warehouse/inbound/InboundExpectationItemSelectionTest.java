@@ -2,6 +2,8 @@ package com.uten.imp.features.warehouse.inbound;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.GlobalExceptionHandler;
+import com.uten.imp.config.Jackson2ObjectMapperAutoConfiguration;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.InboundExpectationItem;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.InboundExpectationTask;
 import org.junit.jupiter.api.Test;
@@ -14,14 +16,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class InboundExpectationItemSelectionTest {
     @Test void getByIdsBindsPhysicalItemQueryAndKeepsLegacyDocumentEntry() throws Exception {
         var service = mock(ProcurementArrivalControlService.class);
-        var controller = new WarehouseInboundController(service, null, null, null, null, null, null);
-        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(controller).build();
+        var mvc = mvc(service);
         UUID expectation = UUID.randomUUID();
         UUID item = UUID.randomUUID();
         mvc.perform(get("/api/warehouse/inbound/expectations/by-ids")
@@ -35,9 +38,19 @@ class InboundExpectationItemSelectionTest {
                 .param("ids", expectation.toString()).param("itemIds", ""))
                 .andExpect(status().isOk());
         verify(service).expectationsByIds(List.of(expectation), List.of());
+    }
+
+    @Test void malformedPhysicalItemIdUsesTheProductionErrorContractBeforeCallingService() throws Exception {
+        var service = mock(ProcurementArrivalControlService.class);
+        var mvc = mvc(service);
         mvc.perform(get("/api/warehouse/inbound/expectations/by-ids")
-                .param("ids", expectation.toString()).param("itemIds", "invalid-row"))
-                .andExpect(status().isBadRequest());
+                .param("ids", UUID.randomUUID().toString()).param("itemIds", "invalid-row"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.code").value("MALFORMED_REQUEST"))
+                .andExpect(jsonPath("$.message").value("查询条件 itemIds 的格式不对"))
+                .andExpect(jsonPath("$.fieldErrors").value(org.hamcrest.Matchers.nullValue()));
+        verifyNoInteractions(service);
     }
 
     @Test void selectionKeepsOriginalOrderLineEvenWhenGoodsRepeatOnTheSameOrder() {
@@ -78,6 +91,16 @@ class InboundExpectationItemSelectionTest {
                     .isInstanceOfSatisfying(ApiException.class,
                             error -> assertThat(error.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
         }
+    }
+
+    @SuppressWarnings("removal")
+    private static org.springframework.test.web.servlet.MockMvc mvc(ProcurementArrivalControlService service) {
+        var controller = new WarehouseInboundController(service, null, null, null, null, null, null);
+        return org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .setMessageConverters(new org.springframework.http.converter.json.MappingJackson2HttpMessageConverter(
+                        Jackson2ObjectMapperAutoConfiguration.domainObjectMapper()))
+                .build();
     }
 
     private static InboundExpectationItem item(UUID goods, String qty) {

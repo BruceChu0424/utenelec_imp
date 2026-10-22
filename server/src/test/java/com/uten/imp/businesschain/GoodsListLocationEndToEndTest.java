@@ -83,9 +83,12 @@ class GoodsListLocationEndToEndTest {
         UUID root=category(null,"定位继承根"+tag,prefix),leaf=category(root,"塑胶件"+tag,null);
         List<UUID> original=new ArrayList<>();
         for(int index=0;index<157;index++)original.add(seed(leaf,"ZX"+tag+String.format("%03d",index),"原货品"+index,null));
-        UUID part=seed(category(null,"组件"+tag,null),"CP"+tag,"组件",null);
-        edge(original.get(0),part,false);edge(original.get(1),part,true);edge(original.get(2),part,false);
-        db.update("UPDATE goods SET status='禁用' WHERE id=?",part);
+        UUID partCategory=category(null,"组件"+tag,null);
+        UUID activePart=seed(partCategory,"CP"+tag,"在用组件",null);
+        UUID disabledPart=seed(partCategory,"DP"+tag,"停用组件",null);
+        edge(original.get(0),activePart,false);edge(original.get(1),activePart,true);
+        UUID retiredEdge=edge(original.get(2),disabledPart,false);
+        db.update("UPDATE goods SET status='禁用' WHERE id=?",disabledPart);
         GoodsQueryFilter query=filter(Map.of("categoryId",leaf));
         var small=ProductionJdbcMeasurement.begin();goods.list(query,1,1,null,null);ProductionJdbcMeasurement.end();
         var large=ProductionJdbcMeasurement.begin();var page=goods.list(query,1,200,null,null);ProductionJdbcMeasurement.end();
@@ -93,7 +96,19 @@ class GoodsListLocationEndToEndTest {
         assertEquals(1,bomReads(small));assertEquals(1,bomReads(large),"BOM presence must be one batch read, not one read per goods row");
         assertTrue(page.getItems().get(0).isHasBom());
         assertFalse(page.getItems().get(1).isHasBom(),"A deleted BOM edge is not a current BOM");
-        assertTrue(page.getItems().get(2).isHasBom(),"An existing disabled component remains part of the historical assembly");
+        assertFalse(page.getItems().get(2).isHasBom(),"A retired disabled-component edge is historical, not a current BOM");
+        assertEquals(1,db.queryForObject("""
+                SELECT count(*) FROM goods_bom_items
+                WHERE id=? AND goods_id=? AND component_goods_id=? AND is_deleted
+                  AND deleted_at IS NOT NULL AND learning_released_at IS NOT NULL
+                  AND retirement_reason='COMPONENT_DISABLED' AND retirement_resolved_at IS NULL
+                """,Integer.class,retiredEdge,original.get(2),disabledPart),
+                "Retirement must preserve the original BOM edge and its history");
+        assertEquals(1,db.queryForObject("""
+                SELECT count(*) FROM business_outbox
+                WHERE event_type='GOODS_BOM_UPDATED' AND aggregate_type='GOODS_BOM'
+                  AND aggregate_id=? AND payload->>'reason'='COMPONENT_DISABLED'
+                """,Integer.class,original.get(2)));
         assertTrue(page.getItems().subList(3,100).stream().noneMatch(GoodsListItem::isHasBom));
         var tailSample=ProductionJdbcMeasurement.begin();var tail=goods.list(query,2,100,null,null);ProductionJdbcMeasurement.end();
         assertEquals(57,tail.getItems().size());assertEquals(1,bomReads(tailSample));
@@ -105,6 +120,11 @@ class GoodsListLocationEndToEndTest {
         assertEquals(new GoodsPageLocation(true,1,0),located,"A generated inherited prefix can sort before all 157 old codes");
         assertEquals(copy.getId(),goods.list(query,located.page(),100,null,null).getItems().get(located.rowIndex()).getId());
         for(UUID id:List.of(original.get(0),original.get(99),original.get(156)))assertLocation(query,id,100,null,null);
+        db.update("UPDATE goods SET status='禁用' WHERE id=?",original.get(0));
+        var includingDisabled=filter(Map.of("categoryId",leaf,"excludeDisabled",false));
+        assertTrue(goods.list(includingDisabled,1,100,null,null).getItems().stream()
+                .filter(row->row.getId().equals(original.get(0))).findFirst().orElseThrow().isHasBom(),
+                "A disabled parent retains its own active recipe when disabled goods are included");
     }
 
     @ParameterizedTest @CsvSource({"code,asc","code,desc","price,asc","price,desc"})
@@ -197,9 +217,11 @@ class GoodsListLocationEndToEndTest {
                 VALUES(?,?,?,?,?,?,'使用',false,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))
                 """,id,category,code,name,world.unitId(),price);return id;
     }
-    private void edge(UUID parent,UUID component,boolean deleted) {
-        db.update("INSERT INTO goods_bom_items(id,goods_id,component_goods_id,qty,sort_order) VALUES(?,?,?,1,1)",UUID.randomUUID(),parent,component);
+    private UUID edge(UUID parent,UUID component,boolean deleted) {
+        UUID id=UUID.randomUUID();
+        db.update("INSERT INTO goods_bom_items(id,goods_id,component_goods_id,qty,sort_order) VALUES(?,?,?,1,1)",id,parent,component);
         if(deleted)db.update("UPDATE goods_bom_items SET is_deleted=true,deleted_at=now() WHERE goods_id=? AND component_goods_id=?",parent,component);
+        return id;
     }
     private long bomReads(ProductionJdbcMeasurement.Sample sample) {
         return sample.fingerprints.entrySet().stream().filter(entry->"read.goods_bom_items".equals(sample.labelsByFingerprint.get(entry.getKey())))

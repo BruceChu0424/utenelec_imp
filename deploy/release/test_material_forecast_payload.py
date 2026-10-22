@@ -407,6 +407,8 @@ class CheckoutIdentityTest(unittest.TestCase):
         self.assertEqual(1, len(pip_calls))
         for argument in ["--isolated", "--require-hashes", "--only-binary=:all:", "--index-url"]:
             self.assertIn(argument, pip_calls[0])
+        # Release builds keep the full download log for the release audit trail.
+        self.assertNotIn("-q", pip_calls[0])
         self.assertEqual(payload.git_source(self.root, self.commit, payload.CATALOG_PATH),
                          (output / payload.payload_path(payload.CATALOG_PATH)).read_bytes())
 
@@ -535,6 +537,8 @@ class CheckoutIdentityTest(unittest.TestCase):
             (self.root / "tracked.txt").write_text("unrelated dirty draft\n")
             first = facade.development_payload(cache, "linux-x86_64", repo=self.root)
             self.assertEqual(1, len(pip_calls))
+            # Development downloads stream into the backend console and stay quiet.
+            self.assertIn("-q", pip_calls[0])
             second = facade.development_payload(cache, "linux-x86_64", repo=self.root)
             self.assertEqual(first, second)
             self.assertEqual(1, len(pip_calls))

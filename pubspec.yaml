@@ -1,7 +1,7 @@
 name: uten_imp
 description: "优腾综合管理平台 - Uten Integrated Management Platform"
 publish_to: "none"
-version: 2.5.27+2527
+version: 2.5.28+2528
 
 environment:
   sdk: ^3.12.2
@@ -84,6 +84,11 @@ dev_dependencies:
   image: ^4.9.1
 
   flutter_launcher_icons: ^0.14.3
+
+dependency_overrides:
+  # Riverpod 3.4.3 diamond-resume fix; provenance and removal gate are in UPSTREAM.md.
+  riverpod:
+    path: third_party/riverpod
 
 flutter:
   uses-material-design: true

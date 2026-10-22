@@ -245,3 +245,46 @@ v2 恢复须同时恢复 `media/local/final/` 到独立的 local 根，并创建
 `deploy/monitoring/test_server_status_export.py` 的保留告警判定 (无证据、跳过、失败、未知目录、
 集合数越界报 CHECK_FAILED，清理进行中只报未知)。断网 Linux 容器 root 一轮 `deploy/postgres/backup`
 196 项、`deploy/monitoring` 66 项全过；非 root 一轮同样通过 (需要 root 的项跳过)。
+
+## 客户端发布目录配套备份（v2.5.28）
+
+客户端发布目录不在 `attachments/final` 的数据库引用清单内。持久媒体卷和 PostgreSQL
+备份都不能代替它的文件备份。新备份集把客户端目录单独放在
+`client-release-state/{internal,local,configured}/`，父 `manifest.json` 的
+`client_release_state` 绑定该目录的清单摘要、发布数量、文件数量和实际字节数，计入原有
+空间、限速、时间及整套保留策略。旧备份集缺少此字段仍可校验，但不能宣称它可恢复客户端包；
+出现未绑定的客户端备份目录会拒绝校验。
+
+默认查找 `media_root/client-releases`，以及已配置的 `local_media_root/client-releases`。
+应用显式设置 `UTEN_CLIENT_RELEASES_DIR` 时，备份配置必须同步设置同一个绝对路径
+`client_releases_root`；此时使用单独的 `configured` 范围。备份服务的只读路径权限也需覆盖该目录。
+没有创建过的目录表示本次没有客户端发布记录；不能把其他未知目录当成已备份。
+
+备份通过 `.catalog.lock` 获取共享 POSIX record lock (`lockf`)，与 Linux Java
+`FileChannel.lock()` 的独占写锁互斥；不能改用 `flock` 代替。锁覆盖已提交元数据及包的复制，
+不创建或改写源目录的锁文件。`release.json` 原始字节、包大小、实际 SHA-256、预期摘要及 UUID
+关系一起校验。已上传的草稿、已发布及已撤回软件包均保留；商店链接版本只需元数据。
+已发布安装包缺失、大小或摘要不符会使整次备份失败，旧成功指针与恢复点保留。
+`.upload-*.tmp`、`.metadata-*.tmp` 不属于已提交发布；元数据尚未确认上传的草稿恢复后继续要求
+重新上传，不把中断后残留的二进制提升为已上传包。符号链接、硬链接、路径越界及异常目录均拒绝。
+
+受控安装必须使用同一个冻结提交的以下三个主机组件，先核对摘要与实际安装状态，配套模块先写、
+`paired_internal_backup.py` 最后切换；安装过程中持有现行 `.backup.lock`，避免作业读到半套组件：
+
+- `paired_internal_backup.py`
+- `market_state_backup.py`（包括已有行情状态扩展及共享安全文件操作）
+- `client_release_state_backup.py`
+
+隔离恢复先核验整套备份，再恢复到新的空媒体目录。目标应用必须停止，且不得覆盖已有非空客户端目录：
+
+```bash
+python3 /usr/local/lib/uten-imp/paired_internal_backup.py \
+  --restore-client-releases /data/uten-imp-backups/paired/<set-id> \
+  --target-media-root /isolated/new-media \
+  --target-local-media-root /isolated/new-local-media
+```
+
+`configured` 范围另外要求 `--target-client-releases-root /isolated/new-client-releases`。
+恢复会重建空的 `.catalog.lock`，按新媒体目录的运行账号恢复 0700 目录、0600 文件；
+发布元数据和包保持逐字节相同。该操作只恢复客户端目录，不导入数据库、不启动应用，也不更改
+发布或撤回状态。只有完成真实备份、校验、隔离恢复及元数据/包对应关系复核，才能记录主机验收通过。

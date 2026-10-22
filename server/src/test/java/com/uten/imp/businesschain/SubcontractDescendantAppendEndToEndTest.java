@@ -59,9 +59,9 @@ class SubcontractDescendantAppendEndToEndTest {
                 .map(MaterialView::materialLineId).toList();
         List<UUID> originalLeaves=initial.flatMaterials().stream().filter(row->row.goodsId().equals(c.material()))
                 .map(MaterialView::materialLineId).toList();
-        h.writer.submit(c.analysis(),h.command(c,List.of(sourceInput(c,originalParents,"SUBCONTRACT",total,false))));
-        h.writer.submit(c.analysis(),h.command(c,List.of(sourceInput(c,originalLeaves,"BUY",total,false))));
-        var append=h.command(c,List.of(sourceInput(c,List.of(parent),"SUBCONTRACT","20",true)));
+        h.writer.submit(c.analysis(),h.command(c,List.of(sourceInput(originalParents,"SUBCONTRACT",total,false))));
+        h.writer.submit(c.analysis(),h.command(c,List.of(sourceInput(originalLeaves,"BUY",total,false))));
+        var append=h.command(c,List.of(sourceInput(List.of(parent),"SUBCONTRACT","20",true)));
         var added=h.writer.submit(c.analysis(),append);
         assertTrue(h.writer.submit(c.analysis(),append).replayed());
         var after=added.analysis();
@@ -75,7 +75,7 @@ class SubcontractDescendantAppendEndToEndTest {
                 .findFirst().orElseThrow();
         amount("120",originalParent.aggregatePreparation().orderedQty());
         assertTrue(originalParent.aggregatePreparation().orderedQtyExact());
-        var supply=h.command(c,List.of(sourceInput(c,List.of(leaf),"BUY","20",false)));
+        var supply=h.command(c,List.of(sourceInput(List.of(leaf),"BUY","20",false)));
         h.writer.submit(c.analysis(),supply);
         assertTrue(h.writer.submit(c.analysis(),supply).replayed());
         var done=h.analyses.detail(c.analysis()).flatMaterials().stream()
@@ -88,7 +88,7 @@ class SubcontractDescendantAppendEndToEndTest {
                 """,BigDecimal.class,c.analysis(),c.material()));
     }
 
-    private GroupInput sourceInput(AggregateMaterialOrderEndToEndTest.Case c,List<UUID> ids,
+    private GroupInput sourceInput(List<UUID> ids,
                                   String route,String qty,boolean extra) {
         var value=new BigDecimal(qty);
         Map<UUID,BigDecimal> proof=new java.util.LinkedHashMap<>();

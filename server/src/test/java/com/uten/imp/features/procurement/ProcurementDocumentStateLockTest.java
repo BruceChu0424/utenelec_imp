@@ -63,7 +63,8 @@ class ProcurementDocumentStateLockTest {
                     "lockFinanceReconfirmationSnapshot", "changeQtyInternal", "applyFinanceApproval", "reverse"),
             service("subcontract/receipt/SubcontractReceiptService.java", "SubcontractReceipt", "requireReceiptForUpdate"),
             service("subcontract/ret/SubcontractReturnService.java", "SubcontractReturn", "requireReturnForUpdate"),
-            service("subcontract/material_issue/SubcontractMaterialIssueService.java", "SubcontractMaterialIssue", "requireIssueForUpdate"),
+            financeOrderService("subcontract/material_issue/SubcontractMaterialIssueService.java",
+                    "SubcontractMaterialIssue", "requireIssueForUpdate", "update", "delete", "approveSelected", "reverse"),
             service("subcontract/material_return/SubcontractMaterialReturnService.java", "SubcontractMaterialReturn", "requireReturnForUpdate"),
             service("subcontract/waste/SubcontractWasteService.java", "SubcontractWaste", "requireWasteForUpdate"));
 

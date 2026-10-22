@@ -431,7 +431,7 @@ public class WorkshopMaterialRequisitionService {
                 JOIN warehouses leaf ON leaf.id=posting.leaf_warehouse_id
                 JOIN workshop_material_periods period ON period.id=posting.period_id
                 WHERE posting.line_id=:line
-                """ + (filter.isEmpty()?"":" AND " + filter) + """
+                """ + (filter.isEmpty()?"":" AND " + filter) + "\n" + """
                 GROUP BY document.id,document.bill_no,posting.leaf_warehouse_id,leaf.name,posting.period_id,period.period_no
                 ORDER BY period.period_no,document.bill_no
                 """,parameters,(rs,index)->new RequisitionDocumentView(rs.getObject(1,UUID.class),rs.getString(2),

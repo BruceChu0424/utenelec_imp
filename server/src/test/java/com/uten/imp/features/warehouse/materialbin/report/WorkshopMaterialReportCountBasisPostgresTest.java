@@ -4,6 +4,7 @@ import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialPermissions;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialScope;
 import com.uten.imp.features.warehouse.materialbin.WorkshopBinService;
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.support.MigratedProjectionSchema;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -50,8 +51,6 @@ class WorkshopMaterialReportCountBasisPostgresTest {
         db.execute("""
                 DROP SCHEMA public CASCADE; CREATE SCHEMA public;
                 CREATE TABLE workshop_material_settings(periodic_bin_warehouse_id uuid, workshop_department_id uuid);
-                CREATE TABLE workshop_bins(bin_warehouse_id uuid PRIMARY KEY, workshop_department_id uuid);
-                CREATE TABLE warehouses(id uuid PRIMARY KEY, is_deleted boolean DEFAULT false);
                 CREATE TABLE workshop_material_periods(id uuid PRIMARY KEY, bin_warehouse_id uuid, period_no int);
                 CREATE TABLE workshop_material_counts(id uuid PRIMARY KEY, period_id uuid, status text);
                 CREATE TABLE workshop_material_count_lines(count_id uuid, goods_id uuid, color_id uuid,
@@ -86,6 +85,7 @@ class WorkshopMaterialReportCountBasisPostgresTest {
                     SELECT bin_warehouse_id, period_id, period_no, start_date, end_date, goods_id, color_id, waste_rate
                     FROM v_workshop_material_period_report;
                 """);
+        MigratedProjectionSchema.createCurrentTables(db, "warehouses", "workshop_bins");
         // 使用当前权威换算函数，不在夹具中复制一套因子。
         try (var resource = getClass().getResourceAsStream("/db/migration/V743__warehouse_weight_ledger_and_learning.sql")) {
             String migration = new String(resource.readAllBytes(), StandardCharsets.UTF_8);
@@ -93,7 +93,7 @@ class WorkshopMaterialReportCountBasisPostgresTest {
             db.execute(migration.substring(start, migration.indexOf("$$;", start) + 3));
         }
         db.update("INSERT INTO workshop_material_settings VALUES (?, ?)", bin, workshop);
-        db.update("INSERT INTO workshop_bins VALUES (?, ?)", bin, workshop);
+        db.update("INSERT INTO workshop_bins(bin_warehouse_id,workshop_department_id) VALUES (?, ?)", bin, workshop);
         db.update("INSERT INTO warehouses(id) VALUES (?)", bin);
         db.update("INSERT INTO goods VALUES (?, 'PP', '颗粒'), (?, 'P1', '外壳')", goods, product);
         db.update("INSERT INTO product_reference VALUES (?)", product);
@@ -127,7 +127,7 @@ class WorkshopMaterialReportCountBasisPostgresTest {
 
     @Test void newlyOpenedBinWithNoPeriodicActivityReturnsAnEmptyReport() {
         UUID openedOnly = UUID.randomUUID(), openedWorkshop = UUID.randomUUID();
-        db.update("INSERT INTO workshop_bins VALUES (?, ?)", openedOnly, openedWorkshop);
+        db.update("INSERT INTO workshop_bins(bin_warehouse_id,workshop_department_id) VALUES (?, ?)", openedOnly, openedWorkshop);
         db.update("INSERT INTO warehouses(id) VALUES (?)", openedOnly);
         assertThat(reports.binUsage(openedOnly, null, null)).isEmpty();
         assertThat(reports.productUsage(openedOnly, null, null)).isEmpty();

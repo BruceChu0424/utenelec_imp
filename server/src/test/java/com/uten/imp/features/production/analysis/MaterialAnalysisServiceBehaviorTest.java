@@ -30,11 +30,13 @@ import java.util.UUID;
 
 import static com.uten.imp.features.production.analysis.MaterialAnalysisContracts.*;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTimeout;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -599,6 +601,29 @@ class MaterialAnalysisServiceBehaviorTest {
         directBomSnapshotCheck("START", "BUY");
     }
 
+    @Test
+    void disabledRootOrRemovedDeepComponentRejectsNewPlansBeforeReadingCurrentBom() {
+        for (String kind : List.of("SOURCE_DISABLED", "STALE_BOM")) {
+            EntityManager em = mock(EntityManager.class);
+            MaterialAnalysisService service = service(em, mock(ProductionDocumentAccessPolicy.class));
+            UUID analysisId = UUID.randomUUID(), itemId = UUID.randomUUID();
+            Query sources = query(Collections.singletonList(sourceRow(itemId, UUID.randomUUID(), UUID.randomUUID())));
+            Query blocked = query(Collections.singletonList(new Object[]{itemId, kind, "RM-7", "原材料"}));
+            when(em.createNativeQuery(anyString())).thenAnswer(call -> {
+                String sql = call.getArgument(0);
+                if (sql.contains("FOR SHARE OF goods NOWAIT")) return query(Collections.emptyList());
+                if (sql.contains("goods_lifecycle_issues AS")) return blocked;
+                if (sql.contains("FROM production_material_analysis_items ai")) return sources;
+                throw new AssertionError("Blocked planning must not expand or rewrite BOM: " + sql);
+            });
+
+            assertThatThrownBy(() -> service.requireCurrentBomSnapshot(analysisId, Set.of(itemId)))
+                    .isInstanceOf(ApiException.class).hasMessageContaining("RM-7 原材料")
+                    .hasMessageContaining(kind.equals("SOURCE_DISABLED") ? "不能新增安排" : "请先刷新物料分析");
+            verify(blocked, never()).executeUpdate();
+        }
+    }
+
     /**
      * 现时 BOM：设计用量 2、真实用量 1.5(已学到)；库内快照只存结构列与第一层换算率，
      * [storedStage]/[storedSuggestion] 决定快照与现时是否同一结构。
@@ -630,6 +655,12 @@ class MaterialAnalysisServiceBehaviorTest {
         }));
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String statement = invocation.getArgument(0);
+            if (statement.contains("FOR SHARE OF goods NOWAIT")) {
+                return query(Collections.emptyList());
+            }
+            if (statement.contains("goods_lifecycle_issues AS")) {
+                return query(Collections.emptyList());
+            }
             if (statement.contains("FROM production_material_analysis_items ai")) {
                 return sources;
             }

@@ -95,6 +95,9 @@ public class GoodsListItem {
     @lombok.Setter
     private boolean writable;
 
+    @lombok.Setter
+    private boolean hasBom;
+
     /** Existing projections can keep constructing the summary without search-only metadata. */
     public GoodsListItem(
             UUID id, String code, String name,
@@ -116,6 +119,6 @@ public class GoodsListItem {
                 rearInsertCode, paper, colorId, unitId, colorLegacyId, unitLegacyId, colorName,
                 unitName, sourceType, categoryId, autoCreated, stockQty, stockPlace, minOrderQty,
                 orderMultipleQty, owningWarehouseId, owningWarehouseName, owningWorkshopId, owningWorkshopName, version, issueMethod,
-                periodicCostBasis, bulkPackageQty, recycledMaterial, nameEn, nameEnSource, null, null, null, false);
+                periodicCostBasis, bulkPackageQty, recycledMaterial, nameEn, nameEnSource, null, null, null, false, false);
     }
 }

@@ -11,10 +11,14 @@ import java.util.UUID;
 @Getter
 @AllArgsConstructor
 public class ColorListItem {
+    public ColorListItem(UUID id, String code, String name, String status, Integer legacyId) {
+        this(id, code, name, status, legacyId, null);
+    }
     private UUID id;
     private String code;
     private String name;
     private String status;
     /** 仅旧库迁移溯源；在线新建为 null，关系身份始终使用 {@link #id}。 */
     private Integer legacyId;
+    private String remark;
 }

@@ -124,9 +124,10 @@ public class WorkshopMaterialRequisitionService {
         });
     }
 
-    /** 仓库按申请发料 (领料单) 或点收退回 (退回单); 办完即结单。 */
+    /** Selected physical lines finish independently; unselected lines remain pending on the original requisition. */
     @Transactional
     public RequisitionView fulfil(UUID requisitionId, FulfilRequest request) {
+        requireRequisitionVisible(requisitionId);
         // 未带首次设置时保持旧 JSON 指纹形状, 已办理的旧客户端重放仍能返回原回执。
         Object fingerprint = request.materialSetup() == null || request.materialSetup().isEmpty()
                 ? new LegacyFulfilRequest(request.expectedVersion(), request.lines(), request.supplement(), request.idempotencyKey())
@@ -142,8 +143,10 @@ public class WorkshopMaterialRequisitionService {
                             : bins.enabledSettingsForUpdate(header.workshop());
                     requireSameBin(settings, header);
                     execute(header, settings, request.lines(), request.supplement(), () -> prepareFulfilMaterials(header, request));
-                    notices.requisitionResolved(header.id());
-                    return new Outcome<>(header.id(), view(header.id()));
+                    RequisitionView result = view(header.id());
+                    if ("DONE".equals(result.status())) notices.requisitionResolved(header.id());
+                    else notices.requisitionPending(header.id());
+                    return new Outcome<>(header.id(), result);
                 });
     }
 
@@ -293,6 +296,7 @@ public class WorkshopMaterialRequisitionService {
     /** 作废还没办的申请 (车间撤回或仓库拒办)。 */
     @Transactional
     public RequisitionView cancel(UUID requisitionId, CancelRequest request) {
+        requireRequisitionVisible(requisitionId);
         String reason = request.reason() == null ? "" : request.reason().strip();
         if (reason.length() < 2 || reason.length() > 200) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请写明作废原因 (2 到 200 个字)");
@@ -350,13 +354,14 @@ public class WorkshopMaterialRequisitionService {
                                               int page, int size, TaskView view, String keyword) {
         MapSqlParameterSource params = new MapSqlParameterSource();
         StringBuilder where = new StringBuilder(scope.predicate("requisition.workshop_department_id", params));
+        String lineStatus = "(CASE WHEN line.fulfilled_qty>0 THEN 'DONE' ELSE requisition.status END)";
         where.append(view == TaskView.HISTORY
-                ? " AND requisition.status IN ('DONE','CANCELLED')" : " AND requisition.status = 'PENDING'");
+                ? " AND " + lineStatus + " IN ('DONE','CANCELLED')" : " AND " + lineStatus + " = 'PENDING'");
         if (status != null && !status.isBlank()) {
             if (!Set.of("PENDING", "DONE", "CANCELLED").contains(status)) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "单据状态不对");
             }
-            where.append(" AND requisition.status = :status");
+            where.append(" AND ").append(lineStatus).append(" = :status");
             params.addValue("status", status);
         }
         if (kind != null && !kind.isBlank()) {
@@ -368,6 +373,12 @@ public class WorkshopMaterialRequisitionService {
             params.addValue("workshop", workshopId);
         }
         String warehouseFilter = scope.requisitionWarehouseFilter(warehouseScope, params);
+        if (view == TaskView.HISTORY) {
+            String postedFilter=scope.requisitionPhysicalWarehouseFilter(warehouseScope,params,"history_posting.leaf_warehouse_id");
+            if (!postedFilter.isEmpty()) warehouseFilter="((line.fulfilled_qty=0 AND " + warehouseFilter + ") OR "
+                    + "EXISTS(SELECT 1 FROM workshop_material_requisition_postings history_posting"
+                    + " WHERE history_posting.line_id=line.id AND " + postedFilter + "))";
+        }
         if (!warehouseFilter.isEmpty()) where.append(" AND ").append(warehouseFilter);
         params.addValue("keyword", com.uten.imp.common.util.KeywordSearch.phrase(keyword));
         String from = """
@@ -397,11 +408,39 @@ public class WorkshopMaterialRequisitionService {
             RequisitionView header = headers.get(identity.requisitionId());
             if (header == null) continue;
             header.lines().stream().filter(line -> line.id().equals(identity.lineId())).findFirst()
-                    .map(header::withLine).ifPresent(rows::add);
+                    .map(line -> view == TaskView.HISTORY && line.fulfilledQty().signum()>0
+                            ? historyLine(header,line,warehouseScope) : header.withLine(line,List.of()))
+                    .ifPresent(rows::add);
         }
         long count = total == null ? 0 : total;
         int pages = (int) ((count + pageable.getPageSize() - 1) / pageable.getPageSize());
         return new PageResponse<>(rows, pageable.getPageNumber() + 1, pageable.getPageSize(), count, pages);
+    }
+
+    /** The legacy request list aggregates one original line, with only its visible real movement documents. */
+    private RequisitionView historyLine(RequisitionView header, RequisitionLineView line,
+                                         WarehouseTaskScopePort.WarehouseTaskScope warehouseScope) {
+        var parameters=new MapSqlParameterSource("line",line.id());
+        String filter=scope.requisitionPhysicalWarehouseFilter(warehouseScope,parameters,"posting.leaf_warehouse_id");
+        List<RequisitionDocumentView> documents=db.query("""
+                SELECT document.id,document.bill_no,posting.leaf_warehouse_id,leaf.name,posting.period_id,
+                       period.period_no,bool_or(posting.is_supplement),sum(posting.qty)
+                FROM workshop_material_requisition_postings posting
+                JOIN stock_document_items item ON item.id=posting.stock_document_item_id
+                JOIN stock_documents document ON document.id=item.doc_id
+                JOIN warehouses leaf ON leaf.id=posting.leaf_warehouse_id
+                JOIN workshop_material_periods period ON period.id=posting.period_id
+                WHERE posting.line_id=:line
+                """ + (filter.isEmpty()?"":" AND " + filter) + """
+                GROUP BY document.id,document.bill_no,posting.leaf_warehouse_id,leaf.name,posting.period_id,period.period_no
+                ORDER BY period.period_no,document.bill_no
+                """,parameters,(rs,index)->new RequisitionDocumentView(rs.getObject(1,UUID.class),rs.getString(2),
+                    rs.getObject(3,UUID.class),rs.getString(4),rs.getObject(5,UUID.class),rs.getInt(6),rs.getBoolean(7),rs.getBigDecimal(8)));
+        BigDecimal quantity=documents.stream().map(RequisitionDocumentView::qty).reduce(BigDecimal.ZERO,BigDecimal::add);
+        var visibleLine=new RequisitionLineView(line.id(),line.lineNo(),line.goodsId(),line.goodsCode(),line.goodsName(),
+                line.colorId(),line.colorName(),line.unitId(),line.unitName(),line.requestedQty(),line.requestedBags(),
+                line.bulkPackageQty(),line.suggestedLeafWarehouseId(),line.suggestedLeafWarehouseName(),quantity,line.issueMethod());
+        return header.withLine(visibleLine,documents);
     }
 
     /** 直接发料的领料人默认该车间上一次的领料人。 */
@@ -431,6 +470,10 @@ public class WorkshopMaterialRequisitionService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请至少办理一行");
         }
         Map<UUID, Line> lines = lines(header.id());
+        Set<UUID> completed = new LinkedHashSet<>(db.queryForList("""
+                SELECT id FROM workshop_material_requisition_lines
+                WHERE requisition_id=:id AND fulfilled_qty>0
+                """, Map.of("id", header.id()), UUID.class));
         LocalDate today = BusinessTime.today();
         Period period;
         String supplementReason = null;
@@ -466,6 +509,9 @@ public class WorkshopMaterialRequisitionService {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "办理的明细不属于这张单据, 请刷新后重试");
             }
             Line line = lines.get(fulfil.lineId());
+            if (completed.contains(line.id())) {
+                throw new ApiException(ErrorCode.CONFLICT, "所选明细已经办理，请刷新后重试");
+            }
             BigDecimal qty = requirePositive(fulfil.qty(), "数量");
             UUID leaf = fulfil.leafWarehouseId() != null ? fulfil.leafWarehouseId() : line.suggestedLeaf();
             if (leaf == null) {
@@ -497,11 +543,15 @@ public class WorkshopMaterialRequisitionService {
                     group.getKey(), header.id(), header.workshop(), receiver, header.requestNo(), transfer,
                     period.id(), today, supplement != null, supplementReason));
         }
+        boolean complete = completed.size() + byLeaf.values().stream().flatMap(group -> group.keySet().stream()).distinct().count()
+                == lines.size();
         db.update("""
                 UPDATE workshop_material_requisitions
-                SET status = 'DONE', done_by = :actor, done_at = now(), row_version = row_version + 1
+                SET status = :status, done_by = CASE WHEN :complete THEN CAST(:actor AS uuid) ELSE NULL END,
+                    done_at = CASE WHEN :complete THEN now() ELSE NULL END, row_version = row_version + 1
                 WHERE id = :id
-                """, new MapSqlParameterSource("actor", currentUser.requireId()).addValue("id", header.id()));
+                """, new MapSqlParameterSource("actor", currentUser.requireId()).addValue("id", header.id())
+                .addValue("complete",complete).addValue("status",complete?"DONE":"PENDING"));
         if (supplement != null && "COUNTED".equals(period.status())) {
             counts.applySupplement(period, materials);
         }
@@ -562,6 +612,16 @@ public class WorkshopMaterialRequisitionService {
     }
 
     // ------------------------------------------------------------------ 读取
+
+    /** Replay may retain a completed/versioned result, never an old workshop grant. */
+    private void requireRequisitionVisible(UUID id) {
+        if (id == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "请选择领料单或退回单");
+        List<UUID> workshops = db.queryForList("""
+                SELECT workshop_department_id FROM workshop_material_requisitions WHERE id = :id
+                """, Map.of("id", id), UUID.class);
+        if (workshops.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "领料单或退回单不存在");
+        scope.requireWorkshop(workshops.getFirst());
+    }
 
     private Header lockHeader(UUID id) {
         List<Map<String, Object>> rows = db.queryForList("""

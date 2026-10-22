@@ -1,6 +1,7 @@
 package com.uten.imp.features.production.analysis;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.support.MigratedProjectionSchema;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.AfterAll;
@@ -10,6 +11,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.mockito.ArgumentCaptor;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
@@ -34,7 +37,8 @@ import static org.mockito.Mockito.when;
 
 /**
  * ADR-143 §4.5 per-material subcontract draw coverage. Runs the real projection SQL against
- * minimal relations holding only the columns it reads; the two SQL helpers are the migrated
+ * isolated query projections; aggregate table columns follow the real migrated catalog.
+ * The two SQL helpers are the migrated
  * definitions (fn_subcontract_order_source_share from V503, fn_subcontract_draw_f per V798).
  * Aggregate public ownership reads V712 batch/event identities and frozen intent, not fake
  * private allocations; these relations must exist even when a case only uses private supply.
@@ -65,13 +69,6 @@ class SubcontractComponentCustodyProjectionPostgresTest {
                     operation_type text, status text, external_document_type text, requested_qty numeric,
                     public_surplus_qty numeric NOT NULL DEFAULT 0, public_surplus_external_item_id uuid,
                     goods_id uuid, color_id uuid, unit_id uuid);
-                CREATE TABLE preplan_aggregate_batches(id uuid PRIMARY KEY, analysis_id uuid NOT NULL,
-                    action_id uuid NOT NULL UNIQUE REFERENCES preplan_supply_actions(id));
-                CREATE TABLE preplan_aggregate_batch_events(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-                    batch_id uuid NOT NULL REFERENCES preplan_aggregate_batches(id),
-                    event_type text NOT NULL CHECK(event_type IN('CREATE','APPEND','ALIAS_APPEND','CANCEL')),
-                    public_delta numeric(18,4) NOT NULL DEFAULT 0,
-                    intent_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb CHECK(jsonb_typeof(intent_snapshot)='object'));
                 CREATE TABLE preplan_supply_action_allocations(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
                     action_id uuid, analysis_id uuid, analysis_material_id uuid, allocated_qty numeric,
                     external_item_id uuid);
@@ -122,6 +119,24 @@ class SubcontractComponentCustodyProjectionPostgresTest {
                             ELSE GREATEST(LEAST(b.alloc_base, COALESCE(p_total_base, 0) - b.prefix_base), 0) END
                         FROM bounds b WHERE b.application_item_id = p_application_item_id), 0);
                 $$;
+                """);
+        MigratedProjectionSchema.createCurrentTables(new JdbcTemplate(new SingleConnectionDataSource(connection, true)),
+                "preplan_aggregate_batches", "preplan_aggregate_batch_events");
+        // Keep the original local integrity guards in addition to the full
+        // migrated column shapes and authoritative primary/unique constraints.
+        execute("""
+                ALTER TABLE preplan_aggregate_batches
+                    ALTER COLUMN analysis_id SET NOT NULL,
+                    ALTER COLUMN action_id SET NOT NULL,
+                    ADD FOREIGN KEY(action_id) REFERENCES preplan_supply_actions(id);
+                ALTER TABLE preplan_aggregate_batch_events
+                    ALTER COLUMN batch_id SET NOT NULL,
+                    ALTER COLUMN event_type SET NOT NULL,
+                    ALTER COLUMN public_delta SET NOT NULL,
+                    ALTER COLUMN intent_snapshot SET NOT NULL,
+                    ADD FOREIGN KEY(batch_id) REFERENCES preplan_aggregate_batches(id),
+                    ADD CHECK(event_type IN('CREATE','APPEND','ALIAS_APPEND','CANCEL')),
+                    ADD CHECK(jsonb_typeof(intent_snapshot)='object');
                 """);
     }
 

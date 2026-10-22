@@ -21,6 +21,29 @@ class ProductionDrawDiscoveryBatchContractTest {
     private static final UUID LEAF_A=id(20), LEAF_B=id(21);
     private static final String KEY="discovery-batch-contract";
 
+    @Test void suggestionScopeIsRetainedAndCannotBeRemovedOnSameKeyReplay() {
+        var material=material(GOODS_A,null,LEAF_A,"2.5");
+        var whole=new Request(KEY,List.of(),List.of(new Discovery(REQUEST_A,7L,List.of(material))),null);
+        var scoped=new Request(KEY,List.of(),List.of(new Discovery(REQUEST_A,7L,List.of(material),null,List.of("suggestion-1"))),null);
+        var normalized=ProductionDrawDiscoveryBatchService.normalize(scoped);
+        assertEquals(List.of("suggestion-1"),normalized.discoveries().getFirst().selectedSuggestionKeys());
+        assertNotEquals(hash(whole),hash(scoped));
+        rejected(new Request(KEY,List.of(),List.of(new Discovery(REQUEST_A,7L,List.of(material),null,List.of("suggestion-1","suggestion-1"))),null));
+    }
+
+    @Test void selectedExistingPhysicalItemsArePartOfTheFrozenMixedIntent() {
+        var discovery=discovery(REQUEST_A,7,material(GOODS_A,null,LEAF_A,"2.5"));
+        var whole=new Request(KEY,List.of(DRAW_A),List.of(discovery),null);
+        var first=new Request(KEY,List.of(DRAW_A),List.of(discovery),null,null,List.of(id(30)));
+        var second=new Request(KEY,List.of(DRAW_A),List.of(discovery),null,null,List.of(id(31)));
+        assertNotEquals(hash(whole),hash(first));
+        assertNotEquals(hash(first),hash(second));
+        assertEquals(List.of(id(30)),ProductionDrawDiscoveryBatchService.normalize(first).itemIds());
+        rejected(new Request(KEY,List.of(),List.of(discovery),null,null,List.of(id(30))));
+        rejected(new Request(KEY,List.of(DRAW_A),List.of(discovery),null,null,List.of()));
+        rejected(new Request(KEY,List.of(DRAW_A),List.of(discovery),null,null,List.of(id(30),id(30))));
+    }
+
     @Test void reorderingTasksAndMaterialRowsOrChangingDecimalScaleKeepsTheSameIntent() {
         Request first=new Request(KEY,List.of(DRAW_B,DRAW_A),List.of(
                 discovery(REQUEST_B,8,material(GOODS_B,COLOR,LEAF_A,"3.0000")),

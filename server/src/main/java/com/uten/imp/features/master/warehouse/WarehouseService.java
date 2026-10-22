@@ -299,7 +299,10 @@ public class WarehouseService {
         }
         Warehouse w = new Warehouse();
         apply(req, w);
-        w.setCode(masterCodeService.nextCode(CODE_PREFIX));
+        if ("001".equals(req.getCode() == null ? null : req.getCode().strip()) && rules.rootId() != null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "编号001由主仓专用，普通子仓不能使用");
+        }
+        w.setCode(masterCodeService.resolveMutableCode(CODE_PREFIX, req.getCode(), null, null));
         if (w.getStatus() == null) w.setStatus("使用");
         repo.save(w);
         em.flush();
@@ -324,9 +327,15 @@ public class WarehouseService {
         if (w.isLineSide()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, LINE_SIDE_READ_ONLY);
         }
+        if (req.getCode() != null && !req.getCode().isBlank()
+                && !req.getCode().strip().equalsIgnoreCase(w.getCode())
+                && (w.getId().equals(rules.rootId()) || "001".equals(req.getCode().strip()))) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "主仓编号由仓库层级规则保护，不能修改");
+        }
         requireCanRetire(w, req.getStatus());
         requireCanLeaveSelection(w, req);
         apply(req, w);
+        w.setCode(masterCodeService.resolveMutableCode(CODE_PREFIX, req.getCode(), w.getId(), w.getCode()));
         repo.save(w);
         em.flush();
         syncLegacyWorkshopLink(w);

@@ -4,6 +4,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.goods.GoodsBomBatchMaintenanceService;
 import com.uten.imp.features.master.goods.GoodsBomService;
+import com.uten.imp.features.master.goods.GoodsBomPasteService;
 import com.uten.imp.features.master.goods.dto.*;
 import com.uten.imp.security.AuthUser;
 import org.junit.jupiter.api.*;
@@ -42,6 +43,7 @@ class GoodsBomBatchMaintenanceEndToEndTest {
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry){FullChainEndToEndTest.registerDataSource(registry);}
     @Autowired GoodsBomBatchMaintenanceService batches;
     @Autowired GoodsBomService bom;
+    @Autowired GoodsBomPasteService paste;
     @Autowired JdbcTemplate db;
     UUID actor,employee,session,unit;
 
@@ -88,6 +90,40 @@ class GoodsBomBatchMaintenanceEndToEndTest {
         assertTrue(deleted(direct));assertFalse(deleted(nested));assertEquals(1,bom.list(sub).size());
         assertEquals("禁用",db.queryForObject("SELECT status FROM goods WHERE id=?",String.class,c));
         assertEquals("goods:bom:delete,goods:bom:edit",lastRequiredPermissions());
+    }
+
+    @Test void disabledComponentCannotBeNewlySelectedOrForgedButAnUnchangedVisibleSourceCanBeCopied(){
+        UUID source=goods("copy-source"),target=goods("copy-target"),other=goods("copy-other"),component=goods("disabled");
+        UUID original=edge(source,component,"0.11",1);
+        db.update("UPDATE goods SET status='禁用' WHERE id=?",component);
+        String before=state();
+        assertThrows(ApiException.class,()->bom.create(target,line(component,"0.11")));
+        assertThrows(ApiException.class,()->batches.preview(add(List.of(target),line(component,"0.11"))));
+        assertThrows(ApiException.class,()->paste.paste(new BomPasteRequest(BomPasteRequest.Mode.APPEND,
+                List.of(new BomPasteRequest.Target(target,null)),List.of(line(component,"0.11")))));
+        var invented=line(component,"0.11");invented.setCopiedFromBomItemId(UUID.randomUUID());
+        assertThrows(ApiException.class,()->paste.paste(new BomPasteRequest(BomPasteRequest.Mode.APPEND,
+                List.of(new BomPasteRequest.Target(target,null)),List.of(invented))));
+        assertEquals(before,state());
+        var copy=line(component,"0.11");copy.setCopiedFromBomItemId(original);
+        paste.paste(new BomPasteRequest(BomPasteRequest.Mode.APPEND,
+                List.of(new BomPasteRequest.Target(target,null)),List.of(copy)));
+        assertEquals(0,new BigDecimal("0.11").compareTo(bom.list(target).getFirst().getQty()));
+        db.update("UPDATE goods_bom_items SET qty=.12 WHERE id=?",original);
+        assertThrows(ApiException.class,()->paste.paste(new BomPasteRequest(BomPasteRequest.Mode.APPEND,
+                List.of(new BomPasteRequest.Target(other,null)),List.of(copy))));
+        assertTrue(bom.list(other).isEmpty());
+    }
+
+    @Test void overwriteRetainsAnExistingDisabledComponentWithoutCreatingANewEdge(){
+        UUID target=goods("disabled-retain"),component=goods("disabled-retained-component");
+        UUID original=edge(target,component,"7",1);
+        db.update("UPDATE goods SET status='禁用' WHERE id=?",component);
+        var preview=batches.preview(new BomBatchMaintenanceRequest(OVERWRITE,List.of(target),List.of(line(component,"7")),null));
+        assertEquals(0,preview.added());
+        batches.commit(confirm(preview));
+        assertEquals(original,bom.list(target).getFirst().getId());
+        assertFalse(deleted(original));
     }
 
     @Test void overwriteIsSingleTargetPreservesUnchangedIdentityAndReportsActualDifferences(){

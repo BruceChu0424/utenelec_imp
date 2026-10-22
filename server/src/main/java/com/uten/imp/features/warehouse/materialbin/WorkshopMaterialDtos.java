@@ -191,9 +191,14 @@ public final class WorkshopMaterialDtos {
                                     List<String> allowedActions) {
         /** List rows keep one real material; detail and commands retain the original requisition. */
         public RequisitionView withLine(RequisitionLineView line) {
-            return new RequisitionView(id, requestNo, kind, origin, status, workshopDepartmentId, workshopName,
+            return withLine(line, documents);
+        }
+        public RequisitionView withLine(RequisitionLineView line, List<RequisitionDocumentView> lineDocuments) {
+            boolean handled = line.fulfilledQty()!=null && line.fulfilledQty().signum()>0;
+            return new RequisitionView(id, requestNo, kind, origin, handled?"DONE":status, workshopDepartmentId, workshopName,
                     binWarehouseId, binWarehouseName, receiverEmployeeId, receiverName, requestedByName, requestedAt,
-                    doneByName, doneAt, cancelReason, remark, rowVersion, List.of(line), documents, period, allowedActions);
+                    doneByName, doneAt, cancelReason, remark, rowVersion, List.of(line), lineDocuments, period,
+                    handled?List.of():allowedActions);
         }
     }
 

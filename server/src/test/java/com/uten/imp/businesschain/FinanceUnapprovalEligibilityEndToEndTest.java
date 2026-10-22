@@ -27,7 +27,13 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.TestContext;
+import org.springframework.test.context.TestExecutionListeners;
+import org.springframework.test.context.support.AbstractTestExecutionListener;
+import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
 import org.springframework.test.util.ReflectionTestUtils;
+import com.uten.imp.support.MigratedSchemaBaseline;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -44,8 +50,30 @@ import static org.assertj.core.api.Assertions.*;
         "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789",
         "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
         "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!"})
+@DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
+@TestExecutionListeners(listeners=FinanceUnapprovalEligibilityEndToEndTest.Cleanup.class,
+        mergeMode=TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class FinanceUnapprovalEligibilityEndToEndTest {
-    @DynamicPropertySource static void database(DynamicPropertyRegistry registry) { FullChainEndToEndTest.registerDataSource(registry); }
+    // This suite intentionally leaves confirmed and closed-period documents intact.
+    // Whole-period GL regeneration in other suites must see its own business facts;
+    // the production guard against rebuilding confirmed vouchers remains enforced.
+    private static MigratedSchemaBaseline.ScopedDatabase database;
+    @DynamicPropertySource static void database(DynamicPropertyRegistry registry) throws Exception {
+        database=MigratedSchemaBaseline.openDatabase("finance_unapproval_eligibility");
+        registry.add("spring.datasource.url",database::getJdbcUrl);
+        registry.add("spring.datasource.username",database::getUsername);
+        registry.add("spring.datasource.password",database::getPassword);
+        try {
+            var attachments=java.nio.file.Files.createTempDirectory("uten-finance-unapproval-attachments-");
+            registry.add("uten.storage.local-dir",attachments::toString);
+        } catch (java.io.IOException failure) {
+            throw new java.io.UncheckedIOException(failure);
+        }
+    }
+    static class Cleanup extends AbstractTestExecutionListener {
+        @Override public int getOrder() { return new DirtiesContextTestExecutionListener().getOrder()-1; }
+        @Override public void afterTestClass(TestContext ignored) throws Exception { if(database!=null)database.close(); }
+    }
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
     @Autowired FinanceReceiptService receipts;

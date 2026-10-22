@@ -1308,6 +1308,13 @@ public class MaterialAnalysisService {
         }
         // 新安排按所选产品及其来源父行校验；已有任务的实物进度另行刷新。
         requirePlanningSources(allSources, analysisItemIds);
+        var lifecycle = new MaterialAnalysisGoodsLifecycleReader(em);
+        lifecycle.lockSources(analysisId);
+        Map<UUID, String> lifecycleBlocks = planningBlockedReasons(allSources, lifecycle.blockedReasons(analysisId));
+        for (UUID itemId : analysisItemIds.stream().sorted().toList()) {
+            String reason = lifecycleBlocks.get(itemId);
+            if (reason != null) throw conflict(reason);
+        }
         List<SourceLine> roots = sources.values().stream()
                 .filter(source -> !SOURCE_MAKE_COMPONENT.equals(source.sourceType()))
                 .toList();
@@ -6111,6 +6118,7 @@ public class MaterialAnalysisService {
     }
 
     void requirePlanningSources(UUID analysisId, Set<UUID> selectedItemIds) {
+        new MaterialAnalysisGoodsLifecycleReader(em).lockSources(analysisId);
         var sources=loadSourceLines(analysisId, false,MaterialAnalysisIssuePreviewOverlay.NONE,selectedItemIds);
         requirePlanningSources(sources, selectedItemIds);
         Map<UUID,String> reasons=planningBlockedReasonsWithRetainedReceipts(analysisId,sources);
@@ -6118,11 +6126,18 @@ public class MaterialAnalysisService {
     }
 
     private Map<UUID,String> planningBlockedReasonsWithRetainedReceipts(UUID analysisId,List<SourceLine> sources) {
-        Map<UUID,String> reasons=new LinkedHashMap<>(planningBlockedReasons(sources));
+        var lifecycle = new MaterialAnalysisGoodsLifecycleReader(em);
+        // Supply, aggregate and adoption commands admit through this view too.
+        // Pure detail/preview transactions stay read-only and never take goods locks.
+        if (org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()
+                && !org.springframework.transaction.support.TransactionSynchronizationManager.isCurrentTransactionReadOnly()) {
+            lifecycle.lockSources(analysisId);
+        }
+        Map<UUID,String> reasons=new LinkedHashMap<>(lifecycle.blockedReasons(analysisId));
         for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT analysis_item_id,block_reason FROM fn_preplan_aggregate_cancelled_parent_receipt_blocks(:analysis)
                 """).setParameter("analysis",analysisId)))reasons.put(uuid(row[0]),string(row[1]));
-        return Map.copyOf(reasons);
+        return planningBlockedReasons(sources, reasons);
     }
 
     private static void requirePlanningSources(
@@ -6141,6 +6156,11 @@ public class MaterialAnalysisService {
 
     /** Resolve each source once, including nested make anchors, without recursive calls. */
     static Map<UUID, String> planningBlockedReasons(List<SourceLine> sources) {
+        return planningBlockedReasons(sources, Map.of());
+    }
+
+    /** Current master/BOM restrictions follow the same parent chain as source admission. */
+    static Map<UUID, String> planningBlockedReasons(List<SourceLine> sources, Map<UUID, String> currentBlocks) {
         Map<UUID, SourceLine> byId = sources.stream().collect(Collectors.toMap(
                 SourceLine::analysisItemId, source -> source));
         Map<UUID, String> blocked = new LinkedHashMap<>();
@@ -6160,7 +6180,8 @@ public class MaterialAnalysisService {
                     reason = "产品来源关联异常，请先核对父子关系";
                     break;
                 }
-                reason = current.planningBlockedReason();
+                reason = currentBlocks.get(id);
+                if (reason == null) reason = current.planningBlockedReason();
                 if (reason != null || current.parentAnalysisLineId() == null) break;
                 current = byId.get(current.parentAnalysisLineId());
                 if (current == null) {

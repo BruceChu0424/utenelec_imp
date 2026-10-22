@@ -16,7 +16,7 @@ final class WarehouseOutboundTaskCenterSql {
 
     private static final java.util.Set<String> ACTIVE_STATUSES = java.util.Set.of(
             "SALES_PENDING","SALES_LEGACY","SUBCONTRACT_PENDING","SUBCONTRACT_DRAFT",
-            "DRAW_PENDING","DRAW_PARTIAL","DRAW_DISCOVERY_PENDING","OTHER_DRAFT","FINISHED_DRAFT");
+            "DRAW_PENDING","DRAW_PARTIAL","DRAW_DISCOVERY_PENDING","DRAW_WORKSHOP_PENDING","OTHER_DRAFT","FINISHED_DRAFT");
     private static final String ACTIVE_STATUS_PREDICATE = "status IN ("
             + ACTIVE_STATUSES.stream().sorted().map(status -> "'" + status + "'")
                     .collect(java.util.stream.Collectors.joining(",")) + ")";
@@ -27,14 +27,27 @@ final class WarehouseOutboundTaskCenterSql {
     }
 
     record Access(boolean sales, boolean subcontractTasks, boolean subcontractHistory,
-                  boolean stock, boolean production, OwnerScope stockOwners) {}
+                  boolean stock, boolean production, OwnerScope stockOwners,
+                  WarehouseWorkshopMaterialTaskProjection.Scope workshop) {
+        Access(boolean sales, boolean subcontractTasks, boolean subcontractHistory,
+               boolean stock, boolean production, OwnerScope stockOwners) {
+            this(sales, subcontractTasks, subcontractHistory, stock, production, stockOwners,
+                    WarehouseWorkshopMaterialTaskProjection.Scope.NONE);
+        }
+    }
 
     record Plan(String cte, Map<String, Object> parameters, String orderBy) {
         String countSql() { return cte + " SELECT COUNT(*) FROM filtered"; }
         String rowsSql() {
             return cte + " " + projection() + " FROM filtered " + orderBy + " LIMIT :limit OFFSET :offset";
         }
-        String identitySql() { return cte + " " + projection() + " FROM filtered WHERE source_type=:rowSource AND record_type=:rowRecord AND id=:rowId ORDER BY line_no NULLS LAST,line_key LIMIT 1"; }
+        String identitySql() { return identitySql(false); }
+        String identitySql(boolean selectedLine) {
+            return cte + " " + projection() + " FROM filtered WHERE source_type=:rowSource AND record_type=:rowRecord AND id=:rowId"
+                    + (selectedLine ? " AND (line_key=:identityLineKey OR (record_type='WORKSHOP_REQUISITION'"
+                        + " AND split_part(line_key,'~',1)=:identityLineKey))" : "")
+                    + " ORDER BY line_no NULLS LAST,line_key LIMIT 1";
+        }
         private String projection() {
             return """
                     SELECT source_type,record_type,id,bill_no,source_doc_no,business_date,
@@ -65,6 +78,10 @@ final class WarehouseOutboundTaskCenterSql {
         String source = filter.source();
         Map<String, Object> parameters = new LinkedHashMap<>();
         List<String> branches = new ArrayList<>();
+        if (selected(source, "DRAW") && access.workshop().enabled()) {
+            branches.add(WarehouseWorkshopMaterialTaskProjection.outbound(access.workshop()));
+            parameters.putAll(access.workshop().parameters());
+        }
         if (selected(source, "SALES") && access.sales()) branches.add(sales(scope));
         if (selected(source, "SUBCONTRACT") && (access.subcontractTasks() || access.subcontractHistory())) {
             branches.add(subcontract(scope, access));
@@ -95,7 +112,6 @@ final class WarehouseOutboundTaskCenterSql {
                 parameters.put("ownDraftMaker", ownDraftMaker);
             }
         }
-        if (scope.active()) parameters.put("warehouseScope", scope.idsCsv());
         parameters.putAll(TaskKeywordSearch.parameters(filter.keyword()));
         parameters.put("billNo", filter.billNo());
         parameters.put("dateFrom", filter.dateFrom());
@@ -104,6 +120,7 @@ final class WarehouseOutboundTaskCenterSql {
         parameters.put("view", filter.view().name());
         String union = String.join("\nUNION ALL\n", branches);
         if (union.isEmpty()) throw new IllegalArgumentException("No authorized outbound source");
+        if (union.contains(":warehouseScope")) parameters.put("warehouseScope", scope.idsCsv());
         // Status facets omit only their own filter, while retaining source/owner/scope/search/date.
         String cte = """
                 WITH source_rows(source_type,record_type,id,bill_no,source_doc_no,business_date,

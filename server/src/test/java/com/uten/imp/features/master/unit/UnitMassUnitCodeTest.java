@@ -192,7 +192,7 @@ class UnitMassUnitCodeTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void listAndExportCarryTheMassUnit() {
+    void internalListRetainsRulesButPublicExportOnlyContainsBasicFields() {
         Unit piece = new Unit();
         piece.setCode("DW000001");
         piece.setName("个");
@@ -206,9 +206,32 @@ class UnitMassUnitCodeTest {
         assertThat(items).extracting(UnitListItem::getMassUnitCode).containsExactly("KG", null);
 
         ExportPayload payload = service().export(filter, 1000);
-        assertThat(payload.columns()).anySatisfy(column -> assertThat(column.label()).isEqualTo("重量单位"));
-        assertThat(payload.rows()).extracting(row -> row.get("massUnit")).containsExactly("千克", "");
-        assertThat(UnitService.massUnitDisplay("MASS", null)).isEqualTo("未指定");
+        assertThat(payload.columns()).extracting(column -> column.key()).containsExactly("code", "name", "status");
+        assertThat(payload.rows()).allSatisfy(row -> assertThat(row).doesNotContainKeys("dimension", "massUnit"));
+    }
+
+    @Test
+    void ordinaryNameAndCodeEditsDoNotClearAnExistingWeightRule() {
+        db.profile = new Object[]{"MASS", "KG"};
+        db.stocked = true;
+        UnitSaveRequest request = new UnitSaveRequest();
+        request.setName("公斤");
+        request.setStatus("使用");
+        UnitDetail detail = service().update(unit.getId(), request);
+        assertThat(detail.getMeasurementDimension()).isEqualTo("MASS");
+        assertThat(detail.getMassUnitCode()).isEqualTo("KG");
+        assertThat(db.writes).isEmpty();
+    }
+
+    @Test
+    void creatingAKnownStandardUnitUsesTheExistingClosedWeightCatalogue() {
+        UnitSaveRequest request = new UnitSaveRequest();
+        request.setName("公斤");
+        request.setCode("DW000019");
+        request.setStatus("使用");
+        UnitDetail detail = service().create(request);
+        assertThat(detail.getMassUnitCode()).isEqualTo("KG");
+        assertThat(db.singleWrite().params()).containsEntry("dimension", "MASS").containsEntry("massUnitCode", "KG");
     }
 
     private UnitService service() {

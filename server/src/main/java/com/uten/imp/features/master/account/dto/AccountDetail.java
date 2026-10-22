@@ -39,6 +39,9 @@ public class AccountDetail {
     private Integer parentLegacyId;
     private Integer styleLegacyId;
     private UUID styleId;
+    private String styleCode;
+    private String styleName;
+    private Boolean styleDeleted;
     private String status;
     private boolean autoCreated;
     /** Native-currency balance rebuilt from active append-only account flows. */

@@ -216,6 +216,13 @@ uten:
     sign-name: ${UTEN_SMS_SIGN_NAME:}
     template-code: ${UTEN_SMS_TEMPLATE_CODE:}
     endpoint: ${UTEN_SMS_ENDPOINT:dysmsapi.aliyuncs.com}
+  # Client application binaries are separate from server deployment releases and business attachments.
+  client-updates:
+    directory: ${UTEN_CLIENT_RELEASES_DIR:}
+    max-package-bytes: ${UTEN_CLIENT_UPDATE_MAX_PACKAGE_BYTES:536870912}
+    poll-interval-seconds: ${UTEN_CLIENT_UPDATE_POLL_SECONDS:300}
+    max-releases: ${UTEN_CLIENT_UPDATE_MAX_RELEASES:200}
+    min-free-bytes: ${UTEN_CLIENT_UPDATE_MIN_FREE_BYTES:1073741824}
   storage:
     # 公司附件只用 internal；local 仅供开发，oss 仅历史精确只读，disabled 关闭附件服务。
     # internal 需要显式配置同一持久卷中的私有根目录。

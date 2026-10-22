@@ -111,6 +111,18 @@ public class GoodsController {
     }
 
     /** 统一选择器搜索定位：只返回受 scope/权限约束的命中货品分类 id，不下载全部货品页。 */
+    @GetMapping("/locate")
+    @PreAuthorize("hasAuthority('goods:view')")
+    public com.uten.imp.features.master.goods.dto.GoodsPageLocation locate(
+            @org.springframework.web.bind.annotation.ModelAttribute GoodsQueryFilter filter,
+            @RequestParam UUID id,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order) {
+        return service.locate(filter.withColumnSearch(
+                com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)), id, size, sort, order);
+    }
+
     @GetMapping("/search-category-ids")
     @PreAuthorize("hasAuthority('goods:view')")
     public java.util.List<UUID> searchCategoryIds(

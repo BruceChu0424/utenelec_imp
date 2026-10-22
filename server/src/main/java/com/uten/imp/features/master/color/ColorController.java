@@ -66,9 +66,10 @@ public class ColorController {
             @RequestParam(required = false) String code,
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) String remark,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return service.list(new ColorQueryFilter(keyword, nullFields, code, name, status), page, size);
+        return service.list(new ColorQueryFilter(keyword, nullFields, code, name, status, remark), page, size);
     }
 
     // ---------- 加密 Excel 导出（POST，密码走 body；过滤参数与 GET /list 一致；V717） ----------
@@ -81,9 +82,10 @@ public class ColorController {
             @RequestParam(required = false) String code,
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) String remark,
             @Valid @RequestBody ExportPasswordRequest body) {
         ExportPayload payload = service.export(
-                new ColorQueryFilter(keyword, nullFields, code, name, status),
+                new ColorQueryFilter(keyword, nullFields, code, name, status, remark),
                 exportLimits.exportMaxRows());
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "master_color");
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());

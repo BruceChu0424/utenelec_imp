@@ -53,7 +53,6 @@ public class WorkshopMaterialNoticeService implements WorkshopMaterialNoticePort
     private static final String REPORT_APPROVE = "production_daily_report:approve";
     private static final String BOM_EDIT = "goods:bom:edit";
     private static final String TYPE_TASK = "task";
-    private static final String ROUTE_WAREHOUSE = "/warehouse/tasks?group=workshopMaterial";
     private static final String ROUTE_BIN = "/workshop-material/bin?workshopId=";
 
     private final NoticeService noticeService;
@@ -82,18 +81,19 @@ public class WorkshopMaterialNoticeService implements WorkshopMaterialNoticePort
         List<Map<String, Object>> headers = db.queryForList("""
                 SELECT requisition.kind, workshop.name AS workshop_name,
                        (SELECT count(*) FROM workshop_material_requisition_lines line
-                        WHERE line.requisition_id = requisition.id) AS line_count
+                        WHERE line.requisition_id = requisition.id AND line.fulfilled_qty=0) AS line_count
                 FROM workshop_material_requisitions requisition
                 JOIN departments workshop ON workshop.id = requisition.workshop_department_id
-                WHERE requisition.id = :id
+                WHERE requisition.id = :id AND requisition.status='PENDING'
                 """, Map.of("id", requisitionId));
         if (headers.isEmpty()) return;
         Map<String, Object> header = headers.getFirst();
         List<Map<String, Object>> lines = db.queryForList("""
-                SELECT goods.name AS goods_name, line.requested_qty, line.suggested_leaf_warehouse_id
+                SELECT goods.name AS goods_name, line.requested_qty, line.suggested_leaf_warehouse_id, unit.name AS unit_name
                 FROM workshop_material_requisition_lines line
                 JOIN goods ON goods.id = line.goods_id
-                WHERE line.requisition_id = :id
+                LEFT JOIN units unit ON unit.id=line.unit_id
+                WHERE line.requisition_id = :id AND line.fulfilled_qty=0
                 ORDER BY line.line_no
                 """, Map.of("id", requisitionId));
         if (lines.isEmpty()) return;
@@ -101,12 +101,13 @@ public class WorkshopMaterialNoticeService implements WorkshopMaterialNoticePort
         String workshop = text(header.get("workshop_name"), "车间");
         String firstName = text(lines.getFirst().get("goods_name"), "料");
         String firstQty = kilograms((BigDecimal) lines.getFirst().get("requested_qty"));
+        String unit = text(lines.getFirst().get("unit_name"), "");
         int kinds = ((Number) header.get("line_count")).intValue();
         String more = kinds > 1 ? "等 " + kinds + " 种料" : "";
         String title = (issue ? "车间要领料: " : "车间要退料: ") + workshop;
         String content = issue
-                ? workshop + "申请领「" + firstName + "」" + firstQty + " 公斤" + more + ", 请发到" + workshop + "内料仓。"
-                : workshop + "要退回「" + firstName + "」" + firstQty + " 公斤" + more + ", 请点收。";
+                ? workshop + "申请领「" + firstName + "」" + firstQty + " " + unit + more + ", 请发到" + workshop + "内料仓。"
+                : workshop + "要退回「" + firstName + "」" + firstQty + " " + unit + more + ", 请点收。";
         Set<UUID> leaves = new LinkedHashSet<>();
         for (Map<String, Object> line : lines) {
             if (line.get("suggested_leaf_warehouse_id") instanceof UUID leaf) leaves.add(leaf);
@@ -115,8 +116,10 @@ public class WorkshopMaterialNoticeService implements WorkshopMaterialNoticePort
         Set<UUID> holders = usersWithNoticeAnd(Set.of(ISSUE));
         Set<UUID> recipients = new LinkedHashSet<>(warehouseRouter.recipients(holders, leaves));
         String event = issue ? EVENT_REQUISITION_PENDING : EVENT_RETURN_PENDING;
+        String route = issue ? "/warehouse/tasks?group=outbound&section=DRAW" : "/warehouse/tasks?group=inbound&section=RETURN";
+        sameTransaction(() -> noticeService.resolveReviewNotices(AGGREGATE_REQUISITION, requisitionId, "UPDATED"));
         for (UUID target : recipients) {
-            publish(target, title, content, ROUTE_WAREHOUSE, event, requisitionId);
+            publish(target, title, content, route, event, requisitionId);
         }
     }
 

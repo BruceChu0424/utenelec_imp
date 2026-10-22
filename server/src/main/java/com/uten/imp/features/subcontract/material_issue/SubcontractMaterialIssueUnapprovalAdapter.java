@@ -13,6 +13,7 @@ import java.util.UUID;
 public class SubcontractMaterialIssueUnapprovalAdapter implements DocumentUnapprovalPort {
     private final SubcontractMaterialIssueService service;
     private final com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService plans;
+    private final com.uten.imp.application.port.SubcontractChainNoticePort notices;
     @Override public String family() { return "subcontractMaterialIssue"; }
     @Override public String permission() { return "subcontract_material_issue"; }
     @Override public DocNumberPrefix numberPrefix(UUID id) { return DocNumberPrefix.SUB_MATERIAL_ISSUE; }
@@ -25,5 +26,6 @@ public class SubcontractMaterialIssueUnapprovalAdapter implements DocumentUnappr
         List.of("bill_date","order_item_id","plan_item_id","line_no","goods_id","goods_code_snapshot","goods_name_snapshot","goods_snapshot_source","color_id","unit_id","unit_rate","qty","requested_qty","price","amount_original","amount_local","frozen_unit_qty","parent_goods_id","parent_goods_code_snapshot","parent_goods_name_snapshot","parent_goods_snapshot_source","parent_color_id","weight","qty_from_weight","source_doc_no","box_qty","order_no","remark"),false,true); }
     @Override public void afterDraftCreated(UUID originalId,UUID draftId) {
         plans.reserveDraft(draftId,service.detail(draftId).getWarehouseId());
+        notices.notifySubcontractOutboundReady(draftId);
     }
 }

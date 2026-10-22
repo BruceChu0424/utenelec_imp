@@ -451,13 +451,13 @@ public class WorkshopMaterialPositionQueryService {
                 SELECT (SELECT count(*) FROM workshop_material_requisitions requisition
                         JOIN workshop_material_requisition_lines line ON line.requisition_id=requisition.id
                         JOIN goods ON goods.id=line.goods_id
-                        WHERE requisition.status = 'PENDING' AND kind = 'ISSUE'
+                        WHERE requisition.status = 'PENDING' AND kind = 'ISSUE' AND line.fulfilled_qty=0
                         """ + " AND " + inScope + requisitionFilter + """
                 ) AS pending_issue,
                        (SELECT count(*) FROM workshop_material_requisitions requisition
                         JOIN workshop_material_requisition_lines line ON line.requisition_id=requisition.id
                         JOIN goods ON goods.id=line.goods_id
-                        WHERE requisition.status = 'PENDING' AND kind = 'RETURN'
+                        WHERE requisition.status = 'PENDING' AND kind = 'RETURN' AND line.fulfilled_qty=0
                         """ + " AND " + inScope + requisitionFilter + """
                 ) AS pending_return,
                        (SELECT count(*) FROM workshop_material_periods period

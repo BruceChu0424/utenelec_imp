@@ -194,6 +194,10 @@ public class GoodsBomBatchMaintenanceService {
     private State lockedState(BomBatchMaintenanceRequest request) {
         Set<UUID> involved=new LinkedHashSet<>(request.targetGoodsIds()); involved.addAll(componentIds(request));
         for(Object[] edge:rows.findOperationalEdges(request.targetGoodsIds()))involved.add((UUID)edge[2]);
+        Set<UUID> copiedItems=request.items()==null?Set.of():request.items().stream()
+                .map(BomItemSaveRequest::getCopiedFromBomItemId).filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        if(!copiedItems.isEmpty())for(Object[] edge:rows.findLiveItemParents(copiedItems))involved.add((UUID)edge[1]);
         // Same order as the canonical learning publisher and V739 trigger: all goods rows, then graph lock.
         goods.lockBomParents(involved);graph.acquire();references.lockGoodsQuantityBasis(involved);em.clear();
         Map<UUID,Goods> targets=new LinkedHashMap<>();
@@ -209,7 +213,8 @@ public class GoodsBomBatchMaintenanceService {
             before.put(id,List.copyOf(snapshot));
         }
         for(UUID id:componentIds(request)) {
-            references.requireVisibleGoods(id);
+            if(request.action()==BomBatchMaintenanceRequest.Action.ADD)references.requireVisibleActiveGoods(id);
+            else references.requireVisibleGoods(id);
             Goods component=goods.findById(id).orElseThrow(()->invalid("组件货品不存在"));
             if(component.isAutoCreated())throw invalid("迁移占位货品不能用于当前组装维护");
         }

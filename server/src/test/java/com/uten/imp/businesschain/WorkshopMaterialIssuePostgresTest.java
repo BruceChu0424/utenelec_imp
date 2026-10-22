@@ -116,6 +116,9 @@ class WorkshopMaterialIssuePostgresTest {
     @Autowired ProductionMutationFootprintPort mutationFootprints;
     @Autowired WorkshopMaterialSettingsService settings;
     @Autowired WorkshopMaterialRequisitionService requisitions;
+    @Autowired com.uten.imp.features.warehouse.taskcenter.WarehouseOutboundTaskCenterQueryService outboundTasks;
+    @Autowired com.uten.imp.features.warehouse.taskcenter.WarehouseInboundTaskCenterQueryService inboundTasks;
+    @Autowired com.uten.imp.features.warehouse.materialbin.WorkshopMaterialTaskStatusController taskStatus;
     @Autowired WorkshopMaterialOtherIssueService otherIssues;
     @Autowired WorkshopMaterialPeriodService periods;
     @Autowired WorkshopMaterialCountService counts;
@@ -222,6 +225,71 @@ class WorkshopMaterialIssuePostgresTest {
     // =============================================================================================
     // 车间申请、按申请发、退回点收、其它耗用、作废
     // =============================================================================================
+
+    @Test
+    void periodTaskRowsUseTheSameSourceWarehouseBoundaryAndRejectOutOfScopeSelection() {
+        Shop shop = shop("period-task-scope");
+        enable(shop, BusinessTime.today());
+        fixture.loginAs(shop.admin());
+        assertTrue(taskStatus.list(shop.leafA()).stream().anyMatch(row -> row.workshopDepartmentId().equals(shop.workshop())));
+        assertTrue(taskStatus.list(shop.leafB()).stream().noneMatch(row -> row.workshopDepartmentId().equals(shop.workshop())));
+        fixture.loginAs(shop.warehouseUser());
+        assertTrue(taskStatus.list(null).stream().anyMatch(row -> row.workshopDepartmentId().equals(shop.workshop())));
+        ApiException denied = assertThrows(ApiException.class, () -> taskStatus.list(shop.leafB()));
+        assertEquals(ErrorCode.FORBIDDEN, denied.getCode());
+    }
+
+    @Test
+    void selectedMaterialLinesPostIndependentlyWithoutClosingOrRepeatingUnselectedLines() {
+        Shop shop = shop("selected-material-lines");
+        UUID first = granule(shop, "所选原料甲", shop.leafA());
+        UUID second = granule(shop, "未选原料乙", shop.leafA());
+        otherIn(shop, shop.leafA(), first, "100", "10");
+        otherIn(shop, shop.leafA(), second, "100", "10");
+        enable(shop, BusinessTime.today());
+        for (String kind : List.of("ISSUE", "RETURN")) {
+            fixture.loginAs(shop.workshopUser());
+            BigDecimal quantity = new BigDecimal(kind.equals("ISSUE") ? "10" : "4");
+            RequisitionView request = requisitions.create(new RequisitionCreate(kind, shop.workshop(), List.of(
+                    new RequisitionLineInput(first, null, quantity, null),
+                    new RequisitionLineInput(second, null, quantity, null)), null, key("selected-" + kind)));
+            var requestFilter = new com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.Filter(
+                    kind.equals("ISSUE") ? "DRAW" : "RETURN",null,request.requestNo(),null,null,null,null,1,20);
+            assertEquals(2,(kind.equals("ISSUE")?outboundTasks.list(requestFilter):inboundTasks.list(requestFilter)).total());
+            fixture.loginAs(shop.warehouseUser());
+            var selected = new FulfilRequest(request.rowVersion(), List.of(new FulfilLine(
+                    request.lines().getFirst().id(), shop.leafA(), quantity)), null, key("selected-first-" + kind));
+            RequisitionView partial = requisitions.fulfil(request.id(), selected);
+            assertEquals("PENDING", partial.status());
+            money(quantity.toPlainString(), partial.lines().getFirst().fulfilledQty());
+            money("0", partial.lines().getLast().fulfilledQty());
+            assertEquals(partial.rowVersion(), requisitions.fulfil(request.id(), selected).rowVersion());
+            assertEquals(1, db.queryForObject("""
+                    SELECT count(*) FROM workshop_material_requisition_postings posting
+                    JOIN workshop_material_requisition_lines line ON line.id=posting.line_id
+                    WHERE line.requisition_id=?
+                    """, Integer.class, request.id()));
+            assertThrows(ApiException.class, () -> requisitions.fulfil(request.id(), new FulfilRequest(
+                    partial.rowVersion(), selected.lines(), null, key("selected-repeat-" + kind))));
+            var filter = new com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.Filter(
+                    kind.equals("ISSUE") ? "DRAW" : "RETURN", null, request.requestNo(), null, null, null,
+                    null, 1, 20);
+            var pending = kind.equals("ISSUE") ? outboundTasks.list(filter) : inboundTasks.list(filter);
+            assertEquals(1, pending.total());
+            assertEquals(request.lines().getLast().id(), pending.items().getFirst().line().itemId());
+            var badges = positions.badgeCounts(com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL);
+            assertEquals(1, kind.equals("ISSUE") ? badges.pendingIssue() : badges.pendingReturn());
+            RequisitionView finished = requisitions.fulfil(request.id(), new FulfilRequest(partial.rowVersion(),
+                    List.of(new FulfilLine(request.lines().getLast().id(), shop.leafA(), quantity)), null,
+                    key("selected-last-" + kind)));
+            assertEquals("DONE", finished.status());
+            assertEquals(0, (kind.equals("ISSUE") ? outboundTasks.list(filter) : inboundTasks.list(filter)).total());
+            var historyFilter = new com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.Filter(
+                    filter.source(), null, request.requestNo(), null, null, null, null, 1, 20, null, null,
+                    com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.TaskView.HISTORY);
+            assertEquals(2, (kind.equals("ISSUE") ? outboundTasks.list(historyFilter) : inboundTasks.list(historyFilter)).total());
+        }
+    }
 
     @Test
     void concurrentRequestsWaitForInventoryWithoutHoldingGoodsAndBothPost() throws Exception {
@@ -515,7 +583,7 @@ class WorkshopMaterialIssuePostgresTest {
         String content = db.queryForObject("""
                 SELECT content FROM notices WHERE audience_user_id = ? AND aggregate_id = ?""",
                 String.class, shop.warehouseUser(), request.id());
-        assertTrue(content.contains("颗粒丙") && content.contains("50 公斤"), content);
+        assertTrue(content.contains("颗粒丙") && content.contains("50 千克"), content);
 
         // 仓管按申请发 (改成 60 公斤); 办完撤卡
         fixture.loginAs(shop.warehouseUser());

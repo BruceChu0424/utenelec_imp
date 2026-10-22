@@ -162,7 +162,8 @@ columnHeaderGestureArea(            // 横拖换位 + 竖拖移除识别器（�
 ### 固定语义（不变量：固定列恒为可见序列的前缀）
 
 - **固定**：列搬到多选框列右侧、既有固定列之后；横滚时钉在视口左缘不滚走（复用
-  [UtenFrozenLeadingColumn] 的跟手副本机制，宽度=行首列+固定列总宽）。
+  [UtenFrozenLeadingColumn] 的跟手副本机制，逻辑宽度=行首列+固定列总宽；实际冻结宽度
+  受下述视口预算约束）。
 - **取消固定**：列放回**固定前的位置**（2026-09-25 用户口径「取消固定也要回到对应的地方」；
   宿主在固定时记录其在完整列序中的下标，取消时插回；编辑表跨会话重放的固定没有记录，
   按默认列序相对位次插回；落点撞进固定块由规范化收到块边界之后），不再钉左。
@@ -188,6 +189,22 @@ columnHeaderGestureArea(            // 横拖换位 + 竖拖移除识别器（�
 `放到最后`/`隐藏此列`）、图钉 `Icons.push_pin_rounded`。横滚后固定列有原件+副本两份，
 按文本定位要用 `.hitTestable()` 取视口内那份。
 
+### 编辑表新增条件列与旧偏好（2026-10-22）
+
+`UtenEditableGrid.defaultColumnOrderAnchors` 为 `Map<String, String?>`，只给旧偏好
+中从未保存过位置的新列补默认位置：键存在且值为 `null` 表示默认最前，字符串表示
+接在对应列后；键缺失仍按编辑表既有规则追加。多个最前列保持声明顺序，后锚点可以
+串联；未知锚点、自身引用和循环均安全回落，不丢列或重复列。
+
+委外单页不含批量状态和单号，批量共用同一表格偏好，因此使用
+`{'status': null, 'document': 'status'}` 补齐首次出现的前缀。品质单页与批量共用表
+通过 `{'receipt': 'verdict'}` 将未见过的收货单列接在判定之后。已保存过这些列的
+自定义位置、宽度、隐藏和固定设置保持原样；默认补位不回写或重置偏好。
+
+回归：`uten_editable_grid_column_anchors_test.dart`、
+`warehouse_subcontract_outbound_batch_page_test.dart`、
+`warehouse_quality_merged_table_column_prefs_test.dart`。
+
 ## 四之二、UtenFrozenLeadingColumn（行首多选列横滚冻结，2026-09-11）
 
 用户诉求：左右拖表格时勾选框列不能被滚走，一直看得见。
@@ -195,6 +212,25 @@ columnHeaderGestureArea(            // 横拖换位 + 竖拖移除识别器（�
 **做法**：勾选格照常留在 Row 里（列位与行高天然对齐、原交互不变）；同一行外包一层 Stack，
 上面常挂一份跟手副本，按横滚偏移 `Transform.translate(dx)` 贴在视口左缘、盖住底下的数据格。
 表头用表头那只 `ScrollController`，表体用表体那只（两者本就双向同步）。
+
+**窄视口预算（2026-10-22）**：仅保证“至少留一列普通列”不足以保证普通列实际可用。
+例如状态 210、单号 180、选择框 48 时，438 宽的冻结区会完全遮住 390 宽视口；
+历史表没有选择框时也会被 390 宽前缀占满。焦点滚动若继续扣除完整前缀，同样无法将
+输入框带到可操作区域。
+
+两张表通过 `utenEffectiveFrozenLeadingWidth` 共用实际宽度预算：保留选择框、行尾
+操作列后，普通滚动区至少留 120 逻辑像素；物理空间不足时优先保留真实选择框。
+完整固定前缀无法满足该预算时，实际冻结区降为选择框宽；无选择框的历史表降为 0。
+这只改变当前视口的呈现，不改逻辑前缀、列宽、列序、用户固定偏好或持久化记录。
+视口重新加宽后自动恢复完整固定区。
+
+副本仍按完整前缀布局，用 `OverflowBox` 保留格子原始尺寸，再用 `ClipRect` 仅露出
+有效前缀，保留复选框真实命中和语义。编辑网格仍只复制文本快照，不复制活动输入框。
+实际未冻结的数据格恢复原位文字选择；被裁掉的副本文字不进入复制结果。
+
+表头、表体和 `ensureVisible` 使用同一预算与行尾宽度。两张表共用的
+`UtenTableHorizontalScrollController` 单独发布视口/内容尺寸变化，已横滚的表在
+宽窄切换时无需再滚一下就能更新冻结区；该尺寸通知不冒充像素滚动事件。
 
 **两条踩过的坑，改之前先读**：
 
@@ -216,6 +252,8 @@ columnHeaderGestureArea(            // 横拖换位 + 竖拖移除识别器（�
 
 ## 五、测试
 
+- [`test/components/layout/uten_frozen_prefix_responsive_test.dart`](../../test/components/layout/uten_frozen_prefix_responsive_test.dart)
+  （390 宽任务/历史表普通列操作、真实选择框、焦点滚动、已横滚宽窄切换、单一编辑器与文字复制）
 - [`test/master_data_table_view_drag_hide_test.dart`](../../test/master_data_table_view_drag_hide_test.dart)
   （拖出隐藏全套行为 + 浮层最顶层/原格大小回归 + 长按排序）
 - [`test/master_data_table_view_header_menu_test.dart`](../../test/master_data_table_view_header_menu_test.dart)

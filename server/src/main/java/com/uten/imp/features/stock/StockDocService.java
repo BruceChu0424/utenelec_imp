@@ -449,6 +449,16 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         return new StockDocOutboundReview(reviewed, token);
     }
 
+    @Transactional
+    @PreAuthorize("hasAuthority('stock_doc:view')")
+    public StockDocOutboundReview reviewNative(UUID id) {
+        StockDocument document = requireDocForUpdate(id);
+        StockDocDetail reviewed = detail(id);
+        StockDocOutboundReviewFingerprint.requireNativeType(document, reviewed.isProductionLinked());
+        return new StockDocOutboundReview(reviewed, StockDocOutboundReviewFingerprint.of(document,
+                itemRepo.findByDocIdOrderByLineNoAsc(id)));
+    }
+
     // ===== CRUD =====
 
     @Transactional
@@ -681,6 +691,18 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         if (replay != null) return replay;
 
         prelockProductionDocuments(command.documentIds());
+        Map<UUID, List<StockDocumentItem>> batchItems = new LinkedHashMap<>();
+        for (UUID documentId : command.documentIds()) {
+            batchItems.put(documentId, itemRepo.findByDocIdOrderByLineNoAsc(documentId));
+        }
+        if (command.itemIds() != null) {
+            Set<UUID> actualIds = batchItems.values().stream().flatMap(List::stream)
+                    .map(StockDocumentItem::getId).collect(java.util.stream.Collectors.toSet());
+            if (!actualIds.containsAll(command.itemIds()) || batchItems.values().stream()
+                    .anyMatch(lines -> lines.stream().noneMatch(line -> command.itemIds().contains(line.getId())))) {
+                throw new ApiException(ErrorCode.CONFLICT, "所选成品点收明细已变化或不属于本次单据，请重新选择");
+            }
+        }
         List<FinishedInboundBatchConfirmResponse.Item> responseItems =
                 new ArrayList<>();
         List<FinishedInboundBatchItem> persistedItems = new ArrayList<>();
@@ -692,12 +714,17 @@ public class StockDocService implements ProductionPreStockedInboundPort {
                     command.idempotencyKey(),
                     documentId);
             FinishedInboundConfirmRequest itemRequest = keyOnlyConfirmRequest(childKey);
-            Map<UUID, BigDecimal> accepted =
-                    fullAcceptance(itemRepo.findByDocIdOrderByLineNoAsc(documentId));
+            Map<UUID, BigDecimal> accepted = new LinkedHashMap<>(fullAcceptance(batchItems.get(documentId)));
+            String selectionReason = null;
+            if (command.itemIds() != null && batchItems.get(documentId).stream()
+                    .anyMatch(line -> !command.itemIds().contains(line.getId()))) {
+                accepted.replaceAll((itemId, quantity) -> command.itemIds().contains(itemId) ? quantity : BigDecimal.ZERO);
+                selectionReason = "本次仅点收已选明细，未选明细继续待点收";
+            }
             String itemHash = finishedInboundConfirmationHash(
-                    documentId, accepted, null);
+                    documentId, accepted, selectionReason);
             StockDocument detail = confirmFinishedInboundAfterPrelock(
-                    documentId, itemRequest, accepted, null, itemHash, null, batchContext);
+                    documentId, itemRequest, accepted, selectionReason, itemHash, null, batchContext);
             if (detail.getStatus() == null
                     || detail.getStatus() != STATUS_APPROVED
                     || detail.getBillNo() == null
@@ -1338,6 +1365,8 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         lockFinishedInboundBatchDocuments(List.of(id));
         StockDocument document=requireDocForUpdate(id);
         requireOperationWritable(document,"stock_doc:approve","无权确认此车间余料收货");
+        com.uten.imp.common.validation.ExactDocumentSelection.requireComplete(request.itemIds(),
+                itemRepo.findByDocIdOrderByLineNoAsc(id).stream().map(StockDocumentItem::getId).toList());
         UUID sourceWarehouse=materialReturnSourceWarehouse(id);
         String hash=materialReturnReceivingHash(id,sourceWarehouse,request.warehouseId(),receivedWeights);
         List<Object[]> replay=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
@@ -1480,7 +1509,10 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         prelockProductionDocument(id);
         StockDocument document = requireDocForUpdate(id);
         requireOperationWritable(document, "stock_doc:approve", "无权审核此仓库单据");
-        StockDocOutboundReviewFingerprint.requireOutboundType(document);
+        StockDocOutboundReviewFingerprint.requireNativeType(document,
+                ("OTHER_IN".equals(document.getDocType()) || "FINISHED_IN".equals(document.getDocType())) && isProductionLinked(id));
+        com.uten.imp.common.validation.ExactDocumentSelection.requireComplete(request == null ? null : request.itemIds(),
+                itemRepo.findByDocIdOrderByLineNoAsc(id).stream().map(StockDocumentItem::getId).toList());
         StockDocOutboundReviewFingerprint.requireUnchanged(
                 request == null ? null : request.expectedReviewToken(), document,
                 itemRepo.findByDocIdOrderByLineNoAsc(id));
@@ -2013,6 +2045,16 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             }
         }
         requireBatchWeightsWithinDocuments(weights.keySet(), orderedIds);
+        if (command.itemIds() != null) {
+            requireBatchWeightsWithinDocuments(new HashSet<>(command.itemIds()), orderedIds);
+            Number covered = (Number) em.createNativeQuery("""
+                    SELECT COUNT(DISTINCT doc_id) FROM stock_document_items
+                    WHERE id = ANY(CAST(:items AS uuid[])) AND NOT is_deleted
+                    """).setParameter("items", uuidArray(command.itemIds())).getSingleResult();
+            if (covered.longValue() != orderedIds.size()) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "每张所选领料单都必须包含本次选中的明细");
+            }
+        }
         // 一次核查整批，必须在任何审核/扣库之前失败，不能给旧逐单事实补造完整父结果。
         drawIssueBatchReceipts.rejectLegacyChildren(actorUserId, command);
 
@@ -2027,7 +2069,9 @@ public class StockDocService implements ProductionPreStockedInboundPort {
                 requireProductionDrawRequested(id);
                 // 剩余量在行锁之后计算：并发的单张出库/取消出库已被串行化。
                 List<StockDocIssueRequest.Line> lines =
-                        requestedIssueLines(itemRepo.findByDocIdOrderByLineNoAsc(id));
+                        requestedIssueLines(itemRepo.findByDocIdOrderByLineNoAsc(id).stream()
+                                .filter(item -> command.itemIds() == null || command.itemIds().contains(item.getId()))
+                                .toList());
                 attachBatchWeights(lines, weights);
                 String childKey = batchChildIdempotencyKey(actorUserId, batchKey, id);
                 if (lines.isEmpty()) {
@@ -3259,9 +3303,23 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         List<String> hashParts = new ArrayList<>();
         hashParts.add("PRODUCTION-FINISHED-IN-CONFIRM-BATCH-V1");
         documentIds.forEach(id -> hashParts.add(id.toString()));
+        List<UUID> itemIds = null;
+        if (request.getItemIds() != null) {
+            if (request.getItemIds().isEmpty() || request.getItemIds().size() > com.uten.imp.common.validation.RequestLimits.DOCUMENT_LINES
+                    || request.getItemIds().stream().anyMatch(Objects::isNull)) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "请选择有效的成品点收明细");
+            }
+            itemIds = request.getItemIds().stream().distinct().sorted().toList();
+            if (itemIds.size() != request.getItemIds().size()) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "不能重复选择同一成品点收明细");
+            }
+            hashParts.add("SELECTED-ITEMS");
+            itemIds.forEach(itemId -> hashParts.add(itemId.toString()));
+        }
         return new FinishedInboundBatchCommand(
                 key,
                 documentIds,
+                itemIds,
                 CanonicalFingerprint.sha256(hashParts));
     }
 
@@ -3321,6 +3379,16 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             throw new ApiException(
                     ErrorCode.CONFLICT,
                     "之前那次批量点收的结果记录不完整，不能自动给出结果，请联系管理员核对");
+        }
+        // A committed command is not a lasting grant to its source documents.
+        // Reuse the live owner/warehouse-task read boundary, including historical
+        // provenance, without rechecking quantities or reopening the write graph.
+        List<UUID> documentIds = items.stream()
+                .map(FinishedInboundBatchConfirmResponse.Item::documentId).toList();
+        Map<UUID, String> readable = readableIssueHeaders(documentIds, true);
+        if (documentIds.isEmpty() || readable.size() != new HashSet<>(documentIds).size()
+                || readable.values().stream().anyMatch(type -> !"FINISHED_IN".equals(type))) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "仓库单据不存在");
         }
         return new FinishedInboundBatchConfirmResponse(
                 batchId, true, confirmedCount, items);
@@ -5941,10 +6009,12 @@ public class StockDocService implements ProductionPreStockedInboundPort {
     record FinishedInboundBatchCommand(
             String idempotencyKey,
             List<UUID> documentIds,
+            List<UUID> itemIds,
             String requestHash) {
 
         FinishedInboundBatchCommand {
             documentIds = List.copyOf(documentIds);
+            itemIds = itemIds == null ? null : List.copyOf(itemIds);
         }
     }
 

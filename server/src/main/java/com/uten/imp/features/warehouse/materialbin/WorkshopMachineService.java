@@ -127,6 +127,10 @@ public class WorkshopMachineService {
         if (request.items() == null || request.items().isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请至少改一台机台");
         }
+        for (MachineEdit edit:request.items()) {
+            if (edit==null || edit.id()==null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"机台不完整");
+            scope.requireMachine(edit.id());
+        }
         return commands.execute("MACHINE_BATCH_UPDATE", request.idempotencyKey(), request, MachineList.class, () -> {
             UUID actor = currentUser.requireId();
             List<UUID> ids = new ArrayList<>();
@@ -174,6 +178,11 @@ public class WorkshopMachineService {
     public MachineList updateContainers(ContainerBatchUpdate request) {
         if (request.items() == null || request.items().isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请至少改一个容器");
+        }
+        for (ContainerEdit edit:request.items()) {
+            if (edit==null || edit.machineId()==null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请选择容器所在的机台");
+            scope.requireMachine(edit.machineId());
+            if (edit.id()!=null) scope.requireContainer(edit.id());
         }
         return commands.execute("CONTAINER_BATCH_UPDATE", request.idempotencyKey(), request, MachineList.class, () -> {
             UUID actor = currentUser.requireId();

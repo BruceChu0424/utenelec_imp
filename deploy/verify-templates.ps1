@@ -248,9 +248,9 @@ Assert-Contains $text.InternalTestUnit 'IPAddressAllow=localhost' 'internal-test
 Assert-Contains $text.InternalTestNginx 'server_name __INTERNAL_DOMAIN__;' 'internal-test internal DNS placeholder'
 Assert-Contains $text.InternalTestNginx 'ssl_reject_handshake on;' 'internal-test unknown SNI refusal'
 Assert-Contains $text.InternalTestNginx 'allow __EXACT_OFFICE_CIDR__;' 'internal-test exact office CIDR'
-Assert-Contains $text.InternalTestNginx 'location ~ ^/api/website-inquiries(?:;[^/]*)?/ingest(?:[;/]|$) {' 'external website ingest excluded from ERP host'
-Assert-Contains $text.InternalTestNginx 'location ~ ^/api/attachments(?:;[^/]*)?/(?:presign|confirm)(?:[;/]|$) {' 'attachment presign and confirm intake excluded'
-Assert-Contains $text.InternalTestNginx 'location ~ ^/api/attachments(?:;[^/]*)?/raw(?:[;/]|$) {' 'attachment raw upload method gate'
+Assert-Contains $text.InternalTestNginx 'location ~ "^/api/website-inquiries(?:;[^/]*)?/ingest(?:[;/]|$)" {' 'external website ingest excluded from ERP host'
+Assert-Contains $text.InternalTestNginx 'location ~ "^/api/attachments(?:;[^/]*)?/(?:presign|confirm)(?:[;/]|$)" {' 'attachment presign and confirm intake excluded'
+Assert-Contains $text.InternalTestNginx 'location ~ "^/api/attachments(?:;[^/]*)?/raw(?:[;/]|$)" {' 'attachment raw upload method gate'
 Assert-Contains $text.InternalTestNginx 'limit_except GET HEAD {' 'internal-test attachment mutation refusal'
 Assert-Contains $text.InternalTestNginx 'Attachment uploads are a three-step protocol: presign, raw PUT, confirm.' 'attachment upload protocol gate'
 $internalInquiryLocations = [regex]::Matches($text.InternalTestNginx, '(?m)^\s*location\s+[^\{]*?/api/website-inquiries[^\{]*\{')

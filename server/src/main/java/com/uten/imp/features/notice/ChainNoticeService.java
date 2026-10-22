@@ -649,7 +649,13 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     // the rejection case first and emits OPENED (or a safe
                     // FINANCE_EXCEPTION) afterwards; it must not notify twice.
                 }
-                case EVENT_BOM_UPDATED -> notifyBomUpdated(aggregateId);
+                case EVENT_BOM_UPDATED -> {
+                    // Removing a retired material is a recipe change, never proof
+                    // that an R&D task has completed or that an analysis is ready.
+                    if (payload == null || !"COMPONENT_DISABLED".equals(payload.path("reason").asText())) {
+                        notifyBomUpdated(aggregateId);
+                    }
+                }
                 case EVENT_MATERIAL_ANALYSIS_BOM_REFRESH -> deliverMaterialAnalysisBomRefresh(aggregateId, payload);
                 case EVENT_PRODUCTION_PLANNING_URGED -> deliverProductionPlanningUrged(aggregateId);
                 case "STOCK_WEIGHT_OBSERVATION_CHANGED" -> {
@@ -3200,8 +3206,16 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             return;
         }
         deliverAtomically(() -> {
-            lockSubcontractDrawDraftNotices(issueId);
+            List<UUID> remainingSources = jdbc.queryForList("""
+                    SELECT source_issue_id FROM subcontract_selected_outbound_commands
+                    WHERE execution_issue_id=? AND source_issue_id<>execution_issue_id
+                    """, UUID.class, issueId);
+            // Acquire both card identities before writing either projection, in one total order.
+            // publishSubcontractDrawPending takes the same source lock reentrantly.
+            java.util.stream.Stream.concat(java.util.stream.Stream.of(issueId), remainingSources.stream())
+                    .distinct().sorted().forEach(this::lockSubcontractDrawDraftNotices);
             resolveReviewNotices(AGGREGATE_SUBCONTRACT_MATERIAL_ISSUE, issueId, "ISSUED");
+            for (UUID sourceId : remainingSources) publishSubcontractDrawPending(sourceId, null);
             List<Map<String, Object>> targets = jdbc.queryForList("""
                     SELECT order_header.id AS order_id, order_header.bill_no AS order_bill_no,
                            order_header.maker_id, issue.bill_no AS issue_bill_no,

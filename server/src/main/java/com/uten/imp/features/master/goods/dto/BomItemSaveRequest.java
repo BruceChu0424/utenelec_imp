@@ -22,6 +22,9 @@ public class BomItemSaveRequest {
     @NotNull
     private UUID componentGoodsId;   // 组件货品 UUID（唯一实时关联键，必填）
 
+    /** 复制既有组件行的来源身份；只由受控粘贴核对，不改变单行新增/换件的停用限制。 */
+    private UUID copiedFromBomItemId;
+
     private BigDecimal qty;          // 设计使用数量(不传：新建按 1，编辑保留原值)
     private String controlStage;     // START/ASSEMBLY/FINISH/SHIP/REFERENCE
     private String consumptionBasis; // PER_UNIT/PER_PACKAGE/FIXED_BATCH

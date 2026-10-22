@@ -77,6 +77,21 @@ class WarehouseDirectionBadgeContractTest {
         assertThat(summary.facts()).containsEntry("warehouseInboundExpectation.PURCHASE",2L);
     }
 
+    @Test void workshopMaterialMovesToItsPhysicalDirectionAndIsCountedOnlyOnce() throws Exception {
+        Harness harness = harness(Map.of(
+                "productionDraw", Map.of("count",0L), "productionReturn", Map.of("count",0L),
+                "workshopMaterial", Map.of("pendingIssue",2L,"pendingReturn",3L,"counting",1L)));
+        var summary = harness.service.summary(Set.of("warehouseOutboundCenter", "warehouseInboundCenter",
+                "warehouseDrawCenter", "warehouseWorkshopMaterial"));
+        assertThat(summary.entries().get("warehouseOutboundCenter").todo()).isEqualTo(2);
+        assertThat(summary.entries().get("warehouseInboundCenter").todo()).isEqualTo(3);
+        assertThat(summary.entries().get("warehouseDrawCenter").todo()).isEqualTo(5);
+        assertThat(summary.entries().get("warehouseWorkshopMaterial").todo()).isZero();
+        assertThat(summary.entries().get("warehouseWorkshopMaterial").inProgress()).isEqualTo(1);
+        assertThat(summary.modules().get("warehouse").todo()).isEqualTo(5);
+        assertThat(summary.total().todo()).isEqualTo(5);
+    }
+
     private record Harness(WorkbenchBadgeService service, WarehouseTaskScopePort scopes,
                            AtomicInteger drawReads, AtomicInteger returnReads) {}
 

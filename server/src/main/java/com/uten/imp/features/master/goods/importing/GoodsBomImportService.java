@@ -51,7 +51,8 @@ import java.util.regex.Pattern;
  *
  * <p>写入按层复用 {@link GoodsBomPasteService#paste}（ADR-111 原子命令）：第 1 层
  * 粘到目标货品，第 2 层起按父序号分组粘到对应组件货品；同一层内重复、成环、组件
- * 停用等校验全部由粘贴命令承担，这里只补「文件侧」的校验（序号合法/唯一、父序号
+ * 已删除/迁移占位/停用组件等校验全部由粘贴命令承担(ADR-191)，这里补检测阶段的状态提示
+ * 和「文件侧」的校验(序号合法/唯一、父序号
  * 存在、编号能匹配到货品、数值可解析、目标货品自身不能出现在文件里）。</p>
  *
  * <p>「真实使用数量」列只读(ADR-129：由学习引擎按实物净耗算，人只能「重新学习」)，导入时认得、
@@ -81,6 +82,8 @@ public class GoodsBomImportService {
         for (String a : new String[]{"物料名称", "名称", "组件名称"}) putAlias(a, "name");
         putAlias("型号", "model");
         putAlias("规格", "spec");
+        putAlias("材质", "material"); // 只读展示列，不修改货品主档
+        putAlias("库存数量", "stockQty"); // 只读展示列，不修改库存
         putAlias("单位", "unit");
         putAlias("颜色", "color");
         putAlias("来源", "source");
@@ -460,6 +463,13 @@ public class GoodsBomImportService {
                             "不能把货品自己装配成自己的组件（" + row.code + " 就是本货品）"));
                 }
             }
+        }
+        // 检测和提交使用同一状态边界，旧导出文件也不能重新引入停用组件。
+        for (ParsedRow row : rows) {
+            Goods component = codeIndex.get(row.code);
+            if (component == null || !"禁用".equals(component.getStatus())) continue;
+            errors.add(new GoodsImportError(row.rowNum, "物料编号",
+                    "组件「" + row.code + "」已停用，不能加入组装清单；请移除此组件或先重新启用货品"));
         }
         // 同一父级下组件编号重复：粘贴命令会整批拒，这里在检测期就报行号。
         Map<String, Set<UUID>> perParent = new HashMap<>();

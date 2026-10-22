@@ -154,7 +154,7 @@ class MasterInlineEditServiceTest {
         verify(warehouses,never()).update(any(),any());
     }
     @Test void warehouseIdentityAndMissingExpectedAreRejectedBeforeLocking() {
-        for(String key:List.of("code","parentId","isLineSide","lineSide","legacyId","selectableForNew")) {
+        for(String key:List.of("parentId","isLineSide","lineSide","legacyId","selectableForNew")) {
             assertThrows(ApiException.class,()->service.patch("warehouses",id,Map.of(key,"old"),Map.of(key,"new")));
         }
         assertThrows(ApiException.class,()->service.patch("warehouses",id,Map.of(),Map.of("name","changed")));
@@ -166,6 +166,19 @@ class MasterInlineEditServiceTest {
         when(warehouses.update(eq(id),any())).thenThrow(refusal);
         assertSame(refusal,assertThrows(ApiException.class,()->service.patch("warehouses",id,
             Map.of("name","内料仓"),Map.of("name","changed"))));
+    }
+    @Test void warehouseCodePatchRequiresOriginalValueAndUsesTheAuthoritativeUpdate() throws Exception {
+        when(warehouses.detail(id)).thenReturn(dto(WarehouseDetail.class,Map.of(
+                "id",id,"code","WH01","name","五金仓","status","使用")));
+        service.patch("warehouses",id,Map.of("code","WH01"),Map.of("code","CUSTOM-WH"));
+        var request=ArgumentCaptor.forClass(WarehouseSaveRequest.class);
+        verify(warehouses).update(eq(id),request.capture());
+        assertEquals("CUSTOM-WH",request.getValue().getCode());
+        assertEquals("五金仓",request.getValue().getName());
+        ApiException stale=assertThrows(ApiException.class,()->service.patch("warehouses",id,
+                Map.of("code","STALE"),Map.of("code","ANOTHER")));
+        assertEquals(ErrorCode.CONFLICT,stale.getCode());
+        verify(warehouses,times(1)).update(any(),any());
     }
     @Test void warehousePatchRequiresBothViewAndEditBeforeLocking() {
         for(Set<String> permissions:List.of(Set.of("warehouse:view"),Set.of("warehouse:edit"))) {

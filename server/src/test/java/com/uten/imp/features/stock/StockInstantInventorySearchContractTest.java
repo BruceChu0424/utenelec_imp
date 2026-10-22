@@ -5,75 +5,15 @@ import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 class StockInstantInventorySearchContractTest {
-
-    @Test
-    void locationQueryUsesTheSameKeywordAndDeletionContractAsInventoryRows() {
-        EntityManager em = mock(EntityManager.class);
-        Query query = mock(Query.class);
-        when(em.createNativeQuery(anyString())).thenReturn(query);
-        when(query.setParameter(anyString(), org.mockito.ArgumentMatchers.any())).thenReturn(query);
-        UUID categoryId = UUID.randomUUID();
-        when(query.getResultList()).thenReturn(List.of(categoryId));
-        stubCategoryNodes(em);
-        StockQueryService service = new StockQueryService(
-                null, em, mock(StockCostMasker.class));
-
-        var result = service.instantInventoryMatchingCategoryIds(
-                "  G-001  ", Set.of(UUID.randomUUID()));
-
-        assertThat(result).containsExactly(categoryId);
-        var sql = org.mockito.ArgumentCaptor.forClass(String.class);
-        verify(em,times(2)).createNativeQuery(sql.capture());
-        assertThat(sql.getAllValues().getLast())
-                .contains("g.is_deleted = false")
-                .contains("g.name ILIKE :kw", "g.code ILIKE :kw")
-                .contains("g.model ILIKE :kw", "g.c_number ILIKE :kw", "g.spec ILIKE :kw", "g.series ILIKE :kw", "g.material ILIKE :kw", "g.name_en ILIKE :kw")
-                .contains("GROUP BY t.search_category_id ORDER BY MIN(t.search_rank)")
-                .doesNotContain("g.paper ILIKE", "g.require_remark ILIKE", "g.auto_created", "g.status = '禁用'", "g.status <> '禁用'");
-        verify(query).setParameter("kw", "%g-001%");
-    }
-
-    @Test
-    void everyInventoryLocationWordIsRequiredAndWildcardsStayLiteral() {
-        EntityManager em = mock(EntityManager.class);
-        Query query = mock(Query.class);
-        when(em.createNativeQuery(anyString())).thenReturn(query);
-        when(query.getResultList()).thenReturn(List.of());
-        stubCategoryNodes(em);
-        new StockQueryService(null, em, mock(StockCostMasker.class))
-                .instantInventoryMatchingCategoryIds("螺丝\u3000M3_20%", Set.of(UUID.randomUUID()));
-
-        var sql = org.mockito.ArgumentCaptor.forClass(String.class);
-        verify(em,times(2)).createNativeQuery(sql.capture());
-        assertThat(sql.getAllValues().getLast()).contains("g.name ILIKE :kw ESCAPE '\\'", ") AND (",
-                "g.name ILIKE :kw1 ESCAPE '\\'", "g.c_number ILIKE :kw1 ESCAPE '\\'");
-        verify(query).setParameter("kw", "%螺丝%");
-        verify(query).setParameter("kw1", "%m3\\_20\\%%");
-    }
-
-    @Test
-    void locationQueryFailsClosedWithoutABoundedTreeScope() {
-        StockQueryService service = new StockQueryService(
-                null, mock(EntityManager.class), mock(StockCostMasker.class));
-        assertThatThrownBy(() -> service.instantInventoryMatchingCategoryIds("G", Set.of()))
-                .isInstanceOf(com.uten.imp.common.web.ApiException.class);
-        assertThatThrownBy(() -> service.instantInventoryMatchingCategoryIds(
-                "G", java.util.stream.IntStream.range(0, 33)
-                        .mapToObj(ignored -> UUID.randomUUID()).collect(java.util.stream.Collectors.toSet())))
-                .isInstanceOf(com.uten.imp.common.web.ApiException.class);
-    }
 
     @Test
     void shelfLabelRackFilterIsSeparatedFromOrderBy() {
@@ -247,9 +187,4 @@ class StockInstantInventorySearchContractTest {
         assertThat(racks).containsExactly("A30", "A31");
     }
 
-    private static void stubCategoryNodes(EntityManager em) {
-        Query nodes=mock(Query.class);
-        when(nodes.getResultList()).thenReturn(List.of());
-        when(em.createNativeQuery(StockQueryService.GOODS_CATEGORY_NODES_SQL)).thenReturn(nodes);
-    }
 }

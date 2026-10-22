@@ -26,7 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>以 SQL 片段为单位检查: 一个文本块, 或只用 + 连起来的一串字符串字面量算一个片段; 注释不算。
  * 出现 goods_bom_items 的片段必须同时出现上面两种写法之一。白名单按文件与按片段两级, 逐条写明理由;
- * 新增的读者不许进白名单, 应当改用判定函数或加谓词。
+ * 新增的生产计算读者不许进白名单, 应当改用判定函数或加谓词。基础资料完整版本恢复属于维护，
+ * 必须另有真实期间边可见性和原生恢复拒绝回归证明它不能过滤掉期间边。
  */
 class BomPresencePredicateContractTest {
 
@@ -39,6 +40,8 @@ class BomPresencePredicateContractTest {
     private static final Map<String, String> FILE_EXEMPTIONS = Map.ofEntries(
             Map.entry("features/master/goods/",
                     "BOM 维护本身 (增删改、粘贴、导入、发料方式切换、上线准备) 要看全部边, 期间边就在这里维护"),
+            Map.entry("features/master/history/MasterRecordHistoryService.java",
+                    "基础资料版本维护须完整展示历史与核对恢复前 BOM 图；期间边仍由原生认料规则拒绝通用恢复，不能过滤受保护边来冒充恢复成功"),
             Map.entry("features/master/lifecycle/",
                     "主档删除与引用目录: 期间边同样是引用, 被引用的货品不能删"),
             Map.entry("audit/",

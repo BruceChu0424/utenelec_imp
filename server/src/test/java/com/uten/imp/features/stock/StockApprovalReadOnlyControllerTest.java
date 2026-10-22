@@ -39,13 +39,17 @@ class StockApprovalReadOnlyControllerTest {
                 mock(AuditDetailViewRecorder.class), mock(WarehouseTaskScopePort.class))).build();
     }
 
-    @Test void removedAmendmentEndpointsCannotReachTheStockWriter() throws Exception {
-        String path = "/api/stock/docs/" + UUID.randomUUID() + "/review";
-        http.perform(get(path)).andExpect(status().isNotFound());
+    @Test void nativeReviewIsReadOnlyAndRemovedAmendmentCannotReachTheStockWriter() throws Exception {
+        UUID id = UUID.randomUUID();
+        String path = "/api/stock/docs/" + id + "/review";
+        when(documents.reviewNative(id)).thenReturn(
+                new StockDocOutboundReview(mock(StockDocDetail.class), "a".repeat(64)));
+        http.perform(get(path)).andExpect(status().isOk());
         http.perform(put(path).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"expectedSnapshot\":\"old\",\"approveNow\":true,\"document\":{\"items\":[]}}"))
-                .andExpect(status().isNotFound());
-        verifyNoInteractions(documents);
+                .andExpect(status().isMethodNotAllowed());
+        verify(documents).reviewNative(id);
+        verifyNoMoreInteractions(documents);
     }
 
     @Test void readonlyOutboundSnapshotAndExactReviewedApprovalRemainAvailable() throws Exception {

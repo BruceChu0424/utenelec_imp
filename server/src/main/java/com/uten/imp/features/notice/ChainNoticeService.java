@@ -451,6 +451,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
 
     /** Called only by the locked outbox processor inside its delivery transaction. */
     public void deliverOutboxEvent(String eventType, UUID aggregateId, JsonNode payload) {
+        // Legacy events with no payload use the same field defaults as an empty
+        // JSON object. Normalize once before any dispatch branch reads a field.
+        if (payload == null) payload = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
         OUTBOX_DELIVERY.set(true);
         OUTBOX_EVENT.set(eventType);
         try {
@@ -652,7 +655,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 case EVENT_BOM_UPDATED -> {
                     // Removing a retired material is a recipe change, never proof
                     // that an R&D task has completed or that an analysis is ready.
-                    if (payload == null || !"COMPONENT_DISABLED".equals(payload.path("reason").asText())) {
+                    if (!"COMPONENT_DISABLED".equals(payload.path("reason").asText())) {
                         notifyBomUpdated(aggregateId);
                     }
                 }

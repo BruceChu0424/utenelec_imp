@@ -2,6 +2,7 @@ package com.uten.imp.features.production.analysis;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
+import com.uten.imp.support.MigratedProjectionSchema;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,29 +46,18 @@ class MaterialAnalysisGoodsLifecycleReaderPostgresTest {
         named = new NamedParameterJdbcTemplate(dataSource);
         jdbc.execute("CREATE SCHEMA lifecycle_test");
         jdbc.execute("SET search_path=lifecycle_test");
-        jdbc.execute("""
-                CREATE TABLE goods(id uuid PRIMARY KEY,code text,name text,status text,source_type text DEFAULT '自制',
-                    auto_created boolean DEFAULT false,
-                    is_deleted boolean NOT NULL DEFAULT false,issue_method text NOT NULL DEFAULT 'ORDER');
-                CREATE TABLE goods_bom_items(id uuid PRIMARY KEY,goods_id uuid,component_goods_id uuid,
-                    qty numeric DEFAULT 1,hard_gate boolean DEFAULT true,control_stage text DEFAULT 'START',
-                    retirement_reason text,retirement_resolved_at timestamptz,is_deleted boolean NOT NULL DEFAULT false);
-                CREATE TABLE production_material_analysis_items(id uuid PRIMARY KEY,analysis_id uuid NOT NULL,
-                    goods_id uuid NOT NULL,root_material_id uuid,parent_analysis_material_id uuid,
-                    is_deleted boolean NOT NULL DEFAULT false);
-                CREATE TABLE production_material_analysis_materials(id uuid PRIMARY KEY,analysis_id uuid NOT NULL,
-                    analysis_item_id uuid NOT NULL,goods_id uuid NOT NULL,bom_item_id uuid,depth integer,
-                    confirmed_route text,source_suggestion text DEFAULT 'BUY',
-                    node_role text NOT NULL DEFAULT 'BOM_COMPONENT',active boolean NOT NULL DEFAULT true);
-                """);
+        // Query fixtures may model inconsistent lifecycle states, but their complete
+        // column shapes and defaults still come from actual Flyway migrations.
+        MigratedProjectionSchema.createCurrentTables(jdbc, "goods", "goods_bom_items",
+                "production_material_analysis_items", "production_material_analysis_materials");
         analysis=UUID.randomUUID(); source=UUID.randomUUID(); root=UUID.randomUUID();
         component=UUID.randomUUID(); edge=UUID.randomUUID(); material=UUID.randomUUID();
-        jdbc.update("INSERT INTO goods(id,code,name,status) VALUES(?,'FG','产品',NULL),(?,'RM','原材料','使用')", root, component);
+        jdbc.update("INSERT INTO goods(id,code,name,status,source_type) VALUES(?,'FG','产品',NULL,'自制'),(?,'RM','原材料','使用','外购')", root, component);
         jdbc.update("INSERT INTO goods_bom_items(id,goods_id,component_goods_id) VALUES(?,?,?)", edge, UUID.randomUUID(), component);
         jdbc.update("INSERT INTO production_material_analysis_items(id,analysis_id,goods_id) VALUES(?,?,?)", source, analysis, root);
         jdbc.update("""
-                INSERT INTO production_material_analysis_materials(id,analysis_id,analysis_item_id,goods_id,bom_item_id,depth)
-                VALUES(?,?,?,?,?,4)
+                INSERT INTO production_material_analysis_materials(id,analysis_id,analysis_item_id,goods_id,bom_item_id,depth,source_suggestion)
+                VALUES(?,?,?,?,?,4,'BUY')
                 """, material, analysis, source, component, edge);
         reader = new MaterialAnalysisGoodsLifecycleReader(entityManager());
         connection.commit();

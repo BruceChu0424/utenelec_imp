@@ -61,7 +61,7 @@ class InventoryValueWorkConcurrencyPostgresTest {
         jdbc.execute("CREATE TABLE stock_value_production_cost_inputs(input_node_id uuid,execution_segment_id uuid)");
         jdbc.execute("CREATE TABLE stock_value_production_cost_outputs(source_node_id uuid,execution_segment_id uuid)");
         jdbc.execute("CREATE TABLE subcontract_receipt_material_consumptions(receipt_item_id uuid,issue_item_id uuid)");
-        jdbc.execute("CREATE TABLE subcontract_material_issue_items(id uuid,order_item_id uuid,goods_id uuid,color_id uuid)");
+        jdbc.execute("CREATE TABLE subcontract_material_issue_items(id uuid,order_item_id uuid,goods_id uuid,color_id uuid,warehouse_split_command_id uuid,warehouse_split_at timestamptz)");
         jdbc.execute("CREATE TABLE stock_value_production_cost_dirty(input_node_id uuid PRIMARY KEY,execution_segment_id uuid,source_event_id uuid,observed_revision bigint,cleared_revision bigint)");
         jdbc.execute("CREATE TABLE stock_value_events(id uuid PRIMARY KEY,actor_user_id uuid,occurred_at timestamptz)");
         jdbc.execute("CREATE TABLE stock_value_jobs(event_id uuid,status text)");

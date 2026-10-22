@@ -2,14 +2,13 @@ package com.uten.imp.migration;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.postgresql.PostgreSQLContainer;
+import com.uten.imp.support.MigratedSchemaBaseline;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -74,6 +73,9 @@ class FixtureSchemaDriftGuardPostgresTest {
             // Pure SQL-text assertions (including forbidding CREATE TABLE); no
             // database fixture or dynamic DDL is executed by this contract.
             "ProcurementReturnCostVarianceMigrationContractTest.java",
+            // Only asserts that reset-generation migrations contain no CREATE TABLE text;
+            // this source-contract oracle never executes a database fixture or dynamic DDL.
+            "BusinessDataResetSqlContractTest.java",
             "MigratedSchemaBaselinePostgresTest.java",
             // Creates complete projections from trusted live Flyway catalog
             // metadata rather than hand-written fixture DDL.
@@ -249,21 +251,16 @@ class FixtureSchemaDriftGuardPostgresTest {
     // ------------------------------------------------------------------
 
     private static Map<String, Map<String, String>> migrateAndReadRealColumns() throws Exception {
-        try (PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:16-alpine")) {
-            postgres.start();
-            com.uten.imp.testsupport.TestFlyway.configure()
-                    .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
-                    .locations("classpath:db/migration")
-                    .load()
-                    .migrate();
-            try (Connection connection = DriverManager.getConnection(
-                    postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())) {
-                assertThat(MigrationRehearsalSupport.latestSuccessfulVersion(connection))
-                        .isEqualTo(MigrationRehearsalSupport.CURRENT_HEAD_VERSION);
-                assertThat(MigrationRehearsalSupport.successfulMigrationCount(connection))
-                        .isEqualTo(MigrationRehearsalSupport.CURRENT_MIGRATION_COUNT);
-                return realColumnFamilies(connection);
-            }
+        // The baseline still executes every real migration once in this JVM.
+        // A private clone preserves the independent catalog oracle while avoiding
+        // a second full migration beside the other current-schema regressions.
+        try (var database = MigratedSchemaBaseline.openDatabase("fixture_schema_guard");
+             Connection connection = database.openConnection()) {
+            assertThat(MigrationRehearsalSupport.latestSuccessfulVersion(connection))
+                    .isEqualTo(MigrationRehearsalSupport.CURRENT_HEAD_VERSION);
+            assertThat(MigrationRehearsalSupport.successfulMigrationCount(connection))
+                    .isEqualTo(MigrationRehearsalSupport.CURRENT_MIGRATION_COUNT);
+            return realColumnFamilies(connection);
         }
     }
 

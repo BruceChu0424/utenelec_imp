@@ -1076,6 +1076,8 @@ class _WorkshopMaterialIssueBatchPageState
             title: _isReturn ? '生产退料批量入库' : '生产领料批量出库',
             leading: UtenBackButton(onPressed: _saving ? null : _close),
           ),
+          floatingActionButtonAnimator:
+              FloatingActionButtonAnimator.noAnimation,
           floatingActionButton: _loading || _requests.isEmpty
               ? null
               : UtenFloatingActionGroup(

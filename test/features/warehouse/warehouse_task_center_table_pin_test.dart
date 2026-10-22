@@ -7,10 +7,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_task_center_page.dart';
+import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../helpers/warehouse_request_scope_fixture.dart';
 
 class _FakeApi extends ApiClient {
   _FakeApi() : super(Dio());
@@ -71,6 +73,10 @@ class _FakeApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async => const [];
+
+  @override
+  Future<Map<String, dynamic>> put(String path, {Object? body}) async =>
+      const {};
 }
 
 void main() {
@@ -93,11 +99,17 @@ void main() {
           ),
           home: ProviderScope(
             overrides: [
+              ...warehouseRequestScopeFixture(
+                includeClient: false,
+                includeBadges: false,
+              ),
               apiClientProvider.overrideWithValue(_FakeApi()),
               sharedPreferencesProvider.overrideWithValue(preferences),
               fixedBadgeSummaryOverride(badgeSummaryFixture()),
               isSuperAdminProvider.overrideWithValue(true),
-              currentPermissionsProvider.overrideWithValue(const <String>{}),
+              currentPermissionsProvider.overrideWithValue(const <String>{
+                Perm.warehouseSalesOutboundView,
+              }),
             ],
             child: const WarehouseTaskCenterPage(),
           ),
@@ -107,7 +119,7 @@ void main() {
 
       // 方向 → 出库；来源 → 销售出库，直接读取进行中服务端表格。
       await tester.tap(find.text('出库'));
-      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
       void expectAlignedCategories() {
         final parent = tester.getRect(
           find.byKey(const Key('warehouse-task-center-groups')),
@@ -120,16 +132,26 @@ void main() {
 
       // 选择小类前后都由同一页面容器决定分类左缘。
       expectAlignedCategories();
+      final sources = find.byKey(
+        const Key('warehouse-task-center-segments-出库任务中心'),
+      );
+      if (!tester.any(find.text('销售出库'))) {
+        await tester.tap(sources);
+        await tester.pumpAndSettle();
+      }
       await tester.tap(find.text('销售出库'));
-      await tester.pump(const Duration(milliseconds: 500));
-      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
 
       // 滑之前：只有两层业务分类，状态在表头与每一行。
       expect(find.text('入库'), findsOneWidget);
-      expect(find.text('委外出库'), findsOneWidget);
+      expect(
+        tester
+            .widget<UtenSegmentRow<String>>(sources)
+            .segments
+            .map((s) => s.value),
+        containsAll(['SALES', 'SUBCONTRACT', 'ALL', 'HISTORY']),
+      );
       expect(find.text('已出库'), findsNothing);
-      expect(find.text('全部任务'), findsOneWidget);
-      expect(find.text('历史单据'), findsOneWidget);
       expectAlignedCategories();
 
       // 滑到头（外层收完 + 表内滚）。
@@ -143,9 +165,8 @@ void main() {
       expect(header.top, lessThan(200));
       // 两层分类都已随页滚走；状态首列仍在表头。
       expect(find.text('入库'), findsNothing);
-      expect(find.text('委外出库'), findsNothing);
+      expect(sources.hitTestable(), findsNothing);
       expect(find.text('已出库'), findsNothing);
-      expect(find.text('历史单据'), findsNothing);
       expect(find.text('状态').hitTestable(), findsWidgets);
     },
   );

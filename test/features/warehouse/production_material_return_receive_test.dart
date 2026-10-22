@@ -13,8 +13,21 @@ import 'package:uten_imp/features/warehouse/pages/stock_doc_detail_page.dart';
 import 'package:uten_imp/features/warehouse/repositories/stock_doc_repository.dart';
 import 'package:uten_imp/features/warehouse/widgets/production_material_return_receive_dialog.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
+import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
 import '../../helpers/document_scope_fixture.dart';
+import '../../helpers/badge_summary_fixture.dart';
+import '../../helpers/warehouse_request_scope_fixture.dart';
+
+class _Session extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(id: 'return-receiver', code: 'WH01', name: '收仓测试员'),
+  );
+}
 
 const _warehouses = [
   WarehouseDictEntry(id: 'main', name: '主仓', isAccountable: false),
@@ -123,6 +136,10 @@ Future<void> _openReceived(
   addTearDown(tester.view.resetDevicePixelRatio);
   final container = ProviderContainer(
     overrides: [
+      sessionProvider.overrideWith(_Session.new),
+      apiClientProvider.overrideWithValue(api),
+      fixedBadgeSummaryOverride(),
+      sessionSnapshotProvider.overrideWith(IdleWarehouseTestSnapshot.new),
       // Riverpod 3 同步挂链（pagePrefs → session → connectionRecovery →
       // apiBaseUrl）会拉起真实可达性探针的 60s 周期 Timer，假时钟下挂死；
       // web 探针零 Timer，语义等同「上次可达」。
@@ -313,6 +330,10 @@ void main() {
         final api = _Api();
         final container = ProviderContainer(
           overrides: [
+            sessionProvider.overrideWith(_Session.new),
+            apiClientProvider.overrideWithValue(api),
+            fixedBadgeSummaryOverride(),
+            sessionSnapshotProvider.overrideWith(IdleWarehouseTestSnapshot.new),
             localServerReachableProvider.overrideWith(
               (ref) => LocalServerReachabilityNotifier(null, web: true),
             ),

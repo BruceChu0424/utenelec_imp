@@ -78,7 +78,6 @@ void main() {
       'lib/features/warehouse/pages/warehouse_outbound_task_center_page.dart':
           1,
       'lib/features/warehouse/pages/warehouse_inbound_task_center_page.dart': 1,
-      'lib/features/warehouse/pages/warehouse_draw_task_center_page.dart': 1,
       'lib/features/warehouse/pages/warehouse_hub_page.dart': 1,
     };
     for (final entry in sites.entries) {
@@ -88,6 +87,20 @@ void main() {
         reason: '${entry.key} 的写操作成功点漏接统一失效入口',
       );
     }
+
+    // The legacy draw route delegates to outbound, so its return refresh must
+    // follow that same onResume callback rather than add a duplicate refresh.
+    final drawAlias = source(
+      'lib/features/warehouse/pages/warehouse_draw_task_center_page.dart',
+    );
+    expect(drawAlias, contains('WarehouseOutboundTaskCenterPage('));
+    expect(drawAlias, contains("initialSection: 'DRAW'"));
+    expect(
+      source(
+        'lib/features/warehouse/pages/warehouse_outbound_task_center_page.dart',
+      ),
+      contains('onResume: () => invalidateWarehouseTaskCounts(ref)'),
+    );
 
     // 工作台「返回即刷新」重拉徽章汇总(仓库各入口随之更新)。
     expect(

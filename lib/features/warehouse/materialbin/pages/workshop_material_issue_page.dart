@@ -1049,6 +1049,8 @@ class _WorkshopMaterialIssuePageState
       PopScope(
         canPop: !_saving,
         child: Scaffold(
+          floatingActionButtonAnimator:
+              FloatingActionButtonAnimator.noAnimation,
           floatingActionButton: _loading || _loadError != null
               ? null
               : UtenFloatingActionGroup(children: _actions()),

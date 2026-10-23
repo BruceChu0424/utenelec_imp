@@ -3,6 +3,7 @@ package com.uten.imp.features.warehouse.materialbin;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.MaterialStockOption;
+import com.uten.imp.support.MigratedProjectionSchema;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -53,11 +54,9 @@ class WorkshopMaterialRequestCandidatesPostgresTest {
                 DROP SCHEMA public CASCADE; CREATE SCHEMA public;
                 CREATE TABLE units(id uuid PRIMARY KEY, name text, status text DEFAULT '使用', is_deleted boolean DEFAULT false);
                 CREATE TABLE unit_measurement_profiles(unit_id uuid PRIMARY KEY, measurement_dimension text);
-                CREATE TABLE colors(id uuid PRIMARY KEY, name text, status text DEFAULT '使用', is_deleted boolean DEFAULT false);
+                CREATE TABLE colors(id uuid PRIMARY KEY, name text, status text DEFAULT '使用', is_deleted boolean DEFAULT false, remark text);
                 CREATE TABLE warehouses(id uuid PRIMARY KEY, name text, parent_id uuid, status text DEFAULT '使用',
                     is_deleted boolean DEFAULT false, is_line_side boolean DEFAULT false, is_accountable boolean DEFAULT true);
-                CREATE TABLE material_categories(id uuid PRIMARY KEY,code text,name text,parent_id uuid,
-                    level integer DEFAULT 0,sort_order integer DEFAULT 0,is_deleted boolean DEFAULT false);
                 CREATE TABLE goods(id uuid PRIMARY KEY, code text, name text, color_id uuid, unit_id uuid,
                     category_id uuid,model text,spec text,c_number text,series text,material text,name_en text,stock_place text,
                     status text DEFAULT '使用', is_deleted boolean DEFAULT false, issue_method text DEFAULT 'ORDER',
@@ -68,6 +67,7 @@ class WorkshopMaterialRequestCandidatesPostgresTest {
                     is_deleted boolean DEFAULT false, status integer DEFAULT 0);
                 CREATE TABLE v_workshop_material_bin_ledger(bin_warehouse_id uuid, goods_id uuid, color_id uuid);
                 """);
+        MigratedProjectionSchema.createCurrentTables(db, "material_categories");
         try (var resource = getClass().getResourceAsStream("/db/migration/V613__operational_warehouse_leaf_identity.sql")) {
             String migration = new String(resource.readAllBytes(), StandardCharsets.UTF_8);
             db.execute(migration.substring(0, migration.indexOf("DO $migration$")));

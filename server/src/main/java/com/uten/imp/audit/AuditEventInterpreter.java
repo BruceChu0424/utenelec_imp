@@ -65,6 +65,7 @@ public class AuditEventInterpreter {
             Map.entry("view_ai_chat_action_proposal_detail", "查看 AI 操作确认卡"),
             Map.entry("view_attachment_history_detail", "查看附件历史"),
             Map.entry("view_platform_field_history_detail", "查看业务扩展字段历史"),
+            Map.entry("view_master_record_history_detail", "查看基础资料操作历史"),
             Map.entry("view_sales_quote_detail", "查看销售报价详情"),
             Map.entry("view_sales_order_detail", "查看销售订单详情"),
             Map.entry("view_sales_shipment_detail", "查看销售出货详情"),
@@ -1100,6 +1101,7 @@ public class AuditEventInterpreter {
         values.put("ai_providers", "AI 服务配置");
         values.put("platform_record_fields", "业务扩展字段");
         values.put("platform_record_field_versions", "业务扩展字段历史");
+        values.put("master_record_history", "基础资料操作历史");
         values.put("ai_jobs", "AI 识别任务");
         values.put("ai_call_logs", "AI 调用记录");
         values.put("ai_chat_action_proposals", "AI 操作确认卡");

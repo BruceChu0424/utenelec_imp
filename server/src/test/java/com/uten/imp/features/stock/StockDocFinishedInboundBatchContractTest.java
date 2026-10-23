@@ -47,6 +47,27 @@ class StockDocFinishedInboundBatchContractTest {
     }
 
     @Test
+    void exactItemsParticipateInReplayIdentityAndCannotBeEmptyOrRepeated() {
+        UUID document = UUID.randomUUID();
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        var selected = request("selected-confirm-01", List.of(document));
+        selected.setItemIds(List.of(first, second));
+        var reverse = request("selected-confirm-01", List.of(document));
+        reverse.setItemIds(List.of(second, first));
+        assertThat(StockDocService.normalizeFinishedInboundBatchRequest(selected).requestHash())
+                .isEqualTo(StockDocService.normalizeFinishedInboundBatchRequest(reverse).requestHash())
+                .isNotEqualTo(StockDocService.normalizeFinishedInboundBatchRequest(request("selected-confirm-01", List.of(document))).requestHash());
+        reverse.setItemIds(List.of(first));
+        assertThat(StockDocService.normalizeFinishedInboundBatchRequest(selected).requestHash())
+                .isNotEqualTo(StockDocService.normalizeFinishedInboundBatchRequest(reverse).requestHash());
+        reverse.setItemIds(List.of());
+        assertThrows(ApiException.class, () -> StockDocService.normalizeFinishedInboundBatchRequest(reverse));
+        reverse.setItemIds(List.of(first, first));
+        assertThrows(ApiException.class, () -> StockDocService.normalizeFinishedInboundBatchRequest(reverse));
+    }
+
+    @Test
     void requestNormalizationEnforcesFiftyDocumentLimit() {
         List<UUID> ids = new ArrayList<>();
         for (int index = 0; index < 51; index++) {
@@ -114,7 +135,7 @@ class StockDocFinishedInboundBatchContractTest {
                 .contains("这个防重复提交标识已用于另一批单据")
                 // ADR-148：批量全量点收 = 每行实收等于该行待点收量，键只带幂等键(不经按批分配)。
                 .contains("keyOnlyConfirmRequest(childKey)")
-                .contains("fullAcceptance(itemRepo.findByDocIdOrderByLineNoAsc(documentId))");
+                .contains("fullAcceptance(batchItems.get(documentId))");
         int kernel = source.indexOf("private StockDocument approveDocumentAfterPrelock(");
         int kernelEnd = source.indexOf("/** 红冲", kernel);
         assertThat(source.substring(kernel, kernelEnd)).doesNotContain("prelockProductionDocument(");

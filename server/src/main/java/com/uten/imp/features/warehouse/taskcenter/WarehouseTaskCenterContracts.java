@@ -51,6 +51,11 @@ public final class WarehouseTaskCenterContracts {
                     responsibleName, lineCount, status, statusLabel, tone, action, targetId, canHandle,
                     actionData, item);
         }
+
+        public Row withWarehouseName(String name) {
+            return new Row(rowKey,id,sourceType,recordType,billNo,sourceDocNo,businessDate,partyName,name,
+                    responsibleName,lineCount,status,statusLabel,tone,action,targetId,canHandle,actionData,line);
+        }
     }
 
     /** Stable physical item identity; repeated goods on one document remain separate lines. */

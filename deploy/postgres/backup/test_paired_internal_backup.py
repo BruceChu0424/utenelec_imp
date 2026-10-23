@@ -388,6 +388,36 @@ class PairedInternalBackupTest(unittest.TestCase):
         self.assertEqual(0o700, stat_mode(published))
         self.assertEqual(0o600, stat_mode(published / "objects.jsonl"))
 
+    def test_client_catalog_pair_is_bound_to_the_real_database_backup_and_cold_restore(self):
+        self.add_object()
+        catalog = self.source / "client-releases"
+        catalog.mkdir()
+        (catalog / ".catalog.lock").touch()
+        identifier = str(uuid.uuid4())
+        release = catalog / identifier
+        release.mkdir()
+        package = b"isolated binary fixture, never a real executable"
+        digest = hashlib.sha256(package).hexdigest()
+        metadata = json.dumps({"id": identifier, "state": "PUBLISHED", "installMode": "windows_archive",
+                               "expectedSha256": digest, "sha256": digest, "sizeBytes": len(package)}).encode()
+        (release / "release.json").write_bytes(metadata)
+        (release / "package.bin").write_bytes(package)
+        published = paired.backup(self.config)
+        summary = paired.verify_set(published)
+        self.assertEqual(1, summary["client_release_state"]["internal"]["releases"])
+        self.assertEqual(summary["database_dump_bytes"] + summary["stored_bytes"]
+                         + summary["client_release_state"]["internal"]["bytes"], summary["data_bytes"])
+        target = self.root / "cold-client-media"
+        target.mkdir()
+        paired.restore_client_release_states(published, target)
+        self.assertEqual(metadata, (target / "client-releases" / identifier / "release.json").read_bytes())
+        self.assertEqual(package, (target / "client-releases" / identifier / "package.bin").read_bytes())
+        pointer = self.latest()
+        (release / "package.bin").write_bytes(b"tampered")
+        with self.assertRaisesRegex(ValueError, "integrity"):
+            paired.backup(self.config)
+        self.assertEqual(pointer, self.latest())
+        self.assertEqual("FAILED", json.loads((self.target / "last-attempt.json").read_text())["status"])
     def test_share_lock_blocks_delete_intent_and_physical_worker_but_not_new_upload(self):
         first = self.add_object(compressed=True)
         entered, release, deleted = threading.Event(), threading.Event(), threading.Event()

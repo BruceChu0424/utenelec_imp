@@ -401,6 +401,7 @@ public class WorkshopMaterialChoiceAdapter implements WorkshopMaterialChoicePort
     /** 这张工单从某天起改用别的料 (或加一种料); 原用料行写截止日, 已结算的期间不变。 */
     @Transactional
     public SegmentMaterials changeMaterial(UUID segmentId, MaterialChangeRequest request) {
+        scope.requireExecutionSegment(segmentId);
         return commands.execute("MATERIAL_CHANGE", request.idempotencyKey(), List.of(segmentId, request),
                 SegmentMaterials.class, () -> {
                     List<Map<String, Object>> segments = db.queryForList("""

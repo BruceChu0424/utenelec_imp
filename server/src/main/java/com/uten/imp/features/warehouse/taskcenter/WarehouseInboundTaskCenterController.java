@@ -26,7 +26,7 @@ public class WarehouseInboundTaskCenterController {
 
     @GetMapping
     @PreAuthorize("hasAnyAuthority('warehouse_inbound:view','warehouse_purchase_receipt_history:view',"
-            + "'warehouse_subcontract_receipt_history:view','warehouse_iqc_stock_in:view','warehouse_iqc_return:view','stock_doc:view')")
+            + "'warehouse_subcontract_receipt_history:view','warehouse_iqc_stock_in:view','warehouse_iqc_return:view','stock_doc:view','workshop_material:view')")
     public Page list(@RequestParam(defaultValue="ALL") String source,
                      @RequestParam(defaultValue="ACTIVE") String view,
                      @RequestParam(defaultValue="") String status,
@@ -45,12 +45,13 @@ public class WarehouseInboundTaskCenterController {
 
     @GetMapping("/{rowKey}/detail")
     @PreAuthorize("hasAnyAuthority('warehouse_inbound:view','warehouse_purchase_receipt_history:view',"
-            + "'warehouse_subcontract_receipt_history:view','warehouse_iqc_stock_in:view','warehouse_iqc_return:view','stock_doc:view')")
+            + "'warehouse_subcontract_receipt_history:view','warehouse_iqc_stock_in:view','warehouse_iqc_return:view','stock_doc:view','workshop_material:view')")
     public Map<String,Object> detail(@PathVariable String rowKey,@RequestParam(required=false) UUID scopeWarehouseId,
                                      @RequestParam(defaultValue="1") int linePage,@RequestParam(defaultValue="50") int lineSize) {
         Map<String,Object> detail=service.detail(rowKey,scopeWarehouseId,linePage,lineSize);
         Row row=(Row)detail.get("row");
         String table=switch(row.recordType()) {
+            case "WORKSHOP_REQUISITION"->"workshop_material_requisitions";
             case "EXPECTATION"->"inbound_expectations";
             case "ARRIVAL_EXCEPTION"->"procurement_arrival_exceptions";
             case "PURCHASE_RECEIPT"->"purchase_receipts";

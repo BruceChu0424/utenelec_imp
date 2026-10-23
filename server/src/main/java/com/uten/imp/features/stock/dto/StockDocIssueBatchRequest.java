@@ -35,6 +35,10 @@ public class StockDocIssueBatchRequest {
     @Size(min = 1, max = MAX_DOCUMENTS, message = "一次最多批量出库 50 张领料单")
     private List<UUID> docIds;
 
+    /** Exact selected physical lines. Null keeps the legacy whole-document command. */
+    @Size(min = 1, max = RequestLimits.DOCUMENT_LINES)
+    private List<@NotNull UUID> itemIds;
+
     /** 统一备注（选填）：随本批每张领料单的出库追加到单据备注留痕，单条 ≤200 字。 */
     @Size(max = 200, message = "统一备注最多 200 字")
     private String reason;

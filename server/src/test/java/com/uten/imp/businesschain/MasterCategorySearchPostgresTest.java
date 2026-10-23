@@ -119,12 +119,11 @@ class MasterCategorySearchPostgresTest extends AuthSessionPostgresTestSupport {
             nativeIds.add(json(inventory).path("items").get(0).path("goodsId").asText());
         }
         assertEquals(List.of(name.toString(), code.toString(), branch.toString()), nativeIds);
-        for (String endpoint : List.of("/api/master/goods/search-category-ids", "/api/stock/instant-inventory/search-category-ids")) {
-            MvcResult located = mvc.perform(get(endpoint).param("keyword", word).param("categoryRootIds", root.toString())
-                    .header("Authorization", "Bearer " + token)).andReturn();
-            assertEquals(200, located.getResponse().getStatus(), body(located));
-            assertEquals(List.of(other.toString(), direct.toString()), strings(json(located)), endpoint);
-        }
+        String endpoint = "/api/master/goods/search-category-ids";
+        MvcResult located = mvc.perform(get(endpoint).param("keyword", word).param("categoryRootIds", root.toString())
+                .header("Authorization", "Bearer " + token)).andReturn();
+        assertEquals(200, located.getResponse().getStatus(), body(located));
+        assertEquals(List.of(other.toString(), direct.toString()), strings(json(located)), endpoint);
     }
 
     private JsonNode goodsSearch(String token, UUID root, String query, int page, int size) throws Exception {

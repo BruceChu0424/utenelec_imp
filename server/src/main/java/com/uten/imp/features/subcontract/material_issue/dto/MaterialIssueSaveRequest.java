@@ -43,4 +43,7 @@ public class MaterialIssueSaveRequest {
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)
     private List<@Valid MaterialIssueItemLine> items;
+
+    @Size(min = 1, max = RequestLimits.DOCUMENT_LINES)
+    private List<@NotNull UUID> itemIds;
 }

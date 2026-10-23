@@ -31,4 +31,6 @@ public class Color extends SoftDeletableEntity {
     private String code;        // Number；历史重复原样保留，新写入由 V279 全局终身预约
     private String name;        // ColorName 颜色名称
     private String status;      // Status（使用/禁用）
+    @Column(columnDefinition = "text")
+    private String remark;
 }

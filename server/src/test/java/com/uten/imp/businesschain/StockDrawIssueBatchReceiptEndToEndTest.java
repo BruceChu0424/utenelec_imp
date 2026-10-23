@@ -63,6 +63,29 @@ class StockDrawIssueBatchReceiptEndToEndTest {
         ProductionJdbcMeasurement.end();
     }
 
+    @Test void selectingOnePhysicalItemNeverIssuesTheOtherItemsOnItsDocument() {
+        var setup = setup(1, true);
+        UUID document = setup.documents().getFirst();
+        var lines = items(document);
+        assertTrue(lines.size() > 1, "fixture must contain sibling lines on the same DRAW");
+        UUID selected = lines.getFirst().getItemId();
+        var command = command("one-physical-line-", setup.documents(), "仅本次勾选明细");
+        command.setItemIds(List.of(selected));
+        assertEquals(1, stock.issueFullBatch(command).issuedCount());
+        for (var line : lines) {
+            BigDecimal issued = db.queryForObject("SELECT COALESCE(issued_qty,0) FROM stock_document_items WHERE id=?", BigDecimal.class, line.getItemId());
+            assertEquals(0, issued.compareTo(line.getItemId().equals(selected) ? line.getQty() : BigDecimal.ZERO));
+        }
+        assertEquals(1, receipts(command));
+        assertTrue(stock.issueFullBatch(command).replayed());
+        var changed = commandWithKey(command.getIdempotencyKey(), setup.documents(), command.getReason());
+        assertConflict(() -> stock.issueFullBatch(changed));
+        var remaining = command("remaining-physical-lines-", setup.documents(), null);
+        remaining.setItemIds(lines.stream().skip(1).map(StockDocIssueRequest.Line::getItemId).toList());
+        assertEquals(1, stock.issueFullBatch(remaining).issuedCount());
+        assertEquals(0, lines.stream().map(StockDocIssueRequest.Line::getQty).reduce(BigDecimal.ZERO, BigDecimal::add).compareTo(issuedQuantity(document)));
+    }
+
     @Test void committedIntentIncludesEveryDocumentReasonAndWeightAndReplaysCanonicalOrder() {
         var setup = setup(2, true);
         UUID item = items(setup.documents().getFirst()).getFirst().getItemId();

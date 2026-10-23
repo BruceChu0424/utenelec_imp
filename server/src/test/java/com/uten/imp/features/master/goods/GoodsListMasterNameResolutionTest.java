@@ -14,6 +14,7 @@ import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
+import jakarta.persistence.TypedQuery;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -26,6 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -53,6 +55,11 @@ class GoodsListMasterNameResolutionTest {
     /** 即时库存聚合走原生查询：mock 成空结果（本测试仅关心颜色/单位名解析，不关心库存）。 */
     private static EntityManager stubbedEm() {
         EntityManager em = mock(EntityManager.class);
+        @SuppressWarnings("unchecked")
+        TypedQuery<java.util.UUID> bomQuery = mock(TypedQuery.class);
+        when(bomQuery.setParameter(anyString(), any())).thenReturn(bomQuery);
+        when(bomQuery.getResultList()).thenReturn(List.of());
+        when(em.createQuery(anyString(), eq(java.util.UUID.class))).thenReturn(bomQuery);
         Query q = mock(Query.class);
         when(q.setParameter(anyString(), any())).thenReturn(q);
         when(q.getResultList()).thenReturn(List.of());

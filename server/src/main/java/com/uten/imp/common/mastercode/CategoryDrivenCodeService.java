@@ -221,6 +221,19 @@ public class CategoryDrivenCodeService {
         return effectivePrefixOrFallback(type, categoryId);
     }
 
+    /** Read-only counterpart of the long-managed suffix guard used on save. */
+    String requestedSequenceProblem(MasterType type, String requestedCode, UUID entityId, UUID categoryId) {
+        String prefix = effectivePrefixOrFallback(type, categoryId).prefix();
+        ManagedSuffix suffix = parseManagedSuffix(prefix, normalizeCode(requestedCode));
+        if (suffix == null || suffix.width() < LONG_SUFFIX_MIN_WIDTH) return null;
+        try {
+            requireSequenceAvailable(type, suffix.value(), entityId);
+            return null;
+        } catch (ApiException conflict) {
+            return conflict.getMessage();
+        }
+    }
+
     /**
      * Checks the same lifetime, exact-token ownership rule as
      * {@code fn_claim_global_business_prefix}, without claiming or locking anything.
@@ -407,9 +420,7 @@ public class CategoryDrivenCodeService {
                 type, batchId, categoryId,
                 rootEffective.prefix(), rootEffective.ownerCategoryId());
         setBatchAuditContext(batchId, "final");
-        int updated = updateFinalCodes(
-                type, categoryId,
-                rootEffective.prefix(), rootEffective.ownerCategoryId());
+        int updated = updateFinalCodes(type, batchId, rootEffective.ownerCategoryId());
         clearBatchAuditContext();
         if (updated != affected) {
             throw new ApiException(ErrorCode.CONFLICT, "分类下编号数据已变化，请刷新后重试");
@@ -729,8 +740,11 @@ public class CategoryDrivenCodeService {
                                CASE
                                    WHEN scoped.effective_owner IS NOT NULL
                                        THEN scoped.effective_prefix
-                                            || lpad((row_number() OVER (
-                                                         ORDER BY master.code, master.id))::text, 2, '0')
+                                            || CASE WHEN row_number() OVER (
+                                                         ORDER BY master.code, master.id) < 10
+                                                    THEN '0' ELSE '' END
+                                            || (row_number() OVER (
+                                                         ORDER BY master.code, master.id))::text
                                    ELSE scoped.effective_prefix
                                         || repeat(
                                                '0',
@@ -823,6 +837,7 @@ public class CategoryDrivenCodeService {
                 SET code = '__MCB_' || CAST(:batchId AS text) || '_' || master.code || '_' || CAST(master.id AS text)
                 FROM candidate
                 WHERE master.id = candidate.id
+                  AND master.code IS DISTINCT FROM candidate.target_code
                 """.formatted(type.table),
                 categoryId,
                 resultingPrefix,
@@ -833,25 +848,26 @@ public class CategoryDrivenCodeService {
 
     private int updateFinalCodes(
             MasterType type,
-            UUID categoryId,
-            String resultingPrefix,
+            UUID batchId,
             UUID resultingOwner) {
         String versionUpdate = type.versioned ? ", version = master.version + 1" : "";
-        return baseCandidateQuery(
-                type,
-                """
+        // The first phase changes code and therefore its ordering. The history
+        // inserted before that phase is the authoritative frozen assignment.
+        return em.createNativeQuery("""
                 UPDATE %s master
-                SET code = candidate.target_code,
+                SET code = history.new_code,
                     code_managed = true,
-                    code_prefix_category_id = candidate.effective_owner,
+                    code_prefix_category_id = CAST(:owner AS uuid),
                     updated_at = now()
                     %s
-                FROM candidate
-                WHERE master.id = candidate.id
-                """.formatted(type.table, versionUpdate),
-                categoryId,
-                resultingPrefix,
-                resultingOwner)
+                FROM master_code_history history
+                WHERE history.batch_id = :batchId
+                  AND history.master_type = :type
+                  AND master.id = history.entity_id
+                """.formatted(type.table, versionUpdate))
+                .setParameter("owner", resultingOwner)
+                .setParameter("batchId", batchId)
+                .setParameter("type", type.name())
                 .executeUpdate();
     }
 

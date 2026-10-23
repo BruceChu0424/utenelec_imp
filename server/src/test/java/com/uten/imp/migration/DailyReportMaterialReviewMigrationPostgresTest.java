@@ -27,6 +27,18 @@ class DailyReportMaterialReviewMigrationPostgresTest {
             "goods_operation_history","goods_operation_history_rows","goods_operation_history_events");
     private static final List<String> V885_HISTORY_TABLES=List.of(
             "master_operation_history","master_operation_history_rows","master_operation_history_events");
+    private static final Map<String,String> V898_INDEX_ADDITIONS=Map.ofEntries(
+            Map.entry("master_record_versions_pkey","CREATE UNIQUE INDEX master_record_versions_pkey ON public.master_record_versions USING btree (id)"),
+            Map.entry("ix_master_versions_object","CREATE INDEX ix_master_versions_object ON public.master_record_versions USING btree (entity_type, record_id, id DESC)"),
+            Map.entry("ix_master_versions_category","CREATE INDEX ix_master_versions_category ON public.master_record_versions USING btree (entity_type, category_id, id DESC)"),
+            Map.entry("ix_master_versions_overview","CREATE INDEX ix_master_versions_overview ON public.master_record_versions USING btree (entity_type, id DESC)"),
+            Map.entry("ix_master_versions_command","CREATE INDEX ix_master_versions_command ON public.master_record_versions USING btree (transaction_id, record_id, id)"));
+    private static final Map<String,String> V900_INDEX_ADDITIONS=Map.ofEntries(
+            Map.entry("subcontract_selected_outbound_commands_pkey","CREATE UNIQUE INDEX subcontract_selected_outbound_commands_pkey ON public.subcontract_selected_outbound_commands USING btree (id)"),
+            Map.entry("subcontract_selected_outbound_commands_execution_issue_id_key","CREATE UNIQUE INDEX subcontract_selected_outbound_commands_execution_issue_id_key ON public.subcontract_selected_outbound_commands USING btree (execution_issue_id)"),
+            Map.entry("subcontract_selected_outbound_comm_actor_id_idempotency_key_key","CREATE UNIQUE INDEX subcontract_selected_outbound_comm_actor_id_idempotency_key_key ON public.subcontract_selected_outbound_commands USING btree (actor_id, idempotency_key)"),
+            Map.entry("subcontract_selected_outbound_items_pkey","CREATE UNIQUE INDEX subcontract_selected_outbound_items_pkey ON public.subcontract_selected_outbound_items USING btree (source_item_id)"),
+            Map.entry("subcontract_selected_outbound_items_execution_item_id_key","CREATE UNIQUE INDEX subcontract_selected_outbound_items_execution_item_id_key ON public.subcontract_selected_outbound_items USING btree (execution_item_id)"));
     private static final Map<String,String> V885_INDEX_ADDITIONS=Map.ofEntries(
             Map.entry("master_operation_history_pkey","CREATE UNIQUE INDEX master_operation_history_pkey ON public.master_operation_history USING btree (id)"),
             Map.entry("master_operation_history_actor_id_request_id_transaction_id_key","CREATE UNIQUE INDEX master_operation_history_actor_id_request_id_transaction_id_key ON public.master_operation_history USING btree (actor_id, request_id, transaction_id)"),
@@ -106,6 +118,10 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertTrue(expectedTables.add("goods_market_reference_bindings"));
         // V894 adds saved permission snapshots, independently of existing accounts and command evidence.
         assertTrue(expectedTables.add("permission_templates"));
+        // V898 retains object versions; V900 records selected outbound execution lineage.
+        assertTrue(expectedTables.add("master_record_versions"));
+        assertTrue(expectedTables.add("subcontract_selected_outbound_commands"));
+        assertTrue(expectedTables.add("subcontract_selected_outbound_items"));
         V871_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         V885_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         assertEquals(expectedTables.stream().toList(),tables());
@@ -151,6 +167,10 @@ class DailyReportMaterialReviewMigrationPostgresTest {
                 "A history index must not replace an existing index: "+name));
         V885_INDEX_ADDITIONS.forEach((name,definition)->assertNull(expectedIndexes.put(name,definition),
                 "A master history index must not replace an existing index: "+name));
+        V898_INDEX_ADDITIONS.forEach((name,definition)->assertNull(expectedIndexes.put(name,definition),
+                "An object version index must not replace an existing index: "+name));
+        V900_INDEX_ADDITIONS.forEach((name,definition)->assertNull(expectedIndexes.put(name,definition),
+                "A selected outbound index must not replace an existing index: "+name));
         assertEquals(expectedIndexes,catalogMap(indexes()));
         TreeMap<String,String> expectedPolicy=catalogMap(resetPolicyAfterV840);
         assertNull(expectedPolicy.put("document_unapprovals","CLEAR"));
@@ -170,6 +190,9 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertEquals("CLEAR",expectedPolicy.put("auth_step_up_states","PRESERVE"));
         assertNull(expectedPolicy.put("goods_market_reference_bindings","PRESERVE"));
         assertNull(expectedPolicy.put("permission_templates","PRESERVE"));
+        assertNull(expectedPolicy.put("master_record_versions","PRESERVE"));
+        assertNull(expectedPolicy.put("subcontract_selected_outbound_commands","CLEAR"));
+        assertNull(expectedPolicy.put("subcontract_selected_outbound_items","CLEAR"));
         V871_HISTORY_TABLES.forEach(table->assertNull(expectedPolicy.put(table,"PRESERVE")));
         V885_HISTORY_TABLES.forEach(table->assertNull(expectedPolicy.put(table,"PRESERVE")));
         assertEquals(expectedPolicy,catalogMap(resetPolicy()));

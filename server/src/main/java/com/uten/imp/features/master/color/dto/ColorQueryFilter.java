@@ -13,5 +13,9 @@ public record ColorQueryFilter(
         Set<String> nullFields,
         String code,
         String name,
-        String status) {
+        String status,
+        String remark) {
+    public ColorQueryFilter(String keyword, Set<String> nullFields, String code, String name, String status) {
+        this(keyword, nullFields, code, name, status, null);
+    }
 }

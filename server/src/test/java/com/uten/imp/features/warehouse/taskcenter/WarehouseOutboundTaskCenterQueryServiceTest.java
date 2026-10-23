@@ -18,6 +18,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -30,6 +31,33 @@ import static org.mockito.Mockito.*;
 class WarehouseOutboundTaskCenterQueryServiceTest {
     private static final UUID ACTOR = UUID.fromString("00000000-0000-0000-0000-000000000001");
     private static final UUID OTHER_OWNER = UUID.fromString("00000000-0000-0000-0000-000000000002");
+
+    @Test
+    void workshopRestrictedRowsDoNotBindAnUnusedWarehouseParameterToHibernate() {
+        var workshop = new WarehouseWorkshopMaterialTaskProjection.Scope(true,
+                "requisition.workshop_department_id=CAST(:scopeWorkshop AS uuid)", Map.of("scopeWorkshop", ACTOR));
+        var access = new WarehouseOutboundTaskCenterSql.Access(false,false,false,false,false,
+                new OwnerScope(false, Set.of()),workshop);
+        var plan = WarehouseOutboundTaskCenterSql.build(new Filter("DRAW",null,null,null,null,null,null,1,20),
+                access,new WarehouseTaskScopePort.WarehouseTaskScope(true,List.of(ACTOR),false),"");
+        assertThat(plan.cte()).doesNotContain(":warehouseScope");
+        assertThat(plan.parameters()).containsEntry("scopeWorkshop",ACTOR).doesNotContainKey("warehouseScope");
+    }
+
+    @Test
+    void approvalWithoutEditingGetsAReviewActionOnlyForWritableManualDocuments() {
+        var owners = new OwnerScope(false,Set.of(ACTOR,OTHER_OWNER),Set.of(ACTOR));
+        var fixture = new Fixture(Set.of("stock_doc:view","stock_doc:approve"),false,owners);
+        var access = new WarehouseOutboundTaskCenterSql.Access(false,false,false,true,false,owners);
+        var own = fixture.service.map(row("OTHER","STOCK_DOC",UUID.randomUUID(),"OTHER_DRAFT",ACTOR,true),access);
+        assertThat(own.canHandle()).isTrue();
+        assertThat(own.action()).isEqualTo("STOCK_REVIEW");
+        assertThat(own.actionData()).containsEntry("canEdit",false).containsEntry("canApprove",true);
+        var readonly = fixture.service.map(row("OTHER","STOCK_DOC",UUID.randomUUID(),"OTHER_DRAFT",OTHER_OWNER,true),access);
+        assertThat(readonly.canHandle()).isFalse();
+        assertThat(readonly.action()).isEqualTo("STOCK_DETAIL");
+        assertThat(readonly.actionData()).containsEntry("canApprove",false);
+    }
 
     @Test
     void physicalItemsRetainDistinctSelectionKeysAndOneDocumentCommandIdentity() {
@@ -222,6 +250,8 @@ class WarehouseOutboundTaskCenterQueryServiceTest {
         assertThat(detail.lines().getFirst().quantity()).isEqualByComparingTo("3.25");
         verify(header).setParameter("rowId", id);
         verify(header).setParameter("rowSource", "SUBCONTRACT");
+        verify(header).setParameter("identityLineKey", "physical-item");
+        verify(lines).setParameter("detailLineKey", "physical-item");
         verify(lines).setParameter("lineOffset", 1L);
         verify(f.audit).recordHistory("view_subcontract_material_issue_detail", "subcontract_material_issues", id,
                 "SAME-NUMBER", null, "仓库出库实物记录");
@@ -277,7 +307,8 @@ class WarehouseOutboundTaskCenterQueryServiceTest {
             doCallRealMethod().when(scopes).withQueryScopeCache(any());
             ProductionStockTaskAccessPolicy tasks = mock(ProductionStockTaskAccessPolicy.class);
             when(tasks.canAccessWarehouseTasks()).thenReturn(production);
-            service = new WarehouseOutboundTaskCenterQueryService(em, access, actor, scopes, tasks, audit);
+            service = new WarehouseOutboundTaskCenterQueryService(em, access, actor, scopes, tasks, audit,
+                    mock(com.uten.imp.features.warehouse.materialbin.WorkshopMaterialScope.class));
         }
     }
 }

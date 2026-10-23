@@ -17,7 +17,7 @@ import java.util.Set;
 @Component
 public class BusinessOutboxDeliveryDiagnostics {
     public enum Kind { NONE, SOURCE_CHANGED, LOCK_BUSY, UNEXPECTED }
-    public enum Outcome { DELIVERED, DEFERRED, FAILED, EXHAUSTED, NOT_RECORDED }
+    public enum Outcome { DELIVERED, ALREADY_DELIVERED, DEFERRED, FAILED, EXHAUSTED, NOT_RECORDED }
 
     public record Failure(Kind kind, String sqlState, String detail) {
         boolean deferrable() { return kind == Kind.SOURCE_CHANGED || kind == Kind.LOCK_BUSY; }

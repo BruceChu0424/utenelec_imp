@@ -93,6 +93,8 @@ public class GoodsBomService {
         LegacyNames legacy = legacyNames(rows);
         // 真实使用数量/计算采用值：整层一次取(ADR-129)。
         Map<UUID, BomItemUsage> usage = usageOf(rows.stream().map(GoodsBomItem::getId).toList());
+        boolean stockVisible = canViewStock();
+        Map<UUID, BigDecimal> stock = componentStockQuantities(visibleComponentIds, stockVisible);
         List<BomItemView> views = new ArrayList<>(rows.size());
         for (GoodsBomItem r : rows) {
             Goods c = r.getComponent();
@@ -101,7 +103,7 @@ public class GoodsBomService {
                 views.add(redactedView(r, c, rowUsage));
                 continue;
             }
-            views.add(new BomItemView(
+            BomItemView view = new BomItemView(
                     r.getId(), c.getId(), c.getCode(), c.getName(), c.getModel(), c.getSpec(),
                     c.getMaterial(),
                     unitNameOf(c, legacy), bomColorNameOf(r, c, legacy),
@@ -118,7 +120,9 @@ public class GoodsBomService {
                     r.getControlStage(), r.getConsumptionBasis(),
                     r.getBasisOutputQty(), r.isAllowPartialPackage(),
                     r.isHardGate(), r.getAuditedAt(), rowUsage,
-                    c.getIssueMethod(), periodicUnitWeightGrams(r, c), List.of()));
+                    c.getIssueMethod(), periodicUnitWeightGrams(r, c), List.of());
+            if (stockVisible) view.setComponentStockQty(stock.getOrDefault(c.getId(), BigDecimal.ZERO));
+            views.add(view);
         }
         return views;
     }
@@ -520,6 +524,8 @@ public class GoodsBomService {
             new ExportColumn("learned", "学习来源", ExportColumn.TEXT),
             new ExportColumn("model", "型号", ExportColumn.TEXT),
             new ExportColumn("spec", "规格", ExportColumn.TEXT),
+            new ExportColumn("material", "材质", ExportColumn.TEXT),
+            new ExportColumn("stockQty", "库存数量", ExportColumn.QTY),
             new ExportColumn("unitName", "单位", ExportColumn.TEXT),
             new ExportColumn("colorName", "颜色", ExportColumn.TEXT),
             new ExportColumn("sourceType", "来源", ExportColumn.TEXT),
@@ -537,7 +543,9 @@ public class GoodsBomService {
         Set<UUID> path = new java.util.HashSet<>();
         path.add(goodsId);
         expandForExport(goodsId, 0, path, "", rows, new HashMap<>());
-        return new ExportPayload(EXPORT_COLUMNS, rows, rows.size());
+        List<ExportColumn> columns = canViewStock() ? EXPORT_COLUMNS
+                : EXPORT_COLUMNS.stream().filter(column -> !"stockQty".equals(column.key())).toList();
+        return new ExportPayload(columns, rows, rows.size());
     }
 
     /** DFS 平铺 BOM 树：[path] = 当前展开路径上的货品（含根，环路防护）；[prefix] = 级联序号前缀。 */
@@ -564,6 +572,8 @@ public class GoodsBomService {
             row.put("learned", v.getUsage() != null && v.getUsage().systemLearned() ? "系统学习" : "");
             row.put("model", v.getComponentModel());
             row.put("spec", v.getComponentSpec());
+            row.put("material", v.getComponentMaterial());
+            if (v.getComponentStockQty() != null) row.put("stockQty", v.getComponentStockQty());
             row.put("unitName", v.getComponentUnitName());
             row.put("colorName", v.getComponentColorName());
             row.put("sourceType", v.getComponentSourceType());
@@ -806,7 +816,7 @@ public class GoodsBomService {
         LegacyNames legacy = legacyNames(List.of(r));
         // 原生查询前先落库：刚新建/改过的行也按库里的口径读回(学习边被人工接管由触发器改写)。
         BomItemUsage usage = usageOf(List.of(r.getId())).getOrDefault(r.getId(), BomItemUsage.NONE);
-        return new BomItemView(
+        BomItemView view = new BomItemView(
                 r.getId(), component.getId(), component.getCode(), component.getName(),
                 component.getModel(), component.getSpec(), component.getMaterial(),
                 unitNameOf(component, legacy), bomColorNameOf(r, component, legacy),
@@ -823,6 +833,11 @@ public class GoodsBomService {
                 r.getAuditedAt(), usage,
                 component.getIssueMethod(), periodicUnitWeightGrams(r, component),
                 warnings == null ? List.of() : List.copyOf(warnings));
+        if (canViewStock() && access.visibleGoodsOwner().test(component.getOwnerEmployeeId())) {
+            view.setComponentStockQty(componentStockQuantities(Set.of(component.getId()), true)
+                    .getOrDefault(component.getId(), BigDecimal.ZERO));
+        }
+        return view;
     }
 
     /** Preserve relationship identity for cleanup while hiding an unauthorized target's data. */
@@ -867,6 +882,21 @@ public class GoodsBomService {
                 .map(AuthUser::getPermissions)
                 .map(p -> p.contains("goods:price:view") || p.contains("goods:price:edit"))
                 .orElse(false);
+    }
+
+    private boolean canViewStock() {
+        return currentUser.get().map(AuthUser::getPermissions)
+                .map(permissions -> permissions.contains("stock:view")).orElse(false);
+    }
+
+    private Map<UUID, BigDecimal> componentStockQuantities(Set<UUID> ids, boolean authorized) {
+        if (!authorized || ids.isEmpty()) return Map.of();
+        Map<UUID, BigDecimal> quantities = new HashMap<>();
+        for (Object[] row : bomRepo.findComponentStockQuantities(ids)) {
+            UUID id = row[0] instanceof UUID uuid ? uuid : UUID.fromString(row[0].toString());
+            quantities.put(id, row[1] instanceof BigDecimal value ? value : new BigDecimal(row[1].toString()));
+        }
+        return quantities;
     }
 
     private int nextSortOrder(UUID goodsId) {

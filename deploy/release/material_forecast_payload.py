@@ -491,7 +491,10 @@ def build(repo: Path, output: Path, version: str, commit: str, offline_wheel_cac
             no_symlink_ancestors(offline_wheel_cache)
             require(offline_wheel_cache.is_dir(), "offline wheel cache is missing")
             source = ["--no-index", "--find-links", str(offline_wheel_cache.resolve())]
-        result = subprocess.run([sys.executable, "-I", "-m", "pip", "--isolated", "download", *source,
+        # Development builds stream into the developer's backend console; -q keeps
+        # that console clean while failures still surface. Release builds stay verbose.
+        quiet = ["-q"] if development else []
+        result = subprocess.run([sys.executable, "-I", "-m", "pip", "--isolated", "download", *source, *quiet,
                                  "--disable-pip-version-check", "--require-hashes", "--only-binary=:all:",
                                  "--dest", str(wheelhouse), "--requirement", str(lock)],
                                 check=False, stdout=sys.stderr)

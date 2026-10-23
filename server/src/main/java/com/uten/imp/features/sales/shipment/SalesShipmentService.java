@@ -1267,6 +1267,8 @@ public class SalesShipmentService {
         UUID actor = currentUser.requireEmployeeId();
         List<SalesShipmentItem> items =
                 itemRepo.findByShipmentIdOrderByLineNoAsc(id);
+        com.uten.imp.common.validation.ExactDocumentSelection.requireComplete(req.getItemIds(),
+                items.stream().map(SalesShipmentItem::getId).toList());
         requireWarehouseTransition(
                 current, SalesShipment.WORK_PENDING_PICK, target);
         if (items.isEmpty()) {

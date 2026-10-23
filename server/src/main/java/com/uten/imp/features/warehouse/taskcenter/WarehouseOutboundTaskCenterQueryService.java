@@ -7,6 +7,7 @@ import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.stock.StockDocAccessPolicy;
+import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialScope;
 import com.uten.imp.security.ProductionStockTaskAccessPolicy;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.persistence.EntityManager;
@@ -35,16 +36,19 @@ public class WarehouseOutboundTaskCenterQueryService {
     private final WarehouseTaskScopePort warehouseScopes;
     private final ProductionStockTaskAccessPolicy productionAccess;
     private final AuditDetailViewRecorder auditViews;
+    private final WorkshopMaterialScope materialScopes;
 
     public WarehouseOutboundTaskCenterQueryService(EntityManager em, StockDocAccessPolicy stockAccess,
             SecurityContextCurrentUser currentUser, WarehouseTaskScopePort warehouseScopes,
-            ProductionStockTaskAccessPolicy productionAccess, AuditDetailViewRecorder auditViews) {
+            ProductionStockTaskAccessPolicy productionAccess, AuditDetailViewRecorder auditViews,
+            WorkshopMaterialScope materialScopes) {
         this.em = em;
         this.stockAccess = stockAccess;
         this.currentUser = currentUser;
         this.warehouseScopes = warehouseScopes;
         this.productionAccess = productionAccess;
         this.auditViews = auditViews;
+        this.materialScopes = materialScopes;
     }
 
     private static final Set<String> SOURCES = Set.of("ALL", "SALES", "SUBCONTRACT", "DRAW", "OTHER", "FINISHED");
@@ -62,7 +66,7 @@ public class WarehouseOutboundTaskCenterQueryService {
 
     private Page listScoped(Filter filter) {
         var scope = warehouseScopes.current(filter.scopeWarehouseId());
-        var access = access();
+        var access = access(scope);
         Set<String> allowed = allowedSources(access);
         if (allowed.isEmpty() || (!"ALL".equals(filter.source()) && !allowed.contains(filter.source()))) {
             throw new ApiException(ErrorCode.FORBIDDEN, "无权查看所选出库来源");
@@ -102,11 +106,12 @@ public class WarehouseOutboundTaskCenterQueryService {
 
     private boolean has(String permission) { return stockAccess.hasAuthority(permission); }
 
-    private WarehouseOutboundTaskCenterSql.Access access() {
+    private WarehouseOutboundTaskCenterSql.Access access(WarehouseTaskScopePort.WarehouseTaskScope scope) {
         return new WarehouseOutboundTaskCenterSql.Access(
                 has("warehouse_sales_outbound:view"), has("subcontract_outbound:view"),
                 has("warehouse_subcontract_outbound_history:view"), has("stock_doc:view"),
-                has("stock_doc:view") && productionAccess.canAccessWarehouseTasks(), stockAccess.scope());
+                has("stock_doc:view") && productionAccess.canAccessWarehouseTasks(), stockAccess.scope(),
+                WarehouseWorkshopMaterialTaskProjection.scope(has("workshop_material:view"),materialScopes,scope));
     }
 
     public record PhysicalLine(UUID id, Integer lineNo, String goodsCode, String goodsName,
@@ -132,18 +137,28 @@ public class WarehouseOutboundTaskCenterQueryService {
         } catch (IllegalArgumentException ex) { throw notFound(); }
         UUID documentId = id;
         return warehouseScopes.withQueryScopeCache(() -> {
-            var access = access();
-            if (!allowedSources(access).contains(parts[0])) throw notFound();
             var scope = warehouseScopes.current(requestedWarehouse);
+            var access = access(scope);
+            if (!allowedSources(access).contains(parts[0])) throw notFound();
             var filter = normalize(new Filter(parts[0], null, null, null, null, null, requestedWarehouse, 1, 1,
                     null, null, TaskView.ALL));
             var sql = WarehouseOutboundTaskCenterSql.build(filter, access, scope,
                     requestedWarehouse == null ? currentUser.employeeId().map(UUID::toString).orElse("") : "");
-            Query rowQuery = bind(em.createNativeQuery(sql.identitySql()), sql)
+            Query rowQuery = bind(em.createNativeQuery(sql.identitySql(parts.length == 4)), sql)
                     .setParameter("rowSource", parts[0]).setParameter("rowRecord", parts[1]).setParameter("rowId", documentId);
+            if (parts.length == 4) rowQuery.setParameter("identityLineKey", parts[3]);
             List<Object[]> found = NativeQueryResults.objectArrayRows(rowQuery);
             if (found.isEmpty()) throw notFound();
             Row document = map(java.util.Arrays.copyOf(found.getFirst(), 18), access);
+            if (document.recordType().equals("WORKSHOP_REQUISITION")) {
+                Object warehouses=bindDetail(em.createNativeQuery(sql.cte()+"""
+                         SELECT string_agg(DISTINCT warehouse_name,'、' ORDER BY warehouse_name) FROM filtered visible
+                         WHERE visible.source_type=:rowSource AND visible.record_type=:rowRecord AND visible.id=:rowId
+                           AND (:detailLineKey='' OR visible.line_key=:detailLineKey
+                             OR split_part(visible.line_key,'~',1)=:detailLineKey)
+                        """),sql,parts,documentId).getSingleResult();
+                document=document.withWarehouseName(warehouses==null?"":warehouses.toString());
+            }
             int size = Math.max(1, Math.min(500, lineSize));
             // The task's visible header never grants access to sibling items from another warehouse.
             String lineSql = scopedPhysicalLines(document);
@@ -160,7 +175,8 @@ public class WarehouseOutboundTaskCenterQueryService {
                         NativeValueConverters.text(raw[4]), NativeValueConverters.text(raw[5]),
                         decimalOrNull(raw[6]), decimalOrNull(raw[7]), decimalOrNull(raw[8]),
                         decimalOrNull(raw[9]), NativeValueConverters.text(raw[10]))).toList();
-            String target = document.recordType().equals("SALES_SHIPMENT") ? "sales_shipments"
+            String target = document.recordType().equals("WORKSHOP_REQUISITION") ? "workshop_material_requisitions"
+                    : document.recordType().equals("SALES_SHIPMENT") ? "sales_shipments"
                     : document.recordType().equals("SUBCONTRACT_MATERIAL_ISSUE") ? "subcontract_material_issues"
                     : document.recordType().equals("MATERIAL_DISCOVERY") ? "production_material_discovery_requests" : "stock_documents";
             String action = document.recordType().equals("SALES_SHIPMENT") ? "view_sales_shipment_detail"
@@ -172,13 +188,16 @@ public class WarehouseOutboundTaskCenterQueryService {
     }
 
     private Query bindDetail(Query query, WarehouseOutboundTaskCenterSql.Plan sql, String[] identity, UUID id) {
-        return bind(query, sql).setParameter("rowSource", identity[0]).setParameter("rowRecord", identity[1]).setParameter("rowId", id);
+        return bind(query, sql).setParameter("rowSource", identity[0]).setParameter("rowRecord", identity[1])
+                .setParameter("rowId", id).setParameter("detailLineKey", identity.length == 4 ? identity[3] : "");
     }
 
     static String scopedPhysicalLines(Row document) {
         return "SELECT detail.* FROM (" + physicalLines(document) + ") detail WHERE EXISTS ("
                 + "SELECT 1 FROM filtered visible WHERE visible.source_type=:rowSource AND visible.record_type=:rowRecord"
-                + " AND visible.id=:rowId AND (visible.item_id=detail.id OR (visible.item_id IS NULL AND visible.line_no=detail.line_no)))";
+                + " AND visible.id=:rowId AND (:detailLineKey='' OR visible.line_key=:detailLineKey"
+                + " OR (visible.record_type='WORKSHOP_REQUISITION' AND split_part(visible.line_key,'~',1)=:detailLineKey))"
+                + " AND (visible.item_id=detail.id OR (visible.item_id IS NULL AND visible.line_no=detail.line_no)))";
     }
 
     private static BigDecimal decimalOrNull(Object value) {
@@ -188,6 +207,17 @@ public class WarehouseOutboundTaskCenterQueryService {
     private static ApiException notFound() { return new ApiException(ErrorCode.NOT_FOUND, "出库记录不存在或无权查看"); }
 
     static String physicalLines(Row document) {
+        if (document.recordType().equals("WORKSHOP_REQUISITION")) {
+            return """
+                    SELECT physical.item_id AS id,line.line_no,goods.code,goods.name,color.name,unit.name,
+                           physical.quantity,physical.requested_qty,physical.fulfilled_qty,NULL::numeric,goods.stock_place
+                    FROM workshop_material_requisition_lines line
+                    JOIN workshop_material_requisitions request ON request.id=line.requisition_id
+                    %s
+                    JOIN goods ON goods.id=line.goods_id LEFT JOIN colors color ON color.id=line.color_id
+                    LEFT JOIN units unit ON unit.id=line.unit_id WHERE line.requisition_id=:documentId
+                    """.formatted(com.uten.imp.features.warehouse.materialbin.WorkshopMaterialRequisitionFacts.physicalJoin());
+        }
         if (document.recordType().equals("MATERIAL_DISCOVERY")) {
             if (document.status().equals("DRAW_DISCOVERY_PENDING") || document.status().equals("DRAW_DISCOVERY_CANCELLED")
                     || document.status().equals("DRAW_DISCOVERY_BLOCKED")) {
@@ -234,6 +264,7 @@ public class WarehouseOutboundTaskCenterQueryService {
         if (access.sales()) sources.add("SALES");
         if (access.subcontractTasks() || access.subcontractHistory()) sources.add("SUBCONTRACT");
         if (access.stock()) sources.addAll(List.of("DRAW", "OTHER", "FINISHED"));
+        if (access.workshop().enabled()) sources.add("DRAW");
         return Set.copyOf(sources);
     }
 
@@ -308,7 +339,15 @@ public class WarehouseOutboundTaskCenterQueryService {
                 }
             }
             case "DRAW" -> {
-                if (record.equals("MATERIAL_DISCOVERY")) {
+                if (record.equals("WORKSHOP_REQUISITION")) {
+                    canHandle = actionable && has("workshop_material:issue");
+                    action = canHandle ? "WORKSHOP_REQUISITION" : "HISTORY_DETAIL";
+                    if (!canHandle) data.put("historyEndpoint", "/warehouse/task-center/outbound/DRAW:WORKSHOP_REQUISITION:" + id + "/detail");
+                    data.put("requisitionId",id);
+                    data.put("kind","ISSUE");
+                    data.put("expectedVersion",revision);
+                    if (raw.length >= 28) data.put("requisitionLineId",UUID.fromString(String.valueOf(raw[18]).split("~",2)[0]));
+                } else if (record.equals("MATERIAL_DISCOVERY")) {
                     canHandle = actionable && access.production() && has("stock_doc:approve") && has("stock_doc:issue");
                     action = canHandle ? "MATERIAL_DISCOVERY" : "HISTORY_DETAIL";
                     data.put("requestId", id);
@@ -330,9 +369,10 @@ public class WarehouseOutboundTaskCenterQueryService {
             case "OTHER", "FINISHED" -> {
                 boolean canEdit = actionable && owner != null && has("stock_doc:edit")
                         && (access.stockOwners().seeAll() || access.stockOwners().writableOwners().contains(owner));
-                boolean canApprove = actionable && owner != null && has("stock_doc:approve");
+                boolean canApprove = actionable && owner != null && has("stock_doc:approve")
+                        && (access.stockOwners().seeAll() || access.stockOwners().writableOwners().contains(owner));
                 canHandle = canEdit || canApprove;
-                action = canEdit ? "STOCK_EDIT" : "STOCK_DETAIL";
+                action = canEdit ? "STOCK_EDIT" : canApprove ? "STOCK_REVIEW" : "STOCK_DETAIL";
                 data.put("docType", source.equals("OTHER") ? "OTHER_OUT" : "FINISHED_OUT");
                 data.put("documentId", id);
                 data.put("canEdit", canEdit);
@@ -380,6 +420,9 @@ public class WarehouseOutboundTaskCenterQueryService {
         states.put("DRAW_DISCOVERY_CONFIGURED", new State("生产领料 · 材料已登记", "neutral"));
         states.put("DRAW_DISCOVERY_CANCELLED", new State("生产领料 · 材料申请已取消", "neutral"));
         states.put("DRAW_DISCOVERY_BLOCKED", new State("生产领料 · 材料申请已失效", "danger"));
+        states.put("DRAW_WORKSHOP_PENDING", new State("生产领料 · 内料仓待发料", "success"));
+        states.put("DRAW_WORKSHOP_DONE", new State("生产领料 · 内料仓已发料", "neutral"));
+        states.put("DRAW_WORKSHOP_CANCELLED", new State("生产领料 · 内料仓已取消", "neutral"));
         for (String source : List.of("OTHER", "FINISHED")) {
             String label = source.equals("OTHER") ? "其它出库" : "产成品出库";
             states.put(source + "_DRAFT", new State(label + " · 草稿待审核", "neutral"));

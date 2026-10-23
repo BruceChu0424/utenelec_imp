@@ -5,10 +5,12 @@ import com.uten.imp.features.production.quality.ProductionFqcContracts.LotDecisi
 import com.uten.imp.features.production.quality.ProductionFqcInspectionService;
 import com.uten.imp.features.stock.StockDocService;
 import com.uten.imp.features.stock.dto.FinishedInboundConfirmRequest;
+import com.uten.imp.features.stock.dto.FinishedInboundBatchConfirmRequest;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalLotRequest;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchArrivalRegistrationRequest;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegistrationService;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -136,6 +138,46 @@ class ProductionFinishedSelectedLotEndToEndTest {
         assertThat(db.queryForObject("SELECT count(*) FROM production_finished_arrival_registrations WHERE source_report_id=?", Integer.class, reportId)).isEqualTo(registrations);
         assertThat(db.queryForObject("SELECT count(*) FROM stock_movements WHERE source_doc_id=?", Integer.class, document)).isEqualTo(movements);
         assertSiblingPending(reportId, sibling.lotId(), siblingItem, siblingBefore);
+    }
+
+    @Test
+    void selectedFinalCountLeavesUnselectedStockItemsPendingAndReplayCannotExpand() {
+        var fixture = new FullChainEndToEndTest();
+        beans.autowireBean(fixture);
+        var world = fixture.seedWorld("finished-item-" + UUID.randomUUID().toString().substring(0, 6));
+        ReflectionTestUtils.invokeMethod(fixture, "receiveOpeningInputsForA", world, "20");
+        Object report = ReflectionTestUtils.invokeMethod(fixture, "approvedMultiLineReportOfNewPlan",
+                world, (Object) new String[]{"3", "7"});
+        UUID reportId = ReflectionTestUtils.invokeMethod(report, "id");
+        fixture.loginAs(world.superAdminUserId());
+        var lots = arrivals.batchDetail(List.of(reportId)).getFirst().lots();
+        arrivals.batchRegister(new BatchArrivalRegistrationRequest("final-count-register-" + reportId,
+                lots.stream().map(lot -> new ArrivalLotRequest(lot.lotId(), world.warehouseId(), "FINAL-A", null, null)).toList(),
+                null, false));
+        List<UUID> inspectionIds = db.queryForList("SELECT id FROM production_fqc_inspections WHERE source_report_id=? AND status='PENDING'",
+                UUID.class, reportId);
+        quality.passAll(new com.uten.imp.features.production.quality.ProductionFqcContracts.PassAllBatchRequest(
+                inspectionIds, "final-count-pass-" + reportId));
+        UUID documentId = db.queryForObject("SELECT id FROM stock_documents WHERE source_daily_report_id=? AND doc_type='FINISHED_IN' AND status=0 AND NOT is_deleted",
+                UUID.class, reportId);
+        List<UUID> itemIds = db.queryForList("SELECT id FROM stock_document_items WHERE doc_id=? AND NOT is_deleted ORDER BY qty,id",
+                UUID.class, documentId);
+        assertThat(itemIds).hasSize(2);
+        var request = new FinishedInboundBatchConfirmRequest();
+        request.setIdempotencyKey("final-count-selected-" + reportId);
+        request.setDocumentIds(List.of(documentId));
+        request.setItemIds(List.of(itemIds.getFirst()));
+        var result = stock.confirmFinishedInboundBatch(request);
+        assertThat(result.confirmedCount()).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT COALESCE(SUM(qty),0) FROM stock_movements WHERE source_doc_id=? AND direction=1",
+                BigDecimal.class, documentId)).isEqualByComparingTo("3");
+        assertThat(db.queryForObject("SELECT COALESCE(SUM(item.qty),0) FROM stock_document_items item JOIN stock_documents document ON document.id=item.doc_id WHERE document.source_daily_report_id=? AND document.doc_type='FINISHED_IN' AND document.status=0 AND NOT document.is_deleted AND NOT item.is_deleted",
+                BigDecimal.class, reportId)).isEqualByComparingTo("7");
+        assertThat(stock.confirmFinishedInboundBatch(request).replay()).isTrue();
+        request.setItemIds(itemIds);
+        org.junit.jupiter.api.Assertions.assertThrows(com.uten.imp.common.web.ApiException.class,
+                () -> stock.confirmFinishedInboundBatch(request));
+        assertThat(db.queryForObject("SELECT count(*) FROM stock_movements WHERE source_item_id=?", Integer.class, itemIds.get(1))).isZero();
     }
 
     private void assertSiblingPending(UUID report, UUID siblingLot, UUID siblingItem, String before) {

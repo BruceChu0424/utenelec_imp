@@ -11,8 +11,26 @@ import java.util.UUID;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.doCallRealMethod;
 
 class ChainNoticeReadyEventTest {
+
+    @Test
+    void missingLegacyPayloadUsesTheSameDispatchDefaultsAsAnEmptyObject() {
+        ChainNoticeService service = mock(ChainNoticeService.class);
+        UUID planId = UUID.randomUUID();
+        UUID goodsId = UUID.randomUUID();
+        doCallRealMethod().when(service).deliverOutboxEvent(
+                ChainNoticeService.EVENT_PLAN_SCHEDULED, planId, null);
+        doCallRealMethod().when(service).deliverOutboxEvent(
+                ChainNoticeService.EVENT_BOM_UPDATED, goodsId, null);
+
+        service.deliverOutboxEvent(ChainNoticeService.EVENT_PLAN_SCHEDULED, planId, null);
+        service.deliverOutboxEvent(ChainNoticeService.EVENT_BOM_UPDATED, goodsId, null);
+
+        verify(service).notifyPlanScheduled(planId, false);
+        verify(service).notifyBomUpdated(goodsId);
+    }
 
     @Test
     void publishesOneReceiptScopedReadyEvent() {

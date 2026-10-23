@@ -42,7 +42,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         "logging.level.org.hibernate.SQL=OFF"
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import(CategoryDrivenCodeService.class)
+@Import({CategoryDrivenCodeService.class, MasterIdentifierAvailabilityService.class, MasterCodeService.class,
+        com.uten.imp.features.master.history.MasterIdentifierVersionRestorer.class})
 class CategoryDrivenCodeServicePostgresTest {
 
     private static final PostgreSQLContainer POSTGRES =
@@ -67,6 +68,105 @@ class CategoryDrivenCodeServicePostgresTest {
 
     @Autowired
     private CategoryDrivenCodeService service;
+
+    @Autowired
+    private MasterIdentifierAvailabilityService identifiers;
+
+    @Autowired
+    private MasterCodeService fixedCodes;
+
+    @Autowired
+    private com.uten.imp.features.master.history.MasterIdentifierVersionRestorer identifierRestore;
+
+    @Test
+    void restoringAnOldGoodsCodeKeepsCurrentIdentityMetadataAndAutoAllocationSkipsItsLifetimeClaim() throws Exception {
+        UUID category = UUID.randomUUID(), goods = UUID.randomUUID();
+        insertCategory(category, "RESTORE-NUMBER-CATEGORY", "编号恢复", null, "9Z");
+        insertGoods(goods, category, "9Z01", 100, category, true, false);
+        var custom = service.allocateForUpdate(GOODS, goods, category, "RESTORE-CUSTOM",
+                new CategoryCodeAllocation("9Z01", 100, category, true));
+        jdbc.update("UPDATE goods SET code=?,code_managed=?,code_prefix_category_id=? WHERE id=?",
+                custom.code(), custom.managed(), custom.prefixCategoryId(), goods);
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var current = mapper.readTree(jdbc.queryForObject("SELECT to_jsonb(g)::text FROM goods g WHERE id=?", String.class, goods));
+        var old = current.deepCopy();
+        ((com.fasterxml.jackson.databind.node.ObjectNode) old).put("code", "9Z01").put("code_sequence", 1).put("code_managed", true);
+        identifierRestore.lockForRestore("goods");
+        var restored = identifierRestore.prepare(List.of(new com.uten.imp.features.master.history.MasterVersionRow("goods", goods, current, old))).getFirst().target();
+        assertEquals(100, restored.path("code_sequence").asLong(), "A stale historical sequence must never replace today's identity counter");
+        jdbc.update("UPDATE goods SET code=?,code_sequence=?,code_managed=?,code_prefix_category_id=? WHERE id=?",
+                restored.path("code").asText(), restored.path("code_sequence").asLong(), restored.path("code_managed").asBoolean(),
+                UUID.fromString(restored.path("code_prefix_category_id").asText()), goods);
+        var automatic = service.allocate(GOODS, category, null);
+        assertEquals("9Z02", automatic.code());
+        insertGoods(UUID.randomUUID(), category, automatic.code(), automatic.sequence(), automatic.prefixCategoryId(), automatic.managed(), false);
+        assertEquals(2, longValue("SELECT count(DISTINCT code) FROM goods WHERE category_id='" + category + "'"));
+        assertTrue(identifiers.check(MasterIdentifierAvailabilityService.Domain.GOODS, "9Z01", goods).available());
+        assertFalse(identifiers.check(MasterIdentifierAvailabilityService.Domain.GOODS, "9Z01", null).available());
+    }
+
+    @Test
+    void prefixRenumberingPastNinetyNineUsesFullSuffixAndFrozenAssignments() {
+        UUID category = UUID.randomUUID();
+        insertCategory(category, "PAST99-CATEGORY", "157个塑胶件", null, "9R");
+        for (int i = 1; i <= 157; i++) {
+            insertGoods(UUID.randomUUID(), category, "PAST99-" + String.format("%03d", i),
+                    i, null, false, false);
+        }
+        var preview = service.preview(GOODS, category, "9T");
+        assertEquals(157, preview.affectedRecords());
+        assertEquals(0, preview.conflicts());
+        jdbc.update("UPDATE material_categories SET code_prefix='9T' WHERE id=?", category);
+        assertEquals(157, service.reconcileSubtree(GOODS, category, "9R", "9T"));
+        assertEquals(157, longValue("SELECT count(DISTINCT code) FROM goods WHERE category_id='" + category + "'"));
+        assertEquals("9T99", jdbc.queryForObject("SELECT new_code FROM master_code_history WHERE old_code='PAST99-099'", String.class));
+        assertEquals("9T100", jdbc.queryForObject("SELECT new_code FROM master_code_history WHERE old_code='PAST99-100'", String.class));
+        assertEquals("9T157", jdbc.queryForObject("SELECT new_code FROM master_code_history WHERE old_code='PAST99-157'", String.class));
+        assertEquals(157, longValue("SELECT count(*) FROM goods g JOIN master_code_history h ON h.entity_id=g.id AND h.new_code=g.code WHERE g.category_id='" + category + "'"));
+        assertEquals(0, longValue("SELECT count(*) FROM goods WHERE code LIKE '__MCB_%'"));
+        assertEquals(0, longValue("SELECT count(*) FROM master_record_versions v JOIN goods g ON g.id=v.record_id WHERE g.category_id='" + category + "' AND (left(v.before_row->>'code',6)='__MCB_' OR left(v.after_row->>'code',6)='__MCB_')"));
+        assertEquals(157, longValue("SELECT count(*) FROM master_record_versions v JOIN goods g ON g.id=v.record_id WHERE g.category_id='" + category + "' AND v.source_table='goods' AND v.before_row->>'code' LIKE 'PAST99-%' AND v.after_row->>'code' LIKE '9T%'"));
+    }
+
+    @Test
+    void liveCodeChecksRespectNormalizedLifetimeIdentityAndNeverAllocate() {
+        UUID category = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        insertCategory(category, "LIVE-CODE-CATEGORY", "编号查重", null, null);
+        insertGoods(owner, category, "LIVE-CODE-OLD", 1, null, false, false);
+        long before = longValue("SELECT count(*) FROM business_identifier_reservation_members");
+        for (var domain : MasterIdentifierAvailabilityService.Domain.values()) {
+            assertFalse(identifiers.check(domain, " live-code-old ", null).available());
+            assertTrue(identifiers.check(domain, "LIVE-CODE-FREE", null).available());
+            assertTrue(identifiers.check(domain, "", null).available());
+        }
+        assertTrue(identifiers.check(MasterIdentifierAvailabilityService.Domain.GOODS,
+                "live-code-old", owner).available());
+        assertFalse(identifiers.check(MasterIdentifierAvailabilityService.Domain.GOODS,
+                "HP000001", null).available(), "A long managed code must also have a free stable suffix");
+        assertTrue(identifiers.check(MasterIdentifierAvailabilityService.Domain.GOODS,
+                "HP000001", owner).available());
+        assertEquals(before, longValue("SELECT count(*) FROM business_identifier_reservation_members"));
+        jdbc.update("UPDATE goods SET code='LIVE-CODE-NEW' WHERE id=?", owner);
+        assertTrue(identifiers.check(MasterIdentifierAvailabilityService.Domain.GOODS,
+                "LIVE-CODE-OLD", owner).available(), "Only its original identity may reclaim an old number");
+        jdbc.update("UPDATE goods SET is_deleted=true WHERE id=?", owner);
+        assertFalse(identifiers.check(MasterIdentifierAvailabilityService.Domain.GOODS,
+                "LIVE-CODE-OLD", null).available());
+        assertThrows(ApiException.class, () -> identifiers.check(
+                MasterIdentifierAvailabilityService.Domain.GOODS, "LIVE-CODE-OLD", owner));
+    }
+
+    @Test
+    void manualFixedCodeDoesNotAdvanceAutoSequenceAndAutoSkipsReservations() {
+        jdbc.update("INSERT INTO currencies(id,code,name,status,is_deleted) VALUES (?,'BZ000001','编号测试币种','使用',false)", UUID.randomUUID());
+        assertEquals("CUSTOM-CURRENCY", fixedCodes.resolveMutableCode(MasterCodePrefix.CURRENCY,
+                " custom-currency ", null, null));
+        assertEquals("BZ000002", fixedCodes.resolveMutableCode(MasterCodePrefix.CURRENCY,
+                null, null, null));
+        assertThrows(ApiException.class, () -> fixedCodes.resolveMutableCode(MasterCodePrefix.CURRENCY,
+                " bz000001 ", null, null));
+    }
 
     @Autowired
     private JdbcTemplate jdbc;

@@ -69,6 +69,33 @@ class SubcontractMaterialIssuePlanAuthorityTest {
     }
 
     @Test
+    void partialPhysicalSelectionCannotDeleteSiblingLinesOrConsumeTheirReservations() {
+        UUID id = UUID.randomUUID();
+        var document = new SubcontractMaterialIssue();
+        document.setId(id);
+        document.setStatus((short) 0);
+        document.setWarehouseId(UUID.randomUUID());
+        var first = new SubcontractMaterialIssueItem();
+        var sibling = new SubcontractMaterialIssueItem();
+        first.setIssueId(id);
+        sibling.setIssueId(id);
+        when(em.find(SubcontractMaterialIssue.class, id, LockModeType.PESSIMISTIC_WRITE)).thenReturn(document);
+        when(itemRepo.findByIssueIdOrderByLineNoAsc(id)).thenReturn(List.of(first, sibling));
+        var update = new MaterialIssueSaveRequest();
+        update.setItemIds(List.of(first.getId()));
+        update.setItems(List.of());
+        var saveError = assertThrows(ApiException.class, () -> service.update(id, update));
+        assertEquals(ErrorCode.CONFLICT, saveError.getCode());
+        var approvalError = assertThrows(ApiException.class, () -> service.approveSelected(id,
+                new com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueApproveRequest(List.of(first.getId()))));
+        assertEquals(ErrorCode.CONFLICT, approvalError.getCode());
+        verify(itemRepo, never()).save(any());
+        verify(itemRepo, never()).deleteAll(any());
+        verifyNoInteractions(stockService, planService);
+        assertEquals((short) 0, document.getStatus());
+    }
+
+    @Test
     void successfulPlanDraftSaveUpdatesTheOriginalRowBeforeRefreshingReservations() {
         UUID issueId = UUID.randomUUID();
         UUID warehouseId = UUID.randomUUID();

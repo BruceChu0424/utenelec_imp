@@ -34,11 +34,12 @@ public class StockDrawIssueBatchReceipts {
 
     record Command(String key, List<UUID> documents, String reason,
                    Map<UUID, StockDocIssueBatchRequest.ItemWeight> weights, String hash,
-                   int protocolVersion, Map<UUID, String> reviews) {
+                   int protocolVersion, Map<UUID, String> reviews, List<UUID> itemIds) {
         Command {
             documents = List.copyOf(documents);
             weights = Map.copyOf(weights);
             reviews = Map.copyOf(reviews);
+            itemIds = itemIds == null ? null : List.copyOf(itemIds);
         }
     }
 
@@ -97,6 +98,17 @@ public class StockDrawIssueBatchReceipts {
         }
         var weights = StockDocService.batchIssueWeights(request.getWeights());
         var documents = ids.stream().sorted(Comparator.comparing(UUID::toString)).toList();
+        List<UUID> itemIds = null;
+        if (request.getItemIds() != null) {
+            var selected = new LinkedHashSet<>(request.getItemIds());
+            if (selected.isEmpty() || selected.contains(null)
+                    || selected.size() != request.getItemIds().size()
+                    || selected.size() > RequestLimits.DOCUMENT_LINES) {
+                throw validation("所选领料明细无效，请刷新后重新选择");
+            }
+            itemIds = selected.stream().sorted(Comparator.comparing(UUID::toString)).toList();
+            if (!selected.containsAll(weights.keySet())) throw validation("实称重量包含未选中的领料明细");
+        }
         int protocol = request.getProtocolVersion() == null ? 1 : request.getProtocolVersion();
         if (protocol != 1 && protocol != 2) throw validation("批量出库请求的版本不正确，请刷新页面后重试");
         Map<UUID, String> reviews = new java.util.TreeMap<>(Comparator.comparing(UUID::toString));
@@ -120,7 +132,8 @@ public class StockDrawIssueBatchReceipts {
         weights.forEach((id, weight) -> parts.add("weight:" + id + ":"
                 + WeightInput.text(weight.weightKg()) + ":" + weight.qtyFromWeight()));
         reviews.forEach((id, token) -> parts.add("review:" + id + ":" + token));
-        return new Command(key, documents, reason, weights, CanonicalFingerprint.sha256(parts), protocol, reviews);
+        if (itemIds != null) itemIds.forEach(id -> parts.add("item:" + id));
+        return new Command(key, documents, reason, weights, CanonicalFingerprint.sha256(parts), protocol, reviews, itemIds);
     }
 
     /** Ordinary entry locks its command before the graph; Discovery uses a fresh server-owned inner key. */
@@ -166,11 +179,14 @@ public class StockDrawIssueBatchReceipts {
     /** Persist only after every requested remainder is actually posted; all-skipped is also final. */
     public void record(UUID actor, UUID employee, Command command, StockDocIssueBatchResponse response) {
         String documents = "{" + String.join(",", command.documents().stream().map(UUID::toString).toList()) + "}";
-        if (Boolean.TRUE.equals(em.createNativeQuery("""
+        var remaining = em.createNativeQuery("""
                 SELECT EXISTS(SELECT 1 FROM stock_document_items item
                     WHERE item.doc_id = ANY(CAST(:documents AS uuid[])) AND NOT item.is_deleted
-                      AND fn_production_draw_item_requested_qty(item.id) > COALESCE(item.issued_qty, 0))
-                """).setParameter("documents", documents).getSingleResult())) {
+                      AND fn_production_draw_item_requested_qty(item.id) > COALESCE(item.issued_qty, 0)
+                """ + (command.itemIds() == null ? "" : " AND item.id = ANY(CAST(:items AS uuid[]))") + ")")
+                .setParameter("documents", documents);
+        if (command.itemIds() != null) remaining.setParameter("items", "{" + String.join(",", command.itemIds().stream().map(UUID::toString).toList()) + "}");
+        if (Boolean.TRUE.equals(remaining.getSingleResult())) {
             throw new ApiException(ErrorCode.CONFLICT, "本批仍有未实际出库的领料数量，整批未生效，请刷新后核对");
         }
         em.createNativeQuery("""

@@ -461,6 +461,16 @@ public class SubcontractMaterialPlanService {
     /** 释放本草稿全部未消费占用(专属批次的占用由数据库交接守卫原样退回原分析)。 */
     @Transactional(propagation = Propagation.MANDATORY)
     public void releaseDraftReservations(UUID issueId) {
+        releaseDraftReservations(issueId, null);
+    }
+
+    /** Split execution releases only selected plan lines; all other reservations retain their identity and version. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void releaseDraftReservations(UUID issueId, java.util.Set<UUID> selectedPlanItems) {
+        if (selectedPlanItems != null && selectedPlanItems.isEmpty()) return;
+        Map<String, Object> parameters = new java.util.HashMap<>();
+        parameters.put("issueId", issueId);
+        if (selectedPlanItems != null) parameters.put("selectedPlanItems", selectedPlanItems);
         List<Object[]> released = returning("""
                 UPDATE stock_reservations
                 SET released_qty = qty, status = 1,
@@ -471,8 +481,8 @@ public class SubcontractMaterialPlanService {
                   AND source_doc_type = 'SUBCONTRACT_OUTBOUND_DRAFT'
                   AND source_doc_id = :issueId
                   AND status = 0 AND consumed_qty = 0 AND is_deleted = FALSE
-                RETURNING goods_id, color_id
-                """, Map.of("issueId", issueId));
+                """ + (selectedPlanItems == null ? "" : " AND owner_id IN (:selectedPlanItems)")
+                + " RETURNING goods_id, color_id", parameters);
         enqueueReleased(released);
     }
 

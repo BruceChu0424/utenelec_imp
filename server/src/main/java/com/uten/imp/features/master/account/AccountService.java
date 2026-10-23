@@ -641,6 +641,7 @@ public class AccountService {
     private AccountDetail toDetail(
             Account a, CurrencyMeta currency, BalanceIntegrity integrity) {
         boolean showBalance = hasAuthority("account:balance:view");
+        AccountStyleLabel style = accountStyleLabel(a.getStyleId());
         return new AccountDetail(a.getId(), a.getLegacyId(), a.getCode(), a.getName(),
                 a.getBankAccountNo(), a.getAccountType(), a.getCurrencyId(),
                 currency.code(), currency.name(), currency.exchangeRate(),
@@ -659,6 +660,7 @@ public class AccountService {
                 showBalance ? plainOrNull(a.getBalanceFloor()) : null,
                 plainOrNull(currency.exchangeRate()),
                 a.getParentLegacyId(), a.getStyleLegacyId(), a.getStyleId(),
+                style.code(), style.name(), style.deleted(),
                 a.getStatus(), a.isAutoCreated(),
                 showBalance && integrity != null ? integrity.flowBalance() : null,
                 showBalance && integrity != null ? integrity.difference() : null,
@@ -670,6 +672,26 @@ public class AccountService {
                         ? integrity.difference().signum()==0 : null,
                 showBalance && integrity != null ? integrity.flowCount() : null,
                 showBalance && integrity != null ? integrity.latestFlowAt() : null);
+    }
+
+    private record AccountStyleLabel(String code, String name, Boolean deleted) { }
+
+    private AccountStyleLabel accountStyleLabel(UUID styleId) {
+        if (styleId == null) return new AccountStyleLabel(null, null, null);
+        // The authorized account detail includes its own relationship label, including
+        // historical soft-deleted subjects; it does not expose the subject directory.
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                        SELECT code, name, is_deleted
+                        FROM payment_styles
+                        WHERE id=:styleId
+                        """)
+                .setParameter("styleId", styleId));
+        if (rows.isEmpty()) return new AccountStyleLabel(null, null, null);
+        Object[] row = rows.getFirst();
+        return new AccountStyleLabel(
+                row[0] == null ? null : row[0].toString(),
+                row[1] == null ? null : row[1].toString(),
+                row[2] == null ? null : (Boolean) row[2]);
     }
 
     private BalanceIntegrity balanceIntegrity(UUID accountId) {

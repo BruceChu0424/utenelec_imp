@@ -58,6 +58,7 @@ class GoodsBomExportColumnsTest {
     void exportColumnsMirrorTheTableAndUsePlainCascadeSequence() {
         Goods root = goods("P-1", "面板");
         Goods shell = goods("K01", "外壳");
+        shell.setMaterial("PVC");
         Goods screw = goods("S01", "螺丝");
         Goods washer = goods("D01", "垫片");
 
@@ -86,10 +87,10 @@ class GoodsBomExportColumnsTest {
 
         ExportPayload payload = service.exportPayload(root.getId());
 
-        // 列集 = 组装信息表格列(四列退役后)，共 15 列、顺序即表格顺序（学习来源
+        // 列集 = 组装信息表格列；无 stock:view 时不导出库存数量（学习来源
         // 与表格「学习来源」列同位：紧跟物料名称）。
         assertEquals(
-                List.of("序号", "物料编号", "物料名称", "学习来源", "型号", "规格", "单位", "颜色", "来源",
+                List.of("序号", "物料编号", "物料名称", "学习来源", "型号", "规格", "材质", "单位", "颜色", "来源",
                         "计量方式", "基准产量", "尾包", "设计使用数量", "真实使用数量", "备注"),
                 payload.columns().stream().map(c -> c.label()).collect(Collectors.toList()),
                 () -> "导出列必须与表格列一致");
@@ -108,6 +109,7 @@ class GoodsBomExportColumnsTest {
             assertFalse(code.startsWith("*"), () -> "编号不应再带星号前缀: " + code);
         }
         assertEquals("K01", bySeq.get("1").get("code"));
+        assertEquals("PVC", bySeq.get("1").get("material"));
         assertEquals("S01", bySeq.get("2").get("code"));
         assertEquals("D01", bySeq.get("2.1").get("code"));
 

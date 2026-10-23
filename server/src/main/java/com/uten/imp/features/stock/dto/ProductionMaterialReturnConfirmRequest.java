@@ -21,10 +21,15 @@ import java.util.UUID;
 public record ProductionMaterialReturnConfirmRequest(
         @NotNull UUID warehouseId,
         @NotNull @Pattern(regexp="[A-Za-z0-9._:-]{8,128}") String idempotencyKey,
-        @Size(max = RequestLimits.DOCUMENT_LINES) List<@Valid Line> lines) {
+        @Size(max = RequestLimits.DOCUMENT_LINES) List<@Valid Line> lines,
+        @Size(min = 1, max = RequestLimits.DOCUMENT_LINES) List<@NotNull UUID> itemIds) {
+
+    public ProductionMaterialReturnConfirmRequest(UUID warehouseId, String idempotencyKey, List<Line> lines) {
+        this(warehouseId, idempotencyKey, lines, null);
+    }
 
     public ProductionMaterialReturnConfirmRequest(UUID warehouseId, String idempotencyKey) {
-        this(warehouseId, idempotencyKey, null);
+        this(warehouseId, idempotencyKey, null, null);
     }
 
     /** 一行退料的收料实称重量。 */

@@ -352,6 +352,59 @@ class ApiClient {
     }
   }
 
+  /// Client packages stay in a stream instead of retaining a desktop bundle in
+  /// memory. Only API-relative paths are accepted; credentials never follow an
+  /// update manifest to a different origin.
+  Future<Stream<Uint8List>> getPackageStream(
+    String path, {
+    required CancelToken cancelToken,
+  }) async {
+    if (!RegExp(
+      r'^/client-updates/[a-fA-F0-9-]{36}/download$',
+    ).hasMatch(path)) {
+      throw const FormatException('Invalid client package path');
+    }
+    try {
+      final response = await _dio.get<ResponseBody>(
+        path,
+        cancelToken: cancelToken,
+        options: Options(
+          responseType: ResponseType.stream,
+          followRedirects: false,
+          receiveTimeout: const Duration(minutes: 15),
+          extra: const {safeRequestRetryDisabledKey: true},
+        ),
+      );
+      if (response.data == null) throw const FormatException('Empty package');
+      return response.data!.stream;
+    } on DioException catch (e) {
+      throw _convert(e);
+    }
+  }
+
+  Future<void> uploadClientPackage(
+    String path,
+    Uint8List bytes, {
+    required void Function(int, int) onProgress,
+  }) async {
+    try {
+      await _dio.put<dynamic>(
+        path,
+        data: bytes,
+        onSendProgress: onProgress,
+        options: Options(
+          contentType: 'application/octet-stream',
+          headers: {'Content-Length': bytes.length},
+          sendTimeout: const Duration(minutes: 30),
+          receiveTimeout: const Duration(minutes: 5),
+          extra: const {safeRequestRetryDisabledKey: true},
+        ),
+      );
+    } on DioException catch (e) {
+      throw _convert(e);
+    }
+  }
+
   Future<Map<String, dynamic>> patch(String path, {Object? body}) async {
     try {
       final r = await _dio.patch<dynamic>(path, data: body);

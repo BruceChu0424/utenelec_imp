@@ -116,7 +116,7 @@ public class SubcontractMaterialIssueService {
      *
      * @return 单据当前挂接的计划行 id；更新时也作为不可越权替换的允许集合
      */
-    private Set<UUID> requireIssueWritable(SubcontractMaterialIssue r, String actionAuthority) {
+    Set<UUID> requireIssueWritable(SubcontractMaterialIssue r, String actionAuthority) {
         Set<UUID> planItemIds = planItemIds(r.getId());
         if (r.getOwnerPool() == null) {
             access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料出仓单");
@@ -235,6 +235,10 @@ public class SubcontractMaterialIssueService {
         tx.bind();
         var guard = lockIssueRequest(id, request);
         requireIssueForUpdate(id);
+        if (request != null && request.getItemIds() != null) {
+            com.uten.imp.common.validation.ExactDocumentSelection.requireComplete(request.getItemIds(),
+                    itemRepo.findByIssueIdOrderByLineNoAsc(id).stream().map(SubcontractMaterialIssueItem::getId).toList());
+        }
         guard.verifyUnchanged();
     }
 
@@ -248,6 +252,10 @@ public class SubcontractMaterialIssueService {
         Set<UUID> existingPlanItemIds = requireIssueWritable(r, "subcontract_material_issue:edit");
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
+        }
+        if (req.getItemIds() != null) {
+            com.uten.imp.common.validation.ExactDocumentSelection.requireComplete(req.getItemIds(),
+                    itemRepo.findByIssueIdOrderByLineNoAsc(id).stream().map(SubcontractMaterialIssueItem::getId).toList());
         }
         mutationGuard.verifyUnchanged();
         canonicalizePlanLines(id, req.getItems(), existingPlanItemIds, !existingPlanItemIds.isEmpty());
@@ -403,6 +411,13 @@ public class SubcontractMaterialIssueService {
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_material_issue:approve')")
     public MaterialIssueDetail approve(UUID id) {
+        return approveSelected(id, null);
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('subcontract_material_issue:approve')")
+    public MaterialIssueDetail approveSelected(UUID id,
+            com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueApproveRequest request) {
         tx.bind();
         var mutationGuard=mutationLocks.materialIssue(id);
         SubcontractMaterialIssue r = requireIssueForUpdate(id);
@@ -417,6 +432,8 @@ public class SubcontractMaterialIssueService {
             throw new ApiException(ErrorCode.BUSINESS, "发料单需指定发出仓");
         }
         List<SubcontractMaterialIssueItem> items = itemRepo.findByIssueIdOrderByLineNoAsc(id);
+        com.uten.imp.common.validation.ExactDocumentSelection.requireComplete(request == null ? null : request.itemIds(),
+                items.stream().map(SubcontractMaterialIssueItem::getId).toList());
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }

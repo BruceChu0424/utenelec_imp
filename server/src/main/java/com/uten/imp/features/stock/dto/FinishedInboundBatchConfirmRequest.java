@@ -23,4 +23,8 @@ public class FinishedInboundBatchConfirmRequest {
     @NotNull
     @Size(min = 1, max = 50)
     private List<@NotNull UUID> documentIds;
+
+    /** Null preserves explicit document-level callers; a provided list is the exact accepted scope. */
+    @Size(min = 1, max = com.uten.imp.common.validation.RequestLimits.DOCUMENT_LINES)
+    private List<@NotNull UUID> itemIds;
 }

@@ -101,12 +101,6 @@ class WarehouseHubPage extends ConsumerWidget {
             location: RoutePath.stockDocNew(StockDocType.otherIn.code),
           ),
           (
-            icon: Icons.archive_outlined,
-            label: '新建产成品进仓',
-            description: '产成品进仓单',
-            location: RoutePath.stockDocNew(StockDocType.finishedIn.code),
-          ),
-          (
             icon: Icons.swap_horiz_outlined,
             label: '新建调拨单',
             description: '仓与仓之间的库存调拨',

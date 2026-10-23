@@ -25,11 +25,18 @@ import 'package:uten_imp/features/warehouse/pages/warehouse_outbound_task_center
 import 'package:uten_imp/features/warehouse/widgets/subcontract_outbound_detail_table.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
+import 'package:uten_imp/shared/platform_tables/platform_table_layout.dart';
+import 'package:uten_imp/shared/platform_tables/table_column_projection.dart';
 import 'outbound_weight_fakes.dart';
 import 'subcontract_outbound_test_support.dart';
+import '../../shared/drafts/memory_form_draft_storage.dart';
 
 const _issueIds = ['issue-1', 'issue-2', 'issue-3'];
+const _detailTableKey =
+    'features.warehouse.widgets.subcontract_outbound_detail_table.SubcontractOutboundDetailTableState.build.1';
 
 late SharedPreferences _preferences;
 
@@ -38,6 +45,162 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     _preferences = await SharedPreferences.getInstance();
   });
+  for (final savedPrefix in [
+    <String>[],
+    ['status'],
+    ['document', 'status'],
+  ]) {
+    testWidgets('委外旧单页偏好仅补入未曾保存的状态和单号 $savedPrefix', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1100));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final projection = TableColumnProjectionController();
+      addTearDown(projection.dispose);
+      final order = ['warehouse', ...savedPrefix, 'goodsName', 'quantity'];
+      final seed = PlatformTableLayout(
+        order: order,
+        hidden: {'color', if (savedPrefix.length == 2) 'document'},
+        widths: const {'goodsName': 287, 'document': 317},
+      );
+      final layout = _SavedDetailLayout(_detailTableKey, seed);
+      await tester.pumpWidget(
+        _app(
+          SubcontractOutboundFakeApi(),
+          tableLayout: layout,
+          projection: projection,
+        ),
+      );
+      await tester.pumpAndSettle();
+      final columns = projection.resolve(_detailTableKey)!.columns;
+      final actual = columns.map((column) => column.sourceKey).toList();
+      expect(
+        actual.take(
+          savedPrefix.isEmpty
+              ? 2
+              : savedPrefix.length == 1
+              ? 3
+              : 3,
+        ),
+        savedPrefix.isEmpty
+            ? ['status', 'document']
+            : savedPrefix.length == 1
+            ? ['warehouse', 'status', 'document']
+            : ['warehouse', 'status', 'goodsName'],
+      );
+      expect(actual, isNot(contains('color')));
+      expect(
+        columns.singleWhere((column) => column.sourceKey == 'goodsName').width,
+        287,
+      );
+      if (savedPrefix.length == 2) expect(actual, isNot(contains('document')));
+      expect(layout.rewritten, isFalse);
+      expect(layout.seed.toJson(), seed.toJson());
+      expect(tester.takeException(), isNull);
+    });
+  }
+  for (final saved in [false, true]) {
+    testWidgets('委外明细实际列序${saved ? '保留已有用户设置' : '默认状态单号在前且货品颜色相邻'}', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1440, 1100));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final projection = TableColumnProjectionController();
+      addTearDown(projection.dispose);
+      final savedOrder = [
+        'warehouse',
+        'status',
+        'supplier',
+        'document',
+        'goodsCode',
+        'goodsName',
+      ];
+      final layout = _SavedDetailLayout(
+        _detailTableKey,
+        PlatformTableLayout(order: saved ? savedOrder : const []),
+      );
+      await tester.pumpWidget(
+        _app(
+          SubcontractOutboundFakeApi(),
+          tableLayout: layout,
+          projection: projection,
+        ),
+      );
+      await tester.pumpAndSettle();
+      final actual = projection
+          .resolve(_detailTableKey)!
+          .columns
+          .map((column) => column.sourceKey)
+          .toList();
+      expect(
+        actual.take(saved ? savedOrder.length : 7),
+        saved
+            ? savedOrder
+            : [
+                'status',
+                'document',
+                'supplier',
+                'order',
+                'goodsName',
+                'goodsCode',
+                'color',
+              ],
+      );
+      expect(layout.rewritten, isFalse, reason: '仅改默认，不迁移或覆盖用户保存的列序');
+      expect(tester.takeException(), isNull);
+    });
+  }
+  testWidgets(
+    'partial subcontract selection never saves away unselected reservations',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = SubcontractOutboundFakeApi();
+      api.addLine(
+        'issue-1',
+        pick: outboundPickLine(
+          issueItemId: 'sibling',
+          planItemId: 'sibling-plan',
+          goodsId: 'sibling-goods',
+          goodsCode: 'SIB',
+          goodsName: '未选物料',
+        ),
+        item: outboundDocItem(
+          id: 'sibling',
+          planItemId: 'sibling-plan',
+          goodsId: 'sibling-goods',
+        ),
+      );
+      await tester.pumpWidget(
+        _app(
+          api,
+          selectedItemIds: ['issue-item-1', 'issue-item-2', 'issue-item-3'],
+        ),
+      );
+      await tester.pumpAndSettle();
+      final table = tester.widget<SubcontractOutboundDetailTable>(
+        find.byType(SubcontractOutboundDetailTable),
+      );
+      expect(table.rows.map((row) => row.draft.draftItemId), [
+        'issue-item-1',
+        'issue-item-2',
+        'issue-item-3',
+      ]);
+      expect(find.textContaining('该领料单需整单确认'), findsNothing);
+      await _confirm(tester);
+      expect(api.updates, isEmpty);
+      expect(api.approvals, isEmpty);
+      expect(api.atomicRequests, hasLength(3));
+      expect(api.atomicRequests.first.$2['itemIds'], ['issue-item-1']);
+      expect(
+        (api.atomicRequests.first.$2['document'] as Map)['items'],
+        hasLength(1),
+      );
+      expect(
+        ((api.documents['issue-1']!['items'] as List).single as Map)['id'],
+        'sibling',
+      );
+      expect(api.documents['issue-1']!['status'], 0);
+    },
+  );
 
   testWidgets('自动交期保存为null直到服务端成功确认，人工交期原样提交', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1440, 1100));
@@ -279,6 +442,14 @@ void main() {
       find.byType(UtenEditableGrid<SubcontractOutboundTableRow>),
     );
     final order = grid.initialColumnOrder!;
+    expect(order.take(4), ['status', 'document', 'supplier', 'order']);
+    expect(order.indexOf('goodsName'), lessThan(order.indexOf('quantity')));
+    expect(order.indexOf('color'), order.indexOf('goodsCode') + 1);
+    expect(order.indexOf('quantity'), lessThan(order.indexOf('warehouse')));
+    expect(
+      order.indexOf('parentGoodsName'),
+      greaterThan(order.indexOf('place')),
+    );
     // 2026-10-10 口径：独立「单位」列删除(数量内联单位)，实称重量紧跟「本次出库」。
     expect(order.indexOf('weight'), order.indexOf('quantity') + 1);
     expect(order.contains('unit'), isFalse);
@@ -405,7 +576,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('同一领料单任意明细勾选联动整单, 不勾的单不保存不审核', (tester) async {
+  testWidgets('同单明细独立选择，未选齐不保存，整单取消后可办理其它单', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1200, 1100));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final api = SubcontractOutboundFakeApi();
@@ -437,8 +608,18 @@ void main() {
     table = tester.widget<SubcontractOutboundDetailTable>(
       find.byType(SubcontractOutboundDetailTable),
     );
-    expect(table.rows.take(2).every((row) => !row.draft.selected), isTrue);
+    expect(table.rows.first.draft.selected, isFalse);
+    expect(table.rows[1].draft.selected, isTrue);
     expect(table.rows.skip(2).every((row) => row.draft.selected), isTrue);
+    await tester.tap(
+      find.byKey(const Key('subcontract-outbound-batch-confirm')),
+    );
+    await tester.pumpAndSettle();
+    expect(api.updates, isEmpty);
+    expect(api.approvals, isEmpty);
+    table.onRowSelected!(table.rows[1], false);
+    table.onChanged();
+    await tester.pumpAndSettle();
     await _confirm(tester);
     expect(api.updates, ['issue-2', 'issue-3']);
     expect(api.approvals, ['issue-2', 'issue-3']);
@@ -446,6 +627,7 @@ void main() {
     table = tester.widget<SubcontractOutboundDetailTable>(
       find.byType(SubcontractOutboundDetailTable),
     );
+    table.onRowSelected!(table.rows[0], true);
     table.onRowSelected!(table.rows[1], true);
     table.onChanged();
     await tester.pumpAndSettle();
@@ -672,6 +854,16 @@ void main() {
   });
 }
 
+class _SavedDetailLayout extends PlatformTableLayoutNotifier {
+  _SavedDetailLayout(super.tableKey, this.seed);
+  final PlatformTableLayout seed;
+  bool rewritten = false;
+  @override
+  PlatformTableLayout build() => seed;
+  @override
+  void persist() => rewritten = true;
+}
+
 /// 点右下执行按钮(文字随进度在「确认批量出库 / 继续未执行项」间切换), 再在弹窗里确认。
 Future<void> _confirm(WidgetTester tester) async {
   await tester.tap(find.byKey(const Key('subcontract-outbound-batch-confirm')));
@@ -689,22 +881,40 @@ Widget _app(
   SubcontractOutboundFakeApi api, {
   Set<String> permissions = subcontractOutboundPermissions,
   bool productionTheme = false,
-}) => ProviderScope(
-  overrides: [
-    fakeWeightRepositoryOverride(),
-    apiClientProvider.overrideWithValue(api),
-    masterNameServiceProvider.overrideWithValue(OutboundNames(api)),
-    currentPermissionsProvider.overrideWithValue(permissions),
-    sharedPreferencesProvider.overrideWithValue(_preferences),
-  ],
-  child: MaterialApp(
-    theme: productionTheme
-        ? buildLightTheme().copyWith(platform: TargetPlatform.windows)
-        : null,
-    home: productionTheme
-        ? const UtenControlTheme(
-            child: WarehouseSubcontractOutboundBatchPage(issueIds: _issueIds),
-          )
-        : const WarehouseSubcontractOutboundBatchPage(issueIds: _issueIds),
-  ),
-);
+  List<String>? selectedItemIds,
+  PlatformTableLayoutNotifier? tableLayout,
+  TableColumnProjectionController? projection,
+}) {
+  final page = WarehouseSubcontractOutboundBatchPage(
+    issueIds: _issueIds,
+    selectedItemIds: selectedItemIds,
+  );
+  final home = productionTheme ? UtenControlTheme(child: page) : page;
+  return ProviderScope(
+    overrides: [
+      fakeWeightRepositoryOverride(),
+      apiClientProvider.overrideWithValue(api),
+      masterNameServiceProvider.overrideWithValue(OutboundNames(api)),
+      currentPermissionsProvider.overrideWithValue(permissions),
+      sharedPreferencesProvider.overrideWithValue(_preferences),
+      if (tableLayout != null)
+        platformTableLayoutProvider(
+          _detailTableKey,
+        ).overrideWith(() => tableLayout),
+      if (selectedItemIds != null) ...[
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'warehouse-user'),
+        ),
+        formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+      ],
+    ],
+    child: MaterialApp(
+      theme: productionTheme
+          ? buildLightTheme().copyWith(platform: TargetPlatform.windows)
+          : null,
+      home: projection == null
+          ? home
+          : TableColumnProjectionScope(controller: projection, child: home),
+    ),
+  );
+}

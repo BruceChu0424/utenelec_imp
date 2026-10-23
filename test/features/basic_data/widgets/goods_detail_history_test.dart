@@ -228,7 +228,17 @@ void main() {
     await tester.pumpAndSettle();
     expect(_undoEnabled(tester), isFalse);
     final form = tester.widget<MasterEditForm>(find.byType(MasterEditForm));
-    expect(form.readOnlyKeys, contains('code'));
+    expect(form.readOnlyKeys, isNot(contains('code')));
+    expect(form.readOnlyKeys, contains('status'));
+    final codeField = form.fields.singleWhere((field) => field.key == 'code');
+    expect(codeField.readOnly, isFalse);
+    expect(codeField.identifierDomain, 'GOODS');
+    expect(codeField.identifierId, 'goods-a');
+    final codeEditor = find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.controller?.text == 'G001',
+    );
+    expect(codeEditor, findsOneWidget);
+    expect(tester.widget<TextField>(codeEditor).readOnly, isFalse);
     final name = find.byWidgetPredicate(
       (widget) => widget is TextField && widget.controller?.text == '原名称',
     );

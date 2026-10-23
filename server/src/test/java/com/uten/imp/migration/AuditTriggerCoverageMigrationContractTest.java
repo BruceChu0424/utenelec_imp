@@ -192,7 +192,7 @@ class AuditTriggerCoverageMigrationContractTest {
                     "库存单据、预留与调整申请: 人工录入并审核的业务单据",
                     Set.of(
                         "stock_balance_adjustment_requests", "stock_document_items",
-                        "stock_documents", "stock_reservations", "stock_draw_issue_batches")),
+                        "stock_documents", "stock_reservations", "stock_draw_issue_batches", "subcontract_selected_outbound_commands", "subcontract_selected_outbound_items")),
             new FullGroup("production_docs", "data_change", false,
                     "生产计划、日报、执行段、退料、点收、质检与直送单据: 人工录入并审核的业务单据",
                     Set.of(
@@ -316,6 +316,7 @@ class AuditTriggerCoverageMigrationContractTest {
             new NoneGroup("retained_private_evidence",
                     "永久原件、私有 before-image 和清理授权是独立证据，保留原载荷/关联并由授权原生入口读取；通用行审计不再次复制密钥、原上传、值单元或历史证据",
                     Set.of("ai_input_originals", "ai_provider_history", "business_record_history", "business_record_identities",
+                            "master_record_versions",
                             "notice_blessing_history",
                             "sales_quote_template_candidate_history", "platform_record_fields")),
             new NoneGroup("notice",
@@ -643,6 +644,17 @@ class AuditTriggerCoverageMigrationContractTest {
         Set<String> stale = new TreeSet<>(classified);
         stale.removeAll(live);
         assertEquals(Set.of(), stale, "Listed tables must exist in the migrated schema");
+    }
+
+    @Test
+    void colorRemarkAndPaymentStyleHistoryExtensionsDoNotIntroduceAuditPolicyTables() throws IOException {
+        for (int version : List.of(901, 902)) {
+            MigrationSource migration = migrations().stream().filter(source -> source.version() == version).findFirst().orElseThrow();
+            assertFalse(CREATE_TABLE.matcher(stripSqlComments(migration.sql())).find(),
+                    "V" + version + " extends existing master fields/routes without new tables");
+        }
+        assertEquals("data_change", fullTables().get("colors"));
+        assertEquals("data_change", fullTables().get("payment_styles"));
     }
 
     @Test

@@ -147,12 +147,12 @@ void main() {
     expect(table.facets['status'], isEmpty, reason: '列表只有待发料一种状态');
     expect(table.columns.map((column) => column.label), [
       '状态',
+      '单据 / 任务单号',
       '货品名称',
       '货品编码',
-      '规格',
       '颜色',
+      '规格',
       '数量',
-      '单据 / 任务单号',
       '来源单据',
       '客户 / 供应商 / 委外商',
       '仓库',

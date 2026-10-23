@@ -27,10 +27,10 @@ import 'package:uten_imp/shared/providers/uten_page_prefs_notifier.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
-import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
 
 import '../../shared/drafts/memory_form_draft_storage.dart';
+import '../../helpers/warehouse_request_scope_fixture.dart';
 
 const _reportA = '20000000-0000-0000-0000-000000000001';
 const _reportB = '20000000-0000-0000-0000-000000000002';
@@ -297,13 +297,19 @@ void main() {
     },
   );
 
-  testWidgets('正式批量登记页响应 stock_doc:approve 动态授予与撤销', (tester) async {
+  testWidgets('正式批量登记页权限变化后必须重新进入才能继续采集', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1280, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     SharedPreferences.setMockInitialValues({});
     final api = _BatchArrivalApi();
     final container = ProviderContainer(
       overrides: [
+        ...warehouseRequestScopeFixture(
+          includeClient: false,
+          includeIdentity: false,
+          includeBadges: false,
+          authenticatedSession: true,
+        ),
         apiClientProvider.overrideWithValue(api),
         currentPermissionsProvider.overrideWith(
           (ref) => ref.watch(_testBatchPermissionsProvider),
@@ -317,21 +323,26 @@ void main() {
       ],
     );
     addTearDown(container.dispose);
-    await tester.pumpWidget(
-      UncontrolledProviderScope(
-        container: container,
-        child: const MaterialApp(
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          locale: Locale('zh'),
-          home: ProductionFinishedArrivalRegistrationPage(
-            reportIds: [_reportA, _reportB],
-            route: InboundRoute.inspectFirst,
+    Future<void> enter(String visit) async {
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            key: ValueKey(visit),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('zh'),
+            home: const ProductionFinishedArrivalRegistrationPage(
+              reportIds: [_reportA, _reportB],
+              route: InboundRoute.inspectFirst,
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await enter('view');
 
     expect(find.byKey(_inspectSubmitKey), findsNothing);
 
@@ -347,6 +358,8 @@ void main() {
       Perm.stockDocApprove,
     });
     await tester.pumpAndSettle();
+    expect(find.byKey(_inspectSubmitKey), findsNothing);
+    await enter('authorized');
     expect(find.byKey(_inspectSubmitKey), findsOneWidget);
     expect(find.byKey(_stockInSubmitKey), findsNothing);
     expect(
@@ -893,14 +906,14 @@ Future<ProviderContainer> _openBatchPage(
   MemoryFormDraftStorage? drafts,
   List<String>? lotIds,
 }) async {
-  // 给了 [drafts] 就按真实应用打开本机草稿保护(登录身份 + 本机存储)。
+  // Every physical-task editor runs with a settled authenticated request owner.
+  // Passing [drafts] exposes that same owner's durable records to assertions.
   final draftOverrides = <Override>[
-    if (drafts != null) ...[
-      authenticatedScopeProvider.overrideWithValue(
-        const AuthenticatedScope(userId: 'warehouse-user'),
-      ),
-      formDraftStorageProvider.overrideWithValue(drafts),
-    ],
+    ...warehouseRequestScopeFixture(
+      includeClient: false,
+      includeBadges: false,
+      storage: drafts,
+    ),
   ];
   // 账号记忆「上次所选入库仓」(InboundFillScope.finished，偏好键
   // production.finishedArrivalFill)冷启动读本地缓存：键按 账号/服务器 作用域

@@ -166,6 +166,13 @@ class DocumentOrdinaryWriteOwnerGuardContractTest {
         String source = source(relative);
         for (String signature : signatures) {
             String body = method(source, signature);
+            // Whole-document approval delegates to the selected-item kernel;
+            // both entrances retain the same locked owner authorization.
+            if (" approve(".equals(signature)
+                    && relative.equals("features/subcontract/material_issue/SubcontractMaterialIssueService.java")) {
+                assertThat(body).contains("return approveSelected(id, null);");
+                body = method(source, " approveSelected(");
+            }
             if (" approve(".equals(signature) && (
                     relative.equals("features/purchase/receipt/PurchaseReceiptService.java")
                     || relative.equals("features/subcontract/receipt/SubcontractReceiptService.java"))) {

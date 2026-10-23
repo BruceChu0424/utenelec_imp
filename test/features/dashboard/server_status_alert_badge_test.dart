@@ -1,8 +1,10 @@
-// 工作台「服务器状态」卡的告警徽章。
+// 工作台「服务器状态」卡的角标。
 //
 // 用户 2026-09-11：「有任何报警 都推给我」「我就怕业务附件 196G 不够用」。
 // 此前磁盘越过 80%/90% 的告警**只活在服务器状态页内部**——不主动点开就无人知晓。
 // 后端补了站内通知推送（ServerStatusAlertScheduler），这里锁住工作台那一眼。
+// 2026-10-22 起「服务器更新」卡退役、更新入口并入服务器状态页，该卡角标
+// 同时计入待更新版本数（serverUpdateAvailable）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,26 +16,21 @@ import 'package:uten_imp/shared/badges/badge_registry.dart';
 import '../../helpers/badge_summary_fixture.dart';
 
 void main() {
-  test(
-    'manual release reminder is a separate task from resource health alerts',
-    () {
-      final summary = badgeSummaryFixture(
-        entries: {
-          BadgeEntry.serverStatusAlert: (2, 0),
-          BadgeEntry.serverUpdateAvailable: (1, 0),
-        },
-      );
-      expect(
-        workbenchBadgeCounts(WorkbenchBadgeKind.serverStatus, summary).todo,
-        2,
-      );
-      expect(
-        workbenchBadgeCounts(WorkbenchBadgeKind.serverUpdate, summary).todo,
-        1,
-      );
-      expect(BadgeFact.serverUpdateAvailable, 'serverOperations.updates');
-    },
-  );
+  test('server status card badge sums alerts and pending updates', () {
+    // 2026-10-22：「服务器更新」卡退役、入口并入服务器状态页后，
+    // 工作台这一张卡的角标 = 资源告警 + 待更新版本数，一次看完。
+    final summary = badgeSummaryFixture(
+      entries: {
+        BadgeEntry.serverStatusAlert: (2, 0),
+        BadgeEntry.serverUpdateAvailable: (1, 0),
+      },
+    );
+    expect(
+      workbenchBadgeCounts(WorkbenchBadgeKind.serverStatus, summary).todo,
+      3,
+    );
+    expect(BadgeFact.serverUpdateAvailable, 'serverOperations.updates');
+  });
   Future<int> badgeCount(
     WidgetTester tester, {
     required int alerts,

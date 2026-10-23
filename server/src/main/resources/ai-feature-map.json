@@ -144,13 +144,7 @@
       ],
       "module": "系统管理",
       "purpose": "为授权运维人员提供版本检查、预约更新和更新进度核对。",
-      "paths": [
-        [
-          "工作台",
-          "系统管理",
-          "服务器更新"
-        ]
-      ],
+      "paths": [],
       "parent": null,
       "record": false,
       "anyOf": [
@@ -3669,7 +3663,7 @@
         "仓库管理枢纽页"
       ],
       "module": "仓库管理",
-      "purpose": "包含：仓库任务中心、新建其它出库、新建调拨单、新建产成品出库、新建盘点单、新建其它入库、新建产成品进仓、即时库存。",
+      "purpose": "包含：仓库任务中心、新建其它出库、新建盘点单、新建产成品出库、新建其它入库、新建调拨单、即时库存、称重计数。",
       "paths": [
         [
           "工作台",
@@ -3694,7 +3688,8 @@
         "warehouse_subcontract_finished_return_history:view",
         "warehouse_subcontract_outbound_history:view",
         "warehouse_subcontract_receipt_history:view",
-        "workshop_material:setup"
+        "workshop_material:setup",
+        "workshop_material:view"
       ],
       "allOf": [],
       "hubOf": [
@@ -3702,7 +3697,6 @@
         "/warehouse/OTHER_OUT/new",
         "/warehouse/FINISHED_OUT/new",
         "/warehouse/OTHER_IN/new",
-        "/warehouse/FINISHED_IN/new",
         "/warehouse/TRANSFER/new",
         "/warehouse/CHECK/new",
         "/stock/instant-inventory",
@@ -3745,49 +3739,6 @@
           "PMC运营部",
           "仓库管理",
           "新建盘点单"
-        ]
-      ],
-      "parent": null,
-      "record": false,
-      "anyOf": [
-        "stock_doc:create"
-      ],
-      "allOf": [
-        "stock_doc:view"
-      ],
-      "hubOf": [],
-      "doc": "docs/03-页面/仓库单据编辑页.md"
-    },
-    {
-      "route": "/warehouse/FINISHED_IN",
-      "title": "产成品进仓列表",
-      "aliases": [],
-      "module": "仓库管理",
-      "purpose": "",
-      "paths": [],
-      "parent": "/warehouse",
-      "record": false,
-      "anyOf": [
-        "stock_doc:view"
-      ],
-      "allOf": [],
-      "hubOf": [],
-      "doc": null
-    },
-    {
-      "route": "/warehouse/FINISHED_IN/new",
-      "title": "新建产成品进仓",
-      "aliases": [
-        "仓库单据编辑页"
-      ],
-      "module": "仓库管理",
-      "purpose": "产成品进仓单",
-      "paths": [
-        [
-          "工作台",
-          "PMC运营部",
-          "仓库管理",
-          "新建产成品进仓"
         ]
       ],
       "parent": null,
@@ -4295,27 +4246,13 @@
         "warehouse_sales_outbound:view",
         "warehouse_subcontract_finished_return_history:view",
         "warehouse_subcontract_outbound_history:view",
-        "warehouse_subcontract_receipt_history:view"
+        "warehouse_subcontract_receipt_history:view",
+        "workshop_material:setup",
+        "workshop_material:view"
       ],
       "allOf": [],
       "hubOf": [],
       "doc": "docs/03-页面/仓库任务中心页.md"
-    },
-    {
-      "route": "/warehouse/tasks/draw",
-      "title": "生产领料任务中心页",
-      "aliases": [],
-      "module": "仓库管理",
-      "purpose": "",
-      "paths": [],
-      "parent": "/warehouse/tasks",
-      "record": false,
-      "anyOf": [
-        "stock_doc:view"
-      ],
-      "allOf": [],
-      "hubOf": [],
-      "doc": "docs/03-页面/生产领料任务中心页.md"
     },
     {
       "route": "/warehouse/tasks/inbound",
@@ -4332,7 +4269,8 @@
         "warehouse_iqc_return:view",
         "warehouse_iqc_stock_in:view",
         "warehouse_purchase_receipt_history:view",
-        "warehouse_subcontract_receipt_history:view"
+        "warehouse_subcontract_receipt_history:view",
+        "workshop_material:view"
       ],
       "allOf": [],
       "hubOf": [],
@@ -4351,7 +4289,8 @@
         "stock_doc:view",
         "subcontract_outbound:view",
         "warehouse_sales_outbound:view",
-        "warehouse_subcontract_outbound_history:view"
+        "warehouse_subcontract_outbound_history:view",
+        "workshop_material:view"
       ],
       "allOf": [],
       "hubOf": [],
@@ -4525,10 +4464,12 @@
       "parent": null,
       "record": false,
       "anyOf": [
-        "workshop_material:issue"
+        "workshop_material:issue",
+        "workshop_material:view"
       ],
       "allOf": [
-        "workshop_material:issue"
+        "workshop_material:issue",
+        "workshop_material:view"
       ],
       "hubOf": [],
       "doc": "docs/03-页面/车间内料仓发料页.md"

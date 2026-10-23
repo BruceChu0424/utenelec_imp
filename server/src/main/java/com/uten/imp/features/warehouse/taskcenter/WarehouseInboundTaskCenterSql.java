@@ -31,11 +31,18 @@ final class WarehouseInboundTaskCenterSql {
               'SUBCONTRACT_EXCEPTION_RETURN_REQUIRED','SUBCONTRACT_EXCEPTION_RECEIPT_POSTED',
               'FINISHED_READY_REGISTER','FINISHED_READY_COUNT','FINISHED_RESIDUAL_COUNT',
               'FINISHED_WAITING_FQC','FINISHED_PRE_STOCKED_FQC','FINISHED_FQC_PARTIAL',
-              'FINISHED_DRAFT','OTHER_DRAFT','RETURN_DRAFT','RETURN_PENDING_RECEIVE')
+              'FINISHED_DRAFT','OTHER_DRAFT','RETURN_DRAFT','RETURN_PENDING_RECEIVE','RETURN_WORKSHOP_PENDING')
             """;
 
     record Access(boolean inbound, boolean purchaseHistory, boolean subcontractHistory,
-                  boolean quality, boolean stock, boolean productionPool, String stockOwnerPredicate) {}
+                  boolean quality, boolean stock, boolean productionPool, String stockOwnerPredicate,
+                  WarehouseWorkshopMaterialTaskProjection.Scope workshop) {
+        Access(boolean inbound, boolean purchaseHistory, boolean subcontractHistory,
+               boolean quality, boolean stock, boolean productionPool, String stockOwnerPredicate) {
+            this(inbound,purchaseHistory,subcontractHistory,quality,stock,productionPool,stockOwnerPredicate,
+                    WarehouseWorkshopMaterialTaskProjection.Scope.NONE);
+        }
+    }
 
     static String base(Access access, WarehouseTaskScope scope) {
         return base(access, scope, null);
@@ -43,6 +50,7 @@ final class WarehouseInboundTaskCenterSql {
 
     static String base(Access access, WarehouseTaskScope scope, String keyword) {
         List<String> branches = new ArrayList<>();
+        if (access.workshop().enabled()) branches.add(WarehouseWorkshopMaterialTaskProjection.inbound(access.workshop()));
         String ctes = "WITH " + WarehouseQualityResultService.taskCenterFactCtes() + ",\n"
                 + ProductionFinishedInboundTaskService.taskCenterFactCtes() + ",\n" + DRAFT_CTES + ",\n";
         if (access.inbound()) {
@@ -508,10 +516,13 @@ final class WarehouseInboundTaskCenterSql {
                           WHEN document.status=1 THEN 'STOCKED'
                           WHEN document.doc_type='WDRAW' AND fn_is_production_material_return_request(document.id)
                                THEN 'PENDING_RECEIVE'
+                          WHEN document.doc_type='FINISHED_IN' AND NOT fn_is_production_linked_stock_document(document.id)
+                               THEN 'LEGACY_DRAFT'
                           ELSE 'DRAFT' END AS workflow_status,
                        CASE WHEN document.status=0 AND NOT document.is_closed AND document.doc_type='WDRAW'
                                   AND fn_is_production_material_return_request(document.id) THEN 'RETURN_RECEIVE'
                             WHEN document.status=0 AND NOT document.is_closed AND document.doc_type<>'WDRAW'
+                                  AND document.doc_type<>'FINISHED_IN'
                                   AND NOT fn_is_production_linked_stock_document(document.id)
                                   AND NOT EXISTS(SELECT 1 FROM stock_balance_adjustment_requests adjustment
                                                  WHERE adjustment.stock_document_id=document.id) THEN 'STOCK_EDIT'

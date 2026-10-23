@@ -249,11 +249,13 @@ class SubcontractOutboundDetailTable extends ConsumerStatefulWidget {
     this.stickyHeaderPinned,
     this.primary = false,
     this.bottomContentPadding = 0,
+    this.quantityHint = subcontractOutboundQuantityHint,
   });
   final List<SubcontractOutboundTableRow> rows;
   final bool editable;
   final bool showOrder;
   final bool selectable;
+  final String quantityHint;
 
   /// 表头吸顶信号（全站表格滚动口径 2026-09-22）；null = 表头随页滚动。
   final ValueNotifier<bool>? stickyHeaderPinned;
@@ -392,29 +394,30 @@ class _SubcontractOutboundDetailTableState
                   ),
               ],
             ),
-      // 2026-10-10 用户口径(批量出库页默认列序)：处理结果前置，单据链(出库单号/来源订单)
-      // 次之，先核对身份(名称/编号/颜色)再核仓与量；数量列已内联单位(无独立单位列)，
+      // 默认先核对状态、单号、委外商和货品，再核数量与仓位。
+      // 数量列已内联单位(无独立单位列)，
       // 实称重量紧跟「本次出库」之后 (ADR-135 §3.8)。单张拣货页 showOrder:false，不
       // 认识的 key 会被忽略，不受批量页列序影响。
       initialColumnOrder: const [
         'status',
         'document',
+        'supplier',
         'order',
         'goodsName',
         'goodsCode',
         'color',
-        'warehouse',
         'requested',
         'stockAvailable',
-        'place',
         'quantity',
         'weight',
+        'warehouse',
+        'place',
         'parentGoodsName',
         'parentGoodsCode',
         'lineRemark',
         'documentRemark',
-        'supplier',
       ],
+      defaultColumnOrderAnchors: const {'status': null, 'document': 'status'},
       selectable: widget.editable && widget.selectable,
       selectionEnabled: widget.editable,
       canSelectRow: (row) => row.editable,
@@ -543,7 +546,7 @@ class _SubcontractOutboundDetailTableState
           width: 150,
           required: true,
           numeric: true,
-          headerInfo: subcontractOutboundQuantityHint,
+          headerInfo: widget.quantityHint,
           textOf: (row) => row.draft.qty.text,
           listenableOf: (row) => row.draft.qty,
           cellBuilder: (context, row) => RequiredCellFrame(

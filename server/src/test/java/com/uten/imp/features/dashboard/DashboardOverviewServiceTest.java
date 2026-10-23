@@ -39,10 +39,10 @@ class DashboardOverviewServiceTest {
             "productionSchedule", 4L, "warehouseOutboundCenter", 14L, "warehouseInboundCenter", 21L,
             "purchaseTaskCenter", 6L, "subcontractTaskCenter", 7L, "visitorApproval", 2L,
             "hrProfileReview", 1L, "expenseFinance", 5L));
-    private final Map<String, Long> facts = Map.of(
+    private final Map<String, Long> facts = new HashMap<>(Map.of(
             "productionSchedule.overdue", 1L, "productionSchedule.urgent", 2L,
             "productionDraw.count", 4L, "productionReturn.count", 1L,
-            "expense.pendingApprovalCount", 3L, "expense.pendingPaymentCount", 2L);
+            "expense.pendingApprovalCount", 3L, "expense.pendingPaymentCount", 2L));
     private DashboardOverviewService service;
 
     @BeforeEach void before() {
@@ -151,6 +151,32 @@ class DashboardOverviewServiceTest {
         assertThat(result.todos()).extracting(DashboardOverviewDto.TodoCard::count).containsExactly(4L, 1L);
         assertThat(result.todos()).extracting(DashboardOverviewDto.TodoCard::route)
                 .containsExactly("/warehouse/tasks/outbound?section=DRAW", "/warehouse/tasks/inbound?section=RETURN");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"4,5,1,7,9,8", "0,5,0,7,5,7", "4,0,1,0,4,1", "0,0,0,0,0,0", "0,0,1,7,0,8", "4,5,0,0,9,0"})
+    void warehouseProductionQueuesIncludeWorkshopFactsAndHideZeroWithoutUsingModuleTotals(
+            long draw, long workshopIssue, long materialReturn, long workshopReturn,
+            long expectedDraw, long expectedReturn) {
+        grantedEntries.addAll(Set.of("warehouseOutboundCenter", "warehouseInboundCenter"));
+        todo.put("warehouseOutboundCenter", 99L);
+        todo.put("warehouseInboundCenter", 88L);
+        facts.put("productionDraw.count", draw);
+        facts.put("workshopMaterial.pendingIssue", workshopIssue);
+        facts.put("productionReturn.count", materialReturn);
+        facts.put("workshopMaterial.pendingReturn", workshopReturn);
+
+        DashboardOverviewDto result = service.overview();
+        Map<String, Long> expected = new HashMap<>();
+        if (expectedDraw > 0) expected.put("fulfillment-warehouse-draw", expectedDraw);
+        if (expectedReturn > 0) expected.put("fulfillment-warehouse-return", expectedReturn);
+        Map<String, Long> actual = result.todos().stream().collect(java.util.stream.Collectors.toMap(
+                DashboardOverviewDto.TodoCard::id, DashboardOverviewDto.TodoCard::count));
+        assertThat(actual).containsExactlyInAnyOrderEntriesOf(expected);
+        Map<String, String> routes = Map.of(
+                "fulfillment-warehouse-draw", "/warehouse/tasks/outbound?section=DRAW",
+                "fulfillment-warehouse-return", "/warehouse/tasks/inbound?section=RETURN");
+        assertThat(result.todos()).allSatisfy(card -> assertThat(card.route()).isEqualTo(routes.get(card.id())));
     }
 
     @Test void legacyAliasDoesNotAuthorizeEitherWarehouseDirection() {

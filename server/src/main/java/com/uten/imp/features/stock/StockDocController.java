@@ -175,6 +175,15 @@ public class StockDocController {
         return service.approveReviewed(id, request);
     }
 
+    @GetMapping("/{id}/review")
+    @PreAuthorize("hasAuthority('stock_doc:view')")
+    public StockDocOutboundReview reviewNative(@PathVariable UUID id) {
+        StockDocOutboundReview result = service.reviewNative(id);
+        auditViews.record("view_stock_document_detail", "stock_documents", id,
+                result.document().getBillNo(), result.document().getLegacyId(), "库存单据");
+        return result;
+    }
+
     @PostMapping("/{id}/material-return/confirm")
     @PreAuthorize("hasAuthority('stock_doc:approve')")
     public StockDocDetail confirmProductionMaterialReturn(@PathVariable UUID id,

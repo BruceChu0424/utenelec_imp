@@ -1,260 +1,110 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
-import 'package:uten_imp/features/warehouse/materialbin/models/workshop_material_models.dart';
 import 'package:uten_imp/features/warehouse/materialbin/widgets/workshop_material_task_center.dart';
-import 'package:uten_imp/shared/models/paged_result.dart';
-import 'package:uten_imp/shared/platform_tables/platform_table_layout.dart';
+import 'package:uten_imp/features/warehouse/materialbin/models/workshop_material_models.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
-import 'package:uten_imp/shared/warehouse/warehouse_task_view.dart';
+import 'package:uten_imp/features/warehouse/widgets/warehouse_task_center_scaffold.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
 
 import 'workshop_material_test_support.dart';
 
-class _SavedQuery extends PlatformTableLayoutNotifier {
-  _SavedQuery(super.tableKey);
+class _ScopedPeriods extends FakeWorkshopMaterialRepository {
+  final scopes = <Map<String, String>>[];
   @override
-  PlatformTableLayout build() {
-    super.build();
-    return const PlatformTableLayout(
-      order: ['requestNo', 'status', 'kind'],
-      filters: {'status': 'DONE', 'kind': 'ISSUE'},
-      hasQueryPreferences: true,
-    );
-  }
-
-  @override
-  void persist() {}
-}
-
-class _Requisitions extends FakeWorkshopMaterialRepository {
-  final queries =
-      <
-        ({
-          WarehouseTaskView view,
-          String? status,
-          String? kind,
-          int page,
-          Map<String, String> scope,
-        })
-      >[];
-  final rows = [
-    for (var index = 1; index <= 20; index++)
-      WmRequisition(
-        id: 'issue-$index',
-        requestNo: 'ISSUE-$index',
-        kind: 'ISSUE',
-        status: 'PENDING',
-      ),
-    const WmRequisition(
-      id: 'return-21',
-      requestNo: 'RETURN-21',
-      kind: 'RETURN',
-      status: 'DONE',
-    ),
-  ];
-
-  @override
-  Future<PagedResult<WmRequisition>> requisitions({
-    WarehouseTaskView view = WarehouseTaskView.active,
-    String? status,
-    String? kind,
-    String? workshopId,
-    String? keyword,
-    int page = 1,
-    int size = 20,
+  Future<List<WmSetting>> taskStatus({
     Map<String, String> scope = const {},
   }) async {
-    queries.add((
-      view: view,
-      status: status,
-      kind: kind,
-      page: page,
-      scope: Map.of(scope),
-    ));
-    final matching = rows
-        .where(
-          (row) =>
-              (view == WarehouseTaskView.active
-                  ? row.status == 'PENDING'
-                  : row.status != 'PENDING') &&
-              (status == null || row.status == status) &&
-              (kind == null || row.kind == kind),
-        )
-        .toList();
-    return PagedResult(
-      items: matching.skip((page - 1) * size).take(size).toList(),
-      page: page,
-      size: size,
-      total: matching.length,
-      totalPages: (matching.length + size - 1) ~/ size,
-    );
+    scopes.add(Map.of(scope));
+    return const [
+      WmSetting(
+        workshopDepartmentId: 'w1',
+        workshopName: '注塑车间',
+        status: WmBinStatus.periodic,
+        periodicEnabled: true,
+        binWarehouseId: 'bin1',
+        currentPeriod: WmPeriod(
+          id: 'open',
+          periodNo: 3,
+          startDate: '2026-10-20',
+          status: 'OPEN',
+        ),
+        pendingPeriod: WmPeriod(
+          id: 'counting',
+          periodNo: 2,
+          startDate: '2026-10-01',
+          status: 'COUNTING',
+        ),
+      ),
+    ];
   }
+
+  @override
+  Future<List<WmPeriod>> periods(String binWarehouseId) =>
+      throw StateError('不得逐仓重复请求期间');
 }
 
-MasterDataTableView<WmRequisition> _table(WidgetTester tester) =>
-    tester.widget(find.byType(MasterDataTableView<WmRequisition>));
-
 void main() {
-  testWidgets('同一领退料申请逐货品展示，数量单位与行身份独立', (tester) async {
-    final repo = _Requisitions();
-    repo.rows
-      ..clear()
-      ..addAll([
-        for (var i = 1; i <= 2; i++)
-          WmRequisition(
-            id: 'same-request',
-            requestNo: 'REQ-001',
-            kind: 'ISSUE',
-            status: 'PENDING',
-            lines: [
-              WmRequisitionLine(
-                id: 'line-$i',
-                goodsId: 'goods-$i',
-                goodsCode: 'M-$i',
-                goodsName: '材料$i',
-                colorName: i == 1 ? '白色' : '黑色',
-                unitName: i == 1 ? 'kg' : '件',
-                requestedQty: i == 1 ? 2.5 : 8,
-              ),
-            ],
-          ),
-      ]);
-    await pumpWorkshopMaterialPage(
-      tester,
-      const Scaffold(
-        body: WmRequisitionSegment(
-          keyword: '',
-          refreshTick: 0,
-          header: SizedBox.shrink(),
-        ),
-      ),
-      repo: repo,
-    );
-    final table = _table(tester);
-    expect(table.items, hasLength(2));
-    expect(
-      table.items.map((row) => table.rowKeyOf!(row)).toSet(),
-      hasLength(2),
-    );
-    expect(table.items.map((row) => row.id).toSet(), {'same-request'});
-    expect(
-      table.items.map(
-        table.columns.singleWhere((column) => column.key == 'material').value,
-      ),
-      ['材料1', '材料2'],
-    );
-    expect(
-      table.items.map(
-        table.columns.singleWhere((column) => column.key == 'goodsCode').value,
-      ),
-      ['M-1', 'M-2'],
-    );
-    expect(
-      table.items.map(
-        table.columns.singleWhere((column) => column.key == 'qty').value,
-      ),
-      ['2.5 kg', '8 件'],
-    );
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('旧记录查询偏好不能覆盖待收退回入口的默认数据范围', (tester) async {
-    final repo = _Requisitions();
-    const key =
-        'features.warehouse.materialbin.widgets.workshop_material_task_center.WmRequisitionSegmentState.build.1';
-    await pumpWorkshopMaterialPage(
-      tester,
-      ProviderScope(
-        overrides: [
-          platformTableLayoutProvider(key).overrideWith(() => _SavedQuery(key)),
-        ],
-        child: const Scaffold(
-          body: WmRequisitionSegment(
-            status: 'PENDING',
-            kind: 'RETURN',
-            keyword: '',
-            refreshTick: 0,
-            header: SizedBox.shrink(),
-          ),
-        ),
-      ),
-      repo: repo,
-    );
-    expect(
-      repo.queries.every(
-        (query) => query.status == 'PENDING' && query.kind == 'RETURN',
-      ),
-      isTrue,
-    );
-    expect(_table(tester).filters, {'status': 'PENDING', 'kind': 'RETURN'});
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('申请状态/类型表头由服务端过滤全结果，清空保留仓库范围', (tester) async {
-    final repo = _Requisitions();
+  testWidgets('周期列表将选仓传服务端并优先展示服务端待盘期间，不重复读取每仓期间', (tester) async {
+    final repo = _ScopedPeriods();
     await pumpWorkshopMaterialPage(
       tester,
       const Scaffold(
         body: WarehouseListScope(
-          scope: WarehouseTaskScope.warehouse('warehouse-1'),
-          child: WmRequisitionSegment(
-            view: WarehouseTaskView.history,
-            keyword: '',
-            refreshTick: 0,
-            header: SizedBox.shrink(),
-          ),
+          scope: WarehouseTaskScope.warehouse('source-leaf'),
+          child: WmBinStatusSegment(refreshTick: 0, header: SizedBox.shrink()),
         ),
       ),
       repo: repo,
+      permissions: const {
+        Perm.workshopMaterialView,
+        Perm.workshopMaterialCount,
+      },
     );
-    expect(repo.queries.last.view, WarehouseTaskView.history);
-    expect(find.text('RETURN-21'), findsOneWidget);
-    expect(_table(tester).totalPages, 1);
-    expect(_table(tester).requiredLeadingColumnKeys, ['status']);
-    _table(tester).onFilterChanged('status', 'DONE');
-    await tester.pumpAndSettle();
-    expect(repo.queries.last.status, 'DONE');
-    expect(repo.queries.last.page, 1);
-    expect(find.text('RETURN-21'), findsOneWidget);
-    expect(find.text('退料已收'), findsOneWidget);
-    _table(tester).onFilterChanged('kind', 'RETURN');
-    await tester.pumpAndSettle();
-    expect(repo.queries.last.kind, 'RETURN');
-    _table(tester).onFilterChanged('status', null);
-    await tester.pumpAndSettle();
-    _table(tester).onFilterChanged('kind', null);
-    await tester.pumpAndSettle();
-    expect(repo.queries.last.status, isNull);
-    expect(repo.queries.last.kind, isNull);
-    expect(repo.queries.last.scope, {'scopeWarehouseId': 'warehouse-1'});
-    expect(repo.queries.last.view, WarehouseTaskView.history);
-    expect(_table(tester).totalPages, 1);
+    expect(repo.scopes.single, {'scopeWarehouseId': 'source-leaf'});
+    expect(find.text('盘点中'), findsOneWidget);
+    expect(find.text('开着'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('内料仓任务入口只保留审核与周期盘点，领退料在出入库办理', (tester) async {
+    await pumpWorkshopMaterialPage(
+      tester,
+      const Scaffold(body: WorkshopMaterialTaskCenter()),
+      repo: FakeWorkshopMaterialRepository(),
+      permissions: const {
+        Perm.workshopMaterialView,
+        Perm.workshopMaterialIssue,
+        Perm.workshopMaterialCount,
+        Perm.stockCountWarehouseReview,
+      },
+    );
+    final scaffold = tester.widget<WarehouseTaskCenterScaffold>(
+      find.byType(WarehouseTaskCenterScaffold),
+    );
+    expect(scaffold.segments.map((segment) => segment.value), [
+      'count',
+      'periodCount',
+      'history',
+    ]);
+    expect(find.text('待发料'), findsNothing);
+    expect(find.text('待收退回'), findsNothing);
+    expect(find.text('直接发料'), findsNothing);
+    expect(find.text('盘点审核'), findsOneWidget);
+    expect(find.text('审核记录'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('待发料默认范围仍是PENDING/ISSUE，旧非法表头值清回全部', (tester) async {
-    final repo = _Requisitions();
+  testWidgets('只有发料权限的人不再进入内料仓审核队列', (tester) async {
     await pumpWorkshopMaterialPage(
       tester,
-      const Scaffold(
-        body: WmRequisitionSegment(
-          status: 'PENDING',
-          kind: 'ISSUE',
-          keyword: '',
-          refreshTick: 0,
-          header: SizedBox.shrink(),
-        ),
-      ),
-      repo: repo,
+      const Scaffold(body: WorkshopMaterialTaskCenter()),
+      repo: FakeWorkshopMaterialRepository(),
+      permissions: const {
+        Perm.workshopMaterialView,
+        Perm.workshopMaterialIssue,
+      },
     );
-    expect(repo.queries.last.status, 'PENDING');
-    expect(repo.queries.last.kind, 'ISSUE');
-    expect(find.text('领料待发'), findsWidgets);
-    _table(tester).onFilterChanged('status', 'OLD_UNKNOWN_STATUS');
-    await tester.pumpAndSettle();
-    expect(repo.queries.last.status, isNull);
-    expect(repo.queries.last.kind, 'ISSUE');
+    expect(find.text('暂无已授权的内料仓审核任务'), findsOneWidget);
+    expect(find.byType(WarehouseTaskCenterScaffold), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

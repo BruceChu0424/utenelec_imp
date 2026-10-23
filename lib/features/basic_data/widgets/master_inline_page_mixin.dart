@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../shared/auth/sensitive_write.dart';
 import '../repositories/master_inline_edit_repository.dart';
 import 'master_data_table_view.dart';
 import 'master_inline_edit.dart';
@@ -72,9 +73,13 @@ mixin MasterInlinePageMixin<W extends ConsumerStatefulWidget, T>
       for (final key in patch.keys) key: byKey[key]!.read(row),
     };
     final boundary = ref.read(sensitiveReadBoundaryProvider);
-    await ref
-        .read(masterInlineEditRepositoryProvider)
-        .save(inlineEntityType, id, changes: patch, expected: expected);
+    await runSensitiveWrite(
+      ref,
+      isCurrent: () => mounted && inlineCanEdit && inlineReadReady,
+      write: () => ref
+          .read(masterInlineEditRepositoryProvider)
+          .save(inlineEntityType, id, changes: patch, expected: expected),
+    );
     if (mounted && ref.read(sensitiveReadBoundaryProvider) == boundary) {
       await inlineReload();
     }

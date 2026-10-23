@@ -74,9 +74,10 @@ void main() {
         'Future<List<ReferenceMethodOption>?> loadClientSettlementMethods(',
         '/// 客户编辑弹窗（分类页与详情页共用）。[onSaved] 在保存成功后回调（刷新各自数据）。',
       );
-      expect(loader, contains('if (_settlementOptionsLoading) return null'));
+      // Ownership, duplicate loads and late completions are exercised by the
+      // real full-editor widget tests; this contract keeps UUID dictionary use.
       expect(loader, contains('barrierDismissible: false'));
-      expect(loader, contains('final methods = await'));
+      expect(loader, contains('.settlementMethods()'));
       expect(loader, contains('if (methods.isEmpty)'));
       expect(loader, contains("context.appError('暂无可用结账方式"));
       expect(loader, contains('return null;'));
@@ -122,14 +123,13 @@ void _expectCreateLoadGuardBeforeDialog(String source) {
 }
 
 void _expectEditLoadGuardBeforeDialog(String source) {
-  final load = source.indexOf(
-    'await loadClientSettlementMethods(context, ref)',
-  );
+  final load = source.indexOf('await loadClientSettlementMethods(');
   final guard = source.indexOf('|| settlementMethods == null) return');
   final dialog = source.indexOf('await showMasterEditDialog(');
   expect(load, greaterThanOrEqualTo(0));
   expect(guard, greaterThan(load));
   expect(dialog, greaterThan(guard));
+  expect(source, contains('owner: owner'));
 }
 
 String _between(String source, String start, String end) {

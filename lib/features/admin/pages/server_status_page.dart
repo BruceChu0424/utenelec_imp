@@ -15,6 +15,7 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_live_pulse_dot.dart';
+import '../../../components/feedback/uten_notification_badge.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -29,6 +30,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
+import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/badges/effective_badge_summary_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/server_status.dart';
 import '../providers/server_status_snapshot_cache.dart';
@@ -223,6 +226,14 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
     final l10n = _l10n;
     final extras = _snapshot?.extras ?? const <ServerMetric>[];
     final jobs = _snapshot?.jobs ?? const <ServerJob>[];
+    // 待更新版本数随徽章汇总带回(serverOperations.updates, 只对有更新权限的人
+    // 有数, 其余人为 0 不显徽章)。工作台的「服务器更新」卡已退役, 本页按钮是
+    // 更新的常驻入口, 数字让人不点进去就知道该更新了。
+    final pendingUpdates = ref.watch(
+      effectiveBadgeSummaryProvider.select(
+        (s) => s.entryTodo(BadgeEntry.serverUpdateAvailable),
+      ),
+    );
     return Scaffold(
       appBar: UtenAppBar(
         title: l10n.serverStatusTitle,
@@ -281,7 +292,22 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
                                 onPressed: () => context.push(
                                   RouteName.adminServerOperations,
                                 ),
-                                child: const Text('服务器更新'),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Text('服务器更新'),
+                                    // 徽章 count<=0 自行收起, 无数时按钮只剩文字。
+                                    if (pendingUpdates > 0) ...[
+                                      const SizedBox(width: UtenSpacing.s8),
+                                      UtenNotificationBadge(
+                                        key: const Key(
+                                          'server-update-pending-badge',
+                                        ),
+                                        count: pendingUpdates,
+                                      ),
+                                    ],
+                                  ],
+                                ),
                               ),
                               UtenButton(
                                 type: UtenButtonType.secondary,

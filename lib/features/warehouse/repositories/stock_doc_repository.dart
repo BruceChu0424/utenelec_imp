@@ -153,6 +153,7 @@ class StockDocRepository {
     required String warehouseId,
     required String idempotencyKey,
     List<Map<String, dynamic>> lines = const [],
+    List<String>? itemIds,
   }) async => StockDocDetail.fromJson(
     await api.post(
       '${ApiEndpoints.stockDoc(id)}/material-return/confirm',
@@ -160,6 +161,7 @@ class StockDocRepository {
         'warehouseId': warehouseId,
         'idempotencyKey': idempotencyKey,
         if (lines.isNotEmpty) 'lines': lines,
+        'itemIds': ?itemIds,
       },
     ),
   );
@@ -169,13 +171,19 @@ class StockDocRepository {
         await api.get('${ApiEndpoints.stockDoc(id)}/outbound-review'),
       );
 
+  Future<StockDocOutboundReview> reviewNative(String id) async =>
+      StockDocOutboundReview.fromJson(
+        await api.get('${ApiEndpoints.stockDoc(id)}/review'),
+      );
+
   Future<StockDocDetail> approveReviewed(
     String id, {
     required String expectedReviewToken,
+    List<String>? itemIds,
   }) async => StockDocDetail.fromJson(
     await api.post(
       '${ApiEndpoints.stockDoc(id)}/approve-reviewed',
-      body: {'expectedReviewToken': expectedReviewToken},
+      body: {'expectedReviewToken': expectedReviewToken, 'itemIds': ?itemIds},
     ),
   );
 

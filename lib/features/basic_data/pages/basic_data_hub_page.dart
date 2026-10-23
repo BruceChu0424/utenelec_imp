@@ -8,6 +8,10 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../../../components/buttons/uten_app_bar_action_button.dart';
+import '../widgets/master_inline_edit.dart';
+import '../widgets/master_record_history_labels.dart';
 import '../../../shared/drafts/form_drafts_page.dart';
 
 import '../../../components/cards/uten_hub_card.dart';
@@ -127,7 +131,15 @@ class BasicDataHubPage extends ConsumerWidget {
         title: l10n.basicDataHubTitle,
         showBackButton: true,
         // 草稿入口走右上角按钮（2026-09-27），不再在左上角占一行分段栏。
-        actions: const [FormDraftsAppBarButton(categoryId: 'basicinfo')],
+        actions: [
+          if (superAdmin ||
+              masterHistoryViewPermissions.values.any(permissions.contains))
+            UtenAppBarActionButton(
+              label: masterEditText(context, '修改历史', 'Change history', '변경 기록'),
+              onPressed: () => context.push(RouteName.basicinfoHistory),
+            ),
+          const FormDraftsAppBarButton(categoryId: 'basicinfo'),
+        ],
       ),
       body: SafeArea(
         child: UtenContentContainer(

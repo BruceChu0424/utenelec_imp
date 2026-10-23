@@ -9,6 +9,7 @@ import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.notice.ChainNoticeService;
+import com.uten.imp.features.production.plan.ProductionPlanMutationFootprintService;
 import com.uten.imp.features.stock.StockDocService;
 import com.uten.imp.features.stock.StockDocument;
 import com.uten.imp.features.stock.StockDocumentItem;
@@ -65,6 +66,7 @@ public class ProductionExecutionReadinessService
     private final DocNumberService docNumberService;
     private final SecurityContextCurrentUser currentUser;
     private final ChainNoticeService chainNotice;
+    private final ProductionPlanMutationFootprintService planFootprints;
     /** Re-evaluate affected WAITING segments after Cross priority has settled. */
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
@@ -1065,7 +1067,7 @@ public class ProductionExecutionReadinessService
             return;
         }
         List<Object[]> candidates = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                        SELECT DISTINCT segment.id, package.warehouse_id
+                        SELECT DISTINCT segment.id, package.warehouse_id, segment.plan_id
                         FROM stock_document_items item
                         JOIN production_material_demands demand
                           ON demand.goods_id = item.goods_id
@@ -1090,6 +1092,13 @@ public class ProductionExecutionReadinessService
                         ORDER BY segment.id LIMIT 200
                         """)
                 .setParameter("docId", stockDocumentId).setParameter("warehouseId",warehouseId));
+        if (candidates.isEmpty()) return;
+        // This callback owns a new transaction and therefore no longer owns the
+        // inbound command's commercial prefix. Merge every candidate plan before
+        // tryPromote enters inventory: its line-side DRAW may call the stock
+        // command again, and later candidates cannot add a prefix after that.
+        planFootprints.beginPlans(candidates.stream().map(candidate -> uuid(candidate[2])).distinct().toList())
+                .verifyUnchanged();
         for (Object[] candidate : candidates) {
             // tryPromote 以「包仓库 == expectedWarehouseId」为放行前提；入库叶仓与发料仓
             // 可以不同（同主仓跨叶由齐套判定的合格来源口径处理），这里传段的包仓库。

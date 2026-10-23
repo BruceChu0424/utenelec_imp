@@ -14,8 +14,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/page_search_lifecycle.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -26,6 +28,8 @@ import '../models/goods_node.dart';
 import '../repositories/goods_repository.dart';
 import '../repositories/master_status_repository.dart';
 import '../widgets/goods_detail_body.dart';
+import '../widgets/master_status_confirmation.dart';
+import '../widgets/master_edit_owner.dart';
 
 class GoodsDetailPage extends ConsumerStatefulWidget {
   const GoodsDetailPage({
@@ -55,50 +59,180 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
   bool _loading = false;
   String? _error;
   bool _changing = false;
+  bool _changeWriting = false;
+  int _loadEpoch = 0;
+  MasterEditOwner? _readOwner;
+  MasterEditOwner? _changeOwner;
+  late final _pageLifecycle = PageSearchLifecycle(
+    onLeave: () {
+      _readOwner?.invalidate();
+      _changeOwner?.invalidate();
+    },
+    onReturn: () {
+      if (!_isCreate) _load();
+    },
+  );
+
+  bool _has(String permission) =>
+      ref.read(isSuperAdminProvider) ||
+      ref.read(currentPermissionsProvider).contains(permission);
 
   bool get _isCreate => widget.goodsId == null;
 
   @override
   void initState() {
     super.initState();
-    if (!_isCreate) _load();
+    ref.listenManual(sensitiveReadBoundaryProvider, (previous, next) {
+      if (previous == next) return;
+      _loadEpoch++;
+      _readOwner?.invalidate();
+      _changeOwner?.invalidate();
+      setState(() {
+        _detail = null;
+        _error = null;
+        _changing = false;
+        _changeWriting = false;
+        _loading = !_isCreate;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted &&
+            !_isCreate &&
+            ref.read(sensitiveReadBoundaryProvider) == next) {
+          _load();
+        }
+      });
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_isCreate) _load();
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _pageLifecycle.attach(context);
+  }
+
+  @override
+  void didUpdateWidget(covariant GoodsDetailPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.goodsId != widget.goodsId ||
+        oldWidget.categoryId != widget.categoryId) {
+      _loadEpoch++;
+      _readOwner?.invalidate();
+      _changeOwner?.invalidate();
+      _detail = null;
+      _error = null;
+      _changing = false;
+      _loading = !_isCreate;
+      if (!_isCreate) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _load();
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _pageLifecycle.dispose();
+    _readOwner?.dispose();
+    _changeOwner?.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
+    if (!mounted || _isCreate) return;
+    final epoch = ++_loadEpoch;
+    final id = widget.goodsId!;
+    _readOwner?.invalidate();
+    final owner = MasterEditOwner(
+      context,
+      ref,
+      permissions: {Perm.goodsView},
+      requireWrite: false,
+      isCurrent: () => epoch == _loadEpoch && widget.goodsId == id,
+    );
+    _readOwner = owner;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final d = await ref.read(goodsRepositoryProvider).detail(widget.goodsId!);
-      if (!mounted) return;
+      if (!_has(Perm.goodsView)) {
+        setState(() {
+          _detail = null;
+          _loading = false;
+          _error = '当前没有货品查看权限';
+        });
+        return;
+      }
+      if (!await owner.bindRequests()) return;
+      final d = await owner.run(
+        () => ref.read(goodsRepositoryProvider).detail(id),
+      );
+      if (!mounted || !owner.isCurrent) return;
       setState(() {
         _detail = d;
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !owner.isCurrent) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !owner.isCurrent) return;
       setState(() {
         _error = '加载货品详情失败'; // TODO(l10n): 补 arb
         _loading = false;
       });
+    } finally {
+      if (identical(_readOwner, owner)) _readOwner = null;
+      owner.dispose();
     }
   }
 
   Future<void> _toggleStatus() async {
-    if (_changing) return;
+    if (_loading || _changing || !_has(Perm.goodsStatus)) return;
     final d = _detail;
-    if (d == null) return;
+    if (d == null || !d.writable) return;
+    final owner = MasterEditOwner(
+      context,
+      ref,
+      permissions: {Perm.goodsView, Perm.goodsStatus},
+      isCurrent: () =>
+          identical(_detail, d) &&
+          widget.goodsId == d.id &&
+          _has(Perm.goodsStatus) &&
+          d.writable,
+    );
+    _changeOwner = owner;
+    owner.addListener(() {
+      if (mounted && !owner.isCurrent && identical(_changeOwner, owner)) {
+        setState(() {
+          _changing = false;
+          _changeWriting = false;
+        });
+      }
+    });
     final next = d.status == '使用' ? '禁用' : '使用';
     setState(() => _changing = true);
     try {
-      final ok = await context.guardRun(
+      if (!await owner.bindRequests() || !mounted || !owner.isCurrent) return;
+      if (!await confirmMasterStatusChange(
+            context,
+            disabling: next == '禁用',
+            label: d.name ?? d.code ?? '货品',
+            dialogScopeBuilder: owner.ownDialog,
+          ) ||
+          !mounted ||
+          !owner.isCurrent) {
+        return;
+      }
+      setState(() => _changeWriting = true);
+      await owner.run(
         () => ref
             .read(masterStatusRepositoryProvider)
             .change(
@@ -106,56 +240,103 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
               status: next,
               version: d.version,
             ),
-        success: next == '禁用' ? '货品已停用' : '货品已启用',
-        errorFallback: '状态变更失败，请稍后重试',
       );
-      if (ok && mounted) await _load();
+      if (!mounted || !owner.isCurrent) return;
+      context.appSuccess(next == '禁用' ? '货品已停用' : '货品已启用');
+      await _load();
+    } catch (error) {
+      if (mounted && owner.isCurrent) context.appApiError(error);
     } finally {
-      if (mounted) setState(() => _changing = false);
+      if (identical(_changeOwner, owner)) {
+        _changeOwner = null;
+        if (mounted) {
+          setState(() {
+            _changing = false;
+            _changeWriting = false;
+          });
+        }
+      }
+      owner.dispose();
     }
   }
 
   /// 删除：确认 → 删 → 回本页上一级（列表 push 进来则 pop 回列表）。
   Future<void> _delete() async {
+    if (_loading || _changing || !_has(Perm.goodsDelete)) return;
     final d = _detail;
-    if (d == null) return;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => UtenAlertDialog(
-        title: const Text('删除货品'), // TODO(l10n): 补 arb
-        content: Text(
-          '确定删除「${d.name?.isNotEmpty == true ? d.name! : (d.code ?? '该货品')}」吗？', // TODO(l10n): 补 arb
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'), // TODO(l10n): 补 arb
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: UtenColors.error),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'), // TODO(l10n): 补 arb
-          ),
-        ],
-      ),
+    if (d == null || !d.writable) return;
+    final owner = MasterEditOwner(
+      context,
+      ref,
+      permissions: {Perm.goodsView, Perm.goodsDelete},
+      isCurrent: () =>
+          identical(_detail, d) &&
+          widget.goodsId == d.id &&
+          _has(Perm.goodsDelete) &&
+          d.writable,
     );
-    if (ok != true || !mounted) return;
+    _changeOwner = owner;
+    owner.addListener(() {
+      if (mounted && !owner.isCurrent && identical(_changeOwner, owner)) {
+        setState(() {
+          _changing = false;
+          _changeWriting = false;
+        });
+      }
+    });
     setState(() => _changing = true);
-    bool deleted;
     try {
-      deleted = await context.guardRun(
-        () async {
-          await ref.read(goodsRepositoryProvider).delete(d.id);
-        },
-        success: '货品已删除', // TODO(l10n): 补 arb
-        errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
+      if (!await owner.bindRequests() || !mounted || !owner.isCurrent) return;
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => owner.ownDialog(
+          ctx,
+          UtenAlertDialog(
+            title: const Text('删除货品'), // TODO(l10n): 补 arb
+            content: Text(
+              '确定删除「${d.name?.isNotEmpty == true ? d.name! : (d.code ?? '该货品')}」吗？', // TODO(l10n): 补 arb
+            ),
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              TextButton(
+                onPressed: () {
+                  if (ctx.mounted) Navigator.pop(ctx, false);
+                },
+                child: const Text('取消'), // TODO(l10n): 补 arb
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: UtenColors.error,
+                ),
+                onPressed: () {
+                  if (ctx.mounted) Navigator.pop(ctx, true);
+                },
+                child: const Text('删除'), // TODO(l10n): 补 arb
+              ),
+            ],
+          ),
+        ),
       );
+      if (ok != true || !mounted || !owner.isCurrent) return;
+      setState(() => _changeWriting = true);
+      await owner.run(() => ref.read(goodsRepositoryProvider).delete(d.id));
+      if (!mounted || !owner.isCurrent) return;
+      context.appSuccess('货品已删除');
+      popOrBackTo(context, defaultPath: RouteName.basicinfoGoods);
+    } catch (error) {
+      if (mounted && owner.isCurrent) context.appApiError(error);
     } finally {
-      if (mounted) setState(() => _changing = false);
+      if (identical(_changeOwner, owner)) {
+        _changeOwner = null;
+        if (mounted) {
+          setState(() {
+            _changing = false;
+            _changeWriting = false;
+          });
+        }
+      }
+      owner.dispose();
     }
-    if (!deleted || !mounted) return;
-    popOrBackTo(context, defaultPath: RouteName.basicinfoGoods);
   }
 
   @override
@@ -168,8 +349,8 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
     final canCreate = can(Perm.goodsCreate);
     final writable = _isCreate || _detail?.writable == true;
     final canEdit = can(Perm.goodsEdit) && writable;
-    final canDelete = can(Perm.goodsDelete) && writable;
-    final canStatus = can(Perm.goodsStatus) && writable;
+    final canDelete = can(Perm.goodsDelete) && writable && !_loading;
+    final canStatus = can(Perm.goodsStatus) && writable && !_loading;
     final canBomCreate = can(Perm.goodsBomCreate);
     final canBomEdit = can(Perm.goodsBomEdit);
     final canBomDelete = can(Perm.goodsBomDelete);
@@ -199,30 +380,39 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
     }
     return Scaffold(
       // 局部 SelectionArea：货品详情文字可框选复制（准则 §3.4）。
-      body: SelectionArea(
-        child: GoodsDetailBody(
-          readBoundary: ref.watch(sensitiveReadBoundaryProvider),
-          busy: _changing,
-          // 详情拉到后再挂主体；新增态直接进 create。
-          key: ValueKey(
-            'goods-detail-${_detail?.id ?? 'new-${widget.categoryId}'}',
+      body: Stack(
+        children: [
+          SelectionArea(
+            child: GoodsDetailBody(
+              readBoundary: ref.watch(sensitiveReadBoundaryProvider),
+              busy: _changing,
+              // 详情拉到后再挂主体；新增态直接进 create。
+              key: ValueKey(
+                'goods-detail-${_detail?.id ?? 'new-${widget.categoryId}'}',
+              ),
+              initialDetail: _detail,
+              initialCategoryId: widget.categoryId,
+              initialTab: GoodsDetailTab.parse(widget.initialTab),
+              canCreate: canCreate,
+              canEdit: canEdit,
+              canStatus: canStatus,
+              canBomCreate: canBomCreate,
+              canBomEdit: canBomEdit,
+              canBomDelete: canBomDelete,
+              onToggleStatus: canStatus && !_isCreate ? _toggleStatus : null,
+              onDelete: canDelete && !_isCreate ? _delete : null,
+              // 本页按钮也要拿到最新版本与可写范围；返回来源页仍由入口重载。
+              onDataChanged: _isCreate ? null : _load,
+              onSaved: () =>
+                  popOrBackTo(context, defaultPath: RouteName.basicinfoGoods),
+            ),
           ),
-          initialDetail: _detail,
-          initialCategoryId: widget.categoryId,
-          initialTab: GoodsDetailTab.parse(widget.initialTab),
-          canCreate: canCreate,
-          canEdit: canEdit,
-          canStatus: canStatus,
-          canBomCreate: canBomCreate,
-          canBomEdit: canBomEdit,
-          canBomDelete: canBomDelete,
-          onToggleStatus: canStatus && !_isCreate ? _toggleStatus : null,
-          onDelete: canDelete && !_isCreate ? _delete : null,
-          // 本页按钮也要拿到最新版本与可写范围；返回来源页仍由入口重载。
-          onDataChanged: _isCreate ? null : _load,
-          onSaved: () =>
-              popOrBackTo(context, defaultPath: RouteName.basicinfoGoods),
-        ),
+          if (_changeWriting)
+            const UtenBusyOverlay(
+              title: '正在处理货品资料',
+              semanticsKey: Key('goods-detail-lifecycle-writing'),
+            ),
+        ],
       ),
     );
   }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../components/buttons/uten_button.dart';
 import '../../../core/router/route_names.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/badges/badge_registry.dart';
@@ -33,13 +35,14 @@ class WarehouseOutboundTaskCenterPage extends ConsumerWidget {
     final superAdmin = ref.watch(isSuperAdminProvider);
     bool can(String code) => superAdmin || permissions.contains(code);
     final canStock = can(Perm.stockDocView);
+    final canWorkshop = can(Perm.workshopMaterialView);
     int? fact(String key) => ref.watch(warehouseTaskFactOrNullProvider(key));
     final sources = <String, String>{
       if (can(Perm.warehouseSalesOutboundView)) 'SALES': '销售出库',
       if (can(Perm.subcontractOutboundView) ||
           can(Perm.warehouseSubcontractOutboundHistoryView))
         'SUBCONTRACT': '委外出库',
-      if (canStock) 'DRAW': '生产领料',
+      if (canStock || canWorkshop) 'DRAW': '生产领料',
       if (canStock) 'OTHER': '其它出库',
       if (canStock) 'FINISHED': '产成品出库',
     };
@@ -52,7 +55,10 @@ class WarehouseOutboundTaskCenterPage extends ConsumerWidget {
           count: switch (entry.key) {
             'SALES' => fact(BadgeFact.warehouseSalesOutboundPendingPick),
             'SUBCONTRACT' => fact(BadgeFact.subcontractOutbound),
-            'DRAW' => fact(BadgeFact.productionDraw),
+            'DRAW' => _sumAuthorized([
+              if (canStock) fact(BadgeFact.productionDraw),
+              if (canWorkshop) fact(BadgeFact.workshopMaterialPendingIssue),
+            ]),
             _ => null,
           },
         ),
@@ -81,6 +87,20 @@ class WarehouseOutboundTaskCenterPage extends ConsumerWidget {
       externalRefreshTick: externalRefreshTick,
       externalHeader: externalHeader,
       onResume: () => invalidateWarehouseTaskCounts(ref),
+      trailingBuilder: !can(Perm.workshopMaterialIssue)
+          ? null
+          : (source) => source != 'DRAW'
+                ? const SizedBox.shrink()
+                : UtenButton(
+                    icon: Icons.local_shipping_outlined,
+                    onPressed: () async {
+                      await context.push(
+                        RoutePath.workshopMaterialDirectIssue(),
+                      );
+                      if (context.mounted) invalidateWarehouseTaskCounts(ref);
+                    },
+                    child: const Text('直接发料'),
+                  ),
       bodyBuilder: (source, keyword, refresh, header) =>
           WarehouseTaskRecordsView(
             key: ValueKey(('outbound', source)),
@@ -100,3 +120,7 @@ class WarehouseOutboundTaskCenterPage extends ConsumerWidget {
     );
   }
 }
+
+int? _sumAuthorized(List<int?> counts) => counts.any((count) => count == null)
+    ? null
+    : counts.fold<int>(0, (sum, count) => sum + count!);

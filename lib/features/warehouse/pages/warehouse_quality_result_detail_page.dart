@@ -74,7 +74,7 @@ class _WarehouseQualityResultDetailPageState
     with FormDraftMixin<WarehouseQualityResultDetailPage> {
   WarehouseIqcStockInConfirmCommand? _pendingCommand;
   @override
-  bool get formDraftBusy => _saving || _loading;
+  bool get formDraftBusy => _saving || _loading || _confirmingStockIn;
   @override
   Future<void> Function()? get formDraftReloadSource => () async {
     await _load();
@@ -152,6 +152,7 @@ class _WarehouseQualityResultDetailPageState
       UtenEditableGridController<WarehouseQualityMergedRow>();
   bool _loading = true;
   bool _saving = false;
+  bool _confirmingStockIn = false;
   bool _sourceSelectionCurrent = false;
   String? _error;
   String? _conflictMessage;
@@ -168,7 +169,7 @@ class _WarehouseQualityResultDetailPageState
   @override
   void initState() {
     super.initState();
-    startFormDraftIdentityGuard();
+    startFormDraftIdentityGuard(includePermissions: true);
     _load();
   }
 
@@ -354,9 +355,30 @@ class _WarehouseQualityResultDetailPageState
   }
 
   Future<void> _confirmStockIn() async {
-    if (_saving || _loading || !_canConfirm) return;
+    if (_saving || _loading || _confirmingStockIn || !_canConfirm) return;
     final sourceVersion = _requestVersion;
     final selected = _drafts.where((draft) => draft.selected).toList();
+    final scopeFuture = captureFormDraftRequestScope();
+    setState(() => _confirmingStockIn = true);
+    try {
+      final requestScope = await scopeFuture;
+      await requestScope.run(
+        () => _prepareStockIn(requestScope, selected, sourceVersion),
+      );
+    } catch (error) {
+      if (mounted) {
+        context.appError(describeSubmitError(error, fallback: '身份状态暂时无法确认'));
+      }
+    } finally {
+      if (mounted) setState(() => _confirmingStockIn = false);
+    }
+  }
+
+  Future<void> _prepareStockIn(
+    AuthenticatedRequestScope requestScope,
+    List<WarehouseQualitySliceDraft> selected,
+    int sourceVersion,
+  ) async {
     if (selected.isEmpty) {
       context.appWarning('请至少勾选一条品质放行明细');
       return;
@@ -401,6 +423,7 @@ class _WarehouseQualityResultDetailPageState
           : '本次将确认 ${items.length} 条品质放行切片的实收数量与实际库位，'
                 '提交成功后才会增加可用库存并推进对应生产供给。',
     );
+    requestScope.checkCurrent();
     final command = WarehouseIqcStockInConfirmCommand(
       idempotencyKey: key,
       items: items,
@@ -410,7 +433,11 @@ class _WarehouseQualityResultDetailPageState
         !_stockInIntentCurrent(command, sourceVersion)) {
       return;
     }
-    await _executeStockIn(command, expectedSourceVersion: sourceVersion);
+    await _executeStockIn(
+      command,
+      expectedSourceVersion: sourceVersion,
+      requestScope: requestScope,
+    );
   }
 
   bool _stockInIntentCurrent(
@@ -439,6 +466,7 @@ class _WarehouseQualityResultDetailPageState
     WarehouseIqcStockInConfirmCommand command, {
     int? expectedSourceVersion,
     bool recoverOriginal = false,
+    AuthenticatedRequestScope? requestScope,
   }) async {
     if (_saving ||
         !_hasConfirmPermission ||
@@ -448,17 +476,23 @@ class _WarehouseQualityResultDetailPageState
                   !_stockInIntentCurrent(command, expectedSourceVersion))) {
       return;
     }
+    final scopeFuture = requestScope == null
+        ? captureFormDraftRequestScope()
+        : Future.value(requestScope);
     final previousPending = _pendingCommand;
     var locallyRejected = false;
-    _pendingCommand = command;
+    AuthenticatedRequestScope? boundScope;
     setState(() {
       _saving = true;
       _busy = (title: '正在确认入库', description: '正在写入库存与生产预留事实，请勿重复提交或离开本页。');
       _conflictMessage = null;
     });
     try {
+      final scope = await scopeFuture;
+      boundScope = scope;
+      _pendingCommand = command;
       final result = await runFormDraftSubmission(
-        () {
+        () => scope.run(() {
           if (!_hasConfirmPermission) {
             locallyRejected = true;
             _pendingCommand = previousPending;
@@ -481,13 +515,16 @@ class _WarehouseQualityResultDetailPageState
           return ref
               .read(warehouseIqcStockInRepositoryProvider)
               .confirm(widget.receiptType, widget.receiptId, command);
-        },
+        }),
         isDefiniteRejection: (error) =>
-            (locallyRejected && previousPending == null) ||
-            error.httpStatus == 400 ||
-            error.httpStatus == 422 ||
-            (error.httpStatus == 409 && error.code == 'CONFLICT'),
+            previousPending == null &&
+            (locallyRejected ||
+                error.httpStatus == 400 ||
+                error.httpStatus == 403 ||
+                error.httpStatus == 422 ||
+                (error.httpStatus == 409 && error.code == 'CONFLICT')),
       );
+      scope.checkCurrent();
       if (!mounted || !formDraftIdentityIsCurrent) return;
       // 打源头 type-counts: 红黄两支都是它的派生, 失效派生不会重新发请求。
       refreshBadges(ref);
@@ -507,22 +544,37 @@ class _WarehouseQualityResultDetailPageState
         context.appSuccess('成功入库 ${result.confirmedCount} 条放行明细，实际去向见下方入库历史');
       }
       _pendingCommand = null;
-      await resetFormDraftAfterSubmission(prepare: () => _load());
+      await resetFormDraftAfterSubmission(
+        prepare: () => scope.run(() => _load()),
+      );
     } on ApiException catch (error) {
       if (!mounted) return;
-      if (error.code == 'CONFLICT') {
+      if (previousPending == null && error.code == 'CONFLICT') {
         _pendingCommand = null;
         final message = '${error.message}；已保留当前输入，请按刷新后的余量重新核对。';
         context.appWarning(message, force: true);
-        await _load(preserveInputs: true);
-        if (mounted) {
-          setState(() => _conflictMessage = message);
+        if (boundScope != null && boundScope.isCurrent) {
+          try {
+            await boundScope.run(() => _load(preserveInputs: true));
+            if (mounted && boundScope.isCurrent) {
+              setState(() => _conflictMessage = message);
+            }
+          } on ApiException catch (scopeError) {
+            if (mounted) context.appError(scopeError.message);
+          }
         }
       } else {
-        if (error.httpStatus == 400 || error.httpStatus == 422) {
+        if (previousPending == null &&
+            (error.httpStatus == 400 ||
+                error.httpStatus == 403 ||
+                error.httpStatus == 422)) {
           _pendingCommand = null;
         }
-        context.appError(error.message);
+        context.appError(
+          previousPending == null
+              ? error.message
+              : '${error.message}；这次拒绝不能确认原提交结果，原明细、数量和幂等键继续保留待核对',
+        );
       }
       await checkpointFormDraftAfterCreation();
     } catch (error) {
@@ -632,7 +684,7 @@ class _WarehouseQualityResultDetailPageState
               label: '刷新',
               icon: Icons.refresh_rounded,
               isLoading: _loading && detail != null,
-              onPressed: _loading || _saving
+              onPressed: _loading || _saving || _confirmingStockIn
                   ? null
                   : () => _load(preserveInputs: true),
             ),
@@ -642,7 +694,7 @@ class _WarehouseQualityResultDetailPageState
           // 提交期间的全屏加载遮罩（root Overlay 传送门，挂载位置只求在树里）。
           child: Stack(
             children: [
-              _body(),
+              AbsorbPointer(absorbing: _confirmingStockIn, child: _body()),
               if (_busy != null)
                 UtenBusyOverlay(
                   title: _busy!.title,
@@ -872,8 +924,8 @@ class _WarehouseQualityResultDetailPageState
         else
           WarehouseQualityMergedTable(
             controller: _grid,
-            editable: _canConfirm,
-            saving: _saving || _loading,
+            editable: _canConfirm && !_confirmingStockIn,
+            saving: _saving || _loading || _confirmingStockIn,
             onChanged: () => setState(() {}),
             onPickWarehouse: _pickWarehouse,
             stickyHeaderPinned: _gridPinned,
@@ -1054,7 +1106,7 @@ class _WarehouseQualityResultDetailPageState
           UtenSelectionSummaryPill(
             count: selected,
             clearKey: const Key('warehouse-quality-detail-clear-selection'),
-            onClear: selected == 0 || _saving || _loading
+            onClear: selected == 0 || _saving || _loading || _confirmingStockIn
                 ? null
                 : () => setState(() {
                     for (final draft in _drafts) {
@@ -1069,7 +1121,9 @@ class _WarehouseQualityResultDetailPageState
             type: canConfirmHere ? UtenButtonType.tonal : UtenButtonType.danger,
             size: UtenButtonSize.large,
             icon: Icons.shelves,
-            onPressed: _saving || _loading ? null : _openPreStockIn,
+            onPressed: _saving || _loading || _confirmingStockIn
+                ? null
+                : _openPreStockIn,
             child: Text('先入库上架($preStockable)'),
           ),
         if (canConfirmHere)
@@ -1079,7 +1133,8 @@ class _WarehouseQualityResultDetailPageState
             size: UtenButtonSize.large,
             icon: Icons.move_to_inbox_rounded,
             isLoading: _saving,
-            onPressed: _saving || _loading || selected == 0
+            onPressed:
+                _saving || _loading || _confirmingStockIn || selected == 0
                 ? null
                 : _confirmStockIn,
             child: Text(selected == 0 ? '确认入库' : '确认入库($selected)'),

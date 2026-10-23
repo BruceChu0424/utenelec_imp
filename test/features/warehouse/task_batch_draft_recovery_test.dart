@@ -66,6 +66,7 @@ class _Api extends ApiClient {
   _Api() : super(Dio());
   final posts = <({String path, Map<String, dynamic> body})>[];
   bool interrupt = true;
+  final receivedWarehouses = <String, String>{};
   @override
   Future<List<Map<String, dynamic>>> getList(
     String path, {
@@ -88,7 +89,8 @@ class _Api extends ApiClient {
   }) async => {
     'id': path.split('/').last,
     'docType': 'WDRAW',
-    'status': 0,
+    'status': receivedWarehouses.containsKey(path.split('/').last) ? 1 : 0,
+    'warehouseId': receivedWarehouses[path.split('/').last],
     'billNo': path.split('/').last,
     'productionMaterialReturn': true,
     'materialReturnMainWarehouseId': 'main',
@@ -106,9 +108,14 @@ class _Api extends ApiClient {
       interrupt = false;
       throw NetworkTimeoutException();
     }
+    if (path.endsWith('/material-return/confirm')) {
+      receivedWarehouses[path.split('/')[3]] = body['warehouseId'] as String;
+    }
     return {
       'id': path.split('/')[3],
       'status': 1,
+      if (path.endsWith('/material-return/confirm'))
+        'warehouseId': body['warehouseId'],
       'confirmedCount': 1,
       'replay': posts.length > 1,
       'items': <Object>[],
@@ -290,7 +297,7 @@ void main() {
             .value,
         'normal',
       );
-      await tester.tap(find.text('确认批量收料(1)'));
+      await tester.tap(find.byKey(const Key('material-return-batch-confirm')));
       await tester.pumpAndSettle();
       expect(
         api.posts

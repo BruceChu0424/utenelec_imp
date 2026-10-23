@@ -1599,6 +1599,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
 
   Map<String, dynamic> _copyBody(GoodsBomItem item) => {
     'componentGoodsId': item.componentGoodsId,
+    'copiedFromBomItemId': item.id,
     'qty': item.qty,
     'price': item.price,
     'summary': item.summary,
@@ -2028,6 +2029,27 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         width: 80,
         value: (r) => r.node.item.componentColorName,
       ),
+      MasterColumnDef(
+        key: 'material',
+        label: '材质',
+        width: 120,
+        value: (r) => r.node.item.componentMaterial,
+      ),
+      if (_hasPermission(Perm.stockView))
+        MasterColumnDef(
+          key: 'stockQty',
+          label: '库存数量',
+          width: 120,
+          type: 'number',
+          value: (r) {
+            final item = r.node.item;
+            final stock = item.componentStockQty;
+            if (stock == null) return '—';
+            final unit = item.componentUnitName?.trim();
+            return '${formatBomQty(stock)}${unit == null || unit.isEmpty ? '' : ' $unit'}';
+          },
+          exactValueOf: (r) => r.node.item.componentStockQty?.toString(),
+        ),
       MasterColumnDef(
         key: 'source',
         label: '来源',

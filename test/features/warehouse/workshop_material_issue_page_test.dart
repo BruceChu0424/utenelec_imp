@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/router/route_names.dart';
@@ -14,6 +15,7 @@ import 'package:uten_imp/features/basic_data/repositories/goods_issue_method_rep
 import 'package:uten_imp/features/warehouse/materialbin/models/workshop_material_models.dart';
 import 'package:uten_imp/features/warehouse/materialbin/pages/workshop_material_issue_page.dart';
 import 'package:uten_imp/features/warehouse/materialbin/repositories/workshop_material_repository.dart';
+import 'package:uten_imp/features/warehouse/materialbin/widgets/workshop_material_line_grid.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 
@@ -246,6 +248,133 @@ Future<void> _pickMaterial(WidgetTester tester, String rowId) async {
 }
 
 void main() {
+  testWidgets('部分办完申请的已办明细可只读查看，显示真实实发量且不再提供确认', (tester) async {
+    final repo = _RequestIssueRepository(orderMaterial: false);
+    repo.requisitionById['request-1'] = const WmRequisition(
+      id: 'request-1',
+      requestNo: 'LL-1',
+      kind: 'ISSUE',
+      status: 'PENDING',
+      workshopDepartmentId: 'w1',
+      binWarehouseId: 'bin1',
+      allowedActions: ['FULFIL', 'CANCEL'],
+      lines: [
+        WmRequisitionLine(
+          id: 'handled',
+          goodsId: 'pp',
+          requestedQty: 25,
+          fulfilledQty: 5,
+          suggestedLeafWarehouseId: 'leafA',
+          unitName: '公斤',
+        ),
+        WmRequisitionLine(
+          id: 'pending',
+          goodsId: 'pp',
+          requestedQty: 50,
+          suggestedLeafWarehouseId: 'leafA',
+          unitName: '公斤',
+        ),
+      ],
+    );
+    await pumpWorkshopMaterialPage(
+      tester,
+      const WorkshopMaterialIssuePage(
+        requisitionId: 'request-1',
+        selectedLineIds: {'handled'},
+      ),
+      repo: repo,
+      permissions: const {
+        Perm.workshopMaterialView,
+        Perm.workshopMaterialIssue,
+      },
+    );
+    final grid = tester.widget<UtenEditableGrid<WmIssueLineRow>>(
+      find.byKey(const Key('wm-issue-grid')),
+    );
+    expect(grid.controller.rows.single.qty.text, '5');
+    expect(find.byKey(const Key('wm-issue-submit')), findsNothing);
+    expect(find.byKey(const Key('wm-issue-cancel')), findsNothing);
+    expect(repo.fulfils, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('只核对和提交本次所选原始明细，不能扩大到同单其它行', (tester) async {
+    final repo = _RequestIssueRepository(orderMaterial: false);
+    repo.requisitionById['request-1'] = const WmRequisition(
+      id: 'request-1',
+      requestNo: 'LL-1',
+      kind: 'ISSUE',
+      status: 'PENDING',
+      workshopDepartmentId: 'w1',
+      workshopName: '注塑车间',
+      binWarehouseId: 'bin1',
+      rowVersion: 3,
+      allowedActions: ['FULFIL', 'CANCEL'],
+      lines: [
+        WmRequisitionLine(
+          id: 'line-1',
+          goodsId: 'pp',
+          goodsName: '所选材料',
+          requestedQty: 25,
+          unitName: '公斤',
+          suggestedLeafWarehouseId: 'leafA',
+        ),
+        WmRequisitionLine(
+          id: 'line-2',
+          goodsId: 'pp',
+          goodsName: '同单未选材料',
+          requestedQty: 50,
+          unitName: '公斤',
+          suggestedLeafWarehouseId: 'leafA',
+        ),
+      ],
+    );
+    var completed = false;
+    await pumpWorkshopMaterialPage(
+      tester,
+      WorkshopMaterialIssuePage(
+        requisitionId: 'request-1',
+        selectedLineIds: const {'line-1'},
+        onCompleted: () => completed = true,
+      ),
+      repo: repo,
+      permissions: const {
+        Perm.workshopMaterialView,
+        Perm.workshopMaterialIssue,
+      },
+    );
+    expect(find.textContaining('已选 1 项'), findsOneWidget);
+    expect(find.byKey(const Key('wm-issue-cancel')), findsNothing);
+    await _submitRequest(tester);
+    expect(repo.fulfils.single.lines.map((line) => line['lineId']), ['line-1']);
+    expect(repo.fulfils.single.lines.single['qty'], 25);
+    expect(completed, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('过期或空的选中明细不能降级为整单办理', (tester) async {
+    final repo = _RequestIssueRepository(orderMaterial: false);
+    for (final ids in [
+      <String>{},
+      {'missing-line'},
+    ]) {
+      await pumpWorkshopMaterialPage(
+        tester,
+        WorkshopMaterialIssuePage(
+          key: ValueKey(ids),
+          requisitionId: 'request-1',
+          selectedLineIds: ids,
+        ),
+        repo: repo,
+        permissions: const {
+          Perm.workshopMaterialView,
+          Perm.workshopMaterialIssue,
+        },
+      );
+      expect(find.text('所选明细已变化，请返回任务列表重新选择'), findsOneWidget);
+      expect(find.byKey(const Key('wm-issue-submit')), findsNothing);
+      expect(repo.fulfils, isEmpty);
+    }
+  });
   testWidgets('first use previews global BOM impact and sends one atomic '
       'fulfil with the acknowledged material version', (tester) async {
     final repo = _RequestIssueRepository();
@@ -408,6 +537,10 @@ void main() {
       tester,
       const WorkshopMaterialIssuePage(mode: 'direct'),
       repo: repo,
+      permissions: const {
+        Perm.workshopMaterialView,
+        Perm.workshopMaterialIssue,
+      },
     );
 
     expect(find.byKey(const Key('wm-issue-counting-hint')), findsOneWidget);
@@ -433,6 +566,10 @@ void main() {
       tester,
       const WorkshopMaterialIssuePage(mode: 'direct'),
       repo: repo,
+      permissions: const {
+        Perm.workshopMaterialView,
+        Perm.workshopMaterialIssue,
+      },
     );
 
     await _pickMaterial(tester, 'r1');
@@ -492,6 +629,10 @@ void main() {
       tester,
       const WorkshopMaterialIssuePage(mode: 'direct'),
       repo: repo,
+      permissions: const {
+        Perm.workshopMaterialView,
+        Perm.workshopMaterialIssue,
+      },
     );
 
     expect(find.byKey(const Key('wm-issue-supplement-period')), findsNothing);
@@ -539,6 +680,10 @@ void main() {
       tester,
       const WorkshopMaterialIssuePage(mode: 'direct'),
       repo: repo,
+      permissions: const {
+        Perm.workshopMaterialView,
+        Perm.workshopMaterialIssue,
+      },
     );
 
     await _pickMaterial(tester, 'r1');

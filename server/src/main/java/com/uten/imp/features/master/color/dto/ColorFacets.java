@@ -18,4 +18,9 @@ public class ColorFacets {
     private final List<FacetBucket> name;
     private final List<FacetBucket> status;
     private final Map<String, Long> nullCounts;
+    private final List<FacetBucket> remark;
+
+    public ColorFacets(List<FacetBucket> code, List<FacetBucket> name, List<FacetBucket> status, Map<String, Long> nullCounts) {
+        this(code, name, status, nullCounts, List.of());
+    }
 }

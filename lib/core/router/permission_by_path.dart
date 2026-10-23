@@ -98,8 +98,9 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   if (location == RouteName.workshopMaterialReports) {
     return const [Perm.workshopMaterialView];
   }
-  if (location == RouteName.workshopMaterialIssue) {
-    return const [Perm.workshopMaterialIssue];
+  if (location == RouteName.workshopMaterialIssue ||
+      location == '${RouteName.workshopMaterialIssue}/batch') {
+    return const [Perm.workshopMaterialView, Perm.workshopMaterialIssue];
   }
   if (location == RouteName.stockCountSession) {
     return const [Perm.stockCountSubmit];
@@ -418,6 +419,7 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   if (location == RouteName.warehouseOutboundTasks ||
       location.startsWith('${RouteName.warehouseOutboundTasks}/')) {
     return const [
+      Perm.workshopMaterialView,
       Perm.warehouseSalesOutboundView,
       Perm.subcontractOutboundView,
       Perm.warehouseSubcontractOutboundHistoryView,
@@ -427,6 +429,7 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   if (location == RouteName.warehouseInboundTasks ||
       location.startsWith('${RouteName.warehouseInboundTasks}/')) {
     return const [
+      Perm.workshopMaterialView,
       Perm.warehouseInboundView,
       Perm.stockDocView,
       Perm.warehousePurchaseReceiptHistoryView,
@@ -437,7 +440,7 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   }
   if (location == RouteName.warehouseDrawTasks ||
       location.startsWith('${RouteName.warehouseDrawTasks}/')) {
-    return const [Perm.stockDocView];
+    return const [Perm.stockDocView, Perm.workshopMaterialView];
   }
   // 仓库任务中心合并页（2026-09-24）：六大类任一业务域可看即可进入，
   // 页内各大类/分段再按各自权限显隐；须放在旧三路径之后——
@@ -445,6 +448,8 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   // 未知子段继续落入 /warehouse/:code 回退（fail-closed）。
   if (location == RouteName.warehouseTasks) {
     return const [
+      Perm.workshopMaterialView,
+      Perm.workshopMaterialSetup,
       Perm.stockCountWarehouseReview,
       Perm.warehouseSalesOutboundView,
       Perm.subcontractOutboundView,
@@ -496,6 +501,22 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   // 基础资料：hub 守卫由 hub_catalog 子卡并集得出；详情页使用对应主档权限。
   if (location == '${RouteName.basicinfoGoods}/new') {
     return const [Perm.goodsCreate];
+  }
+  if (location == RouteName.basicinfoHistory ||
+      location.startsWith('${RouteName.basicinfoHistory}/')) {
+    return const [
+      Perm.goodsView,
+      Perm.clientView,
+      Perm.supplierView,
+      Perm.mouldView,
+      Perm.colorView,
+      Perm.unitView,
+      Perm.currencyView,
+      Perm.warehouseView,
+      Perm.accountView,
+      Perm.paymentStyleView,
+      Perm.settlementMethodView,
+    ];
   }
   if (location == RouteName.basicinfoGoods ||
       location.startsWith('${RouteName.basicinfoGoods}/')) {
@@ -770,8 +791,9 @@ List<String> requiredAllPermsFor(String rawLocation) {
     return const [Perm.stockDocIssue, Perm.stockDocApprove];
   }
   // 车间内料仓 (ADR-131): 发料、盘点、设置三页要求本码本身, 不因持有查看码而放行。
-  if (location == RouteName.workshopMaterialIssue) {
-    return const [Perm.workshopMaterialIssue];
+  if (location == RouteName.workshopMaterialIssue ||
+      location == '${RouteName.workshopMaterialIssue}/batch') {
+    return const [Perm.workshopMaterialView, Perm.workshopMaterialIssue];
   }
   if (location == RouteName.workshopMaterialCount) {
     return const [];

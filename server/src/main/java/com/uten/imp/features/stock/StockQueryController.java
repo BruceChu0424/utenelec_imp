@@ -12,7 +12,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -126,33 +125,6 @@ public class StockQueryController {
         return service.instantInventory(categoryId, warehouseId, includeDefective, includeLineSide, keyword,
                 owningWarehouse, owningWarehouseNull, colorId, series, unitId, attention, page, size, sort, order,
                 includeRelated, warehouseRelatedOnly);
-    }
-
-    /**
-     * 即时库存左侧统一搜索定位：字段、删除口径与 instantInventory 完全一致，
-     * 只返回命中货品所在分类 id，不下载全部库存行。
-     */
-    @GetMapping("/instant-inventory/search-category-ids")
-    @PreAuthorize("hasAuthority('stock:view')")
-    public List<UUID> instantInventorySearchCategoryIds(
-            @RequestParam String keyword,
-            @RequestParam Set<UUID> categoryRootIds,
-            @RequestParam(required = false) UUID categoryId,
-            @RequestParam(required = false) UUID warehouseId,
-            @RequestParam(defaultValue = "false") boolean includeDefective,
-            @RequestParam(defaultValue = "false") boolean includeLineSide,
-            @RequestParam(required = false) UUID owningWarehouse,
-            @RequestParam(required = false) Boolean owningWarehouseNull,
-            @RequestParam(required = false) UUID colorId,
-            @RequestParam(required = false) String series,
-            @RequestParam(required = false) UUID unitId,
-            @RequestParam(required = false) String attention,
-            @RequestParam(defaultValue = "false") boolean includeRelated,
-            @RequestParam(defaultValue = "false") boolean warehouseRelatedOnly) {
-        var filter = new StockQueryService.InstantInventoryFilter(categoryId, warehouseId, includeDefective,
-                includeLineSide, keyword, owningWarehouse, owningWarehouseNull, colorId, series, unitId,
-                attention, null, false, true, includeRelated, warehouseRelatedOnly);
-        return service.instantInventoryMatchingCategoryIds(filter, categoryRootIds);
     }
 
     /**

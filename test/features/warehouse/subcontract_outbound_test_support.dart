@@ -4,6 +4,8 @@
 // 整单不发 POST /warehouse/subcontract-outbound/tasks/{issueId}/return-to-draw。
 // PUT 与服务端同口径: 没回传的明细行删掉(填 0 = 本次不发); 领料单被撤回 / 退回委外后
 // 再读拣货视图或草稿 = 404。
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
@@ -118,6 +120,10 @@ class SubcontractOutboundFakeApi extends ApiClient {
   final updates = <String>[];
   final approvals = <String>[];
   final savedBodies = <Map<String, dynamic>>[];
+  final atomicRequests = <(String, Map<String, dynamic>)>[];
+  final atomicReceipts = <String, Map<String, dynamic>>{};
+  final atomicReads = <String>[];
+  String atomicFingerprint = 'a' * 64;
 
   /// 退回委外(不发)的请求: (领料单 id, 请求体)。
   final returns = <(String, Map<String, dynamic>)>[];
@@ -223,6 +229,21 @@ class SubcontractOutboundFakeApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path.startsWith('/subcontract/material-issues/') &&
+        path.endsWith('/selected-outbound/review')) {
+      final id = path.split('/')[3];
+      atomicReads.add('review:$id');
+      return {
+        'document': await get('/subcontract/material-issues/$id'),
+        'fingerprint': atomicFingerprint,
+      };
+    }
+    if (path.startsWith('/subcontract/material-issues/') &&
+        path.endsWith('/selected-outbound/receipt')) {
+      final id = path.split('/')[3];
+      atomicReads.add('receipt:$id');
+      return {'result': atomicReceipts['$id:${query?['idempotencyKey']}']};
+    }
     for (final issueId in goneIssues) {
       if (path == ApiEndpoints.warehouseSubcontractOutboundTask(issueId) ||
           path == '/subcontract/material-issues/$issueId') {
@@ -383,6 +404,44 @@ class SubcontractOutboundFakeApi extends ApiClient {
     Map<String, dynamic>? headers,
     Map<String, dynamic>? query,
   }) async {
+    if (path.startsWith('/subcontract/material-issues/') &&
+        path.endsWith('/selected-outbound')) {
+      final id = path.split('/')[3];
+      final command = jsonDecode(jsonEncode(body)) as Map<String, dynamic>;
+      atomicRequests.add((id, command));
+      final receiptKey = '$id:${command['idempotencyKey']}';
+      if (atomicReceipts[receiptKey] case final receipt?) return receipt;
+      final selected = (command['itemIds'] as List).cast<String>().toSet();
+      final original = documents[id]!;
+      final items = (original['items'] as List).cast<Map<String, dynamic>>();
+      final split = items.any((item) => !selected.contains(item['id']));
+      final executionId = split ? 'execution-$id' : id;
+      final payload = Map<String, dynamic>.from(command['document'] as Map);
+      if (split) {
+        documents[executionId] = {
+          ...original,
+          ...payload,
+          'id': executionId,
+          'billNo': 'EXEC-$id',
+          'status': 1,
+        };
+        items.removeWhere((item) => selected.contains(item['id']));
+        pickLines[id]!.removeWhere(
+          (line) => selected.contains(line['issueItemId']),
+        );
+      } else {
+        original.addAll({...payload, 'status': 1});
+      }
+      final result = <String, dynamic>{
+        'sourceIssueId': id,
+        'executionIssueId': executionId,
+        'billNo': 'EXEC-$id',
+        'itemIds': selected.toList(),
+        'status': 1,
+      };
+      atomicReceipts[receiptKey] = result;
+      return result;
+    }
     for (final issueId in goneIssues) {
       if (path ==
           ApiEndpoints.warehouseSubcontractOutboundReturnToDraw(issueId)) {

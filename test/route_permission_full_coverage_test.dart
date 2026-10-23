@@ -90,7 +90,7 @@ void _collect(RouteBase base, String parent, List<String> out) {
   }
 }
 
-/// 原守卫基数 204，新增路径另由下方精确登记；当前 239 条守卫 / 18 条豁免。
+/// 原守卫基数 204，新增路径另由下方精确登记；当前 243 条守卫 / 18 条豁免。
 /// 2026-10-18 销售订单进度详情整页退役（履约时间线并入订货单详情页），
 /// /sales/progress/:orderId 路由删除，守卫 205→204；
 /// 两表共 36 项 any/all 登记，/workshop-material/count 同时登记两类守卫，去重为 35 条路径。
@@ -134,7 +134,14 @@ const _reviewedNewGuardedRoutes = <String, List<String>>{
   // 发料、设置要求本码，周期盘点允许录入或仓库审核码。
   '/workshop-material/bin': [],
   '/reports/workshop-material': [],
-  '/workshop-material/issue': [Perm.workshopMaterialIssue],
+  '/workshop-material/issue': [
+    Perm.workshopMaterialView,
+    Perm.workshopMaterialIssue,
+  ],
+  '/workshop-material/issue/batch': [
+    Perm.workshopMaterialView,
+    Perm.workshopMaterialIssue,
+  ],
   '/workshop-material/count': [],
   '/warehouse/workshop-material/setup': [Perm.workshopMaterialSetup],
 
@@ -160,7 +167,25 @@ const _reviewedNewGuardedRoutes = <String, List<String>>{
 /// 2026-09-28 ADR-135 新增的 any-of 守卫页面：逐条核对精确路径与权限码。
 /// 库存分析是管理口径 (呆滞/供应商少数)，只给 stock_report:view；
 /// 独立称重计数页库存查看即可进 (保存抽样的称样权限由页面与后端另行把关)。
+const _masterHistoryViewPermissions = <String>[
+  Perm.goodsView,
+  Perm.clientView,
+  Perm.supplierView,
+  Perm.mouldView,
+  Perm.colorView,
+  Perm.unitView,
+  Perm.currencyView,
+  Perm.warehouseView,
+  Perm.accountView,
+  Perm.paymentStyleView,
+  Perm.settlementMethodView,
+];
+
 const _reviewedNewAnyGuardedRoutes = <String, List<String>>{
+  // ADR-189: history and revision reading use the current master view grant;
+  // restoring remains an independent server-side action.
+  '/basicinfo/history': _masterHistoryViewPermissions,
+  '/basicinfo/history/:entityType/:id': _masterHistoryViewPermissions,
   // Remote policy is a super-admin capability; MFA setup is separately exempt.
   '/admin/remote-access': [Perm.authorizationManage],
   // V839: the route additionally requires super-admin identity through the

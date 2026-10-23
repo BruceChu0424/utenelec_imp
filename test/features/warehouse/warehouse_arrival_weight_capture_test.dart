@@ -27,9 +27,13 @@ import 'package:uten_imp/shared/models/procurement_inbound.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 
 import 'arrival_weight_test_support.dart';
 import 'inbound_arrival_test_support.dart';
+import '../../shared/drafts/memory_form_draft_storage.dart';
+import '../../helpers/warehouse_request_scope_fixture.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 
 const _goodsId = 'goods-screw';
 const _itemId = 'order-item-screw';
@@ -93,6 +97,9 @@ Future<({_Api api, FakeWeightRepository weights})> _open(
     ProviderScope(
       overrides: [
         sessionProvider.overrideWith(_Session.new),
+        sessionSnapshotProvider.overrideWith(IdleWarehouseTestSnapshot.new),
+        apiClientProvider.overrideWithValue(api),
+        formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
         currentPermissionsProvider.overrideWithValue(const {
           Perm.warehouseInboundView,
           Perm.warehouseInboundStockIn,
@@ -449,6 +456,7 @@ void main() {
 class _Session extends SessionNotifier {
   @override
   SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
     user: AppUser(
       id: 'user-me',
       code: 'USR-ME',

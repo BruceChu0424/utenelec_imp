@@ -1,8 +1,8 @@
 // 基础资料表头筛选冒烟测试（2026-09-16 补齐批次）：
 // - 供应商资料页：服务端 empId 桶（值=业务员 UUID、label=人名）remap 到业务员列
 //   key ownerEmployeeName；选桶回传服务端参数名 ownerEmployeeId。
-// - 基本单位页：计量维度列固定枚举桶（六维度全量可选）+ 回传 dimension 参数；
-//   空值桶走 nullFields（服务端筛未设置维度的单位）。
+// - 基本单位页：ADR-190 只展示编号/名称/状态；可见列 facets 与编号筛选原样回传，
+//   编号空值桶走 nullFields。
 // - 仓库资料页：目录按用途/状态筛选且保留命中仓的祖先；固定上级/核算与负责人事实在详情展示。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,6 +26,7 @@ import 'package:uten_imp/features/basic_data/repositories/supplier_repository.da
 import 'package:uten_imp/features/basic_data/repositories/unit_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/warehouse_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_read_only_fields.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -90,13 +91,15 @@ void main() {
   });
 
   group('unit page', () {
-    testWidgets('计量维度列固定枚举桶 + dimension 参数回传', (tester) async {
+    testWidgets('日常三字段 facets 与编号筛选参数回传', (tester) async {
       final units = _FakeUnitRepository(
         facetPayload: const UnitFacets(
           fields: {
-            'dimension': [MasterFacetBucket(value: 'MASS', count: 4)],
+            'code': [MasterFacetBucket(value: 'DW000017', count: 4)],
+            'name': [MasterFacetBucket(value: '个', count: 5)],
+            'status': [MasterFacetBucket(value: '使用', count: 9)],
           },
-          nullCounts: {'dimension': 7},
+          nullCounts: {'code': 7},
         ),
       );
       await _pump(
@@ -114,36 +117,28 @@ void main() {
       await tester.pumpAndSettle();
 
       final table = _tableOf<UnitListItem>(tester);
-      // 固定枚举桶：六个维度全量可选（无数据的也列出），服务端计数并入。
-      final dimensionBuckets =
-          table.facets['dimension'] ?? const <MasterFacetBucket>[];
-      expect(
-        dimensionBuckets.map((b) => b.value),
-        containsAll(<String>[
-          'COUNT',
-          'MASS',
-          'LENGTH',
-          'AREA',
-          'VOLUME',
-          'OTHER',
-        ]),
-      );
-      final mass = dimensionBuckets.singleWhere((b) => b.value == 'MASS');
-      expect(mass.label, '重量');
-      expect(mass.count, 4);
-      expect(table.nullCounts['dimension'], 7);
+      expect(table.columns.map((column) => column.key), [
+        'code',
+        'name',
+        'status',
+      ]);
+      expect(table.facets['code']?.single.value, 'DW000017');
+      expect(table.facets['code']?.single.count, 4);
+      expect(table.facets['name']?.single.value, '个');
+      expect(table.facets['status']?.single.value, '使用');
+      expect(table.nullCounts['code'], 7);
+      expect(find.text('计量维度'), findsNothing);
 
-      table.onFilterChanged('dimension', 'MASS');
+      table.onFilterChanged('code', 'DW000017');
       await tester.pumpAndSettle();
-      expect(units.lastFilters?['dimension'], 'MASS');
+      expect(units.lastFilters?['code'], 'DW000017');
 
-      // 空值桶（筛未设置维度）→ 哨兵值按 dimension 键送到仓储
-      //（真实仓储把它收集进 nullFields，服务端筛未设置维度的单位）。
+      // 空值桶仍由真实仓储转换为 nullFields，保留共享筛选契约。
       _tableOf<UnitListItem>(
         tester,
-      ).onFilterChanged('dimension', kMasterFilterNullValue);
+      ).onFilterChanged('code', kMasterFilterNullValue);
       await tester.pumpAndSettle();
-      expect(units.lastFilters?['dimension'], kMasterFilterNullValue);
+      expect(units.lastFilters?['code'], kMasterFilterNullValue);
     });
   });
 
@@ -195,12 +190,37 @@ void main() {
       final l10n = AppLocalizations.of(
         tester.element(find.byType(WarehousePage)),
       );
-      expect(
-        summary.subtitle,
-        contains('${l10n.warehouseMasterParentLabel}: 总仓库'),
+      final fieldsFinder = find.byKey(
+        const ValueKey('warehouse-read-only-fields-wh-2'),
       );
-      expect(summary.subtitle, contains('是否核算: 否'));
-      expect(summary.subtitle, contains('状态: 禁用'));
+      final fields = tester.widget<MasterReadOnlyFields>(fieldsFinder);
+      expect(
+        find.descendant(
+          of: fieldsFinder,
+          matching: find.text(l10n.warehouseMasterParentLabel),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: fieldsFinder, matching: find.text('总仓库')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: fieldsFinder, matching: find.text('不使用(不核算)')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: fieldsFinder, matching: find.text('禁用')),
+        findsOneWidget,
+      );
+      expect(
+        fields.fields.singleWhere((f) => f.key == 'parentName').readOnly,
+        isTrue,
+      );
+      expect(
+        find.descendant(of: fieldsFinder, matching: find.byType(TextField)),
+        findsNothing,
+      );
       expect(summary.canEdit, isFalse);
       expect(warehouses.detailIds, ['wh-2']);
       // Directory filters are facts over the complete dictionary, not a stale paged table.
@@ -216,13 +236,27 @@ void main() {
       MasterDetailCard summary() => tester.widget<MasterDetailCard>(
         find.byKey(const Key('warehouse-master-summary')),
       );
-      expect(summary().subtitle, contains('仓库负责人: 成品仓管、仓库主管'));
-      expect(summary().subtitle, contains('是否核算: 是'));
+      expect(
+        summary().stats.singleWhere((stat) => stat.label == '仓库负责人').value,
+        '成品仓管、仓库主管',
+      );
+      expect(find.text('仓库负责人：成品仓管、仓库主管'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('warehouse-read-only-fields-wh-1')),
+          matching: find.text('使用(参与核算)'),
+        ),
+        findsOneWidget,
+      );
 
       await tester.tap(find.text('五金仓库'));
       await tester.pumpAndSettle();
-      expect(summary().subtitle, contains('仓库负责人: —'));
-      expect(summary().subtitle, isNot(contains('成品仓管')));
+      expect(
+        summary().stats.singleWhere((stat) => stat.label == '仓库负责人').value,
+        '—',
+      );
+      expect(find.text('仓库负责人：—'), findsOneWidget);
+      expect(find.textContaining('成品仓管'), findsNothing);
       expect(tester.takeException(), isNull);
     });
   });

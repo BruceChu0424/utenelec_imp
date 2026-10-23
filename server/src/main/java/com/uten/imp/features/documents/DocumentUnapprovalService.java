@@ -246,16 +246,7 @@ public class DocumentUnapprovalService {
     private void copyPlatformFields(UUID originalId,UUID draftId,Map<UUID,UUID> lines) {
         Map<UUID,UUID> records=new LinkedHashMap<>(lines);
         records.put(originalId,draftId);
-        for(var record:records.entrySet()) {
-            em.createNativeQuery("""
-                    INSERT INTO platform_record_fields(scope,record_id,version,cells,retain_on_reset,
-                        source_document_id,source_line_index,source_fields_version,created_by,updated_by)
-                    SELECT scope,:draft,1,cells,retain_on_reset,source_document_id,source_line_index,
-                        source_fields_version,created_by,:actor
-                    FROM platform_record_fields WHERE record_id=:original
-                    """).setParameter("draft",record.getValue()).setParameter("original",record.getKey())
-                    .setParameter("actor",currentUser.requireId()).executeUpdate();
-        }
+        com.uten.imp.common.platformcolumns.PlatformRecordFieldForks.copy(em,currentUser.requireId(),records);
     }
     private DocumentUnapprovalPort requireFamily(String family) {
         var adapter=families.get(family);

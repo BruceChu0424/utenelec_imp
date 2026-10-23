@@ -159,7 +159,9 @@ BadgeSummary _summary({
 }) => badgeSummaryFixture(
   entries: {
     BadgeEntry.warehouseStockCountReview: (review, 0),
-    BadgeEntry.warehouseWorkshopMaterial: (issue + returned, counting),
+    BadgeEntry.warehouseOutboundCenter: (issue, 0),
+    BadgeEntry.warehouseInboundCenter: (returned, 0),
+    BadgeEntry.warehouseWorkshopMaterial: (0, counting),
   },
   facts: {
     BadgeFact.workshopMaterialPendingIssue: issue,
@@ -188,6 +190,7 @@ Future<ProviderContainer> _pump(
         sharedPreferencesProvider.overrideWithValue(prefs),
         currentPermissionsProvider.overrideWithValue(permissions),
         isSuperAdminProvider.overrideWithValue(false),
+        apiClientProvider.overrideWithValue(_Api()),
         stockCountRequestRepositoryProvider.overrideWithValue(repo),
         workshopMaterialRepositoryProvider.overrideWithValue(
           FakeWorkshopMaterialRepository(),
@@ -387,7 +390,7 @@ void main() {
     expect(find.textContaining('提交人：'), findsNothing);
     expect(find.text('塑料颗粒'), findsOneWidget);
     // 宿主分类仍可导航；切换后重新进入待审段回到队列。
-    await tester.tap(_label('历史单据'));
+    await tester.tap(_label('审核记录'));
     await tester.pumpAndSettle();
     expect(find.text('返回审核列表'), findsNothing);
     await tester.tap(_label('盘点审核'));
@@ -436,29 +439,40 @@ void main() {
       scope: const WarehouseTaskScope.warehouse('main-warehouse'),
     );
     expect(find.byKey(const Key('warehouse-count-review-entry')), findsNothing);
-    await tester.tap(find.text('车间内料仓'));
-    await tester.pumpAndSettle();
+    expect(find.text('车间内料仓'), findsNothing);
     expect(find.text('盘点审核'), findsNothing);
     expect(find.text('周期盘点'), findsNothing);
     expect(repo.queries, isEmpty);
   });
 
-  testWidgets('分类合并独立发退料和审核入口各一次，模块仍为6', (tester) async {
+  testWidgets('领退料移入对应方向，内料仓只计审核且模块仍为6', (tester) async {
     final container = await _pump(
       tester,
       _Repo(),
       summary: _summary(issue: 3, returned: 2),
-      permissions: {Perm.workshopMaterialIssue, Perm.stockCountWarehouseReview},
+      permissions: {
+        Perm.workshopMaterialView,
+        Perm.workshopMaterialIssue,
+        Perm.stockCountWarehouseReview,
+      },
     );
-    expect(_redCounts(tester, _label('车间内料仓')), [6]);
+    expect(_redCounts(tester, _label('出库')), [3]);
+    expect(_redCounts(tester, _label('入库')), [2]);
+    expect(_redCounts(tester, _label('车间内料仓')), [1]);
     expect(
       container.read(badgeSummaryProvider).moduleTodo(BadgeModule.warehouse),
       6,
     );
-    await tester.tap(find.text('车间内料仓'));
+    await tester.tap(_label('出库'));
     await tester.pumpAndSettle();
-    expect(_redCounts(tester, _label('待发料')), [3]);
-    expect(_redCounts(tester, _label('待收退回')), [2]);
+    expect(_redCounts(tester, _label('生产领料')), [3]);
+    await tester.tap(_label('入库'));
+    await tester.pumpAndSettle();
+    expect(_redCounts(tester, _label('生产退料')), [2]);
+    await tester.tap(_label('车间内料仓'));
+    await tester.pumpAndSettle();
+    expect(_label('待发料'), findsNothing);
+    expect(_label('待收退回'), findsNothing);
     expect(_redCounts(tester, _label('盘点审核')), [1]);
   });
 

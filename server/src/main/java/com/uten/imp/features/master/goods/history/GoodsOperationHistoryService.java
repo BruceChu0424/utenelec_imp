@@ -169,12 +169,21 @@ public class GoodsOperationHistoryService {
         for(Row row:rows) if("goods_bom_items".equals(row.table())) {
             for(JsonNode node:Arrays.asList(row.before(),row.after())) if(node!=null) parents.add(uuid(node.path("goods_id").asText()));
         }
-        if(!op.type().equals("BOM_AUDIT")) for(UUID parent:parents) events.publish("GOODS_BOM_UPDATED","GOODS_BOM",parent,Map.of("historyOperationId",id.toString()));
+        boolean disablesGoods=rows.stream().anyMatch(row->row.table().equals("goods")
+                && row.target(undo)!=null && "禁用".equals(row.target(undo).path("status").asText())
+                && changed(row.before(),row.after(),"status"));
+        Map<String,Object> bomEvent=disablesGoods
+                ? Map.of("historyOperationId",id.toString(),"reason","COMPONENT_DISABLED")
+                : Map.of("historyOperationId",id.toString());
+        if(!op.type().equals("BOM_AUDIT")) for(UUID parent:parents) events.publish("GOODS_BOM_UPDATED","GOODS_BOM",parent,bomEvent);
         em.clear();
         return list();
     }
 
     private String reason(Operation op,List<Row> rows,boolean undo,UUID nextRedo,Facts facts) {
+        return reason(op,rows,undo,nextRedo,facts,false);
+    }
+    private String reason(Operation op,List<Row> rows,boolean undo,UUID nextRedo,Facts facts,boolean versionRestore) {
         String scopeDenied=writeScopeReason(op,rows,facts,undo);
         if(scopeDenied!=null)return scopeDenied;
         if(currentUser.get().map(u->u.getImpersonatedBy()!=null).orElse(false))return "模拟身份仅供查看，不能撤回或取消撤回资料操作";
@@ -184,6 +193,8 @@ public class GoodsOperationHistoryService {
         if(permission!=null) return permission;
         if(rows.isEmpty()) return "没有可恢复的资料修改";
         for(Row row:rows) {
+            if(!versionRestore&&row.table().equals("goods")&&changed(row.before(),row.after(),"code","code_managed","code_sequence","code_prefix_category_id"))
+                return "此操作包含编号变化，请从修改历史选择版本，通过当前编号规则恢复";
             if(!TABLES.contains(row.table())) return "该操作包含不支持恢复的资料";
             if(!Objects.equals(facts.current().get(row.table()+":"+row.id()),row.expected())) return "相关资料已有后续修改，请先撤回后续操作或刷新后处理；没有覆盖任何修改";
             if("goods_bom_items".equals(row.table())&&!op.type().equals("BOM_AUDIT")) {
@@ -269,6 +280,56 @@ public class GoodsOperationHistoryService {
     }
     private static ApiException busy(){return conflict("货品资料正在由其他操作更新，本次未作任何修改；请稍后刷新后重试");}
 
+    /** Pure native authority check shared by history availability and its locked writer. */
+    public String versionRestorePermissionReason(List<com.uten.imp.features.master.history.MasterVersionRow> versions) {
+        return permissionReason(versionRestoreOperation(),versionRestoreRows(versions));
+    }
+
+    private static List<Row> versionRestoreRows(List<com.uten.imp.features.master.history.MasterVersionRow> versions) {
+        return versions.stream().map(v->new Row(v.table(),v.id(),v.target(),v.current(),v.current())).toList();
+    }
+
+    private static Operation versionRestoreOperation() {
+        return new Operation(UUID.randomUUID(),"GOODS_EDIT","恢复资料版本",OffsetDateTime.now(),"APPLIED",0,false,null,Set.of());
+    }
+
+    /** Called by the immutable object-version history after locking its scope. */
+    public void validateVersionRestore(List<com.uten.imp.features.master.history.MasterVersionRow> versions) {
+        AuthUser user=requireHistoryPrincipal(true);
+        List<Row> rows=versionRestoreRows(versions);
+        Set<String> needed=new LinkedHashSet<>();
+        for(Row row:rows) {
+            needed.add(switch(row.table()) {
+                case "goods" -> "goods:edit";
+                case "goods_bom_items" -> "goods:bom:edit";
+                case "material_categories" -> "material_category:edit";
+                default -> throw conflict("不支持的货品版本资料");
+            });
+            if(row.deleting(true))needed.add(switch(row.table()) {
+                case "goods" -> "goods:delete";
+                case "goods_bom_items" -> "goods:bom:delete";
+                case "material_categories" -> "material_category:delete";
+                default -> throw conflict("不支持的货品版本资料");
+            });
+            if(row.table().equals("goods_bom_items")&&changed(row.before(),row.after(),"price","total"))needed.add("goods:cost:view");
+            if(row.table().equals("goods_bom_items")&&changed(row.before(),row.after(),"audited_at","audited_by"))needed.add("goods:bom:audit");
+            if(row.table().equals("goods")&&changed(row.before(),row.after(),"category_id","owner_employee_id","owning_warehouse_id","owning_workshop_department_id","owning_responsible_employee_id"))
+                throw conflict("此版本涉及编号、分类或责任归属，请通过对应维护流程修改，不能覆盖后续责任设置");
+            if(row.table().equals("material_categories")&&changed(row.before(),row.after(),"parent_id","code_prefix","path","level","sort_order"))
+                throw conflict("此版本涉及分类层级或编号前缀，请通过分类维护流程处理");
+        }
+        if(!user.isSuperAdmin()&&!user.getPermissions().containsAll(needed))throw conflict("当前没有恢复此版本所需的编辑或删除权限");
+        String permission=versionRestorePermissionReason(versions);
+        if(permission!=null)throw conflict(permission);
+        Operation operation=versionRestoreOperation();
+        String blocked=reason(operation,rows,true,null,facts(rows),true);
+        if(blocked!=null)throw conflict(blocked);
+        requireDeletionReferences(rows,true);
+        requireLiveReferences(rows,true);
+        // Each restored edge is checked against the complete desired graph by
+        // the object history service, before any writes occur.
+    }
+
     private String permissionReason(Operation op,List<Row> rows) {
         AuthUser user=currentUser.get().orElse(null);
         if(user==null) return "当前登录状态无效";
@@ -304,6 +365,7 @@ public class GoodsOperationHistoryService {
             if("GOODS_EDIT".equals(op.type())&&"goods".equals(row.table())) {
                 if(changed(row.before(),row.after(),"status"))needed.add("goods:status");
                 if(changed(row.before(),row.after(),"price","zk"))needed.add("goods:price:edit");
+                if(changed(row.before(),row.after(),"zk"))needed.add("goods:discount:view");
                 if(changed(row.before(),row.after(),GOODS_COSTS.toArray(String[]::new)))needed.add("goods:cost:view");
             }
             if("GOODS_CREATE".equals(op.type())&&"goods".equals(row.table())&&row.after()!=null) {
@@ -418,7 +480,7 @@ public class GoodsOperationHistoryService {
             if(ids.isEmpty())continue;
             // Names originate in the fixed mapping above. Batch locks coordinate
             // with normal saves without one database round trip per field/row.
-            @SuppressWarnings("unchecked") List<Object> found=em.createNativeQuery("SELECT id FROM "+table+" WHERE id=ANY(CAST(string_to_array(:ids,',') AS uuid[])) AND NOT is_deleted FOR SHARE")
+            @SuppressWarnings("unchecked") List<Object> found=em.createNativeQuery("SELECT id FROM "+table+" WHERE id=ANY(CAST(string_to_array(:ids,',') AS uuid[])) AND NOT is_deleted FOR SHARE NOWAIT")
                     .setParameter("ids",joined(ids)).getResultList();
             if(found.size()!=ids.size())throw conflict("原资料引用的分类、货品、颜色、单位或其他主档已删除，不能恢复；请先处理引用资料");
         }
@@ -430,7 +492,7 @@ public class GoodsOperationHistoryService {
                 ids.remove(id);
             }
             if(ids.isEmpty())continue;
-            @SuppressWarnings("unchecked") List<Object> active=em.createNativeQuery("SELECT id FROM "+table+" WHERE id=ANY(CAST(string_to_array(:ids,',') AS uuid[])) AND NOT is_deleted AND COALESCE(status,'') NOT IN ('禁用','报废') FOR SHARE")
+            @SuppressWarnings("unchecked") List<Object> active=em.createNativeQuery("SELECT id FROM "+table+" WHERE id=ANY(CAST(string_to_array(:ids,',') AS uuid[])) AND NOT is_deleted AND COALESCE(status,'') NOT IN ('禁用','报废') FOR SHARE NOWAIT")
                     .setParameter("ids",joined(ids)).getResultList();
             if(active.size()!=ids.size())throw conflict("原关联资料已经停用或报废，不能重新引入；请先处理对应主档");
             if(table.equals("clients"))for(UUID id:ids)masterReferences.requireVisibleActiveClient(id);
@@ -462,7 +524,8 @@ public class GoodsOperationHistoryService {
     private Map<UUID,List<Row>> allRows(List<UUID> ids) {
         if(ids.isEmpty())return Map.of();
         @SuppressWarnings("unchecked") List<Object[]> result=em.createNativeQuery("""
-                SELECT operation_id,table_name,row_id,before_row::text,after_row::text,expected_row::text
+                SELECT operation_id,table_name,row_id,before_row::text,after_row::text,
+                       fn_goods_bom_history_schema(expected_row,table_name)::text
                 FROM goods_operation_history_rows WHERE operation_id=ANY(CAST(string_to_array(:ids,',') AS uuid[])) ORDER BY capture_order
                 """).setParameter("ids",joined(ids)).getResultList();
         Map<UUID,List<Row>> grouped=new LinkedHashMap<>();

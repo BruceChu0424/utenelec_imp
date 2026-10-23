@@ -2,6 +2,8 @@
 // 文档：docs/05-架构/路由设计.md · 全局机制权限见 docs/05-架构/全局机制.md
 // 使用 go_router，扁平路由（静态段声明在 :id 之前避免冲突）
 
+import 'dart:convert';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
@@ -9,6 +11,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'editor_resource_key.dart';
+import '../../features/client_update/client_update_navigation.dart';
 import '../../features/stock/models/instant_inventory_scope.dart';
 import '../../shared/ai/guided/ai_guided_file_plan.dart';
 
@@ -38,6 +41,8 @@ import '../../features/basic_data/pages/account_page.dart';
 import '../../features/basic_data/pages/account_detail_page.dart';
 import '../../features/basic_data/pages/currency_page.dart';
 import '../../features/basic_data/pages/goods_detail_page.dart';
+import '../../features/basic_data/pages/master_record_history_page.dart';
+import '../../features/basic_data/pages/master_record_revision_page.dart';
 import '../../features/basic_data/pages/goods_price_analysis_page.dart';
 import '../../features/basic_data/pages/mould_category_page.dart';
 import '../../features/basic_data/pages/payment_style_page.dart';
@@ -160,6 +165,7 @@ import '../../features/warehouse/pages/warehouse_task_center_page.dart';
 import '../../features/warehouse/materialbin/pages/workshop_material_bin_page.dart';
 import '../../features/warehouse/materialbin/pages/workshop_material_count_page.dart';
 import '../../features/warehouse/materialbin/pages/workshop_material_issue_page.dart';
+import '../../features/warehouse/materialbin/pages/workshop_material_issue_batch_page.dart';
 import '../../features/warehouse/materialbin/pages/workshop_material_setup_page.dart';
 import '../../features/notice/pages/notice_list_page.dart';
 import '../../features/notice/pages/notice_publish_page.dart';
@@ -225,6 +231,64 @@ import 'route_access_policy.dart';
 import 'route_names.dart';
 import '../../shared/drafts/form_draft_navigation.dart';
 import '../../shared/drafts/form_drafts_page.dart';
+
+List<String>? _warehouseItemSelection(GoRouterState state) =>
+    state.uri.queryParameters.containsKey('itemIds')
+    ? state.uri.queryParameters['itemIds']!
+          .split(',')
+          .map((id) => id.trim())
+          .where((id) => id.isNotEmpty)
+          .toList(growable: false)
+    : null;
+
+Map<String, List<String>> _workshopRequisitionSelection(GoRouterState state) {
+  try {
+    final raw = jsonDecode(state.uri.queryParameters['selections'] ?? '{}');
+    if (raw is! Map<String, dynamic>) return const {};
+    return {
+      for (final entry in raw.entries)
+        entry.key: (entry.value as List).cast<String>(),
+    };
+  } on FormatException {
+    return const {};
+  } on TypeError {
+    return const {};
+  }
+}
+
+Map<String, String> _finishedItemDocuments(GoRouterState state) {
+  try {
+    final decoded = jsonDecode(
+      state.uri.queryParameters['itemDocuments'] ?? '{}',
+    );
+    if (decoded is! Map<String, dynamic> ||
+        decoded.entries.any(
+          (entry) =>
+              entry.key.isEmpty ||
+              entry.value is! String ||
+              (entry.value as String).isEmpty,
+        )) {
+      return const {};
+    }
+    final items = _warehouseItemSelection(state);
+    if (items != null &&
+        (items.length != decoded.length ||
+            !items.toSet().containsAll(decoded.keys))) {
+      return const {};
+    }
+    final documents = (state.uri.queryParameters['documentIds'] ?? '')
+        .split(',')
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    if (items != null &&
+        (documents.isEmpty || !decoded.values.every(documents.contains))) {
+      return const {};
+    }
+    return decoded.cast<String, String>();
+  } on FormatException {
+    return const {};
+  }
+}
 
 final _editorFileDigests = Expando<String>('editorFileDigest');
 
@@ -338,6 +402,7 @@ final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>(
 final appRouterProvider = Provider<GoRouter>((ref) {
   final router = GoRouter(
     navigatorKey: appNavigatorKey,
+    observers: [ref.watch(clientUpdateNavigationProvider)],
     // 2026-09-25 入口选择页退役：平台定位公司内部，应用直接落在员工登录页；
     // 访客门户前端同步下线（后端能力保留，将来另做独立入口）。
     initialLocation: RouteName.login,
@@ -716,6 +781,29 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.basicinfoGoods,
             name: 'basicinfo-goods',
             builder: (_, _) => const ProductCategoryPage(),
+          ),
+          DraftAwareGoRoute(
+            path: RouteName.basicinfoHistory,
+            name: 'basicinfo-history',
+            builder: (_, state) => MasterRecordHistoryPage(
+              entityType: state.uri.queryParameters['entityType'],
+              recordId: state.uri.queryParameters['recordId'],
+              categoryId: state.uri.queryParameters['categoryId'],
+              changeSignal: state.extra is ValueNotifier<bool>
+                  ? state.extra as ValueNotifier<bool>
+                  : null,
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: RouteName.basicinfoHistoryRevision,
+            name: 'basicinfo-history-revision',
+            builder: (_, state) => MasterRecordRevisionPage(
+              entityType: state.pathParameters['entityType']!,
+              id: state.pathParameters['id']!,
+              changeSignal: state.extra is ValueNotifier<bool>
+                  ? state.extra as ValueNotifier<bool>
+                  : null,
+            ),
           ),
           // 静态段 new 必须在 :id 前（路由文件头注释的扁平路由约定）。
           DraftAwareGoRoute(
@@ -1245,6 +1333,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.warehouseProductionFinishedBatchStockIn,
             name: 'warehouse-production-finished-batch-stock-in',
             builder: (_, s) => ProductionFinishedBatchStockInPage(
+              selectedItemIds: _warehouseItemSelection(s),
+              selectedItemDocuments: _finishedItemDocuments(s),
               targets: s.extra is List<ProductionFinishedInboundTask>
                   ? s.extra! as List<ProductionFinishedInboundTask>
                   : const [],
@@ -1349,6 +1439,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/warehouse/material-returns/batch-receive',
             name: 'warehouse-material-returns-batch-receive',
             builder: (_, state) => WarehouseMaterialReturnBatchReceivePage(
+              selectedItemIds: _warehouseItemSelection(state),
               documentIds: (state.uri.queryParameters['documentIds'] ?? '')
                   .split(',')
                   .where((id) => id.isNotEmpty)
@@ -1359,6 +1450,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/warehouse/sales-outbound/batch',
             name: 'warehouse-sales-outbound-batch',
             builder: (_, state) => WarehouseSalesOutboundBatchPage(
+              selectedItemIds: _warehouseItemSelection(state),
               shipmentIds: (state.uri.queryParameters['shipmentIds'] ?? '')
                   .split(',')
                   .where((id) => id.isNotEmpty)
@@ -1397,6 +1489,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/warehouse/subcontract-outbound/batch',
             name: 'warehouse-subcontract-outbound-batch',
             builder: (_, state) => WarehouseSubcontractOutboundBatchPage(
+              selectedItemIds: _warehouseItemSelection(state),
               issueIds: (state.uri.queryParameters['issueIds'] ?? '')
                   .split(',')
                   .where((id) => id.isNotEmpty)
@@ -1520,6 +1613,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'stock-doc-detail',
             redirect: _rejectUnknownStockDoc,
             builder: (_, s) => StockDocDetailPage(
+              key: ValueKey(
+                'stock-doc-detail:${s.pathParameters['code']}:${s.pathParameters['id']}',
+              ),
               docType: StockDocType.byCode(s.pathParameters['code']!),
               id: s.pathParameters['id']!,
             ),
@@ -1567,10 +1663,31 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           // 带 ?requisitionId= 为按申请发料 / 收退回; 不带 (或 ?mode=direct) 为直接发料。
           DraftAwareGoRoute(
+            path: '${RouteName.workshopMaterialIssue}/batch',
+            name: 'workshop-material-issue-batch',
+            builder: (_, s) => WorkshopMaterialIssueBatchPage(
+              key: ValueKey(
+                'workshop-material-issue-batch:${s.uri.queryParameters['selections']}:${s.uri.queryParameters['draftId']}',
+              ),
+              selections: _workshopRequisitionSelection(s),
+              resumeDraftId: s.uri.queryParameters['draftId'],
+            ),
+          ),
+          DraftAwareGoRoute(
             path: RouteName.workshopMaterialIssue,
             name: 'workshop-material-issue',
             builder: (_, s) => WorkshopMaterialIssuePage(
+              key: ValueKey(
+                'workshop-material-issue:${s.uri.queryParameters['requisitionId']}:${s.uri.queryParameters['mode']}:${s.uri.queryParameters['lineIds']}:${s.uri.queryParameters['draftId']}',
+              ),
+              resumeDraftId: s.uri.queryParameters['draftId'],
               requisitionId: s.uri.queryParameters['requisitionId'],
+              selectedLineIds: s.uri.queryParameters.containsKey('lineIds')
+                  ? s.uri.queryParameters['lineIds']!
+                        .split(',')
+                        .where((id) => id.isNotEmpty)
+                        .toSet()
+                  : null,
               mode: s.uri.queryParameters['mode'],
             ),
           ),

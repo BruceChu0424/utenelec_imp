@@ -31,6 +31,9 @@ public class WarehouseWorkTransitionRequest {
     @Size(max = 500)
     private List<@Valid StockPlace> stockPlaces;
 
+    @Size(min = 1, max = com.uten.imp.common.validation.RequestLimits.DOCUMENT_LINES)
+    private List<@NotNull UUID> itemIds;
+
     /**
      * 逐行出库证据：实际库位 + 实际发出仓(V631) + 出库实称净重(ADR-135)。warehouseId 为空时依次取
      * 本次默认仓、行上已落定的仓、单据表头仓；各行可以分别从不同叶仓发出。

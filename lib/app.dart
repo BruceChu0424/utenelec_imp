@@ -32,6 +32,10 @@ import 'shared/widgets/reauth_dialog.dart';
 import 'features/auth/widgets/remote_mfa_prompt.dart';
 import 'shared/widgets/user_activity_tracker.dart';
 import 'platform_tables_host.dart';
+import 'features/client_update/client_update_host.dart';
+import 'features/client_update/client_update_tile.dart';
+import 'shared/widgets/settings_about_extensions.dart';
+import 'core/network/server_config.dart';
 
 String _notificationSessionKey(SessionState session) =>
     '${session.status.name}|${session.user?.id ?? ''}|'
@@ -105,6 +109,10 @@ class UtenApp extends ConsumerWidget {
                 child: child!,
               )
             : child!;
+        final settingsChild = SettingsAboutExtensions(
+          entries: const [ClientUpdateTile(), ClientReleasePublishTile()],
+          child: routedChild,
+        );
         // 最外层整体缩放：横幅、通知宿主与路由树一起等比放大/缩小（字号档不再只乘
         // textScaler——文字、图标、卡片、间距同步变化；自动档为 100%，
         // 系统无障碍曲线原样继承）。之下的 MediaQuery 已换算成画布口径，
@@ -131,6 +139,16 @@ class UtenApp extends ConsumerWidget {
                     // 登录会话重建门（不渲染）：重新登录时立即重拉全局角标，
                     // 不再等 60s 轮询/手动刷新（清空业务数据后的重进即新数据）。
                     const SessionRehydrateGate(),
+                    ClientUpdateHost(
+                      key: ValueKey((
+                        session.status,
+                        session.user?.id,
+                        session.actor?.id,
+                        ref.watch(apiBaseUrlProvider),
+                      )),
+                      enabled: session.isLoggedIn && !impersonating,
+                      dialogContext: () => appNavigatorKey.currentContext,
+                    ),
                     // V459 登录检查门（不渲染）：登录后拉待审，有则弹居中审核弹窗。
                     ReviewPendingLoginGate(
                       enabled: noticeArrivalEnabled,
@@ -160,7 +178,7 @@ class UtenApp extends ConsumerWidget {
                                 : mediaQuery,
                             child: Stack(
                               children: [
-                                routedChild,
+                                settingsChild,
                                 const Positioned(
                                   top: 0,
                                   left: 0,

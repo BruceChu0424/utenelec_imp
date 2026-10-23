@@ -1,6 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- 所有业务网络均由 Dio 访问后端；release 只允许 TLS 明文禁用。 -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Enterprise APK updates still require Android's user confirmation. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <!-- 访客扫码（保安端 mobile_scanner） -->
     <uses-permission android:name="android.permission.CAMERA"/>
     <application
@@ -38,6 +40,15 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.clientupdates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/client_update_paths" />
+        </provider>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

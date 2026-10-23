@@ -153,6 +153,9 @@ class AccountDetail {
     this.parentLegacyId,
     this.styleLegacyId,
     this.styleId,
+    this.styleCode,
+    this.styleName,
+    this.styleDeleted,
     this.status,
     this.autoCreated = false,
     this.legacyId,
@@ -191,6 +194,9 @@ class AccountDetail {
   final int? parentLegacyId;
   final int? styleLegacyId;
   final String? styleId;
+  final String? styleCode;
+  final String? styleName;
+  final bool? styleDeleted;
   final String? status;
   final bool autoCreated;
   final int? legacyId;
@@ -229,6 +235,9 @@ class AccountDetail {
     parentLegacyId: (json['parentLegacyId'] as num?)?.toInt(),
     styleLegacyId: (json['styleLegacyId'] as num?)?.toInt(),
     styleId: json['styleId'] as String?,
+    styleCode: json['styleCode'] as String?,
+    styleName: json['styleName'] as String?,
+    styleDeleted: json['styleDeleted'] as bool?,
     status: json['status'] as String?,
     autoCreated: (json['autoCreated'] as bool?) ?? false,
     legacyId: (json['legacyId'] as num?)?.toInt(),

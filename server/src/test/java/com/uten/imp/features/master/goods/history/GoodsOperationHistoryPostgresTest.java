@@ -222,6 +222,38 @@ class GoodsOperationHistoryPostgresTest {
         assertEquals(0,count("SELECT count(*) FROM goods_operation_history_events WHERE actor_id=:id",actor));
     }
 
+    @Test void legacyBomSnapshotsStayUndoableWithoutRewritingTheirRetainedBeforeAndAfter() {
+        UUID parent=goods("legacy recipe"),component=goods("legacy material"),edge=UUID.randomUUID();
+        inTx(()->{bom(edge,parent,component);return null;});
+        UUID operation=inTx(()->{
+            provenance("/api/master/goods/"+parent+"/bom/"+edge,"PUT");
+            update("UPDATE goods_bom_items SET qty=2 WHERE id=:id",edge);return latest();
+        });
+        inTx(()->{
+            update("""
+                    UPDATE goods_operation_history_rows SET
+                      before_row=before_row-'retirement_reason'-'retirement_resolved_at',
+                      after_row=after_row-'retirement_reason'-'retirement_resolved_at',
+                      expected_row=expected_row-'retirement_reason'-'retirement_resolved_at',
+                      before_token=before_token-'retirement_reason'-'retirement_resolved_at',
+                      after_token=after_token-'retirement_reason'-'retirement_resolved_at'
+                    WHERE operation_id=:id AND table_name='goods_bom_items'
+                    """,operation);return null;
+        });
+        assertTrue(service.list().entries().getFirst().canUndo());
+        inTx(()->service.undo(operation,0));
+        assertEquals(0,new java.math.BigDecimal("1").compareTo(new java.math.BigDecimal(
+                scalar("SELECT qty::text FROM goods_bom_items WHERE id=:id",edge))));
+        inTx(()->service.redo(operation,1));
+        assertEquals(0,new java.math.BigDecimal("2").compareTo(new java.math.BigDecimal(
+                scalar("SELECT qty::text FROM goods_bom_items WHERE id=:id",edge))));
+        assertEquals(1,count("""
+                SELECT count(*) FROM goods_operation_history_rows WHERE operation_id=:id
+                  AND table_name='goods_bom_items' AND NOT jsonb_exists(before_row,'retirement_reason')
+                  AND NOT jsonb_exists(after_row,'retirement_reason')
+                """,operation));
+    }
+
     @Test void undoingAnOlderPriceEditPreservesTheMaterialCostRecalculatedByALaterBomUndo() {
         UUID parent=goods("cost parent"),component=goods("cost component"),edge=UUID.randomUUID();
         inTx(()->{bom(edge,parent,component);update("UPDATE goods SET price=5,source_e=10 WHERE id=:id",parent);update("UPDATE goods SET price=10 WHERE id=:id",component);return null;});

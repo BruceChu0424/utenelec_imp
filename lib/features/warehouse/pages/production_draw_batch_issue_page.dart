@@ -19,6 +19,7 @@ import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/network/server_config.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -38,6 +39,7 @@ import '../models/outbound_weight_entry.dart';
 import '../models/production_draw_discovery_row.dart';
 import '../models/stock_doc.dart';
 import '../models/warehouse_draw_task.dart';
+import '../models/warehouse_task_item_selection.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../repositories/production_draw_task_repository.dart';
 import '../repositories/stock_doc_repository.dart';
@@ -53,9 +55,13 @@ class ProductionDrawBatchIssuePage extends ConsumerStatefulWidget {
     super.key,
     this.documentIds = const [],
     this.discoveryRequestIds = const [],
+    this.selectedItemIds,
+    this.discoverySelection,
   });
   final List<String> documentIds;
   final List<String> discoveryRequestIds;
+  final List<String>? selectedItemIds;
+  final String? discoverySelection;
 
   static List<String> _ids(Iterable<String> values) =>
       values
@@ -72,17 +78,24 @@ class ProductionDrawBatchIssuePage extends ConsumerStatefulWidget {
     final discoveries = _ids(
       (state.uri.queryParameters['discoveryRequestIds'] ?? '').split(','),
     );
+    final items = state.uri.queryParameters.containsKey('itemIds')
+        ? _ids((state.uri.queryParameters['itemIds'] ?? '').split(','))
+        : null;
     return ProductionDrawBatchIssuePage(
       key: ValueKey(
         jsonEncode([
           'draw-batch',
           documents,
           discoveries,
+          items,
+          state.uri.queryParameters['discoverySelection'],
           state.uri.queryParameters['draftId'],
         ]),
       ),
       documentIds: documents,
       discoveryRequestIds: discoveries,
+      selectedItemIds: items,
+      discoverySelection: state.uri.queryParameters['discoverySelection'],
     );
   }
 
@@ -98,6 +111,8 @@ class _ProductionDrawBatchIssuePageState
   List<StockDocDetail>? _documents;
   List<ProductionMaterialDiscoveryDetail> _discoveries = [];
   final _discoveryRows = <ProductionDrawDiscoveryRow>[];
+  final _selectedSuggestions = <String, List<String>>{};
+  bool _discoverySelectionComplete = true;
 
   /// 现有领料单逐行本次重量 (键 = item.id; 只建待出库 > 0 的行)。
   final _issueWeights = <String, OutboundWeightEntry>{};
@@ -137,6 +152,10 @@ class _ProductionDrawBatchIssuePageState
   String get _selection => jsonEncode([
     ProductionDrawBatchIssuePage._ids(widget.documentIds),
     ProductionDrawBatchIssuePage._ids(widget.discoveryRequestIds),
+    widget.selectedItemIds == null
+        ? null
+        : ProductionDrawBatchIssuePage._ids(widget.selectedItemIds!),
+    widget.discoverySelection,
   ]);
 
   bool Function() _captureIdentity() {
@@ -195,6 +214,8 @@ class _ProductionDrawBatchIssuePageState
       queryParameters: {
         'documentIds': widget.documentIds.join(','),
         'discoveryRequestIds': widget.discoveryRequestIds.join(','),
+        ...WarehouseTaskItemSelection(widget.selectedItemIds).queryParameters,
+        'discoverySelection': ?widget.discoverySelection,
       },
     ).toString(),
   );
@@ -236,7 +257,7 @@ class _ProductionDrawBatchIssuePageState
 
   /// 一个材料申请的提交体: 领料明细 + 称了的行的重量 (IssueWeight, 按
   /// 货品+颜色+实际发料仓对到服务端建好的领料明细; 一行都没称时不带 weights)。
-  static Map<String, dynamic> _discoveryJson(
+  Map<String, dynamic> _discoveryJson(
     ProductionMaterialDiscoveryDetail request,
     List<ProductionDrawDiscoveryRow> rows,
   ) {
@@ -244,6 +265,7 @@ class _ProductionDrawBatchIssuePageState
     return {
       'requestId': request.requestId,
       'expectedVersion': request.version,
+      'selectedSuggestionKeys': ?_selectedSuggestions[request.requestId],
       'items': [for (final row in rows) row.toJson()],
       if (weights.isNotEmpty) 'weights': weights,
     };
@@ -267,6 +289,8 @@ class _ProductionDrawBatchIssuePageState
     'submittedDiscoveries': _submittedDiscoveries,
     'submittedWeights': _submittedWeights,
     'submittedDocIds': _submittedDocIds,
+    'selectedItemIds': widget.selectedItemIds,
+    'discoverySelection': widget.discoverySelection,
     'submittedReason': _submittedReason,
     if (_confirmedResult case final result?)
       'confirmedResult': {
@@ -327,6 +351,12 @@ class _ProductionDrawBatchIssuePageState
             (value) => value['requestId'] as String? ?? '',
           ),
         ),
+        data['selectedItemIds'] == null
+            ? null
+            : ProductionDrawBatchIssuePage._ids(
+                draftStrings(data['selectedItemIds']),
+              ),
+        data['discoverySelection'],
       ]);
       if (_requestKey?.trim().isNotEmpty != true ||
           submittedSelection != _selection) {
@@ -391,7 +421,7 @@ class _ProductionDrawBatchIssuePageState
   @override
   void initState() {
     super.initState();
-    startFormDraftIdentityGuard();
+    startFormDraftIdentityGuard(includePermissions: true);
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -451,6 +481,20 @@ class _ProductionDrawBatchIssuePageState
       )) {
         throw const FormatException('所选单据包含非生产领料单，请返回重新选择');
       }
+      final selection = WarehouseTaskItemSelection(widget.selectedItemIds);
+      selection.validate(
+        documents.expand((document) => document.items).map((item) => item.id),
+      );
+      for (var index = 0; index < documents.length; index++) {
+        final document = documents[index];
+        final items = document.items
+            .where((item) => selection.contains(item.id))
+            .toList();
+        if (items.isEmpty) {
+          throw const FormatException('所选领料单已没有本次明细，请返回刷新后重新选择');
+        }
+        documents[index] = document.withItems(items);
+      }
       final discoveries = <ProductionMaterialDiscoveryDetail>[];
       final discoveryRepository = ref.read(
         productionMaterialDiscoveryRepositoryProvider,
@@ -469,6 +513,37 @@ class _ProductionDrawBatchIssuePageState
         }
         if (request.suggestedItems.isEmpty) {
           throw FormatException('${request.segmentCode} 尚未确定材料，请先打开该申请填写材料');
+        }
+      }
+      _selectedSuggestions.clear();
+      _discoverySelectionComplete = true;
+      if (widget.discoverySelection != null) {
+        final rawSelection = jsonDecode(widget.discoverySelection!);
+        if (rawSelection is! Map ||
+            rawSelection.length != discoveries.length ||
+            !rawSelection.keys.toSet().containsAll(discoveryIds)) {
+          throw const FormatException('所选材料申请与本次来源不一致，请刷新后重新选择');
+        }
+        for (final request in discoveries) {
+          final raw = rawSelection[request.requestId];
+          final keys = raw is Map ? raw['keys'] : null;
+          if (raw is! Map ||
+              raw['expectedVersion'] != request.version ||
+              keys is! List ||
+              keys.isEmpty ||
+              keys.any((key) => key is! String) ||
+              keys.toSet().length != keys.length) {
+            throw const FormatException('所选材料建议或版本已变化，请刷新后重新选择');
+          }
+          final actual = {
+            for (var index = 0; index < request.suggestedItems.length; index++)
+              'suggestion-${index + 1}',
+          };
+          if (!actual.containsAll(keys)) {
+            throw const FormatException('所选材料建议已不存在，请刷新后重新选择');
+          }
+          _selectedSuggestions[request.requestId] = keys.cast<String>();
+          if (keys.length != actual.length) _discoverySelectionComplete = false;
         }
       }
       await names.loadGoodsDetails({
@@ -495,6 +570,10 @@ class _ProductionDrawBatchIssuePageState
               index < request.suggestedItems.length;
               index++
             ) {
+              if (_selectedSuggestions[request.requestId] case final keys?
+                  when !keys.contains('suggestion-${index + 1}')) {
+                continue;
+              }
               _discoveryRows.add(
                 ProductionDrawDiscoveryRow(
                   request: request,
@@ -535,6 +614,9 @@ class _ProductionDrawBatchIssuePageState
   }
 
   String? _blocked(Set<String> permissions) {
+    if (!_discoverySelectionComplete && !_uncertain) {
+      return '该材料申请需完整核对，请返回任务中心选齐同申请建议明细';
+    }
     if (formDraftRestorationBlocked) return '旧草稿未能完整恢复，请保留原提交并核对';
     if (_confirmedResult != null) return '本批已核对，未重复出库';
     if (!(_loadedIdentity?.call() ?? false) || _loading || _error != null) {
@@ -672,8 +754,29 @@ class _ProductionDrawBatchIssuePageState
     if (_saving || _blocked(ref.read(currentPermissionsProvider)) != null) {
       return;
     }
+    setState(() => _saving = true);
+    try {
+      final scope = await captureFormDraftRequestScope();
+      await scope.run(() => _submitScoped(scope));
+      scope.checkCurrent();
+    } catch (error) {
+      if (error is ApiException && error.code == 'SESSION_CHANGED') {
+        invalidateFormDraftIdentity();
+      }
+      if (mounted) {
+        context.appError(
+          describeSubmitError(error, fallback: '本次尚未发送，请保留页面后重试'),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _submitScoped(AuthenticatedRequestScope requestScope) async {
     final wasUnknown = _uncertain;
-    final canPublish = _captureSubmissionView();
+    final viewIsCurrent = _captureSubmissionView();
+    bool canPublish() => requestScope.isCurrent && viewIsCurrent();
     final repository = ref.read(productionDrawTaskRepositoryProvider);
     var dispatched = false;
     ApiException? definiteRejection;
@@ -764,6 +867,7 @@ class _ProductionDrawBatchIssuePageState
         _submittedDiscoveries,
         _submittedWeights,
         _submittedReason,
+        widget.selectedItemIds,
       ]);
       if (_requestFingerprint != fingerprint) {
         _requestFingerprint = fingerprint;
@@ -788,6 +892,7 @@ class _ProductionDrawBatchIssuePageState
                 docIds: _submittedDocIds,
                 weights: _submittedWeights,
                 reason: _submittedReason,
+                itemIds: widget.selectedItemIds,
               )
             : repository.issueDiscoveryBatch(
                 idempotencyKey: _requestKey!,
@@ -795,8 +900,10 @@ class _ProductionDrawBatchIssuePageState
                 discoveries: _submittedDiscoveries,
                 weights: _submittedWeights,
                 reason: _submittedReason,
+                itemIds: widget.selectedItemIds,
               );
       }, isDefiniteRejection: rejects);
+      requestScope.checkCurrent();
       if (!_receiptConfirmsBatch(result)) {
         throw StateError('服务器返回的结果不完整，无法确认本次是否成功');
       }
@@ -838,7 +945,9 @@ class _ProductionDrawBatchIssuePageState
     bool Function() canPublish, {
     bool leave = true,
   }) async {
+    if (!canPublish()) return;
     await checkpointFormDraftAfterCreation();
+    if (!canPublish()) return;
     await completeFormDraft();
     if (!mounted || !canPublish()) return;
     if (result.replayed) {
@@ -922,7 +1031,9 @@ class _ProductionDrawBatchIssuePageState
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
                                   Text(
-                                    '共 ${documents.length} 张领料单${_discoveries.isEmpty ? '' : ' · ${_discoveries.length} 个材料申请'} · ${documents.fold<int>(0, (sum, document) => sum + document.items.length) + _discoveryRows.length} 行明细',
+                                    !_discoverySelectionComplete
+                                        ? '该材料申请需完整核对，请返回任务中心选齐同申请建议明细'
+                                        : '共 ${documents.length} 张领料单${_discoveries.isEmpty ? '' : ' · ${_discoveries.length} 个材料申请'} · ${documents.fold<int>(0, (sum, document) => sum + document.items.length) + _discoveryRows.length} 行明细',
                                     style: Theme.of(
                                       context,
                                     ).textTheme.titleMedium,

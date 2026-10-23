@@ -14,6 +14,7 @@ import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/components/layout/uten_form_grid.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 
 class _Categories extends Fake implements PaymentStyleRepository {
   final requests = <String?>[];
@@ -142,6 +143,14 @@ void main() {
           !scenario.locked,
         );
         expect(
+          entries
+              .firstWhere(
+                (entry) => entry.label == (scenario.disabled ? '启用' : '停用'),
+              )
+              .destructive,
+          !scenario.disabled,
+        );
+        expect(
           find.byKey(const ValueKey('payment-style-node-edit-style')),
           findsNothing,
         );
@@ -149,6 +158,25 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+  testWidgets('目录停用为危险动作，取消确认不写入', (tester) async {
+    final repository = _PopulatedCategories();
+    await _pumpPolicy(tester, repository);
+    final tree = tester.widget<UtenCategoryTreeView<PaymentStyleNode>>(
+      find.byType(UtenCategoryTreeView<PaymentStyleNode>),
+    );
+    final stop = tree.rowMenuBuilder!(tree.nodes.single)
+        .whereType<UtenMenuItem>()
+        .singleWhere((entry) => entry.label == '停用');
+    expect(stop.destructive, isTrue);
+    stop.onTap();
+    await tester.pumpAndSettle();
+    expect(find.byType(UtenAlertDialog), findsOneWidget);
+    expect(repository.updated, isNull);
+    await tester.tap(find.widgetWithText(TextButton, '取消'));
+    await tester.pumpAndSettle();
+    expect(repository.updated, isNull);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('窄屏大字目录同行可编辑，专用表单用共享网格且操作可达', (tester) async {
     await _pumpPolicy(tester, _PopulatedCategories(), width: 390, scale: 1.6);
     await tester.tap(
@@ -279,6 +307,9 @@ Future<void> _pumpPolicy(
         }),
       ],
       child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: const Locale('zh'),
         builder: (context, child) => MediaQuery(
           data: MediaQuery.of(
             context,

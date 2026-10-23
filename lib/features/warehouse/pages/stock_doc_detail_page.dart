@@ -32,6 +32,7 @@ import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
@@ -67,6 +68,7 @@ import '../widgets/outbound_weight_columns.dart';
 import '../widgets/production_draw_detail_table.dart';
 import '../widgets/production_material_return_receive_dialog.dart';
 import '../widgets/warehouse_stock_outbound_detail_table.dart';
+import '../widgets/warehouse_task_session_guard.dart';
 import '../../production/providers/production_execution_refresh.dart';
 import '../repositories/stock_doc_repository.dart';
 import '../../../shared/auth/session_snapshot_provider.dart';
@@ -84,11 +86,16 @@ class StockDocDetailPage extends ConsumerStatefulWidget {
   ConsumerState<StockDocDetailPage> createState() => _StockDocDetailPageState();
 }
 
-class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
+class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
+    with WarehouseTaskSessionGuard<StockDocDetailPage> {
   StockDocDetail? _d;
   bool _loading = false;
   String? _error;
   bool _busy = false;
+  bool _confirmingAction = false;
+  int _loadEpoch = 0;
+  late final String _sourceDocumentId;
+  late final StockDocType _sourceDocType;
   bool _confirmingOutbound = false;
   String? _outboundReviewToken;
   String? _materialReturnWarehouseId, _materialReturnKey;
@@ -96,6 +103,11 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
   /// 本次收仓提交的逐行实称重量 (与 [_materialReturnKey] 同生同灭: 回执不明重试时原样重发)。
   List<Map<String, dynamic>>? _materialReturnLines;
   bool _confirmingMaterialReturn = false;
+  bool get _actionPending =>
+      _busy ||
+      _confirmingAction ||
+      _confirmingOutbound ||
+      _confirmingMaterialReturn;
 
   // 2026-09-12 用户口径「数量在表格里改，出库只弹总结」：DRAW 待出库行的
   // 「本次出库/行备注」输入由页面持有（_load 后按最新明细重建，随路由销毁）；
@@ -141,7 +153,47 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
   @override
   void initState() {
     super.initState();
+    _sourceDocumentId = widget.id;
+    _sourceDocType = widget.docType;
+    startWarehouseTaskGuard();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  bool get warehouseTaskIsCurrent =>
+      widget.id == _sourceDocumentId &&
+      widget.docType == _sourceDocType &&
+      super.warehouseTaskIsCurrent;
+
+  @override
+  void didUpdateWidget(covariant StockDocDetailPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.id != widget.id || oldWidget.docType != widget.docType) {
+      invalidateWarehouseTask();
+    }
+  }
+
+  @override
+  void onWarehouseTaskInvalidated() {
+    _loadEpoch++;
+    _disposeIssueInputs();
+    _disposeReturnWeights();
+    _issueRemark.clear();
+    if (!mounted) return;
+    setState(() {
+      _d = null;
+      _outboundReviewToken = null;
+      _materialReturnWarehouseId = null;
+      _materialReturnKey = null;
+      _materialReturnLines = null;
+      _weightCache = null;
+      _loading = false;
+      _busy = false;
+      _confirmingAction = false;
+      _confirmingOutbound = false;
+      _confirmingMaterialReturn = false;
+      _error = '登录身份、权限或服务器已变化，请重新进入并核对单据';
+    });
   }
 
   @override
@@ -175,6 +227,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
   }
 
   bool _allows(DocumentPermissionAction action) =>
+      warehouseTaskCanWrite &&
       (_isLegacyReadOnly
               ? DocumentPermissionCatalog.legacyStockDocument
               : DocumentPermissionCatalog.stockDocument)
@@ -192,11 +245,14 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
   bool get _canApprove => _allows(DocumentPermissionAction.approve);
   bool get _canReverse => _allows(DocumentPermissionAction.reverse);
   bool get _canView =>
+      warehouseTaskIsCurrent &&
       ref.read(currentPermissionsProvider).contains(Perm.stockDocView);
   bool get _canIssue =>
+      warehouseTaskCanWrite &&
       !_isLegacyReadOnly &&
       ref.read(currentPermissionsProvider).contains(Perm.stockDocIssue);
   bool get _canReverseIssue =>
+      warehouseTaskCanWrite &&
       !_isLegacyReadOnly &&
       ref.read(currentPermissionsProvider).contains(Perm.stockDocReverseIssue);
 
@@ -208,20 +264,31 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
   );
 
   Future<void> _load() async {
+    if (!warehouseTaskIsCurrent || !_canView) {
+      onWarehouseTaskInvalidated();
+      return;
+    }
+    final loadEpoch = ++_loadEpoch;
     setState(() {
       _loading = true;
       _error = null;
       _outboundReviewToken = null;
     });
-    final names = ref.read(masterNameServiceProvider);
-    // 字典与详情并行，首屏只等详情(ADR-108)；名称在首屏之后补齐再重绘一次。
-    final dictionaries = names.ensureLoaded();
     try {
+      final scope = await captureWarehouseTaskScope();
+      scope.checkCurrent();
+      final names = ref.read(masterNameServiceProvider);
       final repo = ref.read(stockDocRepositoryProvider(widget.docType));
-      final review = _isOrdinaryOutbound ? await repo.review(widget.id) : null;
-      final d = review?.document ?? await repo.detail(widget.id);
-      if (!mounted) return;
-      unawaited(_resolveDisplayNames(names, d, dictionaries));
+      final review = _isOrdinaryOutbound
+          ? await scope.run(() => repo.review(widget.id))
+          : null;
+      scope.checkCurrent();
+      final d = review == null
+          ? await scope.run<StockDocDetail>(() => repo.detail(widget.id))
+          : review.document;
+      scope.checkCurrent();
+      if (!mounted || loadEpoch != _loadEpoch) return;
+      unawaited(_resolveDisplayNames(names, d, scope));
       setState(() {
         _d = d;
         _outboundReviewToken = review?.reviewToken;
@@ -244,19 +311,32 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       _rebuildReturnWeights();
       // 缓存在 build 里按需盯住: 下一帧再按行批量取单重参数。
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          unawaited(ensureOutboundWeightParams(_weightCache, _weightEntries));
+        if (warehouseTaskIsCurrent && loadEpoch == _loadEpoch) {
+          unawaited(_warmWeightParams(scope));
         }
       });
     } catch (e) {
-      if (mounted) {
+      if (mounted && warehouseTaskIsCurrent && loadEpoch == _loadEpoch) {
         final message =
             humanErrorMessage(e) ?? _detailL10n.productionDailyReportLoadFailed;
         context.appError(message);
         setState(() => _error = message);
       }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (warehouseTaskIsCurrent && loadEpoch == _loadEpoch) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  Future<void> _warmWeightParams(AuthenticatedRequestScope scope) async {
+    try {
+      await scope.run(
+        () => ensureOutboundWeightParams(_weightCache, _weightEntries),
+      );
+      scope.checkCurrent();
+    } catch (_) {
+      // Weight hints do not prevent handling a document whose source is current.
     }
   }
 
@@ -265,25 +345,27 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
   Future<void> _resolveDisplayNames(
     MasterNameService names,
     StockDocDetail d,
-    Future<void> dictionaries,
+    AuthenticatedRequestScope scope,
   ) async {
     try {
-      await Future.wait([
-        dictionaries,
-        names.loadGoodsDetails(
-          d.items.map((e) => e.goodsId).whereType<String>(),
-        ),
-      ]);
+      await scope.run(
+        () => Future.wait([
+          names.ensureLoaded(),
+          names.loadGoodsDetails(
+            d.items.map((e) => e.goodsId).whereType<String>(),
+          ),
+        ]),
+      );
+      scope.checkCurrent();
     } catch (_) {
       // 名称补齐失败只影响占位符，不影响正文。
     }
-    if (mounted && identical(_d, d)) setState(() {});
+    if (warehouseTaskIsCurrent && identical(_d, d)) setState(() {});
   }
 
   Future<void> _confirmOrdinaryOutbound() async {
-    if (_busy ||
+    if (_actionPending ||
         _loading ||
-        _confirmingOutbound ||
         !_canApprove ||
         _outboundReviewToken == null) {
       return;
@@ -292,30 +374,37 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     final token = _outboundReviewToken!;
     setState(() => _confirmingOutbound = true);
     try {
+      final scope = await captureWarehouseTaskScope();
+      scope.checkCurrent();
+      if (!mounted) return;
       final confirmed = await UtenDialog.show(
         context,
         title: l10n.warehouseStockOutboundConfirmSingle,
         confirmLabel: l10n.warehouseStockOutboundConfirmSingle,
         content: Text(l10n.warehouseStockOutboundConfirmMessage(1)),
       );
-      if (confirmed != true || !mounted) return;
+      scope.checkCurrent();
+      if (!mounted || confirmed != true || !_canApprove) return;
       setState(() => _busy = true);
-      await ref
-          .read(stockDocRepositoryProvider(widget.docType))
-          .approveReviewed(widget.id, expectedReviewToken: token);
+      await scope.run(
+        () => ref
+            .read(stockDocRepositoryProvider(widget.docType))
+            .approveReviewed(widget.id, expectedReviewToken: token),
+      );
+      scope.checkCurrent();
       if (!mounted) return;
       context.appSuccess(l10n.warehouseStockOutboundCompleted(1));
       bumpListRefresh(ref, widget.docType.refreshKey);
       await _load();
     } catch (e) {
-      if (mounted) {
+      if (mounted && warehouseTaskIsCurrent) {
         setState(() => _outboundReviewToken = null);
         context.appError(
           e is ApiException ? e.message : l10n.warehouseOutboundBatchUnknown,
         );
       }
     } finally {
-      if (mounted) {
+      if (warehouseTaskIsCurrent) {
         setState(() {
           _busy = false;
           _confirmingOutbound = false;
@@ -326,9 +415,8 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
 
   Future<void> _confirmMaterialReturn() async {
     final detail = _d;
-    if (_busy ||
+    if (_actionPending ||
         _loading ||
-        _confirmingMaterialReturn ||
         !_canApprove ||
         detail == null ||
         detail.status != 0 ||
@@ -347,6 +435,9 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     }
     setState(() => _confirmingMaterialReturn = true);
     try {
+      final scope = await captureWarehouseTaskScope();
+      scope.checkCurrent();
+      if (!mounted) return;
       final warehouseId =
           _materialReturnWarehouseId ??
           await showProductionMaterialReturnReceiveDialog(
@@ -358,7 +449,8 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                 ? null
                 : _returnWeightSummary(detail),
           );
-      if (warehouseId == null || !mounted) return;
+      scope.checkCurrent();
+      if (!mounted || warehouseId == null || !_canApprove) return;
       setState(() {
         _materialReturnWarehouseId = warehouseId;
         // 本次提交的逐行重量随幂等键一起定格: 回执不明重试时原样重发。
@@ -373,14 +465,17 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
         );
         _busy = true;
       });
-      await ref
-          .read(stockDocRepositoryProvider(widget.docType))
-          .confirmMaterialReturn(
-            widget.id,
-            warehouseId: warehouseId,
-            idempotencyKey: _materialReturnKey!,
-            lines: _materialReturnLines!,
-          );
+      await scope.run(
+        () => ref
+            .read(stockDocRepositoryProvider(widget.docType))
+            .confirmMaterialReturn(
+              widget.id,
+              warehouseId: warehouseId,
+              idempotencyKey: _materialReturnKey!,
+              lines: _materialReturnLines!,
+            ),
+      );
+      scope.checkCurrent();
       if (!mounted) return;
       setState(() {
         _materialReturnWarehouseId = null;
@@ -392,7 +487,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       refreshAfterProductionPlanGenerated(ref);
       await _load();
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!mounted || !warehouseTaskIsCurrent) return;
       final uncertain =
           error is NetworkException ||
           error is NetworkTimeoutException ||
@@ -411,9 +506,11 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
             : error.fieldErrors?.firstOrNull?.message ?? error.message,
       );
     } catch (_) {
-      if (mounted) context.appError('暂未确认收料结果，请重试本次收料；原收料仓库和提交信息已保留。');
+      if (mounted && warehouseTaskIsCurrent) {
+        context.appError('暂未确认收料结果，请重试本次收料；原收料仓库和提交信息已保留。');
+      }
     } finally {
-      if (mounted) {
+      if (warehouseTaskIsCurrent) {
         setState(() {
           _busy = false;
           _confirmingMaterialReturn = false;
@@ -430,37 +527,43 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     String? confirmLabel,
     String? confirmTitle,
   }) async {
-    if (_busy) return;
-    final c = reviewerResponsibility
-        ? await showUtenReviewerConfirmDialog(
-            context,
-            message: confirm,
-            title: confirmTitle ?? (confirmLabel == null ? '确认审核' : '核对退料实收'),
-            confirmLabel: confirmLabel ?? '确认审核',
-            actionLabel: confirmLabel ?? '审核',
-          )
-        : await showDialog<bool>(
-            context: context,
-            builder: (ctx) => UtenAlertDialog(
-              title: const Text('确认'),
-              content: Text(confirm),
-              actionsAlignment: MainAxisAlignment.center,
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('取消'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('确认'),
-                ),
-              ],
-            ),
-          );
-    if (c != true) return;
-    setState(() => _busy = true);
+    if (_actionPending || !warehouseTaskCanWrite) return;
+    setState(() => _confirmingAction = true);
     try {
-      final result = await fn();
+      final scope = await captureWarehouseTaskScope();
+      scope.checkCurrent();
+      if (!mounted) return;
+      final c = reviewerResponsibility
+          ? await showUtenReviewerConfirmDialog(
+              context,
+              message: confirm,
+              title: confirmTitle ?? (confirmLabel == null ? '确认审核' : '核对退料实收'),
+              confirmLabel: confirmLabel ?? '确认审核',
+              actionLabel: confirmLabel ?? '审核',
+            )
+          : await showDialog<bool>(
+              context: context,
+              builder: (ctx) => UtenAlertDialog(
+                title: const Text('确认'),
+                content: Text(confirm),
+                actionsAlignment: MainAxisAlignment.center,
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('取消'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('确认'),
+                  ),
+                ],
+              ),
+            );
+      scope.checkCurrent();
+      if (!mounted || c != true || !warehouseTaskCanWrite) return;
+      setState(() => _busy = true);
+      final result = await scope.run(fn);
+      scope.checkCurrent();
       if (!mounted) return;
       bumpListRefresh(ref, widget.docType.refreshKey);
       if (result is StockDocDetail && result.id != widget.id) {
@@ -477,9 +580,14 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       }
       await _load();
     } catch (error) {
-      if (mounted) context.appApiError(error);
+      if (mounted && warehouseTaskIsCurrent) context.appApiError(error);
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (warehouseTaskIsCurrent) {
+        setState(() {
+          _busy = false;
+          _confirmingAction = false;
+        });
+      }
     }
   }
 
@@ -547,7 +655,8 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
   /// 2026-09-12 用户口径：出库数量/备注在表格里改好，点「出库」只弹**总结**
   /// 确认（不再在弹窗里改数字、也不再传附件——出库凭证区详情页常驻）。
   Future<void> _issueFromTable() async {
-    if (_busy || _d == null) return;
+    if (_actionPending || !_canIssue || _d == null) return;
+    if (_d!.status == 0 && !_canApprove) return;
     final detail = _d!;
     final names = ref.read(masterNameServiceProvider);
     // 逐行校验（只看待出库行；0 行留给合计拦截）。
@@ -624,21 +733,34 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           if (_deviationText(entry) case final text?)
             '${names.goods(entry.goodsId)}：$text',
     ];
-    final confirmed = await UtenDialog.show(
-      context,
-      title: '确认出库（$lineCount 行）',
-      confirmLabel: '确认出库',
-      content: _issueSummaryPoints(
-        totalsText,
-        remark,
-        weightText: weightSummary.weighedRows == 0
-            ? null
-            : weightTotalEntry(weightSummary).value,
-        deviations: deviations,
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    await _executeIssue(body, reverse: false, remark: remark);
+    setState(() => _confirmingAction = true);
+    try {
+      final scope = await captureWarehouseTaskScope();
+      scope.checkCurrent();
+      if (!mounted) return;
+      final confirmed = await UtenDialog.show(
+        context,
+        title: '确认出库（$lineCount 行）',
+        confirmLabel: '确认出库',
+        content: _issueSummaryPoints(
+          totalsText,
+          remark,
+          weightText: weightSummary.weighedRows == 0
+              ? null
+              : weightTotalEntry(weightSummary).value,
+          deviations: deviations,
+        ),
+      );
+      scope.checkCurrent();
+      if (!mounted || confirmed != true) return;
+      await _executeIssue(body, reverse: false, remark: remark, scope: scope);
+    } catch (error) {
+      if (mounted && warehouseTaskIsCurrent) context.appApiError(error);
+    } finally {
+      if (warehouseTaskIsCurrent) {
+        setState(() => _confirmingAction = false);
+      }
+    }
   }
 
   /// 一行的称重偏差短句 (WARN/ALERT 才有): 「比应发多约35个 (+1.5%)」。
@@ -718,51 +840,66 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
   /// 取消出库对话框（按行输入可退量，必填原因）；正向出库走 _issueFromTable。
   /// 退回的重量由服务端按原出库流水镜像 (全退=原重量, 部分退=按比例), 弹窗只读显示。
   Future<void> _cancelIssueDialog() async {
-    if (_busy || _d == null) return;
+    if (_actionPending || !_canReverseIssue || _d == null) return;
+    final detail = _d!;
     final names = ref.read(masterNameServiceProvider);
-    final lines = _d!.items
+    final lines = detail.items
         .where((it) => it.id != null && it.issuedQtyText != '0')
         .toList();
     // 输入控制器由弹窗自己持有（随路由销毁）：此前在 showDialog 返回后立刻
     // dispose，退场动画期间的重建会再次订阅已销毁的控制器（备注框带字数计数
     // 器时必现）。
-    final input = await showDialog<_CancelIssueInput>(
-      context: context,
-      builder: (ctx) => _CancelIssueDialog(
-        lines: lines,
-        warehouseLabel: '退回原仓：${names.warehouse(_d!.warehouseId)}',
-        names: names,
-      ),
-    );
-    if (input == null || !mounted) return;
-    // 取消出库必填原因(审计)。
-    final cancellationReason = input.reason;
-    if (cancellationReason.length < 2) {
-      context.appError('取消出库必须填写至少 2 个字的原因');
-      return;
-    }
-
-    // 组装请求行(>0 才提交；后端会再校验上限)；取消出库不带重量(服务端按原流水镜像)。
-    final body = <Map<String, dynamic>>[];
-    for (final it in lines) {
-      final value = input.quantities[it.id!] ?? '';
-      final problem = drawCancelIssueQtyError(it, value);
-      if (problem != null) {
-        context.appError('${names.goods(it.goodsId)}：$problem');
+    setState(() => _confirmingAction = true);
+    try {
+      final scope = await captureWarehouseTaskScope();
+      scope.checkCurrent();
+      if (!mounted) return;
+      final input = await showDialog<_CancelIssueInput>(
+        context: context,
+        builder: (ctx) => _CancelIssueDialog(
+          lines: lines,
+          warehouseLabel: '退回原仓：${names.warehouse(detail.warehouseId)}',
+          names: names,
+        ),
+      );
+      scope.checkCurrent();
+      if (!mounted || input == null) return;
+      // 取消出库必填原因(审计)。
+      final cancellationReason = input.reason;
+      if (cancellationReason.length < 2) {
+        context.appError('取消出库必须填写至少 2 个字的原因');
         return;
       }
-      final q = nonNegativeDocumentQuantityText(value)!;
-      if (q != '0') body.add({'itemId': it.id, 'qty': q});
+
+      // 组装请求行(>0 才提交；后端会再校验上限)；取消出库不带重量(服务端按原流水镜像)。
+      final body = <Map<String, dynamic>>[];
+      for (final it in lines) {
+        final value = input.quantities[it.id!] ?? '';
+        final problem = drawCancelIssueQtyError(it, value);
+        if (problem != null) {
+          context.appError('${names.goods(it.goodsId)}：$problem');
+          return;
+        }
+        final q = nonNegativeDocumentQuantityText(value)!;
+        if (q != '0') body.add({'itemId': it.id, 'qty': q});
+      }
+      if (body.isEmpty) {
+        context.appError('没有有效的数量');
+        return;
+      }
+      await _executeIssue(
+        body,
+        reverse: true,
+        cancellationReason: cancellationReason,
+        scope: scope,
+      );
+    } catch (error) {
+      if (mounted && warehouseTaskIsCurrent) context.appApiError(error);
+    } finally {
+      if (warehouseTaskIsCurrent) {
+        setState(() => _confirmingAction = false);
+      }
     }
-    if (body.isEmpty) {
-      context.appError('没有有效的数量');
-      return;
-    }
-    await _executeIssue(
-      body,
-      reverse: true,
-      cancellationReason: cancellationReason,
-    );
   }
 
   /// 出库执行段(表格流与取消出库弹窗共用)：幂等键按行issued/delta/重量指纹派生，
@@ -770,9 +907,16 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
   Future<void> _executeIssue(
     List<Map<String, dynamic>> body, {
     required bool reverse,
+    required AuthenticatedRequestScope scope,
     String? remark,
     String? cancellationReason,
   }) async {
+    scope.checkCurrent();
+    if (_d == null ||
+        (reverse ? !_canReverseIssue : !_canIssue) ||
+        (!reverse && _d!.status == 0 && !_canApprove)) {
+      return;
+    }
     final canonical = body
         .map((line) {
           final itemId = line['itemId'] as String;
@@ -795,33 +939,42 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     try {
       final repo = ref.read(stockDocRepositoryProvider(widget.docType));
       if (reverse) {
-        await repo.reverseIssue(
-          widget.id,
-          body,
-          idempotencyKey,
-          cancellationReason ?? '',
+        await scope.run(
+          () => repo.reverseIssue(
+            widget.id,
+            body,
+            idempotencyKey,
+            cancellationReason ?? '',
+          ),
         );
       } else if (_d!.status == 0) {
         // 首轮出库（出库即审核）同样带备注：此前没传，备注被静默丢弃。
-        await repo.approveAndIssue(
-          widget.id,
-          body,
-          idempotencyKey,
-          remark: remark,
+        await scope.run(
+          () => repo.approveAndIssue(
+            widget.id,
+            body,
+            idempotencyKey,
+            remark: remark,
+          ),
         );
       } else {
-        await repo.issue(widget.id, body, idempotencyKey, remark: remark);
+        await scope.run(
+          () => repo.issue(widget.id, body, idempotencyKey, remark: remark),
+        );
       }
+      scope.checkCurrent();
       if (!mounted) return;
       context.appSuccess(reverse ? '已取消出库' : '已出库');
       bumpListRefresh(ref, widget.docType.refreshKey);
       await _load();
     } on ApiException catch (error) {
-      if (mounted) context.appError(error.message);
+      if (mounted && warehouseTaskIsCurrent) context.appError(error.message);
     } catch (_) {
-      if (mounted) context.appError(reverse ? '取消出库失败' : '出库失败');
+      if (mounted && warehouseTaskIsCurrent) {
+        context.appError(reverse ? '取消出库失败' : '出库失败');
+      }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (warehouseTaskIsCurrent) setState(() => _busy = false);
     }
   }
 
@@ -829,7 +982,26 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
   /// 一批 = 同一报工、同一产出批次的需求份 / 计划公共 / 实际超产，只填一个实收数；
   /// 服务端把实收先分给需求份，少收先扣实际超产。
   Future<void> _confirmFinishedInboundDialog() async {
-    if (_busy || _d == null || _d!.items.isEmpty) return;
+    if (_actionPending || !_canApprove || _d == null || _d!.items.isEmpty) {
+      return;
+    }
+    setState(() => _confirmingAction = true);
+    try {
+      final scope = await captureWarehouseTaskScope();
+      scope.checkCurrent();
+      await _confirmFinishedInboundWithScope(scope);
+    } catch (error) {
+      if (mounted && warehouseTaskIsCurrent) context.appApiError(error);
+    } finally {
+      if (warehouseTaskIsCurrent) {
+        setState(() => _confirmingAction = false);
+      }
+    }
+  }
+
+  Future<void> _confirmFinishedInboundWithScope(
+    AuthenticatedRequestScope scope,
+  ) async {
     final detail = _d!;
     final lots = detail.finishedLots;
     if (lots.isEmpty) {
@@ -1004,7 +1176,10 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       controller.dispose();
     }
     reasonController.dispose();
-    if (input == null || !mounted || widget.id != detail.id) return;
+    scope.checkCurrent();
+    if (!mounted || input == null || !_canApprove || widget.id != detail.id) {
+      return;
+    }
     final lotLines = input.lotLines;
     final canonical = lotLines
         .map((line) => '${line['lotId']}|${line['acceptedQty']}')
@@ -1017,14 +1192,17 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
 
     setState(() => _busy = true);
     try {
-      final result = await ref
-          .read(stockDocRepositoryProvider(widget.docType))
-          .confirmFinishedInbound(
-            widget.id,
-            lotLines,
-            idempotencyKey,
-            varianceReason: reason,
-          );
+      final result = await scope.run(
+        () => ref
+            .read(stockDocRepositoryProvider(widget.docType))
+            .confirmFinishedInbound(
+              widget.id,
+              lotLines,
+              idempotencyKey,
+              varianceReason: reason,
+            ),
+      );
+      scope.checkCurrent();
       if (!mounted) return;
       context.appSuccess(
         result.status == -1
@@ -1034,11 +1212,13 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       bumpListRefresh(ref, widget.docType.refreshKey);
       await _load();
     } on ApiException catch (error) {
-      if (mounted) context.appError(error.message);
+      if (mounted && warehouseTaskIsCurrent) context.appError(error.message);
     } catch (_) {
-      if (mounted) context.appError('成品实收确认失败，请刷新后重试');
+      if (mounted && warehouseTaskIsCurrent) {
+        context.appError('成品实收确认失败，请刷新后重试');
+      }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (warehouseTaskIsCurrent) setState(() => _busy = false);
     }
   }
 
@@ -1048,34 +1228,42 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       .replaceFirst(RegExp(r'\.$'), '');
 
   Future<void> _delete() async {
-    if (_busy) return;
-    final c = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => UtenAlertDialog(
-        title: const Text('删除'),
-        content: const Text('确定删除该草稿单据吗？'),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: UtenColors.error,
-            ), // 与全站删除确认对话框同款语义色。
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
-    );
-    if (c != true) return;
-    setState(() => _busy = true);
+    if (_actionPending || !_canDelete) return;
+    setState(() => _confirmingAction = true);
     try {
-      await ref
-          .read(stockDocRepositoryProvider(widget.docType))
-          .delete(widget.id);
+      final scope = await captureWarehouseTaskScope();
+      scope.checkCurrent();
+      if (!mounted) return;
+      final c = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => UtenAlertDialog(
+          title: const Text('删除'),
+          content: const Text('确定删除该草稿单据吗？'),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: UtenColors.error,
+              ), // 与全站删除确认对话框同款语义色。
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('删除'),
+            ),
+          ],
+        ),
+      );
+      scope.checkCurrent();
+      if (!mounted || c != true || !_canDelete) return;
+      setState(() => _busy = true);
+      await scope.run(
+        () => ref
+            .read(stockDocRepositoryProvider(widget.docType))
+            .delete(widget.id),
+      );
+      scope.checkCurrent();
       if (!mounted) return;
       context.appSuccess('已删除');
       bumpListRefresh(ref, widget.docType.refreshKey);
@@ -1087,9 +1275,14 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
             : RouteName.warehouse,
       );
     } catch (_) {
-      if (mounted) context.appError('删除失败');
+      if (mounted && warehouseTaskIsCurrent) context.appError('删除失败');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (warehouseTaskIsCurrent) {
+        setState(() {
+          _busy = false;
+          _confirmingAction = false;
+        });
+      }
     }
   }
 
@@ -1115,7 +1308,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
         ? ref.watch(weightParamsCacheProvider)
         : null;
     return PopScope(
-      canPop: !_isOrdinaryOutbound || (!_busy && !_confirmingOutbound),
+      canPop: !_isOrdinaryOutbound || !_actionPending,
       child: Scaffold(
         appBar: UtenAppBar(
           title:
@@ -1133,7 +1326,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                         .commonRefresh,
                 icon: Icons.refresh_rounded,
                 isLoading: _loading,
-                onPressed: _loading || _busy || _confirmingOutbound
+                onPressed: _loading || _actionPending || !warehouseTaskIsCurrent
                     ? null
                     : _load,
               ),

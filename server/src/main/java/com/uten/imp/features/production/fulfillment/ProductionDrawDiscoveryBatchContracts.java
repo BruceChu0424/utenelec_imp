@@ -15,9 +15,13 @@ public final class ProductionDrawDiscoveryBatchContracts {
      * weights(选填, ADR-135 §3.6): 本申请各实际材料(货品 + 颜色 + 实际仓)本次出库的实称重量;
      * 领料单在确认材料时才生成, 服务端在生成后按同一维度对到新领料明细。
      */
-    public record Discovery(UUID requestId, Long expectedVersion, List<Material> items, List<IssueWeight> weights) {
+    public record Discovery(UUID requestId, Long expectedVersion, List<Material> items, List<IssueWeight> weights,
+                            List<String> selectedSuggestionKeys) {
+        public Discovery(UUID requestId, Long expectedVersion, List<Material> items, List<IssueWeight> weights) {
+            this(requestId, expectedVersion, items, weights, null);
+        }
         public Discovery(UUID requestId, Long expectedVersion, List<Material> items) {
-            this(requestId, expectedVersion, items, null);
+            this(requestId, expectedVersion, items, null, null);
         }
     }
 
@@ -28,9 +32,13 @@ public final class ProductionDrawDiscoveryBatchContracts {
     /** weights(选填): 已有领料单(docIds)各明细本次出库的实称重量, 口径同 {@code /issue-batch}。 */
     public record Request(String idempotencyKey, List<UUID> docIds,
                           List<Discovery> discoveries, String reason,
-                          List<StockDocIssueBatchRequest.ItemWeight> weights) {
+                          List<StockDocIssueBatchRequest.ItemWeight> weights, List<UUID> itemIds) {
+        public Request(String idempotencyKey, List<UUID> docIds, List<Discovery> discoveries, String reason,
+                       List<StockDocIssueBatchRequest.ItemWeight> weights) {
+            this(idempotencyKey, docIds, discoveries, reason, weights, null);
+        }
         public Request(String idempotencyKey, List<UUID> docIds, List<Discovery> discoveries, String reason) {
-            this(idempotencyKey, docIds, discoveries, reason, null);
+            this(idempotencyKey, docIds, discoveries, reason, null, null);
         }
     }
 }

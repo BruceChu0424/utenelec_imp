@@ -146,6 +146,26 @@ class GoodsBomImportServiceTest {
         assertTrue(report.errors().get(0).message().contains("NOPE"));
     }
 
+    @Test void disabledComponentInAFileIsRejectedBeforeCommit() throws Exception {
+        GoodsRepository repo=repoWithAllCodes();Goods component=goods(shellId,"K01");component.setStatus("禁用");
+        when(repo.findByCodeAndDeletedFalse("K01")).thenReturn(Optional.of(component));
+        GoodsBomPasteService paste=mock(GoodsBomPasteService.class);
+        GoodsBomImportService importer=new GoodsBomImportService(repo,paste);
+        byte[] file=workbook(new String[][]{{"1","K01","2"}});
+        assertTrue(importer.detect(targetId,file).errors().stream().anyMatch(error->error.message().contains("已停用")));
+    }
+
+    @Test void nestedDisabledComponentIsRejectedOnItsOwnFileRow() throws Exception {
+        GoodsRepository repo=repoWithAllCodes();Goods component=goods(washerId,"D01");component.setStatus("禁用");
+        when(repo.findByCodeAndDeletedFalse("D01")).thenReturn(Optional.of(component));
+
+        BomImportReport report=service(repo).detect(targetId,workbook(new String[][]{
+                {"1","S01","2"},{"1.1","D01","3"}}));
+
+        assertTrue(report.errors().stream().anyMatch(error->error.message().contains("D01")
+                &&error.message().contains("已停用")));
+    }
+
     @Test
     void malformedSeqAndMissingParentAreRowErrors() throws Exception {
         BomImportReport report = service(repoWithAllCodes())

@@ -608,6 +608,12 @@ void main() {
       FormDraftCatalog.warehouseDraw.spec(
         routeParameters: {'documentIds': 'production-draw'},
       ),
+      FormDraftCatalog.workshopMaterialIssue.spec(
+        routeParameters: {'requisitionId': 'material-requisition'},
+      ),
+      FormDraftCatalog.workshopMaterialBatchIssue.spec(
+        routeParameters: {'selections': '{"material-requisition":["line-1"]}'},
+      ),
     ]) {
       final draft = FormDraft(
         id: spec.title,

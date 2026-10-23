@@ -27,6 +27,7 @@ class WarehouseStockOutboundDetailTable extends StatelessWidget {
     this.canSelect,
     this.resultOf,
     this.batchActionsBuilder,
+    this.inbound = false,
   });
 
   final List<StockDocDetail> documents;
@@ -37,6 +38,7 @@ class WarehouseStockOutboundDetailTable extends StatelessWidget {
   final bool Function(StockDocDetail)? canSelect;
   final String Function(StockDocDetail)? resultOf;
   final List<Widget> Function(BuildContext, Set<String>)? batchActionsBuilder;
+  final bool inbound;
 
   @override
   Widget build(BuildContext context) {
@@ -80,8 +82,10 @@ class WarehouseStockOutboundDetailTable extends StatelessWidget {
           ),
         MasterColumnDef(
           key: 'billNo',
-          label: l10n.warehouseStockOutboundBillNo,
-          info: l10n.warehouseStockOutboundHint,
+          label: inbound ? '入库单号' : l10n.warehouseStockOutboundBillNo,
+          info: inbound
+              ? '按原入库单完整审核，未选齐同单明细时请返回任务中心核对'
+              : l10n.warehouseStockOutboundHint,
           width: 170,
           value: (r) => r.document.billNo ?? '—',
         ),
@@ -106,7 +110,7 @@ class WarehouseStockOutboundDetailTable extends StatelessWidget {
         ),
         MasterColumnDef(
           key: 'warehouse',
-          label: l10n.warehouseSubcontractOutboundWarehouse,
+          label: inbound ? '入库仓库' : l10n.warehouseSubcontractOutboundWarehouse,
           width: 165,
           value: (r) => names.warehouse(r.document.warehouseId),
         ),
@@ -132,7 +136,7 @@ class WarehouseStockOutboundDetailTable extends StatelessWidget {
         // 2026-10-10「数量 + 单位」内联口径：单位列删除，数量直接带单位。
         MasterColumnDef(
           key: 'qty',
-          label: l10n.warehouseStockOutboundQuantity,
+          label: inbound ? '入库数量' : l10n.warehouseStockOutboundQuantity,
           width: 145,
           type: 'number',
           value: (r) =>

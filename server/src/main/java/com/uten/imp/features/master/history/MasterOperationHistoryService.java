@@ -96,6 +96,36 @@ public class MasterOperationHistoryService {
     @Transactional public History undo(String entityType,UUID id,long version) { return replay(entityType,id,version,true); }
     @Transactional public History redo(String entityType,UUID id,long version) { return replay(entityType,id,version,false); }
 
+    /** Shared object-version restoration uses today's domain guards, not the
+     * original actor's grants or the personal undo window. Caller owns locks. */
+    public void validateVersionRestore(String entityType,List<MasterVersionRow> versions) {
+        AuthUser user=principal(true);Domain domain=domain(entityType);
+        require(user,domain.permission()+":view");
+        List<Row> rows=versions.stream().map(v->new Row(v.table(),v.id(),v.target(),v.current(),v.current())).toList();
+        for(Row row:rows) {
+            if(!domain.tables().contains(row.table()))throw conflict("此版本包含其他类型的资料");
+            require(user,permission(row.table(),domain)+":edit");
+            if(row.table().equals("client_ship_addresses"))require(user,"client_address:"+(row.deleting(true)?"delete":"create"));
+            if(row.deleting(true))require(user,permission(row.table(),domain)+":delete");
+        }
+        Operation operation=new Operation(UUID.randomUUID(),"EDIT","恢复资料版本",OffsetDateTime.now(),"APPLIED",0,false,null,"");
+        String blocked=reason(user,domain,operation,rows,true,null);
+        if(blocked!=null)throw conflict(blocked);
+        validateTargets(rows,true);
+    }
+
+    /** Read-only native policy preview shared by object and personal history. */
+    public String versionRestorePolicyReason(MasterVersionRow row) {
+        if(!row.table().equals("warehouses"))return null;
+        if(row.current()!=null&&row.current().path("is_line_side").asBoolean()||row.target()!=null&&row.target().path("is_line_side").asBoolean())
+            return "车间内料仓由专用开通流程管理，在仓库资料与修改历史中只读";
+        if(row.target()!=null&&!row.target().path("is_deleted").asBoolean()) {
+            String duplicate=warehouseRules.duplicateName(row.target().path("name").asText(),row.id());
+            if(duplicate!=null)return "已有同名仓库「"+duplicate+"」，不能通过历史恢复为重名仓库";
+        }
+        return null;
+    }
+
     private History replay(String entityType,UUID id,long version,boolean undo) {
         AuthUser user=principal(true);Domain domain=domain(entityType);require(user,domain.permission()+":view");
         tx.bind();
@@ -176,6 +206,8 @@ public class MasterOperationHistoryService {
     private void validateTargets(List<Row> rows,boolean undo) {
         for(Row row:rows) {
             JsonNode target=row.target(undo);
+            String nativePolicy=versionRestorePolicyReason(new MasterVersionRow(row.table(),row.id(),row.expected(),target));
+            if(nativePolicy!=null)throw conflict(nativePolicy);
             String targetStatus=target==null?null:target.path("status").asText();
             if(directory(row.table())) {
                 JsonNode identity=target!=null?target:row.before()!=null?row.before():row.after();

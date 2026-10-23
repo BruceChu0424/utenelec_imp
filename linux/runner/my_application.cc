@@ -14,6 +14,41 @@ struct _MyApplication {
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
 
+// Store/package-manager updates use the actual installed build, never a Dart
+// fallback version that could keep prompting after a successful update.
+static void client_update_method_call_cb(FlMethodChannel* channel,
+                                        FlMethodCall* method_call,
+                                        gpointer user_data) {
+  (void)channel;
+  (void)user_data;
+  if (g_strcmp0(fl_method_call_get_name(method_call), "getInstallContext") != 0) {
+    g_autoptr(FlMethodResponse) response =
+        FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
+    fl_method_call_respond(method_call, response, nullptr);
+    return;
+  }
+#if defined(__aarch64__)
+  const gchar* architecture = "arm64";
+#elif defined(__x86_64__)
+  const gchar* architecture = "x64";
+#else
+  const gchar* architecture = "universal";
+#endif
+  g_autofree gchar* staging = g_build_filename(g_get_user_cache_dir(),
+      "com.uten.uten_imp", "client-updates", nullptr);
+  g_mkdir_with_parents(staging, 0700);
+  g_autoptr(FlValue) context = fl_value_new_map();
+  fl_value_set_string_take(context, "platform", fl_value_new_string("linux"));
+  fl_value_set_string_take(context, "architecture", fl_value_new_string(architecture));
+  fl_value_set_string_take(context, "currentVersion", fl_value_new_string(FLUTTER_VERSION));
+  fl_value_set_string_take(context, "currentBuild", fl_value_new_int(FLUTTER_VERSION_BUILD));
+  fl_value_set_string_take(context, "stagingDirectory", fl_value_new_string(staging));
+  fl_value_set_string_take(context, "supportsInPlaceUpdate", fl_value_new_bool(FALSE));
+  fl_value_set_string_take(context, "requiresSystemConfirmation", fl_value_new_bool(TRUE));
+  g_autoptr(FlMethodResponse) response = FL_METHOD_RESPONSE(fl_method_success_response_new(context));
+  fl_method_call_respond(method_call, response, nullptr);
+}
+
 // Called when first Flutter frame received.
 static void first_frame_cb(MyApplication* self, FlView* view) {
   gtk_widget_show(gtk_widget_get_toplevel(GTK_WIDGET(view)));
@@ -74,6 +109,12 @@ static void my_application_activate(GApplication* application) {
   gtk_widget_realize(GTK_WIDGET(view));
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
+  g_autoptr(FlStandardMethodCodec) client_update_codec = fl_standard_method_codec_new();
+  g_autoptr(FlMethodChannel) client_update_channel = fl_method_channel_new(
+      fl_engine_get_binary_messenger(fl_view_get_engine(view)),
+      "com.uten.imp/client_update", FL_METHOD_CODEC(client_update_codec));
+  fl_method_channel_set_method_call_handler(client_update_channel,
+      client_update_method_call_cb, nullptr, nullptr);
 
   gtk_widget_grab_focus(GTK_WIDGET(view));
 }

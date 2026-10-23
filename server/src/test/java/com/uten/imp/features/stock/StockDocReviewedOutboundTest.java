@@ -66,6 +66,7 @@ class StockDocReviewedOutboundTest {
 
     @BeforeEach
     void setup() {
+        org.springframework.transaction.support.TransactionSynchronizationManager.initSynchronization();
         document = new StockDocument();
         document.setDocType("OTHER_OUT");
         document.setBillNo("OT-REVIEW-1");
@@ -106,13 +107,14 @@ class StockDocReviewedOutboundTest {
     @AfterEach
     void clearSecurity() {
         SecurityContextHolder.clearContext();
+        org.springframework.transaction.support.TransactionSynchronizationManager.clearSynchronization();
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"OTHER_OUT", "FINISHED_OUT"})
+    @ValueSource(strings = {"OTHER_OUT", "FINISHED_OUT", "OTHER_IN"})
     void reviewedDocumentApprovesThroughExistingInventoryKernel(String type) {
         document.setDocType(type);
-        var review = service.reviewOutbound(document.getId());
+        var review = service.reviewNative(document.getId());
         assertThat(review.document().getItems()).hasSize(1);
         assertThat(review.document().getItems().getFirst().getQty()).isEqualByComparingTo("10");
         assertThat(review.reviewToken()).hasSize(64);
@@ -123,6 +125,19 @@ class StockDocReviewedOutboundTest {
                         && movement.warehouseId().equals(document.getWarehouseId())
                         && movement.qty().compareTo(BigDecimal.TEN) == 0));
         verify(docRepo).save(document);
+    }
+
+    @Test void nativeReviewCannotBypassProductionFinishedCount() {
+        document.setDocType("FINISHED_IN");
+        document.setSourceDailyReportId(UUID.randomUUID());
+        assertThatThrownBy(() -> StockDocOutboundReviewFingerprint.requireNativeType(document, false))
+                .isInstanceOfSatisfying(ApiException.class, error -> assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT));
+        document.setSourceDailyReportId(null);
+        assertThatThrownBy(() -> StockDocOutboundReviewFingerprint.requireNativeType(document, false))
+                .isInstanceOfSatisfying(ApiException.class, error -> assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT));
+        assertThatThrownBy(() -> StockDocOutboundReviewFingerprint.requireNativeType(document, true))
+                .isInstanceOfSatisfying(ApiException.class, error -> assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT));
+        verifyNoInteractions(stockService);
     }
 
     @ParameterizedTest
@@ -141,6 +156,15 @@ class StockDocReviewedOutboundTest {
             default -> throw new AssertionError(change);
         }
         assertConflict(() -> service.approveReviewed(document.getId(), request(token)));
+        verifyNoInteractions(stockService);
+        verify(docRepo, never()).save(any());
+    }
+
+    @Test
+    void incompleteTaskSelectionCannotPostTheUnselectedDocumentLines() {
+        String token = service.reviewOutbound(document.getId()).reviewToken();
+        assertConflict(() -> service.approveReviewed(document.getId(),
+                new StockDocReviewedApproveRequest(token, List.of(UUID.randomUUID()))));
         verifyNoInteractions(stockService);
         verify(docRepo, never()).save(any());
     }

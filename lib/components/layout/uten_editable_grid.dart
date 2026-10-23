@@ -63,6 +63,7 @@ import 'uten_grid_header_filter_cell.dart';
 import 'uten_h_scroll_area.dart';
 import 'uten_sticky_header.dart';
 import 'uten_table_column_kit.dart';
+import 'uten_table_horizontal_scroll_controller.dart';
 import '../data_display/uten_color_name.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
 
@@ -811,10 +812,11 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
   final UtenEditableGridController<T> controller;
   final List<EditableGridColumn<T>> columns;
 
-  /// Default predecessor for a newly introduced column (column key → anchor
-  /// key). Applies only while that column has no saved position; an explicit
-  /// user order always wins. Missing anchors keep the usual append behavior.
-  final Map<String, String> defaultColumnOrderAnchors;
+  /// Defaults apply only to columns without a saved position. A present null
+  /// puts the column first; a string anchors it after that column. Absent keys,
+  /// unknown anchors and cycles retain the safe append fallback. Existing user
+  /// positions, visibility, widths and pins are not rewritten.
+  final Map<String, String?> defaultColumnOrderAnchors;
 
   /// Optional independent content immediately below its owning data row.
   ///
@@ -1633,8 +1635,16 @@ class _UtenEditableGridState<T extends EditableGridRow>
   void initState() {
     super.initState();
     _platform.addListener(_platformChanged);
-    _headerH = ScrollController();
-    _bodyH = ScrollController();
+    _headerH = UtenTableHorizontalScrollController(
+      leadingInset: () => _pinnedLeadingWidth(_pinnedVisibleColumnIndices),
+      fallbackLeadingInset: () => widget._showSelect ? _selectColWidth : 0,
+      trailingInset: () => widget._showRowActionColumn ? _deleteColWidth : 0,
+    );
+    _bodyH = UtenTableHorizontalScrollController(
+      leadingInset: () => _pinnedLeadingWidth(_pinnedVisibleColumnIndices),
+      fallbackLeadingInset: () => widget._showSelect ? _selectColWidth : 0,
+      trailingInset: () => widget._showRowActionColumn ? _deleteColWidth : 0,
+    );
     _headerH.addListener(() => _sync(_headerH));
     _bodyH.addListener(() => _sync(_bodyH));
     _widths = _columns
@@ -1868,10 +1878,13 @@ class _UtenEditableGridState<T extends EditableGridRow>
     };
     final missing = known.where((key) => !retained.contains(key)).toList();
     final children = <String, List<String>>{};
+    final leading = <String>[];
     final unanchored = <String>[];
     for (final key in missing) {
       final anchor = widget.defaultColumnOrderAnchors[key];
-      if (anchor != null && anchor != key && knownSet.contains(anchor)) {
+      if (widget.defaultColumnOrderAnchors.containsKey(key) && anchor == null) {
+        leading.add(key);
+      } else if (anchor != null && anchor != key && knownSet.contains(anchor)) {
         (children[anchor] ??= []).add(key);
       } else {
         unanchored.add(key);
@@ -1887,6 +1900,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
       }
     }
 
+    leading.forEach(emit);
     retained.forEach(emit);
     unanchored.forEach(emit);
     missing.forEach(emit);
@@ -3704,6 +3718,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
     return UtenFrozenLeadingColumn(
       horizontal: _headerH,
       width: width,
+      fallbackWidth: widget._showSelect ? _selectColWidth : 0,
+      trailingWidth: widget._showRowActionColumn ? _deleteColWidth : 0,
       cell: cell,
       row: row,
     );
@@ -4106,6 +4122,8 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
         wrapped = UtenFrozenLeadingColumn(
           horizontal: horizontal,
           width: frozenLeadingWidth,
+          fallbackWidth: showSelect ? selectColWidth : 0,
+          trailingWidth: showDelete ? deleteColWidth : 0,
           cell: frozenLeadingCell,
           row: wrapped,
         );
@@ -4244,16 +4262,31 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
     final horizontal = frozenSelectionScroll;
     if (!pinnedColumnIndices.contains(i) || horizontal == null) return cell;
     return AnimatedBuilder(
-      animation: horizontal,
+      animation: utenTableHorizontalChanges(horizontal),
       child: cell,
       builder: (context, child) => UtenTableTextSelectionGate(
-        enabled:
-            !horizontal.hasClients ||
-            horizontal.positions.length != 1 ||
-            horizontal.offset <= 0,
+        enabled: !_hasFrozenDataColumns(horizontal),
         child: child!,
       ),
     );
+  }
+
+  bool _hasFrozenDataColumns(ScrollController horizontal) {
+    if (!horizontal.hasClients || horizontal.positions.length != 1) {
+      return false;
+    }
+    final position = horizontal.position;
+    if (!position.hasViewportDimension || position.pixels <= 0) return false;
+    final fallback = showSelect ? selectColWidth : 0.0;
+    return utenEffectiveFrozenLeadingWidth(
+          requestedWidth:
+              fallback +
+              pinnedColumnIndices.fold(0.0, (sum, i) => sum + widths[i]),
+          viewportWidth: position.viewportDimension,
+          fallbackWidth: fallback,
+          trailingWidth: showDelete ? deleteColWidth : 0,
+        ) >
+        fallback;
   }
 
   /// 拉伸行的合法化包裹：stretch 在无界高度（表体在竖向 ListView 里）下会让

@@ -17,7 +17,14 @@ import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
 import '../../helpers/document_scope_fixture.dart';
+
+class _Session extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState();
+}
 
 class _DrawDetailApi extends ApiClient {
   _DrawDetailApi({required this.status, required this.issuedQty})
@@ -113,6 +120,11 @@ Future<_DrawDetailApi> _pumpDrawDetail(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'warehouse-tester'),
+        ),
+        apiClientProvider.overrideWithValue(api),
+        sessionProvider.overrideWith(_Session.new),
         sharedPreferencesProvider.overrideWithValue(prefs),
         currentPermissionsProvider.overrideWithValue(permissions),
         isSuperAdminProvider.overrideWithValue(false),
@@ -138,7 +150,8 @@ Future<_DrawDetailApi> _pumpDrawDetail(
             ),
           ],
         ),
-        home: const StockDocDetailPage(
+        home: StockDocDetailPage(
+          key: UniqueKey(),
           docType: StockDocType.draw,
           id: 'draw-1',
         ),
@@ -272,7 +285,7 @@ void main() {
       issuedQty: 5,
       permissions: const {Perm.attachmentView, Perm.stockDocIssue},
     );
-    expect(_section(tester).canView, isFalse);
+    expect(_persistentSection(), findsNothing);
     expect(find.text('出库凭证/照片'), findsNothing);
   });
 }

@@ -77,6 +77,7 @@ public class WorkshopMaterialPeriodService {
     /** 开始盘点: 截止日默认今天, 可选更早 (例如交班时盘点选昨天), 不能早于本期开始日、不能晚于今天。 */
     @Transactional
     public StartCountResult startCount(UUID periodId, StartCountRequest request) {
+        scope.requirePeriod(periodId);
         return commands.execute("COUNT_START", request.idempotencyKey(), List.of(periodId, request),
                 StartCountResult.class, () -> {
                     Period loose = bins.period(periodId);
@@ -189,6 +190,7 @@ public class WorkshopMaterialPeriodService {
     /** 撤回盘点: 只在"盘点中"且下一期没有任何进出与盘点单时; 删掉下一期, 本期回到"开着"。 */
     @Transactional
     public PeriodView withdrawCount(UUID periodId, VersionRequest request) {
+        scope.requirePeriod(periodId);
         return commands.execute("COUNT_WITHDRAW", request.idempotencyKey(), List.of(periodId, request),
                 PeriodView.class, () -> {
                     Period loose = bins.period(periodId);

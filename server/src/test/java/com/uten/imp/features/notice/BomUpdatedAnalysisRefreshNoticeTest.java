@@ -82,6 +82,14 @@ class BomUpdatedAnalysisRefreshNoticeTest {
     }
 
     @Test
+    void disabledComponentRemovalDoesNotCompleteBomTasksOrAnnounceReadiness() {
+        service.deliverOutboxEvent(ChainNoticeService.EVENT_BOM_UPDATED, goodsId,
+                new ObjectMapper().createObjectNode().put("reason", "COMPONENT_DISABLED"));
+
+        verifyNoInteractions(rdTasks, refresher, notice, outbox);
+    }
+
+    @Test
     void bomUpdateOnlyQueuesOneRefreshPerAnalysisAndDefersThatAnalysisWaiters() {
         when(jdbc.queryForObject(contains("FROM goods_bom_items"), eq(Integer.class), eq(goodsId))).thenReturn(2);
         when(jdbc.queryForObject(contains("fn_subcontract_draw_edges"), eq(Boolean.class), eq(goodsId)))

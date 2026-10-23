@@ -15,6 +15,9 @@ import com.uten.imp.features.production.execution.ProductionDrawRequest;
 import com.uten.imp.features.production.execution.ProductionDrawRequestService;
 import com.uten.imp.features.production.execution.ProductionExecutionSegmentService;
 import com.uten.imp.features.production.execution.SegmentTransitionRequest;
+import com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService;
+import com.uten.imp.features.production.plan.ProductionPlanMutationFootprintService;
+import com.uten.imp.features.stock.allocation.ProductionMaterialAllocationFacade;
 import com.uten.imp.features.stock.StockDocService;
 import com.uten.imp.features.stock.StockQueryService;
 import com.uten.imp.features.stock.dto.StockDocIssueBatchRequest;
@@ -30,16 +33,26 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.test.util.AopTestUtils;
 
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static com.uten.imp.features.production.analysis.MaterialAnalysisContracts.IssueWorkshopPlansRequest;
 import static com.uten.imp.features.production.analysis.MaterialAnalysisContracts.RouteDecision;
 import static com.uten.imp.features.production.analysis.MaterialAnalysisContracts.RouteRequest;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.doAnswer;
 
 /**
  * 车间直送 v2(V595 / ADR-089)的用户口径回归：
@@ -75,7 +88,10 @@ class WorkshopContinuousSupplyEndToEndTest {
     @Autowired com.uten.imp.features.production.dailyreport.ReportablePlanLineQueryService reportable;
     @Autowired ProductionWorkshopDirectTransferService directTransfers;
     @Autowired ProductionDrawRequestService drawRequests;
-    @Autowired StockDocService stock;
+    @MockitoSpyBean StockDocService stock;
+    @MockitoSpyBean ProductionExecutionReadinessService readiness;
+    @MockitoSpyBean ProductionPlanMutationFootprintService planFootprints;
+    @MockitoSpyBean ProductionMaterialAllocationFacade allocation;
     @Autowired StockQueryService stockQuery;
     @Autowired com.uten.imp.features.warehouse.materialbin.WorkshopBinService bins;
     @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
@@ -296,9 +312,20 @@ class WorkshopContinuousSupplyEndToEndTest {
                 WHERE d.execution_segment_id=? AND NOT r.is_deleted
                 """, Integer.class, secondSegment));
 
-        // 仓库料到了以后 P1 确认齐套路线：确认那一刻同事务补跑提升(线边仓的 100 归它，
-        // 自动出库，不需要任何领料申请)——V599 起这不再需要单独点一次重核。
+        // create() 已确认 P1 的齐套路线。仓库料入库后应立即只提升 P1、投入其直送料，
+        // 不能依赖后面的重复路线确认补跑，也不能让 P2 占用 P1 的直送料。
+        InboundObservation observation = observeInbound();
         receive(c, c.secondMaterial(), c.leaf(), "100");
+        assertCompletedInbound(observation);
+        assertEquals("WAITING", status(secondSegment), "其它任务不能借到货回调占用 P1 的直送料");
+        assertEquals(0, db.queryForObject("""
+                SELECT count(*) FROM stock_reservations held JOIN production_material_demands demand ON demand.id=held.demand_id
+                WHERE demand.execution_segment_id=? AND NOT held.is_deleted
+                """, Integer.class, secondSegment));
+        assertEquals(Set.of(c.plan(), secondPlan), observation.prefixedPlans().get());
+        assertEquals("READY", status(c.segment()));
+        qty("100", issued(parentDemand(c)));
+        qty("0", balance(lineSide, c.child()));
         fixture.loginAs(c.workerUser());
         var promoted = segments.confirmRoute(c.plan(), c.segment(),
                 new com.uten.imp.features.production.execution.SegmentRouteConfirmRequest(
@@ -310,6 +337,111 @@ class WorkshopContinuousSupplyEndToEndTest {
                 List.of(new ProductionDrawRequest.Item(c.segment(), version(c.segment())))));
         assertEquals(1, preview.lines().size(), "领料汇总只剩仓库子件");
         assertEquals(c.secondMaterial(), preview.lines().getFirst().goodsId());
+    }
+
+    @Test
+    void otherInboundPromotesTheConfirmedTargetBeforeReturningAndAReplayNeverIssuesTwice() {
+        Case c = create("cs-inbound", true);
+        transfer(c, "100", false);
+        UUID lineSide = db.queryForObject(
+                "SELECT id FROM warehouses WHERE is_line_side AND workshop_department_id=? AND NOT is_deleted",
+                UUID.class, c.workshop());
+        // create() already confirmed FULL_KIT with its original idempotency key.
+        assertEquals("WAITING", status(c.segment()));
+        qty("100", balance(lineSide, c.child()));
+        InboundObservation observation = observeInbound();
+        receive(c, c.secondMaterial(), c.leaf(), "100");
+        assertCompletedInbound(observation);
+        assertEquals(Set.of(c.plan()), observation.prefixedPlans().get());
+        assertEquals("READY", status(c.segment()), "入库审核返回前应已完成齐套提升");
+        qty("100", issued(parentDemand(c)));
+        qty("0", balance(lineSide, c.child()));
+        assertEquals(1, approvedLineSideDraws(c.segment(), lineSide));
+        readiness.onOtherInboundApproved(observation.document().get(), c.leaf());
+        assertEquals("READY", status(c.segment()));
+        qty("100", issued(parentDemand(c)));
+        qty("0", balance(lineSide, c.child()));
+        assertEquals(1, approvedLineSideDraws(c.segment(), lineSide), "重放到货回调不能重复出库");
+    }
+
+    private int approvedLineSideDraws(UUID segment, UUID warehouse) {
+        return db.queryForObject("""
+                SELECT count(DISTINCT document.id) FROM stock_documents document
+                JOIN production_planning_package_documents mapping ON mapping.document_id=document.id
+                WHERE document.doc_type='DRAW' AND document.status=1 AND NOT document.is_deleted
+                  AND document.warehouse_id=? AND mapping.execution_segment_id=? AND mapping.document_type='DRAW'
+                """, Integer.class, warehouse, segment);
+    }
+
+    private record InboundObservation(AtomicReference<Long> approvalTransaction,
+            AtomicReference<Long> callbackTransaction, AtomicReference<UUID> document,
+            AtomicInteger calls, AtomicBoolean committedReceipt, AtomicReference<Throwable> failure,
+            List<String> lockOrder, AtomicReference<Set<UUID>> prefixedPlans) {}
+
+    private InboundObservation observeInbound() {
+        var observed = new InboundObservation(new AtomicReference<>(), new AtomicReference<>(),
+                new AtomicReference<>(), new AtomicInteger(), new AtomicBoolean(),
+                new AtomicReference<>(), new ArrayList<>(), new AtomicReference<>());
+        var inCallback = new AtomicBoolean();
+        StockDocService stockTarget = AopTestUtils.getUltimateTargetObject(stock);
+        ProductionExecutionReadinessService readinessTarget = AopTestUtils.getUltimateTargetObject(readiness);
+        ProductionPlanMutationFootprintService footprintTarget = AopTestUtils.getUltimateTargetObject(planFootprints);
+        ProductionMaterialAllocationFacade allocationTarget = AopTestUtils.getUltimateTargetObject(allocation);
+        doAnswer(invocation -> {
+            UUID document = invocation.getArgument(0);
+            if ("OTHER_IN".equals(db.queryForObject("SELECT doc_type FROM stock_documents WHERE id=?", String.class, document))) {
+                observed.approvalTransaction().set(db.queryForObject("SELECT txid_current()", Long.class));
+                observed.document().set(document);
+            }
+            return invocation.callRealMethod();
+        }).when(stockTarget).approve(any(UUID.class));
+        doAnswer(invocation -> {
+            observed.calls().incrementAndGet();
+            observed.callbackTransaction().set(db.queryForObject("SELECT txid_current()", Long.class));
+            observed.committedReceipt().set(Boolean.TRUE.equals(db.queryForObject(
+                    "SELECT status=1 FROM stock_documents WHERE id=?", Boolean.class, (UUID) invocation.getArgument(0))));
+            inCallback.set(true);
+            try {
+                return invocation.callRealMethod();
+            } catch (Throwable failure) {
+                observed.failure().set(failure);
+                throw failure;
+            } finally {
+                inCallback.set(false);
+            }
+        }).when(readinessTarget).onOtherInboundApproved(any(UUID.class), any(UUID.class));
+        doAnswer(invocation -> {
+            Object result = invocation.callRealMethod();
+            if (inCallback.get()) {
+                Collection<UUID> plans = invocation.getArgument(0);
+                observed.prefixedPlans().set(Set.copyOf(plans));
+                observed.lockOrder().add("prefix");
+            }
+            return result;
+        }).when(footprintTarget).beginPlans(anyCollection());
+        doAnswer(invocation -> {
+            if (inCallback.get()) observed.lockOrder().add("inventory");
+            return invocation.callRealMethod();
+        }).when(allocationTarget).lockMaterialDimensions(anyCollection());
+        return observed;
+    }
+
+    private static void assertCompletedInbound(InboundObservation observed) {
+        assertEquals(1, observed.calls().get(), "同仓入库回调只执行一次");
+        assertTrue(observed.committedReceipt().get(), "回调必须读到已提交的入库审核");
+        assertNotNull(observed.approvalTransaction().get());
+        assertNotNull(observed.callbackTransaction().get());
+        assertNotEquals(observed.approvalTransaction().get(), observed.callbackTransaction().get(),
+                "到货提升必须拥有新事务而不复用已提交入库事务");
+        if (observed.failure().get() != null) {
+            throw new AssertionError("到货提升不能依赖后台对账补偿; approval tx="
+                    + observed.approvalTransaction().get() + ", callback tx=" + observed.callbackTransaction().get(),
+                    observed.failure().get());
+        }
+        assertFalse(observed.lockOrder().isEmpty());
+        assertEquals("prefix", observed.lockOrder().getFirst(), "完整商业来源预锁必须先于库存阶段");
+        assertEquals(1, observed.lockOrder().stream().filter("prefix"::equals).count(), "全部候选计划须共用一次联合预锁");
+        assertTrue(observed.lockOrder().contains("inventory"));
     }
 
     @Test

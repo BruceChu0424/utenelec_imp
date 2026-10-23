@@ -10,6 +10,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -102,8 +103,42 @@ public class WorkshopMaterialScope {
         }
     }
 
+    /** Receipt replay rechecks current object scope, without rechecking the old command's state/version. */
+    public void requireMachine(UUID machineId) {
+        requireObjectWorkshop("SELECT workshop_department_id FROM workshop_machines WHERE id=:id",machineId,"机台不存在");
+    }
+
+    public void requireContainer(UUID containerId) {
+        requireObjectWorkshop("""
+                SELECT machine.workshop_department_id FROM workshop_machine_containers container
+                JOIN workshop_machines machine ON machine.id=container.machine_id WHERE container.id=:id
+                """,containerId,"容器不存在");
+    }
+
+    public void requireExecutionSegment(UUID segmentId) {
+        requireObjectWorkshop("SELECT workshop_department_id FROM production_execution_segments WHERE id=:id",segmentId,"工单不存在");
+    }
+
+    public void requirePeriod(UUID periodId) {
+        requireObjectWorkshop("SELECT workshop_department_id FROM workshop_material_periods WHERE id=:id",periodId,"这一期不存在");
+    }
+
+    public void requireCount(UUID countId) {
+        requireObjectWorkshop("""
+                SELECT period.workshop_department_id FROM workshop_material_counts count
+                JOIN workshop_material_periods period ON period.id=count.period_id WHERE count.id=:id
+                """,countId,"盘点单不存在");
+    }
+
+    private void requireObjectWorkshop(String sql, UUID id, String missingMessage) {
+        if (id==null) throw new ApiException(ErrorCode.NOT_FOUND,missingMessage);
+        List<UUID> workshops=db.query(sql,Map.of("id",id),(rs,index)->rs.getObject(1,UUID.class));
+        if (workshops.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND,missingMessage);
+        requireWorkshop(workshops.getFirst());
+    }
+
     /**
-     * 车间内料仓请领/退料任务的「所在仓」(ADR-149, 唯一定义): 各行预填叶仓(W3 默认来源函数给出);
+     * 车间内料仓待办请领/退料的「所在仓」(ADR-149): 剩余未办行预填叶仓(W3 默认来源函数给出);
      * 任一在范围内即算, 都没有 = 未定仓。车间成员按车间范围看自己的单, 不再叠加仓库范围。
      * 列表与徽章计数同用(要求请领表别名 requisition); 返回空串 = 不过滤, 否则绑定 :warehouseScope。
      */
@@ -114,7 +149,17 @@ public class WorkshopMaterialScope {
         return warehouseScope.predicateAny("""
                 ARRAY(SELECT scoped_line.suggested_leaf_warehouse_id
                       FROM workshop_material_requisition_lines scoped_line
-                      WHERE scoped_line.requisition_id = requisition.id)""", ":warehouseScope");
+                      WHERE scoped_line.requisition_id = requisition.id AND scoped_line.fulfilled_qty=0)""", ":warehouseScope");
+    }
+
+    /** Physical history uses the immutable movement's leaf, never the request's suggested source. */
+    public String requisitionPhysicalWarehouseFilter(WarehouseTaskScopePort.WarehouseTaskScope warehouseScope,
+                                                      MapSqlParameterSource params, String warehouseColumn) {
+        if (warehouseColumn == null || !warehouseColumn.matches("[a-zA-Z_][a-zA-Z0-9_.]*"))
+            throw new IllegalArgumentException("invalid internal column");
+        if (warehouseScope == null || !warehouseScope.active() || restrictedWorkshops().isPresent()) return "";
+        params.addValue("warehouseScope", warehouseScope.idsCsv());
+        return warehouseScope.predicate(warehouseColumn, ":warehouseScope");
     }
 
     /**

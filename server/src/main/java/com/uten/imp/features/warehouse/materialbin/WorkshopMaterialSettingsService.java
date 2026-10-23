@@ -103,6 +103,23 @@ public class WorkshopMaterialSettingsService {
         return views(List.of(workshopId)).getFirst();
     }
 
+    @Transactional(readOnly = true)
+    public List<SettingsView> taskStatus(com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope warehouses) {
+        var params = new MapSqlParameterSource();
+        String predicate = scope.predicate("workshop.id", params);
+        if (warehouses.active() && scope.restrictedWorkshops().isEmpty()) {
+            params.addValue("warehouseScope", warehouses.idsCsv());
+            predicate += " AND " + warehouses.predicateAny("ARRAY[opened.source_warehouse_id]", ":warehouseScope");
+        }
+        List<UUID> workshops = db.queryForList("""
+                SELECT workshop.id FROM departments workshop
+                JOIN workshop_bins opened ON opened.workshop_department_id=workshop.id
+                JOIN workshop_material_settings settings ON settings.workshop_department_id=workshop.id AND settings.periodic_enabled
+                WHERE NOT workshop.is_deleted AND
+                """ + predicate + " ORDER BY workshop.code,workshop.name", params, UUID.class);
+        return views(workshops);
+    }
+
     /**
      * 发料来源仓滑窗的仓库层级 (只有元数据: 编号、名称、上级、状态、是不是不良品仓、能不能选)。
      * 开通设置与仓库发料都要选仓, 但不一定有仓库资料或库存查看权限, 所以单独给一份不含库存的层级。
@@ -200,6 +217,7 @@ public class WorkshopMaterialSettingsService {
         LocalDate goLive = request.goLiveDate();
         if (periodic && goLive == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "请选择整批领料的启用日");
         List<WorkshopMaterialChoicePort.ProductChoice> productChoices = distinctChoices(request.inProgressChoices());
+        requested.forEach(scope::requireWorkshop);
         return commands.execute("BIN_BATCH_ENABLE", request.idempotencyKey(), request, BatchResult.class, () -> {
             UUID actor = currentUser.requireId();
             Map<UUID, BinItem> items = itemsById(request.items());
@@ -296,6 +314,7 @@ public class WorkshopMaterialSettingsService {
     public BatchResult batchDisable(BatchDisableRequest request) {
         if (request == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "请选择要撤销的车间");
         List<UUID> requested = requireItems(request.items());
+        requested.forEach(scope::requireWorkshop);
         return commands.execute("BIN_BATCH_DISABLE", request.idempotencyKey(), request, BatchResult.class, () -> {
             UUID actor = currentUser.requireId();
             Map<UUID, BinItem> items = itemsById(request.items());

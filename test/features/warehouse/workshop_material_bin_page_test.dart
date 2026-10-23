@@ -600,6 +600,10 @@ void main() {
     await tester.tap(find.byKey(const Key('wm-bin-more')));
     await tester.pumpAndSettle();
     expect(find.text('周期盘点'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('wm-bin-more')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('更多操作'));
+    await tester.pumpAndSettle();
     expect(find.text('盘点历史'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

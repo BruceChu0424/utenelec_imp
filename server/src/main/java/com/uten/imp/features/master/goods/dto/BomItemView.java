@@ -1,8 +1,10 @@
 package com.uten.imp.features.master.goods.dto;
 
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -51,4 +53,25 @@ public class BomItemView {
     private BigDecimal unitWeightGrams;
     /** 保存后的提醒 (不拦保存), 如单个重量与货品资料单重相差 20% 以上; 列表查询时为空。 */
     private List<String> warnings;
+
+    /** 良品库存，组件基本单位；无 stock:view 或组件不可见时不下发此字段。 */
+    @Setter
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private BigDecimal componentStockQty;
+
+    public BomItemView(UUID id, UUID componentGoodsId, String componentCode, String componentName,
+                       String componentModel, String componentSpec, String componentMaterial,
+                       String componentUnitName, String componentColorName, UUID colorId, Integer colorLegacyId,
+                       UUID defaultSupplierId, Integer vendLegacyId, BigDecimal qty, BigDecimal price,
+                       BigDecimal total, String summary, Integer legacyId, boolean hasChildren,
+                       String componentSourceType, String controlStage, String consumptionBasis,
+                       BigDecimal basisOutputQty, boolean allowPartialPackage, boolean hardGate,
+                       OffsetDateTime auditedAt, BomItemUsage usage, String componentIssueMethod,
+                       BigDecimal unitWeightGrams, List<String> warnings) {
+        this(id, componentGoodsId, componentCode, componentName, componentModel, componentSpec,
+                componentMaterial, componentUnitName, componentColorName, colorId, colorLegacyId,
+                defaultSupplierId, vendLegacyId, qty, price, total, summary, legacyId, hasChildren,
+                componentSourceType, controlStage, consumptionBasis, basisOutputQty, allowPartialPackage,
+                hardGate, auditedAt, usage, componentIssueMethod, unitWeightGrams, warnings, null);
+    }
 }

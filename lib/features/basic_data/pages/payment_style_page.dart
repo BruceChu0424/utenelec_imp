@@ -1,11 +1,13 @@
 // 收付款类别管理页（基础资料 · 邻接树 + 物化路径）。
 //
-// 这是纯分类主档，不套用“分类摘要卡 + 下方业务表格”的通用详情页模板：
-// 大屏采用可调宽目录树 + 页面级属性检查器，手机采用详情 + 分类抽屉。
+// 大屏采用目录树 + 属性检查器，编辑模式复用共享表格批量维护；手机保留分类抽屉。
 import 'package:flutter/material.dart';
 import '../widgets/master_operation_history_panel.dart';
+import '../widgets/master_record_history_panel.dart';
+import '../widgets/master_status_confirmation.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -39,12 +41,22 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/sensitive_write.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/widgets/uten_location_field.dart';
 import '../../../shared/widgets/master_detail_card.dart';
 import '../../../shared/widgets/uten_hierarchy_detail_menu.dart';
 import '../../../shared/widgets/uten_hierarchy_search_header.dart';
 import '../models/payment_style_node.dart';
 import '../repositories/payment_style_repository.dart';
+import '../models/master_batch.dart';
+import '../models/master_facet.dart';
+import '../repositories/master_batch_repository.dart';
+import '../widgets/master_batch_feedback.dart';
+import '../widgets/master_data_table_view.dart';
+import '../widgets/master_edit_dialog.dart';
+import '../widgets/master_inline_edit.dart';
+import '../widgets/master_inline_page_mixin.dart';
 import '../widgets/uten_category_tree_view.dart';
 import '../widgets/posting_style_role_panel.dart';
 import '../repositories/posting_style_role_repository.dart';
@@ -93,7 +105,8 @@ class PaymentStylePage extends ConsumerStatefulWidget {
   ConsumerState<PaymentStylePage> createState() => _PaymentStylePageState();
 }
 
-class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
+class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
+    with MasterInlinePageMixin<PaymentStylePage, _PaymentStyleWorkspaceRow> {
   final _treeRequest = LatestRequestGuard();
   final _categorySearch = TextEditingController();
 
@@ -103,6 +116,85 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
   bool _treeLoading = true;
   String? _treeError;
   int _detailRevision = 0;
+  final _workspaceSearch = TextEditingController();
+  String _workspaceKeyword = '';
+  Map<String, String?> _workspaceFilters = {};
+  Set<String> _workspaceSelected = {};
+  bool _workspaceSubtree = false;
+  int _workspacePage = 1;
+  bool _batchBusy = false;
+
+  @override
+  String get inlineEntityType => 'payment-styles';
+  @override
+  bool get inlineCanEdit => _canEdit || _canReorder || _canStatus;
+  @override
+  bool get inlineReadReady =>
+      !_treeLoading && _treeError == null && !_batchBusy;
+  @override
+  String inlineIdOf(_PaymentStyleWorkspaceRow row) => row.node.id;
+  @override
+  Future<void> inlineReload() => _load();
+  @override
+  void inlineClearView() {
+    _treeRequest.begin();
+    _tree = const [];
+    _selectedId = null;
+    _workspaceSelected = {};
+    _treeError = null;
+    _treeLoading = true;
+    _batchBusy = false;
+  }
+
+  @override
+  Map<String, MasterInlineField<_PaymentStyleWorkspaceRow>> get inlineFields =>
+      {
+        if (_canEdit)
+          'name': MasterInlineField(
+            key: 'name',
+            read: (row) => row.node.name,
+            required: true,
+            editableOf: (row) => !_nodeSystemLocked(row.node),
+          ),
+        if (_canReorder)
+          'sortOrder': MasterInlineField(
+            key: 'sortOrder',
+            read: (row) => row.node.sortOrder,
+            type: MasterFieldType.integer,
+            required: true,
+          ),
+        if (_canEdit) ...{
+          'departmental': _flagField(
+            'departmental',
+            (row) => row.node.departmental,
+          ),
+          'receipt': _flagField('receipt', (row) => row.node.receipt),
+          'payment': _flagField('payment', (row) => row.node.payment),
+        },
+      };
+
+  MasterInlineField<_PaymentStyleWorkspaceRow> _flagField(
+    String key,
+    bool Function(_PaymentStyleWorkspaceRow) read,
+  ) => MasterInlineField(
+    key: key,
+    read: read,
+    type: MasterFieldType.custom,
+    cellBuilder: (context, row, field) => Center(
+      child: Checkbox(
+        value: field.currentValue == true,
+        onChanged: inlineEdit.busy
+            ? null
+            : (value) => field.onChanged(value ?? false),
+      ),
+    ),
+  );
+
+  @override
+  Future<void> saveInline(String id, Map<String, dynamic> patch) async {
+    await super.saveInline(id, patch);
+    if (mounted) _invalidatePaymentStyleCaches();
+  }
 
   @override
   void initState() {
@@ -113,6 +205,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
   @override
   void dispose() {
     _categorySearch.dispose();
+    _workspaceSearch.dispose();
     super.dispose();
   }
 
@@ -130,7 +223,15 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
 
   Future<void> _load({String? preferredSelectionId}) async {
     if (!mounted) return;
+    if (!ref.read(currentPermissionsProvider).contains(Perm.paymentStyleView)) {
+      setState(() {
+        inlineClearView();
+        _treeLoading = false;
+      });
+      return;
+    }
     final request = _treeRequest.begin();
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
     final category = _category;
     setState(() {
       _treeLoading = true;
@@ -143,6 +244,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
           .tree(category: category.value);
       if (!mounted ||
           !_treeRequest.isCurrent(request) ||
+          !inlineAcceptsRead(boundary) ||
           category != _category) {
         return;
       }
@@ -156,13 +258,21 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
         _detailRevision++;
       });
     } on ApiException catch (e) {
-      if (!mounted || !_treeRequest.isCurrent(request)) return;
+      if (!mounted ||
+          !_treeRequest.isCurrent(request) ||
+          !inlineAcceptsRead(boundary)) {
+        return;
+      }
       setState(() {
         _treeError = e.message;
         _treeLoading = false;
       });
     } catch (_) {
-      if (!mounted || !_treeRequest.isCurrent(request)) return;
+      if (!mounted ||
+          !_treeRequest.isCurrent(request) ||
+          !inlineAcceptsRead(boundary)) {
+        return;
+      }
       setState(() {
         _treeError = '加载类别树失败，请稍后重试';
         _treeLoading = false;
@@ -184,27 +294,48 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
     ref.read(paymentStyleRevisionProvider.notifier).state = revision + 1;
   }
 
-  void _switchCategory(PaymentStyleCategory category) {
-    if (category == _category) return;
+  Future<void> _switchCategory(PaymentStyleCategory category) async {
+    if (category == _category || _batchBusy) return;
+    final editing = inlineEdit.active;
+    if (!await inlineEdit.confirmLeave(context) || !mounted) return;
     _categorySearch.clear();
     setState(() {
       _category = category;
       _tree = const [];
       _selectedId = null;
       _treeError = null;
+      _workspaceSelected = {};
+      _workspaceFilters = {};
+      _workspacePage = 1;
     });
-    _load();
+    await _load();
+    if (editing && mounted && inlineCanEdit && inlineReadReady) {
+      inlineEdit.begin();
+    }
   }
 
-  void _select(String id, {bool closeDrawer = false}) {
+  Future<void> _select(String id, {bool closeDrawer = false}) async {
+    if (_batchBusy) return;
+    final editing = inlineEdit.active && _workspaceSubtree;
+    if (editing && (!await inlineEdit.confirmLeave(context) || !mounted)) {
+      return;
+    }
     setState(() => _selectedId = id);
+    if (editing) {
+      setState(() {
+        _workspaceSelected = {};
+        _workspacePage = 1;
+      });
+      inlineEdit.begin();
+    }
     if (closeDrawer) Navigator.of(context).maybePop();
   }
 
   // ---- CRUD ---------------------------------------------------------------
 
   Future<void> _showCreate({PaymentStyleNode? parent}) async {
-    if (!_canCreate) return;
+    if (!_canCreate || _batchBusy) return;
+    if (!await inlineEdit.confirmLeave(context) || !mounted) return;
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -274,6 +405,15 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
 
   Future<bool> _doUpdate(String id, _EditResult result) async {
     if (!result.hasChanges) return true;
+    if (result.statusChanged &&
+        (!await confirmMasterStatusChange(
+              context,
+              disabling: result.status == '禁用',
+              label: result.name,
+            ) ||
+            !mounted)) {
+      return false;
+    }
     final ok = await context.guardRun(
       () async {
         await ref
@@ -306,8 +446,12 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
   /// 树行菜单动作要 Detail（编辑/停用启用的拦截口径都按 Detail 判），拉取失败
   /// 统一错误提示、返回 null 不再继续。
   Future<PaymentStyleDetail?> _loadDetailForMenu(PaymentStyleNode node) async {
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
     try {
-      return await ref.read(paymentStyleRepositoryProvider).detail(node.id);
+      final detail = await ref
+          .read(paymentStyleRepositoryProvider)
+          .detail(node.id);
+      return inlineAcceptsRead(boundary) ? detail : null;
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
       return null;
@@ -321,25 +465,13 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
 
   Future<void> _toggleStatus(PaymentStyleDetail detail) async {
     final disabling = detail.status != '禁用';
-    if (disabling) {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => UtenAlertDialog(
-          title: const Text('停用类别'),
-          content: Text('停用「${detail.name}」后，新业务应不再选择它；历史单据仍保留原类别。确定继续吗？'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('停用'),
-            ),
-          ],
-        ),
-      );
-      if (confirmed != true || !mounted) return;
+    if (!await confirmMasterStatusChange(
+          context,
+          disabling: disabling,
+          label: detail.name,
+        ) ||
+        !mounted) {
+      return;
     }
 
     final nextStatus = disabling ? '禁用' : '使用';
@@ -529,13 +661,15 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
   }
 
   Future<void> _editNode(PaymentStyleNode node) async {
-    if (!_canManage) return;
+    if (!_canManage || _batchBusy) return;
+    if (!await inlineEdit.confirmLeave(context) || !mounted) return;
     final detail = await _loadDetailForMenu(node);
     if (detail != null && mounted && _canManage) _showEdit(detail);
   }
 
   Future<void> _toggleNode(PaymentStyleNode node) async {
-    if (!_canStatus) return;
+    if (!_canStatus || _batchBusy) return;
+    if (!await inlineEdit.confirmLeave(context) || !mounted) return;
     final detail = await _loadDetailForMenu(node);
     if (detail == null || !mounted || !_canStatus) return;
     if (detail.status != '禁用') {
@@ -573,6 +707,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
         icon: node.status == '禁用'
             ? Icons.play_circle_outline_rounded
             : Icons.pause_circle_outline_rounded,
+        destructive: node.status != '禁用',
         enabled: !_treeLoading && _nodeCanToggle(node),
         onTap: () => _toggleNode(node),
       ),
@@ -594,6 +729,356 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
           ),
         )
       : null;
+
+  List<_PaymentStyleWorkspaceRow> get _workspaceRows {
+    final rows = <_PaymentStyleWorkspaceRow>[];
+    void visit(
+      List<PaymentStyleNode> nodes,
+      String path,
+      PaymentStyleNode? parent,
+    ) {
+      for (final node in nodes) {
+        final fullPath = path.isEmpty ? node.name : '$path / ${node.name}';
+        rows.add(
+          _PaymentStyleWorkspaceRow(node, parent?.name ?? '顶层类别', fullPath),
+        );
+        visit(node.children, fullPath, node);
+      }
+    }
+
+    visit(_tree, '', null);
+    if (!_workspaceSubtree || _selectedId == null) return rows;
+    final root = _findById(_tree, _selectedId!);
+    if (root == null) return const [];
+    final ids = <String>{};
+    void collect(PaymentStyleNode node) {
+      ids.add(node.id);
+      for (final child in node.children) {
+        collect(child);
+      }
+    }
+
+    collect(root);
+    return rows.where((row) => ids.contains(row.node.id)).toList();
+  }
+
+  static final _workspaceColumns = <MasterColumnDef<_PaymentStyleWorkspaceRow>>[
+    MasterColumnDef(
+      key: 'code',
+      label: '系统编号',
+      width: 150,
+      value: (row) => row.node.code,
+      filterFromRows: true,
+    ),
+    MasterColumnDef(
+      key: 'name',
+      label: '类别名称',
+      width: 220,
+      value: (row) => row.node.name,
+      filterFromRows: true,
+    ),
+    MasterColumnDef(
+      key: 'sortOrder',
+      label: '同级排序',
+      width: 120,
+      value: (row) => row.node.sortOrder?.toString(),
+      filterFromRows: true,
+      type: 'number',
+    ),
+    MasterColumnDef(
+      key: 'parent',
+      label: '所属位置',
+      width: 220,
+      value: (row) => row.parentName,
+      filterFromRows: true,
+    ),
+    MasterColumnDef(
+      key: 'receipt',
+      label: '收款标志',
+      width: 120,
+      value: (row) => row.node.receipt ? '是' : '否',
+      filterFromRows: true,
+    ),
+    MasterColumnDef(
+      key: 'payment',
+      label: '付款标志',
+      width: 120,
+      value: (row) => row.node.payment ? '是' : '否',
+      filterFromRows: true,
+    ),
+    MasterColumnDef(
+      key: 'departmental',
+      label: '部门核算',
+      width: 140,
+      value: (row) => row.node.departmental ? '是' : '否',
+      filterFromRows: true,
+    ),
+    MasterColumnDef(
+      key: 'status',
+      label: '使用状态',
+      width: 120,
+      value: (row) => row.node.status,
+      filterFromRows: true,
+    ),
+    MasterColumnDef(
+      key: 'path',
+      label: '分类路径',
+      width: 280,
+      value: (row) => row.path,
+      filterFromRows: true,
+    ),
+  ];
+
+  Future<void> _changeWorkspace(VoidCallback change) async {
+    if (_batchBusy || inlineEdit.busy) return;
+    final editing = inlineEdit.active;
+    if (!await inlineEdit.confirmLeave(context) || !mounted) return;
+    setState(() {
+      change();
+      _workspacePage = 1;
+      _workspaceSelected = {};
+    });
+    if (editing && inlineCanEdit && inlineReadReady) inlineEdit.begin();
+  }
+
+  Future<void> _batchWorkspaceStatus(
+    Set<String> requested,
+    String status,
+  ) async {
+    if (_batchBusy || inlineEdit.busy || !_canStatus || requested.isEmpty) {
+      return;
+    }
+    final ids = Set<String>.of(requested);
+    if (ids.length > 500) {
+      context.appWarning('一次最多处理500个类别，请缩小选择范围');
+      return;
+    }
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    if (inlineEdit.dirty) {
+      if (!await inlineEdit.confirmLeave(context) ||
+          !mounted ||
+          !inlineAcceptsRead(boundary)) {
+        return;
+      }
+      inlineEdit.begin();
+    }
+    if (!await confirmMasterStatusChange(
+          context,
+          disabling: status == '禁用',
+          label: '选中的财务类别',
+          count: ids.length,
+        ) ||
+        !mounted ||
+        !inlineAcceptsRead(boundary) ||
+        !_canStatus) {
+      return;
+    }
+    setState(() => _batchBusy = true);
+    MasterBatchResult? result;
+    try {
+      result = await context.guardAction(
+        () => runSensitiveWrite(
+          ref,
+          isCurrent: () => mounted && _batchBusy && _canStatus,
+          write: () => ref
+              .read(masterBatchRepositoryProvider)
+              .changeStatus(
+                entityPath: '/master/payment-styles',
+                status: status,
+                items: [for (final id in ids) MasterBatchItem(id)],
+              ),
+        ),
+        errorFallback: '批量启停失败，请刷新后重试',
+      );
+    } finally {
+      if (mounted && inlineAcceptsRead(boundary)) {
+        setState(() => _batchBusy = false);
+      }
+    }
+    if (!mounted || !inlineAcceptsRead(boundary) || result == null) return;
+    _invalidatePaymentStyleCaches();
+    setState(
+      () => _workspaceSelected = result!.failures.map((row) => row.id).toSet(),
+    );
+    await _load();
+    if (!mounted || !inlineAcceptsRead(boundary)) return;
+    await showMasterBatchOutcome(
+      context,
+      result,
+      action: status == '禁用' ? '禁用' : '启用',
+      noun: '类别',
+    );
+  }
+
+  Widget _buildWorkspace() {
+    final all = _workspaceRows;
+    final keyword = _workspaceKeyword.trim().toLowerCase();
+    final rows = all.where((row) {
+      if (keyword.isNotEmpty &&
+          !'${row.node.code} ${row.node.name} ${row.path}'
+              .toLowerCase()
+              .contains(keyword)) {
+        return false;
+      }
+      for (final entry in _workspaceFilters.entries) {
+        final searching = entry.key.startsWith('search.');
+        final key = searching
+            ? entry.key.substring('search.'.length)
+            : entry.key;
+        final column = _workspaceColumns
+            .where((column) => column.key == key)
+            .firstOrNull;
+        if (column == null || entry.value == null) continue;
+        final value = column.value(row);
+        if (searching) {
+          if (!(value ?? '').toLowerCase().contains(
+            entry.value!.toLowerCase(),
+          )) {
+            return false;
+          }
+          continue;
+        }
+        if (entry.value == kMasterFilterNullValue
+            ? value?.trim().isNotEmpty == true
+            : value != entry.value) {
+          return false;
+        }
+      }
+      return true;
+    }).toList();
+    final pages = (rows.length / 50).ceil().clamp(1, 1 << 30);
+    final page = _workspacePage.clamp(1, pages);
+    final items = rows.skip((page - 1) * 50).take(50).toList();
+    final facets = <String, List<MasterFacetBucket>>{};
+    final nullCounts = <String, int>{};
+    for (final column in _workspaceColumns) {
+      final counts = <String, int>{};
+      var empty = 0;
+      for (final row in all) {
+        final value = column.value(row);
+        if (value == null || value.trim().isEmpty) {
+          empty++;
+        } else {
+          counts.update(value, (count) => count + 1, ifAbsent: () => 1);
+        }
+      }
+      final values = counts.keys.toList()..sort();
+      facets[column.key] = [
+        for (final value in values)
+          MasterFacetBucket(value: value, count: counts[value]!),
+      ];
+      nullCounts[column.key] = empty;
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: UtenSpacing.s12,
+            vertical: UtenSpacing.s8,
+          ),
+          child: Wrap(
+            spacing: UtenSpacing.s12,
+            runSpacing: UtenSpacing.s8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              UtenSegmentRow<bool>(
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(value: false, label: Text('当前大类全部')),
+                  ButtonSegment(value: true, label: Text('所选类别及下级')),
+                ],
+                selected: {_workspaceSubtree},
+                onSelectionChanged: (values) =>
+                    _changeWorkspace(() => _workspaceSubtree = values.single),
+              ),
+              SizedBox(
+                width: 300,
+                child: UtenSearchBar(
+                  controller: _workspaceSearch,
+                  hint: '搜索类别名称、编号或路径',
+                  onChanged: (value) =>
+                      _changeWorkspace(() => _workspaceKeyword = value),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: UtenSpacing.s12,
+            vertical: UtenSpacing.s4,
+          ),
+          child: Text('系统编号与层级保持只读；财务类别保留历史，不支持删除，请使用批量停用。'),
+        ),
+        Expanded(
+          child: MasterDataTableView<_PaymentStyleWorkspaceRow>(
+            key: const ValueKey('payment-style-inline-table'),
+            tableKey: 'basicData.paymentStyle.workspace',
+            columns: inlineColumns(_workspaceColumns),
+            items: items,
+            virtualized: true,
+            serverColumnSearch: true,
+            idOf: (row) => row.node.id,
+            selectable: true,
+            selectedIds: _workspaceSelected,
+            onSelectedIdsChanged: (ids) {
+              if (!_batchBusy) setState(() => _workspaceSelected = ids);
+            },
+            facets: facets,
+            nullCounts: nullCounts,
+            filters: _workspaceFilters,
+            onFilterChanged: (key, value) => _changeWorkspace(() {
+              _workspaceFilters = {..._workspaceFilters};
+              if (value == null) {
+                _workspaceFilters.remove(key);
+              } else {
+                _workspaceFilters[key] = value;
+              }
+            }),
+            currentPage: page,
+            totalPages: pages,
+            paginationScope:
+                '${_category.value}|$_workspaceSubtree|${_workspaceSubtree ? _selectedId : ''}|$_workspaceKeyword|$_workspaceFilters',
+            paginationRevision: _detailRevision,
+            onPageChange: (value) => setState(() => _workspacePage = value),
+            isLoading: _treeLoading && _tree.isEmpty,
+            loadingMore: _treeLoading && _tree.isNotEmpty,
+            error: _treeError,
+            onRetry: _load,
+            batchActionsBuilder: (context, ids) => [
+              MasterInlineEditActions<_PaymentStyleWorkspaceRow>(
+                controller: inlineEdit,
+                canEdit: inlineCanEdit && inlineReadReady,
+                onSave: saveInline,
+                embedded: true,
+              ),
+              if (_canStatus) ...[
+                UtenButton(
+                  type: UtenButtonType.danger,
+                  size: UtenButtonSize.large,
+                  onPressed: ids.isEmpty || _batchBusy
+                      ? null
+                      : () => _batchWorkspaceStatus(ids, '禁用'),
+                  child: const Text('停用所选'),
+                ),
+                UtenButton(
+                  type: UtenButtonType.secondary,
+                  size: UtenButtonSize.large,
+                  onPressed: ids.isEmpty || _batchBusy
+                      ? null
+                      : () => _batchWorkspaceStatus(ids, '使用'),
+                  child: const Text('启用所选'),
+                ),
+              ],
+            ],
+            emptyMessage: '当前范围暂无类别',
+          ),
+        ),
+      ],
+    );
+  }
+
   static IconData _categoryIcon(PaymentStyleCategory category) =>
       switch (category) {
         PaymentStyleCategory.account => Icons.account_balance_wallet_outlined,
@@ -631,7 +1116,9 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
         ? null
         : _findById(_tree, _selectedId!);
 
-    final detail = selected == null
+    final detail = inlineEdit.active
+        ? _buildWorkspace()
+        : selected == null
         ? const UtenEmpty(
             icon: Icons.touch_app_outlined,
             message: '从类别目录选择一项查看属性',
@@ -642,6 +1129,10 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
               node: selected,
               revision: _detailRevision,
               onSelectChild: (id) => _select(id),
+              onHistoryChanged: () {
+                _invalidatePaymentStyleCaches();
+                _load(preferredSelectionId: selected.id);
+              },
             ),
           );
 
@@ -660,35 +1151,65 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
       trailing: detail,
     );
 
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: '收付款类别',
-        leading: UtenBackButton(
-          onPressed: () => backTo(context, defaultPath: RouteName.basicinfo),
-        ),
-        actions: [
-          MasterOperationHistoryActions(
-            entityType: 'payment-styles',
-            onChanged: _load,
-          ),
-          if (ref.watch(postingStyleRoleVisibilityProvider).asData?.value ==
-              true)
-            IconButton(
-              tooltip: '系统科目用途',
-              icon: const Icon(Icons.rule_outlined),
-              onPressed: () => showUtenAdaptivePanel<void>(
-                context: context,
-                drawerWidth: 520,
-                widthFraction: UtenPanelWidth.form,
-                builder: (_) => const PostingStyleRolePanel(),
-              ),
+    return inlineGuard(
+      PopScope(
+        canPop: !_batchBusy,
+        child: Scaffold(
+          appBar: UtenAppBar(
+            title: '收付款类别',
+            leading: UtenBackButton(
+              onPressed: _batchBusy
+                  ? null
+                  : () => inlineNavigate(
+                      () => backTo(context, defaultPath: RouteName.basicinfo),
+                    ),
             ),
-          UtenRefreshButton(busy: _treeLoading, onRefresh: _load),
-        ],
+            actions: [
+              MasterOperationHistoryActions(
+                entityType: 'payment-styles',
+                onChanged: _load,
+              ),
+              if (ref.watch(postingStyleRoleVisibilityProvider).asData?.value ==
+                  true)
+                IconButton(
+                  tooltip: '系统科目用途',
+                  icon: const Icon(Icons.rule_outlined),
+                  onPressed: () => showUtenAdaptivePanel<void>(
+                    context: context,
+                    drawerWidth: 520,
+                    widthFraction: UtenPanelWidth.form,
+                    builder: (_) => const PostingStyleRolePanel(),
+                  ),
+                ),
+              UtenRefreshButton(
+                busy: _treeLoading || _batchBusy,
+                onRefresh: () => inlineNavigate(_load),
+              ),
+            ],
+          ),
+          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+          floatingActionButtonAnimator:
+              FloatingActionButtonAnimator.noAnimation,
+          floatingActionButton: inlineEdit.active
+              ? null
+              : inlineFloatingActions(),
+          body: Stack(
+            children: [
+              SafeArea(child: body),
+              if (_batchBusy) const UtenBusyOverlay(title: '正在批量更新类别'),
+            ],
+          ),
+        ),
       ),
-      body: SafeArea(child: body),
     );
   }
+}
+
+class _PaymentStyleWorkspaceRow {
+  const _PaymentStyleWorkspaceRow(this.node, this.parentName, this.path);
+  final PaymentStyleNode node;
+  final String parentName;
+  final String path;
 }
 
 /// 页面级属性检查器：分类没有下方主档表，因此用多个语义区块承载完整信息。
@@ -697,11 +1218,13 @@ class _PaymentStyleInspector extends ConsumerStatefulWidget {
     required this.node,
     required this.revision,
     required this.onSelectChild,
+    required this.onHistoryChanged,
   });
 
   final PaymentStyleNode node;
   final int revision;
   final ValueChanged<String> onSelectChild;
+  final VoidCallback onHistoryChanged;
 
   @override
   ConsumerState<_PaymentStyleInspector> createState() =>
@@ -796,6 +1319,7 @@ class _PaymentStyleInspectorState
               _InspectorHeader(
                 detail: detail,
                 hasActiveDescendant: _hasActiveDescendant(widget.node),
+                onHistoryChanged: widget.onHistoryChanged,
               ),
               const SizedBox(height: UtenSpacing.s12),
               _BasicInfoSection(detail: detail),
@@ -835,9 +1359,11 @@ class _InspectorHeader extends StatelessWidget {
   const _InspectorHeader({
     required this.detail,
     required this.hasActiveDescendant,
+    required this.onHistoryChanged,
   });
   final PaymentStyleDetail detail;
   final bool hasActiveDescendant;
+  final VoidCallback onHistoryChanged;
   @override
   Widget build(BuildContext context) {
     final disabled = detail.status == '禁用';
@@ -850,6 +1376,11 @@ class _InspectorHeader extends StatelessWidget {
       stats: const [],
       canEdit: false,
       secondaryActions: [
+        MasterRecordHistoryAction(
+          entityType: 'payment-styles',
+          recordId: detail.id,
+          onChanged: onHistoryChanged,
+        ),
         UtenStatusBadge(
           label: disabled ? '禁用' : '使用中',
           type: disabled
@@ -892,19 +1423,24 @@ class _BasicInfoSection extends StatelessWidget {
           const UtenSectionHeader(title: '基本信息', icon: Icons.badge_outlined),
           const SizedBox(height: UtenSpacing.s12),
           UtenFormGrid(
+            columns: 4,
+            maxColumns: 4,
+            minFieldWidth: 260,
             children: [
               _InfoField(label: '系统编号', value: detail.code),
-              _InfoField(
-                label: '所属大类',
-                value: PaymentStyleCategory.labelOf(detail.category),
-              ),
-              _InfoField(label: '状态', value: detail.status ?? '使用'),
+              _InfoField(label: '类别名称', value: detail.name),
               _InfoField(
                 label: '同级排序',
                 value: '${detail.sortOrder ?? 0}',
                 helper: '数字越小越靠前',
               ),
+              _InfoField(label: '所属位置', value: detail.parentName ?? '顶级类别'),
             ],
+          ),
+          const SizedBox(height: UtenSpacing.s12),
+          _InfoField(
+            label: '所属大类',
+            value: PaymentStyleCategory.labelOf(detail.category),
           ),
         ],
       ),
@@ -926,6 +1462,9 @@ class _BusinessAttributesSection extends StatelessWidget {
           const UtenSectionHeader(title: '业务属性', icon: Icons.tune_rounded),
           const SizedBox(height: UtenSpacing.s12),
           UtenFormGrid(
+            columns: 4,
+            maxColumns: 4,
+            minFieldWidth: 260,
             children: [
               _FlagField(
                 icon: Icons.call_received_rounded,
@@ -942,6 +1481,7 @@ class _BusinessAttributesSection extends StatelessWidget {
                 label: '部门核算',
                 value: detail.departmental,
               ),
+              _InfoField(label: '状态', value: detail.status ?? '使用'),
               if (detail.linkedAccountId != null)
                 _InfoField(
                   label: '关联账户',
@@ -1671,8 +2211,9 @@ class _PaymentStyleEditDialogState
                 const SizedBox(height: UtenSpacing.s12),
               ],
               UtenFormGrid(
-                columns: 2,
-                maxColumns: 2,
+                columns: 4,
+                maxColumns: 4,
+                minFieldWidth: 260,
                 children: [
                   if (_isEdit)
                     TextFormField(
@@ -1737,8 +2278,9 @@ class _PaymentStyleEditDialogState
               const UtenSectionHeader(title: '业务属性', icon: Icons.tune_rounded),
               const SizedBox(height: UtenSpacing.s8),
               UtenFormGrid(
-                columns: 2,
-                maxColumns: 2,
+                columns: 4,
+                maxColumns: 4,
+                minFieldWidth: 260,
                 children: [
                   SwitchListTile.adaptive(
                     contentPadding: EdgeInsets.zero,

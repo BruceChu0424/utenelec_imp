@@ -145,7 +145,7 @@ class WarehouseOutboundTaskCenterSqlPostgresTest {
                 "SALES_PENDING", "", "", "HISTORY_DETAIL", sales, false, Map.of());
         assertThat(jdbc.queryForList(scoped.cte() + " " + WarehouseOutboundTaskCenterQueryService.scopedPhysicalLines(detailDocument),
                 parameters(scoped).addValue("rowSource", "SALES").addValue("rowRecord", "SALES_SHIPMENT")
-                        .addValue("rowId", sales).addValue("documentId", sales)))
+                        .addValue("rowId", sales).addValue("documentId", sales).addValue("detailLineKey","")))
                 .hasSize(1).allSatisfy(row -> assertThat(row.get("id")).isEqualTo(visible));
         UUID other = UUID.randomUUID();
         stock(other, "OTHER_OUT", "SCOPED-STOCK", ACTOR, WAREHOUSE_A, 1, 0);

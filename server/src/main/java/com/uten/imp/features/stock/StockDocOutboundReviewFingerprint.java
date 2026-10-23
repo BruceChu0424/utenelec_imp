@@ -21,7 +21,7 @@ final class StockDocOutboundReviewFingerprint {
     }
 
     static String of(StockDocument document, List<StockDocumentItem> items) {
-        requireOutboundType(document);
+        requireNativeType(document, false);
         List<String> parts = new ArrayList<>();
         add(parts, "header", document.getId(), document.getDocType(), document.getBillNo(),
                 document.getBillDate(), document.getWarehouseId(), document.getToWarehouseId(),
@@ -43,13 +43,26 @@ final class StockDocOutboundReviewFingerprint {
         return CanonicalFingerprint.sha256(parts);
     }
 
+    static void requireNativeType(StockDocument document, boolean productionLinked) {
+        if ("FINISHED_IN".equals(document.getDocType())) {
+            throw new ApiException(ErrorCode.CONFLICT, "产成品入库须从原生产待点收任务确认，不能通过手工单据审核入口办理");
+        }
+        if (document.getDocType() == null || !java.util.Set.of("OTHER_OUT", "FINISHED_OUT", "OTHER_IN").contains(document.getDocType())) {
+            throw new ApiException(ErrorCode.CONFLICT, "仅手工其它入库、其它出库和产成品出库支持此核对确认入口");
+        }
+        if ("OTHER_IN".equals(document.getDocType())
+                && (productionLinked || document.getSourceDailyReportId() != null)) {
+            throw new ApiException(ErrorCode.CONFLICT, "生产成品入库须从原待点收任务确认，不能通过手工单据审核入口办理");
+        }
+    }
+
     static void requireUnchanged(String expected, StockDocument document,
             List<StockDocumentItem> items) {
         if (expected == null || !expected.matches("[0-9a-f]{64}")) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请重新加载出库明细并核对后确认");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请重新加载单据明细并核对后确认");
         }
         if (document.isClosed() || !expected.equals(of(document, items))) {
-            throw new ApiException(ErrorCode.CONFLICT, "出库单据已变化，请刷新后重新核对货品、数量、仓库和来源");
+            throw new ApiException(ErrorCode.CONFLICT, "单据已变化，请刷新后重新核对货品、数量、仓库和来源");
         }
     }
 

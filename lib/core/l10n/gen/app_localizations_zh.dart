@@ -9,6 +9,143 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get clientUpdateDetails => '查看详情';
+
+  @override
+  String get clientUpdateNewTitle => '发现新版本';
+
+  @override
+  String get clientUpdateSubtitle => '自动检查新版本，更新此设备上的软件';
+
+  @override
+  String get clientUpdateCurrent => '当前版本';
+
+  @override
+  String get clientUpdateLatest => '最新版本';
+
+  @override
+  String get clientUpdateNow => '立即更新';
+
+  @override
+  String get clientUpdateLater => '稍后';
+
+  @override
+  String get clientUpdateCheck => '检查更新';
+
+  @override
+  String get clientUpdateChecking => '正在检查更新';
+
+  @override
+  String get clientUpdateUpToDate => '当前已是最新版本';
+
+  @override
+  String get clientUpdateDownloading => '正在下载更新';
+
+  @override
+  String get clientUpdateInstalling => '正在安装更新';
+
+  @override
+  String get clientUpdateWindowsHint =>
+      '更新将自动下载，关闭并重新启动软件，保留本机设置和已保存的草稿。请先保存当前工作。';
+
+  @override
+  String get clientUpdateAndroidHint => '更新下载后会打开系统安装确认。如需允许安装来源，请授权后返回重试。';
+
+  @override
+  String get clientUpdateStoreHint => '将打开官方应用商店，请在商店中完成更新。';
+
+  @override
+  String get clientUpdateUnsupported => '当前系统暂不支持应用内更新。';
+
+  @override
+  String get clientUpdateFailed => '更新未完成，请检查网络和安装权限后重试。';
+
+  @override
+  String get clientUpdateInstallerOpened => '已打开系统安装确认，请按系统提示完成更新。';
+
+  @override
+  String get clientUpdateNotes => '更新内容';
+
+  @override
+  String get clientUpdateNoNotes => '此版本暂无更新说明。';
+
+  @override
+  String get clientUpdatePublishTitle => '发布客户端版本';
+
+  @override
+  String get clientUpdatePublishHint => '上传并发布各平台的新版本，员工的客户端会自动检查并提示更新。';
+
+  @override
+  String get clientUpdatePlatform => '平台';
+
+  @override
+  String get clientUpdateArchitecture => '设备架构';
+
+  @override
+  String get clientUpdateVersion => '版本号';
+
+  @override
+  String get clientUpdateBuild => '构建号';
+
+  @override
+  String get clientUpdateStoreUrl => '官方商店地址';
+
+  @override
+  String get clientUpdateChooseFile => '选择更新包';
+
+  @override
+  String get clientUpdatePublish => '上传并发布';
+
+  @override
+  String get clientUpdatePublishing => '正在上传并发布';
+
+  @override
+  String get clientUpdatePublished => '客户端新版本已发布';
+
+  @override
+  String get clientUpdatePublishInvalid =>
+      '请完整填写版本信息，构建号需高于已发布版本，并选择对应更新包或填写官方商店地址。';
+
+  @override
+  String get clientUpdatePackageHint =>
+      'Windows 选择专用更新 ZIP，Android 选择正式签名 APK。每次发布需增加构建号。';
+
+  @override
+  String get clientUpdateWithdraw => '撤回发布';
+
+  @override
+  String get clientUpdateWithdrawConfirm =>
+      '撤回后，其他设备将不再收到此版本。已经更新的设备不会降级。确定撤回吗？';
+
+  @override
+  String get clientUpdateReleaseList => '版本发布记录';
+
+  @override
+  String get clientUpdateClose => '关闭';
+
+  @override
+  String get clientUpdateRetry => '重试';
+
+  @override
+  String get clientUpdateTitle => '软件更新';
+
+  @override
+  String get masterStatusDisableTitle => '确认停用';
+
+  @override
+  String get masterStatusEnableTitle => '确认启用';
+
+  @override
+  String masterStatusDisableBody(String label, int count) {
+    return '确定停用「$label」共 $count 项吗？停用后不能再用于新增业务，已有单据与修改历史保留。';
+  }
+
+  @override
+  String masterStatusEnableBody(String label, int count) {
+    return '确定启用「$label」共 $count 项吗？启用后可再次用于新增业务。';
+  }
+
+  @override
   String get websiteInquirySeries => '产品系列';
 
   @override

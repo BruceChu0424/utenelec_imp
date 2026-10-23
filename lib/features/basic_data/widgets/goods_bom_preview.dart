@@ -6,7 +6,7 @@
 // 递归展开带环路防护（当前路径上的货品不再展开）与深度上限（10 层），
 // 防止历史脏数据死循环。
 //
-// 弹窗内按 A4 横向比例渲染(14 列竖排放不下；标题 + 产品名称/型号/备注表头 +
+// 弹窗内按 A4 横向比例渲染(多列明细；标题 + 产品名称/型号/备注表头 +
 // 明细表格)。用量两列(ADR-129)：「设计使用数量」与只读「真实使用数量」
 // (没有数据或不适用显示「—」)，数字与组装信息表格同一格式。底部操作：
 // - 打印：pdf 包生成 A4 横向 PDF（NotoSansSC 内置中文字体）→ printing 系统打印对话框；
@@ -44,16 +44,21 @@ class _PreviewRow {
   /// 物料名称（不缩进，列内对齐）。
   String get plainName => item.componentName ?? '';
 
-  /// 一行 14 格文本(列序 = 明细列头；纸面与 PDF 共用，尾包/用量与组装信息
+  /// 列序 = 明细列头；纸面与 PDF 共用，尾包/用量与组装信息
   /// 表格同一口径)。
-  List<String> get cells => [
+  List<String> cells({required bool showStock}) => [
     seq,
     plainCode,
     plainName,
     item.componentModel ?? '',
     item.componentSpec ?? '',
+    item.componentMaterial ?? '',
     item.componentUnitName ?? '',
     item.componentColorName ?? '',
+    if (showStock)
+      item.componentStockQty == null
+          ? '—'
+          : formatBomQty(item.componentStockQty!),
     item.componentSourceType ?? '',
     item.consumptionBasis.label,
     item.basisOutputQtyText,
@@ -62,9 +67,6 @@ class _PreviewRow {
     item.actualQtyText,
     item.summary ?? '',
   ];
-
-  /// 居中显示的格(基准产量/尾包/两个用量)。
-  static const centeredCells = {9, 10, 11, 12};
 }
 
 /// 弹出 A4 产品配件清单预览。
@@ -158,14 +160,19 @@ class _GoodsBomPreviewDialogState
   String get _title => '产品配件清单'; // TODO(l10n): 补 arb
 
   /// 明细列头（= 组装信息表格列；PDF 与纸面共用）。
-  static const List<String> _columns = [
+  bool get _showStock =>
+      ref.read(currentPermissionsProvider).contains(Perm.stockView);
+
+  List<String> get _columns => [
     '序号',
     '物料编号',
     '物料名称',
     '型号',
     '规格',
+    '材质',
     '单位',
     '颜色',
+    if (_showStock) '库存数量',
     '来源',
     '计量方式',
     '基准产量',
@@ -174,6 +181,28 @@ class _GoodsBomPreviewDialogState
     '真实使用数量',
     '备注',
   ];
+
+  static const _centeredColumns = {'库存数量', '基准产量', '尾包', '设计使用数量', '真实使用数量'};
+  static const _fixedWidths = <String, ({double paper, double pdf})>{
+    '序号': (paper: 56, pdf: 44),
+    '单位': (paper: 44, pdf: 34),
+    '库存数量': (paper: 64, pdf: 52),
+    '来源': (paper: 52, pdf: 40),
+    '计量方式': (paper: 68, pdf: 52),
+    '基准产量': (paper: 62, pdf: 48),
+    '尾包': (paper: 44, pdf: 34),
+    '设计使用数量': (paper: 60, pdf: 52),
+    '真实使用数量': (paper: 60, pdf: 52),
+  };
+  static const _flexWidths = <String, double>{
+    '物料编号': 1.3,
+    '物料名称': 1.9,
+    '型号': 1.1,
+    '规格': 1.5,
+    '材质': 0.9,
+    '颜色': 0.9,
+    '备注': 1.3,
+  };
 
   // ---- 打印（pdf 包生成 A4，NotoSansSC 中文字体） ----------------------------
 
@@ -186,7 +215,7 @@ class _GoodsBomPreviewDialogState
       final doc = pw.Document();
       doc.addPage(
         pw.MultiPage(
-          // 14 列明细，横向 A4 才放得下(与弹窗纸面同口径)。
+          // 横向 A4 与弹窗纸面保持同一列集。
           pageFormat: PdfPageFormat.a4.landscape,
           margin: const pw.EdgeInsets.all(28),
           build: (ctx) => [
@@ -223,21 +252,11 @@ class _GoodsBomPreviewDialogState
             // 52pt 让「设计使用/数量」整齐折成两行，不会折成三行。
             pw.Table(
               border: pw.TableBorder.all(width: 0.5),
-              columnWidths: const {
-                0: pw.FixedColumnWidth(44), // 序号（级联 3.1.1）
-                1: pw.FlexColumnWidth(1.3), // 物料编号
-                2: pw.FlexColumnWidth(1.9), // 物料名称
-                3: pw.FlexColumnWidth(1.1), // 型号
-                4: pw.FlexColumnWidth(1.5), // 规格
-                5: pw.FixedColumnWidth(34), // 单位
-                6: pw.FlexColumnWidth(0.9), // 颜色
-                7: pw.FixedColumnWidth(40), // 来源
-                8: pw.FixedColumnWidth(52), // 计量方式
-                9: pw.FixedColumnWidth(48), // 基准产量
-                10: pw.FixedColumnWidth(34), // 尾包
-                11: pw.FixedColumnWidth(52), // 设计使用数量
-                12: pw.FixedColumnWidth(52), // 真实使用数量
-                13: pw.FlexColumnWidth(1.3), // 备注
+              columnWidths: {
+                for (final (index, label) in _columns.indexed)
+                  index: _fixedWidths.containsKey(label)
+                      ? pw.FixedColumnWidth(_fixedWidths[label]!.pdf)
+                      : pw.FlexColumnWidth(_flexWidths[label] ?? 1),
               },
               children: [
                 pw.TableRow(
@@ -252,11 +271,12 @@ class _GoodsBomPreviewDialogState
                 for (final row in rows)
                   pw.TableRow(
                     children: [
-                      for (final (i, text) in row.cells.indexed)
+                      for (final (i, text)
+                          in row.cells(showStock: _showStock).indexed)
                         _pdfCell(
                           font,
                           text,
-                          center: _PreviewRow.centeredCells.contains(i),
+                          center: _centeredColumns.contains(_columns[i]),
                         ),
                     ],
                   ),
@@ -299,6 +319,7 @@ class _GoodsBomPreviewDialogState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(currentPermissionsProvider);
     final theme = Theme.of(context);
     final rows = _rows;
     // 弹窗文字可框选复制（准则 §3.4：弹窗独立路由自带局部 region；内嵌表格自带更深 region）。
@@ -384,7 +405,7 @@ class _GoodsBomPreviewDialogState
     );
   }
 
-  /// A4 横向纸面(297:210；14 列明细竖排版放不下)。宽 1000 → 高约 707。
+  /// A4 横向纸面(297:210)。宽 1000 → 高约 707。
   Widget _a4Paper(ThemeData theme, List<_PreviewRow> rows) {
     const paperWidth = 1000.0;
     return Container(
@@ -433,21 +454,11 @@ class _GoodsBomPreviewDialogState
           // 整齐折成两行。
           Table(
             border: TableBorder.all(color: Colors.black54, width: 0.6),
-            columnWidths: const {
-              0: FixedColumnWidth(56), // 序号（级联 3.1.1）
-              1: FlexColumnWidth(1.3), // 物料编号
-              2: FlexColumnWidth(1.9), // 物料名称
-              3: FlexColumnWidth(1.1), // 型号
-              4: FlexColumnWidth(1.5), // 规格
-              5: FixedColumnWidth(44), // 单位
-              6: FlexColumnWidth(0.9), // 颜色
-              7: FixedColumnWidth(52), // 来源
-              8: FixedColumnWidth(68), // 计量方式
-              9: FixedColumnWidth(62), // 基准产量
-              10: FixedColumnWidth(44), // 尾包
-              11: FixedColumnWidth(60), // 设计使用数量
-              12: FixedColumnWidth(60), // 真实使用数量
-              13: FlexColumnWidth(1.3), // 备注
+            columnWidths: {
+              for (final (index, label) in _columns.indexed)
+                index: _fixedWidths.containsKey(label)
+                    ? FixedColumnWidth(_fixedWidths[label]!.paper)
+                    : FlexColumnWidth(_flexWidths[label] ?? 1),
             },
             children: [
               TableRow(
@@ -457,10 +468,11 @@ class _GoodsBomPreviewDialogState
               for (final row in rows)
                 TableRow(
                   children: [
-                    for (final (i, text) in row.cells.indexed)
+                    for (final (i, text)
+                        in row.cells(showStock: _showStock).indexed)
                       _paperCell(
                         text,
-                        center: _PreviewRow.centeredCells.contains(i),
+                        center: _centeredColumns.contains(_columns[i]),
                       ),
                   ],
                 ),

@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/warehouse_request_scope_fixture.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -416,6 +417,7 @@ void _registerVisualTests() {
           await tester.pumpWidget(
             ProviderScope(
               overrides: [
+                ...warehouseRequestScopeFixture(api: _WarehouseApi()),
                 warehouseQualityResultRepositoryProvider.overrideWithValue(
                   gateway,
                 ),
@@ -610,6 +612,7 @@ Future<void> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        ...warehouseRequestScopeFixture(api: api),
         warehouseQualityResultRepositoryProvider.overrideWithValue(gateway),
         masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
         sharedPreferencesProvider.overrideWithValue(preferences),

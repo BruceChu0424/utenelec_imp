@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -36,8 +37,11 @@ import java.util.stream.Collectors;
  *
  * <p>取代前端「逐条删现有组件 → 逐条新建、失败 catch 吞掉」的循环：那种写法删完一半、
  * 建到一半失败，BOM 就半新半旧，而物料分析/MRP 直接以 BOM 为输入。这里先把全部目标、
- * 全部行校验完(存在/停用/自身/重复/成环/用量与阶段/目标已被他人改过)，任何一处不合格就
+ * 全部行校验完(存在/占位/自身/重复/成环/用量与阶段/目标已被他人改过)，任何一处不合格就
  * 一条都不写并逐条说明；全部合格才动手，写入中途数据库拒绝也整体回滚。
+ *
+ * <p>停用货品不再作为当前 BOM 的组件；复制、替换和文件导入同样拒绝停用组件。
+ * 有效源边只用于保留复制行的原有内容，不会绕过组件状态校验。
  *
  * <p>查询按批：目标与组件一次取、现有组件一次取、成环检查按层批量下探(不逐个节点查)。
  *
@@ -171,11 +175,21 @@ public class GoodsBomPasteService {
             expected.putIfAbsent(target.goodsId(), target.expectedItemIds());
         }
         List<UUID> targetIds = List.copyOf(expected.keySet());
-        goodsRepo.lockBomParents(targetIds);
         List<BomItemSaveRequest> items = request.items();
+        Set<UUID> sourceItemIds = items.stream().map(BomItemSaveRequest::getCopiedFromBomItemId)
+                .filter(Objects::nonNull).collect(Collectors.toCollection(LinkedHashSet::new));
+        Set<UUID> lockedParents = new LinkedHashSet<>(targetIds);
+        if (!sourceItemIds.isEmpty()) {
+            for (Object[] source : bomRepo.findLiveItemParents(sourceItemIds)) {
+                lockedParents.add((UUID) source[1]);
+            }
+        }
+        // Source and target recipe locks share one UUID order. A deleted/changed
+        // source cannot become historical-copy proof after this read boundary.
+        goodsRepo.lockBomParents(lockedParents);
         Set<UUID> componentIds = items.stream().map(BomItemSaveRequest::getComponentGoodsId)
                 .filter(Objects::nonNull).collect(Collectors.toCollection(LinkedHashSet::new));
-        Set<UUID> involved = new LinkedHashSet<>(targetIds);
+        Set<UUID> involved = new LinkedHashSet<>(lockedParents);
         involved.addAll(componentIds);
         // 先锁再读：与主档删除命令互斥，读到的「是否已删除」一定是最新的。
         goodsRepo.lockForReference(involved);
@@ -183,6 +197,8 @@ public class GoodsBomPasteService {
         Map<UUID, Goods> goods = goodsRepo.findAllById(involved).stream()
                 .collect(Collectors.toMap(Goods::getId, g -> g));
         Predicate<UUID> visible = access.visibleGoodsOwner();
+        Map<UUID, GoodsBomItem> copiedSources = sourceItemIds.isEmpty() ? Map.of()
+                : bomRepo.findAllById(sourceItemIds).stream().collect(Collectors.toMap(GoodsBomItem::getId, row -> row));
         List<ApiError.FieldError> problems = new ArrayList<>();
 
         // ---- 目标 ----
@@ -192,7 +208,7 @@ public class GoodsBomPasteService {
             if (target == null || !visible.test(target.getOwnerEmployeeId())) {
                 problems.add(problem("目标货品", "目标货品不存在或你看不到它"));
             } else if (!usable(target)) {
-                problems.add(problem("目标「" + label(target) + "」", "已删除、停用或仅为迁移占位，不能改组件信息"));
+                problems.add(problem("目标「" + label(target) + "」", "已删除或仅为迁移占位，不能改组件信息"));
             } else {
                 targets.add(target);
             }
@@ -226,6 +242,7 @@ public class GoodsBomPasteService {
         // ---- 组件行 ----
         Set<UUID> seenComponents = new HashSet<>();
         Map<Integer, Goods> lineComponents = new LinkedHashMap<>();
+        Map<UUID, GoodsBomItem> provenSources = new HashMap<>();
         // 期间边 (整批领料的料) 要人确认的事: 异常单重、同一产品第二种料; 没有别的问题时一次问全。
         List<ApiError.FieldError> confirmations = new ArrayList<>();
         for (int index = 0; index < items.size(); index++) {
@@ -237,15 +254,23 @@ public class GoodsBomPasteService {
                 continue;
             }
             if (!usable(component)) {
-                problems.add(problem(line, "组件货品已删除、停用或仅为迁移占位"));
+                problems.add(problem(line, "组件货品已删除或仅为迁移占位"));
                 continue;
             }
+            if ("禁用".equals(component.getStatus())) {
+                problems.add(problem(line, "组件货品已停用，不能加入组装清单；请移除此组件或先重新启用货品"));
+                continue;
+            }
+            GoodsBomItem copiedSource = item.getCopiedFromBomItemId() == null ? null
+                    : copiedSources.get(item.getCopiedFromBomItemId());
+            if (!validCopiedSource(copiedSource, component, lockedParents, visible)) copiedSource = null;
+            if (copiedSource != null) provenSources.put(component.getId(), copiedSource);
             if (!seenComponents.add(component.getId())) {
                 problems.add(problem(line, "同一个组件在粘贴清单里出现了两次"));
                 continue;
             }
             try {
-                GoodsBomItem prior = importColumns == null || targets.isEmpty() ? null
+                GoodsBomItem prior = importColumns == null || targets.isEmpty() ? copiedSource
                         : kept.getOrDefault(targets.getFirst().getId(), Map.of()).get(component.getId());
                 preparedRow(item, component, prior, importColumns, colorNames);
             } catch (ApiException invalid) {
@@ -316,8 +341,9 @@ public class GoodsBomPasteService {
                     .mapToInt(edge -> edge.sortOrder() == null ? 0 : edge.sortOrder()).max().orElse(0);
             for (var entry : lineComponents.entrySet()) {
                 GoodsBomItem existingRow = same.get(entry.getValue().getId());
-                GoodsBomItem row = preparedRow(items.get(entry.getKey()), entry.getValue(),
-                        existingRow, importColumns, colorNames);
+                BomItemSaveRequest item = items.get(entry.getKey());
+                GoodsBomItem prior = existingRow == null ? provenSources.get(entry.getValue().getId()) : existingRow;
+                GoodsBomItem row = preparedRow(item, entry.getValue(), prior, importColumns, colorNames);
                 row.setGoods(target);
                 row.setSortOrder(++sort);
                 if (existingRow == null) {
@@ -355,11 +381,21 @@ public class GoodsBomPasteService {
     private GoodsBomItem preparedRow(BomItemSaveRequest item, Goods component, GoodsBomItem prior,
                                       Set<String> importColumns, Map<UUID, String> colorNames) {
         GoodsBomItem row = new GoodsBomItem();
-        if (importColumns != null && prior != null) {
+        if (prior != null && (importColumns != null || item.getCopiedFromBomItemId() != null)) {
             row.takeContentFrom(prior);
             row.setComponent(prior.getComponent());
         }
         bom.apply(item, row, component);
+        if (prior != null && item.getCopiedFromBomItemId() != null) {
+            // A redacted/missing price is not permission to replace the source
+            // edge's historical null/precision with the component's current price.
+            if (item.getPrice() == null) row.setPrice(prior.getPrice());
+            boolean samePrice = row.getPrice() == null ? prior.getPrice() == null
+                    : prior.getPrice() != null && row.getPrice().compareTo(prior.getPrice()) == 0;
+            if (item.getTotal() == null && samePrice && prior.getQty().compareTo(row.getQty()) == 0) {
+                row.setTotal(prior.getTotal());
+            }
+        }
         if (importColumns != null) {
             if (prior != null && !importColumns.contains("summary")) row.setSummary(prior.getSummary());
             // 导入没有单价列，原行未设价也必须保持未设价，不能借此自动换成货品现价。
@@ -489,9 +525,17 @@ public class GoodsBomPasteService {
         return out;
     }
 
-    /** 可以作为组装清单父件/组件：未删除、非迁移占位、未停用(口径同单行新增)。 */
+    private static boolean validCopiedSource(GoodsBomItem source, Goods component,
+                                              Set<UUID> lockedParents, Predicate<UUID> visible) {
+        return source != null && !source.isDeleted() && source.getGoods() != null
+                && lockedParents.contains(source.getGoods().getId())
+                && usable(source.getGoods()) && visible.test(source.getGoods().getOwnerEmployeeId())
+                && source.getComponent() != null && source.getComponent().getId().equals(component.getId());
+    }
+
+    /** 可维护主档形状；组件停用状态在行校验中单独说明。 */
     private static boolean usable(Goods goods) {
-        return !goods.isDeleted() && !goods.isAutoCreated() && !"禁用".equals(goods.getStatus());
+        return !goods.isDeleted() && !goods.isAutoCreated();
     }
 
     private static String label(Goods goods) {

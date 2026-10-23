@@ -78,10 +78,15 @@ class ProductionFinishedInboundTaskRepository {
   confirmAll({
     required List<String> documentIds,
     required String idempotencyKey,
+    List<String>? itemIds,
   }) async {
     final json = await api.post(
       ApiEndpoints.productionFinishedInboundBatchConfirm,
-      body: {'documentIds': documentIds, 'idempotencyKey': idempotencyKey},
+      body: {
+        'documentIds': documentIds,
+        'idempotencyKey': idempotencyKey,
+        'itemIds': ?itemIds,
+      },
     );
     final items = (json['items'] as List? ?? const [])
         .whereType<Map<String, dynamic>>()

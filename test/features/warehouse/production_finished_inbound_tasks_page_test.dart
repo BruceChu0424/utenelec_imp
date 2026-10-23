@@ -24,6 +24,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_badges.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../helpers/warehouse_request_scope_fixture.dart';
 
 const _reportId = '20000000-0000-0000-0000-000000000001';
 const _documentId = '10000000-0000-0000-0000-000000000001';
@@ -36,7 +37,9 @@ final _liveTaskPermissions = StateProvider<Set<String>>(
     Perm.productionFinishedInBeforeInspection,
   },
 );
-final _liveTaskScope = StateProvider<AuthenticatedScope?>((ref) => null);
+final _liveTaskScope = StateProvider<AuthenticatedScope?>(
+  (ref) => const AuthenticatedScope(userId: 'warehouse-user'),
+);
 
 void main() {
   for (final mode in ['readOnly', 'serverWithdraws']) {
@@ -69,6 +72,12 @@ void main() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
+              ...warehouseRequestScopeFixture(
+                includeClient: false,
+                includeIdentity: false,
+                includeBadges: false,
+                authenticatedSession: true,
+              ),
               apiClientProvider.overrideWithValue(api),
               sharedPreferencesProvider.overrideWithValue(preferences),
               isSuperAdminProvider.overrideWithValue(true),
@@ -93,7 +102,7 @@ void main() {
         final stale = tester
             .widget<UtenButton>(
               find.ancestor(
-                of: find.text('先入库后质检(1)'),
+                of: find.text('批量登记（先入库后质检）'),
                 matching: find.byType(UtenButton),
               ),
             )
@@ -101,7 +110,7 @@ void main() {
         expect(stale, isNotNull);
         if (mode == 'readOnly') {
           final container = ProviderScope.containerOf(
-            tester.element(find.text('先质检后入库(1)')),
+            tester.element(find.text('批量登记（先质检后入库）')),
           );
           container
               .read(_liveTaskScope.notifier)
@@ -117,7 +126,7 @@ void main() {
           api.allowPreStock = false;
           await tester.tap(find.byTooltip('刷新'));
           await tester.pumpAndSettle();
-          expect(find.text('先入库后质检(1)'), findsNothing);
+          expect(find.text('批量登记（先入库后质检）'), findsNothing);
         }
         stale!();
         await tester.pumpAndSettle();
@@ -138,6 +147,12 @@ void main() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
+              ...warehouseRequestScopeFixture(
+                includeClient: false,
+                includeIdentity: false,
+                includeBadges: false,
+                authenticatedSession: true,
+              ),
               apiClientProvider.overrideWithValue(api),
               sharedPreferencesProvider.overrideWithValue(preferences),
               isSuperAdminProvider.overrideWithValue(true),
@@ -163,10 +178,10 @@ void main() {
         // ADR-184：超管不再隐式获得「先入库后质检」——服务端只按显式权限
         // 折进行事实, 没有额外权限时只保留「先质检后入库」。
         expect(
-          find.text('先入库后质检(1)'),
+          find.text('批量登记（先入库后质检）'),
           withExtra ? findsOneWidget : findsNothing,
         );
-        expect(find.text('先质检后入库(1)'), findsOneWidget);
+        expect(find.text('批量登记（先质检后入库）'), findsOneWidget);
         expect(tester.takeException(), isNull);
       },
     );
@@ -183,6 +198,12 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          ...warehouseRequestScopeFixture(
+            includeClient: false,
+            includeIdentity: false,
+            includeBadges: false,
+            authenticatedSession: true,
+          ),
           apiClientProvider.overrideWithValue(api),
           sharedPreferencesProvider.overrideWithValue(preferences),
           isSuperAdminProvider.overrideWithValue(false),
@@ -209,12 +230,12 @@ void main() {
     expect(table.batchActionsBuilder, isNotNull);
     expect(table.columns.map((column) => column.label), [
       '状态',
+      '单据 / 任务单号',
       '货品名称',
       '货品编码',
-      '规格',
       '颜色',
+      '规格',
       '数量',
-      '单据 / 任务单号',
       '来源单据',
       '客户 / 供应商 / 委外商',
       '仓库',
@@ -234,8 +255,8 @@ void main() {
     // 「先质检后入库(N)」。
     expect(table.idOf!(table.items.first), _registerRowKey);
     expect(find.byKey(const Key('warehouse-task-record-batch')), findsNothing);
-    expect(find.text('先质检后入库(1)'), findsOneWidget);
-    expect(find.text('先入库后质检(1)'), findsNothing);
+    expect(find.text('批量登记（先质检后入库）'), findsOneWidget);
+    expect(find.text('批量登记（先入库后质检）'), findsNothing);
     expect(table.selectedIds, {_registerRowKey});
     await tester.tap(find.text('短收余量待点收'));
     await tester.pump();
@@ -243,7 +264,7 @@ void main() {
     expect(table.idOf!(table.items.last), _countRowKey);
     expect(table.selectedIds, {_registerRowKey, _countRowKey});
     // 登记送检与最终点收属不同办理族：混选没有统一动作(按钮禁用，只给分别选择提示)。
-    final mixed = find.text('办理所选(2)');
+    final mixed = find.text('批量办理');
     expect(mixed, findsOneWidget);
     final mixedButton = tester.widget<UtenButton>(
       find.ancestor(of: mixed, matching: find.byType(UtenButton)),
@@ -257,7 +278,7 @@ void main() {
     // 只剩最终点收任务 → 核对最终点收进入批量点收页 → 小结确认 → 整批提交。
     final batchButton = find.byKey(const Key('warehouse-task-record-batch'));
     expect(batchButton, findsOneWidget);
-    expect(find.text('核对最终点收(1)'), findsOneWidget);
+    expect(find.text('批量点收'), findsOneWidget);
     await tester.ensureVisible(batchButton);
     await tester.pump(const Duration(milliseconds: 100));
     await tester.tap(batchButton);
@@ -271,7 +292,7 @@ void main() {
       find.byKey(const Key('production-finished-batch-confirm')),
     );
     await tester.pumpAndSettle();
-    expect(find.text('批量全量点收（1 张）'), findsOneWidget);
+    expect(find.text('确认所选点收（1 张）'), findsOneWidget);
     await tester.tap(find.text('确认批量入库'));
     await tester.pumpAndSettle();
 
@@ -292,6 +313,12 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          ...warehouseRequestScopeFixture(
+            includeClient: false,
+            includeIdentity: false,
+            includeBadges: false,
+            authenticatedSession: true,
+          ),
           apiClientProvider.overrideWithValue(
             _FinishedInboundApi()..rowsHandleable = false,
           ),

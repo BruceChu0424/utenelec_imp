@@ -23,12 +23,22 @@ import 'package:uten_imp/shared/attachments/attachment.dart';
 import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../support/collapsing_header_harness.dart';
 import '../../helpers/document_scope_fixture.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
+
+class _Session extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(id: 'header-warehouse-user', code: 'WH03', name: '仓库布局测试员'),
+  );
+}
 
 /// 仓库单据详情用的假后端：明细多行（撑出可内滚的表体）。
 class _StockDocApi extends ApiClient {
@@ -78,6 +88,8 @@ Future<void> _pumpStockDoc(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        sessionProvider.overrideWith(_Session.new),
+        apiClientProvider.overrideWithValue(api),
         sharedPreferencesProvider.overrideWithValue(prefs),
         currentPermissionsProvider.overrideWithValue(const {
           Perm.stockDocView,
@@ -278,6 +290,7 @@ class _OutboundGateway implements WarehouseSalesOutboundGateway {
     Map<String, String>? stockPlaces,
     Map<String, String?>? lineWarehouses,
     Map<String, double>? lineWeights,
+    List<String>? itemIds,
   }) async => value;
 }
 

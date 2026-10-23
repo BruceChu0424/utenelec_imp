@@ -7,19 +7,71 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/warehouse/models/stock_doc.dart';
 import 'package:uten_imp/features/warehouse/pages/stock_doc_detail_page.dart';
-import 'package:uten_imp/features/warehouse/pages/warehouse_draw_task_center_page.dart';
+import 'package:uten_imp/features/warehouse/pages/warehouse_task_center_page.dart';
 import 'package:uten_imp/features/warehouse/repositories/stock_doc_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import '../../helpers/document_scope_fixture.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 
+class _Session extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(id: 'return-flow-user', code: 'WH04', name: '退料测试员'),
+  );
+}
+
+class _TaskApi extends ApiClient {
+  _TaskApi() : super(Dio());
+  final taskQueries = <Map<String, dynamic>>[];
+
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    if (path != '/warehouse/task-center/inbound') return {};
+    taskQueries.add({...?query});
+    return {
+      'items': [
+        {
+          'rowKey': 'RETURN:STOCK_DOC:return:return-item',
+          'id': 'return',
+          'sourceType': 'RETURN',
+          'recordType': 'STOCK_DOC',
+          'billNo': 'TL001',
+          'status': 'RETURN_PENDING_RECEIVE',
+          'statusLabel': '待仓库收料',
+          'line': {
+            'key': 'return-item',
+            'itemId': 'return-item',
+            'quantity': '2',
+          },
+        },
+      ],
+      'page': 1,
+      'size': 20,
+      'total': 1,
+      'totalPages': 1,
+      'facets': {
+        'status': [
+          {'value': 'RETURN_PENDING_RECEIVE', 'label': '待仓库收料', 'count': 1},
+        ],
+      },
+    };
+  }
+}
+
 class _Repository extends StockDocRepository {
-  _Repository() : super(ApiClient(Dio()), StockDocType.wdraw);
+  _Repository() : super(_TaskApi(), StockDocType.wdraw);
+  _TaskApi get taskApi => api as _TaskApi;
   final filters = <StockDocFilter>[];
   int approvals = 0;
   @override
@@ -105,6 +157,8 @@ Future<void> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        sessionProvider.overrideWith(_Session.new),
+        apiClientProvider.overrideWithValue(repository.api),
         sharedPreferencesProvider.overrideWithValue(preferences),
         currentPermissionsProvider.overrideWithValue({
           Perm.stockDocView,
@@ -134,7 +188,10 @@ Future<void> _pump(
                 docType: StockDocType.wdraw,
                 id: 'return',
               )
-            : const WarehouseDrawTaskCenterPage(),
+            : const WarehouseTaskCenterPage(
+                initialGroup: 'draw',
+                initialSection: 'wdraw',
+              ),
       ),
     ),
   );
@@ -184,12 +241,11 @@ void main() {
       final repository = _Repository();
       await _pump(tester, repository);
       await tester.pumpAndSettle();
-      // 2026-10-04 起红数「生产退料」大类与小类「待仓库收料」随自动选中级联，
-      // 列表进页面即按正式退料收料口径加载。
-      expect(repository.filters, isNotEmpty);
-      expect(repository.filters.last.productionReturnRequests, isTrue);
-      expect(repository.filters.last.status, 0);
-      expect(repository.filters.last.issueStatus, isNull);
+      // The retained return deep link now opens inbound physical task rows.
+      expect(repository.taskApi.taskQueries, isNotEmpty);
+      expect(repository.taskApi.taskQueries.last['source'], 'RETURN');
+      expect(repository.taskApi.taskQueries.last['view'], 'ACTIVE');
+      expect(find.text('待仓库收料'), findsWidgets);
       expect(find.text('未出库'), findsNothing);
       expect(find.text('TL001'), findsOneWidget);
       expect(repository.approvals, 0);

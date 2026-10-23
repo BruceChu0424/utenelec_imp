@@ -490,8 +490,13 @@ class _WarehouseStockDocSegmentState
               : UtenStatusBadgeType.neutral,
         ),
       ),
-      // 2026-10-08 用户口径「状态或进度列默认放最前」：出库进度（未出库 /
-      // 部分出库 / 已出完）是领料单的第二条进度列，紧跟状态列前置。
+      MasterColumnDef(
+        key: 'billNo',
+        sortable: true,
+        label: '单据号',
+        width: 160,
+        value: (it) => it.billNo,
+      ),
       if (isDraw)
         MasterColumnDef(
           key: 'issueStatus',
@@ -502,14 +507,6 @@ class _WarehouseStockDocSegmentState
           // 未出库=黄 / 部分出库=橙 / 已出完=绿。
           cellColor: (context, it) => drawIssueStatusCellColor(it.issueStatus),
         ),
-      MasterColumnDef(
-        // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
-        key: 'billNo',
-        sortable: true,
-        label: '单据号',
-        width: 160,
-        value: (it) => it.billNo,
-      ),
       MasterColumnDef(
         key: 'billDate',
         label: '日期',

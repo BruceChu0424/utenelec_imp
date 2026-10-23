@@ -106,7 +106,8 @@ class ColorRemarkRuntimeEndToEndTest {
         assertNull(colors.detail(id).getRemark());
     }
     @Test void aVersionRecordedBeforeTheColumnExistedRestoresWithoutErasingTheNewRemark() {
-        assertEquals("902",db.queryForObject("SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1",String.class));
+        assertEquals(com.uten.imp.migration.MigrationRehearsalSupport.CURRENT_HEAD_VERSION,
+                db.queryForObject("SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1",String.class));
         assertFalse(db.queryForObject("SELECT jsonb_exists(before_row, 'remark') FROM master_record_versions WHERE id=?",Boolean.class,oldVersion));
         db.update("UPDATE colors SET name='current name',remark='new column retained' WHERE id=?",OLD_COLOR);
         var selected=history.detail("colors",oldVersion);

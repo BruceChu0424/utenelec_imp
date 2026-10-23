@@ -9,7 +9,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../audit/device_audit_store.dart';
 import '../security/secure_storage.dart';
-import 'api_base_url.dart';
 import 'server_config.dart';
 import 'connection_recovery.dart';
 import 'data_write_revision.dart';
@@ -416,8 +415,8 @@ class ApiClient {
     return ApiExceptionFactory.fromDioStatusCode(e.response?.statusCode, body);
   }
 
-  /// 便捷：路径无需前导斜杠时补齐（endpoints 已带前导斜杠）。
-  String get baseUrl => apiBaseUrl;
+  /// 当前实际传输目标，包含本地 / 云端连接模式选择。
+  String get baseUrl => _dio.options.baseUrl;
 
   ApiException _convert(DioException e) {
     final connectionFailure = _connectionException(e);

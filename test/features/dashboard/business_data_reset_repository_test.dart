@@ -15,7 +15,7 @@ import 'package:uten_imp/features/dashboard/models/business_data_reset_attempt.d
 import 'package:uten_imp/features/dashboard/providers/business_data_reset_journal.dart';
 import 'package:uten_imp/features/dashboard/repositories/system_test_repository.dart';
 
-const _server = 'https://reset.test/api';
+const _server = 'http://127.0.0.1:8080/api';
 const _operator = 'c9b11073-c9d1-4e57-bc71-42ec89f4a541';
 const _success = <String, Object>{
   'clearedTableCount': 269,
@@ -93,6 +93,47 @@ void main() {
   setUp(() {
     FlutterSecureStorage.setMockInitialValues({});
   });
+
+  test(
+    'server targets and mismatched transports cannot send any reset requests',
+    () async {
+      for (final (declared, actual) in [
+        ('https://192.168.1.240/api', 'https://192.168.1.240/api'),
+        ('https://imp.company.example/api', 'https://imp.company.example/api'),
+        (_server, 'https://192.168.1.240/api'),
+        (_server, 'http://127.0.0.1:9090/api'),
+      ]) {
+        var requests = 0;
+        final dio = Dio(BaseOptions(baseUrl: actual))
+          ..httpClientAdapter = _Adapter((_) {
+            requests++;
+            return (200, _success);
+          });
+        final store = _MemoryScope();
+        final repository = _repo(
+          dio,
+          BusinessDataResetJournal(store),
+          server: declared,
+        );
+        final forbidden = isA<ApiException>().having(
+          (error) => error.code,
+          'code',
+          'FORBIDDEN',
+        );
+        await expectLater(repository.resetBusinessData(), throwsA(forbidden));
+        await expectLater(
+          repository.previewBusinessDataReset(),
+          throwsA(forbidden),
+        );
+        await expectLater(
+          repository.lastBusinessDataResetResult(),
+          throwsA(forbidden),
+        );
+        expect(requests, 0);
+        expect(store.values, isEmpty);
+      }
+    },
+  );
 
   test(
     'HTTP status metadata preserves existing business codes and messages',
@@ -562,13 +603,19 @@ void main() {
         ).pendingBusinessDataReset(),
         isNull,
       );
-      expect(
-        await _repo(
+      await expectLater(
+        _repo(
           dio,
           journal,
           server: 'https://other.test/api',
         ).pendingBusinessDataReset(),
-        isNull,
+        throwsA(
+          isA<ApiException>().having(
+            (error) => error.code,
+            'code',
+            'FORBIDDEN',
+          ),
+        ),
       );
       completion['attemptId'] = attempt.id;
       expect(

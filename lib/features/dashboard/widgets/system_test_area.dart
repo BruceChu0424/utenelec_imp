@@ -1,6 +1,6 @@
 // SystemTestArea - 工作台底部「系统测试」区(仅超级管理员可见)
 //
-// 当前只有一张「清空数据」卡：把本地开发库/内网测试服务器库重置为
+// 当前只有一张「清空数据」卡：仅 Debug 客户端连接回环地址的本地开发库可见，把它重置为
 // 「保留基础资料与人事权限、业务数据从 1 重新开始」的干净测试起点。
 // 这里是清空的唯一入口，由后端 business_data_reset() + BusinessDataResetService
 // 执行(见 ADR-067、ADR-155)：
@@ -12,7 +12,7 @@
 //     显示将删除的文件计数和现在不能清空的原因(服务端原文，逐条显示)，有原因时禁用确认；
 //     服务端在排水前再查一次，清空事务里加锁后、删除任何文件之前再查一次，然后删除并清库；
 //   · 完成后全员(含当前账号)强制下线，需重新登录。
-// 安全门禁(后端)：运行开关(dev / 受控 internal-test；正式环境默认关闭，云端一律拒绝)
+// 安全门禁(后端)：仅 dev + 回环监听 + 本机数据库，所有服务器下架
 // + 超管本人 + 再认证 + 输入口令 + 排水闸。
 // 时序：清空是同步长请求(受理后 5 分钟内完成检查、排水和删除测试文件，之后清库)，本端点
 // 受控内测入口的接收超时 10 分钟；正式网关拒绝测试入口。仍超时则提示「可能仍在后台执行」，
@@ -38,6 +38,7 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../repositories/system_test_repository.dart';
+import '../providers/local_system_test_policy.dart';
 
 class SystemTestArea extends ConsumerStatefulWidget {
   const SystemTestArea({super.key});
@@ -53,6 +54,9 @@ class _SystemTestAreaState extends ConsumerState<SystemTestArea> {
 
   @override
   Widget build(BuildContext context) {
+    if (!ref.watch(localSystemTestEnabledProvider)) {
+      return const SizedBox.shrink();
+    }
     // 工作台卡片显隐复用路由权限映射；本区是超管专属测试工具，不走权限码。
     final isSuperAdmin = ref.watch(isSuperAdminProvider);
     if (!isSuperAdmin) return const SizedBox.shrink();

@@ -36,6 +36,7 @@ import '../../../shared/providers/session_provider.dart';
 import '../../../shared/repositories/account_history_store.dart';
 import '../widgets/account_field.dart';
 import '../remote_access_text.dart';
+import '../../disaster_recovery/disaster_recovery_text.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key, this.returnTo});
@@ -421,6 +422,12 @@ class _LoginPageState extends ConsumerState<LoginPage>
             ),
           ],
           const SizedBox(height: UtenSpacing.s24),
+          TextButton.icon(
+            key: const Key('login-disaster-recovery'),
+            onPressed: () => context.push(RouteName.disasterRecovery),
+            icon: const Icon(Icons.health_and_safety_outlined),
+            label: Text(recoveryText(context, '运行与灾备')),
+          ),
           Text(
             branding.usesDefaultArtwork
                 ? l10n.loginFooter(DateTime.now().year)

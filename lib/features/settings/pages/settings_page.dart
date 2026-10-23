@@ -34,8 +34,8 @@ import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/shared_providers.dart';
 import '../widgets/settings_section.dart';
 import '../widgets/app_version_tile.dart';
-import '../../../shared/widgets/server_switch_dialog.dart';
 import '../../../core/l10n/remote_access_text.dart';
+import '../../disaster_recovery/disaster_recovery_text.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
@@ -188,7 +188,7 @@ class SettingsPage extends ConsumerWidget {
                     color: Colors.transparent,
                     child: ListTile(
                       leading: const Icon(Icons.dns_outlined, size: 20),
-                      title: const Text('服务器'),
+                      title: Text(recoveryText(context, '运行与灾备')),
                       subtitle: Text(
                         kIsWeb
                             ? serverEndpoint.startsWith('/')
@@ -199,10 +199,7 @@ class SettingsPage extends ConsumerWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                       trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => showDialog<void>(
-                        context: context,
-                        builder: (_) => const ServerSwitchDialog(),
-                      ),
+                      onTap: () => context.push(RouteName.disasterRecovery),
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: UtenSpacing.s8,
                       ),

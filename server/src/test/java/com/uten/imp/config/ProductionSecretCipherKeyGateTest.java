@@ -12,9 +12,9 @@ class ProductionSecretCipherKeyGateTest {
     private static MockEnvironment production(String profile) {
         MockEnvironment environment = new MockEnvironment();
         environment.setActiveProfiles(profile);
-        environment.setProperty("uten.jwt.secret", "j".repeat(48));
-        environment.setProperty("uten.crypto.pgp-master-key", "p".repeat(48));
-        environment.setProperty("uten.crypto.hmac-key", "h".repeat(48));
+        environment.setProperty("uten.jwt.secret", RuntimeSecretTestValues.forPurpose("jwt"));
+        environment.setProperty("uten.crypto.pgp-master-key", RuntimeSecretTestValues.forPurpose("pgp"));
+        environment.setProperty("uten.crypto.hmac-key", RuntimeSecretTestValues.forPurpose("hmac"));
         return environment;
     }
 
@@ -29,7 +29,7 @@ class ProductionSecretCipherKeyGateTest {
     @Test
     void configuredKeyMustBeStrongAndNotAPlaceholder() {
         MockEnvironment strong = production("cloud");
-        strong.setProperty("uten.crypto.secret-cipher-key", "c".repeat(64));
+        strong.setProperty("uten.crypto.secret-cipher-key", RuntimeSecretTestValues.forPurpose("cipher"));
         assertDoesNotThrow(() -> new ProductionSecretStrengthSafetyGate(strong).validate());
 
         MockEnvironment weak = production("prod");

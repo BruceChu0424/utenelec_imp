@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../l10n/gen/app_localizations.dart';
 import '../network/connection_recovery.dart';
+import '../router/route_names.dart';
+import '../../features/disaster_recovery/disaster_recovery_text.dart';
 import 'uten_top_banner_card.dart';
 
 /// One app-wide connection message with a single recovery action.
@@ -64,13 +67,14 @@ class ConnectionRecoveryBanner extends ConsumerWidget {
           progress:
               state.phase == ConnectionRecoveryPhase.reconnecting ||
               state.phase == ConnectionRecoveryPhase.disconnected,
-          content: Text(
-            message,
-            style: theme.textTheme.bodyLarge?.copyWith(
-              color: foreground,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+          content: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(message, style: theme.textTheme.bodyLarge?.copyWith(
+                color: foreground, fontWeight: FontWeight.w600)),
+            if (state.phase == ConnectionRecoveryPhase.disconnected)
+              TextButton(key: const ValueKey('connection-disaster-recovery'),
+                  onPressed: () => context.push(RouteName.disasterRecovery),
+                  child: Text(recoveryText(context, '运行与灾备'))),
+          ]),
           trailing: state.phase == ConnectionRecoveryPhase.disconnected
               ? OutlinedButton(
                   key: const ValueKey('connection-recovery-retry'),

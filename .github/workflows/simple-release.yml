@@ -121,7 +121,8 @@ jobs:
           flutter build web --release --no-pub --no-web-resources-cdn --no-wasm-dry-run \
             --dart-define="APP_VERSION=$VERSION" \
             --dart-define="APP_BUILD_ID=$GITHUB_SHA" \
-            --dart-define=API_BASE_URL=/api
+            --dart-define=API_BASE_URL=/api \
+            --dart-define=DR_CONTROL_PLANE_URL=https://admin.justplayit.cn
 
       - name: Assemble release directory
         shell: bash

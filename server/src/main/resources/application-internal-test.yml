@@ -32,10 +32,8 @@ uten:
     # No RFC1918 fallback: commissioning must name the exact office CIDR(s).
     local-allowed-cidrs: ${UTEN_LOCAL_ALLOWED_CIDRS}
   features:
-    # 内网测试服务器启用工作台「清空业务数据」测试工具（该服务器本就是可丢弃的测试库；
-    # 公司目标库跑 prod profile，开关默认关闭拒绝执行）。如需临时停用可设
-    # UTEN_BUSINESS_DATA_RESET_ENABLED=false。
-    business-data-reset-enabled: ${UTEN_BUSINESS_DATA_RESET_ENABLED:true}
+    # 上线后所有服务器下架清空业务数据，环境变量不能重新开启。
+    business-data-reset-enabled: false
   jwt:
     issuer: ${UTEN_JWT_ISSUER}
   security:

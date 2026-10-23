@@ -19,6 +19,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/dashboard/repositories/system_test_repository.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/dashboard/models/business_data_reset_attempt.dart';
 import 'package:uten_imp/features/dashboard/widgets/system_test_area.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -148,6 +149,7 @@ Future<void> _pump(
   required bool superAdmin,
   required _FakeRepository repository,
   required _TestSessionNotifier notifier,
+  String apiTarget = 'http://127.0.0.1:8080/api',
 }) async {
   final router = GoRouter(
     initialLocation: '/',
@@ -165,6 +167,7 @@ Future<void> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        apiBaseUrlProvider.overrideWithValue(apiTarget),
         isSuperAdminProvider.overrideWithValue(superAdmin),
         systemTestRepositoryProvider.overrideWithValue(repository),
         sessionProvider.overrideWith(() => notifier),
@@ -206,6 +209,30 @@ String _textOf(WidgetTester tester, Key key) =>
     tester.widget<Text>(find.byKey(key)).data!;
 
 void main() {
+  testWidgets('连接公司或云服务器时超管也没有系统测试入口，且不查询测试接口', (tester) async {
+    for (final target in [
+      'https://192.168.1.240/api',
+      'https://imp.company.example/api',
+    ]) {
+      final repository = _FakeRepository(result: _okResult);
+      await _pump(
+        tester,
+        superAdmin: true,
+        repository: repository,
+        notifier: _TestSessionNotifier(),
+        apiTarget: target,
+      );
+      expect(find.text('系统测试'), findsNothing);
+      expect(
+        find.byKey(const Key('system-test-clear-data-card')),
+        findsNothing,
+      );
+      expect(repository.calls, 0);
+      expect(repository.previewCalls, 0);
+      expect(repository.lastResultCalls, 0);
+    }
+  });
+
   testWidgets('有测试文件：显示按类别的份数与实地核对结果，确认按钮可点，清空请求发出一次', (tester) async {
     final repository = _FakeRepository(result: _okResult)
       ..preview = _filesPreview;

@@ -12,7 +12,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -253,11 +252,8 @@ public class InternalTestRuntimeSafetyGate
     }
 
     private void requireSecret(String key, int minimumUtf8Bytes) {
-        String value = requireValue(key);
-        if (value.getBytes(StandardCharsets.UTF_8).length < minimumUtf8Bytes) {
-            throw new IllegalStateException(
-                    "internal-test secret is too short: " + key);
-        }
+        RuntimeSecretPolicy.requireSecret(
+                "internal-test", key, environment.getProperty(key), minimumUtf8Bytes);
     }
 
     /** Optional secrets are accepted when absent, but a configured value must be strong. */

@@ -6,8 +6,6 @@ import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-import java.nio.charset.StandardCharsets;
-
 /**
  * Fails application startup when a production-like profile runs with weak or
  * placeholder signing/encryption secrets.
@@ -49,17 +47,7 @@ public class ProductionSecretStrengthSafetyGate {
     }
 
     private void requireSecret(String key, int minimumUtf8Bytes) {
-        String value = environment.getProperty(key);
-        if (!StringUtils.hasText(value)
-                || value.contains("REPLACE")
-                || value.contains("CHANGE_ME")) {
-            throw new IllegalStateException(
-                    "prod/cloud profiles require a non-placeholder value for " + key);
-        }
-        if (value.getBytes(StandardCharsets.UTF_8).length < minimumUtf8Bytes) {
-            throw new IllegalStateException(
-                    "prod/cloud secret is too short (min " + minimumUtf8Bytes
-                            + " UTF-8 bytes): " + key);
-        }
+        RuntimeSecretPolicy.requireSecret(
+                "prod/cloud", key, environment.getProperty(key), minimumUtf8Bytes);
     }
 }

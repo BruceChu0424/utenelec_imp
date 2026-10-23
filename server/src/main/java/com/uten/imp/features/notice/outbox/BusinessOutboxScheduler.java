@@ -154,7 +154,7 @@ public class BusinessOutboxScheduler implements AutoCloseable {
                         BusinessOutboxDeliveryDiagnostics.Kind.NONE);
             } catch (OutboxDeliveryException error) {
                 var failure = BusinessOutboxDeliveryDiagnostics.describe(error);
-                java.util.Optional<BusinessOutboxFailureRecorder.RecordedFailure> recorded;
+                java.util.Optional<BusinessOutboxFailureRecorder.FailureRecording> recorded;
                 try {
                     recorded = failureRecorder.record(error.eventId(), error);
                 } catch (RuntimeException recordingFailure) {
@@ -169,10 +169,28 @@ public class BusinessOutboxScheduler implements AutoCloseable {
                     continue;
                 }
                 var state = recorded.orElseThrow();
+                if (state.alreadyDelivered()) {
+                    diagnostics.count(BusinessOutboxDeliveryDiagnostics.Outcome.ALREADY_DELIVERED, failure.kind());
+                    if (failure.deferrable()) {
+                        log.info("Business outbox already delivered by another consumer after rolled-back contention (event={}): {}",
+                                error.eventId(), failure.persistedDescription());
+                    } else {
+                        // A successful competitor does not explain an unexpected SQL/code failure.
+                        log.warn("Business outbox unexpected delivery failure; another consumer has completed the event (event={}): {}",
+                                error.eventId(), failure.persistedDescription());
+                    }
+                    continue;
+                }
                 if (state.exhausted()) {
                     diagnostics.count(BusinessOutboxDeliveryDiagnostics.Outcome.EXHAUSTED, failure.kind());
                     log.error("Business outbox delivery exhausted (event={}, attempts={}): {}",
                             error.eventId(), state.attempts(), failure.persistedDescription());
+                    continue;
+                }
+                if (!state.recorded()) {
+                    diagnostics.count(BusinessOutboxDeliveryDiagnostics.Outcome.NOT_RECORDED, failure.kind());
+                    log.warn("Business outbox failure state was not recorded (event={}, observedStatus={}): {}",
+                            error.eventId(), state.status(), failure.persistedDescription());
                     continue;
                 }
                 if (failure.deferrable() && state.deferred()) {

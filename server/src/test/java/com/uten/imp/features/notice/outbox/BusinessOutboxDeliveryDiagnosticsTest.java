@@ -62,22 +62,64 @@ class BusinessOutboxDeliveryDiagnosticsTest {
     @Test
     void aPendingRowWithoutFutureEligibilityIsNotReportedAsDeferred() {
         Instant now = Instant.now();
-        checkRecordedState(Optional.of(new BusinessOutboxFailureRecorder.RecordedFailure(0, 1, now, now)),
+        checkRecordedState(Optional.of(new BusinessOutboxFailureRecorder.FailureRecording(0, 1, now, now, null, true)),
                 BusinessOutboxDeliveryDiagnostics.Outcome.FAILED, Level.WARN);
     }
 
     @Test
     void exhaustedContentionStillRaisesAnErrorAndAnExplicitMetric() {
         Instant now = Instant.now();
-        checkRecordedState(Optional.of(new BusinessOutboxFailureRecorder.RecordedFailure(2, 8, now, now)),
+        checkRecordedState(Optional.of(new BusinessOutboxFailureRecorder.FailureRecording(2, 8, now, now, null, true)),
                 BusinessOutboxDeliveryDiagnostics.Outcome.EXHAUSTED, Level.ERROR);
     }
 
-    private static void checkRecordedState(Optional<BusinessOutboxFailureRecorder.RecordedFailure> state,
+    @Test
+    void aCommittedCompetingDeliveryIsDistinctFromARecordedRetry() {
+        Instant now = Instant.now();
+        checkRecordedState(Optional.of(new BusinessOutboxFailureRecorder.FailureRecording(1, 0, now, now, now, false)),
+                BusinessOutboxDeliveryDiagnostics.Outcome.ALREADY_DELIVERED, Level.INFO);
+    }
+
+    @Test
+    void aDeliveredStatusWithoutCompletionEvidenceStillWarns() {
+        Instant now = Instant.now();
+        checkRecordedState(Optional.of(new BusinessOutboxFailureRecorder.FailureRecording(1, 0, now, now, null, false)),
+                BusinessOutboxDeliveryDiagnostics.Outcome.NOT_RECORDED, Level.WARN);
+    }
+
+    @Test
+    void anObservedPendingRowCannotClaimThatTheFailureWasRecorded() {
+        Instant now = Instant.now();
+        checkRecordedState(Optional.of(new BusinessOutboxFailureRecorder.FailureRecording(0, 1, now.plusSeconds(60), now, null, false)),
+                BusinessOutboxDeliveryDiagnostics.Outcome.NOT_RECORDED, Level.WARN);
+    }
+
+    @Test
+    void aDeadLetterCommittedByACompetitorStillRaisesAnError() {
+        Instant now = Instant.now();
+        checkRecordedState(Optional.of(new BusinessOutboxFailureRecorder.FailureRecording(2, 8, now, now, null, false)),
+                BusinessOutboxDeliveryDiagnostics.Outcome.EXHAUSTED, Level.ERROR);
+    }
+
+    @Test
+    void aSuccessfulCompetitorDoesNotHideAnUnexpectedSqlFailure() {
+        Instant now = Instant.now();
+        checkRecordedState(Optional.of(new BusinessOutboxFailureRecorder.FailureRecording(1, 0, now, now, now, false)),
+                BusinessOutboxDeliveryDiagnostics.Outcome.ALREADY_DELIVERED, Level.WARN,
+                new SQLException("unexpected division by zero", "22012"), "UNEXPECTED");
+    }
+
+    private static void checkRecordedState(Optional<BusinessOutboxFailureRecorder.FailureRecording> state,
                                            BusinessOutboxDeliveryDiagnostics.Outcome outcome, Level level) {
+        checkRecordedState(state, outcome, level, new SQLException("busy", "55P03"), "LOCK_BUSY");
+    }
+
+    private static void checkRecordedState(Optional<BusinessOutboxFailureRecorder.FailureRecording> state,
+                                           BusinessOutboxDeliveryDiagnostics.Outcome outcome, Level level,
+                                           Throwable cause, String kind) {
         var processor = mock(BusinessOutboxProcessor.class);
         var recorder = mock(BusinessOutboxFailureRecorder.class);
-        var failure = new OutboxDeliveryException(UUID.randomUUID(), new SQLException("busy", "55P03"));
+        var failure = new OutboxDeliveryException(UUID.randomUUID(), cause);
         when(processor.processNext()).thenThrow(failure).thenReturn(false);
         when(recorder.record(any(), any())).thenReturn(state);
         var executor = new ManualOutboxExecutor();
@@ -90,7 +132,7 @@ class BusinessOutboxDeliveryDiagnosticsTest {
             scheduler.drain(); executor.runOne();
             assertThat(logs.list).anySatisfy(event -> assertThat(event.getLevel()).isEqualTo(level));
             assertThat(logs.list).noneSatisfy(event -> assertThat(event.getFormattedMessage()).contains("contention deferred"));
-            assertThat(meters.get("uten.business.outbox.delivery").tags("outcome", outcome.name(), "kind", "LOCK_BUSY")
+            assertThat(meters.get("uten.business.outbox.delivery").tags("outcome", outcome.name(), "kind", kind)
                     .counter().count()).isEqualTo(1);
             assertThat(meters.find("uten.business.outbox.delivery").tag("outcome", "DEFERRED").counter()).isNull();
         } finally { logger.detachAppender(logs); logs.stop(); meters.close(); }
